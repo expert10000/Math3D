@@ -45,12 +45,13 @@ import {
   type ProbeInfo,
   type CameraTourCommand,
   type CameraTourEvent,
-    type CameraTourMode,
-    type CameraTourCaptureFormat,
-    type RenderQuality,
-    type SceneBackgroundMode,
-    type ViewportDebugSnapshot,
-  } from "./components/SurfaceViewer";
+  type CameraTourMode,
+  type CameraTourCaptureFormat,
+  type MeshInteractionQualityMode,
+  type RenderQuality,
+  type SceneBackgroundMode,
+  type ViewportDebugSnapshot,
+} from "./components/SurfaceViewer";
 import { GeometryViewer } from "./components/GeometryViewer";
 import { StereometryAnalyzerPanel } from "./components/StereometryAnalyzerPanel";
 import {
@@ -9042,6 +9043,13 @@ const App: React.FC = () => {
     setGeometryCreateActionStatus("Loaded Cavalieri pair: move/animate section plane and compare A1(h), A2(h).");
   }, [handleAddGeometryObject]);
   const handleLoadArchimedesVolumeDemo = useCallback(() => {
+    setGeometryObjects([]);
+    setGeometryDatasetMeshObjects([]);
+    setGeometryLockedObjectIds(new Set());
+    setGeometrySelectedObjectId(null);
+    setGeometryCompareObjectAId(null);
+    setGeometryCompareObjectBId(null);
+    setGeometryDerivedRelationConstraints([]);
     const sphereId = handleAddGeometryObject({
       type: "sphere",
       name: "Archimedes sphere",
@@ -16054,6 +16062,51 @@ const App: React.FC = () => {
     geometryProceduralSelectionPointSets,
     geometryProceduralSnapPreviewPointSet,
   ]);
+  const geometryProceduralViewerOverlayPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (geometryMode !== "procedural") return null;
+    const groups: OverlayPolylineGroup[] = [];
+    if (geometryProceduralOverlayGroups?.length) groups.push(...geometryProceduralOverlayGroups);
+    if (geometryProceduralSelectionOverlayGroups?.length) groups.push(...geometryProceduralSelectionOverlayGroups);
+    if (geometrySectionOverlayGroups?.length) groups.push(...geometrySectionOverlayGroups);
+    if (geometryBooleanPreviewOverlayGroups?.length) groups.push(...geometryBooleanPreviewOverlayGroups);
+    if (geometryProceduralFeatureOverlays.groups?.length) groups.push(...geometryProceduralFeatureOverlays.groups);
+    if (geometryDerivedConstructionOverlays.groups?.length) groups.push(...geometryDerivedConstructionOverlays.groups);
+    if (geometryProceduralAnnotationOverlays.groups?.length) groups.push(...geometryProceduralAnnotationOverlays.groups);
+    return groups.length ? groups : null;
+  }, [
+    geometryMode,
+    geometryProceduralOverlayGroups,
+    geometryProceduralSelectionOverlayGroups,
+    geometrySectionOverlayGroups,
+    geometryBooleanPreviewOverlayGroups,
+    geometryProceduralFeatureOverlays.groups,
+    geometryDerivedConstructionOverlays.groups,
+    geometryProceduralAnnotationOverlays.groups,
+  ]);
+  const geometryProceduralViewerHighlightPolygons = useMemo<Polygon3[] | null>(() => {
+    if (geometryMode !== "procedural") return null;
+    const polys: Polygon3[] = [];
+    if (geometryProceduralSelectionHighlightPolygons?.length) polys.push(...geometryProceduralSelectionHighlightPolygons);
+    if (geometrySectionCapPolygons?.length) polys.push(...geometrySectionCapPolygons);
+    return polys.length ? polys : null;
+  }, [geometryMode, geometryProceduralSelectionHighlightPolygons, geometrySectionCapPolygons]);
+  const geometryProceduralViewerLabelSets = useMemo<OverlayLabelSet[] | null>(() => {
+    if (geometryMode === "demo") return geometryLabelSets;
+    if (geometryMode === "scratch" || geometryMode === "workbook") return geometryConstructionState?.labels ?? null;
+    if (geometryMode !== "procedural") return null;
+    const labels: OverlayLabelSet[] = [];
+    if (geometryProceduralFeatureOverlays.labelSets?.length) labels.push(...geometryProceduralFeatureOverlays.labelSets);
+    if (geometryDerivedConstructionOverlays.labelSets?.length) labels.push(...geometryDerivedConstructionOverlays.labelSets);
+    if (geometryProceduralAnnotationOverlays.labelSets?.length) labels.push(...geometryProceduralAnnotationOverlays.labelSets);
+    return labels.length ? labels : null;
+  }, [
+    geometryMode,
+    geometryLabelSets,
+    geometryConstructionState?.labels,
+    geometryProceduralFeatureOverlays.labelSets,
+    geometryDerivedConstructionOverlays.labelSets,
+    geometryProceduralAnnotationOverlays.labelSets,
+  ]);
 
   const proceduralScene: GeometryScene = useMemo(() => ({}), []);
   const geometryProblemScene: GeometryScene = useMemo(() => {
@@ -21744,6 +21797,20 @@ const App: React.FC = () => {
     const raw = localStorage.getItem(SURFACE_RENDER_QUALITY_KEY);
     return raw === "performance" || raw === "sharp" || raw === "balanced" ? raw : "balanced";
   });
+  const [meshInteractionQualityMode, setMeshInteractionQualityMode] =
+    useState<MeshInteractionQualityMode>("adaptive");
+  const [meshInteractionRestoreDelayMs, setMeshInteractionRestoreDelayMs] = useState(150);
+  const [meshInteractionPreviewTriangleTarget, setMeshInteractionPreviewTriangleTarget] = useState(100_000);
+  const [meshInteractionHideVertexMarkers, setMeshInteractionHideVertexMarkers] = useState(true);
+  const [meshInteractionHideFaceNormals, setMeshInteractionHideFaceNormals] = useState(true);
+  const [meshInteractionHideCurvatureGlyphs, setMeshInteractionHideCurvatureGlyphs] = useState(true);
+  const [meshInteractionHideWireframe, setMeshInteractionHideWireframe] = useState(false);
+  const [geometryInteractionQualityMode, setGeometryInteractionQualityMode] =
+    useState<MeshInteractionQualityMode>("adaptive");
+  const [geometryInteractionRestoreDelayMs, setGeometryInteractionRestoreDelayMs] = useState(150);
+  const [geometryInteractionPreviewTriangleTarget, setGeometryInteractionPreviewTriangleTarget] = useState(100_000);
+  const [geometryInteractionHideWireframe, setGeometryInteractionHideWireframe] = useState(false);
+  const [geometryInteractionHideSceneOverlays, setGeometryInteractionHideSceneOverlays] = useState(true);
   const [graphResolution, setGraphResolution] = useState(80);
   const [implicitResolution, setImplicitResolution] = useState(32);
   const [implicitBakeResolution, setImplicitBakeResolution] = useState(() => {
@@ -43823,6 +43890,13 @@ case "mobius":
                         <SurfaceViewer
                               surfaceId={primarySurfaceId}
                               renderQuality={surfaceRenderQuality}
+                              meshInteractionQualityMode={meshInteractionQualityMode}
+                              meshInteractionRestoreDelayMs={meshInteractionRestoreDelayMs}
+                              meshInteractionPreviewTriangleTarget={meshInteractionPreviewTriangleTarget}
+                              meshInteractionHideVertexMarkers={meshInteractionHideVertexMarkers}
+                              meshInteractionHideFaceNormals={meshInteractionHideFaceNormals}
+                              meshInteractionHideCurvatureGlyphs={meshInteractionHideCurvatureGlyphs}
+                              meshInteractionHideWireframe={meshInteractionHideWireframe}
                               sceneBackgroundMode={cleanScreenshotSceneBackgroundMode}
                               graphExpr={graphExpr}
                             implicitExpr={implicitExpr}
@@ -45100,6 +45174,13 @@ case "mobius":
                             <SurfaceViewer
                               surfaceId={secondarySurfaceId}
                               renderQuality={surfaceRenderQuality}
+                              meshInteractionQualityMode={meshInteractionQualityMode}
+                              meshInteractionRestoreDelayMs={meshInteractionRestoreDelayMs}
+                              meshInteractionPreviewTriangleTarget={meshInteractionPreviewTriangleTarget}
+                              meshInteractionHideVertexMarkers={meshInteractionHideVertexMarkers}
+                              meshInteractionHideFaceNormals={meshInteractionHideFaceNormals}
+                              meshInteractionHideCurvatureGlyphs={meshInteractionHideCurvatureGlyphs}
+                              meshInteractionHideWireframe={meshInteractionHideWireframe}
                               graphExpr={graphExpr}
                               implicitExpr={implicitExpr}
                               surfaceMeshOverride={
@@ -45368,6 +45449,20 @@ case "mobius":
                       meshPerformanceLastBuildMs={meshPerformanceLastBuildMs}
                       onRunMeshPerformanceBenchmark={handleRunMeshPerformanceBenchmark}
                       onRestoreMeshPerformanceBaseline={handleRestoreMeshPerformanceBaseline}
+                      meshInteractionQualityMode={meshInteractionQualityMode}
+                      onChangeMeshInteractionQualityMode={setMeshInteractionQualityMode}
+                      meshInteractionRestoreDelayMs={meshInteractionRestoreDelayMs}
+                      onChangeMeshInteractionRestoreDelayMs={setMeshInteractionRestoreDelayMs}
+                      meshInteractionPreviewTriangleTarget={meshInteractionPreviewTriangleTarget}
+                      onChangeMeshInteractionPreviewTriangleTarget={setMeshInteractionPreviewTriangleTarget}
+                      meshInteractionHideVertexMarkers={meshInteractionHideVertexMarkers}
+                      onChangeMeshInteractionHideVertexMarkers={setMeshInteractionHideVertexMarkers}
+                      meshInteractionHideFaceNormals={meshInteractionHideFaceNormals}
+                      onChangeMeshInteractionHideFaceNormals={setMeshInteractionHideFaceNormals}
+                      meshInteractionHideCurvatureGlyphs={meshInteractionHideCurvatureGlyphs}
+                      onChangeMeshInteractionHideCurvatureGlyphs={setMeshInteractionHideCurvatureGlyphs}
+                      meshInteractionHideWireframe={meshInteractionHideWireframe}
+                      onChangeMeshInteractionHideWireframe={setMeshInteractionHideWireframe}
                       meshInspectorStats={surfaceInspectorMeshStats}
                       badTriangleCount={surfaceInspectorBadTriangleCount}
                       geodesicPathLength={geodesicHeatLength}
@@ -46617,6 +46712,11 @@ case "mobius":
                     viewPreset={geometryViewPreset}
                     pointLabelScale={geometryDemoLabelScale}
                     showPointLabels={geometryDemoShowPointLabels}
+                    meshInteractionQualityMode={geometryMode === "demo" ? geometryInteractionQualityMode : "full"}
+                    meshInteractionRestoreDelayMs={geometryInteractionRestoreDelayMs}
+                    meshInteractionPreviewTriangleTarget={geometryInteractionPreviewTriangleTarget}
+                    meshInteractionHideWireframe={geometryInteractionHideWireframe}
+                    meshInteractionHideSceneOverlays={geometryInteractionHideSceneOverlays}
                     cameraOverride={
                       geometryMode === "scratch" || geometryMode === "workbook" ? geometryProblemCameraOverride : null
                     }
@@ -52727,7 +52827,13 @@ case "mobius":
                               <button
                                 key={`geometry-demo-category-${entry.id}`}
                                 type="button"
-                                onClick={() => setGeometryDemonstrationCategory(entry.id)}
+                                onClick={() => {
+                                  if (entry.id === "volume_relations") {
+                                    handleLoadArchimedesVolumeDemo();
+                                    return;
+                                  }
+                                  setGeometryDemonstrationCategory(entry.id);
+                                }}
                                 style={pill(geometryDemonstrationCategory === entry.id)}
                                 aria-pressed={geometryDemonstrationCategory === entry.id}
                               >
@@ -52833,6 +52939,91 @@ case "mobius":
                               >
                                 {geometryDemoSectionAnimationEnabled ? "Stop section animation" : "Animate section plane"}
                               </button>
+                            </div>
+                            <div
+                              style={{
+                                display: "grid",
+                                gap: 6,
+                                border: "1px solid #e2e8f0",
+                                borderRadius: 6,
+                                padding: "6px 8px",
+                                background: "#fff",
+                              }}
+                            >
+                              <div style={{ fontSize: 11, fontWeight: 700 }}>Performance</div>
+                              <div style={{ display: "grid", gap: 4 }}>
+                                <div style={{ fontWeight: 600 }}>Quality during interaction</div>
+                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                  {[
+                                    { id: "full", label: "Full" },
+                                    { id: "adaptive", label: "Adaptive" },
+                                    { id: "fast-preview", label: "Fast Preview" },
+                                  ].map((entry) => (
+                                    <label key={`geometry-quality-${entry.id}`} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                      <input
+                                        type="radio"
+                                        name="geometry-interaction-quality"
+                                        checked={geometryInteractionQualityMode === (entry.id as MeshInteractionQualityMode)}
+                                        onChange={() => setGeometryInteractionQualityMode(entry.id as MeshInteractionQualityMode)}
+                                      />
+                                      {entry.label}
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                              <label style={{ display: "grid", gap: 2 }}>
+                                <span style={{ fontWeight: 600 }}>Restore full quality after (ms)</span>
+                                <input
+                                  type="number"
+                                  min={50}
+                                  max={2000}
+                                  step={10}
+                                  value={geometryInteractionRestoreDelayMs}
+                                  onChange={(event) => {
+                                    const next = Number(event.target.value);
+                                    if (!Number.isFinite(next)) return;
+                                    setGeometryInteractionRestoreDelayMs(Math.max(50, Math.min(2000, Math.round(next))));
+                                  }}
+                                  style={{ width: 120 }}
+                                />
+                              </label>
+                              <div style={{ display: "grid", gap: 4 }}>
+                                <div style={{ fontWeight: 600 }}>Hide during interaction</div>
+                                <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={geometryInteractionHideSceneOverlays}
+                                    onChange={(event) => setGeometryInteractionHideSceneOverlays(event.target.checked)}
+                                  />
+                                  Demo overlays
+                                </label>
+                                <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={geometryInteractionHideWireframe}
+                                    onChange={(event) => setGeometryInteractionHideWireframe(event.target.checked)}
+                                  />
+                                  Wireframe
+                                </label>
+                              </div>
+                              <label style={{ display: "grid", gap: 2 }}>
+                                <span style={{ fontWeight: 600 }}>Preview triangle target</span>
+                                <input
+                                  type="number"
+                                  min={5000}
+                                  max={5000000}
+                                  step={1000}
+                                  value={geometryInteractionPreviewTriangleTarget}
+                                  onChange={(event) => {
+                                    const next = Number(event.target.value);
+                                    if (!Number.isFinite(next)) return;
+                                    setGeometryInteractionPreviewTriangleTarget(
+                                      Math.max(5000, Math.min(5_000_000, Math.round(next)))
+                                    );
+                                  }}
+                                  style={{ width: 140 }}
+                                />
+                              </label>
                             </div>
                             {geometryVolumeRelationDemo ? (
                               <div style={{ display: "grid", gap: 4, border: "1px solid #e2e8f0", borderRadius: 6, padding: "6px 8px", background: "#fff" }}>
@@ -54188,19 +54379,7 @@ case "mobius":
                   segmentRadiusScale={geometryMode === "demo" ? geometryDemoSegmentRadiusScale : 1}
                   edgeRadiusScale={geometryMode === "demo" ? geometryDemoEdgeRadiusScale : 1}
                   meshOverrides={geometryProceduralMeshOverrides}
-                  extraOverlayPolylineGroups={
-                    geometryMode === "procedural"
-                      ? [
-                          ...(geometryProceduralOverlayGroups ?? []),
-                          ...(geometryProceduralSelectionOverlayGroups ?? []),
-                          ...(geometrySectionOverlayGroups ?? []),
-                          ...(geometryBooleanPreviewOverlayGroups ?? []),
-                          ...(geometryProceduralFeatureOverlays.groups ?? []),
-                          ...(geometryDerivedConstructionOverlays.groups ?? []),
-                          ...(geometryProceduralAnnotationOverlays.groups ?? []),
-                        ]
-                      : null
-                  }
+                  extraOverlayPolylineGroups={geometryProceduralViewerOverlayPolylineGroups}
                   wireframe={geometryWireframe}
                   showPlanes={geometryShowPlanes}
                   planeGridSettings={planeGridSettings}
@@ -54217,14 +54396,16 @@ case "mobius":
                   cameraFitCommand={geometryCameraFitCommand}
                   cameraTourCommand={geometryCameraTourCommand}
                   onCameraTourEvent={handleGeometryCameraTourEvent}
+                  meshInteractionQualityMode={geometryMode === "demo" ? geometryInteractionQualityMode : "full"}
+                  meshInteractionRestoreDelayMs={geometryInteractionRestoreDelayMs}
+                  meshInteractionPreviewTriangleTarget={geometryInteractionPreviewTriangleTarget}
+                  meshInteractionHideWireframe={geometryInteractionHideWireframe}
+                  meshInteractionHideSceneOverlays={geometryInteractionHideSceneOverlays}
                   highlightPolygons={
                     geometryMode === "demo"
                       ? geometryHighlightPolygons
                       : geometryMode === "procedural"
-                        ? [
-                            ...(geometryProceduralSelectionHighlightPolygons ?? []),
-                            ...(geometrySectionCapPolygons ?? []),
-                          ]
+                        ? geometryProceduralViewerHighlightPolygons
                         : null
                   }
                   highlightPointSets={
@@ -54234,17 +54415,7 @@ case "mobius":
                         ? null
                         : geometryProceduralHighlightPointSets
                   }
-                  overlayLabelSets={
-                    geometryMode === "demo"
-                      ? geometryLabelSets
-                      : geometryMode === "scratch" || geometryMode === "workbook"
-                        ? geometryConstructionState?.labels ?? null
-                        : [
-                            ...(geometryProceduralFeatureOverlays.labelSets ?? []),
-                            ...(geometryDerivedConstructionOverlays.labelSets ?? []),
-                            ...(geometryProceduralAnnotationOverlays.labelSets ?? []),
-                          ]
-                  }
+                  overlayLabelSets={geometryProceduralViewerLabelSets}
                   dragEnabled={geometryMode === "procedural" && !geometryGizmoEnabled}
                   onDragStart={geometryMode === "procedural" ? handleProceduralDragStart : undefined}
                   onDrag={geometryMode === "procedural" ? handleProceduralDrag : undefined}
@@ -54272,7 +54443,11 @@ case "mobius":
                           ? handleProblemPick
                           : undefined
                   }
-                  onPickHover={geometryMode === "procedural" ? handleProceduralPickHover : undefined}
+                  onPickHover={
+                    geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations"
+                      ? handleProceduralPickHover
+                      : undefined
+                  }
                   inspectSelectionMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
                 />
                 </div>
@@ -71233,6 +71408,20 @@ type SurfacesRightPanelProps = {
   meshPerformanceLastBuildMs: number | null;
   onRunMeshPerformanceBenchmark: (id: MeshPerfBenchmarkId) => void;
   onRestoreMeshPerformanceBaseline: () => void;
+  meshInteractionQualityMode: MeshInteractionQualityMode;
+  onChangeMeshInteractionQualityMode: (mode: MeshInteractionQualityMode) => void;
+  meshInteractionRestoreDelayMs: number;
+  onChangeMeshInteractionRestoreDelayMs: (value: number) => void;
+  meshInteractionPreviewTriangleTarget: number;
+  onChangeMeshInteractionPreviewTriangleTarget: (value: number) => void;
+  meshInteractionHideVertexMarkers: boolean;
+  onChangeMeshInteractionHideVertexMarkers: (value: boolean) => void;
+  meshInteractionHideFaceNormals: boolean;
+  onChangeMeshInteractionHideFaceNormals: (value: boolean) => void;
+  meshInteractionHideCurvatureGlyphs: boolean;
+  onChangeMeshInteractionHideCurvatureGlyphs: (value: boolean) => void;
+  meshInteractionHideWireframe: boolean;
+  onChangeMeshInteractionHideWireframe: (value: boolean) => void;
   meshInspectorStats: {
     vertexCount: number | null;
     faceCount: number | null;
@@ -71416,6 +71605,20 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   meshPerformanceLastBuildMs,
   onRunMeshPerformanceBenchmark,
   onRestoreMeshPerformanceBaseline,
+  meshInteractionQualityMode,
+  onChangeMeshInteractionQualityMode,
+  meshInteractionRestoreDelayMs,
+  onChangeMeshInteractionRestoreDelayMs,
+  meshInteractionPreviewTriangleTarget,
+  onChangeMeshInteractionPreviewTriangleTarget,
+  meshInteractionHideVertexMarkers,
+  onChangeMeshInteractionHideVertexMarkers,
+  meshInteractionHideFaceNormals,
+  onChangeMeshInteractionHideFaceNormals,
+  meshInteractionHideCurvatureGlyphs,
+  onChangeMeshInteractionHideCurvatureGlyphs,
+  meshInteractionHideWireframe,
+  onChangeMeshInteractionHideWireframe,
   meshInspectorStats,
   badTriangleCount,
   geodesicPathLength,
@@ -72150,6 +72353,100 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 <div style={{ fontSize: 11, color: "#556" }}>No mesh operation result yet.</div>
               )}
             </div>
+
+            {isMeshViewer && (
+              <div style={inspectorSectionCard}>
+                <div style={inspectorSectionTitle}>Performance</div>
+                <div style={{ fontSize: 11, display: "grid", gap: 8 }}>
+                  <div style={{ fontWeight: 600 }}>Quality during interaction</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {(
+                      [
+                        ["full", "Full"],
+                        ["adaptive", "Adaptive"],
+                        ["fast-preview", "Fast Preview"],
+                      ] as const
+                    ).map(([mode, label]) => (
+                      <button
+                        key={`mesh-runtime-mode-${mode}`}
+                        type="button"
+                        onClick={() => onChangeMeshInteractionQualityMode(mode)}
+                        style={pill(meshInteractionQualityMode === mode)}
+                        aria-pressed={meshInteractionQualityMode === mode}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ minWidth: 164 }}>Restore full quality after</span>
+                    <input
+                      type="number"
+                      min={50}
+                      max={2000}
+                      step={10}
+                      value={Math.max(50, Math.min(2000, Math.round(meshInteractionRestoreDelayMs)))}
+                      onChange={(event) => {
+                        const value = Number(event.target.value);
+                        if (!Number.isFinite(value)) return;
+                        onChangeMeshInteractionRestoreDelayMs(Math.max(50, Math.min(2000, Math.round(value))));
+                      }}
+                      style={{ width: 96 }}
+                    />
+                    <span>ms idle</span>
+                  </label>
+                  <div style={{ fontWeight: 600 }}>Hide during interaction</div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={meshInteractionHideVertexMarkers}
+                      onChange={(event) => onChangeMeshInteractionHideVertexMarkers(event.target.checked)}
+                    />
+                    Vertex markers
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={meshInteractionHideFaceNormals}
+                      onChange={(event) => onChangeMeshInteractionHideFaceNormals(event.target.checked)}
+                    />
+                    Face normals
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={meshInteractionHideCurvatureGlyphs}
+                      onChange={(event) => onChangeMeshInteractionHideCurvatureGlyphs(event.target.checked)}
+                    />
+                    Curvature glyphs
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={meshInteractionHideWireframe}
+                      onChange={(event) => onChangeMeshInteractionHideWireframe(event.target.checked)}
+                    />
+                    Wireframe
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ minWidth: 164 }}>Preview triangle target</span>
+                    <input
+                      type="number"
+                      min={5000}
+                      max={5000000}
+                      step={1000}
+                      value={Math.max(5000, Math.min(5000000, Math.round(meshInteractionPreviewTriangleTarget)))}
+                      onChange={(event) => {
+                        const value = Number(event.target.value);
+                        if (!Number.isFinite(value)) return;
+                        onChangeMeshInteractionPreviewTriangleTarget(Math.max(5000, Math.min(5000000, Math.round(value))));
+                      }}
+                      style={{ width: 120 }}
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
 
             {isDevMode && (
               <div style={inspectorSectionCard}>

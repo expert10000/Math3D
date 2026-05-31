@@ -83,6 +83,8 @@ export type SurfacePerformanceSnapshot = {
   };
 };
 export type RenderQuality = "performance" | "balanced" | "sharp";
+export type MeshRuntimeQuality = "interactive-preview" | "balanced" | "accurate";
+export type MeshInteractionQualityMode = "full" | "adaptive" | "fast-preview";
 export type SceneBackgroundMode = "default" | "calm" | "transparent";
 export type CameraTourMode =
   | "balanced"
@@ -153,6 +155,143 @@ type SurfaceMeshOverride = {
 
 const DEG_TO_RAD = Math.PI / 180;
 const RAD_TO_DEG = 180 / Math.PI;
+const DEFAULT_MESH_PREVIEW_TRIANGLE_TARGET = 100_000;
+
+type SurfaceMeshLodBuffers = {
+  positions: Float32Array;
+  indices: Uint32Array | null;
+  normals: Float32Array | null;
+  uvs: Float32Array | null;
+  fullTriangleCount: number;
+  activeTriangleCount: number;
+};
+
+const clampInt = (value: number, min: number, max: number) =>
+  Math.max(min, Math.min(max, Math.round(value)));
+
+const normalizePositiveInt = (value: number, fallback: number, min: number, max: number) => {
+  if (!Number.isFinite(value)) return fallback;
+  return clampInt(value, min, max);
+};
+
+const triangleCountFromBuffers = (positions: ArrayLike<number>, indices?: ArrayLike<number> | null) => {
+  if (indices && indices.length >= 3) return Math.floor(indices.length / 3);
+  return Math.floor((positions.length ?? 0) / 9);
+};
+
+const computeMeshPreviewTriangleTarget = (
+  fullTriangles: number,
+  runtimeQuality: MeshRuntimeQuality,
+  mode: MeshInteractionQualityMode,
+  previewTriangleTarget: number
+) => {
+  if (fullTriangles <= 0) return 0;
+  if (mode === "full" || runtimeQuality === "accurate") return fullTriangles;
+
+  if (runtimeQuality === "balanced") {
+    if (fullTriangles < 250_000) return fullTriangles;
+    if (fullTriangles <= 1_000_000) return Math.max(1, Math.round(fullTriangles * 0.6));
+    return Math.max(1, Math.min(fullTriangles, Math.max(previewTriangleTarget * 2, Math.round(fullTriangles * 0.35))));
+  }
+
+  if (mode === "fast-preview") {
+    if (fullTriangles < 50_000) return fullTriangles;
+    if (fullTriangles < 250_000) return Math.max(1, Math.min(Math.round(fullTriangles * 0.25), previewTriangleTarget));
+    if (fullTriangles <= 1_000_000) return Math.max(1, Math.min(Math.round(fullTriangles * 0.12), previewTriangleTarget));
+    return Math.max(1, Math.min(previewTriangleTarget, 80_000));
+  }
+
+  if (fullTriangles < 50_000) return fullTriangles;
+  if (fullTriangles < 250_000) return Math.max(1, Math.round(fullTriangles * 0.5));
+  if (fullTriangles <= 1_000_000) {
+    const lower = Math.max(1, Math.round(fullTriangles * 0.1));
+    const upper = Math.max(lower, Math.round(fullTriangles * 0.25));
+    return clampInt(previewTriangleTarget, lower, upper);
+  }
+  return Math.max(1, Math.min(previewTriangleTarget, 120_000));
+};
+
+const buildSurfaceMeshLodBuffers = (
+  override: SurfaceMeshOverride,
+  runtimeQuality: MeshRuntimeQuality,
+  mode: MeshInteractionQualityMode,
+  previewTriangleTarget: number
+): SurfaceMeshLodBuffers => {
+  const positions = override.positions instanceof Float32Array ? override.positions : Float32Array.from(override.positions ?? []);
+  const normalsRaw = override.normals;
+  const uvsRaw = override.uvs;
+  const indicesRaw = override.indices;
+  const fullTriangles = triangleCountFromBuffers(positions, indicesRaw);
+  const targetTriangles = computeMeshPreviewTriangleTarget(fullTriangles, runtimeQuality, mode, previewTriangleTarget);
+  if (targetTriangles <= 0 || targetTriangles >= fullTriangles) {
+    return {
+      positions,
+      indices: indicesRaw ? Uint32Array.from(indicesRaw) : null,
+      normals: normalsRaw ? (normalsRaw instanceof Float32Array ? normalsRaw : Float32Array.from(normalsRaw)) : null,
+      uvs: uvsRaw ? (uvsRaw instanceof Float32Array ? uvsRaw : Float32Array.from(uvsRaw)) : null,
+      fullTriangleCount: fullTriangles,
+      activeTriangleCount: fullTriangles,
+    };
+  }
+
+  if (indicesRaw && indicesRaw.length >= 3) {
+    const fullTriCount = Math.floor(indicesRaw.length / 3);
+    const step = Math.max(1, Math.ceil(fullTriCount / targetTriangles));
+    const sampled: number[] = [];
+    for (let tri = 0; tri < fullTriCount; tri += step) {
+      const base = tri * 3;
+      sampled.push(indicesRaw[base], indicesRaw[base + 1], indicesRaw[base + 2]);
+      if (sampled.length / 3 >= targetTriangles) break;
+    }
+    return {
+      positions,
+      indices: Uint32Array.from(sampled),
+      normals: normalsRaw ? (normalsRaw instanceof Float32Array ? normalsRaw : Float32Array.from(normalsRaw)) : null,
+      uvs: uvsRaw ? (uvsRaw instanceof Float32Array ? uvsRaw : Float32Array.from(uvsRaw)) : null,
+      fullTriangleCount: fullTriangles,
+      activeTriangleCount: Math.floor(sampled.length / 3),
+    };
+  }
+
+  const fullTriCount = Math.floor(positions.length / 9);
+  const step = Math.max(1, Math.ceil(fullTriCount / targetTriangles));
+  const sampledTriCount = Math.max(1, Math.min(targetTriangles, Math.ceil(fullTriCount / step)));
+  const nextPositions = new Float32Array(sampledTriCount * 9);
+  const nextNormals =
+    normalsRaw && normalsRaw.length >= positions.length ? new Float32Array(sampledTriCount * 9) : null;
+  const nextUvs =
+    uvsRaw && uvsRaw.length >= Math.floor((positions.length / 3) * 2) ? new Float32Array(sampledTriCount * 6) : null;
+  const normals = normalsRaw as ArrayLike<number> | null;
+  const uvs = uvsRaw as ArrayLike<number> | null;
+  let outTri = 0;
+  for (let tri = 0; tri < fullTriCount; tri += step) {
+    const srcPosBase = tri * 9;
+    nextPositions.set(positions.subarray(srcPosBase, srcPosBase + 9), outTri * 9);
+    if (nextNormals && normals) {
+      const outPosBase = outTri * 9;
+      for (let j = 0; j < 9; j += 1) {
+        nextNormals[outPosBase + j] = normals[srcPosBase + j];
+      }
+    }
+    if (nextUvs && uvs) {
+      const srcUvBase = tri * 6;
+      const outUvBase = outTri * 6;
+      for (let j = 0; j < 6; j += 1) {
+        nextUvs[outUvBase + j] = uvs[srcUvBase + j];
+      }
+    }
+    outTri += 1;
+    if (outTri >= sampledTriCount) break;
+  }
+  return {
+    positions: nextPositions,
+    indices: null,
+    normals: nextNormals,
+    uvs: nextUvs,
+    fullTriangleCount: fullTriangles,
+    activeTriangleCount: outTri,
+  };
+};
 
 const applySurfaceMeshOverrideTransform = (
   object: THREE.Object3D,
@@ -1162,6 +1301,14 @@ type Props = {
   cameraOverrideToken?: number;
   cameraFitCommand?: CameraFitCommand | null;
   renderQuality?: RenderQuality;
+  meshInteractionQualityMode?: MeshInteractionQualityMode;
+  meshInteractionRestoreDelayMs?: number;
+  meshInteractionPreviewTriangleTarget?: number;
+  meshInteractionHideVertexMarkers?: boolean;
+  meshInteractionHideFaceNormals?: boolean;
+  meshInteractionHideCurvatureGlyphs?: boolean;
+  meshInteractionHideWireframe?: boolean;
+  meshInteractionHideSceneOverlays?: boolean;
   sceneBackgroundMode?: SceneBackgroundMode;
   cameraTourCommand?: CameraTourCommand | null;
   onCameraTourEvent?: (event: CameraTourEvent) => void;
@@ -1410,6 +1557,14 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     cameraOverrideToken = 0,
     cameraFitCommand = null,
     renderQuality = "balanced",
+    meshInteractionQualityMode = "adaptive",
+    meshInteractionRestoreDelayMs = 150,
+    meshInteractionPreviewTriangleTarget = DEFAULT_MESH_PREVIEW_TRIANGLE_TARGET,
+    meshInteractionHideVertexMarkers = true,
+    meshInteractionHideFaceNormals = true,
+    meshInteractionHideCurvatureGlyphs = true,
+    meshInteractionHideWireframe = false,
+    meshInteractionHideSceneOverlays = false,
     sceneBackgroundMode = "default",
     cameraTourCommand = null,
     onCameraTourEvent,
@@ -1546,6 +1701,34 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const planeGridOpacity = planeGridSettings.planeOpacity;
   const sceneBackgroundColor = sceneBackgroundMode === "calm" ? 0xf1f5fb : 0xf8f9fb;
   const sceneBackgroundAlpha = sceneBackgroundMode === "transparent" ? 0 : 1;
+  const [meshRuntimeQuality, setMeshRuntimeQuality] = useState<MeshRuntimeQuality>("accurate");
+  const meshRuntimeQualityRef = useRef<MeshRuntimeQuality>("accurate");
+  const meshInteractionActiveRef = useRef(false);
+  const meshInteractionIdleTimerRef = useRef<number | null>(null);
+  const normalizedMeshRestoreDelayMs = normalizePositiveInt(meshInteractionRestoreDelayMs, 150, 50, 2000);
+  const normalizedMeshPreviewTriangleTarget = normalizePositiveInt(
+    meshInteractionPreviewTriangleTarget,
+    DEFAULT_MESH_PREVIEW_TRIANGLE_TARGET,
+    5_000,
+    5_000_000
+  );
+  const canUseMeshInteractionLod = surfaceId === "surface_mesh" && meshInteractionQualityMode !== "full";
+  const suppressInteractionOverlays = canUseMeshInteractionLod && meshRuntimeQuality !== "accurate";
+  const effectiveWireframe = wireframe && !(suppressInteractionOverlays && meshInteractionHideWireframe);
+  const effectiveShowPrincipalGlyphs =
+    showPrincipalGlyphs && !(suppressInteractionOverlays && meshInteractionHideCurvatureGlyphs);
+  const effectiveSelectionOverlayVisible =
+    selectionOverlayVisible && !(suppressInteractionOverlays && meshInteractionHideVertexMarkers);
+  const effectiveImplicitOverlay =
+    suppressInteractionOverlays && meshInteractionHideFaceNormals && implicitOverlay === "normals"
+      ? "none"
+      : implicitOverlay;
+  const hideSceneOverlaysDuringInteraction =
+    suppressInteractionOverlays && meshInteractionHideSceneOverlays;
+  const effectiveOverlayMeshGroups = hideSceneOverlaysDuringInteraction ? null : overlayMeshGroups;
+  const effectiveOverlayLabelSets = hideSceneOverlaysDuringInteraction ? null : overlayLabelSets;
+  const effectiveOverlayPolylineGroups = hideSceneOverlaysDuringInteraction ? null : overlayPolylineGroups;
+  const effectiveOverlayPointSets = hideSceneOverlaysDuringInteraction ? null : overlayPointSets;
 
   const mountRef = useRef<HTMLDivElement | null>(null);
 
@@ -1724,6 +1907,55 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     emaMs: 0,
     samples: 0,
   });
+  useEffect(() => {
+    meshRuntimeQualityRef.current = meshRuntimeQuality;
+  }, [meshRuntimeQuality]);
+  const clearMeshInteractionIdleTimer = useCallback(() => {
+    if (meshInteractionIdleTimerRef.current != null) {
+      window.clearTimeout(meshInteractionIdleTimerRef.current);
+      meshInteractionIdleTimerRef.current = null;
+    }
+  }, []);
+  const finalizeMeshInteraction = useCallback(() => {
+    meshInteractionActiveRef.current = false;
+    clearMeshInteractionIdleTimer();
+    setMeshRuntimeQuality("accurate");
+  }, [clearMeshInteractionIdleTimer]);
+  const beginMeshInteraction = useCallback(() => {
+    if (!canUseMeshInteractionLod) return;
+    meshInteractionActiveRef.current = true;
+    clearMeshInteractionIdleTimer();
+    setMeshRuntimeQuality("interactive-preview");
+  }, [canUseMeshInteractionLod, clearMeshInteractionIdleTimer]);
+  const endMeshInteraction = useCallback(() => {
+    if (!canUseMeshInteractionLod) {
+      finalizeMeshInteraction();
+      return;
+    }
+    meshInteractionActiveRef.current = false;
+    clearMeshInteractionIdleTimer();
+    setMeshRuntimeQuality("balanced");
+    meshInteractionIdleTimerRef.current = window.setTimeout(() => {
+      meshInteractionIdleTimerRef.current = null;
+      if (meshInteractionActiveRef.current) return;
+      setMeshRuntimeQuality("accurate");
+    }, normalizedMeshRestoreDelayMs);
+  }, [
+    canUseMeshInteractionLod,
+    clearMeshInteractionIdleTimer,
+    finalizeMeshInteraction,
+    normalizedMeshRestoreDelayMs,
+  ]);
+  useEffect(() => {
+    if (!canUseMeshInteractionLod) {
+      finalizeMeshInteraction();
+    }
+  }, [canUseMeshInteractionLod, finalizeMeshInteraction]);
+  useEffect(() => {
+    return () => {
+      clearMeshInteractionIdleTimer();
+    };
+  }, [clearMeshInteractionIdleTimer]);
 
     const onProbeRef = useRef<Props["onProbe"] | undefined>(undefined);
     useEffect(() => {
@@ -1957,6 +2189,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
         }
       }
       dragStateRef.current = null;
+      endMeshInteraction();
       if (
         typeof canvas.hasPointerCapture === "function" &&
         typeof canvas.releasePointerCapture === "function"
@@ -1983,7 +2216,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
       };
     }
     canvas.style.pointerEvents = "";
-  }, [suspendPointerInteractions, sceneEpoch]);
+  }, [suspendPointerInteractions, sceneEpoch, endMeshInteraction]);
 
   const showProbeNormalRef = useRef(showProbeNormal);
   const showProbeTangentPlaneRef = useRef(showProbeTangentPlane);
@@ -2465,13 +2698,13 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
         const posAttr = anyO.geometry?.getAttribute("position") as THREE.BufferAttribute | null;
         const heatmapOk = useHeatmap && !!posAttr && posAttr.count === activeHeatmapValues!.length;
         const useImplicitCurv =
-          !heatmapOk && implicitOverlay === "curvature" && typeof implicitMeta?.f === "function";
+          !heatmapOk && effectiveImplicitOverlay === "curvature" && typeof implicitMeta?.f === "function";
         const useScalarColors = !heatmapOk && !useImplicitCurv && colorMode !== "solid";
 
         const mats = Array.isArray(anyO.material) ? anyO.material : [anyO.material];
         for (const m of mats) {
           if (!m) continue;
-          (m as any).wireframe = !!wireframe;
+          (m as any).wireframe = !!effectiveWireframe;
           (m as any).vertexColors = useImplicitCurv || heatmapOk || useScalarColors;
           (m as any).roughness = materialRoughness;
           (m as any).metalness = materialMetalness;
@@ -2535,7 +2768,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
         const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
         for (const m of mats) {
           if (!m) continue;
-          (m as any).wireframe = style?.wireframe ?? !!wireframe;
+          (m as any).wireframe = style?.wireframe ?? !!effectiveWireframe;
           (m as any).flatShading = !!style?.flatShading;
           (m as any).vertexColors = heatmapOk || colorMode !== "solid";
           (m as any).roughness = clamp01(style?.roughness ?? materialRoughness);
@@ -2567,11 +2800,11 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     graphExpr,
     colorMode,
     colorPalette,
-    wireframe,
+    effectiveWireframe,
     materialRoughness,
     materialMetalness,
     materialOpacity,
-    implicitOverlay,
+    effectiveImplicitOverlay,
     geodesicHeatmapEnabled,
     geodesicHeatmapValues,
     overlayHeatmapEnabled,
@@ -3091,7 +3324,7 @@ useEffect(() => {
     const heatmapOk =
       !!activeHeatmapValues?.length && !!posAttr && posAttr.count === activeHeatmapValues.length;
     const useImplicitCurv =
-      !heatmapOk && implicitOverlay === "curvature" && typeof implicitMeta?.f === "function";
+      !heatmapOk && effectiveImplicitOverlay === "curvature" && typeof implicitMeta?.f === "function";
     const useScalarColors = !heatmapOk && !useImplicitCurv && colorMode !== "solid";
     const mat = (mesh as any).material as THREE.Material | undefined;
     if (geom) {
@@ -3173,7 +3406,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
   implicitExpr,
   colorMode,
   colorPalette,
-  implicitOverlay,
+  effectiveImplicitOverlay,
   implicitMeshToken,
   geodesicHeatmapEnabled,
   geodesicHeatmapValues,
@@ -3420,7 +3653,16 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         overlayObjects: estimateOverlayCount(),
         raycastTimeMs: raycastPerfRef.current.emaMs,
         lastMeshBuildMs: lastMeshBuildMsRef.current,
-        lodLevel: renderQuality === "performance" ? "Performance" : renderQuality === "sharp" ? "Full" : "Balanced",
+        lodLevel:
+          canUseMeshInteractionLod && meshRuntimeQualityRef.current !== "accurate"
+            ? meshRuntimeQualityRef.current === "interactive-preview"
+              ? "Performance"
+              : "Balanced"
+            : renderQuality === "performance"
+              ? "Performance"
+              : renderQuality === "sharp"
+                ? "Full"
+                : "Balanced",
         bvhStatus: "Off",
         gpuMemoryEstimateBytes: gpuBytes,
         gpuMemoryEstimateLabel: formatBytes(gpuBytes),
@@ -3441,13 +3683,20 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     }
     const handleControlsStart = () => {
       interruptCameraTour();
+      beginMeshInteraction();
+    };
+    const handleControlsEnd = () => {
+      endMeshInteraction();
     };
     controls.addEventListener("start", handleControlsStart);
+    controls.addEventListener("end", handleControlsEnd);
 
     const handleGizmoDraggingChanged = (event: { value?: boolean }) => {
       const dragging = !!event?.value;
       const ctrls = controlsRef.current;
       if (ctrls) ctrls.enabled = !dragging;
+      if (dragging) beginMeshInteraction();
+      else endMeshInteraction();
     };
     const handleGizmoObjectChange = () => {
       const tc = transformControlsRef.current;
@@ -3538,7 +3787,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         metalness: clamp01(override?.metalness ?? materialMetalness),
         roughness: clamp01(override?.roughness ?? materialRoughness),
         side: THREE.DoubleSide,
-        wireframe: override?.wireframe ?? !!wireframe,
+        wireframe: override?.wireframe ?? !!effectiveWireframe,
         flatShading: !!override?.flatShading,
         vertexColors: colorMode !== "solid",
         transparent: clamp01((override?.opacity ?? 1) * materialOpacity) < 1,
@@ -4070,10 +4319,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       | { f: (x: number, y: number, z: number) => number; size?: number }
       | undefined;
     if (implicitObj && implicitMeta?.f) {
-      if (implicitOverlay === "curvature" && (implicitObj as any).geometry) {
+      if (effectiveImplicitOverlay === "curvature" && (implicitObj as any).geometry) {
         applyImplicitCurvatureColors((implicitObj as any).geometry, implicitMeta.f, colorPalette);
       }
-      if (implicitOverlay === "normals" && (implicitObj as any).geometry) {
+      if (effectiveImplicitOverlay === "normals" && (implicitObj as any).geometry) {
         implicitOverlayLines = buildImplicitNormalLines((implicitObj as any).geometry, implicitMeta.f, 0.22);
         if (implicitOverlayLines) scene.add(implicitOverlayLines);
       }
@@ -4589,6 +4838,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         }
 
         if (dragEnabledRef.current && event.button === 0 && hitMeshKey) {
+          beginMeshInteraction();
           const planeNormal = new THREE.Vector3();
           camera.getWorldDirection(planeNormal);
           if (planeNormal.lengthSq() < 1e-8) planeNormal.set(0, 0, 1);
@@ -4674,13 +4924,21 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const handlePointerMove = (event: PointerEvent) => {
       const dragState = dragStateRef.current;
+      if (!dragState && !inspectEnabledRef.current) return;
+      if (
+        !dragState &&
+        canUseMeshInteractionLod &&
+        meshRuntimeQualityRef.current !== "accurate"
+      ) {
+        return;
+      }
       const rect = renderer.domElement.getBoundingClientRect();
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       pointer.set(x, y);
       raycaster.setFromCamera(pointer, camera);
 
-      if (dragState && event.pointerId === dragState.pointerId) {
+        if (dragState && event.pointerId === dragState.pointerId) {
         const hitPoint = new THREE.Vector3();
         if (!raycaster.ray.intersectPlane(dragState.plane, hitPoint)) return;
         dragState.lastPoint.copy(hitPoint);
@@ -4754,10 +5012,11 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
     };
 
-    const handlePointerUp = (event: PointerEvent) => {
+      const handlePointerUp = (event: PointerEvent) => {
       const dragState = dragStateRef.current;
       if (!dragState || event.pointerId !== dragState.pointerId) return;
       dragStateRef.current = null;
+      endMeshInteraction();
       if (renderer.domElement.releasePointerCapture) {
         renderer.domElement.releasePointerCapture(event.pointerId);
       }
@@ -4775,6 +5034,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const handleWheel = (event: WheelEvent) => {
       interruptCameraTour();
+      beginMeshInteraction();
+      endMeshInteraction();
       if (!event.shiftKey) return;
       const cb = onShiftWheelScaleRef.current;
       if (!cb) return;
@@ -4897,6 +5158,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         controls.removeEventListener("change", emitCameraSync);
       }
       controls.removeEventListener("start", handleControlsStart);
+      controls.removeEventListener("end", handleControlsEnd);
       transformControls.removeEventListener("dragging-changed", handleGizmoDraggingChanged);
       transformControls.removeEventListener("objectChange", handleGizmoObjectChange);
       transformControls.detach();
@@ -5073,6 +5335,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     isCameraLeader,
     onCameraSync,
     interruptCameraTour,
+    beginMeshInteraction,
+    endMeshInteraction,
     stopCameraTour,
   ]);
 
@@ -5225,6 +5489,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const useOverrides = hasOverrides;
     const useOverride = !useOverrides && !!surfaceMeshOverride?.positions?.length;
     if (!useOverrides && !useOverride) return;
+    const runtimeQualityForMesh = canUseMeshInteractionLod ? meshRuntimeQuality : "accurate";
 
     const makeMaterial = (override?: SurfaceMeshOverride) =>
       new THREE.MeshStandardMaterial({
@@ -5235,7 +5500,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         metalness: clamp01(override?.metalness ?? materialMetalness),
         roughness: clamp01(override?.roughness ?? materialRoughness),
         side: THREE.DoubleSide,
-        wireframe: override?.wireframe ?? !!wireframe,
+        wireframe: override?.wireframe ?? !!effectiveWireframe,
         flatShading: !!override?.flatShading,
         vertexColors: colorMode !== "solid",
         transparent: clamp01((override?.opacity ?? 1) * materialOpacity) < 1,
@@ -5244,30 +5509,32 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const makeSurfaceMeshOverrideMesh = (override: SurfaceMeshOverride) => {
       const geom = new THREE.BufferGeometry();
-      const positions = override.positions ?? [];
-      const normals = override.normals ?? null;
-      const uvs = override.uvs ?? null;
-      const indices = override.indices ?? null;
+      const lodBuffers = buildSurfaceMeshLodBuffers(
+        override,
+        runtimeQualityForMesh,
+        meshInteractionQualityMode,
+        normalizedMeshPreviewTriangleTarget
+      );
+      const positions = lodBuffers.positions;
+      const normals = lodBuffers.normals;
+      const uvs = lodBuffers.uvs;
+      const indices = lodBuffers.indices;
       const validation = override.validation ?? null;
       const nanNormals = validation?.stats?.nanNormals ?? 0;
 
-      const posArray = positions instanceof Float32Array ? positions : Float32Array.from(positions);
-      geom.setAttribute("position", new THREE.Float32BufferAttribute(posArray, 3));
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
 
       if (indices && indices.length >= 3) {
-        const idxArray = indices instanceof Uint32Array ? indices : Uint32Array.from(indices);
-        geom.setIndex(new THREE.BufferAttribute(idxArray, 1));
+        geom.setIndex(new THREE.BufferAttribute(indices, 1));
       }
 
       if (uvs && uvs.length >= 2) {
-        const uvArray = uvs instanceof Float32Array ? uvs : Float32Array.from(uvs);
-        geom.setAttribute("uv", new THREE.Float32BufferAttribute(uvArray, 2));
+        geom.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
       }
 
-      const normalsOk = !!normals && normals.length >= posArray.length && nanNormals === 0;
+      const normalsOk = !!normals && normals.length >= positions.length && nanNormals === 0;
       if (normalsOk) {
-        const nArray = normals instanceof Float32Array ? normals : Float32Array.from(normals);
-        geom.setAttribute("normal", new THREE.Float32BufferAttribute(nArray, 3));
+        geom.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
       } else {
         geom.computeVertexNormals();
       }
@@ -5277,6 +5544,11 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (override.id) {
         (mesh as any).userData.__surfaceMeshOverrideId = override.id;
       }
+      (mesh as any).userData.__surfaceMeshLod = {
+        runtimeQuality: runtimeQualityForMesh,
+        fullTriangleCount: lodBuffers.fullTriangleCount,
+        activeTriangleCount: lodBuffers.activeTriangleCount,
+      };
       (mesh as any).userData.__surfaceMeshOverrideStyle = {
         color: override.color,
         opacity: override.opacity,
@@ -5315,29 +5587,33 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const updateGeometryFromOverride = (mesh: THREE.Mesh, override: SurfaceMeshOverride) => {
       const geom = mesh.geometry as THREE.BufferGeometry;
-      const positions = override.positions ?? [];
-      const normals = override.normals ?? null;
-      const uvs = override.uvs ?? null;
-      const indices = override.indices ?? null;
+      const lodBuffers = buildSurfaceMeshLodBuffers(
+        override,
+        runtimeQualityForMesh,
+        meshInteractionQualityMode,
+        normalizedMeshPreviewTriangleTarget
+      );
+      const positions = lodBuffers.positions;
+      const normals = lodBuffers.normals;
+      const uvs = lodBuffers.uvs;
+      const indices = lodBuffers.indices;
       const validation = override.validation ?? null;
       const nanNormals = validation?.stats?.nanNormals ?? 0;
 
-      const posArray = positions instanceof Float32Array ? positions : Float32Array.from(positions);
       const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
-      if (!posAttr || posAttr.array.length !== posArray.length) {
-        geom.setAttribute("position", new THREE.Float32BufferAttribute(posArray, 3));
+      if (!posAttr || posAttr.array.length !== positions.length) {
+        geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
       } else {
-        (posAttr.array as Float32Array).set(posArray);
+        (posAttr.array as Float32Array).set(positions);
         posAttr.needsUpdate = true;
       }
 
       if (indices && indices.length >= 3) {
-        const idxArray = indices instanceof Uint32Array ? indices : Uint32Array.from(indices);
         const idxAttr = geom.getIndex();
-        if (!idxAttr || (idxAttr.array as ArrayLike<number>).length !== idxArray.length) {
-          geom.setIndex(new THREE.BufferAttribute(idxArray, 1));
+        if (!idxAttr || (idxAttr.array as ArrayLike<number>).length !== indices.length) {
+          geom.setIndex(new THREE.BufferAttribute(indices, 1));
         } else {
-          (idxAttr.array as Uint32Array).set(idxArray);
+          (idxAttr.array as Uint32Array).set(indices);
           idxAttr.needsUpdate = true;
         }
       } else if (geom.getIndex()) {
@@ -5345,26 +5621,24 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
 
       if (uvs && uvs.length >= 2) {
-        const uvArray = uvs instanceof Float32Array ? uvs : Float32Array.from(uvs);
         const uvAttr = geom.getAttribute("uv") as THREE.BufferAttribute | null;
-        if (!uvAttr || uvAttr.array.length !== uvArray.length) {
-          geom.setAttribute("uv", new THREE.Float32BufferAttribute(uvArray, 2));
+        if (!uvAttr || uvAttr.array.length !== uvs.length) {
+          geom.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
         } else {
-          (uvAttr.array as Float32Array).set(uvArray);
+          (uvAttr.array as Float32Array).set(uvs);
           uvAttr.needsUpdate = true;
         }
       } else if (geom.getAttribute("uv")) {
         geom.deleteAttribute("uv");
       }
 
-      const normalsOk = !!normals && normals.length >= posArray.length && nanNormals === 0;
+      const normalsOk = !!normals && normals.length >= positions.length && nanNormals === 0;
       if (normalsOk) {
-        const nArray = normals instanceof Float32Array ? normals : Float32Array.from(normals);
         const nAttr = geom.getAttribute("normal") as THREE.BufferAttribute | null;
-        if (!nAttr || nAttr.array.length !== nArray.length) {
-          geom.setAttribute("normal", new THREE.Float32BufferAttribute(nArray, 3));
+        if (!nAttr || nAttr.array.length !== normals.length) {
+          geom.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
         } else {
-          (nAttr.array as Float32Array).set(nArray);
+          (nAttr.array as Float32Array).set(normals);
           nAttr.needsUpdate = true;
         }
       } else {
@@ -5381,11 +5655,16 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         wireframe: override.wireframe,
         flatShading: override.flatShading,
       };
+      (mesh as any).userData.__surfaceMeshLod = {
+        runtimeQuality: runtimeQualityForMesh,
+        fullTriangleCount: lodBuffers.fullTriangleCount,
+        activeTriangleCount: lodBuffers.activeTriangleCount,
+      };
       (mesh as any).userData.__surfaceMeshOverrideStyle = style;
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (const m of mats) {
         if (!m) continue;
-        (m as any).wireframe = style.wireframe ?? !!wireframe;
+        (m as any).wireframe = style.wireframe ?? !!effectiveWireframe;
         (m as any).flatShading = !!style.flatShading;
         (m as any).roughness = clamp01(style.roughness ?? materialRoughness);
         (m as any).metalness = clamp01(style.metalness ?? materialMetalness);
@@ -5556,10 +5835,14 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     surfaceMeshOverrides,
     colorMode,
     colorPalette,
-    wireframe,
+    effectiveWireframe,
     materialOpacity,
     materialMetalness,
     materialRoughness,
+    canUseMeshInteractionLod,
+    meshRuntimeQuality,
+    meshInteractionQualityMode,
+    normalizedMeshPreviewTriangleTarget,
     includeSamplesUV,
     sampleMaxPoints,
     showBoundingBox,
@@ -5616,7 +5899,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       selectionSphereRef.current = null;
     }
 
-    if (!selectionOverlayVisible || !selectionMask || !sampleSet || !selectionMask.count) {
+    if (!effectiveSelectionOverlayVisible || !selectionMask || !sampleSet || !selectionMask.count) {
       return;
     }
 
@@ -5668,7 +5951,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         selectionOverlayRef.current = null;
       }
     };
-  }, [selectionMask, sceneEpoch, selectionOverlayVisible, selectionOverlayOnTop]);
+  }, [selectionMask, sceneEpoch, effectiveSelectionOverlayVisible, selectionOverlayOnTop]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -6511,10 +6794,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       overlayMeshGroupsRef.current = null;
     }
 
-    if (!overlayMeshGroups?.length) return;
+    if (!effectiveOverlayMeshGroups?.length) return;
 
     const group = new THREE.Group();
-    for (const entry of overlayMeshGroups) {
+    for (const entry of effectiveOverlayMeshGroups) {
       if (!entry?.positions || entry.positions.length < 9) continue;
       const geom = new THREE.BufferGeometry();
       geom.setAttribute("position", new THREE.BufferAttribute(Float32Array.from(entry.positions), 3));
@@ -6540,7 +6823,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (!group.children.length) return;
     scene.add(group);
     overlayMeshGroupsRef.current = group;
-  }, [overlayMeshGroups, sceneEpoch]);
+  }, [effectiveOverlayMeshGroups, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -6552,7 +6835,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       overlayLabelSetsRef.current = null;
     }
 
-    if (!overlayLabelSets?.length) return;
+    if (!effectiveOverlayLabelSets?.length) return;
 
     const group = new THREE.Group();
     const sizeHint = radiusRef.current || 3;
@@ -6560,7 +6843,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const toCss = (color: number) => `#${color.toString(16).padStart(6, "0")}`;
     const maxAniso = rendererRef.current?.capabilities?.getMaxAnisotropy?.() ?? 0;
 
-    for (const set of overlayLabelSets) {
+    for (const set of effectiveOverlayLabelSets) {
       if (!set?.labels?.length) continue;
       const baseColor = set.color ?? 0xffffff;
       const baseOpacity = set.opacity ?? 0.9;
@@ -6618,7 +6901,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (!group.children.length) return;
     scene.add(group);
     overlayLabelSetsRef.current = group;
-  }, [overlayLabelSets, sceneEpoch]);
+  }, [effectiveOverlayLabelSets, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -6674,14 +6957,14 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       overlayPolylineGroupsRef.current = null;
     }
 
-    if (!overlayPolylineGroups?.length) return;
+    if (!effectiveOverlayPolylineGroups?.length) return;
 
     const group = new THREE.Group();
     const sizeHint = radiusRef.current || 3;
     const baseRadius = Math.max(0.006, (sizeHint / 110) * 1.1);
     const radialSegments = 12;
 
-    for (const entry of overlayPolylineGroups) {
+    for (const entry of effectiveOverlayPolylineGroups) {
       if (!entry?.lines?.length) continue;
       const tubeRadius = baseRadius * (entry.radiusScale ?? 1);
       const opacity = entry.opacity ?? 1;
@@ -6712,7 +6995,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (!group.children.length) return;
     scene.add(group);
     overlayPolylineGroupsRef.current = group;
-  }, [overlayPolylineGroups, sceneEpoch]);
+  }, [effectiveOverlayPolylineGroups, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -6724,13 +7007,13 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       overlayPointSetsRef.current = null;
     }
 
-    if (!overlayPointSets?.length) return;
+    if (!effectiveOverlayPointSets?.length) return;
 
     const group = new THREE.Group();
     const sizeHint = radiusRef.current || 3;
     const defaultSize = Math.max(0.02, (sizeHint / 90) * 0.45);
 
-    for (const set of overlayPointSets) {
+    for (const set of effectiveOverlayPointSets) {
       if (!set.points?.length) continue;
       const positions = new Float32Array(set.points.length * 3);
       for (let i = 0; i < set.points.length; i++) {
@@ -6759,7 +7042,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (!group.children.length) return;
     scene.add(group);
     overlayPointSetsRef.current = group;
-  }, [overlayPointSets, sceneEpoch]);
+  }, [effectiveOverlayPointSets, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -6867,7 +7150,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       principalGlyphsRef.current = null;
     }
 
-    if (!showPrincipalGlyphs) return;
+    if (!effectiveShowPrincipalGlyphs) return;
 
     const sampleSet = sampleSetRef.current;
     if (!sampleSet || !sampleSet.samples.length) return;
@@ -7018,7 +7301,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     principalGlyphsRef.current = glyphs;
   }, [
-    showPrincipalGlyphs,
+    effectiveShowPrincipalGlyphs,
     principalGlyphDensity,
     principalGlyphLength,
     principalGlyphMode,

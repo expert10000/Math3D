@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import {
   SurfaceViewer,
   type CameraFitCommand,
+  type MeshInteractionQualityMode,
   type CameraTourCommand,
   type CameraTourEvent,
   type CameraSyncState,
@@ -107,6 +108,14 @@ export type GeometryViewerProps = {
   lineRadiusScale?: number;
   segmentRadiusScale?: number;
   edgeRadiusScale?: number;
+  meshInteractionQualityMode?: MeshInteractionQualityMode;
+  meshInteractionRestoreDelayMs?: number;
+  meshInteractionPreviewTriangleTarget?: number;
+  meshInteractionHideVertexMarkers?: boolean;
+  meshInteractionHideFaceNormals?: boolean;
+  meshInteractionHideCurvatureGlyphs?: boolean;
+  meshInteractionHideWireframe?: boolean;
+  meshInteractionHideSceneOverlays?: boolean;
 };
 
 export const GeometryViewer: React.FC<GeometryViewerProps> = ({
@@ -154,6 +163,14 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   lineRadiusScale = 1,
   segmentRadiusScale = 1,
   edgeRadiusScale = 1,
+  meshInteractionQualityMode = "adaptive",
+  meshInteractionRestoreDelayMs = 150,
+  meshInteractionPreviewTriangleTarget = 100_000,
+  meshInteractionHideVertexMarkers = true,
+  meshInteractionHideFaceNormals = true,
+  meshInteractionHideCurvatureGlyphs = true,
+  meshInteractionHideWireframe = false,
+  meshInteractionHideSceneOverlays = false,
 }) => {
   const renderData = useMemo(
     () =>
@@ -285,6 +302,14 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
       cameraFitCommand={cameraFitCommand}
       cameraTourCommand={cameraTourCommand}
       onCameraTourEvent={onCameraTourEvent}
+      meshInteractionQualityMode={meshInteractionQualityMode}
+      meshInteractionRestoreDelayMs={meshInteractionRestoreDelayMs}
+      meshInteractionPreviewTriangleTarget={meshInteractionPreviewTriangleTarget}
+      meshInteractionHideVertexMarkers={meshInteractionHideVertexMarkers}
+      meshInteractionHideFaceNormals={meshInteractionHideFaceNormals}
+      meshInteractionHideCurvatureGlyphs={meshInteractionHideCurvatureGlyphs}
+      meshInteractionHideWireframe={meshInteractionHideWireframe}
+      meshInteractionHideSceneOverlays={meshInteractionHideSceneOverlays}
       dragEnabled={dragEnabled}
       onDragStart={onDragStart}
       onDrag={onDrag}
