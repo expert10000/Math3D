@@ -10470,6 +10470,8 @@ const App: React.FC = () => {
     const range = geometrySectionPreview?.offsetRange ?? null;
     if (!range || range <= 0) return;
     const amplitude = Math.max(0.05, range * 0.85);
+    const minFrameIntervalMs = 1000 / 24;
+    let lastCommitTs = -Infinity;
     let raf = 0;
     const step = (timestamp: number) => {
       if (!geometryDemoSectionAnimationStartRef.current) {
@@ -10477,7 +10479,11 @@ const App: React.FC = () => {
       }
       const elapsed = timestamp - geometryDemoSectionAnimationStartRef.current;
       const phase = elapsed / 2200;
-      setGeometrySectionPlaneOffset(Math.sin(phase * Math.PI * 2) * amplitude);
+      if (timestamp - lastCommitTs >= minFrameIntervalMs) {
+        lastCommitTs = timestamp;
+        const nextOffset = Math.sin(phase * Math.PI * 2) * amplitude;
+        setGeometrySectionPlaneOffset((prev) => (Math.abs(prev - nextOffset) <= 1e-6 ? prev : nextOffset));
+      }
       raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
