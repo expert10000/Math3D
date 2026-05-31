@@ -362,6 +362,7 @@ type GeometryDemonstrationCategory =
   | "volume_relations"
   | "scaling"
   | "polyhedra_topology";
+type GeometryVolumeRelationFocusMode = "sphere" | "cylinder" | "cone" | "cylinder_cone" | "all";
 type GeometryEulerScope = "selected" | "scene";
 type GeometryEulerPolygonTemplateId =
   | "torus_abab_inv"
@@ -481,6 +482,13 @@ const GEOMETRY_DEMONSTRATION_CATEGORY_OPTIONS: Array<{ id: GeometryDemonstration
   { id: "volume_relations", label: "Volume relations" },
   { id: "scaling", label: "Scaling" },
   { id: "polyhedra_topology", label: "Polyhedra topology" },
+];
+const GEOMETRY_VOLUME_RELATION_FOCUS_OPTIONS: Array<{ id: GeometryVolumeRelationFocusMode; label: string }> = [
+  { id: "sphere", label: "1: Sphere" },
+  { id: "cylinder", label: "1: Cylinder" },
+  { id: "cone", label: "1: Cone" },
+  { id: "cylinder_cone", label: "2: Cyl + Cone" },
+  { id: "all", label: "3: All" },
 ];
 const GEOMETRY_WORKSPACE_TAB_VALUES: ConstructionWorkspaceTab[] = ["task", "build", "inspect", "claims", "script", "scene"];
 const SURFACES_LEFT_TAB_VALUES = ["scene", "object", "view", "analysis", "theory"] as const;
@@ -7675,6 +7683,8 @@ const App: React.FC = () => {
   const [geometryDemonstrationCategory, setGeometryDemonstrationCategory] =
     useState<GeometryDemonstrationCategory>("cross_sections");
   const [geometryDemoSectionAnimationEnabled, setGeometryDemoSectionAnimationEnabled] = useState(false);
+  const [geometryVolumeRelationFocusMode, setGeometryVolumeRelationFocusMode] =
+    useState<GeometryVolumeRelationFocusMode>("all");
   const geometryDemoSectionAnimationStartRef = useRef(0);
   const [geometryVariantSets, setGeometryVariantSets] = useState<Record<string, GeometryVariantSet>>({});
   const [geometrySelectedVariantId, setGeometrySelectedVariantId] = useState<string | null>(null);
@@ -9043,6 +9053,8 @@ const App: React.FC = () => {
     setGeometryCreateActionStatus("Loaded Cavalieri pair: move/animate section plane and compare A1(h), A2(h).");
   }, [handleAddGeometryObject]);
   const handleLoadArchimedesVolumeDemo = useCallback(() => {
+    setGeometryDemoSectionAnimationEnabled(false);
+    setGeometryVolumeRelationFocusMode("all");
     setGeometryObjects([]);
     setGeometryDatasetMeshObjects([]);
     setGeometryLockedObjectIds(new Set());
@@ -9053,17 +9065,17 @@ const App: React.FC = () => {
     const sphereId = handleAddGeometryObject({
       type: "sphere",
       name: "Archimedes sphere",
-      params: { radius: 1, widthSegments: 56, heightSegments: 36, phiStart: 0, phiLength: Math.PI * 2, thetaStart: 0, thetaLength: Math.PI },
+      params: { radius: 1, widthSegments: 14, heightSegments: 10, phiStart: 0, phiLength: Math.PI * 2, thetaStart: 0, thetaLength: Math.PI },
     });
     const cylinderId = handleAddGeometryObject({
       type: "cylinder",
       name: "Archimedes cylinder",
-      params: { radiusTop: 1, radiusBottom: 1, height: 2, radialSegments: 56, heightSegments: 1, openEnded: false },
+      params: { radiusTop: 1, radiusBottom: 1, height: 2, radialSegments: 14, heightSegments: 1, openEnded: false },
     });
     const coneId = handleAddGeometryObject({
       type: "cone",
       name: "Archimedes cone",
-      params: { radius: 1, height: 2, radialSegments: 56, heightSegments: 1, openEnded: false },
+      params: { radius: 1, height: 2, radialSegments: 14, heightSegments: 1, openEnded: false },
     });
     const placeObject = (id: string, x: number, y: number, z: number) => {
       setGeometryObjects((prev) =>
@@ -9094,8 +9106,12 @@ const App: React.FC = () => {
     setGeometryMode("procedural");
     setGeometryProceduralPanelTab("demonstrations");
     setGeometryDemonstrationCategory("volume_relations");
-    setGeometryCreateActionStatus("Loaded cylinder/cone/sphere trio for volume relation demonstration.");
+    setGeometryCreateActionStatus("Loaded low-mesh cylinder/cone/sphere trio for volume relation demonstration.");
   }, [handleAddGeometryObject]);
+  useEffect(() => {
+    if (!geometryDemoSectionAnimationEnabled) return;
+    setGeometryDemoSectionAnimationEnabled(false);
+  }, [geometryDemonstrationCategory]);
   const handleAddGeometryGalleryDefault = useCallback((card: GeometryGalleryCard) => {
     if (!card.supported || !card.defaultRecipe) return;
     setGeometryGallerySelectedCardId(card.id);
@@ -10489,6 +10505,58 @@ const App: React.FC = () => {
       areaResidual: measuredArea - predictedArea,
     };
   }, [geometrySectionPlaneOffset, geometrySectionPreview, geometrySelectedSceneMeshInfo?.dimensions, geometrySelectedSceneObject]);
+  const geometryVolumeRelationObjectIds = useMemo(() => {
+    const sphere = geometryObjects.find((entry) => entry.type === "sphere") ?? null;
+    const cylinder = geometryObjects.find(
+      (entry) =>
+        entry.type === "cylinder" &&
+        Number.isFinite(Number(entry.params.radiusTop)) &&
+        Number.isFinite(Number(entry.params.radiusBottom)) &&
+        Math.abs(Number(entry.params.radiusTop) - Number(entry.params.radiusBottom)) <= 1e-6
+    ) ?? null;
+    const cone = geometryObjects.find((entry) => entry.type === "cone") ?? null;
+    if (!sphere || !cylinder || !cone) return null;
+    return { sphereId: sphere.id, cylinderId: cylinder.id, coneId: cone.id };
+  }, [geometryObjects]);
+  useEffect(() => {
+    if (mode !== "geometry") return;
+    if (geometryMode !== "procedural" || geometryProceduralPanelTab !== "demonstrations") return;
+    if (geometryDemonstrationCategory !== "volume_relations") return;
+    if (!geometryVolumeRelationObjectIds) return;
+    const { sphereId, cylinderId, coneId } = geometryVolumeRelationObjectIds;
+    const visibleIds = new Set<string>(
+      geometryVolumeRelationFocusMode === "sphere"
+        ? [sphereId]
+        : geometryVolumeRelationFocusMode === "cylinder"
+          ? [cylinderId]
+          : geometryVolumeRelationFocusMode === "cone"
+            ? [coneId]
+            : geometryVolumeRelationFocusMode === "cylinder_cone"
+              ? [cylinderId, coneId]
+              : [sphereId, cylinderId, coneId]
+    );
+    setGeometryObjects((prev) => {
+      let changed = false;
+      const next = prev.map((entry) => {
+        if (entry.id !== sphereId && entry.id !== cylinderId && entry.id !== coneId) return entry;
+        const shouldBeVisible = visibleIds.has(entry.id);
+        if (!!entry.visible === shouldBeVisible) return entry;
+        changed = true;
+        return {
+          ...entry,
+          visible: shouldBeVisible,
+        };
+      });
+      return changed ? next : prev;
+    });
+  }, [
+    geometryDemonstrationCategory,
+    geometryMode,
+    geometryProceduralPanelTab,
+    geometryVolumeRelationFocusMode,
+    geometryVolumeRelationObjectIds,
+    mode,
+  ]);
   const geometryVolumeRelationDemo = useMemo(() => {
     const sphere = geometryObjects.find((entry) => entry.type === "sphere") ?? null;
     const cylinder = geometryObjects.find(
@@ -10555,14 +10623,20 @@ const App: React.FC = () => {
   }, [geometrySelectedSceneObject, proceduralMeshSet.meshes, resolveGeometrySceneMeshById]);
   useEffect(() => {
     if (!geometryDemoSectionAnimationEnabled) return;
+    if (mode !== "geometry") return;
     if (geometryMode !== "procedural" || geometryProceduralPanelTab !== "demonstrations") return;
+    if (geometryDemonstrationCategory !== "cross_sections" && geometryDemonstrationCategory !== "volume_relations") return;
     const range = geometrySectionPreview?.offsetRange ?? null;
     if (!range || range <= 0) return;
     const amplitude = Math.max(0.05, range * 0.85);
-    const minFrameIntervalMs = 1000 / 24;
+    const minFrameIntervalMs = 1000 / 12;
     let lastCommitTs = -Infinity;
     let raf = 0;
     const step = (timestamp: number) => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        raf = requestAnimationFrame(step);
+        return;
+      }
       if (!geometryDemoSectionAnimationStartRef.current) {
         geometryDemoSectionAnimationStartRef.current = timestamp;
       }
@@ -10580,12 +10654,19 @@ const App: React.FC = () => {
       cancelAnimationFrame(raf);
       geometryDemoSectionAnimationStartRef.current = 0;
     };
-  }, [geometryDemoSectionAnimationEnabled, geometryMode, geometryProceduralPanelTab, geometrySectionPreview?.offsetRange]);
+  }, [
+    geometryDemoSectionAnimationEnabled,
+    geometryDemonstrationCategory,
+    geometryMode,
+    geometryProceduralPanelTab,
+    geometrySectionPreview?.offsetRange,
+    mode,
+  ]);
   useEffect(() => {
-    if (geometryProceduralPanelTab === "demonstrations") return;
     if (!geometryDemoSectionAnimationEnabled) return;
+    if (mode === "geometry" && geometryMode === "procedural" && geometryProceduralPanelTab === "demonstrations") return;
     setGeometryDemoSectionAnimationEnabled(false);
-  }, [geometryDemoSectionAnimationEnabled, geometryProceduralPanelTab]);
+  }, [geometryDemoSectionAnimationEnabled, geometryMode, geometryProceduralPanelTab, mode]);
   const resolveGeometryProbeSelectionDetails = useCallback(
     (pick: GeometryProceduralPickInfo | null): GeometryProbeSelectionDetails | null => {
       if (!pick) return null;
@@ -21811,6 +21892,34 @@ const App: React.FC = () => {
   const [geometryInteractionPreviewTriangleTarget, setGeometryInteractionPreviewTriangleTarget] = useState(100_000);
   const [geometryInteractionHideWireframe, setGeometryInteractionHideWireframe] = useState(false);
   const [geometryInteractionHideSceneOverlays, setGeometryInteractionHideSceneOverlays] = useState(true);
+  const [geometryDemoInteractionActive, setGeometryDemoInteractionActive] = useState(false);
+  const geometryDemoInteractionRestoreTimerRef = useRef<number | null>(null);
+  const handleGeometryViewerInteractionStateChange = useCallback(
+    (active: boolean) => {
+      if (geometryDemoInteractionRestoreTimerRef.current != null) {
+        window.clearTimeout(geometryDemoInteractionRestoreTimerRef.current);
+        geometryDemoInteractionRestoreTimerRef.current = null;
+      }
+      if (active) {
+        setGeometryDemoInteractionActive(true);
+        return;
+      }
+      const delayMs = Math.max(50, Math.min(2000, Math.round(geometryInteractionRestoreDelayMs)));
+      geometryDemoInteractionRestoreTimerRef.current = window.setTimeout(() => {
+        geometryDemoInteractionRestoreTimerRef.current = null;
+        setGeometryDemoInteractionActive(false);
+      }, delayMs);
+    },
+    [geometryInteractionRestoreDelayMs]
+  );
+  useEffect(() => {
+    return () => {
+      if (geometryDemoInteractionRestoreTimerRef.current != null) {
+        window.clearTimeout(geometryDemoInteractionRestoreTimerRef.current);
+        geometryDemoInteractionRestoreTimerRef.current = null;
+      }
+    };
+  }, []);
   const [graphResolution, setGraphResolution] = useState(80);
   const [implicitResolution, setImplicitResolution] = useState(32);
   const [implicitBakeResolution, setImplicitBakeResolution] = useState(() => {
@@ -39077,6 +39186,29 @@ case "mobius":
     !surfacesBrowseModeActive;
   const showSurfaceLocalToolStrip = showSurfaceWorkflowStrip && !isSurfacePreviewMode;
   const showGeometryWorkflowStrip = mode === "geometry" && !isPresentDisplayMode;
+  const geometryDemonstrationsViewerActive =
+    geometryMode === "demo" || (geometryMode === "procedural" && geometryProceduralPanelTab === "demonstrations");
+  const geometryVolumeRelationsDemoActive =
+    mode === "geometry" &&
+    geometryMode === "procedural" &&
+    geometryProceduralPanelTab === "demonstrations" &&
+    geometryDemonstrationCategory === "volume_relations";
+  const geometryEffectiveInteractionQualityMode: MeshInteractionQualityMode =
+    geometryVolumeRelationsDemoActive &&
+    geometryInteractionQualityMode === "full" &&
+    geometryDemoInteractionActive
+      ? "adaptive"
+      : geometryDemonstrationsViewerActive
+        ? geometryInteractionQualityMode
+        : "full";
+  useEffect(() => {
+    if (geometryVolumeRelationsDemoActive && geometryInteractionQualityMode === "full") return;
+    if (geometryDemoInteractionRestoreTimerRef.current != null) {
+      window.clearTimeout(geometryDemoInteractionRestoreTimerRef.current);
+      geometryDemoInteractionRestoreTimerRef.current = null;
+    }
+    if (geometryDemoInteractionActive) setGeometryDemoInteractionActive(false);
+  }, [geometryDemoInteractionActive, geometryInteractionQualityMode, geometryVolumeRelationsDemoActive]);
   const geometryWorkflowActiveStepId = useMemo<GeometryWorkflowStepId>(() => {
     if (geometryMode === "workbook") return "export";
     if (geometryMode === "demo") return "analyze";
@@ -46712,11 +46844,12 @@ case "mobius":
                     viewPreset={geometryViewPreset}
                     pointLabelScale={geometryDemoLabelScale}
                     showPointLabels={geometryDemoShowPointLabels}
-                    meshInteractionQualityMode={geometryMode === "demo" ? geometryInteractionQualityMode : "full"}
+                    meshInteractionQualityMode={geometryEffectiveInteractionQualityMode}
                     meshInteractionRestoreDelayMs={geometryInteractionRestoreDelayMs}
                     meshInteractionPreviewTriangleTarget={geometryInteractionPreviewTriangleTarget}
                     meshInteractionHideWireframe={geometryInteractionHideWireframe}
                     meshInteractionHideSceneOverlays={geometryInteractionHideSceneOverlays}
+                    onMeshInteractionStateChange={handleGeometryViewerInteractionStateChange}
                     cameraOverride={
                       geometryMode === "scratch" || geometryMode === "workbook" ? geometryProblemCameraOverride : null
                     }
@@ -52940,6 +53073,25 @@ case "mobius":
                                 {geometryDemoSectionAnimationEnabled ? "Stop section animation" : "Animate section plane"}
                               </button>
                             </div>
+                            <div style={{ display: "grid", gap: 4 }}>
+                              <div style={{ fontWeight: 600 }}>Visible objects</div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                {GEOMETRY_VOLUME_RELATION_FOCUS_OPTIONS.map((entry) => (
+                                  <button
+                                    key={`geometry-volume-focus-${entry.id}`}
+                                    type="button"
+                                    onClick={() => setGeometryVolumeRelationFocusMode(entry.id)}
+                                    style={pill(geometryVolumeRelationFocusMode === entry.id)}
+                                    aria-pressed={geometryVolumeRelationFocusMode === entry.id}
+                                  >
+                                    {entry.label}
+                                  </button>
+                                ))}
+                              </div>
+                              <div style={{ color: "#475467" }}>
+                                Canonical trio now loads in low-mesh mode for better responsiveness.
+                              </div>
+                            </div>
                             <div
                               style={{
                                 display: "grid",
@@ -54396,11 +54548,12 @@ case "mobius":
                   cameraFitCommand={geometryCameraFitCommand}
                   cameraTourCommand={geometryCameraTourCommand}
                   onCameraTourEvent={handleGeometryCameraTourEvent}
-                  meshInteractionQualityMode={geometryMode === "demo" ? geometryInteractionQualityMode : "full"}
+                  meshInteractionQualityMode={geometryEffectiveInteractionQualityMode}
                   meshInteractionRestoreDelayMs={geometryInteractionRestoreDelayMs}
                   meshInteractionPreviewTriangleTarget={geometryInteractionPreviewTriangleTarget}
                   meshInteractionHideWireframe={geometryInteractionHideWireframe}
                   meshInteractionHideSceneOverlays={geometryInteractionHideSceneOverlays}
+                  onMeshInteractionStateChange={handleGeometryViewerInteractionStateChange}
                   highlightPolygons={
                     geometryMode === "demo"
                       ? geometryHighlightPolygons
@@ -54416,12 +54569,36 @@ case "mobius":
                         : geometryProceduralHighlightPointSets
                   }
                   overlayLabelSets={geometryProceduralViewerLabelSets}
-                  dragEnabled={geometryMode === "procedural" && !geometryGizmoEnabled}
-                  onDragStart={geometryMode === "procedural" ? handleProceduralDragStart : undefined}
-                  onDrag={geometryMode === "procedural" ? handleProceduralDrag : undefined}
-                  onDragEnd={geometryMode === "procedural" ? handleProceduralDragEnd : undefined}
-                  onShiftWheelScale={geometryMode === "procedural" ? handleGeometryShiftWheelScale : undefined}
-                  gizmoEnabled={geometryMode === "procedural" && geometryGizmoEnabled}
+                  dragEnabled={
+                    geometryMode === "procedural" &&
+                    geometryProceduralPanelTab !== "demonstrations" &&
+                    !geometryGizmoEnabled
+                  }
+                  onDragStart={
+                    geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations"
+                      ? handleProceduralDragStart
+                      : undefined
+                  }
+                  onDrag={
+                    geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations"
+                      ? handleProceduralDrag
+                      : undefined
+                  }
+                  onDragEnd={
+                    geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations"
+                      ? handleProceduralDragEnd
+                      : undefined
+                  }
+                  onShiftWheelScale={
+                    geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations"
+                      ? handleGeometryShiftWheelScale
+                      : undefined
+                  }
+                  gizmoEnabled={
+                    geometryMode === "procedural" &&
+                    geometryProceduralPanelTab !== "demonstrations" &&
+                    geometryGizmoEnabled
+                  }
                   gizmoMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
                   gizmoMode={geometryGizmoMode}
                   gizmoSpace={geometryGizmoSpace === "parent" ? "local" : geometryGizmoSpace}
@@ -54431,7 +54608,7 @@ case "mobius":
                   onGizmoTransform={geometryMode === "procedural" ? handleProceduralGizmoTransform : undefined}
                   pickEnabled={
                     geometryMode === "demo" ||
-                    geometryMode === "procedural" ||
+                    (geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations") ||
                     ((geometryMode === "scratch" || geometryMode === "workbook") && geometryPointPlacementEnabled)
                   }
                   onPick={

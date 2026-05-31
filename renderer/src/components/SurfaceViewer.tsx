@@ -156,6 +156,7 @@ type SurfaceMeshOverride = {
 const DEG_TO_RAD = Math.PI / 180;
 const RAD_TO_DEG = 180 / Math.PI;
 const DEFAULT_MESH_PREVIEW_TRIANGLE_TARGET = 100_000;
+const IDLE_RENDER_MIN_FRAME_MS = 1000 / 8;
 
 type SurfaceMeshLodBuffers = {
   positions: Float32Array;
@@ -1309,6 +1310,7 @@ type Props = {
   meshInteractionHideCurvatureGlyphs?: boolean;
   meshInteractionHideWireframe?: boolean;
   meshInteractionHideSceneOverlays?: boolean;
+  onMeshInteractionStateChange?: (active: boolean) => void;
   sceneBackgroundMode?: SceneBackgroundMode;
   cameraTourCommand?: CameraTourCommand | null;
   onCameraTourEvent?: (event: CameraTourEvent) => void;
@@ -1565,6 +1567,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     meshInteractionHideCurvatureGlyphs = true,
     meshInteractionHideWireframe = false,
     meshInteractionHideSceneOverlays = false,
+    onMeshInteractionStateChange,
     sceneBackgroundMode = "default",
     cameraTourCommand = null,
     onCameraTourEvent,
@@ -1895,6 +1898,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const forceReframeRef = useRef<(() => void) | null>(null);
   const onCameraTourEventRef = useRef<Props["onCameraTourEvent"] | undefined>(undefined);
   const onPerformanceSnapshotRef = useRef<Props["onPerformanceSnapshot"] | undefined>(undefined);
+  const onMeshInteractionStateChangeRef = useRef<Props["onMeshInteractionStateChange"] | undefined>(undefined);
   const lastMeshBuildMsRef = useRef<number | null>(lastMeshBuildMs);
   const perfFrameRef = useRef<{ lastFrameAt: number; fps: number; frameTimeMs: number; lastEmitAt: number }>({
     lastFrameAt: 0,
@@ -1902,6 +1906,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     frameTimeMs: 0,
     lastEmitAt: 0,
   });
+  const lastRenderedAtRef = useRef(0);
   const raycastPerfRef = useRef<{ lastMs: number; emaMs: number; samples: number }>({
     lastMs: 0,
     emaMs: 0,
@@ -1920,12 +1925,14 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     meshInteractionActiveRef.current = false;
     clearMeshInteractionIdleTimer();
     setMeshRuntimeQuality("accurate");
+    onMeshInteractionStateChangeRef.current?.(false);
   }, [clearMeshInteractionIdleTimer]);
   const beginMeshInteraction = useCallback(() => {
     if (!canUseMeshInteractionLod) return;
     meshInteractionActiveRef.current = true;
     clearMeshInteractionIdleTimer();
     setMeshRuntimeQuality("interactive-preview");
+    onMeshInteractionStateChangeRef.current?.(true);
   }, [canUseMeshInteractionLod, clearMeshInteractionIdleTimer]);
   const endMeshInteraction = useCallback(() => {
     if (!canUseMeshInteractionLod) {
@@ -1935,6 +1942,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     meshInteractionActiveRef.current = false;
     clearMeshInteractionIdleTimer();
     setMeshRuntimeQuality("balanced");
+    onMeshInteractionStateChangeRef.current?.(false);
     meshInteractionIdleTimerRef.current = window.setTimeout(() => {
       meshInteractionIdleTimerRef.current = null;
       if (meshInteractionActiveRef.current) return;
@@ -1967,6 +1975,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     useEffect(() => {
       onPerformanceSnapshotRef.current = onPerformanceSnapshot;
     }, [onPerformanceSnapshot]);
+    useEffect(() => {
+      onMeshInteractionStateChangeRef.current = onMeshInteractionStateChange;
+    }, [onMeshInteractionStateChange]);
     useEffect(() => {
       lastMeshBuildMsRef.current = Number.isFinite(lastMeshBuildMs) ? Number(lastMeshBuildMs) : null;
     }, [lastMeshBuildMs]);
@@ -5124,6 +5135,17 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (suspendRenderingRef.current) return;
 
       const now = performance.now();
+      const hasContinuousMotion =
+        meshInteractionActiveRef.current ||
+        cameraTourFrameRef.current != null ||
+        zoomAnimRef.current != null;
+      if (!hasContinuousMotion && now - lastRenderedAtRef.current < IDLE_RENDER_MIN_FRAME_MS) {
+        return;
+      }
+      if (hasContinuousMotion) {
+        controls.update();
+      }
+
       const perfFrame = perfFrameRef.current;
       if (perfFrame.lastFrameAt > 0) {
         const dt = Math.max(0.0001, now - perfFrame.lastFrameAt);
@@ -5132,8 +5154,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         perfFrame.fps = perfFrame.fps === 0 ? fps : perfFrame.fps * 0.82 + fps * 0.18;
       }
       perfFrame.lastFrameAt = now;
-
-      controls.update();
+      lastRenderedAtRef.current = now;
       renderer.render(scene, camera);
       emitPerformanceSnapshot();
     };

@@ -116,6 +116,7 @@ export type GeometryViewerProps = {
   meshInteractionHideCurvatureGlyphs?: boolean;
   meshInteractionHideWireframe?: boolean;
   meshInteractionHideSceneOverlays?: boolean;
+  onMeshInteractionStateChange?: (active: boolean) => void;
 };
 
 export const GeometryViewer: React.FC<GeometryViewerProps> = ({
@@ -171,6 +172,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   meshInteractionHideCurvatureGlyphs = true,
   meshInteractionHideWireframe = false,
   meshInteractionHideSceneOverlays = false,
+  onMeshInteractionStateChange,
 }) => {
   const renderData = useMemo(
     () =>
@@ -310,6 +312,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
       meshInteractionHideCurvatureGlyphs={meshInteractionHideCurvatureGlyphs}
       meshInteractionHideWireframe={meshInteractionHideWireframe}
       meshInteractionHideSceneOverlays={meshInteractionHideSceneOverlays}
+      onMeshInteractionStateChange={onMeshInteractionStateChange}
       dragEnabled={dragEnabled}
       onDragStart={onDragStart}
       onDrag={onDrag}
