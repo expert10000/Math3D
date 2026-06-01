@@ -131,6 +131,13 @@ import {
   type GeometryGalleryRecipe,
 } from "./geometry/objectGalleryCatalog";
 import {
+  GEOMETRY_SCENE_GALLERY,
+  GEOMETRY_SCENE_GALLERY_BY_ID,
+  GEOMETRY_SCENE_GALLERY_CATEGORY_ORDER,
+  type GeometryGallerySceneEntry,
+  type GeometrySceneTimelineAction,
+} from "./geometry/sceneGalleryCatalog";
+import {
   filterGeometryDerivedProducts,
   filterGeometryMeshKeyRefs,
   filterGeometryObjectIdRefs,
@@ -7801,6 +7808,13 @@ const App: React.FC = () => {
   );
   const [geometryGalleryFavoritesOnly, setGeometryGalleryFavoritesOnly] = useState(false);
   const [geometryGalleryDemoReadyOnly, setGeometryGalleryDemoReadyOnly] = useState(false);
+  const [geometrySceneGallerySelectedId, setGeometrySceneGallerySelectedId] = useState<string>(
+    GEOMETRY_SCENE_GALLERY[0]?.id ?? ""
+  );
+  const [geometrySceneGalleryActiveId, setGeometrySceneGalleryActiveId] = useState<string | null>(null);
+  const [geometrySceneGalleryReplayStepIndex, setGeometrySceneGalleryReplayStepIndex] = useState(0);
+  const [geometrySceneGalleryReplayPlaying, setGeometrySceneGalleryReplayPlaying] = useState(false);
+  const [geometrySceneGalleryStatus, setGeometrySceneGalleryStatus] = useState<string | null>(null);
   const [geometryCreateActionStatus, setGeometryCreateActionStatus] = useState<string | null>(null);
   const [geometryCreateSelectedCardExpanded, setGeometryCreateSelectedCardExpanded] = useState(false);
   const [geometryAddSelectNewObject, setGeometryAddSelectNewObject] = useState(true);
@@ -8881,6 +8895,18 @@ const App: React.FC = () => {
     if (geometryGallerySelectedPreset) return geometryGallerySelectedPreset.recipe;
     return geometryGallerySelectedCard?.defaultRecipe ?? null;
   }, [geometryGallerySelectedCard, geometryGallerySelectedPreset]);
+  const geometrySceneGallerySelected = useMemo<GeometryGallerySceneEntry | null>(
+    () => GEOMETRY_SCENE_GALLERY_BY_ID.get(geometrySceneGallerySelectedId) ?? GEOMETRY_SCENE_GALLERY[0] ?? null,
+    [geometrySceneGallerySelectedId]
+  );
+  const geometrySceneGallerySections = useMemo(
+    () =>
+      GEOMETRY_SCENE_GALLERY_CATEGORY_ORDER.map((category) => ({
+        category,
+        scenes: GEOMETRY_SCENE_GALLERY.filter((entry) => entry.category === category),
+      })).filter((section) => section.scenes.length > 0),
+    []
+  );
   const geometryGalleryPreviewRecipe = useMemo(() => {
     if (!geometryGallerySelectedRecipe) return null;
     return {
@@ -9132,6 +9158,165 @@ const App: React.FC = () => {
     geometryAddOpenObjectTab,
     geometryAddSelectNewObject,
     geometryNewObjectType,
+  ]);
+  const openGeometrySceneGalleryEntry = useCallback(
+    (entry: GeometryGallerySceneEntry) => {
+      setGeometrySceneGalleryReplayPlaying(false);
+      setGeometrySceneGalleryReplayStepIndex(0);
+      setGeometrySceneGallerySelectedId(entry.id);
+      setGeometrySceneGalleryActiveId(entry.id);
+      const rawObjects = entry.initialScene.objects ?? [];
+      if (rawObjects.length) {
+        const nextObjects = rawObjects.map((sceneObject, index) => {
+          const idRaw = `${(sceneObject as { id?: string }).id ?? ""}`.trim();
+          const id = idRaw || `${entry.id}:obj:${index + 1}`;
+          const sourceTypeRaw = `${(sceneObject as { type?: string }).type ?? "box"}`.trim();
+          const sourceType = (sourceTypeRaw || "box") as GeometryObjectType;
+          const seeded = createGeometryObject(sourceType, id);
+          return {
+            ...seeded,
+            name: `${(sceneObject as { name?: string }).name ?? seeded.name}`,
+            params: { ...seeded.params, ...((sceneObject as { params?: Record<string, number | boolean | string> }).params ?? {}) },
+            transform: {
+              position: { ...(sceneObject.transform?.position ?? seeded.transform.position) },
+              rotation: { ...(sceneObject.transform?.rotation ?? seeded.transform.rotation) },
+              scale: { ...(sceneObject.transform?.scale ?? seeded.transform.scale) },
+            },
+            visible: typeof sceneObject.visible === "boolean" ? sceneObject.visible : seeded.visible,
+            material: normalizeGeometryMaterial((sceneObject as { material?: unknown }).material ?? seeded.material),
+            group: (sceneObject as { group?: string }).group,
+          };
+        });
+        setGeometryObjects(nextObjects);
+        setGeometryDatasetMeshObjects([]);
+        setGeometryLockedObjectIds(new Set());
+        setGeometrySelectedObjectId(nextObjects[0]?.id ?? null);
+      } else if (entry.initialScene.geometry) {
+        globalThis.dispatchEvent(
+          new CustomEvent<ProblemSceneCloneDetail>("math3d:problem-scene:clone-to-geometry3d", {
+            detail: {
+              scene: entry.initialScene.geometry,
+              name: entry.title,
+            },
+          })
+        );
+      }
+      const preferredPanel = entry.recommendedPanels?.[0] ?? "demonstrations";
+      if (GEOMETRY_PROCEDURAL_PANEL_VALUES.includes(preferredPanel as GeometryProceduralPanelTab)) {
+        setGeometryProceduralPanelTab(preferredPanel as GeometryProceduralPanelTab);
+      }
+      setGeometryMode("procedural");
+      setMode("geometry");
+      setGeometrySceneGalleryStatus(`Opened scene: ${entry.title}`);
+    },
+    []
+  );
+  const applyGeometrySceneGalleryTimelineAction = useCallback(
+    (action: GeometrySceneTimelineAction | undefined) => {
+      if (!action) return;
+      if (action.kind === "setPanel") {
+        setGeometryProceduralPanelTab(action.panel);
+        return;
+      }
+      if (action.kind === "selectObject") {
+        const target =
+          geometryObjects.find((entry) => entry.name === action.objectName) ??
+          geometryDatasetMeshObjects.find((entry) => entry.name === action.objectName) ??
+          null;
+        if (target) setGeometrySelectedObjectId(target.id);
+        return;
+      }
+      if (action.kind === "setComparisonPair") {
+        const findByName = (name: string) =>
+          geometryObjects.find((entry) => entry.name === name) ??
+          geometryDatasetMeshObjects.find((entry) => entry.name === name) ??
+          null;
+        const a = findByName(action.objectAName);
+        const b = findByName(action.objectBName);
+        if (a) setGeometryCompareObjectAId(a.id);
+        if (b) setGeometryCompareObjectBId(b.id);
+        return;
+      }
+      if (action.kind === "setSectionPlane") {
+        setGeometrySectionPlanePreset(action.preset);
+        setGeometrySectionPlaneOffset(action.offset);
+        return;
+      }
+      if (action.kind === "setDemonstrationCategory") {
+        setGeometryDemonstrationCategory(action.category);
+        setGeometryProceduralPanelTab("demonstrations");
+        return;
+      }
+      if (action.kind === "setStatus") {
+        setGeometrySceneGalleryStatus(action.message);
+      }
+    },
+    [geometryDatasetMeshObjects, geometryObjects]
+  );
+  const geometrySceneGalleryReplaySteps = useMemo(
+    () => geometrySceneGallerySelected?.timeline?.steps ?? [],
+    [geometrySceneGallerySelected]
+  );
+  const handleApplyGeometrySceneGalleryReplayStep = useCallback(
+    (stepIndex: number) => {
+      const step = geometrySceneGalleryReplaySteps[stepIndex] ?? null;
+      if (!step) return;
+      applyGeometrySceneGalleryTimelineAction(step.action);
+      setGeometrySceneGalleryStatus(`Replay ${stepIndex + 1}/${geometrySceneGalleryReplaySteps.length}: ${step.label}`);
+    },
+    [applyGeometrySceneGalleryTimelineAction, geometrySceneGalleryReplaySteps]
+  );
+  const handleReplayGeometrySceneGallery = useCallback(() => {
+    if (!geometrySceneGallerySelected) return;
+    if (!geometrySceneGalleryReplaySteps.length) {
+      setGeometrySceneGalleryStatus("No timeline steps available for this scene.");
+      return;
+    }
+    if (geometrySceneGalleryActiveId !== geometrySceneGallerySelected.id) {
+      openGeometrySceneGalleryEntry(geometrySceneGallerySelected);
+    }
+    setGeometrySceneGalleryReplayStepIndex(0);
+    handleApplyGeometrySceneGalleryReplayStep(0);
+    setGeometrySceneGalleryReplayPlaying(geometrySceneGalleryReplaySteps.length > 1);
+  }, [
+    geometrySceneGalleryActiveId,
+    geometrySceneGalleryReplaySteps.length,
+    geometrySceneGallerySelected,
+    handleApplyGeometrySceneGalleryReplayStep,
+    openGeometrySceneGalleryEntry,
+  ]);
+  const handleGeometrySceneGalleryReplayNext = useCallback(() => {
+    if (!geometrySceneGalleryReplaySteps.length) return;
+    setGeometrySceneGalleryReplayStepIndex((prev) => Math.min(prev + 1, geometrySceneGalleryReplaySteps.length - 1));
+  }, [geometrySceneGalleryReplaySteps.length]);
+  const handleGeometrySceneGalleryReplayPrev = useCallback(() => {
+    if (!geometrySceneGalleryReplaySteps.length) return;
+    setGeometrySceneGalleryReplayStepIndex((prev) => Math.max(prev - 1, 0));
+  }, [geometrySceneGalleryReplaySteps.length]);
+  useEffect(() => {
+    if (!geometrySceneGalleryReplaySteps.length) return;
+    handleApplyGeometrySceneGalleryReplayStep(geometrySceneGalleryReplayStepIndex);
+  }, [geometrySceneGalleryReplayStepIndex, geometrySceneGalleryReplaySteps.length, handleApplyGeometrySceneGalleryReplayStep]);
+  useEffect(() => {
+    if (!geometrySceneGalleryReplayPlaying) return;
+    if (!geometrySceneGalleryReplaySteps.length) {
+      setGeometrySceneGalleryReplayPlaying(false);
+      return;
+    }
+    if (geometrySceneGalleryReplayStepIndex >= geometrySceneGalleryReplaySteps.length - 1) {
+      setGeometrySceneGalleryReplayPlaying(false);
+      return;
+    }
+    const intervalMs = Math.max(600, geometrySceneGallerySelected?.timeline?.autoplayIntervalMs ?? 1800);
+    const timeout = window.setTimeout(() => {
+      setGeometrySceneGalleryReplayStepIndex((prev) => Math.min(prev + 1, geometrySceneGalleryReplaySteps.length - 1));
+    }, intervalMs);
+    return () => window.clearTimeout(timeout);
+  }, [
+    geometrySceneGalleryReplayPlaying,
+    geometrySceneGalleryReplayStepIndex,
+    geometrySceneGalleryReplaySteps.length,
+    geometrySceneGallerySelected?.timeline?.autoplayIntervalMs,
   ]);
   const handleLoadCavalieriDemoPair = useCallback(() => {
     const aId = handleAddGeometryObject({
@@ -54508,6 +54693,220 @@ case "mobius":
                               </button>
                             ))}
                           </div>
+                        </div>
+
+                        <div
+                          style={{
+                            border: "1px solid #dbe2ea",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            background: "#fbfdff",
+                            display: "grid",
+                            gap: 8,
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Geometry Scene Gallery</div>
+                            <div style={{ fontSize: 10, color: "#475467" }}>{GEOMETRY_SCENE_GALLERY.length} curated scenes</div>
+                          </div>
+                          <div style={{ fontSize: 11, color: "#475467" }}>
+                            Open complete demonstration scenes, then replay timeline steps for screenshot-ready walkthroughs.
+                          </div>
+                          <div style={{ display: "grid", gap: 8, maxHeight: 260, overflowY: "auto", paddingRight: 2 }}>
+                            {geometrySceneGallerySections.map((section) => (
+                              <div key={`geometry-scene-gallery-section-${section.category}`} style={{ display: "grid", gap: 4 }}>
+                                <div style={{ fontSize: 10, fontWeight: 700, color: "#344054", textTransform: "uppercase", letterSpacing: 0.4 }}>
+                                  {section.category}
+                                </div>
+                                <div style={{ display: "grid", gap: 4 }}>
+                                  {section.scenes.map((entry) => {
+                                    const selected = geometrySceneGallerySelected?.id === entry.id;
+                                    return (
+                                      <button
+                                        key={`geometry-scene-gallery-entry-${entry.id}`}
+                                        type="button"
+                                        onClick={() => setGeometrySceneGallerySelectedId(entry.id)}
+                                        style={{
+                                          display: "grid",
+                                          gridTemplateColumns: "74px minmax(0, 1fr)",
+                                          gap: 8,
+                                          alignItems: "center",
+                                          width: "100%",
+                                          textAlign: "left",
+                                          padding: "6px 8px",
+                                          borderRadius: 7,
+                                          border: `1px solid ${selected ? "#86b7fe" : "#d5deea"}`,
+                                          background: selected ? "#eef4ff" : "#fff",
+                                          cursor: "pointer",
+                                        }}
+                                      >
+                                        <div
+                                          style={{
+                                            width: 74,
+                                            height: 42,
+                                            borderRadius: 5,
+                                            border: "1px solid #dbe2ea",
+                                            background: "#f3f6fb",
+                                            overflow: "hidden",
+                                          }}
+                                        >
+                                          {entry.thumbnail ? (
+                                            <img
+                                              src={entry.thumbnail}
+                                              alt={`${entry.title} thumbnail`}
+                                              loading="lazy"
+                                              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                                            />
+                                          ) : null}
+                                        </div>
+                                        <div style={{ minWidth: 0, display: "grid", gap: 2 }}>
+                                          <div style={{ fontSize: 11, fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
+                                            {entry.title}
+                                          </div>
+                                          <div style={{ fontSize: 10, color: "#475467", lineHeight: 1.25 }}>
+                                            {entry.description}
+                                          </div>
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          {geometrySceneGallerySelected && (
+                            <div
+                              style={{
+                                border: "1px solid #dbe2ea",
+                                borderRadius: 7,
+                                background: "#fff",
+                                padding: "8px 9px",
+                                display: "grid",
+                                gap: 7,
+                              }}
+                            >
+                              <div style={{ display: "grid", gap: 2 }}>
+                                <div style={{ fontSize: 12, fontWeight: 700 }}>{geometrySceneGallerySelected.title}</div>
+                                <div style={{ fontSize: 10, color: "#475467", lineHeight: 1.3 }}>{geometrySceneGallerySelected.description}</div>
+                              </div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => openGeometrySceneGalleryEntry(geometrySceneGallerySelected)}
+                                  style={{ fontSize: 11 }}
+                                >
+                                  {geometrySceneGalleryActiveId === geometrySceneGallerySelected.id ? "Re-open scene" : "Open scene"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleReplayGeometrySceneGallery}
+                                  disabled={!geometrySceneGalleryReplaySteps.length}
+                                  style={{ fontSize: 11 }}
+                                >
+                                  Replay timeline
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setGeometrySceneGalleryReplayPlaying((prev) => !prev)}
+                                  disabled={!geometrySceneGalleryReplaySteps.length}
+                                  style={pill(geometrySceneGalleryReplayPlaying)}
+                                >
+                                  {geometrySceneGalleryReplayPlaying ? "Pause autoplay" : "Autoplay"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setGeometrySceneGalleryReplayPlaying(false);
+                                    handleGeometrySceneGalleryReplayPrev();
+                                  }}
+                                  disabled={!geometrySceneGalleryReplaySteps.length || geometrySceneGalleryReplayStepIndex <= 0}
+                                  style={{ fontSize: 11 }}
+                                >
+                                  Prev step
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setGeometrySceneGalleryReplayPlaying(false);
+                                    handleGeometrySceneGalleryReplayNext();
+                                  }}
+                                  disabled={
+                                    !geometrySceneGalleryReplaySteps.length ||
+                                    geometrySceneGalleryReplayStepIndex >= geometrySceneGalleryReplaySteps.length - 1
+                                  }
+                                  style={{ fontSize: 11 }}
+                                >
+                                  Next step
+                                </button>
+                              </div>
+                              {geometrySceneGallerySelected.learningGoals?.length ? (
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontSize: 10 }}>
+                                  {geometrySceneGallerySelected.learningGoals.map((goal) => (
+                                    <span key={`geometry-scene-gallery-goal-${geometrySceneGallerySelected.id}-${goal}`} style={pill(false)}>
+                                      {goal}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
+                              {geometrySceneGallerySelected.recommendedPanels?.length ? (
+                                <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center", fontSize: 10 }}>
+                                  <span style={{ color: "#475467" }}>Recommended panels:</span>
+                                  {geometrySceneGallerySelected.recommendedPanels.map((panel) => (
+                                    <button
+                                      key={`geometry-scene-gallery-panel-${geometrySceneGallerySelected.id}-${panel}`}
+                                      type="button"
+                                      onClick={() => {
+                                        if (!GEOMETRY_PROCEDURAL_PANEL_VALUES.includes(panel as GeometryProceduralPanelTab)) return;
+                                        setGeometryProceduralPanelTab(panel as GeometryProceduralPanelTab);
+                                      }}
+                                      style={{ fontSize: 10, padding: "2px 6px" }}
+                                    >
+                                      {panel}
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : null}
+                              {geometrySceneGalleryReplaySteps.length ? (
+                                <div style={{ display: "grid", gap: 4 }}>
+                                  <div style={{ fontSize: 10, color: "#475467" }}>
+                                    Timeline steps ({Math.min(geometrySceneGalleryReplayStepIndex + 1, geometrySceneGalleryReplaySteps.length)}/
+                                    {geometrySceneGalleryReplaySteps.length})
+                                  </div>
+                                  <div style={{ display: "grid", gap: 3, maxHeight: 150, overflowY: "auto" }}>
+                                    {geometrySceneGalleryReplaySteps.map((step, index) => {
+                                      const active = index === geometrySceneGalleryReplayStepIndex;
+                                      return (
+                                        <button
+                                          key={`geometry-scene-gallery-step-${step.id}`}
+                                          type="button"
+                                          onClick={() => {
+                                            setGeometrySceneGalleryReplayPlaying(false);
+                                            setGeometrySceneGalleryReplayStepIndex(index);
+                                            handleApplyGeometrySceneGalleryReplayStep(index);
+                                          }}
+                                          style={{
+                                            fontSize: 10,
+                                            padding: "4px 6px",
+                                            textAlign: "left",
+                                            borderRadius: 6,
+                                            border: `1px solid ${active ? "#86b7fe" : "#d5deea"}`,
+                                            background: active ? "#eef4ff" : "#fff",
+                                          }}
+                                        >
+                                          <span style={{ fontWeight: 700 }}>{index + 1}. {step.label}</span> · {step.note}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{ fontSize: 10, color: "#475467" }}>No timeline attached. Open scene and inspect manually.</div>
+                              )}
+                              {geometrySceneGalleryStatus && (
+                                <div style={{ fontFamily: "monospace", fontSize: 10, color: "#334155" }}>{geometrySceneGalleryStatus}</div>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         {geometryDemonstrationCategory === "cross_sections" && (
