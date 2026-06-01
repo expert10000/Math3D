@@ -86,6 +86,16 @@ import {
 import { buildGeometryRenderData } from "./geometry/render";
 import type { GeometryScene, Point3, Polygon3, Segment3 } from "./geometry/types";
 import { evaluateConstraints, formatConstraintValue } from "./geometry/analysis";
+import {
+  computeGeometryAnalysisBasicMetrics,
+  computeGeometryAnalysisTopologySummary,
+  createGeometryAnalysisSnapshot,
+  evaluateGeometryAnalysisEligibility,
+  type GeometryAnalysisBasicMetrics,
+  type GeometryAnalysisSnapshot,
+  type GeometryAnalysisTopologySummary,
+  type GeometrySectionAnalysisSummary,
+} from "./geometry/analysisBridge";
 import { evaluateGeometryMeshReadiness } from "./geometry/meshReadiness";
 import {
   GEOMETRY_TO_MESH_PROMOTION_MODES,
@@ -402,6 +412,24 @@ type GeometrySavedSectionCurve = {
     segmentCount: number;
     closed: boolean;
   };
+};
+type GeometryQuickAnalysisResultKind =
+  | "basic-metrics"
+  | "topology-summary"
+  | "differential-geometry"
+  | "section-analysis";
+type GeometryQuickAnalysisResultEntry = {
+  id: string;
+  kind: GeometryQuickAnalysisResultKind;
+  title: string;
+  sourceObjectId: string;
+  sourceObjectName: string;
+  snapshot: GeometryAnalysisSnapshot;
+  createdAt: number;
+  basicMetrics?: GeometryAnalysisBasicMetrics;
+  topologySummary?: GeometryAnalysisTopologySummary;
+  sectionSummary?: GeometrySectionAnalysisSummary;
+  notes?: string[];
 };
 type CurveImportedSection = {
   id: string;
@@ -7870,6 +7898,9 @@ const App: React.FC = () => {
   const [geometrySectionSourceDerivedId, setGeometrySectionSourceDerivedId] = useState<string | null>(null);
   const [geometrySectionSaveStatus, setGeometrySectionSaveStatus] = useState<string | null>(null);
   const [geometrySavedSectionCurves, setGeometrySavedSectionCurves] = useState<GeometrySavedSectionCurve[]>([]);
+  const geometryQuickAnalysisSnapshotSeqRef = useRef(1);
+  const [geometryQuickAnalysisResults, setGeometryQuickAnalysisResults] = useState<GeometryQuickAnalysisResultEntry[]>([]);
+  const [geometryQuickAnalysisSelectedResultId, setGeometryQuickAnalysisSelectedResultId] = useState<string | null>(null);
   const geometryObjectGeomCacheRef = useRef(
     new Map<string, { key: string; geom: THREE.BufferGeometry }>()
   );
@@ -7931,6 +7962,15 @@ const App: React.FC = () => {
       difference: row.compare - row.base,
     }));
   }, [geometrySelectedActiveVariant, geometrySelectedCompareVariant]);
+  const geometrySelectedQuickAnalysisResult = useMemo(() => {
+    if (!geometryQuickAnalysisResults.length) return null;
+    if (geometryQuickAnalysisSelectedResultId) {
+      const found =
+        geometryQuickAnalysisResults.find((entry) => entry.id === geometryQuickAnalysisSelectedResultId) ?? null;
+      if (found) return found;
+    }
+    return geometryQuickAnalysisResults[0] ?? null;
+  }, [geometryQuickAnalysisResults, geometryQuickAnalysisSelectedResultId]);
   const geometryObjectIdSet = useMemo(() => {
     const ids = new Set<string>();
     for (const obj of geometryObjects) ids.add(obj.id);
@@ -8134,6 +8174,20 @@ const App: React.FC = () => {
       })),
     [geometryDatasetMeshObjects, geometryObjects]
   );
+  const prepareGeometryCompareFromSelected = useCallback(() => {
+    const selectedId = geometrySelectedSceneObject?.id ?? null;
+    if (!selectedId) return;
+    if (!geometryCompareObjectOptions.some((entry) => entry.id === selectedId)) return;
+    setGeometryCompareObjectAId(selectedId);
+    if (
+      !geometryCompareObjectBId ||
+      geometryCompareObjectBId === selectedId ||
+      !geometryCompareObjectOptions.some((entry) => entry.id === geometryCompareObjectBId)
+    ) {
+      const fallback = geometryCompareObjectOptions.find((entry) => entry.id !== selectedId) ?? null;
+      setGeometryCompareObjectBId(fallback?.id ?? null);
+    }
+  }, [geometryCompareObjectBId, geometryCompareObjectOptions, geometrySelectedSceneObject?.id]);
   useEffect(() => {
     if (!geometryBooleanObjectOptions.length) {
       if (geometryBooleanObjectAId !== null) setGeometryBooleanObjectAId(null);
@@ -23362,11 +23416,12 @@ const App: React.FC = () => {
   const returnToSurfacesBrowse = useCallback(() => {
     setSurfacesPanelState("browse");
   }, []);
-  const openSelectedGeometryMeshAnalysis = useCallback(
-    (enableGaussMap: boolean) => {
-      if (!geometrySelectedObjectId) return;
-      const baked = bakeGeometryObjectToDatasetById(geometrySelectedObjectId);
-      if (!baked) return;
+  const openGeometryAnalysisSnapshotInSurfaces = useCallback(
+    (snapshot: GeometryAnalysisSnapshot, enableGaussMap: boolean) => {
+      skipSurfacesAutoBrowseOnModeChangeRef.current = true;
+      setMeshDataset(cloneSurfaceMeshData(snapshot.mesh, `${snapshot.sourceObjectName} (${snapshot.id})`));
+      setMode("surfaces");
+      setSurfaceViewerKind("mesh");
       setSurfacesPanelState("work");
       setSurfacesLeftTab("analysis");
       setInspectEnabled(true);
@@ -23374,8 +23429,198 @@ const App: React.FC = () => {
       setColorMode("gaussian");
       setShowGaussMap(enableGaussMap);
     },
-    [bakeGeometryObjectToDatasetById, geometrySelectedObjectId]
+    [setMeshDataset, setSurfaceViewerKind]
   );
+  const createSelectedGeometryAnalysisSnapshot = useCallback(() => {
+    if (!geometrySelectedSceneObject) {
+      setGeometryCreateActionStatus("Select a geometry object first.");
+      return null;
+    }
+    const resolved = resolveGeometrySceneMeshById(geometrySelectedSceneObject.id);
+    if (!resolved) {
+      setGeometryCreateActionStatus("Selected object has no mesh data for analysis.");
+      return null;
+    }
+    const eligibility = evaluateGeometryAnalysisEligibility(resolved.mesh);
+    if (!eligibility.eligible) {
+      setGeometryCreateActionStatus(eligibility.reason ?? "Selected object is not ready for analysis.");
+      return null;
+    }
+    const snapshot = createGeometryAnalysisSnapshot({
+      mesh: cloneSurfaceMeshData(resolved.mesh, `${resolved.object.name} analysis snapshot`),
+      sourceObjectId: resolved.object.id,
+      sourceObjectName: resolved.object.name,
+      snapshotSequence: geometryQuickAnalysisSnapshotSeqRef.current++,
+      createdAt: Date.now(),
+    });
+    return { snapshot, eligibility };
+  }, [geometrySelectedSceneObject, resolveGeometrySceneMeshById]);
+  const appendGeometryQuickAnalysisResult = useCallback((entry: GeometryQuickAnalysisResultEntry) => {
+    setGeometryQuickAnalysisResults((prev) => [entry, ...prev].slice(0, 40));
+    setGeometryQuickAnalysisSelectedResultId(entry.id);
+  }, []);
+  const handleRunGeometryQuickBasicMetrics = useCallback(() => {
+    const prepared = createSelectedGeometryAnalysisSnapshot();
+    if (!prepared) return;
+    const basicMetrics = computeGeometryAnalysisBasicMetrics(prepared.snapshot.mesh);
+    const entry: GeometryQuickAnalysisResultEntry = {
+      id: makeId(),
+      kind: "basic-metrics",
+      title: "Basic metrics",
+      sourceObjectId: prepared.snapshot.sourceObjectId,
+      sourceObjectName: prepared.snapshot.sourceObjectName,
+      snapshot: prepared.snapshot,
+      createdAt: Date.now(),
+      basicMetrics,
+      notes: prepared.snapshot.readiness.notes.slice(0, 4),
+    };
+    appendGeometryQuickAnalysisResult(entry);
+    setGeometryCreateActionStatus(`Analysis ready: basic metrics (${prepared.snapshot.id}).`);
+  }, [appendGeometryQuickAnalysisResult, createSelectedGeometryAnalysisSnapshot]);
+  const handleRunGeometryQuickTopologySummary = useCallback(() => {
+    const prepared = createSelectedGeometryAnalysisSnapshot();
+    if (!prepared) return;
+    const topologySummary = computeGeometryAnalysisTopologySummary(prepared.snapshot.mesh);
+    const notes = [...prepared.snapshot.readiness.notes];
+    if (!topologySummary.manifold) {
+      notes.unshift(
+        `Non-manifold edges detected: ${topologySummary.nonManifoldEdgeCount.toLocaleString()}.`
+      );
+    }
+    const entry: GeometryQuickAnalysisResultEntry = {
+      id: makeId(),
+      kind: "topology-summary",
+      title: "Topology summary",
+      sourceObjectId: prepared.snapshot.sourceObjectId,
+      sourceObjectName: prepared.snapshot.sourceObjectName,
+      snapshot: prepared.snapshot,
+      createdAt: Date.now(),
+      topologySummary,
+      notes: notes.slice(0, 4),
+    };
+    appendGeometryQuickAnalysisResult(entry);
+    setGeometryCreateActionStatus(`Analysis ready: topology summary (${prepared.snapshot.id}).`);
+  }, [appendGeometryQuickAnalysisResult, createSelectedGeometryAnalysisSnapshot]);
+  const handleRunGeometryQuickSectionAnalysis = useCallback(() => {
+    const prepared = createSelectedGeometryAnalysisSnapshot();
+    if (!prepared) return;
+    if (!geometrySectionPreview) {
+      setGeometryCreateActionStatus("Section analysis requires a valid section preview.");
+      return;
+    }
+    const sectionSummary: GeometrySectionAnalysisSummary = {
+      sectionLength: geometrySectionPreview.section.curveLength,
+      sectionEnclosedArea: geometrySectionPreview.section.area,
+    };
+    const entry: GeometryQuickAnalysisResultEntry = {
+      id: makeId(),
+      kind: "section-analysis",
+      title: "Section analysis",
+      sourceObjectId: prepared.snapshot.sourceObjectId,
+      sourceObjectName: prepared.snapshot.sourceObjectName,
+      snapshot: prepared.snapshot,
+      createdAt: Date.now(),
+      sectionSummary,
+      notes: prepared.snapshot.readiness.notes.slice(0, 4),
+    };
+    appendGeometryQuickAnalysisResult(entry);
+    setGeometryCreateActionStatus(`Analysis ready: section summary (${prepared.snapshot.id}).`);
+  }, [appendGeometryQuickAnalysisResult, createSelectedGeometryAnalysisSnapshot, geometrySectionPreview]);
+  const handleRunGeometryQuickDifferential = useCallback(
+    (enableGaussMap: boolean) => {
+      const prepared = createSelectedGeometryAnalysisSnapshot();
+      if (!prepared) return;
+      const entry: GeometryQuickAnalysisResultEntry = {
+        id: makeId(),
+        kind: "differential-geometry",
+        title: "Differential geometry handoff",
+        sourceObjectId: prepared.snapshot.sourceObjectId,
+        sourceObjectName: prepared.snapshot.sourceObjectName,
+        snapshot: prepared.snapshot,
+        createdAt: Date.now(),
+        notes: prepared.snapshot.readiness.notes.slice(0, 4),
+      };
+      appendGeometryQuickAnalysisResult(entry);
+      openGeometryAnalysisSnapshotInSurfaces(prepared.snapshot, enableGaussMap);
+      setGeometryCreateActionStatus(`Sent analysis-ready mesh (${prepared.snapshot.id}) to Surfaces.`);
+    },
+    [appendGeometryQuickAnalysisResult, createSelectedGeometryAnalysisSnapshot, openGeometryAnalysisSnapshotInSurfaces]
+  );
+  const openSelectedGeometryMeshAnalysis = useCallback(
+    (enableGaussMap: boolean) => {
+      handleRunGeometryQuickDifferential(enableGaussMap);
+    },
+    [handleRunGeometryQuickDifferential]
+  );
+  const handleOpenSelectedGeometryQuickAnalysisResult = useCallback(() => {
+    if (!geometrySelectedQuickAnalysisResult) {
+      setGeometryCreateActionStatus("No analysis result selected.");
+      return;
+    }
+    openGeometryAnalysisSnapshotInSurfaces(
+      geometrySelectedQuickAnalysisResult.snapshot,
+      geometrySelectedQuickAnalysisResult.kind === "differential-geometry"
+    );
+    setGeometryCreateActionStatus(
+      `Opened ${geometrySelectedQuickAnalysisResult.snapshot.id} in Surfaces analysis.`
+    );
+  }, [geometrySelectedQuickAnalysisResult, openGeometryAnalysisSnapshotInSurfaces]);
+  const handleSaveSelectedGeometryQuickAnalysisResult = useCallback(() => {
+    if (!geometrySelectedQuickAnalysisResult) {
+      setGeometryCreateActionStatus("No analysis result selected.");
+      return;
+    }
+    const payload = {
+      id: geometrySelectedQuickAnalysisResult.id,
+      kind: geometrySelectedQuickAnalysisResult.kind,
+      title: geometrySelectedQuickAnalysisResult.title,
+      source: {
+        id: geometrySelectedQuickAnalysisResult.sourceObjectId,
+        name: geometrySelectedQuickAnalysisResult.sourceObjectName,
+      },
+      snapshotId: geometrySelectedQuickAnalysisResult.snapshot.id,
+      createdAt: new Date(geometrySelectedQuickAnalysisResult.createdAt).toISOString(),
+      basicMetrics: geometrySelectedQuickAnalysisResult.basicMetrics ?? null,
+      topologySummary: geometrySelectedQuickAnalysisResult.topologySummary ?? null,
+      sectionSummary: geometrySelectedQuickAnalysisResult.sectionSummary ?? null,
+      notes: geometrySelectedQuickAnalysisResult.notes ?? [],
+    };
+    const base = sanitizeFileBase(
+      `${geometrySelectedQuickAnalysisResult.sourceObjectName}_${geometrySelectedQuickAnalysisResult.kind}`,
+      "geometry_analysis_result"
+    );
+    downloadTextFile(
+      JSON.stringify(payload, null, 2),
+      `${base}-${new Date().toISOString().slice(0, 10)}.json`,
+      "application/json"
+    );
+    setGeometryCreateActionStatus("Analysis result saved.");
+  }, [geometrySelectedQuickAnalysisResult]);
+  const handleCompareGeometryQuickAnalysisWithVariantA = useCallback(() => {
+    const result = geometrySelectedQuickAnalysisResult;
+    if (!result) {
+      setGeometryCreateActionStatus("No analysis result selected.");
+      return;
+    }
+    const set = geometryVariantSets[result.sourceObjectId];
+    if (!set?.variants?.length) {
+      setGeometryCreateActionStatus("No object variants found for comparison.");
+      return;
+    }
+    const variantA =
+      set.variants.find((variant) => variant.name.trim().toLowerCase() === "variant a") ??
+      set.variants[0];
+    const compareVariant = set.variants.find((variant) => variant.id !== variantA.id) ?? null;
+    setGeometrySelectedObjectId(result.sourceObjectId);
+    setGeometryProceduralPanelTab("object");
+    setGeometrySelectedVariantId(variantA.id);
+    setGeometrySelectedVariantCompareId(compareVariant?.id ?? null);
+    setGeometryCreateActionStatus(
+      compareVariant
+        ? `Variant compare prepared: ${variantA.name} vs ${compareVariant.name}.`
+        : `Variant compare prepared with ${variantA.name}; add another variant to complete comparison.`
+    );
+  }, [geometrySelectedQuickAnalysisResult, geometryVariantSets]);
   const enterSurfacePreviewFocus = useCallback(() => {
     if (surfacePreviewFocusMode) return;
     surfacePreviewFocusPrevRightPanelRef.current = showRightPanel;
@@ -39400,12 +39645,13 @@ case "mobius":
       if (stepId === "analyze") {
         setGeometryMode("procedural");
         setGeometryProceduralPanelTab("analysis");
+        prepareGeometryCompareFromSelected();
         return;
       }
       openGeometryWorkbookMode(geometryScratchSceneSeed);
       setGeometryWorkbookUiMode("full");
     },
-    [geometryScratchSceneSeed, openGeometryWorkbookMode]
+    [geometryScratchSceneSeed, openGeometryWorkbookMode, prepareGeometryCompareFromSelected]
   );
   const activeWorkbookStage = useMemo(
     () => activeWorkbook?.stages.find((stage) => stage.id === activeStageId) ?? null,
@@ -43033,7 +43279,12 @@ case "mobius":
                       <button
                         key={`geometry-procedural-panel-top-${entry.key}`}
                         type="button"
-                        onClick={() => setGeometryProceduralPanelTab(entry.id)}
+                        onClick={() => {
+                          setGeometryProceduralPanelTab(entry.id);
+                          if (entry.id === "analysis") {
+                            prepareGeometryCompareFromSelected();
+                          }
+                        }}
                         aria-pressed={active}
                         style={{
                           ...pill(active),
@@ -52908,14 +53159,105 @@ case "mobius":
                                   : "n/a"}
                               </div>
                               <div><strong>Normals:</strong> {geometrySelectedSceneMeshInfo.hasNormals ? "present" : "missing"}</div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
-                                  Open Gaussian analysis
-                                </button>
-                                <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(true)} style={{ fontSize: 11 }}>
-                                  Open Gauss map workflow
-                                </button>
+                              <div>
+                                <strong>Readiness:</strong>{" "}
+                                {geometrySelectedSceneMeshInfo.readiness.canSafelyBecomeMeshObject ? "ready" : "needs attention"}
                               </div>
+                              <div style={{ marginTop: 6, border: "1px solid #dbe2ea", borderRadius: 6, padding: "6px 8px", background: "#fff" }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Analyze selected object</div>
+                                <div style={{ display: "grid", gap: 6 }}>
+                                  <div style={{ display: "grid", gap: 4 }}>
+                                    <div style={{ fontSize: 10.5, fontWeight: 700 }}>Basic metrics</div>
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                      <button type="button" onClick={handleRunGeometryQuickBasicMetrics} style={{ fontSize: 11 }}>
+                                        volume / area / centroid / bounds
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <div style={{ display: "grid", gap: 4 }}>
+                                    <div style={{ fontSize: 10.5, fontWeight: 700 }}>Topology summary</div>
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                      <button type="button" onClick={handleRunGeometryQuickTopologySummary} style={{ fontSize: 11 }}>
+                                        V / E / F / Euler / boundaries / manifold
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <div style={{ display: "grid", gap: 4 }}>
+                                    <div style={{ fontSize: 10.5, fontWeight: 700 }}>Differential geometry</div>
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                      <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
+                                        Send analysis-ready mesh
+                                      </button>
+                                      <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(true)} style={{ fontSize: 11 }}>
+                                        Send + Gauss map workflow
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <div style={{ display: "grid", gap: 4 }}>
+                                    <div style={{ fontSize: 10.5, fontWeight: 700 }}>Section analysis</div>
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                      <button type="button" onClick={handleRunGeometryQuickSectionAnalysis} style={{ fontSize: 11 }}>
+                                        section length / enclosed area
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              {geometrySelectedQuickAnalysisResult && (
+                                <div style={{ marginTop: 6, border: "1px solid #dbe2ea", borderRadius: 6, padding: "6px 8px", background: "#fff", display: "grid", gap: 4 }}>
+                                  <div style={{ fontSize: 11, fontWeight: 700 }}>
+                                    Analysis Result: {geometrySelectedQuickAnalysisResult.title}
+                                  </div>
+                                  <div style={{ fontSize: 10.5 }}>
+                                    <strong>Source:</strong> {geometrySelectedQuickAnalysisResult.sourceObjectName}
+                                  </div>
+                                  <div style={{ fontSize: 10.5 }}>
+                                    <strong>Snapshot:</strong> {geometrySelectedQuickAnalysisResult.snapshot.id}
+                                  </div>
+                                  {geometrySelectedQuickAnalysisResult.kind === "topology-summary" &&
+                                    geometrySelectedQuickAnalysisResult.topologySummary && (
+                                      <div style={{ marginTop: 2, fontSize: 10.5, display: "grid", gap: 2 }}>
+                                        <div><strong>Vertices:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.vertexCount.toLocaleString()}</div>
+                                        <div><strong>Edges:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.edgeCount.toLocaleString()}</div>
+                                        <div><strong>Faces:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.faceCount.toLocaleString()}</div>
+                                        <div><strong>Euler characteristic:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.eulerCharacteristic}</div>
+                                        <div><strong>Boundaries:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.boundaryCount.toLocaleString()}</div>
+                                        <div><strong>Manifold:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.manifold ? "yes" : "no"}</div>
+                                      </div>
+                                    )}
+                                  {geometrySelectedQuickAnalysisResult.kind === "basic-metrics" &&
+                                    geometrySelectedQuickAnalysisResult.basicMetrics && (
+                                      <div style={{ marginTop: 2, fontSize: 10.5, display: "grid", gap: 2 }}>
+                                        <div><strong>Volume:</strong> {fmt(geometrySelectedQuickAnalysisResult.basicMetrics.volume)}</div>
+                                        <div><strong>Area:</strong> {fmt(geometrySelectedQuickAnalysisResult.basicMetrics.area)}</div>
+                                        <div>
+                                          <strong>Centroid:</strong>{" "}
+                                          {geometrySelectedQuickAnalysisResult.basicMetrics.centroid
+                                            ? `(${fmt(geometrySelectedQuickAnalysisResult.basicMetrics.centroid.x)}, ${fmt(geometrySelectedQuickAnalysisResult.basicMetrics.centroid.y)}, ${fmt(geometrySelectedQuickAnalysisResult.basicMetrics.centroid.z)})`
+                                            : "n/a"}
+                                        </div>
+                                      </div>
+                                    )}
+                                  {geometrySelectedQuickAnalysisResult.kind === "section-analysis" &&
+                                    geometrySelectedQuickAnalysisResult.sectionSummary && (
+                                      <div style={{ marginTop: 2, fontSize: 10.5, display: "grid", gap: 2 }}>
+                                        <div><strong>Section length:</strong> {fmt(geometrySelectedQuickAnalysisResult.sectionSummary.sectionLength)}</div>
+                                        <div><strong>Section enclosed area:</strong> {fmt(geometrySelectedQuickAnalysisResult.sectionSummary.sectionEnclosedArea)}</div>
+                                      </div>
+                                    )}
+                                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                                    <button type="button" onClick={handleOpenSelectedGeometryQuickAnalysisResult} style={{ fontSize: 11 }}>
+                                      Open in Analysis
+                                    </button>
+                                    <button type="button" onClick={handleSaveSelectedGeometryQuickAnalysisResult} style={{ fontSize: 11 }}>
+                                      Save result
+                                    </button>
+                                    <button type="button" onClick={handleCompareGeometryQuickAnalysisWithVariantA} style={{ fontSize: 11 }}>
+                                      Compare with Variant A
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </>
                           ) : (
                             <div style={{ color: "#475467" }}>
