@@ -62,6 +62,7 @@ import {
 } from "./components/ConstructionLabPanel";
 import { VolumeViewer } from "./components/VolumeViewer";
 import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
+import MatlabRuntimeLabPanel from "./components/MatlabRuntimeLabPanel";
 
 import { ParamSurfaceViewer, type ParamSurfaceId } from "./components/ParamSurfaceViewer";
 import { solidColorForPalette, type ColorPalette } from "./components/colorPalette";
@@ -70582,6 +70583,7 @@ onChangeImplicitExpr,
           <div style={{ fontSize: 11, color: "#475467", marginBottom: 10 }}>
             Run computation workflows here. Keep viewer interaction in the View tab.
           </div>
+          <MatlabRuntimeLabPanel />
 
           <details
             style={analysisAccordionStyle}

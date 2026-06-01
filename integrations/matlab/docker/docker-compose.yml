@@ -1,0 +1,12 @@
+services:
+  matlab-runtime-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: math3d-matlab-runtime
+    ports:
+      - "8765:8765"
+    environment:
+      - AGREE_TO_MATLAB_RUNTIME_LICENSE=yes
+      - MATLAB_PACKAGE_PATH=/opt/math3d/matlab/eig_demo_package
+
