@@ -62,7 +62,6 @@ import {
 } from "./components/ConstructionLabPanel";
 import { VolumeViewer } from "./components/VolumeViewer";
 import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
-import MatlabRuntimeLabPanel from "./components/MatlabRuntimeLabPanel";
 
 import { ParamSurfaceViewer, type ParamSurfaceId } from "./components/ParamSurfaceViewer";
 import { solidColorForPalette, type ColorPalette } from "./components/colorPalette";
@@ -176,6 +175,7 @@ import {
 import { runGeodesicHeat } from "./services/geodesicHeatClient";
 import { vtkBoolean, vtkCleanNormals, vtkDecimate, vtkPreviewImplicit, vtkSmooth } from "./services/vtkMeshClient";
 import { supportsVtkVolumeDistance, vtkVolumeDistance } from "./services/vtkVolumeClient";
+import { getMeshBackendCapabilities } from "./services/meshBackend";
 import { solveContinuousGraphGeodesic } from "./math/graphGeodesicContinuous";
 import { compileExpression } from "./math/expression";
 import { buildCurveFromPreset } from "./math/curvePresetFactory";
@@ -549,7 +549,7 @@ const GEOMETRY_VOLUME_RELATION_FOCUS_OPTIONS: Array<{ id: GeometryVolumeRelation
   { id: "all", label: "3: All" },
 ];
 const GEOMETRY_WORKSPACE_TAB_VALUES: ConstructionWorkspaceTab[] = ["task", "build", "inspect", "claims", "script", "scene"];
-const SURFACES_LEFT_TAB_VALUES = ["scene", "object", "view", "analysis", "theory"] as const;
+const SURFACES_LEFT_TAB_VALUES = ["scene", "object", "view", "analysis", "services", "theory"] as const;
 const MOBIUS_SUB_TAB_VALUES: MobiusSubTab[] = ["map", "decompose", "invariants", "circles", "riemann", "animation"];
 const VARIANT_GHOST_MESH_KEY_PREFIX = "variant-ghost:";
 const isVariantGhostMeshKey = (meshKey: string | null | undefined): boolean =>
@@ -38020,6 +38020,11 @@ case "mobius":
           setGeometryGizmoEnabled((v) => !v);
           setVolumeCropGizmoEnabled((v) => !v);
           return;
+        case "view:backend-services-panel":
+          setMode("surfaces");
+          setSurfacesPanelState("work");
+          setSurfacesLeftTab("services");
+          return;
         case "insert:new-implicit-surface":
           setMode("surfaces");
           setDatasetKind("surface");
@@ -38216,6 +38221,12 @@ case "mobius":
       { id: "surface:probe-on", title: "Surface command: probe on", keywords: "surface command probe", run: () => handleRunCommand("probe on") },
       { id: "surface:probe-off", title: "Surface command: probe off", keywords: "surface command probe", run: () => handleRunCommand("probe off") },
       { id: "surface:gaussian", title: "Surface command: colorMode gaussian", keywords: "surface command color curvature", run: () => handleRunCommand("colorMode gaussian") },
+      {
+        id: "view:backend-services-panel",
+        title: "Open backend services panel",
+        keywords: "surfaces backend services cgal vtk octave worker",
+        run: () => handleMenuCommand("view:backend-services-panel"),
+      },
     ],
     [
       activeStageId,
@@ -41736,9 +41747,35 @@ case "mobius":
   const headerIsParamConstructed = headerIsSurface && surfaceViewerKind === "param" && headerParamSourceKind === "constructed";
   const headerShowExtendedFamilyButtons =
     headerSurfaceFamilyMoreOpen || (headerIsSurface && (surfaceViewerKind === "mesh" || surfaceViewerKind === "weierstrass"));
+  const meshBackendCapabilities = getMeshBackendCapabilities();
+  const vtkBridgeReady =
+    meshBackendCapabilities.vtkPreviewImplicit ||
+    meshBackendCapabilities.vtkMeshCleanNormals ||
+    meshBackendCapabilities.vtkMeshDecimate ||
+    meshBackendCapabilities.vtkMeshSmooth ||
+    meshBackendCapabilities.vtkMeshBoolean;
+  const cgalServiceReady = cgalHealthState?.ok === true;
+  const cgalServiceStatusText = !cgalHealthState
+    ? "checking..."
+    : cgalServiceReady
+      ? `available${cgalHealthState.version ? ` · v${cgalHealthState.version}` : ""}`
+      : "unavailable";
+  const vtkServiceReady = vtkBridgeReady && cgalServiceReady;
+  const vtkServiceStatusText = !vtkBridgeReady
+    ? "bridge unavailable"
+    : vtkServiceReady
+      ? "available"
+      : "blocked by worker";
+  const octaveServiceApi = (globalThis as any)?.octaveService;
+  const octaveBridgeReady =
+    !!octaveServiceApi && (typeof octaveServiceApi.getStatus === "function" || typeof octaveServiceApi.health === "function");
+  const octaveServiceStatusText = octaveBridgeReady ? "available" : "pending";
+  const cgalServiceColor = cgalServiceReady ? "#1f894f" : "#b42318";
+  const vtkServiceColor = vtkServiceReady ? "#1f894f" : "#b42318";
+  const octaveServiceColor = octaveBridgeReady ? "#1f894f" : "#9a6700";
   const surfacesWorkspaceTabs = isPresentDisplayMode
     ? (["scene"] as const)
-    : (["scene", "object", "view", "analysis", "theory"] as const);
+    : (["scene", "object", "view", "analysis", "services", "theory"] as const);
   const surfacesWorkTabsEnabled = surfacesLayoutVariant !== "layout2";
   const surfacesCompareToggleEnabled =
     displayMode !== "present" &&
@@ -44714,6 +44751,44 @@ case "mobius":
                 <div style={{ marginTop: 10 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Display & analysis</div>
                   {renderSurfacesInspectorPanel("analysis")}
+                </div>
+              )}
+              {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "services" && (
+                <div
+                  data-testid="backend-services-panel"
+                  style={{
+                    marginTop: 10,
+                    border: "1px solid #dbe4f0",
+                    borderRadius: 10,
+                    background: "#f8fbff",
+                    padding: "10px 12px",
+                    display: "grid",
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>Backend services</div>
+                  <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                      <strong>CGAL</strong>
+                      <span style={{ color: cgalServiceColor }}>{cgalServiceStatusText}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                      <strong>VTK</strong>
+                      <span style={{ color: vtkServiceColor }}>{vtkServiceStatusText}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                      <strong>Octave</strong>
+                      <span style={{ color: octaveServiceColor }}>{octaveServiceStatusText}</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 10, color: "#667085", lineHeight: 1.5 }}>
+                    CGAL and VTK share the Python worker runtime.
+                    {cgalHealthState?.logsPath ? (
+                      <div style={{ marginTop: 4, wordBreak: "break-all" }}>
+                        log: {cgalHealthState.logsPath}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               )}
             </div>
@@ -66575,7 +66650,7 @@ type SurfacesLeftPanelProps = {
 
 };
 
-type SurfacesLeftTab = "controls" | "scene" | "object" | "view" | "analysis" | "theory";
+type SurfacesLeftTab = "controls" | "scene" | "object" | "view" | "analysis" | "services" | "theory";
 type AnalysisFocusedSection =
   | "differential-geometry"
   | "vector-calculus"
@@ -70583,7 +70658,6 @@ onChangeImplicitExpr,
           <div style={{ fontSize: 11, color: "#475467", marginBottom: 10 }}>
             Run computation workflows here. Keep viewer interaction in the View tab.
           </div>
-          <MatlabRuntimeLabPanel />
 
           <details
             style={analysisAccordionStyle}
@@ -75774,8 +75848,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             fontSize: 11,
           }}
         >
-          <div style={inspectorSectionTitle}>Analysis</div>
-          <div style={{ marginTop: -2, marginBottom: 7 }}>{renderWorkflowStatus("Analyze", "analyze")}</div>
+          <div style={inspectorSectionTitle}>Worker status</div>
           <div style={{ color: workerReady ? "#1f894f" : "#b42318" }}>
             worker: {workerStatusLabel}
           </div>
