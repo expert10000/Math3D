@@ -3,6 +3,7 @@ import {
   SurfaceViewer,
   type CameraFitCommand,
   type MeshInteractionQualityMode,
+  type RenderQuality,
   type CameraTourCommand,
   type CameraTourEvent,
   type CameraSyncState,
@@ -117,6 +118,7 @@ export type GeometryViewerProps = {
   meshInteractionHideWireframe?: boolean;
   meshInteractionHideSceneOverlays?: boolean;
   onMeshInteractionStateChange?: (active: boolean) => void;
+  renderQuality?: RenderQuality;
 };
 
 export const GeometryViewer: React.FC<GeometryViewerProps> = ({
@@ -173,6 +175,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   meshInteractionHideWireframe = false,
   meshInteractionHideSceneOverlays = false,
   onMeshInteractionStateChange,
+  renderQuality = "balanced",
 }) => {
   const renderData = useMemo(
     () =>
@@ -304,6 +307,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
       cameraFitCommand={cameraFitCommand}
       cameraTourCommand={cameraTourCommand}
       onCameraTourEvent={onCameraTourEvent}
+      renderQuality={renderQuality}
       meshInteractionQualityMode={meshInteractionQualityMode}
       meshInteractionRestoreDelayMs={meshInteractionRestoreDelayMs}
       meshInteractionPreviewTriangleTarget={meshInteractionPreviewTriangleTarget}

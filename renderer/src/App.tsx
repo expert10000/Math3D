@@ -1416,6 +1416,7 @@ const MESH_PERF_BENCHMARK_PRESETS: MeshPerfBenchmarkPreset[] = [
   { id: "tri-250k-normals", label: "250k + normals", targetTriangles: 250_000, enableNormalsOverlay: true },
   { id: "tri-250k-picking", label: "250k + face picking", targetTriangles: 250_000, enableInspect: true },
 ];
+const GEOMETRY_HEAVY_SCENE_TRIANGLE_THRESHOLD = 2_000;
 
 const buildMeshPerformanceBenchmark = (preset: MeshPerfBenchmarkPreset): SurfaceMeshData => {
   const targetTriangles = Math.max(2, Math.round(preset.targetTriangles));
@@ -22632,10 +22633,13 @@ const App: React.FC = () => {
   const [meshInteractionHideWireframe, setMeshInteractionHideWireframe] = useState(false);
   const [geometryInteractionQualityMode, setGeometryInteractionQualityMode] =
     useState<MeshInteractionQualityMode>("adaptive");
+  const [geometryGlobalQualityOverrideMode, setGeometryGlobalQualityOverrideMode] = useState<
+    "auto" | "fast-preview" | "full"
+  >("fast-preview");
   const [geometryInteractionRestoreDelayMs, setGeometryInteractionRestoreDelayMs] = useState(150);
   const [geometryInteractionPreviewTriangleTarget, setGeometryInteractionPreviewTriangleTarget] = useState(100_000);
   const [geometryInteractionHideWireframe, setGeometryInteractionHideWireframe] = useState(false);
-  const [geometryInteractionHideSceneOverlays, setGeometryInteractionHideSceneOverlays] = useState(true);
+  const [geometryInteractionHideSceneOverlays, setGeometryInteractionHideSceneOverlays] = useState(false);
   const [geometryDemoInteractionActive, setGeometryDemoInteractionActive] = useState(false);
   const geometryDemoInteractionRestoreTimerRef = useRef<number | null>(null);
   const handleGeometryViewerInteractionStateChange = useCallback(
@@ -40152,14 +40156,33 @@ case "mobius":
     geometryMode === "procedural" &&
     geometryProceduralPanelTab === "demonstrations" &&
     geometryDemonstrationCategory === "volume_relations";
+  const geometryHeavySceneActive =
+    mode === "geometry" &&
+    geometryMode === "procedural" &&
+    (proceduralMeshSet.triCount ?? 0) >= GEOMETRY_HEAVY_SCENE_TRIANGLE_THRESHOLD;
   const geometryEffectiveInteractionQualityMode: MeshInteractionQualityMode =
-    geometryVolumeRelationsDemoActive &&
-    geometryInteractionQualityMode === "full" &&
-    geometryDemoInteractionActive
-      ? "adaptive"
-      : geometryDemonstrationsViewerActive
-        ? geometryInteractionQualityMode
-        : "full";
+    geometryGlobalQualityOverrideMode === "fast-preview"
+      ? "fast-preview"
+      : geometryGlobalQualityOverrideMode === "full"
+        ? "full"
+        : geometryHeavySceneActive
+          ? "fast-preview"
+      : geometryVolumeRelationsDemoActive &&
+          geometryInteractionQualityMode === "full" &&
+          geometryDemoInteractionActive
+        ? "adaptive"
+        : geometryDemonstrationsViewerActive
+          ? geometryInteractionQualityMode
+          : "full";
+  const geometryEffectiveInteractionPreviewTriangleTarget =
+    geometryGlobalQualityOverrideMode === "fast-preview"
+      ? Math.min(30_000, geometryInteractionPreviewTriangleTarget)
+      : geometryInteractionPreviewTriangleTarget;
+  const geometryEffectiveHideSceneOverlays = geometryInteractionHideSceneOverlays;
+  const geometryEffectiveHideWireframe = geometryInteractionHideWireframe;
+  const geometryEffectiveRenderQuality: RenderQuality =
+    geometryGlobalQualityOverrideMode === "fast-preview" ? "performance" : "balanced";
+  const geometryFastModeActive = geometryGlobalQualityOverrideMode === "fast-preview";
   useEffect(() => {
     if (geometryVolumeRelationsDemoActive && geometryInteractionQualityMode === "full") return;
     if (geometryDemoInteractionRestoreTimerRef.current != null) {
@@ -48070,9 +48093,10 @@ case "mobius":
                     showPointLabels={geometryDemoShowPointLabels}
                     meshInteractionQualityMode={geometryEffectiveInteractionQualityMode}
                     meshInteractionRestoreDelayMs={geometryInteractionRestoreDelayMs}
-                    meshInteractionPreviewTriangleTarget={geometryInteractionPreviewTriangleTarget}
-                    meshInteractionHideWireframe={geometryInteractionHideWireframe}
-                    meshInteractionHideSceneOverlays={geometryInteractionHideSceneOverlays}
+                    meshInteractionPreviewTriangleTarget={geometryEffectiveInteractionPreviewTriangleTarget}
+                    meshInteractionHideWireframe={geometryEffectiveHideWireframe}
+                    meshInteractionHideSceneOverlays={geometryEffectiveHideSceneOverlays}
+                    renderQuality={geometryEffectiveRenderQuality}
                     onMeshInteractionStateChange={handleGeometryViewerInteractionStateChange}
                     cameraOverride={
                       geometryMode === "scratch" || geometryMode === "workbook" ? geometryProblemCameraOverride : null
@@ -56381,6 +56405,45 @@ case "mobius":
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto", flexWrap: "wrap" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      border: "1px solid #d1d5db",
+                      borderRadius: 999,
+                      padding: "2px 6px",
+                      background: "#fff",
+                    }}
+                  >
+                    <span style={{ fontSize: 10, color: "#475467", marginRight: 2 }}>
+                      Quality {geometryGlobalQualityOverrideMode === "auto" && geometryHeavySceneActive ? "Auto→Fast" : ""}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setGeometryGlobalQualityOverrideMode("auto")}
+                      aria-pressed={geometryGlobalQualityOverrideMode === "auto"}
+                      style={pill(geometryGlobalQualityOverrideMode === "auto")}
+                    >
+                      Auto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGeometryGlobalQualityOverrideMode("fast-preview")}
+                      aria-pressed={geometryGlobalQualityOverrideMode === "fast-preview"}
+                      style={pill(geometryGlobalQualityOverrideMode === "fast-preview")}
+                    >
+                      Fast
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGeometryGlobalQualityOverrideMode("full")}
+                      aria-pressed={geometryGlobalQualityOverrideMode === "full"}
+                      style={pill(geometryGlobalQualityOverrideMode === "full")}
+                    >
+                      Full
+                    </button>
+                  </div>
                   <button
                     type="button"
                     onClick={() => handleGeometryApplyViewPreset("3d")}
@@ -56502,9 +56565,10 @@ case "mobius":
                   onCameraTourEvent={handleGeometryCameraTourEvent}
                   meshInteractionQualityMode={geometryEffectiveInteractionQualityMode}
                   meshInteractionRestoreDelayMs={geometryInteractionRestoreDelayMs}
-                  meshInteractionPreviewTriangleTarget={geometryInteractionPreviewTriangleTarget}
-                  meshInteractionHideWireframe={geometryInteractionHideWireframe}
-                  meshInteractionHideSceneOverlays={geometryInteractionHideSceneOverlays}
+                  meshInteractionPreviewTriangleTarget={geometryEffectiveInteractionPreviewTriangleTarget}
+                  meshInteractionHideWireframe={geometryEffectiveHideWireframe}
+                  meshInteractionHideSceneOverlays={geometryEffectiveHideSceneOverlays}
+                  renderQuality={geometryEffectiveRenderQuality}
                   onMeshInteractionStateChange={handleGeometryViewerInteractionStateChange}
                   highlightPolygons={
                     geometryMode === "demo"
@@ -56559,9 +56623,12 @@ case "mobius":
                   gizmoScaleSnap={geometrySnapScaleEnabled ? geometrySnapScaleStep : null}
                   onGizmoTransform={geometryMode === "procedural" ? handleProceduralGizmoTransform : undefined}
                   pickEnabled={
-                    geometryMode === "demo" ||
-                    (geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations") ||
-                    ((geometryMode === "scratch" || geometryMode === "workbook") && geometryPointPlacementEnabled)
+                    !geometryFastModeActive &&
+                    (
+                      geometryMode === "demo" ||
+                      (geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations") ||
+                      ((geometryMode === "scratch" || geometryMode === "workbook") && geometryPointPlacementEnabled)
+                    )
                   }
                   onPick={
                     geometryMode === "demo"
@@ -56573,7 +56640,9 @@ case "mobius":
                           : undefined
                   }
                   onPickHover={
-                    geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations"
+                    geometryGlobalQualityOverrideMode !== "fast-preview" &&
+                    geometryMode === "procedural" &&
+                    geometryProceduralPanelTab !== "demonstrations"
                       ? handleProceduralPickHover
                       : undefined
                   }

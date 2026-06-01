@@ -187,19 +187,34 @@ const computeMeshPreviewTriangleTarget = (
   previewTriangleTarget: number
 ) => {
   if (fullTriangles <= 0) return 0;
-  if (mode === "full" || runtimeQuality === "accurate") return fullTriangles;
+  if (mode === "full") return fullTriangles;
+
+  // Fast-preview is an explicit persistent quality mode and must stay decimated
+  // even when interaction settles back to "accurate" runtime state.
+  if (mode === "fast-preview") {
+    if (fullTriangles < 12_000) return fullTriangles;
+    const minVisibleTriangles = 600;
+    const rawTarget =
+      fullTriangles < 50_000
+        ? Math.round(fullTriangles * 0.55)
+        : fullTriangles < 250_000
+          ? Math.round(fullTriangles * 0.35)
+            : fullTriangles <= 1_000_000
+              ? Math.round(fullTriangles * 0.2)
+              : Math.min(previewTriangleTarget, 80_000);
+    const clampedTarget = Math.max(
+      Math.min(minVisibleTriangles, fullTriangles),
+      Math.min(rawTarget, previewTriangleTarget)
+    );
+    return Math.max(1, Math.min(clampedTarget, fullTriangles));
+  }
+
+  if (runtimeQuality === "accurate") return fullTriangles;
 
   if (runtimeQuality === "balanced") {
     if (fullTriangles < 250_000) return fullTriangles;
     if (fullTriangles <= 1_000_000) return Math.max(1, Math.round(fullTriangles * 0.6));
     return Math.max(1, Math.min(fullTriangles, Math.max(previewTriangleTarget * 2, Math.round(fullTriangles * 0.35))));
-  }
-
-  if (mode === "fast-preview") {
-    if (fullTriangles < 50_000) return fullTriangles;
-    if (fullTriangles < 250_000) return Math.max(1, Math.min(Math.round(fullTriangles * 0.25), previewTriangleTarget));
-    if (fullTriangles <= 1_000_000) return Math.max(1, Math.min(Math.round(fullTriangles * 0.12), previewTriangleTarget));
-    return Math.max(1, Math.min(previewTriangleTarget, 80_000));
   }
 
   if (fullTriangles < 50_000) return fullTriangles;
@@ -237,12 +252,11 @@ const buildSurfaceMeshLodBuffers = (
 
   if (indicesRaw && indicesRaw.length >= 3) {
     const fullTriCount = Math.floor(indicesRaw.length / 3);
-    const step = Math.max(1, Math.ceil(fullTriCount / targetTriangles));
     const sampled: number[] = [];
-    for (let tri = 0; tri < fullTriCount; tri += step) {
+    for (let i = 0; i < targetTriangles; i += 1) {
+      const tri = Math.min(fullTriCount - 1, Math.floor(((i + 0.5) * fullTriCount) / targetTriangles));
       const base = tri * 3;
       sampled.push(indicesRaw[base], indicesRaw[base + 1], indicesRaw[base + 2]);
-      if (sampled.length / 3 >= targetTriangles) break;
     }
     return {
       positions,
@@ -255,8 +269,7 @@ const buildSurfaceMeshLodBuffers = (
   }
 
   const fullTriCount = Math.floor(positions.length / 9);
-  const step = Math.max(1, Math.ceil(fullTriCount / targetTriangles));
-  const sampledTriCount = Math.max(1, Math.min(targetTriangles, Math.ceil(fullTriCount / step)));
+  const sampledTriCount = Math.max(1, Math.min(targetTriangles, fullTriCount));
   const nextPositions = new Float32Array(sampledTriCount * 9);
   const nextNormals =
     normalsRaw && normalsRaw.length >= positions.length ? new Float32Array(sampledTriCount * 9) : null;
@@ -264,8 +277,8 @@ const buildSurfaceMeshLodBuffers = (
     uvsRaw && uvsRaw.length >= Math.floor((positions.length / 3) * 2) ? new Float32Array(sampledTriCount * 6) : null;
   const normals = normalsRaw as ArrayLike<number> | null;
   const uvs = uvsRaw as ArrayLike<number> | null;
-  let outTri = 0;
-  for (let tri = 0; tri < fullTriCount; tri += step) {
+  for (let outTri = 0; outTri < sampledTriCount; outTri += 1) {
+    const tri = Math.min(fullTriCount - 1, Math.floor(((outTri + 0.5) * fullTriCount) / sampledTriCount));
     const srcPosBase = tri * 9;
     nextPositions.set(positions.subarray(srcPosBase, srcPosBase + 9), outTri * 9);
     if (nextNormals && normals) {
@@ -281,8 +294,6 @@ const buildSurfaceMeshLodBuffers = (
         nextUvs[outUvBase + j] = uvs[srcUvBase + j];
       }
     }
-    outTri += 1;
-    if (outTri >= sampledTriCount) break;
   }
   return {
     positions: nextPositions,
@@ -290,7 +301,7 @@ const buildSurfaceMeshLodBuffers = (
     normals: nextNormals,
     uvs: nextUvs,
     fullTriangleCount: fullTriangles,
-    activeTriangleCount: outTri,
+    activeTriangleCount: sampledTriCount,
   };
 };
 
@@ -1704,8 +1715,12 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const planeGridOpacity = planeGridSettings.planeOpacity;
   const sceneBackgroundColor = sceneBackgroundMode === "calm" ? 0xf1f5fb : 0xf8f9fb;
   const sceneBackgroundAlpha = sceneBackgroundMode === "transparent" ? 0 : 1;
-  const [meshRuntimeQuality, setMeshRuntimeQuality] = useState<MeshRuntimeQuality>("accurate");
-  const meshRuntimeQualityRef = useRef<MeshRuntimeQuality>("accurate");
+  const initialMeshRuntimeQuality: MeshRuntimeQuality =
+    surfaceId === "surface_mesh" && meshInteractionQualityMode === "fast-preview"
+      ? "interactive-preview"
+      : "accurate";
+  const [meshRuntimeQuality, setMeshRuntimeQuality] = useState<MeshRuntimeQuality>(initialMeshRuntimeQuality);
+  const meshRuntimeQualityRef = useRef<MeshRuntimeQuality>(initialMeshRuntimeQuality);
   const meshInteractionActiveRef = useRef(false);
   const meshInteractionIdleTimerRef = useRef<number | null>(null);
   const normalizedMeshRestoreDelayMs = normalizePositiveInt(meshInteractionRestoreDelayMs, 150, 50, 2000);
@@ -1929,14 +1944,30 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   }, [clearMeshInteractionIdleTimer]);
   const beginMeshInteraction = useCallback(() => {
     if (!canUseMeshInteractionLod) return;
+    if (meshInteractionQualityMode === "fast-preview") {
+      meshInteractionActiveRef.current = false;
+      clearMeshInteractionIdleTimer();
+      if (meshRuntimeQualityRef.current !== "interactive-preview") {
+        setMeshRuntimeQuality("interactive-preview");
+      }
+      return;
+    }
     meshInteractionActiveRef.current = true;
     clearMeshInteractionIdleTimer();
     setMeshRuntimeQuality("interactive-preview");
     onMeshInteractionStateChangeRef.current?.(true);
-  }, [canUseMeshInteractionLod, clearMeshInteractionIdleTimer]);
+  }, [canUseMeshInteractionLod, clearMeshInteractionIdleTimer, meshInteractionQualityMode]);
   const endMeshInteraction = useCallback(() => {
     if (!canUseMeshInteractionLod) {
       finalizeMeshInteraction();
+      return;
+    }
+    if (meshInteractionQualityMode === "fast-preview") {
+      meshInteractionActiveRef.current = false;
+      clearMeshInteractionIdleTimer();
+      if (meshRuntimeQualityRef.current !== "interactive-preview") {
+        setMeshRuntimeQuality("interactive-preview");
+      }
       return;
     }
     meshInteractionActiveRef.current = false;
@@ -1952,13 +1983,22 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     canUseMeshInteractionLod,
     clearMeshInteractionIdleTimer,
     finalizeMeshInteraction,
+    meshInteractionQualityMode,
     normalizedMeshRestoreDelayMs,
   ]);
   useEffect(() => {
     if (!canUseMeshInteractionLod) {
       finalizeMeshInteraction();
+      return;
     }
-  }, [canUseMeshInteractionLod, finalizeMeshInteraction]);
+    if (meshInteractionQualityMode === "fast-preview") {
+      clearMeshInteractionIdleTimer();
+      meshInteractionActiveRef.current = false;
+      if (meshRuntimeQualityRef.current !== "interactive-preview") {
+        setMeshRuntimeQuality("interactive-preview");
+      }
+    }
+  }, [canUseMeshInteractionLod, clearMeshInteractionIdleTimer, finalizeMeshInteraction, meshInteractionQualityMode]);
   useEffect(() => {
     return () => {
       clearMeshInteractionIdleTimer();
@@ -4935,7 +4975,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const handlePointerMove = (event: PointerEvent) => {
       const dragState = dragStateRef.current;
-      if (!dragState && !inspectEnabledRef.current) return;
+      const inspectHoverCb = onInspectHoverRef.current;
+      if (!dragState) {
+        if (!inspectEnabledRef.current || !inspectHoverCb) return;
+      }
       if (
         !dragState &&
         canUseMeshInteractionLod &&
@@ -4966,9 +5009,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         return;
       }
 
-      if (!inspectEnabledRef.current) return;
-      const inspectHoverCb = onInspectHoverRef.current;
-      if (!inspectHoverCb) return;
+      if (!inspectEnabledRef.current || !inspectHoverCb) return;
       const hoverPickStartAt = performance.now();
       const intersects = raycaster.intersectObjects([surfaceObj], true);
       recordRaycastDuration(hoverPickStartAt);
