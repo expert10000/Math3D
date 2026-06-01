@@ -29,6 +29,7 @@ describe("promoteGeometryToMesh", () => {
     expect(result.metadata.sourceGeometryId).toBe("obj-1");
     expect(result.metadata.sourceOperationHistory).toEqual(["create box", "extrude face"]);
     expect(result.metadata.promotionMode).toBe("raw_mesh");
+    expect(result.metadata.traceMap).toBeTruthy();
     expect(result.metadata.vertexCount).toBe(3);
     expect(result.metadata.faceCount).toBe(1);
     expect(result.metadata.bounds).toEqual({ min: [0, 0, 0], max: [1, 1, 0] });
@@ -53,6 +54,7 @@ describe("promoteGeometryToMesh", () => {
     });
     expect(result.mesh.indices).not.toBeNull();
     expect(result.mesh.indices?.length).toBe(6);
+    expect(result.metadata.traceMap).toBeNull();
     expect(result.metadata.faceCount).toBe(2);
   });
 

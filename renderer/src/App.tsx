@@ -103,6 +103,12 @@ import {
   type GeometryToMeshPromotionMetadata,
   type GeometryToMeshPromotionMode,
 } from "./geometry/meshPromotionContract";
+import {
+  GeometryMeshTraceMap,
+  buildTraceMapForPromotion,
+  mergeIntoGlobalGeometryMeshTraceMap,
+  propagateTraceMapThroughMeshMutation,
+} from "./geometry/geometryMeshTraceMap";
 import { computeMeshSection, sectionPlaneNormalFromPreset, type SectionPlanePreset } from "./geometry/meshSection";
 import { pointInPolygonOnPlane } from "./geometry/polyhedra";
 import {
@@ -11497,8 +11503,55 @@ const App: React.FC = () => {
           warning: intent?.warning ?? null,
         });
         const edited = applySurfaceMeshOps(edit(cloneSurfaceMeshData(target.mesh, target.mesh.label)));
+        const sourceGeometryId =
+          target.promotion?.sourceGeometryId ??
+          (target.mesh.source.kind === "geometryObject" && target.mesh.source.objectId ? target.mesh.source.objectId : null);
+        const previousMeshId = `${objectId}:mesh-edit:before`;
+        const nextMeshId = `${objectId}:mesh-edit:after:${Date.now()}`;
+        let previousTraceMap = GeometryMeshTraceMap.fromSnapshot(target.promotion?.traceMap ?? null);
+        if (
+          sourceGeometryId &&
+          previousTraceMap.getGeometryFromMesh({ meshId: previousMeshId, kind: "object" }).length === 0
+        ) {
+          previousTraceMap = buildTraceMapForPromotion({
+            sourceGeometryId,
+            meshId: previousMeshId,
+            sourceMesh: target.mesh,
+            promotedMesh: target.mesh,
+            sourceOperationHistory: target.promotion?.sourceOperationHistory ?? ["manual edit baseline"],
+            promotionMode: target.promotion?.promotionMode ?? "editable_mesh_object",
+            createdAt: target.promotion?.createdAt ?? Date.now(),
+          });
+        }
+        const mutationTraceMap = propagateTraceMapThroughMeshMutation({
+          previousTraceMap,
+          previousMeshId,
+          nextMeshId,
+          previousMesh: target.mesh,
+          nextMesh: edited,
+          operation: `manual-mesh-edit:${actionLabel}`,
+          fallbackGeometryIds: sourceGeometryId ? [sourceGeometryId] : [],
+        });
+        mergeIntoGlobalGeometryMeshTraceMap(mutationTraceMap);
+        const sourceOperationHistory = [...(target.promotion?.sourceOperationHistory ?? []), `Manual edit: ${actionLabel}`].slice(
+          -20
+        );
         setGeometryDatasetMeshObjects((prev) =>
-          prev.map((entry) => (entry.id === objectId ? { ...entry, mesh: edited } : entry))
+          prev.map((entry) =>
+            entry.id === objectId
+              ? {
+                  ...entry,
+                  mesh: edited,
+                  promotion: entry.promotion
+                    ? {
+                        ...entry.promotion,
+                        sourceOperationHistory,
+                        traceMap: mutationTraceMap.toSnapshot(),
+                      }
+                    : entry.promotion,
+                }
+              : entry
+          )
         );
         if (geometrySelectedObjectId !== objectId) setGeometrySelectedObjectId(objectId);
         setGeometryBakeError(null);
@@ -13049,7 +13102,75 @@ const App: React.FC = () => {
     geometryRepeatMode,
     geometrySelectedSceneObject,
   ]);
-  const setMeshDataset = useCallback((mesh: SurfaceMeshData | null) => {
+
+  const surfaceMeshTraceCounterRef = useRef(0);
+  const surfaceMeshTraceStateRef = useRef<{ meshId: string; mesh: SurfaceMeshData; traceMap: GeometryMeshTraceMap } | null>(
+    null
+  );
+  const setMeshDataset = useCallback((mesh: SurfaceMeshData | null, traceOperation = "mesh-dataset:set") => {
+    if (!mesh) {
+      surfaceMeshTraceStateRef.current = null;
+      setMeshDatasetState(null);
+      setDatasetKind("surface");
+      return;
+    }
+    const traceTimestamp = Date.now();
+    surfaceMeshTraceCounterRef.current += 1;
+    const nextMeshId = `surface-mesh:${surfaceMeshTraceCounterRef.current}`;
+    const sourceGeometryIds =
+      mesh.source.kind === "geometryObject"
+        ? [mesh.source.objectId, ...(mesh.source.objects?.map((entry) => entry.objectId) ?? [])].filter(
+            (id): id is string => typeof id === "string" && id.trim().length > 0
+          )
+        : [];
+    const previousTraceState = surfaceMeshTraceStateRef.current;
+    let nextTraceMap: GeometryMeshTraceMap;
+    if (!previousTraceState) {
+      if (sourceGeometryIds.length > 0) {
+        const seed = sourceGeometryIds[0];
+        nextTraceMap = buildTraceMapForPromotion({
+          sourceGeometryId: seed,
+          meshId: nextMeshId,
+          sourceMesh: mesh,
+          promotedMesh: mesh,
+          sourceOperationHistory: ["initial mesh dataset"],
+          promotionMode: "analysis_ready_mesh",
+          createdAt: traceTimestamp,
+        });
+        if (sourceGeometryIds.length > 1) {
+          for (const geometryId of sourceGeometryIds.slice(1)) {
+            nextTraceMap.link({
+              geometry: { geometryId, kind: "object" },
+              mesh: { meshId: nextMeshId, kind: "object" },
+              provenance: {
+                operation: "initial mesh dataset (multi-source)",
+                timestamp: traceTimestamp,
+                version: 1,
+              },
+            });
+          }
+        }
+      } else {
+        nextTraceMap = new GeometryMeshTraceMap();
+      }
+    } else {
+      nextTraceMap = propagateTraceMapThroughMeshMutation({
+        previousTraceMap: previousTraceState.traceMap,
+        previousMeshId: previousTraceState.meshId,
+        nextMeshId,
+        previousMesh: previousTraceState.mesh,
+        nextMesh: mesh,
+        operation: traceOperation,
+        timestamp: traceTimestamp,
+        fallbackGeometryIds: sourceGeometryIds,
+      });
+    }
+    mergeIntoGlobalGeometryMeshTraceMap(nextTraceMap);
+    surfaceMeshTraceStateRef.current = {
+      meshId: nextMeshId,
+      mesh: cloneSurfaceMeshData(mesh, mesh.label),
+      traceMap: nextTraceMap,
+    };
     setMeshDatasetState(toMeshDataset(mesh));
     setDatasetKind("surface");
   }, []);
@@ -13230,7 +13351,7 @@ const App: React.FC = () => {
           indices: merged.indices,
           source: { kind: "csg" },
         });
-        setMeshDataset(handoffMesh);
+        setMeshDataset(handoffMesh, `geometry-boolean-preview-handoff:${geometryBooleanOperation}`);
         setSurfaceViewerKind("mesh");
         setMode("surfaces");
         setSurfacesPanelState("work");
@@ -31595,7 +31716,7 @@ case "mobius":
       uvs: res.build.uvs,
       source: { kind: "bakedFromParam" },
     };
-    setMeshDataset(applySurfaceMeshOps(next));
+    setMeshDataset(applySurfaceMeshOps(next), "complex-map:sweep");
     setSurfaceMeshImportError(null);
     setComplexMapError(null);
   }, [
@@ -32125,7 +32246,7 @@ case "mobius":
       const tol = Math.max(1e-6, Number(surfaceMeshWeldTolerance) || 1e-6);
       const label = `${surfaceMeshData.label ?? "Surface mesh"} (welded)`;
       const welded = weldSurfaceMeshVertices(surfaceMeshData, tol, label);
-      setMeshDataset(applySurfaceMeshOps(welded));
+      setMeshDataset(applySurfaceMeshOps(welded), "mesh-op:weld");
       appendMeshPromotionOperation(`welded vertices (tol ${fmt(tol)})`);
       handleChangeViewerKind("mesh");
     } catch (err: any) {
@@ -32169,7 +32290,7 @@ case "mobius":
       meanEdgeLength: null,
       validation: null,
     };
-    setMeshDataset(applySurfaceMeshOps(next));
+    setMeshDataset(applySurfaceMeshOps(next), "mesh-op:triangulate");
     appendMeshPromotionOperation("remeshed (triangulated faces)");
     handleChangeViewerKind("mesh");
   }, [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshData]);
@@ -32191,7 +32312,7 @@ case "mobius":
       validation: null,
       label: `${surfaceMeshData.label ?? "Surface mesh"} (normals)`,
     });
-    setMeshDataset(applySurfaceMeshOps(next));
+    setMeshDataset(applySurfaceMeshOps(next), "mesh-op:recompute-normals");
     appendMeshPromotionOperation("repaired normals");
     handleChangeViewerKind("mesh");
   }, [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshData]);
@@ -32218,7 +32339,7 @@ case "mobius":
         },
         iterations
       );
-      setMeshDataset(applySurfaceMeshOps(next));
+      setMeshDataset(applySurfaceMeshOps(next), "mesh-op:subdivide");
       appendMeshPromotionOperation(`remeshed (subdivide x${iterations})`);
       handleChangeViewerKind("mesh");
     } catch (err: any) {
@@ -32274,7 +32395,7 @@ case "mobius":
       meanEdgeLength: null,
       validation: null,
     };
-    setMeshDataset(applySurfaceMeshOps(next));
+    setMeshDataset(applySurfaceMeshOps(next), "mesh-op:center");
     appendMeshPromotionOperation("centered promoted mesh");
     handleChangeViewerKind("mesh");
   }, [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshData]);
@@ -32330,7 +32451,7 @@ case "mobius":
       meanEdgeLength: null,
       validation: null,
     };
-    setMeshDataset(applySurfaceMeshOps(next));
+    setMeshDataset(applySurfaceMeshOps(next), "mesh-op:normalize-scale");
     appendMeshPromotionOperation(`normalized scale (diag ${fmt(targetDiag)})`);
     handleChangeViewerKind("mesh");
   }, [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshData, surfaceMeshNormalizeDiag]);
@@ -32401,7 +32522,7 @@ case "mobius":
         normals: res.normals ?? null,
         source,
       };
-      setMeshDataset(applySurfaceMeshOps(next));
+      setMeshDataset(applySurfaceMeshOps(next), `vtk:${meta.operation}`);
       setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
       setSurfaceMeshImportError(null);
@@ -32937,7 +33058,7 @@ case "mobius":
     const cached = implicitBakeCacheRef.current.get(key);
     if (cached) {
       cached.ts = Date.now();
-      setMeshDataset(cached.mesh);
+      setMeshDataset(cached.mesh, "implicit-bake:cache-hit");
       handleChangeViewerKind("mesh");
       setImplicitBakeCacheHit(true);
       return;
@@ -33001,7 +33122,7 @@ case "mobius":
         indices,
         source: { kind: "bakedFromImplicit" },
       };
-      setMeshDataset(applySurfaceMeshOps(next));
+      setMeshDataset(applySurfaceMeshOps(next), "convert-to-mesh:implicit");
       handleChangeViewerKind("mesh");
       return;
     }
@@ -33018,7 +33139,7 @@ case "mobius":
         setSurfaceMeshImportError(baked.error);
         return;
       }
-      setMeshDataset(applySurfaceMeshOps(baked.mesh));
+      setMeshDataset(applySurfaceMeshOps(baked.mesh), "convert-to-mesh:graph");
       handleChangeViewerKind("mesh");
       return;
     }
@@ -33044,7 +33165,7 @@ case "mobius":
         setSurfaceMeshImportError(baked.error);
         return;
       }
-      setMeshDataset(applySurfaceMeshOps(baked.mesh));
+      setMeshDataset(applySurfaceMeshOps(baked.mesh), "convert-to-mesh:param");
       handleChangeViewerKind("mesh");
       return;
     }
@@ -33064,7 +33185,7 @@ case "mobius":
         setSurfaceMeshImportError(baked.error);
         return;
       }
-      setMeshDataset(applySurfaceMeshOps(baked.mesh));
+      setMeshDataset(applySurfaceMeshOps(baked.mesh), "convert-to-mesh:weierstrass");
       handleChangeViewerKind("mesh");
       return;
     }
@@ -33074,7 +33195,7 @@ case "mobius":
         setSurfaceMeshImportError("Complex map mesh not ready yet.");
         return;
       }
-      setMeshDataset(applySurfaceMeshOps(surfaceMeshData));
+      setMeshDataset(applySurfaceMeshOps(surfaceMeshData), "convert-to-mesh:complex");
       handleChangeViewerKind("mesh");
     }
   }, [

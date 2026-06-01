@@ -2,6 +2,11 @@ import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 import { weldSurfaceMeshVertices } from "../mesh/surfaceMesh";
 import { computeAdjacency, computeMeanEdgeLength, computeVertexNormals, validateMesh } from "../mesh/meshOps";
 import { evaluateGeometryMeshReadiness, type GeometryMeshReadinessReport } from "./meshReadiness";
+import {
+  buildTraceMapForPromotion,
+  mergeIntoGlobalGeometryMeshTraceMap,
+  type GeometryMeshTraceMapSnapshot,
+} from "./geometryMeshTraceMap";
 
 export type GeometryToMeshPromotionMode =
   | "raw_mesh"
@@ -29,6 +34,7 @@ export type GeometryToMeshPromotionMetadata = {
   sourceGeometryId: string | null;
   sourceOperationHistory: string[];
   promotionMode: GeometryToMeshPromotionMode;
+  traceMap?: GeometryMeshTraceMapSnapshot | null;
   vertexCount: number;
   faceCount: number;
   bounds: GeometryPromotionBounds;
@@ -49,6 +55,8 @@ export type PromoteGeometryToMeshArgs = {
   promotionMode: GeometryToMeshPromotionMode;
   createdAt?: number;
   labelOverride?: string;
+  traceMeshId?: string | null;
+  registerTraceInGlobalMap?: boolean;
 };
 
 const cloneMesh = (mesh: SurfaceMeshData, labelOverride?: string): SurfaceMeshData => ({
@@ -155,10 +163,29 @@ export const promoteGeometryToMesh = (args: PromoteGeometryToMeshArgs): Geometry
   }
 
   const validityReport = evaluateGeometryMeshReadiness(mesh);
+  const traceMeshId =
+    (args.traceMeshId ?? "").trim() ||
+    `${sourceGeometryId ?? "untracked"}:${mode}:${Math.floor(createdAt)}:${Math.floor(mesh.positions.length / 3)}`;
+  const traceMap =
+    sourceGeometryId && traceMeshId
+      ? buildTraceMapForPromotion({
+          sourceGeometryId,
+          meshId: traceMeshId,
+          sourceMesh: args.mesh,
+          promotedMesh: mesh,
+          sourceOperationHistory,
+          promotionMode: mode,
+          createdAt,
+        })
+      : null;
+  if (traceMap && args.registerTraceInGlobalMap !== false) {
+    mergeIntoGlobalGeometryMeshTraceMap(traceMap);
+  }
   const metadata: GeometryToMeshPromotionMetadata = {
     sourceGeometryId,
     sourceOperationHistory: [...sourceOperationHistory],
     promotionMode: mode,
+    traceMap: traceMap?.toSnapshot() ?? null,
     vertexCount: Math.floor(mesh.positions.length / 3),
     faceCount: faceCountFromMesh(mesh),
     bounds: boundsFromPositions(mesh.positions),
