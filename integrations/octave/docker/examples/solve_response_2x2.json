@@ -1,0 +1,8 @@
+{
+  "ok": true,
+  "engine": "gnu-octave",
+  "inputShape": [2, 2],
+  "solution": [2, 3],
+  "residualNorm": 0,
+  "elapsedMs": 15
+}

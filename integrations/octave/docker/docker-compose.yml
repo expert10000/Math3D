@@ -1,0 +1,8 @@
+services:
+  octave-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: math3d-octave-service
+    ports:
+      - "8766:8766"

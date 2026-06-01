@@ -62,6 +62,7 @@ import {
 } from "./components/ConstructionLabPanel";
 import { VolumeViewer } from "./components/VolumeViewer";
 import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
+import OctaveLabPanel from "./features/octaveLab/OctaveLabPanel";
 
 import { ParamSurfaceViewer, type ParamSurfaceId } from "./components/ParamSurfaceViewer";
 import { solidColorForPalette, type ColorPalette } from "./components/colorPalette";
@@ -41766,7 +41767,7 @@ case "mobius":
     : vtkServiceReady
       ? "available"
       : "blocked by worker";
-  const octaveServiceApi = (globalThis as any)?.octaveService;
+  const octaveServiceApi = window.octaveService;
   const octaveBridgeReady =
     !!octaveServiceApi && (typeof octaveServiceApi.getStatus === "function" || typeof octaveServiceApi.health === "function");
   const octaveServiceStatusText = octaveBridgeReady ? "available" : "pending";
@@ -44789,6 +44790,7 @@ case "mobius":
                       </div>
                     ) : null}
                   </div>
+                  <OctaveLabPanel />
                 </div>
               )}
             </div>

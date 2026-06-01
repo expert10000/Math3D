@@ -256,6 +256,32 @@ declare global {
     lastError?: PythonWorkerDiagnosticsError;
   };
 
+  type OctaveHealthResponse = {
+    status: string;
+    engine: string;
+    available: boolean;
+  };
+
+  type OctaveEigResponse = {
+    ok: boolean;
+    engine: string;
+    inputShape: [number, number];
+    eigenvalues: number[];
+    eigenvectors: number[][];
+    elapsedMs: number;
+    error?: string;
+  };
+
+  type OctaveSolveResponse = {
+    ok: boolean;
+    engine: string;
+    inputShape: [number, number];
+    solution: number[];
+    residualNorm: number;
+    elapsedMs: number;
+    error?: string;
+  };
+
   interface Window {
     surfacePresets?: {
       list: (kind: PresetKind) => Promise<SurfacePresetRecord[]>;
@@ -300,6 +326,12 @@ declare global {
     };
     pythonWorkerDiagnostics?: {
       getStatus: () => Promise<PythonWorkerDiagnosticsSnapshot>;
+    };
+    octaveService?: {
+      health: () => Promise<OctaveHealthResponse>;
+      getStatus: () => Promise<OctaveHealthResponse>;
+      eig: (matrix: number[][]) => Promise<OctaveEigResponse>;
+      solve: (matrix: number[][], rhs: number[]) => Promise<OctaveSolveResponse>;
     };
     appRuntime?: {
       geometrySmoke?: boolean;

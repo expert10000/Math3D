@@ -661,6 +661,7 @@ function buildAppMenu(win: BrowserWindow) {
         action("Toggle side panel", "view:toggle-side-panel"),
         action("Toggle status bar", "view:toggle-status-bar"),
         action("Toggle gizmo", "view:toggle-gizmo"),
+        action("Backend services panel", "view:backend-services-panel"),
         { type: "separator" },
         { label: "Fullscreen", role: "togglefullscreen" },
       ],
