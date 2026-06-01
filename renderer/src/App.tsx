@@ -431,6 +431,22 @@ type GeometryQuickAnalysisResultEntry = {
   sectionSummary?: GeometrySectionAnalysisSummary;
   notes?: string[];
 };
+type MeshPromotionOperationEntry = {
+  id: string;
+  label: string;
+  at: number;
+};
+type MeshPromotionTraceState = {
+  sourceGeometryObjectId: string;
+  sourceGeometryObjectName: string;
+  snapshotIndex: number;
+  snapshotLabel: string;
+  promotedAt: number;
+  frozen: boolean;
+  initialMeshSignature: string;
+  operationHistory: MeshPromotionOperationEntry[];
+  compareMeshObjectId: string | null;
+};
 type CurveImportedSection = {
   id: string;
   name: string;
@@ -17771,6 +17787,9 @@ const App: React.FC = () => {
       return null;
     }
   });
+  const meshPromotionSnapshotCounterRef = useRef<Map<string, number>>(new Map());
+  const [meshPromotionTrace, setMeshPromotionTrace] = useState<MeshPromotionTraceState | null>(null);
+  const [meshPromotionStatus, setMeshPromotionStatus] = useState<string | null>(null);
   const [volumeDatasetOverride, setVolumeDatasetOverride] = useState<VolumeDataset | null>(null);
   const [volumeDistanceBusy, setVolumeDistanceBusy] = useState(false);
   const [volumeDistanceError, setVolumeDistanceError] = useState<string | null>(null);
@@ -17890,6 +17909,215 @@ const App: React.FC = () => {
   }, [volumeScalarRange]);
   const activeDataset = datasetKind === "volume" ? volumeDataset : null;
   const surfaceMeshData = meshDataset?.mesh ?? null;
+  const beginMeshPromotionTrace = useCallback(
+    (sourceObjectId: string, sourceObjectName: string, meshLabel: string, mesh: SurfaceMeshData) => {
+      const counters = meshPromotionSnapshotCounterRef.current;
+      const nextIndex = (counters.get(sourceObjectId) ?? 0) + 1;
+      counters.set(sourceObjectId, nextIndex);
+      const snapshotLabel = `${sourceObjectName} / Mesh Snapshot ${nextIndex}`;
+      setMeshPromotionStatus(null);
+      setMeshPromotionTrace({
+        sourceGeometryObjectId: sourceObjectId,
+        sourceGeometryObjectName: sourceObjectName,
+        snapshotIndex: nextIndex,
+        snapshotLabel,
+        promotedAt: Date.now(),
+        frozen: false,
+        initialMeshSignature: geometryMeshTopologySignature(mesh),
+        operationHistory: [
+          {
+            id: makeId(),
+            label: `Promoted mesh: ${meshLabel}`,
+            at: Date.now(),
+          },
+        ],
+        compareMeshObjectId: null,
+      });
+      return snapshotLabel;
+    },
+    []
+  );
+  const appendMeshPromotionOperation = useCallback((label: string) => {
+    if (!label.trim()) return;
+    setMeshPromotionTrace((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        operationHistory: [{ id: makeId(), label: label.trim(), at: Date.now() }, ...prev.operationHistory].slice(0, 32),
+      };
+    });
+  }, []);
+  const meshPromotionHasIndependentEdits = useMemo(() => {
+    if (!meshPromotionTrace) return false;
+    const mutatingOperation = meshPromotionTrace.operationHistory.some((entry) =>
+      /remeshed|repaired normals|welded|centered|normalized scale|triangulated|subdivide|decimate|smooth|boolean/i.test(
+        entry.label
+      )
+    );
+    if (mutatingOperation) return true;
+    if (!surfaceMeshData?.positions?.length) return false;
+    const currentSignature = geometryMeshTopologySignature(surfaceMeshData);
+    return currentSignature !== meshPromotionTrace.initialMeshSignature;
+  }, [meshPromotionTrace, surfaceMeshData]);
+  useEffect(() => {
+    if (!surfaceMeshData?.source || surfaceMeshData.source.kind !== "geometryObject" || !surfaceMeshData.source.objectId) {
+      if (meshPromotionTrace) setMeshPromotionTrace(null);
+      setMeshPromotionStatus(null);
+      return;
+    }
+    const sourceId = surfaceMeshData.source.objectId;
+    const sourceName = surfaceMeshData.source.objectName ?? "Geometry object";
+    if (!meshPromotionTrace || meshPromotionTrace.sourceGeometryObjectId !== sourceId) {
+      const counters = meshPromotionSnapshotCounterRef.current;
+      const nextIndex = Math.max(1, counters.get(sourceId) ?? 1);
+      counters.set(sourceId, nextIndex);
+      setMeshPromotionTrace({
+        sourceGeometryObjectId: sourceId,
+        sourceGeometryObjectName: sourceName,
+        snapshotIndex: nextIndex,
+        snapshotLabel: `${sourceName} / Mesh Snapshot ${nextIndex}`,
+        promotedAt: Date.now(),
+        frozen: false,
+        initialMeshSignature: geometryMeshTopologySignature(surfaceMeshData),
+        operationHistory: [{ id: makeId(), label: `Promoted mesh: ${surfaceMeshData.label}`, at: Date.now() }],
+        compareMeshObjectId: null,
+      });
+      setMeshPromotionStatus(null);
+    }
+  }, [meshPromotionTrace, surfaceMeshData]);
+  const handleOpenMeshPromotionSourceGeometryObject = useCallback(() => {
+    const trace = meshPromotionTrace;
+    if (!trace) {
+      setMeshPromotionStatus("No active Geometry -> Mesh promotion trace.");
+      return;
+    }
+    const source = resolveGeometrySceneObjectById(trace.sourceGeometryObjectId);
+    if (!source) {
+      setMeshPromotionStatus("Source geometry object no longer exists.");
+      return;
+    }
+    setMode("geometry");
+    setGeometryMode("procedural");
+    setGeometryProceduralPanelTab("object");
+    setGeometrySelectedObjectId(source.id);
+    setMeshPromotionStatus(`Opened source geometry object: ${source.name}.`);
+  }, [meshPromotionTrace, resolveGeometrySceneObjectById]);
+  const handleOpenPromotedMeshObject = useCallback(() => {
+    if (!meshPromotionTrace) {
+      setMeshPromotionStatus("No promoted mesh snapshot is active.");
+      return;
+    }
+    setMode("surfaces");
+    setDatasetKind("mesh");
+    setSurfaceViewerKind("mesh");
+    setMeshPromotionStatus(`Opened promoted mesh object: ${meshPromotionTrace.snapshotLabel}.`);
+  }, [meshPromotionTrace]);
+  const handleComparePromotionSourceVsMesh = useCallback(() => {
+    if (!meshPromotionTrace) {
+      setMeshPromotionStatus("No active promotion trace to compare.");
+      return;
+    }
+    if (!surfaceMeshData?.positions?.length) {
+      setMeshPromotionStatus("Promoted mesh is not ready yet.");
+      return;
+    }
+    const sourceResolved = resolveGeometrySceneMeshById(meshPromotionTrace.sourceGeometryObjectId);
+    if (!sourceResolved) {
+      setMeshPromotionStatus("Source geometry object is not available for comparison.");
+      return;
+    }
+    const sourceSummary = computeGeometryAnalysisTopologySummary(sourceResolved.mesh);
+    const promotedSummary = computeGeometryAnalysisTopologySummary(surfaceMeshData);
+    setMeshPromotionTrace((prev) =>
+      prev
+        ? {
+            ...prev,
+            compareMeshObjectId: sourceResolved.object.id,
+          }
+        : prev
+    );
+    appendMeshPromotionOperation("compared source vs promoted mesh");
+    setMeshPromotionStatus(
+      `Compare summary: source ${sourceSummary.vertexCount}/${sourceSummary.edgeCount}/${sourceSummary.faceCount} vs promoted ${promotedSummary.vertexCount}/${promotedSummary.edgeCount}/${promotedSummary.faceCount}.`
+    );
+  }, [appendMeshPromotionOperation, meshPromotionTrace, resolveGeometrySceneMeshById, surfaceMeshData]);
+  const handleRefreshMeshPromotionFromSource = useCallback(() => {
+    const trace = meshPromotionTrace;
+    if (!trace) {
+      setMeshPromotionStatus("No active promotion trace to refresh.");
+      return;
+    }
+    const resolved = resolveGeometrySceneMeshById(trace.sourceGeometryObjectId);
+    if (!resolved) {
+      setMeshPromotionStatus("Source geometry object is missing or hidden.");
+      return;
+    }
+    const sourceObject = resolved.object;
+    const source: SurfaceMeshSource = {
+      kind: "geometryObject",
+      objectId: sourceObject.id,
+      objectName: sourceObject.name,
+      params: "params" in sourceObject ? { ...sourceObject.params } : { sourceKind: "datasetMeshObject" },
+      transform: {
+        position: { ...sourceObject.transform.position },
+        rotation: { ...sourceObject.transform.rotation },
+        scale: { ...sourceObject.transform.scale },
+      },
+      material: normalizeGeometryMaterial((sourceObject as { material?: unknown })?.material),
+    };
+    const refreshedBase: SurfaceMeshData = {
+      label: trace.snapshotLabel,
+      positions: Float32Array.from(resolved.mesh.positions),
+      indices: resolved.mesh.indices ? Uint32Array.from(resolved.mesh.indices) : null,
+      normals: resolved.mesh.normals ? Float32Array.from(resolved.mesh.normals) : null,
+      uvs: resolved.mesh.uvs ? Float32Array.from(resolved.mesh.uvs) : null,
+      source,
+    };
+    const shouldForkSnapshot = trace.frozen || meshPromotionHasIndependentEdits;
+    if (shouldForkSnapshot) {
+      const nextSnapshotLabel = beginMeshPromotionTrace(sourceObject.id, sourceObject.name, refreshedBase.label, refreshedBase);
+      setMeshDataset(applySurfaceMeshOps(cloneSurfaceMeshData(refreshedBase, nextSnapshotLabel)));
+      setDatasetKind("mesh");
+      setSurfaceViewerKind("mesh");
+      setMode("surfaces");
+      appendMeshPromotionOperation("refreshed from geometry source (new snapshot)");
+      setMeshPromotionStatus(
+        "This promoted mesh has independent downstream edits. Refreshing from Geometry created a new mesh snapshot."
+      );
+      return;
+    }
+    const refreshed = cloneSurfaceMeshData(refreshedBase, trace.snapshotLabel);
+    setMeshDataset(applySurfaceMeshOps(refreshed));
+    setDatasetKind("mesh");
+    setSurfaceViewerKind("mesh");
+    setMode("surfaces");
+    setMeshPromotionTrace((prev) =>
+      prev
+        ? {
+            ...prev,
+            promotedAt: Date.now(),
+            initialMeshSignature: geometryMeshTopologySignature(refreshed),
+            operationHistory: [{ id: makeId(), label: "Promoted mesh refreshed from source geometry", at: Date.now() }],
+            compareMeshObjectId: null,
+          }
+        : prev
+    );
+    setMeshPromotionStatus("Promotion refreshed from current Geometry source.");
+  }, [
+    beginMeshPromotionTrace,
+    meshPromotionHasIndependentEdits,
+    meshPromotionTrace,
+    resolveGeometrySceneMeshById,
+    setMeshDataset,
+  ]);
+  const handleToggleMeshPromotionFreeze = useCallback(() => {
+    if (!meshPromotionTrace) {
+      setMeshPromotionStatus("No active promotion trace to freeze.");
+      return;
+    }
+    setMeshPromotionTrace((prev) => (prev ? { ...prev, frozen: !prev.frozen } : prev));
+    setMeshPromotionStatus(meshPromotionTrace.frozen ? "Promotion snapshot unfrozen." : "Promotion snapshot frozen.");
+  }, [meshPromotionTrace]);
   const [volumeSeedAxis, setVolumeSeedAxis] = useState<SliceAxis>("z");
   const [volumeSeedIndex, setVolumeSeedIndex] = useState(() =>
     Math.floor(volumeDataset.grid.dims[2] / 2)
@@ -18305,12 +18533,21 @@ const App: React.FC = () => {
       },
       material: normalizeGeometryMaterial((obj as { material?: unknown })?.material),
     };
-    const baked: SurfaceMeshData = {
-      label: `${obj.name} (scene->dataset)`,
+    const baseBaked: SurfaceMeshData = {
+      label: obj.name,
       positions: Float32Array.from(transformed.positions),
       indices: transformed.indices ? Uint32Array.from(transformed.indices) : null,
       normals: transformed.normals ? Float32Array.from(transformed.normals) : null,
       uvs: transformed.uvs ? Float32Array.from(transformed.uvs) : null,
+      source,
+    };
+    const snapshotLabel = beginMeshPromotionTrace(obj.id, obj.name, baseBaked.label, baseBaked);
+    const baked: SurfaceMeshData = {
+      label: snapshotLabel,
+      positions: Float32Array.from(baseBaked.positions),
+      indices: baseBaked.indices ? Uint32Array.from(baseBaked.indices) : null,
+      normals: baseBaked.normals ? Float32Array.from(baseBaked.normals) : null,
+      uvs: baseBaked.uvs ? Float32Array.from(baseBaked.uvs) : null,
       source,
     };
     setMeshDataset(applySurfaceMeshOps(baked));
@@ -18318,7 +18555,7 @@ const App: React.FC = () => {
     setSurfaceViewerKind("mesh");
     setMode("surfaces");
     return true;
-  }, [geometryObjects, geometryDatasetMeshObjects, proceduralMeshSet.meshes, setMeshDataset]);
+  }, [geometryObjects, geometryDatasetMeshObjects, proceduralMeshSet.meshes, setMeshDataset, beginMeshPromotionTrace]);
 
   const handleBakeSelectedGeometryObject = useCallback(() => {
     if (!geometrySelectedObjectId) {
@@ -23419,7 +23656,14 @@ const App: React.FC = () => {
   const openGeometryAnalysisSnapshotInSurfaces = useCallback(
     (snapshot: GeometryAnalysisSnapshot, enableGaussMap: boolean) => {
       skipSurfacesAutoBrowseOnModeChangeRef.current = true;
-      setMeshDataset(cloneSurfaceMeshData(snapshot.mesh, `${snapshot.sourceObjectName} (${snapshot.id})`));
+      const meshForTrace = cloneSurfaceMeshData(snapshot.mesh, `${snapshot.sourceObjectName} (${snapshot.id})`);
+      const snapshotLabel = beginMeshPromotionTrace(
+        snapshot.sourceObjectId,
+        snapshot.sourceObjectName,
+        meshForTrace.label,
+        meshForTrace
+      );
+      setMeshDataset(cloneSurfaceMeshData(meshForTrace, snapshotLabel));
       setMode("surfaces");
       setSurfaceViewerKind("mesh");
       setSurfacesPanelState("work");
@@ -23429,7 +23673,7 @@ const App: React.FC = () => {
       setColorMode("gaussian");
       setShowGaussMap(enableGaussMap);
     },
-    [setMeshDataset, setSurfaceViewerKind]
+    [setMeshDataset, setSurfaceViewerKind, beginMeshPromotionTrace]
   );
   const createSelectedGeometryAnalysisSnapshot = useCallback(() => {
     if (!geometrySelectedSceneObject) {
@@ -31734,12 +31978,13 @@ case "mobius":
     try {
       const base = sanitizeFileBase(surfaceMeshData.label ?? "surface_mesh", "surface_mesh");
       exportMeshToOBJ(surfaceMeshData, `${base}.obj`);
+      appendMeshPromotionOperation("exported OBJ");
     } catch (err: any) {
       setSurfaceMeshExportError(err?.message ?? "OBJ export failed.");
     } finally {
       setSurfaceMeshExportBusy(false);
     }
-  }, [surfaceMeshExportBusy, surfaceMeshData]);
+  }, [appendMeshPromotionOperation, surfaceMeshExportBusy, surfaceMeshData]);
 
   const handleExportSurfaceMeshPly = useCallback(() => {
     if (surfaceMeshExportBusy) return;
@@ -31752,12 +31997,13 @@ case "mobius":
     try {
       const base = sanitizeFileBase(surfaceMeshData.label ?? "surface_mesh", "surface_mesh");
       exportMeshToPLY(surfaceMeshData, `${base}.ply`);
+      appendMeshPromotionOperation("exported PLY");
     } catch (err: any) {
       setSurfaceMeshExportError(err?.message ?? "PLY export failed.");
     } finally {
       setSurfaceMeshExportBusy(false);
     }
-  }, [surfaceMeshExportBusy, surfaceMeshData]);
+  }, [appendMeshPromotionOperation, surfaceMeshExportBusy, surfaceMeshData]);
 
   const handleExportSurfaceMeshGlb = useCallback(async () => {
     if (surfaceMeshExportBusy) return;
@@ -31770,12 +32016,13 @@ case "mobius":
     try {
       const base = sanitizeFileBase(surfaceMeshData.label ?? "surface_mesh", "surface_mesh");
       await exportMeshToGLB(surfaceMeshData, `${base}.glb`);
+      appendMeshPromotionOperation("exported GLB");
     } catch (err: any) {
       setSurfaceMeshExportError(err?.message ?? "GLB export failed.");
     } finally {
       setSurfaceMeshExportBusy(false);
     }
-  }, [surfaceMeshExportBusy, surfaceMeshData]);
+  }, [appendMeshPromotionOperation, surfaceMeshExportBusy, surfaceMeshData]);
 
   const handleExportMeshQualityReportJson = useCallback(() => {
     if (!meshQualityReport) {
@@ -31879,13 +32126,21 @@ case "mobius":
       const label = `${surfaceMeshData.label ?? "Surface mesh"} (welded)`;
       const welded = weldSurfaceMeshVertices(surfaceMeshData, tol, label);
       setMeshDataset(applySurfaceMeshOps(welded));
+      appendMeshPromotionOperation(`welded vertices (tol ${fmt(tol)})`);
       handleChangeViewerKind("mesh");
     } catch (err: any) {
       setSurfaceMeshWeldError(err?.message ?? "Weld vertices failed.");
     } finally {
       setSurfaceMeshWeldBusy(false);
     }
-  }, [handleChangeViewerKind, surfaceMeshWeldBusy, surfaceMeshData, surfaceMeshWeldTolerance, setMeshDataset]);
+  }, [
+    appendMeshPromotionOperation,
+    handleChangeViewerKind,
+    setMeshDataset,
+    surfaceMeshData,
+    surfaceMeshWeldBusy,
+    surfaceMeshWeldTolerance,
+  ]);
 
   const handleTriangulateSurfaceMesh = useCallback(() => {
     setSurfaceMeshOpsError(null);
@@ -31915,8 +32170,9 @@ case "mobius":
       validation: null,
     };
     setMeshDataset(applySurfaceMeshOps(next));
+    appendMeshPromotionOperation("remeshed (triangulated faces)");
     handleChangeViewerKind("mesh");
-  }, [handleChangeViewerKind, setMeshDataset, surfaceMeshData]);
+  }, [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshData]);
 
   const handleRecomputeSurfaceMeshNormals = useCallback(() => {
     setSurfaceMeshOpsError(null);
@@ -31936,8 +32192,9 @@ case "mobius":
       label: `${surfaceMeshData.label ?? "Surface mesh"} (normals)`,
     });
     setMeshDataset(applySurfaceMeshOps(next));
+    appendMeshPromotionOperation("repaired normals");
     handleChangeViewerKind("mesh");
-  }, [handleChangeViewerKind, setMeshDataset, surfaceMeshData]);
+  }, [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshData]);
 
   const handleSubdivideSurfaceMeshOp = useCallback(() => {
     setSurfaceMeshOpsError(null);
@@ -31962,11 +32219,12 @@ case "mobius":
         iterations
       );
       setMeshDataset(applySurfaceMeshOps(next));
+      appendMeshPromotionOperation(`remeshed (subdivide x${iterations})`);
       handleChangeViewerKind("mesh");
     } catch (err: any) {
       setSurfaceMeshOpsError(err?.message ?? "Subdivide failed.");
     }
-  }, [handleChangeViewerKind, setMeshDataset, surfaceMeshData, surfaceMeshSubdivideIterations]);
+  }, [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshData, surfaceMeshSubdivideIterations]);
 
   const handleCenterSurfaceMesh = useCallback(() => {
     setSurfaceMeshOpsError(null);
@@ -32017,8 +32275,9 @@ case "mobius":
       validation: null,
     };
     setMeshDataset(applySurfaceMeshOps(next));
+    appendMeshPromotionOperation("centered promoted mesh");
     handleChangeViewerKind("mesh");
-  }, [handleChangeViewerKind, setMeshDataset, surfaceMeshData]);
+  }, [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshData]);
 
   const handleNormalizeSurfaceMeshScale = useCallback(() => {
     setSurfaceMeshOpsError(null);
@@ -32072,8 +32331,9 @@ case "mobius":
       validation: null,
     };
     setMeshDataset(applySurfaceMeshOps(next));
+    appendMeshPromotionOperation(`normalized scale (diag ${fmt(targetDiag)})`);
     handleChangeViewerKind("mesh");
-  }, [handleChangeViewerKind, setMeshDataset, surfaceMeshData, surfaceMeshNormalizeDiag]);
+  }, [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshData, surfaceMeshNormalizeDiag]);
 
   const buildActiveMeshLabel = useCallback(() => {
     const eqMeta = SURFACES_EQ_META.find((m) => m.id === activeEqSurfaceId);
@@ -32158,8 +32418,9 @@ case "mobius":
         outputMode: vtkOutputMode,
         timestamp: Date.now(),
       });
+      appendMeshPromotionOperation(meta.operation);
     },
-    [buildActiveMeshLabel, surfaceMeshData?.source, vtkOutputMode]
+    [appendMeshPromotionOperation, buildActiveMeshLabel, surfaceMeshData?.source, vtkOutputMode]
   );
 
   const getImplicitBakeWorker = useCallback(() => {
@@ -41418,6 +41679,9 @@ case "mobius":
                   surfaceMeshLabel={surfaceMeshLabel}
                   surfaceMeshStats={surfaceMeshStats}
                   surfaceMeshSource={surfaceMeshData?.source ?? null}
+                  meshPromotionTrace={meshPromotionTrace}
+                  meshPromotionHasIndependentEdits={meshPromotionHasIndependentEdits}
+                  meshPromotionStatus={meshPromotionStatus}
                   surfaceMeshImportBusy={surfaceMeshImportBusy}
                   surfaceMeshImportError={surfaceMeshImportError}
                   surfaceMeshMergeVertices={surfaceMeshMergeVertices}
@@ -41461,6 +41725,11 @@ case "mobius":
                   onGenerateSurfaceMeshAssetPreset={handleGenerateSurfaceMeshAssetPreset}
                   onLoadSurfaceMeshFile={handleLoadSurfaceMeshFile}
                   onConvertToMesh={handleConvertToMesh}
+                  onOpenMeshPromotionSourceGeometryObject={handleOpenMeshPromotionSourceGeometryObject}
+                  onOpenPromotedMeshObject={handleOpenPromotedMeshObject}
+                  onCompareMeshPromotionWithSource={handleComparePromotionSourceVsMesh}
+                  onRefreshMeshPromotionFromSource={handleRefreshMeshPromotionFromSource}
+                  onToggleMeshPromotionFreeze={handleToggleMeshPromotionFreeze}
                   onToggleVolumeDistanceSigned={setVolumeDistanceSigned}
                   onToggleVolumeDistanceAutoBounds={setVolumeDistanceAutoBounds}
                   vtkAvailable={vtkMeshAvailable}
@@ -65158,6 +65427,9 @@ type SurfacesLeftPanelProps = {
   surfaceMeshLabel: string;
   surfaceMeshStats: { vertCount: number; triCount: number } | null;
   surfaceMeshSource: SurfaceMeshSource | null;
+  meshPromotionTrace: MeshPromotionTraceState | null;
+  meshPromotionHasIndependentEdits: boolean;
+  meshPromotionStatus: string | null;
   surfaceMeshImportBusy: boolean;
   surfaceMeshImportError: string | null;
   surfaceMeshMergeVertices: boolean;
@@ -65201,6 +65473,11 @@ type SurfacesLeftPanelProps = {
   onGenerateSurfaceMeshAssetPreset: (id: string) => void;
   onLoadSurfaceMeshFile: (files: FileList | File[] | null) => void;
   onConvertToMesh: () => void;
+  onOpenMeshPromotionSourceGeometryObject: () => void;
+  onOpenPromotedMeshObject: () => void;
+  onCompareMeshPromotionWithSource: () => void;
+  onRefreshMeshPromotionFromSource: () => void;
+  onToggleMeshPromotionFreeze: () => void;
   onToggleVolumeDistanceSigned: (v: boolean) => void;
   onToggleVolumeDistanceAutoBounds: (v: boolean) => void;
   vtkAvailable: boolean;
@@ -65800,6 +66077,9 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   surfaceMeshLabel,
   surfaceMeshStats,
   surfaceMeshSource,
+  meshPromotionTrace,
+  meshPromotionHasIndependentEdits,
+  meshPromotionStatus,
   surfaceMeshImportBusy,
   surfaceMeshImportError,
   surfaceMeshMergeVertices,
@@ -65843,6 +66123,11 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onGenerateSurfaceMeshAssetPreset,
   onLoadSurfaceMeshFile,
   onConvertToMesh,
+  onOpenMeshPromotionSourceGeometryObject,
+  onOpenPromotedMeshObject,
+  onCompareMeshPromotionWithSource,
+  onRefreshMeshPromotionFromSource,
+  onToggleMeshPromotionFreeze,
   onToggleVolumeDistanceSigned,
   onToggleVolumeDistanceAutoBounds,
   vtkAvailable,
@@ -69149,6 +69434,64 @@ onChangeImplicitExpr,
             {surfaceMeshSource && (
               <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
                 Source: {formatSurfaceMeshSource(surfaceMeshSource)}
+              </div>
+            )}
+            {meshPromotionTrace && (
+              <div
+                style={{
+                  marginTop: 8,
+                  border: "1px solid #dbe2ea",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  background: "#f8fbff",
+                  display: "grid",
+                  gap: 5,
+                  fontSize: 11,
+                }}
+              >
+                <div style={{ fontWeight: 700 }}>Promotion traceability</div>
+                <div>
+                  <strong>Geometry object:</strong> {meshPromotionTrace.sourceGeometryObjectName}
+                </div>
+                <div>
+                  <strong>Promoted mesh:</strong> {meshPromotionTrace.snapshotLabel}
+                </div>
+                <div>
+                  <strong>Status:</strong> {meshPromotionTrace.frozen ? "frozen" : "live"}
+                </div>
+                {meshPromotionHasIndependentEdits && (
+                  <div style={{ color: "#b54708" }}>
+                    This promoted mesh has independent downstream edits. Refreshing from Geometry will create a new mesh snapshot rather than overwrite the existing result.
+                  </div>
+                )}
+                <div style={{ marginTop: 2 }}>
+                  <strong>Operations after promotion</strong>
+                  <div style={{ marginTop: 3, display: "grid", gap: 2 }}>
+                    {meshPromotionTrace.operationHistory.slice(0, 8).map((entry) => (
+                      <div key={`mesh-promotion-op-${entry.id}`} style={{ color: "#475467" }}>
+                        {new Date(entry.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} - {entry.label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+                  <button type="button" onClick={onOpenMeshPromotionSourceGeometryObject}>
+                    Open source Geometry object
+                  </button>
+                  <button type="button" onClick={onOpenPromotedMeshObject}>
+                    Open promoted Mesh object
+                  </button>
+                  <button type="button" onClick={onCompareMeshPromotionWithSource} disabled={!meshReady}>
+                    Compare source vs promoted mesh
+                  </button>
+                  <button type="button" onClick={onRefreshMeshPromotionFromSource}>
+                    Refresh promotion from current source
+                  </button>
+                  <button type="button" onClick={onToggleMeshPromotionFreeze}>
+                    {meshPromotionTrace.frozen ? "Unfreeze promotion" : "Freeze promotion"}
+                  </button>
+                </div>
+                {meshPromotionStatus && <div style={{ color: "#475467" }}>{meshPromotionStatus}</div>}
               </div>
             )}
 
