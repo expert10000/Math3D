@@ -7815,6 +7815,7 @@ const App: React.FC = () => {
   const [geometrySceneGalleryReplayStepIndex, setGeometrySceneGalleryReplayStepIndex] = useState(0);
   const [geometrySceneGalleryReplayPlaying, setGeometrySceneGalleryReplayPlaying] = useState(false);
   const [geometrySceneGalleryStatus, setGeometrySceneGalleryStatus] = useState<string | null>(null);
+  const [geometrySceneGalleryExpanded, setGeometrySceneGalleryExpanded] = useState(false);
   const [geometryCreateActionStatus, setGeometryCreateActionStatus] = useState<string | null>(null);
   const [geometryCreateSelectedCardExpanded, setGeometryCreateSelectedCardExpanded] = useState(false);
   const [geometryAddSelectNewObject, setGeometryAddSelectNewObject] = useState(true);
@@ -54707,205 +54708,223 @@ case "mobius":
                         >
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                             <div style={{ fontSize: 12, fontWeight: 700 }}>Geometry Scene Gallery</div>
-                            <div style={{ fontSize: 10, color: "#475467" }}>{GEOMETRY_SCENE_GALLERY.length} curated scenes</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <div style={{ fontSize: 10, color: "#475467" }}>{GEOMETRY_SCENE_GALLERY.length} curated scenes</div>
+                              <button
+                                type="button"
+                                onClick={() => setGeometrySceneGalleryExpanded((prev) => !prev)}
+                                style={{ fontSize: 10, padding: "2px 7px" }}
+                                aria-pressed={geometrySceneGalleryExpanded}
+                              >
+                                {geometrySceneGalleryExpanded ? "Collapse" : "Expand"}
+                              </button>
+                            </div>
                           </div>
                           <div style={{ fontSize: 11, color: "#475467" }}>
                             Open complete demonstration scenes, then replay timeline steps for screenshot-ready walkthroughs.
                           </div>
-                          <div style={{ display: "grid", gap: 8, maxHeight: 260, overflowY: "auto", paddingRight: 2 }}>
-                            {geometrySceneGallerySections.map((section) => (
-                              <div key={`geometry-scene-gallery-section-${section.category}`} style={{ display: "grid", gap: 4 }}>
-                                <div style={{ fontSize: 10, fontWeight: 700, color: "#344054", textTransform: "uppercase", letterSpacing: 0.4 }}>
-                                  {section.category}
-                                </div>
-                                <div style={{ display: "grid", gap: 4 }}>
-                                  {section.scenes.map((entry) => {
-                                    const selected = geometrySceneGallerySelected?.id === entry.id;
-                                    return (
-                                      <button
-                                        key={`geometry-scene-gallery-entry-${entry.id}`}
-                                        type="button"
-                                        onClick={() => setGeometrySceneGallerySelectedId(entry.id)}
-                                        style={{
-                                          display: "grid",
-                                          gridTemplateColumns: "74px minmax(0, 1fr)",
-                                          gap: 8,
-                                          alignItems: "center",
-                                          width: "100%",
-                                          textAlign: "left",
-                                          padding: "6px 8px",
-                                          borderRadius: 7,
-                                          border: `1px solid ${selected ? "#86b7fe" : "#d5deea"}`,
-                                          background: selected ? "#eef4ff" : "#fff",
-                                          cursor: "pointer",
-                                        }}
-                                      >
-                                        <div
-                                          style={{
-                                            width: 74,
-                                            height: 42,
-                                            borderRadius: 5,
-                                            border: "1px solid #dbe2ea",
-                                            background: "#f3f6fb",
-                                            overflow: "hidden",
-                                          }}
-                                        >
-                                          {entry.thumbnail ? (
-                                            <img
-                                              src={entry.thumbnail}
-                                              alt={`${entry.title} thumbnail`}
-                                              loading="lazy"
-                                              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                                            />
-                                          ) : null}
-                                        </div>
-                                        <div style={{ minWidth: 0, display: "grid", gap: 2 }}>
-                                          <div style={{ fontSize: 11, fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
-                                            {entry.title}
-                                          </div>
-                                          <div style={{ fontSize: 10, color: "#475467", lineHeight: 1.25 }}>
-                                            {entry.description}
-                                          </div>
-                                        </div>
-                                      </button>
-                                    );
-                                  })}
-                                </div>
+                          {!geometrySceneGalleryExpanded ? (
+                            <div style={{ fontSize: 10, color: "#475467" }}>
+                              Gallery UI is collapsed for better interactivity. Expand when you want to open or replay a curated scene.
+                            </div>
+                          ) : (
+                            <>
+                              <div style={{ display: "grid", gap: 8, maxHeight: 260, overflowY: "auto", paddingRight: 2 }}>
+                                {geometrySceneGallerySections.map((section) => (
+                                  <div key={`geometry-scene-gallery-section-${section.category}`} style={{ display: "grid", gap: 4 }}>
+                                    <div style={{ fontSize: 10, fontWeight: 700, color: "#344054", textTransform: "uppercase", letterSpacing: 0.4 }}>
+                                      {section.category}
+                                    </div>
+                                    <div style={{ display: "grid", gap: 4 }}>
+                                      {section.scenes.map((entry) => {
+                                        const selected = geometrySceneGallerySelected?.id === entry.id;
+                                        return (
+                                          <button
+                                            key={`geometry-scene-gallery-entry-${entry.id}`}
+                                            type="button"
+                                            onClick={() => setGeometrySceneGallerySelectedId(entry.id)}
+                                            style={{
+                                              display: "grid",
+                                              gridTemplateColumns: "74px minmax(0, 1fr)",
+                                              gap: 8,
+                                              alignItems: "center",
+                                              width: "100%",
+                                              textAlign: "left",
+                                              padding: "6px 8px",
+                                              borderRadius: 7,
+                                              border: `1px solid ${selected ? "#86b7fe" : "#d5deea"}`,
+                                              background: selected ? "#eef4ff" : "#fff",
+                                              cursor: "pointer",
+                                            }}
+                                          >
+                                            <div
+                                              style={{
+                                                width: 74,
+                                                height: 42,
+                                                borderRadius: 5,
+                                                border: "1px solid #dbe2ea",
+                                                background: "#f3f6fb",
+                                                overflow: "hidden",
+                                              }}
+                                            >
+                                              {entry.thumbnail ? (
+                                                <img
+                                                  src={entry.thumbnail}
+                                                  alt={`${entry.title} thumbnail`}
+                                                  loading="lazy"
+                                                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                                                />
+                                              ) : null}
+                                            </div>
+                                            <div style={{ minWidth: 0, display: "grid", gap: 2 }}>
+                                              <div style={{ fontSize: 11, fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
+                                                {entry.title}
+                                              </div>
+                                              <div style={{ fontSize: 10, color: "#475467", lineHeight: 1.25 }}>
+                                                {entry.description}
+                                              </div>
+                                            </div>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
-                            ))}
-                          </div>
-                          {geometrySceneGallerySelected && (
-                            <div
-                              style={{
-                                border: "1px solid #dbe2ea",
-                                borderRadius: 7,
-                                background: "#fff",
-                                padding: "8px 9px",
-                                display: "grid",
-                                gap: 7,
-                              }}
-                            >
-                              <div style={{ display: "grid", gap: 2 }}>
-                                <div style={{ fontSize: 12, fontWeight: 700 }}>{geometrySceneGallerySelected.title}</div>
-                                <div style={{ fontSize: 10, color: "#475467", lineHeight: 1.3 }}>{geometrySceneGallerySelected.description}</div>
-                              </div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button
-                                  type="button"
-                                  onClick={() => openGeometrySceneGalleryEntry(geometrySceneGallerySelected)}
-                                  style={{ fontSize: 11 }}
-                                >
-                                  {geometrySceneGalleryActiveId === geometrySceneGallerySelected.id ? "Re-open scene" : "Open scene"}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={handleReplayGeometrySceneGallery}
-                                  disabled={!geometrySceneGalleryReplaySteps.length}
-                                  style={{ fontSize: 11 }}
-                                >
-                                  Replay timeline
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setGeometrySceneGalleryReplayPlaying((prev) => !prev)}
-                                  disabled={!geometrySceneGalleryReplaySteps.length}
-                                  style={pill(geometrySceneGalleryReplayPlaying)}
-                                >
-                                  {geometrySceneGalleryReplayPlaying ? "Pause autoplay" : "Autoplay"}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setGeometrySceneGalleryReplayPlaying(false);
-                                    handleGeometrySceneGalleryReplayPrev();
+                              {geometrySceneGallerySelected && (
+                                <div
+                                  style={{
+                                    border: "1px solid #dbe2ea",
+                                    borderRadius: 7,
+                                    background: "#fff",
+                                    padding: "8px 9px",
+                                    display: "grid",
+                                    gap: 7,
                                   }}
-                                  disabled={!geometrySceneGalleryReplaySteps.length || geometrySceneGalleryReplayStepIndex <= 0}
-                                  style={{ fontSize: 11 }}
                                 >
-                                  Prev step
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setGeometrySceneGalleryReplayPlaying(false);
-                                    handleGeometrySceneGalleryReplayNext();
-                                  }}
-                                  disabled={
-                                    !geometrySceneGalleryReplaySteps.length ||
-                                    geometrySceneGalleryReplayStepIndex >= geometrySceneGalleryReplaySteps.length - 1
-                                  }
-                                  style={{ fontSize: 11 }}
-                                >
-                                  Next step
-                                </button>
-                              </div>
-                              {geometrySceneGallerySelected.learningGoals?.length ? (
-                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontSize: 10 }}>
-                                  {geometrySceneGallerySelected.learningGoals.map((goal) => (
-                                    <span key={`geometry-scene-gallery-goal-${geometrySceneGallerySelected.id}-${goal}`} style={pill(false)}>
-                                      {goal}
-                                    </span>
-                                  ))}
-                                </div>
-                              ) : null}
-                              {geometrySceneGallerySelected.recommendedPanels?.length ? (
-                                <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center", fontSize: 10 }}>
-                                  <span style={{ color: "#475467" }}>Recommended panels:</span>
-                                  {geometrySceneGallerySelected.recommendedPanels.map((panel) => (
+                                  <div style={{ display: "grid", gap: 2 }}>
+                                    <div style={{ fontSize: 12, fontWeight: 700 }}>{geometrySceneGallerySelected.title}</div>
+                                    <div style={{ fontSize: 10, color: "#475467", lineHeight: 1.3 }}>{geometrySceneGallerySelected.description}</div>
+                                  </div>
+                                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                                     <button
-                                      key={`geometry-scene-gallery-panel-${geometrySceneGallerySelected.id}-${panel}`}
+                                      type="button"
+                                      onClick={() => openGeometrySceneGalleryEntry(geometrySceneGallerySelected)}
+                                      style={{ fontSize: 11 }}
+                                    >
+                                      {geometrySceneGalleryActiveId === geometrySceneGallerySelected.id ? "Re-open scene" : "Open scene"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={handleReplayGeometrySceneGallery}
+                                      disabled={!geometrySceneGalleryReplaySteps.length}
+                                      style={{ fontSize: 11 }}
+                                    >
+                                      Replay timeline
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setGeometrySceneGalleryReplayPlaying((prev) => !prev)}
+                                      disabled={!geometrySceneGalleryReplaySteps.length}
+                                      style={pill(geometrySceneGalleryReplayPlaying)}
+                                    >
+                                      {geometrySceneGalleryReplayPlaying ? "Pause autoplay" : "Autoplay"}
+                                    </button>
+                                    <button
                                       type="button"
                                       onClick={() => {
-                                        if (!GEOMETRY_PROCEDURAL_PANEL_VALUES.includes(panel as GeometryProceduralPanelTab)) return;
-                                        setGeometryProceduralPanelTab(panel as GeometryProceduralPanelTab);
+                                        setGeometrySceneGalleryReplayPlaying(false);
+                                        handleGeometrySceneGalleryReplayPrev();
                                       }}
-                                      style={{ fontSize: 10, padding: "2px 6px" }}
+                                      disabled={!geometrySceneGalleryReplaySteps.length || geometrySceneGalleryReplayStepIndex <= 0}
+                                      style={{ fontSize: 11 }}
                                     >
-                                      {panel}
+                                      Prev step
                                     </button>
-                                  ))}
-                                </div>
-                              ) : null}
-                              {geometrySceneGalleryReplaySteps.length ? (
-                                <div style={{ display: "grid", gap: 4 }}>
-                                  <div style={{ fontSize: 10, color: "#475467" }}>
-                                    Timeline steps ({Math.min(geometrySceneGalleryReplayStepIndex + 1, geometrySceneGalleryReplaySteps.length)}/
-                                    {geometrySceneGalleryReplaySteps.length})
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setGeometrySceneGalleryReplayPlaying(false);
+                                        handleGeometrySceneGalleryReplayNext();
+                                      }}
+                                      disabled={
+                                        !geometrySceneGalleryReplaySteps.length ||
+                                        geometrySceneGalleryReplayStepIndex >= geometrySceneGalleryReplaySteps.length - 1
+                                      }
+                                      style={{ fontSize: 11 }}
+                                    >
+                                      Next step
+                                    </button>
                                   </div>
-                                  <div style={{ display: "grid", gap: 3, maxHeight: 150, overflowY: "auto" }}>
-                                    {geometrySceneGalleryReplaySteps.map((step, index) => {
-                                      const active = index === geometrySceneGalleryReplayStepIndex;
-                                      return (
+                                  {geometrySceneGallerySelected.learningGoals?.length ? (
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontSize: 10 }}>
+                                      {geometrySceneGallerySelected.learningGoals.map((goal) => (
+                                        <span key={`geometry-scene-gallery-goal-${geometrySceneGallerySelected.id}-${goal}`} style={pill(false)}>
+                                          {goal}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                  {geometrySceneGallerySelected.recommendedPanels?.length ? (
+                                    <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center", fontSize: 10 }}>
+                                      <span style={{ color: "#475467" }}>Recommended panels:</span>
+                                      {geometrySceneGallerySelected.recommendedPanels.map((panel) => (
                                         <button
-                                          key={`geometry-scene-gallery-step-${step.id}`}
+                                          key={`geometry-scene-gallery-panel-${geometrySceneGallerySelected.id}-${panel}`}
                                           type="button"
                                           onClick={() => {
-                                            setGeometrySceneGalleryReplayPlaying(false);
-                                            setGeometrySceneGalleryReplayStepIndex(index);
-                                            handleApplyGeometrySceneGalleryReplayStep(index);
+                                            if (!GEOMETRY_PROCEDURAL_PANEL_VALUES.includes(panel as GeometryProceduralPanelTab)) return;
+                                            setGeometryProceduralPanelTab(panel as GeometryProceduralPanelTab);
                                           }}
-                                          style={{
-                                            fontSize: 10,
-                                            padding: "4px 6px",
-                                            textAlign: "left",
-                                            borderRadius: 6,
-                                            border: `1px solid ${active ? "#86b7fe" : "#d5deea"}`,
-                                            background: active ? "#eef4ff" : "#fff",
-                                          }}
+                                          style={{ fontSize: 10, padding: "2px 6px" }}
                                         >
-                                          <span style={{ fontWeight: 700 }}>{index + 1}. {step.label}</span> · {step.note}
+                                          {panel}
                                         </button>
-                                      );
-                                    })}
-                                  </div>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                  {geometrySceneGalleryReplaySteps.length ? (
+                                    <div style={{ display: "grid", gap: 4 }}>
+                                      <div style={{ fontSize: 10, color: "#475467" }}>
+                                        Timeline steps ({Math.min(geometrySceneGalleryReplayStepIndex + 1, geometrySceneGalleryReplaySteps.length)}/
+                                        {geometrySceneGalleryReplaySteps.length})
+                                      </div>
+                                      <div style={{ display: "grid", gap: 3, maxHeight: 150, overflowY: "auto" }}>
+                                        {geometrySceneGalleryReplaySteps.map((step, index) => {
+                                          const active = index === geometrySceneGalleryReplayStepIndex;
+                                          return (
+                                            <button
+                                              key={`geometry-scene-gallery-step-${step.id}`}
+                                              type="button"
+                                              onClick={() => {
+                                                setGeometrySceneGalleryReplayPlaying(false);
+                                                setGeometrySceneGalleryReplayStepIndex(index);
+                                                handleApplyGeometrySceneGalleryReplayStep(index);
+                                              }}
+                                              style={{
+                                                fontSize: 10,
+                                                padding: "4px 6px",
+                                                textAlign: "left",
+                                                borderRadius: 6,
+                                                border: `1px solid ${active ? "#86b7fe" : "#d5deea"}`,
+                                                background: active ? "#eef4ff" : "#fff",
+                                              }}
+                                            >
+                                              <span style={{ fontWeight: 700 }}>{index + 1}. {step.label}</span> · {step.note}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div style={{ fontSize: 10, color: "#475467" }}>No timeline attached. Open scene and inspect manually.</div>
+                                  )}
+                                  {geometrySceneGalleryStatus && (
+                                    <div style={{ fontFamily: "monospace", fontSize: 10, color: "#334155" }}>{geometrySceneGalleryStatus}</div>
+                                  )}
                                 </div>
-                              ) : (
-                                <div style={{ fontSize: 10, color: "#475467" }}>No timeline attached. Open scene and inspect manually.</div>
                               )}
-                              {geometrySceneGalleryStatus && (
-                                <div style={{ fontFamily: "monospace", fontSize: 10, color: "#334155" }}>{geometrySceneGalleryStatus}</div>
-                              )}
-                            </div>
+                            </>
                           )}
                         </div>
 
