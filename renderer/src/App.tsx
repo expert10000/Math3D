@@ -2439,6 +2439,8 @@ type GeometryObjectHistoryStep = {
   changeSummary: string;
   snapshot: GeometryObject | GeometryDatasetMeshObject;
 };
+type GeometryTimelineSource = "history" | "variants" | "workbook" | "theorem";
+type GeometryTimelineSpeed = 0.25 | 0.5 | 1 | 2;
 type GeometryDerivedStatus = "ready" | "stale" | "available" | "planned" | "failed";
 type GeometryDerivedOperation = "wireframe" | "bounding-box" | "normals" | "point-cloud" | "convex-hull" | "section";
 
@@ -2663,11 +2665,39 @@ const getPolyhedronCounts = (family: string, params: Record<string, number | boo
     return { vertices: 10 * t * t + 2, edges: 30 * t * t, faces, triangles: faces };
   }
   const n = toClampedInt(Number(params.n ?? 6), 6, 3, 64);
+  const hasCaps = Boolean(params.cap ?? true);
   if (family === "prism") {
-    return { vertices: 2 * n, edges: 3 * n, faces: n + 2, triangles: 4 * n - 4 };
+    return {
+      vertices: 2 * n,
+      edges: 3 * n,
+      faces: hasCaps ? n + 2 : n,
+      triangles: hasCaps ? 4 * n - 4 : 2 * n,
+    };
   }
   if (family === "pyramid") {
-    return { vertices: n + 1, edges: 2 * n, faces: n + 1, triangles: 2 * n - 2 };
+    return {
+      vertices: n + 1,
+      edges: 2 * n,
+      faces: hasCaps ? n + 1 : n,
+      triangles: hasCaps ? 2 * n - 2 : n,
+    };
+  }
+  if (family === "frustum") {
+    const topRadius = Math.max(0, Number(params.topRadius ?? 0.55));
+    if (topRadius <= 1e-6) {
+      return {
+        vertices: n + 1,
+        edges: 2 * n,
+        faces: hasCaps ? n + 1 : n,
+        triangles: hasCaps ? 2 * n - 2 : n,
+      };
+    }
+    return {
+      vertices: 2 * n,
+      edges: 3 * n,
+      faces: hasCaps ? n + 2 : n,
+      triangles: hasCaps ? 4 * n - 4 : 2 * n,
+    };
   }
   if (family === "bipyramid") {
     return { vertices: n + 2, edges: 3 * n, faces: 2 * n, triangles: 2 * n };
@@ -7565,6 +7595,13 @@ const App: React.FC = () => {
   const [geometryObjectHistoryById, setGeometryObjectHistoryById] = useState<Record<string, GeometryObjectHistoryStep[]>>({});
   const [geometrySelectedHistoryStepId, setGeometrySelectedHistoryStepId] = useState<string | null>(null);
   const [geometryHistoryCompareWithPreviousEnabled, setGeometryHistoryCompareWithPreviousEnabled] = useState(false);
+  const [geometryTimelineSource, setGeometryTimelineSource] = useState<GeometryTimelineSource>("history");
+  const [geometryTimelineStepIndex, setGeometryTimelineStepIndex] = useState(0);
+  const [geometryTimelinePlaying, setGeometryTimelinePlaying] = useState(false);
+  const [geometryTimelineSpeed, setGeometryTimelineSpeed] = useState<GeometryTimelineSpeed>(1);
+  const [geometryTimelineLoopEnabled, setGeometryTimelineLoopEnabled] = useState(true);
+  const [geometryTimelineShowAnnotations, setGeometryTimelineShowAnnotations] = useState(true);
+  const [geometryTimelineGhostPreviousEnabled, setGeometryTimelineGhostPreviousEnabled] = useState(false);
   const [geometryObjectPresets, setGeometryObjectPresets] = useState<GeometryObjectPreset[]>([]);
   const [geometryOperationPresets, setGeometryOperationPresets] = useState<GeometryOperationPreset[]>([]);
   const [geometryProbeSelectionMode, setGeometryProbeSelectionMode] =
@@ -8339,10 +8376,18 @@ const App: React.FC = () => {
     geometrySelectedObjectId,
   ]);
   const geometryHistoryFingerprintRef = useRef<Map<string, string>>(new Map());
+  const geometryHistoryCaptureSuppressUntilRef = useRef(0);
+  const suppressGeometryHistoryCapture = useCallback((durationMs = 1200) => {
+    geometryHistoryCaptureSuppressUntilRef.current = Math.max(
+      geometryHistoryCaptureSuppressUntilRef.current,
+      Date.now() + Math.max(80, durationMs)
+    );
+  }, []);
   useEffect(() => {
     const nextFingerprint = new Map<string, string>();
     const allObjects: Array<GeometryObject | GeometryDatasetMeshObject> = [...geometryObjects, ...geometryDatasetMeshObjects];
     const changedObjectIds: string[] = [];
+    const suppressHistoryCapture = Date.now() < geometryHistoryCaptureSuppressUntilRef.current;
     setGeometryObjectHistoryById((prev) => {
       let changed = false;
       const next = { ...prev };
@@ -8376,6 +8421,7 @@ const App: React.FC = () => {
         const previous = geometryHistoryFingerprintRef.current.get(obj.id);
         if (previous === fingerprint) continue;
         changedObjectIds.push(obj.id);
+        if (suppressHistoryCapture) continue;
         const history = next[obj.id] ?? [];
         const previousSnapshot = history.length ? history[0].snapshot : null;
         const queuedIntents = geometryHistoryIntentQueueRef.current.get(obj.id) ?? [];
@@ -9378,6 +9424,92 @@ const App: React.FC = () => {
     },
     [geometryObjectLiveRebuild]
   );
+  const handleApplyPrimitiveFamilyPreset = useCallback(
+    (presetId: string) => {
+      if (!geometrySelectedObject) return;
+      const objectId = geometrySelectedObject.id;
+      if (geometryLockedObjectIds.has(objectId)) return;
+      let nextType: GeometryObjectType = geometrySelectedObject.type;
+      let nextName = geometrySelectedObject.name;
+      let nextParams: Record<string, number | boolean | string> = {};
+      if (presetId === "family_prism") {
+        nextType = "polyhedron";
+        nextName = "Regular Prism";
+        nextParams = { family: "prism", n: 6, radius: 1, height: 2, twistAngle: 0, cap: true, triangulate: true };
+      } else if (presetId === "family_pyramid") {
+        nextType = "polyhedron";
+        nextName = "Regular Pyramid";
+        nextParams = { family: "pyramid", n: 5, radius: 1, height: 2, cap: true, triangulate: true };
+      } else if (presetId === "family_frustum") {
+        nextType = "polyhedron";
+        nextName = "Regular Frustum";
+        nextParams = { family: "frustum", n: 6, radius: 1, topRadius: 0.55, height: 2, twistAngle: 0, cap: true, triangulate: true };
+      } else if (presetId === "rev_cylinder") {
+        nextType = "cylinder";
+        nextName = "Cylinder";
+        nextParams = { radiusTop: 1, radiusBottom: 1, height: 2, openEnded: false };
+      } else if (presetId === "rev_cone") {
+        nextType = "cone";
+        nextName = "Cone";
+        nextParams = { radius: 1, height: 2, openEnded: false };
+      } else if (presetId === "rev_frustum") {
+        nextType = "cylinder";
+        nextName = "Frustum";
+        nextParams = { radiusTop: 0.5, radiusBottom: 1, height: 2, openEnded: false };
+      } else if (presetId === "rev_sphere_preview") {
+        nextType = "sphere";
+        nextName = "Sphere preview";
+        nextParams = { radius: 1 };
+      } else if (presetId === "rev_torus_preview") {
+        nextType = "torus";
+        nextName = "Torus preview";
+        nextParams = { radius: 1, tube: 0.35 };
+      } else if (presetId === "sweep_segment_line") {
+        nextType = "cylinder";
+        nextName = "Segment sweep preview";
+        nextParams = { radiusTop: 0.08, radiusBottom: 0.08, height: 2.4, openEnded: false };
+      } else if (presetId === "sweep_circle_axis") {
+        nextType = "cylinder";
+        nextName = "Circle-along-axis preview";
+        nextParams = { radiusTop: 0.45, radiusBottom: 0.45, height: 2.8, openEnded: false };
+      } else if (presetId === "sweep_tube_curve") {
+        nextType = "torus";
+        nextName = "Tube-along-curve preview";
+        nextParams = { radius: 1.2, tube: 0.16, radialSegments: 20, tubularSegments: 88, arc: Math.PI * 2 };
+      } else {
+        return;
+      }
+      queueGeometryHistoryIntent(objectId, {
+        action: "params",
+        label: "Apply primitive family preset",
+        operationType: "Parameters",
+        target: presetId,
+        parameters: `${geometrySelectedObject.type} -> ${nextType}`,
+        destructive: false,
+      });
+      const defaults = createGeometryObject(nextType, objectId).params;
+      setGeometryObjects((prev) =>
+        prev.map((entry) =>
+          entry.id === objectId
+            ? {
+                ...entry,
+                type: nextType,
+                name: nextName,
+                params: { ...defaults, ...nextParams },
+              }
+            : entry
+        )
+      );
+      setGeometryObjectParamDrafts((prev) => {
+        if (!(objectId in prev)) return prev;
+        const next = { ...prev };
+        delete next[objectId];
+        return next;
+      });
+      setGeometryCreateActionStatus(`Applied primitive preset: ${nextName}.`);
+    },
+    [geometryLockedObjectIds, geometrySelectedObject, queueGeometryHistoryIntent]
+  );
 
   const handleUpdateGeometryMaterial = useCallback(
     (id: string, patch: Partial<GeometryObject["material"]>) => {
@@ -10313,6 +10445,11 @@ const App: React.FC = () => {
       sourceLabel: formatSurfaceMeshSource(mesh.source),
     };
   }, [geometrySelectedSceneObject, proceduralMeshSet.meshes]);
+  const geometrySelectedSceneMetrics = useMemo(() => {
+    if (!geometrySelectedSceneObject) return null;
+    const resolved = resolveGeometrySceneMeshById(geometrySelectedSceneObject.id);
+    return resolved ? computeTriangleMeshGeometricMetrics(resolved.mesh) : null;
+  }, [geometrySelectedSceneObject, resolveGeometrySceneMeshById]);
   const geometryCompareEntryA = useMemo(() => {
     if (!geometryCompareObjectAId) return null;
     const object =
@@ -16122,7 +16259,7 @@ const App: React.FC = () => {
     if (geometryProceduralFeatureOverlays.pointSets?.length) {
       sets.push(...geometryProceduralFeatureOverlays.pointSets);
     }
-    if (geometryProceduralAnnotationOverlays.pointSets?.length) {
+    if (geometryTimelineShowAnnotations && geometryProceduralAnnotationOverlays.pointSets?.length) {
       sets.push(...geometryProceduralAnnotationOverlays.pointSets);
     }
     if (geometryDerivedConstructionOverlays.pointSets?.length) {
@@ -16139,6 +16276,7 @@ const App: React.FC = () => {
     geometryMode,
     geometryProceduralFeatureOverlays.pointSets,
     geometryProceduralAnnotationOverlays.pointSets,
+    geometryTimelineShowAnnotations,
     geometryDerivedConstructionOverlays.pointSets,
     geometryProceduralSelectionPointSets,
     geometryProceduralSnapPreviewPointSet,
@@ -16152,7 +16290,9 @@ const App: React.FC = () => {
     if (geometryBooleanPreviewOverlayGroups?.length) groups.push(...geometryBooleanPreviewOverlayGroups);
     if (geometryProceduralFeatureOverlays.groups?.length) groups.push(...geometryProceduralFeatureOverlays.groups);
     if (geometryDerivedConstructionOverlays.groups?.length) groups.push(...geometryDerivedConstructionOverlays.groups);
-    if (geometryProceduralAnnotationOverlays.groups?.length) groups.push(...geometryProceduralAnnotationOverlays.groups);
+    if (geometryTimelineShowAnnotations && geometryProceduralAnnotationOverlays.groups?.length) {
+      groups.push(...geometryProceduralAnnotationOverlays.groups);
+    }
     return groups.length ? groups : null;
   }, [
     geometryMode,
@@ -16163,6 +16303,7 @@ const App: React.FC = () => {
     geometryProceduralFeatureOverlays.groups,
     geometryDerivedConstructionOverlays.groups,
     geometryProceduralAnnotationOverlays.groups,
+    geometryTimelineShowAnnotations,
   ]);
   const geometryProceduralViewerHighlightPolygons = useMemo<Polygon3[] | null>(() => {
     if (geometryMode !== "procedural") return null;
@@ -16172,13 +16313,17 @@ const App: React.FC = () => {
     return polys.length ? polys : null;
   }, [geometryMode, geometryProceduralSelectionHighlightPolygons, geometrySectionCapPolygons]);
   const geometryProceduralViewerLabelSets = useMemo<OverlayLabelSet[] | null>(() => {
-    if (geometryMode === "demo") return geometryLabelSets;
-    if (geometryMode === "scratch" || geometryMode === "workbook") return geometryConstructionState?.labels ?? null;
+    if (geometryMode === "demo") return geometryTimelineShowAnnotations ? geometryLabelSets : null;
+    if (geometryMode === "scratch" || geometryMode === "workbook") {
+      return geometryTimelineShowAnnotations ? geometryConstructionState?.labels ?? null : null;
+    }
     if (geometryMode !== "procedural") return null;
     const labels: OverlayLabelSet[] = [];
     if (geometryProceduralFeatureOverlays.labelSets?.length) labels.push(...geometryProceduralFeatureOverlays.labelSets);
     if (geometryDerivedConstructionOverlays.labelSets?.length) labels.push(...geometryDerivedConstructionOverlays.labelSets);
-    if (geometryProceduralAnnotationOverlays.labelSets?.length) labels.push(...geometryProceduralAnnotationOverlays.labelSets);
+    if (geometryTimelineShowAnnotations && geometryProceduralAnnotationOverlays.labelSets?.length) {
+      labels.push(...geometryProceduralAnnotationOverlays.labelSets);
+    }
     return labels.length ? labels : null;
   }, [
     geometryMode,
@@ -16187,6 +16332,7 @@ const App: React.FC = () => {
     geometryProceduralFeatureOverlays.labelSets,
     geometryDerivedConstructionOverlays.labelSets,
     geometryProceduralAnnotationOverlays.labelSets,
+    geometryTimelineShowAnnotations,
   ]);
 
   const proceduralScene: GeometryScene = useMemo(() => ({}), []);
@@ -39371,6 +39517,257 @@ case "mobius":
   const compactHasNextFailed = !!compactNextFailedMeta || compactCanAdvancePlanimetryStage;
   const compactCurrentBlockTitle =
     geometryMode === "demo" ? "Problem statement" : activeWorkbookStage?.blocks[0]?.title ?? "Problem statement";
+  type GeometryTimelineStepEntry = {
+    id: string;
+    label: string;
+    subtitle?: string;
+    description?: string;
+    snapshot?: GeometryObject | GeometryDatasetMeshObject;
+    apply: () => void;
+  };
+  const geometryTimelineSources = useMemo(
+    (): Array<{ id: GeometryTimelineSource; label: string; steps: GeometryTimelineStepEntry[] }> => {
+      const historySteps = [...geometrySelectedObjectHistory]
+        .reverse()
+        .map((entry) => ({
+          id: entry.id,
+          label: entry.label,
+          subtitle: new Date(entry.at).toLocaleTimeString(),
+          description: entry.changeSummary,
+          snapshot: entry.snapshot,
+          apply: () => {
+            if (!geometrySelectedSceneObject || geometryLockedObjectIds.has(geometrySelectedSceneObject.id)) return;
+            suppressGeometryHistoryCapture();
+            applyVariantSnapshotToObject(geometrySelectedSceneObject.id, entry.snapshot);
+            setGeometrySelectedHistoryStepId(entry.id);
+          },
+        }));
+      const variantSteps = (geometrySelectedVariantSet?.variants ?? [])
+        .slice()
+        .sort((a, b) => a.createdAt - b.createdAt)
+        .map((variant) => ({
+          id: variant.id,
+          label: variant.name,
+          subtitle: new Date(variant.createdAt).toLocaleTimeString(),
+          description: "Object variant snapshot",
+          snapshot: variant.snapshot,
+          apply: () => {
+            if (!geometrySelectedSceneObject) return;
+            suppressGeometryHistoryCapture();
+            applyVariantSnapshotToObject(geometrySelectedSceneObject.id, variant.snapshot);
+            setGeometrySelectedVariantId(variant.id);
+            setGeometryVariantSets((prev) => {
+              const current = prev[geometrySelectedSceneObject.id];
+              if (!current) return prev;
+              return {
+                ...prev,
+                [geometrySelectedSceneObject.id]: {
+                  ...current,
+                  activeVariantId: variant.id,
+                  updatedAt: Date.now(),
+                },
+              };
+            });
+          },
+        }));
+      const workbookSteps = (activeWorkbook?.stages ?? []).map((stage, index) => ({
+        id: stage.id,
+        label: `${index + 1}. ${stage.title}`,
+        subtitle: `${stage.blocks.length} blocks`,
+        description: "Workbook task stage",
+        apply: () => {
+          setGeometryMode("workbook");
+          setActiveStageId(stage.id);
+        },
+      }));
+      const theoremSteps = (geometryPlanimetryDemo.stages ?? []).map((stage, index) => ({
+        id: stage.id,
+        label: stage.label,
+        subtitle: `Stage ${index + 1}`,
+        description: stage.summary,
+        apply: () => {
+          setGeometryMode("demo");
+          setGeometryDemoFamily("planimetry");
+          setGeometryPlanimetryStageIndex(index);
+        },
+      }));
+      return [
+        { id: "history", label: "Operation history", steps: historySteps },
+        { id: "variants", label: "Object variants", steps: variantSteps },
+        { id: "workbook", label: "Workbook task stages", steps: workbookSteps },
+        { id: "theorem", label: "Theorem demonstration", steps: theoremSteps },
+      ];
+    },
+    [
+      activeWorkbook?.stages,
+      applyVariantSnapshotToObject,
+      geometryLockedObjectIds,
+      geometryPlanimetryDemo.stages,
+      geometrySelectedObjectHistory,
+      geometrySelectedSceneObject,
+      geometrySelectedVariantSet?.variants,
+      suppressGeometryHistoryCapture,
+    ]
+  );
+  const geometryTimelineActiveSource =
+    geometryTimelineSources.find((entry) => entry.id === geometryTimelineSource) ?? geometryTimelineSources[0];
+  const geometryTimelineSteps = geometryTimelineActiveSource?.steps ?? [];
+  const geometryTimelineActiveStep =
+    geometryTimelineSteps[Math.max(0, Math.min(geometryTimelineSteps.length - 1, geometryTimelineStepIndex))] ?? null;
+  const geometryTimelineHasSteps = geometryTimelineSteps.length > 0;
+  const geometryTimelineStepCount = geometryTimelineSteps.length;
+  const geometryTimelineSpeedOptions: GeometryTimelineSpeed[] = [0.25, 0.5, 1, 2];
+  const handleGeometryTimelineSeek = useCallback(
+    (targetIndex: number) => {
+      const source = geometryTimelineSources.find((entry) => entry.id === geometryTimelineSource) ?? null;
+      const steps = source?.steps ?? [];
+      if (!steps.length) {
+        setGeometryTimelineStepIndex(0);
+        return;
+      }
+      const clamped = Math.max(0, Math.min(steps.length - 1, Math.round(targetIndex)));
+      setGeometryTimelineStepIndex(clamped);
+      steps[clamped]?.apply();
+    },
+    [geometryTimelineSource, geometryTimelineSources]
+  );
+  useEffect(() => {
+    if (geometryTimelineHasSteps) return;
+    const fallback = geometryTimelineSources.find((entry) => entry.steps.length > 0)?.id ?? null;
+    if (fallback && fallback !== geometryTimelineSource) {
+      setGeometryTimelineSource(fallback);
+      return;
+    }
+    if (geometryTimelineStepIndex !== 0) setGeometryTimelineStepIndex(0);
+    if (geometryTimelinePlaying) setGeometryTimelinePlaying(false);
+  }, [
+    geometryTimelineHasSteps,
+    geometryTimelinePlaying,
+    geometryTimelineSource,
+    geometryTimelineSources,
+    geometryTimelineStepIndex,
+  ]);
+  useEffect(() => {
+    if (!geometryTimelineHasSteps) return;
+    if (geometryTimelineStepIndex < geometryTimelineStepCount) return;
+    setGeometryTimelineStepIndex(Math.max(0, geometryTimelineStepCount - 1));
+  }, [geometryTimelineHasSteps, geometryTimelineStepCount, geometryTimelineStepIndex]);
+  useEffect(() => {
+    if (!geometryTimelinePlaying) return;
+    setGeometryTimelinePlaying(false);
+  }, [geometryTimelineSource]);
+  useEffect(() => {
+    if (geometryTimelineSource !== "history") return;
+    if (!geometryTimelineStepCount) return;
+    const chronological = [...geometrySelectedObjectHistory].reverse();
+    const activeId = geometrySelectedHistoryStepId ?? chronological[chronological.length - 1]?.id ?? null;
+    const index = activeId ? chronological.findIndex((entry) => entry.id === activeId) : -1;
+    if (index >= 0 && index !== geometryTimelineStepIndex) setGeometryTimelineStepIndex(index);
+  }, [
+    geometrySelectedHistoryStepId,
+    geometrySelectedObjectHistory,
+    geometryTimelineSource,
+    geometryTimelineStepCount,
+    geometryTimelineStepIndex,
+  ]);
+  useEffect(() => {
+    if (geometryTimelineSource !== "variants") return;
+    if (!geometryTimelineStepCount) return;
+    const ordered = (geometrySelectedVariantSet?.variants ?? []).slice().sort((a, b) => a.createdAt - b.createdAt);
+    const activeId =
+      geometrySelectedVariantId ?? geometrySelectedVariantSet?.activeVariantId ?? ordered[ordered.length - 1]?.id ?? null;
+    const index = activeId ? ordered.findIndex((entry) => entry.id === activeId) : -1;
+    if (index >= 0 && index !== geometryTimelineStepIndex) setGeometryTimelineStepIndex(index);
+  }, [
+    geometrySelectedVariantId,
+    geometrySelectedVariantSet?.activeVariantId,
+    geometrySelectedVariantSet?.variants,
+    geometryTimelineSource,
+    geometryTimelineStepCount,
+    geometryTimelineStepIndex,
+  ]);
+  useEffect(() => {
+    if (geometryTimelineSource !== "workbook") return;
+    if (!geometryTimelineStepCount) return;
+    const index = (activeWorkbook?.stages ?? []).findIndex((stage) => stage.id === activeStageId);
+    if (index >= 0 && index !== geometryTimelineStepIndex) setGeometryTimelineStepIndex(index);
+  }, [
+    activeStageId,
+    activeWorkbook?.stages,
+    geometryTimelineSource,
+    geometryTimelineStepCount,
+    geometryTimelineStepIndex,
+  ]);
+  useEffect(() => {
+    if (geometryTimelineSource !== "theorem") return;
+    if (!geometryTimelineStepCount) return;
+    const maxIndex = Math.max(0, geometryTimelineStepCount - 1);
+    const clamped = Math.max(0, Math.min(maxIndex, geometryPlanimetryStageIndex));
+    if (clamped !== geometryTimelineStepIndex) setGeometryTimelineStepIndex(clamped);
+  }, [
+    geometryPlanimetryStageIndex,
+    geometryTimelineSource,
+    geometryTimelineStepCount,
+    geometryTimelineStepIndex,
+  ]);
+  useEffect(() => {
+    if (!geometryTimelinePlaying) return;
+    if (geometryTimelineStepCount <= 1) {
+      setGeometryTimelinePlaying(false);
+      return;
+    }
+    const delayMs = Math.max(180, Math.round(1400 / geometryTimelineSpeed));
+    const timer = window.setTimeout(() => {
+      const atEnd = geometryTimelineStepIndex >= geometryTimelineStepCount - 1;
+      if (atEnd) {
+        if (geometryTimelineLoopEnabled) handleGeometryTimelineSeek(0);
+        else setGeometryTimelinePlaying(false);
+        return;
+      }
+      handleGeometryTimelineSeek(geometryTimelineStepIndex + 1);
+    }, delayMs);
+    return () => window.clearTimeout(timer);
+  }, [
+    geometryTimelineLoopEnabled,
+    geometryTimelinePlaying,
+    geometryTimelineSpeed,
+    geometryTimelineStepCount,
+    geometryTimelineStepIndex,
+    handleGeometryTimelineSeek,
+  ]);
+  const geometryTimelineGhostMeshOverride = useMemo(() => {
+    if (!geometryTimelineGhostPreviousEnabled) return null;
+    if (geometryTimelineSource !== "history" && geometryTimelineSource !== "variants") return null;
+    if (geometryTimelineStepIndex <= 0 || geometryTimelineStepIndex >= geometryTimelineSteps.length) return null;
+    const previousStep = geometryTimelineSteps[geometryTimelineStepIndex - 1];
+    if (!previousStep?.snapshot) return null;
+    const resolved = resolveVariantSnapshotMesh(previousStep.snapshot, `${previousStep.label} (ghost)`);
+    if (!resolved) return null;
+    return {
+      ...resolved.mesh,
+      id: "timeline-ghost-previous",
+      color: 0x64748b,
+      opacity: 0.2,
+      roughness: 0.95,
+      metalness: 0,
+      flatShading: resolved.flatShading ?? false,
+      transform: {
+        position: { ...resolved.transform.position },
+        rotation: { ...resolved.transform.rotation },
+        scale: { ...resolved.transform.scale },
+      },
+    };
+  }, [
+    geometryTimelineGhostPreviousEnabled,
+    geometryTimelineSource,
+    geometryTimelineStepIndex,
+    geometryTimelineSteps,
+  ]);
+  const geometryProceduralMeshOverridesForViewer = useMemo(() => {
+    if (!geometryTimelineGhostMeshOverride) return geometryProceduralMeshOverrides;
+    const base = geometryProceduralMeshOverrides ?? [];
+    return [...base, geometryTimelineGhostMeshOverride];
+  }, [geometryProceduralMeshOverrides, geometryTimelineGhostMeshOverride]);
   const showSurfaceWorkbookQuickStrip =
     mode === "surfaces" &&
     rightPanelTab === "workbook" &&
@@ -49970,6 +50367,71 @@ case "mobius":
                           )}
                         </div>
 
+                        <div
+                          style={{
+                            marginTop: 10,
+                            border: "1px solid #dbe2ea",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            background: "#f8fafc",
+                            display: "grid",
+                            gap: 6,
+                          }}
+                        >
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>Parametric primitive families</div>
+                          <div style={{ fontSize: 10.5, color: "#475467" }}>
+                            Geometry-side family presets. Bake/remesh moves to Mesh.
+                          </div>
+                          <div style={{ display: "grid", gap: 5 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600 }}>Prism / pyramid family</div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button type="button" onClick={() => handleApplyPrimitiveFamilyPreset("family_prism")} style={{ fontSize: 11 }}>
+                                Prism
+                              </button>
+                              <button type="button" onClick={() => handleApplyPrimitiveFamilyPreset("family_pyramid")} style={{ fontSize: 11 }}>
+                                Pyramid
+                              </button>
+                              <button type="button" onClick={() => handleApplyPrimitiveFamilyPreset("family_frustum")} style={{ fontSize: 11 }}>
+                                Frustum
+                              </button>
+                            </div>
+                          </div>
+                          <div style={{ display: "grid", gap: 5 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600 }}>Revolution solids</div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button type="button" onClick={() => handleApplyPrimitiveFamilyPreset("rev_cylinder")} style={{ fontSize: 11 }}>
+                                Cylinder
+                              </button>
+                              <button type="button" onClick={() => handleApplyPrimitiveFamilyPreset("rev_cone")} style={{ fontSize: 11 }}>
+                                Cone
+                              </button>
+                              <button type="button" onClick={() => handleApplyPrimitiveFamilyPreset("rev_frustum")} style={{ fontSize: 11 }}>
+                                Frustum
+                              </button>
+                              <button type="button" onClick={() => handleApplyPrimitiveFamilyPreset("rev_sphere_preview")} style={{ fontSize: 11 }}>
+                                Sphere preview
+                              </button>
+                              <button type="button" onClick={() => handleApplyPrimitiveFamilyPreset("rev_torus_preview")} style={{ fontSize: 11 }}>
+                                Torus preview
+                              </button>
+                            </div>
+                          </div>
+                          <div style={{ display: "grid", gap: 5 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600 }}>Swept solids preview</div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button type="button" onClick={() => handleApplyPrimitiveFamilyPreset("sweep_segment_line")} style={{ fontSize: 11 }}>
+                                Segment along line
+                              </button>
+                              <button type="button" onClick={() => handleApplyPrimitiveFamilyPreset("sweep_circle_axis")} style={{ fontSize: 11 }}>
+                                Circle along axis
+                              </button>
+                              <button type="button" onClick={() => handleApplyPrimitiveFamilyPreset("sweep_tube_curve")} style={{ fontSize: 11 }}>
+                                Tube along curve
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
                         <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Parameters</div>
                         {geometrySelectedObject.type === "polyhedron" ? (
                           (() => {
@@ -49979,8 +50441,12 @@ case "mobius":
                             const showNFamily =
                               polyFamily === "prism" ||
                               polyFamily === "pyramid" ||
+                              polyFamily === "frustum" ||
                               polyFamily === "bipyramid" ||
                               polyFamily === "antiprism";
+                            const showTwistFamily = polyFamily === "prism" || polyFamily === "frustum";
+                            const showCapFamily = polyFamily === "prism" || polyFamily === "pyramid" || polyFamily === "frustum";
+                            const showTopRadiusFamily = polyFamily === "frustum";
                             return (
                               <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
                                 <label style={{ fontSize: 11, fontWeight: 600 }}>
@@ -50111,6 +50577,28 @@ case "mobius":
                                         style={{ width: "100%", marginTop: 4 }}
                                       />
                                     </label>
+                                    {showTopRadiusFamily && (
+                                      <label style={{ fontSize: 11, fontWeight: 600 }}>
+                                        Top radius
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          max={10}
+                                          step={0.1}
+                                          value={Number(paramValues.topRadius ?? 0.55)}
+                                          onChange={(e) => {
+                                            const raw = Number(e.target.value);
+                                            if (!Number.isFinite(raw)) return;
+                                            handleUpdateGeometryObjectParam(
+                                              geometrySelectedObject.id,
+                                              "topRadius",
+                                              clampNumber(raw, 0, 10)
+                                            );
+                                          }}
+                                          style={{ width: "100%", marginTop: 4 }}
+                                        />
+                                      </label>
+                                    )}
                                     <label style={{ fontSize: 11, fontWeight: 600 }}>
                                       Height
                                       <input
@@ -50131,6 +50619,44 @@ case "mobius":
                                         style={{ width: "100%", marginTop: 4 }}
                                       />
                                     </label>
+                                    {showTwistFamily && (
+                                      <label style={{ fontSize: 11, fontWeight: 600 }}>
+                                        Twist angle (deg)
+                                        <input
+                                          type="number"
+                                          min={-180}
+                                          max={180}
+                                          step={1}
+                                          value={Number(paramValues.twistAngle ?? 0)}
+                                          onChange={(e) => {
+                                            const raw = Number(e.target.value);
+                                            if (!Number.isFinite(raw)) return;
+                                            handleUpdateGeometryObjectParam(
+                                              geometrySelectedObject.id,
+                                              "twistAngle",
+                                              clampNumber(raw, -180, 180)
+                                            );
+                                          }}
+                                          style={{ width: "100%", marginTop: 4 }}
+                                        />
+                                      </label>
+                                    )}
+                                    {showCapFamily && (
+                                      <label style={{ display: "flex", gap: 6, fontSize: 11 }}>
+                                        <input
+                                          type="checkbox"
+                                          checked={Boolean(paramValues.cap ?? true)}
+                                          onChange={(e) =>
+                                            handleUpdateGeometryObjectParam(
+                                              geometrySelectedObject.id,
+                                              "cap",
+                                              e.target.checked
+                                            )
+                                          }
+                                        />
+                                        Cap
+                                      </label>
+                                    )}
                                   </>
                                 )}
 
@@ -50320,6 +50846,38 @@ case "mobius":
                             )}
                           </div>
                         )}
+                        <div
+                          style={{
+                            marginTop: 8,
+                            border: "1px solid #e5e7eb",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            background: "#fff",
+                            display: "grid",
+                            gap: 4,
+                            fontSize: 11,
+                          }}
+                        >
+                          <div style={{ fontWeight: 700 }}>Computed</div>
+                          <div>
+                            Vertices: <strong>{geometrySelectedSceneMeshInfo?.vertCount?.toLocaleString() ?? "n/a"}</strong>
+                          </div>
+                          <div>
+                            Faces: <strong>{geometrySelectedSceneMetrics?.faceCount?.toLocaleString() ?? "n/a"}</strong>
+                          </div>
+                          <div>
+                            Volume:{" "}
+                            <strong>
+                              {geometrySelectedSceneMetrics ? formatHistoryNumber(geometrySelectedSceneMetrics.volume) : "n/a"}
+                            </strong>
+                          </div>
+                          <div>
+                            Surface area:{" "}
+                            <strong>
+                              {geometrySelectedSceneMetrics ? formatHistoryNumber(geometrySelectedSceneMetrics.surfaceArea) : "n/a"}
+                            </strong>
+                          </div>
+                        </div>
                         <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
                           <div style={{ fontSize: 11, fontWeight: 700 }}>Update mode</div>
                           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
@@ -50703,6 +51261,128 @@ case "mobius":
                           Presets are saved locally and persist after reload.
                         </div>
                         <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700 }}>Construction history</div>
+                        <div
+                          style={{
+                            marginTop: 6,
+                            border: "1px solid #dbe2ea",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            background: "#f8fbff",
+                            display: "grid",
+                            gap: 7,
+                            fontSize: 11,
+                          }}
+                        >
+                          <label style={{ display: "grid", gap: 4 }}>
+                            Playback source
+                            <select
+                              value={geometryTimelineSource}
+                              onChange={(event) => {
+                                const next = event.target.value as GeometryTimelineSource;
+                                setGeometryTimelinePlaying(false);
+                                setGeometryTimelineSource(next);
+                                setGeometryTimelineStepIndex(0);
+                              }}
+                              style={{ width: "100%" }}
+                            >
+                              {geometryTimelineSources.map((source) => (
+                                <option key={`timeline-source-procedural-object-${source.id}`} value={source.id}>
+                                  {source.label} ({source.steps.length})
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button type="button" onClick={() => handleGeometryTimelineSeek(0)} disabled={!geometryTimelineHasSteps}>
+                              |&lt;
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleGeometryTimelineSeek(geometryTimelineStepIndex - 1)}
+                              disabled={!geometryTimelineHasSteps}
+                            >
+                              &lt;
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (geometryTimelinePlaying) {
+                                  setGeometryTimelinePlaying(false);
+                                  return;
+                                }
+                                if (!geometryTimelineHasSteps) return;
+                                handleGeometryTimelineSeek(geometryTimelineStepIndex);
+                                setGeometryTimelinePlaying(true);
+                              }}
+                              disabled={!geometryTimelineHasSteps}
+                            >
+                              {geometryTimelinePlaying ? "Pause" : "Play"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleGeometryTimelineSeek(geometryTimelineStepIndex + 1)}
+                              disabled={!geometryTimelineHasSteps}
+                            >
+                              &gt;
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleGeometryTimelineSeek(geometryTimelineStepCount - 1)}
+                              disabled={!geometryTimelineHasSteps}
+                            >
+                              &gt;|
+                            </button>
+                          </div>
+                          <div style={{ fontSize: 11, color: "#334155" }}>
+                            Step {geometryTimelineHasSteps ? geometryTimelineStepIndex + 1 : 0} / {geometryTimelineStepCount}
+                          </div>
+                          {geometryTimelineActiveStep && (
+                            <div style={{ fontSize: 10.5, color: "#475467" }}>
+                              <strong>{geometryTimelineActiveStep.label}</strong>
+                              {geometryTimelineActiveStep.description ? ` - ${geometryTimelineActiveStep.description}` : ""}
+                            </div>
+                          )}
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <span>Speed:</span>
+                            {geometryTimelineSpeedOptions.map((speed) => (
+                              <button
+                                key={`timeline-speed-procedural-object-${speed}`}
+                                type="button"
+                                onClick={() => setGeometryTimelineSpeed(speed)}
+                                aria-pressed={geometryTimelineSpeed === speed}
+                                style={pill(geometryTimelineSpeed === speed)}
+                              >
+                                {speed}x
+                              </button>
+                            ))}
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <input
+                                type="checkbox"
+                                checked={geometryTimelineLoopEnabled}
+                                onChange={(event) => setGeometryTimelineLoopEnabled(event.target.checked)}
+                              />
+                              Loop
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <input
+                                type="checkbox"
+                                checked={geometryTimelineShowAnnotations}
+                                onChange={(event) => setGeometryTimelineShowAnnotations(event.target.checked)}
+                              />
+                              Show annotations
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <input
+                                type="checkbox"
+                                checked={geometryTimelineGhostPreviousEnabled}
+                                onChange={(event) => setGeometryTimelineGhostPreviousEnabled(event.target.checked)}
+                              />
+                              Ghost previous state
+                            </label>
+                          </div>
+                        </div>
                         <div style={{ marginTop: 6, display: "grid", gap: 5 }}>
                           {geometrySelectedObjectHistory.length ? (
                             geometrySelectedObjectHistory.slice(0, 10).map((entry) => (
@@ -51265,6 +51945,128 @@ case "mobius":
                           Presets are saved locally and persist after reload.
                         </div>
                         <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700 }}>Construction history</div>
+                        <div
+                          style={{
+                            marginTop: 6,
+                            border: "1px solid #dbe2ea",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            background: "#f8fbff",
+                            display: "grid",
+                            gap: 7,
+                            fontSize: 11,
+                          }}
+                        >
+                          <label style={{ display: "grid", gap: 4 }}>
+                            Playback source
+                            <select
+                              value={geometryTimelineSource}
+                              onChange={(event) => {
+                                const next = event.target.value as GeometryTimelineSource;
+                                setGeometryTimelinePlaying(false);
+                                setGeometryTimelineSource(next);
+                                setGeometryTimelineStepIndex(0);
+                              }}
+                              style={{ width: "100%" }}
+                            >
+                              {geometryTimelineSources.map((source) => (
+                                <option key={`timeline-source-procedural-dataset-${source.id}`} value={source.id}>
+                                  {source.label} ({source.steps.length})
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button type="button" onClick={() => handleGeometryTimelineSeek(0)} disabled={!geometryTimelineHasSteps}>
+                              |&lt;
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleGeometryTimelineSeek(geometryTimelineStepIndex - 1)}
+                              disabled={!geometryTimelineHasSteps}
+                            >
+                              &lt;
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (geometryTimelinePlaying) {
+                                  setGeometryTimelinePlaying(false);
+                                  return;
+                                }
+                                if (!geometryTimelineHasSteps) return;
+                                handleGeometryTimelineSeek(geometryTimelineStepIndex);
+                                setGeometryTimelinePlaying(true);
+                              }}
+                              disabled={!geometryTimelineHasSteps}
+                            >
+                              {geometryTimelinePlaying ? "Pause" : "Play"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleGeometryTimelineSeek(geometryTimelineStepIndex + 1)}
+                              disabled={!geometryTimelineHasSteps}
+                            >
+                              &gt;
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleGeometryTimelineSeek(geometryTimelineStepCount - 1)}
+                              disabled={!geometryTimelineHasSteps}
+                            >
+                              &gt;|
+                            </button>
+                          </div>
+                          <div style={{ fontSize: 11, color: "#334155" }}>
+                            Step {geometryTimelineHasSteps ? geometryTimelineStepIndex + 1 : 0} / {geometryTimelineStepCount}
+                          </div>
+                          {geometryTimelineActiveStep && (
+                            <div style={{ fontSize: 10.5, color: "#475467" }}>
+                              <strong>{geometryTimelineActiveStep.label}</strong>
+                              {geometryTimelineActiveStep.description ? ` - ${geometryTimelineActiveStep.description}` : ""}
+                            </div>
+                          )}
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <span>Speed:</span>
+                            {geometryTimelineSpeedOptions.map((speed) => (
+                              <button
+                                key={`timeline-speed-procedural-dataset-${speed}`}
+                                type="button"
+                                onClick={() => setGeometryTimelineSpeed(speed)}
+                                aria-pressed={geometryTimelineSpeed === speed}
+                                style={pill(geometryTimelineSpeed === speed)}
+                              >
+                                {speed}x
+                              </button>
+                            ))}
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <input
+                                type="checkbox"
+                                checked={geometryTimelineLoopEnabled}
+                                onChange={(event) => setGeometryTimelineLoopEnabled(event.target.checked)}
+                              />
+                              Loop
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <input
+                                type="checkbox"
+                                checked={geometryTimelineShowAnnotations}
+                                onChange={(event) => setGeometryTimelineShowAnnotations(event.target.checked)}
+                              />
+                              Show annotations
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <input
+                                type="checkbox"
+                                checked={geometryTimelineGhostPreviousEnabled}
+                                onChange={(event) => setGeometryTimelineGhostPreviousEnabled(event.target.checked)}
+                              />
+                              Ghost previous state
+                            </label>
+                          </div>
+                        </div>
                         <div style={{ marginTop: 6, display: "grid", gap: 5 }}>
                           {geometrySelectedObjectHistory.length ? (
                             geometrySelectedObjectHistory.slice(0, 10).map((entry) => (
@@ -54530,7 +55332,7 @@ case "mobius":
                   lineRadiusScale={geometryMode === "demo" ? geometryDemoLineRadiusScale : 1}
                   segmentRadiusScale={geometryMode === "demo" ? geometryDemoSegmentRadiusScale : 1}
                   edgeRadiusScale={geometryMode === "demo" ? geometryDemoEdgeRadiusScale : 1}
-                  meshOverrides={geometryProceduralMeshOverrides}
+                  meshOverrides={geometryProceduralMeshOverridesForViewer}
                   extraOverlayPolylineGroups={geometryProceduralViewerOverlayPolylineGroups}
                   wireframe={geometryWireframe}
                   showPlanes={geometryShowPlanes}

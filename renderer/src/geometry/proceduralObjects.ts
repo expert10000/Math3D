@@ -57,6 +57,7 @@ const polyhedronFamilyOptions: Array<{ value: string; label: string }> = [
   { value: "platonic", label: "Platonic" },
   { value: "prism", label: "Prism (n)" },
   { value: "pyramid", label: "Pyramid (n)" },
+  { value: "frustum", label: "Frustum (n)" },
   { value: "bipyramid", label: "Bipyramid (n)" },
   { value: "antiprism", label: "Antiprism (n)" },
   { value: "geodesic", label: "Geodesic sphere (t)" },
@@ -65,30 +66,55 @@ const polyhedronFamilyOptions: Array<{ value: string; label: string }> = [
 export const POLYHEDRON_KIND_OPTIONS = polyhedronOptions;
 export const POLYHEDRON_FAMILY_OPTIONS = polyhedronFamilyOptions;
 
-const buildPrismGeometry = (n: number, radius: number, height: number) => {
+const buildPrismGeometry = (n: number, radius: number, height: number, twistAngleDeg = 0, cap = true) => {
+  return buildFrustumGeometry(n, radius, radius, height, twistAngleDeg, cap);
+};
+
+const buildFrustumGeometry = (
+  n: number,
+  baseRadius: number,
+  topRadius: number,
+  height: number,
+  twistAngleDeg = 0,
+  cap = true
+) => {
   const sides = Math.max(3, Math.round(n));
   const h = Math.max(1e-6, height);
-  const r = Math.max(1e-6, radius);
+  const rBase = Math.max(0, baseRadius);
+  const rTop = Math.max(0, topRadius);
+  const twist = (Number.isFinite(twistAngleDeg) ? twistAngleDeg : 0) * (Math.PI / 180);
+  if (rTop <= 1e-6) {
+    return buildPyramidGeometry(sides, Math.max(1e-6, rBase), h, cap);
+  }
+  if (rBase <= 1e-6) {
+    const geom = buildPyramidGeometry(sides, Math.max(1e-6, rTop), h, cap);
+    geom.rotateX(Math.PI);
+    return geom;
+  }
   const positions: number[] = [];
   for (let i = 0; i < sides; i++) {
     const t = (i / sides) * Math.PI * 2;
-    const x = Math.cos(t) * r;
-    const y = Math.sin(t) * r;
+    const x = Math.cos(t) * rBase;
+    const y = Math.sin(t) * rBase;
     positions.push(x, y, -h * 0.5);
   }
   for (let i = 0; i < sides; i++) {
-    const t = (i / sides) * Math.PI * 2;
-    const x = Math.cos(t) * r;
-    const y = Math.sin(t) * r;
+    const t = (i / sides) * Math.PI * 2 + twist;
+    const x = Math.cos(t) * rTop;
+    const y = Math.sin(t) * rTop;
     positions.push(x, y, h * 0.5);
   }
   const indices: number[] = [];
-  for (let i = 1; i + 1 < sides; i++) {
-    indices.push(0, i + 1, i);
+  if (cap) {
+    for (let i = 1; i + 1 < sides; i++) {
+      indices.push(0, i + 1, i);
+    }
   }
   const topOffset = sides;
-  for (let i = 1; i + 1 < sides; i++) {
-    indices.push(topOffset, topOffset + i, topOffset + i + 1);
+  if (cap) {
+    for (let i = 1; i + 1 < sides; i++) {
+      indices.push(topOffset, topOffset + i, topOffset + i + 1);
+    }
   }
   for (let i = 0; i < sides; i++) {
     const j = (i + 1) % sides;
@@ -105,7 +131,7 @@ const buildPrismGeometry = (n: number, radius: number, height: number) => {
   return geom;
 };
 
-const buildPyramidGeometry = (n: number, radius: number, height: number) => {
+const buildPyramidGeometry = (n: number, radius: number, height: number, cap = true) => {
   const sides = Math.max(3, Math.round(n));
   const h = Math.max(1e-6, height);
   const r = Math.max(1e-6, radius);
@@ -119,8 +145,10 @@ const buildPyramidGeometry = (n: number, radius: number, height: number) => {
   const apexIndex = positions.length / 3;
   positions.push(0, 0, h * 0.5);
   const indices: number[] = [];
-  for (let i = 1; i + 1 < sides; i++) {
-    indices.push(0, i, i + 1);
+  if (cap) {
+    for (let i = 1; i + 1 < sides; i++) {
+      indices.push(0, i, i + 1);
+    }
   }
   for (let i = 0; i < sides; i++) {
     const j = (i + 1) % sides;
@@ -463,6 +491,9 @@ export const GEOMETRY_OBJECT_REGISTRY: Record<GeometryObjectType, GeometryObject
       n: 6,
       height: 1.6,
       radius: 1,
+      topRadius: 0.55,
+      twistAngle: 0,
+      cap: true,
       subdivision: 0,
       frequency: 2,
       triangulate: true,
@@ -476,10 +507,26 @@ export const GEOMETRY_OBJECT_REGISTRY: Record<GeometryObjectType, GeometryObject
       const family = String(params.family ?? "platonic");
       const radius = Number(params.radius ?? 1);
       if (family === "prism") {
-        return buildPrismGeometry(Number(params.n ?? 6), radius, Number(params.height ?? 1.6));
+        return buildPrismGeometry(
+          Number(params.n ?? 6),
+          radius,
+          Number(params.height ?? 1.6),
+          Number(params.twistAngle ?? 0),
+          Boolean(params.cap ?? true)
+        );
       }
       if (family === "pyramid") {
-        return buildPyramidGeometry(Number(params.n ?? 6), radius, Number(params.height ?? 1.6));
+        return buildPyramidGeometry(Number(params.n ?? 6), radius, Number(params.height ?? 1.6), Boolean(params.cap ?? true));
+      }
+      if (family === "frustum") {
+        return buildFrustumGeometry(
+          Number(params.n ?? 6),
+          radius,
+          Number(params.topRadius ?? 0.55),
+          Number(params.height ?? 1.6),
+          Number(params.twistAngle ?? 0),
+          Boolean(params.cap ?? true)
+        );
       }
       if (family === "bipyramid") {
         return buildBipyramidGeometry(Number(params.n ?? 6), radius, Number(params.height ?? 1.6));
