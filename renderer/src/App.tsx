@@ -14307,10 +14307,11 @@ const App: React.FC = () => {
       const curveLines: PolylineSet = [];
       for (const poly of geometrySectionPreview.section.polylines) {
         const pts = poly.points;
-        for (let i = 1; i < pts.length; i += 1) {
-          curveLines.push([pts[i - 1], pts[i]]);
-        }
-        if (poly.closed && pts.length >= 3) curveLines.push([pts[pts.length - 1], pts[0]]);
+        if (pts.length < 2) continue;
+        // Keep each section loop as one polyline to avoid creating hundreds of tiny tube meshes.
+        const line = pts.slice();
+        if (poly.closed && pts.length >= 3) line.push(pts[0]);
+        curveLines.push(line);
       }
       if (curveLines.length) {
         groups.push({

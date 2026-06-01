@@ -6989,7 +6989,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       for (let i = 0; i + 1 < points.length; i++) {
         path.add(new THREE.LineCurve3(points[i], points[i + 1]));
       }
-      const tubularSegments = Math.min(1600, Math.max(80, points.length * 2));
+      const tubularSegments = Math.min(640, Math.max(12, Math.round(points.length * 1.5)));
       const geom = new THREE.TubeGeometry(path, tubularSegments, tubeRadius, radialSegments, false);
       const mat = new THREE.MeshBasicMaterial({
         color: overlayPolylinesColor,
@@ -7045,7 +7045,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         for (let i = 0; i + 1 < points.length; i++) {
           path.add(new THREE.LineCurve3(points[i], points[i + 1]));
         }
-        const tubularSegments = Math.min(1600, Math.max(80, points.length * 2));
+        const tubularSegments = Math.min(640, Math.max(12, Math.round(points.length * 1.5)));
         const geom = new THREE.TubeGeometry(path, tubularSegments, tubeRadius, radialSegments, false);
         const mesh = new THREE.Mesh(geom, mat);
         mesh.renderOrder = 300;
