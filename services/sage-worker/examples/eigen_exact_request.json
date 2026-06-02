@@ -1,0 +1,9 @@
+{
+  "operation": "sage.matrix.eigen_exact",
+  "params": {
+    "matrix": [
+      [1, 2],
+      [3, 4]
+    ]
+  }
+}

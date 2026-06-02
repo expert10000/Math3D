@@ -282,6 +282,83 @@ declare global {
     error?: string;
   };
 
+  type SageOperation =
+    | "sage.symbolic.simplify"
+    | "sage.symbolic.factor"
+    | "sage.symbolic.expand"
+    | "sage.symbolic.solve"
+    | "sage.matrix.eigen_exact"
+    | "sage.matrix.charpoly"
+    | "sage.polynomial.roots_exact"
+    | "sage.polynomial.factor"
+    | "sage.groebner.compute"
+    | "sage.numberTheory.gcd"
+    | "sage.numberTheory.modInverse";
+
+  type SageHealthResponse = {
+    status: string;
+    engine: string;
+    available: boolean;
+    operations: SageOperation[];
+  };
+
+  type SageRunRequest = {
+    operation: SageOperation;
+    params: Record<string, unknown>;
+  };
+
+  type SageRunResponse = {
+    engine: string;
+    operation: SageOperation | string;
+    success: boolean;
+    latex: string;
+    result: Record<string, unknown>;
+    warnings: string[];
+    elapsedMs?: number;
+    error?: string;
+  };
+
+  type ComputeEngineId = "sage" | "octave";
+  type ComputeEngineAction = "install" | "start" | "stop" | "update" | "logs" | "reset";
+
+  type ComputeEngineSnapshot = {
+    native: {
+      label: "Native Math3D";
+      installed: true;
+      statusText: string;
+    };
+    docker: {
+      dockerAvailable: boolean;
+      composeAvailable: boolean;
+      dockerVersion?: string;
+      composeVersion?: string;
+      error?: string;
+    };
+    engines: Array<{
+      id: ComputeEngineId;
+      label: string;
+      installed: boolean;
+      running: boolean;
+      healthy: boolean;
+      statusText: string;
+      containerName: string;
+      healthUrl: string;
+      version?: string;
+      lastError?: string;
+    }>;
+    checkedAt: number;
+  };
+
+  type ComputeEngineActionResult = {
+    ok: boolean;
+    engineId: ComputeEngineId;
+    action: ComputeEngineAction;
+    stdout?: string;
+    stderr?: string;
+    error?: string;
+    snapshot: ComputeEngineSnapshot;
+  };
+
   interface Window {
     surfacePresets?: {
       list: (kind: PresetKind) => Promise<SurfacePresetRecord[]>;
@@ -332,6 +409,16 @@ declare global {
       getStatus: () => Promise<OctaveHealthResponse>;
       eig: (matrix: number[][]) => Promise<OctaveEigResponse>;
       solve: (matrix: number[][], rhs: number[]) => Promise<OctaveSolveResponse>;
+    };
+    sageService?: {
+      health: () => Promise<SageHealthResponse>;
+      getStatus: () => Promise<SageHealthResponse>;
+      run: (req: SageRunRequest) => Promise<SageRunResponse>;
+    };
+    computeEngines?: {
+      getStatus: () => Promise<ComputeEngineSnapshot>;
+      runAction: (engineId: ComputeEngineId, action: ComputeEngineAction) => Promise<ComputeEngineActionResult>;
+      openDockerGuide: () => Promise<{ ok: boolean }>;
     };
     appRuntime?: {
       geometrySmoke?: boolean;

@@ -1,0 +1,7 @@
+{
+  "operation": "sage.symbolic.simplify",
+  "params": {
+    "expression": "sin(x)^2 + cos(x)^2",
+    "variables": ["x"]
+  }
+}

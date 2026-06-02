@@ -6,6 +6,8 @@ import { listPresets, upsertPreset, removePreset } from "./presetsDb";
 import type { PresetKind, SurfacePresetRecord } from "./presetsDb";
 import { registerCgalMeshIpc } from "./main/ipc/cgalMeshIpc";
 import { registerVtkMeshIpc } from "./main/ipc/vtkMeshIpc";
+import { registerSageServiceIpc } from "./main/ipc/sageServiceIpc";
+import { registerComputeEngineManagerIpc } from "./main/ipc/computeEngineManagerIpc";
 import { runPythonWorkerStartupCheck, stopPythonWorker } from "./main/python/pythonWorker";
 import { recordPythonWorkerStartup, registerPythonWorkerDiagnosticsIpc } from "./main/python/pythonWorkerDiagnostics";
 
@@ -440,6 +442,8 @@ app.whenReady().then(async () => {
 
   registerCgalMeshIpc();
   registerVtkMeshIpc();
+  registerSageServiceIpc();
+  registerComputeEngineManagerIpc();
 
   ipcMain.handle("app:capture-screenshot", async (evt, req: AppCaptureRequest): Promise<AppCaptureResponse> => {
     try {

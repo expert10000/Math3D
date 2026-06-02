@@ -263,6 +263,27 @@ export type PythonWorkerDiagnosticsSnapshot = {
   lastError?: PythonWorkerDiagnosticsError;
 };
 
+export type SageOperation =
+  | "sage.symbolic.simplify"
+  | "sage.symbolic.factor"
+  | "sage.symbolic.expand"
+  | "sage.symbolic.solve"
+  | "sage.matrix.eigen_exact"
+  | "sage.matrix.charpoly"
+  | "sage.polynomial.roots_exact"
+  | "sage.polynomial.factor"
+  | "sage.groebner.compute"
+  | "sage.numberTheory.gcd"
+  | "sage.numberTheory.modInverse";
+
+export type SageRunRequest = {
+  operation: SageOperation;
+  params: Record<string, unknown>;
+};
+
+export type ComputeEngineId = "sage" | "octave";
+export type ComputeEngineAction = "install" | "start" | "stop" | "update" | "logs" | "reset";
+
 contextBridge.exposeInMainWorld("surfacePresets", {
   list: (kind: PresetKind): Promise<SurfacePresetRecord[]> =>
     ipcRenderer.invoke("surfacePresets:list", kind),
@@ -361,6 +382,24 @@ contextBridge.exposeInMainWorld("appWindow", {
 contextBridge.exposeInMainWorld("pythonWorkerDiagnostics", {
   getStatus: (): Promise<PythonWorkerDiagnosticsSnapshot> =>
     ipcRenderer.invoke("python-worker:diagnostics:get"),
+});
+
+contextBridge.exposeInMainWorld("sageService", {
+  health: (): Promise<unknown> =>
+    ipcRenderer.invoke("sage:health"),
+  getStatus: (): Promise<unknown> =>
+    ipcRenderer.invoke("sage:health"),
+  run: (req: SageRunRequest): Promise<unknown> =>
+    ipcRenderer.invoke("sage:run", req),
+});
+
+contextBridge.exposeInMainWorld("computeEngines", {
+  getStatus: (): Promise<unknown> =>
+    ipcRenderer.invoke("compute-engines:get-status"),
+  runAction: (engineId: ComputeEngineId, action: ComputeEngineAction): Promise<unknown> =>
+    ipcRenderer.invoke("compute-engines:run-action", { engineId, action }),
+  openDockerGuide: (): Promise<unknown> =>
+    ipcRenderer.invoke("compute-engines:open-docker-guide"),
 });
 
 contextBridge.exposeInMainWorld("appRuntime", {

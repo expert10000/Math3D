@@ -1,0 +1,16 @@
+services:
+  sage-worker:
+    build:
+      context: ../services/sage-worker
+      dockerfile: Dockerfile
+    container_name: math3d-sage-worker
+    ports:
+      - "8767:8767"
+
+  octave-worker:
+    build:
+      context: ../integrations/octave/docker
+      dockerfile: Dockerfile
+    container_name: math3d-octave-service
+    ports:
+      - "8766:8766"

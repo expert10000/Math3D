@@ -1,0 +1,8 @@
+services:
+  sage-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: math3d-sage-worker
+    ports:
+      - "8767:8767"

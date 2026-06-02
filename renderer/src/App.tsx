@@ -63,6 +63,8 @@ import {
 import { VolumeViewer } from "./components/VolumeViewer";
 import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
 import OctaveLabPanel from "./features/octaveLab/OctaveLabPanel";
+import SageSymbolicPanel from "./features/sageLab/SageSymbolicPanel";
+import ComputeEngineManagerPanel from "./features/computeEngines/ComputeEngineManagerPanel";
 
 import { ParamSurfaceViewer, type ParamSurfaceId } from "./components/ParamSurfaceViewer";
 import { solidColorForPalette, type ColorPalette } from "./components/colorPalette";
@@ -22738,6 +22740,20 @@ const App: React.FC = () => {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandPaletteQuery, setCommandPaletteQuery] = useState("");
   const [commandPaletteIndex, setCommandPaletteIndex] = useState(0);
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
+
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    if (!window.computeEngines) return;
+    try {
+      const key = "math3d.computeEngines.firstLaunchSeen";
+      if (window.localStorage.getItem(key) === "1") return;
+      window.localStorage.setItem(key, "1");
+      setPreferencesOpen(true);
+    } catch {
+      setPreferencesOpen(true);
+    }
+  }, []);
 
   // contours (graph + implicit)
   const [showContours, setShowContours] = useState(true);
@@ -37996,7 +38012,7 @@ case "mobius":
           handleRemoveGeometryObject(geometrySelectedObjectId);
           return;
         case "edit:preferences":
-          notify("Preferences panel is not implemented yet.");
+          setPreferencesOpen(true);
           return;
         case "view:reset-camera":
           setCameraResetToken((t) => t + 1);
@@ -38225,8 +38241,14 @@ case "mobius":
       {
         id: "view:backend-services-panel",
         title: "Open backend services panel",
-        keywords: "surfaces backend services cgal vtk octave worker",
+        keywords: "surfaces backend services cgal vtk octave sage worker docker engines",
         run: () => handleMenuCommand("view:backend-services-panel"),
+      },
+      {
+        id: "settings:compute-engines",
+        title: "Compute Engines settings",
+        keywords: "settings preferences compute engines docker sage octave install start stop logs diagnostics",
+        run: () => handleMenuCommand("edit:preferences"),
       },
     ],
     [
@@ -41771,9 +41793,14 @@ case "mobius":
   const octaveBridgeReady =
     !!octaveServiceApi && (typeof octaveServiceApi.getStatus === "function" || typeof octaveServiceApi.health === "function");
   const octaveServiceStatusText = octaveBridgeReady ? "available" : "pending";
+  const sageServiceApi = window.sageService;
+  const sageBridgeReady =
+    !!sageServiceApi && (typeof sageServiceApi.getStatus === "function" || typeof sageServiceApi.health === "function");
+  const sageServiceStatusText = sageBridgeReady ? "available" : "pending";
   const cgalServiceColor = cgalServiceReady ? "#1f894f" : "#b42318";
   const vtkServiceColor = vtkServiceReady ? "#1f894f" : "#b42318";
   const octaveServiceColor = octaveBridgeReady ? "#1f894f" : "#9a6700";
+  const sageServiceColor = sageBridgeReady ? "#1f894f" : "#9a6700";
   const surfacesWorkspaceTabs = isPresentDisplayMode
     ? (["scene"] as const)
     : (["scene", "object", "view", "analysis", "services", "theory"] as const);
@@ -42909,6 +42936,14 @@ case "mobius":
                       style={topNavButtonStyle(commandPaletteOpen)}
                     >
                       Palette
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreferencesOpen(true)}
+                      title="Settings / Preferences"
+                      style={topNavButtonStyle(preferencesOpen)}
+                    >
+                      Settings
                     </button>
                   </div>
                   {mode === "surfaces" && (
@@ -44751,6 +44786,9 @@ case "mobius":
               {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "analysis" && (
                 <div style={{ marginTop: 10 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Display & analysis</div>
+                  <div style={{ marginBottom: 10 }}>
+                    <SageSymbolicPanel compact />
+                  </div>
                   {renderSurfacesInspectorPanel("analysis")}
                 </div>
               )}
@@ -44781,6 +44819,10 @@ case "mobius":
                       <strong>Octave</strong>
                       <span style={{ color: octaveServiceColor }}>{octaveServiceStatusText}</span>
                     </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                      <strong>SageMath</strong>
+                      <span style={{ color: sageServiceColor }}>{sageServiceStatusText}</span>
+                    </div>
                   </div>
                   <div style={{ fontSize: 10, color: "#667085", lineHeight: 1.5 }}>
                     CGAL and VTK share the Python worker runtime.
@@ -44790,7 +44832,9 @@ case "mobius":
                       </div>
                     ) : null}
                   </div>
+                  <ComputeEngineManagerPanel embedded />
                   <OctaveLabPanel />
+                  <SageSymbolicPanel compact />
                 </div>
               )}
             </div>
@@ -60107,6 +60151,64 @@ case "mobius":
                   No commands match this query.
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {preferencesOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.35)",
+            zIndex: 2650,
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "center",
+            paddingTop: "8vh",
+            paddingInline: 12,
+          }}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setPreferencesOpen(false);
+            }
+          }}
+        >
+          <div
+            style={{
+              width: 820,
+              maxWidth: "min(96vw, 820px)",
+              maxHeight: "84vh",
+              borderRadius: 12,
+              border: "1px solid #cbd5e1",
+              background: "#fff",
+              boxShadow: "0 18px 42px rgba(15, 23, 42, 0.24)",
+              overflow: "hidden",
+              display: "grid",
+              gridTemplateRows: "auto minmax(0, 1fr)",
+            }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div
+              style={{
+                padding: "10px 12px",
+                borderBottom: "1px solid #e2e8f0",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 800 }}>Settings / Preferences</div>
+                <div style={{ fontSize: 11, color: "#667085" }}>Compute Engines</div>
+              </div>
+              <button type="button" onClick={() => setPreferencesOpen(false)} style={{ padding: "4px 8px", fontSize: 11 }}>
+                Close
+              </button>
+            </div>
+            <div style={{ overflow: "auto", padding: 12 }}>
+              <ComputeEngineManagerPanel />
             </div>
           </div>
         </div>
