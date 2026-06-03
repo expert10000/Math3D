@@ -36,6 +36,24 @@ export type DerivedConstructionObjectDefinition = {
   createdAt?: number;
 };
 
+export type ConstructionRelationshipType =
+  | "parallel"
+  | "perpendicular"
+  | "equal-length"
+  | "equal-radius"
+  | "coincident"
+  | "concentric"
+  | "tangent";
+
+export type ConstructionRelationshipDefinition = {
+  id: string;
+  type: ConstructionRelationshipType;
+  sourceId: string;
+  targetId: string;
+  enabled?: boolean;
+  createdAt?: number;
+};
+
 export type DerivedConstructionValue =
   | { kind: "point"; point: Point3 }
   | { kind: "line"; line: Line3 }
@@ -155,7 +173,8 @@ const makeValid = (
 const uniqueStrings = (values: string[]): string[] => Array.from(new Set(values));
 
 export const buildDerivedConstructionDependencyGraph = (
-  definitions: DerivedConstructionObjectDefinition[]
+  definitions: DerivedConstructionObjectDefinition[],
+  relationships: ConstructionRelationshipDefinition[] = []
 ): DerivedConstructionDependencyGraph => {
   const constructionIds = definitions.map((definition) => definition.id);
   const constructionIdSet = new Set(constructionIds);
@@ -206,6 +225,16 @@ export const buildDerivedConstructionDependencyGraph = (
     if (definition.sourceConstructionId) {
       addDependency(definition.id, definition.sourceConstructionId, "construction");
     }
+  }
+
+  for (const relationship of relationships) {
+    if (relationship.enabled === false) continue;
+    if (!constructionIdSet.has(relationship.targetId)) continue;
+    addDependency(
+      relationship.targetId,
+      relationship.sourceId,
+      constructionIdSet.has(relationship.sourceId) ? "construction" : "source-point"
+    );
   }
 
   const indegree = new Map<string, number>();
@@ -262,13 +291,24 @@ export const getAffectedDerivedConstructionIds = (
 
 export const evaluateDerivedConstructionObjects = (
   definitions: DerivedConstructionObjectDefinition[],
-  sourcePoints: ConstructionSourcePointMap
+  sourcePoints: ConstructionSourcePointMap,
+  relationships: ConstructionRelationshipDefinition[] = []
 ): DerivedConstructionEvaluationResult => {
   const byId = new Map<string, DerivedConstructionEvaluation>();
   const definitionById = new Map(definitions.map((definition) => [definition.id, definition] as const));
-  const dependencyGraph = buildDerivedConstructionDependencyGraph(definitions);
+  const dependencyGraph = buildDerivedConstructionDependencyGraph(definitions, relationships);
   const cyclicConstructionIds = new Set(dependencyGraph.cyclicConstructionIds);
   const stateById = new Map<string, "visiting" | "done">();
+  const relationshipOrder = [...relationships]
+    .filter((relationship) => relationship.enabled !== false)
+    .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  const relationshipsByTargetId = new Map<string, ConstructionRelationshipDefinition[]>();
+  for (const relationship of relationshipOrder) {
+    relationshipsByTargetId.set(relationship.targetId, [
+      ...(relationshipsByTargetId.get(relationship.targetId) ?? []),
+      relationship,
+    ]);
+  }
 
   const publish = (evaluation: DerivedConstructionEvaluation) => {
     byId.set(evaluation.definition.id, evaluation);
@@ -295,6 +335,151 @@ export const evaluateDerivedConstructionObjects = (
     evaluateOne(id);
     const value = byId.get(id)?.value;
     return value?.kind === "point" ? value.point : null;
+  };
+  const getValue = (id: string | null | undefined): DerivedConstructionValue | null => {
+    if (!id) return null;
+    const sourcePoint = getSourcePoint(sourcePoints, id);
+    if (sourcePoint) return { kind: "point", point: sourcePoint };
+    evaluateOne(id);
+    return byId.get(id)?.value ?? null;
+  };
+
+  const applyRelationship = (
+    targetDefinition: DerivedConstructionObjectDefinition,
+    current: DerivedConstructionValue,
+    relationship: ConstructionRelationshipDefinition
+  ): { value: DerivedConstructionValue; warning: string | null } => {
+    const sourceValue = getValue(relationship.sourceId);
+    if (!sourceValue) {
+      return { value: current, warning: `Relationship '${relationship.id}' has an unavailable source.` };
+    }
+
+    if (relationship.type === "parallel") {
+      if (sourceValue.kind !== "line" || current.kind !== "line") {
+        return { value: current, warning: `Relationship '${relationship.id}' needs two lines.` };
+      }
+      return {
+        value: { kind: "line", line: { ...current.line, direction: sourceValue.line.direction } },
+        warning: null,
+      };
+    }
+
+    if (relationship.type === "perpendicular") {
+      if (sourceValue.kind !== "line" || current.kind !== "line") {
+        return { value: current, warning: `Relationship '${relationship.id}' needs two lines.` };
+      }
+      const direction = perpendicularDirection(sourceValue.line.direction, targetDefinition.planeNormal);
+      if (!direction) {
+        return { value: current, warning: `Relationship '${relationship.id}' could not resolve a perpendicular direction.` };
+      }
+      return { value: { kind: "line", line: { ...current.line, direction } }, warning: null };
+    }
+
+    if (relationship.type === "equal-length") {
+      if (sourceValue.kind !== "line" || current.kind !== "line") {
+        return { value: current, warning: `Relationship '${relationship.id}' needs two lines.` };
+      }
+      if (!Number.isFinite(sourceValue.line.length ?? NaN) || Number(sourceValue.line.length) <= EPS) {
+        return { value: current, warning: `Relationship '${relationship.id}' source line has no finite length.` };
+      }
+      return {
+        value: { kind: "line", line: { ...current.line, length: Number(sourceValue.line.length) } },
+        warning: null,
+      };
+    }
+
+    if (relationship.type === "equal-radius") {
+      if (sourceValue.kind !== "circle" || current.kind !== "circle") {
+        return { value: current, warning: `Relationship '${relationship.id}' needs two circles.` };
+      }
+      return {
+        value: { kind: "circle", circle: { ...current.circle, radius: sourceValue.circle.radius } },
+        warning: null,
+      };
+    }
+
+    if (relationship.type === "coincident") {
+      if (sourceValue.kind !== "point" || current.kind !== "point") {
+        return { value: current, warning: `Relationship '${relationship.id}' needs two points.` };
+      }
+      return {
+        value: { kind: "point", point: { ...sourceValue.point, label: current.point.label } },
+        warning: null,
+      };
+    }
+
+    if (relationship.type === "concentric") {
+      if (sourceValue.kind !== "circle" || current.kind !== "circle") {
+        return { value: current, warning: `Relationship '${relationship.id}' needs two circles.` };
+      }
+      return {
+        value: { kind: "circle", circle: { ...current.circle, center: { ...sourceValue.circle.center } } },
+        warning: null,
+      };
+    }
+
+    if (sourceValue.kind !== "circle") {
+      return { value: current, warning: `Relationship '${relationship.id}' needs a source circle.` };
+    }
+    if (current.kind === "line") {
+      const radialRaw = subVec3(current.line.origin, sourceValue.circle.center);
+      const radialProjected = subVec3(radialRaw, scaleVec3(sourceValue.circle.normal, dotVec3(radialRaw, sourceValue.circle.normal)));
+      const radial = normalizeVec3(radialProjected);
+      const direction = radial ? normalizeVec3(crossVec3(sourceValue.circle.normal, radial)) : null;
+      if (!radial || !direction) {
+        return { value: current, warning: `Relationship '${relationship.id}' tangent point is degenerate.` };
+      }
+      return {
+        value: {
+          kind: "line",
+          line: {
+            ...current.line,
+            origin: addVec3(sourceValue.circle.center, scaleVec3(radial, sourceValue.circle.radius)),
+            direction,
+          },
+        },
+        warning: null,
+      };
+    }
+    if (current.kind === "circle") {
+      const radial = normalizeVec3(subVec3(current.circle.center, sourceValue.circle.center));
+      if (!radial) {
+        return { value: current, warning: `Relationship '${relationship.id}' tangent circles need distinct centers.` };
+      }
+      const distance = sourceValue.circle.radius + current.circle.radius;
+      return {
+        value: {
+          kind: "circle",
+          circle: {
+            ...current.circle,
+            center: addVec3(sourceValue.circle.center, scaleVec3(radial, distance)),
+          },
+        },
+        warning: null,
+      };
+    }
+    return { value: current, warning: `Relationship '${relationship.id}' needs a line or circle target.` };
+  };
+
+  const applyTargetRelationships = (
+    definition: DerivedConstructionObjectDefinition,
+    evaluation: DerivedConstructionEvaluation
+  ): DerivedConstructionEvaluation => {
+    if (evaluation.status !== "valid" || !evaluation.value) return evaluation;
+    const targetRelationships = relationshipsByTargetId.get(definition.id) ?? [];
+    if (!targetRelationships.length) return evaluation;
+    let value = evaluation.value;
+    const warnings: string[] = [];
+    for (const relationship of targetRelationships) {
+      const next = applyRelationship(definition, value, relationship);
+      value = next.value;
+      if (next.warning) warnings.push(next.warning);
+    }
+    return makeValid(
+      definition,
+      value,
+      warnings.length ? warnings.join(" ") : evaluation.message
+    );
   };
 
   function evaluateOne(id: string): DerivedConstructionEvaluation | null {
@@ -327,7 +512,7 @@ export const evaluateDerivedConstructionObjects = (
           z: (a.z + b.z) * 0.5,
           label: definition.name,
         };
-        return publish(makeValid(definition, { kind: "point", point }));
+        return publish(applyTargetRelationships(definition, makeValid(definition, { kind: "point", point })));
       }
       case "line":
       case "line-through-objects": {
@@ -343,7 +528,10 @@ export const evaluateDerivedConstructionObjects = (
           z: (a.z + b.z) * 0.5,
           label: definition.name,
         };
-        return publish(makeValid(definition, { kind: "line", line: { origin, direction } }));
+        return publish(applyTargetRelationships(definition, makeValid(definition, {
+          kind: "line",
+          line: { origin, direction, length: distanceVec3(a, b) },
+        })));
       }
       case "parallel":
       case "parallel-line-through-object": {
@@ -352,7 +540,10 @@ export const evaluateDerivedConstructionObjects = (
         if (!through || !line) {
           return publish(makeInvalid(definition, "invalid", "Parallel line needs a source line and through point."));
         }
-        return publish(makeValid(definition, { kind: "line", line: { origin: through, direction: line.direction } }));
+        return publish(applyTargetRelationships(definition, makeValid(definition, {
+          kind: "line",
+          line: { origin: through, direction: line.direction, length: line.length },
+        })));
       }
       case "perpendicular":
       case "perpendicular-line-through-object": {
@@ -362,7 +553,10 @@ export const evaluateDerivedConstructionObjects = (
         if (!through || !line || !direction) {
           return publish(makeInvalid(definition, "invalid", "Perpendicular line needs a source line and through point."));
         }
-        return publish(makeValid(definition, { kind: "line", line: { origin: through, direction } }));
+        return publish(applyTargetRelationships(definition, makeValid(definition, {
+          kind: "line",
+          line: { origin: through, direction, length: line.length },
+        })));
       }
       case "circle":
       case "circle-center-through-object": {
@@ -373,7 +567,7 @@ export const evaluateDerivedConstructionObjects = (
         if (!center || !circle) {
           return publish(makeInvalid(definition, "invalid", "Circle needs a center and positive radius."));
         }
-        return publish(makeValid(definition, { kind: "circle", circle }));
+        return publish(applyTargetRelationships(definition, makeValid(definition, { kind: "circle", circle })));
       }
       case "angle-bisector": {
         const a = source(0);
@@ -386,7 +580,7 @@ export const evaluateDerivedConstructionObjects = (
         if (!a || !vertex || !c || !line) {
           return publish(makeInvalid(definition, "invalid", "Angle bisector needs three non-degenerate source points."));
         }
-        return publish(makeValid(definition, { kind: "line", line }));
+        return publish(applyTargetRelationships(definition, makeValid(definition, { kind: "line", line })));
       }
       case "tangent":
       case "tangent-to-circle-at-object": {
@@ -403,7 +597,10 @@ export const evaluateDerivedConstructionObjects = (
           return publish(makeInvalid(definition, "invalid", "Tangent point cannot coincide with the circle center."));
         }
         const tangentPoint = addVec3(circle.center, scaleVec3(radial, circle.radius));
-        return publish(makeValid(definition, { kind: "line", line: { origin: tangentPoint, direction } }));
+        return publish(applyTargetRelationships(definition, makeValid(definition, {
+          kind: "line",
+          line: { origin: tangentPoint, direction },
+        })));
       }
       case "normal":
       case "normal-to-object-at-object": {
@@ -413,7 +610,10 @@ export const evaluateDerivedConstructionObjects = (
         if (!objectPoint || !through || !direction) {
           return publish(makeInvalid(definition, "invalid", "Normal needs a source object and through point."));
         }
-        return publish(makeValid(definition, { kind: "line", line: { origin: through, direction } }));
+        return publish(applyTargetRelationships(definition, makeValid(definition, {
+          kind: "line",
+          line: { origin: through, direction },
+        })));
       }
       default:
         return publish(makeInvalid(definition, "invalid", "Unsupported construction type."));

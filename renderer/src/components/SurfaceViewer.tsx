@@ -3742,14 +3742,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     controls.addEventListener("start", handleControlsStart);
     controls.addEventListener("end", handleControlsEnd);
 
-    const handleGizmoDraggingChanged = (event: { value?: boolean }) => {
-      const dragging = !!event?.value;
-      const ctrls = controlsRef.current;
-      if (ctrls) ctrls.enabled = !dragging;
-      if (dragging) beginMeshInteraction();
-      else endMeshInteraction();
-    };
-    const handleGizmoObjectChange = () => {
+    const emitGizmoObjectChange = () => {
       const tc = transformControlsRef.current;
       const cb = onGizmoTransformRef.current;
       const target = tc?.object;
@@ -3773,6 +3766,22 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           z: target.scale.z,
         },
       });
+    };
+    const handleGizmoDraggingChanged = (event: { value?: boolean }) => {
+      const dragging = !!event?.value;
+      const ctrls = controlsRef.current;
+      if (ctrls) ctrls.enabled = !dragging;
+      if (dragging) {
+        beginMeshInteraction();
+      } else {
+        emitGizmoObjectChange();
+        endMeshInteraction();
+      }
+    };
+    const handleGizmoObjectChange = () => {
+      const tc = transformControlsRef.current;
+      if ((tc as any)?.dragging) return;
+      emitGizmoObjectChange();
     };
     transformControls.addEventListener("dragging-changed", handleGizmoDraggingChanged);
     transformControls.addEventListener("objectChange", handleGizmoObjectChange);

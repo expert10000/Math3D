@@ -40,3 +40,10 @@
 .read-the-docs {
   color: #888;
 }
+
+button:disabled,
+select:disabled,
+input:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}

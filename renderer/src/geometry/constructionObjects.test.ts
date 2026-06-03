@@ -179,4 +179,108 @@ describe("derived construction objects", () => {
     expect(movedTangent.line.origin.x).toBeCloseTo(4);
     expect(movedTangent.line.origin.y).toBeCloseTo(0);
   });
+
+  it("applies parallel and perpendicular relationships as source lines move", () => {
+    const definitions: DerivedConstructionObjectDefinition[] = [
+      { id: "L1", type: "line", sourceObjectIds: ["A", "B"] },
+      { id: "L2", type: "line", sourceObjectIds: ["C", "D"] },
+      { id: "L3", type: "line", sourceObjectIds: ["E", "F"] },
+    ];
+
+    const initial = evaluateDerivedConstructionObjects(
+      definitions,
+      {
+        A: point(0, 0),
+        B: point(2, 0),
+        C: point(0, 1),
+        D: point(0, 3),
+        E: point(1, 0),
+        F: point(1, 2),
+      },
+      [
+        { id: "parallel-L2-L1", type: "parallel", sourceId: "L1", targetId: "L2" },
+        { id: "perpendicular-L3-L1", type: "perpendicular", sourceId: "L1", targetId: "L3" },
+      ]
+    );
+    const moved = evaluateDerivedConstructionObjects(
+      definitions,
+      {
+        A: point(0, 0),
+        B: point(0, 2),
+        C: point(0, 1),
+        D: point(0, 3),
+        E: point(1, 0),
+        F: point(1, 2),
+      },
+      [
+        { id: "parallel-L2-L1", type: "parallel", sourceId: "L1", targetId: "L2" },
+        { id: "perpendicular-L3-L1", type: "perpendicular", sourceId: "L1", targetId: "L3" },
+      ]
+    );
+
+    const initialL2 = initial.byId.get("L2")?.value;
+    const initialL3 = initial.byId.get("L3")?.value;
+    const movedL2 = moved.byId.get("L2")?.value;
+    const movedL3 = moved.byId.get("L3")?.value;
+    expect(initialL2?.kind).toBe("line");
+    expect(initialL3?.kind).toBe("line");
+    expect(movedL2?.kind).toBe("line");
+    expect(movedL3?.kind).toBe("line");
+    if (initialL2?.kind !== "line" || initialL3?.kind !== "line" || movedL2?.kind !== "line" || movedL3?.kind !== "line") {
+      return;
+    }
+
+    expect(initialL2.line.direction).toMatchObject({ x: 1, y: 0, z: 0 });
+    expect(Math.abs(initialL3.line.direction.y)).toBeCloseTo(1);
+    expect(Math.abs(movedL2.line.direction.y)).toBeCloseTo(1);
+    expect(Math.abs(movedL3.line.direction.x)).toBeCloseTo(1);
+  });
+
+  it("applies circle relationships for equal radius, concentric, and tangent", () => {
+    const definitions: DerivedConstructionObjectDefinition[] = [
+      { id: "c1", type: "circle", sourceObjectIds: ["A", "B"] },
+      { id: "c2", type: "circle", sourceObjectIds: ["C", "D"] },
+      { id: "c3", type: "circle", sourceObjectIds: ["E", "F"] },
+      { id: "t", type: "line", sourceObjectIds: ["G", "H"] },
+    ];
+
+    const result = evaluateDerivedConstructionObjects(
+      definitions,
+      {
+        A: point(0, 0),
+        B: point(2, 0),
+        C: point(4, 0),
+        D: point(5, 0),
+        E: point(8, 0),
+        F: point(9, 0),
+        G: point(0, 3),
+        H: point(2, 3),
+      },
+      [
+        { id: "same-radius", type: "equal-radius", sourceId: "c1", targetId: "c2" },
+        { id: "same-center", type: "concentric", sourceId: "c1", targetId: "c2" },
+        { id: "circle-tangent", type: "tangent", sourceId: "c1", targetId: "c3" },
+        { id: "line-tangent", type: "tangent", sourceId: "c1", targetId: "t" },
+      ]
+    );
+
+    const c2 = result.byId.get("c2")?.value;
+    const c3 = result.byId.get("c3")?.value;
+    const t = result.byId.get("t")?.value;
+    expect(c2?.kind).toBe("circle");
+    expect(c3?.kind).toBe("circle");
+    expect(t?.kind).toBe("line");
+    if (c2?.kind !== "circle" || c3?.kind !== "circle" || t?.kind !== "line") return;
+
+    expect(c2.circle.center).toMatchObject({ x: 0, y: 0, z: 0 });
+    expect(c2.circle.radius).toBeCloseTo(2);
+    expect(c3.circle.center.x).toBeCloseTo(3);
+    expect(c3.circle.radius).toBeCloseTo(1);
+    expect(Math.hypot(t.line.origin.x, t.line.origin.y, t.line.origin.z)).toBeCloseTo(2);
+    expect(
+      t.line.origin.x * t.line.direction.x +
+        t.line.origin.y * t.line.direction.y +
+        t.line.origin.z * t.line.direction.z
+    ).toBeCloseTo(0);
+  });
 });

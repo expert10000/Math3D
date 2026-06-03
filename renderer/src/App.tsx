@@ -207,6 +207,7 @@ import {
   validateCurve as curveValidate,
   evaluateDerivedConstructionObjects,
   type AnyCurve as CoreAnyCurve,
+  type ConstructionRelationshipDefinition,
   type Curve3D as CoreCurve3D,
   type DerivedConstructionObjectDefinition,
 } from "@math3d/core";
@@ -2390,6 +2391,22 @@ type GeometryMathConstructionType =
   | "tangent-to-circle-at-object"
   | "normal-to-object-at-object";
 type GeometryMathConstructionStatus = "valid" | "broken-source" | "invalid";
+type GeometryMathConstructionRelationshipType =
+  | "parallel"
+  | "perpendicular"
+  | "equal-length"
+  | "equal-radius"
+  | "coincident"
+  | "concentric"
+  | "tangent";
+type GeometryMathConstructionRelationship = {
+  id: string;
+  type: GeometryMathConstructionRelationshipType;
+  sourceId: string;
+  targetId: string;
+  enabled: boolean;
+  createdAt: number;
+};
 type GeometryMathConstructionObject = {
   id: string;
   type: GeometryMathConstructionType;
@@ -2450,6 +2467,15 @@ const GEOMETRY_MATH_CONSTRUCTION_TYPE_LABELS: Record<GeometryMathConstructionTyp
   "angle-bisector": "Angle Bisector",
   "tangent-to-circle-at-object": "Tangent",
   "normal-to-object-at-object": "Normal",
+};
+const GEOMETRY_MATH_RELATIONSHIP_TYPE_LABELS: Record<GeometryMathConstructionRelationshipType, string> = {
+  parallel: "Parallel",
+  perpendicular: "Perpendicular",
+  "equal-length": "Equal Length",
+  "equal-radius": "Equal Radius",
+  coincident: "Coincident",
+  concentric: "Concentric",
+  tangent: "Tangent",
 };
 const GEOMETRY_DERIVED_RELATION_TYPE_LABELS: Record<GeometryDerivedRelationType, string> = {
   "center-on-derived-point": "Place Object Center On Point",
@@ -7742,8 +7768,13 @@ const App: React.FC = () => {
   const [geometryMathConstructionSourceAId, setGeometryMathConstructionSourceAId] = useState<string | null>(null);
   const [geometryMathConstructionSourceBId, setGeometryMathConstructionSourceBId] = useState<string | null>(null);
   const [geometryMathConstructionSourcePId, setGeometryMathConstructionSourcePId] = useState<string | null>(null);
+  const [geometryMathPickTargetSlot, setGeometryMathPickTargetSlot] = useState<"A" | "B" | "P">("A");
   const [geometryMathConstructionLineSourceId, setGeometryMathConstructionLineSourceId] = useState<string | null>(null);
   const [geometryMathConstructionCircleSourceId, setGeometryMathConstructionCircleSourceId] = useState<string | null>(null);
+  const [geometryMathConstructionRelationshipTargetLineId, setGeometryMathConstructionRelationshipTargetLineId] = useState<string | null>(null);
+  const [geometryMathConstructionRelationshipTargetCircleId, setGeometryMathConstructionRelationshipTargetCircleId] = useState<string | null>(null);
+  const [geometryMathConstructionRelationshipTargetPointId, setGeometryMathConstructionRelationshipTargetPointId] = useState<string | null>(null);
+  const [geometryMathConstructionRelationships, setGeometryMathConstructionRelationships] = useState<GeometryMathConstructionRelationship[]>([]);
   const [geometryRelationTargetDerivedId, setGeometryRelationTargetDerivedId] = useState<string | null>(null);
   const [geometryRelationLocalAxis, setGeometryRelationLocalAxis] = useState<"x" | "y" | "z">("y");
   const [geometryRelationFaceSide, setGeometryRelationFaceSide] = useState<"min" | "max">("max");
@@ -7910,8 +7941,30 @@ const App: React.FC = () => {
       vertexIndex: info.vertexIndex,
     });
     if (geometryCreatePlacementModeActive && geometryPendingPlacementObjectId) return;
-    if (info.meshKey) setGeometrySelectedObjectId(info.meshKey);
-  }, [geometryCreatePlacementModeActive, geometryPendingPlacementObjectId]);
+    if (info.meshKey) {
+      setGeometrySelectedObjectId(info.meshKey);
+      if (geometryProceduralPanelTab === "construct" && geometryProbeSelectionMode === "object") {
+        const slot = geometryMathPickTargetSlot;
+        if (slot === "A") {
+          setGeometryMathConstructionSourceAId(info.meshKey);
+          setGeometryMathPickTargetSlot("B");
+        } else if (slot === "B") {
+          setGeometryMathConstructionSourceBId(info.meshKey);
+          setGeometryMathPickTargetSlot("P");
+        } else {
+          setGeometryMathConstructionSourcePId(info.meshKey);
+          setGeometryMathPickTargetSlot("A");
+        }
+        setGeometryCreateActionStatus(`Picked object for ${slot}. Next click fills ${slot === "A" ? "B" : slot === "B" ? "P" : "A"}.`);
+      }
+    }
+  }, [
+    geometryCreatePlacementModeActive,
+    geometryMathPickTargetSlot,
+    geometryPendingPlacementObjectId,
+    geometryProbeSelectionMode,
+    geometryProceduralPanelTab,
+  ]);
   const geometryFocusAfterAddRef = useRef<(() => void) | null>(null);
   const [geometryProceduralScriptText, setGeometryProceduralScriptText] = useState(PROCEDURAL_SCRIPT_STARTER);
   const [geometryProceduralScriptError, setGeometryProceduralScriptError] = useState<string | null>(null);
@@ -8312,6 +8365,16 @@ const App: React.FC = () => {
     () => geometryMathConstructions.filter((entry) => entry.type === "circle-center-through-object"),
     [geometryMathConstructions]
   );
+  const geometryMathConstructionPointOptions = useMemo(
+    () =>
+      geometryMathConstructions.filter((entry) => entry.type === "midpoint").map((entry) => ({
+        id: entry.id,
+        name: entry.name,
+        type: "construction" as const,
+        visible: entry.visible,
+      })),
+    [geometryMathConstructions]
+  );
   const geometryMathConstructionObjectIdSet = useMemo(
     () => new Set(geometryMathConstructionObjectOptions.map((entry) => entry.id)),
     [geometryMathConstructionObjectOptions]
@@ -8389,6 +8452,63 @@ const App: React.FC = () => {
     }
     return geometryMathConstructionCircleOptions[0]?.id ?? null;
   }, [geometryMathConstructionCircleOptions, geometryMathConstructionCircleSourceId]);
+  const geometryEffectiveMathRelationshipTargetLineId = useMemo(() => {
+    if (
+      geometryMathConstructionRelationshipTargetLineId &&
+      geometryMathConstructionLineOptions.some((entry) => entry.id === geometryMathConstructionRelationshipTargetLineId)
+    ) {
+      return geometryMathConstructionRelationshipTargetLineId;
+    }
+    return (
+      geometryMathConstructionLineOptions.find((entry) => entry.id !== geometryEffectiveMathConstructionLineSourceId)?.id ??
+      geometryMathConstructionLineOptions[0]?.id ??
+      null
+    );
+  }, [
+    geometryEffectiveMathConstructionLineSourceId,
+    geometryMathConstructionLineOptions,
+    geometryMathConstructionRelationshipTargetLineId,
+  ]);
+  const geometryEffectiveMathRelationshipTargetCircleId = useMemo(() => {
+    if (
+      geometryMathConstructionRelationshipTargetCircleId &&
+      geometryMathConstructionCircleOptions.some((entry) => entry.id === geometryMathConstructionRelationshipTargetCircleId)
+    ) {
+      return geometryMathConstructionRelationshipTargetCircleId;
+    }
+    return (
+      geometryMathConstructionCircleOptions.find((entry) => entry.id !== geometryEffectiveMathConstructionCircleSourceId)?.id ??
+      geometryMathConstructionCircleOptions[0]?.id ??
+      null
+    );
+  }, [
+    geometryEffectiveMathConstructionCircleSourceId,
+    geometryMathConstructionCircleOptions,
+    geometryMathConstructionRelationshipTargetCircleId,
+  ]);
+  const geometryEffectiveMathRelationshipTargetPointId = useMemo(() => {
+    if (
+      geometryMathConstructionRelationshipTargetPointId &&
+      geometryMathConstructionPointOptions.some((entry) => entry.id === geometryMathConstructionRelationshipTargetPointId)
+    ) {
+      return geometryMathConstructionRelationshipTargetPointId;
+    }
+    return geometryMathConstructionPointOptions[0]?.id ?? null;
+  }, [geometryMathConstructionPointOptions, geometryMathConstructionRelationshipTargetPointId]);
+  const geometryCanCreateMathFromAB = !!(
+    geometryEffectiveMathConstructionSourceAId &&
+    geometryEffectiveMathConstructionSourceBId &&
+    geometryEffectiveMathConstructionSourceAId !== geometryEffectiveMathConstructionSourceBId
+  );
+  const geometryCanCreateMathFromABP = !!(
+    geometryCanCreateMathFromAB &&
+    geometryEffectiveMathConstructionSourcePId &&
+    new Set([
+      geometryEffectiveMathConstructionSourceAId,
+      geometryEffectiveMathConstructionSourceBId,
+      geometryEffectiveMathConstructionSourcePId,
+    ]).size === 3
+  );
   const prepareGeometryCompareFromSelected = useCallback(() => {
     const selectedId = geometrySelectedSceneObject?.id ?? null;
     if (!selectedId) return;
@@ -12376,6 +12496,8 @@ const App: React.FC = () => {
         createdAt: Date.now(),
       };
       setGeometryMathConstructions((prev) => [next, ...prev]);
+      setGeometrySelectedMathConstructionId(next.id);
+      setGeometryCreateActionStatus(`Construction added: ${next.name}.`);
     },
     [geometryMathConstructions]
   );
@@ -12418,21 +12540,111 @@ const App: React.FC = () => {
       geometryEffectiveMathConstructionSourcePId,
     ]
   );
+  const appendGeometryMathConstructionRelationship = useCallback(
+    (type: GeometryMathConstructionRelationshipType, sourceId: string | null, targetId: string | null) => {
+      if (!sourceId || !targetId) {
+        setGeometryCreateActionStatus("Select the required relationship source and target first.");
+        return;
+      }
+      if (sourceId === targetId) {
+        setGeometryCreateActionStatus("Use distinct source and target construction objects for a relationship.");
+        return;
+      }
+      const duplicate = geometryMathConstructionRelationships.some(
+        (entry) => entry.enabled && entry.type === type && entry.sourceId === sourceId && entry.targetId === targetId
+      );
+      if (duplicate) {
+        setGeometryCreateActionStatus("That construction relationship already exists.");
+        return;
+      }
+      const next: GeometryMathConstructionRelationship = {
+        id: makeId(),
+        type,
+        sourceId,
+        targetId,
+        enabled: true,
+        createdAt: Date.now(),
+      };
+      setGeometryMathConstructionRelationships((prev) => [next, ...prev]);
+      setGeometryCreateActionStatus(`Relationship added: ${GEOMETRY_MATH_RELATIONSHIP_TYPE_LABELS[type]}.`);
+    },
+    [geometryMathConstructionRelationships]
+  );
+  const handleCreateGeometryMathConstructionRelationship = useCallback(
+    (type: GeometryMathConstructionRelationshipType) => {
+      if (type === "parallel" || type === "perpendicular" || type === "equal-length") {
+        appendGeometryMathConstructionRelationship(
+          type,
+          geometryEffectiveMathConstructionLineSourceId,
+          geometryEffectiveMathRelationshipTargetLineId
+        );
+        return;
+      }
+      if (type === "equal-radius" || type === "concentric") {
+        appendGeometryMathConstructionRelationship(
+          type,
+          geometryEffectiveMathConstructionCircleSourceId,
+          geometryEffectiveMathRelationshipTargetCircleId
+        );
+        return;
+      }
+      if (type === "coincident") {
+        appendGeometryMathConstructionRelationship(
+          type,
+          geometryEffectiveMathConstructionSourceAId,
+          geometryEffectiveMathRelationshipTargetPointId
+        );
+        return;
+      }
+      appendGeometryMathConstructionRelationship(
+        type,
+        geometryEffectiveMathConstructionCircleSourceId,
+        geometryEffectiveMathRelationshipTargetLineId ?? geometryEffectiveMathRelationshipTargetCircleId
+      );
+    },
+    [
+      appendGeometryMathConstructionRelationship,
+      geometryEffectiveMathConstructionCircleSourceId,
+      geometryEffectiveMathConstructionLineSourceId,
+      geometryEffectiveMathConstructionSourceAId,
+      geometryEffectiveMathRelationshipTargetCircleId,
+      geometryEffectiveMathRelationshipTargetLineId,
+      geometryEffectiveMathRelationshipTargetPointId,
+    ]
+  );
+  const handleToggleGeometryMathConstructionRelationship = useCallback((id: string) => {
+    setGeometryMathConstructionRelationships((prev) =>
+      prev.map((entry) => (entry.id === id ? { ...entry, enabled: !entry.enabled } : entry))
+    );
+  }, []);
+  const handleDeleteGeometryMathConstructionRelationship = useCallback((id: string) => {
+    setGeometryMathConstructionRelationships((prev) => prev.filter((entry) => entry.id !== id));
+  }, []);
   const handleDeleteGeometryMathConstruction = useCallback((id: string) => {
     setGeometryMathConstructions((prev) =>
       prev.filter((entry) => entry.id !== id).map((entry) =>
         entry.sourceConstructionId === id ? { ...entry, sourceConstructionId: null } : entry
       )
     );
+    setGeometryMathConstructionRelationships((prev) =>
+      prev.filter((entry) => entry.sourceId !== id && entry.targetId !== id)
+    );
     setGeometrySelectedMathConstructionId((prev) => (prev === id ? null : prev));
     setGeometryMathConstructionLineSourceId((prev) => (prev === id ? null : prev));
     setGeometryMathConstructionCircleSourceId((prev) => (prev === id ? null : prev));
+    setGeometryMathConstructionRelationshipTargetLineId((prev) => (prev === id ? null : prev));
+    setGeometryMathConstructionRelationshipTargetCircleId((prev) => (prev === id ? null : prev));
+    setGeometryMathConstructionRelationshipTargetPointId((prev) => (prev === id ? null : prev));
   }, []);
   const handleClearGeometryMathConstructions = useCallback(() => {
     setGeometryMathConstructions([]);
+    setGeometryMathConstructionRelationships([]);
     setGeometrySelectedMathConstructionId(null);
     setGeometryMathConstructionLineSourceId(null);
     setGeometryMathConstructionCircleSourceId(null);
+    setGeometryMathConstructionRelationshipTargetLineId(null);
+    setGeometryMathConstructionRelationshipTargetCircleId(null);
+    setGeometryMathConstructionRelationshipTargetPointId(null);
     setGeometryCreateActionStatus("Cleared mathematical construction objects.");
   }, []);
   const handleToggleGeometryMathConstructionVisibility = useCallback((id: string) => {
@@ -14834,12 +15046,20 @@ const App: React.FC = () => {
       visible: object.visible,
       createdAt: object.createdAt,
     }));
+    const constructionRelationships: ConstructionRelationshipDefinition[] = geometryMathConstructionRelationships.map((entry) => ({
+      id: entry.id,
+      type: entry.type,
+      sourceId: entry.sourceId,
+      targetId: entry.targetId,
+      enabled: entry.enabled,
+      createdAt: entry.createdAt,
+    }));
     const sourcePoints = new Map<string, { x: number; y: number; z: number; label?: string }>();
     for (const option of geometryCompareObjectOptions) {
       const source = resolveGeometrySceneObjectById(option.id);
       if (source) sourcePoints.set(option.id, { ...source.transform.position, label: option.name });
     }
-    const coreResult = evaluateDerivedConstructionObjects(constructionDefinitions, sourcePoints);
+    const coreResult = evaluateDerivedConstructionObjects(constructionDefinitions, sourcePoints, constructionRelationships);
     const getSourcePoint = (id: string | null | undefined) => {
       const external = getExternalSourcePoint(id);
       if (external) return external;
@@ -15042,6 +15262,7 @@ const App: React.FC = () => {
     geometryCompareObjectOptions,
     geometryDatasetMeshObjects,
     geometryMathConstructions,
+    geometryMathConstructionRelationships,
     geometryMode,
     geometryObjects,
     resolveGeometrySceneObjectById,
@@ -16791,6 +17012,17 @@ const App: React.FC = () => {
         });
       }
     }
+    for (const relationship of geometryMathConstructionRelationships) {
+      if (!relationship.enabled) continue;
+      const targetIsMath = mathConstructionIdSet.has(relationship.targetId);
+      if (!targetIsMath) continue;
+      const sourcePrefix = mathConstructionIdSet.has(relationship.sourceId) ? "math" : "object";
+      addEdge({
+        sourceId: `${sourcePrefix}:${relationship.sourceId}`,
+        targetId: `math:${relationship.targetId}`,
+        relation: "aligned-to",
+      });
+    }
     for (const relation of geometryDerivedRelationConstraints) {
       if (!geometryObjectIdSet.has(relation.objectId)) continue;
       if (!geometryDerivedConstructions.some((entry) => entry.id === relation.derivedId)) continue;
@@ -16897,6 +17129,7 @@ const App: React.FC = () => {
     geometryDerivedRelationConstraints,
     geometryDerivedConstructionOverlays.byId,
     geometryMathConstructions,
+    geometryMathConstructionRelationships,
     geometryMathConstructionOverlays.byId,
     geometryMeasuredEdges,
     geometryObjectIdSet,
@@ -39482,6 +39715,54 @@ case "mobius":
         colorHex: toHexColorString(material.color, 0x8aa4ff),
       });
     }
+    const sceneObjectNameById = new Map(
+      [...geometryObjects, ...geometryDatasetMeshObjects].map((obj) => [obj.id, obj.name] as const)
+    );
+    const mathConstructionNameById = new Map(geometryMathConstructions.map((entry) => [entry.id, entry.name] as const));
+    const mathConstructionIdSet = new Set(geometryMathConstructions.map((entry) => entry.id));
+    const mathSourceLabel = (id: string) =>
+      sceneObjectNameById.get(id) ?? mathConstructionNameById.get(id) ?? id;
+    const mathParentId = (entry: GeometryMathConstructionObject) => {
+      const sourceId = entry.sourceConstructionId ?? entry.sourceObjectIds[0] ?? null;
+      if (!sourceId) return null;
+      if (sceneObjectNameById.has(sourceId)) return `scene:${sourceId}`;
+      if (mathConstructionIdSet.has(sourceId)) return `derived:math:${sourceId}`;
+      return null;
+    };
+    for (const entry of geometryMathConstructions) {
+      const evalEntry = geometryMathConstructionOverlays.byId.get(entry.id) ?? null;
+      const status = evalEntry?.status ?? "invalid";
+      const dependencyNames = [
+        ...entry.sourceObjectIds.map(mathSourceLabel),
+        ...(entry.sourceConstructionId ? [mathSourceLabel(entry.sourceConstructionId)] : []),
+      ];
+      const relationCount = geometryMathConstructionRelationships.filter(
+        (relationship) => relationship.enabled && relationship.targetId === entry.id
+      ).length;
+      addRaw({
+        id: `derived:math:${entry.id}`,
+        name: entry.name,
+        type: `derived/math-${entry.type}`,
+        sourceDefinition: dependencyNames.length ? dependencyNames.join(", ") : "No sources",
+        displayState: `${entry.visible ? "visible" : "hidden"} · ${status}${relationCount ? ` · ${relationCount} relationship${relationCount === 1 ? "" : "s"}` : ""}`,
+        parentId: mathParentId(entry),
+        category: "derived",
+        sceneRole: "overlay",
+        visible: entry.visible,
+        canToggleVisibility: true,
+        canDelete: true,
+        colorHex:
+          entry.type === "line-through-objects" ||
+          entry.type === "parallel-line-through-object" ||
+          entry.type === "perpendicular-line-through-object"
+            ? "#2563eb"
+            : entry.type === "circle-center-through-object"
+              ? "#0891b2"
+              : entry.type === "midpoint"
+                ? "#0f766e"
+                : "#7c3aed",
+      });
+    }
 
     let activeDefinitionNodeId: string | null = null;
     if (isSurfaceDatasetKind(datasetKind)) {
@@ -39979,6 +40260,9 @@ case "mobius":
     compareEnabled,
     compareSurfaceId,
     compareParamId,
+    geometryMathConstructions,
+    geometryMathConstructionOverlays.byId,
+    geometryMathConstructionRelationships,
     unifiedManualDerived,
     unifiedSuppressedNodeIds,
   ]);
@@ -40183,6 +40467,10 @@ case "mobius":
         handleToggleGeometryObjectVisible(node.objectRefId);
         return;
       }
+      if (nodeId.startsWith("derived:math:")) {
+        handleToggleGeometryMathConstructionVisibility(nodeId.slice("derived:math:".length));
+        return;
+      }
       switch (nodeId) {
         case "derived:auto:wireframe":
           setShowWireframe((v) => !v);
@@ -40259,6 +40547,7 @@ case "mobius":
     },
     [
       unifiedObjectModel.nodeById,
+      handleToggleGeometryMathConstructionVisibility,
       handleToggleGeometryObjectVisible,
       colorMode,
       surfaceViewerKind,
@@ -40279,6 +40568,10 @@ case "mobius":
         handleRemoveGeometryObject(node.objectRefId);
         return;
       }
+      if (nodeId.startsWith("derived:math:")) {
+        handleDeleteGeometryMathConstruction(nodeId.slice("derived:math:".length));
+        return;
+      }
       if (nodeId.startsWith("derived:manual:")) {
         const manualId = nodeId.slice("derived:manual:".length);
         handleDeleteGeometryDerivedProduct(manualId);
@@ -40286,7 +40579,7 @@ case "mobius":
       }
       setGeometryCreateActionStatus(`Delete is not available for ${node.name} (${node.type}).`);
     },
-    [handleDeleteGeometryDerivedProduct, handleRemoveGeometryObject, unifiedObjectModel.nodeById]
+    [handleDeleteGeometryDerivedProduct, handleDeleteGeometryMathConstruction, handleRemoveGeometryObject, unifiedObjectModel.nodeById]
   );
   const handleForceRemoveUnifiedNode = useCallback(
     (nodeId: string) => {
@@ -40312,11 +40605,15 @@ case "mobius":
 
       const removedObjectIds = new Set<string>();
       const removedDerivedEntryIds = new Set<string>();
+      const removedMathConstructionIds = new Set<string>();
       for (const subtreeId of subtreeIds) {
         const entry = unifiedObjectModel.nodeById.get(subtreeId);
         if (!entry) continue;
         if (entry.category === "sceneObject" && entry.objectRefId) {
           removedObjectIds.add(entry.objectRefId);
+        }
+        if (subtreeId.startsWith("derived:math:")) {
+          removedMathConstructionIds.add(subtreeId.slice("derived:math:".length));
         }
         if (subtreeId.startsWith("derived:manual:")) {
           removedDerivedEntryIds.add(subtreeId.slice("derived:manual:".length));
@@ -40327,6 +40624,9 @@ case "mobius":
       }
       if (node.id.startsWith("derived:manual:")) {
         removedDerivedEntryIds.add(node.id.slice("derived:manual:".length));
+      }
+      if (node.id.startsWith("derived:math:")) {
+        removedMathConstructionIds.add(node.id.slice("derived:math:".length));
       }
 
       if (removedObjectIds.size) {
@@ -40352,6 +40652,40 @@ case "mobius":
           if (entry.resultObjectId) removedObjectIds.add(entry.resultObjectId);
         }
         setUnifiedManualDerived((prev) => prev.filter((entry) => !removedDerivedEntryIds.has(entry.id)));
+      }
+      if (removedMathConstructionIds.size) {
+        setGeometryMathConstructions((prev) =>
+          prev
+            .filter((entry) => !removedMathConstructionIds.has(entry.id))
+            .map((entry) =>
+              entry.sourceConstructionId && removedMathConstructionIds.has(entry.sourceConstructionId)
+                ? { ...entry, sourceConstructionId: null }
+                : entry
+            )
+        );
+        setGeometryMathConstructionRelationships((prev) =>
+          prev.filter(
+            (entry) => !removedMathConstructionIds.has(entry.sourceId) && !removedMathConstructionIds.has(entry.targetId)
+          )
+        );
+        setGeometrySelectedMathConstructionId((prev) =>
+          prev && removedMathConstructionIds.has(prev) ? null : prev
+        );
+        setGeometryMathConstructionLineSourceId((prev) =>
+          prev && removedMathConstructionIds.has(prev) ? null : prev
+        );
+        setGeometryMathConstructionCircleSourceId((prev) =>
+          prev && removedMathConstructionIds.has(prev) ? null : prev
+        );
+        setGeometryMathConstructionRelationshipTargetLineId((prev) =>
+          prev && removedMathConstructionIds.has(prev) ? null : prev
+        );
+        setGeometryMathConstructionRelationshipTargetCircleId((prev) =>
+          prev && removedMathConstructionIds.has(prev) ? null : prev
+        );
+        setGeometryMathConstructionRelationshipTargetPointId((prev) =>
+          prev && removedMathConstructionIds.has(prev) ? null : prev
+        );
       }
 
       if (removedObjectIds.size) {
@@ -40391,7 +40725,7 @@ case "mobius":
         return changedSuppress ? next : prev;
       });
 
-      if (!removedObjectIds.size && !removedDerivedEntryIds.size) {
+      if (!removedObjectIds.size && !removedDerivedEntryIds.size && !removedMathConstructionIds.size) {
         if (node.category === "surfaceDefinition" || node.category === "dataset") {
           setSurfaceViewerKind("mesh");
           setDatasetKind("mesh");
@@ -40424,8 +40758,8 @@ case "mobius":
       }
 
       setGeometryCreateActionStatus(
-        removedObjectIds.size || removedDerivedEntryIds.size
-          ? `Force removed ${removedObjectIds.size} object(s) and ${removedDerivedEntryIds.size} derived item(s).`
+        removedObjectIds.size || removedDerivedEntryIds.size || removedMathConstructionIds.size
+          ? `Force removed ${removedObjectIds.size} object(s), ${removedDerivedEntryIds.size} derived item(s), and ${removedMathConstructionIds.size} construction helper(s).`
           : `Force removed ${node.name} from Scene contents.`
       );
     },
@@ -50174,6 +50508,23 @@ case "mobius":
                           </button>
                         </div>
                         <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 10.5, color: "#475569" }}>Next viewport click</span>
+                            {(["A", "B", "P"] as const).map((slot) => (
+                              <button
+                                key={`geometry-math-pick-slot-${slot}`}
+                                type="button"
+                                onClick={() => {
+                                  setGeometryMathPickTargetSlot(slot);
+                                  setGeometryProbeSelectionMode("object");
+                                }}
+                                aria-pressed={geometryMathPickTargetSlot === slot}
+                                style={{ ...pill(geometryMathPickTargetSlot === slot), fontSize: 10.5, padding: "2px 8px" }}
+                              >
+                                {slot}
+                              </button>
+                            ))}
+                          </div>
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
                             {([
                               ["A", geometryEffectiveMathConstructionSourceAId, setGeometryMathConstructionSourceAId],
@@ -50235,28 +50586,32 @@ case "mobius":
                           <button
                             type="button"
                             onClick={() => handleCreateGeometryMathConstruction("midpoint")}
-                            disabled={geometryMathConstructionObjectOptions.length < 2}
+                            disabled={!geometryCanCreateMathFromAB}
+                            title={geometryCanCreateMathFromAB ? "Create midpoint from A and B." : "Select two different source objects for A and B."}
                           >
                             midpoint(A,B)
                           </button>
                           <button
                             type="button"
                             onClick={() => handleCreateGeometryMathConstruction("line-through-objects")}
-                            disabled={geometryMathConstructionObjectOptions.length < 2}
+                            disabled={!geometryCanCreateMathFromAB}
+                            title={geometryCanCreateMathFromAB ? "Create line from A and B." : "Select two different source objects for A and B."}
                           >
                             line(A,B)
                           </button>
                           <button
                             type="button"
                             onClick={() => handleCreateGeometryMathConstruction("circle-center-through-object")}
-                            disabled={geometryMathConstructionObjectOptions.length < 2}
+                            disabled={!geometryCanCreateMathFromAB}
+                            title={geometryCanCreateMathFromAB ? "Create circle centered at A through B." : "Select two different source objects for A and B."}
                           >
                             circle(A,B)
                           </button>
                           <button
                             type="button"
                             onClick={() => handleCreateGeometryMathConstruction("angle-bisector")}
-                            disabled={geometryMathConstructionObjectOptions.length < 3}
+                            disabled={!geometryCanCreateMathFromABP}
+                            title={geometryCanCreateMathFromABP ? "Create angle bisector from A, B, and P." : "Select three different source objects for A, B, and P."}
                           >
                             bisector(A,B,P)
                           </button>
@@ -50284,10 +50639,229 @@ case "mobius":
                           <button
                             type="button"
                             onClick={() => handleCreateGeometryMathConstruction("normal-to-object-at-object")}
-                            disabled={geometryMathConstructionObjectOptions.length < 2}
+                            disabled={!geometryEffectiveMathConstructionSourceAId || !geometryEffectiveMathConstructionSourcePId}
                           >
                             normal(A,P)
                           </button>
+                        </div>
+                        {geometryCreateActionStatus && (
+                          <div style={{ fontSize: 10.5, color: "#334155" }}>{geometryCreateActionStatus}</div>
+                        )}
+                        {!geometryCanCreateMathFromAB && (
+                          <div style={{ fontSize: 10.5, color: "#92400e" }}>
+                            Select two different objects for A and B before creating a midpoint, line, or circle.
+                          </div>
+                        )}
+                        <div
+                          style={{
+                            border: "1px solid #e2e8f0",
+                            borderRadius: 6,
+                            padding: "6px 8px",
+                            background: "#f8fafc",
+                            display: "grid",
+                            gap: 4,
+                            fontSize: 10.5,
+                          }}
+                        >
+                          <div style={{ fontWeight: 700, color: "#0f172a" }}>Added constructions</div>
+                          {geometryMathConstructions.length ? (
+                            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                              {geometryMathConstructions.slice(0, 8).map((entry) => {
+                                const evalEntry = geometryMathConstructionOverlays.byId.get(entry.id);
+                                const status = evalEntry?.status ?? "invalid";
+                                return (
+                                  <button
+                                    key={`geometry-math-added-chip-${entry.id}`}
+                                    type="button"
+                                    onClick={() => setGeometrySelectedMathConstructionId(entry.id)}
+                                    style={{
+                                      border: "1px solid #cbd5e1",
+                                      borderRadius: 999,
+                                      background: geometrySelectedMathConstructionId === entry.id ? "#dbeafe" : "#fff",
+                                      padding: "2px 7px",
+                                      fontSize: 10.5,
+                                    }}
+                                    title={`${GEOMETRY_MATH_CONSTRUCTION_TYPE_LABELS[entry.type]} · ${status}`}
+                                  >
+                                    {entry.name}
+                                  </button>
+                                );
+                              })}
+                              {geometryMathConstructions.length > 8 && (
+                                <span style={{ color: "#64748b" }}>+{geometryMathConstructions.length - 8} more</span>
+                              )}
+                            </div>
+                          ) : (
+                            <div style={{ color: "#667085" }}>
+                              No construction objects yet.
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ borderTop: "1px dashed #d6dce7", paddingTop: 8, display: "grid", gap: 6 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700 }}>Relationships</div>
+                          {!geometryMathConstructionLineOptions.length &&
+                            !geometryMathConstructionCircleOptions.length &&
+                            !geometryMathConstructionPointOptions.length && (
+                              <div style={{ fontSize: 10.5, color: "#92400e" }}>
+                                Add a line, circle, or midpoint construction first.
+                              </div>
+                            )}
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
+                            <label style={{ display: "grid", gap: 3 }}>
+                              Target line
+                              <select
+                                value={geometryEffectiveMathRelationshipTargetLineId ?? ""}
+                                onChange={(e) => setGeometryMathConstructionRelationshipTargetLineId(e.target.value || null)}
+                                disabled={!geometryMathConstructionLineOptions.length}
+                                style={{ minWidth: 0 }}
+                              >
+                                <option value="">None</option>
+                                {geometryMathConstructionLineOptions.map((entry) => (
+                                  <option key={`geometry-math-relation-target-line-${entry.id}`} value={entry.id}>
+                                    {entry.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label style={{ display: "grid", gap: 3 }}>
+                              Target circle
+                              <select
+                                value={geometryEffectiveMathRelationshipTargetCircleId ?? ""}
+                                onChange={(e) => setGeometryMathConstructionRelationshipTargetCircleId(e.target.value || null)}
+                                disabled={!geometryMathConstructionCircleOptions.length}
+                                style={{ minWidth: 0 }}
+                              >
+                                <option value="">None</option>
+                                {geometryMathConstructionCircleOptions.map((entry) => (
+                                  <option key={`geometry-math-relation-target-circle-${entry.id}`} value={entry.id}>
+                                    {entry.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label style={{ display: "grid", gap: 3 }}>
+                              Target point
+                              <select
+                                value={geometryEffectiveMathRelationshipTargetPointId ?? ""}
+                                onChange={(e) => setGeometryMathConstructionRelationshipTargetPointId(e.target.value || null)}
+                                disabled={!geometryMathConstructionPointOptions.length}
+                                style={{ minWidth: 0 }}
+                              >
+                                <option value="">None</option>
+                                {geometryMathConstructionPointOptions.map((entry) => (
+                                  <option key={`geometry-math-relation-target-point-${entry.id}`} value={entry.id}>
+                                    {entry.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() => handleCreateGeometryMathConstructionRelationship("parallel")}
+                              disabled={!geometryEffectiveMathConstructionLineSourceId || !geometryEffectiveMathRelationshipTargetLineId}
+                            >
+                              parallel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCreateGeometryMathConstructionRelationship("perpendicular")}
+                              disabled={!geometryEffectiveMathConstructionLineSourceId || !geometryEffectiveMathRelationshipTargetLineId}
+                            >
+                              perpendicular
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCreateGeometryMathConstructionRelationship("equal-length")}
+                              disabled={!geometryEffectiveMathConstructionLineSourceId || !geometryEffectiveMathRelationshipTargetLineId}
+                            >
+                              equal length
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCreateGeometryMathConstructionRelationship("equal-radius")}
+                              disabled={!geometryEffectiveMathConstructionCircleSourceId || !geometryEffectiveMathRelationshipTargetCircleId}
+                            >
+                              equal radius
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCreateGeometryMathConstructionRelationship("coincident")}
+                              disabled={!geometryEffectiveMathConstructionSourceAId || !geometryEffectiveMathRelationshipTargetPointId}
+                            >
+                              coincident
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCreateGeometryMathConstructionRelationship("concentric")}
+                              disabled={!geometryEffectiveMathConstructionCircleSourceId || !geometryEffectiveMathRelationshipTargetCircleId}
+                            >
+                              concentric
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCreateGeometryMathConstructionRelationship("tangent")}
+                              disabled={
+                                !geometryEffectiveMathConstructionCircleSourceId ||
+                                !(geometryEffectiveMathRelationshipTargetLineId ?? geometryEffectiveMathRelationshipTargetCircleId)
+                              }
+                            >
+                              tangent
+                            </button>
+                          </div>
+                          {geometryMathConstructionRelationships.length ? (
+                            <div style={{ display: "grid", gap: 4 }}>
+                              {geometryMathConstructionRelationships.map((entry) => {
+                                const source =
+                                  geometryMathConstructions.find((item) => item.id === entry.sourceId)?.name ??
+                                  geometryMathConstructionObjectOptions.find((item) => item.id === entry.sourceId)?.name ??
+                                  entry.sourceId;
+                                const target =
+                                  geometryMathConstructions.find((item) => item.id === entry.targetId)?.name ??
+                                  geometryMathConstructionObjectOptions.find((item) => item.id === entry.targetId)?.name ??
+                                  entry.targetId;
+                                return (
+                                  <div
+                                    key={`geometry-math-relationship-${entry.id}`}
+                                    style={{
+                                      border: "1px solid #dbe2ea",
+                                      borderRadius: 6,
+                                      padding: "5px 7px",
+                                      background: "#fff",
+                                      display: "grid",
+                                      gap: 3,
+                                      fontSize: 10.5,
+                                    }}
+                                  >
+                                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                      <strong>{GEOMETRY_MATH_RELATIONSHIP_TYPE_LABELS[entry.type]}</strong>
+                                      <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                        <input
+                                          type="checkbox"
+                                          checked={entry.enabled}
+                                          onChange={() => handleToggleGeometryMathConstructionRelationship(entry.id)}
+                                        />
+                                        enabled
+                                      </label>
+                                    </div>
+                                    <div>{target} depends on {source}</div>
+                                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteGeometryMathConstructionRelationship(entry.id)}
+                                        style={{ fontSize: 10.5 }}
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 10.5, color: "#667085" }}>No mathematical relationships yet.</div>
+                          )}
                         </div>
                         {geometryMathConstructions.length ? (
                           <div style={{ display: "grid", gap: 5 }}>
@@ -64796,7 +65370,7 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
   const selectedCanDelete =
     !!selected &&
     !!onDeleteNode &&
-    (selected.category === "sceneObject" || selected.id.startsWith("derived:manual:"));
+    (selected.category === "sceneObject" || selected.id.startsWith("derived:manual:") || !!selected.canDelete);
   const selectedCanForceRemove = !!selected && !!onForceRemoveNode;
   const selectedQuickToggleLabel =
     selected && typeof selected.visible === "boolean" && selected.visible ? "Hide" : "Show";
