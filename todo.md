@@ -294,59 +294,5 @@ PR21, 22, 23 - shuul imp[lement full
 
 Exactly: previously it was mostly not explicitly checked before tests.
 
-What changed:
-
-Until May 28, 2026 (07d6c05), test:app:* scripts did not run a dedicated Electron repair/check step first.
-From May 28, 2026, pretest:... runs ensure:electron.
-From May 29, 2026 (9e2fbdd), that check got a hard 10-minute timeout.
-Why tests still used to pass:
-
-npm ci usually installs Electron correctly, so no extra check was needed.
-On runners where install was partial/corrupted/cache-odd, tests could still pass sometimes if Electron happened to be present enough.
-The new ensure:electron made this explicit and deterministic, so now CI fails early instead of failing later or passing by luck
-
-Implemented the PR27 continuation.
-Added a shared core evaluator in constructionObjects.ts (line 1), exported through index.ts (line 1). It supports midpoint, line, parallel, perpendicular, circle, angle bisector, tangent, and normal construction definitions with dependency evaluation, invalid/broken-source status, and automatic recomputation from current source points.
-Updated App.tsx (line 2378) so the procedural geometry panel can create, show/hide, select, and delete mathematical construction objects, and so their labels are included in viewer overlays.
-Added focused tests in constructionObjects.test.ts (line 1), including the key GeoGebra behavior: move source point A, midpoint M recomputes.
-Verification:
-Passed: npx vitest run src/geometry/constructionObjects.test.ts
-Filtered TypeScript check found no diagnostics for the new construction files or math-construction symbols.
-Full npx tsc -p tsconfig.app.json still fails on many unrelated existing app errors, so I did not claim a clean full typecheck.
-
-
 PR28 — Dependency Graph + Live Recompute
 
-The most important PR after PR27.
-
-Internal graph:
-
-A
-B
- \ /
-  M
-  |
-Circle
-  |
-Tangent
-
-When A moves:
-
-A changed
-→ M recompute
-→ Circle recompute
-→ Tangent recompute
-
-Without this, Geometry becomes static.
-
-With this, Geometry becomes a mathematical system.
-
-Implemented PR28.
-Added a dependency graph API in constructionObjects.ts: buildDerivedConstructionDependencyGraph and getAffectedDerivedConstructionIds.
-Construction source IDs can now resolve to point-valued construction outputs as well as original source points, enabling chains like A/B -> M -> circle -> tangent.
-Updated the procedural geometry math-construction panel so point-valued constructions can be selected as A/B/P sources, and added math construction nodes/edges to the dependency inspector graph.
-Added focused tests for affected recompute order and live downstream recompute when source point A moves.
-Verification:
-Passed: npx vitest run src/geometry/constructionObjects.test.ts
-Targeted TypeScript filter found no diagnostics for constructionObjects.ts or the edited App.tsx graph/overlay ranges.
-Full npx tsc -p tsconfig.app.json still has unrelated existing App.tsx diagnostics.
