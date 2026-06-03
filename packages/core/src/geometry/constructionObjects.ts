@@ -54,9 +54,30 @@ export type DerivedConstructionEvaluationResult = {
   byId: Map<string, DerivedConstructionEvaluation>;
   evaluations: DerivedConstructionEvaluation[];
   errors: string[];
+  dependencyGraph: DerivedConstructionDependencyGraph;
 };
 
 export type ConstructionSourcePointMap = Record<string, Point3> | Map<string, Point3>;
+
+export type DerivedConstructionDependencyEdge = {
+  sourceId: string;
+  sourceKind: "source-point" | "construction";
+  targetId: string;
+  targetKind: "construction";
+};
+
+export type DerivedConstructionDependencyGraph = {
+  sourcePointIds: string[];
+  constructionIds: string[];
+  edges: DerivedConstructionDependencyEdge[];
+  dependenciesById: Map<string, string[]>;
+  sourcePointDependenciesById: Map<string, string[]>;
+  constructionDependenciesById: Map<string, string[]>;
+  dependentsById: Map<string, string[]>;
+  constructionDependentsById: Map<string, string[]>;
+  topologicalConstructionIds: string[];
+  cyclicConstructionIds: string[];
+};
 
 const EPS = 1e-12;
 const DEFAULT_NORMAL: Vec3 = { x: 0, y: 0, z: 1 };
@@ -131,12 +152,122 @@ const makeValid = (
   value,
 });
 
+const uniqueStrings = (values: string[]): string[] => Array.from(new Set(values));
+
+export const buildDerivedConstructionDependencyGraph = (
+  definitions: DerivedConstructionObjectDefinition[]
+): DerivedConstructionDependencyGraph => {
+  const constructionIds = definitions.map((definition) => definition.id);
+  const constructionIdSet = new Set(constructionIds);
+  const sourcePointIds = new Set<string>();
+  const edges: DerivedConstructionDependencyEdge[] = [];
+  const dependenciesById = new Map<string, string[]>();
+  const sourcePointDependenciesById = new Map<string, string[]>();
+  const constructionDependenciesById = new Map<string, string[]>();
+  const dependentsById = new Map<string, string[]>();
+  const constructionDependentsById = new Map<string, string[]>();
+
+  const addDependency = (
+    targetId: string,
+    sourceId: string,
+    sourceKind: "source-point" | "construction"
+  ) => {
+    dependenciesById.set(targetId, uniqueStrings([...(dependenciesById.get(targetId) ?? []), sourceId]));
+    if (sourceKind === "source-point") {
+      sourcePointIds.add(sourceId);
+      sourcePointDependenciesById.set(
+        targetId,
+        uniqueStrings([...(sourcePointDependenciesById.get(targetId) ?? []), sourceId])
+      );
+    } else {
+      constructionDependenciesById.set(
+        targetId,
+        uniqueStrings([...(constructionDependenciesById.get(targetId) ?? []), sourceId])
+      );
+      constructionDependentsById.set(
+        sourceId,
+        uniqueStrings([...(constructionDependentsById.get(sourceId) ?? []), targetId])
+      );
+    }
+    dependentsById.set(sourceId, uniqueStrings([...(dependentsById.get(sourceId) ?? []), targetId]));
+    edges.push({ sourceId, sourceKind, targetId, targetKind: "construction" });
+  };
+
+  for (const definition of definitions) {
+    dependenciesById.set(definition.id, []);
+    sourcePointDependenciesById.set(definition.id, []);
+    constructionDependenciesById.set(definition.id, []);
+  }
+
+  for (const definition of definitions) {
+    for (const sourceId of definition.sourceObjectIds ?? []) {
+      addDependency(definition.id, sourceId, constructionIdSet.has(sourceId) ? "construction" : "source-point");
+    }
+    if (definition.sourceConstructionId) {
+      addDependency(definition.id, definition.sourceConstructionId, "construction");
+    }
+  }
+
+  const indegree = new Map<string, number>();
+  for (const id of constructionIds) indegree.set(id, 0);
+  for (const [id, dependencies] of constructionDependenciesById) {
+    indegree.set(id, dependencies.filter((dependencyId) => constructionIdSet.has(dependencyId)).length);
+  }
+  const queue = constructionIds.filter((id) => (indegree.get(id) ?? 0) === 0);
+  const topologicalConstructionIds: string[] = [];
+  for (let i = 0; i < queue.length; i += 1) {
+    const id = queue[i];
+    topologicalConstructionIds.push(id);
+    for (const dependentId of constructionDependentsById.get(id) ?? []) {
+      if (!constructionIdSet.has(dependentId)) continue;
+      const next = (indegree.get(dependentId) ?? 0) - 1;
+      indegree.set(dependentId, next);
+      if (next === 0) queue.push(dependentId);
+    }
+  }
+  const sortedSet = new Set(topologicalConstructionIds);
+  const cyclicConstructionIds = constructionIds.filter((id) => !sortedSet.has(id));
+
+  return {
+    sourcePointIds: Array.from(sourcePointIds),
+    constructionIds,
+    edges,
+    dependenciesById,
+    sourcePointDependenciesById,
+    constructionDependenciesById,
+    dependentsById,
+    constructionDependentsById,
+    topologicalConstructionIds,
+    cyclicConstructionIds,
+  };
+};
+
+export const getAffectedDerivedConstructionIds = (
+  graph: DerivedConstructionDependencyGraph,
+  changedSourceIds: Iterable<string>
+): string[] => {
+  const affected = new Set<string>();
+  const queue = Array.from(changedSourceIds);
+  for (let i = 0; i < queue.length; i += 1) {
+    const sourceId = queue[i];
+    for (const dependentId of graph.dependentsById.get(sourceId) ?? []) {
+      if (affected.has(dependentId)) continue;
+      affected.add(dependentId);
+      queue.push(dependentId);
+    }
+  }
+  const order = [...graph.topologicalConstructionIds, ...graph.cyclicConstructionIds];
+  return order.filter((id) => affected.has(id));
+};
+
 export const evaluateDerivedConstructionObjects = (
   definitions: DerivedConstructionObjectDefinition[],
   sourcePoints: ConstructionSourcePointMap
 ): DerivedConstructionEvaluationResult => {
   const byId = new Map<string, DerivedConstructionEvaluation>();
   const definitionById = new Map(definitions.map((definition) => [definition.id, definition] as const));
+  const dependencyGraph = buildDerivedConstructionDependencyGraph(definitions);
+  const cyclicConstructionIds = new Set(dependencyGraph.cyclicConstructionIds);
   const stateById = new Map<string, "visiting" | "done">();
 
   const publish = (evaluation: DerivedConstructionEvaluation) => {
@@ -157,18 +288,30 @@ export const evaluateDerivedConstructionObjects = (
     const value = byId.get(id)?.value;
     return value?.kind === "circle" ? value.circle : null;
   };
+  const getPoint = (id: string | null | undefined): Point3 | null => {
+    if (!id) return null;
+    const sourcePoint = getSourcePoint(sourcePoints, id);
+    if (sourcePoint) return sourcePoint;
+    evaluateOne(id);
+    const value = byId.get(id)?.value;
+    return value?.kind === "point" ? value.point : null;
+  };
 
   function evaluateOne(id: string): DerivedConstructionEvaluation | null {
     if (stateById.get(id) === "done") return byId.get(id) ?? null;
     if (stateById.get(id) === "visiting") return null;
     const definition = definitionById.get(id);
     if (!definition) return null;
+    if (cyclicConstructionIds.has(id)) {
+      return publish(makeInvalid(definition, "invalid", "Construction dependency cycle detected."));
+    }
     stateById.set(id, "visiting");
     const ids = definition.sourceObjectIds ?? [];
-    const source = (index: number) => getSourcePoint(sourcePoints, ids[index]);
-    const missingSource = ids.find((id) => !getSourcePoint(sourcePoints, id));
+    const source = (index: number) => getPoint(ids[index]);
+    const missingSource = ids.find((id) => !getPoint(id));
     if (missingSource) {
-      return publish(makeInvalid(definition, "broken-source", `Missing source object '${missingSource}'.`));
+      const status = definitionById.has(missingSource) ? "invalid" : "broken-source";
+      return publish(makeInvalid(definition, status, `Missing source point '${missingSource}'.`));
     }
 
     switch (definition.type) {
@@ -291,5 +434,5 @@ export const evaluateDerivedConstructionObjects = (
       : []
   );
 
-  return { byId, evaluations, errors };
+  return { byId, evaluations, errors, dependencyGraph };
 };

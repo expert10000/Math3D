@@ -313,3 +313,40 @@ Verification:
 Passed: npx vitest run src/geometry/constructionObjects.test.ts
 Filtered TypeScript check found no diagnostics for the new construction files or math-construction symbols.
 Full npx tsc -p tsconfig.app.json still fails on many unrelated existing app errors, so I did not claim a clean full typecheck.
+
+
+PR28 — Dependency Graph + Live Recompute
+
+The most important PR after PR27.
+
+Internal graph:
+
+A
+B
+ \ /
+  M
+  |
+Circle
+  |
+Tangent
+
+When A moves:
+
+A changed
+→ M recompute
+→ Circle recompute
+→ Tangent recompute
+
+Without this, Geometry becomes static.
+
+With this, Geometry becomes a mathematical system.
+
+Implemented PR28.
+Added a dependency graph API in constructionObjects.ts: buildDerivedConstructionDependencyGraph and getAffectedDerivedConstructionIds.
+Construction source IDs can now resolve to point-valued construction outputs as well as original source points, enabling chains like A/B -> M -> circle -> tangent.
+Updated the procedural geometry math-construction panel so point-valued constructions can be selected as A/B/P sources, and added math construction nodes/edges to the dependency inspector graph.
+Added focused tests for affected recompute order and live downstream recompute when source point A moves.
+Verification:
+Passed: npx vitest run src/geometry/constructionObjects.test.ts
+Targeted TypeScript filter found no diagnostics for constructionObjects.ts or the edited App.tsx graph/overlay ranges.
+Full npx tsc -p tsconfig.app.json still has unrelated existing App.tsx diagnostics.

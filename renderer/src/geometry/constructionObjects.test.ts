@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildDerivedConstructionDependencyGraph,
   evaluateDerivedConstructionObjects,
+  getAffectedDerivedConstructionIds,
   type DerivedConstructionObjectDefinition,
   type Point3,
 } from "@math3d/core";
@@ -111,5 +113,70 @@ describe("derived construction objects", () => {
     expect(bisector?.kind).toBe("line");
     if (bisector?.kind !== "line") return;
     expect(Math.abs(bisector.line.direction.y)).toBeCloseTo(1);
+  });
+
+  it("builds an affected recompute chain from source points through dependent constructions", () => {
+    const definitions: DerivedConstructionObjectDefinition[] = [
+      { id: "M", type: "midpoint", sourceObjectIds: ["A", "B"] },
+      { id: "c", type: "circle", sourceObjectIds: ["M", "B"] },
+      { id: "t", type: "tangent", sourceObjectIds: ["B"], sourceConstructionId: "c" },
+    ];
+
+    const graph = buildDerivedConstructionDependencyGraph(definitions);
+    expect(getAffectedDerivedConstructionIds(graph, ["A"])).toEqual(["M", "c", "t"]);
+    expect(getAffectedDerivedConstructionIds(graph, ["M"])).toEqual(["c", "t"]);
+  });
+
+  it("recomputes downstream construction chains when an upstream source point moves", () => {
+    const definitions: DerivedConstructionObjectDefinition[] = [
+      { id: "M", type: "midpoint", sourceObjectIds: ["A", "B"] },
+      { id: "c", type: "circle", sourceObjectIds: ["M", "B"] },
+      { id: "t", type: "tangent", sourceObjectIds: ["B"], sourceConstructionId: "c" },
+    ];
+
+    const initial = evaluateDerivedConstructionObjects(definitions, {
+      A: point(0, 0),
+      B: point(4, 0),
+    });
+    const moved = evaluateDerivedConstructionObjects(definitions, {
+      A: point(2, 2),
+      B: point(4, 0),
+    });
+
+    const initialMidpoint = initial.byId.get("M")?.value;
+    const movedMidpoint = moved.byId.get("M")?.value;
+    const initialCircle = initial.byId.get("c")?.value;
+    const movedCircle = moved.byId.get("c")?.value;
+    const initialTangent = initial.byId.get("t")?.value;
+    const movedTangent = moved.byId.get("t")?.value;
+
+    expect(initial.errors).toEqual([]);
+    expect(moved.errors).toEqual([]);
+    expect(initialMidpoint?.kind).toBe("point");
+    expect(movedMidpoint?.kind).toBe("point");
+    expect(initialCircle?.kind).toBe("circle");
+    expect(movedCircle?.kind).toBe("circle");
+    expect(initialTangent?.kind).toBe("line");
+    expect(movedTangent?.kind).toBe("line");
+    if (
+      initialMidpoint?.kind !== "point" ||
+      movedMidpoint?.kind !== "point" ||
+      initialCircle?.kind !== "circle" ||
+      movedCircle?.kind !== "circle" ||
+      initialTangent?.kind !== "line" ||
+      movedTangent?.kind !== "line"
+    ) {
+      return;
+    }
+
+    expect(initialMidpoint.point).toMatchObject({ x: 2, y: 0, z: 0 });
+    expect(movedMidpoint.point).toMatchObject({ x: 3, y: 1, z: 0 });
+    expect(initialCircle.circle.center).toMatchObject({ x: 2, y: 0, z: 0 });
+    expect(movedCircle.circle.center).toMatchObject({ x: 3, y: 1, z: 0 });
+    expect(initialCircle.circle.radius).toBeCloseTo(2);
+    expect(movedCircle.circle.radius).toBeCloseTo(Math.SQRT2);
+    expect(initialTangent.line.origin).toMatchObject({ x: 4, y: 0, z: 0 });
+    expect(movedTangent.line.origin.x).toBeCloseTo(4);
+    expect(movedTangent.line.origin.y).toBeCloseTo(0);
   });
 });

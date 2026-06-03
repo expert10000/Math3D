@@ -2466,6 +2466,22 @@ const geometryDependencyNodeKindFromConstructionType = (
   }
   return "derived-point";
 };
+const geometryDependencyNodeKindFromMathConstructionType = (
+  type: GeometryMathConstructionType
+): GeometryDependencyNodeKind => {
+  if (type.includes("circle")) return "derived-point";
+  if (type.includes("line") || type.includes("bisector") || type.includes("tangent") || type.includes("normal")) {
+    return "derived-line";
+  }
+  return "derived-point";
+};
+const geometryDependencyStateFromMathConstructionStatus = (
+  status: GeometryMathConstructionStatus | undefined
+): GeometryDependencyState => {
+  if (status === "valid") return "valid";
+  if (status === "broken-source") return "broken-source";
+  return "stale";
+};
 type GeometryMeasuredEdgeEntry = {
   id: string;
   at: number;
@@ -8266,7 +8282,20 @@ const App: React.FC = () => {
       })),
     [geometryDatasetMeshObjects, geometryObjects]
   );
-  const geometryMathConstructionObjectOptions = geometryCompareObjectOptions;
+  const geometryMathConstructionObjectOptions = useMemo(
+    () => [
+      ...geometryCompareObjectOptions,
+      ...geometryMathConstructions
+        .filter((entry) => entry.type === "midpoint")
+        .map((entry) => ({
+          id: entry.id,
+          name: entry.name,
+          type: "construction" as const,
+          visible: entry.visible,
+        })),
+    ],
+    [geometryCompareObjectOptions, geometryMathConstructions]
+  );
   const geometryMathConstructionLineOptions = useMemo(
     () =>
       geometryMathConstructions.filter((entry) =>
@@ -14693,13 +14722,15 @@ const App: React.FC = () => {
     const defaultHalfLength = Math.max(3, sceneDiag * 0.85);
     const constructionOrder = [...geometryMathConstructions].sort((a, b) => a.createdAt - b.createdAt);
     const objectNameById = new Map(geometryCompareObjectOptions.map((entry) => [entry.id, entry.name] as const));
-    const getSourcePoint = (id: string | null | undefined) => {
+    const constructionNameById = new Map(constructionOrder.map((entry) => [entry.id, entry.name] as const));
+    const getExternalSourcePoint = (id: string | null | undefined) => {
       if (!id) return null;
       const object = resolveGeometrySceneObjectById(id);
       if (!object) return null;
       return { ...object.transform.position };
     };
-    const sourceNames = (ids: string[]) => ids.map((id) => objectNameById.get(id) ?? id).join(", ");
+    const sourceNames = (ids: string[]) =>
+      ids.map((id) => objectNameById.get(id) ?? constructionNameById.get(id) ?? id).join(", ");
     const lineSegments = (
       origin: { x: number; y: number; z: number },
       direction: { x: number; y: number; z: number },
@@ -14809,6 +14840,13 @@ const App: React.FC = () => {
       if (source) sourcePoints.set(option.id, { ...source.transform.position, label: option.name });
     }
     const coreResult = evaluateDerivedConstructionObjects(constructionDefinitions, sourcePoints);
+    const getSourcePoint = (id: string | null | undefined) => {
+      const external = getExternalSourcePoint(id);
+      if (external) return external;
+      if (!id) return null;
+      const value = coreResult.byId.get(id)?.value;
+      return value?.kind === "point" ? value.point : null;
+    };
 
     for (const object of constructionOrder) {
       const evalGroups: OverlayPolylineGroup[] = [];
@@ -16728,6 +16766,31 @@ const App: React.FC = () => {
         relation: "derived-from",
       });
     }
+    const mathConstructionIdSet = new Set(geometryMathConstructions.map((entry) => entry.id));
+    for (const entry of geometryMathConstructions) {
+      const evalEntry = geometryMathConstructionOverlays.byId.get(entry.id) ?? null;
+      addNode({
+        id: `math:${entry.id}`,
+        kind: geometryDependencyNodeKindFromMathConstructionType(entry.type),
+        label: entry.name,
+        derivedId: entry.id,
+        status: geometryDependencyStateFromMathConstructionStatus(evalEntry?.status),
+      });
+      for (const sourceId of entry.sourceObjectIds) {
+        addEdge({
+          sourceId: mathConstructionIdSet.has(sourceId) ? `math:${sourceId}` : `object:${sourceId}`,
+          targetId: `math:${entry.id}`,
+          relation: "derived-from",
+        });
+      }
+      if (entry.sourceConstructionId) {
+        addEdge({
+          sourceId: `math:${entry.sourceConstructionId}`,
+          targetId: `math:${entry.id}`,
+          relation: "derived-from",
+        });
+      }
+    }
     for (const relation of geometryDerivedRelationConstraints) {
       if (!geometryObjectIdSet.has(relation.objectId)) continue;
       if (!geometryDerivedConstructions.some((entry) => entry.id === relation.derivedId)) continue;
@@ -16833,6 +16896,8 @@ const App: React.FC = () => {
     geometryDerivedConstructions,
     geometryDerivedRelationConstraints,
     geometryDerivedConstructionOverlays.byId,
+    geometryMathConstructions,
+    geometryMathConstructionOverlays.byId,
     geometryMeasuredEdges,
     geometryObjectIdSet,
     geometryObjects,
@@ -16843,10 +16908,11 @@ const App: React.FC = () => {
     resolveGeometrySceneMeshById,
   ]);
   const geometryInspectorSelectedDependencyNodeId = useMemo(() => {
+    if (geometrySelectedMathConstructionId) return `math:${geometrySelectedMathConstructionId}`;
     if (geometrySelectedDerivedConstructionId) return `derived:${geometrySelectedDerivedConstructionId}`;
     if (geometrySelectedSceneObject) return `object:${geometrySelectedSceneObject.id}`;
     return null;
-  }, [geometrySelectedDerivedConstructionId, geometrySelectedSceneObject]);
+  }, [geometrySelectedDerivedConstructionId, geometrySelectedMathConstructionId, geometrySelectedSceneObject]);
   const geometryInspectorDependencyDetails = useMemo(() => {
     const nodeId = geometryInspectorSelectedDependencyNodeId;
     if (!nodeId) return null;
