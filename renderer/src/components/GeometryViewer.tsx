@@ -76,6 +76,11 @@ export type GeometryViewerProps = {
     normal: { x: number; y: number; z: number };
     meshKey?: string;
   }) => void;
+  dragPlaneAnchor?: {
+    point: { x: number; y: number; z: number };
+    normal?: { x: number; y: number; z: number };
+    meshKey?: string;
+  } | null;
   onShiftWheelScale?: (info: { delta: number }) => void;
   pickEnabled?: boolean;
   onPick?: (info: {
@@ -150,6 +155,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   onDragStart,
   onDrag,
   onDragEnd,
+  dragPlaneAnchor = null,
   onShiftWheelScale,
   pickEnabled = false,
   onPick,
@@ -321,6 +327,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
       onDragStart={onDragStart}
       onDrag={onDrag}
       onDragEnd={onDragEnd}
+      dragPlaneAnchor={dragPlaneAnchor}
       onShiftWheelScale={onShiftWheelScale}
       gizmoEnabled={gizmoEnabled}
       gizmoMeshKey={gizmoMeshKey}

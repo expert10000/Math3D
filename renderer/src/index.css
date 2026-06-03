@@ -236,6 +236,9 @@ button:focus-visible {
   overflow: hidden;
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
   transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background-color 0.16s ease;
+  contain: layout paint style;
+  content-visibility: auto;
+  contain-intrinsic-size: 210px;
 }
 
 .gallery-scan-card:hover {

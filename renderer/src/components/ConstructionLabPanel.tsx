@@ -98,6 +98,8 @@ type ConstructionLabPanelProps = {
   onPointPlacementModeChange?: (enabled: boolean) => void;
   viewportPickPoint?: { x: number; y: number; z: number } | null;
   onViewportPickConsumed?: () => void;
+  viewportMovePoint?: { id: string; point: { x: number; y: number; z: number } } | null;
+  onViewportMoveConsumed?: () => void;
   onFocusObjectInScene?: (focus: { target: { x: number; y: number; z: number }; radius?: number }) => void;
   seed?: ConstructionLabSeed | null;
   workspaceTab?: ConstructionWorkspaceTab;
@@ -675,6 +677,8 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   onPointPlacementModeChange,
   viewportPickPoint = null,
   onViewportPickConsumed,
+  viewportMovePoint = null,
+  onViewportMoveConsumed,
   onFocusObjectInScene,
   seed = null,
   workspaceTab: controlledWorkspaceTab,
@@ -1225,6 +1229,31 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     }));
     onViewportPickConsumed?.();
   }, [addNode, nodes, onViewportPickConsumed, pointPlacementMode, toolForm, viewportPickPoint]);
+
+  useEffect(() => {
+    if (!viewportMovePoint) return;
+    const id = viewportMovePoint.id;
+    const p = viewportMovePoint.point;
+    const nextPoint = {
+      x: Number(p.x),
+      y: Number(p.y),
+      z: Number(p.z),
+    };
+    if (!id || !Number.isFinite(nextPoint.x) || !Number.isFinite(nextPoint.y) || !Number.isFinite(nextPoint.z)) {
+      onViewportMoveConsumed?.();
+      return;
+    }
+    setNodes((prev) =>
+      prev.map((node) =>
+        node.id === id && node.type === "freePoint" && !lockedNodeIds.has(node.id)
+          ? { ...node, point: nextPoint }
+          : node
+      )
+    );
+    setSelectedNodeId(id);
+    setBuildMode("select");
+    onViewportMoveConsumed?.();
+  }, [lockedNodeIds, onViewportMoveConsumed, viewportMovePoint]);
 
   useEffect(() => {
     const ids = new Set(nodes.map((node) => node.id));

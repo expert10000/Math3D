@@ -340,6 +340,11 @@ export type OverlayPointSet = {
   size?: number;
   opacity?: number;
 };
+type DragPlaneAnchor = {
+  point: { x: number; y: number; z: number };
+  normal?: { x: number; y: number; z: number };
+  meshKey?: string;
+};
 export type OverlayPolylineGroup = {
   lines: PolylineSet;
   color: number;
@@ -1486,6 +1491,7 @@ type Props = {
     normal: { x: number; y: number; z: number };
     meshKey?: string;
   }) => void;
+  dragPlaneAnchor?: DragPlaneAnchor | null;
   onShiftWheelScale?: (info: { delta: number }) => void;
   gizmoEnabled?: boolean;
   gizmoMeshKey?: string | null;
@@ -1683,6 +1689,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     onDragStart,
     onDrag,
     onDragEnd,
+    dragPlaneAnchor = null,
     onShiftWheelScale,
     gizmoEnabled = false,
     gizmoMeshKey = null,
@@ -1785,6 +1792,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const inspectEnabledRef = useRef(inspectEnabled);
   const inspectSelectionMeshKeyRef = useRef<string | null>(inspectSelectionMeshKey);
   const dragEnabledRef = useRef(dragEnabled);
+  const dragPlaneAnchorRef = useRef<DragPlaneAnchor | null>(dragPlaneAnchor);
   const geodesicPathEnabledRef = useRef(geodesicPathEnabled);
   const geodesicHeatEnabledRef = useRef(geodesicHeatEnabled);
   const geodesicDiskPickEnabledRef = useRef(geodesicDiskPickEnabled);
@@ -1869,6 +1877,15 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     startPoint: THREE.Vector3;
     lastPoint: THREE.Vector3;
     normal: THREE.Vector3;
+    moved: boolean;
+    clickPick?: {
+      point: THREE.Vector3;
+      normal: THREE.Vector3;
+      meshKey?: string;
+      faceIndex?: number;
+      uv?: { u: number; v: number };
+      xy?: { x: number; y: number };
+    };
   } | null>(null);
 
   type ViewMode = "free" | GizmoView;
@@ -2182,6 +2199,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     dragEnabledRef.current = dragEnabled;
   }, [dragEnabled]);
   useEffect(() => {
+    dragPlaneAnchorRef.current = dragPlaneAnchor;
+  }, [dragPlaneAnchor]);
+  useEffect(() => {
     onDragStartRef.current = onDragStart;
   }, [onDragStart]);
   useEffect(() => {
@@ -2369,9 +2389,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   }, [resetToken]);
 
   useEffect(() => {
-    if (showOverlayControls && showViewGizmo) return;
+    if (showOverlayControls && showViewGizmo && !gizmoEnabled) return;
     setViewGizmoMenuOpen(false);
-  }, [showOverlayControls, showViewGizmo]);
+  }, [gizmoEnabled, showOverlayControls, showViewGizmo]);
 
   useEffect(() => {
     if (!windowReframeToken) return;
@@ -3519,6 +3539,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const transformControls = new TransformControls(camera, renderer.domElement);
     transformControls.enabled = false;
     transformControls.visible = false;
+    transformControls.setSize(1.35);
     transformControls.setMode(gizmoMode);
     transformControls.setSpace(gizmoSpace);
     transformControls.setTranslationSnap(
@@ -4437,7 +4458,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const viewGizmo = new THREE.Group();
     viewGizmo.position.copy(center);
-    viewGizmo.visible = showViewGizmo && showOverlayControls;
+    viewGizmo.visible = showViewGizmo && showOverlayControls && !gizmoEnabled;
     viewGizmoRef.current = viewGizmo;
     scene.add(viewGizmo);
 
@@ -4690,7 +4711,11 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           return;
 
         const activeTransformControls = transformControlsRef.current;
-        if (activeTransformControls?.enabled && (activeTransformControls as any).dragging) {
+        if (
+          activeTransformControls?.enabled &&
+          (activeTransformControls as any).dragging &&
+          !dragPlaneAnchorRef.current?.meshKey
+        ) {
           return;
         }
 
@@ -4734,7 +4759,61 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const pickStartAt = performance.now();
       const intersects = raycaster.intersectObjects([surfaceObj], true);
       recordRaycastDuration(pickStartAt);
-      if (!intersects.length) return;
+      if (!intersects.length) {
+        const anchor = dragPlaneAnchorRef.current;
+        const anchorPoint = anchor?.point;
+        if (dragEnabledRef.current && event.button === 0 && anchorPoint) {
+          const px = Number(anchorPoint.x);
+          const py = Number(anchorPoint.y);
+          const pz = Number(anchorPoint.z);
+          if (!Number.isFinite(px) || !Number.isFinite(py) || !Number.isFinite(pz)) return;
+          const planePoint = new THREE.Vector3(px, py, pz);
+          const anchorNormal = anchor.normal;
+          const hasExplicitNormal =
+            Number.isFinite(anchorNormal?.x) ||
+            Number.isFinite(anchorNormal?.y) ||
+            Number.isFinite(anchorNormal?.z);
+          const planeNormal = hasExplicitNormal
+            ? new THREE.Vector3(
+                Number.isFinite(anchorNormal?.x) ? Number(anchorNormal?.x) : 0,
+                Number.isFinite(anchorNormal?.y) ? Number(anchorNormal?.y) : 0,
+                Number.isFinite(anchorNormal?.z) ? Number(anchorNormal?.z) : 1
+              )
+            : new THREE.Vector3();
+          if (!hasExplicitNormal) camera.getWorldDirection(planeNormal);
+          if (planeNormal.lengthSq() < 1e-8) planeNormal.set(0, 0, 1);
+          planeNormal.normalize();
+
+          const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(planeNormal, planePoint);
+          const hitPoint = new THREE.Vector3();
+          if (!raycaster.ray.intersectPlane(plane, hitPoint)) return;
+
+          beginMeshInteraction();
+          dragStateRef.current = {
+            pointerId: event.pointerId,
+            meshKey: anchor.meshKey,
+            plane,
+            startPoint: hitPoint.clone(),
+            lastPoint: hitPoint.clone(),
+            normal: planeNormal.clone(),
+            moved: false,
+          };
+          const dragStartCb = onDragStartRef.current;
+          if (dragStartCb) {
+            dragStartCb({
+              point: { x: planePoint.x, y: planePoint.y, z: planePoint.z },
+              normal: { x: planeNormal.x, y: planeNormal.y, z: planeNormal.z },
+              meshKey: anchor.meshKey,
+            });
+          }
+          if (renderer.domElement.setPointerCapture) {
+            renderer.domElement.setPointerCapture(event.pointerId);
+          }
+          const controls = controlsRef.current;
+          if (controls) controls.enabled = false;
+        }
+        return;
+      }
       const resolveHitMeshKey = (candidate: THREE.Intersection<THREE.Object3D>) => {
         const key = (candidate.object as any)?.userData?.__surfaceMeshOverrideId;
         return key == null ? null : String(key);
@@ -4765,7 +4844,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         }
       }
       const point = hit.point.clone();
-      const hitMeshKey = (hit.object as any)?.userData?.__surfaceMeshOverrideId;
+      const hitMeshKeyValue = (hit.object as any)?.userData?.__surfaceMeshOverrideId;
+      const hitMeshKey = hitMeshKeyValue == null ? undefined : String(hitMeshKeyValue);
 
       let normalWorld = new THREE.Vector3(0, 1, 0);
 
@@ -4897,7 +4977,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           return;
         }
 
-        if (dragEnabledRef.current && event.button === 0 && hitMeshKey) {
+        const dragAnchorMeshKey = dragPlaneAnchorRef.current?.meshKey;
+        const dragMeshKey = dragAnchorMeshKey ?? hitMeshKey;
+        if (dragEnabledRef.current && event.button === 0 && dragMeshKey) {
           beginMeshInteraction();
           const planeNormal = new THREE.Vector3();
           camera.getWorldDirection(planeNormal);
@@ -4905,18 +4987,27 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(planeNormal, point);
           dragStateRef.current = {
             pointerId: event.pointerId,
-            meshKey: hitMeshKey,
+            meshKey: dragMeshKey,
             plane,
             startPoint: point.clone(),
             lastPoint: point.clone(),
             normal: normalWorld.clone(),
+            moved: false,
+            clickPick: {
+              point: point.clone(),
+              normal: normalWorld.clone(),
+              meshKey: dragMeshKey,
+              faceIndex: typeof (hit as any).faceIndex === "number" ? Number((hit as any).faceIndex) : undefined,
+              uv: uvDomain,
+              xy: xyDomain,
+            },
           };
           const dragStartCb = onDragStartRef.current;
           if (dragStartCb) {
             dragStartCb({
               point: { x: point.x, y: point.y, z: point.z },
               normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
-              meshKey: hitMeshKey,
+              meshKey: dragMeshKey,
             });
           }
           if (renderer.domElement.setPointerCapture) {
@@ -5006,6 +5097,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         if (!raycaster.ray.intersectPlane(dragState.plane, hitPoint)) return;
         dragState.lastPoint.copy(hitPoint);
         const delta = hitPoint.clone().sub(dragState.startPoint);
+        if (delta.lengthSq() > 1e-6) {
+          dragState.moved = true;
+        }
         const dragCb = onDragRef.current;
         if (dragCb) {
           dragCb({
@@ -5083,6 +5177,37 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
       const controls = controlsRef.current;
       if (controls) controls.enabled = true;
+      if (!dragState.moved && dragState.clickPick && inspectEnabledRef.current) {
+        const inspectCb = onInspectPickRef.current;
+        if (inspectCb) {
+          const clickPick = dragState.clickPick;
+          const nearest = findNearestSample(clickPick.point);
+          if (nearest) {
+            const inspectNormal = nearest.sample.normal.clone().normalize();
+            inspectCb({
+              index: nearest.index,
+              point: { x: clickPick.point.x, y: clickPick.point.y, z: clickPick.point.z },
+              normal: { x: inspectNormal.x, y: inspectNormal.y, z: inspectNormal.z },
+              meshKey: clickPick.meshKey ?? nearest.sample.meshKey,
+              faceIndex: clickPick.faceIndex,
+              vertexIndex: nearest.sample.vertexIndex,
+              uv: clickPick.uv ?? (clickPick.xy ? { u: clickPick.xy.x, v: clickPick.xy.y } : undefined),
+              xy: clickPick.xy,
+            });
+          } else {
+            inspectCb({
+              index: -1,
+              point: { x: clickPick.point.x, y: clickPick.point.y, z: clickPick.point.z },
+              normal: { x: clickPick.normal.x, y: clickPick.normal.y, z: clickPick.normal.z },
+              meshKey: clickPick.meshKey,
+              faceIndex: clickPick.faceIndex,
+              vertexIndex: undefined,
+              uv: clickPick.uv ?? (clickPick.xy ? { u: clickPick.xy.x, v: clickPick.xy.y } : undefined),
+              xy: clickPick.xy,
+            });
+          }
+        }
+      }
       const dragEndCb = onDragEndRef.current;
       if (dragEndCb) {
         dragEndCb({
@@ -5505,6 +5630,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
   useEffect(() => {
     const tc = transformControlsRef.current;
     if (!tc) return;
+    tc.setSize(1.35);
     tc.setMode(gizmoMode);
     tc.setSpace(gizmoSpace);
     tc.setTranslationSnap(
@@ -9994,8 +10120,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
   useEffect(() => {
     const gizmo = viewGizmoRef.current;
-    if (gizmo) gizmo.visible = showViewGizmo && showOverlayControls;
-  }, [showViewGizmo, showOverlayControls]);
+    if (gizmo) gizmo.visible = showViewGizmo && showOverlayControls && !gizmoEnabled;
+  }, [gizmoEnabled, showViewGizmo, showOverlayControls]);
 
   /* ---------------- presets storage UI (unchanged logic) ---------------- */
 

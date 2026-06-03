@@ -7719,6 +7719,14 @@ const App: React.FC = () => {
     y: number;
     z: number;
   } | null>(null);
+  const [geometryPendingViewportMovePoint, setGeometryPendingViewportMovePoint] = useState<{
+    id: string;
+    point: { x: number; y: number; z: number };
+  } | null>(null);
+  const geometryProblemDragRef = useRef<{
+    id: string;
+    startPoint: { x: number; y: number; z: number };
+  } | null>(null);
   const handleConstructionLabChange = useCallback((next: ConstructionLabState) => {
     setGeometryConstructionState(next);
   }, []);
@@ -7847,10 +7855,40 @@ const App: React.FC = () => {
   }) => {
     setGeometryPendingViewportPoint(info.point);
   }, []);
+  const geometrySelectedConstructionFreePoint = useMemo(() => {
+    const selectedId = geometryConstructionState?.selectedNodeId;
+    if (!selectedId) return null;
+    const node = geometryConstructionState.nodes.find((entry) => entry.id === selectedId);
+    return node?.type === "freePoint" ? node : null;
+  }, [geometryConstructionState]);
+  const handleProblemDragStart = useCallback(() => {
+    if (!geometrySelectedConstructionFreePoint) return;
+    geometryProblemDragRef.current = {
+      id: geometrySelectedConstructionFreePoint.id,
+      startPoint: { ...geometrySelectedConstructionFreePoint.point },
+    };
+  }, [geometrySelectedConstructionFreePoint]);
+  const handleProblemDrag = useCallback((info: { meshKey?: string; delta: { x: number; y: number; z: number } }) => {
+    const drag = geometryProblemDragRef.current;
+    if (!drag || !info.meshKey || info.meshKey !== drag.id) return;
+    setGeometryPendingViewportMovePoint({
+      id: drag.id,
+      point: {
+        x: drag.startPoint.x + info.delta.x,
+        y: drag.startPoint.y + info.delta.y,
+        z: drag.startPoint.z + info.delta.z,
+      },
+    });
+  }, []);
+  const handleProblemDragEnd = useCallback(() => {
+    geometryProblemDragRef.current = null;
+  }, []);
   useEffect(() => {
     if (geometryMode === "scratch" || geometryMode === "workbook") return;
     setGeometryPointPlacementEnabled(false);
     setGeometryPendingViewportPoint(null);
+    setGeometryPendingViewportMovePoint(null);
+    geometryProblemDragRef.current = null;
     setGeometryProblemCameraOverride(null);
     setGeometryProblemCameraOverrideToken(0);
   }, [geometryMode]);
@@ -9314,17 +9352,30 @@ const App: React.FC = () => {
     ]
   );
   const geometryGalleryThumbUrls = useMemo(() => {
-    const urls: string[] = [];
+    const urls = new Set<string>();
+    const addThumb = (renderedThumb: string, diagramThumb: string) => {
+      const url = thumbByViewMode(renderedThumb, diagramThumb, galleryCardViewMode);
+      if (url) urls.add(url);
+    };
+    if (geometryGallerySelectedCard) {
+      addThumb(geometryGallerySelectedCard.renderedThumbnailDataUrl, geometryGallerySelectedCard.diagramThumbnailDataUrl);
+      for (const preset of geometryGallerySelectedCard.presets.slice(0, GEOMETRY_GALLERY_PREFETCH_PRESET_LIMIT)) {
+        addThumb(preset.renderedThumbnailDataUrl, preset.diagramThumbnailDataUrl);
+      }
+    }
+    let cardCount = 0;
     for (const section of geometryGallerySections) {
       for (const card of section.cards) {
-        urls.push(thumbByViewMode(card.renderedThumbnailDataUrl, card.diagramThumbnailDataUrl, galleryCardViewMode));
-        for (const preset of card.presets) {
-          urls.push(thumbByViewMode(preset.renderedThumbnailDataUrl, preset.diagramThumbnailDataUrl, galleryCardViewMode));
+        if (card.id === geometryGallerySelectedCard?.id) continue;
+        addThumb(card.renderedThumbnailDataUrl, card.diagramThumbnailDataUrl);
+        cardCount += 1;
+        if (cardCount >= GEOMETRY_GALLERY_PREFETCH_CARD_LIMIT) {
+          return Array.from(urls);
         }
       }
     }
-    return urls;
-  }, [galleryCardViewMode, geometryGallerySections]);
+    return Array.from(urls);
+  }, [galleryCardViewMode, geometryGallerySections, geometryGallerySelectedCard]);
   useGalleryThumbPrefetch(geometryGalleryThumbUrls);
   const handleSelectGeometryGalleryCard = useCallback((cardId: string) => {
     const card = GEOMETRY_GALLERY_CARD_BY_ID.get(cardId);
@@ -57697,6 +57748,8 @@ case "mobius":
                       onPointPlacementModeChange={setGeometryPointPlacementEnabled}
                       viewportPickPoint={geometryPendingViewportPoint}
                       onViewportPickConsumed={() => setGeometryPendingViewportPoint(null)}
+                      viewportMovePoint={geometryPendingViewportMovePoint}
+                      onViewportMoveConsumed={() => setGeometryPendingViewportMovePoint(null)}
                       onFocusObjectInScene={handleConstructionLabFocusObjectInScene}
                     />
                   </>
@@ -58155,24 +58208,56 @@ case "mobius":
                   }
                   overlayLabelSets={geometryProceduralViewerLabelSets}
                   dragEnabled={
-                    geometryMode === "procedural" &&
-                    geometryProceduralPanelTab !== "demonstrations" &&
-                    !geometryGizmoEnabled
+                    (geometryMode === "procedural" &&
+                      geometryProceduralPanelTab !== "demonstrations") ||
+                    ((geometryMode === "scratch" || geometryMode === "workbook") &&
+                      !!geometrySelectedConstructionFreePoint &&
+                      !geometryPointPlacementEnabled)
                   }
                   onDragStart={
                     geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations"
                       ? handleProceduralDragStart
+                      : (geometryMode === "scratch" || geometryMode === "workbook") &&
+                          geometrySelectedConstructionFreePoint &&
+                          !geometryPointPlacementEnabled
+                        ? handleProblemDragStart
                       : undefined
                   }
                   onDrag={
                     geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations"
                       ? handleProceduralDrag
+                      : (geometryMode === "scratch" || geometryMode === "workbook") &&
+                          geometrySelectedConstructionFreePoint &&
+                          !geometryPointPlacementEnabled
+                        ? handleProblemDrag
                       : undefined
                   }
                   onDragEnd={
                     geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations"
                       ? handleProceduralDragEnd
+                      : (geometryMode === "scratch" || geometryMode === "workbook") &&
+                          geometrySelectedConstructionFreePoint &&
+                          !geometryPointPlacementEnabled
+                        ? handleProblemDragEnd
                       : undefined
+                  }
+                  dragPlaneAnchor={
+                    (geometryMode === "scratch" || geometryMode === "workbook") &&
+                    geometrySelectedConstructionFreePoint &&
+                    !geometryPointPlacementEnabled
+                      ? {
+                          point: geometrySelectedConstructionFreePoint.point,
+                          normal: { x: 0, y: 0, z: 1 },
+                          meshKey: geometrySelectedConstructionFreePoint.id,
+                        }
+                      : geometryMode === "procedural" &&
+                          geometrySelectedSceneObject &&
+                          !geometryLockedObjectIds.has(geometrySelectedSceneObject.id)
+                        ? {
+                            point: geometrySelectedSceneObject.transform.position,
+                            meshKey: geometrySelectedSceneObject.id,
+                          }
+                      : null
                   }
                   onShiftWheelScale={
                     geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations"
@@ -62258,6 +62343,8 @@ const GALLERY_SORT_OPTIONS: Array<{ value: GallerySortPreset; label: string }> =
   { value: "complexity", label: "Complexity" },
   { value: "demoReady", label: "Demo-ready" },
 ];
+const GEOMETRY_GALLERY_PREFETCH_CARD_LIMIT = 18;
+const GEOMETRY_GALLERY_PREFETCH_PRESET_LIMIT = 3;
 
 const thumbByViewMode = (
   renderedThumb: string,
