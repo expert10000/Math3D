@@ -305,3 +305,11 @@ npm ci usually installs Electron correctly, so no extra check was needed.
 On runners where install was partial/corrupted/cache-odd, tests could still pass sometimes if Electron happened to be present enough.
 The new ensure:electron made this explicit and deterministic, so now CI fails early instead of failing later or passing by luck
 
+Implemented the PR27 continuation.
+Added a shared core evaluator in constructionObjects.ts (line 1), exported through index.ts (line 1). It supports midpoint, line, parallel, perpendicular, circle, angle bisector, tangent, and normal construction definitions with dependency evaluation, invalid/broken-source status, and automatic recomputation from current source points.
+Updated App.tsx (line 2378) so the procedural geometry panel can create, show/hide, select, and delete mathematical construction objects, and so their labels are included in viewer overlays.
+Added focused tests in constructionObjects.test.ts (line 1), including the key GeoGebra behavior: move source point A, midpoint M recomputes.
+Verification:
+Passed: npx vitest run src/geometry/constructionObjects.test.ts
+Filtered TypeScript check found no diagnostics for the new construction files or math-construction symbols.
+Full npx tsc -p tsconfig.app.json still fails on many unrelated existing app errors, so I did not claim a clean full typecheck.

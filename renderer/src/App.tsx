@@ -205,8 +205,10 @@ import {
   sampleAdaptive as curveSampleAdaptive,
   sampleUniform as curveSampleUniform,
   validateCurve as curveValidate,
+  evaluateDerivedConstructionObjects,
   type AnyCurve as CoreAnyCurve,
   type Curve3D as CoreCurve3D,
+  type DerivedConstructionObjectDefinition,
 } from "@math3d/core";
 
 import {
@@ -2378,6 +2380,37 @@ type GeometryDerivedRelationConstraint = {
   enabled: boolean;
   createdAt: number;
 };
+type GeometryMathConstructionType =
+  | "midpoint"
+  | "line-through-objects"
+  | "parallel-line-through-object"
+  | "perpendicular-line-through-object"
+  | "circle-center-through-object"
+  | "angle-bisector"
+  | "tangent-to-circle-at-object"
+  | "normal-to-object-at-object";
+type GeometryMathConstructionStatus = "valid" | "broken-source" | "invalid";
+type GeometryMathConstructionObject = {
+  id: string;
+  type: GeometryMathConstructionType;
+  name: string;
+  sourceObjectIds: string[];
+  sourceConstructionId?: string | null;
+  visible: boolean;
+  createdAt: number;
+};
+type GeometryMathConstructionEvaluation = {
+  object: GeometryMathConstructionObject;
+  status: GeometryMathConstructionStatus;
+  statusMessage: string | null;
+  origin: { x: number; y: number; z: number } | null;
+  direction: { x: number; y: number; z: number } | null;
+  normal: { x: number; y: number; z: number } | null;
+  radius: number | null;
+  groups: OverlayPolylineGroup[];
+  pointSets: OverlayPointSet[];
+  labelSets: OverlayLabelSet[];
+};
 const GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS: Record<GeometryDerivedConstructionType, string> = {
   "vertex-point-marker": "Point Marker",
   "vertex-coordinate-label": "Coordinate Label",
@@ -2407,6 +2440,16 @@ const GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS: Record<GeometryDerivedConstruct
   "object-symmetry-plane-preview": "Symmetry Plane",
   "object-circumscribed-sphere-preview": "Circumscribed Sphere",
   "object-inscribed-reference-sphere": "Inscribed Reference Sphere",
+};
+const GEOMETRY_MATH_CONSTRUCTION_TYPE_LABELS: Record<GeometryMathConstructionType, string> = {
+  midpoint: "Midpoint",
+  "line-through-objects": "Line",
+  "parallel-line-through-object": "Parallel Line",
+  "perpendicular-line-through-object": "Perpendicular Line",
+  "circle-center-through-object": "Circle",
+  "angle-bisector": "Angle Bisector",
+  "tangent-to-circle-at-object": "Tangent",
+  "normal-to-object-at-object": "Normal",
 };
 const GEOMETRY_DERIVED_RELATION_TYPE_LABELS: Record<GeometryDerivedRelationType, string> = {
   "center-on-derived-point": "Place Object Center On Point",
@@ -7678,6 +7721,13 @@ const App: React.FC = () => {
   const [geometryDerivedRelationConstraints, setGeometryDerivedRelationConstraints] = useState<
     GeometryDerivedRelationConstraint[]
   >([]);
+  const [geometryMathConstructions, setGeometryMathConstructions] = useState<GeometryMathConstructionObject[]>([]);
+  const [geometrySelectedMathConstructionId, setGeometrySelectedMathConstructionId] = useState<string | null>(null);
+  const [geometryMathConstructionSourceAId, setGeometryMathConstructionSourceAId] = useState<string | null>(null);
+  const [geometryMathConstructionSourceBId, setGeometryMathConstructionSourceBId] = useState<string | null>(null);
+  const [geometryMathConstructionSourcePId, setGeometryMathConstructionSourcePId] = useState<string | null>(null);
+  const [geometryMathConstructionLineSourceId, setGeometryMathConstructionLineSourceId] = useState<string | null>(null);
+  const [geometryMathConstructionCircleSourceId, setGeometryMathConstructionCircleSourceId] = useState<string | null>(null);
   const [geometryRelationTargetDerivedId, setGeometryRelationTargetDerivedId] = useState<string | null>(null);
   const [geometryRelationLocalAxis, setGeometryRelationLocalAxis] = useState<"x" | "y" | "z">("y");
   const [geometryRelationFaceSide, setGeometryRelationFaceSide] = useState<"min" | "max">("max");
@@ -8216,6 +8266,100 @@ const App: React.FC = () => {
       })),
     [geometryDatasetMeshObjects, geometryObjects]
   );
+  const geometryMathConstructionObjectOptions = geometryCompareObjectOptions;
+  const geometryMathConstructionLineOptions = useMemo(
+    () =>
+      geometryMathConstructions.filter((entry) =>
+        entry.type === "line-through-objects" ||
+        entry.type === "parallel-line-through-object" ||
+        entry.type === "perpendicular-line-through-object" ||
+        entry.type === "angle-bisector" ||
+        entry.type === "tangent-to-circle-at-object" ||
+        entry.type === "normal-to-object-at-object"
+      ),
+    [geometryMathConstructions]
+  );
+  const geometryMathConstructionCircleOptions = useMemo(
+    () => geometryMathConstructions.filter((entry) => entry.type === "circle-center-through-object"),
+    [geometryMathConstructions]
+  );
+  const geometryMathConstructionObjectIdSet = useMemo(
+    () => new Set(geometryMathConstructionObjectOptions.map((entry) => entry.id)),
+    [geometryMathConstructionObjectOptions]
+  );
+  const geometryEffectiveMathConstructionSourceAId = useMemo(() => {
+    if (!geometryMathConstructionObjectOptions.length) return null;
+    if (geometryMathConstructionSourceAId && geometryMathConstructionObjectIdSet.has(geometryMathConstructionSourceAId)) {
+      return geometryMathConstructionSourceAId;
+    }
+    const selectedId = geometrySelectedSceneObject?.id ?? null;
+    return selectedId && geometryMathConstructionObjectIdSet.has(selectedId)
+      ? selectedId
+      : geometryMathConstructionObjectOptions[0]?.id ?? null;
+  }, [
+    geometryMathConstructionObjectIdSet,
+    geometryMathConstructionObjectOptions,
+    geometryMathConstructionSourceAId,
+    geometrySelectedSceneObject?.id,
+  ]);
+  const geometryEffectiveMathConstructionSourceBId = useMemo(() => {
+    if (!geometryMathConstructionObjectOptions.length) return null;
+    if (
+      geometryMathConstructionSourceBId &&
+      geometryMathConstructionObjectIdSet.has(geometryMathConstructionSourceBId) &&
+      (geometryMathConstructionSourceBId !== geometryEffectiveMathConstructionSourceAId ||
+        geometryMathConstructionObjectOptions.length <= 1)
+    ) {
+      return geometryMathConstructionSourceBId;
+    }
+    return (
+      geometryMathConstructionObjectOptions.find(
+        (entry) => entry.id !== geometryEffectiveMathConstructionSourceAId
+      )?.id ??
+      geometryEffectiveMathConstructionSourceAId ??
+      null
+    );
+  }, [
+    geometryEffectiveMathConstructionSourceAId,
+    geometryMathConstructionObjectIdSet,
+    geometryMathConstructionObjectOptions,
+    geometryMathConstructionSourceBId,
+  ]);
+  const geometryEffectiveMathConstructionSourcePId = useMemo(() => {
+    if (!geometryMathConstructionObjectOptions.length) return null;
+    if (geometryMathConstructionSourcePId && geometryMathConstructionObjectIdSet.has(geometryMathConstructionSourcePId)) {
+      return geometryMathConstructionSourcePId;
+    }
+    const selectedId = geometrySelectedSceneObject?.id ?? null;
+    return selectedId && geometryMathConstructionObjectIdSet.has(selectedId)
+      ? selectedId
+      : geometryEffectiveMathConstructionSourceBId ?? geometryEffectiveMathConstructionSourceAId;
+  }, [
+    geometryEffectiveMathConstructionSourceAId,
+    geometryEffectiveMathConstructionSourceBId,
+    geometryMathConstructionObjectIdSet,
+    geometryMathConstructionObjectOptions.length,
+    geometryMathConstructionSourcePId,
+    geometrySelectedSceneObject?.id,
+  ]);
+  const geometryEffectiveMathConstructionLineSourceId = useMemo(() => {
+    if (
+      geometryMathConstructionLineSourceId &&
+      geometryMathConstructionLineOptions.some((entry) => entry.id === geometryMathConstructionLineSourceId)
+    ) {
+      return geometryMathConstructionLineSourceId;
+    }
+    return geometryMathConstructionLineOptions[0]?.id ?? null;
+  }, [geometryMathConstructionLineOptions, geometryMathConstructionLineSourceId]);
+  const geometryEffectiveMathConstructionCircleSourceId = useMemo(() => {
+    if (
+      geometryMathConstructionCircleSourceId &&
+      geometryMathConstructionCircleOptions.some((entry) => entry.id === geometryMathConstructionCircleSourceId)
+    ) {
+      return geometryMathConstructionCircleSourceId;
+    }
+    return geometryMathConstructionCircleOptions[0]?.id ?? null;
+  }, [geometryMathConstructionCircleOptions, geometryMathConstructionCircleSourceId]);
   const prepareGeometryCompareFromSelected = useCallback(() => {
     const selectedId = geometrySelectedSceneObject?.id ?? null;
     if (!selectedId) return;
@@ -12154,6 +12298,119 @@ const App: React.FC = () => {
     },
     [appendDerivedConstruction, geometrySelectedObjectId, resolveGeometrySceneMeshById]
   );
+  const appendGeometryMathConstruction = useCallback(
+    (
+      type: GeometryMathConstructionType,
+      sourceObjectIds: Array<string | null | undefined>,
+      sourceConstructionId: string | null = null
+    ) => {
+      const resolvedSourceIds = sourceObjectIds.filter((id): id is string => !!id);
+      const sourceCountByType: Record<GeometryMathConstructionType, number> = {
+        midpoint: 2,
+        "line-through-objects": 2,
+        "parallel-line-through-object": 1,
+        "perpendicular-line-through-object": 1,
+        "circle-center-through-object": 2,
+        "angle-bisector": 3,
+        "tangent-to-circle-at-object": 1,
+        "normal-to-object-at-object": 2,
+      };
+      if (resolvedSourceIds.length < sourceCountByType[type]) {
+        setGeometryCreateActionStatus("Select the required source objects first.");
+        return;
+      }
+      if (
+        (type === "parallel-line-through-object" || type === "perpendicular-line-through-object") &&
+        !sourceConstructionId
+      ) {
+        setGeometryCreateActionStatus("Create or select a source line first.");
+        return;
+      }
+      if (type === "tangent-to-circle-at-object" && !sourceConstructionId) {
+        setGeometryCreateActionStatus("Create or select a source circle first.");
+        return;
+      }
+      const duplicateSourcesAllowed =
+        type === "normal-to-object-at-object" || type === "tangent-to-circle-at-object";
+      if (!duplicateSourcesAllowed && new Set(resolvedSourceIds).size < resolvedSourceIds.length) {
+        setGeometryCreateActionStatus("Use distinct source objects for this construction.");
+        return;
+      }
+      const ordinal = geometryMathConstructions.filter((entry) => entry.type === type).length + 1;
+      const next: GeometryMathConstructionObject = {
+        id: makeId(),
+        type,
+        name: `${GEOMETRY_MATH_CONSTRUCTION_TYPE_LABELS[type]} ${ordinal}`,
+        sourceObjectIds: resolvedSourceIds,
+        sourceConstructionId,
+        visible: true,
+        createdAt: Date.now(),
+      };
+      setGeometryMathConstructions((prev) => [next, ...prev]);
+    },
+    [geometryMathConstructions]
+  );
+  const handleCreateGeometryMathConstruction = useCallback(
+    (type: GeometryMathConstructionType) => {
+      if (type === "midpoint" || type === "line-through-objects" || type === "circle-center-through-object") {
+        appendGeometryMathConstruction(type, [
+          geometryEffectiveMathConstructionSourceAId,
+          geometryEffectiveMathConstructionSourceBId,
+        ]);
+        return;
+      }
+      if (type === "angle-bisector") {
+        appendGeometryMathConstruction(type, [
+          geometryEffectiveMathConstructionSourceAId,
+          geometryEffectiveMathConstructionSourceBId,
+          geometryEffectiveMathConstructionSourcePId,
+        ]);
+        return;
+      }
+      if (type === "parallel-line-through-object" || type === "perpendicular-line-through-object") {
+        appendGeometryMathConstruction(type, [geometryEffectiveMathConstructionSourcePId], geometryEffectiveMathConstructionLineSourceId);
+        return;
+      }
+      if (type === "tangent-to-circle-at-object") {
+        appendGeometryMathConstruction(type, [geometryEffectiveMathConstructionSourcePId], geometryEffectiveMathConstructionCircleSourceId);
+        return;
+      }
+      appendGeometryMathConstruction(type, [
+        geometryEffectiveMathConstructionSourceAId,
+        geometryEffectiveMathConstructionSourcePId,
+      ]);
+    },
+    [
+      appendGeometryMathConstruction,
+      geometryEffectiveMathConstructionCircleSourceId,
+      geometryEffectiveMathConstructionLineSourceId,
+      geometryEffectiveMathConstructionSourceAId,
+      geometryEffectiveMathConstructionSourceBId,
+      geometryEffectiveMathConstructionSourcePId,
+    ]
+  );
+  const handleDeleteGeometryMathConstruction = useCallback((id: string) => {
+    setGeometryMathConstructions((prev) =>
+      prev.filter((entry) => entry.id !== id).map((entry) =>
+        entry.sourceConstructionId === id ? { ...entry, sourceConstructionId: null } : entry
+      )
+    );
+    setGeometrySelectedMathConstructionId((prev) => (prev === id ? null : prev));
+    setGeometryMathConstructionLineSourceId((prev) => (prev === id ? null : prev));
+    setGeometryMathConstructionCircleSourceId((prev) => (prev === id ? null : prev));
+  }, []);
+  const handleClearGeometryMathConstructions = useCallback(() => {
+    setGeometryMathConstructions([]);
+    setGeometrySelectedMathConstructionId(null);
+    setGeometryMathConstructionLineSourceId(null);
+    setGeometryMathConstructionCircleSourceId(null);
+    setGeometryCreateActionStatus("Cleared mathematical construction objects.");
+  }, []);
+  const handleToggleGeometryMathConstructionVisibility = useCallback((id: string) => {
+    setGeometryMathConstructions((prev) =>
+      prev.map((entry) => (entry.id === id ? { ...entry, visible: !entry.visible } : entry))
+    );
+  }, []);
   const handleDeleteDerivedConstruction = useCallback((id: string) => {
     setGeometryDerivedConstructions((prev) => prev.filter((entry) => entry.id !== id));
     setGeometryDerivedRelationConstraints((prev) => prev.filter((entry) => entry.derivedId !== id));
@@ -14408,6 +14665,349 @@ const App: React.FC = () => {
     }
     return sets.length ? sets : null;
   }, [geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails]);
+  const geometryMathConstructionOverlays = useMemo<{
+    groups: OverlayPolylineGroup[] | null;
+    pointSets: OverlayPointSet[] | null;
+    labelSets: OverlayLabelSet[] | null;
+    byId: Map<string, GeometryMathConstructionEvaluation>;
+  }>(() => {
+    const byId = new Map<string, GeometryMathConstructionEvaluation>();
+    if (geometryMode !== "procedural" || !geometryMathConstructions.length) {
+      return { groups: null, pointSets: null, labelSets: null, byId };
+    }
+
+    const groups: OverlayPolylineGroup[] = [];
+    const pointSets: OverlayPointSet[] = [];
+    const labels: OverlayLabelSet["labels"] = [];
+    const scenePositions = [...geometryObjects, ...geometryDatasetMeshObjects].map((entry) => entry.transform.position);
+    const xs = scenePositions.map((p) => p.x);
+    const ys = scenePositions.map((p) => p.y);
+    const zs = scenePositions.map((p) => p.z);
+    const sceneDiag = scenePositions.length
+      ? Math.hypot(
+          Math.max(...xs) - Math.min(...xs),
+          Math.max(...ys) - Math.min(...ys),
+          Math.max(...zs) - Math.min(...zs)
+        )
+      : 0;
+    const defaultHalfLength = Math.max(3, sceneDiag * 0.85);
+    const constructionOrder = [...geometryMathConstructions].sort((a, b) => a.createdAt - b.createdAt);
+    const objectNameById = new Map(geometryCompareObjectOptions.map((entry) => [entry.id, entry.name] as const));
+    const getSourcePoint = (id: string | null | undefined) => {
+      if (!id) return null;
+      const object = resolveGeometrySceneObjectById(id);
+      if (!object) return null;
+      return { ...object.transform.position };
+    };
+    const sourceNames = (ids: string[]) => ids.map((id) => objectNameById.get(id) ?? id).join(", ");
+    const lineSegments = (
+      origin: { x: number; y: number; z: number },
+      direction: { x: number; y: number; z: number },
+      halfLength: number
+    ): PolylineSet => [
+      [
+        {
+          x: origin.x - direction.x * halfLength,
+          y: origin.y - direction.y * halfLength,
+          z: origin.z - direction.z * halfLength,
+        },
+        {
+          x: origin.x + direction.x * halfLength,
+          y: origin.y + direction.y * halfLength,
+          z: origin.z + direction.z * halfLength,
+        },
+      ],
+    ];
+    const circleBasisFromNormal = (
+      normal: { x: number; y: number; z: number },
+      radialHint: { x: number; y: number; z: number } | null
+    ) => {
+      const n = geometryNormalizeVec(normal) ?? { x: 0, y: 0, z: 1 };
+      const projectedRadial = radialHint
+        ? geometrySub(radialHint, {
+            x: n.x * geometryDot(radialHint, n),
+            y: n.y * geometryDot(radialHint, n),
+            z: n.z * geometryDot(radialHint, n),
+          })
+        : null;
+      const u =
+        (projectedRadial ? geometryNormalizeVec(projectedRadial) : null) ??
+        geometryNormalizeVec(geometryCross(Math.abs(n.z) < 0.9 ? { x: 0, y: 0, z: 1 } : { x: 0, y: 1, z: 0 }, n));
+      if (!u) return null;
+      const v = geometryNormalizeVec(geometryCross(n, u));
+      if (!v) return null;
+      return { u, v, normal: n };
+    };
+    const addCircleSegments = (
+      lines: PolylineSet,
+      center: { x: number; y: number; z: number },
+      u: { x: number; y: number; z: number },
+      v: { x: number; y: number; z: number },
+      radius: number
+    ) => {
+      const segments = 64;
+      for (let i = 0; i < segments; i += 1) {
+        const a0 = (i / segments) * Math.PI * 2;
+        const a1 = ((i + 1) / segments) * Math.PI * 2;
+        lines.push([
+          {
+            x: center.x + radius * (u.x * Math.cos(a0) + v.x * Math.sin(a0)),
+            y: center.y + radius * (u.y * Math.cos(a0) + v.y * Math.sin(a0)),
+            z: center.z + radius * (u.z * Math.cos(a0) + v.z * Math.sin(a0)),
+          },
+          {
+            x: center.x + radius * (u.x * Math.cos(a1) + v.x * Math.sin(a1)),
+            y: center.y + radius * (u.y * Math.cos(a1) + v.y * Math.sin(a1)),
+            z: center.z + radius * (u.z * Math.cos(a1) + v.z * Math.sin(a1)),
+          },
+        ]);
+      }
+    };
+    const publish = (
+      object: GeometryMathConstructionObject,
+      status: GeometryMathConstructionStatus,
+      statusMessage: string | null,
+      origin: { x: number; y: number; z: number } | null,
+      direction: { x: number; y: number; z: number } | null,
+      normal: { x: number; y: number; z: number } | null,
+      radius: number | null,
+      evalGroups: OverlayPolylineGroup[],
+      evalPointSets: OverlayPointSet[],
+      evalLabels: OverlayLabelSet["labels"]
+    ) => {
+      const evalLabelSets = evalLabels.length ? [{ labels: evalLabels, size: 0.9 }] : [];
+      byId.set(object.id, {
+        object,
+        status,
+        statusMessage,
+        origin,
+        direction,
+        normal,
+        radius,
+        groups: evalGroups,
+        pointSets: evalPointSets,
+        labelSets: evalLabelSets,
+      });
+      if (!object.visible || status !== "valid") return;
+      groups.push(...evalGroups);
+      pointSets.push(...evalPointSets);
+      labels.push(...evalLabels);
+    };
+
+    const constructionDefinitions: DerivedConstructionObjectDefinition[] = constructionOrder.map((object) => ({
+      id: object.id,
+      type: object.type,
+      name: object.name,
+      sourceObjectIds: object.sourceObjectIds,
+      sourceConstructionId: object.sourceConstructionId ?? null,
+      visible: object.visible,
+      createdAt: object.createdAt,
+    }));
+    const sourcePoints = new Map<string, { x: number; y: number; z: number; label?: string }>();
+    for (const option of geometryCompareObjectOptions) {
+      const source = resolveGeometrySceneObjectById(option.id);
+      if (source) sourcePoints.set(option.id, { ...source.transform.position, label: option.name });
+    }
+    const coreResult = evaluateDerivedConstructionObjects(constructionDefinitions, sourcePoints);
+
+    for (const object of constructionOrder) {
+      const evalGroups: OverlayPolylineGroup[] = [];
+      const evalPointSets: OverlayPointSet[] = [];
+      const evalLabels: OverlayLabelSet["labels"] = [];
+      const coreEval = coreResult.byId.get(object.id) ?? null;
+      const addPoint = (point: { x: number; y: number; z: number }, color = 0x0f766e, size = 0.095) => {
+        evalPointSets.push({ points: [point], color, size, opacity: 0.98 });
+      };
+      const addLine = (lines: PolylineSet, color = 0x2563eb, opacity = 0.9, radiusScale = 1.8) => {
+        if (lines.length) evalGroups.push({ lines, color, opacity, radiusScale });
+      };
+      const addLabel = (point: { x: number; y: number; z: number }) => {
+        evalLabels.push({
+          text: object.name,
+          position: { x: point.x + 0.05, y: point.y + 0.05, z: point.z + 0.05 },
+          color: 0x0f172a,
+          size: 0.88,
+          opacity: 0.96,
+        });
+      };
+      if (!coreEval || coreEval.status !== "valid" || !coreEval.value) {
+        publish(
+          object,
+          coreEval?.status ?? "invalid",
+          coreEval?.message ?? "Construction object could not be evaluated.",
+          null,
+          null,
+          null,
+          null,
+          [],
+          [],
+          []
+        );
+        continue;
+      }
+
+      if (object.type === "midpoint") {
+        const value = coreEval.value;
+        if (value.kind !== "point") {
+          publish(object, "invalid", "Midpoint did not evaluate to a point.", null, null, null, null, [], [], []);
+          continue;
+        }
+        const a = getSourcePoint(object.sourceObjectIds[0]);
+        const b = getSourcePoint(object.sourceObjectIds[1]);
+        if (!a || !b) {
+          publish(object, "broken-source", "Midpoint source is unavailable.", null, null, null, null, [], [], []);
+          continue;
+        }
+        const point = value.point;
+        addPoint(point, 0x0f766e, 0.11);
+        addLine([[a, b]], 0x94a3b8, 0.42, 1.1);
+        addLabel(point);
+        publish(object, "valid", `Derived from ${sourceNames(object.sourceObjectIds)}.`, point, null, null, null, evalGroups, evalPointSets, evalLabels);
+        continue;
+      }
+
+      if (object.type === "line-through-objects") {
+        const value = coreEval.value;
+        if (value.kind !== "line") {
+          publish(object, "invalid", "Line did not evaluate to a line.", null, null, null, null, [], [], []);
+          continue;
+        }
+        const a = getSourcePoint(object.sourceObjectIds[0]);
+        const b = getSourcePoint(object.sourceObjectIds[1]);
+        const { origin, direction } = value.line;
+        if (!a || !b) {
+          publish(object, "invalid", "Line needs two distinct source objects.", null, null, null, null, [], [], []);
+          continue;
+        }
+        addLine(lineSegments(origin, direction, Math.max(defaultHalfLength, geometryDistance(a, b) * 1.2)), 0x2563eb);
+        addLabel(origin);
+        publish(object, "valid", `Line through ${sourceNames(object.sourceObjectIds)}.`, origin, direction, null, null, evalGroups, evalPointSets, evalLabels);
+        continue;
+      }
+
+      if (object.type === "circle-center-through-object") {
+        const value = coreEval.value;
+        if (value.kind !== "circle") {
+          publish(object, "invalid", "Circle did not evaluate to a circle.", null, null, null, null, [], [], []);
+          continue;
+        }
+        const center = getSourcePoint(object.sourceObjectIds[0]);
+        const through = getSourcePoint(object.sourceObjectIds[1]);
+        const radial = center && through ? geometrySub(through, center) : null;
+        const { circle } = value;
+        const basis = circleBasisFromNormal(circle.normal, radial);
+        if (!center || !through || !basis || !Number.isFinite(circle.radius) || circle.radius < 1e-9) {
+          publish(object, "invalid", "Circle needs a center and a distinct radius object.", null, null, null, null, [], [], []);
+          continue;
+        }
+        const lines: PolylineSet = [];
+        addCircleSegments(lines, circle.center, basis.u, basis.v, circle.radius);
+        addLine(lines, 0x0891b2, 0.92, 1.7);
+        addPoint(circle.center, 0x0891b2, 0.075);
+        addLabel(circle.center);
+        publish(object, "valid", `Circle from ${sourceNames(object.sourceObjectIds)}.`, circle.center, basis.u, basis.normal, circle.radius, evalGroups, evalPointSets, evalLabels);
+        continue;
+      }
+
+      if (object.type === "angle-bisector") {
+        const value = coreEval.value;
+        if (value.kind !== "line") {
+          publish(object, "invalid", "Angle bisector did not evaluate to a line.", null, null, null, null, [], [], []);
+          continue;
+        }
+        const a = getSourcePoint(object.sourceObjectIds[0]);
+        const b = getSourcePoint(object.sourceObjectIds[1]);
+        const c = getSourcePoint(object.sourceObjectIds[2]);
+        const { origin, direction } = value.line;
+        if (!a || !b || !c) {
+          publish(object, "invalid", "Angle bisector needs three non-collinear source objects.", null, null, null, null, [], [], []);
+          continue;
+        }
+        addLine([[b, a], [b, c]], 0x94a3b8, 0.36, 1.0);
+        addLine(lineSegments(origin, direction, defaultHalfLength), 0x7c3aed, 0.92, 1.9);
+        addLabel(origin);
+        publish(object, "valid", `Angle bisector from ${sourceNames(object.sourceObjectIds)}.`, origin, direction, null, null, evalGroups, evalPointSets, evalLabels);
+        continue;
+      }
+
+      if (object.type === "parallel-line-through-object" || object.type === "perpendicular-line-through-object") {
+        const value = coreEval.value;
+        if (value.kind !== "line") {
+          publish(object, "invalid", "Line dependency or through object is unavailable.", null, null, null, null, [], [], []);
+          continue;
+        }
+        const sourceLine = object.sourceConstructionId ? coreResult.byId.get(object.sourceConstructionId) : null;
+        const sourceLineObject = object.sourceConstructionId
+          ? constructionOrder.find((entry) => entry.id === object.sourceConstructionId)
+          : null;
+        const through = getSourcePoint(object.sourceObjectIds[0]);
+        if (!sourceLine || sourceLine.status !== "valid" || !through) {
+          publish(object, "invalid", "Line dependency or through object is unavailable.", null, null, null, null, [], [], []);
+          continue;
+        }
+        const { origin, direction } = value.line;
+        addLine(lineSegments(origin, direction, defaultHalfLength), object.type === "parallel-line-through-object" ? 0x16a34a : 0xf59e0b, 0.92, 1.9);
+        addPoint(through, 0x334155, 0.07);
+        addLabel(origin);
+        publish(object, "valid", `Derived from ${sourceLineObject?.name ?? object.sourceConstructionId ?? "source line"}.`, origin, direction, null, null, evalGroups, evalPointSets, evalLabels);
+        continue;
+      }
+
+      if (object.type === "tangent-to-circle-at-object") {
+        const value = coreEval.value;
+        if (value.kind !== "line") {
+          publish(object, "invalid", "Tangent did not evaluate to a line.", null, null, null, null, [], [], []);
+          continue;
+        }
+        const circle = object.sourceConstructionId ? coreResult.byId.get(object.sourceConstructionId) : null;
+        const circleObject = object.sourceConstructionId
+          ? constructionOrder.find((entry) => entry.id === object.sourceConstructionId)
+          : null;
+        const pointSource = getSourcePoint(object.sourceObjectIds[0]);
+        if (!circle || circle.status !== "valid" || !pointSource) {
+          publish(object, "invalid", "Circle dependency or tangent point is unavailable.", null, null, null, null, [], [], []);
+          continue;
+        }
+        const { origin, direction } = value.line;
+        addLine(lineSegments(origin, direction, defaultHalfLength), 0xdc2626, 0.92, 1.9);
+        addPoint(origin, 0xdc2626, 0.08);
+        addLabel(origin);
+        publish(object, "valid", `Tangent to ${circleObject?.name ?? object.sourceConstructionId ?? "circle"}.`, origin, direction, null, null, evalGroups, evalPointSets, evalLabels);
+        continue;
+      }
+
+      const value = coreEval.value;
+      if (value.kind !== "line") {
+        publish(object, "invalid", "Normal did not evaluate to a line.", null, null, null, null, [], [], []);
+        continue;
+      }
+      const surface = getSourcePoint(object.sourceObjectIds[0]);
+      const point = getSourcePoint(object.sourceObjectIds[1]);
+      const { origin, direction } = value.line;
+      if (!surface || !point) {
+        publish(object, "invalid", "Normal needs a surface object and a point object.", null, null, null, null, [], [], []);
+        continue;
+      }
+      addLine(lineSegments(origin, direction, defaultHalfLength * 0.65), 0x9333ea, 0.9, 1.8);
+      addPoint(origin, 0x9333ea, 0.08);
+      addLabel(origin);
+      publish(object, "valid", `Normal from ${sourceNames(object.sourceObjectIds)}.`, origin, direction, null, null, evalGroups, evalPointSets, evalLabels);
+    }
+
+    return {
+      groups: groups.length ? groups : null,
+      pointSets: pointSets.length ? pointSets : null,
+      labelSets: labels.length ? [{ labels, size: 0.9 }] : null,
+      byId,
+    };
+  }, [
+    geometryCompareObjectOptions,
+    geometryDatasetMeshObjects,
+    geometryMathConstructions,
+    geometryMode,
+    geometryObjects,
+    resolveGeometrySceneObjectById,
+  ]);
   const geometryDerivedConstructionOverlays = useMemo<{
     groups: OverlayPolylineGroup[] | null;
     pointSets: OverlayPointSet[] | null;
@@ -16648,6 +17248,9 @@ const App: React.FC = () => {
     if (geometryDerivedConstructionOverlays.pointSets?.length) {
       sets.push(...geometryDerivedConstructionOverlays.pointSets);
     }
+    if (geometryMathConstructionOverlays.pointSets?.length) {
+      sets.push(...geometryMathConstructionOverlays.pointSets);
+    }
     if (geometryProceduralSelectionPointSets?.length) {
       sets.push(...geometryProceduralSelectionPointSets);
     }
@@ -16661,6 +17264,7 @@ const App: React.FC = () => {
     geometryProceduralAnnotationOverlays.pointSets,
     geometryTimelineShowAnnotations,
     geometryDerivedConstructionOverlays.pointSets,
+    geometryMathConstructionOverlays.pointSets,
     geometryProceduralSelectionPointSets,
     geometryProceduralSnapPreviewPointSet,
   ]);
@@ -16673,6 +17277,7 @@ const App: React.FC = () => {
     if (geometryBooleanPreviewOverlayGroups?.length) groups.push(...geometryBooleanPreviewOverlayGroups);
     if (geometryProceduralFeatureOverlays.groups?.length) groups.push(...geometryProceduralFeatureOverlays.groups);
     if (geometryDerivedConstructionOverlays.groups?.length) groups.push(...geometryDerivedConstructionOverlays.groups);
+    if (geometryMathConstructionOverlays.groups?.length) groups.push(...geometryMathConstructionOverlays.groups);
     if (geometryTimelineShowAnnotations && geometryProceduralAnnotationOverlays.groups?.length) {
       groups.push(...geometryProceduralAnnotationOverlays.groups);
     }
@@ -16685,6 +17290,7 @@ const App: React.FC = () => {
     geometryBooleanPreviewOverlayGroups,
     geometryProceduralFeatureOverlays.groups,
     geometryDerivedConstructionOverlays.groups,
+    geometryMathConstructionOverlays.groups,
     geometryProceduralAnnotationOverlays.groups,
     geometryTimelineShowAnnotations,
   ]);
@@ -16704,6 +17310,7 @@ const App: React.FC = () => {
     const labels: OverlayLabelSet[] = [];
     if (geometryProceduralFeatureOverlays.labelSets?.length) labels.push(...geometryProceduralFeatureOverlays.labelSets);
     if (geometryDerivedConstructionOverlays.labelSets?.length) labels.push(...geometryDerivedConstructionOverlays.labelSets);
+    if (geometryMathConstructionOverlays.labelSets?.length) labels.push(...geometryMathConstructionOverlays.labelSets);
     if (geometryTimelineShowAnnotations && geometryProceduralAnnotationOverlays.labelSets?.length) {
       labels.push(...geometryProceduralAnnotationOverlays.labelSets);
     }
@@ -16714,6 +17321,7 @@ const App: React.FC = () => {
     geometryConstructionState?.labels,
     geometryProceduralFeatureOverlays.labelSets,
     geometryDerivedConstructionOverlays.labelSets,
+    geometryMathConstructionOverlays.labelSets,
     geometryProceduralAnnotationOverlays.labelSets,
     geometryTimelineShowAnnotations,
   ]);
@@ -49477,6 +50085,204 @@ case "mobius":
                         <div style={{ fontSize: 10.5, color: "#64748b" }}>
                           Left panel: Object / Edit / Construct / Measure / History / Compare.
                         </div>
+                      </div>
+
+                      <div
+                        style={{
+                          border: "1px solid #dbe4f0",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          background: "#ffffff",
+                          display: "grid",
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>Mathematical construction objects</div>
+                          <button
+                            type="button"
+                            onClick={handleClearGeometryMathConstructions}
+                            disabled={!geometryMathConstructions.length}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
+                            {([
+                              ["A", geometryEffectiveMathConstructionSourceAId, setGeometryMathConstructionSourceAId],
+                              ["B", geometryEffectiveMathConstructionSourceBId, setGeometryMathConstructionSourceBId],
+                              ["P", geometryEffectiveMathConstructionSourcePId, setGeometryMathConstructionSourcePId],
+                            ] as const).map(([label, value, setter]) => (
+                              <label key={`geometry-math-construction-source-${label}`} style={{ display: "grid", gap: 3 }}>
+                                {label}
+                                <select
+                                  value={value ?? ""}
+                                  onChange={(e) => setter(e.target.value || null)}
+                                  disabled={!geometryMathConstructionObjectOptions.length}
+                                  style={{ minWidth: 0 }}
+                                >
+                                  <option value="">None</option>
+                                  {geometryMathConstructionObjectOptions.map((entry, index) => (
+                                    <option key={`geometry-math-construction-object-option-${label}-${entry.id}`} value={entry.id}>
+                                      {entry.name} #{index + 1}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            ))}
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
+                            <label style={{ display: "grid", gap: 3 }}>
+                              Line
+                              <select
+                                value={geometryEffectiveMathConstructionLineSourceId ?? ""}
+                                onChange={(e) => setGeometryMathConstructionLineSourceId(e.target.value || null)}
+                                disabled={!geometryMathConstructionLineOptions.length}
+                              >
+                                <option value="">None</option>
+                                {geometryMathConstructionLineOptions.map((entry) => (
+                                  <option key={`geometry-math-line-option-${entry.id}`} value={entry.id}>
+                                    {entry.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label style={{ display: "grid", gap: 3 }}>
+                              Circle
+                              <select
+                                value={geometryEffectiveMathConstructionCircleSourceId ?? ""}
+                                onChange={(e) => setGeometryMathConstructionCircleSourceId(e.target.value || null)}
+                                disabled={!geometryMathConstructionCircleOptions.length}
+                              >
+                                <option value="">None</option>
+                                {geometryMathConstructionCircleOptions.map((entry) => (
+                                  <option key={`geometry-math-circle-option-${entry.id}`} value={entry.id}>
+                                    {entry.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => handleCreateGeometryMathConstruction("midpoint")}
+                            disabled={geometryMathConstructionObjectOptions.length < 2}
+                          >
+                            midpoint(A,B)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCreateGeometryMathConstruction("line-through-objects")}
+                            disabled={geometryMathConstructionObjectOptions.length < 2}
+                          >
+                            line(A,B)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCreateGeometryMathConstruction("circle-center-through-object")}
+                            disabled={geometryMathConstructionObjectOptions.length < 2}
+                          >
+                            circle(A,B)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCreateGeometryMathConstruction("angle-bisector")}
+                            disabled={geometryMathConstructionObjectOptions.length < 3}
+                          >
+                            bisector(A,B,P)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCreateGeometryMathConstruction("parallel-line-through-object")}
+                            disabled={!geometryMathConstructionLineOptions.length || !geometryEffectiveMathConstructionSourcePId}
+                          >
+                            parallel(line,P)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCreateGeometryMathConstruction("perpendicular-line-through-object")}
+                            disabled={!geometryMathConstructionLineOptions.length || !geometryEffectiveMathConstructionSourcePId}
+                          >
+                            perpendicular(line,P)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCreateGeometryMathConstruction("tangent-to-circle-at-object")}
+                            disabled={!geometryMathConstructionCircleOptions.length || !geometryEffectiveMathConstructionSourcePId}
+                          >
+                            tangent(circle,P)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCreateGeometryMathConstruction("normal-to-object-at-object")}
+                            disabled={geometryMathConstructionObjectOptions.length < 2}
+                          >
+                            normal(A,P)
+                          </button>
+                        </div>
+                        {geometryMathConstructions.length ? (
+                          <div style={{ display: "grid", gap: 5 }}>
+                            {geometryMathConstructions.map((entry) => {
+                              const evalEntry = geometryMathConstructionOverlays.byId.get(entry.id);
+                              const status = evalEntry?.status ?? "invalid";
+                              const statusColor =
+                                status === "valid" ? "#047857" : status === "broken-source" ? "#b45309" : "#b91c1c";
+                              const selected = geometrySelectedMathConstructionId === entry.id;
+                              return (
+                                <div
+                                  key={`geometry-math-construction-${entry.id}`}
+                                  onClick={() => setGeometrySelectedMathConstructionId(entry.id)}
+                                  style={{
+                                    border: selected ? "1px solid #2563eb" : "1px solid #dbe2ea",
+                                    borderRadius: 8,
+                                    padding: "6px 8px",
+                                    background: selected ? "#eff6ff" : "#fff",
+                                    display: "grid",
+                                    gap: 4,
+                                    fontSize: 10.5,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                                    <strong style={{ fontSize: 11 }}>{entry.name}</strong>
+                                    <span style={{ color: statusColor, fontWeight: 700 }}>{status}</span>
+                                  </div>
+                                  <div style={{ color: "#64748b" }}>
+                                    {GEOMETRY_MATH_CONSTRUCTION_TYPE_LABELS[entry.type]}
+                                    {evalEntry?.statusMessage ? ` · ${evalEntry.statusMessage}` : ""}
+                                  </div>
+                                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleToggleGeometryMathConstructionVisibility(entry.id);
+                                      }}
+                                    >
+                                      {entry.visible ? "Hide" : "Show"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleDeleteGeometryMathConstruction(entry.id);
+                                      }}
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 10.5, color: "#667085" }}>
+                            No mathematical construction objects yet.
+                          </div>
+                        )}
                       </div>
 
                       <div
