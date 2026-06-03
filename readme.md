@@ -13,6 +13,7 @@ Math3D is an interactive geometry app (Electron + React) with browser mode suppo
 
 - Explicit, implicit, parametric, spline, and Weierstrass surface workflows
 - Interactive three.js viewport with geometry/object gallery
+- Live procedural construction objects with dependency-graph recompute
 - Python worker pipeline for CGAL/VTK-backed operations
 - Desktop (Electron) and browser deployment modes
 
@@ -90,6 +91,14 @@ Mesh benchmark location in dev mode:
 - select `Object`
 - scroll to `Mesh Performance`
 - use benchmark buttons: `50k triangles`, `250k triangles`, `1M triangles`, etc.
+
+### Geometry construction system
+
+Procedural geometry mode supports dependent mathematical construction objects:
+- midpoint, line, parallel, perpendicular, circle, angle bisector, tangent, and normal
+- construction-to-construction chains such as `A/B -> midpoint -> circle -> tangent`
+- live recompute through a dependency graph when source objects move
+- dependency inspector nodes and edges for tracing construction inputs and outputs
 
 ### Run modes (quick guide)
 
