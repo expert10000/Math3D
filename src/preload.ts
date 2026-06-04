@@ -18,6 +18,7 @@ const readGeometrySmokeFlag = (): boolean => {
 };
 
 const geometrySmokeEnabled = readGeometrySmokeFlag();
+const e2eRuntimeEnabled = asFlag(process.env.MATH3D_E2E);
 if (geometrySmokeEnabled) {
   console.log("[preload] GEOMETRY_SMOKE=1");
 }
@@ -404,4 +405,5 @@ contextBridge.exposeInMainWorld("computeEngines", {
 
 contextBridge.exposeInMainWorld("appRuntime", {
   geometrySmoke: geometrySmokeEnabled,
+  e2e: e2eRuntimeEnabled,
 });

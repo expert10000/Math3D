@@ -8,6 +8,7 @@ import { launchRepoElectron } from "./helpers/electronLauncher";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const E2E_VIEWPORT = { width: 1024, height: 720 };
+const COMPUTE_ENGINE_FIRST_LAUNCH_KEY = "math3d.computeEngines.firstLaunchSeen";
 
 const normalizeWindowScale = async (app: ElectronApplication): Promise<void> => {
   await app.evaluate(({ BrowserWindow }) => {
@@ -39,7 +40,10 @@ const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication
 };
 
 const resetStorage = async (page: Page): Promise<void> => {
-  await page.evaluate(() => localStorage.clear());
+  await page.evaluate((firstLaunchKey) => {
+    localStorage.clear();
+    localStorage.setItem(firstLaunchKey, "1");
+  }, COMPUTE_ENGINE_FIRST_LAUNCH_KEY);
   await page.reload();
   await page.waitForLoadState("domcontentloaded");
   await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();

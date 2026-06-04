@@ -20,8 +20,14 @@ async function resolveExecutablePathOnce(): Promise<string> {
 
 export async function launchRepoElectron(options: ElectronLaunchOptions): Promise<ElectronApplication> {
   const executablePath = await resolveExecutablePathOnce();
+  const env = {
+    ...(options.env ?? process.env),
+    MATH3D_E2E: "1",
+  };
+  delete env.ELECTRON_RUN_AS_NODE;
   return electron.launch({
     ...options,
+    env,
     executablePath,
   });
 }

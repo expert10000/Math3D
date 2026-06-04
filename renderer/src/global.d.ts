@@ -422,6 +422,7 @@ declare global {
     };
     appRuntime?: {
       geometrySmoke?: boolean;
+      e2e?: boolean;
     };
     __MATH3D_GEOMETRY_SMOKE_TRIGGER__?: boolean;
   }

@@ -23702,6 +23702,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
+    if (window.appRuntime?.e2e) return;
     if (!window.computeEngines) return;
     try {
       const key = "math3d.computeEngines.firstLaunchSeen";

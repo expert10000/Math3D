@@ -6,6 +6,7 @@ import path from "node:path";
 import { launchRepoElectron } from "./electronLauncher";
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
+const COMPUTE_ENGINE_FIRST_LAUNCH_KEY = "math3d.computeEngines.firstLaunchSeen";
 
 export type LaunchedSurfaceApp = {
   app: ElectronApplication;
@@ -46,7 +47,10 @@ export async function closeSurfaceApp(ctx: LaunchedSurfaceApp | null): Promise<v
 }
 
 export async function resetSurfaceAppState(page: Page): Promise<void> {
-  await page.evaluate(() => localStorage.clear());
+  await page.evaluate((firstLaunchKey) => {
+    localStorage.clear();
+    localStorage.setItem(firstLaunchKey, "1");
+  }, COMPUTE_ENGINE_FIRST_LAUNCH_KEY);
   await page.reload();
   await page.waitForLoadState("domcontentloaded");
   await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();

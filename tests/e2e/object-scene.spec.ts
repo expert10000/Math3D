@@ -6,6 +6,7 @@ import path from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
+const COMPUTE_ENGINE_FIRST_LAUNCH_KEY = "math3d.computeEngines.firstLaunchSeen";
 
 type GeometryStats = {
   objectCount: number;
@@ -48,7 +49,10 @@ const launchApp = async (env: Record<string, string | undefined>): Promise<{ app
 };
 
 const resetStorage = async (page: Page) => {
-  await page.evaluate(() => localStorage.clear());
+  await page.evaluate((firstLaunchKey) => {
+    localStorage.clear();
+    localStorage.setItem(firstLaunchKey, "1");
+  }, COMPUTE_ENGINE_FIRST_LAUNCH_KEY);
   await page.reload();
   await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
 };
