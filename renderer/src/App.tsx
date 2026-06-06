@@ -113,6 +113,13 @@ import {
   propagateTraceMapThroughMeshMutation,
 } from "./geometry/geometryMeshTraceMap";
 import { computeMeshSection, sectionPlaneNormalFromPreset, type SectionPlanePreset } from "./geometry/meshSection";
+import {
+  buildConstructionDependencyTree,
+  getConstructionDependencyUpdateChain,
+  type ConstructionDependencyTreeInputEdge,
+  type ConstructionDependencyTreeInputNode,
+  type ConstructionDependencyTreeNode,
+} from "./geometry/constructionDependencyTree";
 import { pointInPolygonOnPlane } from "./geometry/polyhedra";
 import {
   GEOMETRY_OBJECT_REGISTRY,
@@ -2346,10 +2353,13 @@ type GeometryDerivedConstructionEvaluation = {
   labelSets: OverlayLabelSet[];
 };
 type GeometryDependencyNodeKind =
+  | "scene-root"
   | "geometry-object"
+  | "face-reference"
   | "derived-point"
   | "derived-line"
   | "derived-plane"
+  | "derived-circle"
   | "measurement"
   | "section-result"
   | "comparison";
@@ -2364,7 +2374,7 @@ type GeometryDependencyNode = {
 type GeometryDependencyEdge = {
   sourceId: string;
   targetId: string;
-  relation: "derived-from" | "measured-from" | "section-of" | "compared-with" | "aligned-to";
+  relation: "contains" | "derived-from" | "depends-on" | "measured-from" | "section-of" | "compared-with" | "aligned-to";
 };
 type GeometryDerivedRelationType =
   | "center-on-derived-point"
@@ -2498,7 +2508,7 @@ const geometryDependencyNodeKindFromConstructionType = (
 const geometryDependencyNodeKindFromMathConstructionType = (
   type: GeometryMathConstructionType
 ): GeometryDependencyNodeKind => {
-  if (type.includes("circle")) return "derived-point";
+  if (type.includes("circle")) return "derived-circle";
   if (type.includes("line") || type.includes("bisector") || type.includes("tangent") || type.includes("normal")) {
     return "derived-line";
   }
@@ -17011,14 +17021,24 @@ const App: React.FC = () => {
     const nodes: GeometryDependencyNode[] = [];
     const edges: GeometryDependencyEdge[] = [];
     const nodeById = new Map<string, GeometryDependencyNode>();
+    const edgeIds = new Set<string>();
     const addNode = (node: GeometryDependencyNode) => {
       if (nodeById.has(node.id)) return;
       nodeById.set(node.id, node);
       nodes.push(node);
     };
     const addEdge = (edge: GeometryDependencyEdge) => {
+      const key = `${edge.sourceId}->${edge.targetId}:${edge.relation}`;
+      if (edgeIds.has(key)) return;
+      edgeIds.add(key);
       edges.push(edge);
     };
+    addNode({
+      id: "scene",
+      kind: "scene-root",
+      label: "Scene",
+      status: "valid",
+    });
     for (const object of [...geometryObjects, ...geometryDatasetMeshObjects]) {
       addNode({
         id: `object:${object.id}`,
@@ -17027,6 +17047,37 @@ const App: React.FC = () => {
         objectId: object.id,
         status: "valid",
       });
+      addEdge({
+        sourceId: "scene",
+        targetId: `object:${object.id}`,
+        relation: "contains",
+      });
+    }
+    const faceNodeId = (objectId: string, faceIndex: number) => `face:${objectId}:${faceIndex}`;
+    const addFaceNode = (
+      objectId: string,
+      faceIndex: number,
+      status: GeometryDependencyState = "valid"
+    ) => {
+      const id = faceNodeId(objectId, faceIndex);
+      addNode({
+        id,
+        kind: "face-reference",
+        label: `Face F${faceIndex + 1}`,
+        objectId,
+        status,
+      });
+      addEdge({
+        sourceId: `object:${objectId}`,
+        targetId: id,
+        relation: "contains",
+      });
+      return id;
+    };
+    const faceNormalBySource = new Map<string, GeometryDerivedConstructionObject>();
+    for (const entry of geometryDerivedConstructions) {
+      if (entry.type !== "face-normal-line" || entry.sourceFaceIndex == null) continue;
+      faceNormalBySource.set(`${entry.sourceObjectId}:${entry.sourceFaceIndex}`, entry);
     }
     for (const entry of geometryDerivedConstructions) {
       const evalEntry = geometryDerivedConstructionOverlays.byId.get(entry.id) ?? null;
@@ -17038,6 +17089,23 @@ const App: React.FC = () => {
         derivedId: entry.id,
         status: evalEntry?.dependencyState ?? "stale",
       });
+      if (entry.sourceKind === "face" && entry.sourceFaceIndex != null) {
+        const faceId = addFaceNode(
+          entry.sourceObjectId,
+          entry.sourceFaceIndex,
+          evalEntry?.dependencyState ?? "valid"
+        );
+        const matchingNormal =
+          entry.type === "face-tangent-plane-preview"
+            ? faceNormalBySource.get(`${entry.sourceObjectId}:${entry.sourceFaceIndex}`) ?? null
+            : null;
+        addEdge({
+          sourceId: matchingNormal ? `derived:${matchingNormal.id}` : faceId,
+          targetId: `derived:${entry.id}`,
+          relation: matchingNormal ? "depends-on" : "derived-from",
+        });
+        continue;
+      }
       addEdge({
         sourceId: `object:${entry.sourceObjectId}`,
         targetId: `derived:${entry.id}`,
@@ -17212,6 +17280,109 @@ const App: React.FC = () => {
     const outputs = geometryDependencyGraph.edges.filter((edge) => edge.sourceId === nodeId);
     return { node, inputs, outputs };
   }, [geometryDependencyGraph, geometryInspectorSelectedDependencyNodeId]);
+  const geometryConstructionDependencyTree = useMemo(() => {
+    const visibleKinds = new Set<GeometryDependencyNodeKind>([
+      "scene-root",
+      "geometry-object",
+      "face-reference",
+      "derived-point",
+      "derived-line",
+      "derived-plane",
+      "derived-circle",
+    ]);
+    const visibleNodes = geometryDependencyGraph.nodes.filter((node) => visibleKinds.has(node.kind));
+    const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
+    const treeNodes: ConstructionDependencyTreeInputNode[] = visibleNodes.map((node) => ({
+      id: node.id,
+      label: node.label,
+      kind: node.kind,
+      status: node.status,
+    }));
+    const treeEdges: ConstructionDependencyTreeInputEdge[] = geometryDependencyGraph.edges.filter(
+      (edge) => visibleNodeIds.has(edge.sourceId) && visibleNodeIds.has(edge.targetId)
+    ).map((edge) => ({
+      sourceId: edge.sourceId,
+      targetId: edge.targetId,
+      relation: edge.relation,
+    }));
+    return buildConstructionDependencyTree(treeNodes, treeEdges, "scene");
+  }, [geometryDependencyGraph]);
+  const geometryConstructionDependencyInputs = useMemo(() => {
+    const visibleKinds = new Set<GeometryDependencyNodeKind>([
+      "scene-root",
+      "geometry-object",
+      "face-reference",
+      "derived-point",
+      "derived-line",
+      "derived-plane",
+      "derived-circle",
+    ]);
+    const visibleNodeIds = new Set(
+      geometryDependencyGraph.nodes.filter((node) => visibleKinds.has(node.kind)).map((node) => node.id)
+    );
+    const inputsById = new Map<string, Array<{ label: string; sourceLabel: string; sourceKind: string }>>();
+    for (const edge of geometryDependencyGraph.edges) {
+      if (edge.relation === "contains") continue;
+      if (!visibleNodeIds.has(edge.sourceId) || !visibleNodeIds.has(edge.targetId)) continue;
+      const source = geometryDependencyGraph.nodeById.get(edge.sourceId);
+      if (!source) continue;
+      const prev = inputsById.get(edge.targetId) ?? [];
+      const label = source.kind === "geometry-object" ? `Input ${String.fromCharCode(65 + prev.length)}` : "depends on";
+      inputsById.set(edge.targetId, [...prev, { label, sourceLabel: source.label, sourceKind: source.kind }]);
+    }
+    return inputsById;
+  }, [geometryDependencyGraph]);
+  const geometryConstructionUpdateChain = useMemo(() => {
+    if (!geometryInspectorSelectedDependencyNodeId) return [];
+    const visibleKinds = new Set<GeometryDependencyNodeKind>([
+      "scene-root",
+      "geometry-object",
+      "face-reference",
+      "derived-point",
+      "derived-line",
+      "derived-plane",
+      "derived-circle",
+    ]);
+    const visibleNodes = geometryDependencyGraph.nodes.filter((node) => visibleKinds.has(node.kind));
+    const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
+    if (!visibleNodeIds.has(geometryInspectorSelectedDependencyNodeId)) return [];
+    const treeNodes: ConstructionDependencyTreeInputNode[] = visibleNodes.map((node) => ({
+      id: node.id,
+      label: node.label,
+      kind: node.kind,
+      status: node.status,
+    }));
+    const treeEdges: ConstructionDependencyTreeInputEdge[] = geometryDependencyGraph.edges.filter(
+      (edge) => visibleNodeIds.has(edge.sourceId) && visibleNodeIds.has(edge.targetId)
+    ).map((edge) => ({
+      sourceId: edge.sourceId,
+      targetId: edge.targetId,
+      relation: edge.relation,
+    }));
+    return getConstructionDependencyUpdateChain(treeNodes, treeEdges, geometryInspectorSelectedDependencyNodeId).filter(
+      (step) => step.kind !== "scene-root" && step.kind !== "face-reference"
+    );
+  }, [geometryDependencyGraph, geometryInspectorSelectedDependencyNodeId]);
+  const handleSelectGeometryDependencyNode = useCallback((nodeId: string) => {
+    if (nodeId.startsWith("object:")) {
+      setGeometrySelectedObjectId(nodeId.slice("object:".length));
+      setGeometrySelectedMathConstructionId(null);
+      setGeometrySelectedDerivedConstructionId(null);
+    } else if (nodeId.startsWith("math:")) {
+      setGeometrySelectedMathConstructionId(nodeId.slice("math:".length));
+      setGeometrySelectedDerivedConstructionId(null);
+    } else if (nodeId.startsWith("derived:")) {
+      setGeometrySelectedDerivedConstructionId(nodeId.slice("derived:".length));
+      setGeometrySelectedMathConstructionId(null);
+    } else if (nodeId.startsWith("face:")) {
+      const [, objectId] = nodeId.split(":");
+      if (objectId) setGeometrySelectedObjectId(objectId);
+      setGeometrySelectedMathConstructionId(null);
+      setGeometrySelectedDerivedConstructionId(null);
+      setGeometryProbeSelectionMode("face");
+    }
+    setGeometryInspectorPanelTab("dependencies");
+  }, []);
   const handleUseDerivedPlaneForSectionSliceById = useCallback((derivedId: string) => {
     const selected = geometryDerivedConstructionOverlays.byId.get(derivedId) ?? null;
     if (!selected) {
@@ -58970,6 +59141,13 @@ case "mobius":
                             }}
                           >
                             <div style={{ fontSize: 12, fontWeight: 700 }}>Dependencies</div>
+                            <ConstructionDependencyTreePanel
+                              tree={geometryConstructionDependencyTree}
+                              selectedId={geometryInspectorSelectedDependencyNodeId}
+                              inputsById={geometryConstructionDependencyInputs}
+                              updateChain={geometryConstructionUpdateChain}
+                              onSelect={handleSelectGeometryDependencyNode}
+                            />
                             {geometryInspectorDependencyDetails ? (
                               <>
                                 <div>
@@ -65728,6 +65906,186 @@ type UnifiedObjectTreePanelProps = {
   canShowAllSceneObjects?: boolean;
   onShowAllSceneObjects?: () => void;
   fillHeight?: boolean;
+};
+
+type ConstructionDependencyTreePanelProps = {
+  tree: ConstructionDependencyTreeNode | null;
+  selectedId: string | null;
+  inputsById: Map<string, Array<{ label: string; sourceLabel: string; sourceKind: string }>>;
+  updateChain: Array<{
+    id: string;
+    label: string;
+    kind: string;
+    status: GeometryDependencyState;
+    action: "changed" | "updated";
+  }>;
+  onSelect: (id: string) => void;
+};
+
+const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelProps> = ({
+  tree,
+  selectedId,
+  inputsById,
+  updateChain,
+  onSelect,
+}) => {
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
+  const kindLabel = (kind: string) => {
+    if (kind === "scene-root") return "Scene";
+    if (kind === "geometry-object") return "Object";
+    if (kind === "face-reference") return "Face";
+    if (kind === "derived-point") return "Point";
+    if (kind === "derived-line") return "Line";
+    if (kind === "derived-plane") return "Plane";
+    if (kind === "derived-circle") return "Circle";
+    if (kind === "constraint") return "Constraint";
+    return kind.replaceAll("-", " ");
+  };
+  const kindColor = (kind: string) => {
+    if (kind === "derived-point") return "#2563eb";
+    if (kind === "derived-line") return "#16a34a";
+    if (kind === "derived-plane") return "#7c3aed";
+    if (kind === "derived-circle") return "#ea580c";
+    if (kind === "constraint") return "#dc2626";
+    return "#64748b";
+  };
+  const toggleCollapsed = (id: string) => {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const renderNode = (node: ConstructionDependencyTreeNode, depth = 0): React.ReactNode => {
+    const active = selectedId === node.id;
+    const inputs = inputsById.get(node.id) ?? [];
+    const expandable = node.children.length > 0 || inputs.length > 0;
+    const collapsed = collapsedIds.has(node.id);
+    const color = kindColor(node.kind);
+    const statusMeta = GEOMETRY_DEPENDENCY_STATE_META[node.status as GeometryDependencyState] ?? GEOMETRY_DEPENDENCY_STATE_META.stale;
+    return (
+      <div key={node.id} style={{ display: "grid", gap: 4 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "18px 1fr auto",
+            gap: 6,
+            alignItems: "center",
+            marginLeft: depth * 12,
+            padding: "5px 7px",
+            borderRadius: 7,
+            border: active ? `1px solid ${color}` : "1px solid #dbe2ea",
+            background: active ? "#eff6ff" : "#fff",
+            fontSize: 11,
+            boxShadow: active ? `inset 3px 0 0 ${color}` : undefined,
+          }}
+        >
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              if (expandable) toggleCollapsed(node.id);
+            }}
+            disabled={!expandable}
+            aria-label={expandable ? (collapsed ? `Expand ${node.label}` : `Collapse ${node.label}`) : `${node.label} has no children`}
+            style={{
+              width: 16,
+              height: 16,
+              border: "1px solid transparent",
+              background: "transparent",
+              color: expandable ? "#334155" : "#cbd5e1",
+              padding: 0,
+              fontSize: 11,
+              cursor: expandable ? "pointer" : "default",
+            }}
+          >
+            {expandable ? (collapsed ? "▶" : "▼") : "•"}
+          </button>
+          <button
+            type="button"
+            onClick={() => onSelect(node.id)}
+            style={{
+              minWidth: 0,
+              display: "grid",
+              gap: 1,
+              padding: 0,
+              border: "1px solid transparent",
+              background: "transparent",
+              textAlign: "left",
+              cursor: "pointer",
+            }}
+          >
+            <strong style={{ color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {node.label}
+            </strong>
+            <span style={{ color, fontSize: 10, fontWeight: 700 }}>{kindLabel(node.kind)}</span>
+          </button>
+          <span
+            style={{
+              color: statusMeta.color,
+              border: `1px solid ${statusMeta.border}`,
+              background: statusMeta.background,
+              borderRadius: 999,
+              padding: "1px 6px",
+              fontSize: 10,
+              fontWeight: 700,
+            }}
+          >
+            {statusMeta.label}
+          </span>
+        </div>
+        {!collapsed && inputs.length > 0 && (
+          <div style={{ display: "grid", gap: 3, marginLeft: depth * 12 + 30 }}>
+            {inputs.map((input, index) => (
+              <div key={`${node.id}-input-${index}-${input.sourceLabel}`} style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 10.5 }}>
+                <span style={{ color: "#64748b", minWidth: 64 }}>{input.label}:</span>
+                <span style={{ color: kindColor(input.sourceKind), fontWeight: 700 }}>{input.sourceLabel}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {!collapsed && node.children.map((child) => renderNode(child, depth + 1))}
+      </div>
+    );
+  };
+
+  return (
+    <div
+      style={{
+        border: "1px solid #dbe2ea",
+        borderRadius: 8,
+        padding: "8px 10px",
+        background: "#ffffff",
+        display: "grid",
+        gap: 8,
+      }}
+    >
+      <div style={{ fontSize: 12, fontWeight: 700 }}>Construction Dependency Tree</div>
+      {tree ? (
+        <div style={{ display: "grid", gap: 4, maxHeight: 280, overflowY: "auto", paddingRight: 2 }}>
+          {renderNode(tree)}
+        </div>
+      ) : (
+        <div style={{ color: "#64748b" }}>No dependency tree yet.</div>
+      )}
+      {updateChain.length > 1 && (
+        <div style={{ borderTop: "1px dashed #d6dce7", paddingTop: 8, display: "grid", gap: 5 }}>
+          <div style={{ fontWeight: 700 }}>Update order</div>
+          <div style={{ display: "grid", gap: 3 }}>
+            {updateChain.map((step, index) => (
+              <React.Fragment key={`dependency-update-step-${step.id}-${index}`}>
+                <div style={{ color: index === 0 ? "#0f172a" : "#475569" }}>
+                  {step.label} {step.action}
+                </div>
+                {index < updateChain.length - 1 && <div style={{ color: "#94a3b8", paddingLeft: 8 }}>↓</div>}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
