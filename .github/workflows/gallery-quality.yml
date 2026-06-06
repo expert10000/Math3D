@@ -11,6 +11,7 @@ on:
       - "package.json"
       - "package-lock.json"
       - "playwright.config.ts"
+      - "scripts/ensure-electron-install.mjs"
   pull_request:
     paths:
       - "renderer/**"
@@ -20,6 +21,7 @@ on:
       - "package.json"
       - "package-lock.json"
       - "playwright.config.ts"
+      - "scripts/ensure-electron-install.mjs"
 
 jobs:
   gallery-e2e:
@@ -28,6 +30,7 @@ jobs:
     env:
       electron_config_cache: ${{ github.workspace }}\.cache\electron
       MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: "600000"
+      MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: "180000"
       MATH3D_ELECTRON_DOWNLOAD_RETRIES: "2"
     steps:
       - name: Checkout

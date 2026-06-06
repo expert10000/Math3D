@@ -26,6 +26,7 @@ jobs:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
       electron_config_cache: ${{ github.workspace }}\.cache\electron
       MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: "600000"
+      MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: "180000"
       MATH3D_ELECTRON_DOWNLOAD_RETRIES: "2"
 
     steps:
