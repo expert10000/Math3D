@@ -2269,6 +2269,7 @@ type GeometryDerivedConstructionStatus = "valid" | "stale" | "invalid";
 type GeometryDerivedConstructionObject = {
   id: string;
   type: GeometryDerivedConstructionType;
+  name?: string;
   sourceKind: GeometryDerivedConstructionSourceKind;
   sourceObjectId: string;
   sourceFaceIndex?: number | null;
@@ -2483,6 +2484,8 @@ const GEOMETRY_DERIVED_RELATION_TYPE_LABELS: Record<GeometryDerivedRelationType,
   "attach-face-to-derived-plane": "Attach Face To Derived Plane",
   "maintain-offset-from-derived-plane": "Maintain Fixed Offset From Plane",
 };
+const geometryDerivedConstructionName = (entry: Pick<GeometryDerivedConstructionObject, "name" | "type">) =>
+  entry.name?.trim() || GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[entry.type];
 const geometryDependencyNodeKindFromConstructionType = (
   type: GeometryDerivedConstructionType
 ): GeometryDependencyNodeKind => {
@@ -17030,7 +17033,7 @@ const App: React.FC = () => {
       addNode({
         id: `derived:${entry.id}`,
         kind: geometryDependencyNodeKindFromConstructionType(entry.type),
-        label: GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[entry.type],
+        label: geometryDerivedConstructionName(entry),
         objectId: entry.sourceObjectId,
         derivedId: entry.id,
         status: evalEntry?.dependencyState ?? "stale",
@@ -17285,7 +17288,7 @@ const App: React.FC = () => {
         const evalEntry = geometryDerivedConstructionOverlays.byId.get(entry.id) ?? null;
         return {
           id: entry.id,
-          label: GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[entry.type],
+          label: geometryDerivedConstructionName(entry),
           sourceName: evalEntry?.sourceObjectName ?? entry.sourceObjectId,
           status: evalEntry?.status ?? "invalid",
           hasOrigin: !!evalEntry?.origin,
@@ -17377,6 +17380,344 @@ const App: React.FC = () => {
       geometrySelectedObjectId,
     ]
   );
+  const cloneDerivedConstructionForOperation = useCallback(
+    (entry: GeometryDerivedConstructionObject, suffix: string, patch: Partial<GeometryDerivedConstructionObject> = {}) => {
+      const label = geometryDerivedConstructionName(entry);
+      const next: GeometryDerivedConstructionObject = {
+        ...entry,
+        ...patch,
+        id: makeId(),
+        name: `${label} ${suffix}`,
+        createdAt: Date.now(),
+        params: patch.params ?? (entry.params ? { ...entry.params } : undefined),
+        sourcePoint: entry.sourcePoint ? { ...entry.sourcePoint } : entry.sourcePoint,
+        sourceNormal: entry.sourceNormal ? { ...entry.sourceNormal } : entry.sourceNormal,
+        sourceFaceSignature: entry.sourceFaceSignature
+          ? {
+              centroid: { ...entry.sourceFaceSignature.centroid },
+              normal: { ...entry.sourceFaceSignature.normal },
+              area: entry.sourceFaceSignature.area,
+            }
+          : entry.sourceFaceSignature,
+        sourceEdgeSignature: entry.sourceEdgeSignature
+          ? {
+              midpoint: { ...entry.sourceEdgeSignature.midpoint },
+              direction: { ...entry.sourceEdgeSignature.direction },
+              length: entry.sourceEdgeSignature.length,
+            }
+          : entry.sourceEdgeSignature,
+        sourceVertexSignature: entry.sourceVertexSignature
+          ? { point: { ...entry.sourceVertexSignature.point } }
+          : entry.sourceVertexSignature,
+        secondaryVertexRef: entry.secondaryVertexRef
+          ? {
+              objectId: entry.secondaryVertexRef.objectId,
+              vertexIndex: entry.secondaryVertexRef.vertexIndex,
+              point: { ...entry.secondaryVertexRef.point },
+            }
+          : entry.secondaryVertexRef,
+        tertiaryVertexRef: entry.tertiaryVertexRef
+          ? {
+              objectId: entry.tertiaryVertexRef.objectId,
+              vertexIndex: entry.tertiaryVertexRef.vertexIndex,
+              point: { ...entry.tertiaryVertexRef.point },
+            }
+          : entry.tertiaryVertexRef,
+        selectedEdgeRef: entry.selectedEdgeRef
+          ? {
+              objectId: entry.selectedEdgeRef.objectId,
+              edgeVertexPair: [...entry.selectedEdgeRef.edgeVertexPair] as [number, number],
+              a: { ...entry.selectedEdgeRef.a },
+              b: { ...entry.selectedEdgeRef.b },
+            }
+          : entry.selectedEdgeRef,
+        frozenSnapshot: entry.frozenSnapshot
+          ? {
+              origin: entry.frozenSnapshot.origin ? { ...entry.frozenSnapshot.origin } : null,
+              direction: entry.frozenSnapshot.direction ? { ...entry.frozenSnapshot.direction } : null,
+              groups: entry.frozenSnapshot.groups.map((group) => ({
+                ...group,
+                lines: group.lines.map((line) => line.map((point) => ({ ...point }))),
+              })),
+              pointSets: entry.frozenSnapshot.pointSets.map((set) => ({
+                ...set,
+                points: set.points.map((point) => ({ ...point })),
+              })),
+              labelSets: entry.frozenSnapshot.labelSets.map((set) => ({
+                ...set,
+                labels: set.labels.map((label) => ({ ...label, position: { ...label.position } })),
+              })),
+            }
+          : entry.frozenSnapshot,
+      };
+      setGeometryDerivedConstructions((prev) => [next, ...prev]);
+      setGeometrySelectedDerivedConstructionId(next.id);
+      setGeometrySelectedMathConstructionId(null);
+      setGeometryCreateActionStatus(`Construction ${suffix.toLowerCase()}: ${next.name}.`);
+      return next;
+    },
+    []
+  );
+  const handleRenameSelectedConstructionOperation = useCallback(() => {
+    const selectedMath = geometrySelectedMathConstructionId
+      ? geometryMathConstructions.find((entry) => entry.id === geometrySelectedMathConstructionId) ?? null
+      : null;
+    if (selectedMath) {
+      const nextName = window.prompt("Rename construction", selectedMath.name);
+      const trimmed = nextName?.trim();
+      if (!trimmed) return;
+      setGeometryMathConstructions((prev) =>
+        prev.map((entry) => (entry.id === selectedMath.id ? { ...entry, name: trimmed } : entry))
+      );
+      setGeometryCreateActionStatus(`Renamed construction to ${trimmed}.`);
+      return;
+    }
+    const selectedDerived = geometrySelectedDerivedConstructionId
+      ? geometryDerivedConstructions.find((entry) => entry.id === geometrySelectedDerivedConstructionId) ?? null
+      : null;
+    if (selectedDerived) {
+      const currentName = geometryDerivedConstructionName(selectedDerived);
+      const nextName = window.prompt("Rename construction", currentName);
+      const trimmed = nextName?.trim();
+      if (!trimmed) return;
+      setGeometryDerivedConstructions((prev) =>
+        prev.map((entry) => (entry.id === selectedDerived.id ? { ...entry, name: trimmed } : entry))
+      );
+      setGeometryCreateActionStatus(`Renamed construction to ${trimmed}.`);
+      return;
+    }
+    if (geometrySelectedSceneObject) {
+      const nextName = window.prompt("Rename object", geometrySelectedSceneObject.name);
+      if (nextName != null) handleRenameGeometryObject(geometrySelectedSceneObject.id, nextName);
+      return;
+    }
+    setGeometryCreateActionStatus("Select a construction or object to rename.");
+  }, [
+    geometryDerivedConstructions,
+    geometryMathConstructions,
+    geometrySelectedDerivedConstructionId,
+    geometrySelectedMathConstructionId,
+    geometrySelectedSceneObject,
+    handleRenameGeometryObject,
+  ]);
+  const handleDuplicateSelectedConstructionOperation = useCallback(
+    (label: "Duplicate" | "Copy" = "Duplicate") => {
+      const selectedMath = geometrySelectedMathConstructionId
+        ? geometryMathConstructions.find((entry) => entry.id === geometrySelectedMathConstructionId) ?? null
+        : null;
+      if (selectedMath) {
+        const next: GeometryMathConstructionObject = {
+          ...selectedMath,
+          id: makeId(),
+          name: `${selectedMath.name} ${label === "Copy" ? "copy" : "duplicate"}`,
+          sourceObjectIds: [...selectedMath.sourceObjectIds],
+          createdAt: Date.now(),
+        };
+        setGeometryMathConstructions((prev) => [next, ...prev]);
+        setGeometrySelectedMathConstructionId(next.id);
+        setGeometrySelectedDerivedConstructionId(null);
+        setGeometryCreateActionStatus(`${label} created: ${next.name}.`);
+        return;
+      }
+      const selectedDerived = geometrySelectedDerivedConstructionId
+        ? geometryDerivedConstructions.find((entry) => entry.id === geometrySelectedDerivedConstructionId) ?? null
+        : null;
+      if (selectedDerived) {
+        cloneDerivedConstructionForOperation(selectedDerived, label === "Copy" ? "copy" : "duplicate");
+        return;
+      }
+      if (geometrySelectedSceneObject) {
+        handleDuplicateGeometryObject(geometrySelectedSceneObject.id);
+        return;
+      }
+      setGeometryCreateActionStatus("Select a construction or object to duplicate.");
+    },
+    [
+      cloneDerivedConstructionForOperation,
+      geometryDerivedConstructions,
+      geometryMathConstructions,
+      geometrySelectedDerivedConstructionId,
+      geometrySelectedMathConstructionId,
+      geometrySelectedSceneObject,
+      handleDuplicateGeometryObject,
+    ]
+  );
+  const handleConvertSelectedConstructionOperation = useCallback(() => {
+    if (!geometrySelectedSceneObject) {
+      setGeometryCreateActionStatus("Construction-to-mesh conversion is not available yet. Select a scene object to convert.");
+      return;
+    }
+    handleBakeSelectedTransformToMesh();
+    setGeometryCreateActionStatus(`Convert applied to ${geometrySelectedSceneObject.name}.`);
+  }, [geometrySelectedSceneObject, handleBakeSelectedTransformToMesh]);
+  const handleProjectSelectedConstructionOperation = useCallback(() => {
+    if (geometrySelectedDerivedConstructionId) {
+      const selected = geometryDerivedConstructions.find((entry) => entry.id === geometrySelectedDerivedConstructionId) ?? null;
+      if (selected?.type.includes("plane") || selected?.type === "object-symmetry-plane-preview") {
+        handleUseDerivedPlaneForSectionSliceById(geometrySelectedDerivedConstructionId);
+        return;
+      }
+    }
+    if (geometrySelectedSceneObject) {
+      setGeometryCreateActionStatus(
+        "Project needs a selected plane construction. Use Planes to create one, or use Analysis for object projection guides."
+      );
+      return;
+    }
+    setGeometryCreateActionStatus("Select a plane construction or object to project.");
+  }, [
+    geometryDerivedConstructions,
+    geometrySelectedDerivedConstructionId,
+    geometrySelectedSceneObject,
+    handleUseDerivedPlaneForSectionSliceById,
+  ]);
+  const handleOffsetSelectedConstructionOperation = useCallback(() => {
+    const selectedDerived = geometrySelectedDerivedConstructionId
+      ? geometryDerivedConstructions.find((entry) => entry.id === geometrySelectedDerivedConstructionId) ?? null
+      : null;
+    if (selectedDerived?.sourceKind === "face") {
+      cloneDerivedConstructionForOperation(selectedDerived, "offset", {
+        type: "face-offset-plane",
+        params: { distance: Math.max(0.01, Number(geometryConstructOffsetDistance) || 0.5) },
+        frozenSnapshot: null,
+        frozenAt: undefined,
+      });
+      return;
+    }
+    if (geometryProbeSelectionDetails?.mode === "face") {
+      handleCreateDerivedFromFace("face-offset-plane");
+      return;
+    }
+    setGeometryCreateActionStatus("Select a face-derived construction or a face probe target to offset.");
+  }, [
+    cloneDerivedConstructionForOperation,
+    geometryConstructOffsetDistance,
+    geometryDerivedConstructions,
+    geometryProbeSelectionDetails?.mode,
+    geometrySelectedDerivedConstructionId,
+    handleCreateDerivedFromFace,
+  ]);
+  const handleAlignSelectedConstructionOperation = useCallback(() => {
+    if (!geometrySelectedSceneObject) {
+      setGeometryCreateActionStatus("Select a scene object to align to the selected construction.");
+      return;
+    }
+    const derivedId = geometrySelectedDerivedConstructionId;
+    if (derivedId) {
+      const evalEntry = geometryDerivedConstructionOverlays.byId.get(derivedId) ?? null;
+      if (evalEntry?.direction) {
+        handleCreateGeometryDerivedRelationConstraint("align-local-axis-to-derived-line");
+        return;
+      }
+      if (evalEntry?.origin) {
+        handleCreateGeometryDerivedRelationConstraint("center-on-derived-point");
+        return;
+      }
+    }
+    if (geometryProbeSelectionDetails?.mode === "edge") {
+      handleAlignSelectedToSelectedEdge();
+      return;
+    }
+    if (geometryProbeSelectionDetails?.mode === "face") {
+      handleAlignSelectedToSelectedNormal();
+      return;
+    }
+    setGeometryCreateActionStatus("Select a derived point/line, edge, or face to align against.");
+  }, [
+    geometryDerivedConstructionOverlays.byId,
+    geometryProbeSelectionDetails?.mode,
+    geometrySelectedDerivedConstructionId,
+    geometrySelectedSceneObject,
+    handleAlignSelectedToSelectedEdge,
+    handleAlignSelectedToSelectedNormal,
+    handleCreateGeometryDerivedRelationConstraint,
+  ]);
+  const handleMirrorSelectedConstructionOperation = useCallback(() => {
+    if (!geometrySelectedSceneObject) {
+      setGeometryCreateActionStatus("Select a scene object to mirror.");
+      return;
+    }
+    if (geometryLockedObjectIds.has(geometrySelectedSceneObject.id)) {
+      setGeometryCreateActionStatus("Selected object is locked.");
+      return;
+    }
+    let normal = { x: 0, y: 0, z: 1 };
+    let point = { x: 0, y: 0, z: 0 };
+    if (geometryProbeSelectionDetails?.mode === "face") {
+      normal = geometryProbeSelectionDetails.normal;
+      point = geometryProbeSelectionDetails.point;
+    }
+    const len = Math.hypot(normal.x, normal.y, normal.z);
+    if (!Number.isFinite(len) || len < 1e-9) {
+      setGeometryCreateActionStatus("Mirror plane normal is invalid.");
+      return;
+    }
+    const n = { x: normal.x / len, y: normal.y / len, z: normal.z / len };
+    const base = geometrySelectedSceneObject.transform.position;
+    const signed = (base.x - point.x) * n.x + (base.y - point.y) * n.y + (base.z - point.z) * n.z;
+    const reflected = {
+      x: base.x - 2 * signed * n.x,
+      y: base.y - 2 * signed * n.y,
+      z: base.z - 2 * signed * n.z,
+    };
+    const copyId = makeId();
+    if ("mesh" in geometrySelectedSceneObject) {
+      const copy = cloneGeometryDatasetMeshObject(geometrySelectedSceneObject);
+      copy.id = copyId;
+      copy.name = `${geometrySelectedSceneObject.name} mirror copy`;
+      copy.transform.position = reflected;
+      setGeometryDatasetMeshObjects((prev) => [copy, ...prev]);
+    } else {
+      const copy = cloneGeometryObject(geometrySelectedSceneObject);
+      copy.id = copyId;
+      copy.name = `${geometrySelectedSceneObject.name} mirror copy`;
+      copy.transform.position = reflected;
+      setGeometryObjects((prev) => [copy, ...prev]);
+    }
+    setGeometrySelectedObjectId(copyId);
+    setGeometryRepeatMode("mirror-plane");
+    setGeometryRepeatMirrorPlane(geometryProbeSelectionDetails?.mode === "face" ? "selected-face" : "xy");
+    setGeometryCreateActionStatus(
+      geometryProbeSelectionDetails?.mode === "face"
+        ? "Mirror copy created across selected face plane."
+        : "Mirror copy created across the XY plane."
+    );
+  }, [
+    geometryLockedObjectIds,
+    geometryProbeSelectionDetails,
+    geometrySelectedSceneObject,
+  ]);
+  const geometryConstructionOperationTargetLabel = useMemo(() => {
+    if (geometrySelectedMathConstructionId) {
+      const selected = geometryMathConstructions.find((entry) => entry.id === geometrySelectedMathConstructionId);
+      if (selected) return `Math construction: ${selected.name}`;
+    }
+    if (geometrySelectedDerivedConstructionId) {
+      const selected = geometryDerivedConstructions.find((entry) => entry.id === geometrySelectedDerivedConstructionId);
+      if (selected) return `Construction object: ${geometryDerivedConstructionName(selected)}`;
+    }
+    if (geometrySelectedSceneObject) return `Scene object: ${geometrySelectedSceneObject.name}`;
+    if (geometryProbeSelectionDetails) {
+      if (geometryProbeSelectionDetails.mode === "face" && geometryProbeSelectionDetails.faceIndex != null) {
+        return `Face #${geometryProbeSelectionDetails.faceIndex}`;
+      }
+      if (geometryProbeSelectionDetails.mode === "edge" && geometryProbeSelectionDetails.edgeVertexPair) {
+        return `Edge [${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]`;
+      }
+      if (geometryProbeSelectionDetails.mode === "vertex" && geometryProbeSelectionDetails.vertexIndex != null) {
+        return `Vertex #${geometryProbeSelectionDetails.vertexIndex}`;
+      }
+      return `${geometryProbeSelectionDetails.mode} selection`;
+    }
+    return "None";
+  }, [
+    geometryDerivedConstructions,
+    geometryMathConstructions,
+    geometryProbeSelectionDetails,
+    geometrySelectedDerivedConstructionId,
+    geometrySelectedMathConstructionId,
+    geometrySelectedSceneObject,
+  ]);
   const handleToggleGeometryDerivedRelationConstraint = useCallback((id: string) => {
     setGeometryDerivedRelationConstraints((prev) =>
       prev.map((entry) => (entry.id === id ? { ...entry, enabled: !entry.enabled } : entry))
@@ -50827,6 +51168,64 @@ case "mobius":
                             </div>
                           )}
                         </div>
+                        <div
+                          style={{
+                            borderTop: "1px dashed #d6dce7",
+                            paddingTop: 8,
+                            display: "grid",
+                            gap: 6,
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700 }}>Operations</div>
+                            <span style={{ fontSize: 10, color: "#64748b" }}>
+                              Target: {geometryConstructionOperationTargetLabel}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 10.5, color: "#475569" }}>
+                            Operations modify or derive from the selected construction, probe entity, or scene object.
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button type="button" onClick={handleRenameSelectedConstructionOperation}>
+                              Rename
+                            </button>
+                            <button type="button" onClick={() => handleDuplicateSelectedConstructionOperation("Duplicate")}>
+                              Duplicate
+                            </button>
+                            <button type="button" onClick={handleConvertSelectedConstructionOperation}>
+                              Convert
+                            </button>
+                            <button type="button" onClick={handleProjectSelectedConstructionOperation}>
+                              Project
+                            </button>
+                            <button
+                              type="button"
+                              disabled
+                              title="Extend needs editable line/curve endpoints in the construction graph."
+                            >
+                              Extend
+                            </button>
+                            <button
+                              type="button"
+                              disabled
+                              title="Trim needs intersection-aware line/curve topology editing."
+                            >
+                              Trim
+                            </button>
+                            <button type="button" onClick={handleOffsetSelectedConstructionOperation}>
+                              Offset
+                            </button>
+                            <button type="button" onClick={handleAlignSelectedConstructionOperation}>
+                              Align
+                            </button>
+                            <button type="button" onClick={handleMirrorSelectedConstructionOperation}>
+                              Mirror
+                            </button>
+                            <button type="button" onClick={() => handleDuplicateSelectedConstructionOperation("Copy")}>
+                              Copy
+                            </button>
+                          </div>
+                        </div>
                         <div style={{ borderTop: "1px dashed #d6dce7", paddingTop: 8, display: "grid", gap: 6 }}>
                           <div style={{ fontSize: 11, fontWeight: 700 }}>Relationships</div>
                           {!geometryMathConstructionLineOptions.length &&
@@ -51142,7 +51541,7 @@ case "mobius":
                                       onClick={() => setGeometrySelectedDerivedConstructionId(entry.id)}
                                       style={{ border: "none", background: "transparent", textAlign: "left", padding: 0, cursor: "pointer", fontSize: 11, fontWeight: 700 }}
                                     >
-                                      {GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[entry.type]}
+                                      {geometryDerivedConstructionName(entry)}
                                     </button>
                                     <span
                                       style={{
@@ -51159,7 +51558,7 @@ case "mobius":
                                     </span>
                                   </div>
                                   <div style={{ fontSize: 10.5, color: "#64748b" }}>
-                                    Source: {evalEntry?.sourceObjectName ?? entry.sourceObjectId}
+                                    Type: {GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[entry.type]} · Source: {evalEntry?.sourceObjectName ?? entry.sourceObjectId}
                                   </div>
                                   {evalEntry?.statusMessage && (
                                     <div style={{ fontSize: 10.5, color: "#7a271a" }}>{evalEntry.statusMessage}</div>

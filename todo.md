@@ -300,3 +300,22 @@ PR29 — Constraints
 
 Add relationships:
 
+The next clean step is to add an Operations group inside Construction Objects, enabled when a construction object/face/edge/object is selected:
+
+Construction Objects
+├─ Create by type
+├─ Relationships
+├─ Operations
+   Rename
+   Duplicate
+   Convert
+   Project
+   Extend
+   Trim
+   Offset
+   Align
+   Mirror
+   Copy
+That would make these explicit instead of hidden across Object/Transform/Construct.
+
+12:25 PM
