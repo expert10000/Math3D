@@ -9,6 +9,7 @@ import {
 } from "@math3d/core";
 import {
   buildPointLabelSet,
+  type ConstructionConstraintDef,
   evaluateConstructionGraph,
   evaluateProblemChecks,
   type ConstructionNode,
@@ -40,7 +41,7 @@ type ToolKind =
 type CheckKind = "collinear" | "concyclic" | "perpendicular" | "parallel" | "pointOnCircle" | "equalDistance";
 
 type ParseResult =
-  | { ok: true; summary: string; node?: ConstructionNode; check?: ProblemCheckDef }
+  | { ok: true; summary: string; node?: ConstructionNode; check?: ProblemCheckDef; constraint?: ConstructionConstraintDef }
   | { ok: false; error: string };
 
 type ScriptPreset = {
@@ -63,6 +64,7 @@ type SceneBundle = {
   script: string;
   nodes: ConstructionNode[];
   checks: ProblemCheckDef[];
+  constraints?: ConstructionConstraintDef[];
 };
 
 type ConstructionLabExtension = {
@@ -72,6 +74,7 @@ type ConstructionLabExtension = {
   script: string;
   nodes: ConstructionNode[];
   checks: ProblemCheckDef[];
+  constraints?: ConstructionConstraintDef[];
 };
 
 export type ConstructionLabState = {
@@ -82,6 +85,7 @@ export type ConstructionLabState = {
   errors: string[];
   nodes: ConstructionNode[];
   checkDefs: ProblemCheckDef[];
+  constraints: ConstructionConstraintDef[];
   selectedNodeId: string;
   scriptText: string;
 };
@@ -89,6 +93,7 @@ export type ConstructionLabState = {
 export type ConstructionLabSeed = {
   nodes: ConstructionNode[];
   checkDefs: ProblemCheckDef[];
+  constraints?: ConstructionConstraintDef[];
   selectedNodeId?: string | null;
   scriptText?: string;
 };
@@ -110,6 +115,7 @@ type ConstructionLabPanelProps = {
 type ConstructionHistoryState = {
   nodes: ConstructionNode[];
   checkDefs: ProblemCheckDef[];
+  constraints: ConstructionConstraintDef[];
   selectedNodeId: string;
   lockedNodeIds: string[];
   helperNodeIds: string[];
@@ -186,6 +192,16 @@ const CHECK_LABELS: Record<CheckKind, string> = {
   equalDistance: "Equal distance",
 };
 
+const CONSTRAINT_TYPE_LABELS: Record<ConstructionConstraintDef["type"], string> = {
+  parallel: "parallel",
+  perpendicular: "perpendicular",
+  equalLength: "equal length",
+  equalRadius: "equal radius",
+  coincident: "coincident",
+  concentric: "concentric",
+  tangent: "tangent",
+};
+
 const CHECK_BADGE_COLORS = {
   ok: "#2e7d32",
   fail: "#c62828",
@@ -208,6 +224,8 @@ const SCRIPT_TEMPLATES: Array<{ label: string; command: string }> = [
   { label: "Circumcircle", command: "circumcircle A B C as Omega" },
   { label: "Intersection", command: "intersection AB AC as A1" },
   { label: "Second intersection", command: "second-intersection AB Omega exclude A as X" },
+  { label: "Constraint perpendicular", command: "constraint perpendicular L2 L1" },
+  { label: "Constraint equal radius", command: "constraint equal-radius c2 c1" },
   { label: "Claim point on circle", command: "check point-on-circle X Omega" },
 ];
 
@@ -308,7 +326,11 @@ const checkReferencedIds = (check: ProblemCheckDef): string[] => {
   return [];
 };
 
-const buildScriptFromState = (nodes: ConstructionNode[], checks: ProblemCheckDef[]) => {
+const buildScriptFromState = (
+  nodes: ConstructionNode[],
+  checks: ProblemCheckDef[],
+  constraints: ConstructionConstraintDef[] = []
+) => {
   const nodeLines = nodes.map((node) => {
     switch (node.type) {
       case "freePoint":
@@ -359,13 +381,19 @@ const buildScriptFromState = (nodes: ConstructionNode[], checks: ProblemCheckDef
     return `# unsupported check ${check.id}`;
   });
 
-  return [...nodeLines, ...checkLines].join("\n");
+  const constraintLines = constraints.map((constraint) => {
+    const disabled = constraint.enabled === false ? " disabled" : "";
+    return `constraint ${constraint.type} ${constraint.targetId} ${constraint.sourceId}${disabled}`;
+  });
+
+  return [...nodeLines, ...constraintLines, ...checkLines].join("\n");
 };
 
 const parseCommandLine = (
   line: string,
   existingNodeIds: Set<string>,
-  nextCheckIndex: number
+  nextCheckIndex: number,
+  nextConstraintIndex = 1
 ): ParseResult => {
   const trimmed = line.trim();
   if (!trimmed || trimmed.startsWith("#")) return { ok: true, summary: "comment/empty" };
@@ -588,21 +616,59 @@ const parseCommandLine = (
     return { ok: false, error: "Unsupported check command." };
   }
 
+  if ((head === "constraint" || head === "constrain") && tokens.length >= 4) {
+    const rawType = (tokens[1] ?? "").toLowerCase();
+    const typeMap: Record<string, ConstructionConstraintDef["type"]> = {
+      parallel: "parallel",
+      perpendicular: "perpendicular",
+      perp: "perpendicular",
+      "equal-length": "equalLength",
+      equallength: "equalLength",
+      "equal-distance": "equalLength",
+      "equal-radius": "equalRadius",
+      equalradius: "equalRadius",
+      coincident: "coincident",
+      concentric: "concentric",
+      tangent: "tangent",
+    };
+    const type = typeMap[rawType];
+    if (!type) {
+      return { ok: false, error: "constraint expects type: parallel, perpendicular, equal-length, equal-radius, coincident, concentric, tangent." };
+    }
+    const targetId = tokens[2];
+    const sourceId = tokens[3];
+    const disabled = tokens.some((token) => token.toLowerCase() === "disabled");
+    const id = cleanId(alias || `constraint_${nextConstraintIndex}_${type}_${targetId}_${sourceId}`);
+    return {
+      ok: true,
+      summary: `constraint ${targetId} ${CONSTRAINT_TYPE_LABELS[type]} ${sourceId}`,
+      constraint: {
+        id,
+        label: `${targetId} ${CONSTRAINT_TYPE_LABELS[type]} ${sourceId}`,
+        type,
+        targetId,
+        sourceId,
+        enabled: disabled ? false : undefined,
+      },
+    };
+  }
+
   return { ok: false, error: `Unsupported command: ${trimmed}` };
 };
 
 const parseSceneScript = (script: string) => {
   const draftNodes: ConstructionNode[] = [];
   const draftChecks: ProblemCheckDef[] = [];
+  const draftConstraints: ConstructionConstraintDef[] = [];
   const ids = new Set<string>();
 
   const lines = script.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line || line.startsWith("#")) continue;
-    const parsed = parseCommandLine(line, ids, draftChecks.length + 1);
+    const parsed = parseCommandLine(line, ids, draftChecks.length + 1, draftConstraints.length + 1);
     if (!parsed.ok) {
-      return { nodes: draftNodes, checks: draftChecks, error: `Line ${i + 1}: ${parsed.error}` };
+      return { nodes: draftNodes, checks: draftChecks, constraints: draftConstraints, error: `Line ${i + 1}: ${parsed.error}` };
     }
     if (parsed.node) {
       draftNodes.push(parsed.node);
@@ -611,8 +677,11 @@ const parseSceneScript = (script: string) => {
     if (parsed.check) {
       draftChecks.push(parsed.check);
     }
+    if (parsed.constraint) {
+      draftConstraints.push(parsed.constraint);
+    }
   }
-  return { nodes: draftNodes, checks: draftChecks, error: null as string | null };
+  return { nodes: draftNodes, checks: draftChecks, constraints: draftConstraints, error: null as string | null };
 };
 
 const DEFAULT_INITIAL_SCENE = (() => {
@@ -621,12 +690,14 @@ const DEFAULT_INITIAL_SCENE = (() => {
     return {
       nodes: parsed.nodes,
       checks: parsed.checks,
+      constraints: parsed.constraints,
       script: DEFAULT_OLYMPIAD_ARC_SCRIPT,
     };
   }
   return {
     nodes: DEFAULT_FREE_POINTS,
     checks: [] as ProblemCheckDef[],
+    constraints: [] as ConstructionConstraintDef[],
     script: buildScriptFromState(DEFAULT_FREE_POINTS, []),
   };
 })();
@@ -635,6 +706,7 @@ const normalizeConstructionSeed = (seed: ConstructionLabSeed | null | undefined)
   if (!seed || !Array.isArray(seed.nodes) || !Array.isArray(seed.checkDefs) || !seed.nodes.length) return null;
   const nodes = seed.nodes.map((node) => ({ ...node }));
   const checks = seed.checkDefs.map((check) => ({ ...check }));
+  const constraints = Array.isArray(seed.constraints) ? seed.constraints.map((constraint) => ({ ...constraint })) : [];
   const selectedNodeId =
     typeof seed.selectedNodeId === "string" && nodes.some((node) => node.id === seed.selectedNodeId)
       ? seed.selectedNodeId
@@ -642,8 +714,8 @@ const normalizeConstructionSeed = (seed: ConstructionLabSeed | null | undefined)
   const scriptText =
     typeof seed.scriptText === "string" && seed.scriptText.trim().length
       ? seed.scriptText
-      : buildScriptFromState(nodes, checks);
-  return { nodes, checks, selectedNodeId, scriptText };
+      : buildScriptFromState(nodes, checks, constraints);
+  return { nodes, checks, constraints, selectedNodeId, scriptText };
 };
 
 const loadPresets = (): ScriptPreset[] => {
@@ -691,6 +763,9 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   );
   const [checkDefs, setCheckDefs] = useState<ProblemCheckDef[]>(() =>
     seededState?.checks ?? DEFAULT_INITIAL_SCENE.checks.map((check) => ({ ...check }))
+  );
+  const [constraints, setConstraints] = useState<ConstructionConstraintDef[]>(() =>
+    seededState?.constraints ?? DEFAULT_INITIAL_SCENE.constraints.map((constraint) => ({ ...constraint }))
   );
   const [selectedNodeId, setSelectedNodeId] = useState<string>(() => seededState?.selectedNodeId ?? DEFAULT_INITIAL_SCENE.nodes[0]?.id ?? "");
 
@@ -754,7 +829,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
         : nodes.map((node) => (helperNodeIds.has(node.id) ? { ...node, hidden: true } : node)),
     [helperNodeIds, helpersVisible, nodes]
   );
-  const solved = useMemo(() => evaluateConstructionGraph(nodesForSolve), [nodesForSolve]);
+  const solved = useMemo(() => evaluateConstructionGraph(nodesForSolve, constraints), [constraints, nodesForSolve]);
   const activeCheckDefs = useMemo(
     () => checkDefs.filter((check) => !disabledCheckIds.has(check.id)),
     [checkDefs, disabledCheckIds]
@@ -779,10 +854,11 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       errors: solved.errors,
       nodes,
       checkDefs,
+      constraints,
       selectedNodeId,
       scriptText,
     });
-  }, [onChange, solved, labels, checkResults, nodes, checkDefs, selectedNodeId, scriptText]);
+  }, [onChange, solved, labels, checkResults, nodes, checkDefs, constraints, selectedNodeId, scriptText]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -829,6 +905,12 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       .filter((check) => checkReferencedIds(check).includes(selectedNode.id))
       .map((check) => check.label);
   }, [checkDefs, selectedNode]);
+  const selectedNodeUsedByConstraints = useMemo(() => {
+    if (!selectedNode) return [] as string[];
+    return constraints
+      .filter((constraint) => constraint.sourceId === selectedNode.id || constraint.targetId === selectedNode.id)
+      .map((constraint) => constraint.label ?? constraint.id);
+  }, [constraints, selectedNode]);
 
   const graphObjectById = useMemo(() => {
     const map = new Map<string, ConstructionObjectSummary>();
@@ -848,12 +930,13 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     const ids = new Set<string>();
     let objectCount = 0;
     let claimCount = 0;
+    let constraintCount = 0;
     const lines = scriptText.split(/\r?\n/);
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith("#")) continue;
-      const parsed = parseCommandLine(trimmed, ids, claimCount + 1);
+      const parsed = parseCommandLine(trimmed, ids, claimCount + 1, constraintCount + 1);
       if (!parsed.ok) {
         diagnostics.push({ line: i + 1, kind: "error", message: parsed.error });
         break;
@@ -866,11 +949,13 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
         objectCount += 1;
       }
       if (parsed.check) claimCount += 1;
+      if (parsed.constraint) constraintCount += 1;
     }
     return {
-      parsedSteps: objectCount + claimCount,
+      parsedSteps: objectCount + claimCount + constraintCount,
       objectCount,
       claimCount,
+      constraintCount,
       warnings: diagnostics.filter((d) => d.kind === "warning"),
       errors: diagnostics.filter((d) => d.kind === "error"),
       diagnostics,
@@ -969,11 +1054,12 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const snapshotCurrent = useCallback((): ConstructionHistoryState => ({
     nodes: nodes.map((node) => ({ ...node, style: node.style ? { ...node.style } : undefined })),
     checkDefs: checkDefs.map((check) => ({ ...check })),
+    constraints: constraints.map((constraint) => ({ ...constraint })),
     selectedNodeId,
     lockedNodeIds: Array.from(lockedNodeIds).sort(),
     helperNodeIds: Array.from(helperNodeIds).sort(),
     disabledCheckIds: Array.from(disabledCheckIds).sort(),
-  }), [checkDefs, disabledCheckIds, helperNodeIds, lockedNodeIds, nodes, selectedNodeId]);
+  }), [checkDefs, constraints, disabledCheckIds, helperNodeIds, lockedNodeIds, nodes, selectedNodeId]);
 
   const snapshotSignature = useMemo(
     () => JSON.stringify(snapshotCurrent()),
@@ -997,6 +1083,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     historyRef.current.applying = true;
     setNodes(state.nodes.map((node) => ({ ...node, style: node.style ? { ...node.style } : undefined })));
     setCheckDefs(state.checkDefs.map((check) => ({ ...check })));
+    setConstraints(state.constraints.map((constraint) => ({ ...constraint })));
     setSelectedNodeId(state.selectedNodeId);
     setLockedNodeIds(new Set(state.lockedNodeIds));
     setHelperNodeIds(new Set(state.helperNodeIds));
@@ -1205,6 +1292,11 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     setBuildMode(nextMode);
   }, []);
 
+  const deleteNode = useCallback((nodeId: string) => {
+    setNodes((prev) => prev.filter((node) => node.id !== nodeId));
+    setConstraints((prev) => prev.filter((constraint) => constraint.sourceId !== nodeId && constraint.targetId !== nodeId));
+  }, []);
+
   useEffect(() => {
     onPointPlacementModeChange?.(pointPlacementMode);
   }, [onPointPlacementModeChange, pointPlacementMode]);
@@ -1304,9 +1396,9 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const parseWithCurrentState = useCallback(
     (command: string) => {
       const ids = new Set(nodes.map((node) => node.id));
-      return parseCommandLine(command, ids, checkDefs.length + 1);
+      return parseCommandLine(command, ids, checkDefs.length + 1, constraints.length + 1);
     },
-    [nodes, checkDefs.length]
+    [nodes, checkDefs.length, constraints.length]
   );
 
   const palettePreview = useMemo(() => parseWithCurrentState(paletteInput), [parseWithCurrentState, paletteInput]);
@@ -1317,6 +1409,10 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     if (parsed.check) {
       setCheckDefs((prev) => [...prev, parsed.check!]);
       setBuildMode("check");
+    }
+    if (parsed.constraint) {
+      setConstraints((prev) => [...prev, parsed.constraint!]);
+      setBuildMode("select");
     }
   };
 
@@ -1520,6 +1616,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     setScriptError(null);
     setNodes(parsed.nodes);
     setCheckDefs(parsed.checks);
+    setConstraints(parsed.constraints);
     setDisabledCheckIds(new Set());
     setLockedNodeIds(new Set());
     setHelperNodeIds(new Set());
@@ -1554,11 +1651,12 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     const ids = new Set(nodes.map((node) => node.id));
     const nextNodes = nodes.slice();
     const nextChecks = checkDefs.slice();
+    const nextConstraints = constraints.slice();
     for (let i = 0; i < lines.length; i++) {
       const raw = lines[i];
       const line = raw.trim();
       if (!line || line.startsWith("#")) continue;
-      const parsed = parseCommandLine(line, ids, nextChecks.length + 1);
+      const parsed = parseCommandLine(line, ids, nextChecks.length + 1, nextConstraints.length + 1);
       if (!parsed.ok) {
         const absoluteLine = startLine + i;
         setScriptError(`Line ${absoluteLine}: ${parsed.error}`);
@@ -1570,11 +1668,13 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
         ids.add(parsed.node.id);
       }
       if (parsed.check) nextChecks.push(parsed.check);
+      if (parsed.constraint) nextConstraints.push(parsed.constraint);
     }
     setNodes(nextNodes);
     setCheckDefs(nextChecks);
+    setConstraints(nextConstraints);
     setScriptError(null);
-  }, [checkDefs, focusScriptLine, nodes]);
+  }, [checkDefs, constraints, focusScriptLine, nodes]);
 
   const runSelectedScript = useCallback(() => {
     const textarea = scriptEditorRef.current;
@@ -1605,7 +1705,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   }, [runScriptFragment, scriptText]);
 
   const regenerateScriptFromScene = () => {
-    const generated = buildScriptFromState(nodes, checkDefs);
+    const generated = buildScriptFromState(nodes, checkDefs, constraints);
     if (scriptSyncMode === "overwrite") {
       setScriptText(generated);
       setScriptError(null);
@@ -1706,12 +1806,12 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   }, [applyScriptToScene]);
 
   const cloneSceneToPreset = useCallback(() => {
-    const cloneScript = buildScriptFromState(nodes, checkDefs);
+    const cloneScript = buildScriptFromState(nodes, checkDefs, constraints);
     setScriptText(cloneScript);
     const suggestedName = `${cleanId(sceneName) || "scene"}_copy`;
     setPresetName(suggestedName);
     saveScriptPreset(suggestedName, cloneScript);
-  }, [checkDefs, nodes, saveScriptPreset, sceneName]);
+  }, [checkDefs, constraints, nodes, saveScriptPreset, sceneName]);
 
   const exportSceneBundle = useCallback(() => {
     const extension: ConstructionLabExtension = {
@@ -1721,6 +1821,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       script: scriptText,
       nodes,
       checks: checkDefs,
+      constraints,
     };
     const doc: SceneDocument = {
       id: cleanId(sceneName) || `scene_${Date.now()}`,
@@ -1745,7 +1846,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     } catch (err) {
       setScriptError(`Scene export failed: ${String(err)}`);
     }
-  }, [checkDefs, nodes, sceneMetadata, sceneMode, sceneName, sceneType, scriptText, solved.scene]);
+  }, [checkDefs, constraints, nodes, sceneMetadata, sceneMode, sceneName, sceneType, scriptText, solved.scene]);
 
   const exportSceneScript = useCallback(() => {
     try {
@@ -1770,6 +1871,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
 
         let nextNodes: ConstructionNode[] | null = null;
         let nextChecks: ProblemCheckDef[] | null = null;
+        let nextConstraints: ConstructionConstraintDef[] = [];
         let nextScript: string | null = null;
         let nextSceneName: string | null = null;
         let nextSceneType: SceneType = "task";
@@ -1782,6 +1884,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
           if (extObj && Array.isArray(extObj.nodes) && Array.isArray(extObj.checks)) {
             nextNodes = extObj.nodes as ConstructionNode[];
             nextChecks = extObj.checks as ProblemCheckDef[];
+            nextConstraints = Array.isArray(extObj.constraints) ? (extObj.constraints as ConstructionConstraintDef[]) : [];
             nextScript = typeof extObj.script === "string" ? extObj.script : null;
             nextSceneName = parsedProject.value.scene.title || "Imported scene";
             nextSceneType = extObj.sceneType === "demo" || extObj.sceneType === "free" ? extObj.sceneType : "task";
@@ -1802,6 +1905,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
           }
           nextNodes = parsedLegacy.nodes as ConstructionNode[];
           nextChecks = parsedLegacy.checks as ProblemCheckDef[];
+          nextConstraints = Array.isArray(parsedLegacy.constraints) ? (parsedLegacy.constraints as ConstructionConstraintDef[]) : [];
           nextScript = typeof parsedLegacy.script === "string" ? parsedLegacy.script : null;
           nextSceneName = typeof parsedLegacy.sceneName === "string" && parsedLegacy.sceneName.trim() ? parsedLegacy.sceneName : "Imported scene";
           nextSceneType = parsedLegacy.sceneType === "demo" || parsedLegacy.sceneType === "free" ? parsedLegacy.sceneType : "task";
@@ -1812,6 +1916,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
         if (!nextNodes.length) throw new Error("Imported scene has no nodes.");
         setNodes(nextNodes);
         setCheckDefs(nextChecks);
+        setConstraints(nextConstraints);
         setLockedNodeIds(new Set());
         setHelperNodeIds(new Set());
         setDisabledCheckIds(new Set());
@@ -1819,7 +1924,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
         setScriptText(
           typeof nextScript === "string" && nextScript.trim().length
             ? nextScript
-            : buildScriptFromState(nextNodes, nextChecks)
+            : buildScriptFromState(nextNodes, nextChecks, nextConstraints)
         );
         setSceneName(nextSceneName ?? "Imported scene");
         setSceneType(nextSceneType);
@@ -2590,6 +2695,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                 />
               </label>
               <div>Dependencies: {nodeDependencies(selectedNode).join(", ") || "-"}</div>
+              <div>Constraints: {selectedNodeUsedByConstraints.join(", ") || "-"}</div>
               <div style={{ fontFamily: "monospace", opacity: 0.75 }}>
                 Parameters:{" "}
                 {selectedNodeParameters.length
@@ -2674,7 +2780,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   >
                     Down
                   </button>
-                  <button type="button" onClick={() => setNodes((prev) => prev.filter((entry) => entry.id !== node.id))}>
+                  <button type="button" onClick={() => deleteNode(node.id)}>
                     Delete
                   </button>
                 </div>
@@ -2773,7 +2879,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                 <button
                   type="button"
                   disabled={selectedNodeLocked}
-                  onClick={() => setNodes((prev) => prev.filter((node) => node.id !== selectedNode.id))}
+                  onClick={() => deleteNode(selectedNode.id)}
                 >
                   Delete
                 </button>
@@ -2842,6 +2948,39 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
               <button type="button" onClick={() => useSelectedAsSelectionSlot("b")}>Use selected</button>
             </div>
             {checkError && <div style={{ fontSize: 11, color: "#b42318" }}>{checkError}</div>}
+          </div>
+          <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 8px", display: "grid", gap: 6 }}>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Active constraints</div>
+            {constraints.map((constraint) => (
+              <div
+                key={constraint.id}
+                style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 8, alignItems: "center", fontSize: 11 }}
+              >
+                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={constraint.enabled !== false}
+                    onChange={() =>
+                      setConstraints((prev) =>
+                        prev.map((entry) =>
+                          entry.id === constraint.id
+                            ? { ...entry, enabled: entry.enabled === false ? undefined : false }
+                            : entry
+                        )
+                      )
+                    }
+                  />
+                  enabled
+                </label>
+                <span>
+                  {constraint.label ?? `${constraint.targetId} ${CONSTRAINT_TYPE_LABELS[constraint.type]} ${constraint.sourceId}`}
+                </span>
+                <button type="button" onClick={() => setConstraints((prev) => prev.filter((entry) => entry.id !== constraint.id))}>
+                  Delete
+                </button>
+              </div>
+            ))}
+            {!constraints.length && <div style={{ fontSize: 11, opacity: 0.7 }}>No active constraints.</div>}
           </div>
           <div style={{ display: "grid", gap: 8 }}>
             {claimRows.map((claim) => (
@@ -2945,6 +3084,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
           >
             <div>parsed steps: {scriptDiagnostics.parsedSteps}</div>
             <div>objects created: {scriptDiagnostics.objectCount}</div>
+            <div>constraints created: {scriptDiagnostics.constraintCount}</div>
             <div>claims created: {scriptDiagnostics.claimCount}</div>
             <div>warnings: {scriptDiagnostics.warnings.length}</div>
             <div>errors: {scriptDiagnostics.errors.length}</div>

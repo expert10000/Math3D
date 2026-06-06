@@ -32,6 +32,24 @@ export type Circle3 = {
   label?: string;
 };
 
+export type ConstructionConstraintType =
+  | "parallel"
+  | "perpendicular"
+  | "equalLength"
+  | "equalRadius"
+  | "coincident"
+  | "concentric"
+  | "tangent";
+
+export type ConstructionConstraintDef = {
+  id: string;
+  label?: string;
+  type: ConstructionConstraintType;
+  targetId: string;
+  sourceId: string;
+  enabled?: boolean;
+};
+
 type NodeStyle = {
   color?: number;
   opacity?: number;
@@ -150,7 +168,7 @@ const toLine = (line: Line3, node: NodeBase): Line3 => ({
   ...line,
   color: node.style?.color ?? line.color,
   opacity: node.style?.opacity ?? line.opacity,
-  length: node.style?.length ?? line.length,
+  length: line.length ?? node.style?.length,
   radiusScale: node.style?.radiusScale ?? line.radiusScale,
 });
 
@@ -171,6 +189,24 @@ const summarizePoint = (p: Point3) => fmtPoint(p);
 const summarizeLine = (line: Line3) => `p=${fmtPoint(line.origin)}, d=${fmtVec(line.direction)}`;
 const summarizeCircle = (circle: Circle3) =>
   `c=${fmtPoint(circle.center)}, r=${formatNum(circle.radius)}, n=${fmtVec(circle.normal)}`;
+
+const copyPointLabel = (point: Point3, previous: Point3): Point3 => ({
+  ...point,
+  id: previous.id,
+  label: previous.label,
+  color: previous.color,
+  size: previous.size,
+  opacity: previous.opacity,
+});
+
+const perpendicularDirection = (direction: Vec3, planeNormal: Vec3 = DEFAULT_NORMAL): Vec3 | null => {
+  const n = normalizeVec3(planeNormal) ?? DEFAULT_NORMAL;
+  const inPlane = normalizeVec3(crossVec3(n, direction));
+  if (inPlane) return inPlane;
+  const xy = normalizeVec3({ x: -direction.y, y: direction.x, z: 0 });
+  if (xy) return xy;
+  return normalizeVec3(crossVec3(direction, { x: 1, y: 0, z: 0 }));
+};
 
 const angleAtPoint = (a: Point3, vertex: Point3, c: Point3): number | null => {
   const va = subVec3(a, vertex);
@@ -340,13 +376,24 @@ const tryResolveNormal = (
   return DEFAULT_NORMAL;
 };
 
-export const evaluateConstructionGraph = (nodes: ConstructionNode[]): ConstructionGraphResult => {
+export const evaluateConstructionGraph = (
+  nodes: ConstructionNode[],
+  constraints: ConstructionConstraintDef[] = []
+): ConstructionGraphResult => {
   const values = new Map<string, ConstructionValue>();
   const points: Record<string, Point3> = {};
   const lines: Record<string, Line3> = {};
   const circles: Record<string, Circle3> = {};
   const objects: ConstructionObjectSummary[] = [];
   const errors: string[] = [];
+  const activeConstraintsByTargetId = new Map<string, ConstructionConstraintDef[]>();
+  for (const constraint of constraints) {
+    if (constraint.enabled === false) continue;
+    activeConstraintsByTargetId.set(constraint.targetId, [
+      ...(activeConstraintsByTargetId.get(constraint.targetId) ?? []),
+      constraint,
+    ]);
+  }
 
   const getPoint = (id: string): Point3 | null => {
     const v = values.get(id);
@@ -372,6 +419,126 @@ export const evaluateConstructionGraph = (nodes: ConstructionNode[]): Constructi
       hidden: Boolean(node.hidden),
       error: full,
     });
+  };
+  const pushConstraintError = (constraint: ConstructionConstraintDef, message: string) => {
+    const full = `[${constraint.id}] ${message}`;
+    errors.push(full);
+  };
+
+  const applyConstraint = (
+    target: ConstructionValue,
+    constraint: ConstructionConstraintDef
+  ): ConstructionValue => {
+    const source = values.get(constraint.sourceId);
+    if (!source) {
+      pushConstraintError(constraint, `Missing source '${constraint.sourceId}' for constraint.`);
+      return target;
+    }
+
+    if (constraint.type === "parallel") {
+      if (target.kind !== "line" || source.kind !== "line") {
+        pushConstraintError(constraint, "Parallel constraint requires two lines.");
+        return target;
+      }
+      return { kind: "line", value: { ...target.value, direction: source.value.direction } };
+    }
+
+    if (constraint.type === "perpendicular") {
+      if (target.kind !== "line" || source.kind !== "line") {
+        pushConstraintError(constraint, "Perpendicular constraint requires two lines.");
+        return target;
+      }
+      const dir = perpendicularDirection(source.value.direction);
+      if (!dir) {
+        pushConstraintError(constraint, "Could not resolve perpendicular direction.");
+        return target;
+      }
+      return { kind: "line", value: { ...target.value, direction: dir } };
+    }
+
+    if (constraint.type === "equalLength") {
+      if (target.kind !== "line" || source.kind !== "line") {
+        pushConstraintError(constraint, "Equal length constraint requires two lines.");
+        return target;
+      }
+      if (!Number.isFinite(source.value.length ?? NaN) || Number(source.value.length) <= EPS) {
+        pushConstraintError(constraint, "Source line has no finite positive length.");
+        return target;
+      }
+      return { kind: "line", value: { ...target.value, length: Number(source.value.length) } };
+    }
+
+    if (constraint.type === "equalRadius") {
+      if (target.kind !== "circle" || source.kind !== "circle") {
+        pushConstraintError(constraint, "Equal radius constraint requires two circles.");
+        return target;
+      }
+      return { kind: "circle", value: { ...target.value, radius: source.value.radius } };
+    }
+
+    if (constraint.type === "coincident") {
+      if (target.kind !== "point" || source.kind !== "point") {
+        pushConstraintError(constraint, "Coincident constraint requires two points.");
+        return target;
+      }
+      return { kind: "point", value: copyPointLabel(source.value, target.value) };
+    }
+
+    if (constraint.type === "concentric") {
+      if (target.kind !== "circle" || source.kind !== "circle") {
+        pushConstraintError(constraint, "Concentric constraint requires two circles.");
+        return target;
+      }
+      return { kind: "circle", value: { ...target.value, center: { ...source.value.center } } };
+    }
+
+    if (source.kind !== "circle") {
+      pushConstraintError(constraint, "Tangent constraint source must be a circle.");
+      return target;
+    }
+    if (target.kind === "line") {
+      const radialRaw = subVec3(target.value.origin, source.value.center);
+      const n = normalizeVec3(source.value.normal) ?? DEFAULT_NORMAL;
+      const radialProjected = subVec3(radialRaw, scaleVec3(n, dotVec3(radialRaw, n)));
+      const radial = normalizeVec3(radialProjected);
+      const direction = radial ? normalizeVec3(crossVec3(n, radial)) : null;
+      if (!radial || !direction) {
+        pushConstraintError(constraint, "Tangent line needs a non-degenerate tangent point.");
+        return target;
+      }
+      return {
+        kind: "line",
+        value: {
+          ...target.value,
+          origin: addVec3(source.value.center, scaleVec3(radial, source.value.radius)),
+          direction,
+        },
+      };
+    }
+    if (target.kind === "circle") {
+      const radial = normalizeVec3(subVec3(target.value.center, source.value.center));
+      if (!radial) {
+        pushConstraintError(constraint, "Tangent circles need distinct centers.");
+        return target;
+      }
+      return {
+        kind: "circle",
+        value: {
+          ...target.value,
+          center: addVec3(source.value.center, scaleVec3(radial, source.value.radius + target.value.radius)),
+        },
+      };
+    }
+    pushConstraintError(constraint, "Tangent target must be a line or circle.");
+    return target;
+  };
+
+  const applyConstraintsForNode = (node: NodeBase, value: ConstructionValue): ConstructionValue => {
+    let next = value;
+    for (const constraint of activeConstraintsByTargetId.get(node.id) ?? []) {
+      next = applyConstraint(next, constraint);
+    }
+    return next;
   };
 
   for (const node of nodes) {
@@ -424,7 +591,7 @@ export const evaluateConstructionGraph = (nodes: ConstructionNode[]): Constructi
           pushError(node, "Degenerate line through coincident points.");
           continue;
         }
-        value = { kind: "line", value: toLine(line, node) };
+        value = { kind: "line", value: toLine({ ...line, length: distanceVec3(a, b) }, node) };
         break;
       }
       case "lineFromPointDir": {
@@ -453,7 +620,7 @@ export const evaluateConstructionGraph = (nodes: ConstructionNode[]): Constructi
           pushError(node, "Failed to build parallel line.");
           continue;
         }
-        value = { kind: "line", value: toLine(line, node) };
+        value = { kind: "line", value: toLine({ ...line, length: lineRef.length }, node) };
         break;
       }
       case "perpendicularLine": {
@@ -474,7 +641,7 @@ export const evaluateConstructionGraph = (nodes: ConstructionNode[]): Constructi
           pushError(node, "Failed to build perpendicular line.");
           continue;
         }
-        value = { kind: "line", value: toLine(line, node) };
+        value = { kind: "line", value: toLine({ ...line, length: lineRef.length }, node) };
         break;
       }
       case "perpendicularBisector": {
@@ -660,6 +827,7 @@ export const evaluateConstructionGraph = (nodes: ConstructionNode[]): Constructi
     }
 
     if (!value) continue;
+    value = applyConstraintsForNode(node, value);
     values.set(node.id, value);
     if (value.kind === "point") points[node.id] = value.value;
     if (value.kind === "line") lines[node.id] = value.value;
