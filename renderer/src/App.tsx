@@ -12574,10 +12574,12 @@ const App: React.FC = () => {
         createdAt: Date.now(),
       };
       setGeometryMathConstructions((prev) => [next, ...prev]);
-      setGeometrySelectedMathConstructionId(next.id);
+      if (!geometryDependenciesPanelActive) {
+        setGeometrySelectedMathConstructionId(next.id);
+      }
       setGeometryCreateActionStatus(`Construction added: ${next.name}.`);
     },
-    [geometryMathConstructions]
+    [geometryDependenciesPanelActive, geometryMathConstructions]
   );
   const handleCreateGeometryMathConstruction = useCallback(
     (type: GeometryMathConstructionType) => {
@@ -17062,7 +17064,22 @@ const App: React.FC = () => {
       return changed ? next : prev;
     });
   }, [geometryDerivedConstructionOverlays.byId, resolveGeometrySceneMeshById]);
+  const [geometryRightPanelTab, setGeometryRightPanelTab] = useState<GeometryRightPanelTab>("inspector");
+  const [geometryInspectorPanelTab, setGeometryInspectorPanelTab] = useState<GeometryInspectorPanelTab>("probe");
+  const geometryDependenciesPanelActive =
+    mode === "geometry" &&
+    geometryMode === "procedural" &&
+    geometryRightPanelTab === "inspector" &&
+    geometryInspectorPanelTab === "dependencies";
   const geometryDependencyGraph = useMemo(() => {
+    if (!geometryDependenciesPanelActive) {
+      return {
+        nodes: [] as GeometryDependencyNode[],
+        edges: [] as GeometryDependencyEdge[],
+        nodeById: new Map<string, GeometryDependencyNode>(),
+        brokenNodes: [] as GeometryDependencyNode[],
+      };
+    }
     const nodes: GeometryDependencyNode[] = [];
     const edges: GeometryDependencyEdge[] = [];
     const nodeById = new Map<string, GeometryDependencyNode>();
@@ -17314,6 +17331,7 @@ const App: React.FC = () => {
     geometrySectionPreview,
     geometrySectionSourceDerivedId,
     geometrySelectedSceneObject,
+    geometryDependenciesPanelActive,
     resolveGeometrySceneMeshById,
   ]);
   const geometryInspectorSelectedDependencyNodeId = useMemo(() => {
@@ -18815,8 +18833,6 @@ const App: React.FC = () => {
     const saved = localStorage.getItem(WORKBOOK_PANEL_KEY);
     return saved === "workbook" ? "workbook" : "inspector";
   });
-  const [geometryRightPanelTab, setGeometryRightPanelTab] = useState<GeometryRightPanelTab>("inspector");
-  const [geometryInspectorPanelTab, setGeometryInspectorPanelTab] = useState<GeometryInspectorPanelTab>("probe");
   const [analysisFocusedSection, setAnalysisFocusedSection] = useState<AnalysisFocusedSection>("vector-calculus");
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [displayMode, setDisplayMode] = useState<DisplayMode>(() => {
@@ -25803,11 +25819,10 @@ const App: React.FC = () => {
     if (mode !== "geometry" || geometryMode !== "procedural") return;
     if (displayMode !== "inspect") return;
     if (!showRightPanel) setShowRightPanel(true);
-    if (geometryRightPanelTab !== "inspector") setGeometryRightPanelTab("inspector");
     if (geometryInspectorPanelTab !== "probe" && geometryInspectorPanelTab !== "dependencies") {
       setGeometryInspectorPanelTab("probe");
     }
-  }, [displayMode, geometryInspectorPanelTab, geometryMode, geometryRightPanelTab, mode, showRightPanel]);
+  }, [displayMode, geometryInspectorPanelTab, geometryMode, mode, showRightPanel]);
   useEffect(() => {
     if (!viewMenuOpen) return;
     const onPointerDown = (event: PointerEvent) => {
@@ -58951,7 +58966,10 @@ case "mobius":
                         <button
                           key={`geometry-right-panel-tab-${tabId}`}
                           type="button"
-                          onClick={() => setGeometryRightPanelTab(tabId)}
+                          onClick={() => {
+                            setGeometryRightPanelTab(tabId);
+                            if (tabId === "scene") setGeometryInspectorPanelTab("probe");
+                          }}
                           style={pill(geometryRightPanelTab === tabId)}
                           aria-pressed={geometryRightPanelTab === tabId}
                         >
@@ -66008,52 +66026,78 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
   updateChain,
   onSelect,
 }) => {
-  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
-  const kindLabel = (kind: string) => {
-    if (kind === "scene-root") return "Scene";
-    if (kind === "geometry-object") return "Object";
-    if (kind === "face-reference") return "Face";
-    if (kind === "derived-point") return "Point";
-    if (kind === "derived-line") return "Line";
-    if (kind === "derived-plane") return "Plane";
-    if (kind === "derived-circle") return "Circle";
-    if (kind === "constraint") return "Constraint";
-    return kind.replaceAll("-", " ");
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+  const [collapsedRootIds, setCollapsedRootIds] = useState<Set<string>>(() => new Set());
+  const typeMeta = (kind: string): { label: string; color: string; background: string; border: string } => {
+    if (kind === "scene-root") return { label: "Scene", color: "#334155", background: "#f8fafc", border: "#cbd5e1" };
+    if (kind === "geometry-object") return { label: "Object", color: "#475569", background: "#f8fafc", border: "#cbd5e1" };
+    if (kind === "face-reference") return { label: "Face", color: "#64748b", background: "#f8fafc", border: "#dbe2ea" };
+    if (kind === "derived-point") return { label: "Point", color: "#2563eb", background: "#eff6ff", border: "#93c5fd" };
+    if (kind === "derived-line") return { label: "Line", color: "#16a34a", background: "#f0fdf4", border: "#86efac" };
+    if (kind === "derived-plane") return { label: "Plane", color: "#7c3aed", background: "#f5f3ff", border: "#c4b5fd" };
+    if (kind === "derived-circle") return { label: "Circle", color: "#ea580c", background: "#fff7ed", border: "#fdba74" };
+    if (kind === "constraint") return { label: "Constraint", color: "#dc2626", background: "#fef2f2", border: "#fca5a5" };
+    return { label: kind.replaceAll("-", " "), color: "#64748b", background: "#f8fafc", border: "#dbe2ea" };
   };
-  const kindColor = (kind: string) => {
-    if (kind === "derived-point") return "#2563eb";
-    if (kind === "derived-line") return "#16a34a";
-    if (kind === "derived-plane") return "#7c3aed";
-    if (kind === "derived-circle") return "#ea580c";
-    if (kind === "constraint") return "#dc2626";
-    return "#64748b";
-  };
-  const toggleCollapsed = (id: string) => {
-    setCollapsedIds((prev) => {
+  const kindLabel = (kind: string) => typeMeta(kind).label;
+  const kindColor = (kind: string) => typeMeta(kind).color;
+  const toggleRootCollapsed = (id: string) => {
+    setCollapsedRootIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
   };
-  const renderNode = (node: ConstructionDependencyTreeNode, depth = 0): React.ReactNode => {
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const renderNode = (node: ConstructionDependencyTreeNode, depth = 0, path = new Set<string>()): React.ReactNode => {
+    if (path.has(node.id)) {
+      return (
+        <div key={`${node.id}-cycle`} style={{ marginLeft: depth * 14, color: "#b45309", fontSize: 10.5 }}>
+          Cycle detected at {node.label}
+        </div>
+      );
+    }
+    const nextPath = new Set(path);
+    nextPath.add(node.id);
     const active = selectedId === node.id;
     const inputs = inputsById.get(node.id) ?? [];
     const expandable = node.children.length > 0 || inputs.length > 0;
-    const collapsed = collapsedIds.has(node.id);
-    const color = kindColor(node.kind);
+    const collapsed = expandable && (depth === 0 ? collapsedRootIds.has(node.id) : !expandedIds.has(node.id));
+    const meta = typeMeta(node.kind);
+    const color = meta.color;
     const statusMeta = node.liveValidityKind
       ? getGeometryLiveValidityMetaByKind(node.liveValidityKind)
       : GEOMETRY_DEPENDENCY_STATE_META[node.status as GeometryDependencyState] ?? GEOMETRY_DEPENDENCY_STATE_META.stale;
     return (
-      <div key={node.id} style={{ display: "grid", gap: 4 }}>
+      <div key={node.id} style={{ display: "grid", gap: 4, position: "relative" }}>
+        {depth > 0 && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              left: depth * 14 - 7,
+              top: 0,
+              bottom: 0,
+              width: 1,
+              background: "#e2e8f0",
+            }}
+          />
+        )}
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "18px 1fr auto",
+            gridTemplateColumns: "18px minmax(0, 1fr) auto auto",
             gap: 6,
             alignItems: "center",
-            marginLeft: depth * 12,
+            marginLeft: depth * 14,
             padding: "5px 7px",
             borderRadius: 7,
             border: active ? `1px solid ${color}` : "1px solid #dbe2ea",
@@ -66066,7 +66110,9 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
             type="button"
             onClick={(event) => {
               event.stopPropagation();
-              if (expandable) toggleCollapsed(node.id);
+              if (!expandable) return;
+              if (depth === 0) toggleRootCollapsed(node.id);
+              else toggleExpanded(node.id);
             }}
             disabled={!expandable}
             aria-label={expandable ? (collapsed ? `Expand ${node.label}` : `Collapse ${node.label}`) : `${node.label} has no children`}
@@ -66081,7 +66127,32 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
               cursor: expandable ? "pointer" : "default",
             }}
           >
-            {expandable ? (collapsed ? "▶" : "▼") : "•"}
+            {expandable ? (
+              <span
+                aria-hidden="true"
+                style={{
+                  display: "inline-block",
+                  width: 0,
+                  height: 0,
+                  marginLeft: collapsed ? 5 : 3,
+                  borderTop: collapsed ? "5px solid transparent" : "6px solid #334155",
+                  borderBottom: collapsed ? "5px solid transparent" : 0,
+                  borderLeft: collapsed ? "6px solid #334155" : "5px solid transparent",
+                  borderRight: collapsed ? 0 : "5px solid transparent",
+                }}
+              />
+            ) : (
+              <span
+                aria-hidden="true"
+                style={{
+                  display: "inline-block",
+                  width: 5,
+                  height: 5,
+                  borderRadius: 999,
+                  background: "#cbd5e1",
+                }}
+              />
+            )}
           </button>
           <button
             type="button"
@@ -66100,8 +66171,22 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
             <strong style={{ color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {node.label}
             </strong>
-            <span style={{ color, fontSize: 10, fontWeight: 700 }}>{kindLabel(node.kind)}</span>
           </button>
+          <span
+            style={{
+              justifySelf: "end",
+              color: meta.color,
+              border: `1px solid ${meta.border}`,
+              background: meta.background,
+              borderRadius: 999,
+              padding: "1px 7px",
+              fontSize: 10,
+              fontWeight: 800,
+              lineHeight: 1.5,
+            }}
+          >
+            {kindLabel(node.kind)}
+          </span>
           <span
             style={{
               color: statusMeta.color,
@@ -66117,16 +66202,50 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
           </span>
         </div>
         {!collapsed && inputs.length > 0 && (
-          <div style={{ display: "grid", gap: 3, marginLeft: depth * 12 + 30 }}>
+          <div style={{ display: "grid", gap: 3, marginLeft: depth * 14 + 34 }}>
             {inputs.map((input, index) => (
-              <div key={`${node.id}-input-${index}-${input.sourceLabel}`} style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 10.5 }}>
-                <span style={{ color: "#64748b", minWidth: 64 }}>{input.label}:</span>
-                <span style={{ color: kindColor(input.sourceKind), fontWeight: 700 }}>{input.sourceLabel}</span>
+              <div
+                key={`${node.id}-input-${index}-${input.sourceLabel}`}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "72px minmax(0, 1fr) auto",
+                  gap: 6,
+                  alignItems: "center",
+                  fontSize: 10.5,
+                  padding: "2px 0 2px 10px",
+                  borderLeft: "1px solid #dbe2ea",
+                }}
+              >
+                <span style={{ color: "#64748b", fontWeight: 700 }}>{input.label}:</span>
+                <span
+                  style={{
+                    color: kindColor(input.sourceKind),
+                    fontWeight: 800,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {input.sourceLabel}
+                </span>
+                <span
+                  style={{
+                    color: typeMeta(input.sourceKind).color,
+                    border: `1px solid ${typeMeta(input.sourceKind).border}`,
+                    background: typeMeta(input.sourceKind).background,
+                    borderRadius: 999,
+                    padding: "0 6px",
+                    fontSize: 9.5,
+                    fontWeight: 800,
+                  }}
+                >
+                  {kindLabel(input.sourceKind)}
+                </span>
               </div>
             ))}
           </div>
         )}
-        {!collapsed && node.children.map((child) => renderNode(child, depth + 1))}
+        {!collapsed && node.children.map((child) => renderNode(child, depth + 1, nextPath))}
       </div>
     );
   };
@@ -66159,7 +66278,7 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
                 <div style={{ color: index === 0 ? "#0f172a" : "#475569" }}>
                   {step.label} {step.action}
                 </div>
-                {index < updateChain.length - 1 && <div style={{ color: "#94a3b8", paddingLeft: 8 }}>↓</div>}
+                {index < updateChain.length - 1 && <div style={{ color: "#94a3b8", paddingLeft: 8 }}>{"->"}</div>}
               </React.Fragment>
             ))}
           </div>
@@ -66168,7 +66287,6 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
     </div>
   );
 };
-
 const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
   title = "Scene / Dataset tree",
   nodes,
