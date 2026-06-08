@@ -17,6 +17,7 @@ apps/mobile/.expo/
 /apps/web/dist/
 /docs/api/
 /docs/from-A/
+/.tools/
 
 # TS build
 *.tsbuildinfo
