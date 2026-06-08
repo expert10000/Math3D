@@ -161,6 +161,7 @@ import {
   getGeometryLiveValidityMetaByKind,
   type GeometryLiveValidityKind,
 } from "./geometry/liveValidityStatus";
+import { buildConstructionViewportBadgeById } from "./geometry/constructionViewportBadges";
 
 import type { GaussPoint, GaussColorMode } from "./components/gaussMapUtils";
 import type { SurfaceSampleSet } from "./math/sampling/surfaceSampling";
@@ -15010,6 +15011,7 @@ const App: React.FC = () => {
       : 0;
     const defaultHalfLength = Math.max(3, sceneDiag * 0.85);
     const constructionOrder = [...geometryMathConstructions].sort((a, b) => a.createdAt - b.createdAt);
+    const viewportBadgeById = buildConstructionViewportBadgeById(constructionOrder);
     const objectNameById = new Map(geometryCompareObjectOptions.map((entry) => [entry.id, entry.name] as const));
     const constructionNameById = new Map(constructionOrder.map((entry) => [entry.id, entry.name] as const));
     const getExternalSourcePoint = (id: string | null | undefined) => {
@@ -15158,10 +15160,10 @@ const App: React.FC = () => {
       };
       const addLabel = (point: { x: number; y: number; z: number }) => {
         evalLabels.push({
-          text: object.name,
+          text: viewportBadgeById.get(object.id) ?? object.name,
           position: { x: point.x + 0.05, y: point.y + 0.05, z: point.z + 0.05 },
           color: 0x0f172a,
-          size: 0.88,
+          size: 0.74,
           opacity: 0.96,
         });
       };
@@ -15358,6 +15360,7 @@ const App: React.FC = () => {
     const groups: OverlayPolylineGroup[] = [];
     const pointSets: OverlayPointSet[] = [];
     const labels: OverlayLabelSet["labels"] = [];
+    const viewportBadgeById = buildConstructionViewportBadgeById(geometryDerivedConstructions);
     const makeVec = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => ({
       x: b.x - a.x,
       y: b.y - a.y,
@@ -15897,8 +15900,14 @@ const App: React.FC = () => {
         evalPointSets.push(set);
         if (object.visible) pointSets.push(set);
       };
-      const addEvalLabel = (text: string, position: { x: number; y: number; z: number }, color = 0x1f2937) => {
-        const label = { text, position, color, size: 0.9, opacity: 0.96 };
+      const addEvalLabel = (
+        text: string,
+        position: { x: number; y: number; z: number },
+        color = 0x1f2937,
+        size = 0.9,
+        opacity = 0.96
+      ) => {
+        const label = { text, position, color, size, opacity };
         evalLabels.push(label);
         if (object.visible) labels.push(label);
       };
@@ -15917,6 +15926,16 @@ const App: React.FC = () => {
         dependencyStateOverride?: GeometryDependencyState,
         statusMessageOverride?: string | null
       ) => {
+        const badge = viewportBadgeById.get(object.id);
+        if (status === "valid" && origin && badge && !object.frozenSnapshot) {
+          addEvalLabel(
+            badge,
+            { x: origin.x + 0.05, y: origin.y + 0.05, z: origin.z + 0.05 },
+            0x0f172a,
+            0.74,
+            0.96
+          );
+        }
         if (evalLabels.length) evalLabelSets.push({ labels: evalLabels, size: 0.9 });
         byId.set(object.id, {
           object,
