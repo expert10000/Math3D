@@ -7821,10 +7821,10 @@ const App: React.FC = () => {
   const runGeometryPanelTabSwitch = useCallback((apply: () => void) => {
     if (geometryPanelTabSwitchLockedRef.current) return;
     geometryPanelTabSwitchLockedRef.current = true;
-    React.startTransition(apply);
+    apply();
     window.setTimeout(() => {
       geometryPanelTabSwitchLockedRef.current = false;
-    }, 120);
+    }, 80);
   }, []);
   const [geometryRelationTargetDerivedId, setGeometryRelationTargetDerivedId] = useState<string | null>(null);
   const [geometryRelationLocalAxis, setGeometryRelationLocalAxis] = useState<"x" | "y" | "z">("y");
