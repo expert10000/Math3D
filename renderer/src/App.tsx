@@ -15161,12 +15161,12 @@ const App: React.FC = () => {
       const addLabel = (point: { x: number; y: number; z: number }) => {
         evalLabels.push({
           text: viewportBadgeById.get(object.id) ?? object.name,
-          position: { x: point.x + 0.09, y: point.y + 0.09, z: point.z + 0.09 },
+          position: { x: point.x + 0.14, y: point.y + 0.14, z: point.z + 0.14 },
           color: 0x0f172a,
           backgroundColor: 0xffffff,
           backgroundOpacity: 0.92,
           borderColor: 0x2563eb,
-          size: 1.05,
+          size: 1.8,
           opacity: 0.98,
         });
       };
@@ -15945,9 +15945,9 @@ const App: React.FC = () => {
         if (status === "valid" && origin && badge && !object.frozenSnapshot) {
           addEvalLabel(
             badge,
-            { x: origin.x + 0.09, y: origin.y + 0.09, z: origin.z + 0.09 },
+            { x: origin.x + 0.14, y: origin.y + 0.14, z: origin.z + 0.14 },
             0x0f172a,
-            1.05,
+            1.8,
             0.98,
             true
           );
