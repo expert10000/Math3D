@@ -18,17 +18,21 @@ Prevent installer regressions by validating packaged behavior in a repeatable wa
 1. Installer package is produced (unless `-SkipBuild`).
 2. Packaged worker exists:
    - `release/win-unpacked/resources/python-worker/worker.exe`
-3. Installed worker exists:
+3. Packaged standalone web app exists:
+   - `release/win-unpacked/resources/web-app/index.html`
+4. Installed worker exists:
    - `%LOCALAPPDATA%\Programs\Math3D\resources\python-worker\worker.exe`
-4. CLI worker checks pass for packaged and installed executables:
+5. Installed standalone web app exists:
+   - `%LOCALAPPDATA%\Programs\Math3D\resources\web-app\index.html`
+6. CLI worker checks pass for packaged and installed executables:
    - `worker.exe --ping`
    - `worker.exe --version`
-5. Protocol smoke passes for packaged and installed executables:
+7. Protocol smoke passes for packaged and installed executables:
    - `ping`
    - `mesh.preview` (simple mesh op)
    - `mesh.transform` with `vtk_clean_normals` (VTK-based op)
-6. App launch check passes (unless `-SkipLaunchCheck`).
-7. Worker smoke passes even when python/conda paths are removed from `PATH`.
+8. App launch check passes (unless `-SkipLaunchCheck`).
+9. Worker smoke passes even when python/conda paths are removed from `PATH`.
 
 ## Manual release checklist
 

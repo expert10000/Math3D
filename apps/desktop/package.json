@@ -1,7 +1,7 @@
 {
   "name": "@math3d/app-desktop",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.4.5",
   "scripts": {
     "dev": "npm run dev --prefix ../..",
     "build": "npm run build:core --prefix ../..",

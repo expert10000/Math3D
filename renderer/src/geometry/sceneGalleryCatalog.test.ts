@@ -8,6 +8,13 @@ import {
 describe("sceneGalleryCatalog", () => {
   it("covers all requested categories and scenario titles", () => {
     const expected = new Map<string, string[]>([
+      ["Release Smoke", [
+        "Release smoke: basic primitives",
+        "Release smoke: dependency tree",
+        "Release smoke: construction history",
+        "Release smoke: extension subset",
+        "Release smoke: deletion and recompute",
+      ]],
       ["Construction Basics", ["Cube transform workflow", "Face extrusion", "Section plane"]],
       ["Measurement", ["Equal-volume objects", "Surface-area comparison", "Bounding dimensions"]],
       ["Mathematical Demonstrations", ["Cavalieri principle", "Sphere section", "Scaling laws", "Euler polyhedron relation"]],
@@ -31,6 +38,7 @@ describe("sceneGalleryCatalog", () => {
 
   it("keeps entries structurally valid for scene open/replay flows", () => {
     expect(GEOMETRY_SCENE_GALLERY_CATEGORY_ORDER).toEqual([
+      "Release Smoke",
       "Construction Basics",
       "Measurement",
       "Mathematical Demonstrations",
@@ -49,6 +57,15 @@ describe("sceneGalleryCatalog", () => {
         const stepIds = new Set(entry.timeline.steps.map((step) => step.id));
         expect(stepIds.size).toBe(entry.timeline.steps.length);
       }
+    }
+  });
+
+  it("keeps all 1.4.5 release smoke scenes available and marked", () => {
+    const releaseSmokeScenes = GEOMETRY_SCENE_GALLERY.filter((entry) => entry.category === "Release Smoke");
+    expect(releaseSmokeScenes).toHaveLength(5);
+    for (const entry of releaseSmokeScenes) {
+      expect(entry.initialScene.metadata?.releaseSmoke).toBe(true);
+      expect(entry.initialScene.metadata?.scenario).toBeTruthy();
     }
   });
 });

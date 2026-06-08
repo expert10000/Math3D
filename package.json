@@ -2,7 +2,7 @@
   "name": "math3d",
   "private": true,
   "license": "Apache-2.0",
-  "version": "0.0.0",
+  "version": "1.4.5",
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -34,9 +34,9 @@
     "build:python-worker:smoke": "powershell -ExecutionPolicy Bypass -File scripts/build-python-worker.ps1 -SmokeTest",
     "build:core": "npm run build:main && npm run build:renderer",
     "build": "npm run build:core && electron .",
-    "dist": "npm run build:python-worker && npm run build:core && set MATH3D_CHANNEL=stable&& electron-builder -w --config electron-builder.config.cjs",
-    "dist:ci": "npm run build:python-worker && npm run build:core && set MATH3D_CHANNEL=stable&& electron-builder -w --config electron-builder.config.cjs --publish never",
-    "dist:dev": "npm run build:python-worker && npm run build:core && set MATH3D_CHANNEL=dev&& electron-builder -w --config electron-builder.config.cjs",
+    "dist": "npm run build:python-worker && npm run build:core && npm run build:web && set MATH3D_CHANNEL=stable&& electron-builder -w --config electron-builder.config.cjs",
+    "dist:ci": "npm run build:python-worker && npm run build:core && npm run build:web && set MATH3D_CHANNEL=stable&& electron-builder -w --config electron-builder.config.cjs --publish never",
+    "dist:dev": "npm run build:python-worker && npm run build:core && npm run build:web && set MATH3D_CHANNEL=dev&& electron-builder -w --config electron-builder.config.cjs",
     "verify:installer-worker": "powershell -ExecutionPolicy Bypass -File scripts/verify-installer-worker.ps1",
     "smoke:release": "powershell -ExecutionPolicy Bypass -File scripts/release-smoke.ps1",
     "test:worker:smoke": "powershell -ExecutionPolicy Bypass -File scripts/build-python-worker.ps1 -SmokeTest",

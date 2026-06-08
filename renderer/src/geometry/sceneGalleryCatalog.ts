@@ -5,7 +5,8 @@ export type GeometrySceneGalleryCategory =
   | "Measurement"
   | "Mathematical Demonstrations"
   | "Geometry to Mesh"
-  | "Workbook Examples";
+  | "Workbook Examples"
+  | "Release Smoke";
 
 export type GeometrySceneTimelineAction =
   | { kind: "setPanel"; panel: "create" | "scene" | "object" | "construct" | "transform" | "view" | "history" | "analysis" | "demonstrations" | "theory" | "script" | "euler" }
@@ -336,11 +337,91 @@ export const GEOMETRY_SCENE_GALLERY: GeometryGallerySceneEntry[] = [
     },
     recommendedPanels: ["analysis", "scene", "object"],
   },
+  {
+    id: "scene:release-smoke-basic-primitives",
+    title: "Release smoke: basic primitives",
+    category: "Release Smoke",
+    description: "Release-gate scene for primitive rendering, selection, and inspector synchronization.",
+    thumbnail: thumb("Release smoke", "Basic primitives", "#2563eb"),
+    learningGoals: ["Verify primitive rendering", "Verify scene/object selection synchronization"],
+    initialScene: sceneDoc("release-smoke-basic-primitives", "Release smoke: basic primitives", [
+      baseObject({ id: "smoke-box", name: "Smoke box", type: "box", params: { width: 1, height: 1, depth: 1 }, transform: { position: { x: -2, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } }),
+      baseObject({ id: "smoke-sphere", name: "Smoke sphere", type: "sphere", params: { radius: 0.7 }, material: { color: 0x22c55e, opacity: 0.95 } }),
+      baseObject({ id: "smoke-cylinder", name: "Smoke cylinder", type: "cylinder", params: { radiusTop: 0.6, radiusBottom: 0.6, height: 1.5 }, transform: { position: { x: 2, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } }, material: { color: 0xf97316, opacity: 0.95 } }),
+    ], { releaseSmoke: true, scenario: "basic-primitives" }),
+    recommendedPanels: ["scene", "object"],
+  },
+  {
+    id: "scene:release-smoke-dependency-tree",
+    title: "Release smoke: dependency tree",
+    category: "Release Smoke",
+    description: "Release-gate source scene for dependency-tree and downstream-update checks.",
+    thumbnail: thumb("Release smoke", "Dependency tree", "#7c3aed"),
+    learningGoals: ["Inspect dependency ordering", "Verify safe downstream updates"],
+    initialScene: sceneDoc("release-smoke-dependency-tree", "Release smoke: dependency tree", [
+      baseObject({ id: "dependency-source-a", name: "Dependency source A", type: "box", transform: { position: { x: -1.2, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } }),
+      baseObject({ id: "dependency-source-b", name: "Dependency source B", type: "sphere", transform: { position: { x: 1.2, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } }, material: { color: 0x7c3aed, opacity: 0.95 } }),
+    ], { releaseSmoke: true, scenario: "dependency-tree" }),
+    recommendedPanels: ["construct", "history"],
+  },
+  {
+    id: "scene:release-smoke-construction-history",
+    title: "Release smoke: construction history",
+    category: "Release Smoke",
+    description: "Release-gate scene for history navigation and selected-object refresh.",
+    thumbnail: thumb("Release smoke", "Construction history", "#0f766e"),
+    learningGoals: ["Verify history navigation", "Verify selected-object refresh"],
+    initialScene: sceneDoc("release-smoke-construction-history", "Release smoke: construction history", [
+      baseObject({ id: "history-base", name: "History base", type: "box" }),
+      baseObject({ id: "history-target", name: "History target", type: "cone", transform: { position: { x: 2, y: 0, z: 0 }, rotation: { x: 0, y: 0.35, z: 0 }, scale: { x: 1, y: 1, z: 1 } }, material: { color: 0x0f766e, opacity: 0.95 } }),
+    ], { releaseSmoke: true, scenario: "construction-history" }),
+    timeline: {
+      steps: [
+        { id: "select-base", label: "Select base", note: "Establish initial selected object.", action: { kind: "selectObject", objectName: "History base" } },
+        { id: "open-history", label: "Open history", note: "Inspect construction history.", action: { kind: "setPanel", panel: "history" } },
+        { id: "select-target", label: "Select target", note: "Verify inspector refresh.", action: { kind: "selectObject", objectName: "History target" } },
+      ],
+    },
+    recommendedPanels: ["history", "object"],
+  },
+  {
+    id: "scene:release-smoke-extension-subset",
+    title: "Release smoke: extension subset",
+    category: "Release Smoke",
+    description: "Release-gate scene for the supported extension subset and experimental-state labeling.",
+    thumbnail: thumb("Release smoke", "Extension subset", "#9333ea"),
+    learningGoals: ["Verify supported extension actions", "Verify unfinished actions are not presented as stable"],
+    initialScene: sceneDoc("release-smoke-extension-subset", "Release smoke: extension subset", [
+      baseObject({ id: "extension-source", name: "Extension source", type: "torus", params: { radius: 1, tube: 0.25, radialSegments: 20, tubularSegments: 36 }, material: { color: 0x9333ea, opacity: 0.95 } }),
+    ], { releaseSmoke: true, scenario: "extension-subset" }),
+    recommendedPanels: ["object", "analysis"],
+  },
+  {
+    id: "scene:release-smoke-delete-recompute",
+    title: "Release smoke: deletion and recompute",
+    category: "Release Smoke",
+    description: "Release-gate scene for safe deletion, stale dependencies, and recomputation refresh.",
+    thumbnail: thumb("Release smoke", "Delete and recompute", "#dc2626"),
+    learningGoals: ["Verify safe source deletion", "Verify recomputation refresh"],
+    initialScene: sceneDoc("release-smoke-delete-recompute", "Release smoke: deletion and recompute", [
+      baseObject({ id: "recompute-source", name: "Recompute source", type: "sphere", transform: { position: { x: -1.2, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } }, material: { color: 0xdc2626, opacity: 0.95 } }),
+      baseObject({ id: "recompute-dependent", name: "Recompute dependent", type: "box", transform: { position: { x: 1.2, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } }),
+    ], { releaseSmoke: true, scenario: "delete-recompute" }),
+    timeline: {
+      steps: [
+        { id: "select-source", label: "Select source", note: "Select the source before deletion.", action: { kind: "selectObject", objectName: "Recompute source" } },
+        { id: "open-scene", label: "Open scene", note: "Delete source and inspect dependent state.", action: { kind: "setPanel", panel: "scene" } },
+        { id: "open-history", label: "Open history", note: "Restore or recreate source and verify refresh.", action: { kind: "setPanel", panel: "history" } },
+      ],
+    },
+    recommendedPanels: ["scene", "history", "object"],
+  },
 ];
 
 export const GEOMETRY_SCENE_GALLERY_BY_ID = new Map(GEOMETRY_SCENE_GALLERY.map((entry) => [entry.id, entry] as const));
 
 export const GEOMETRY_SCENE_GALLERY_CATEGORY_ORDER: GeometrySceneGalleryCategory[] = [
+  "Release Smoke",
   "Construction Basics",
   "Measurement",
   "Mathematical Demonstrations",

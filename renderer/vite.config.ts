@@ -7,6 +7,10 @@ const rootDir = fileURLToPath(new URL(".", import.meta.url));
 const proxyTarget = process.env.MATH3D_WEB_WORKER_PROXY_TARGET || "http://127.0.0.1:8787";
 const proxyEnabledRaw = String(process.env.MATH3D_WEB_WORKER_PROXY_ENABLED ?? "1").toLowerCase();
 const proxyEnabled = !["0", "false", "no", "off"].includes(proxyEnabledRaw);
+const publicHosts = String(process.env.MATH3D_PUBLIC_HOSTS ?? "")
+  .split(",")
+  .map((host) => host.trim())
+  .filter(Boolean);
 const workerProxy = proxyEnabled
   ? {
       "/api/worker": {
@@ -83,6 +87,7 @@ export default defineConfig({
     },
   },
   server: {
+    allowedHosts: publicHosts,
     proxy: workerProxy,
   },
   preview: {
@@ -99,4 +104,3 @@ export default defineConfig({
     },
   },
 });
-

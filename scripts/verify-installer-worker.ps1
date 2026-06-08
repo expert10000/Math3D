@@ -81,6 +81,12 @@ if (-not (Test-Path $unpackedWorker)) {
 }
 Write-Host "[verify] packaged worker found: $unpackedWorker"
 
+$unpackedWebApp = Join-Path $repo "release/win-unpacked/resources/web-app/index.html"
+if (-not (Test-Path $unpackedWebApp)) {
+  throw "Missing packaged web app at $unpackedWebApp. Run npm run build:web before packaging."
+}
+Write-Host "[verify] packaged web app found: $unpackedWebApp"
+
 if ([string]::IsNullOrWhiteSpace($InstallerPath)) {
   $candidate = Get-ChildItem -Path (Join-Path $repo "release") -Filter "Math3D Setup *.exe" -File |
     Sort-Object LastWriteTime -Descending |
@@ -130,6 +136,12 @@ if (-not (Test-Path $installedWorker)) {
   throw "Missing installed worker at $installedWorker"
 }
 Write-Host "[verify] installed worker found: $installedWorker"
+
+$installedWebApp = Join-Path $InstallRoot "resources/web-app/index.html"
+if (-not (Test-Path $installedWebApp)) {
+  throw "Missing installed web app at $installedWebApp"
+}
+Write-Host "[verify] installed web app found: $installedWebApp"
 
 if (-not $SkipSmoke) {
   Write-Host "[verify] running CLI smoke (packaged worker)"

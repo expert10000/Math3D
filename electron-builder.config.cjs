@@ -28,6 +28,10 @@ const config = {
       from: "build/python-worker-dist",
       to: "python-worker",
     },
+    {
+      from: "apps/web/dist",
+      to: "web-app",
+    },
   ],
   win: {
     target: "nsis",
