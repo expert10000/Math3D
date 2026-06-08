@@ -7812,11 +7812,20 @@ const App: React.FC = () => {
   const [geometryMathConstructionRelationships, setGeometryMathConstructionRelationships] = useState<GeometryMathConstructionRelationship[]>([]);
   const [geometryRightPanelTab, setGeometryRightPanelTab] = useState<GeometryRightPanelTab>("inspector");
   const [geometryInspectorPanelTab, setGeometryInspectorPanelTab] = useState<GeometryInspectorPanelTab>("probe");
+  const geometryPanelTabSwitchLockedRef = useRef(false);
   const geometryDependenciesPanelActive =
     mode === "geometry" &&
     geometryMode === "procedural" &&
     geometryRightPanelTab === "inspector" &&
     geometryInspectorPanelTab === "dependencies";
+  const runGeometryPanelTabSwitch = useCallback((apply: () => void) => {
+    if (geometryPanelTabSwitchLockedRef.current) return;
+    geometryPanelTabSwitchLockedRef.current = true;
+    React.startTransition(apply);
+    window.setTimeout(() => {
+      geometryPanelTabSwitchLockedRef.current = false;
+    }, 120);
+  }, []);
   const [geometryRelationTargetDerivedId, setGeometryRelationTargetDerivedId] = useState<string | null>(null);
   const [geometryRelationLocalAxis, setGeometryRelationLocalAxis] = useState<"x" | "y" | "z">("y");
   const [geometryRelationFaceSide, setGeometryRelationFaceSide] = useState<"min" | "max">("max");
@@ -58967,8 +58976,10 @@ case "mobius":
                           key={`geometry-right-panel-tab-${tabId}`}
                           type="button"
                           onClick={() => {
-                            setGeometryRightPanelTab(tabId);
-                            if (tabId === "scene") setGeometryInspectorPanelTab("probe");
+                            runGeometryPanelTabSwitch(() => {
+                              setGeometryRightPanelTab(tabId);
+                              if (tabId === "scene") setGeometryInspectorPanelTab("probe");
+                            });
                           }}
                           style={pill(geometryRightPanelTab === tabId)}
                           aria-pressed={geometryRightPanelTab === tabId}
@@ -58987,7 +58998,7 @@ case "mobius":
                             <button
                               key={`geometry-inspector-tab-${tabId}`}
                               type="button"
-                              onClick={() => setGeometryInspectorPanelTab(tabId)}
+                              onClick={() => runGeometryPanelTabSwitch(() => setGeometryInspectorPanelTab(tabId))}
                               style={pill(geometryInspectorPanelTab === tabId)}
                               aria-pressed={geometryInspectorPanelTab === tabId}
                             >
