@@ -156,6 +156,7 @@ import {
   sanitizeGeometryComparePair,
   sanitizeGeometryPickRef,
 } from "./geometry/stabilityGuards";
+import { getGeometryLiveValidityMeta } from "./geometry/liveValidityStatus";
 
 import type { GaussPoint, GaussColorMode } from "./components/gaussMapUtils";
 import type { SurfaceSampleSet } from "./math/sampling/surfaceSampling";
@@ -40300,6 +40301,7 @@ case "mobius":
     for (const entry of geometryMathConstructions) {
       const evalEntry = geometryMathConstructionOverlays.byId.get(entry.id) ?? null;
       const status = evalEntry?.status ?? "invalid";
+      const liveValidity = getGeometryLiveValidityMeta(status, evalEntry?.statusMessage);
       const dependencyNames = [
         ...entry.sourceObjectIds.map(mathSourceLabel),
         ...(entry.sourceConstructionId ? [mathSourceLabel(entry.sourceConstructionId)] : []),
@@ -40312,7 +40314,7 @@ case "mobius":
         name: entry.name,
         type: `derived/math-${entry.type}`,
         sourceDefinition: dependencyNames.length ? dependencyNames.join(", ") : "No sources",
-        displayState: `${entry.visible ? "visible" : "hidden"} · ${status}${relationCount ? ` · ${relationCount} relationship${relationCount === 1 ? "" : "s"}` : ""}`,
+        displayState: `${entry.visible ? "visible" : "hidden"} · ${liveValidity.label}${relationCount ? ` · ${relationCount} relationship${relationCount === 1 ? "" : "s"}` : ""}`,
         parentId: mathParentId(entry),
         category: "derived",
         sceneRole: "overlay",
@@ -51311,6 +51313,7 @@ case "mobius":
                               {geometryMathConstructions.slice(0, 8).map((entry) => {
                                 const evalEntry = geometryMathConstructionOverlays.byId.get(entry.id);
                                 const status = evalEntry?.status ?? "invalid";
+                                const liveValidity = getGeometryLiveValidityMeta(status, evalEntry?.statusMessage);
                                 return (
                                   <button
                                     key={`geometry-math-added-chip-${entry.id}`}
@@ -51323,7 +51326,7 @@ case "mobius":
                                       padding: "2px 7px",
                                       fontSize: 10.5,
                                     }}
-                                    title={`${GEOMETRY_MATH_CONSTRUCTION_TYPE_LABELS[entry.type]} · ${status}`}
+                                    title={`${GEOMETRY_MATH_CONSTRUCTION_TYPE_LABELS[entry.type]} · ${liveValidity.label}`}
                                   >
                                     {entry.name}
                                   </button>
@@ -51568,8 +51571,7 @@ case "mobius":
                             {geometryMathConstructions.map((entry) => {
                               const evalEntry = geometryMathConstructionOverlays.byId.get(entry.id);
                               const status = evalEntry?.status ?? "invalid";
-                              const statusColor =
-                                status === "valid" ? "#047857" : status === "broken-source" ? "#b45309" : "#b91c1c";
+                              const liveValidity = getGeometryLiveValidityMeta(status, evalEntry?.statusMessage);
                               const selected = geometrySelectedMathConstructionId === entry.id;
                               return (
                                 <div
@@ -51588,7 +51590,31 @@ case "mobius":
                                 >
                                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
                                     <strong style={{ fontSize: 11 }}>{entry.name}</strong>
-                                    <span style={{ color: statusColor, fontWeight: 700 }}>{status}</span>
+                                    <span
+                                      style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 4,
+                                        color: liveValidity.color,
+                                        background: liveValidity.background,
+                                        border: `1px solid ${liveValidity.border}`,
+                                        borderRadius: 999,
+                                        padding: "1px 6px",
+                                        fontWeight: 700,
+                                      }}
+                                      title={evalEntry?.statusMessage ?? liveValidity.label}
+                                    >
+                                      <span
+                                        aria-hidden="true"
+                                        style={{
+                                          width: 7,
+                                          height: 7,
+                                          borderRadius: "50%",
+                                          background: liveValidity.color,
+                                        }}
+                                      />
+                                      {liveValidity.label}
+                                    </span>
                                   </div>
                                   <div style={{ color: "#64748b" }}>
                                     {GEOMETRY_MATH_CONSTRUCTION_TYPE_LABELS[entry.type]}
