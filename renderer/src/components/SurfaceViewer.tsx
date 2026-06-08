@@ -355,6 +355,9 @@ export type OverlayLabel = {
   text: string;
   position: { x: number; y: number; z: number };
   color?: number;
+  backgroundColor?: number;
+  backgroundOpacity?: number;
+  borderColor?: number;
   size?: number;
   opacity?: number;
 };
@@ -7038,6 +7041,26 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const sizeHint = radiusRef.current || 3;
     const baseSize = Math.max(0.08, (sizeHint / 26) * 0.8);
     const toCss = (color: number) => `#${color.toString(16).padStart(6, "0")}`;
+    const toRgba = (color: number, alpha: number) => {
+      const r = (color >> 16) & 255;
+      const g = (color >> 8) & 255;
+      const b = color & 255;
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    };
+    const roundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
+      const radius = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + w - radius, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+      ctx.lineTo(x + w, y + h - radius);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+      ctx.lineTo(x + radius, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+    };
     const maxAniso = rendererRef.current?.capabilities?.getMaxAnisotropy?.() ?? 0;
 
     for (const set of effectiveOverlayLabelSets) {
@@ -7067,6 +7090,16 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         canvas.width = width;
         canvas.height = height;
         ctx.font = fontWithSize;
+        if (label.backgroundColor != null) {
+          roundedRect(ctx, 1, 1, width - 2, height - 2, Math.max(6, fontSize * 0.35));
+          ctx.fillStyle = toRgba(label.backgroundColor, label.backgroundOpacity ?? 0.88);
+          ctx.fill();
+          if (label.borderColor != null) {
+            ctx.lineWidth = Math.max(2, Math.round(fontSize * 0.08));
+            ctx.strokeStyle = toCss(label.borderColor);
+            ctx.stroke();
+          }
+        }
         ctx.fillStyle = toCss(color);
         ctx.textBaseline = "middle";
         ctx.textAlign = "center";
@@ -11087,4 +11120,3 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     </div>
   );
 };
-

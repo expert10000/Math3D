@@ -15161,10 +15161,13 @@ const App: React.FC = () => {
       const addLabel = (point: { x: number; y: number; z: number }) => {
         evalLabels.push({
           text: viewportBadgeById.get(object.id) ?? object.name,
-          position: { x: point.x + 0.05, y: point.y + 0.05, z: point.z + 0.05 },
+          position: { x: point.x + 0.09, y: point.y + 0.09, z: point.z + 0.09 },
           color: 0x0f172a,
-          size: 0.74,
-          opacity: 0.96,
+          backgroundColor: 0xffffff,
+          backgroundOpacity: 0.92,
+          borderColor: 0x2563eb,
+          size: 1.05,
+          opacity: 0.98,
         });
       };
       if (!coreEval || coreEval.status !== "valid" || !coreEval.value) {
@@ -15905,9 +15908,21 @@ const App: React.FC = () => {
         position: { x: number; y: number; z: number },
         color = 0x1f2937,
         size = 0.9,
-        opacity = 0.96
+        opacity = 0.96,
+        badge = false
       ) => {
-        const label = { text, position, color, size, opacity };
+        const label = badge
+          ? {
+              text,
+              position,
+              color,
+              backgroundColor: 0xffffff,
+              backgroundOpacity: 0.92,
+              borderColor: 0x2563eb,
+              size,
+              opacity,
+            }
+          : { text, position, color, size, opacity };
         evalLabels.push(label);
         if (object.visible) labels.push(label);
       };
@@ -15930,10 +15945,11 @@ const App: React.FC = () => {
         if (status === "valid" && origin && badge && !object.frozenSnapshot) {
           addEvalLabel(
             badge,
-            { x: origin.x + 0.05, y: origin.y + 0.05, z: origin.z + 0.05 },
+            { x: origin.x + 0.09, y: origin.y + 0.09, z: origin.z + 0.09 },
             0x0f172a,
-            0.74,
-            0.96
+            1.05,
+            0.98,
+            true
           );
         }
         if (evalLabels.length) evalLabelSets.push({ labels: evalLabels, size: 0.9 });
