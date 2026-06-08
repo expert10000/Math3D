@@ -183,8 +183,13 @@ const resolveGalleryAssetPath = (relativePath: string): string => {
   }
 };
 
+const capturedObjectThumbsAvailable = (): boolean => {
+  if (typeof window === "undefined") return false;
+  return window.location.protocol === "file:";
+};
+
 const capturedObjectThumbPath = (objectId: string): string | null =>
-  CAPTURED_OBJECT_THUMB_IDS.has(objectId)
+  capturedObjectThumbsAvailable() && CAPTURED_OBJECT_THUMB_IDS.has(objectId)
     ? resolveGalleryAssetPath(`gallery-images/captured/objects/${objectId}.png`)
     : null;
 

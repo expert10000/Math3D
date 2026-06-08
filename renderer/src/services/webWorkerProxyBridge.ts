@@ -8,6 +8,12 @@ const proxyEnabled =
 
 const proxyBase = (proxyBaseRaw || "/api/worker").replace(/\/+$/, "");
 
+const isStaticPagesHost = (): boolean => {
+  if (typeof window === "undefined") return false;
+  const hostname = window.location.hostname.toLowerCase();
+  return hostname.endsWith(".github.io");
+};
+
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 const asErrorMessage = (error: unknown, fallback: string): string => {
@@ -274,6 +280,7 @@ function installDiagnosticsBridge(win: Window & typeof globalThis) {
 export function installWebWorkerProxyBridge() {
   if (!proxyEnabled) return;
   if (typeof window === "undefined") return;
+  if (isStaticPagesHost()) return;
   const win = window as Window & typeof globalThis;
 
   installCgalBridge(win);
