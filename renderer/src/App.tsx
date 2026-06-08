@@ -7810,6 +7810,13 @@ const App: React.FC = () => {
   const [geometryMathConstructionRelationshipTargetCircleId, setGeometryMathConstructionRelationshipTargetCircleId] = useState<string | null>(null);
   const [geometryMathConstructionRelationshipTargetPointId, setGeometryMathConstructionRelationshipTargetPointId] = useState<string | null>(null);
   const [geometryMathConstructionRelationships, setGeometryMathConstructionRelationships] = useState<GeometryMathConstructionRelationship[]>([]);
+  const [geometryRightPanelTab, setGeometryRightPanelTab] = useState<GeometryRightPanelTab>("inspector");
+  const [geometryInspectorPanelTab, setGeometryInspectorPanelTab] = useState<GeometryInspectorPanelTab>("probe");
+  const geometryDependenciesPanelActive =
+    mode === "geometry" &&
+    geometryMode === "procedural" &&
+    geometryRightPanelTab === "inspector" &&
+    geometryInspectorPanelTab === "dependencies";
   const [geometryRelationTargetDerivedId, setGeometryRelationTargetDerivedId] = useState<string | null>(null);
   const [geometryRelationLocalAxis, setGeometryRelationLocalAxis] = useState<"x" | "y" | "z">("y");
   const [geometryRelationFaceSide, setGeometryRelationFaceSide] = useState<"min" | "max">("max");
@@ -17064,13 +17071,6 @@ const App: React.FC = () => {
       return changed ? next : prev;
     });
   }, [geometryDerivedConstructionOverlays.byId, resolveGeometrySceneMeshById]);
-  const [geometryRightPanelTab, setGeometryRightPanelTab] = useState<GeometryRightPanelTab>("inspector");
-  const [geometryInspectorPanelTab, setGeometryInspectorPanelTab] = useState<GeometryInspectorPanelTab>("probe");
-  const geometryDependenciesPanelActive =
-    mode === "geometry" &&
-    geometryMode === "procedural" &&
-    geometryRightPanelTab === "inspector" &&
-    geometryInspectorPanelTab === "dependencies";
   const geometryDependencyGraph = useMemo(() => {
     if (!geometryDependenciesPanelActive) {
       return {
