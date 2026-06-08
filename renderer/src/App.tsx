@@ -156,7 +156,11 @@ import {
   sanitizeGeometryComparePair,
   sanitizeGeometryPickRef,
 } from "./geometry/stabilityGuards";
-import { getGeometryLiveValidityMeta } from "./geometry/liveValidityStatus";
+import {
+  getGeometryLiveValidityMeta,
+  getGeometryLiveValidityMetaByKind,
+  type GeometryLiveValidityKind,
+} from "./geometry/liveValidityStatus";
 
 import type { GaussPoint, GaussColorMode } from "./components/gaussMapUtils";
 import type { SurfaceSampleSet } from "./math/sampling/surfaceSampling";
@@ -2371,6 +2375,7 @@ type GeometryDependencyNode = {
   objectId?: string;
   derivedId?: string;
   status: GeometryDependencyState;
+  liveValidityKind?: GeometryLiveValidityKind;
 };
 type GeometryDependencyEdge = {
   sourceId: string;
@@ -2522,6 +2527,10 @@ const geometryDependencyStateFromMathConstructionStatus = (
   if (status === "broken-source") return "broken-source";
   return "stale";
 };
+const geometryDependencyNodeStatusMeta = (node: Pick<GeometryDependencyNode, "status" | "liveValidityKind">) =>
+  node.liveValidityKind
+    ? getGeometryLiveValidityMetaByKind(node.liveValidityKind)
+    : GEOMETRY_DEPENDENCY_STATE_META[node.status];
 type GeometryMeasuredEdgeEntry = {
   id: string;
   at: number;
@@ -17116,12 +17125,14 @@ const App: React.FC = () => {
     const mathConstructionIdSet = new Set(geometryMathConstructions.map((entry) => entry.id));
     for (const entry of geometryMathConstructions) {
       const evalEntry = geometryMathConstructionOverlays.byId.get(entry.id) ?? null;
+      const liveValidity = getGeometryLiveValidityMeta(evalEntry?.status, evalEntry?.statusMessage);
       addNode({
         id: `math:${entry.id}`,
         kind: geometryDependencyNodeKindFromMathConstructionType(entry.type),
         label: entry.name,
         derivedId: entry.id,
         status: geometryDependencyStateFromMathConstructionStatus(evalEntry?.status),
+        liveValidityKind: liveValidity.kind,
       });
       for (const sourceId of entry.sourceObjectIds) {
         addEdge({
@@ -17244,7 +17255,11 @@ const App: React.FC = () => {
       });
     }
     const brokenNodes = nodes.filter(
-      (node) => node.status === "broken-source" || node.status === "ambiguous-target"
+      (node) =>
+        node.status === "broken-source" ||
+        node.status === "ambiguous-target" ||
+        node.liveValidityKind === "missing-source" ||
+        node.liveValidityKind === "broken-dependency"
     );
     return { nodes, edges, nodeById, brokenNodes };
   }, [
@@ -17298,6 +17313,7 @@ const App: React.FC = () => {
       label: node.label,
       kind: node.kind,
       status: node.status,
+      liveValidityKind: node.liveValidityKind,
     }));
     const treeEdges: ConstructionDependencyTreeInputEdge[] = geometryDependencyGraph.edges.filter(
       (edge) => visibleNodeIds.has(edge.sourceId) && visibleNodeIds.has(edge.targetId)
@@ -17352,6 +17368,7 @@ const App: React.FC = () => {
       label: node.label,
       kind: node.kind,
       status: node.status,
+      liveValidityKind: node.liveValidityKind,
     }));
     const treeEdges: ConstructionDependencyTreeInputEdge[] = geometryDependencyGraph.edges.filter(
       (edge) => visibleNodeIds.has(edge.sourceId) && visibleNodeIds.has(edge.targetId)
@@ -59184,14 +59201,15 @@ case "mobius":
                                     style={{
                                       fontSize: 10.5,
                                       fontWeight: 700,
-                                      color: GEOMETRY_DEPENDENCY_STATE_META[geometryInspectorDependencyDetails.node.status].color,
-                                      border: `1px solid ${GEOMETRY_DEPENDENCY_STATE_META[geometryInspectorDependencyDetails.node.status].border}`,
-                                      background: GEOMETRY_DEPENDENCY_STATE_META[geometryInspectorDependencyDetails.node.status].background,
+                                      color: geometryDependencyNodeStatusMeta(geometryInspectorDependencyDetails.node).color,
+                                      border: `1px solid ${geometryDependencyNodeStatusMeta(geometryInspectorDependencyDetails.node).border}`,
+                                      background: geometryDependencyNodeStatusMeta(geometryInspectorDependencyDetails.node).background,
                                       borderRadius: 999,
                                       padding: "2px 8px",
                                     }}
                                   >
-                                    Recompute status: {GEOMETRY_DEPENDENCY_STATE_META[geometryInspectorDependencyDetails.node.status].label}
+                                    {geometryInspectorDependencyDetails.node.liveValidityKind ? "Validity" : "Recompute status"}:{" "}
+                                    {geometryDependencyNodeStatusMeta(geometryInspectorDependencyDetails.node).label}
                                   </span>
                                 </div>
                                 <div>
@@ -59242,7 +59260,7 @@ case "mobius":
                                       }}
                                     >
                                       <div style={{ fontWeight: 700 }}>{node.label}</div>
-                                      <div>{GEOMETRY_DEPENDENCY_STATE_META[node.status].label}</div>
+                                      <div>{geometryDependencyNodeStatusMeta(node).label}</div>
                                     </div>
                                   ))}
                                 </div>
@@ -65989,7 +66007,9 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
     const expandable = node.children.length > 0 || inputs.length > 0;
     const collapsed = collapsedIds.has(node.id);
     const color = kindColor(node.kind);
-    const statusMeta = GEOMETRY_DEPENDENCY_STATE_META[node.status as GeometryDependencyState] ?? GEOMETRY_DEPENDENCY_STATE_META.stale;
+    const statusMeta = node.liveValidityKind
+      ? getGeometryLiveValidityMetaByKind(node.liveValidityKind)
+      : GEOMETRY_DEPENDENCY_STATE_META[node.status as GeometryDependencyState] ?? GEOMETRY_DEPENDENCY_STATE_META.stale;
     return (
       <div key={node.id} style={{ display: "grid", gap: 4 }}>
         <div

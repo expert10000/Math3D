@@ -1,3 +1,5 @@
+import type { GeometryLiveValidityKind } from "./liveValidityStatus";
+
 export type ConstructionDependencyTreeStatus =
   | "valid"
   | "updating"
@@ -11,6 +13,7 @@ export type ConstructionDependencyTreeInputNode = {
   label: string;
   kind: string;
   status: ConstructionDependencyTreeStatus;
+  liveValidityKind?: GeometryLiveValidityKind;
 };
 
 export type ConstructionDependencyTreeInputEdge = {

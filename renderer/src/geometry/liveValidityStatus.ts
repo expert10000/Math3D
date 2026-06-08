@@ -43,6 +43,9 @@ const LIVE_VALIDITY_META: Record<GeometryLiveValidityKind, GeometryLiveValidityM
   },
 };
 
+export const getGeometryLiveValidityMetaByKind = (kind: GeometryLiveValidityKind): GeometryLiveValidityMeta =>
+  LIVE_VALIDITY_META[kind];
+
 export const getGeometryLiveValidityMeta = (
   status: "valid" | "broken-source" | "invalid" | undefined,
   statusMessage?: string | null

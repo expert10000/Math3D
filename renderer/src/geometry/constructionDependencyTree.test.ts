@@ -13,7 +13,13 @@ const nodes: ConstructionDependencyTreeInputNode[] = [
   { id: "object:octa", label: "Octahedron #1", kind: "geometry-object", status: "valid" },
   { id: "face:box:3", label: "Face F4", kind: "face-reference", status: "valid" },
   { id: "math:M1", label: "Midpoint M1", kind: "derived-point", status: "valid" },
-  { id: "derived:N1", label: "Normal N1", kind: "derived-line", status: "valid" },
+  {
+    id: "derived:N1",
+    label: "Normal N1",
+    kind: "derived-line",
+    status: "stale",
+    liveValidityKind: "needs-point",
+  },
   { id: "derived:TP1", label: "Tangent Plane TP1", kind: "derived-plane", status: "valid" },
 ];
 
@@ -38,6 +44,7 @@ describe("constructionDependencyTree", () => {
     expect(tree?.children.find((child) => child.id === "math:M1")?.children).toEqual([]);
     const face = box?.children.find((child) => child.id === "face:box:3");
     expect(face?.children[0]?.label).toBe("Normal N1");
+    expect(face?.children[0]?.liveValidityKind).toBe("needs-point");
     expect(face?.children[0]?.children[0]?.label).toBe("Tangent Plane TP1");
   });
 
