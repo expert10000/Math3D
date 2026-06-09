@@ -2202,6 +2202,7 @@ type GeometryTransformPatch = {
   scale?: Partial<Vec3>;
 };
 
+type GeometryTransformMode = "move" | "rotate" | "scale" | "edit";
 type GeometryGizmoSpace = "world" | "local" | "parent";
 type GeometryTransformPivotMode = "center" | "origin" | "bboxCenter" | "bottomCenter" | "custom";
 type GeometryProbeSelectionMode = "object" | "face" | "edge" | "vertex";
@@ -2248,6 +2249,16 @@ type GeometryProbeSelectionDetails = {
   edgePoints: [{ x: number; y: number; z: number }, { x: number; y: number; z: number }] | null;
   faceVertices: [{ x: number; y: number; z: number }, { x: number; y: number; z: number }, { x: number; y: number; z: number }] | null;
 };
+
+const GEOMETRY_TRANSFORM_MODE_OPTIONS: Array<{ id: GeometryTransformMode; label: string; title: string }> = [
+  { id: "move", label: "Move", title: "Move / Translate (W)" },
+  { id: "rotate", label: "Rotate", title: "Rotate around X/Y/Z rings (E)" },
+  { id: "scale", label: "Scale", title: "Scale along axes or uniformly (R)" },
+  { id: "edit", label: "Edit", title: "Edit construction source handles (T)" },
+];
+
+const geometryTransformModeLabel = (mode: GeometryTransformMode) =>
+  mode === "move" ? "Move / Translate" : mode === "edit" ? "Edit Construction" : mode[0].toUpperCase() + mode.slice(1);
 type GeometryDerivedConstructionType =
   | "vertex-point-marker"
   | "vertex-coordinate-label"
@@ -7794,6 +7805,7 @@ const App: React.FC = () => {
   ]);
   const geometryDemoScene =
     geometryDemoFamily === "stereometry" ? geometryDemo.scene : geometryPlanimetryScene;
+  const [geometryTransformMode, setGeometryTransformMode] = useState<GeometryTransformMode>("move");
   const [geometryConstructionState, setGeometryConstructionState] = useState<ConstructionLabState | null>(null);
   const [geometryScratchSceneSeed, setGeometryScratchSceneSeed] = useState<ConstructionLabSeed | null>(null);
   const [geometryWorkbookSceneSeeds, setGeometryWorkbookSceneSeeds] = useState<Record<string, ConstructionLabSeed>>({});
@@ -7969,16 +7981,86 @@ const App: React.FC = () => {
     const node = geometryConstructionState.nodes.find((entry) => entry.id === selectedId);
     return node?.type === "freePoint" ? node : null;
   }, [geometryConstructionState]);
-  const handleProblemDragStart = useCallback(() => {
-    if (!geometrySelectedConstructionFreePoint) return;
+  const geometrySelectedConstructionEditSourcePointIds = useMemo(() => {
+    if (geometryTransformMode !== "edit") return [] as string[];
+    const selectedId = geometryConstructionState?.selectedNodeId;
+    if (!selectedId || !geometryConstructionState) return [];
+    const node = geometryConstructionState.nodes.find((entry) => entry.id === selectedId);
+    if (!node) return [];
+    if (node.type === "lineThroughPoints" || node.type === "midpoint") return [node.a, node.b];
+    if (node.type === "circleThrough3Points" || node.type === "circumcenter") return [node.a, node.b, node.c];
+    return node.type === "freePoint" ? [node.id] : [];
+  }, [geometryConstructionState, geometryTransformMode]);
+  const geometrySelectedConstructionEditPoints = useMemo(() => {
+    if (!geometryConstructionState || !geometrySelectedConstructionEditSourcePointIds.length) return [];
+    const wanted = new Set(geometrySelectedConstructionEditSourcePointIds);
+    return geometryConstructionState.nodes.flatMap((entry) =>
+      entry.type === "freePoint" && wanted.has(entry.id)
+        ? [{ id: entry.id, label: entry.label ?? entry.id, point: entry.point }]
+        : []
+    );
+  }, [geometryConstructionState, geometrySelectedConstructionEditSourcePointIds]);
+  const geometryConstructionEditHandlePointSets = useMemo(() => {
+    if (!geometrySelectedConstructionEditPoints.length) return null;
+    return [
+      {
+        points: geometrySelectedConstructionEditPoints.map((entry) => entry.point),
+        color: 0xf59e0b,
+        size: 0.1,
+        opacity: 0.98,
+      },
+    ];
+  }, [geometrySelectedConstructionEditPoints]);
+  const geometryConstructionEditLabelSets = useMemo(() => {
+    if (!geometrySelectedConstructionEditPoints.length) return null;
+    return [
+      {
+        labels: geometrySelectedConstructionEditPoints.map((entry) => ({
+          text: entry.label,
+          position: { x: entry.point.x, y: entry.point.y + 0.12, z: entry.point.z },
+          color: 0x92400e,
+          size: 0.95,
+          opacity: 0.98,
+        })),
+      },
+    ];
+  }, [geometrySelectedConstructionEditPoints]);
+  const geometryEditableConstructionPoint = useMemo(() => {
+    if (geometrySelectedConstructionFreePoint) {
+      return {
+        id: geometrySelectedConstructionFreePoint.id,
+        point: geometrySelectedConstructionFreePoint.point,
+      };
+    }
+    return geometrySelectedConstructionEditPoints[0] ?? null;
+  }, [geometrySelectedConstructionEditPoints, geometrySelectedConstructionFreePoint]);
+  const handleProblemDragStart = useCallback((info?: { point: { x: number; y: number; z: number }; meshKey?: string }) => {
+    const freePoint = geometrySelectedConstructionFreePoint
+      ? {
+          id: geometrySelectedConstructionFreePoint.id,
+          point: geometrySelectedConstructionFreePoint.point,
+        }
+      : null;
+    let target = freePoint;
+    if (!target && geometrySelectedConstructionEditPoints.length) {
+      const p = info?.point;
+      target =
+        p
+          ? geometrySelectedConstructionEditPoints.reduce((best, entry) => {
+              const dist = Math.hypot(entry.point.x - p.x, entry.point.y - p.y, entry.point.z - p.z);
+              return !best || dist < best.dist ? { id: entry.id, point: entry.point, dist } : best;
+            }, null as null | { id: string; point: { x: number; y: number; z: number }; dist: number })
+          : { ...geometrySelectedConstructionEditPoints[0], dist: 0 };
+    }
+    if (!target) return;
     geometryProblemDragRef.current = {
-      id: geometrySelectedConstructionFreePoint.id,
-      startPoint: { ...geometrySelectedConstructionFreePoint.point },
+      id: target.id,
+      startPoint: { ...target.point },
     };
-  }, [geometrySelectedConstructionFreePoint]);
+  }, [geometrySelectedConstructionEditPoints, geometrySelectedConstructionFreePoint]);
   const handleProblemDrag = useCallback((info: { meshKey?: string; delta: { x: number; y: number; z: number } }) => {
     const drag = geometryProblemDragRef.current;
-    if (!drag || !info.meshKey || info.meshKey !== drag.id) return;
+    if (!drag) return;
     setGeometryPendingViewportMovePoint({
       id: drag.id,
       point: {
@@ -8118,7 +8200,6 @@ const App: React.FC = () => {
   const [geometryBakeError, setGeometryBakeError] = useState<string | null>(null);
   const geometryHistoryIntentQueueRef = useRef<Map<string, GeometryQueuedHistoryIntent[]>>(new Map());
   const [geometryGizmoEnabled, setGeometryGizmoEnabled] = useState(true);
-  const [geometryGizmoMode, setGeometryGizmoMode] = useState<"translate" | "rotate" | "scale">("translate");
   const [geometryGizmoSpace, setGeometryGizmoSpace] = useState<GeometryGizmoSpace>("world");
   const [geometryTransformPivotMode, setGeometryTransformPivotMode] = useState<GeometryTransformPivotMode>("center");
   const [geometryTransformPivotCustom, setGeometryTransformPivotCustom] = useState<Vec3>({ x: 0, y: 0, z: 0 });
@@ -8192,6 +8273,28 @@ const App: React.FC = () => {
     point: SnapPoint3;
     kind: GeometrySnapPreviewKind;
   } | null>(null);
+  const geometryGizmoMode: "translate" | "rotate" | "scale" =
+    geometryTransformMode === "rotate" ? "rotate" : geometryTransformMode === "scale" ? "scale" : "translate";
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || target?.isContentEditable) return;
+      const key = event.key.toLowerCase();
+      const nextMode =
+        key === "w" ? "move" :
+        key === "e" ? "rotate" :
+        key === "r" ? "scale" :
+        key === "t" ? "edit" :
+        null;
+      if (!nextMode) return;
+      event.preventDefault();
+      setGeometryTransformMode(nextMode);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
   const [geometryPolySharpEdgesEnabled, setGeometryPolySharpEdgesEnabled] = useState(false);
   const [geometryPolyDihedralThresholdDeg, setGeometryPolyDihedralThresholdDeg] = useState(25);
   const [geometryPolyAngleDefectEnabled, setGeometryPolyAngleDefectEnabled] = useState(false);
@@ -17136,6 +17239,17 @@ const App: React.FC = () => {
     if (!geometrySelectedDerivedConstructionId) return null;
     return geometryDerivedConstructionOverlays.byId.get(geometrySelectedDerivedConstructionId) ?? null;
   }, [geometryDerivedConstructionOverlays.byId, geometrySelectedDerivedConstructionId]);
+  const geometrySelectedMathConstructionEval = useMemo(() => {
+    if (!geometrySelectedMathConstructionId) return null;
+    return geometryMathConstructionOverlays.byId.get(geometrySelectedMathConstructionId) ?? null;
+  }, [geometryMathConstructionOverlays.byId, geometrySelectedMathConstructionId]);
+  const geometryDerivedTransformGuardMessage = useMemo(() => {
+    if (geometryTransformMode === "edit") return null;
+    if (geometrySelectedDerivedConstructionEval || geometrySelectedMathConstructionEval) {
+      return "Derived object cannot be transformed directly. Detach/Bake first or transform source object.";
+    }
+    return null;
+  }, [geometrySelectedDerivedConstructionEval, geometrySelectedMathConstructionEval, geometryTransformMode]);
   useEffect(() => {
     const byId = geometryDerivedConstructionOverlays.byId;
     if (!byId.size) return;
@@ -46390,6 +46504,9 @@ case "mobius":
                     nodeById={unifiedObjectModel.nodeById}
                     selectedSceneObject={unifiedSelectedSceneObject}
                     selectedSceneObjectLocked={unifiedSelectedSceneLocked}
+                    activeTransformMode={geometryTransformMode}
+                    activeTransformPivotMode={geometryTransformPivotMode}
+                    activeTransformSpace={geometryGizmoSpace}
                     selectedSceneMeshStats={unifiedSelectedSceneMeshStats}
                     activeSurfaceMeshStats={surfaceMeshStats}
                     activeSurfaceMeshBounds={surfaceMeshBounds}
@@ -51638,6 +51755,80 @@ case "mobius":
                           <div style={{ fontSize: 10.5, color: "#475569" }}>
                             Operations modify or derive from the selected construction, probe entity, or scene object.
                           </div>
+                          <div style={{ display: "grid", gap: 5 }}>
+                            <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Transform</div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              {GEOMETRY_TRANSFORM_MODE_OPTIONS.map((option) => {
+                                const active = geometryTransformMode === option.id;
+                                return (
+                                  <button
+                                    key={`construct-transform-${option.id}`}
+                                    type="button"
+                                    title={option.title}
+                                    onClick={() => setGeometryTransformMode(option.id)}
+                                    style={{
+                                      border: "1px solid " + (active ? "#2563eb" : "#cbd5e1"),
+                                      background: active ? "#dbeafe" : "#fff",
+                                      color: active ? "#1d4ed8" : "#334155",
+                                      fontWeight: active ? 800 : 600,
+                                    }}
+                                  >
+                                    {option.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (geometrySelectedDerivedConstructionEval) {
+                                    if (geometrySelectedDerivedConstructionEval.object.frozenSnapshot) {
+                                      handleUnfreezeDerivedConstruction(geometrySelectedDerivedConstructionEval.object.id);
+                                    } else {
+                                      handleFreezeDerivedConstruction(geometrySelectedDerivedConstructionEval.object.id);
+                                    }
+                                    return;
+                                  }
+                                  setGeometryCreateActionStatus("Select a derived construction object to detach.");
+                                }}
+                                disabled={!geometrySelectedDerivedConstructionEval}
+                                title="Detach freezes a derived helper so it can stop following its source."
+                              >
+                                Detach
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleBakeSelectedTransformToMesh}
+                                disabled={!geometrySelectedSceneObject}
+                                title="Bake selected scene object transform into an editable mesh."
+                              >
+                                Bake
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRegenerateDerivedProducts("selected")}
+                                title="Recompute stale dependents for the selected object."
+                              >
+                                Recompute
+                              </button>
+                            </div>
+                            {geometryDerivedTransformGuardMessage && (
+                              <div
+                                style={{
+                                  border: "1px solid #fecaca",
+                                  background: "#fef2f2",
+                                  color: "#991b1b",
+                                  borderRadius: 8,
+                                  padding: "6px 8px",
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                This is a derived construction object. {geometryDerivedTransformGuardMessage}
+                              </div>
+                            )}
+                          </div>
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                             <button type="button" onClick={handleRenameSelectedConstructionOperation}>
                               Rename
@@ -52731,18 +52922,31 @@ case "mobius":
                           Enable transform gizmo
                         </label>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          <label style={{ fontSize: 11 }}>
-                            Mode
-                            <select
-                              value={geometryGizmoMode}
-                              onChange={(e) => setGeometryGizmoMode(e.target.value as "translate" | "rotate" | "scale")}
-                              style={{ marginLeft: 6 }}
-                            >
-                              <option value="translate">Move</option>
-                              <option value="rotate">Rotate</option>
-                              <option value="scale">Scale</option>
-                            </select>
-                          </label>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: 11 }}>
+                            <span style={{ fontWeight: 700 }}>Mode</span>
+                            {GEOMETRY_TRANSFORM_MODE_OPTIONS.map((option) => {
+                              const active = geometryTransformMode === option.id;
+                              return (
+                                <button
+                                  key={`transform-tab-mode-${option.id}`}
+                                  type="button"
+                                  title={option.title}
+                                  onClick={() => setGeometryTransformMode(option.id)}
+                                  style={{
+                                    padding: "3px 8px",
+                                    borderRadius: 6,
+                                    border: "1px solid " + (active ? "#2563eb" : "#cbd5e1"),
+                                    background: active ? "#dbeafe" : "#fff",
+                                    color: active ? "#1d4ed8" : "#334155",
+                                    fontWeight: active ? 800 : 600,
+                                    fontSize: 11,
+                                  }}
+                                >
+                                  {option.label}
+                                </button>
+                              );
+                            })}
+                          </div>
                           <label style={{ fontSize: 11 }}>
                             Space
                             <select
@@ -58502,6 +58706,36 @@ case "mobius":
                       paddingBottom: 1,
                     }}
                   >
+                <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+                  <span style={{ fontWeight: 700, color: "#1e3a8a" }}>Transform:</span>
+                  {GEOMETRY_TRANSFORM_MODE_OPTIONS.map((option) => {
+                    const active = geometryTransformMode === option.id;
+                    return (
+                      <button
+                        key={`viewport-transform-${option.id}`}
+                        type="button"
+                        title={option.title}
+                        onClick={() => setGeometryTransformMode(option.id)}
+                        style={{
+                          padding: "3px 8px",
+                          borderRadius: 6,
+                          border: "1px solid " + (active ? "#2563eb" : "#cbd5e1"),
+                          background: active ? "#dbeafe" : "#fff",
+                          color: active ? "#1d4ed8" : "#334155",
+                          fontWeight: active ? 800 : 600,
+                          fontSize: 11,
+                        }}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                  {geometryDerivedTransformGuardMessage && (
+                    <span style={{ color: "#b42318", fontSize: 11, fontWeight: 700 }}>
+                      {geometryDerivedTransformGuardMessage}
+                    </span>
+                  )}
+                </div>
                 <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                   <input
                     type="checkbox"
@@ -58901,23 +59135,28 @@ case "mobius":
                     geometryMode === "demo"
                       ? geometryHighlightPointSets
                       : geometryMode === "scratch" || geometryMode === "workbook"
-                        ? null
+                        ? geometryConstructionEditHandlePointSets
                         : geometryProceduralHighlightPointSets
                   }
-                  overlayLabelSets={geometryProceduralViewerLabelSets}
+                  overlayLabelSets={
+                    geometryConstructionEditLabelSets
+                      ? [...(geometryProceduralViewerLabelSets ?? []), ...geometryConstructionEditLabelSets]
+                      : geometryProceduralViewerLabelSets
+                  }
                   dragEnabled={
                     (geometryMode === "procedural" &&
                       geometryProceduralPanelTab !== "demonstrations" &&
-                      geometryProceduralPanelTab !== "construct") ||
+                      geometryProceduralPanelTab !== "construct" &&
+                      geometryTransformMode !== "edit") ||
                     ((geometryMode === "scratch" || geometryMode === "workbook") &&
-                      !!geometrySelectedConstructionFreePoint &&
+                      !!geometryEditableConstructionPoint &&
                       !geometryPointPlacementEnabled)
                   }
                   onDragStart={
                     geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations"
                       ? handleProceduralDragStart
-                      : (geometryMode === "scratch" || geometryMode === "workbook") &&
-                          geometrySelectedConstructionFreePoint &&
+                    : (geometryMode === "scratch" || geometryMode === "workbook") &&
+                          geometryEditableConstructionPoint &&
                           !geometryPointPlacementEnabled
                         ? handleProblemDragStart
                       : undefined
@@ -58925,8 +59164,8 @@ case "mobius":
                   onDrag={
                     geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations"
                       ? handleProceduralDrag
-                      : (geometryMode === "scratch" || geometryMode === "workbook") &&
-                          geometrySelectedConstructionFreePoint &&
+                    : (geometryMode === "scratch" || geometryMode === "workbook") &&
+                          geometryEditableConstructionPoint &&
                           !geometryPointPlacementEnabled
                         ? handleProblemDrag
                       : undefined
@@ -58934,20 +59173,20 @@ case "mobius":
                   onDragEnd={
                     geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations"
                       ? handleProceduralDragEnd
-                      : (geometryMode === "scratch" || geometryMode === "workbook") &&
-                          geometrySelectedConstructionFreePoint &&
+                    : (geometryMode === "scratch" || geometryMode === "workbook") &&
+                          geometryEditableConstructionPoint &&
                           !geometryPointPlacementEnabled
                         ? handleProblemDragEnd
                       : undefined
                   }
                   dragPlaneAnchor={
                     (geometryMode === "scratch" || geometryMode === "workbook") &&
-                    geometrySelectedConstructionFreePoint &&
+                    geometryEditableConstructionPoint &&
                     !geometryPointPlacementEnabled
                       ? {
-                          point: geometrySelectedConstructionFreePoint.point,
+                          point: geometryEditableConstructionPoint.point,
                           normal: { x: 0, y: 0, z: 1 },
-                          meshKey: geometrySelectedConstructionFreePoint.id,
+                          meshKey: geometryEditableConstructionPoint.id,
                         }
                       : geometryMode === "procedural" &&
                           geometrySelectedSceneObject &&
@@ -58966,6 +59205,8 @@ case "mobius":
                   gizmoEnabled={
                     geometryMode === "procedural" &&
                     geometryProceduralPanelTab !== "demonstrations" &&
+                    geometryTransformMode !== "edit" &&
+                    !geometryDerivedTransformGuardMessage &&
                     geometryGizmoEnabled
                   }
                   gizmoMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
@@ -67045,6 +67286,9 @@ type SurfacesObjectPanelProps = {
   nodeById: Map<string, UnifiedObjectNode>;
   selectedSceneObject: GeometryObject | GeometryDatasetMeshObject | null;
   selectedSceneObjectLocked: boolean;
+  activeTransformMode: GeometryTransformMode;
+  activeTransformPivotMode: GeometryTransformPivotMode;
+  activeTransformSpace: GeometryGizmoSpace;
   selectedSceneMeshStats: { vertCount: number; triCount: number } | null;
   activeSurfaceMeshStats: { vertCount: number; triCount: number } | null;
   activeSurfaceMeshBounds: BBox3 | null;
@@ -67129,6 +67373,9 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   nodeById,
   selectedSceneObject,
   selectedSceneObjectLocked,
+  activeTransformMode,
+  activeTransformPivotMode,
+  activeTransformSpace,
   selectedSceneMeshStats,
   activeSurfaceMeshStats,
   activeSurfaceMeshBounds,
@@ -67461,6 +67708,41 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
         {parentNode?.name && (
           <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>
             Source object: <strong>{parentNode.name}</strong>
+          </div>
+        )}
+        {selectedNode && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: "4px 10px",
+              fontSize: 11,
+              color: "#334155",
+              marginTop: 8,
+            }}
+          >
+            <div><strong>Transform mode:</strong> {geometryTransformModeLabel(activeTransformMode)}</div>
+            <div>
+              <strong>Pivot:</strong>{" "}
+              {activeTransformPivotMode === "origin"
+                ? "World origin"
+                : activeTransformPivotMode === "custom"
+                  ? "Custom point"
+                  : activeTransformPivotMode === "bboxCenter"
+                    ? "Object center"
+                    : activeTransformPivotMode === "bottomCenter"
+                      ? "Object bottom center"
+                      : "Object center"}
+            </div>
+            <div><strong>Space:</strong> {activeTransformSpace === "world" ? "Global" : "Local"}</div>
+            <div>
+              <strong>Derived status:</strong>{" "}
+              {selectedNode.category === "derived" || selectedNode.category === "dataset" || resolvedSceneRole === "derivedResult"
+                ? "Derived"
+                : "Independent"}
+            </div>
+            <div><strong>Source:</strong> {parentNode?.name ?? "n/a"}</div>
+            <div><strong>Dependents:</strong> {derivedProductNames.join(", ") || "none"}</div>
           </div>
         )}
         <div style={{ fontSize: 10, color: "#64748b", marginTop: 4 }}>Family: {currentFamilyLabel}</div>
