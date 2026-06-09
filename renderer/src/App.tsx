@@ -58961,7 +58961,11 @@ case "mobius":
                   overlayLabelSets={geometryProceduralViewerLabelSets}
                   dragEnabled={
                     (geometryMode === "procedural" &&
-                      geometryProceduralPanelTab !== "demonstrations") ||
+                      geometryProceduralPanelTab !== "demonstrations" &&
+                      !(
+                        geometryProceduralPanelTab === "construct" &&
+                        geometryProbeSelectionMode !== "object"
+                      )) ||
                     ((geometryMode === "scratch" || geometryMode === "workbook") &&
                       !!geometrySelectedConstructionFreePoint &&
                       !geometryPointPlacementEnabled)
