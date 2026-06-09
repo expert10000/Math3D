@@ -3791,14 +3791,22 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         },
       });
     };
+    const setSceneOverlayGroupsVisible = (visible: boolean) => {
+      overlayMeshGroupsRef.current && (overlayMeshGroupsRef.current.visible = visible);
+      overlayLabelSetsRef.current && (overlayLabelSetsRef.current.visible = visible);
+      overlayPolylineGroupsRef.current && (overlayPolylineGroupsRef.current.visible = visible);
+      overlayPointSetsRef.current && (overlayPointSetsRef.current.visible = visible);
+    };
     const handleGizmoDraggingChanged = (event: { value?: boolean }) => {
       const dragging = !!event?.value;
       const ctrls = controlsRef.current;
       if (ctrls) ctrls.enabled = !dragging;
       if (dragging) {
+        setSceneOverlayGroupsVisible(false);
         beginMeshInteraction();
       } else {
         emitGizmoObjectChange();
+        setSceneOverlayGroupsVisible(true);
         endMeshInteraction();
       }
     };
@@ -4716,8 +4724,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         const activeTransformControls = transformControlsRef.current;
         if (
           activeTransformControls?.enabled &&
-          (activeTransformControls as any).dragging &&
-          !dragPlaneAnchorRef.current?.meshKey
+          ((activeTransformControls as any).dragging || (activeTransformControls as any).axis)
         ) {
           return;
         }
@@ -5077,6 +5084,14 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     };
 
     const handlePointerMove = (event: PointerEvent) => {
+      const activeTransformControls = transformControlsRef.current;
+      if (
+        activeTransformControls?.enabled &&
+        ((activeTransformControls as any).dragging || (activeTransformControls as any).axis)
+      ) {
+        return;
+      }
+
       const dragState = dragStateRef.current;
       const inspectHoverCb = onInspectHoverRef.current;
       if (!dragState) {

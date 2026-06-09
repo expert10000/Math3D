@@ -11030,15 +11030,20 @@ const App: React.FC = () => {
               z: Math.max(1e-6, info.scale.z),
             };
 
-      handleUpdateGeometryTransform(info.meshKey, {
-        position: nextPosition,
-        rotation: {
-          x: info.rotation.x,
-          y: info.rotation.y,
-          z: info.rotation.z,
-        },
-        scale: nextScale,
-      });
+      const transformPatch: GeometryTransformPatch =
+        geometryGizmoMode === "rotate"
+          ? {
+              rotation: {
+                x: info.rotation.x,
+                y: info.rotation.y,
+                z: info.rotation.z,
+              },
+            }
+          : geometryGizmoMode === "scale"
+            ? { scale: nextScale }
+            : { position: nextPosition };
+
+      handleUpdateGeometryTransform(info.meshKey, transformPatch);
     },
     [
       geometryLockedObjectIds,
@@ -59147,7 +59152,13 @@ case "mobius":
                     (geometryMode === "procedural" &&
                       geometryProceduralPanelTab !== "demonstrations" &&
                       geometryProceduralPanelTab !== "construct" &&
-                      geometryTransformMode !== "edit") ||
+                      geometryTransformMode !== "edit" &&
+                      !(
+                        geometryGizmoEnabled &&
+                        !geometryDerivedTransformGuardMessage &&
+                        geometrySelectedSceneObject &&
+                        !geometryLockedObjectIds.has(geometrySelectedSceneObject.id)
+                      )) ||
                     ((geometryMode === "scratch" || geometryMode === "workbook") &&
                       !!geometryEditableConstructionPoint &&
                       !geometryPointPlacementEnabled)

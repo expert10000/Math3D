@@ -259,6 +259,28 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
     () => [...renderData.overlayPointSets, ...(highlightPointSets ?? [])],
     [renderData.overlayPointSets, highlightPointSets]
   );
+  const surfaceMeshOverrides = useMemo(
+    () =>
+      meshOverrideList
+        ? meshOverrideList.map((entry) => ({
+            id: entry.id,
+            positions: entry.positions,
+            indices: entry.indices,
+            normals: entry.normals ?? null,
+            uvs: entry.uvs ?? null,
+            adjacency: entry.adjacency ?? null,
+            meanEdgeLength: entry.meanEdgeLength ?? null,
+            validation: entry.validation ?? null,
+            color: entry.color,
+            opacity: entry.opacity,
+            roughness: entry.roughness,
+            metalness: entry.metalness,
+            flatShading: entry.flatShading,
+            transform: entry.transform,
+          }))
+        : null,
+    [meshOverrideList]
+  );
 
   return (
     <SurfaceViewer
@@ -276,26 +298,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
             }
           : null
       }
-      surfaceMeshOverrides={
-        meshOverrideList
-          ? meshOverrideList.map((entry) => ({
-              id: entry.id,
-              positions: entry.positions,
-              indices: entry.indices,
-              normals: entry.normals ?? null,
-              uvs: entry.uvs ?? null,
-              adjacency: entry.adjacency ?? null,
-              meanEdgeLength: entry.meanEdgeLength ?? null,
-              validation: entry.validation ?? null,
-              color: entry.color,
-              opacity: entry.opacity,
-              roughness: entry.roughness,
-              metalness: entry.metalness,
-              flatShading: entry.flatShading,
-              transform: entry.transform,
-            }))
-          : null
-      }
+      surfaceMeshOverrides={surfaceMeshOverrides}
       colorMode={colorMode}
       wireframe={wireframe}
       materialOpacity={materialOpacity}
