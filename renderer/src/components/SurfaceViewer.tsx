@@ -1807,6 +1807,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const onDragEndRef = useRef(onDragEnd);
   const onShiftWheelScaleRef = useRef(onShiftWheelScale);
   const onGizmoTransformRef = useRef(onGizmoTransform);
+  const gizmoModeRef = useRef(gizmoMode);
   const suspendRenderingRef = useRef(suspendRendering);
   const onGeodesicPathPickRef = useRef(onGeodesicPathPick);
   const onGeodesicHeatPickRef = useRef(onGeodesicHeatPick);
@@ -1916,6 +1917,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const controlsRef = useRef<OrbitControls | null>(null);
   const transformControlsRef = useRef<TransformControls | null>(null);
   const transformControlsHelperRef = useRef<THREE.Object3D | null>(null);
+  const gizmoOverlayRestoreFrameRef = useRef<number | null>(null);
   const zoomDebounceRef = useRef<number | null>(null);
   const zoomAnimRef = useRef<number | null>(null);
   const zoomNowRef = useRef(0);
@@ -2243,6 +2245,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   useEffect(() => {
     onGizmoTransformRef.current = onGizmoTransform;
   }, [onGizmoTransform]);
+  useEffect(() => {
+    gizmoModeRef.current = gizmoMode;
+  }, [gizmoMode]);
   useEffect(() => {
     suspendRenderingRef.current = suspendRendering;
   }, [suspendRendering]);
@@ -3791,11 +3796,43 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         },
       });
     };
+    const clampGizmoTargetScale = () => {
+      if (gizmoModeRef.current !== "scale") return;
+      const target = transformControlsRef.current?.object;
+      if (!target) return;
+      const minScale = 0.05;
+      const sx = Number.isFinite(target.scale.x) ? Math.max(minScale, target.scale.x) : 1;
+      const sy = Number.isFinite(target.scale.y) ? Math.max(minScale, target.scale.y) : 1;
+      const sz = Number.isFinite(target.scale.z) ? Math.max(minScale, target.scale.z) : 1;
+      if (
+        Math.abs(target.scale.x - sx) > 1e-9 ||
+        Math.abs(target.scale.y - sy) > 1e-9 ||
+        Math.abs(target.scale.z - sz) > 1e-9
+      ) {
+        target.scale.set(sx, sy, sz);
+        target.updateMatrixWorld(true);
+      }
+    };
     const setSceneOverlayGroupsVisible = (visible: boolean) => {
+      if (gizmoOverlayRestoreFrameRef.current != null) {
+        cancelAnimationFrame(gizmoOverlayRestoreFrameRef.current);
+        gizmoOverlayRestoreFrameRef.current = null;
+      }
       overlayMeshGroupsRef.current && (overlayMeshGroupsRef.current.visible = visible);
       overlayLabelSetsRef.current && (overlayLabelSetsRef.current.visible = visible);
       overlayPolylineGroupsRef.current && (overlayPolylineGroupsRef.current.visible = visible);
       overlayPointSetsRef.current && (overlayPointSetsRef.current.visible = visible);
+    };
+    const restoreSceneOverlayGroupsAfterCommit = () => {
+      if (gizmoOverlayRestoreFrameRef.current != null) {
+        cancelAnimationFrame(gizmoOverlayRestoreFrameRef.current);
+      }
+      gizmoOverlayRestoreFrameRef.current = requestAnimationFrame(() => {
+        gizmoOverlayRestoreFrameRef.current = requestAnimationFrame(() => {
+          gizmoOverlayRestoreFrameRef.current = null;
+          setSceneOverlayGroupsVisible(true);
+        });
+      });
     };
     const handleGizmoDraggingChanged = (event: { value?: boolean }) => {
       const dragging = !!event?.value;
@@ -3805,13 +3842,15 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         setSceneOverlayGroupsVisible(false);
         beginMeshInteraction();
       } else {
+        clampGizmoTargetScale();
         emitGizmoObjectChange();
-        setSceneOverlayGroupsVisible(true);
+        restoreSceneOverlayGroupsAfterCommit();
         endMeshInteraction();
       }
     };
     const handleGizmoObjectChange = () => {
       const tc = transformControlsRef.current;
+      clampGizmoTargetScale();
       if ((tc as any)?.dragging) return;
       emitGizmoObjectChange();
     };
@@ -5358,6 +5397,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       forceReframeRef.current = null;
       stopCameraTour("stopped", false);
       cancelAnimationFrame(frameId);
+      if (gizmoOverlayRestoreFrameRef.current != null) {
+        cancelAnimationFrame(gizmoOverlayRestoreFrameRef.current);
+        gizmoOverlayRestoreFrameRef.current = null;
+      }
       if (resizeFrameId) cancelAnimationFrame(resizeFrameId);
       if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
       ro.disconnect();
