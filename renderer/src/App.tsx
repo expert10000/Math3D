@@ -51457,6 +51457,50 @@ case "mobius":
                               </label>
                             ))}
                           </div>
+                          <div
+                            style={{
+                              border: "1px solid #dbe4f0",
+                              borderRadius: 8,
+                              padding: "7px 8px",
+                              background: "#f8fbff",
+                              display: "grid",
+                              gap: 6,
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                              <div style={{ fontSize: 11, fontWeight: 700 }}>Source Selection</div>
+                              <span style={{ fontSize: 10, color: "#64748b" }}>
+                                Select source before creating.
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              {([
+                                ["object", "Object"],
+                                ["face", "Face"],
+                                ["edge", "Edge"],
+                                ["vertex", "Vertex"],
+                              ] as const).map(([modeId, label]) => (
+                                <button
+                                  key={`geometry-construct-probe-mode-${modeId}`}
+                                  type="button"
+                                  onClick={() => setGeometryProbeSelectionMode(modeId)}
+                                  style={pill(geometryProbeSelectionMode === modeId)}
+                                  aria-pressed={geometryProbeSelectionMode === modeId}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                            <div style={{ fontSize: 10.5, color: "#475467" }}>
+                              Selected:
+                              {" "}
+                              {geometryProbeSelectionDetails
+                                ? `${geometryProbeSelectionDetails.mode}${geometryProbeSelectionDetails.faceIndex != null ? ` - face #${geometryProbeSelectionDetails.faceIndex}` : ""}${geometryProbeSelectionDetails.edgeVertexPair ? ` - edge [${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]` : ""}${geometryProbeSelectionDetails.vertexIndex != null ? ` - vertex #${geometryProbeSelectionDetails.vertexIndex}` : ""}`
+                                : geometrySelectedSceneObject
+                                  ? `object - ${geometrySelectedSceneObject.name}`
+                                  : "none"}
+                            </div>
+                          </div>
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
                             <label style={{ display: "grid", gap: 3 }}>
                               Line
@@ -51969,49 +52013,6 @@ case "mobius":
                               No construction objects or relationships yet.
                             </div>
                           )}
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          border: "1px solid #dbe4f0",
-                          borderRadius: 8,
-                          padding: "8px 10px",
-                          background: "#ffffff",
-                          display: "grid",
-                          gap: 8,
-                        }}
-                      >
-                        <div style={{ fontSize: 12, fontWeight: 700 }}>Source Selection</div>
-                        <div style={{ fontSize: 11, color: "#475467" }}>
-                          Use Probe mode and click a vertex/edge/face, or select an object in Scene.
-                        </div>
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          {([
-                            ["object", "Object"],
-                            ["face", "Face"],
-                            ["edge", "Edge"],
-                            ["vertex", "Vertex"],
-                          ] as const).map(([modeId, label]) => (
-                            <button
-                              key={`geometry-construct-probe-mode-${modeId}`}
-                              type="button"
-                              onClick={() => setGeometryProbeSelectionMode(modeId)}
-                              style={pill(geometryProbeSelectionMode === modeId)}
-                              aria-pressed={geometryProbeSelectionMode === modeId}
-                            >
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                        <div style={{ fontSize: 10.5, color: "#475467" }}>
-                          Selected:
-                          {" "}
-                          {geometryProbeSelectionDetails
-                            ? `${geometryProbeSelectionDetails.mode}${geometryProbeSelectionDetails.faceIndex != null ? ` · face #${geometryProbeSelectionDetails.faceIndex}` : ""}${geometryProbeSelectionDetails.edgeVertexPair ? ` · edge [${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]` : ""}${geometryProbeSelectionDetails.vertexIndex != null ? ` · vertex #${geometryProbeSelectionDetails.vertexIndex}` : ""}`
-                            : geometrySelectedSceneObject
-                              ? `object · ${geometrySelectedSceneObject.name}`
-                              : "none"}
                         </div>
                       </div>
                     </div>
