@@ -2420,6 +2420,7 @@ type GeometryMathConstructionRelationshipType =
 type GeometryMathConstructionRelationship = {
   id: string;
   type: GeometryMathConstructionRelationshipType;
+  name?: string;
   sourceId: string;
   targetId: string;
   enabled: boolean;
@@ -2532,6 +2533,70 @@ const geometryDependencyNodeStatusMeta = (node: Pick<GeometryDependencyNode, "st
   node.liveValidityKind
     ? getGeometryLiveValidityMetaByKind(node.liveValidityKind)
     : GEOMETRY_DEPENDENCY_STATE_META[node.status];
+type GeometryConstructionExplorerGroupId =
+  | "points"
+  | "lines"
+  | "circles"
+  | "planes"
+  | "relationships"
+  | "other";
+type GeometryConstructionExplorerItemKind = "math" | "derived" | "relationship";
+type GeometryConstructionExplorerItem = {
+  id: string;
+  kind: GeometryConstructionExplorerItemKind;
+  label: string;
+  typeLabel: string;
+  detail: string | null;
+  visible: boolean;
+  selected: boolean;
+  statusLabel: string;
+  statusTitle: string;
+  statusColor: string;
+  statusBackground: string;
+  statusBorder: string;
+  canUseForSection: boolean;
+  canRelink: boolean;
+  frozen: boolean;
+};
+const GEOMETRY_CONSTRUCTION_EXPLORER_GROUPS: Array<{
+  id: GeometryConstructionExplorerGroupId;
+  label: string;
+}> = [
+  { id: "points", label: "Points" },
+  { id: "lines", label: "Lines" },
+  { id: "circles", label: "Circles" },
+  { id: "planes", label: "Planes" },
+  { id: "relationships", label: "Relationships" },
+  { id: "other", label: "Other" },
+];
+const geometryConstructionExplorerGroupFromMathType = (
+  type: GeometryMathConstructionType
+): GeometryConstructionExplorerGroupId => {
+  if (type === "midpoint") return "points";
+  if (type === "circle-center-through-object") return "circles";
+  return "lines";
+};
+const geometryConstructionExplorerGroupFromDerivedType = (
+  type: GeometryDerivedConstructionType
+): GeometryConstructionExplorerGroupId => {
+  if (type.includes("plane")) return "planes";
+  if (type.includes("line") || type.includes("axis") || type.includes("vector") || type.includes("segment")) {
+    return "lines";
+  }
+  if (type.includes("sphere") || type.includes("circle")) return "circles";
+  if (type.includes("point") || type.includes("centroid") || type.includes("midpoint") || type.includes("marker")) {
+    return "points";
+  }
+  return "other";
+};
+const geometryConstructionExplorerCanUseForSection = (type: GeometryDerivedConstructionType) =>
+  type === "face-tangent-plane-preview" ||
+  type === "face-plane-through-centroid" ||
+  type === "face-plane-through-three-vertices" ||
+  type === "face-plane-normal-to-selected-edge" ||
+  type === "face-offset-plane" ||
+  type === "face-parallel-face-plane" ||
+  type === "object-symmetry-plane-preview";
 type GeometryMeasuredEdgeEntry = {
   id: string;
   at: number;
@@ -12656,6 +12721,9 @@ const App: React.FC = () => {
       const next: GeometryMathConstructionRelationship = {
         id: makeId(),
         type,
+        name: `${GEOMETRY_MATH_RELATIONSHIP_TYPE_LABELS[type]} ${
+          geometryMathConstructionRelationships.filter((entry) => entry.type === type).length + 1
+        }`,
         sourceId,
         targetId,
         enabled: true,
@@ -12713,6 +12781,32 @@ const App: React.FC = () => {
       prev.map((entry) => (entry.id === id ? { ...entry, enabled: !entry.enabled } : entry))
     );
   }, []);
+  const handleRenameGeometryMathConstruction = useCallback((id: string) => {
+    const current = geometryMathConstructions.find((entry) => entry.id === id);
+    if (!current) return;
+    const nextName = window.prompt("Rename construction", current.name);
+    const trimmed = nextName?.trim();
+    if (!trimmed) return;
+    setGeometryMathConstructions((prev) =>
+      prev.map((entry) => (entry.id === id ? { ...entry, name: trimmed } : entry))
+    );
+    setGeometryCreateActionStatus(`Renamed construction to ${trimmed}.`);
+  }, [geometryMathConstructions]);
+  const handleRenameGeometryMathConstructionRelationship = useCallback((id: string) => {
+    const current = geometryMathConstructionRelationships.find((entry) => entry.id === id);
+    if (!current) return;
+    const fallback = `${GEOMETRY_MATH_RELATIONSHIP_TYPE_LABELS[current.type]} ${Math.max(
+      1,
+      geometryMathConstructionRelationships.filter((entry) => entry.type === current.type).findIndex((entry) => entry.id === id) + 1
+    )}`;
+    const nextName = window.prompt("Rename relationship", current.name ?? fallback);
+    const trimmed = nextName?.trim();
+    if (!trimmed) return;
+    setGeometryMathConstructionRelationships((prev) =>
+      prev.map((entry) => (entry.id === id ? { ...entry, name: trimmed } : entry))
+    );
+    setGeometryCreateActionStatus(`Renamed relationship to ${trimmed}.`);
+  }, [geometryMathConstructionRelationships]);
   const handleDeleteGeometryMathConstructionRelationship = useCallback((id: string) => {
     setGeometryMathConstructionRelationships((prev) => prev.filter((entry) => entry.id !== id));
   }, []);
@@ -12770,6 +12864,17 @@ const App: React.FC = () => {
       prev.map((entry) => (entry.id === id ? { ...entry, visible: !entry.visible } : entry))
     );
   }, []);
+  const handleRenameDerivedConstruction = useCallback((id: string) => {
+    const current = geometryDerivedConstructions.find((entry) => entry.id === id);
+    if (!current) return;
+    const nextName = window.prompt("Rename construction", geometryDerivedConstructionName(current));
+    const trimmed = nextName?.trim();
+    if (!trimmed) return;
+    setGeometryDerivedConstructions((prev) =>
+      prev.map((entry) => (entry.id === id ? { ...entry, name: trimmed } : entry))
+    );
+    setGeometryCreateActionStatus(`Renamed construction to ${trimmed}.`);
+  }, [geometryDerivedConstructions]);
   const handleFreezeDerivedConstruction = useCallback(
     (id: string) => {
       const snapshot = geometryDerivedLastValidSnapshotRef.current.get(id) ?? null;
@@ -17443,6 +17548,114 @@ const App: React.FC = () => {
       (step) => step.kind !== "scene-root" && step.kind !== "face-reference"
     );
   }, [geometryDependencyGraph, geometryInspectorSelectedDependencyNodeId]);
+  const geometryConstructionExplorerSections = useMemo(() => {
+    const itemsByGroup: Record<GeometryConstructionExplorerGroupId, GeometryConstructionExplorerItem[]> = {
+      points: [],
+      lines: [],
+      circles: [],
+      planes: [],
+      relationships: [],
+      other: [],
+    };
+    const nameById = new Map<string, string>();
+    for (const entry of geometryMathConstructionObjectOptions) {
+      nameById.set(entry.id, entry.name);
+    }
+    for (const entry of geometryMathConstructions) {
+      nameById.set(entry.id, entry.name);
+    }
+    for (const entry of geometryDerivedConstructions) {
+      nameById.set(entry.id, geometryDerivedConstructionName(entry));
+    }
+
+    for (const entry of geometryMathConstructions) {
+      const evalEntry = geometryMathConstructionOverlays.byId.get(entry.id) ?? null;
+      const liveValidity = getGeometryLiveValidityMeta(evalEntry?.status, evalEntry?.statusMessage);
+      itemsByGroup[geometryConstructionExplorerGroupFromMathType(entry.type)].push({
+        id: entry.id,
+        kind: "math",
+        label: entry.name,
+        typeLabel: GEOMETRY_MATH_CONSTRUCTION_TYPE_LABELS[entry.type],
+        detail: evalEntry?.statusMessage ?? null,
+        visible: entry.visible,
+        selected: geometrySelectedMathConstructionId === entry.id,
+        statusLabel: liveValidity.label,
+        statusTitle: evalEntry?.statusMessage ?? liveValidity.label,
+        statusColor: liveValidity.color,
+        statusBackground: liveValidity.background,
+        statusBorder: liveValidity.border,
+        canUseForSection: false,
+        canRelink: false,
+        frozen: false,
+      });
+    }
+
+    for (const entry of geometryDerivedConstructions) {
+      const evalEntry = geometryDerivedConstructionOverlays.byId.get(entry.id) ?? null;
+      const dependencyState = evalEntry?.dependencyState ?? (entry.frozenSnapshot ? "frozen" : "stale");
+      const dependencyMeta = GEOMETRY_DEPENDENCY_STATE_META[dependencyState];
+      const canRelink =
+        !!evalEntry &&
+        (evalEntry.relinkCandidateFaceIndex != null || !!evalEntry.relinkCandidateEdgeVertexPair);
+      itemsByGroup[geometryConstructionExplorerGroupFromDerivedType(entry.type)].push({
+        id: entry.id,
+        kind: "derived",
+        label: geometryDerivedConstructionName(entry),
+        typeLabel: GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[entry.type],
+        detail: evalEntry?.sourceObjectName ? `Source: ${evalEntry.sourceObjectName}` : `Source: ${entry.sourceObjectId}`,
+        visible: entry.visible,
+        selected: geometrySelectedDerivedConstructionId === entry.id,
+        statusLabel: dependencyMeta.label,
+        statusTitle: evalEntry?.statusMessage ?? dependencyMeta.label,
+        statusColor: dependencyMeta.color,
+        statusBackground: dependencyMeta.background,
+        statusBorder: dependencyMeta.border,
+        canUseForSection: geometryConstructionExplorerCanUseForSection(entry.type),
+        canRelink,
+        frozen: !!entry.frozenSnapshot,
+      });
+    }
+
+    const relationshipTypeCounts = new Map<GeometryMathConstructionRelationshipType, number>();
+    for (const entry of geometryMathConstructionRelationships) {
+      const nextCount = (relationshipTypeCounts.get(entry.type) ?? 0) + 1;
+      relationshipTypeCounts.set(entry.type, nextCount);
+      const relationshipName = entry.name ?? `${GEOMETRY_MATH_RELATIONSHIP_TYPE_LABELS[entry.type]} ${nextCount}`;
+      const source = nameById.get(entry.sourceId) ?? entry.sourceId;
+      const target = nameById.get(entry.targetId) ?? entry.targetId;
+      itemsByGroup.relationships.push({
+        id: entry.id,
+        kind: "relationship",
+        label: relationshipName,
+        typeLabel: GEOMETRY_MATH_RELATIONSHIP_TYPE_LABELS[entry.type],
+        detail: `${target} depends on ${source}`,
+        visible: entry.enabled,
+        selected: false,
+        statusLabel: entry.enabled ? "Shown" : "Hidden",
+        statusTitle: entry.enabled ? "Relationship is active" : "Relationship is hidden",
+        statusColor: entry.enabled ? "#166534" : "#64748b",
+        statusBackground: entry.enabled ? "#ecfdf5" : "#f8fafc",
+        statusBorder: entry.enabled ? "#16a34a" : "#cbd5e1",
+        canUseForSection: false,
+        canRelink: false,
+        frozen: false,
+      });
+    }
+
+    return GEOMETRY_CONSTRUCTION_EXPLORER_GROUPS.map((group) => ({
+      ...group,
+      items: itemsByGroup[group.id],
+    }));
+  }, [
+    geometryDerivedConstructionOverlays.byId,
+    geometryDerivedConstructions,
+    geometryMathConstructionObjectOptions,
+    geometryMathConstructionOverlays.byId,
+    geometryMathConstructions,
+    geometryMathConstructionRelationships,
+    geometrySelectedDerivedConstructionId,
+    geometrySelectedMathConstructionId,
+  ]);
   const handleSelectGeometryDependencyNode = useCallback((nodeId: string) => {
     if (nodeId.startsWith("object:")) {
       setGeometrySelectedObjectId(nodeId.slice("object:".length));
@@ -51420,52 +51633,6 @@ case "mobius":
                         )}
                         <div
                           style={{
-                            border: "1px solid #e2e8f0",
-                            borderRadius: 6,
-                            padding: "6px 8px",
-                            background: "#f8fafc",
-                            display: "grid",
-                            gap: 4,
-                            fontSize: 10.5,
-                          }}
-                        >
-                          <div style={{ fontWeight: 700, color: "#0f172a" }}>Recent construction objects</div>
-                          {geometryMathConstructions.length ? (
-                            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                              {geometryMathConstructions.slice(0, 8).map((entry) => {
-                                const evalEntry = geometryMathConstructionOverlays.byId.get(entry.id);
-                                const status = evalEntry?.status ?? "invalid";
-                                const liveValidity = getGeometryLiveValidityMeta(status, evalEntry?.statusMessage);
-                                return (
-                                  <button
-                                    key={`geometry-math-added-chip-${entry.id}`}
-                                    type="button"
-                                    onClick={() => setGeometrySelectedMathConstructionId(entry.id)}
-                                    style={{
-                                      border: "1px solid #cbd5e1",
-                                      borderRadius: 999,
-                                      background: geometrySelectedMathConstructionId === entry.id ? "#dbeafe" : "#fff",
-                                      padding: "2px 7px",
-                                      fontSize: 10.5,
-                                    }}
-                                    title={`${GEOMETRY_MATH_CONSTRUCTION_TYPE_LABELS[entry.type]} · ${liveValidity.label}`}
-                                  >
-                                    {entry.name}
-                                  </button>
-                                );
-                              })}
-                              {geometryMathConstructions.length > 8 && (
-                                <span style={{ color: "#64748b" }}>+{geometryMathConstructions.length - 8} more</span>
-                              )}
-                            </div>
-                          ) : (
-                            <div style={{ color: "#667085" }}>
-                              No construction objects yet.
-                            </div>
-                          )}
-                        </div>
-                        <div
-                          style={{
                             borderTop: "1px dashed #d6dce7",
                             paddingTop: 8,
                             display: "grid",
@@ -51635,142 +51802,174 @@ case "mobius":
                               tangent
                             </button>
                           </div>
-                          {geometryMathConstructionRelationships.length ? (
-                            <div style={{ display: "grid", gap: 4 }}>
-                              {geometryMathConstructionRelationships.map((entry) => {
-                                const source =
-                                  geometryMathConstructions.find((item) => item.id === entry.sourceId)?.name ??
-                                  geometryMathConstructionObjectOptions.find((item) => item.id === entry.sourceId)?.name ??
-                                  entry.sourceId;
-                                const target =
-                                  geometryMathConstructions.find((item) => item.id === entry.targetId)?.name ??
-                                  geometryMathConstructionObjectOptions.find((item) => item.id === entry.targetId)?.name ??
-                                  entry.targetId;
-                                return (
-                                  <div
-                                    key={`geometry-math-relationship-${entry.id}`}
-                                    style={{
-                                      border: "1px solid #dbe2ea",
-                                      borderRadius: 6,
-                                      padding: "5px 7px",
-                                      background: "#fff",
-                                      display: "grid",
-                                      gap: 3,
-                                      fontSize: 10.5,
-                                    }}
-                                  >
-                                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                                      <strong>{GEOMETRY_MATH_RELATIONSHIP_TYPE_LABELS[entry.type]}</strong>
-                                      <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                        <input
-                                          type="checkbox"
-                                          checked={entry.enabled}
-                                          onChange={() => handleToggleGeometryMathConstructionRelationship(entry.id)}
-                                        />
-                                        enabled
-                                      </label>
-                                    </div>
-                                    <div>{target} depends on {source}</div>
-                                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteGeometryMathConstructionRelationship(entry.id)}
-                                        style={{ fontSize: 10.5 }}
+                        </div>
+                        <div
+                          style={{
+                            borderTop: "1px dashed #d6dce7",
+                            paddingTop: 8,
+                            display: "grid",
+                            gap: 8,
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Construction Explorer</div>
+                            <span style={{ fontSize: 10, color: "#64748b" }}>
+                              Grouped by created object type
+                            </span>
+                          </div>
+                          {geometryConstructionExplorerSections.some((section) => section.items.length) ? (
+                            <div style={{ display: "grid", gap: 8 }}>
+                              {geometryConstructionExplorerSections
+                                .filter((section) => section.items.length)
+                                .map((section) => (
+                                  <div key={`geometry-construction-explorer-section-${section.id}`} style={{ display: "grid", gap: 5 }}>
+                                    <div style={{ fontSize: 10.5, fontWeight: 800, color: "#0f172a" }}>{section.label}</div>
+                                    {section.items.map((item) => (
+                                      <div
+                                        key={`geometry-construction-explorer-${item.kind}-${item.id}`}
+                                        onClick={() => {
+                                          if (item.kind === "math") {
+                                            setGeometrySelectedMathConstructionId(item.id);
+                                            setGeometrySelectedDerivedConstructionId(null);
+                                          } else if (item.kind === "derived") {
+                                            setGeometrySelectedDerivedConstructionId(item.id);
+                                            setGeometrySelectedMathConstructionId(null);
+                                          }
+                                        }}
+                                        style={{
+                                          border: item.selected ? "1px solid #2563eb" : "1px solid #dbe2ea",
+                                          borderRadius: 8,
+                                          padding: "6px 8px",
+                                          background: item.selected ? "#eff6ff" : "#fff",
+                                          display: "grid",
+                                          gap: 4,
+                                          fontSize: 10.5,
+                                          cursor: item.kind === "relationship" ? "default" : "pointer",
+                                        }}
                                       >
-                                        Delete
-                                      </button>
-                                    </div>
+                                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                                          <strong style={{ fontSize: 11 }}>{item.label}</strong>
+                                          <span
+                                            style={{
+                                              display: "inline-flex",
+                                              alignItems: "center",
+                                              gap: 4,
+                                              color: item.statusColor,
+                                              background: item.statusBackground,
+                                              border: `1px solid ${item.statusBorder}`,
+                                              borderRadius: 999,
+                                              padding: "1px 6px",
+                                              fontWeight: 700,
+                                            }}
+                                            title={item.statusTitle}
+                                          >
+                                            <span
+                                              aria-hidden="true"
+                                              style={{
+                                                width: 7,
+                                                height: 7,
+                                                borderRadius: "50%",
+                                                background: item.statusColor,
+                                              }}
+                                            />
+                                            {item.statusLabel}
+                                          </span>
+                                        </div>
+                                        <div style={{ color: "#64748b" }}>
+                                          {item.typeLabel}
+                                          {item.detail ? ` - ${item.detail}` : ""}
+                                        </div>
+                                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                          <button
+                                            type="button"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              if (item.kind === "math") handleToggleGeometryMathConstructionVisibility(item.id);
+                                              if (item.kind === "derived") handleToggleDerivedConstructionVisibility(item.id);
+                                              if (item.kind === "relationship") handleToggleGeometryMathConstructionRelationship(item.id);
+                                            }}
+                                          >
+                                            {item.visible ? "Hide" : "Show"}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              if (item.kind === "math") handleRenameGeometryMathConstruction(item.id);
+                                              if (item.kind === "derived") handleRenameDerivedConstruction(item.id);
+                                              if (item.kind === "relationship") handleRenameGeometryMathConstructionRelationship(item.id);
+                                            }}
+                                          >
+                                            Rename
+                                          </button>
+                                          {item.kind === "derived" && (
+                                            <button
+                                              type="button"
+                                              onClick={(event) => {
+                                                event.stopPropagation();
+                                                setGeometrySelectedDerivedConstructionId(item.id);
+                                                handleUseDerivedPlaneForSectionSliceById(item.id);
+                                              }}
+                                              disabled={!item.canUseForSection}
+                                              style={{ fontSize: 10.5 }}
+                                              title="Use selected derived plane for section slice"
+                                            >
+                                              Use for section slice
+                                            </button>
+                                          )}
+                                          {item.kind === "derived" && (
+                                            <button
+                                              type="button"
+                                              onClick={(event) => {
+                                                event.stopPropagation();
+                                                handleRelinkDerivedConstructionTarget(item.id);
+                                              }}
+                                              disabled={!item.canRelink}
+                                              style={{ fontSize: 10.5 }}
+                                              title="Relink derived object to the best candidate target"
+                                            >
+                                              Relink target
+                                            </button>
+                                          )}
+                                          {item.kind === "derived" && (
+                                            <button
+                                              type="button"
+                                              onClick={(event) => {
+                                                event.stopPropagation();
+                                                if (item.frozen) {
+                                                  handleUnfreezeDerivedConstruction(item.id);
+                                                } else {
+                                                  handleFreezeDerivedConstruction(item.id);
+                                                }
+                                              }}
+                                              style={{ fontSize: 10.5 }}
+                                            >
+                                              {item.frozen ? "Unfreeze" : "Freeze current result"}
+                                            </button>
+                                          )}
+                                          <button
+                                            type="button"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              if (item.kind === "math") handleDeleteGeometryMathConstruction(item.id);
+                                              if (item.kind === "derived") handleDeleteDerivedConstruction(item.id);
+                                              if (item.kind === "relationship") handleDeleteGeometryMathConstructionRelationship(item.id);
+                                            }}
+                                          >
+                                            Delete
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
                                   </div>
-                                );
-                              })}
+                                ))}
                             </div>
                           ) : (
-                            <div style={{ fontSize: 10.5, color: "#667085" }}>No mathematical relationships yet.</div>
+                            <div style={{ fontSize: 10.5, color: "#667085" }}>
+                              No construction objects or relationships yet.
+                            </div>
                           )}
                         </div>
-                        {geometryMathConstructions.length ? (
-                          <div style={{ display: "grid", gap: 5 }}>
-                            {geometryMathConstructions.map((entry) => {
-                              const evalEntry = geometryMathConstructionOverlays.byId.get(entry.id);
-                              const status = evalEntry?.status ?? "invalid";
-                              const liveValidity = getGeometryLiveValidityMeta(status, evalEntry?.statusMessage);
-                              const selected = geometrySelectedMathConstructionId === entry.id;
-                              return (
-                                <div
-                                  key={`geometry-math-construction-${entry.id}`}
-                                  onClick={() => setGeometrySelectedMathConstructionId(entry.id)}
-                                  style={{
-                                    border: selected ? "1px solid #2563eb" : "1px solid #dbe2ea",
-                                    borderRadius: 8,
-                                    padding: "6px 8px",
-                                    background: selected ? "#eff6ff" : "#fff",
-                                    display: "grid",
-                                    gap: 4,
-                                    fontSize: 10.5,
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                                    <strong style={{ fontSize: 11 }}>{entry.name}</strong>
-                                    <span
-                                      style={{
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        gap: 4,
-                                        color: liveValidity.color,
-                                        background: liveValidity.background,
-                                        border: `1px solid ${liveValidity.border}`,
-                                        borderRadius: 999,
-                                        padding: "1px 6px",
-                                        fontWeight: 700,
-                                      }}
-                                      title={evalEntry?.statusMessage ?? liveValidity.label}
-                                    >
-                                      <span
-                                        aria-hidden="true"
-                                        style={{
-                                          width: 7,
-                                          height: 7,
-                                          borderRadius: "50%",
-                                          background: liveValidity.color,
-                                        }}
-                                      />
-                                      {liveValidity.label}
-                                    </span>
-                                  </div>
-                                  <div style={{ color: "#64748b" }}>
-                                    {GEOMETRY_MATH_CONSTRUCTION_TYPE_LABELS[entry.type]}
-                                    {evalEntry?.statusMessage ? ` · ${evalEntry.statusMessage}` : ""}
-                                  </div>
-                                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                    <button
-                                      type="button"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        handleToggleGeometryMathConstructionVisibility(entry.id);
-                                      }}
-                                    >
-                                      {entry.visible ? "Hide" : "Show"}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        handleDeleteGeometryMathConstruction(entry.id);
-                                      }}
-                                    >
-                                      Delete
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: 10.5, color: "#667085" }}>
-                            No point, line, circle, or relationship constructions yet.
-                          </div>
-                        )}
                       </div>
 
                       <div
@@ -51814,151 +52013,6 @@ case "mobius":
                               ? `object · ${geometrySelectedSceneObject.name}`
                               : "none"}
                         </div>
-                      </div>
-
-                      <div
-                        style={{
-                          border: "1px solid #dbe4f0",
-                          borderRadius: 8,
-                          padding: "8px 10px",
-                          background: "#ffffff",
-                          display: "grid",
-                          gap: 8,
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700 }}>Construction Tree</div>
-                          <button type="button" onClick={handleClearDerivedConstructions} disabled={!geometryDerivedConstructions.length}>
-                            Clear
-                          </button>
-                        </div>
-                        {geometryDerivedConstructions.length ? (
-                          <div style={{ display: "grid", gap: 6 }}>
-                            {geometryDerivedConstructions.slice(0, 40).map((entry) => {
-                              const evalEntry = geometryDerivedConstructionOverlays.byId.get(entry.id) ?? null;
-                              const selected = geometrySelectedDerivedConstructionId === entry.id;
-                              const dependencyState = evalEntry?.dependencyState ?? (entry.frozenSnapshot ? "frozen" : "stale");
-                              const dependencyMeta = GEOMETRY_DEPENDENCY_STATE_META[dependencyState];
-                              const canRelink =
-                                !!evalEntry &&
-                                (evalEntry.relinkCandidateFaceIndex != null || !!evalEntry.relinkCandidateEdgeVertexPair);
-                              return (
-                                <div
-                                  key={`geometry-derived-construction-${entry.id}`}
-                                  style={{
-                                    border: "1px solid " + (selected ? "#0a66c2" : "#dbe2ea"),
-                                    borderRadius: 8,
-                                    padding: "6px 8px",
-                                    background: selected ? "#eaf3ff" : "#fff",
-                                    display: "grid",
-                                    gap: 4,
-                                  }}
-                                >
-                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                                    <button
-                                      type="button"
-                                      onClick={() => setGeometrySelectedDerivedConstructionId(entry.id)}
-                                      style={{ border: "none", background: "transparent", textAlign: "left", padding: 0, cursor: "pointer", fontSize: 11, fontWeight: 700 }}
-                                    >
-                                      {geometryDerivedConstructionName(entry)}
-                                    </button>
-                                    <span
-                                      style={{
-                                        fontSize: 10,
-                                        fontWeight: 700,
-                                        color: dependencyMeta.color,
-                                        border: `1px solid ${dependencyMeta.border}`,
-                                        borderRadius: 999,
-                                        background: dependencyMeta.background,
-                                        padding: "1px 6px",
-                                      }}
-                                    >
-                                      {dependencyMeta.label}
-                                    </span>
-                                  </div>
-                                  <div style={{ fontSize: 10.5, color: "#64748b" }}>
-                                    Type: {GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[entry.type]} · Source: {evalEntry?.sourceObjectName ?? entry.sourceObjectId}
-                                  </div>
-                                  {evalEntry?.statusMessage && (
-                                    <div style={{ fontSize: 10.5, color: "#7a271a" }}>{evalEntry.statusMessage}</div>
-                                  )}
-                                  {dependencyState === "broken-source" && entry.sourceFaceIndex != null && (
-                                    <div style={{ fontSize: 10.5, color: "#7a271a" }}>
-                                      Derived plane source could not be resolved:
-                                      {" "}
-                                      original target Face #{entry.sourceFaceIndex}
-                                      {" "}
-                                      reason: source topology changed after extrude operation
-                                    </div>
-                                  )}
-                                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                    <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5 }}>
-                                      <input
-                                        type="checkbox"
-                                        checked={entry.visible}
-                                        onChange={() => handleToggleDerivedConstructionVisibility(entry.id)}
-                                      />
-                                      Visible
-                                    </label>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setGeometrySelectedDerivedConstructionId(entry.id);
-                                        handleUseDerivedPlaneForSectionSliceById(entry.id);
-                                      }}
-                                      disabled={
-                                        !(
-                                          entry.type === "face-tangent-plane-preview" ||
-                                          entry.type === "face-plane-through-centroid" ||
-                                          entry.type === "face-plane-through-three-vertices" ||
-                                          entry.type === "face-plane-normal-to-selected-edge" ||
-                                          entry.type === "face-offset-plane" ||
-                                          entry.type === "face-parallel-face-plane" ||
-                                          entry.type === "object-symmetry-plane-preview"
-                                        )
-                                      }
-                                      style={{ fontSize: 10.5 }}
-                                      title="Use selected derived plane for section slice"
-                                    >
-                                      Use for section slice
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRelinkDerivedConstructionTarget(entry.id)}
-                                      disabled={!canRelink}
-                                      style={{ fontSize: 10.5 }}
-                                      title="Relink derived object to the best candidate target"
-                                    >
-                                      Relink target
-                                    </button>
-                                    {entry.frozenSnapshot ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleUnfreezeDerivedConstruction(entry.id)}
-                                        style={{ fontSize: 10.5 }}
-                                      >
-                                        Unfreeze
-                                      </button>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleFreezeDerivedConstruction(entry.id)}
-                                        style={{ fontSize: 10.5 }}
-                                      >
-                                        Freeze current result
-                                      </button>
-                                    )}
-                                    <button type="button" onClick={() => handleDeleteDerivedConstruction(entry.id)} style={{ fontSize: 10.5 }}>
-                                      Delete
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: 10.5, color: "#667085" }}>No mesh-derived construction objects yet.</div>
-                        )}
                       </div>
                     </div>
                     )}
