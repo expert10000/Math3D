@@ -58908,10 +58908,7 @@ case "mobius":
                   dragEnabled={
                     (geometryMode === "procedural" &&
                       geometryProceduralPanelTab !== "demonstrations" &&
-                      !(
-                        geometryProceduralPanelTab === "construct" &&
-                        geometryProbeSelectionMode !== "object"
-                      )) ||
+                      geometryProceduralPanelTab !== "construct") ||
                     ((geometryMode === "scratch" || geometryMode === "workbook") &&
                       !!geometrySelectedConstructionFreePoint &&
                       !geometryPointPlacementEnabled)
