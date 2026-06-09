@@ -51550,131 +51550,77 @@ case "mobius":
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                             <div style={{ fontSize: 11, fontWeight: 800 }}>Create by type</div>
                             <span style={{ fontSize: 10, color: "#64748b" }}>
-                              A/B/P use object picks; face/edge/vertex/object items use Probe or Scene selection.
+                              Showing tools for {geometryProbeSelectionMode}.
                             </span>
                           </div>
                           <div style={{ display: "grid", gap: 8 }}>
-                            <div style={{ display: "grid", gap: 5 }}>
-                              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Points</div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" onClick={() => handleCreateGeometryMathConstruction("midpoint")} disabled={!geometryCanCreateMathFromAB}>
-                                  Midpoint(A,B)
-                                </button>
-                                <button type="button" onClick={() => handleCreateDerivedFromFace("face-centroid")}>Face centroid</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromVertex("vertex-point-marker")}>Vertex marker</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromVertex("vertex-coordinate-label")}>Coordinate label</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromVertex("vertex-normal-endpoint")}>Normal endpoint</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-midpoint")}>Edge midpoint</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromObject("object-centroid")}>Object centroid</button>
-                                <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                  Translate
-                                  <input
-                                    type="number"
-                                    min={0.01}
-                                    step={0.05}
-                                    value={geometryConstructTranslateDistance}
-                                    onChange={(e) => setGeometryConstructTranslateDistance(Math.max(0.01, Number(e.target.value) || 0.5))}
-                                    style={{ width: 66 }}
-                                  />
-                                </label>
-                                <button type="button" onClick={() => handleCreateDerivedFromVertex("vertex-translated-copy-point")}>Translated copy</button>
+                            {geometryProbeSelectionMode === "object" && (
+                              <div style={{ display: "grid", gap: 5 }}>
+                                <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Object tools</div>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                  <button type="button" onClick={() => handleCreateDerivedFromObject("object-bounding-box")}>Bounding box</button>
+                                  <button type="button" onClick={() => handleCreateDerivedFromObject("object-centroid")}>Centroid</button>
+                                  <button type="button" onClick={() => handleCreateDerivedFromObject("object-principal-axes-preview")}>Principal axes</button>
+                                  <button type="button" onClick={() => handleCreateDerivedFromObject("object-symmetry-plane-preview")}>Symmetry plane</button>
+                                </div>
                               </div>
-                            </div>
-                            <div style={{ display: "grid", gap: 5 }}>
-                              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Lines</div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" onClick={() => handleCreateGeometryMathConstruction("line-through-objects")} disabled={!geometryCanCreateMathFromAB}>
-                                  Line(A,B)
-                                </button>
-                                <button type="button" onClick={() => handleCreateGeometryMathConstruction("angle-bisector")} disabled={!geometryCanCreateMathFromABP}>
-                                  Angle bisector(A,B,P)
-                                </button>
-                                <button type="button" onClick={() => handleCreateGeometryMathConstruction("parallel-line-through-object")} disabled={!geometryMathConstructionLineOptions.length || !geometryEffectiveMathConstructionSourcePId}>
-                                  Parallel(line,P)
-                                </button>
-                                <button type="button" onClick={() => handleCreateGeometryMathConstruction("perpendicular-line-through-object")} disabled={!geometryMathConstructionLineOptions.length || !geometryEffectiveMathConstructionSourcePId}>
-                                  Perpendicular(line,P)
-                                </button>
-                                <button type="button" onClick={() => handleCreateGeometryMathConstruction("normal-to-object-at-object")} disabled={!geometryEffectiveMathConstructionSourceAId || !geometryEffectiveMathConstructionSourcePId}>
-                                  Normal(A,P)
-                                </button>
-                                <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-line-through-two-vertices")}>Line through edge</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-line-through-midpoint-and-vertex")}>Line midpoint + vertex</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromFace("face-normal-line")}>Face normal</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromFace("face-line-perpendicular-to-plane")}>Line perpendicular to plane</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-direction-vector")}>Direction vector</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-perpendicular-bisector-line")}>Perpendicular bisector</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-parallel-line-through-vertex")}>Parallel through vertex</button>
-                                <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                  Length
-                                  <input
-                                    type="number"
-                                    min={0.01}
-                                    step={0.05}
-                                    value={geometryConstructCopiedLength}
-                                    onChange={(e) => setGeometryConstructCopiedLength(Math.max(0.01, Number(e.target.value) || 0.5))}
-                                    style={{ width: 66 }}
-                                  />
-                                </label>
-                                <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-equal-length-copied-segment")}>Equal-length copy</button>
+                            )}
+                            {geometryProbeSelectionMode === "face" && (
+                              <div style={{ display: "grid", gap: 5 }}>
+                                <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Face tools</div>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                  <button type="button" onClick={() => handleCreateDerivedFromFace("face-centroid")}>Face centroid</button>
+                                  <button type="button" onClick={() => handleCreateDerivedFromFace("face-normal-line")}>Face normal</button>
+                                  <button type="button" onClick={() => handleCreateDerivedFromFace("face-tangent-plane-preview")}>Tangent plane</button>
+                                  <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                    Offset
+                                    <input
+                                      type="number"
+                                      min={0.01}
+                                      step={0.05}
+                                      value={geometryConstructOffsetDistance}
+                                      onChange={(e) => setGeometryConstructOffsetDistance(Math.max(0.01, Number(e.target.value) || 0.5))}
+                                      style={{ width: 66 }}
+                                    />
+                                  </label>
+                                  <button type="button" onClick={() => handleCreateDerivedFromFace("face-offset-plane")}>Offset plane</button>
+                                </div>
                               </div>
-                            </div>
-                            <div style={{ display: "grid", gap: 5 }}>
-                              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Planes</div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" onClick={() => handleCreateDerivedFromFace("face-tangent-plane-preview")}>Tangent plane</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromFace("face-plane-through-centroid")}>Plane through centroid</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromFace("face-plane-through-three-vertices")}>Plane through 3 vertices</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromFace("face-plane-normal-to-selected-edge")}>Plane normal to edge</button>
-                                <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                  Offset
-                                  <input
-                                    type="number"
-                                    min={0.01}
-                                    step={0.05}
-                                    value={geometryConstructOffsetDistance}
-                                    onChange={(e) => setGeometryConstructOffsetDistance(Math.max(0.01, Number(e.target.value) || 0.5))}
-                                    style={{ width: 66 }}
-                                  />
-                                </label>
-                                <button type="button" onClick={() => handleCreateDerivedFromFace("face-offset-plane")}>Offset plane</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromFace("face-parallel-face-plane")}>Parallel face plane</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromObject("object-symmetry-plane-preview")}>Symmetry plane</button>
+                            )}
+                            {geometryProbeSelectionMode === "edge" && (
+                              <div style={{ display: "grid", gap: 5 }}>
+                                <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Edge tools</div>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                  <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-direction-vector")}>Direction vector</button>
+                                  <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-perpendicular-bisector-line")}>Perpendicular bisector</button>
+                                  <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-aligned-axis")}>Edge axis</button>
+                                </div>
                               </div>
-                            </div>
-                            <div style={{ display: "grid", gap: 5 }}>
-                              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Circles</div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" onClick={() => handleCreateGeometryMathConstruction("circle-center-through-object")} disabled={!geometryCanCreateMathFromAB}>
-                                  Circle(A,B)
-                                </button>
-                                <button type="button" onClick={() => handleCreateGeometryMathConstruction("tangent-to-circle-at-object")} disabled={!geometryMathConstructionCircleOptions.length || !geometryEffectiveMathConstructionSourcePId}>
-                                  Tangent(circle,P)
-                                </button>
+                            )}
+                            {geometryProbeSelectionMode === "vertex" && (
+                              <div style={{ display: "grid", gap: 5 }}>
+                                <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Vertex tools</div>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                  <button type="button" onClick={() => handleCreateDerivedFromVertex("vertex-point-marker")}>Vertex marker</button>
+                                  <button type="button" onClick={() => handleCreateDerivedFromVertex("vertex-coordinate-label")}>Coordinate label</button>
+                                  <button type="button" onClick={() => handleCreateDerivedFromVertex("vertex-normal-endpoint")}>Normal endpoint</button>
+                                  <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                    Translate
+                                    <input
+                                      type="number"
+                                      min={0.01}
+                                      step={0.05}
+                                      value={geometryConstructTranslateDistance}
+                                      onChange={(e) => setGeometryConstructTranslateDistance(Math.max(0.01, Number(e.target.value) || 0.5))}
+                                      style={{ width: 66 }}
+                                    />
+                                  </label>
+                                  <button type="button" onClick={() => handleCreateDerivedFromVertex("vertex-translated-copy-point")}>Translated copy</button>
+                                </div>
                               </div>
-                            </div>
-                            <div style={{ display: "grid", gap: 5 }}>
-                              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Axes</div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" onClick={() => handleCreateDerivedFromObject("object-principal-axes-preview")}>Principal axes</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-aligned-axis")}>Edge axis</button>
-                              </div>
-                            </div>
-                            <div style={{ display: "grid", gap: 5 }}>
-                              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Bounding</div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" onClick={() => handleCreateDerivedFromObject("object-bounding-box")}>Bounding box</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromObject("object-circumscribed-sphere-preview")}>Circumscribed sphere</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromObject("object-inscribed-reference-sphere")}>Inscribed sphere</button>
-                              </div>
-                            </div>
+                            )}
                           </div>
                         </div>
-                        {!geometryCanCreateMathFromAB && (
-                          <div style={{ fontSize: 10.5, color: "#92400e" }}>
-                            Select two different objects for A and B before creating a midpoint, line, or circle.
-                          </div>
-                        )}
                         <div
                           style={{
                             borderTop: "1px dashed #d6dce7",
