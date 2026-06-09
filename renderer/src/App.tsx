@@ -25512,10 +25512,14 @@ const App: React.FC = () => {
   const [leftWidth, setLeftWidth] = useState(320);
   const minLeft = 240;
   const maxLeft = 640;
+  const leftDragFrameRef = useRef<number | null>(null);
+  const leftDragPendingWidthRef = useRef(leftWidth);
 
   const [rightWidth, setRightWidth] = useState(320);
   const minRight = 240;
   const maxRight = 640;
+  const rightDragFrameRef = useRef<number | null>(null);
+  const rightDragPendingWidthRef = useRef(rightWidth);
   const [surfacesLayoutVariant, setSurfacesLayoutVariant] = useState<"layout1" | "layout2" | "layout3" | "layout4">("layout1");
   const [headerSurfaceFamilyMoreOpen, setHeaderSurfaceFamilyMoreOpen] = useState(false);
   const [surfacesPanelState, setSurfacesPanelState] = useState<"browse" | "work">("browse");
@@ -25856,15 +25860,36 @@ const App: React.FC = () => {
     e.preventDefault();
     const startX = e.clientX;
     const startWidth = leftWidth;
+    leftDragPendingWidthRef.current = startWidth;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const scheduleWidth = (nextWidth: number) => {
+      leftDragPendingWidthRef.current = nextWidth;
+      if (leftDragFrameRef.current != null) return;
+      leftDragFrameRef.current = window.requestAnimationFrame(() => {
+        leftDragFrameRef.current = null;
+        setLeftWidth(leftDragPendingWidthRef.current);
+      });
+    };
 
     const onMove = (ev: MouseEvent) => {
       const delta = ev.clientX - startX;
-      setLeftWidth(Math.min(maxLeft, Math.max(minLeft, startWidth + delta)));
+      scheduleWidth(Math.min(maxLeft, Math.max(minLeft, startWidth + delta)));
     };
 
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      if (leftDragFrameRef.current != null) {
+        window.cancelAnimationFrame(leftDragFrameRef.current);
+        leftDragFrameRef.current = null;
+      }
+      setLeftWidth(leftDragPendingWidthRef.current);
     };
 
     window.addEventListener("mousemove", onMove);
@@ -25875,15 +25900,36 @@ const App: React.FC = () => {
     e.preventDefault();
     const startX = e.clientX;
     const startWidth = rightWidth;
+    rightDragPendingWidthRef.current = startWidth;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const scheduleWidth = (nextWidth: number) => {
+      rightDragPendingWidthRef.current = nextWidth;
+      if (rightDragFrameRef.current != null) return;
+      rightDragFrameRef.current = window.requestAnimationFrame(() => {
+        rightDragFrameRef.current = null;
+        setRightWidth(rightDragPendingWidthRef.current);
+      });
+    };
 
     const onMove = (ev: MouseEvent) => {
       const delta = startX - ev.clientX; // drag left to expand right panel
-      setRightWidth(Math.min(maxRight, Math.max(minRight, startWidth + delta)));
+      scheduleWidth(Math.min(maxRight, Math.max(minRight, startWidth + delta)));
     };
 
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      if (rightDragFrameRef.current != null) {
+        window.cancelAnimationFrame(rightDragFrameRef.current);
+        rightDragFrameRef.current = null;
+      }
+      setRightWidth(rightDragPendingWidthRef.current);
     };
 
     window.addEventListener("mousemove", onMove);
