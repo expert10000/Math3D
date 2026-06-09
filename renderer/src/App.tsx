@@ -59033,7 +59033,8 @@ case "mobius":
                   gizmoScaleSnap={geometrySnapScaleEnabled ? geometrySnapScaleStep : null}
                   onGizmoTransform={geometryMode === "procedural" ? handleProceduralGizmoTransform : undefined}
                   pickEnabled={
-                    !geometryFastModeActive &&
+                    (!geometryFastModeActive ||
+                      (geometryMode === "procedural" && geometryProceduralPanelTab === "construct")) &&
                     (
                       geometryMode === "demo" ||
                       (geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations") ||
