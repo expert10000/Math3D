@@ -1,5 +1,28 @@
 # TODO
 
+## Push/auth checklist for Codex sessions
+
+Use this before any `git push` from Codex, especially after a new runtime,
+delegated thread, or interrupted terminal session.
+
+1. Work directly on `main` unless the user explicitly asks for a branch or PR.
+2. Check local state first:
+   - `git status --short --branch`
+   - `git log -1 --oneline --decorate`
+3. Check GitHub auth before pushing:
+   - `gh auth status`
+   - If that fails, check for `GH_TOKEN` / `GITHUB_TOKEN`.
+4. If the GitHub CLI is not logged in but a valid token is available, use it only
+   for the single push command through an HTTP authorization header. Do not store
+   or print the token.
+5. If no token is available, stop and run `gh auth login` before attempting push.
+6. Verify the remote after push:
+   - `git status --short --branch`
+   - `git ls-remote origin refs/heads/main`
+
+Avoid the previous failure mode: a browser login success page does not guarantee
+the current shell has a usable GitHub CLI credential.
+
 ## Tiny: Surface <-> Mesh representation map
 
 Keep a short map of places where the app shows both dataset and mesh-object forms of the same surface.
