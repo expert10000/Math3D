@@ -1918,6 +1918,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const transformControlsRef = useRef<TransformControls | null>(null);
   const transformControlsHelperRef = useRef<THREE.Object3D | null>(null);
   const gizmoOverlayRestoreFrameRef = useRef<number | null>(null);
+  const gizmoDragStartPositionRef = useRef<THREE.Vector3 | null>(null);
   const zoomDebounceRef = useRef<number | null>(null);
   const zoomAnimRef = useRef<number | null>(null);
   const zoomNowRef = useRef(0);
@@ -3813,6 +3814,20 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         target.updateMatrixWorld(true);
       }
     };
+    const sanitizeGizmoTargetPosition = () => {
+      if (gizmoModeRef.current !== "translate") return;
+      const target = transformControlsRef.current?.object;
+      if (!target) return;
+      if (
+        Number.isFinite(target.position.x) &&
+        Number.isFinite(target.position.y) &&
+        Number.isFinite(target.position.z)
+      ) {
+        return;
+      }
+      target.position.copy(gizmoDragStartPositionRef.current ?? new THREE.Vector3());
+      target.updateMatrixWorld(true);
+    };
     const setSceneOverlayGroupsVisible = (visible: boolean) => {
       if (gizmoOverlayRestoreFrameRef.current != null) {
         cancelAnimationFrame(gizmoOverlayRestoreFrameRef.current);
@@ -3839,17 +3854,22 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const ctrls = controlsRef.current;
       if (ctrls) ctrls.enabled = !dragging;
       if (dragging) {
+        const target = transformControlsRef.current?.object;
+        gizmoDragStartPositionRef.current = target ? target.position.clone() : null;
         setSceneOverlayGroupsVisible(false);
         beginMeshInteraction();
       } else {
+        sanitizeGizmoTargetPosition();
         clampGizmoTargetScale();
         emitGizmoObjectChange();
+        gizmoDragStartPositionRef.current = null;
         restoreSceneOverlayGroupsAfterCommit();
         endMeshInteraction();
       }
     };
     const handleGizmoObjectChange = () => {
       const tc = transformControlsRef.current;
+      sanitizeGizmoTargetPosition();
       clampGizmoTargetScale();
       if ((tc as any)?.dragging) return;
       emitGizmoObjectChange();
@@ -5401,6 +5421,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         cancelAnimationFrame(gizmoOverlayRestoreFrameRef.current);
         gizmoOverlayRestoreFrameRef.current = null;
       }
+      gizmoDragStartPositionRef.current = null;
       if (resizeFrameId) cancelAnimationFrame(resizeFrameId);
       if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
       ro.disconnect();
