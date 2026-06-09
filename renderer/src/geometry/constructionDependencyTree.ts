@@ -14,6 +14,7 @@ export type ConstructionDependencyTreeInputNode = {
   kind: string;
   status: ConstructionDependencyTreeStatus;
   liveValidityKind?: GeometryLiveValidityKind;
+  recomputeMs?: number;
 };
 
 export type ConstructionDependencyTreeInputEdge = {
