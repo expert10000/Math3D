@@ -8189,6 +8189,8 @@ const App: React.FC = () => {
     if (geometryCreatePlacementModeActive && geometryPendingPlacementObjectId) return;
     if (info.meshKey) {
       setGeometrySelectedObjectId(info.meshKey);
+      setGeometrySelectedMathConstructionId(null);
+      setGeometrySelectedDerivedConstructionId(null);
       if (geometryProceduralPanelTab === "construct" && geometryProbeSelectionMode === "object") {
         const slot = geometryMathPickTargetSlot;
         if (slot === "A") {
@@ -41913,6 +41915,8 @@ case "mobius":
     const node = unifiedObjectModel.nodeById.get(nodeId);
     if (node?.category === "sceneObject" && node.objectRefId) {
       setGeometrySelectedObjectId(node.objectRefId);
+      setGeometrySelectedMathConstructionId(null);
+      setGeometrySelectedDerivedConstructionId(null);
     }
   }, [unifiedObjectModel.nodeById]);
   const handleToggleUnifiedNodeVisibility = useCallback(
