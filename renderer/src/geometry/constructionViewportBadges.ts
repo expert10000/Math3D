@@ -7,6 +7,8 @@ export type ConstructionViewportBadgeEntry = {
 export const getConstructionViewportBadgePrefix = (type: string): string => {
   const value = type.toLowerCase();
 
+  if (value.includes("bounding-box") || value.includes("bounding box")) return "BB";
+  if (value.includes("centroid")) return "C";
   if (value.includes("plane")) return "P";
   if (value.includes("normal")) return "N";
   if (value === "midpoint" || value.includes("midpoint")) return "M";
@@ -20,9 +22,10 @@ export const getConstructionViewportBadgePrefix = (type: string): string => {
   ) {
     return "L";
   }
-  if (value.includes("circle") || value.includes("sphere")) return "C";
-  if (value.includes("point") || value.includes("vertex") || value.includes("centroid")) return "V";
-  if (value.includes("box")) return "B";
+  if (value.includes("circle")) return "CI";
+  if (value.includes("sphere")) return "S";
+  if (value.includes("point") || value.includes("vertex")) return "V";
+  if (value.includes("box")) return "BB";
   return "O";
 };
 

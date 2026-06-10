@@ -2227,7 +2227,7 @@ type GeometryRepeatAxis = "x" | "y" | "z" | "custom";
 type GeometryRepeatGridPlane = "xy" | "xz" | "yz";
 type GeometryRepeatMirrorPlane = "xy" | "xz" | "yz" | "selected-face";
 type GeometryRightPanelTab = "inspector" | "scene";
-type GeometryInspectorPanelTab = "probe" | "dependencies";
+type GeometryInspectorPanelTab = "probe" | "dependencies" | "definition";
 type GeometryDependencyState = "valid" | "updating" | "stale" | "broken-source" | "ambiguous-target" | "frozen";
 type GeometryProceduralPickInfo = {
   point: { x: number; y: number; z: number };
@@ -2254,11 +2254,11 @@ const GEOMETRY_TRANSFORM_MODE_OPTIONS: Array<{ id: GeometryTransformMode; label:
   { id: "move", label: "Move", title: "Move / Translate (W)" },
   { id: "rotate", label: "Rotate", title: "Rotate around X/Y/Z rings (E)" },
   { id: "scale", label: "Scale", title: "Scale along axes or uniformly (R)" },
-  { id: "edit", label: "Edit", title: "Edit construction source handles (T)" },
+  { id: "edit", label: "Definition", title: "Edit object or construction definition (T)" },
 ];
 
 const geometryTransformModeLabel = (mode: GeometryTransformMode) =>
-  mode === "move" ? "Move / Translate" : mode === "edit" ? "Edit Construction" : mode[0].toUpperCase() + mode.slice(1);
+  mode === "move" ? "Move / Translate" : mode === "edit" ? "Definition" : mode[0].toUpperCase() + mode.slice(1);
 type GeometryDerivedConstructionType =
   | "vertex-point-marker"
   | "vertex-coordinate-label"
@@ -7905,6 +7905,7 @@ const App: React.FC = () => {
   const [geometrySelectedMathRelationshipId, setGeometrySelectedMathRelationshipId] = useState<string | null>(null);
   const [geometryRightPanelTab, setGeometryRightPanelTab] = useState<GeometryRightPanelTab>("inspector");
   const [geometryInspectorPanelTab, setGeometryInspectorPanelTab] = useState<GeometryInspectorPanelTab>("probe");
+  const [geometryShowConstructionLabels, setGeometryShowConstructionLabels] = useState(true);
   const geometryPanelTabSwitchLockedRef = useRef(false);
   const geometryDependenciesPanelActive =
     mode === "geometry" &&
@@ -18472,6 +18473,31 @@ const App: React.FC = () => {
     geometrySelectedMeasurement,
     geometrySelectedSceneObject,
   ]);
+  const geometrySelectionContext = useMemo(() => {
+    const derived = !!(geometrySelectedMathConstructionEval || geometrySelectedDerivedConstructionEval);
+    let editable = "No";
+    if (derived) {
+      editable = "Inputs only";
+    } else if (geometrySelectedSceneObject) {
+      editable = geometryLockedObjectIds.has(geometrySelectedSceneObject.id) ? "No (locked)" : "Yes";
+    } else if (geometrySelectedMeasurement || geometrySelectedMathRelationship) {
+      editable = "Yes";
+    }
+    return {
+      ...geometryConstructionActiveTarget,
+      editable,
+      derived,
+      hasSelection: geometryConstructionActiveTarget.type !== "No Selection",
+    };
+  }, [
+    geometryConstructionActiveTarget,
+    geometryLockedObjectIds,
+    geometrySelectedDerivedConstructionEval,
+    geometrySelectedMathConstructionEval,
+    geometrySelectedMathRelationship,
+    geometrySelectedMeasurement,
+    geometrySelectedSceneObject,
+  ]);
   const geometryConstructionTransformSourceObject = useMemo<GeometryObject | GeometryDatasetMeshObject | null>(() => {
     if (geometrySelectedDerivedConstructionEval) {
       return resolveGeometrySceneObjectById(geometrySelectedDerivedConstructionEval.object.sourceObjectId);
@@ -18618,6 +18644,10 @@ const App: React.FC = () => {
     setGeometryTransformMode(mode);
     if (mode === "rotate" || mode === "scale") {
       setGeometryTransformPivotMode("center");
+    }
+    if (mode === "edit") {
+      setGeometryRightPanelTab("inspector");
+      setGeometryInspectorPanelTab("definition");
     }
   }, []);
   const handleDetachActiveConstructionTarget = useCallback(() => {
@@ -19020,8 +19050,12 @@ const App: React.FC = () => {
     if (geometryMode !== "procedural") return null;
     const labels: OverlayLabelSet[] = [];
     if (geometryProceduralFeatureOverlays.labelSets?.length) labels.push(...geometryProceduralFeatureOverlays.labelSets);
-    if (geometryDerivedConstructionOverlays.labelSets?.length) labels.push(...geometryDerivedConstructionOverlays.labelSets);
-    if (geometryMathConstructionOverlays.labelSets?.length) labels.push(...geometryMathConstructionOverlays.labelSets);
+    if (geometryShowConstructionLabels && geometryDerivedConstructionOverlays.labelSets?.length) {
+      labels.push(...geometryDerivedConstructionOverlays.labelSets);
+    }
+    if (geometryShowConstructionLabels && geometryMathConstructionOverlays.labelSets?.length) {
+      labels.push(...geometryMathConstructionOverlays.labelSets);
+    }
     if (geometryTimelineShowAnnotations && geometryProceduralAnnotationOverlays.labelSets?.length) {
       labels.push(...geometryProceduralAnnotationOverlays.labelSets);
     }
@@ -19033,6 +19067,7 @@ const App: React.FC = () => {
     geometryProceduralFeatureOverlays.labelSets,
     geometryDerivedConstructionOverlays.labelSets,
     geometryMathConstructionOverlays.labelSets,
+    geometryShowConstructionLabels,
     geometryProceduralAnnotationOverlays.labelSets,
     geometryTimelineShowAnnotations,
   ]);
@@ -19549,6 +19584,9 @@ const App: React.FC = () => {
         mode: "procedural" as const,
         objectCount: objCount,
         visibleCount,
+        constructionCount: geometryDerivedConstructions.length + geometryMathConstructions.length,
+        measurementCount: geometryMeasuredEdges.length,
+        constraintCount: geometryMathConstructionRelationships.length + geometryDerivedRelationConstraints.length,
         vertCount,
         triCount,
       };
@@ -19572,7 +19610,19 @@ const App: React.FC = () => {
       polyhedronCount,
       polyhedronFaces,
     };
-  }, [geometryMode, geometryObjects, geometryDatasetMeshObjects, geometryScene, geometryConstructionState, proceduralMeshSet]);
+  }, [
+    geometryMode,
+    geometryObjects,
+    geometryDatasetMeshObjects,
+    geometryScene,
+    geometryConstructionState,
+    proceduralMeshSet,
+    geometryDerivedConstructions.length,
+    geometryMathConstructions.length,
+    geometryMeasuredEdges.length,
+    geometryMathConstructionRelationships.length,
+    geometryDerivedRelationConstraints.length,
+  ]);
   const [windowReframeToken, setWindowReframeToken] = useState(0);
   const lastWindowStateRef = useRef<{ maximized: boolean; fullscreen: boolean } | null>(null);
 
@@ -52238,7 +52288,7 @@ case "mobius":
                                 <div style={{ color: "#64748b" }}>Select a source object or construction.</div>
                               )}
                             </div>
-                            {geometryTransformMode === "edit" && (
+                            {geometryTransformMode === "edit" && !showGeometryRightPanel && (
                               <div
                                 style={{
                                   border: "1px solid #f59e0b",
@@ -52252,7 +52302,7 @@ case "mobius":
                               >
                                 <div style={{ display: "grid", gap: 3 }}>
                                   <strong>Definition Editor</strong>
-                                  <div><strong>Edit mode:</strong> Definition editing</div>
+                                  <div><strong>Definition mode:</strong> Live editing</div>
                                   <div style={{ color: "#166534" }}><strong>Status:</strong> Live recompute enabled</div>
                                   <div style={{ color: "#475569" }}>
                                     <strong>Definition:</strong> <code>{geometryConstructionEditFormula}</code>
@@ -59503,27 +59553,28 @@ case "mobius":
                   padding: "8px 10px",
                   background: "linear-gradient(180deg, #f8fbff 0%, #f1f6fd 100%)",
                   display: "flex",
-                  alignItems: "flex-start",
+                  alignItems: "stretch",
                   flexWrap: "wrap",
-                  gap: 10,
+                  gap: 8,
                 }}
               >
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 10, minWidth: 0, flex: "1 1 420px" }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#1e3a8a", marginRight: 2, paddingTop: 3 }}>Viewer</span>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      flexWrap: "wrap",
-                      minWidth: 0,
-                      overflowX: "auto",
-                      scrollbarWidth: "thin",
-                      paddingBottom: 1,
-                    }}
-                  >
-                <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
-                  <span style={{ fontWeight: 700, color: "#1e3a8a" }}>Transform:</span>
+                <span style={{ alignSelf: "center", fontSize: 11, fontWeight: 800, color: "#1e3a8a", marginRight: 2 }}>
+                  Viewport
+                </span>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    flexWrap: "wrap",
+                    padding: "4px 6px",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: 6,
+                    background: "#fff",
+                    fontSize: 12,
+                  }}
+                >
+                  <span style={{ fontWeight: 700, color: "#1e3a8a", marginRight: 2 }}>Transform</span>
                   {GEOMETRY_TRANSFORM_MODE_OPTIONS.map((option) => {
                     const active = geometryTransformMode === option.id;
                     return (
@@ -59552,6 +59603,19 @@ case "mobius":
                     </span>
                   )}
                 </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    padding: "4px 6px",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: 6,
+                    background: "#fff",
+                  }}
+                >
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#1e3a8a" }}>Display</span>
                 <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                   <input
                     type="checkbox"
@@ -59567,6 +59631,14 @@ case "mobius":
                     onChange={(e) => setGeometryShowPlanes(e.target.checked)}
                   />
                   Coordinates
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                  <input
+                    type="checkbox"
+                    checked={geometryShowConstructionLabels}
+                    onChange={(e) => setGeometryShowConstructionLabels(e.target.checked)}
+                  />
+                  Construction labels
                 </label>
                 <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, opacity: geometryShowPlanes ? 1 : 0.6 }}>
                   <input
@@ -59772,21 +59844,20 @@ case "mobius":
                     </label>
                   </>
                 )}
-                  </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto", flexWrap: "wrap" }}>
                   <div
                     style={{
                       display: "flex",
                       alignItems: "center",
                       gap: 4,
-                      border: "1px solid #d1d5db",
-                      borderRadius: 999,
-                      padding: "2px 6px",
+                      flexWrap: "wrap",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: 6,
+                      padding: "4px 6px",
                       background: "#fff",
                     }}
                   >
-                    <span style={{ fontSize: 10, color: "#475467", marginRight: 2 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#1e3a8a", marginRight: 2 }}>
                       Quality {geometryGlobalQualityOverrideMode === "auto" && geometryHeavySceneActive ? "Auto→Fast" : ""}
                     </span>
                     <button
@@ -59814,6 +59885,20 @@ case "mobius":
                       Full
                     </button>
                   </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      flex: "1 1 420px",
+                      flexWrap: "wrap",
+                      padding: "4px 6px",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: 6,
+                      background: "#fff",
+                    }}
+                  >
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#1e3a8a", marginRight: 2 }}>Camera</span>
                   <button
                     type="button"
                     onClick={() => handleGeometryApplyViewPreset("3d")}
@@ -60101,10 +60186,41 @@ case "mobius":
                     </div>
                     {geometryRightPanelTab === "inspector" ? (
                       <>
+                        <div
+                          style={{
+                            border: "1px solid #cbd5e1",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            background: "#f8fafc",
+                            display: "grid",
+                            gap: 6,
+                            marginBottom: 10,
+                            fontSize: 11,
+                          }}
+                        >
+                          <div style={{ fontSize: 12, fontWeight: 800 }}>Selection Context</div>
+                          {geometrySelectionContext.hasSelection ? (
+                            <div style={{ display: "grid", gridTemplateColumns: "78px minmax(0, 1fr)", gap: "4px 8px" }}>
+                              <span style={{ color: "#64748b" }}>Selected</span>
+                              <strong>{geometrySelectionContext.name}</strong>
+                              <span style={{ color: "#64748b" }}>Type</span>
+                              <span>{geometrySelectionContext.type}</span>
+                              <span style={{ color: "#64748b" }}>Editable</span>
+                              <span>{geometrySelectionContext.editable}</span>
+                              <span style={{ color: "#64748b" }}>Derived</span>
+                              <span>{geometrySelectionContext.derived ? "Yes" : "No"}</span>
+                              <span style={{ color: "#64748b" }}>Dependents</span>
+                              <strong>{geometrySelectionContext.outputCount}</strong>
+                            </div>
+                          ) : (
+                            <div style={{ color: "#64748b" }}>Nothing selected.</div>
+                          )}
+                        </div>
                         <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
                           {([
                             ["probe", "Probe"],
                             ["dependencies", "Dependencies"],
+                            ["definition", "Definition"],
                           ] as const).map(([tabId, label]) => (
                             <button
                               key={`geometry-inspector-tab-${tabId}`}
@@ -60447,6 +60563,116 @@ case "mobius":
                             </div>
                           </div>
                         )}
+                        {geometryInspectorPanelTab === "definition" && (
+                          <div
+                            style={{
+                              border: "1px solid #f59e0b",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#fffbeb",
+                              display: "grid",
+                              gap: 10,
+                              fontSize: 11,
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontSize: 12, fontWeight: 800 }}>Definition Editor</div>
+                              <div style={{ color: "#166534" }}>Live recompute enabled</div>
+                            </div>
+                            <div style={{ display: "grid", gap: 3 }}>
+                              <div><strong>Target:</strong> {geometryConstructionActiveTarget.name}</div>
+                              <div><strong>Type:</strong> {geometryConstructionActiveTarget.type}</div>
+                              <div style={{ color: "#475569" }}>
+                                <strong>Definition:</strong> <code>{geometryConstructionEditFormula}</code>
+                              </div>
+                            </div>
+                            {geometrySelectedSceneObject && !geometrySelectedMathConstructionEval && !geometrySelectedDerivedConstructionEval && (
+                              <>
+                                {([
+                                  ["Position", "position", 0.1],
+                                  ["Rotation", "rotation", 0.05],
+                                  ["Scale", "scale", 0.1],
+                                ] as const).map(([label, field, step]) => (
+                                  <div key={`inspector-definition-${field}`} style={{ display: "grid", gap: 4 }}>
+                                    <strong>{label}</strong>
+                                    <div style={{ display: "grid", gridTemplateColumns: "18px 1fr", gap: "4px 6px", alignItems: "center" }}>
+                                      {(["x", "y", "z"] as const).map((axis) => (
+                                        <React.Fragment key={`inspector-definition-${field}-${axis}`}>
+                                          <span>{axis.toUpperCase()}</span>
+                                          <input
+                                            type="number"
+                                            step={step}
+                                            value={geometrySelectedSceneObject.transform[field][axis]}
+                                            onChange={(event) =>
+                                              handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+                                                [field]: {
+                                                  ...geometrySelectedSceneObject.transform[field],
+                                                  [axis]: Number(event.target.value) || 0,
+                                                },
+                                              })
+                                            }
+                                          />
+                                        </React.Fragment>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                              </>
+                            )}
+                            {(geometrySelectedMathConstructionEval || geometrySelectedDerivedConstructionEval) && (
+                              <div
+                                style={{
+                                  borderLeft: "3px solid #f59e0b",
+                                  paddingLeft: 7,
+                                  color: "#92400e",
+                                }}
+                              >
+                                This object is derived. Edit a defining input, detach it, or bake its current geometry.
+                              </div>
+                            )}
+                            {geometryProceduralEditSources.length > 0 && (
+                              <div style={{ display: "grid", gap: 5 }}>
+                                <strong>Defining inputs</strong>
+                                {geometryProceduralEditSources.map((source) => (
+                                  <button
+                                    key={`inspector-definition-source-${source.id}`}
+                                    type="button"
+                                    onClick={() => handleSelectConstructionEditSource(source.id)}
+                                    style={{ textAlign: "left" }}
+                                  >
+                                    {source.label}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                onClick={handleDetachActiveConstructionTarget}
+                                disabled={!geometryCanDetachActiveTarget}
+                              >
+                                Detach as independent object
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleBakeSelectedTransformToMesh}
+                                disabled={!geometrySelectedSceneObject}
+                              >
+                                Bake current geometry
+                              </button>
+                              {geometrySelectedDerivedConstructionEval?.object.type === "object-symmetry-plane-preview" && (
+                                <button type="button" onClick={() => handleRegenerateDerivedProducts("selected")}>
+                                  Recompute
+                                </button>
+                              )}
+                            </div>
+                            {!geometrySelectedSceneObject &&
+                              !geometrySelectedMathConstructionEval &&
+                              !geometrySelectedDerivedConstructionEval && (
+                                <div style={{ color: "#64748b" }}>Select an object or construction to edit its definition.</div>
+                              )}
+                          </div>
+                        )}
                       </>
                     ) : (
                       <div
@@ -60461,6 +60687,28 @@ case "mobius":
                         }}
                       >
                         <div style={{ fontSize: 12, fontWeight: 700 }}>Scene summary</div>
+                        {geometryStats.mode === "procedural" && (
+                          <>
+                            <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: "4px 8px", color: "#475467" }}>
+                              <span>Objects</span>
+                              <strong>{geometryStats.objectCount} ({geometryStats.visibleCount} visible)</strong>
+                              <span>Constructions</span>
+                              <strong>{geometryStats.constructionCount}</strong>
+                              <span>Measurements</span>
+                              <strong>{geometryStats.measurementCount}</strong>
+                              <span>Constraints</span>
+                              <strong>{geometryStats.constraintCount}</strong>
+                            </div>
+                            <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 7, display: "grid", gridTemplateColumns: "110px 1fr", gap: "4px 8px", color: "#475467" }}>
+                              <span>Vertices</span>
+                              <strong>{geometryStats.vertCount.toLocaleString()}</strong>
+                              <span>Triangles</span>
+                              <strong>{geometryStats.triCount.toLocaleString()}</strong>
+                            </div>
+                          </>
+                        )}
+                        {geometryStats.mode !== "procedural" && (
+                          <>
                         <div style={{ color: "#475467" }}>
                           {geometryStats.mode === "procedural"
                             ? `${geometryStats.objectCount} objects (${geometryStats.visibleCount} visible)`
@@ -60471,6 +60719,8 @@ case "mobius":
                             ? `${geometryStats.vertCount.toLocaleString()} verts · ${geometryStats.triCount.toLocaleString()} tris`
                             : `${geometryStats.triangleCount} triangles · ${geometryStats.polygonCount} polygons · ${geometryStats.polyhedronFaces} polyhedron faces`}
                         </div>
+                          </>
+                        )}
                         {geometryViewerSourceLabel && <div style={{ color: "#475467" }}>Source: {geometryViewerSourceLabel}</div>}
                       </div>
                     )}

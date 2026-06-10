@@ -7,7 +7,9 @@ describe("construction viewport badges", () => {
     expect(getConstructionViewportBadgePrefix("line-through-objects")).toBe("L");
     expect(getConstructionViewportBadgePrefix("face-offset-plane")).toBe("P");
     expect(getConstructionViewportBadgePrefix("normal-to-object-at-object")).toBe("N");
-    expect(getConstructionViewportBadgePrefix("circle-center-through-object")).toBe("C");
+    expect(getConstructionViewportBadgePrefix("circle-center-through-object")).toBe("CI");
+    expect(getConstructionViewportBadgePrefix("object-centroid")).toBe("C");
+    expect(getConstructionViewportBadgePrefix("object-bounding-box")).toBe("BB");
   });
 
   it("numbers badges per prefix in creation order", () => {
