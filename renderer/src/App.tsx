@@ -2561,7 +2561,7 @@ type GeometryConstructionExplorerGroupId =
   | "planes"
   | "relationships"
   | "other";
-type GeometryConstructionExplorerItemKind = "math" | "derived" | "relationship";
+type GeometryConstructionExplorerItemKind = "math" | "derived" | "relationship" | "measurement";
 type GeometryConstructionExplorerItem = {
   id: string;
   kind: GeometryConstructionExplorerItemKind;
@@ -2626,6 +2626,8 @@ type GeometryMeasuredEdgeEntry = {
   edgeVertexPair: [number, number];
   length: number;
   edgePoints: [{ x: number; y: number; z: number }, { x: number; y: number; z: number }] | null;
+  precision?: number;
+  units?: "scene" | "mm" | "cm" | "m";
 };
 type GeometryMarkedEdgeEntry = {
   id: string;
@@ -7876,6 +7878,7 @@ const App: React.FC = () => {
   const [geometryProbeSelectionMode, setGeometryProbeSelectionMode] =
     useState<GeometryProbeSelectionMode>("object");
   const [geometryMeasuredEdges, setGeometryMeasuredEdges] = useState<GeometryMeasuredEdgeEntry[]>([]);
+  const [geometrySelectedMeasurementId, setGeometrySelectedMeasurementId] = useState<string | null>(null);
   const [geometryMarkedEdges, setGeometryMarkedEdges] = useState<GeometryMarkedEdgeEntry[]>([]);
   const [geometryAnnotations, setGeometryAnnotations] = useState<GeometryAnnotationEntry[]>([]);
   const [geometryAnnotationCustomText, setGeometryAnnotationCustomText] = useState("Label");
@@ -7899,6 +7902,7 @@ const App: React.FC = () => {
   const [geometryMathConstructionRelationshipTargetCircleId, setGeometryMathConstructionRelationshipTargetCircleId] = useState<string | null>(null);
   const [geometryMathConstructionRelationshipTargetPointId, setGeometryMathConstructionRelationshipTargetPointId] = useState<string | null>(null);
   const [geometryMathConstructionRelationships, setGeometryMathConstructionRelationships] = useState<GeometryMathConstructionRelationship[]>([]);
+  const [geometrySelectedMathRelationshipId, setGeometrySelectedMathRelationshipId] = useState<string | null>(null);
   const [geometryRightPanelTab, setGeometryRightPanelTab] = useState<GeometryRightPanelTab>("inspector");
   const [geometryInspectorPanelTab, setGeometryInspectorPanelTab] = useState<GeometryInspectorPanelTab>("probe");
   const geometryPanelTabSwitchLockedRef = useRef(false);
@@ -16918,10 +16922,13 @@ const App: React.FC = () => {
           return { minT, maxT };
         });
         const axisScale = Math.max(0.1, Number(object.params?.scale) || 1);
-        pushAxisLine(lines, pca.center, pca.axes[0], spans[0].minT * axisScale, spans[0].maxT * axisScale);
-        pushAxisLine(lines, pca.center, pca.axes[1], spans[1].minT * axisScale, spans[1].maxT * axisScale);
-        pushAxisLine(lines, pca.center, pca.axes[2], spans[2].minT * axisScale, spans[2].maxT * axisScale);
-        addEvalGroup(lines, 0x0ea5e9, 0.92, 1.8);
+        const axisLength = Math.max(0.1, Number(object.params?.length) || 1);
+        const lengthScale = axisScale * axisLength;
+        pushAxisLine(lines, pca.center, pca.axes[0], spans[0].minT * lengthScale, spans[0].maxT * lengthScale);
+        pushAxisLine(lines, pca.center, pca.axes[1], spans[1].minT * lengthScale, spans[1].maxT * lengthScale);
+        pushAxisLine(lines, pca.center, pca.axes[2], spans[2].minT * lengthScale, spans[2].maxT * lengthScale);
+        const dashed = object.params?.displayStyle === "dashed";
+        addEvalGroup(lines, 0x0ea5e9, dashed ? 0.58 : 0.92, dashed ? 1.15 : 1.8);
         finish("valid", pca.center, pca.axes[0]);
         continue;
       }
@@ -17277,6 +17284,14 @@ const App: React.FC = () => {
     if (!geometrySelectedMathConstructionId) return null;
     return geometryMathConstructionOverlays.byId.get(geometrySelectedMathConstructionId) ?? null;
   }, [geometryMathConstructionOverlays.byId, geometrySelectedMathConstructionId]);
+  const geometrySelectedMeasurement = useMemo(
+    () => geometryMeasuredEdges.find((entry) => entry.id === geometrySelectedMeasurementId) ?? null,
+    [geometryMeasuredEdges, geometrySelectedMeasurementId]
+  );
+  const geometrySelectedMathRelationship = useMemo(
+    () => geometryMathConstructionRelationships.find((entry) => entry.id === geometrySelectedMathRelationshipId) ?? null,
+    [geometryMathConstructionRelationships, geometrySelectedMathRelationshipId]
+  );
   useEffect(() => {
     if (!geometryDependencyFlash) return;
     const timeout = window.setTimeout(() => {
@@ -17831,12 +17846,31 @@ const App: React.FC = () => {
         typeLabel: GEOMETRY_MATH_RELATIONSHIP_TYPE_LABELS[entry.type],
         detail: `${target} depends on ${source}`,
         visible: entry.enabled,
-        selected: false,
+        selected: geometrySelectedMathRelationshipId === entry.id,
         statusLabel: entry.enabled ? "Shown" : "Hidden",
         statusTitle: entry.enabled ? "Relationship is active" : "Relationship is hidden",
         statusColor: entry.enabled ? "#166534" : "#64748b",
         statusBackground: entry.enabled ? "#ecfdf5" : "#f8fafc",
         statusBorder: entry.enabled ? "#16a34a" : "#cbd5e1",
+        canUseForSection: false,
+        canRelink: false,
+        frozen: false,
+      });
+    }
+    for (const entry of geometryMeasuredEdges) {
+      itemsByGroup.other.push({
+        id: entry.id,
+        kind: "measurement",
+        label: `Distance ${entry.objectName}`,
+        typeLabel: "Measurement",
+        detail: `Edge [${entry.edgeVertexPair[0]}, ${entry.edgeVertexPair[1]}] = ${entry.length.toFixed(entry.precision ?? 3)} ${entry.units ?? "scene"}`,
+        visible: true,
+        selected: geometrySelectedMeasurementId === entry.id,
+        statusLabel: "Live",
+        statusTitle: "Measurement definition is available for editing",
+        statusColor: "#166534",
+        statusBackground: "#ecfdf5",
+        statusBorder: "#16a34a",
         canUseForSection: false,
         canRelink: false,
         frozen: false,
@@ -17854,6 +17888,9 @@ const App: React.FC = () => {
     geometryMathConstructionOverlays.byId,
     geometryMathConstructions,
     geometryMathConstructionRelationships,
+    geometryMeasuredEdges,
+    geometrySelectedMeasurementId,
+    geometrySelectedMathRelationshipId,
     geometrySelectedDerivedConstructionId,
     geometrySelectedMathConstructionId,
   ]);
@@ -18403,6 +18440,12 @@ const App: React.FC = () => {
       nodeId = `object:${geometrySelectedSceneObject.id}`;
       name = geometrySelectedSceneObject.name;
       type = "Scene Object";
+    } else if (geometrySelectedMeasurement) {
+      name = `Distance ${geometrySelectedMeasurement.objectName}`;
+      type = "Measurement";
+    } else if (geometrySelectedMathRelationship) {
+      name = geometrySelectedMathRelationship.name ?? GEOMETRY_MATH_RELATIONSHIP_TYPE_LABELS[geometrySelectedMathRelationship.type];
+      type = "Constraint";
     } else if (geometryProbeSelectionDetails) {
       name =
         geometryProbeSelectionDetails.mode === "face" && geometryProbeSelectionDetails.faceIndex != null
@@ -18423,6 +18466,8 @@ const App: React.FC = () => {
     geometryProbeSelectionDetails,
     geometrySelectedDerivedConstructionEval,
     geometrySelectedMathConstructionEval,
+    geometrySelectedMathRelationship,
+    geometrySelectedMeasurement,
     geometrySelectedSceneObject,
   ]);
   const geometryConstructionTransformSourceObject = useMemo<GeometryObject | GeometryDatasetMeshObject | null>(() => {
@@ -18504,6 +18549,13 @@ const App: React.FC = () => {
       if (type === "object-symmetry-plane-preview") return `SymmetryPlane(${source}, tolerance)`;
       return `${geometrySelectedDerivedConstructionEval.typeLabel.replaceAll(" ", "")}(${source})`;
     }
+    if (geometrySelectedMeasurement) {
+      return `Distance(V${geometrySelectedMeasurement.edgeVertexPair[0]}, V${geometrySelectedMeasurement.edgeVertexPair[1]})`;
+    }
+    if (geometrySelectedMathRelationship) {
+      const label = GEOMETRY_MATH_RELATIONSHIP_TYPE_LABELS[geometrySelectedMathRelationship.type].replaceAll(" ", "");
+      return `${label}(${geometrySelectedMathRelationship.sourceId}, ${geometrySelectedMathRelationship.targetId})`;
+    }
     if (geometrySelectedSceneObject) return `Point(${fmt(geometrySelectedSceneObject.transform.position.x)}, ${fmt(geometrySelectedSceneObject.transform.position.y)}, ${fmt(geometrySelectedSceneObject.transform.position.z)})`;
     return "No selection";
   }, [
@@ -18511,6 +18563,8 @@ const App: React.FC = () => {
     geometryProceduralEditSources,
     geometrySelectedDerivedConstructionEval,
     geometrySelectedMathConstructionEval,
+    geometrySelectedMathRelationship,
+    geometrySelectedMeasurement,
     geometrySelectedSceneObject,
   ]);
   const handleUpdateSelectedDerivedEditParams = useCallback(
@@ -18526,6 +18580,18 @@ const App: React.FC = () => {
     },
     [geometrySelectedDerivedConstructionId]
   );
+  const handleUpdateSelectedMeasurement = useCallback((patch: Partial<GeometryMeasuredEdgeEntry>) => {
+    if (!geometrySelectedMeasurementId) return;
+    setGeometryMeasuredEdges((prev) =>
+      prev.map((entry) => entry.id === geometrySelectedMeasurementId ? { ...entry, ...patch } : entry)
+    );
+  }, [geometrySelectedMeasurementId]);
+  const handleUpdateSelectedMathRelationship = useCallback((patch: Partial<GeometryMathConstructionRelationship>) => {
+    if (!geometrySelectedMathRelationshipId) return;
+    setGeometryMathConstructionRelationships((prev) =>
+      prev.map((entry) => entry.id === geometrySelectedMathRelationshipId ? { ...entry, ...patch } : entry)
+    );
+  }, [geometrySelectedMathRelationshipId]);
   const handleSelectConstructionEditSource = useCallback((sourceId: string) => {
     setGeometrySelectedObjectId(sourceId);
     setGeometrySelectedMathConstructionId(null);
@@ -52251,8 +52317,8 @@ case "mobius":
                                       </div>
                                     )}
                                     {geometrySelectedDerivedConstructionEval.object.type === "object-principal-axes-preview" && (
-                                      <label style={{ display: "grid", gridTemplateColumns: "72px 1fr", gap: 5, alignItems: "center" }}>
-                                        Scale
+                                      <div style={{ display: "grid", gridTemplateColumns: "72px 1fr", gap: 5, alignItems: "center" }}>
+                                        <span>Scale</span>
                                         <input
                                           type="number"
                                           min={0.1}
@@ -52260,7 +52326,23 @@ case "mobius":
                                           value={geometrySelectedDerivedConstructionEval.object.params?.scale ?? 1}
                                           onChange={(event) => handleUpdateSelectedDerivedEditParams({ scale: Math.max(0.1, Number(event.target.value) || 1) })}
                                         />
-                                      </label>
+                                        <span>Length</span>
+                                        <input
+                                          type="number"
+                                          min={0.1}
+                                          step={0.1}
+                                          value={geometrySelectedDerivedConstructionEval.object.params?.length ?? 1}
+                                          onChange={(event) => handleUpdateSelectedDerivedEditParams({ length: Math.max(0.1, Number(event.target.value) || 1) })}
+                                        />
+                                        <span>Display style</span>
+                                        <select
+                                          value={geometrySelectedDerivedConstructionEval.object.params?.displayStyle ?? "solid"}
+                                          onChange={(event) => handleUpdateSelectedDerivedEditParams({ displayStyle: event.target.value as "solid" | "dashed" })}
+                                        >
+                                          <option value="solid">Solid</option>
+                                          <option value="dashed">Light</option>
+                                        </select>
+                                      </div>
                                     )}
                                     {geometrySelectedDerivedConstructionEval.object.type === "object-symmetry-plane-preview" && (
                                       <div style={{ display: "grid", gridTemplateColumns: "72px 1fr", gap: 5, alignItems: "center" }}>
@@ -52286,8 +52368,63 @@ case "mobius":
                                     )}
                                   </>
                                 )}
+                                {geometrySelectedMeasurement && (
+                                  <div style={{ display: "grid", gridTemplateColumns: "86px 1fr", gap: 5, alignItems: "center" }}>
+                                    <strong>Point A</strong>
+                                    <span>Vertex {geometrySelectedMeasurement.edgeVertexPair[0]}</span>
+                                    <strong>Point B</strong>
+                                    <span>Vertex {geometrySelectedMeasurement.edgeVertexPair[1]}</span>
+                                    <label htmlFor="construct-edit-measure-precision">Precision</label>
+                                    <input
+                                      id="construct-edit-measure-precision"
+                                      type="number"
+                                      min={0}
+                                      max={12}
+                                      step={1}
+                                      value={geometrySelectedMeasurement.precision ?? 3}
+                                      onChange={(event) => handleUpdateSelectedMeasurement({ precision: Math.max(0, Math.min(12, Math.round(Number(event.target.value) || 0))) })}
+                                    />
+                                    <label htmlFor="construct-edit-measure-units">Units</label>
+                                    <select
+                                      id="construct-edit-measure-units"
+                                      value={geometrySelectedMeasurement.units ?? "scene"}
+                                      onChange={(event) => handleUpdateSelectedMeasurement({ units: event.target.value as GeometryMeasuredEdgeEntry["units"] })}
+                                    >
+                                      <option value="scene">Scene units</option>
+                                      <option value="mm">mm</option>
+                                      <option value="cm">cm</option>
+                                      <option value="m">m</option>
+                                    </select>
+                                  </div>
+                                )}
+                                {geometrySelectedMathRelationship && (
+                                  <div style={{ display: "grid", gridTemplateColumns: "94px 1fr", gap: 5, alignItems: "center" }}>
+                                    <label htmlFor="construct-edit-relationship-source">Reference</label>
+                                    <select
+                                      id="construct-edit-relationship-source"
+                                      value={geometrySelectedMathRelationship.sourceId}
+                                      onChange={(event) => handleUpdateSelectedMathRelationship({ sourceId: event.target.value })}
+                                    >
+                                      {geometryMathConstructions.map((entry) => (
+                                        <option key={`relationship-edit-source-${entry.id}`} value={entry.id}>{entry.name}</option>
+                                      ))}
+                                    </select>
+                                    <label htmlFor="construct-edit-relationship-target">Target</label>
+                                    <select
+                                      id="construct-edit-relationship-target"
+                                      value={geometrySelectedMathRelationship.targetId}
+                                      onChange={(event) => handleUpdateSelectedMathRelationship({ targetId: event.target.value })}
+                                    >
+                                      {geometryMathConstructions.map((entry) => (
+                                        <option key={`relationship-edit-target-${entry.id}`} value={entry.id}>{entry.name}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                )}
                                 {!geometrySelectedMathConstructionEval &&
                                   !geometrySelectedDerivedConstructionEval &&
+                                  !geometrySelectedMeasurement &&
+                                  !geometrySelectedMathRelationship &&
                                   geometrySelectedSceneObject && (
                                     <div style={{ display: "grid", gridTemplateColumns: "24px 1fr", gap: 5, alignItems: "center" }}>
                                       {(["x", "y", "z"] as const).map((axis) => (
@@ -52349,20 +52486,6 @@ case "mobius":
                               </div>
                             )}
                             <div style={{ display: "grid", gridTemplateColumns: "58px minmax(0, 1fr)", gap: "5px 8px", fontSize: 10.5 }}>
-                              <strong>Mode</strong>
-                              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                                {GEOMETRY_TRANSFORM_MODE_OPTIONS.map((option) => (
-                                  <label key={`construct-transform-${option.id}`} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                    <input
-                                      type="radio"
-                                      name="construct-transform-mode"
-                                      checked={geometryTransformMode === option.id}
-                                      onChange={() => handleSetConstructionTransformMode(option.id)}
-                                    />
-                                    {option.label}
-                                  </label>
-                                ))}
-                              </div>
                               <strong>Pivot</strong>
                               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                                 <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -52678,9 +52801,25 @@ case "mobius":
                                           if (item.kind === "math") {
                                             setGeometrySelectedMathConstructionId(item.id);
                                             setGeometrySelectedDerivedConstructionId(null);
+                                            setGeometrySelectedMathRelationshipId(null);
+                                            setGeometrySelectedMeasurementId(null);
                                           } else if (item.kind === "derived") {
                                             setGeometrySelectedDerivedConstructionId(item.id);
                                             setGeometrySelectedMathConstructionId(null);
+                                            setGeometrySelectedMathRelationshipId(null);
+                                            setGeometrySelectedMeasurementId(null);
+                                          } else if (item.kind === "relationship") {
+                                            setGeometrySelectedMathRelationshipId(item.id);
+                                            setGeometrySelectedMeasurementId(null);
+                                            setGeometrySelectedMathConstructionId(null);
+                                            setGeometrySelectedDerivedConstructionId(null);
+                                            setGeometrySelectedObjectId(null);
+                                          } else if (item.kind === "measurement") {
+                                            setGeometrySelectedMeasurementId(item.id);
+                                            setGeometrySelectedMathRelationshipId(null);
+                                            setGeometrySelectedMathConstructionId(null);
+                                            setGeometrySelectedDerivedConstructionId(null);
+                                            setGeometrySelectedObjectId(null);
                                           }
                                         }}
                                         style={{
@@ -52691,7 +52830,7 @@ case "mobius":
                                           display: "grid",
                                           gap: 4,
                                           fontSize: 10.5,
-                                          cursor: item.kind === "relationship" ? "default" : "pointer",
+                                          cursor: "pointer",
                                         }}
                                       >
                                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
@@ -52735,6 +52874,7 @@ case "mobius":
                                               if (item.kind === "derived") handleToggleDerivedConstructionVisibility(item.id);
                                               if (item.kind === "relationship") handleToggleGeometryMathConstructionRelationship(item.id);
                                             }}
+                                            disabled={item.kind === "measurement"}
                                           >
                                             {item.visible ? "Hide" : "Show"}
                                           </button>
@@ -52746,6 +52886,7 @@ case "mobius":
                                               if (item.kind === "derived") handleRenameDerivedConstruction(item.id);
                                               if (item.kind === "relationship") handleRenameGeometryMathConstructionRelationship(item.id);
                                             }}
+                                            disabled={item.kind === "measurement"}
                                           >
                                             Rename
                                           </button>
@@ -52801,6 +52942,10 @@ case "mobius":
                                               if (item.kind === "math") handleDeleteGeometryMathConstruction(item.id);
                                               if (item.kind === "derived") handleDeleteDerivedConstruction(item.id);
                                               if (item.kind === "relationship") handleDeleteGeometryMathConstructionRelationship(item.id);
+                                              if (item.kind === "measurement") {
+                                                setGeometryMeasuredEdges((prev) => prev.filter((entry) => entry.id !== item.id));
+                                                setGeometrySelectedMeasurementId((prev) => prev === item.id ? null : prev);
+                                              }
                                             }}
                                           >
                                             Delete
@@ -53597,7 +53742,7 @@ case "mobius":
                                   key={`transform-tab-mode-${option.id}`}
                                   type="button"
                                   title={option.title}
-                                  onClick={() => setGeometryTransformMode(option.id)}
+                                  onClick={() => handleSetConstructionTransformMode(option.id)}
                                   style={{
                                     padding: "3px 8px",
                                     borderRadius: 6,
@@ -59382,7 +59527,7 @@ case "mobius":
                         key={`viewport-transform-${option.id}`}
                         type="button"
                         title={option.title}
-                        onClick={() => setGeometryTransformMode(option.id)}
+                        onClick={() => handleSetConstructionTransformMode(option.id)}
                         style={{
                           padding: "3px 8px",
                           borderRadius: 6,
