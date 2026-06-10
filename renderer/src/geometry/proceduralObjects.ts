@@ -334,9 +334,9 @@ export const GEOMETRY_OBJECT_REGISTRY: Record<GeometryObjectType, GeometryObject
     ],
     build: (params) =>
       new THREE.SphereGeometry(
-        Number(params.radius ?? 1),
-        Math.max(3, Math.round(Number(params.widthSegments ?? 32))),
-        Math.max(2, Math.round(Number(params.heightSegments ?? 20)))
+        THREE.MathUtils.clamp(Number(params.radius ?? 1), 0.1, 10),
+        THREE.MathUtils.clamp(Math.round(Number(params.widthSegments ?? 32)), 3, 128),
+        THREE.MathUtils.clamp(Math.round(Number(params.heightSegments ?? 20)), 2, 128)
       ),
   },
   box: {

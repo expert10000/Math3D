@@ -241,6 +241,16 @@ button:focus-visible {
   contain-intrinsic-size: 210px;
 }
 
+.geometry-gallery-scan-card {
+  content-visibility: visible;
+  contain: layout paint;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+.geometry-gallery-scan-card:hover {
+  transform: none;
+}
+
 .gallery-scan-card:hover {
   transform: translateY(-2px);
   border-color: #84aedd;

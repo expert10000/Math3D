@@ -391,6 +391,7 @@ type GeometryProceduralPanelTab =
   | "create"
   | "scene"
   | "object"
+  | "definition"
   | "construct"
   | "transform"
   | "view"
@@ -8178,6 +8179,7 @@ const App: React.FC = () => {
   const [, setGeometryCreatePlacementSnapToGrid] = useState(false);
   const [geometryCreatePlacementStatus, setGeometryCreatePlacementStatus] = useState<string | null>(null);
   const [geometryPendingPlacementObjectId, setGeometryPendingPlacementObjectId] = useState<string | null>(null);
+  const [geometryPendingFocusObjectId, setGeometryPendingFocusObjectId] = useState<string | null>(null);
   const handleProceduralPick = useCallback((info: GeometryProceduralPickInfo) => {
     if (isVariantGhostMeshKey(info.meshKey)) return;
     setGeometryProceduralPick({
@@ -8214,7 +8216,6 @@ const App: React.FC = () => {
     geometryProbeSelectionMode,
     geometryProceduralPanelTab,
   ]);
-  const geometryFocusAfterAddRef = useRef<(() => void) | null>(null);
   const [geometryProceduralScriptText, setGeometryProceduralScriptText] = useState(PROCEDURAL_SCRIPT_STARTER);
   const [geometryProceduralScriptError, setGeometryProceduralScriptError] = useState<string | null>(null);
   const [geometryProceduralScriptStatus, setGeometryProceduralScriptStatus] = useState<string | null>(null);
@@ -9583,32 +9584,6 @@ const App: React.FC = () => {
       sortedGeometryGalleryVisibleCards,
     ]
   );
-  const geometryGalleryThumbUrls = useMemo(() => {
-    const urls = new Set<string>();
-    const addThumb = (renderedThumb: string, diagramThumb: string) => {
-      const url = thumbByViewMode(renderedThumb, diagramThumb, galleryCardViewMode);
-      if (url) urls.add(url);
-    };
-    if (geometryGallerySelectedCard) {
-      addThumb(geometryGallerySelectedCard.renderedThumbnailDataUrl, geometryGallerySelectedCard.diagramThumbnailDataUrl);
-      for (const preset of geometryGallerySelectedCard.presets.slice(0, GEOMETRY_GALLERY_PREFETCH_PRESET_LIMIT)) {
-        addThumb(preset.renderedThumbnailDataUrl, preset.diagramThumbnailDataUrl);
-      }
-    }
-    let cardCount = 0;
-    for (const section of geometryGallerySections) {
-      for (const card of section.cards) {
-        if (card.id === geometryGallerySelectedCard?.id) continue;
-        addThumb(card.renderedThumbnailDataUrl, card.diagramThumbnailDataUrl);
-        cardCount += 1;
-        if (cardCount >= GEOMETRY_GALLERY_PREFETCH_CARD_LIMIT) {
-          return Array.from(urls);
-        }
-      }
-    }
-    return Array.from(urls);
-  }, [galleryCardViewMode, geometryGallerySections, geometryGallerySelectedCard]);
-  useGalleryThumbPrefetch(geometryGalleryThumbUrls);
   const handleSelectGeometryGalleryCard = useCallback((cardId: string) => {
     const card = GEOMETRY_GALLERY_CARD_BY_ID.get(cardId);
     if (!card) return;
@@ -9731,7 +9706,7 @@ const App: React.FC = () => {
       setGeometryProceduralPanelTab("object");
     }
     if (geometryAddFocusCamera) {
-      geometryFocusAfterAddRef.current?.();
+      setGeometryPendingFocusObjectId(id);
     }
     return id;
   }, [
@@ -11039,10 +11014,13 @@ const App: React.FC = () => {
       const nextScale =
         geometryUniformScaleLock && geometryGizmoMode === "scale"
           ? (() => {
-              const uniform = Math.max(
-                1e-6,
-                (Math.max(1e-6, info.scale.x) + Math.max(1e-6, info.scale.y) + Math.max(1e-6, info.scale.z)) / 3
+              const currentScale = targetObj?.transform.scale ?? { x: 1, y: 1, z: 1 };
+              const changedAxis = (["x", "y", "z"] as const).reduce((best, axis) =>
+                Math.abs(info.scale[axis] - currentScale[axis]) > Math.abs(info.scale[best] - currentScale[best])
+                  ? axis
+                  : best
               );
+              const uniform = Math.max(1e-6, info.scale[changedAxis]);
               return { x: uniform, y: uniform, z: uniform };
             })()
           : {
@@ -11213,6 +11191,29 @@ const App: React.FC = () => {
     [proceduralMeshSet.meshes, resolveGeometrySceneObjectById]
   );
   useEffect(() => {
+    if (!geometryPendingFocusObjectId) return;
+    const resolved = resolveGeometrySceneMeshById(geometryPendingFocusObjectId);
+    if (!resolved) return;
+    const bounds = boundsFromPositions(resolved.mesh.positions);
+    setGeometryPendingFocusObjectId(null);
+    if (!bounds) return;
+    const center = {
+      x: 0.5 * (bounds.min[0] + bounds.max[0]),
+      y: 0.5 * (bounds.min[1] + bounds.max[1]),
+      z: 0.5 * (bounds.min[2] + bounds.max[2]),
+    };
+    const radius = Math.max(
+      0.35,
+      Math.min(100, 0.5 * Math.hypot(bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1], bounds.max[2] - bounds.min[2]))
+    );
+    setGeometryCameraFitCommand((previous) => ({
+      token: (previous?.token ?? 0) + 1,
+      center,
+      radius,
+      padding: 1.18,
+    }));
+  }, [geometryPendingFocusObjectId, resolveGeometrySceneMeshById]);
+  useEffect(() => {
     setGeometryMeasuredEdges((prev) => {
       let changed = false;
       const next = prev.map((entry) => {
@@ -11276,8 +11277,19 @@ const App: React.FC = () => {
           z: 0.5 * (bounds.min[2] + bounds.max[2]),
         }
       : null;
-    const topology = computeTriangleMeshEdgeTopology(mesh);
-    const readiness = evaluateGeometryMeshReadiness(mesh);
+    const needsDetailedDiagnostics =
+      mode === "geometry" &&
+      geometryMode === "procedural" &&
+      (
+        geometryProceduralPanelTab === "object" ||
+        geometryProceduralPanelTab === "analysis" ||
+        geometryProceduralPanelTab === "theory" ||
+        geometryProceduralPanelTab === "transform"
+      );
+    const topology = needsDetailedDiagnostics
+      ? computeTriangleMeshEdgeTopology(mesh)
+      : { boundaryEdgeCount: 0, nonManifoldEdgeCount: 0, manifold: true, watertight: true };
+    const readiness = needsDetailedDiagnostics ? evaluateGeometryMeshReadiness(mesh) : null;
     return {
       vertCount,
       triCount,
@@ -11292,13 +11304,26 @@ const App: React.FC = () => {
       readiness,
       sourceLabel: formatSurfaceMeshSource(mesh.source),
     };
-  }, [geometrySelectedSceneObject, proceduralMeshSet.meshes]);
+  }, [
+    geometryMode,
+    geometryProceduralPanelTab,
+    geometrySelectedSceneObject,
+    proceduralMeshSet.meshes,
+  ]);
   const geometrySelectedSceneMetrics = useMemo(() => {
+    if (mode !== "geometry" || geometryMode !== "procedural" || geometryProceduralPanelTab !== "transform") return null;
     if (!geometrySelectedSceneObject) return null;
     const resolved = resolveGeometrySceneMeshById(geometrySelectedSceneObject.id);
     return resolved ? computeTriangleMeshGeometricMetrics(resolved.mesh) : null;
-  }, [geometrySelectedSceneObject, resolveGeometrySceneMeshById]);
+  }, [geometryMode, geometryProceduralPanelTab, geometrySelectedSceneObject, mode, resolveGeometrySceneMeshById]);
   const geometryCompareEntryA = useMemo(() => {
+    if (
+      mode !== "geometry" ||
+      geometryMode !== "procedural" ||
+      (geometryProceduralPanelTab !== "analysis" && geometryProceduralPanelTab !== "demonstrations")
+    ) {
+      return null;
+    }
     if (!geometryCompareObjectAId) return null;
     const object =
       geometryObjects.find((entry) => entry.id === geometryCompareObjectAId) ??
@@ -11308,8 +11333,23 @@ const App: React.FC = () => {
     const resolved = resolveGeometrySceneMeshById(geometryCompareObjectAId);
     const metrics = resolved ? computeTriangleMeshGeometricMetrics(resolved.mesh) : null;
     return { object, metrics };
-  }, [geometryCompareObjectAId, geometryDatasetMeshObjects, geometryObjects, resolveGeometrySceneMeshById]);
+  }, [
+    geometryCompareObjectAId,
+    geometryDatasetMeshObjects,
+    geometryMode,
+    geometryObjects,
+    geometryProceduralPanelTab,
+    mode,
+    resolveGeometrySceneMeshById,
+  ]);
   const geometryCompareEntryB = useMemo(() => {
+    if (
+      mode !== "geometry" ||
+      geometryMode !== "procedural" ||
+      (geometryProceduralPanelTab !== "analysis" && geometryProceduralPanelTab !== "demonstrations")
+    ) {
+      return null;
+    }
     if (!geometryCompareObjectBId) return null;
     const object =
       geometryObjects.find((entry) => entry.id === geometryCompareObjectBId) ??
@@ -11319,7 +11359,15 @@ const App: React.FC = () => {
     const resolved = resolveGeometrySceneMeshById(geometryCompareObjectBId);
     const metrics = resolved ? computeTriangleMeshGeometricMetrics(resolved.mesh) : null;
     return { object, metrics };
-  }, [geometryCompareObjectBId, geometryDatasetMeshObjects, geometryObjects, resolveGeometrySceneMeshById]);
+  }, [
+    geometryCompareObjectBId,
+    geometryDatasetMeshObjects,
+    geometryMode,
+    geometryObjects,
+    geometryProceduralPanelTab,
+    mode,
+    resolveGeometrySceneMeshById,
+  ]);
   const geometryCompareRows = useMemo(() => {
     if (!geometryCompareEntryA || !geometryCompareEntryB) return [];
     const a = geometryCompareEntryA.metrics;
@@ -18584,16 +18632,108 @@ const App: React.FC = () => {
       const label = GEOMETRY_MATH_RELATIONSHIP_TYPE_LABELS[geometrySelectedMathRelationship.type].replaceAll(" ", "");
       return `${label}(${geometrySelectedMathRelationship.sourceId}, ${geometrySelectedMathRelationship.targetId})`;
     }
-    if (geometrySelectedSceneObject) return `Point(${fmt(geometrySelectedSceneObject.transform.position.x)}, ${fmt(geometrySelectedSceneObject.transform.position.y)}, ${fmt(geometrySelectedSceneObject.transform.position.z)})`;
+    if (geometrySelectedSceneObject) {
+      if ("type" in geometrySelectedSceneObject) {
+        const label = GEOMETRY_OBJECT_REGISTRY[geometrySelectedSceneObject.type]?.label ?? geometrySelectedSceneObject.type;
+        const args = Object.entries(geometrySelectedSceneObject.params)
+          .map(([key, value]) => `${key}=${typeof value === "number" ? fmt(value) : String(value)}`)
+          .join(", ");
+        return `${label}(center=${fmt3(geometrySelectedSceneObject.transform.position)}${args ? `, ${args}` : ""})`;
+      }
+      return `Mesh(center=${fmt3(geometrySelectedSceneObject.transform.position)})`;
+    }
     return "No selection";
   }, [
     fmt,
+    fmt3,
     geometryProceduralEditSources,
     geometrySelectedDerivedConstructionEval,
     geometrySelectedMathConstructionEval,
     geometrySelectedMathRelationship,
     geometrySelectedMeasurement,
     geometrySelectedSceneObject,
+  ]);
+  const geometryDefinitionWorkspace = useMemo(() => {
+    if (geometryProceduralPanelTab !== "definition") {
+      return {
+        inputs: [] as Array<{ id: string; label: string; relation: string }>,
+        outputs: [] as Array<{ id: string; label: string; relation: string; kind: GeometryDependencyNodeKind }>,
+        derivedObjects: [] as Array<{ id: string; label: string; relation: string; kind: GeometryDependencyNodeKind }>,
+        parameterRows: [] as Array<{ id: string; label: string; value: number | boolean | string }>,
+      };
+    }
+    const inputs: Array<{ id: string; label: string; relation: string }> = [];
+    const outputs: Array<{ id: string; label: string; relation: string; kind: GeometryDependencyNodeKind }> = [];
+    const objectNameById = new Map(
+      [...geometryObjects, ...geometryDatasetMeshObjects].map((entry) => [entry.id, entry.name])
+    );
+    if (geometrySelectedDerivedConstructionEval) {
+      const sourceId = geometrySelectedDerivedConstructionEval.object.sourceObjectId;
+      inputs.push({
+        id: `object:${sourceId}`,
+        label: objectNameById.get(sourceId) ?? geometrySelectedDerivedConstructionEval.sourceObjectName,
+        relation: "derived-from",
+      });
+    } else if (geometrySelectedMathConstructionEval) {
+      for (const sourceId of geometrySelectedMathConstructionEval.object.sourceObjectIds) {
+        inputs.push({
+          id: geometryMathConstructions.some((entry) => entry.id === sourceId) ? `math:${sourceId}` : `object:${sourceId}`,
+          label:
+            geometryMathConstructions.find((entry) => entry.id === sourceId)?.name ??
+            objectNameById.get(sourceId) ??
+            sourceId,
+          relation: "derived-from",
+        });
+      }
+    } else if (geometrySelectedSceneObject) {
+      for (const entry of geometryDerivedConstructions) {
+        if (entry.sourceObjectId !== geometrySelectedSceneObject.id) continue;
+        outputs.push({
+          id: `derived:${entry.id}`,
+          label: geometryDerivedConstructionName(entry),
+          relation: "derived-from",
+          kind: geometryDependencyNodeKindFromConstructionType(entry.type),
+        });
+      }
+      for (const entry of geometryMathConstructions) {
+        if (!entry.sourceObjectIds.includes(geometrySelectedSceneObject.id)) continue;
+        outputs.push({
+          id: `math:${entry.id}`,
+          label: entry.name,
+          relation: "derived-from",
+          kind: geometryDependencyNodeKindFromMathConstructionType(entry.type),
+        });
+      }
+    }
+    const parameterRows: Array<{ id: string; label: string; value: number | boolean | string }> = [];
+    if (geometrySelectedObject) {
+      const registry = GEOMETRY_OBJECT_REGISTRY[geometrySelectedObject.type];
+      const labels = new Map(registry?.params.map((param) => [param.id, param.label]) ?? []);
+      for (const [id, value] of Object.entries(geometrySelectedObjectEditParams ?? geometrySelectedObject.params)) {
+        parameterRows.push({ id, label: labels.get(id) ?? id, value });
+      }
+    } else if (geometrySelectedDerivedConstructionEval) {
+      for (const [id, value] of Object.entries(geometrySelectedDerivedConstructionEval.object.params ?? {})) {
+        parameterRows.push({ id, label: id.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase()), value });
+      }
+    }
+    return {
+      inputs,
+      outputs,
+      derivedObjects: outputs.filter((entry) => entry.kind.startsWith("derived-")),
+      parameterRows,
+    };
+  }, [
+    geometryDatasetMeshObjects,
+    geometryDerivedConstructions,
+    geometryMathConstructions,
+    geometryProceduralPanelTab,
+    geometrySelectedDerivedConstructionEval,
+    geometrySelectedMathConstructionEval,
+    geometrySelectedObject,
+    geometrySelectedObjectEditParams,
+    geometrySelectedSceneObject,
+    geometryObjects,
   ]);
   const handleUpdateSelectedDerivedEditParams = useCallback(
     (patch: NonNullable<GeometryDerivedConstructionObject["params"]>) => {
@@ -19550,11 +19690,6 @@ const App: React.FC = () => {
     },
     [handleGeometryFit]
   );
-  useEffect(() => {
-    geometryFocusAfterAddRef.current = () => {
-      handleGeometryFit("scene");
-    };
-  }, [handleGeometryFit]);
   useEffect(() => {
     if (geometryMode !== "demo") return;
     if (geometryDemoFamily === "planimetry") {
@@ -42754,6 +42889,7 @@ case "mobius":
     if (
       geometryProceduralPanelTab === "construct" ||
       geometryProceduralPanelTab === "object" ||
+      geometryProceduralPanelTab === "definition" ||
       geometryProceduralPanelTab === "transform" ||
       geometryProceduralPanelTab === "view" ||
       geometryProceduralPanelTab === "history"
@@ -46457,6 +46593,7 @@ case "mobius":
                     { key: "create", id: "create" as const, label: "Create" },
                     { key: "scene", id: "scene" as const, label: "Scene" },
                     { key: "object", id: "object" as const, label: "Object" },
+                    { key: "definition", id: "definition" as const, label: "Definition" },
                     { key: "construct", id: "construct" as const, label: "Construct" },
                     { key: "transform", id: "transform" as const, label: "Edit" },
                     { key: "view", id: "view" as const, label: "View" },
@@ -46473,6 +46610,9 @@ case "mobius":
                         type="button"
                         onClick={() => {
                           setGeometryProceduralPanelTab(entry.id);
+                          if (entry.id !== "construct") {
+                            setGeometryInspectorPanelTab("probe");
+                          }
                           if (entry.id === "analysis") {
                             prepareGeometryCompareFromSelected();
                           }
@@ -51013,7 +51153,7 @@ case "mobius":
                                           src={cardThumb}
                                           alt={`${card.name} card`}
                                           className="gallery-scan-card-preview-image"
-                                          loading="lazy"
+                                          loading="eager"
                                           decoding="async"
                                           onError={(event) => handleGalleryImageLoadError(event, cardFallbackThumb)}
                                         />
@@ -51975,6 +52115,182 @@ case "mobius":
                       )}
                     </details>
                     </>
+                    )}
+
+                    {geometryProceduralPanelTab === "definition" && (
+                    <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                      <div
+                        style={{
+                          border: "1px solid #c7d2fe",
+                          borderRadius: 10,
+                          padding: "10px 12px",
+                          background: "linear-gradient(180deg, #eef2ff 0%, #f8fafc 100%)",
+                          display: "grid",
+                          gap: 5,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                          <div style={{ fontSize: 13, fontWeight: 800 }}>{geometryConstructionActiveTarget.name}</div>
+                          <span style={{ fontSize: 10.5, color: "#475569" }}>{geometryConstructionActiveTarget.type}</span>
+                        </div>
+                        <code
+                          style={{
+                            display: "block",
+                            border: "1px solid #dbe4f0",
+                            borderRadius: 7,
+                            padding: "7px 8px",
+                            background: "#fff",
+                            color: "#312e81",
+                            overflowWrap: "anywhere",
+                          }}
+                        >
+                          {geometryConstructionEditFormula}
+                        </code>
+                        <div style={{ fontSize: 10.5, color: "#166534" }}>Live recompute enabled</div>
+                      </div>
+
+                      {geometrySelectionContext.hasSelection ? (
+                        <>
+                          <div style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: "8px 10px", background: "#fff", display: "grid", gap: 7 }}>
+                            <div style={{ fontSize: 11, fontWeight: 800 }}>Inputs</div>
+                            {geometrySelectedSceneObject && (
+                              <button
+                                type="button"
+                                onClick={() => setGeometryProceduralPanelTab("transform")}
+                                style={{ textAlign: "left", padding: "6px 8px" }}
+                              >
+                                <strong>Center</strong> · {fmt3(geometrySelectedSceneObject.transform.position)}
+                              </button>
+                            )}
+                            {geometryDefinitionWorkspace.inputs.map((entry) => (
+                              <button
+                                key={`definition-input-${entry.id}-${entry.relation}`}
+                                type="button"
+                                onClick={() => handleSelectGeometryDependencyNode(entry.id)}
+                                style={{ textAlign: "left", padding: "6px 8px" }}
+                              >
+                                <strong>{entry.label}</strong> · {entry.relation}
+                              </button>
+                            ))}
+                            {!geometrySelectedSceneObject && !geometryDefinitionWorkspace.inputs.length && (
+                              <div style={{ fontSize: 10.5, color: "#64748b" }}>No defining inputs.</div>
+                            )}
+                          </div>
+
+                          <div style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: "8px 10px", background: "#fff", display: "grid", gap: 7 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                              <div style={{ fontSize: 11, fontWeight: 800 }}>Parameters</div>
+                              {geometrySelectedObject && (
+                                <span style={{ fontSize: 10, color: "#64748b" }}>
+                                  {geometryObjectLiveRebuild ? "Updates live" : "Rebuild to apply"}
+                                </span>
+                              )}
+                            </div>
+                            {geometryDefinitionWorkspace.parameterRows.map((row) => {
+                              const paramDef = geometrySelectedObject
+                                ? GEOMETRY_OBJECT_REGISTRY[geometrySelectedObject.type]?.params.find((param) => param.id === row.id)
+                                : null;
+                              const disabled = !!geometrySelectedObject && geometryLockedObjectIds.has(geometrySelectedObject.id);
+                              return (
+                                <label
+                                  key={`definition-parameter-${row.id}`}
+                                  style={{ display: "grid", gridTemplateColumns: "minmax(105px, 0.8fr) minmax(0, 1.2fr)", gap: 8, alignItems: "center", fontSize: 10.5 }}
+                                >
+                                  <span>{row.label}</span>
+                                  {geometrySelectedObject && paramDef?.kind === "toggle" ? (
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(row.value)}
+                                      disabled={disabled}
+                                      onChange={(event) => handleUpdateGeometryObjectParam(geometrySelectedObject.id, row.id, event.target.checked)}
+                                    />
+                                  ) : geometrySelectedObject && paramDef?.kind === "select" ? (
+                                    <select
+                                      value={String(row.value)}
+                                      disabled={disabled}
+                                      onChange={(event) => handleUpdateGeometryObjectParam(geometrySelectedObject.id, row.id, event.target.value)}
+                                    >
+                                      {paramDef.options?.map((option) => (
+                                        <option key={`definition-parameter-option-${row.id}-${option.value}`} value={option.value}>{option.label}</option>
+                                      ))}
+                                    </select>
+                                  ) : geometrySelectedObject && typeof row.value === "number" ? (
+                                    <input
+                                      type="number"
+                                      value={row.value}
+                                      min={paramDef?.min}
+                                      max={paramDef?.max}
+                                      step={paramDef?.step ?? 0.1}
+                                      disabled={disabled}
+                                      onChange={(event) => {
+                                        const value = Number(event.target.value);
+                                        if (Number.isFinite(value)) handleUpdateGeometryObjectParam(geometrySelectedObject.id, row.id, value);
+                                      }}
+                                    />
+                                  ) : (
+                                    <code style={{ color: "#334155", overflowWrap: "anywhere" }}>{String(row.value)}</code>
+                                  )}
+                                </label>
+                              );
+                            })}
+                            {!geometryDefinitionWorkspace.parameterRows.length && (
+                              <div style={{ fontSize: 10.5, color: "#64748b" }}>No editable parameters.</div>
+                            )}
+                            {geometrySelectedObject && geometrySelectedObjectDraftParams && !geometryObjectLiveRebuild && (
+                              <button type="button" onClick={() => handleRebuildGeometryObject(geometrySelectedObject.id)}>
+                                Rebuild object
+                              </button>
+                            )}
+                          </div>
+
+                          <div style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: "8px 10px", background: "#fff", display: "grid", gap: 7 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                              <div style={{ fontSize: 11, fontWeight: 800 }}>Dependencies</div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setGeometryRightPanelTab("inspector");
+                                  setGeometryInspectorPanelTab("dependencies");
+                                }}
+                                style={{ fontSize: 10 }}
+                              >
+                                Open dependency tree
+                              </button>
+                            </div>
+                            <div style={{ fontSize: 10.5, color: "#475569" }}>
+                              {geometryDefinitionWorkspace.inputs.length} upstream · {geometryDefinitionWorkspace.outputs.length} downstream
+                            </div>
+                            {geometryInspectorDependencyDetails?.node && (
+                              <div style={{ fontSize: 10.5 }}>
+                                <strong>Status:</strong> {geometryDependencyNodeStatusMeta(geometryInspectorDependencyDetails.node).label}
+                              </div>
+                            )}
+                          </div>
+
+                          <div style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: "8px 10px", background: "#fff", display: "grid", gap: 7 }}>
+                            <div style={{ fontSize: 11, fontWeight: 800 }}>Derived Objects</div>
+                            {geometryDefinitionWorkspace.derivedObjects.length ? (
+                              geometryDefinitionWorkspace.derivedObjects.map((entry) => (
+                                <button
+                                  key={`definition-derived-${entry.id}-${entry.relation}`}
+                                  type="button"
+                                  onClick={() => handleSelectGeometryDependencyNode(entry.id)}
+                                  style={{ textAlign: "left", padding: "6px 8px" }}
+                                >
+                                  <strong>{entry.label}</strong> · {entry.relation}
+                                </button>
+                              ))
+                            ) : (
+                              <div style={{ fontSize: 10.5, color: "#64748b" }}>No derived objects depend on this selection.</div>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ border: "1px dashed #cbd5e1", borderRadius: 8, padding: "12px", color: "#64748b", fontSize: 11 }}>
+                          Select an object or construction in Scene to inspect its complete definition.
+                        </div>
+                      )}
+                    </div>
                     )}
 
                     {geometryProceduralPanelTab === "construct" && (
@@ -64370,9 +64686,6 @@ const GALLERY_SORT_OPTIONS: Array<{ value: GallerySortPreset; label: string }> =
   { value: "complexity", label: "Complexity" },
   { value: "demoReady", label: "Demo-ready" },
 ];
-const GEOMETRY_GALLERY_PREFETCH_CARD_LIMIT = 18;
-const GEOMETRY_GALLERY_PREFETCH_PRESET_LIMIT = 3;
-
 const thumbByViewMode = (
   renderedThumb: string,
   diagramThumb: string,
