@@ -7898,8 +7898,10 @@ const App: React.FC = () => {
   const geometryDependenciesPanelActive =
     mode === "geometry" &&
     geometryMode === "procedural" &&
-    geometryRightPanelTab === "inspector" &&
-    geometryInspectorPanelTab === "dependencies";
+    (
+      geometryProceduralPanelTab === "construct" ||
+      (geometryRightPanelTab === "inspector" && geometryInspectorPanelTab === "dependencies")
+    );
   const runGeometryPanelTabSwitch = useCallback((apply: () => void) => {
     if (geometryPanelTabSwitchLockedRef.current) return;
     geometryPanelTabSwitchLockedRef.current = true;
@@ -18371,35 +18373,46 @@ const App: React.FC = () => {
     geometryProbeSelectionDetails,
     geometrySelectedSceneObject,
   ]);
-  const geometryConstructionOperationTargetLabel = useMemo(() => {
-    if (geometrySelectedMathConstructionId) {
-      const selected = geometryMathConstructions.find((entry) => entry.id === geometrySelectedMathConstructionId);
-      if (selected) return `Math construction: ${selected.name}`;
+  const geometryConstructionActiveTarget = useMemo(() => {
+    let nodeId: string | null = null;
+    let name = "None";
+    let type = "No selection";
+    if (geometrySelectedMathConstructionEval) {
+      nodeId = `math:${geometrySelectedMathConstructionEval.object.id}`;
+      name = geometrySelectedMathConstructionEval.object.name;
+      type = `Derived ${geometryDependencyNodeKindFromMathConstructionType(
+        geometrySelectedMathConstructionEval.object.type
+      ).replace("derived-", "")}`;
+    } else if (geometrySelectedDerivedConstructionEval) {
+      nodeId = `derived:${geometrySelectedDerivedConstructionEval.object.id}`;
+      name = geometryDerivedConstructionName(geometrySelectedDerivedConstructionEval.object);
+      type = `Derived ${geometryDependencyNodeKindFromConstructionType(
+        geometrySelectedDerivedConstructionEval.object.type
+      ).replace("derived-", "")}`;
+    } else if (geometrySelectedSceneObject) {
+      nodeId = `object:${geometrySelectedSceneObject.id}`;
+      name = geometrySelectedSceneObject.name;
+      type = "Scene Object";
+    } else if (geometryProbeSelectionDetails) {
+      name =
+        geometryProbeSelectionDetails.mode === "face" && geometryProbeSelectionDetails.faceIndex != null
+          ? `Face #${geometryProbeSelectionDetails.faceIndex}`
+          : geometryProbeSelectionDetails.mode === "edge" && geometryProbeSelectionDetails.edgeVertexPair
+            ? `Edge [${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]`
+            : geometryProbeSelectionDetails.mode === "vertex" && geometryProbeSelectionDetails.vertexIndex != null
+              ? `Vertex #${geometryProbeSelectionDetails.vertexIndex}`
+              : `${geometryProbeSelectionDetails.mode} selection`;
+      type = "Probe Selection";
     }
-    if (geometrySelectedDerivedConstructionId) {
-      const selected = geometryDerivedConstructions.find((entry) => entry.id === geometrySelectedDerivedConstructionId);
-      if (selected) return `Construction object: ${geometryDerivedConstructionName(selected)}`;
-    }
-    if (geometrySelectedSceneObject) return `Scene object: ${geometrySelectedSceneObject.name}`;
-    if (geometryProbeSelectionDetails) {
-      if (geometryProbeSelectionDetails.mode === "face" && geometryProbeSelectionDetails.faceIndex != null) {
-        return `Face #${geometryProbeSelectionDetails.faceIndex}`;
-      }
-      if (geometryProbeSelectionDetails.mode === "edge" && geometryProbeSelectionDetails.edgeVertexPair) {
-        return `Edge [${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]`;
-      }
-      if (geometryProbeSelectionDetails.mode === "vertex" && geometryProbeSelectionDetails.vertexIndex != null) {
-        return `Vertex #${geometryProbeSelectionDetails.vertexIndex}`;
-      }
-      return `${geometryProbeSelectionDetails.mode} selection`;
-    }
-    return "None";
+    const outputCount = nodeId
+      ? geometryDependencyGraph.edges.filter((edge) => edge.sourceId === nodeId && edge.relation !== "contains").length
+      : 0;
+    return { name, type: type.replace(/\b\w/g, (letter) => letter.toUpperCase()), outputCount };
   }, [
-    geometryDerivedConstructions,
-    geometryMathConstructions,
+    geometryDependencyGraph,
     geometryProbeSelectionDetails,
-    geometrySelectedDerivedConstructionId,
-    geometrySelectedMathConstructionId,
+    geometrySelectedDerivedConstructionEval,
+    geometrySelectedMathConstructionEval,
     geometrySelectedSceneObject,
   ]);
   const geometryConstructionTransformSourceObject = useMemo<GeometryObject | GeometryDatasetMeshObject | null>(() => {
@@ -18442,6 +18455,12 @@ const App: React.FC = () => {
       `Transforming source object ${geometryConstructionTransformSourceObject.name}. Dependent constructions will recompute.`
     );
   }, [geometryConstructionTransformSourceObject]);
+  const handleSetConstructionTransformMode = useCallback((mode: GeometryTransformMode) => {
+    setGeometryTransformMode(mode);
+    if (mode === "rotate" || mode === "scale") {
+      setGeometryTransformPivotMode("center");
+    }
+  }, []);
   const handleDetachSelectedConstructionToPoint = useCallback(() => {
     const evaluation = geometrySelectedMathConstructionEval ?? geometrySelectedDerivedConstructionEval;
     if (!evaluation?.origin || !geometrySelectedConstructionCanDetachToPoint) {
@@ -51973,7 +51992,7 @@ case "mobius":
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
                             <div style={{ fontSize: 11, fontWeight: 700 }}>Operations</div>
                             <span style={{ fontSize: 10, color: "#64748b" }}>
-                              Target: {geometryConstructionOperationTargetLabel}
+                              Target: {geometryConstructionActiveTarget.name}
                             </span>
                           </div>
                           <div style={{ fontSize: 10.5, color: "#475569" }}>
@@ -51992,13 +52011,16 @@ case "mobius":
                                 fontSize: 10.5,
                               }}
                             >
-                              <div>
-                                <strong>Target:</strong>{" "}
-                                {geometrySelectedDerivedConstructionEval || geometrySelectedMathConstructionEval
-                                  ? "Parametric construction"
-                                  : geometryConstructionTransformSourceObject
-                                    ? "Source object"
-                                    : "None"}
+                              <div style={{ display: "grid", gridTemplateColumns: "76px minmax(0, 1fr)", gap: "2px 8px" }}>
+                                <strong>Target</strong>
+                                <span>{geometryConstructionActiveTarget.name}</span>
+                                <strong>Type</strong>
+                                <span>{geometryConstructionActiveTarget.type}</span>
+                                <strong>Dependencies</strong>
+                                <span>
+                                  {geometryConstructionActiveTarget.outputCount}{" "}
+                                  {geometryConstructionActiveTarget.outputCount === 1 ? "output" : "outputs"}
+                                </span>
                               </div>
                               {geometrySelectedDerivedConstructionEval || geometrySelectedMathConstructionEval ? (
                                 <>
@@ -52021,13 +52043,13 @@ case "mobius":
                             <div style={{ display: "grid", gridTemplateColumns: "58px minmax(0, 1fr)", gap: "5px 8px", fontSize: 10.5 }}>
                               <strong>Mode</strong>
                               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                                {GEOMETRY_TRANSFORM_MODE_OPTIONS.filter((option) => option.id !== "edit").map((option) => (
+                                {GEOMETRY_TRANSFORM_MODE_OPTIONS.map((option) => (
                                   <label key={`construct-transform-${option.id}`} style={{ display: "flex", alignItems: "center", gap: 4 }}>
                                     <input
                                       type="radio"
                                       name="construct-transform-mode"
                                       checked={geometryTransformMode === option.id}
-                                      onChange={() => setGeometryTransformMode(option.id)}
+                                      onChange={() => handleSetConstructionTransformMode(option.id)}
                                     />
                                     {option.label}
                                   </label>
@@ -52050,6 +52072,7 @@ case "mobius":
                                     name="construct-transform-pivot"
                                     checked={geometryTransformPivotMode === "worldOrigin"}
                                     onChange={() => setGeometryTransformPivotMode("worldOrigin")}
+                                    disabled={geometryTransformMode !== "move"}
                                   />
                                   World origin
                                 </label>
@@ -52059,10 +52082,19 @@ case "mobius":
                                     name="construct-transform-pivot"
                                     checked={geometryTransformPivotMode === "custom"}
                                     onChange={() => setGeometryTransformPivotMode("custom")}
+                                    disabled={geometryTransformMode !== "move"}
                                   />
                                   Custom point
                                 </label>
                               </div>
+                              {geometryTransformMode !== "move" && (
+                                <>
+                                  <span />
+                                  <div style={{ color: "#92400e" }}>
+                                    Rotate and Scale currently use the object center.
+                                  </div>
+                                </>
+                              )}
                               <strong>Space</strong>
                               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                                 <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
