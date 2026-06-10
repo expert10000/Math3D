@@ -2304,6 +2304,13 @@ type GeometryDerivedConstructionObject = {
   params?: {
     distance?: number;
     length?: number;
+    padding?: number;
+    opacity?: number;
+    color?: number;
+    scale?: number;
+    tolerance?: number;
+    displaySize?: number;
+    displayStyle?: "solid" | "dashed";
   };
   sourceRevision?: number;
   sourceTopologySignature?: string | null;
@@ -16855,15 +16862,16 @@ const App: React.FC = () => {
         continue;
       }
       if (object.type === "object-bounding-box" && bounds) {
+        const padding = Math.max(0, Number(object.params?.padding) || 0);
         const c = [
-          { x: bounds.min[0], y: bounds.min[1], z: bounds.min[2] },
-          { x: bounds.max[0], y: bounds.min[1], z: bounds.min[2] },
-          { x: bounds.max[0], y: bounds.max[1], z: bounds.min[2] },
-          { x: bounds.min[0], y: bounds.max[1], z: bounds.min[2] },
-          { x: bounds.min[0], y: bounds.min[1], z: bounds.max[2] },
-          { x: bounds.max[0], y: bounds.min[1], z: bounds.max[2] },
-          { x: bounds.max[0], y: bounds.max[1], z: bounds.max[2] },
-          { x: bounds.min[0], y: bounds.max[1], z: bounds.max[2] },
+          { x: bounds.min[0] - padding, y: bounds.min[1] - padding, z: bounds.min[2] - padding },
+          { x: bounds.max[0] + padding, y: bounds.min[1] - padding, z: bounds.min[2] - padding },
+          { x: bounds.max[0] + padding, y: bounds.max[1] + padding, z: bounds.min[2] - padding },
+          { x: bounds.min[0] - padding, y: bounds.max[1] + padding, z: bounds.min[2] - padding },
+          { x: bounds.min[0] - padding, y: bounds.min[1] - padding, z: bounds.max[2] + padding },
+          { x: bounds.max[0] + padding, y: bounds.min[1] - padding, z: bounds.max[2] + padding },
+          { x: bounds.max[0] + padding, y: bounds.max[1] + padding, z: bounds.max[2] + padding },
+          { x: bounds.min[0] - padding, y: bounds.max[1] + padding, z: bounds.max[2] + padding },
         ];
         addEvalGroup(
           [
@@ -16880,8 +16888,8 @@ const App: React.FC = () => {
             [c[2], c[6]],
             [c[3], c[7]],
           ],
-          0x334155,
-          0.82,
+          Number.isFinite(object.params?.color) ? Number(object.params?.color) : 0x334155,
+          Math.max(0.1, Math.min(1, Number(object.params?.opacity) || 0.82)),
           1.3
         );
         finish("valid", objectCenter, null);
@@ -16909,9 +16917,10 @@ const App: React.FC = () => {
           }
           return { minT, maxT };
         });
-        pushAxisLine(lines, pca.center, pca.axes[0], spans[0].minT, spans[0].maxT);
-        pushAxisLine(lines, pca.center, pca.axes[1], spans[1].minT, spans[1].maxT);
-        pushAxisLine(lines, pca.center, pca.axes[2], spans[2].minT, spans[2].maxT);
+        const axisScale = Math.max(0.1, Number(object.params?.scale) || 1);
+        pushAxisLine(lines, pca.center, pca.axes[0], spans[0].minT * axisScale, spans[0].maxT * axisScale);
+        pushAxisLine(lines, pca.center, pca.axes[1], spans[1].minT * axisScale, spans[1].maxT * axisScale);
+        pushAxisLine(lines, pca.center, pca.axes[2], spans[2].minT * axisScale, spans[2].maxT * axisScale);
         addEvalGroup(lines, 0x0ea5e9, 0.92, 1.8);
         finish("valid", pca.center, pca.axes[0]);
         continue;
@@ -16936,8 +16945,9 @@ const App: React.FC = () => {
           maxU = Math.max(maxU, Math.abs(dot(rel, basis.u)));
           maxV = Math.max(maxV, Math.abs(dot(rel, basis.v)));
         }
-        const halfU = Math.max(0.18, maxU * 1.05);
-        const halfV = Math.max(0.18, maxV * 1.05);
+        const displaySize = Math.max(0.1, Number(object.params?.displaySize) || 1);
+        const halfU = Math.max(0.18, maxU * 1.05) * displaySize;
+        const halfV = Math.max(0.18, maxV * 1.05) * displaySize;
         const corners = [
           add(add(pca.center, scale(basis.u, halfU)), scale(basis.v, halfV)),
           add(add(pca.center, scale(basis.u, -halfU)), scale(basis.v, halfV)),
@@ -18442,6 +18452,87 @@ const App: React.FC = () => {
     }
     return false;
   }, [geometrySelectedDerivedConstructionEval, geometrySelectedMathConstructionEval]);
+  const geometryCanDetachActiveTarget =
+    geometrySelectedMathConstructionEval || geometrySelectedDerivedConstructionEval
+      ? geometrySelectedConstructionCanDetachToPoint
+      : !!geometrySelectedSceneObject;
+  const geometryProceduralEditSources = useMemo(() => {
+    if (geometryTransformMode !== "edit") return [];
+    const sourceIds = geometrySelectedMathConstructionEval
+      ? geometrySelectedMathConstructionEval.object.sourceObjectIds
+      : geometrySelectedDerivedConstructionEval
+        ? [geometrySelectedDerivedConstructionEval.object.sourceObjectId]
+        : geometrySelectedSceneObject
+          ? [geometrySelectedSceneObject.id]
+          : [];
+    return sourceIds.flatMap((id, index) => {
+      const source = resolveGeometrySceneObjectById(id);
+      return source
+        ? [{ id, label: `Input ${String.fromCharCode(65 + index)} · ${source.name}`, object: source }]
+        : [];
+    });
+  }, [
+    geometrySelectedDerivedConstructionEval,
+    geometrySelectedMathConstructionEval,
+    geometrySelectedSceneObject,
+    geometryTransformMode,
+    resolveGeometrySceneObjectById,
+  ]);
+  const geometryConstructionEditFormula = useMemo(() => {
+    const inputNames = geometryProceduralEditSources.map((entry, index) =>
+      entry.object.name || `Input ${String.fromCharCode(65 + index)}`
+    );
+    if (geometrySelectedMathConstructionEval) {
+      const type = geometrySelectedMathConstructionEval.object.type;
+      const formulaName: Record<GeometryMathConstructionType, string> = {
+        midpoint: "Midpoint",
+        "line-through-objects": "Line",
+        "parallel-line-through-object": "ParallelLine",
+        "perpendicular-line-through-object": "PerpendicularLine",
+        "circle-center-through-object": "Circle",
+        "angle-bisector": "AngleBisector",
+        "tangent-to-circle-at-object": "Tangent",
+        "normal-to-object-at-object": "Normal",
+      };
+      return `${formulaName[type]}(${inputNames.join(", ") || "inputs"})`;
+    }
+    if (geometrySelectedDerivedConstructionEval) {
+      const type = geometrySelectedDerivedConstructionEval.object.type;
+      const source = geometrySelectedDerivedConstructionEval.sourceObjectName || "source";
+      if (type === "object-bounding-box") return `BoundingBox(${source}, padding)`;
+      if (type === "object-principal-axes-preview") return `PrincipalAxes(${source}, scale)`;
+      if (type === "object-symmetry-plane-preview") return `SymmetryPlane(${source}, tolerance)`;
+      return `${geometrySelectedDerivedConstructionEval.typeLabel.replaceAll(" ", "")}(${source})`;
+    }
+    if (geometrySelectedSceneObject) return `Point(${fmt(geometrySelectedSceneObject.transform.position.x)}, ${fmt(geometrySelectedSceneObject.transform.position.y)}, ${fmt(geometrySelectedSceneObject.transform.position.z)})`;
+    return "No selection";
+  }, [
+    fmt,
+    geometryProceduralEditSources,
+    geometrySelectedDerivedConstructionEval,
+    geometrySelectedMathConstructionEval,
+    geometrySelectedSceneObject,
+  ]);
+  const handleUpdateSelectedDerivedEditParams = useCallback(
+    (patch: NonNullable<GeometryDerivedConstructionObject["params"]>) => {
+      if (!geometrySelectedDerivedConstructionId) return;
+      setGeometryDerivedConstructions((prev) =>
+        prev.map((entry) =>
+          entry.id === geometrySelectedDerivedConstructionId
+            ? { ...entry, params: { ...(entry.params ?? {}), ...patch } }
+            : entry
+        )
+      );
+    },
+    [geometrySelectedDerivedConstructionId]
+  );
+  const handleSelectConstructionEditSource = useCallback((sourceId: string) => {
+    setGeometrySelectedObjectId(sourceId);
+    setGeometrySelectedMathConstructionId(null);
+    setGeometrySelectedDerivedConstructionId(null);
+    setGeometryGizmoEnabled(true);
+    setGeometryCreateActionStatus("Editing defining source. Dependent constructions will recompute.");
+  }, []);
   const handleActivateConstructionTransformGizmo = useCallback(() => {
     if (!geometryConstructionTransformSourceObject) {
       setGeometryCreateActionStatus("No transformable source object is available for this construction.");
@@ -18461,10 +18552,31 @@ const App: React.FC = () => {
       setGeometryTransformPivotMode("center");
     }
   }, []);
-  const handleDetachSelectedConstructionToPoint = useCallback(() => {
+  const handleDetachActiveConstructionTarget = useCallback(() => {
     const evaluation = geometrySelectedMathConstructionEval ?? geometrySelectedDerivedConstructionEval;
+    if (!evaluation && geometrySelectedSceneObject) {
+      const detachedId = makeId();
+      if ("mesh" in geometrySelectedSceneObject) {
+        const detached = cloneGeometryDatasetMeshObject(geometrySelectedSceneObject);
+        detached.id = detachedId;
+        detached.name = `${geometrySelectedSceneObject.name} independent copy`;
+        setGeometryDatasetMeshObjects((prev) => [detached, ...prev]);
+      } else {
+        const detached = cloneGeometryObject(geometrySelectedSceneObject);
+        detached.id = detachedId;
+        detached.name = `${geometrySelectedSceneObject.name} independent copy`;
+        detached.group = "detached-construction";
+        setGeometryObjects((prev) => [detached, ...prev]);
+      }
+      setGeometrySelectedObjectId(detachedId);
+      setGeometryGizmoEnabled(true);
+      setGeometryCreateActionStatus(`${geometrySelectedSceneObject.name} cloned as an independent object.`);
+      return;
+    }
     if (!evaluation?.origin || !geometrySelectedConstructionCanDetachToPoint) {
-      setGeometryCreateActionStatus("Detach currently converts valid point constructions into independent points.");
+      setGeometryCreateActionStatus(
+        "This derived shape cannot detach yet. Point constructions detach as independent points; scene objects detach as independent clones."
+      );
       return;
     }
     const detached = createGeometryObject("sphere", makeId());
@@ -18493,6 +18605,7 @@ const App: React.FC = () => {
     geometrySelectedConstructionCanDetachToPoint,
     geometrySelectedDerivedConstructionEval,
     geometrySelectedMathConstructionEval,
+    geometrySelectedSceneObject,
     handleDeleteDerivedConstruction,
     handleDeleteGeometryMathConstruction,
   ]);
@@ -18745,6 +18858,17 @@ const App: React.FC = () => {
     geometrySelectedDerivedConstructionEval,
     geometrySelectedMathConstructionEval,
   ]);
+  const geometryProceduralEditHandlePointSets = useMemo<OverlayPointSet[] | null>(() => {
+    if (geometryMode !== "procedural" || geometryTransformMode !== "edit" || !geometryProceduralEditSources.length) {
+      return null;
+    }
+    return [{
+      points: geometryProceduralEditSources.map((entry) => entry.object.transform.position),
+      color: 0xf59e0b,
+      size: 0.16,
+      opacity: 1,
+    }];
+  }, [geometryMode, geometryProceduralEditSources, geometryTransformMode]);
   const geometryProceduralHighlightPointSets = useMemo<OverlayPointSet[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     const sets: OverlayPointSet[] = [];
@@ -18769,6 +18893,9 @@ const App: React.FC = () => {
     if (geometryDependencySelectionOverlay.pointSets?.length) {
       sets.push(...geometryDependencySelectionOverlay.pointSets);
     }
+    if (geometryProceduralEditHandlePointSets?.length) {
+      sets.push(...geometryProceduralEditHandlePointSets);
+    }
     return sets.length ? sets : null;
   }, [
     geometryMode,
@@ -18780,6 +18907,7 @@ const App: React.FC = () => {
     geometryProceduralSelectionPointSets,
     geometryProceduralSnapPreviewPointSet,
     geometryDependencySelectionOverlay.pointSets,
+    geometryProceduralEditHandlePointSets,
   ]);
   const geometryProceduralViewerOverlayPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural") return null;
@@ -52040,6 +52168,186 @@ case "mobius":
                                 <div style={{ color: "#64748b" }}>Select a source object or construction.</div>
                               )}
                             </div>
+                            {geometryTransformMode === "edit" && (
+                              <div
+                                style={{
+                                  border: "1px solid #f59e0b",
+                                  background: "#fffbeb",
+                                  borderRadius: 7,
+                                  padding: "7px 8px",
+                                  display: "grid",
+                                  gap: 7,
+                                  fontSize: 10.5,
+                                }}
+                              >
+                                <div style={{ display: "grid", gap: 3 }}>
+                                  <strong>Definition Editor</strong>
+                                  <div><strong>Edit mode:</strong> Definition editing</div>
+                                  <div style={{ color: "#166534" }}><strong>Status:</strong> Live recompute enabled</div>
+                                  <div style={{ color: "#475569" }}>
+                                    <strong>Definition:</strong> <code>{geometryConstructionEditFormula}</code>
+                                  </div>
+                                </div>
+                                {geometrySelectedMathConstructionEval && (
+                                  <>
+                                    <div>
+                                      <strong>{GEOMETRY_MATH_CONSTRUCTION_TYPE_LABELS[geometrySelectedMathConstructionEval.object.type]}</strong>
+                                      {" "}is defined by the highlighted inputs.
+                                    </div>
+                                    {geometrySelectedMathConstructionEval.object.type === "midpoint" && (
+                                      <div style={{ color: "#92400e", borderLeft: "3px solid #f59e0b", paddingLeft: 6 }}>
+                                        Midpoint is derived. Edit Input A or Input B; the midpoint recomputes automatically.
+                                      </div>
+                                    )}
+                                    {geometrySelectedMathConstructionEval.object.type === "circle-center-through-object" && (
+                                      <div>
+                                        <strong>Radius:</strong>{" "}
+                                        {geometrySelectedMathConstructionEval.radius != null
+                                          ? fmt(geometrySelectedMathConstructionEval.radius)
+                                          : "unavailable"}
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                                {geometrySelectedDerivedConstructionEval && (
+                                  <>
+                                    <div>
+                                      <strong>{geometrySelectedDerivedConstructionEval.typeLabel}</strong> is computed from{" "}
+                                      {geometrySelectedDerivedConstructionEval.sourceObjectName}.
+                                    </div>
+                                    {geometrySelectedDerivedConstructionEval.object.type === "object-bounding-box" && (
+                                      <div style={{ display: "grid", gridTemplateColumns: "72px 1fr", gap: 5, alignItems: "center" }}>
+                                        <label htmlFor="construct-edit-bbox-padding">Padding</label>
+                                        <input
+                                          id="construct-edit-bbox-padding"
+                                          type="number"
+                                          min={0}
+                                          step={0.05}
+                                          value={geometrySelectedDerivedConstructionEval.object.params?.padding ?? 0}
+                                          onChange={(event) => handleUpdateSelectedDerivedEditParams({ padding: Math.max(0, Number(event.target.value) || 0) })}
+                                        />
+                                        <label htmlFor="construct-edit-bbox-opacity">Opacity</label>
+                                        <input
+                                          id="construct-edit-bbox-opacity"
+                                          type="range"
+                                          min={0.1}
+                                          max={1}
+                                          step={0.05}
+                                          value={geometrySelectedDerivedConstructionEval.object.params?.opacity ?? 0.82}
+                                          onChange={(event) => handleUpdateSelectedDerivedEditParams({ opacity: Number(event.target.value) })}
+                                        />
+                                        <span>Color</span>
+                                        <div style={{ display: "flex", gap: 5 }}>
+                                          {[0x334155, 0x2563eb, 0x16a34a, 0xdc2626].map((color) => (
+                                            <button
+                                              key={`construct-edit-bbox-color-${color}`}
+                                              type="button"
+                                              aria-label={`Use color #${color.toString(16).padStart(6, "0")}`}
+                                              onClick={() => handleUpdateSelectedDerivedEditParams({ color })}
+                                              style={{ width: 20, height: 20, padding: 0, background: `#${color.toString(16).padStart(6, "0")}` }}
+                                            />
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {geometrySelectedDerivedConstructionEval.object.type === "object-principal-axes-preview" && (
+                                      <label style={{ display: "grid", gridTemplateColumns: "72px 1fr", gap: 5, alignItems: "center" }}>
+                                        Scale
+                                        <input
+                                          type="number"
+                                          min={0.1}
+                                          step={0.1}
+                                          value={geometrySelectedDerivedConstructionEval.object.params?.scale ?? 1}
+                                          onChange={(event) => handleUpdateSelectedDerivedEditParams({ scale: Math.max(0.1, Number(event.target.value) || 1) })}
+                                        />
+                                      </label>
+                                    )}
+                                    {geometrySelectedDerivedConstructionEval.object.type === "object-symmetry-plane-preview" && (
+                                      <div style={{ display: "grid", gridTemplateColumns: "72px 1fr", gap: 5, alignItems: "center" }}>
+                                        <label htmlFor="construct-edit-symmetry-tolerance">Tolerance</label>
+                                        <input
+                                          id="construct-edit-symmetry-tolerance"
+                                          type="number"
+                                          min={0}
+                                          step={0.001}
+                                          value={geometrySelectedDerivedConstructionEval.object.params?.tolerance ?? 0.01}
+                                          onChange={(event) => handleUpdateSelectedDerivedEditParams({ tolerance: Math.max(0, Number(event.target.value) || 0) })}
+                                        />
+                                        <label htmlFor="construct-edit-symmetry-size">Display size</label>
+                                        <input
+                                          id="construct-edit-symmetry-size"
+                                          type="number"
+                                          min={0.1}
+                                          step={0.1}
+                                          value={geometrySelectedDerivedConstructionEval.object.params?.displaySize ?? 1}
+                                          onChange={(event) => handleUpdateSelectedDerivedEditParams({ displaySize: Math.max(0.1, Number(event.target.value) || 1) })}
+                                        />
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                                {!geometrySelectedMathConstructionEval &&
+                                  !geometrySelectedDerivedConstructionEval &&
+                                  geometrySelectedSceneObject && (
+                                    <div style={{ display: "grid", gridTemplateColumns: "24px 1fr", gap: 5, alignItems: "center" }}>
+                                      {(["x", "y", "z"] as const).map((axis) => (
+                                        <React.Fragment key={`construct-edit-point-coordinate-${axis}`}>
+                                          <strong>{axis.toUpperCase()}</strong>
+                                          <input
+                                            type="number"
+                                            step={0.1}
+                                            value={geometrySelectedSceneObject.transform.position[axis]}
+                                            onChange={(event) =>
+                                              handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+                                                position: {
+                                                  ...geometrySelectedSceneObject.transform.position,
+                                                  [axis]: Number(event.target.value) || 0,
+                                                },
+                                              })
+                                            }
+                                          />
+                                        </React.Fragment>
+                                      ))}
+                                    </div>
+                                  )}
+                                {geometryProceduralEditSources.length > 0 && (
+                                  <div style={{ display: "grid", gap: 4 }}>
+                                    <strong>Defining inputs</strong>
+                                    {geometryProceduralEditSources.map((source) => (
+                                      <button
+                                        key={`construct-edit-source-${source.id}`}
+                                        type="button"
+                                        onClick={() => handleSelectConstructionEditSource(source.id)}
+                                        style={{ textAlign: "left" }}
+                                      >
+                                        {source.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", paddingTop: 2 }}>
+                                  <button
+                                    type="button"
+                                    onClick={handleDetachActiveConstructionTarget}
+                                    disabled={!geometryCanDetachActiveTarget}
+                                  >
+                                    Detach as independent object
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleBakeSelectedTransformToMesh}
+                                    disabled={!geometrySelectedSceneObject}
+                                  >
+                                    Bake current geometry
+                                  </button>
+                                  {geometrySelectedDerivedConstructionEval?.object.type === "object-symmetry-plane-preview" && (
+                                    <button type="button" onClick={() => handleRegenerateDerivedProducts("selected")}>
+                                      Recompute
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
                             <div style={{ display: "grid", gridTemplateColumns: "58px minmax(0, 1fr)", gap: "5px 8px", fontSize: 10.5 }}>
                               <strong>Mode</strong>
                               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -52149,11 +52457,11 @@ case "mobius":
                               </button>
                               <button
                                 type="button"
-                                onClick={handleDetachSelectedConstructionToPoint}
-                                disabled={!geometrySelectedConstructionCanDetachToPoint}
-                                title="Convert a point construction into an independent scene point."
+                                onClick={handleDetachActiveConstructionTarget}
+                                disabled={!geometryCanDetachActiveTarget}
+                                title="Detach a point construction or clone a scene object as an independent object."
                               >
-                                Detach to independent point
+                                Detach as independent object
                               </button>
                               <button
                                 type="button"
@@ -59570,7 +59878,6 @@ case "mobius":
                   gizmoEnabled={
                     geometryMode === "procedural" &&
                     geometryProceduralPanelTab !== "demonstrations" &&
-                    geometryTransformMode !== "edit" &&
                     !geometryDerivedTransformGuardMessage &&
                     geometryGizmoEnabled
                   }
