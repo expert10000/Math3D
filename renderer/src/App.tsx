@@ -2204,7 +2204,7 @@ type GeometryTransformPatch = {
 
 type GeometryTransformMode = "move" | "rotate" | "scale" | "edit";
 type GeometryGizmoSpace = "world" | "local" | "parent";
-type GeometryTransformPivotMode = "center" | "origin" | "bboxCenter" | "bottomCenter" | "custom";
+type GeometryTransformPivotMode = "center" | "origin" | "worldOrigin" | "bboxCenter" | "bottomCenter" | "custom";
 type GeometryProbeSelectionMode = "object" | "face" | "edge" | "vertex";
 type GeometryRepeatMode =
   | "duplicate"
@@ -13541,6 +13541,9 @@ const App: React.FC = () => {
     if (geometryTransformPivotMode === "origin") {
       return { x: position.x, y: position.y, z: position.z };
     }
+    if (geometryTransformPivotMode === "worldOrigin") {
+      return { x: 0, y: 0, z: 0 };
+    }
     if (geometryTransformPivotMode === "custom") {
       return { ...geometryTransformPivotCustom };
     }
@@ -17243,10 +17246,10 @@ const App: React.FC = () => {
       return;
     }
     if (
-      !geometrySelectedDerivedConstructionId ||
+      geometrySelectedDerivedConstructionId &&
       !geometryDerivedConstructions.some((entry) => entry.id === geometrySelectedDerivedConstructionId)
     ) {
-      setGeometrySelectedDerivedConstructionId(geometryDerivedConstructions[0].id);
+      setGeometrySelectedDerivedConstructionId(null);
     }
   }, [geometryDerivedConstructions, geometrySelectedDerivedConstructionId]);
   useEffect(() => {
@@ -18398,6 +18401,81 @@ const App: React.FC = () => {
     geometrySelectedDerivedConstructionId,
     geometrySelectedMathConstructionId,
     geometrySelectedSceneObject,
+  ]);
+  const geometryConstructionTransformSourceObject = useMemo<GeometryObject | GeometryDatasetMeshObject | null>(() => {
+    if (geometrySelectedDerivedConstructionEval) {
+      return resolveGeometrySceneObjectById(geometrySelectedDerivedConstructionEval.object.sourceObjectId);
+    }
+    if (geometrySelectedMathConstructionEval) {
+      for (const sourceId of geometrySelectedMathConstructionEval.object.sourceObjectIds) {
+        const source = resolveGeometrySceneObjectById(sourceId);
+        if (source) return source;
+      }
+      return null;
+    }
+    return geometrySelectedSceneObject;
+  }, [
+    geometrySelectedDerivedConstructionEval,
+    geometrySelectedMathConstructionEval,
+    geometrySelectedSceneObject,
+    resolveGeometrySceneObjectById,
+  ]);
+  const geometrySelectedConstructionCanDetachToPoint = useMemo(() => {
+    if (geometrySelectedDerivedConstructionEval) {
+      return geometryDependencyNodeKindFromConstructionType(geometrySelectedDerivedConstructionEval.object.type) === "derived-point";
+    }
+    if (geometrySelectedMathConstructionEval) {
+      return geometryDependencyNodeKindFromMathConstructionType(geometrySelectedMathConstructionEval.object.type) === "derived-point";
+    }
+    return false;
+  }, [geometrySelectedDerivedConstructionEval, geometrySelectedMathConstructionEval]);
+  const handleActivateConstructionTransformGizmo = useCallback(() => {
+    if (!geometryConstructionTransformSourceObject) {
+      setGeometryCreateActionStatus("No transformable source object is available for this construction.");
+      return;
+    }
+    setGeometrySelectedObjectId(geometryConstructionTransformSourceObject.id);
+    setGeometrySelectedMathConstructionId(null);
+    setGeometrySelectedDerivedConstructionId(null);
+    setGeometryGizmoEnabled(true);
+    setGeometryCreateActionStatus(
+      `Transforming source object ${geometryConstructionTransformSourceObject.name}. Dependent constructions will recompute.`
+    );
+  }, [geometryConstructionTransformSourceObject]);
+  const handleDetachSelectedConstructionToPoint = useCallback(() => {
+    const evaluation = geometrySelectedMathConstructionEval ?? geometrySelectedDerivedConstructionEval;
+    if (!evaluation?.origin || !geometrySelectedConstructionCanDetachToPoint) {
+      setGeometryCreateActionStatus("Detach currently converts valid point constructions into independent points.");
+      return;
+    }
+    const detached = createGeometryObject("sphere", makeId());
+    detached.name = `${evaluation.object.name ?? "Construction point"} detached`;
+    detached.group = "detached-construction";
+    detached.params = {
+      ...detached.params,
+      radius: 0.09,
+      widthSegments: 18,
+      heightSegments: 12,
+    };
+    detached.transform.position = { ...evaluation.origin };
+    detached.material = { ...detached.material, color: 0xf97316, opacity: 1 };
+    setGeometryObjects((prev) => [detached, ...prev]);
+    if (geometrySelectedMathConstructionEval) {
+      handleDeleteGeometryMathConstruction(geometrySelectedMathConstructionEval.object.id);
+    } else if (geometrySelectedDerivedConstructionEval) {
+      handleDeleteDerivedConstruction(geometrySelectedDerivedConstructionEval.object.id);
+    }
+    setGeometrySelectedObjectId(detached.id);
+    setGeometrySelectedMathConstructionId(null);
+    setGeometrySelectedDerivedConstructionId(null);
+    setGeometryGizmoEnabled(true);
+    setGeometryCreateActionStatus(`${detached.name} is now independent and can be transformed freely.`);
+  }, [
+    geometrySelectedConstructionCanDetachToPoint,
+    geometrySelectedDerivedConstructionEval,
+    geometrySelectedMathConstructionEval,
+    handleDeleteDerivedConstruction,
+    handleDeleteGeometryMathConstruction,
   ]);
   const handleToggleGeometryDerivedRelationConstraint = useCallback((id: string) => {
     setGeometryDerivedRelationConstraints((prev) =>
@@ -51903,45 +51981,147 @@ case "mobius":
                           </div>
                           <div style={{ display: "grid", gap: 5 }}>
                             <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Transform</div>
-                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                              {GEOMETRY_TRANSFORM_MODE_OPTIONS.map((option) => {
-                                const active = geometryTransformMode === option.id;
-                                return (
-                                  <button
-                                    key={`construct-transform-${option.id}`}
-                                    type="button"
-                                    title={option.title}
-                                    onClick={() => setGeometryTransformMode(option.id)}
-                                    style={{
-                                      border: "1px solid " + (active ? "#2563eb" : "#cbd5e1"),
-                                      background: active ? "#dbeafe" : "#fff",
-                                      color: active ? "#1d4ed8" : "#334155",
-                                      fontWeight: active ? 800 : 600,
-                                    }}
-                                  >
-                                    {option.label}
-                                  </button>
-                                );
-                              })}
+                            <div
+                              style={{
+                                border: "1px solid #dbe2ea",
+                                background: "#fff",
+                                borderRadius: 7,
+                                padding: "6px 8px",
+                                display: "grid",
+                                gap: 3,
+                                fontSize: 10.5,
+                              }}
+                            >
+                              <div>
+                                <strong>Target:</strong>{" "}
+                                {geometrySelectedDerivedConstructionEval || geometrySelectedMathConstructionEval
+                                  ? "Parametric construction"
+                                  : geometryConstructionTransformSourceObject
+                                    ? "Source object"
+                                    : "None"}
+                              </div>
+                              {geometrySelectedDerivedConstructionEval || geometrySelectedMathConstructionEval ? (
+                                <>
+                                  <div style={{ color: "#92400e" }}>
+                                    Direct transform is not allowed. Move source{" "}
+                                    <strong>{geometryConstructionTransformSourceObject?.name ?? "object"}</strong> instead, or detach the point.
+                                  </div>
+                                  <div style={{ color: "#475569" }}>
+                                    Source transform updates every dependent construction.
+                                  </div>
+                                </>
+                              ) : geometryConstructionTransformSourceObject ? (
+                                <div style={{ color: "#166534" }}>
+                                  Transforming {geometryConstructionTransformSourceObject.name} recomputes its dependents.
+                                </div>
+                              ) : (
+                                <div style={{ color: "#64748b" }}>Select a source object or construction.</div>
+                              )}
                             </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "58px minmax(0, 1fr)", gap: "5px 8px", fontSize: 10.5 }}>
+                              <strong>Mode</strong>
+                              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                                {GEOMETRY_TRANSFORM_MODE_OPTIONS.filter((option) => option.id !== "edit").map((option) => (
+                                  <label key={`construct-transform-${option.id}`} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                    <input
+                                      type="radio"
+                                      name="construct-transform-mode"
+                                      checked={geometryTransformMode === option.id}
+                                      onChange={() => setGeometryTransformMode(option.id)}
+                                    />
+                                    {option.label}
+                                  </label>
+                                ))}
+                              </div>
+                              <strong>Pivot</strong>
+                              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                                <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                  <input
+                                    type="radio"
+                                    name="construct-transform-pivot"
+                                    checked={geometryTransformPivotMode === "center"}
+                                    onChange={() => setGeometryTransformPivotMode("center")}
+                                  />
+                                  Object center
+                                </label>
+                                <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                  <input
+                                    type="radio"
+                                    name="construct-transform-pivot"
+                                    checked={geometryTransformPivotMode === "worldOrigin"}
+                                    onChange={() => setGeometryTransformPivotMode("worldOrigin")}
+                                  />
+                                  World origin
+                                </label>
+                                <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                  <input
+                                    type="radio"
+                                    name="construct-transform-pivot"
+                                    checked={geometryTransformPivotMode === "custom"}
+                                    onChange={() => setGeometryTransformPivotMode("custom")}
+                                  />
+                                  Custom point
+                                </label>
+                              </div>
+                              <strong>Space</strong>
+                              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                                <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                  <input
+                                    type="radio"
+                                    name="construct-transform-space"
+                                    checked={geometryGizmoSpace === "local" || geometryGizmoSpace === "parent"}
+                                    onChange={() => setGeometryGizmoSpace("local")}
+                                  />
+                                  Local
+                                </label>
+                                <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                  <input
+                                    type="radio"
+                                    name="construct-transform-space"
+                                    checked={geometryGizmoSpace === "world"}
+                                    onChange={() => setGeometryGizmoSpace("world")}
+                                  />
+                                  Global
+                                </label>
+                              </div>
+                            </div>
+                            {geometryTransformPivotMode === "custom" && (
+                              <div style={{ display: "grid", gridTemplateColumns: "58px repeat(3, minmax(0, 1fr))", gap: 5, alignItems: "center" }}>
+                                <strong style={{ fontSize: 10.5 }}>Point</strong>
+                                {(["x", "y", "z"] as const).map((axis) => (
+                                  <input
+                                    key={`construct-transform-custom-pivot-${axis}`}
+                                    type="number"
+                                    step={0.1}
+                                    aria-label={`Custom pivot ${axis.toUpperCase()}`}
+                                    value={geometryTransformPivotCustom[axis]}
+                                    onChange={(event) =>
+                                      setGeometryTransformPivotCustom((prev) => ({
+                                        ...prev,
+                                        [axis]: Number(event.target.value) || 0,
+                                      }))
+                                    }
+                                    style={{ minWidth: 0 }}
+                                  />
+                                ))}
+                              </div>
+                            )}
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                               <button
                                 type="button"
-                                onClick={() => {
-                                  if (geometrySelectedDerivedConstructionEval) {
-                                    if (geometrySelectedDerivedConstructionEval.object.frozenSnapshot) {
-                                      handleUnfreezeDerivedConstruction(geometrySelectedDerivedConstructionEval.object.id);
-                                    } else {
-                                      handleFreezeDerivedConstruction(geometrySelectedDerivedConstructionEval.object.id);
-                                    }
-                                    return;
-                                  }
-                                  setGeometryCreateActionStatus("Select a derived construction object to detach.");
-                                }}
-                                disabled={!geometrySelectedDerivedConstructionEval}
-                                title="Detach freezes a derived helper so it can stop following its source."
+                                onClick={handleActivateConstructionTransformGizmo}
+                                disabled={!geometryConstructionTransformSourceObject}
+                                style={{ fontWeight: 800 }}
                               >
-                                Detach
+                                Activate Gizmo
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleDetachSelectedConstructionToPoint}
+                                disabled={!geometrySelectedConstructionCanDetachToPoint}
+                                title="Convert a point construction into an independent scene point."
+                              >
+                                Detach to independent point
                               </button>
                               <button
                                 type="button"
@@ -53114,6 +53294,7 @@ case "mobius":
                             >
                               <option value="center">Center</option>
                               <option value="origin">Origin</option>
+                              <option value="worldOrigin">World origin</option>
                               <option value="bboxCenter">Bounding box center</option>
                               <option value="bottomCenter">Bottom center</option>
                               <option value="custom">Custom</option>
