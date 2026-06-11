@@ -8048,6 +8048,11 @@ const App: React.FC = () => {
     () => new Set()
   );
   const [geometryDependencyOverlayUpdateCount, setGeometryDependencyOverlayUpdateCount] = useState(0);
+  const [geometryDependencyOverlayLineageTarget, setGeometryDependencyOverlayLineageTarget] = useState<{
+    id: string | null;
+    label: string;
+    group: "Inputs" | "Derived Geometry" | "Analysis";
+  } | null>(null);
   const geometryPanelTabSwitchLockedRef = useRef(false);
   const geometryDependenciesPanelActive =
     mode === "geometry" &&
@@ -19669,7 +19674,13 @@ const App: React.FC = () => {
       kind?: "point" | "parameter" | "line" | "plane" | "analysis" | "measurement" | "object";
       formula?: string;
     };
-    const empty = { selected: null as string | null, inputs: [] as Row[], derived: [] as Row[], analysis: [] as Row[] };
+    const empty = {
+      selected: null as string | null,
+      selectedId: null as string | null,
+      inputs: [] as Row[],
+      derived: [] as Row[],
+      analysis: [] as Row[],
+    };
     if (geometryMode !== "procedural") return empty;
     if (geometrySelectedObject) {
       const isCone = geometrySelectedObject.type === "cone";
@@ -19716,6 +19727,7 @@ const App: React.FC = () => {
                 : "A = ∬S dA";
       return {
         selected: geometrySelectedObject.name,
+        selectedId: `object:${geometrySelectedObject.id}`,
         inputs,
         derived: [
           { id: nodeId("bounding-box"), label: "Bounding Box", kind: "line" },
@@ -19734,6 +19746,7 @@ const App: React.FC = () => {
       return {
         ...empty,
         selected: geometrySelectedMathConstructionEval.object.name,
+        selectedId: `math:${geometrySelectedMathConstructionEval.object.id}`,
         inputs: geometrySelectedMathConstructionEval.object.sourceObjectIds.map((id) => ({
           id: `object:${id}`,
           label: resolveGeometrySceneObjectById(id)?.name ?? id,
@@ -19745,6 +19758,7 @@ const App: React.FC = () => {
       return {
         ...empty,
         selected: geometryDerivedConstructionName(geometrySelectedDerivedConstructionEval.object),
+        selectedId: `derived:${geometrySelectedDerivedConstructionEval.object.id}`,
         inputs: [{
           id: `object:${geometrySelectedDerivedConstructionEval.object.sourceObjectId}`,
           label: geometrySelectedDerivedConstructionEval.sourceObjectName,
@@ -19768,6 +19782,9 @@ const App: React.FC = () => {
     resolveGeometrySceneMeshById,
     resolveGeometrySceneObjectById,
   ]);
+  useEffect(() => {
+    setGeometryDependencyOverlayLineageTarget(null);
+  }, [geometryDependencyOverlayCard.selectedId]);
   useEffect(() => {
     if (!geometryDependencyOverlayCard.selected) {
       setGeometryDependencyOverlayUpdateCount(0);
@@ -61106,6 +61123,73 @@ case "mobius":
                           <span style={{ color: "#475569" }}>Select an object to inspect dependencies.</span>
                         )}
                       </div>
+                      {geometryDependencyOverlayCard.selected && (
+                        <div
+                          data-testid="geometry-dependency-overlay-lineage"
+                          style={{ display: "grid", gap: 4, padding: "6px 7px", border: "1px solid #dbeafe", borderRadius: 7, background: "#f8fbff" }}
+                        >
+                          <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", fontSize: 10 }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setGeometryDependencyOverlayLineageTarget(null);
+                                if (geometryDependencyOverlayCard.selectedId) handleSelectGeometryDependencyNode(geometryDependencyOverlayCard.selectedId);
+                              }}
+                              style={{ border: 0, padding: 0, background: "transparent", color: "#2563eb", fontWeight: 800 }}
+                            >
+                              Scene
+                            </button>
+                            <span style={{ color: "#94a3b8" }}>&gt;</span>
+                            <button
+                              type="button"
+                              onClick={() => geometryDependencyOverlayCard.selectedId && handleSelectGeometryDependencyNode(geometryDependencyOverlayCard.selectedId)}
+                              style={{ border: 0, padding: 0, background: "transparent", color: "#1d4ed8", fontWeight: 800 }}
+                            >
+                              {geometryDependencyOverlayCard.selected}
+                            </button>
+                            {geometryDependencyOverlayLineageTarget && (
+                              <>
+                                <span style={{ color: "#94a3b8" }}>&gt;</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setGeometryDependencyOverlayView("list");
+                                    setGeometryDependencyOverlayChainMode(
+                                      geometryDependencyOverlayLineageTarget.group === "Inputs" ? "direct" : "full"
+                                    );
+                                    setGeometryDependencyOverlayExpandedGroups((previous) => {
+                                      const next = new Set(previous);
+                                      next.add(geometryDependencyOverlayLineageTarget!.group);
+                                      return next;
+                                    });
+                                  }}
+                                  style={{ border: 0, padding: 0, background: "transparent", color: "#0f766e", fontWeight: 800 }}
+                                >
+                                  {geometryDependencyOverlayLineageTarget.group}
+                                </button>
+                                <span style={{ color: "#94a3b8" }}>&gt;</span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    geometryDependencyOverlayLineageTarget.id &&
+                                    handleSelectGeometryDependencyNode(geometryDependencyOverlayLineageTarget.id)
+                                  }
+                                  style={{ border: 0, padding: 0, background: "transparent", color: "#0f172a", fontWeight: 800 }}
+                                >
+                                  {geometryDependencyOverlayLineageTarget.label}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                          {geometryDependencyOverlayLineageTarget && (
+                            <span style={{ color: "#475569", fontSize: 9.5, lineHeight: 1.35 }}>
+                              {geometryDependencyOverlayLineageTarget.group === "Inputs"
+                                ? `${geometryDependencyOverlayLineageTarget.label} is an input to ${geometryDependencyOverlayCard.selected}.`
+                                : `${geometryDependencyOverlayLineageTarget.label} derived from ${geometryDependencyOverlayCard.selected}, derived from Center Point + Parameters.`}
+                            </span>
+                          )}
+                        </div>
+                      )}
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
                           <input
@@ -61157,9 +61241,23 @@ case "mobius":
                                     role="button"
                                     tabIndex={0}
                                     aria-label={row.label}
-                                    onClick={() => row.id && handleSelectGeometryDependencyNode(row.id)}
+                                    onClick={() => {
+                                      setGeometryDependencyOverlayLineageTarget({
+                                        id: row.id,
+                                        label: row.label,
+                                        group: row.group as "Inputs" | "Derived Geometry" | "Analysis",
+                                      });
+                                      if (row.id) handleSelectGeometryDependencyNode(row.id);
+                                    }}
                                     onKeyDown={(event) => {
-                                      if ((event.key === "Enter" || event.key === " ") && row.id) handleSelectGeometryDependencyNode(row.id);
+                                      if (event.key === "Enter" || event.key === " ") {
+                                        setGeometryDependencyOverlayLineageTarget({
+                                          id: row.id,
+                                          label: row.label,
+                                          group: row.group as "Inputs" | "Derived Geometry" | "Analysis",
+                                        });
+                                        if (row.id) handleSelectGeometryDependencyNode(row.id);
+                                      }
                                     }}
                                     onMouseEnter={() => setGeometryHoveredDependencyNodeId(row.id)}
                                     onFocus={() => setGeometryHoveredDependencyNodeId(row.id)}
@@ -61233,7 +61331,14 @@ case "mobius":
                                     <button
                                       data-testid={row.id ? `geometry-dependency-overlay-row-${row.id}` : undefined}
                                       type="button"
-                                      onClick={() => row.id && handleSelectGeometryDependencyNode(row.id)}
+                                      onClick={() => {
+                                        setGeometryDependencyOverlayLineageTarget({
+                                          id: row.id,
+                                          label: row.label,
+                                          group: label as "Inputs" | "Derived Geometry" | "Analysis",
+                                        });
+                                        if (row.id) handleSelectGeometryDependencyNode(row.id);
+                                      }}
                                       onMouseEnter={() => setGeometryHoveredDependencyNodeId(row.id)}
                                       onFocus={() => setGeometryHoveredDependencyNodeId(row.id)}
                                       onBlur={() => setGeometryHoveredDependencyNodeId(null)}

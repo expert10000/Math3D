@@ -348,9 +348,18 @@ test("Cone and Box dependency trees expose grouped automatic semantic children",
     await expect(widthOverlayRow).toHaveCSS("background-color", "rgb(255, 251, 235)");
     await widthOverlayRow.click();
     await expect(page.getByTestId("geometry-inspector-definition")).toContainText("Width");
+    const lineage = overlayCard.getByTestId("geometry-dependency-overlay-lineage");
+    await expect(lineage).toContainText("Scene");
+    await expect(lineage).toContainText("Inputs");
+    await expect(lineage).toContainText("Width");
+    await expect(lineage).toContainText("Width is an input to Box.");
     await overlayCard.getByLabel("Full dependency chain").check();
     await expect(overlayCard.getByRole("button", { name: "▶ Derived Geometry (3)", exact: true })).toBeVisible();
     await expect(overlayCard.getByRole("button", { name: "▶ Analysis (4)", exact: true })).toBeVisible();
+    await overlayCard.getByRole("button", { name: "▶ Derived Geometry (3)", exact: true }).click();
+    await overlayCard.getByRole("button", { name: "Bounding Box Line", exact: true }).click();
+    await expect(lineage).toContainText("Derived Geometry");
+    await expect(lineage).toContainText("Bounding Box derived from Box, derived from Center Point + Parameters.");
     await overlayCard.getByRole("button", { name: "▶ Analysis (4)", exact: true }).click();
     await overlayCard.getByRole("button", { name: /Show formula for Volume/ }).click();
     await expect(overlayCard.getByText("V = w h d", { exact: true })).toBeVisible();
