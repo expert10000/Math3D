@@ -337,6 +337,11 @@ test("Cone and Box dependency trees expose grouped automatic semantic children",
     await expect(overlayCard).toContainText("Derived: 3");
     await expect(overlayCard).toContainText("Analysis: 4");
     await expect(overlayCard).toContainText("Total: 11");
+    await expect(overlayCard).toContainText("Last recompute:");
+    await expect(overlayCard).toContainText("Update count:");
+    await overlayCard.getByRole("button", { name: "Graph", exact: true }).click();
+    await expect(overlayCard.getByTestId("geometry-dependency-overlay-graph")).toBeVisible();
+    await overlayCard.getByRole("button", { name: "List", exact: true }).click();
     await overlayCard.getByRole("button", { name: "▶ Inputs (4)", exact: true }).click();
     const widthOverlayRow = overlayCard.getByRole("button", { name: "Width Parameter", exact: true });
     await widthOverlayRow.hover();
@@ -346,6 +351,9 @@ test("Cone and Box dependency trees expose grouped automatic semantic children",
     await overlayCard.getByLabel("Full dependency chain").check();
     await expect(overlayCard.getByRole("button", { name: "▶ Derived Geometry (3)", exact: true })).toBeVisible();
     await expect(overlayCard.getByRole("button", { name: "▶ Analysis (4)", exact: true })).toBeVisible();
+    await overlayCard.getByRole("button", { name: "▶ Analysis (4)", exact: true }).click();
+    await overlayCard.getByRole("button", { name: /Show formula for Volume/ }).click();
+    await expect(overlayCard.getByText("V = w h d", { exact: true })).toBeVisible();
     await page.getByTestId("geometry-dependency-overlay-toggle").uncheck();
     await expect(overlayCard).toHaveCount(0);
   } finally {
