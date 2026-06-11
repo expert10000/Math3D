@@ -438,6 +438,19 @@ test("Geometry gallery remains responsive after scrolling and resizing the side 
     await gallery.evaluate((element) => {
       element.scrollTop = element.scrollHeight;
     });
+    const lowerGalleryCards = gallery.locator('[data-testid^="geometry-gallery-card-"]');
+    const lowerGalleryCardCount = await lowerGalleryCards.count();
+    expect(lowerGalleryCardCount).toBeGreaterThan(0);
+    const lowestGalleryCard = lowerGalleryCards.nth(lowerGalleryCardCount - 1);
+    await lowestGalleryCard.click();
+    await expect(lowestGalleryCard).toHaveClass(/is-browser-selected/);
+    await expect(page.getByTestId("app-status-bar")).toBeVisible();
+    const lowerGalleryActions = gallery.locator('[data-testid^="geometry-gallery-quick-add-"]:not(:disabled)');
+    const lowerGalleryActionCount = await lowerGalleryActions.count();
+    expect(lowerGalleryActionCount).toBeGreaterThan(0);
+    await lowerGalleryActions.nth(lowerGalleryActionCount - 1).click();
+    await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(baseCount + 1);
+    await expect(page.getByTestId("app-status-bar")).toBeVisible();
     await gallery.evaluate((element) => {
       element.scrollTop = 0;
     });
@@ -456,7 +469,7 @@ test("Geometry gallery remains responsive after scrolling and resizing the side 
     const sphereCard = page.getByTestId("geometry-gallery-card-sphere");
     await expect(sphereCard).toBeVisible();
     await sphereCard.dblclick();
-    await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(baseCount + 1);
+    await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(baseCount + 2);
 
     const viewer = page.getByTestId("main-viewer");
     const viewerBox = await viewer.boundingBox();

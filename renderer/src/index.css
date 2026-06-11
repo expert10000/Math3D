@@ -242,8 +242,8 @@ button:focus-visible {
 }
 
 .geometry-gallery-scan-card {
-  content-visibility: auto;
-  contain: layout paint style;
+  content-visibility: visible;
+  contain: paint style;
   contain-intrinsic-size: 260px;
   transition: border-color 0.12s ease, background-color 0.12s ease;
 }
@@ -255,6 +255,7 @@ button:focus-visible {
 .gallery-panel-scroll.geometry-gallery-compact {
   max-height: min(52vh, 600px);
   gap: 8px;
+  overflow-anchor: none;
 }
 
 .geometry-gallery-compact .gallery-section {
