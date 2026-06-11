@@ -242,8 +242,9 @@ button:focus-visible {
 }
 
 .geometry-gallery-scan-card {
-  content-visibility: visible;
-  contain: layout paint;
+  content-visibility: auto;
+  contain: layout paint style;
+  contain-intrinsic-size: 260px;
   transition: border-color 0.12s ease, background-color 0.12s ease;
 }
 

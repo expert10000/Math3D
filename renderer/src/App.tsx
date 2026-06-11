@@ -2381,6 +2381,7 @@ type GeometryDerivedConstructionEvaluation = {
 type GeometryDependencyNodeKind =
   | "scene-root"
   | "geometry-object"
+  | "parameter"
   | "face-reference"
   | "derived-point"
   | "derived-line"
@@ -2403,6 +2404,38 @@ type GeometryDependencyEdge = {
   sourceId: string;
   targetId: string;
   relation: "contains" | "derived-from" | "depends-on" | "measured-from" | "section-of" | "compared-with" | "aligned-to";
+};
+type ConeDependencyFeature =
+  | "center"
+  | "radius"
+  | "height"
+  | "bounding-box"
+  | "principal-axes"
+  | "symmetry-plane";
+const CONE_DEPENDENCY_FEATURES: Array<{
+  feature: ConeDependencyFeature;
+  label: string;
+  kind: GeometryDependencyNodeKind;
+}> = [
+  { feature: "center", label: "Center Point", kind: "derived-point" },
+  { feature: "radius", label: "Radius Parameter", kind: "parameter" },
+  { feature: "height", label: "Height Parameter", kind: "parameter" },
+  { feature: "bounding-box", label: "Bounding Box", kind: "derived-line" },
+  { feature: "principal-axes", label: "Principal Axes", kind: "derived-line" },
+  { feature: "symmetry-plane", label: "Symmetry Plane", kind: "derived-plane" },
+];
+const coneDependencyNodeId = (objectId: string, feature: ConeDependencyFeature) => `cone:${objectId}:${feature}`;
+const parseConeDependencyNodeId = (
+  nodeId: string | null | undefined
+): { objectId: string; feature: ConeDependencyFeature } | null => {
+  if (!nodeId?.startsWith("cone:")) return null;
+  for (const { feature } of CONE_DEPENDENCY_FEATURES) {
+    const suffix = `:${feature}`;
+    if (nodeId.endsWith(suffix)) {
+      return { objectId: nodeId.slice("cone:".length, -suffix.length), feature };
+    }
+  }
+  return null;
 };
 type GeometryDerivedRelationType =
   | "center-on-derived-point"
@@ -2562,7 +2595,7 @@ type GeometryConstructionExplorerGroupId =
   | "planes"
   | "relationships"
   | "other";
-type GeometryConstructionExplorerItemKind = "math" | "derived" | "relationship" | "measurement";
+type GeometryConstructionExplorerItemKind = "math" | "derived" | "relationship" | "measurement" | "automatic";
 type GeometryConstructionExplorerItem = {
   id: string;
   kind: GeometryConstructionExplorerItemKind;
@@ -2609,6 +2642,14 @@ const geometryConstructionExplorerGroupFromDerivedType = (
   if (type.includes("point") || type.includes("centroid") || type.includes("midpoint") || type.includes("marker")) {
     return "points";
   }
+  return "other";
+};
+const geometryConstructionExplorerGroupFromConeFeature = (
+  feature: ConeDependencyFeature
+): GeometryConstructionExplorerGroupId => {
+  if (feature === "center") return "points";
+  if (feature === "principal-axes" || feature === "bounding-box") return "lines";
+  if (feature === "symmetry-plane") return "planes";
   return "other";
 };
 const geometryConstructionExplorerCanUseForSection = (type: GeometryDerivedConstructionType) =>
@@ -8334,7 +8375,7 @@ const App: React.FC = () => {
   const [geometryQuickAnalysisResults, setGeometryQuickAnalysisResults] = useState<GeometryQuickAnalysisResultEntry[]>([]);
   const [geometryQuickAnalysisSelectedResultId, setGeometryQuickAnalysisSelectedResultId] = useState<string | null>(null);
   const geometryObjectGeomCacheRef = useRef(
-    new Map<string, { key: string; geom: THREE.BufferGeometry }>()
+    new Map<string, { key: string; geom: THREE.BufferGeometry; mesh?: SurfaceMeshData }>()
   );
   const geometrySelectedObject = useMemo(
     () => geometryObjects.find((o) => o.id === geometrySelectedObjectId) ?? null,
@@ -11109,17 +11150,26 @@ const App: React.FC = () => {
       }
       const smoothNormals =
         obj.type === "polyhedron" ? Boolean(obj.params.smoothNormals ?? true) : true;
-      const geom = base.clone();
-      const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
-      if (!posAttr || posAttr.count < 3) continue;
-      const mesh = computeVertexNormals(
-        buildSurfaceMeshFromGeometry(
-          geom,
-          obj.name,
-          { kind: "proceduralObjects" },
-          { mergeVertices: false }
-        )
-      );
+      let mesh = cache.get(obj.id)?.mesh ?? null;
+      if (!mesh) {
+        const geom = base.clone();
+        try {
+          const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
+          if (!posAttr || posAttr.count < 3) continue;
+          mesh = computeVertexNormals(
+            buildSurfaceMeshFromGeometry(
+              geom,
+              obj.name,
+              { kind: "proceduralObjects" },
+              { mergeVertices: false }
+            )
+          );
+          const cacheEntry = cache.get(obj.id);
+          if (cacheEntry?.key === key) cacheEntry.mesh = mesh;
+        } finally {
+          geom.dispose();
+        }
+      }
       if (!mesh.positions.length) continue;
       const meshVertCount = Math.floor(mesh.positions.length / 3);
       vertCount += meshVertCount;
@@ -14994,7 +15044,9 @@ const App: React.FC = () => {
       if (!obj) continue;
       const selected = geometrySelectedObjectId === mesh.id;
       const isPoly = !!proceduralObj && proceduralObj.type === "polyhedron";
-      const selectedEdgeHighlight = selected;
+      // A smooth primitive's triangulation is an implementation detail. Turning every
+      // selected triangle edge into a tube creates thousands of draw calls in browsers.
+      const selectedEdgeHighlight = selected && isPoly;
       const edgeDisplay = isPoly ? Boolean(proceduralObj.params.edgeDisplay ?? false) : false;
       if (!selectedEdgeHighlight && !edgeDisplay) continue;
       const triangulate = isPoly ? Boolean(proceduralObj.params.triangulate ?? true) : true;
@@ -17449,6 +17501,23 @@ const App: React.FC = () => {
         targetId: `object:${object.id}`,
         relation: "contains",
       });
+      if ("type" in object && object.type === "cone") {
+        for (const feature of CONE_DEPENDENCY_FEATURES) {
+          const id = coneDependencyNodeId(object.id, feature.feature);
+          addNode({
+            id,
+            kind: feature.kind,
+            label: feature.label,
+            objectId: object.id,
+            status: "valid",
+          });
+          addEdge({
+            sourceId: `object:${object.id}`,
+            targetId: id,
+            relation: "contains",
+          });
+        }
+      }
     }
     const faceNodeId = (objectId: string, faceIndex: number) => `face:${objectId}:${faceIndex}`;
     const addFaceNode = (
@@ -17672,11 +17741,20 @@ const App: React.FC = () => {
     resolveGeometrySceneMeshById,
   ]);
   const geometryInspectorSelectedDependencyNodeId = useMemo(() => {
+    const focusedConeNode = parseConeDependencyNodeId(geometryDependencyFocusedNodeId);
+    if (focusedConeNode && geometrySelectedSceneObject?.id === focusedConeNode.objectId) {
+      return geometryDependencyFocusedNodeId;
+    }
     if (geometrySelectedMathConstructionId) return `math:${geometrySelectedMathConstructionId}`;
     if (geometrySelectedDerivedConstructionId) return `derived:${geometrySelectedDerivedConstructionId}`;
     if (geometrySelectedSceneObject) return `object:${geometrySelectedSceneObject.id}`;
     return null;
-  }, [geometrySelectedDerivedConstructionId, geometrySelectedMathConstructionId, geometrySelectedSceneObject]);
+  }, [
+    geometryDependencyFocusedNodeId,
+    geometrySelectedDerivedConstructionId,
+    geometrySelectedMathConstructionId,
+    geometrySelectedSceneObject,
+  ]);
   const geometryInspectorDependencyDetails = useMemo(() => {
     const nodeId = geometryInspectorSelectedDependencyNodeId;
     if (!nodeId) return null;
@@ -17690,6 +17768,7 @@ const App: React.FC = () => {
     const visibleKinds = new Set<GeometryDependencyNodeKind>([
       "scene-root",
       "geometry-object",
+      "parameter",
       "face-reference",
       "derived-point",
       "derived-line",
@@ -17719,6 +17798,7 @@ const App: React.FC = () => {
     const visibleKinds = new Set<GeometryDependencyNodeKind>([
       "scene-root",
       "geometry-object",
+      "parameter",
       "face-reference",
       "derived-point",
       "derived-line",
@@ -17747,6 +17827,7 @@ const App: React.FC = () => {
     const visibleKinds = new Set<GeometryDependencyNodeKind>([
       "scene-root",
       "geometry-object",
+      "parameter",
       "face-reference",
       "derived-point",
       "derived-line",
@@ -17787,6 +17868,7 @@ const App: React.FC = () => {
     const visibleKinds = new Set<GeometryDependencyNodeKind>([
       "scene-root",
       "geometry-object",
+      "parameter",
       "face-reference",
       "derived-point",
       "derived-line",
@@ -17883,6 +17965,30 @@ const App: React.FC = () => {
       });
     }
 
+    for (const cone of geometryObjects) {
+      if (cone.type !== "cone") continue;
+      for (const feature of CONE_DEPENDENCY_FEATURES) {
+        const id = coneDependencyNodeId(cone.id, feature.feature);
+        itemsByGroup[geometryConstructionExplorerGroupFromConeFeature(feature.feature)].push({
+          id,
+          kind: "automatic",
+          label: feature.label,
+          typeLabel: "Automatic Cone child",
+          detail: `Generated from ${cone.name}`,
+          visible: true,
+          selected: geometryDependencyFocusedNodeId === id,
+          statusLabel: "Live",
+          statusTitle: "Automatically generated from the Cone definition",
+          statusColor: "#166534",
+          statusBackground: "#ecfdf5",
+          statusBorder: "#16a34a",
+          canUseForSection: false,
+          canRelink: false,
+          frozen: false,
+        });
+      }
+    }
+
     const relationshipTypeCounts = new Map<GeometryMathConstructionRelationshipType, number>();
     for (const entry of geometryMathConstructionRelationships) {
       const nextCount = (relationshipTypeCounts.get(entry.type) ?? 0) + 1;
@@ -17940,6 +18046,8 @@ const App: React.FC = () => {
     geometryMathConstructions,
     geometryMathConstructionRelationships,
     geometryMeasuredEdges,
+    geometryDependencyFocusedNodeId,
+    geometryObjects,
     geometrySelectedMeasurementId,
     geometrySelectedMathRelationshipId,
     geometrySelectedDerivedConstructionId,
@@ -17947,29 +18055,51 @@ const App: React.FC = () => {
   ]);
   const handleSelectGeometryDependencyNode = useCallback((nodeId: string) => {
     let focusEvaluation: GeometryMathConstructionEvaluation | GeometryDerivedConstructionEvaluation | null = null;
-    if (nodeId.startsWith("object:")) {
-      setGeometrySelectedObjectId(nodeId.slice("object:".length));
+    let focusObjectId: string | null = null;
+    let editableTarget = false;
+    const coneNode = parseConeDependencyNodeId(nodeId);
+    if (coneNode) {
+      focusObjectId = coneNode.objectId;
+      setGeometrySelectedObjectId(coneNode.objectId);
       setGeometrySelectedMathConstructionId(null);
       setGeometrySelectedDerivedConstructionId(null);
+      editableTarget = true;
+    } else if (nodeId.startsWith("object:")) {
+      focusObjectId = nodeId.slice("object:".length);
+      setGeometrySelectedObjectId(focusObjectId);
+      setGeometrySelectedMathConstructionId(null);
+      setGeometrySelectedDerivedConstructionId(null);
+      editableTarget = true;
     } else if (nodeId.startsWith("math:")) {
       const id = nodeId.slice("math:".length);
       setGeometrySelectedMathConstructionId(id);
       setGeometrySelectedDerivedConstructionId(null);
       focusEvaluation = geometryMathConstructionOverlays.byId.get(id) ?? null;
+      focusObjectId = focusEvaluation?.object.sourceObjectIds[0] ?? null;
+      editableTarget = true;
     } else if (nodeId.startsWith("derived:")) {
       const id = nodeId.slice("derived:".length);
       setGeometrySelectedDerivedConstructionId(id);
       setGeometrySelectedMathConstructionId(null);
       focusEvaluation = geometryDerivedConstructionOverlays.byId.get(id) ?? null;
+      focusObjectId = focusEvaluation?.object.sourceObjectId ?? null;
+      editableTarget = true;
     } else if (nodeId.startsWith("face:")) {
       const [, objectId] = nodeId.split(":");
-      if (objectId) setGeometrySelectedObjectId(objectId);
+      if (objectId) {
+        focusObjectId = objectId;
+        setGeometrySelectedObjectId(objectId);
+        editableTarget = true;
+      }
       setGeometrySelectedMathConstructionId(null);
       setGeometrySelectedDerivedConstructionId(null);
       setGeometryProbeSelectionMode("face");
     }
-    if (focusEvaluation?.origin) {
+    if (editableTarget) {
       setGeometryDependencyFocusedNodeId(nodeId);
+      setGeometryDependencyFlash((previous) => ({ nodeId, token: (previous?.token ?? 0) + 1 }));
+    }
+    if (focusEvaluation?.origin) {
       const points = [
         focusEvaluation.origin,
         ...focusEvaluation.pointSets.flatMap((set) => set.points),
@@ -17992,7 +18122,15 @@ const App: React.FC = () => {
         radius: Math.max(0.2, Math.min(radius || 0.2, 2.5)),
         padding: 1.28,
       }));
-      setGeometryDependencyFlash((previous) => ({ nodeId, token: (previous?.token ?? 0) + 1 }));
+    } else if (focusObjectId) {
+      setGeometryPendingFocusObjectId(focusObjectId);
+    }
+    if (editableTarget) {
+      setGeometryTransformMode("edit");
+      setGeometryRightPanelTab("inspector");
+      setGeometryInspectorPanelTab("definition");
+      setGeometryCreateActionStatus("Dependency target highlighted, fitted to view, and opened for editing.");
+      return;
     }
     setGeometryInspectorPanelTab("dependencies");
   }, [geometryDerivedConstructionOverlays.byId, geometryMathConstructionOverlays.byId]);
@@ -18603,6 +18741,26 @@ const App: React.FC = () => {
     const inputNames = geometryProceduralEditSources.map((entry, index) =>
       entry.object.name || `Input ${String.fromCharCode(65 + index)}`
     );
+    const focusedConeNode = parseConeDependencyNodeId(geometryDependencyFocusedNodeId);
+    if (
+      focusedConeNode &&
+      geometrySelectedObject?.type === "cone" &&
+      geometrySelectedObject.id === focusedConeNode.objectId
+    ) {
+      const source = geometrySelectedObject.name || "Cone";
+      if (focusedConeNode.feature === "center") {
+        return `CenterPoint(${source}) = ${fmt3(geometrySelectedObject.transform.position)}`;
+      }
+      if (focusedConeNode.feature === "radius") {
+        return `Radius(${source}) = ${fmt(Number(geometrySelectedObject.params.radius ?? 1))}`;
+      }
+      if (focusedConeNode.feature === "height") {
+        return `Height(${source}) = ${fmt(Number(geometrySelectedObject.params.height ?? 2))}`;
+      }
+      if (focusedConeNode.feature === "bounding-box") return `AutomaticBoundingBox(${source})`;
+      if (focusedConeNode.feature === "principal-axes") return `AutomaticPrincipalAxes(${source})`;
+      return `AutomaticSymmetryPlane(${source})`;
+    }
     if (geometrySelectedMathConstructionEval) {
       const type = geometrySelectedMathConstructionEval.object.type;
       const formulaName: Record<GeometryMathConstructionType, string> = {
@@ -18646,11 +18804,13 @@ const App: React.FC = () => {
   }, [
     fmt,
     fmt3,
+    geometryDependencyFocusedNodeId,
     geometryProceduralEditSources,
     geometrySelectedDerivedConstructionEval,
     geometrySelectedMathConstructionEval,
     geometrySelectedMathRelationship,
     geometrySelectedMeasurement,
+    geometrySelectedObject,
     geometrySelectedSceneObject,
   ]);
   const geometryDefinitionWorkspace = useMemo(() => {
@@ -19063,6 +19223,74 @@ const App: React.FC = () => {
     groups: OverlayPolylineGroup[] | null;
     pointSets: OverlayPointSet[] | null;
   }>(() => {
+    const coneNode = parseConeDependencyNodeId(geometryDependencyFocusedNodeId);
+    if (geometryMode === "procedural" && coneNode && geometrySelectedObject?.id === coneNode.objectId) {
+      const resolved = resolveGeometrySceneMeshById(coneNode.objectId);
+      const bounds = resolved ? boundsFromPositions(resolved.mesh.positions) : null;
+      if (!bounds) return { groups: null, pointSets: null };
+      const center = {
+        x: 0.5 * (bounds.min[0] + bounds.max[0]),
+        y: 0.5 * (bounds.min[1] + bounds.max[1]),
+        z: 0.5 * (bounds.min[2] + bounds.max[2]),
+      };
+      const min = { x: bounds.min[0], y: bounds.min[1], z: bounds.min[2] };
+      const max = { x: bounds.max[0], y: bounds.max[1], z: bounds.max[2] };
+      const c = [
+        { x: min.x, y: min.y, z: min.z },
+        { x: max.x, y: min.y, z: min.z },
+        { x: max.x, y: max.y, z: min.z },
+        { x: min.x, y: max.y, z: min.z },
+        { x: min.x, y: min.y, z: max.z },
+        { x: max.x, y: min.y, z: max.z },
+        { x: max.x, y: max.y, z: max.z },
+        { x: min.x, y: max.y, z: max.z },
+      ];
+      const boxLines: PolylineSet = [
+        [c[0], c[1]], [c[1], c[2]], [c[2], c[3]], [c[3], c[0]],
+        [c[4], c[5]], [c[5], c[6]], [c[6], c[7]], [c[7], c[4]],
+        [c[0], c[4]], [c[1], c[5]], [c[2], c[6]], [c[3], c[7]],
+      ];
+      const axes: PolylineSet = [
+        [{ x: min.x, y: center.y, z: center.z }, { x: max.x, y: center.y, z: center.z }],
+        [{ x: center.x, y: min.y, z: center.z }, { x: center.x, y: max.y, z: center.z }],
+        [{ x: center.x, y: center.y, z: min.z }, { x: center.x, y: center.y, z: max.z }],
+      ];
+      const symmetryPlane: PolylineSet = [
+        [{ x: min.x, y: min.y, z: center.z }, { x: max.x, y: min.y, z: center.z }],
+        [{ x: max.x, y: min.y, z: center.z }, { x: max.x, y: max.y, z: center.z }],
+        [{ x: max.x, y: max.y, z: center.z }, { x: min.x, y: max.y, z: center.z }],
+        [{ x: min.x, y: max.y, z: center.z }, { x: min.x, y: min.y, z: center.z }],
+      ];
+      const radiusLine: PolylineSet = [[
+        { x: center.x, y: min.y, z: center.z },
+        { x: max.x, y: min.y, z: center.z },
+      ]];
+      const heightLine: PolylineSet = [[
+        { x: center.x, y: min.y, z: center.z },
+        { x: center.x, y: max.y, z: center.z },
+      ]];
+      const lines =
+        coneNode.feature === "bounding-box"
+          ? boxLines
+          : coneNode.feature === "principal-axes"
+            ? axes
+            : coneNode.feature === "symmetry-plane"
+              ? symmetryPlane
+              : coneNode.feature === "radius"
+                ? radiusLine
+                : coneNode.feature === "height"
+                  ? heightLine
+                  : [];
+      return {
+        groups: lines.length
+          ? [{ lines, color: 0xf59e0b, opacity: 1, radiusScale: geometryDependencyFlash?.nodeId === geometryDependencyFocusedNodeId ? 4.2 : 3 }]
+          : null,
+        pointSets:
+          coneNode.feature === "center"
+            ? [{ points: [center], color: 0xf59e0b, size: 0.2, opacity: 1 }]
+            : null,
+      };
+    }
     const evaluation = geometrySelectedMathConstructionEval ?? geometrySelectedDerivedConstructionEval;
     if (geometryMode !== "procedural" || !evaluation || !geometryDependencyFocusedNodeId) {
       return { groups: null, pointSets: null };
@@ -19093,8 +19321,10 @@ const App: React.FC = () => {
     geometryDependencyFlash,
     geometryDependencyFocusedNodeId,
     geometryMode,
+    geometrySelectedObject,
     geometrySelectedDerivedConstructionEval,
     geometrySelectedMathConstructionEval,
+    resolveGeometrySceneMeshById,
   ]);
   const geometryProceduralEditHandlePointSets = useMemo<OverlayPointSet[] | null>(() => {
     if (geometryMode !== "procedural" || geometryTransformMode !== "edit" || !geometryProceduralEditSources.length) {
@@ -25143,7 +25373,7 @@ const App: React.FC = () => {
     useState<MeshInteractionQualityMode>("adaptive");
   const [geometryGlobalQualityOverrideMode, setGeometryGlobalQualityOverrideMode] = useState<
     "auto" | "fast-preview" | "full"
-  >("fast-preview");
+  >("auto");
   const [geometryInteractionRestoreDelayMs, setGeometryInteractionRestoreDelayMs] = useState(150);
   const [geometryInteractionPreviewTriangleTarget, setGeometryInteractionPreviewTriangleTarget] = useState(100_000);
   const [geometryInteractionHideWireframe, setGeometryInteractionHideWireframe] = useState(false);
@@ -42871,7 +43101,6 @@ case "mobius":
   const geometryEffectiveHideWireframe = geometryInteractionHideWireframe;
   const geometryEffectiveRenderQuality: RenderQuality =
     geometryGlobalQualityOverrideMode === "fast-preview" ? "performance" : "balanced";
-  const geometryFastModeActive = geometryGlobalQualityOverrideMode === "fast-preview";
   useEffect(() => {
     if (geometryVolumeRelationsDemoActive && geometryInteractionQualityMode === "full") return;
     if (geometryDemoInteractionRestoreTimerRef.current != null) {
@@ -51153,7 +51382,7 @@ case "mobius":
                                           src={cardThumb}
                                           alt={`${card.name} card`}
                                           className="gallery-scan-card-preview-image"
-                                          loading="eager"
+                                          loading="lazy"
                                           decoding="async"
                                           onError={(event) => handleGalleryImageLoadError(event, cardFallbackThumb)}
                                         />
@@ -53190,6 +53419,8 @@ case "mobius":
                                             setGeometrySelectedMathConstructionId(null);
                                             setGeometrySelectedDerivedConstructionId(null);
                                             setGeometrySelectedObjectId(null);
+                                          } else if (item.kind === "automatic") {
+                                            handleSelectGeometryDependencyNode(item.id);
                                           }
                                         }}
                                         style={{
@@ -53235,6 +53466,19 @@ case "mobius":
                                           {item.typeLabel}
                                           {item.detail ? ` - ${item.detail}` : ""}
                                         </div>
+                                        {item.kind === "automatic" ? (
+                                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                            <button
+                                              type="button"
+                                              onClick={(event) => {
+                                                event.stopPropagation();
+                                                handleSelectGeometryDependencyNode(item.id);
+                                              }}
+                                            >
+                                              Open definition
+                                            </button>
+                                          </div>
+                                        ) : (
                                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                                           <button
                                             type="button"
@@ -53321,6 +53565,7 @@ case "mobius":
                                             Delete
                                           </button>
                                         </div>
+                                        )}
                                       </div>
                                     ))}
                                   </div>
@@ -59847,7 +60092,9 @@ case "mobius":
               </section>
             </div>
 
-            {!isPhoneLandscapeLayout && <div onMouseDown={startDragLeft} style={splitterStyle} />}
+            {!isPhoneLandscapeLayout && (
+              <div data-testid="geometry-left-splitter" onMouseDown={startDragLeft} style={splitterStyle} />
+            )}
 
             {/* RIGHT */}
             <div
@@ -60439,13 +60686,9 @@ case "mobius":
                   gizmoScaleSnap={geometrySnapScaleEnabled ? geometrySnapScaleStep : null}
                   onGizmoTransform={geometryMode === "procedural" ? handleProceduralGizmoTransform : undefined}
                   pickEnabled={
-                    (!geometryFastModeActive ||
-                      (geometryMode === "procedural" && geometryProceduralPanelTab === "construct")) &&
-                    (
-                      geometryMode === "demo" ||
-                      (geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations") ||
-                      ((geometryMode === "scratch" || geometryMode === "workbook") && geometryPointPlacementEnabled)
-                    )
+                    geometryMode === "demo" ||
+                    (geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations") ||
+                    ((geometryMode === "scratch" || geometryMode === "workbook") && geometryPointPlacementEnabled)
                   }
                   onPick={
                     geometryMode === "demo"
@@ -60542,6 +60785,7 @@ case "mobius":
                               key={`geometry-inspector-tab-${tabId}`}
                               type="button"
                               onClick={() => runGeometryPanelTabSwitch(() => setGeometryInspectorPanelTab(tabId))}
+                              data-testid={`geometry-inspector-tab-${tabId}`}
                               style={pill(geometryInspectorPanelTab === tabId)}
                               aria-pressed={geometryInspectorPanelTab === tabId}
                             >
@@ -60881,6 +61125,7 @@ case "mobius":
                         )}
                         {geometryInspectorPanelTab === "definition" && (
                           <div
+                            data-testid="geometry-inspector-definition"
                             style={{
                               border: "1px solid #f59e0b",
                               borderRadius: 8,
@@ -60902,6 +61147,36 @@ case "mobius":
                                 <strong>Definition:</strong> <code>{geometryConstructionEditFormula}</code>
                               </div>
                             </div>
+                            {geometrySelectedObject?.type === "cone" && (
+                              <div
+                                style={{
+                                  border: "1px solid #fde68a",
+                                  borderRadius: 7,
+                                  padding: "7px 8px",
+                                  background: "#fff",
+                                  display: "grid",
+                                  gap: 5,
+                                }}
+                              >
+                                <strong>Automatic Cone children</strong>
+                                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                  {CONE_DEPENDENCY_FEATURES.map((feature) => {
+                                    const nodeId = coneDependencyNodeId(geometrySelectedObject.id, feature.feature);
+                                    return (
+                                      <button
+                                        key={`definition-${nodeId}`}
+                                        type="button"
+                                        onClick={() => handleSelectGeometryDependencyNode(nodeId)}
+                                        aria-pressed={geometryDependencyFocusedNodeId === nodeId}
+                                        style={pill(geometryDependencyFocusedNodeId === nodeId)}
+                                      >
+                                        {feature.label}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
                             {geometrySelectedSceneObject && !geometrySelectedMathConstructionEval && !geometrySelectedDerivedConstructionEval && (
                               <>
                                 {([
@@ -67729,6 +68004,7 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
   const typeMeta = (kind: string): { label: string; color: string; background: string; border: string } => {
     if (kind === "scene-root") return { label: "Scene", color: "#334155", background: "#f8fafc", border: "#cbd5e1" };
     if (kind === "geometry-object") return { label: "Object", color: "#475569", background: "#f8fafc", border: "#cbd5e1" };
+    if (kind === "parameter") return { label: "Parameter", color: "#b45309", background: "#fffbeb", border: "#fcd34d" };
     if (kind === "face-reference") return { label: "Face", color: "#64748b", background: "#f8fafc", border: "#dbe2ea" };
     if (kind === "derived-point") return { label: "Point", color: "#2563eb", background: "#eff6ff", border: "#93c5fd" };
     if (kind === "derived-line") return { label: "Line", color: "#16a34a", background: "#f0fdf4", border: "#86efac" };
@@ -67867,6 +68143,8 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
           <button
             type="button"
             onClick={() => onSelect(node.id)}
+            data-testid={`geometry-dependency-node-${node.id}`}
+            title={node.kind === "scene-root" ? "Select scene root" : `Highlight, zoom, and edit ${node.label}`}
             style={{
               minWidth: 0,
               display: "flex",

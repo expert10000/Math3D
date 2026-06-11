@@ -143,7 +143,6 @@ test("Object/scene behavior: create, toggle visibility, remove, overlay state re
     const launched = await launchApp(env);
     app = launched.app;
     const page = launched.page;
-
     await resetStorage(page);
     await openProceduralGeometry(page);
     await clickFirstVisibleButton(page, "Scene");
@@ -196,7 +195,6 @@ test("Geometry gallery: select vs add flow, quick add, and filtering", async () 
     const launched = await launchApp(env);
     app = launched.app;
     const page = launched.page;
-
     await resetStorage(page);
     await openProceduralGeometry(page);
     const baseCount = (await readGeometryStats(page)).objectCount;
@@ -222,6 +220,140 @@ test("Geometry gallery: select vs add flow, quick add, and filtering", async () 
     await page.getByTestId("geometry-gallery-category-filter").selectOption("polyhedra");
     await expect(page.getByTestId("geometry-gallery-card-cube")).toBeVisible();
     await expect(page.getByTestId("geometry-gallery-card-sphere")).toHaveCount(0);
+  } finally {
+    if (app) {
+      await app.close();
+    }
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
+test("Dependency node click highlights, fits, and opens the target for editing", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-dependency-edit-"));
+  const env = {
+    APPDATA: profileDir,
+    LOCALAPPDATA: profileDir,
+  };
+
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(env);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page);
+
+    await page.getByTestId("geometry-inspector-tab-dependencies").click();
+    const objectNode = page.locator('[data-testid^="geometry-dependency-node-object:"]').first();
+    await expect(objectNode).toBeVisible();
+    const objectName = (await objectNode.locator("strong").innerText()).trim();
+    await objectNode.click();
+
+    await expect(page.getByTestId("geometry-inspector-tab-definition")).toHaveAttribute("aria-pressed", "true");
+    const definition = page.getByTestId("geometry-inspector-definition");
+    await expect(definition).toBeVisible();
+    await expect(definition).toContainText("Definition Editor");
+    await expect(definition).toContainText(objectName);
+  } finally {
+    if (app) {
+      await app.close();
+    }
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
+test("Cone dependency tree exposes automatic semantic children", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-cone-dependencies-"));
+  const env = {
+    APPDATA: profileDir,
+    LOCALAPPDATA: profileDir,
+  };
+
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(env);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page);
+
+    await page.getByTestId("geometry-gallery-quick-add-cone").dispatchEvent("click");
+    await page.getByTestId("geometry-inspector-tab-dependencies").click();
+
+    const coneNode = page.locator('[data-testid^="geometry-dependency-node-object:"]').filter({ hasText: "Cone" }).first();
+    await expect(coneNode).toBeVisible();
+    const coneNodeId = await coneNode.getAttribute("data-testid");
+    expect(coneNodeId).toBeTruthy();
+    const objectId = coneNodeId!.slice("geometry-dependency-node-object:".length);
+    await coneNode.locator("..").getByRole("button", { name: /^Expand / }).click();
+
+    for (const feature of ["center", "radius", "height", "bounding-box", "principal-axes", "symmetry-plane"]) {
+      await expect(page.getByTestId(`geometry-dependency-node-cone:${objectId}:${feature}`)).toBeVisible();
+    }
+
+    await page.getByTestId(`geometry-dependency-node-cone:${objectId}:radius`).click();
+    await expect(page.getByTestId("geometry-inspector-tab-definition")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("geometry-inspector-definition")).toContainText("Cone");
+    await expect(page.getByTestId("geometry-inspector-definition")).toContainText("Radius");
+  } finally {
+    if (app) {
+      await app.close();
+    }
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
+test("Geometry gallery remains responsive after scrolling and resizing the side panel", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-gallery-resize-"));
+  const env = {
+    APPDATA: profileDir,
+    LOCALAPPDATA: profileDir,
+  };
+
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(env);
+    app = launched.app;
+    const page = launched.page;
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.stack ?? error.message));
+
+    await resetStorage(page);
+    await openProceduralGeometry(page);
+    const baseCount = (await readGeometryStats(page)).objectCount;
+
+    const gallery = page.getByTestId("geometry-gallery");
+    await gallery.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await gallery.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+
+    const splitter = page.getByTestId("geometry-left-splitter");
+    const splitterBox = await splitter.boundingBox();
+    expect(splitterBox).not.toBeNull();
+    if (!splitterBox) throw new Error("Geometry left splitter has no bounding box.");
+    const startX = splitterBox.x + splitterBox.width / 2;
+    const startY = splitterBox.y + Math.min(40, splitterBox.height / 2);
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(startX + 120, startY, { steps: 8 });
+    await page.mouse.up();
+
+    const sphereCard = page.getByTestId("geometry-gallery-card-sphere");
+    await expect(sphereCard).toBeVisible();
+    await sphereCard.dblclick();
+    await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(baseCount + 1);
+
+    const viewer = page.getByTestId("main-viewer");
+    const viewerBox = await viewer.boundingBox();
+    expect(viewerBox).not.toBeNull();
+    if (!viewerBox) throw new Error("Geometry viewer has no bounding box.");
+    await clickFirstVisibleButton(page, "Fast");
+    await page.mouse.click(viewerBox.x + viewerBox.width * 0.5, viewerBox.y + viewerBox.height * 0.5);
+    await expect(page.getByTestId("app-status-bar")).toContainText("Box");
+    expect(pageErrors).toEqual([]);
   } finally {
     if (app) {
       await app.close();
