@@ -2741,13 +2741,13 @@ const geometryConstructionExplorerCanUseForSection = (type: GeometryDerivedConst
   type === "face-parallel-face-plane" ||
   type === "object-symmetry-plane-preview";
 const geometryDependencyOverlayTypeMeta = (kind: string | undefined) => {
-  if (kind === "point") return { label: "Point", color: "#2563eb", background: "#eff6ff", border: "#93c5fd" };
-  if (kind === "parameter") return { label: "Parameter", color: "#b45309", background: "#fffbeb", border: "#fcd34d" };
-  if (kind === "line") return { label: "Line", color: "#16a34a", background: "#f0fdf4", border: "#86efac" };
-  if (kind === "plane") return { label: "Plane", color: "#7c3aed", background: "#f5f3ff", border: "#c4b5fd" };
-  if (kind === "analysis") return { label: "Analysis", color: "#be123c", background: "#fff1f2", border: "#fda4af" };
-  if (kind === "measurement") return { label: "Measurement", color: "#64748b", background: "#f8fafc", border: "#cbd5e1" };
-  return { label: "Object", color: "#475569", background: "#f8fafc", border: "#cbd5e1" };
+  if (kind === "point") return { icon: "●", label: "Point", color: "#2563eb", background: "#eff6ff", border: "#93c5fd" };
+  if (kind === "parameter") return { icon: "◧", label: "Parameter", color: "#b45309", background: "#fffbeb", border: "#fcd34d" };
+  if (kind === "line") return { icon: "▬", label: "Line", color: "#16a34a", background: "#f0fdf4", border: "#86efac" };
+  if (kind === "plane") return { icon: "▭", label: "Plane", color: "#7c3aed", background: "#f5f3ff", border: "#c4b5fd" };
+  if (kind === "analysis") return { icon: "∑", label: "Analysis", color: "#be123c", background: "#fff1f2", border: "#fda4af" };
+  if (kind === "measurement") return { icon: "📏", label: "Measurement", color: "#64748b", background: "#f8fafc", border: "#cbd5e1" };
+  return { icon: "◆", label: "Object", color: "#475569", background: "#f8fafc", border: "#cbd5e1" };
 };
 type GeometryMeasuredEdgeEntry = {
   id: string;
@@ -8042,8 +8042,10 @@ const App: React.FC = () => {
   const [geometryDependencyOverlayExpandedGroups, setGeometryDependencyOverlayExpandedGroups] = useState<Set<string>>(
     () => new Set()
   );
-  const [geometryDependencyOverlayChainMode, setGeometryDependencyOverlayChainMode] = useState<"direct" | "full">("direct");
+  const [geometryDependencyOverlayChainMode, setGeometryDependencyOverlayChainMode] = useState<"direct" | "full">("full");
   const [geometryDependencyOverlayView, setGeometryDependencyOverlayView] = useState<"list" | "graph">("list");
+  const [geometryDependencyOverlayDirection, setGeometryDependencyOverlayDirection] = useState<"affected-by" | "affects">("affected-by");
+  const [geometryDependencyOverlayAnalysisExpanded, setGeometryDependencyOverlayAnalysisExpanded] = useState(false);
   const [geometryDependencyOverlayExpandedFormulaIds, setGeometryDependencyOverlayExpandedFormulaIds] = useState<Set<string>>(
     () => new Set()
   );
@@ -19801,6 +19803,7 @@ const App: React.FC = () => {
   ]);
   useEffect(() => {
     setGeometryDependencyOverlayLineageTarget(null);
+    setGeometryDependencyOverlayAnalysisExpanded(false);
   }, [geometryDependencyOverlayCard.selectedId]);
   useEffect(() => {
     if (!geometryDependencyOverlayCard.selected) {
@@ -61276,7 +61279,7 @@ case "mobius":
                         top: 6,
                         right: 10,
                         zIndex: 20,
-                        width: "min(280px, calc(100% - 20px))",
+                        width: "min(390px, calc(100% - 20px))",
                         maxHeight: "calc(100% - 12px)",
                         overflow: "auto",
                         border: "1px solid #cbd5e1",
@@ -61416,78 +61419,179 @@ case "mobius":
                         </label>
                       </div>
                       {geometryDependencyOverlayCard.selected && geometryDependencyOverlayView === "graph" && (() => {
-                        type GraphRow = { id: string | null; label: string; kind?: string };
-                        const groups = [
-                          ["Inputs", geometryDependencyOverlayCard.inputs],
-                          ["Derived Geometry", geometryDependencyOverlayCard.derived],
-                          ["Analysis", geometryDependencyOverlayCard.analysis],
-                        ].filter(([label]) => geometryDependencyOverlayChainMode === "full" || label === "Inputs");
-                        const rows = groups.flatMap(([group, groupRows]) =>
-                          (groupRows as GraphRow[]).map((row) => ({ ...row, group: group as string }))
-                        );
-                        const height = Math.max(180, rows.length * 29 + 22);
-                        const selectedY = height / 2;
-                        return (
-                          <svg
-                            data-testid="geometry-dependency-overlay-graph"
-                            role="img"
-                            aria-label={`Dependency graph for ${geometryDependencyOverlayCard.selected}`}
-                            viewBox={`0 0 260 ${height}`}
-                            style={{ display: "block", width: "100%", minHeight: 180, maxHeight: 330 }}
-                          >
-                            {rows.map((row, index) => {
-                              const y = 11 + index * 29;
-                              const meta = geometryDependencyOverlayTypeMeta(row.kind ?? (row.group === "Analysis" ? "analysis" : undefined));
-                              const active = row.id === geometryHoveredDependencyNodeId;
-                              return (
-                                <g key={`dependency-graph-${row.group}-${row.label}`}>
-                                  <line x1="133" y1={y + 10} x2="173" y2={selectedY} stroke={active ? "#f59e0b" : "#94a3b8"} strokeWidth={active ? 2 : 1} />
-                                  <g
-                                    role="button"
-                                    tabIndex={0}
-                                    aria-label={row.label}
-                                    onClick={() => {
-                                      setGeometryDependencyOverlayLineageTarget({
-                                        id: row.id,
-                                        label: row.label,
-                                        group: row.group as "Inputs" | "Derived Geometry" | "Analysis",
-                                      });
-                                      if (row.id) handleSelectGeometryDependencyNode(row.id);
-                                    }}
-                                    onKeyDown={(event) => {
-                                      if (event.key === "Enter" || event.key === " ") {
-                                        setGeometryDependencyOverlayLineageTarget({
-                                          id: row.id,
-                                          label: row.label,
-                                          group: row.group as "Inputs" | "Derived Geometry" | "Analysis",
-                                        });
-                                        if (row.id) handleSelectGeometryDependencyNode(row.id);
-                                      }
-                                    }}
-                                    onMouseEnter={() => setGeometryHoveredDependencyNodeId(row.id)}
-                                    onFocus={() => setGeometryHoveredDependencyNodeId(row.id)}
-                                    onBlur={() => setGeometryHoveredDependencyNodeId(null)}
-                                    style={{ cursor: row.id ? "pointer" : "default" }}
-                                  >
-                                    <rect x="3" y={y} width="130" height="20" rx="5" fill={active ? "#fffbeb" : meta.background} stroke={active ? "#f59e0b" : meta.border} />
-                                    <text x="9" y={y + 13.5} fill={meta.color} fontSize="8.5" fontWeight="700">
-                                      {row.label.length > 22 ? `${row.label.slice(0, 21)}…` : row.label}
-                                    </text>
-                                    <title>{`${row.group}: ${row.label}`}</title>
-                                  </g>
-                                </g>
-                              );
-                            })}
-                            <g>
-                              <rect x="173" y={selectedY - 18} width="84" height="36" rx="8" fill="#eff6ff" stroke="#2563eb" strokeWidth="1.5" />
-                              <text x="215" y={selectedY - 3} textAnchor="middle" fill="#1e3a8a" fontSize="8" fontWeight="800">SELECTED</text>
-                              <text x="215" y={selectedY + 10} textAnchor="middle" fill="#0f172a" fontSize="9" fontWeight="800">
-                                {geometryDependencyOverlayCard.selected.length > 13
-                                  ? `${geometryDependencyOverlayCard.selected.slice(0, 12)}…`
-                                  : geometryDependencyOverlayCard.selected}
+                        type GraphRow = { id: string | null; label: string; kind?: string; group: "Inputs" | "Derived Geometry" | "Analysis"; aggregate?: boolean };
+                        const inputs: GraphRow[] = geometryDependencyOverlayCard.inputs.map((row) => ({ ...row, group: "Inputs" }));
+                        const outputs: GraphRow[] = geometryDependencyOverlayChainMode === "full"
+                          ? [
+                              ...geometryDependencyOverlayCard.derived.map((row) => ({ ...row, group: "Derived Geometry" as const })),
+                              ...(geometryDependencyOverlayAnalysisExpanded
+                                ? geometryDependencyOverlayCard.analysis.map((row) => ({ ...row, group: "Analysis" as const }))
+                                : [{
+                                    id: "__analysis-group",
+                                    label: `Analysis (${geometryDependencyOverlayCard.analysis.length})`,
+                                    kind: "analysis",
+                                    group: "Analysis" as const,
+                                    aggregate: true,
+                                  }]),
+                            ]
+                          : [];
+                        const rowHeight = 31;
+                        const height = Math.max(190, Math.max(inputs.length, outputs.length) * rowHeight + 34);
+                        const objectY = height / 2 - 43;
+                        const activeNodeId = geometryHoveredDependencyNodeId;
+                        const activeInput = inputs.find((row) => row.id === activeNodeId) ?? null;
+                        const activeOutput = outputs.find((row) => row.id === activeNodeId) ?? null;
+                        const showAllOutputs =
+                          geometryDependencyOverlayDirection === "affects" &&
+                          (activeNodeId === geometryDependencyOverlayCard.selectedId || !!activeInput);
+                        const renderGraphNode = (row: GraphRow, x: number, y: number) => {
+                          const meta = geometryDependencyOverlayTypeMeta(row.kind ?? (row.group === "Analysis" ? "analysis" : undefined));
+                          const active = row.id === activeNodeId;
+                          return (
+                            <g
+                              key={`dependency-graph-${row.group}-${row.label}`}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={row.label}
+                              onClick={() => {
+                                if (row.aggregate) {
+                                  setGeometryDependencyOverlayAnalysisExpanded((previous) => !previous);
+                                  return;
+                                }
+                                setGeometryDependencyOverlayLineageTarget({
+                                  id: row.id,
+                                  label: row.label,
+                                  group: row.group,
+                                });
+                                if (row.id) handleSelectGeometryDependencyNode(row.id);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key !== "Enter" && event.key !== " ") return;
+                                if (row.aggregate) {
+                                  setGeometryDependencyOverlayAnalysisExpanded((previous) => !previous);
+                                  return;
+                                }
+                                setGeometryDependencyOverlayLineageTarget({
+                                  id: row.id,
+                                  label: row.label,
+                                  group: row.group,
+                                });
+                                if (row.id) handleSelectGeometryDependencyNode(row.id);
+                              }}
+                              onMouseEnter={() => setGeometryHoveredDependencyNodeId(row.id)}
+                              onFocus={() => setGeometryHoveredDependencyNodeId(row.id)}
+                              onBlur={() => setGeometryHoveredDependencyNodeId(null)}
+                              style={{ cursor: row.id ? "pointer" : "default" }}
+                            >
+                              <rect x={x} y={y} width="100" height="22" rx="6" fill={active ? "#fffbeb" : meta.background} stroke={active ? "#f59e0b" : meta.border} />
+                              <text x={x + 7} y={y + 14.5} fill={meta.color} fontSize="8.2" fontWeight="700">
+                                <tspan fontSize="8.5">{meta.icon}</tspan>
+                                <tspan dx="4">{row.label.length > 17 ? `${row.label.slice(0, 16)}…` : row.label}</tspan>
                               </text>
+                              <title>{`${row.group}: ${row.label}`}</title>
                             </g>
-                          </svg>
+                          );
+                        };
+                        return (
+                          <div style={{ display: "grid", gap: 5 }}>
+                            <div style={{ display: "flex", gap: 2, padding: 2, justifySelf: "start", border: "1px solid #cbd5e1", borderRadius: 7, background: "#f8fafc" }}>
+                              {(["affected-by", "affects"] as const).map((direction) => (
+                                <button
+                                  key={direction}
+                                  type="button"
+                                  aria-pressed={geometryDependencyOverlayDirection === direction}
+                                  onClick={() => setGeometryDependencyOverlayDirection(direction)}
+                                  style={{
+                                    border: geometryDependencyOverlayDirection === direction ? "1px solid #60a5fa" : "1px solid transparent",
+                                    borderRadius: 5,
+                                    padding: "2px 7px",
+                                    background: geometryDependencyOverlayDirection === direction ? "#eff6ff" : "transparent",
+                                    color: geometryDependencyOverlayDirection === direction ? "#1d4ed8" : "#475569",
+                                    fontSize: 10,
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  {direction === "affected-by" ? "Affected By" : "Affects"}
+                                </button>
+                              ))}
+                            </div>
+                            <svg
+                              data-testid="geometry-dependency-overlay-graph"
+                              role="img"
+                              aria-label={`Dependency graph for ${geometryDependencyOverlayCard.selected}`}
+                              viewBox={`0 0 363 ${height}`}
+                              style={{ display: "block", width: "100%", minHeight: 190, maxHeight: 350 }}
+                            >
+                              <defs>
+                                <marker id="dependency-arrow" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                                  <path d="M 0 0 L 6 3 L 0 6 z" fill="#f59e0b" />
+                                </marker>
+                              </defs>
+                              {inputs.map((row, index) => {
+                                const y = 12 + index * rowHeight;
+                                const active = row.id === activeInput?.id;
+                                return (
+                                  <React.Fragment key={`dependency-input-${row.label}`}>
+                                    {active && (
+                                      <line
+                                        data-testid="geometry-dependency-hover-connector"
+                                        x1="103"
+                                        y1={y + 11}
+                                        x2="123"
+                                        y2={height / 2}
+                                        stroke="#f59e0b"
+                                        strokeWidth="2"
+                                        markerEnd="url(#dependency-arrow)"
+                                      />
+                                    )}
+                                    {renderGraphNode(row, 3, y)}
+                                  </React.Fragment>
+                                );
+                              })}
+                              {outputs.map((row, index) => {
+                                const y = 12 + index * rowHeight;
+                                const active = row.id === activeOutput?.id;
+                                return (
+                                  <React.Fragment key={`dependency-output-${row.label}`}>
+                                    {geometryDependencyOverlayDirection === "affects" && (active || showAllOutputs) && (
+                                      <line
+                                        data-testid="geometry-dependency-hover-connector"
+                                        x1="237"
+                                        y1={height / 2}
+                                        x2="260"
+                                        y2={y + 11}
+                                        stroke="#f59e0b"
+                                        strokeWidth="2"
+                                        markerEnd="url(#dependency-arrow)"
+                                      />
+                                    )}
+                                    {renderGraphNode(row, 260, y)}
+                                  </React.Fragment>
+                                );
+                              })}
+                              <g
+                                role="button"
+                                tabIndex={0}
+                                aria-label={geometryDependencyOverlayCard.selected}
+                                onMouseEnter={() => setGeometryHoveredDependencyNodeId(geometryDependencyOverlayCard.selectedId)}
+                                onFocus={() => setGeometryHoveredDependencyNodeId(geometryDependencyOverlayCard.selectedId)}
+                                onBlur={() => setGeometryHoveredDependencyNodeId(null)}
+                                onClick={() => geometryDependencyOverlayCard.selectedId && handleSelectGeometryDependencyNode(geometryDependencyOverlayCard.selectedId)}
+                                style={{ cursor: "pointer" }}
+                              >
+                                <rect x="123" y={objectY} width="114" height="86" rx="9" fill="#eff6ff" stroke="#2563eb" strokeWidth="1.5" />
+                                <text x="180" y={objectY + 19} textAnchor="middle" fill="#0f172a" fontSize="11" fontWeight="800">
+                                  {geometryDependencyOverlayCard.selected.length > 16
+                                    ? `${geometryDependencyOverlayCard.selected.slice(0, 15)}…`
+                                    : geometryDependencyOverlayCard.selected}
+                                </text>
+                                <text x="180" y={objectY + 33} textAnchor="middle" fill="#1e3a8a" fontSize="8" fontWeight="700">SceneObject</text>
+                                <text x="134" y={objectY + 50} fill="#475569" fontSize="7.5" fontWeight="700">Inputs: {geometryDependencyOverlayCard.inputs.length}</text>
+                                <text x="134" y={objectY + 63} fill="#475569" fontSize="7.5" fontWeight="700">Derived: {geometryDependencyOverlayCard.derived.length}</text>
+                                <text x="134" y={objectY + 76} fill="#475569" fontSize="7.5" fontWeight="700">Analysis: {geometryDependencyOverlayCard.analysis.length}</text>
+                              </g>
+                            </svg>
+                          </div>
                         );
                       })()}
                       {geometryDependencyOverlayCard.selected && geometryDependencyOverlayView === "list" &&
@@ -61523,7 +61627,7 @@ case "mobius":
                                 fontWeight: 800,
                               }}
                             >
-                              <span>{expanded ? "▼" : "▶"} {label} ({(rows as Array<unknown>).length})</span>
+                              <span>{expanded ? "▼" : "▶"} {String(label)} ({(rows as Array<unknown>).length})</span>
                             </button>
                             {expanded && ((rows as Array<{ id: string | null; label: string; kind?: string; formula?: string }>).length ? (
                               (rows as Array<{ id: string | null; label: string; kind?: string; formula?: string }>).map((row) => {
@@ -61560,7 +61664,7 @@ case "mobius":
                                         gap: 6,
                                       }}
                                     >
-                                      <span>{row.label}</span>
+                                      <span><span aria-hidden="true">{meta.icon}</span> {row.label}</span>
                                       <span style={{ fontSize: 9, fontWeight: 800 }}>{meta.label}</span>
                                     </button>
                                     {row.formula && (
