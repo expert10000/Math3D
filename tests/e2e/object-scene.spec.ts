@@ -262,7 +262,7 @@ test("Dependency node click highlights, fits, and opens the target for editing",
   }
 });
 
-test("Cone dependency tree exposes automatic semantic children", async () => {
+test("Cone and Box dependency trees expose grouped automatic semantic children", async () => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-cone-dependencies-"));
   const env = {
     APPDATA: profileDir,
@@ -310,6 +310,23 @@ test("Cone dependency tree exposes automatic semantic children", async () => {
     await expect(page.getByTestId("geometry-inspector-tab-definition")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("geometry-inspector-definition")).toContainText("Cone");
     await expect(page.getByTestId("geometry-inspector-definition")).toContainText("Radius");
+
+    await page.getByTestId("geometry-gallery-quick-add-box").dispatchEvent("click");
+    await page.getByTestId("geometry-inspector-tab-dependencies").click();
+    const boxNode = page.locator('[data-testid^="geometry-dependency-node-object:"]').filter({ hasText: "Box" }).first();
+    await expect(boxNode).toBeVisible();
+    const boxNodeId = await boxNode.getAttribute("data-testid");
+    expect(boxNodeId).toBeTruthy();
+    const boxObjectId = boxNodeId!.slice("geometry-dependency-node-object:".length);
+    await boxNode.locator("..").getByRole("button", { name: /^Expand / }).click();
+    for (const group of ["inputs", "derived-geometry", "analysis"]) {
+      await expect(page.getByTestId(`geometry-dependency-node-box-group:${boxObjectId}:${group}`)).toBeVisible();
+    }
+    for (const feature of ["center", "width", "height", "depth", "bounding-box", "principal-axes", "symmetry-plane", "curvature", "measurements", "volume", "surface-area"]) {
+      await expect(page.getByTestId(`geometry-dependency-node-box:${boxObjectId}:${feature}`)).toBeVisible();
+    }
+    await page.getByTestId(`geometry-dependency-node-box:${boxObjectId}:width`).click();
+    await expect(page.getByTestId("geometry-inspector-definition")).toContainText("Width");
   } finally {
     if (app) {
       await app.close();
