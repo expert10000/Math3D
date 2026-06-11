@@ -198,11 +198,20 @@ test("Geometry gallery: select vs add flow, quick add, and filtering", async () 
     await resetStorage(page);
     await openProceduralGeometry(page);
     const baseCount = (await readGeometryStats(page)).objectCount;
+    await page.setViewportSize({ width: 1200, height: 680 });
+    await expect(page.locator('[data-compact-geometry-panel="true"]')).toBeVisible();
+    await expect(page.getByTestId("geometry-gallery-toolbar")).toBeVisible();
+    await expect(page.getByTestId("geometry-gallery")).toHaveAttribute("data-compact", "true");
 
     const sphereCard = page.getByTestId("geometry-gallery-card-sphere");
     await expect(sphereCard).toBeVisible();
+    await expect(sphereCard).toHaveClass(/is-compact/);
     await sphereCard.click({ position: { x: 16, y: 16 } });
     await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(baseCount);
+    const selectedDrawer = page.getByTestId("geometry-create-selected-card");
+    await expect(selectedDrawer).toBeVisible();
+    await expect(selectedDrawer.getByRole("button", { name: "Placement >", exact: true })).toBeVisible();
+    await expect(selectedDrawer.getByText("Placement", { exact: true })).toBeHidden();
 
     await page.getByTestId("geometry-add-object").click();
     await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(baseCount + 1);

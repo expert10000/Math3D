@@ -252,6 +252,72 @@ button:focus-visible {
   transform: none;
 }
 
+.gallery-panel-scroll.geometry-gallery-compact {
+  max-height: min(52vh, 600px);
+  gap: 8px;
+}
+
+.geometry-gallery-compact .gallery-section {
+  gap: 5px;
+}
+
+.geometry-gallery-compact .gallery-card-grid {
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 6px;
+}
+
+.geometry-gallery-scan-card.is-compact {
+  grid-template-columns: 46px minmax(0, 1fr);
+  min-height: 58px;
+  contain-intrinsic-size: 58px;
+  border-radius: 7px;
+}
+
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-preview {
+  padding: 5px 0 5px 5px;
+}
+
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-preview-frame {
+  min-height: 38px;
+  height: 38px;
+  aspect-ratio: 1;
+  border-radius: 6px;
+}
+
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-badge-btn {
+  display: none;
+}
+
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-meta {
+  border-top: 0;
+  padding: 5px 6px;
+  gap: 2px;
+}
+
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-title {
+  font-size: 11px;
+}
+
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-summary,
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-chips,
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-selected-pill,
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-footer-tools {
+  display: none;
+}
+
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-formula {
+  font-size: 8px;
+}
+
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-footer {
+  min-height: 16px;
+}
+
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-action-btn {
+  font-size: 9px;
+  padding: 1px 6px;
+}
+
 .gallery-scan-card:hover {
   transform: translateY(-2px);
   border-color: #84aedd;

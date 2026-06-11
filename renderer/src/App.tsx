@@ -8314,6 +8314,8 @@ const App: React.FC = () => {
   const [geometrySceneGalleryExpanded, setGeometrySceneGalleryExpanded] = useState(false);
   const [geometryCreateActionStatus, setGeometryCreateActionStatus] = useState<string | null>(null);
   const [geometryCreateSelectedCardExpanded, setGeometryCreateSelectedCardExpanded] = useState(false);
+  const geometryCreatePanelRef = useRef<HTMLDivElement | null>(null);
+  const [geometryCreatePanelHeight, setGeometryCreatePanelHeight] = useState(900);
   const [geometryAddSelectNewObject, setGeometryAddSelectNewObject] = useState(true);
   const [geometryAddFocusCamera, setGeometryAddFocusCamera] = useState(true);
   const [geometryAddOpenObjectTab, setGeometryAddOpenObjectTab] = useState(false);
@@ -20604,6 +20606,16 @@ const App: React.FC = () => {
       setMode(next);
     });
   }, []);
+
+  useEffect(() => {
+    const panel = geometryCreatePanelRef.current;
+    if (!panel || typeof ResizeObserver === "undefined") return;
+    const updateHeight = () => setGeometryCreatePanelHeight(panel.getBoundingClientRect().height);
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, [geometryMode, geometryProceduralPanelTab, mode]);
 
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
@@ -44689,6 +44701,10 @@ case "mobius":
     showViewportDebug && !(mode === "surfaces" && isPresentDisplayMode) && !cleanScreenshotSurfaceActive;
   const isPhoneLandscapeLayout =
     viewportSize.width > viewportSize.height && viewportSize.width <= 980 && viewportSize.height <= 560;
+  const compactGeometryPanel = geometryCreatePanelHeight < 900 || isPhoneLandscapeLayout;
+  useEffect(() => {
+    if (compactGeometryPanel) setGeometryCreateSelectedCardExpanded(false);
+  }, [compactGeometryPanel]);
   const showGeometryFullWorkbookWorkspace =
     mode === "geometry" && geometryMode === "workbook" && geometryWorkbookUiMode === "full";
   const showSurfacesRightPanel =
@@ -51772,15 +51788,24 @@ case "mobius":
           >
             {/* LEFT */}
             <div
+              ref={geometryCreatePanelRef}
+              data-compact-geometry-panel={compactGeometryPanel ? "true" : "false"}
               style={{
                 ...styles.panelLeft,
                 width: isPhoneLandscapeLayout ? "100%" : leftWidth,
                 maxWidth: isPhoneLandscapeLayout ? "100%" : undefined,
                 maxHeight: isPhoneLandscapeLayout ? Math.max(180, Math.floor(viewportSize.height * 0.46)) : undefined,
+                overflowY: compactGeometryPanel && geometryProceduralPanelTab === "create" ? "hidden" : "auto",
                 order: isPhoneLandscapeLayout ? 2 : 0,
               }}
             >
-              <section>
+              <section
+                style={
+                  compactGeometryPanel && geometryProceduralPanelTab === "create"
+                    ? { height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }
+                    : undefined
+                }
+              >
                 <h2 style={styles.h2}>Geometry Viewer</h2>
                 <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
                   Procedural objects and classic construction scenes.
@@ -51790,8 +51815,20 @@ case "mobius":
                   <>
                     {geometryProceduralPanelTab === "create" && (
                     <>
-                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Object gallery</div>
-                    <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
+                    <div
+                      data-testid="geometry-gallery-toolbar"
+                      style={{
+                        position: "sticky",
+                        top: 0,
+                        zIndex: 15,
+                        display: "grid",
+                        gap: 6,
+                        paddingBottom: 8,
+                        background: "var(--panel-bg, #fff)",
+                      }}
+                    >
+                    <div style={{ fontSize: 12, fontWeight: 700 }}>Object gallery</div>
+                    <div style={{ display: "grid", gap: 6 }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6 }}>
                         <input
                           type="search"
@@ -51877,12 +51914,19 @@ case "mobius":
                         </div>
                       </div>
                     </div>
+                    </div>
 
                     <div
                       data-testid="geometry-gallery"
                       data-gallery-grid="true"
-                      className="gallery-panel-scroll"
-                      style={{ paddingBottom: geometryGallerySelectedCard ? 14 : 0 }}
+                      data-compact={compactGeometryPanel ? "true" : "false"}
+                      className={`gallery-panel-scroll${compactGeometryPanel ? " geometry-gallery-compact" : ""}`}
+                      style={{
+                        paddingBottom: geometryGallerySelectedCard ? 14 : 0,
+                        flex: compactGeometryPanel ? "1 1 auto" : undefined,
+                        minHeight: compactGeometryPanel ? 90 : undefined,
+                        maxHeight: compactGeometryPanel ? "none" : undefined,
+                      }}
                     >
                       <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Cards</div>
                       {geometryGallerySections.map((section) => (
@@ -51952,7 +51996,7 @@ case "mobius":
                                     handleSelectGeometryGalleryCard(card.id);
                                     if (card.supported) handleAddGeometryGalleryDefault(card);
                                   }}
-                                  className={`gallery-scan-card geometry-gallery-scan-card${
+                                  className={`gallery-scan-card geometry-gallery-scan-card${compactGeometryPanel ? " is-compact" : ""}${
                                     selected ? " is-browser-selected" : ""
                                   }${!card.supported ? " is-disabled" : ""}`}
                                   title={`${card.name}\n${card.description}`}
@@ -52088,8 +52132,8 @@ case "mobius":
                         data-testid="geometry-create-selected-card"
                         style={{
                           marginTop: 10,
-                          position: viewportSize.height >= 900 && !isPhoneLandscapeLayout ? "sticky" : "relative",
-                          bottom: viewportSize.height >= 900 && !isPhoneLandscapeLayout ? 0 : undefined,
+                          position: compactGeometryPanel ? "relative" : "sticky",
+                          bottom: compactGeometryPanel ? undefined : 0,
                           zIndex: 12,
                           border: "1px solid #dbe2ea",
                           borderRadius: 8,
@@ -52098,8 +52142,10 @@ case "mobius":
                           boxShadow: "0 -8px 16px rgba(15,23,42,0.08)",
                           display: "grid",
                           gap: 7,
-                          maxHeight: viewportSize.height >= 900 && !isPhoneLandscapeLayout ? "48vh" : undefined,
-                          overflowY: viewportSize.height >= 900 && !isPhoneLandscapeLayout ? "auto" : undefined,
+                          maxHeight: compactGeometryPanel
+                            ? geometryCreateSelectedCardExpanded ? "62%" : 132
+                            : "48vh",
+                          overflowY: "auto",
                         }}
                       >
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -52112,6 +52158,32 @@ case "mobius":
                             {geometryCreateSelectedCardExpanded ? "Collapse" : "Expand"}
                           </button>
                         </div>
+                        {compactGeometryPanel && (
+                          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              data-testid="geometry-add-object"
+                              onClick={handleAddGeometryGallerySelected}
+                              disabled={!geometryGallerySelectedCard.supported}
+                            >
+                              Add selected
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleAddGeometryGalleryDefault(geometryGallerySelectedCard)}
+                              disabled={!geometryGallerySelectedCard.supported || !geometryGallerySelectedCard.defaultRecipe}
+                            >
+                              Add preset
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleOpenGeometryGalleryCustomEditor}
+                              disabled={!geometryGallerySelectedCard.supported || !geometryGallerySelectedCard.defaultRecipe}
+                            >
+                              Customize
+                            </button>
+                          </div>
+                        )}
                         <div style={{ fontSize: 10.5, opacity: 0.9, fontWeight: 700 }}>
                           {[
                             geometryGallerySelectedCard.badge || "Primitive",
@@ -52120,6 +52192,26 @@ case "mobius":
                             geometryGallerySelectedCard.presets.length ? "Has presets" : "No presets",
                           ].join(" · ")}
                         </div>
+                        {compactGeometryPanel && !geometryCreateSelectedCardExpanded && (
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() => setGeometryCreateSelectedCardExpanded(true)}
+                              style={{ fontSize: 10, padding: "2px 7px" }}
+                            >
+                              Placement &gt;
+                            </button>
+                            {geometryGallerySelectedCard.presets.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setGeometryCreateSelectedCardExpanded(true)}
+                                style={{ fontSize: 10, padding: "2px 7px" }}
+                              >
+                                Presets &gt;
+                              </button>
+                            )}
+                          </div>
+                        )}
                         {geometryCreateSelectedCardExpanded && geometryCreateQuickParamEntries.length > 0 && (
                           <div
                             style={{
@@ -52194,7 +52286,7 @@ case "mobius":
                             borderRadius: 8,
                             background: "#fff",
                             padding: "6px 8px",
-                            display: "grid",
+                            display: compactGeometryPanel && !geometryCreateSelectedCardExpanded ? "none" : "grid",
                             gap: 6,
                           }}
                         >
@@ -52279,7 +52371,7 @@ case "mobius":
                           </div>
                         </div>
 
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {!compactGeometryPanel && <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button
                             type="button"
                             data-testid="geometry-add-object"
@@ -52302,9 +52394,9 @@ case "mobius":
                           >
                             Customize before adding
                           </button>
-                        </div>
+                        </div>}
 
-                        {geometryGallerySelectedCard.presets.length > 0 && (
+                        {geometryGallerySelectedCard.presets.length > 0 && (!compactGeometryPanel || geometryCreateSelectedCardExpanded) && (
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", fontSize: 10.5 }}>
                             <span style={{ fontWeight: 700 }}>Presets:</span>
                             {geometryGallerySelectedCard.presets.slice(0, 3).map((presetDef) => (
