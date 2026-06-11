@@ -327,6 +327,20 @@ test("Cone and Box dependency trees expose grouped automatic semantic children",
     }
     await page.getByTestId(`geometry-dependency-node-box:${boxObjectId}:width`).click();
     await expect(page.getByTestId("geometry-inspector-definition")).toContainText("Width");
+
+    await expect(page.getByTestId("geometry-dependency-overlay-card")).toHaveCount(0);
+    await page.getByTestId("geometry-dependency-overlay-toggle").check();
+    const overlayCard = page.getByTestId("geometry-dependency-overlay-card");
+    await expect(overlayCard).toBeVisible();
+    await expect(overlayCard).toContainText("Selected: Box");
+    await expect(overlayCard).toContainText("Inputs");
+    await expect(overlayCard).toContainText("Derived Geometry");
+    await expect(overlayCard).toContainText("Analysis");
+    const widthOverlayRow = overlayCard.getByRole("button", { name: "Width", exact: true });
+    await widthOverlayRow.hover();
+    await expect(widthOverlayRow).toHaveCSS("background-color", "rgb(255, 251, 235)");
+    await page.getByTestId("geometry-dependency-overlay-toggle").uncheck();
+    await expect(overlayCard).toHaveCount(0);
   } finally {
     if (app) {
       await app.close();

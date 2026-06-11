@@ -8028,6 +8028,8 @@ const App: React.FC = () => {
   const [geometryRightPanelTab, setGeometryRightPanelTab] = useState<GeometryRightPanelTab>("inspector");
   const [geometryInspectorPanelTab, setGeometryInspectorPanelTab] = useState<GeometryInspectorPanelTab>("probe");
   const [geometryShowConstructionLabels, setGeometryShowConstructionLabels] = useState(true);
+  const [showDependencyOverlay, setShowDependencyOverlay] = useState(false);
+  const [geometryHoveredDependencyNodeId, setGeometryHoveredDependencyNodeId] = useState<string | null>(null);
   const geometryPanelTabSwitchLockedRef = useRef(false);
   const geometryDependenciesPanelActive =
     mode === "geometry" &&
@@ -19403,8 +19405,9 @@ const App: React.FC = () => {
     groups: OverlayPolylineGroup[] | null;
     pointSets: OverlayPointSet[] | null;
   }>(() => {
-    const coneNode = parseConeDependencyNodeId(geometryDependencyFocusedNodeId);
-    const boxNode = parseBoxDependencyNodeId(geometryDependencyFocusedNodeId);
+    if (!showDependencyOverlay || !geometryHoveredDependencyNodeId) return { groups: null, pointSets: null };
+    const coneNode = parseConeDependencyNodeId(geometryHoveredDependencyNodeId);
+    const boxNode = parseBoxDependencyNodeId(geometryHoveredDependencyNodeId);
     const primitiveNode = coneNode ?? boxNode;
     if (geometryMode === "procedural" && primitiveNode && geometrySelectedObject?.id === primitiveNode.objectId) {
       const resolved = resolveGeometrySceneMeshById(primitiveNode.objectId);
@@ -19477,7 +19480,7 @@ const App: React.FC = () => {
                   : [];
       return {
         groups: lines.length
-          ? [{ lines, color: 0xf59e0b, opacity: 1, radiusScale: geometryDependencyFlash?.nodeId === geometryDependencyFocusedNodeId ? 4.2 : 3 }]
+          ? [{ lines, color: 0xf59e0b, opacity: 1, radiusScale: 3 }]
           : null,
         pointSets:
           primitiveNode.feature === "center"
@@ -19486,7 +19489,7 @@ const App: React.FC = () => {
       };
     }
     const evaluation = geometrySelectedMathConstructionEval ?? geometrySelectedDerivedConstructionEval;
-    if (geometryMode !== "procedural" || !evaluation || !geometryDependencyFocusedNodeId) {
+    if (geometryMode !== "procedural" || !evaluation) {
       return { groups: null, pointSets: null };
     }
     const nodeId = geometrySelectedMathConstructionEval
@@ -19512,19 +19515,20 @@ const App: React.FC = () => {
       pointSets: pointSets.length ? pointSets : null,
     };
   }, [
-    geometryDependencyFlash,
-    geometryDependencyFocusedNodeId,
+    geometryHoveredDependencyNodeId,
     geometryMode,
     geometrySelectedObject,
     geometrySelectedDerivedConstructionEval,
     geometrySelectedMathConstructionEval,
     resolveGeometrySceneMeshById,
+    showDependencyOverlay,
   ]);
   const geometryConeDependencyViewportOverlay = useMemo<{
     groups: OverlayPolylineGroup[] | null;
     labelSets: OverlayLabelSet[] | null;
   }>(() => {
     if (
+      !showDependencyOverlay ||
       geometryMode !== "procedural" ||
       (geometrySelectedObject?.type !== "cone" && geometrySelectedObject?.type !== "box")
     ) {
@@ -19639,7 +19643,74 @@ const App: React.FC = () => {
       ],
       labelSets: [{ labels, size: 0.82 }],
     };
-  }, [fmt, geometryMeasuredEdges, geometryMode, geometrySelectedObject, resolveGeometrySceneMeshById]);
+  }, [fmt, geometryMeasuredEdges, geometryMode, geometrySelectedObject, resolveGeometrySceneMeshById, showDependencyOverlay]);
+  const geometryDependencyOverlayCard = useMemo(() => {
+    type Row = { id: string | null; label: string };
+    const empty = { selected: null as string | null, inputs: [] as Row[], derived: [] as Row[], analysis: [] as Row[] };
+    if (geometryMode !== "procedural") return empty;
+    if (geometrySelectedObject) {
+      const isCone = geometrySelectedObject.type === "cone";
+      const isBox = geometrySelectedObject.type === "box";
+      const nodeId = (feature: string) =>
+        isCone
+          ? coneDependencyNodeId(geometrySelectedObject.id, feature as ConeDependencyFeature)
+          : isBox
+            ? boxDependencyNodeId(geometrySelectedObject.id, feature as BoxDependencyFeature)
+            : null;
+      const registry = GEOMETRY_OBJECT_REGISTRY[geometrySelectedObject.type];
+      const inputs: Row[] = [{ id: nodeId("center"), label: "Center Point" }];
+      for (const param of registry?.params ?? []) {
+        if (param.id.toLowerCase().includes("segment") || param.id === "openEnded") continue;
+        inputs.push({ id: nodeId(param.id), label: param.label });
+      }
+      const resolved = resolveGeometrySceneMeshById(geometrySelectedObject.id);
+      const metrics = resolved ? computeTriangleMeshGeometricMetrics(resolved.mesh) : null;
+      const measurementCount = geometryMeasuredEdges.filter((entry) => entry.meshKey === geometrySelectedObject.id).length;
+      return {
+        selected: geometrySelectedObject.name,
+        inputs,
+        derived: [
+          { id: nodeId("bounding-box"), label: "Bounding Box" },
+          { id: nodeId("principal-axes"), label: "Principal Axes" },
+          { id: nodeId("symmetry-plane"), label: "Symmetry Plane" },
+        ],
+        analysis: [
+          { id: nodeId("curvature"), label: "Curvature" },
+          { id: nodeId("measurements"), label: `Measurements · ${measurementCount}` },
+          { id: nodeId("volume"), label: metrics ? `Volume · ${fmt(metrics.volume)}` : "Volume" },
+          { id: nodeId("surface-area"), label: metrics ? `Surface Area · ${fmt(metrics.surfaceArea)}` : "Surface Area" },
+        ],
+      };
+    }
+    if (geometrySelectedMathConstructionEval) {
+      return {
+        ...empty,
+        selected: geometrySelectedMathConstructionEval.object.name,
+        inputs: geometrySelectedMathConstructionEval.object.sourceObjectIds.map((id) => ({
+          id: null,
+          label: resolveGeometrySceneObjectById(id)?.name ?? id,
+        })),
+      };
+    }
+    if (geometrySelectedDerivedConstructionEval) {
+      return {
+        ...empty,
+        selected: geometryDerivedConstructionName(geometrySelectedDerivedConstructionEval.object),
+        inputs: [{ id: null, label: geometrySelectedDerivedConstructionEval.sourceObjectName }],
+        derived: [{ id: null, label: geometrySelectedDerivedConstructionEval.typeLabel }],
+      };
+    }
+    return empty;
+  }, [
+    fmt,
+    geometryMeasuredEdges,
+    geometryMode,
+    geometrySelectedDerivedConstructionEval,
+    geometrySelectedMathConstructionEval,
+    geometrySelectedObject,
+    resolveGeometrySceneMeshById,
+    resolveGeometrySceneObjectById,
+  ]);
   const geometryProceduralEditHandlePointSets = useMemo<OverlayPointSet[] | null>(() => {
     if (geometryMode !== "procedural" || geometryTransformMode !== "edit" || !geometryProceduralEditSources.length) {
       return null;
@@ -19702,7 +19773,6 @@ const App: React.FC = () => {
     if (geometryDerivedConstructionOverlays.groups?.length) groups.push(...geometryDerivedConstructionOverlays.groups);
     if (geometryMathConstructionOverlays.groups?.length) groups.push(...geometryMathConstructionOverlays.groups);
     if (geometryDependencySelectionOverlay.groups?.length) groups.push(...geometryDependencySelectionOverlay.groups);
-    if (geometryConeDependencyViewportOverlay.groups?.length) groups.push(...geometryConeDependencyViewportOverlay.groups);
     if (geometryTimelineShowAnnotations && geometryProceduralAnnotationOverlays.groups?.length) {
       groups.push(...geometryProceduralAnnotationOverlays.groups);
     }
@@ -19717,7 +19787,6 @@ const App: React.FC = () => {
     geometryDerivedConstructionOverlays.groups,
     geometryMathConstructionOverlays.groups,
     geometryDependencySelectionOverlay.groups,
-    geometryConeDependencyViewportOverlay.groups,
     geometryProceduralAnnotationOverlays.groups,
     geometryTimelineShowAnnotations,
   ]);
@@ -19745,9 +19814,6 @@ const App: React.FC = () => {
     if (geometryTimelineShowAnnotations && geometryProceduralAnnotationOverlays.labelSets?.length) {
       labels.push(...geometryProceduralAnnotationOverlays.labelSets);
     }
-    if (geometryConeDependencyViewportOverlay.labelSets?.length) {
-      labels.push(...geometryConeDependencyViewportOverlay.labelSets);
-    }
     return labels.length ? labels : null;
   }, [
     geometryMode,
@@ -19759,7 +19825,6 @@ const App: React.FC = () => {
     geometryShowConstructionLabels,
     geometryProceduralAnnotationOverlays.labelSets,
     geometryTimelineShowAnnotations,
-    geometryConeDependencyViewportOverlay.labelSets,
   ]);
 
   const proceduralScene: GeometryScene = useMemo(() => ({}), []);
@@ -60523,6 +60588,18 @@ case "mobius":
                   />
                   Construction labels
                 </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                  <input
+                    data-testid="geometry-dependency-overlay-toggle"
+                    type="checkbox"
+                    checked={showDependencyOverlay}
+                    onChange={(event) => {
+                      setShowDependencyOverlay(event.target.checked);
+                      if (!event.target.checked) setGeometryHoveredDependencyNodeId(null);
+                    }}
+                  />
+                  Dependency overlay
+                </label>
                 <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, opacity: geometryShowPlanes ? 1 : 0.6 }}>
                   <input
                     type="checkbox"
@@ -60876,8 +60953,79 @@ case "mobius":
                     minWidth: 0,
                     overflow: "hidden",
                     background: "#f8fbff",
+                    position: "relative",
                   }}
                 >
+                  {showDependencyOverlay && (
+                    <div
+                      data-testid="geometry-dependency-overlay-card"
+                      onMouseLeave={() => setGeometryHoveredDependencyNodeId(null)}
+                      style={{
+                        position: "absolute",
+                        top: 12,
+                        right: 12,
+                        zIndex: 20,
+                        width: "min(260px, calc(100% - 24px))",
+                        maxHeight: "calc(100% - 24px)",
+                        overflow: "auto",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: 10,
+                        padding: "9px 10px",
+                        background: "rgba(255, 255, 255, 0.94)",
+                        boxShadow: "0 8px 24px rgba(15, 23, 42, 0.14)",
+                        display: "grid",
+                        gap: 8,
+                        fontSize: 11,
+                      }}
+                    >
+                      <div style={{ display: "grid", gap: 2 }}>
+                        <strong style={{ fontSize: 12 }}>Dependency Overlay</strong>
+                        <span style={{ color: "#475569" }}>
+                          {geometryDependencyOverlayCard.selected
+                            ? `Selected: ${geometryDependencyOverlayCard.selected}`
+                            : "Select an object to inspect dependencies."}
+                        </span>
+                      </div>
+                      {geometryDependencyOverlayCard.selected &&
+                        [
+                          ["Inputs", geometryDependencyOverlayCard.inputs],
+                          ["Derived Geometry", geometryDependencyOverlayCard.derived],
+                          ["Analysis", geometryDependencyOverlayCard.analysis],
+                        ].map(([label, rows]) => (
+                          <div key={`dependency-overlay-${label}`} style={{ display: "grid", gap: 3 }}>
+                            <strong style={{ color: label === "Analysis" ? "#be123c" : "#0f766e" }}>{label}</strong>
+                            {(rows as Array<{ id: string | null; label: string }>).length ? (
+                              (rows as Array<{ id: string | null; label: string }>).map((row) => (
+                                <button
+                                  key={`dependency-overlay-row-${label}-${row.label}`}
+                                  data-testid={row.id ? `geometry-dependency-overlay-row-${row.id}` : undefined}
+                                  type="button"
+                                  onMouseEnter={() => setGeometryHoveredDependencyNodeId(row.id)}
+                                  onFocus={() => setGeometryHoveredDependencyNodeId(row.id)}
+                                  onBlur={() => setGeometryHoveredDependencyNodeId(null)}
+                                  style={{
+                                    textAlign: "left",
+                                    padding: "4px 7px",
+                                    border: row.id === geometryHoveredDependencyNodeId ? "1px solid #f59e0b" : "1px solid #e2e8f0",
+                                    borderRadius: 6,
+                                    background: row.id === geometryHoveredDependencyNodeId ? "#fffbeb" : "#f8fafc",
+                                    color: "#334155",
+                                    fontSize: 10.5,
+                                  }}
+                                >
+                                  {row.label}
+                                </button>
+                              ))
+                            ) : (
+                              <span style={{ color: "#94a3b8" }}>None</span>
+                            )}
+                          </div>
+                        ))}
+                      <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 6, color: "#64748b" }}>
+                        Hover a dependency to preview its connection.
+                      </div>
+                    </div>
+                  )}
                   <GeometryViewer
                   scene={geometryScene}
                   lineRadiusScale={geometryMode === "demo" ? geometryDemoLineRadiusScale : 1}
