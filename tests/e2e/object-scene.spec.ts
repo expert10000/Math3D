@@ -332,13 +332,20 @@ test("Cone and Box dependency trees expose grouped automatic semantic children",
     await page.getByTestId("geometry-dependency-overlay-toggle").check();
     const overlayCard = page.getByTestId("geometry-dependency-overlay-card");
     await expect(overlayCard).toBeVisible();
-    await expect(overlayCard).toContainText("Selected: Box");
-    await expect(overlayCard).toContainText("Inputs");
-    await expect(overlayCard).toContainText("Derived Geometry");
-    await expect(overlayCard).toContainText("Analysis");
-    const widthOverlayRow = overlayCard.getByRole("button", { name: "Width", exact: true });
+    await expect(overlayCard).toContainText("Box");
+    await expect(overlayCard).toContainText("Inputs: 4");
+    await expect(overlayCard).toContainText("Derived: 3");
+    await expect(overlayCard).toContainText("Analysis: 4");
+    await expect(overlayCard).toContainText("Total: 11");
+    await overlayCard.getByRole("button", { name: "▶ Inputs (4)", exact: true }).click();
+    const widthOverlayRow = overlayCard.getByRole("button", { name: "Width Parameter", exact: true });
     await widthOverlayRow.hover();
     await expect(widthOverlayRow).toHaveCSS("background-color", "rgb(255, 251, 235)");
+    await widthOverlayRow.click();
+    await expect(page.getByTestId("geometry-inspector-definition")).toContainText("Width");
+    await overlayCard.getByLabel("Full dependency chain").check();
+    await expect(overlayCard.getByRole("button", { name: "▶ Derived Geometry (3)", exact: true })).toBeVisible();
+    await expect(overlayCard.getByRole("button", { name: "▶ Analysis (4)", exact: true })).toBeVisible();
     await page.getByTestId("geometry-dependency-overlay-toggle").uncheck();
     await expect(overlayCard).toHaveCount(0);
   } finally {
