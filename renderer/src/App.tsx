@@ -19832,6 +19832,104 @@ const App: React.FC = () => {
     geometryHoveredDependencyNodeId,
     geometryInspectorSelectedDependencyNodeId,
   ]);
+  const geometryEducationalFormula = useMemo(() => {
+    if (!geometrySelectedObject) return null;
+    const value = (id: string, fallback: number) => Number(geometrySelectedObject.params[id] ?? fallback);
+    const variable = (symbol: string, label: string, numericValue: number) => ({
+      symbol,
+      label,
+      value: fmt(numericValue),
+    });
+    if (geometrySelectedObject.type === "box") {
+      const width = value("width", 1);
+      const height = value("height", 1);
+      const depth = value("depth", 1);
+      return {
+        definition: "Box(width, height, depth)",
+        variables: [
+          variable("w", "width", width),
+          variable("h", "height", height),
+          variable("d", "depth", depth),
+        ],
+        steps: [
+          {
+            label: "Volume",
+            symbolic: "V = width × height × depth",
+            substitution: `V = ${fmt(width)} × ${fmt(height)} × ${fmt(depth)}`,
+            result: fmt(width * height * depth),
+          },
+        ],
+      };
+    }
+    if (geometrySelectedObject.type === "cylinder") {
+      const radiusTop = value("radiusTop", 1);
+      const radiusBottom = value("radiusBottom", 1);
+      const height = value("height", 2);
+      const isRightCylinder = Math.abs(radiusTop - radiusBottom) <= 1e-6;
+      if (isRightCylinder) {
+        const baseArea = Math.PI * radiusTop * radiusTop;
+        return {
+          definition: "Cylinder(radius, height)",
+          variables: [variable("r", "radius", radiusTop), variable("h", "height", height)],
+          steps: [
+            {
+              label: "Base area",
+              symbolic: "A_base = πr²",
+              substitution: `A_base = π × ${fmt(radiusTop)}²`,
+              result: fmt(baseArea),
+            },
+            {
+              label: "Volume",
+              symbolic: "V = πr²h",
+              substitution: `V = π × ${fmt(radiusTop)}² × ${fmt(height)}`,
+              result: fmt(baseArea * height),
+            },
+          ],
+        };
+      }
+      const volume = (Math.PI * height / 3) * (
+        radiusTop * radiusTop + radiusTop * radiusBottom + radiusBottom * radiusBottom
+      );
+      return {
+        definition: "Cylinder(radiusTop, radiusBottom, height)",
+        variables: [
+          variable("R", "radius top", radiusTop),
+          variable("r", "radius bottom", radiusBottom),
+          variable("h", "height", height),
+        ],
+        steps: [{
+          label: "Volume",
+          symbolic: "V = (πh/3)(R² + Rr + r²)",
+          substitution: `V = (π × ${fmt(height)} / 3)(${fmt(radiusTop)}² + ${fmt(radiusTop)} × ${fmt(radiusBottom)} + ${fmt(radiusBottom)}²)`,
+          result: fmt(volume),
+        }],
+      };
+    }
+    if (geometrySelectedObject.type === "cone") {
+      const radius = value("radius", 1);
+      const height = value("height", 2);
+      const baseArea = Math.PI * radius * radius;
+      return {
+        definition: "Cone(radius, height)",
+        variables: [variable("r", "radius", radius), variable("h", "height", height)],
+        steps: [
+          {
+            label: "Base area",
+            symbolic: "A_base = πr²",
+            substitution: `A_base = π × ${fmt(radius)}²`,
+            result: fmt(baseArea),
+          },
+          {
+            label: "Volume",
+            symbolic: "V = (1/3)πr²h",
+            substitution: `V = (1/3) × π × ${fmt(radius)}² × ${fmt(height)}`,
+            result: fmt(baseArea * height / 3),
+          },
+        ],
+      };
+    }
+    return null;
+  }, [fmt, geometrySelectedObject]);
   const geometryProceduralEditHandlePointSets = useMemo<OverlayPointSet[] | null>(() => {
     if (geometryMode !== "procedural" || geometryTransformMode !== "edit" || !geometryProceduralEditSources.length) {
       return null;
@@ -62049,7 +62147,46 @@ case "mobius":
                                 </div>
                                 <div style={{ display: "grid", gap: 3 }}>
                                   <span style={{ color: "#1d4ed8", fontWeight: 800 }}>Formula</span>
-                                  <code style={{ overflowWrap: "anywhere" }}>{geometryConstructionEditFormula}</code>
+                                  {geometryEducationalFormula ? (
+                                    <div
+                                      data-testid="geometry-educational-formula"
+                                      style={{ display: "grid", gap: 8, padding: "8px", border: "1px solid #bfdbfe", borderRadius: 7, background: "#f8fbff" }}
+                                    >
+                                      <div style={{ display: "grid", gap: 2 }}>
+                                        <span style={{ color: "#475569", fontSize: 9.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                                          Definition
+                                        </span>
+                                        <code style={{ color: "#1e3a8a", fontSize: 12, fontWeight: 800, overflowWrap: "anywhere" }}>
+                                          {geometryEducationalFormula.definition}
+                                        </code>
+                                      </div>
+                                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                        {geometryEducationalFormula.variables.map((entry) => (
+                                          <span
+                                            key={`educational-variable-${entry.symbol}-${entry.label}`}
+                                            style={{ padding: "3px 6px", border: "1px solid #fed7aa", borderRadius: 6, background: "#fff7ed", color: "#9a3412" }}
+                                          >
+                                            <strong>{entry.symbol}</strong> = {entry.value} <span style={{ color: "#78716c" }}>({entry.label})</span>
+                                          </span>
+                                        ))}
+                                      </div>
+                                      {geometryEducationalFormula.steps.map((step) => (
+                                        <div
+                                          key={`educational-formula-step-${step.label}`}
+                                          style={{ display: "grid", gap: 3, paddingTop: 6, borderTop: "1px solid #dbeafe" }}
+                                        >
+                                          <strong style={{ color: "#0f172a" }}>{step.label}</strong>
+                                          <div style={{ color: "#1d4ed8", fontFamily: "Georgia, serif", fontSize: 14, fontWeight: 700 }}>
+                                            {step.symbolic}
+                                          </div>
+                                          <code style={{ color: "#475569", overflowWrap: "anywhere" }}>{step.substitution}</code>
+                                          <div style={{ color: "#166534", fontWeight: 800 }}>≈ {step.result}</div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <code style={{ overflowWrap: "anywhere" }}>{geometryConstructionEditFormula}</code>
+                                  )}
                                 </div>
                                 <div style={{ display: "grid", gap: 3 }}>
                                   <span style={{ color: "#475569", fontWeight: 800 }}>Dependencies</span>

@@ -346,6 +346,11 @@ test("Cone and Box dependency trees expose grouped automatic semantic children",
     await expect(page.getByTestId("geometry-inspector-definition")).toContainText("Unified Definition");
     await expect(page.getByTestId("geometry-inspector-definition")).toContainText("Dependents");
     await expect(page.getByTestId("geometry-inspector-definition")).toContainText("Analysis");
+    const educationalFormula = page.getByTestId("geometry-educational-formula");
+    await expect(educationalFormula).toContainText("Box(width, height, depth)");
+    await expect(educationalFormula).toContainText("V = width × height × depth");
+    await expect(educationalFormula).toContainText("width");
+    await expect(educationalFormula).toContainText("≈");
     await overlayCard.getByRole("button", { name: "List", exact: true }).click();
     await overlayCard.getByRole("button", { name: "▶ Inputs (4)", exact: true }).click();
     const widthOverlayRow = overlayCard.getByRole("button", { name: "Width Parameter", exact: true });
