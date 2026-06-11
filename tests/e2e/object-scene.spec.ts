@@ -242,6 +242,44 @@ test("Geometry gallery: select vs add flow, quick add, and filtering", async () 
   }
 });
 
+test("Created object remains responsive while moving with the transform gizmo", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-gizmo-move-"));
+  const env = {
+    APPDATA: profileDir,
+    LOCALAPPDATA: profileDir,
+  };
+
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(env);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page);
+    await page.setViewportSize({ width: 1200, height: 680 });
+
+    await page.getByTestId("geometry-gallery-quick-add-cone").dispatchEvent("click");
+    await clickFirstVisibleButton(page, "Move");
+
+    const canvasBounds = await page.locator("canvas").first().boundingBox();
+    expect(canvasBounds).not.toBeNull();
+    const centerX = canvasBounds!.x + canvasBounds!.width / 2;
+    const centerY = canvasBounds!.y + canvasBounds!.height / 2;
+    await page.mouse.move(centerX, centerY);
+    await page.mouse.down();
+    await page.mouse.move(centerX + 80, centerY, { steps: 8 });
+    await page.mouse.up();
+
+    await clickFirstVisibleButton(page, "Scene");
+    await expect(page.getByTestId("app-status-bar")).toContainText("Geometry viewer (procedural)");
+  } finally {
+    if (app) {
+      await app.close();
+    }
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
 test("Dependency node click highlights, fits, and opens the target for editing", async () => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-dependency-edit-"));
   const env = {

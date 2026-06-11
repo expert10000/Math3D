@@ -11197,6 +11197,28 @@ const App: React.FC = () => {
             ? { scale: nextScale }
             : { position: nextPosition };
 
+      const currentTransform = targetObj?.transform;
+      const nextVector =
+        geometryGizmoMode === "rotate"
+          ? transformPatch.rotation
+          : geometryGizmoMode === "scale"
+            ? transformPatch.scale
+            : transformPatch.position;
+      const currentVector =
+        geometryGizmoMode === "rotate"
+          ? currentTransform?.rotation
+          : geometryGizmoMode === "scale"
+            ? currentTransform?.scale
+            : currentTransform?.position;
+      if (
+        nextVector &&
+        currentVector &&
+        Math.abs((nextVector.x ?? currentVector.x) - currentVector.x) < 1e-7 &&
+        Math.abs((nextVector.y ?? currentVector.y) - currentVector.y) < 1e-7 &&
+        Math.abs((nextVector.z ?? currentVector.z) - currentVector.z) < 1e-7
+      ) {
+        return;
+      }
       handleUpdateGeometryTransform(info.meshKey, transformPatch);
     },
     [

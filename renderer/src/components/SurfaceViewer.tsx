@@ -1919,6 +1919,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const transformControlsHelperRef = useRef<THREE.Object3D | null>(null);
   const gizmoOverlayRestoreFrameRef = useRef<number | null>(null);
   const gizmoDragStartPositionRef = useRef<THREE.Vector3 | null>(null);
+  const gizmoDraggingRef = useRef(false);
   const zoomDebounceRef = useRef<number | null>(null);
   const zoomAnimRef = useRef<number | null>(null);
   const zoomNowRef = useRef(0);
@@ -3851,27 +3852,26 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     };
     const handleGizmoDraggingChanged = (event: { value?: boolean }) => {
       const dragging = !!event?.value;
+      gizmoDraggingRef.current = dragging;
       const ctrls = controlsRef.current;
       if (ctrls) ctrls.enabled = !dragging;
       if (dragging) {
         const target = transformControlsRef.current?.object;
         gizmoDragStartPositionRef.current = target ? target.position.clone() : null;
         setSceneOverlayGroupsVisible(false);
-        beginMeshInteraction();
       } else {
         sanitizeGizmoTargetPosition();
         clampGizmoTargetScale();
         emitGizmoObjectChange();
         gizmoDragStartPositionRef.current = null;
         restoreSceneOverlayGroupsAfterCommit();
-        endMeshInteraction();
       }
     };
     const handleGizmoObjectChange = () => {
       const tc = transformControlsRef.current;
       sanitizeGizmoTargetPosition();
       clampGizmoTargetScale();
-      if ((tc as any)?.dragging) return;
+      if (gizmoDraggingRef.current || (tc as any)?.dragging) return;
       emitGizmoObjectChange();
     };
     transformControls.addEventListener("dragging-changed", handleGizmoDraggingChanged);
@@ -5422,6 +5422,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         gizmoOverlayRestoreFrameRef.current = null;
       }
       gizmoDragStartPositionRef.current = null;
+      gizmoDraggingRef.current = false;
       if (resizeFrameId) cancelAnimationFrame(resizeFrameId);
       if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
       ro.disconnect();
