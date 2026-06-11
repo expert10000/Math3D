@@ -19326,6 +19326,99 @@ const App: React.FC = () => {
     geometrySelectedMathConstructionEval,
     resolveGeometrySceneMeshById,
   ]);
+  const geometryConeDependencyViewportOverlay = useMemo<{
+    groups: OverlayPolylineGroup[] | null;
+    labelSets: OverlayLabelSet[] | null;
+  }>(() => {
+    if (geometryMode !== "procedural" || geometrySelectedObject?.type !== "cone") {
+      return { groups: null, labelSets: null };
+    }
+    const resolved = resolveGeometrySceneMeshById(geometrySelectedObject.id);
+    const bounds = resolved ? boundsFromPositions(resolved.mesh.positions) : null;
+    if (!bounds) return { groups: null, labelSets: null };
+
+    const center = {
+      x: 0.5 * (bounds.min[0] + bounds.max[0]),
+      y: 0.5 * (bounds.min[1] + bounds.max[1]),
+      z: 0.5 * (bounds.min[2] + bounds.max[2]),
+    };
+    const span = Math.max(
+      bounds.max[0] - bounds.min[0],
+      bounds.max[1] - bounds.min[1],
+      bounds.max[2] - bounds.min[2],
+      0.5
+    );
+    const step = Math.max(0.62, span * 0.48);
+    const graphX = bounds.max[0] + Math.max(0.8, span * 0.75);
+    const graphZ = center.z;
+    const nodes = {
+      center: { x: graphX, y: center.y + step * 2, z: graphZ },
+      cone: { x: graphX, y: center.y + step, z: graphZ },
+      boundingBox: { x: graphX, y: center.y, z: graphZ },
+      principalAxes: { x: graphX, y: center.y - step, z: graphZ },
+      symmetryPlane: { x: graphX, y: center.y - step * 2, z: graphZ },
+      radius: { x: graphX + step * 1.45, y: center.y + step * 1.35, z: graphZ },
+      height: { x: graphX + step * 1.45, y: center.y + step * 0.65, z: graphZ },
+    };
+    const arrowLines: PolylineSet = [];
+    const addArrow = (start: Point3, end: Point3) => {
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const dz = end.z - start.z;
+      const length = Math.hypot(dx, dy, dz);
+      if (length <= 1e-6) return;
+      const ux = dx / length;
+      const uy = dy / length;
+      const uz = dz / length;
+      const headLength = Math.min(length * 0.3, Math.max(0.14, span * 0.13));
+      const headWidth = headLength * 0.55;
+      const sideLength = Math.hypot(uy, -ux);
+      const sx = sideLength > 1e-6 ? uy / sideLength : 1;
+      const sy = sideLength > 1e-6 ? -ux / sideLength : 0;
+      const base = {
+        x: end.x - ux * headLength,
+        y: end.y - uy * headLength,
+        z: end.z - uz * headLength,
+      };
+      arrowLines.push(
+        [start, end],
+        [end, { x: base.x + sx * headWidth, y: base.y + sy * headWidth, z: base.z }],
+        [end, { x: base.x - sx * headWidth, y: base.y - sy * headWidth, z: base.z }]
+      );
+    };
+    addArrow(nodes.center, nodes.cone);
+    addArrow(nodes.cone, nodes.boundingBox);
+    addArrow(nodes.boundingBox, nodes.principalAxes);
+    addArrow(nodes.principalAxes, nodes.symmetryPlane);
+    addArrow(nodes.cone, nodes.radius);
+    addArrow(nodes.cone, nodes.height);
+
+    const connectorLines: PolylineSet = [[center, nodes.cone]];
+    const labels: OverlayLabelSet["labels"] = [
+      { text: "Center Point", position: nodes.center },
+      { text: geometrySelectedObject.name, position: nodes.cone, color: 0x0f172a, borderColor: 0x2563eb },
+      { text: "Automatic Bounding Box", position: nodes.boundingBox },
+      { text: "Automatic Principal Axes", position: nodes.principalAxes },
+      { text: "Automatic Symmetry Plane", position: nodes.symmetryPlane },
+      { text: "Radius Parameter", position: nodes.radius },
+      { text: "Height Parameter", position: nodes.height },
+    ].map((label) => ({
+      color: 0x334155,
+      backgroundColor: 0xffffff,
+      backgroundOpacity: 0.78,
+      borderColor: 0x94a3b8,
+      size: 0.78,
+      opacity: 0.86,
+      ...label,
+    }));
+    return {
+      groups: [
+        { lines: arrowLines, color: 0x64748b, opacity: 0.42, radiusScale: 0.8 },
+        { lines: connectorLines, color: 0x2563eb, opacity: 0.32, radiusScale: 0.7 },
+      ],
+      labelSets: [{ labels, size: 0.82 }],
+    };
+  }, [geometryMode, geometrySelectedObject, resolveGeometrySceneMeshById]);
   const geometryProceduralEditHandlePointSets = useMemo<OverlayPointSet[] | null>(() => {
     if (geometryMode !== "procedural" || geometryTransformMode !== "edit" || !geometryProceduralEditSources.length) {
       return null;
@@ -19388,6 +19481,7 @@ const App: React.FC = () => {
     if (geometryDerivedConstructionOverlays.groups?.length) groups.push(...geometryDerivedConstructionOverlays.groups);
     if (geometryMathConstructionOverlays.groups?.length) groups.push(...geometryMathConstructionOverlays.groups);
     if (geometryDependencySelectionOverlay.groups?.length) groups.push(...geometryDependencySelectionOverlay.groups);
+    if (geometryConeDependencyViewportOverlay.groups?.length) groups.push(...geometryConeDependencyViewportOverlay.groups);
     if (geometryTimelineShowAnnotations && geometryProceduralAnnotationOverlays.groups?.length) {
       groups.push(...geometryProceduralAnnotationOverlays.groups);
     }
@@ -19402,6 +19496,7 @@ const App: React.FC = () => {
     geometryDerivedConstructionOverlays.groups,
     geometryMathConstructionOverlays.groups,
     geometryDependencySelectionOverlay.groups,
+    geometryConeDependencyViewportOverlay.groups,
     geometryProceduralAnnotationOverlays.groups,
     geometryTimelineShowAnnotations,
   ]);
@@ -19429,6 +19524,9 @@ const App: React.FC = () => {
     if (geometryTimelineShowAnnotations && geometryProceduralAnnotationOverlays.labelSets?.length) {
       labels.push(...geometryProceduralAnnotationOverlays.labelSets);
     }
+    if (geometryConeDependencyViewportOverlay.labelSets?.length) {
+      labels.push(...geometryConeDependencyViewportOverlay.labelSets);
+    }
     return labels.length ? labels : null;
   }, [
     geometryMode,
@@ -19440,6 +19538,7 @@ const App: React.FC = () => {
     geometryShowConstructionLabels,
     geometryProceduralAnnotationOverlays.labelSets,
     geometryTimelineShowAnnotations,
+    geometryConeDependencyViewportOverlay.labelSets,
   ]);
 
   const proceduralScene: GeometryScene = useMemo(() => ({}), []);
