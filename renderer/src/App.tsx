@@ -2381,6 +2381,8 @@ type GeometryDerivedConstructionEvaluation = {
 type GeometryDependencyNodeKind =
   | "scene-root"
   | "geometry-object"
+  | "dependency-group"
+  | "analysis"
   | "parameter"
   | "face-reference"
   | "derived-point"
@@ -2411,20 +2413,46 @@ type ConeDependencyFeature =
   | "height"
   | "bounding-box"
   | "principal-axes"
-  | "symmetry-plane";
+  | "symmetry-plane"
+  | "curvature"
+  | "measurements"
+  | "volume"
+  | "surface-area";
+type ConeDependencyGroup = "inputs" | "derived-geometry" | "analysis";
 const CONE_DEPENDENCY_FEATURES: Array<{
   feature: ConeDependencyFeature;
   label: string;
   kind: GeometryDependencyNodeKind;
+  group: ConeDependencyGroup;
 }> = [
-  { feature: "center", label: "Center Point", kind: "derived-point" },
-  { feature: "radius", label: "Radius Parameter", kind: "parameter" },
-  { feature: "height", label: "Height Parameter", kind: "parameter" },
-  { feature: "bounding-box", label: "Bounding Box", kind: "derived-line" },
-  { feature: "principal-axes", label: "Principal Axes", kind: "derived-line" },
-  { feature: "symmetry-plane", label: "Symmetry Plane", kind: "derived-plane" },
+  { feature: "center", label: "Center Point", kind: "derived-point", group: "inputs" },
+  { feature: "radius", label: "Radius", kind: "parameter", group: "inputs" },
+  { feature: "height", label: "Height", kind: "parameter", group: "inputs" },
+  { feature: "bounding-box", label: "Bounding Box", kind: "derived-line", group: "derived-geometry" },
+  { feature: "principal-axes", label: "Principal Axes", kind: "derived-line", group: "derived-geometry" },
+  { feature: "symmetry-plane", label: "Symmetry Plane", kind: "derived-plane", group: "derived-geometry" },
+  { feature: "curvature", label: "Curvature", kind: "analysis", group: "analysis" },
+  { feature: "measurements", label: "Measurements", kind: "measurement", group: "analysis" },
+  { feature: "volume", label: "Volume", kind: "measurement", group: "analysis" },
+  { feature: "surface-area", label: "Surface Area", kind: "measurement", group: "analysis" },
 ];
+const CONE_DEPENDENCY_GROUPS: Array<{ group: ConeDependencyGroup; label: string }> = [
+  { group: "inputs", label: "Inputs" },
+  { group: "derived-geometry", label: "Derived Geometry" },
+  { group: "analysis", label: "Analysis" },
+];
+const coneDependencyGroupNodeId = (objectId: string, group: ConeDependencyGroup) => `cone-group:${objectId}:${group}`;
 const coneDependencyNodeId = (objectId: string, feature: ConeDependencyFeature) => `cone:${objectId}:${feature}`;
+const parseConeDependencyGroupNodeId = (
+  nodeId: string | null | undefined
+): { objectId: string; group: ConeDependencyGroup } | null => {
+  if (!nodeId?.startsWith("cone-group:")) return null;
+  for (const { group } of CONE_DEPENDENCY_GROUPS) {
+    const suffix = `:${group}`;
+    if (nodeId.endsWith(suffix)) return { objectId: nodeId.slice("cone-group:".length, -suffix.length), group };
+  }
+  return null;
+};
 const parseConeDependencyNodeId = (
   nodeId: string | null | undefined
 ): { objectId: string; feature: ConeDependencyFeature } | null => {
@@ -17502,17 +17530,33 @@ const App: React.FC = () => {
         relation: "contains",
       });
       if ("type" in object && object.type === "cone") {
+        const resolvedCone = resolveGeometrySceneMeshById(object.id);
+        const coneMetrics = resolvedCone ? computeTriangleMeshGeometricMetrics(resolvedCone.mesh) : null;
+        const coneMeasurementCount = geometryMeasuredEdges.filter((entry) => entry.meshKey === object.id).length;
+        for (const group of CONE_DEPENDENCY_GROUPS) {
+          const id = coneDependencyGroupNodeId(object.id, group.group);
+          addNode({ id, kind: "dependency-group", label: group.label, objectId: object.id, status: "valid" });
+          addEdge({ sourceId: `object:${object.id}`, targetId: id, relation: "contains" });
+        }
         for (const feature of CONE_DEPENDENCY_FEATURES) {
           const id = coneDependencyNodeId(object.id, feature.feature);
+          const label =
+            feature.feature === "volume" && coneMetrics
+              ? `Volume · ${fmt(coneMetrics.volume)}`
+              : feature.feature === "surface-area" && coneMetrics
+                ? `Surface Area · ${fmt(coneMetrics.surfaceArea)}`
+                : feature.feature === "measurements"
+                  ? `Measurements · ${coneMeasurementCount}`
+                  : feature.label;
           addNode({
             id,
             kind: feature.kind,
-            label: feature.label,
+            label,
             objectId: object.id,
             status: "valid",
           });
           addEdge({
-            sourceId: `object:${object.id}`,
+            sourceId: coneDependencyGroupNodeId(object.id, feature.group),
             targetId: id,
             relation: "contains",
           });
@@ -17745,6 +17789,10 @@ const App: React.FC = () => {
     if (focusedConeNode && geometrySelectedSceneObject?.id === focusedConeNode.objectId) {
       return geometryDependencyFocusedNodeId;
     }
+    const focusedConeGroupNode = parseConeDependencyGroupNodeId(geometryDependencyFocusedNodeId);
+    if (focusedConeGroupNode && geometrySelectedSceneObject?.id === focusedConeGroupNode.objectId) {
+      return geometryDependencyFocusedNodeId;
+    }
     if (geometrySelectedMathConstructionId) return `math:${geometrySelectedMathConstructionId}`;
     if (geometrySelectedDerivedConstructionId) return `derived:${geometrySelectedDerivedConstructionId}`;
     if (geometrySelectedSceneObject) return `object:${geometrySelectedSceneObject.id}`;
@@ -17768,12 +17816,15 @@ const App: React.FC = () => {
     const visibleKinds = new Set<GeometryDependencyNodeKind>([
       "scene-root",
       "geometry-object",
+      "dependency-group",
+      "analysis",
       "parameter",
       "face-reference",
       "derived-point",
       "derived-line",
       "derived-plane",
       "derived-circle",
+      "measurement",
     ]);
     const visibleNodes = geometryDependencyGraph.nodes.filter((node) => visibleKinds.has(node.kind));
     const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
@@ -17798,12 +17849,15 @@ const App: React.FC = () => {
     const visibleKinds = new Set<GeometryDependencyNodeKind>([
       "scene-root",
       "geometry-object",
+      "dependency-group",
+      "analysis",
       "parameter",
       "face-reference",
       "derived-point",
       "derived-line",
       "derived-plane",
       "derived-circle",
+      "measurement",
     ]);
     const visibleNodeIds = new Set(
       geometryDependencyGraph.nodes.filter((node) => visibleKinds.has(node.kind)).map((node) => node.id)
@@ -17827,12 +17881,15 @@ const App: React.FC = () => {
     const visibleKinds = new Set<GeometryDependencyNodeKind>([
       "scene-root",
       "geometry-object",
+      "dependency-group",
+      "analysis",
       "parameter",
       "face-reference",
       "derived-point",
       "derived-line",
       "derived-plane",
       "derived-circle",
+      "measurement",
     ]);
     const visibleNodeIds = new Set(
       geometryDependencyGraph.nodes.filter((node) => visibleKinds.has(node.kind)).map((node) => node.id)
@@ -17868,12 +17925,15 @@ const App: React.FC = () => {
     const visibleKinds = new Set<GeometryDependencyNodeKind>([
       "scene-root",
       "geometry-object",
+      "dependency-group",
+      "analysis",
       "parameter",
       "face-reference",
       "derived-point",
       "derived-line",
       "derived-plane",
       "derived-circle",
+      "measurement",
     ]);
     const visibleNodes = geometryDependencyGraph.nodes.filter((node) => visibleKinds.has(node.kind));
     const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
@@ -18058,9 +18118,10 @@ const App: React.FC = () => {
     let focusObjectId: string | null = null;
     let editableTarget = false;
     const coneNode = parseConeDependencyNodeId(nodeId);
-    if (coneNode) {
-      focusObjectId = coneNode.objectId;
-      setGeometrySelectedObjectId(coneNode.objectId);
+    const coneGroupNode = parseConeDependencyGroupNodeId(nodeId);
+    if (coneNode || coneGroupNode) {
+      focusObjectId = coneNode?.objectId ?? coneGroupNode!.objectId;
+      setGeometrySelectedObjectId(focusObjectId);
       setGeometrySelectedMathConstructionId(null);
       setGeometrySelectedDerivedConstructionId(null);
       editableTarget = true;
@@ -18759,7 +18820,16 @@ const App: React.FC = () => {
       }
       if (focusedConeNode.feature === "bounding-box") return `AutomaticBoundingBox(${source})`;
       if (focusedConeNode.feature === "principal-axes") return `AutomaticPrincipalAxes(${source})`;
-      return `AutomaticSymmetryPlane(${source})`;
+      if (focusedConeNode.feature === "symmetry-plane") return `AutomaticSymmetryPlane(${source})`;
+      const resolved = resolveGeometrySceneMeshById(geometrySelectedObject.id);
+      const metrics = resolved ? computeTriangleMeshGeometricMetrics(resolved.mesh) : null;
+      if (focusedConeNode.feature === "volume") return `Volume(${source}) = ${fmt(metrics?.volume ?? 0)}`;
+      if (focusedConeNode.feature === "surface-area") return `SurfaceArea(${source}) = ${fmt(metrics?.surfaceArea ?? 0)}`;
+      if (focusedConeNode.feature === "measurements") {
+        const count = geometryMeasuredEdges.filter((entry) => entry.meshKey === geometrySelectedObject.id).length;
+        return `Measurements(${source}) = ${count}`;
+      }
+      return `CurvatureAnalysis(${source})`;
     }
     if (geometrySelectedMathConstructionEval) {
       const type = geometrySelectedMathConstructionEval.object.type;
@@ -18805,6 +18875,7 @@ const App: React.FC = () => {
     fmt,
     fmt3,
     geometryDependencyFocusedNodeId,
+    geometryMeasuredEdges,
     geometryProceduralEditSources,
     geometrySelectedDerivedConstructionEval,
     geometrySelectedMathConstructionEval,
@@ -18812,6 +18883,7 @@ const App: React.FC = () => {
     geometrySelectedMeasurement,
     geometrySelectedObject,
     geometrySelectedSceneObject,
+    resolveGeometrySceneMeshById,
   ]);
   const geometryDefinitionWorkspace = useMemo(() => {
     if (geometryProceduralPanelTab !== "definition") {
@@ -19348,17 +19420,26 @@ const App: React.FC = () => {
       bounds.max[2] - bounds.min[2],
       0.5
     );
-    const step = Math.max(0.62, span * 0.48);
+    const step = Math.max(0.7, span * 0.52);
     const graphX = bounds.max[0] + Math.max(0.8, span * 0.75);
     const graphZ = center.z;
+    const metrics = computeTriangleMeshGeometricMetrics(resolved!.mesh);
+    const measurementCount = geometryMeasuredEdges.filter((entry) => entry.meshKey === geometrySelectedObject.id).length;
     const nodes = {
-      center: { x: graphX, y: center.y + step * 2, z: graphZ },
-      cone: { x: graphX, y: center.y + step, z: graphZ },
-      boundingBox: { x: graphX, y: center.y, z: graphZ },
-      principalAxes: { x: graphX, y: center.y - step, z: graphZ },
-      symmetryPlane: { x: graphX, y: center.y - step * 2, z: graphZ },
-      radius: { x: graphX + step * 1.45, y: center.y + step * 1.35, z: graphZ },
-      height: { x: graphX + step * 1.45, y: center.y + step * 0.65, z: graphZ },
+      inputsHeading: { x: graphX - step * 1.8, y: center.y + step * 2, z: graphZ },
+      center: { x: graphX - step * 1.8, y: center.y + step, z: graphZ },
+      radius: { x: graphX - step * 1.8, y: center.y, z: graphZ },
+      height: { x: graphX - step * 1.8, y: center.y - step, z: graphZ },
+      cone: { x: graphX, y: center.y, z: graphZ },
+      derivedHeading: { x: graphX + step * 1.8, y: center.y + step * 2, z: graphZ },
+      boundingBox: { x: graphX + step * 1.8, y: center.y + step, z: graphZ },
+      principalAxes: { x: graphX + step * 1.8, y: center.y, z: graphZ },
+      symmetryPlane: { x: graphX + step * 1.8, y: center.y - step, z: graphZ },
+      analysisHeading: { x: graphX, y: center.y - step * 2, z: graphZ },
+      curvature: { x: graphX - step * 2.25, y: center.y - step * 3, z: graphZ },
+      measurements: { x: graphX - step * 0.75, y: center.y - step * 3, z: graphZ },
+      volume: { x: graphX + step * 0.75, y: center.y - step * 3, z: graphZ },
+      surfaceArea: { x: graphX + step * 2.25, y: center.y - step * 3, z: graphZ },
     };
     const arrowLines: PolylineSet = [];
     const addArrow = (start: Point3, end: Point3) => {
@@ -19387,21 +19468,32 @@ const App: React.FC = () => {
       );
     };
     addArrow(nodes.center, nodes.cone);
+    addArrow(nodes.radius, nodes.cone);
+    addArrow(nodes.height, nodes.cone);
     addArrow(nodes.cone, nodes.boundingBox);
-    addArrow(nodes.boundingBox, nodes.principalAxes);
-    addArrow(nodes.principalAxes, nodes.symmetryPlane);
-    addArrow(nodes.cone, nodes.radius);
-    addArrow(nodes.cone, nodes.height);
+    addArrow(nodes.cone, nodes.principalAxes);
+    addArrow(nodes.cone, nodes.symmetryPlane);
+    addArrow(nodes.cone, nodes.curvature);
+    addArrow(nodes.cone, nodes.measurements);
+    addArrow(nodes.cone, nodes.volume);
+    addArrow(nodes.cone, nodes.surfaceArea);
 
     const connectorLines: PolylineSet = [[center, nodes.cone]];
     const labels: OverlayLabelSet["labels"] = [
+      { text: "INPUTS", position: nodes.inputsHeading, color: 0x0f766e, borderColor: 0x5eead4 },
       { text: "Center Point", position: nodes.center },
+      { text: "Radius", position: nodes.radius },
+      { text: "Height", position: nodes.height },
       { text: geometrySelectedObject.name, position: nodes.cone, color: 0x0f172a, borderColor: 0x2563eb },
-      { text: "Automatic Bounding Box", position: nodes.boundingBox },
-      { text: "Automatic Principal Axes", position: nodes.principalAxes },
-      { text: "Automatic Symmetry Plane", position: nodes.symmetryPlane },
-      { text: "Radius Parameter", position: nodes.radius },
-      { text: "Height Parameter", position: nodes.height },
+      { text: "DERIVED GEOMETRY", position: nodes.derivedHeading, color: 0x0f766e, borderColor: 0x5eead4 },
+      { text: "Bounding Box", position: nodes.boundingBox },
+      { text: "Principal Axes", position: nodes.principalAxes },
+      { text: "Symmetry Plane", position: nodes.symmetryPlane },
+      { text: "ANALYSIS", position: nodes.analysisHeading, color: 0xbe123c, borderColor: 0xfda4af },
+      { text: "Curvature", position: nodes.curvature },
+      { text: `Measurements · ${measurementCount}`, position: nodes.measurements },
+      { text: `Volume · ${fmt(metrics.volume)}`, position: nodes.volume },
+      { text: `Surface Area · ${fmt(metrics.surfaceArea)}`, position: nodes.surfaceArea },
     ].map((label) => ({
       color: 0x334155,
       backgroundColor: 0xffffff,
@@ -19418,7 +19510,7 @@ const App: React.FC = () => {
       ],
       labelSets: [{ labels, size: 0.82 }],
     };
-  }, [geometryMode, geometrySelectedObject, resolveGeometrySceneMeshById]);
+  }, [fmt, geometryMeasuredEdges, geometryMode, geometrySelectedObject, resolveGeometrySceneMeshById]);
   const geometryProceduralEditHandlePointSets = useMemo<OverlayPointSet[] | null>(() => {
     if (geometryMode !== "procedural" || geometryTransformMode !== "edit" || !geometryProceduralEditSources.length) {
       return null;
@@ -61258,22 +61350,29 @@ case "mobius":
                                 }}
                               >
                                 <strong>Automatic Cone children</strong>
-                                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                                  {CONE_DEPENDENCY_FEATURES.map((feature) => {
-                                    const nodeId = coneDependencyNodeId(geometrySelectedObject.id, feature.feature);
-                                    return (
-                                      <button
-                                        key={`definition-${nodeId}`}
-                                        type="button"
-                                        onClick={() => handleSelectGeometryDependencyNode(nodeId)}
-                                        aria-pressed={geometryDependencyFocusedNodeId === nodeId}
-                                        style={pill(geometryDependencyFocusedNodeId === nodeId)}
-                                      >
-                                        {feature.label}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
+                                {CONE_DEPENDENCY_GROUPS.map((group) => (
+                                  <div key={`definition-cone-group-${group.group}`} style={{ display: "grid", gap: 4 }}>
+                                    <span style={{ color: group.group === "analysis" ? "#be123c" : "#0f766e", fontWeight: 800 }}>
+                                      {group.label}
+                                    </span>
+                                    <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                      {CONE_DEPENDENCY_FEATURES.filter((feature) => feature.group === group.group).map((feature) => {
+                                        const nodeId = coneDependencyNodeId(geometrySelectedObject.id, feature.feature);
+                                        return (
+                                          <button
+                                            key={`definition-${nodeId}`}
+                                            type="button"
+                                            onClick={() => handleSelectGeometryDependencyNode(nodeId)}
+                                            aria-pressed={geometryDependencyFocusedNodeId === nodeId}
+                                            style={pill(geometryDependencyFocusedNodeId === nodeId)}
+                                          >
+                                            {feature.label}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
                             )}
                             {geometrySelectedSceneObject && !geometrySelectedMathConstructionEval && !geometrySelectedDerivedConstructionEval && (
@@ -68103,6 +68202,8 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
   const typeMeta = (kind: string): { label: string; color: string; background: string; border: string } => {
     if (kind === "scene-root") return { label: "Scene", color: "#334155", background: "#f8fafc", border: "#cbd5e1" };
     if (kind === "geometry-object") return { label: "Object", color: "#475569", background: "#f8fafc", border: "#cbd5e1" };
+    if (kind === "dependency-group") return { label: "Group", color: "#0f766e", background: "#f0fdfa", border: "#5eead4" };
+    if (kind === "analysis") return { label: "Analysis", color: "#be123c", background: "#fff1f2", border: "#fda4af" };
     if (kind === "parameter") return { label: "Parameter", color: "#b45309", background: "#fffbeb", border: "#fcd34d" };
     if (kind === "face-reference") return { label: "Face", color: "#64748b", background: "#f8fafc", border: "#dbe2ea" };
     if (kind === "derived-point") return { label: "Point", color: "#2563eb", background: "#eff6ff", border: "#93c5fd" };
@@ -68155,7 +68256,10 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
     const outputs = outputsById.get(node.id) ?? [];
     const isConstruction = node.kind.startsWith("derived-");
     const expandable = node.children.length > 0 || inputs.length > 0 || isConstruction;
-    const collapsed = expandable && (depth === 0 ? collapsedRootIds.has(node.id) : !expandedIds.has(node.id));
+    const collapsed =
+      expandable &&
+      node.kind !== "dependency-group" &&
+      (depth === 0 ? collapsedRootIds.has(node.id) : !expandedIds.has(node.id));
     const meta = typeMeta(node.kind);
     const color = meta.color;
     const statusMeta = node.liveValidityKind

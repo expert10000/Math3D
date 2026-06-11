@@ -287,7 +287,22 @@ test("Cone dependency tree exposes automatic semantic children", async () => {
     const objectId = coneNodeId!.slice("geometry-dependency-node-object:".length);
     await coneNode.locator("..").getByRole("button", { name: /^Expand / }).click();
 
-    for (const feature of ["center", "radius", "height", "bounding-box", "principal-axes", "symmetry-plane"]) {
+    for (const group of ["inputs", "derived-geometry", "analysis"]) {
+      await expect(page.getByTestId(`geometry-dependency-node-cone-group:${objectId}:${group}`)).toBeVisible();
+    }
+
+    for (const feature of [
+      "center",
+      "radius",
+      "height",
+      "bounding-box",
+      "principal-axes",
+      "symmetry-plane",
+      "curvature",
+      "measurements",
+      "volume",
+      "surface-area",
+    ]) {
       await expect(page.getByTestId(`geometry-dependency-node-cone:${objectId}:${feature}`)).toBeVisible();
     }
 
