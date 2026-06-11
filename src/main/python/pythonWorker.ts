@@ -609,58 +609,8 @@ class PythonWorker {
   }
 
   async vtkPreviewImplicit(req: VtkPreviewRequest): Promise<VtkMeshResponse> {
-    if (workerFailureInjectionMode === "worker-success") {
-      const positions = new Float32Array([
-        -0.5, -0.5, 0,
-         0.5, -0.5, 0,
-         0.0,  0.5, 0,
-      ]);
-      const indices = new Uint32Array([0, 1, 2]);
-      return {
-        ok: true,
-        positions: positions.buffer,
-        indices: indices.buffer,
-        vertexCount: 3,
-        triCount: 1,
-      };
-    }
-
-    if (workerFailureInjectionMode === "worker-invalid-expression") {
-      return {
-        ok: false,
-        error: "Invalid expression near '*' token (injected invalid-expression mode).",
-      };
-    }
-
-    if (workerFailureInjectionMode === "worker-missing") {
-      return {
-        ok: false,
-        error: "Python worker entrypoint not found (injected worker-missing mode).",
-      };
-    }
-
-    if (workerFailureInjectionMode === "worker-timeout") {
-      await new Promise<void>((resolve) => setTimeout(resolve, 80));
-      throw new Error(
-        `Python worker timeout for jobId=${req.jobId} (injected worker-timeout mode)`
-      );
-    }
-
-    if (workerFailureInjectionMode === "worker-malformed-error") {
-      const malformed = {
-        type: "error",
-        error: {
-          details: {
-            shape: "malformed-error-payload",
-            injected: true,
-          },
-        },
-      };
-      return {
-        ok: false,
-        error: workerErrorText(malformed, "Malformed worker error payload (injected)."),
-      };
-    }
+    const injected = await runInjectedVtkPreview(req);
+    if (injected) return injected;
 
     const msg = {
       type: "mesh.preview",
@@ -1019,6 +969,36 @@ if (workerFailureInjectionMode !== "none") {
   console.warn("[python-worker] failure injection enabled", {
     mode: workerFailureInjectionMode,
   });
+}
+
+export async function runInjectedVtkPreview(req: VtkPreviewRequest): Promise<VtkMeshResponse | null> {
+  if (workerFailureInjectionMode === "none") return null;
+  if (workerFailureInjectionMode === "worker-success") {
+    const positions = new Float32Array([-0.5, -0.5, 0, 0.5, -0.5, 0, 0, 0.5, 0]);
+    const indices = new Uint32Array([0, 1, 2]);
+    return {
+      ok: true,
+      positions: positions.buffer,
+      indices: indices.buffer,
+      vertexCount: 3,
+      triCount: 1,
+    };
+  }
+  if (workerFailureInjectionMode === "worker-invalid-expression") {
+    return { ok: false, error: "Invalid expression near '*' token (injected invalid-expression mode)." };
+  }
+  if (workerFailureInjectionMode === "worker-missing") {
+    return { ok: false, error: "Python worker entrypoint not found (injected worker-missing mode)." };
+  }
+  if (workerFailureInjectionMode === "worker-timeout") {
+    await new Promise<void>((resolve) => setTimeout(resolve, 80));
+    throw new Error(`Python worker timeout for jobId=${req.jobId} (injected worker-timeout mode)`);
+  }
+  const malformed = {
+    type: "error",
+    error: { details: { shape: "malformed-error-payload", injected: true } },
+  };
+  return { ok: false, error: workerErrorText(malformed, "Malformed worker error payload (injected).") };
 }
 
 function resolvePythonExe(): string {

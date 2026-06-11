@@ -206,11 +206,15 @@ export async function setSimpleSurfaceExpression(page: Page): Promise<void> {
 }
 
 export async function clickGenerate(page: Page): Promise<void> {
-  await clickFirstVisibleButtonByNamePattern(page, /^Preview$/i);
+  await clickFirstVisibleByTestId(page, "surface-workflow-preview");
+  const showPanels = page.getByRole("button", { name: /^Show panels$/i }).first();
+  if ((await showPanels.count()) > 0 && (await showPanels.isVisible())) {
+    await showPanels.click();
+  }
 }
 
 export async function assertGenerateButtonReset(page: Page): Promise<void> {
-  const generate = page.getByRole("button", { name: /^Preview$/i }).first();
+  const generate = page.getByTestId("surface-workflow-preview").first();
   await expect(generate).toBeEnabled({ timeout: 15_000 });
   await expect(generate).toHaveText(/preview/i);
 }

@@ -1,6 +1,7 @@
 import { ipcMain } from "electron";
 import {
   getPythonWorker,
+  runInjectedVtkPreview,
   type VtkMeshRequest,
   type VtkMeshResponse,
   type VtkBooleanRequest,
@@ -75,6 +76,8 @@ export function registerVtkMeshIpc() {
 
   ipcMain.handle("mesh:vtk:preview", async (_evt, req: VtkPreviewRequestPayload): Promise<VtkMeshResponse> => {
     try {
+      const injected = await runInjectedVtkPreview(req);
+      if (injected) return injected;
       const worker = await getPythonWorker();
       const res = await worker.vtkPreviewImplicit(req);
       if (!res.ok) {

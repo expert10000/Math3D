@@ -117,6 +117,9 @@ const stabilizeGalleryVisuals = async (page: Page): Promise<void> => {
         min-width: 191px !important;
         width: 191px !important;
         max-width: 191px !important;
+        min-height: 360px !important;
+        height: 360px !important;
+        max-height: 360px !important;
         padding-bottom: 0 !important;
         margin-bottom: 0 !important;
       }

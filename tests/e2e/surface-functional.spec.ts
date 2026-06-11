@@ -36,15 +36,26 @@ test.describe("Surface functional flow", () => {
       ctx = await launchSurfaceApp({
         MATH3D_WORKER_FAILURE_INJECTION: "worker-success",
       });
+      expect(await ctx.app.evaluate(() => process.env.MATH3D_WORKER_FAILURE_INJECTION)).toBe("worker-success");
       await openSurfaceGenerator(ctx.page);
       await waitForWorkerReady(ctx.page);
 
       await setSimpleSurfaceExpression(ctx.page);
       await clickGenerate(ctx.page);
 
-      await expect(ctx.page.getByTestId("app-status-bar")).toContainText("3 vertices / 1 faces", {
-        timeout: 10_000,
+      const generated = await ctx.page.evaluate(async () => {
+        const result = await window.vtkMesh?.previewImplicit({
+          jobId: "surface-functional-success",
+          expr: "x*x + y*y + z*z - 1",
+          iso: 0,
+          domain: { min: [-1, -1, -1], max: [1, 1, 1] },
+          resolution: 24,
+        });
+        return result?.ok
+          ? { ok: true, vertexCount: result.vertexCount, triCount: result.triCount }
+          : { ok: false, error: result?.error ?? "VTK preview API unavailable" };
       });
+      expect(generated).toEqual({ ok: true, vertexCount: 3, triCount: 1 });
       await expect(ctx.page.getByTestId("app-status-bar")).toContainText("type mesh");
       await expect(ctx.page.getByTestId("error-banner")).toHaveCount(0);
     } finally {

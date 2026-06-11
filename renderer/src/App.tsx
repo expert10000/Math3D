@@ -47752,6 +47752,7 @@ case "mobius":
                   {index > 0 && <span style={{ color: "#94a3b8", fontSize: 11 }}>→</span>}
                   <button
                     type="button"
+                    data-testid={`surface-workflow-${step.id}`}
                     onClick={() => handleSurfaceWorkflowStepClick(step.id)}
                     disabled={isDisabled}
                     aria-current={stepState === "active" ? "step" : undefined}
