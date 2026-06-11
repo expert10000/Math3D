@@ -209,6 +209,7 @@ import {
   type ParamGeodesicState,
 } from "./math/paramGeodesicContinuous";
 import { CurveViewer, type CurveViewerGlyph, type CurveViewerVec3 } from "./components/CurveViewer";
+import { SceneDependencyGraph } from "./components/SceneDependencyGraph";
 import {
   arcLength as curveArcLength,
   curvature as curveCurvature,
@@ -393,6 +394,7 @@ type GeometryProceduralPanelTab =
   | "object"
   | "definition"
   | "construct"
+  | "dependencies"
   | "transform"
   | "view"
   | "history"
@@ -545,7 +547,9 @@ const GEOMETRY_PROCEDURAL_PANEL_VALUES: GeometryProceduralPanelTab[] = [
   "create",
   "scene",
   "object",
+  "definition",
   "construct",
+  "dependencies",
   "transform",
   "view",
   "history",
@@ -8061,6 +8065,7 @@ const App: React.FC = () => {
     geometryMode === "procedural" &&
     (
       geometryProceduralPanelTab === "construct" ||
+      geometryProceduralPanelTab === "dependencies" ||
       (geometryRightPanelTab === "inspector" && geometryInspectorPanelTab === "dependencies")
     );
   const runGeometryPanelTabSwitch = useCallback((apply: () => void) => {
@@ -17641,6 +17646,11 @@ const App: React.FC = () => {
             targetId: id,
             relation: "contains",
           });
+          addEdge(
+            feature.group === "inputs"
+              ? { sourceId: id, targetId: `object:${object.id}`, relation: "depends-on" }
+              : { sourceId: `object:${object.id}`, targetId: id, relation: "derived-from" }
+          );
         }
       }
       if ("type" in object && object.type === "box") {
@@ -17664,6 +17674,11 @@ const App: React.FC = () => {
                   : feature.label;
           addNode({ id, kind: feature.kind, label, objectId: object.id, status: "valid" });
           addEdge({ sourceId: boxDependencyGroupNodeId(object.id, feature.group), targetId: id, relation: "contains" });
+          addEdge(
+            feature.group === "inputs"
+              ? { sourceId: id, targetId: `object:${object.id}`, relation: "depends-on" }
+              : { sourceId: `object:${object.id}`, targetId: id, relation: "derived-from" }
+          );
         }
       }
     }
@@ -43736,6 +43751,7 @@ case "mobius":
     if (geometryProceduralPanelTab === "scene") return "place";
     if (
       geometryProceduralPanelTab === "construct" ||
+      geometryProceduralPanelTab === "dependencies" ||
       geometryProceduralPanelTab === "object" ||
       geometryProceduralPanelTab === "definition" ||
       geometryProceduralPanelTab === "transform" ||
@@ -47447,6 +47463,7 @@ case "mobius":
                     { key: "object", id: "object" as const, label: "Object" },
                     { key: "definition", id: "definition" as const, label: "Definition" },
                     { key: "construct", id: "construct" as const, label: "Construct" },
+                    { key: "dependencies", id: "dependencies" as const, label: "Dependencies" },
                     { key: "transform", id: "transform" as const, label: "Edit" },
                     { key: "view", id: "view" as const, label: "View" },
                     { key: "history", id: "history" as const, label: "History" },
@@ -47459,10 +47476,14 @@ case "mobius":
                     return (
                       <button
                         key={`geometry-procedural-panel-top-${entry.key}`}
+                        data-testid={`geometry-procedural-panel-${entry.key}`}
                         type="button"
                         onClick={() => {
                           setGeometryProceduralPanelTab(entry.id);
-                          if (entry.id !== "construct") {
+                          if (entry.id === "dependencies") {
+                            setGeometryRightPanelTab("inspector");
+                            setGeometryInspectorPanelTab("dependencies");
+                          } else if (entry.id !== "construct") {
                             setGeometryInspectorPanelTab("probe");
                           }
                           if (entry.id === "analysis") {
@@ -54277,7 +54298,27 @@ case "mobius":
                           )}
                         </div>
                       </div>
-                    </div>
+                      </div>
+                    )}
+
+                    {geometryProceduralPanelTab === "dependencies" && (
+                      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                        <div style={{ border: "1px solid #bfdbfe", borderRadius: 8, padding: "9px 10px", background: "#eff6ff", display: "grid", gap: 5 }}>
+                          <div style={{ fontSize: 12, fontWeight: 800, color: "#1e3a8a" }}>Scene Dependencies</div>
+                          <div style={{ fontSize: 11, color: "#475569" }}>
+                            Automatic DAG layout arranges the complete procedural scene without manual coordinates.
+                          </div>
+                        </div>
+                        <div style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: "9px 10px", background: "#fff", display: "grid", gap: 5, fontSize: 11 }}>
+                          <strong>Graph summary</strong>
+                          <span>{geometryDependencyGraph.nodes.length} nodes</span>
+                          <span>{geometryDependencyGraph.edges.filter((edge) => edge.relation !== "contains").length} dependency edges</span>
+                          <span>{geometryDependencyGraph.brokenNodes.length} broken links</span>
+                        </div>
+                        <div style={{ fontSize: 10.5, color: "#64748b" }}>
+                          Select any node in the graph to open it in the existing inspector and viewport workflow.
+                        </div>
+                      </div>
                     )}
 
                     {geometryProceduralPanelTab === "view" && (
@@ -61270,7 +61311,7 @@ case "mobius":
                     position: "relative",
                   }}
                 >
-                  {showDependencyOverlay && (
+                  {showDependencyOverlay && geometryProceduralPanelTab !== "dependencies" && (
                     <div
                       data-testid="geometry-dependency-overlay-card"
                       onMouseLeave={() => setGeometryHoveredDependencyNodeId(null)}
@@ -61711,7 +61752,15 @@ case "mobius":
                       </div>
                     </div>
                   )}
-                  <GeometryViewer
+                  {geometryMode === "procedural" && geometryProceduralPanelTab === "dependencies" ? (
+                    <SceneDependencyGraph
+                      nodes={geometryDependencyGraph.nodes}
+                      edges={geometryDependencyGraph.edges}
+                      selectedId={geometryInspectorSelectedDependencyNodeId}
+                      onSelect={handleSelectGeometryDependencyNode}
+                    />
+                  ) : (
+                    <GeometryViewer
                   scene={geometryScene}
                   lineRadiusScale={geometryMode === "demo" ? geometryDemoLineRadiusScale : 1}
                   segmentRadiusScale={geometryMode === "demo" ? geometryDemoSegmentRadiusScale : 1}
@@ -61860,7 +61909,8 @@ case "mobius":
                       : undefined
                   }
                   inspectSelectionMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
-                />
+                    />
+                  )}
                 </div>
                 {showGeometryRightPanel && !isPhoneLandscapeLayout && <div onMouseDown={startDragRight} style={splitterStyle} />}
                 {showGeometryRightPanel && (

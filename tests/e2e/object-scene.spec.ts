@@ -396,6 +396,17 @@ test("Cone and Box dependency trees expose grouped automatic semantic children",
     await expect(overlayCard.getByText("V = w h d", { exact: true })).toBeVisible();
     await page.getByTestId("geometry-dependency-overlay-toggle").uncheck();
     await expect(overlayCard).toHaveCount(0);
+    await page.getByTestId("geometry-procedural-panel-dependencies").click();
+    const sceneDependencyWorkspace = page.getByTestId("geometry-scene-dependency-workspace");
+    const sceneDependencyGraph = sceneDependencyWorkspace.getByTestId("geometry-scene-dependency-graph");
+    await expect(sceneDependencyWorkspace).toContainText("automatic DAG layout");
+    await expect(sceneDependencyGraph).toBeVisible();
+    await expect(sceneDependencyGraph.locator(`[data-node-id="object:${boxObjectId}"]`)).toBeVisible();
+    const sceneWidthNode = sceneDependencyGraph.locator(`[data-node-id="box:${boxObjectId}:width"]`);
+    await expect(sceneWidthNode).toBeVisible();
+    await expect(sceneDependencyGraph.locator(`[data-node-id="box:${boxObjectId}:volume"]`)).toBeVisible();
+    await sceneWidthNode.click();
+    await expect(page.getByTestId("geometry-inspector-definition")).toContainText("Width");
   } finally {
     if (app) {
       await app.close();
