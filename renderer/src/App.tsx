@@ -15207,6 +15207,14 @@ const App: React.FC = () => {
     if (geometryMode !== "procedural" || !geometrySelectedObjectId) {
       return { groups: null, pointSets: null, labelSets: null };
     }
+    if (
+      !geometryPolySharpEdgesEnabled &&
+      !geometryPolyAngleDefectEnabled &&
+      !geometryPolyFaceNormalsEnabled &&
+      !geometryPolyDihedralReadoutsEnabled
+    ) {
+      return { groups: null, pointSets: null, labelSets: null };
+    }
     const selectedObj = geometryObjects.find((obj) => obj.id === geometrySelectedObjectId) ?? null;
     if (!selectedObj || selectedObj.type !== "polyhedron") {
       return { groups: null, pointSets: null, labelSets: null };

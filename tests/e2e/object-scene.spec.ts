@@ -229,6 +229,11 @@ test("Geometry gallery: select vs add flow, quick add, and filtering", async () 
     await page.getByTestId("geometry-gallery-category-filter").selectOption("polyhedra");
     await expect(page.getByTestId("geometry-gallery-card-cube")).toBeVisible();
     await expect(page.getByTestId("geometry-gallery-card-sphere")).toHaveCount(0);
+
+    await page.getByTestId("geometry-gallery-quick-add-cube").dispatchEvent("click");
+    await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(baseCount + 3);
+    await page.getByRole("button", { name: "Scene", exact: true }).first().click();
+    await expect(page.getByTestId("app-status-bar")).toContainText("Geometry viewer (procedural)");
   } finally {
     if (app) {
       await app.close();
