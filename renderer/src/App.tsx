@@ -18223,6 +18223,7 @@ const App: React.FC = () => {
   const handleSelectGeometryDependencyNode = useCallback((nodeId: string) => {
     let focusEvaluation: GeometryMathConstructionEvaluation | GeometryDerivedConstructionEvaluation | null = null;
     let focusObjectId: string | null = null;
+    let focusPoint: Vec3 | null = null;
     let editableTarget = false;
     const coneNode = parseConeDependencyNodeId(nodeId);
     const coneGroupNode = parseConeDependencyGroupNodeId(nodeId);
@@ -18230,6 +18231,11 @@ const App: React.FC = () => {
     const boxGroupNode = parseBoxDependencyGroupNodeId(nodeId);
     if (coneNode || coneGroupNode || boxNode || boxGroupNode) {
       focusObjectId = coneNode?.objectId ?? coneGroupNode?.objectId ?? boxNode?.objectId ?? boxGroupNode!.objectId;
+      const primitiveNode = coneNode ?? boxNode;
+      if (primitiveNode?.feature === "center") {
+        const object = resolveGeometrySceneObjectById(primitiveNode.objectId);
+        focusPoint = object ? { ...object.transform.position } : null;
+      }
       setGeometrySelectedObjectId(focusObjectId);
       setGeometrySelectedMathConstructionId(null);
       setGeometrySelectedDerivedConstructionId(null);
@@ -18292,6 +18298,13 @@ const App: React.FC = () => {
         radius: Math.max(0.2, Math.min(radius || 0.2, 2.5)),
         padding: 1.28,
       }));
+    } else if (focusPoint) {
+      setGeometryCameraFitCommand((previous) => ({
+        token: (previous?.token ?? 0) + 1,
+        center: focusPoint!,
+        radius: 0.45,
+        padding: 1.2,
+      }));
     } else if (focusObjectId) {
       setGeometryPendingFocusObjectId(focusObjectId);
     }
@@ -18303,7 +18316,7 @@ const App: React.FC = () => {
       return;
     }
     setGeometryInspectorPanelTab("dependencies");
-  }, [geometryDerivedConstructionOverlays.byId, geometryMathConstructionOverlays.byId]);
+  }, [geometryDerivedConstructionOverlays.byId, geometryMathConstructionOverlays.byId, resolveGeometrySceneObjectById]);
   const handleUseDerivedPlaneForSectionSliceById = useCallback((derivedId: string) => {
     const selected = geometryDerivedConstructionOverlays.byId.get(derivedId) ?? null;
     if (!selected) {
@@ -19428,9 +19441,10 @@ const App: React.FC = () => {
     groups: OverlayPolylineGroup[] | null;
     pointSets: OverlayPointSet[] | null;
   }>(() => {
-    if (!showDependencyOverlay || !geometryHoveredDependencyNodeId) return { groups: null, pointSets: null };
-    const coneNode = parseConeDependencyNodeId(geometryHoveredDependencyNodeId);
-    const boxNode = parseBoxDependencyNodeId(geometryHoveredDependencyNodeId);
+    const activeNodeId = geometryHoveredDependencyNodeId ?? geometryDependencyFlash?.nodeId ?? null;
+    if (!showDependencyOverlay || !activeNodeId) return { groups: null, pointSets: null };
+    const coneNode = parseConeDependencyNodeId(activeNodeId);
+    const boxNode = parseBoxDependencyNodeId(activeNodeId);
     const primitiveNode = coneNode ?? boxNode;
     if (geometryMode === "procedural" && primitiveNode && geometrySelectedObject?.id === primitiveNode.objectId) {
       const resolved = resolveGeometrySceneMeshById(primitiveNode.objectId);
@@ -19538,6 +19552,7 @@ const App: React.FC = () => {
       pointSets: pointSets.length ? pointSets : null,
     };
   }, [
+    geometryDependencyFlash,
     geometryHoveredDependencyNodeId,
     geometryMode,
     geometrySelectedObject,
@@ -61991,7 +62006,7 @@ case "mobius":
                                 <strong>Definition:</strong> <code>{geometryConstructionEditFormula}</code>
                               </div>
                             </div>
-                            {(geometrySelectedObject?.type === "cone" || geometrySelectedObject?.type === "box") && (
+                            {geometrySelectedObject && (
                               <div
                                 style={{
                                   border: "1px solid #fde68a",
@@ -62002,33 +62017,73 @@ case "mobius":
                                   gap: 5,
                                 }}
                               >
-                                <strong>Automatic {geometrySelectedObject.type === "cone" ? "Cone" : "Box"} children</strong>
-                                {CONE_DEPENDENCY_GROUPS.map((group) => (
-                                  <div key={`definition-cone-group-${group.group}`} style={{ display: "grid", gap: 4 }}>
-                                    <span style={{ color: group.group === "analysis" ? "#be123c" : "#0f766e", fontWeight: 800 }}>
-                                      {group.label}
-                                    </span>
-                                    <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                                      {(geometrySelectedObject.type === "cone" ? CONE_DEPENDENCY_FEATURES : BOX_DEPENDENCY_FEATURES)
-                                        .filter((feature) => feature.group === group.group).map((feature) => {
-                                        const nodeId = geometrySelectedObject.type === "cone"
-                                          ? coneDependencyNodeId(geometrySelectedObject.id, feature.feature as ConeDependencyFeature)
-                                          : boxDependencyNodeId(geometrySelectedObject.id, feature.feature as BoxDependencyFeature);
-                                        return (
-                                          <button
-                                            key={`definition-${nodeId}`}
-                                            type="button"
-                                            onClick={() => handleSelectGeometryDependencyNode(nodeId)}
-                                            aria-pressed={geometryDependencyFocusedNodeId === nodeId}
-                                            style={pill(geometryDependencyFocusedNodeId === nodeId)}
-                                          >
-                                            {feature.label}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
+                                <strong>Unified Definition</strong>
+                                <div style={{ display: "grid", gap: 4 }}>
+                                  <span style={{ color: "#0f766e", fontWeight: 800 }}>Inputs</span>
+                                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                    {geometryDependencyOverlayCard.inputs.map((entry) => (
+                                      <button
+                                        key={`definition-input-${entry.id}-${entry.label}`}
+                                        type="button"
+                                        onClick={() => entry.id && handleSelectGeometryDependencyNode(entry.id)}
+                                        aria-pressed={geometryDependencyFocusedNodeId === entry.id}
+                                        style={pill(geometryDependencyFocusedNodeId === entry.id)}
+                                      >
+                                        {entry.label}
+                                      </button>
+                                    ))}
                                   </div>
-                                ))}
+                                </div>
+                                <div style={{ display: "grid", gap: 4 }}>
+                                  <span style={{ color: "#b45309", fontWeight: 800 }}>Parameters</span>
+                                  <div style={{ display: "grid", gridTemplateColumns: "minmax(90px, 1fr) minmax(0, 1fr)", gap: "3px 8px" }}>
+                                    {Object.entries(geometrySelectedObject.params)
+                                      .filter(([key]) => !key.toLowerCase().includes("segment"))
+                                      .map(([key, value]) => (
+                                        <React.Fragment key={`definition-unified-param-${key}`}>
+                                          <span>{GEOMETRY_OBJECT_REGISTRY[geometrySelectedObject.type]?.params.find((param) => param.id === key)?.label ?? key}</span>
+                                          <code>{typeof value === "number" ? fmt(value) : String(value)}</code>
+                                        </React.Fragment>
+                                      ))}
+                                  </div>
+                                </div>
+                                <div style={{ display: "grid", gap: 3 }}>
+                                  <span style={{ color: "#1d4ed8", fontWeight: 800 }}>Formula</span>
+                                  <code style={{ overflowWrap: "anywhere" }}>{geometryConstructionEditFormula}</code>
+                                </div>
+                                <div style={{ display: "grid", gap: 3 }}>
+                                  <span style={{ color: "#475569", fontWeight: 800 }}>Dependencies</span>
+                                  <span>{geometryDependencyOverlayCard.inputs.length} direct inputs define {geometrySelectedObject.name}.</span>
+                                </div>
+                                <div style={{ display: "grid", gap: 3 }}>
+                                  <span style={{ color: "#475569", fontWeight: 800 }}>Dependents</span>
+                                  <span>
+                                    {geometryDependencyOverlayCard.derived.length + geometryDependencyOverlayCard.analysis.length} automatic derived and analysis outputs.
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setGeometryInspectorPanelTab("dependencies")}
+                                    style={{ justifySelf: "start", fontSize: 10 }}
+                                  >
+                                    Open full dependency tree
+                                  </button>
+                                </div>
+                                <div style={{ display: "grid", gap: 4 }}>
+                                  <span style={{ color: "#be123c", fontWeight: 800 }}>Analysis</span>
+                                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                    {geometryDependencyOverlayCard.analysis.map((entry) => (
+                                      <button
+                                        key={`definition-analysis-${entry.id}-${entry.label}`}
+                                        type="button"
+                                        onClick={() => entry.id && handleSelectGeometryDependencyNode(entry.id)}
+                                        aria-pressed={geometryDependencyFocusedNodeId === entry.id}
+                                        style={pill(geometryDependencyFocusedNodeId === entry.id)}
+                                      >
+                                        {entry.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
                               </div>
                             )}
                             {geometrySelectedSceneObject && !geometrySelectedMathConstructionEval && !geometrySelectedDerivedConstructionEval && (

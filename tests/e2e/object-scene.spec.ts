@@ -341,6 +341,11 @@ test("Cone and Box dependency trees expose grouped automatic semantic children",
     await expect(overlayCard).toContainText("Update count:");
     await overlayCard.getByRole("button", { name: "Graph", exact: true }).click();
     await expect(overlayCard.getByTestId("geometry-dependency-overlay-graph")).toBeVisible();
+    await overlayCard.getByRole("button", { name: "Center Point", exact: true }).click();
+    await expect(page.getByTestId("geometry-inspector-definition")).toContainText("CenterPoint(Box)");
+    await expect(page.getByTestId("geometry-inspector-definition")).toContainText("Unified Definition");
+    await expect(page.getByTestId("geometry-inspector-definition")).toContainText("Dependents");
+    await expect(page.getByTestId("geometry-inspector-definition")).toContainText("Analysis");
     await overlayCard.getByRole("button", { name: "List", exact: true }).click();
     await overlayCard.getByRole("button", { name: "▶ Inputs (4)", exact: true }).click();
     const widthOverlayRow = overlayCard.getByRole("button", { name: "Width Parameter", exact: true });
