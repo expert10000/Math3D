@@ -51677,7 +51677,7 @@ case "mobius":
                 style={
                   compactGeometryPanel && geometryProceduralPanelTab === "create"
                     ? { height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }
-                    : undefined
+                    : { minWidth: 0, maxWidth: "100%" }
                 }
               >
                 <h2 style={styles.h2}>Geometry Viewer</h2>
@@ -60586,6 +60586,7 @@ case "mobius":
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
+                        flexWrap: "wrap",
                         gap: 8,
                       }}
                     >
@@ -60597,7 +60598,7 @@ case "mobius":
                             : "Scratch draft"}
                         </strong>
                       </div>
-                      <div style={{ display: "flex", gap: 6 }}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxWidth: "100%" }}>
                         <button
                           type="button"
                           onClick={() => {

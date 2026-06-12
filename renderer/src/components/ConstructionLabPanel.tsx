@@ -2325,7 +2325,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   };
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div style={{ display: "grid", gap: 12, minWidth: 0, maxWidth: "100%" }}>
       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
         {!hideWorkspaceTabs &&
           (["task", "build", "inspect", "claims", "script", "scene"] as ConstructionWorkspaceTab[]).map((tab) => (
@@ -3053,10 +3053,10 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       )}
 
       {workspaceTab === "script" && (
-        <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 10, display: "grid", gap: 8 }}>
-          <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 10, display: "grid", gap: 8, minWidth: 0 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
             <div style={{ fontSize: 12, fontWeight: 700 }}>Scene script</div>
-            <button type="button" onClick={() => setPaletteOpen(true)}>
+            <button type="button" onClick={() => setPaletteOpen(true)} style={{ maxWidth: "100%", whiteSpace: "normal" }}>
               Command palette (Ctrl/Cmd+K)
             </button>
           </div>
@@ -3094,7 +3094,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
             value={scriptText}
             onChange={(e) => setScriptText(e.target.value)}
             rows={10}
-            style={{ width: "100%", fontFamily: "monospace", fontSize: 11 }}
+            style={{ width: "100%", minWidth: 0, boxSizing: "border-box", fontFamily: "monospace", fontSize: 11 }}
           />
           {scriptDiagnostics.diagnostics.length > 0 && (
             <div style={{ display: "grid", gap: 4 }}>
@@ -3119,8 +3119,8 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
               ))}
             </div>
           )}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center" }}>
-            <select value={selectedScriptTemplate} onChange={(e) => setSelectedScriptTemplate(e.target.value)}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 6, alignItems: "center" }}>
+            <select value={selectedScriptTemplate} onChange={(e) => setSelectedScriptTemplate(e.target.value)} style={{ minWidth: 0 }}>
               {SCRIPT_TEMPLATES.map((entry) => (
                 <option key={entry.label} value={entry.command}>
                   {entry.label}: {entry.command}
@@ -3135,8 +3135,8 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
             <button type="button" onClick={runSelectedScript}>Run selected</button>
             <button type="button" onClick={runScriptFromCursor}>Run from cursor</button>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center" }}>
-            <select value={scriptSyncMode} onChange={(e) => setScriptSyncMode(e.target.value as ScriptSyncMode)}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 6, alignItems: "center" }}>
+            <select value={scriptSyncMode} onChange={(e) => setScriptSyncMode(e.target.value as ScriptSyncMode)} style={{ minWidth: 0 }}>
               <option value="overwrite">Sync mode: overwrite script from scene</option>
               <option value="appendNew">Sync mode: append new steps only</option>
               <option value="keepComments">Sync mode: keep manual comments</option>
@@ -3154,14 +3154,14 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
               <span style={{ color: "#b42318" }}>{palettePreview.error}</span>
             )}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 6, alignItems: "center" }}>
             <input
               type="text"
               list="construction-command-suggestions"
               value={paletteInput}
               onChange={(e) => setPaletteInput(e.target.value)}
               placeholder="Quick command autocomplete"
-              style={{ fontFamily: "monospace", fontSize: 11 }}
+              style={{ minWidth: 0, fontFamily: "monospace", fontSize: 11 }}
             />
             <button type="button" onClick={executePalette}>Execute command</button>
             <datalist id="construction-command-suggestions">
