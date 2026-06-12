@@ -793,6 +793,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [selectionAId, setSelectionAId] = useState("");
   const [selectionBId, setSelectionBId] = useState("");
   const [selectedScriptTemplate, setSelectedScriptTemplate] = useState(SCRIPT_TEMPLATES[0]?.command ?? "");
+  const [scriptTemplatesOpen, setScriptTemplatesOpen] = useState(false);
   const [lockedNodeIds, setLockedNodeIds] = useState<Set<string>>(() => new Set());
   const [helperNodeIds, setHelperNodeIds] = useState<Set<string>>(() => new Set());
   const [claimExplainId, setClaimExplainId] = useState<string | null>(null);
@@ -3055,125 +3056,153 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       {workspaceTab === "script" && (
         <div
           data-testid="construction-script-workspace"
-          style={{ borderTop: "1px solid #e5e7eb", paddingTop: 10, display: "grid", gap: 8, minWidth: 0, maxWidth: "100%" }}
+          style={{
+            borderTop: "1px solid #e5e7eb",
+            paddingTop: 6,
+            display: "grid",
+            gridTemplateRows: scriptTemplatesOpen
+              ? "auto minmax(0, 1fr) auto auto"
+              : "auto minmax(0, 1fr) auto",
+            gap: 4,
+            minWidth: 0,
+            maxWidth: "100%",
+            height: "min(900px, max(680px, calc(100vh - 170px)))",
+            minHeight: 0,
+          }}
         >
-          <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
-            <div style={{ fontSize: 12, fontWeight: 700 }}>Scene script</div>
-            <button type="button" onClick={() => setPaletteOpen(true)} style={{ maxWidth: "100%", whiteSpace: "normal" }}>
-              Command palette (Ctrl/Cmd+K)
-            </button>
-          </div>
-          <div style={{ fontSize: 11, opacity: 0.78, display: "grid", gap: 2, overflowWrap: "anywhere" }}>
-            <div><code style={{ whiteSpace: "pre-wrap" }}>point A -0.2 1.35 0</code></div>
-            <div><code style={{ whiteSpace: "pre-wrap" }}>line A B as AB</code></div>
-            <div><code style={{ whiteSpace: "pre-wrap" }}>circumcircle A B C as Omega</code></div>
-            <div><code style={{ whiteSpace: "pre-wrap" }}>check point-on-circle X Omega</code></div>
-          </div>
-          <div style={{ fontSize: 11, color: scriptParsePreview.error ? "#b42318" : "#166534" }}>
-            {scriptParsePreview.error
-              ? `Parse error: ${scriptParsePreview.error}`
-              : `Parse OK: ${scriptParsePreview.nodes.length} objects, ${scriptParsePreview.checks.length} claims`}
-          </div>
           <div
             style={{
-              border: "1px solid #e5e7eb",
-              borderRadius: 8,
-              padding: "6px 8px",
-              fontSize: 11,
-              fontFamily: "monospace",
+              border: "1px solid #dbe4f0",
+              borderRadius: 10,
+              padding: "4px 7px",
+              background: "#f8fbff",
               display: "grid",
-              gap: 2,
+              gap: 1,
             }}
           >
-            <div>parsed steps: {scriptDiagnostics.parsedSteps}</div>
-            <div>objects created: {scriptDiagnostics.objectCount}</div>
-            <div>constraints created: {scriptDiagnostics.constraintCount}</div>
-            <div>claims created: {scriptDiagnostics.claimCount}</div>
-            <div>warnings: {scriptDiagnostics.warnings.length}</div>
-            <div>errors: {scriptDiagnostics.errors.length}</div>
+            <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.15 }}>Scene Script</div>
+            <div style={{ fontSize: 11, lineHeight: 1.15, color: scriptParsePreview.error ? "#b42318" : "#166534" }}>
+              {scriptParsePreview.error ? `Parse error: ${scriptParsePreview.error}` : "Parse OK"}
+            </div>
+            <div style={{ fontSize: 10.5, lineHeight: 1.15, color: "#475569" }}>
+              {scriptParsePreview.nodes.length} objects · {scriptParsePreview.checks.length} claims
+            </div>
+            {scriptError && <div style={{ fontSize: 11, color: "#b42318" }}>{scriptError}</div>}
           </div>
           <textarea
             ref={scriptEditorRef}
+            data-testid="construction-script-editor"
             value={scriptText}
             onChange={(e) => setScriptText(e.target.value)}
-            rows={10}
-            style={{ width: "100%", minWidth: 0, boxSizing: "border-box", fontFamily: "monospace", fontSize: 11 }}
+            aria-label="Scene script editor"
+            style={{
+              width: "100%",
+              height: "100%",
+              minHeight: 0,
+              minWidth: 0,
+              resize: "vertical",
+              boxSizing: "border-box",
+              fontFamily: "monospace",
+              fontSize: 11,
+            }}
           />
-          {scriptDiagnostics.diagnostics.length > 0 && (
-            <div style={{ display: "grid", gap: 4 }}>
-              {scriptDiagnostics.diagnostics.map((diag, idx) => (
-                <button
-                  key={`${diag.line}:${idx}`}
-                  type="button"
-                  onClick={() => focusScriptLine(diag.line)}
-                  style={{
-                    textAlign: "left",
-                    border: "1px solid " + (diag.kind === "error" ? "#fca5a5" : "#fde68a"),
-                    background: diag.kind === "error" ? "#fef2f2" : "#fffbeb",
-                    borderRadius: 6,
-                    padding: "4px 6px",
-                    fontSize: 11,
-                    fontFamily: "monospace",
-                    cursor: "pointer",
-                  }}
-                >
-                  line {diag.line}: {diag.message}
-                </button>
-              ))}
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+            <button type="button" onClick={rebuildFromScript} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Run</button>
+            <button type="button" onClick={runSelectedScript} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Selection</button>
+            <button type="button" onClick={runScriptFromCursor} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Cursor</button>
+            <button type="button" onClick={regenerateScriptFromScene} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Generate</button>
+            <button
+              type="button"
+              data-testid="construction-script-templates-toggle"
+              onClick={() => setScriptTemplatesOpen((open) => !open)}
+              aria-expanded={scriptTemplatesOpen}
+              style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}
+            >
+              Templates
+            </button>
+            <button type="button" onClick={() => setPaletteOpen(true)} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Palette</button>
+            <details
+              id="construction-script-diagnostics"
+              data-testid="construction-script-diagnostics"
+              style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "2px 6px", minWidth: 0 }}
+            >
+              <summary style={{ cursor: "pointer", fontSize: 10.5, fontWeight: 700, lineHeight: 1.1 }}>
+                Diagnostics ({scriptDiagnostics.errors.length} errors, {scriptDiagnostics.warnings.length} warnings)
+              </summary>
+              <div style={{ marginTop: 7, display: "grid", gap: 6 }}>
+                <div style={{ fontSize: 11, fontFamily: "monospace", display: "grid", gap: 2 }}>
+                  <div>parsed steps: {scriptDiagnostics.parsedSteps}</div>
+                  <div>objects created: {scriptDiagnostics.objectCount}</div>
+                  <div>constraints created: {scriptDiagnostics.constraintCount}</div>
+                  <div>claims created: {scriptDiagnostics.claimCount}</div>
+                  <div>warnings: {scriptDiagnostics.warnings.length}</div>
+                  <div>errors: {scriptDiagnostics.errors.length}</div>
+                </div>
+                {scriptDiagnostics.diagnostics.map((diag, idx) => (
+                  <button
+                    key={`${diag.line}:${idx}`}
+                    type="button"
+                    onClick={() => focusScriptLine(diag.line)}
+                    style={{
+                      textAlign: "left",
+                      border: "1px solid " + (diag.kind === "error" ? "#fca5a5" : "#fde68a"),
+                      background: diag.kind === "error" ? "#fef2f2" : "#fffbeb",
+                      borderRadius: 6,
+                      padding: "4px 6px",
+                      fontSize: 11,
+                      fontFamily: "monospace",
+                      cursor: "pointer",
+                    }}
+                  >
+                    line {diag.line}: {diag.message}
+                  </button>
+                ))}
+                <div style={{ fontSize: 10, opacity: 0.72 }}>
+                  Failed run keeps previous valid scene; fix diagnostics then rerun.
+                </div>
+              </div>
+            </details>
+            <details
+              data-testid="construction-script-sync"
+              style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "2px 6px", minWidth: 0 }}
+            >
+              <summary style={{ cursor: "pointer", fontSize: 10.5, fontWeight: 700, lineHeight: 1.1 }}>Sync</summary>
+              <div style={{ marginTop: 7, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
+                <select value={scriptSyncMode} onChange={(e) => setScriptSyncMode(e.target.value as ScriptSyncMode)} style={{ minWidth: 0, flex: "1 1 220px" }}>
+                  <option value="overwrite">Overwrite script from scene</option>
+                  <option value="appendNew">Append new steps only</option>
+                  <option value="keepComments">Keep manual comments</option>
+                </select>
+                <button type="button" onClick={regenerateScriptFromScene}>Apply sync</button>
+              </div>
+            </details>
+          </div>
+          {scriptTemplatesOpen && (
+            <div
+              data-testid="construction-script-templates"
+              style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "3px 6px" }}
+            >
+              <div style={{ fontSize: 11, fontWeight: 700 }}>Templates</div>
+              <div style={{ marginTop: 7, display: "grid", gap: 7 }}>
+                <div style={{ fontSize: 10, opacity: 0.78, display: "grid", gap: 2, overflowWrap: "anywhere" }}>
+                  <code style={{ whiteSpace: "pre-wrap" }}>point A -0.2 1.35 0</code>
+                  <code style={{ whiteSpace: "pre-wrap" }}>line A B as AB</code>
+                  <code style={{ whiteSpace: "pre-wrap" }}>circumcircle A B C as Omega</code>
+                  <code style={{ whiteSpace: "pre-wrap" }}>check point-on-circle X Omega</code>
+                </div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
+                  <select value={selectedScriptTemplate} onChange={(e) => setSelectedScriptTemplate(e.target.value)} style={{ minWidth: 0, flex: "1 1 220px" }}>
+                    {SCRIPT_TEMPLATES.map((entry) => (
+                      <option key={entry.label} value={entry.command}>
+                        {entry.label}: {entry.command}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="button" onClick={insertScriptTemplate}>Insert template</button>
+                </div>
+              </div>
             </div>
           )}
-          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
-            <select value={selectedScriptTemplate} onChange={(e) => setSelectedScriptTemplate(e.target.value)} style={{ minWidth: 0, flex: "1 1 220px" }}>
-              {SCRIPT_TEMPLATES.map((entry) => (
-                <option key={entry.label} value={entry.command}>
-                  {entry.label}: {entry.command}
-                </option>
-              ))}
-            </select>
-            <button type="button" onClick={insertScriptTemplate} style={{ maxWidth: "100%", whiteSpace: "normal" }}>Insert command template</button>
-          </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <button type="button" onClick={regenerateScriptFromScene}>Generate from scene</button>
-            <button type="button" onClick={rebuildFromScript}>Run / rerun</button>
-            <button type="button" onClick={runSelectedScript}>Run selected</button>
-            <button type="button" onClick={runScriptFromCursor}>Run from cursor</button>
-          </div>
-          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
-            <select value={scriptSyncMode} onChange={(e) => setScriptSyncMode(e.target.value as ScriptSyncMode)} style={{ minWidth: 0, flex: "1 1 220px" }}>
-              <option value="overwrite">Sync mode: overwrite script from scene</option>
-              <option value="appendNew">Sync mode: append new steps only</option>
-              <option value="keepComments">Sync mode: keep manual comments</option>
-            </select>
-            <button type="button" onClick={regenerateScriptFromScene} style={{ maxWidth: "100%", whiteSpace: "normal" }}>Apply sync mode</button>
-          </div>
-          <div style={{ fontSize: 10, opacity: 0.72 }}>
-            Failed run keeps previous valid scene; fix diagnostics then rerun.
-          </div>
-          <div style={{ fontSize: 11, opacity: 0.8 }}>
-            Preview:{" "}
-            {palettePreview.ok ? (
-              <span style={{ color: "#166534" }}>{palettePreview.summary}</span>
-            ) : (
-              <span style={{ color: "#b42318" }}>{palettePreview.error}</span>
-            )}
-          </div>
-          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
-            <input
-              type="text"
-              list="construction-command-suggestions"
-              value={paletteInput}
-              onChange={(e) => setPaletteInput(e.target.value)}
-              placeholder="Quick command autocomplete"
-              style={{ minWidth: 0, flex: "1 1 220px", fontFamily: "monospace", fontSize: 11 }}
-            />
-            <button type="button" onClick={executePalette} style={{ maxWidth: "100%", whiteSpace: "normal" }}>Execute command</button>
-            <datalist id="construction-command-suggestions">
-              {SCRIPT_TEMPLATES.map((entry) => (
-                <option key={entry.label} value={entry.command} />
-              ))}
-            </datalist>
-          </div>
-          {scriptError && <div style={{ fontSize: 11, color: "#b42318" }}>{scriptError}</div>}
         </div>
       )}
 

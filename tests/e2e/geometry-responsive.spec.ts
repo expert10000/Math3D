@@ -114,6 +114,20 @@ test.describe("Geometry responsive workspace", () => {
       await expectNoHorizontalOverflow(page.getByTestId("geometry-left-panel"), "Scratch Script panel");
       await expectNoHorizontalOverflow(page.getByTestId("construction-script-workspace"), "Scratch Script workspace");
       await expectVerticalContentReachable(page.getByTestId("geometry-left-panel"), "Scratch Script panel");
+      const scriptWorkspace = page.getByTestId("construction-script-workspace");
+      const scriptEditor = page.getByTestId("construction-script-editor");
+      const [scriptWorkspaceBox, scriptEditorBox] = await Promise.all([
+        scriptWorkspace.boundingBox(),
+        scriptEditor.boundingBox(),
+      ]);
+      expect(scriptWorkspaceBox).not.toBeNull();
+      expect(scriptEditorBox).not.toBeNull();
+      expect(scriptEditorBox!.height).toBeGreaterThan(scriptWorkspaceBox!.height * 0.8);
+      await expect(page.getByTestId("construction-script-templates-toggle")).toHaveAttribute("aria-expanded", "false");
+      await expect(page.getByTestId("construction-script-templates")).toHaveCount(0);
+      for (const section of ["construction-script-diagnostics", "construction-script-sync"]) {
+        await expect(page.getByTestId(section)).not.toHaveAttribute("open", "");
+      }
 
       for (const tab of ["Claims", "Scene"] as const) {
         await clickFirstVisibleButton(page, tab);

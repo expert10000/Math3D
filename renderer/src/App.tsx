@@ -131,7 +131,9 @@ import {
   type GeometryParamDef,
   type GeometryObjectTransform,
 } from "./geometry/proceduralObjects";
-import { executeGeometryProceduralScript } from "./geometry/proceduralScript";
+import { formatSceneScriptDiagnostic } from "./geometry/scripting/sceneScriptDiagnostics";
+import { executeSceneScript } from "./geometry/scripting/sceneScriptExecutor";
+import { PROCEDURAL_SCENE_SCRIPT_STARTER } from "./geometry/scripting/sceneScriptExamples";
 import {
   GEOMETRY_GALLERY_CARD_BY_ID,
   GEOMETRY_GALLERY_CARDS,
@@ -3137,15 +3139,6 @@ const closestColorPaletteForHex = (hex: number): ColorPalette => {
   }
   return best;
 };
-
-const PROCEDURAL_SCRIPT_STARTER = [
-  "# Procedural scene script",
-  "# Commands: clear | add <type> [as id] [field=value ...] | set <id> field=value ... | delete <id>",
-  "clear",
-  "add box as base width=2 height=0.6 depth=1.4 y=-0.4 color=#8aa4ff",
-  "add sphere as marker radius=0.45 x=1.15 y=0.25 z=0.2 color=#22c55e",
-  "set marker opacity=0.9",
-].join("\n");
 
 const DEMO_STEREOMETRY_TASK_TEXT_PL =
   "Dany jest ostroslup ABCDS o podstawie wypuklego czworokata ABCD. " +
@@ -8340,7 +8333,7 @@ const App: React.FC = () => {
     geometryProbeSelectionMode,
     geometryProceduralPanelTab,
   ]);
-  const [geometryProceduralScriptText, setGeometryProceduralScriptText] = useState(PROCEDURAL_SCRIPT_STARTER);
+  const [geometryProceduralScriptText, setGeometryProceduralScriptText] = useState(PROCEDURAL_SCENE_SCRIPT_STARTER);
   const [geometryProceduralScriptError, setGeometryProceduralScriptError] = useState<string | null>(null);
   const [geometryProceduralScriptStatus, setGeometryProceduralScriptStatus] = useState<string | null>(null);
   const [geometryBakeError, setGeometryBakeError] = useState<string | null>(null);
@@ -10702,7 +10695,7 @@ const App: React.FC = () => {
 
   const executeProceduralScript = useCallback(
     (options?: { switchToProcedural?: boolean }) => {
-      const result = executeGeometryProceduralScript({
+      const result = executeSceneScript({
         script: geometryProceduralScriptText,
         objects: geometryObjects,
         datasetObjectIds: geometryDatasetMeshObjects.map((object) => object.id),
@@ -10710,7 +10703,7 @@ const App: React.FC = () => {
       });
       if (!result.ok) {
         setGeometryProceduralScriptStatus(null);
-        setGeometryProceduralScriptError(`line ${result.error.line}: ${result.error.message}`);
+        setGeometryProceduralScriptError(formatSceneScriptDiagnostic(result.error));
         return;
       }
       setGeometryObjects(result.objects);
@@ -52867,7 +52860,7 @@ case "mobius":
                         <button
                           type="button"
                           onClick={() => {
-                            setGeometryProceduralScriptText(PROCEDURAL_SCRIPT_STARTER);
+                            setGeometryProceduralScriptText(PROCEDURAL_SCENE_SCRIPT_STARTER);
                             setGeometryProceduralScriptError(null);
                             setGeometryProceduralScriptStatus("Loaded starter script.");
                           }}
