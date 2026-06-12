@@ -131,6 +131,7 @@ import {
   type GeometryParamDef,
   type GeometryObjectTransform,
 } from "./geometry/proceduralObjects";
+import { executeGeometryProceduralScript } from "./geometry/proceduralScript";
 import {
   GEOMETRY_GALLERY_CARD_BY_ID,
   GEOMETRY_GALLERY_CARDS,
@@ -3929,41 +3930,6 @@ const buildFundamentalDiagramPreview = (
     })),
     animatedEdges,
   };
-};
-
-const tokenizeScriptLine = (line: string): string[] =>
-  (line.match(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\S+/g) ?? []).map((token) => {
-    if (
-      (token.startsWith('"') && token.endsWith('"')) ||
-      (token.startsWith("'") && token.endsWith("'"))
-    ) {
-      return token
-        .slice(1, -1)
-        .replace(/\\(["'])/g, "$1")
-        .replace(/\\\\/g, "\\");
-    }
-    return token;
-  });
-
-const parseScriptBool = (value: string): boolean | null => {
-  const raw = value.trim().toLowerCase();
-  if (["1", "true", "yes", "on"].includes(raw)) return true;
-  if (["0", "false", "no", "off"].includes(raw)) return false;
-  return null;
-};
-
-const parseScriptColor = (value: string): number | null => {
-  const raw = value.trim();
-  if (/^#?[0-9a-fA-F]{6}$/.test(raw)) {
-    const hex = raw.startsWith("#") ? raw.slice(1) : raw;
-    return Number.parseInt(hex, 16);
-  }
-  if (/^0x[0-9a-fA-F]{6}$/.test(raw)) {
-    return Number.parseInt(raw.slice(2), 16);
-  }
-  const numeric = Number(raw);
-  if (!Number.isFinite(numeric)) return null;
-  return clampNumber(Math.round(numeric), 0, 0xffffff);
 };
 
 const cloneGeometryObject = (obj: GeometryObject): GeometryObject => ({
@@ -10728,202 +10694,24 @@ const App: React.FC = () => {
 
   const executeProceduralScript = useCallback(
     (options?: { switchToProcedural?: boolean }) => {
-      const lines = geometryProceduralScriptText.split(/\r?\n/);
-      const datasetIds = new Set(geometryDatasetMeshObjects.map((obj) => obj.id));
-      const objects = geometryObjects.map(cloneGeometryObject);
-      const objectMap = new Map<string, GeometryObject>(objects.map((obj) => [obj.id, obj]));
-      let selectedId =
-        geometrySelectedObjectId && objectMap.has(geometrySelectedObjectId) ? geometrySelectedObjectId : null;
-      let created = 0;
-      let updated = 0;
-      let deleted = 0;
-      let generatedIdCounter = objectMap.size + 1;
-
-      const nextGeneratedId = () => {
-        while (true) {
-          const candidate = `obj_${generatedIdCounter++}`;
-          if (!objectMap.has(candidate) && !datasetIds.has(candidate)) return candidate;
-        }
-      };
-
-      const parseValueForParam = (
-        obj: GeometryObject,
-        key: string,
-        value: string,
-        lineNo: number
-      ): string | number | boolean | null => {
-        const keyLower = key.toLowerCase();
-        if (keyLower === "x" || keyLower === "y" || keyLower === "z") {
-          const n = Number(value);
-          if (!Number.isFinite(n)) throw new Error(`line ${lineNo}: invalid number for ${key}`);
-          obj.transform.position[keyLower] = n;
-          return null;
-        }
-        if (keyLower === "rx" || keyLower === "ry" || keyLower === "rz") {
-          const n = Number(value);
-          if (!Number.isFinite(n)) throw new Error(`line ${lineNo}: invalid number for ${key}`);
-          obj.transform.rotation[keyLower[1] as keyof Vec3] = n;
-          return null;
-        }
-        if (keyLower === "sx" || keyLower === "sy" || keyLower === "sz") {
-          const n = Number(value);
-          if (!Number.isFinite(n)) throw new Error(`line ${lineNo}: invalid number for ${key}`);
-          obj.transform.scale[keyLower[1] as keyof Vec3] = Math.max(0.001, n);
-          return null;
-        }
-        if (keyLower === "opacity") {
-          const n = Number(value);
-          if (!Number.isFinite(n)) throw new Error(`line ${lineNo}: invalid opacity`);
-          obj.material.opacity = clampNumber(n, 0, 1);
-          return null;
-        }
-        if (keyLower === "color") {
-          const c = parseScriptColor(value);
-          if (c == null) throw new Error(`line ${lineNo}: invalid color '${value}'`);
-          obj.material.color = c;
-          return null;
-        }
-        if (keyLower === "visible") {
-          const b = parseScriptBool(value);
-          if (b == null) throw new Error(`line ${lineNo}: invalid boolean '${value}'`);
-          obj.visible = b;
-          return null;
-        }
-        if (keyLower === "name") {
-          obj.name = value;
-          return null;
-        }
-        const registry = GEOMETRY_OBJECT_REGISTRY[obj.type];
-        const paramDef = registry.params.find((param) => param.id.toLowerCase() === keyLower);
-        const paramId = paramDef?.id ?? Object.keys(obj.params).find((id) => id.toLowerCase() === keyLower);
-        if (!paramId) throw new Error(`line ${lineNo}: unknown field '${key}' for ${obj.type}`);
-        if (!paramDef) return value;
-        if (paramDef.kind === "number") {
-          const n = Number(value);
-          if (!Number.isFinite(n)) throw new Error(`line ${lineNo}: invalid number for ${paramId}`);
-          const min = paramDef.min ?? -Infinity;
-          const max = paramDef.max ?? Infinity;
-          return clampNumber(n, min, max);
-        }
-        if (paramDef.kind === "toggle") {
-          const b = parseScriptBool(value);
-          if (b == null) throw new Error(`line ${lineNo}: invalid boolean for ${paramId}`);
-          return b;
-        }
-        return value;
-      };
-
-      try {
-        for (let i = 0; i < lines.length; i++) {
-          const lineNo = i + 1;
-          const trimmed = lines[i].trim();
-          if (!trimmed || trimmed.startsWith("#")) continue;
-          const tokens = tokenizeScriptLine(trimmed);
-          if (!tokens.length) continue;
-          const cmd = tokens[0].toLowerCase();
-          if (cmd === "clear") {
-            objectMap.clear();
-            selectedId = null;
-            continue;
-          }
-          if (cmd === "add" || cmd === "object") {
-            const typeToken = tokens[1];
-            if (!typeToken) throw new Error(`line ${lineNo}: missing object type`);
-            if (!(typeToken in GEOMETRY_OBJECT_REGISTRY)) {
-              throw new Error(`line ${lineNo}: unknown object type '${typeToken}'`);
-            }
-            const type = typeToken as GeometryObjectType;
-            let idx = 2;
-            let id = "";
-            if (tokens[idx]?.toLowerCase() === "as") {
-              id = tokens[idx + 1] ?? "";
-              idx += 2;
-            }
-            if (!id) id = nextGeneratedId();
-            if (objectMap.has(id) || datasetIds.has(id)) {
-              throw new Error(`line ${lineNo}: id '${id}' already exists`);
-            }
-            const obj = createGeometryObject(type, id);
-            for (let t = idx; t < tokens.length; t++) {
-              const eq = tokens[t].indexOf("=");
-              if (eq <= 0) throw new Error(`line ${lineNo}: expected key=value, got '${tokens[t]}'`);
-              const key = tokens[t].slice(0, eq);
-              const value = tokens[t].slice(eq + 1);
-              const parsedValue = parseValueForParam(obj, key, value, lineNo);
-              if (parsedValue != null) {
-                const paramId =
-                  GEOMETRY_OBJECT_REGISTRY[obj.type].params.find((p) => p.id.toLowerCase() === key.toLowerCase())?.id ??
-                  Object.keys(obj.params).find((p) => p.toLowerCase() === key.toLowerCase()) ??
-                  key;
-                obj.params[paramId] = parsedValue;
-              }
-            }
-            objectMap.set(id, obj);
-            selectedId = id;
-            created += 1;
-            continue;
-          }
-          if (cmd === "set" || cmd === "update") {
-            const id = tokens[1];
-            if (!id) throw new Error(`line ${lineNo}: missing object id`);
-            const obj = objectMap.get(id);
-            if (!obj) throw new Error(`line ${lineNo}: object '${id}' not found`);
-            if (tokens.length < 3) throw new Error(`line ${lineNo}: set needs at least one key=value pair`);
-            for (let t = 2; t < tokens.length; t++) {
-              const eq = tokens[t].indexOf("=");
-              if (eq <= 0) throw new Error(`line ${lineNo}: expected key=value, got '${tokens[t]}'`);
-              const key = tokens[t].slice(0, eq);
-              const value = tokens[t].slice(eq + 1);
-              const parsedValue = parseValueForParam(obj, key, value, lineNo);
-              if (parsedValue != null) {
-                const paramId =
-                  GEOMETRY_OBJECT_REGISTRY[obj.type].params.find((p) => p.id.toLowerCase() === key.toLowerCase())?.id ??
-                  Object.keys(obj.params).find((p) => p.toLowerCase() === key.toLowerCase()) ??
-                  key;
-                obj.params[paramId] = parsedValue;
-              }
-            }
-            updated += 1;
-            continue;
-          }
-          if (cmd === "delete" || cmd === "remove") {
-            const id = tokens[1];
-            if (!id) throw new Error(`line ${lineNo}: missing object id`);
-            if (!objectMap.delete(id)) throw new Error(`line ${lineNo}: object '${id}' not found`);
-            if (selectedId === id) selectedId = null;
-            deleted += 1;
-            continue;
-          }
-          if (cmd === "show" || cmd === "hide") {
-            const id = tokens[1];
-            if (!id) throw new Error(`line ${lineNo}: missing object id`);
-            const obj = objectMap.get(id);
-            if (!obj) throw new Error(`line ${lineNo}: object '${id}' not found`);
-            obj.visible = cmd === "show";
-            updated += 1;
-            continue;
-          }
-          if (cmd === "select") {
-            const id = tokens[1];
-            if (!id) throw new Error(`line ${lineNo}: missing object id`);
-            if (!objectMap.has(id)) throw new Error(`line ${lineNo}: object '${id}' not found`);
-            selectedId = id;
-            continue;
-          }
-          throw new Error(`line ${lineNo}: unknown command '${tokens[0]}'`);
-        }
-        const nextObjects = Array.from(objectMap.values());
-        setGeometryObjects(nextObjects);
-        setGeometrySelectedObjectId(selectedId ?? nextObjects[0]?.id ?? null);
-        setGeometryProceduralScriptError(null);
-        setGeometryProceduralScriptStatus(
-          `Applied ${nextObjects.length} objects (${created} created, ${updated} updated, ${deleted} deleted).`
-        );
-        if (options?.switchToProcedural) setGeometryMode("procedural");
-      } catch (err) {
+      const result = executeGeometryProceduralScript({
+        script: geometryProceduralScriptText,
+        objects: geometryObjects,
+        datasetObjectIds: geometryDatasetMeshObjects.map((object) => object.id),
+        selectedObjectId: geometrySelectedObjectId,
+      });
+      if (!result.ok) {
         setGeometryProceduralScriptStatus(null);
-        setGeometryProceduralScriptError(err instanceof Error ? err.message : String(err));
+        setGeometryProceduralScriptError(`line ${result.error.line}: ${result.error.message}`);
+        return;
       }
+      setGeometryObjects(result.objects);
+      setGeometrySelectedObjectId(result.selectedObjectId);
+      setGeometryProceduralScriptError(null);
+      setGeometryProceduralScriptStatus(
+        `Applied ${result.objects.length} objects (${result.stats.created} created, ${result.stats.updated} updated, ${result.stats.deleted} deleted).`
+      );
+      if (options?.switchToProcedural) setGeometryMode("procedural");
     },
     [geometryDatasetMeshObjects, geometryObjects, geometryProceduralScriptText, geometrySelectedObjectId]
   );
