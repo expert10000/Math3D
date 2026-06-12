@@ -252,6 +252,24 @@ button:focus-visible {
   transform: none;
 }
 
+.construction-lab-panel input,
+.construction-lab-panel select,
+.construction-lab-panel textarea,
+.construction-lab-panel button {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.construction-lab-panel input,
+.construction-lab-panel select,
+.construction-lab-panel textarea {
+  min-width: 0;
+}
+
+.construction-lab-panel button {
+  white-space: normal;
+}
+
 .gallery-panel-scroll.geometry-gallery-compact {
   max-height: min(52vh, 600px);
   gap: 8px;

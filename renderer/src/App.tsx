@@ -8288,6 +8288,8 @@ const App: React.FC = () => {
   const [geometryCreateActionStatus, setGeometryCreateActionStatus] = useState<string | null>(null);
   const [geometryCreateSelectedCardExpanded, setGeometryCreateSelectedCardExpanded] = useState(false);
   const [geometryCreateActionsOverlayOpen, setGeometryCreateActionsOverlayOpen] = useState(true);
+  const geometryWorkspaceRef = useRef<HTMLDivElement | null>(null);
+  const [geometryWorkspaceWidth, setGeometryWorkspaceWidth] = useState(0);
   const geometryCreatePanelRef = useRef<HTMLDivElement | null>(null);
   const [geometryCreatePanelHeight, setGeometryCreatePanelHeight] = useState(900);
   const [geometryAddSelectNewObject, setGeometryAddSelectNewObject] = useState(true);
@@ -20454,6 +20456,16 @@ const App: React.FC = () => {
       setMode(next);
     });
   }, []);
+
+  useEffect(() => {
+    const workspace = geometryWorkspaceRef.current;
+    if (!workspace || typeof ResizeObserver === "undefined") return;
+    const updateWidth = () => setGeometryWorkspaceWidth(workspace.getBoundingClientRect().width);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(workspace);
+    return () => observer.disconnect();
+  }, [geometryMode, geometryWorkbookUiMode, mode]);
 
   useEffect(() => {
     const panel = geometryCreatePanelRef.current;
@@ -44550,7 +44562,11 @@ case "mobius":
     showViewportDebug && !(mode === "surfaces" && isPresentDisplayMode) && !cleanScreenshotSurfaceActive;
   const isPhoneLandscapeLayout =
     viewportSize.width > viewportSize.height && viewportSize.width <= 980 && viewportSize.height <= 560;
-  const compactGeometryPanel = geometryCreatePanelHeight < 900 || isPhoneLandscapeLayout;
+  const isGeometryStackedLayout =
+    isPhoneLandscapeLayout || (geometryWorkspaceWidth > 0 ? geometryWorkspaceWidth <= 980 : viewportSize.width <= 980);
+  const compactGeometryPanel = geometryCreatePanelHeight < 900 || isGeometryStackedLayout;
+  const compactGeometryCreatePanel =
+    geometryMode === "procedural" && geometryProceduralPanelTab === "create" && compactGeometryPanel;
   const showGeometryFullWorkbookWorkspace =
     mode === "geometry" && geometryMode === "workbook" && geometryWorkbookUiMode === "full";
   const showSurfacesRightPanel =
@@ -44561,6 +44577,7 @@ case "mobius":
     mode === "geometry" && geometryMode === "procedural" && showRightPanel && !isPresentDisplayMode;
   const surfaceLeftPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(leftWidth, 280) : leftWidth;
   const surfaceRightPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(rightWidth, 280) : rightWidth;
+  const geometryLeftPanelWidth = Math.max(leftWidth, 280);
   const geometryRightPanelWidth = rightWidth;
   const showSurfaceSideCompanions =
     (showGaussMap || (surfaceViewerKind === "complex" && complexMapShowSphere)) &&
@@ -51657,31 +51674,43 @@ case "mobius":
           </div>
           ) : (
           <div
+            ref={geometryWorkspaceRef}
+            data-testid="geometry-workspace"
+            data-layout={isGeometryStackedLayout ? "stacked" : "split"}
             style={{
               flex: 1,
+              minWidth: 0,
               minHeight: 0,
               display: "flex",
-              flexDirection: isPhoneLandscapeLayout ? "column" : "row",
+              flexDirection: isGeometryStackedLayout ? "column" : "row",
               alignItems: "stretch",
-              gap: isPhoneLandscapeLayout ? 8 : 0,
+              gap: isGeometryStackedLayout ? 8 : 0,
+              overflowX: "hidden",
+              overflowY: isGeometryStackedLayout ? "auto" : "hidden",
             }}
           >
             {/* LEFT */}
             <div
               ref={geometryCreatePanelRef}
+              data-testid="geometry-left-panel"
               data-compact-geometry-panel={compactGeometryPanel ? "true" : "false"}
               style={{
                 ...styles.panelLeft,
-                width: isPhoneLandscapeLayout ? "100%" : leftWidth,
-                maxWidth: isPhoneLandscapeLayout ? "100%" : undefined,
-                maxHeight: isPhoneLandscapeLayout ? Math.max(180, Math.floor(viewportSize.height * 0.46)) : undefined,
-                overflowY: compactGeometryPanel && geometryProceduralPanelTab === "create" ? "hidden" : "auto",
-                order: isPhoneLandscapeLayout ? 2 : 0,
+                flex: isGeometryStackedLayout ? "0 0 auto" : `0 0 ${geometryLeftPanelWidth}px`,
+                width: isGeometryStackedLayout ? "100%" : geometryLeftPanelWidth,
+                maxWidth: isGeometryStackedLayout ? "100%" : undefined,
+                boxSizing: "border-box",
+                overflowY: isGeometryStackedLayout
+                  ? "visible"
+                  : compactGeometryCreatePanel
+                    ? "hidden"
+                    : "auto",
+                order: isGeometryStackedLayout ? 2 : 0,
               }}
             >
               <section
                 style={
-                  compactGeometryPanel && geometryProceduralPanelTab === "create"
+                  compactGeometryCreatePanel
                     ? { height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }
                     : { minWidth: 0, maxWidth: "100%" }
                 }
@@ -51709,20 +51738,20 @@ case "mobius":
                     >
                     <div style={{ fontSize: 12, fontWeight: 700 }}>Object gallery</div>
                     <div style={{ display: "grid", gap: 6 }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6 }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, minWidth: 0 }}>
                         <input
                           type="search"
                           data-testid="geometry-gallery-search"
                           value={geometryGallerySearchText}
                           onChange={(e) => setGeometryGallerySearchText(e.target.value)}
                           placeholder="Search objects..."
-                          style={{ padding: "4px 6px", fontSize: 11 }}
+                          style={{ padding: "4px 6px", fontSize: 11, minWidth: 0, flex: "1 1 140px" }}
                         />
                         <select
                           data-testid="geometry-gallery-category-filter"
                           value={geometryGalleryCategoryFilter}
                           onChange={(e) => setGeometryGalleryCategoryFilter(e.target.value as GeometryGalleryCategoryFilter)}
-                          style={{ padding: "4px 6px", fontSize: 11, minWidth: 132 }}
+                          style={{ padding: "4px 6px", fontSize: 11, minWidth: 0, maxWidth: "100%", flex: "1 1 132px" }}
                         >
                           <option value="all">All categories</option>
                           {GEOMETRY_GALLERY_CATEGORIES.map((category) => (
@@ -51763,7 +51792,16 @@ case "mobius":
                             ))}
                           </select>
                         </label>
-                        <div style={{ display: "inline-flex", border: "1px solid #cbd5e1", borderRadius: 999, overflow: "hidden" }}>
+                        <div
+                          style={{
+                            display: "inline-flex",
+                            maxWidth: "100%",
+                            flexWrap: "wrap",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: 8,
+                            overflow: "hidden",
+                          }}
+                        >
                           {([
                             { id: "rendered" as const, label: "Rendered" },
                             { id: "diagram" as const, label: "Diagram" },
@@ -51780,6 +51818,7 @@ case "mobius":
                                 borderRadius: 0,
                                 padding: "3px 8px",
                                 fontSize: 10,
+                                flex: "1 1 auto",
                                 boxShadow: "none",
                                 background: galleryCardViewMode === modeOption.id ? "#dbeafe" : "#fff",
                                 fontWeight: galleryCardViewMode === modeOption.id ? 700 : 500,
@@ -60695,21 +60734,23 @@ case "mobius":
               </section>
             </div>
 
-            {!isPhoneLandscapeLayout && (
+            {!isGeometryStackedLayout && (
               <div data-testid="geometry-left-splitter" onMouseDown={startDragLeft} style={splitterStyle} />
             )}
 
             {/* RIGHT */}
             <div
+              data-testid="geometry-viewer-stack"
               style={{
                 ...styles.stack,
-                minHeight: isPhoneLandscapeLayout ? 220 : 0,
+                flex: isGeometryStackedLayout ? "0 0 420px" : styles.stack.flex,
+                minHeight: isGeometryStackedLayout ? 360 : 0,
                 border: "1px solid #9fb0c7",
                 borderRadius: 10,
                 overflow: "visible",
                 background: "#f8fbff",
                 boxShadow: "inset 0 0 0 1px #b8c5d8",
-                order: isPhoneLandscapeLayout ? 1 : 0,
+                order: isGeometryStackedLayout ? 1 : 0,
               }}
             >
               {geometryViewerControlsOpen && (
@@ -61158,7 +61199,7 @@ case "mobius":
                   flex: 1,
                   minHeight: 0,
                   display: "flex",
-                  flexDirection: isPhoneLandscapeLayout ? "column" : "row",
+                  flexDirection: isGeometryStackedLayout ? "column" : "row",
                   alignItems: "stretch",
                 }}
               >
@@ -61177,6 +61218,7 @@ case "mobius":
                   {geometryMode === "procedural" &&
                     geometryProceduralPanelTab === "create" &&
                     geometryGallerySelectedCard &&
+                    !showDependencyOverlay &&
                     (geometryCreateActionsOverlayOpen ? (
                       <div
                         data-testid="geometry-create-actions-overlay"
@@ -61944,17 +61986,19 @@ case "mobius":
                     />
                   )}
                 </div>
-                {showGeometryRightPanel && !isPhoneLandscapeLayout && <div onMouseDown={startDragRight} style={splitterStyle} />}
+                {showGeometryRightPanel && !isGeometryStackedLayout && <div onMouseDown={startDragRight} style={splitterStyle} />}
                 {showGeometryRightPanel && (
                   <div
+                    data-testid="geometry-right-panel"
                     style={{
                       ...styles.panelLeft,
-                      width: isPhoneLandscapeLayout ? "100%" : geometryRightPanelWidth,
-                      maxWidth: isPhoneLandscapeLayout ? "100%" : maxRight,
-                      maxHeight: isPhoneLandscapeLayout ? Math.max(180, Math.floor(viewportSize.height * 0.46)) : undefined,
-                      overflowY: "auto",
-                      order: isPhoneLandscapeLayout ? 3 : 0,
-                      borderLeft: isPhoneLandscapeLayout ? "1px solid #d9e2ef" : undefined,
+                      flex: isGeometryStackedLayout ? "0 0 auto" : undefined,
+                      width: isGeometryStackedLayout ? "100%" : geometryRightPanelWidth,
+                      maxWidth: isGeometryStackedLayout ? "100%" : maxRight,
+                      boxSizing: "border-box",
+                      overflowY: isGeometryStackedLayout ? "visible" : "auto",
+                      order: isGeometryStackedLayout ? 3 : 0,
+                      borderLeft: isGeometryStackedLayout ? "1px solid #d9e2ef" : undefined,
                     }}
                   >
                     <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>

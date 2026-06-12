@@ -2325,7 +2325,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   };
 
   return (
-    <div style={{ display: "grid", gap: 12, minWidth: 0, maxWidth: "100%" }}>
+    <div className="construction-lab-panel" style={{ display: "grid", gap: 12, minWidth: 0, maxWidth: "100%" }}>
       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
         {!hideWorkspaceTabs &&
           (["task", "build", "inspect", "claims", "script", "scene"] as ConstructionWorkspaceTab[]).map((tab) => (
@@ -2894,7 +2894,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
 
       {workspaceTab === "claims" && (
         <div style={{ display: "grid", gap: 8 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <div style={{ fontSize: 12, fontWeight: 700 }}>Claims</div>
             <select
               value={claimsSortMode}
@@ -2927,19 +2927,19 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
               ))}
             </div>
             {renderCheckInputs()}
-            <div style={{ display: "flex", gap: 6 }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <button type="button" onClick={handleAddCheck}>Add claim</button>
               <button type="button" onClick={createClaimFromSelection}>Create claim from selection</button>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr auto", gap: 6, alignItems: "center" }}>
-              <select value={selectionAId} onChange={(e) => setSelectionAId(e.target.value)}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", minWidth: 0 }}>
+              <select value={selectionAId} onChange={(e) => setSelectionAId(e.target.value)} style={{ flex: "1 1 100px" }}>
                 <option value="">Selection A</option>
                 {solved.objects.map((obj) => (
                   <option key={`claims-a-${obj.id}`} value={obj.id}>{obj.id}</option>
                 ))}
               </select>
               <button type="button" onClick={() => useSelectedAsSelectionSlot("a")}>Use selected</button>
-              <select value={selectionBId} onChange={(e) => setSelectionBId(e.target.value)}>
+              <select value={selectionBId} onChange={(e) => setSelectionBId(e.target.value)} style={{ flex: "1 1 100px" }}>
                 <option value="">Selection B</option>
                 {solved.objects.map((obj) => (
                   <option key={`claims-b-${obj.id}`} value={obj.id}>{obj.id}</option>
@@ -3053,18 +3053,21 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       )}
 
       {workspaceTab === "script" && (
-        <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 10, display: "grid", gap: 8, minWidth: 0 }}>
+        <div
+          data-testid="construction-script-workspace"
+          style={{ borderTop: "1px solid #e5e7eb", paddingTop: 10, display: "grid", gap: 8, minWidth: 0, maxWidth: "100%" }}
+        >
           <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
             <div style={{ fontSize: 12, fontWeight: 700 }}>Scene script</div>
             <button type="button" onClick={() => setPaletteOpen(true)} style={{ maxWidth: "100%", whiteSpace: "normal" }}>
               Command palette (Ctrl/Cmd+K)
             </button>
           </div>
-          <div style={{ fontSize: 11, opacity: 0.78, display: "grid", gap: 2 }}>
-            <div><code>point A -0.2 1.35 0</code></div>
-            <div><code>line A B as AB</code></div>
-            <div><code>circumcircle A B C as Omega</code></div>
-            <div><code>check point-on-circle X Omega</code></div>
+          <div style={{ fontSize: 11, opacity: 0.78, display: "grid", gap: 2, overflowWrap: "anywhere" }}>
+            <div><code style={{ whiteSpace: "pre-wrap" }}>point A -0.2 1.35 0</code></div>
+            <div><code style={{ whiteSpace: "pre-wrap" }}>line A B as AB</code></div>
+            <div><code style={{ whiteSpace: "pre-wrap" }}>circumcircle A B C as Omega</code></div>
+            <div><code style={{ whiteSpace: "pre-wrap" }}>check point-on-circle X Omega</code></div>
           </div>
           <div style={{ fontSize: 11, color: scriptParsePreview.error ? "#b42318" : "#166534" }}>
             {scriptParsePreview.error
@@ -3119,15 +3122,15 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
               ))}
             </div>
           )}
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 6, alignItems: "center" }}>
-            <select value={selectedScriptTemplate} onChange={(e) => setSelectedScriptTemplate(e.target.value)} style={{ minWidth: 0 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
+            <select value={selectedScriptTemplate} onChange={(e) => setSelectedScriptTemplate(e.target.value)} style={{ minWidth: 0, flex: "1 1 220px" }}>
               {SCRIPT_TEMPLATES.map((entry) => (
                 <option key={entry.label} value={entry.command}>
                   {entry.label}: {entry.command}
                 </option>
               ))}
             </select>
-            <button type="button" onClick={insertScriptTemplate}>Insert command template</button>
+            <button type="button" onClick={insertScriptTemplate} style={{ maxWidth: "100%", whiteSpace: "normal" }}>Insert command template</button>
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             <button type="button" onClick={regenerateScriptFromScene}>Generate from scene</button>
@@ -3135,13 +3138,13 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
             <button type="button" onClick={runSelectedScript}>Run selected</button>
             <button type="button" onClick={runScriptFromCursor}>Run from cursor</button>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 6, alignItems: "center" }}>
-            <select value={scriptSyncMode} onChange={(e) => setScriptSyncMode(e.target.value as ScriptSyncMode)} style={{ minWidth: 0 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
+            <select value={scriptSyncMode} onChange={(e) => setScriptSyncMode(e.target.value as ScriptSyncMode)} style={{ minWidth: 0, flex: "1 1 220px" }}>
               <option value="overwrite">Sync mode: overwrite script from scene</option>
               <option value="appendNew">Sync mode: append new steps only</option>
               <option value="keepComments">Sync mode: keep manual comments</option>
             </select>
-            <button type="button" onClick={regenerateScriptFromScene}>Apply sync mode</button>
+            <button type="button" onClick={regenerateScriptFromScene} style={{ maxWidth: "100%", whiteSpace: "normal" }}>Apply sync mode</button>
           </div>
           <div style={{ fontSize: 10, opacity: 0.72 }}>
             Failed run keeps previous valid scene; fix diagnostics then rerun.
@@ -3154,16 +3157,16 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
               <span style={{ color: "#b42318" }}>{palettePreview.error}</span>
             )}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 6, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
             <input
               type="text"
               list="construction-command-suggestions"
               value={paletteInput}
               onChange={(e) => setPaletteInput(e.target.value)}
               placeholder="Quick command autocomplete"
-              style={{ minWidth: 0, fontFamily: "monospace", fontSize: 11 }}
+              style={{ minWidth: 0, flex: "1 1 220px", fontFamily: "monospace", fontSize: 11 }}
             />
-            <button type="button" onClick={executePalette}>Execute command</button>
+            <button type="button" onClick={executePalette} style={{ maxWidth: "100%", whiteSpace: "normal" }}>Execute command</button>
             <datalist id="construction-command-suggestions">
               {SCRIPT_TEMPLATES.map((entry) => (
                 <option key={entry.label} value={entry.command} />
@@ -3217,15 +3220,16 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
               style={{ width: "100%", marginTop: 4 }}
             />
           </label>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto", gap: 6, alignItems: "center" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", minWidth: 0 }}>
             <input
               type="text"
               value={presetName}
               onChange={(e) => setPresetName(e.target.value)}
               placeholder="preset name"
+              style={{ flex: "1 1 140px" }}
             />
             <button type="button" onClick={saveCurrentScriptPreset}>Save as preset</button>
-            <select value={selectedPresetName} onChange={(e) => setSelectedPresetName(e.target.value)}>
+            <select value={selectedPresetName} onChange={(e) => setSelectedPresetName(e.target.value)} style={{ flex: "1 1 140px" }}>
               <option value="">Preset...</option>
               {presetOptions.map((preset) => (
                 <option key={preset.name} value={preset.name}>
