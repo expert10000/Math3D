@@ -208,12 +208,13 @@ test("Geometry gallery: select vs add flow, quick add, and filtering", async () 
     await expect(sphereCard).toHaveClass(/is-compact/);
     await sphereCard.click({ position: { x: 16, y: 16 } });
     await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(baseCount);
-    const selectedDrawer = page.getByTestId("geometry-create-selected-card");
-    await expect(selectedDrawer).toBeVisible();
-    await expect(selectedDrawer.getByRole("button", { name: "Placement >", exact: true })).toBeVisible();
-    await expect(selectedDrawer.getByText("Placement", { exact: true })).toBeHidden();
-
-    await page.getByTestId("geometry-add-object").click();
+    await expect(page.getByTestId("geometry-create-selected-card")).toHaveCount(0);
+    const createOverlay = page.getByTestId("geometry-create-actions-overlay");
+    await expect(createOverlay).toBeVisible();
+    await expect(createOverlay.getByText("Placement", { exact: true })).toBeVisible();
+    const addSelected = createOverlay.getByTestId("geometry-add-object");
+    await expect(addSelected).toBeVisible();
+    await addSelected.click();
     await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(baseCount + 1);
 
     const quickAddTorus = page.getByTestId("geometry-gallery-quick-add-torus");
@@ -234,6 +235,36 @@ test("Geometry gallery: select vs add flow, quick add, and filtering", async () 
     await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(baseCount + 3);
     await page.getByRole("button", { name: "Scene", exact: true }).first().click();
     await expect(page.getByTestId("app-status-bar")).toContainText("Geometry viewer (procedural)");
+  } finally {
+    if (app) {
+      await app.close();
+    }
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
+test("Geometry selection context appears only for Definition, Edit, and Dependencies", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-selection-context-"));
+  const env = {
+    APPDATA: profileDir,
+    LOCALAPPDATA: profileDir,
+  };
+
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(env);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page);
+
+    await expect(page.getByTestId("geometry-selection-context")).toHaveCount(0);
+    for (const panel of ["definition", "transform", "dependencies"]) {
+      await page.getByTestId(`geometry-procedural-panel-${panel}`).click();
+      await expect(page.getByTestId("geometry-selection-context")).toBeVisible();
+    }
+    await page.getByTestId("geometry-procedural-panel-create").click();
+    await expect(page.getByTestId("geometry-selection-context")).toHaveCount(0);
   } finally {
     if (app) {
       await app.close();

@@ -8321,6 +8321,7 @@ const App: React.FC = () => {
   const [geometrySceneGalleryExpanded, setGeometrySceneGalleryExpanded] = useState(false);
   const [geometryCreateActionStatus, setGeometryCreateActionStatus] = useState<string | null>(null);
   const [geometryCreateSelectedCardExpanded, setGeometryCreateSelectedCardExpanded] = useState(false);
+  const [geometryCreateActionsOverlayOpen, setGeometryCreateActionsOverlayOpen] = useState(true);
   const geometryCreatePanelRef = useRef<HTMLDivElement | null>(null);
   const [geometryCreatePanelHeight, setGeometryCreatePanelHeight] = useState(900);
   const [geometryAddSelectNewObject, setGeometryAddSelectNewObject] = useState(true);
@@ -9748,6 +9749,7 @@ const App: React.FC = () => {
     if (!card) return;
     setGeometryGallerySelectedCardId(card.id);
     setGeometryGallerySelectedPresetId(null);
+    setGeometryCreateActionsOverlayOpen(true);
     if (card.supported && card.defaultRecipe) setGeometryNewObjectType(card.defaultRecipe.type);
   }, []);
   const handleToggleGeometryGalleryFavorite = useCallback((cardId: string) => {
@@ -44755,9 +44757,6 @@ case "mobius":
   const isPhoneLandscapeLayout =
     viewportSize.width > viewportSize.height && viewportSize.width <= 980 && viewportSize.height <= 560;
   const compactGeometryPanel = geometryCreatePanelHeight < 900 || isPhoneLandscapeLayout;
-  useEffect(() => {
-    if (compactGeometryPanel) setGeometryCreateSelectedCardExpanded(false);
-  }, [compactGeometryPanel]);
   const showGeometryFullWorkbookWorkspace =
     mode === "geometry" && geometryMode === "workbook" && geometryWorkbookUiMode === "full";
   const showSurfacesRightPanel =
@@ -47515,8 +47514,13 @@ case "mobius":
                         onClick={() => {
                           setGeometryProceduralPanelTab(entry.id);
                           if (entry.id === "dependencies") {
+                            setShowRightPanel(true);
                             setGeometryRightPanelTab("inspector");
                             setGeometryInspectorPanelTab("dependencies");
+                          } else if (entry.id === "definition" || entry.id === "transform") {
+                            setShowRightPanel(true);
+                            setGeometryRightPanelTab("inspector");
+                            setGeometryInspectorPanelTab("definition");
                           } else if (entry.id !== "construct") {
                             setGeometryInspectorPanelTab("probe");
                           }
@@ -52004,7 +52008,7 @@ case "mobius":
                       data-compact={compactGeometryPanel ? "true" : "false"}
                       className={`gallery-panel-scroll${compactGeometryPanel ? " geometry-gallery-compact" : ""}`}
                       style={{
-                        paddingBottom: geometryGallerySelectedCard ? 14 : 0,
+                        paddingBottom: 0,
                         flex: compactGeometryPanel ? "1 1 auto" : undefined,
                         minHeight: compactGeometryPanel ? 90 : undefined,
                         maxHeight: compactGeometryPanel ? "none" : undefined,
@@ -52209,7 +52213,7 @@ case "mobius":
                       )}
                     </div>
 
-                    {geometryGallerySelectedCard && (
+                    {false && geometryGallerySelectedCard && (
                       <div
                         data-testid="geometry-create-selected-card"
                         style={{
@@ -55107,7 +55111,7 @@ case "mobius":
                           borderRadius: 8,
                           padding: "8px 10px",
                           background: "#f8fbff",
-                          display: "grid",
+                          display: "none",
                           gap: 6,
                         }}
                       >
@@ -61375,6 +61379,175 @@ case "mobius":
                     position: "relative",
                   }}
                 >
+                  {geometryMode === "procedural" &&
+                    geometryProceduralPanelTab === "create" &&
+                    geometryGallerySelectedCard &&
+                    (geometryCreateActionsOverlayOpen ? (
+                      <div
+                        data-testid="geometry-create-actions-overlay"
+                        style={{
+                          position: "absolute",
+                          top: 10,
+                          left: 10,
+                          zIndex: 22,
+                          width: "min(330px, calc(100% - 20px))",
+                          maxHeight: "calc(100% - 20px)",
+                          overflowY: "auto",
+                          border: "1px solid #93c5fd",
+                          borderRadius: 10,
+                          padding: "9px 10px",
+                          background: "rgba(255, 255, 255, 0.96)",
+                          boxShadow: "0 8px 24px rgba(15, 23, 42, 0.14)",
+                          display: "grid",
+                          gap: 8,
+                          fontSize: 11,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 10, color: "#64748b", fontWeight: 800, textTransform: "uppercase" }}>
+                              Selected from library
+                            </div>
+                            <strong style={{ fontSize: 13 }}>{geometryGallerySelectedCard.name}</strong>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setGeometryCreateActionsOverlayOpen(false)}
+                            aria-label="Minimize selected object actions"
+                            style={{ padding: "2px 7px", fontSize: 11 }}
+                          >
+                            Minimize
+                          </button>
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            data-testid="geometry-add-object"
+                            onClick={handleAddGeometryGallerySelected}
+                            disabled={!geometryGallerySelectedCard.supported}
+                            style={{ fontWeight: 800 }}
+                          >
+                            Add selected
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddGeometryGalleryDefault(geometryGallerySelectedCard)}
+                            disabled={!geometryGallerySelectedCard.supported || !geometryGallerySelectedCard.defaultRecipe}
+                          >
+                            Add preset
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleOpenGeometryGalleryCustomEditor}
+                            disabled={!geometryGallerySelectedCard.supported || !geometryGallerySelectedCard.defaultRecipe}
+                          >
+                            Customize
+                          </button>
+                        </div>
+                        <div style={{ display: "grid", gap: 5 }}>
+                          <strong style={{ fontSize: 10.5 }}>Placement</strong>
+                          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              aria-pressed={!geometryAddEnterPlacementMode}
+                              onClick={() => {
+                                setGeometryAddEnterPlacementMode(false);
+                                setGeometryCreatePlacementModeActive(false);
+                                setGeometryCreatePlacementStatus(null);
+                              }}
+                              style={pill(!geometryAddEnterPlacementMode)}
+                            >
+                              At origin
+                            </button>
+                            {GEOMETRY_CREATE_PLACEMENT_TARGET_OPTIONS.map((option) => {
+                              const active = geometryAddEnterPlacementMode && geometryCreatePlacementTarget === option.id;
+                              return (
+                                <button
+                                  key={`geometry-overlay-placement-${option.id}`}
+                                  type="button"
+                                  aria-pressed={active}
+                                  onClick={() => {
+                                    setGeometryAddEnterPlacementMode(true);
+                                    setGeometryCreatePlacementTarget(option.id);
+                                    setGeometryCreatePlacementSnapToGrid(option.id === "on-grid");
+                                  }}
+                                  style={pill(active)}
+                                >
+                                  {option.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        {geometryCreateQuickParamEntries.length > 0 && (
+                          <div style={{ display: "grid", gap: 5 }}>
+                            <strong style={{ fontSize: 10.5 }}>Quick parameters</strong>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5 }}>
+                              {geometryCreateQuickParamEntries.map((entry) => (
+                                <label
+                                  key={`geometry-overlay-quick-${entry.key}`}
+                                  style={{ display: "grid", gap: 2, color: "#475569", fontSize: 10 }}
+                                >
+                                  {entry.key}
+                                  {typeof entry.value === "boolean" ? (
+                                    <input
+                                      type="checkbox"
+                                      checked={entry.value}
+                                      onChange={(event) =>
+                                        setGeometryGalleryPreviewParams((previous) => ({
+                                          ...previous,
+                                          [entry.key]: event.target.checked,
+                                        }))
+                                      }
+                                    />
+                                  ) : (
+                                    <input
+                                      type={typeof entry.value === "number" ? "number" : "text"}
+                                      step={typeof entry.value === "number" ? 0.1 : undefined}
+                                      value={String(entry.value)}
+                                      onChange={(event) => {
+                                        const next =
+                                          typeof entry.value === "number" ? Number(event.target.value) : event.target.value;
+                                        if (typeof next === "number" && !Number.isFinite(next)) return;
+                                        setGeometryGalleryPreviewParams((previous) => ({
+                                          ...previous,
+                                          [entry.key]: next,
+                                        }));
+                                      }}
+                                      style={{ minWidth: 0, width: "100%", boxSizing: "border-box", fontSize: 10.5 }}
+                                    />
+                                  )}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {geometryCreatePlacementModeActive && (
+                          <div style={{ color: "#1d4ed8", fontSize: 10.5 }}>
+                            Placement active. Move over the viewer and click to place.
+                          </div>
+                        )}
+                        {geometryCreateActionStatus && (
+                          <div style={{ color: "#475569", fontSize: 10.5 }}>{geometryCreateActionStatus}</div>
+                        )}
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        data-testid="geometry-create-actions-overlay-open"
+                        onClick={() => setGeometryCreateActionsOverlayOpen(true)}
+                        style={{
+                          position: "absolute",
+                          top: 10,
+                          left: 10,
+                          zIndex: 22,
+                          fontWeight: 800,
+                          boxShadow: "0 4px 12px rgba(15, 23, 42, 0.14)",
+                        }}
+                      >
+                        Add {geometryGallerySelectedCard.name}
+                      </button>
+                    ))}
                   {showDependencyOverlay && geometryProceduralPanelTab !== "dependencies" && (
                     <div
                       data-testid="geometry-dependency-overlay-card"
@@ -62012,7 +62185,13 @@ case "mobius":
                     </div>
                     {geometryRightPanelTab === "inspector" ? (
                       <>
+                        {(
+                          geometryProceduralPanelTab === "definition" ||
+                          geometryProceduralPanelTab === "transform" ||
+                          geometryProceduralPanelTab === "dependencies"
+                        ) && (
                         <div
+                          data-testid="geometry-selection-context"
                           style={{
                             border: "1px solid #cbd5e1",
                             borderRadius: 8,
@@ -62042,6 +62221,7 @@ case "mobius":
                             <div style={{ color: "#64748b" }}>Nothing selected.</div>
                           )}
                         </div>
+                        )}
                         <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
                           {([
                             ["probe", "Probe"],
