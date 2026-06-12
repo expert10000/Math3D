@@ -44570,8 +44570,32 @@ case "mobius":
     mode === "geometry" && geometryMode === "procedural" && showRightPanel && !isPresentDisplayMode;
   const surfaceLeftPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(leftWidth, 280) : leftWidth;
   const surfaceRightPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(rightWidth, 280) : rightWidth;
-  const geometryLeftPanelWidth = Math.max(leftWidth, 280);
-  const geometryRightPanelWidth = rightWidth;
+  const geometryMinViewerWidth = 320;
+  const geometrySplitterWidth = typeof splitterStyle.width === "number" ? splitterStyle.width : 6;
+  const geometrySplittersWidth = showGeometryRightPanel ? geometrySplitterWidth * 2 : geometrySplitterWidth;
+  const geometryWorkspaceAvailableWidth = geometryWorkspaceWidth > 0 ? geometryWorkspaceWidth : viewportSize.width;
+  const geometryRightPanelTargetWidth = Math.min(maxRight, Math.max(minRight, rightWidth));
+  const geometryLeftPanelTargetWidth = Math.max(leftWidth, 280);
+  const geometryLeftPanelMaxWidth =
+    !isGeometryStackedLayout && geometryWorkspaceAvailableWidth > 0
+      ? Math.max(
+          280,
+          geometryWorkspaceAvailableWidth - geometryRightPanelTargetWidth - geometrySplittersWidth - geometryMinViewerWidth
+        )
+      : geometryLeftPanelTargetWidth;
+  const geometryLeftPanelWidth = isGeometryStackedLayout
+    ? geometryLeftPanelTargetWidth
+    : Math.min(geometryLeftPanelTargetWidth, geometryLeftPanelMaxWidth);
+  const geometryRightPanelMaxWidth =
+    !isGeometryStackedLayout && showGeometryRightPanel && geometryWorkspaceAvailableWidth > 0
+      ? Math.max(
+          minRight,
+          geometryWorkspaceAvailableWidth - geometryLeftPanelWidth - geometrySplittersWidth - geometryMinViewerWidth
+        )
+      : geometryRightPanelTargetWidth;
+  const geometryRightPanelWidth = isGeometryStackedLayout
+    ? geometryRightPanelTargetWidth
+    : Math.min(geometryRightPanelTargetWidth, geometryRightPanelMaxWidth);
   const showSurfaceSideCompanions =
     (showGaussMap || (surfaceViewerKind === "complex" && complexMapShowSphere)) &&
     !(mode === "surfaces" && isPresentDisplayMode) &&
@@ -51691,8 +51715,10 @@ case "mobius":
                 ...styles.panelLeft,
                 flex: isGeometryStackedLayout ? "0 0 auto" : `0 0 ${geometryLeftPanelWidth}px`,
                 width: isGeometryStackedLayout ? "100%" : geometryLeftPanelWidth,
-                maxWidth: isGeometryStackedLayout ? "100%" : undefined,
+                maxWidth: isGeometryStackedLayout ? "100%" : geometryLeftPanelWidth,
                 boxSizing: "border-box",
+                position: "relative",
+                zIndex: 2,
                 overflowY: isGeometryStackedLayout
                   ? "visible"
                   : compactGeometryCreatePanel
@@ -60740,10 +60766,12 @@ case "mobius":
                 minHeight: isGeometryStackedLayout ? 360 : 0,
                 border: "1px solid #9fb0c7",
                 borderRadius: 10,
-                overflow: "visible",
+                overflow: "hidden",
                 background: "#f8fbff",
                 boxShadow: "inset 0 0 0 1px #b8c5d8",
                 order: isGeometryStackedLayout ? 1 : 0,
+                position: "relative",
+                zIndex: 1,
               }}
             >
               {geometryViewerControlsOpen && (
@@ -61985,10 +62013,12 @@ case "mobius":
                     data-testid="geometry-right-panel"
                     style={{
                       ...styles.panelLeft,
-                      flex: isGeometryStackedLayout ? "0 0 auto" : undefined,
+                      flex: isGeometryStackedLayout ? "0 0 auto" : `0 0 ${geometryRightPanelWidth}px`,
                       width: isGeometryStackedLayout ? "100%" : geometryRightPanelWidth,
-                      maxWidth: isGeometryStackedLayout ? "100%" : maxRight,
+                      maxWidth: isGeometryStackedLayout ? "100%" : geometryRightPanelWidth,
                       boxSizing: "border-box",
+                      position: "relative",
+                      zIndex: 2,
                       overflowY: isGeometryStackedLayout ? "visible" : "auto",
                       order: isGeometryStackedLayout ? 3 : 0,
                       borderLeft: isGeometryStackedLayout ? "1px solid #d9e2ef" : undefined,
