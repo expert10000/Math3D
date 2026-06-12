@@ -51851,6 +51851,53 @@ case "mobius":
                           {geometryGalleryVisibleCards.length} cards
                         </div>
                       </div>
+                      {geometryGallerySelectedCard && (
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            flexWrap: "wrap",
+                            border: "1px solid #dbeafe",
+                            borderRadius: 8,
+                            background: "#eff6ff",
+                            padding: "5px 6px",
+                          }}
+                        >
+                          <span
+                            style={{
+                              flex: "1 1 120px",
+                              minWidth: 0,
+                              fontSize: 10.5,
+                              color: "#1e3a8a",
+                              fontWeight: 700,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                            title={geometryGallerySelectedCard.name}
+                          >
+                            Selected: {geometryGallerySelectedCard.name}
+                          </span>
+                          <button
+                            type="button"
+                            data-testid="geometry-add-object-toolbar"
+                            onClick={handleAddGeometryGallerySelected}
+                            disabled={!geometryGallerySelectedCard.supported}
+                            style={{ fontSize: 11, fontWeight: 800, padding: "4px 9px" }}
+                          >
+                            Add selected
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddGeometryGalleryDefault(geometryGallerySelectedCard)}
+                            disabled={!geometryGallerySelectedCard.supported || !geometryGallerySelectedCard.defaultRecipe}
+                            style={{ fontSize: 11, padding: "4px 9px" }}
+                          >
+                            Add preset
+                          </button>
+                        </div>
+                      )}
                     </div>
                     </div>
 

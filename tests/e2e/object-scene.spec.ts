@@ -150,7 +150,7 @@ test("Object/scene behavior: create, toggle visibility, remove, overlay state re
     const initialStats = await readGeometryStats(page);
 
     await clickFirstVisibleButton(page, "Create");
-    await page.getByTestId("geometry-add-object").click();
+    await page.getByTestId("geometry-add-object-toolbar").click();
     await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(initialStats.objectCount + 1);
     const createdStats = await readGeometryStats(page);
     expect(createdStats.visibleCount).toBe(initialStats.visibleCount + 1);
@@ -612,7 +612,7 @@ test("Persistence: save workspace and reopen restores scene", async () => {
     await openProceduralGeometry(firstPage);
     const baseCount = (await readGeometryStats(firstPage)).objectCount;
 
-    await firstPage.getByTestId("geometry-add-object").click();
+    await firstPage.getByTestId("geometry-add-object-toolbar").click();
     await expect.poll(async () => (await readGeometryStats(firstPage)).objectCount).toBe(baseCount + 1);
     const savedStats = await readGeometryStats(firstPage);
 
