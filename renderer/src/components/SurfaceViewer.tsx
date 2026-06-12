@@ -156,7 +156,7 @@ type SurfaceMeshOverride = {
 const DEG_TO_RAD = Math.PI / 180;
 const RAD_TO_DEG = 180 / Math.PI;
 const DEFAULT_MESH_PREVIEW_TRIANGLE_TARGET = 100_000;
-const IDLE_RENDER_MIN_FRAME_MS = 1000 / 8;
+const IDLE_RENDER_MIN_FRAME_MS = 1000 / 2;
 
 type SurfaceMeshLodBuffers = {
   positions: Float32Array;
@@ -3508,7 +3508,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const { width, height } = getSize();
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: renderQuality !== "performance", alpha: true });
     const heavySurface = surfaceId === "surface_mesh" || surfaceId === "torus_implicit";
     const maxPixelRatio =
       renderQuality === "performance"
@@ -5381,10 +5381,19 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     emitViewportDebug("init");
 
     let frameId = 0;
+    let pageVisible = document.visibilityState !== "hidden";
+    const handleVisibilityChange = () => {
+      pageVisible = document.visibilityState !== "hidden";
+      if (pageVisible) {
+        lastRenderedAtRef.current = 0;
+        handleResize();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     const animate = () => {
       frameId = requestAnimationFrame(animate);
-      if (suspendRenderingRef.current) return;
+      if (suspendRenderingRef.current || !pageVisible) return;
 
       const now = performance.now();
       const hasContinuousMotion =
@@ -5426,6 +5435,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (resizeFrameId) cancelAnimationFrame(resizeFrameId);
       if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
       ro.disconnect();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("resize", handleResize);
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
       renderer.domElement.removeEventListener("pointermove", handlePointerMove);

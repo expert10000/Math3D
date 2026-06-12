@@ -1,6 +1,11 @@
 import type { GeometryObject, SceneDocument } from "@math3d/core";
+import {
+  GEOMETRY_DEBUG_SCENE_DESCRIPTIONS,
+  GEOMETRY_DEBUG_SCENE_DOCUMENTS,
+} from "./debugScenePresets";
 
 export type GeometrySceneGalleryCategory =
+  | "Debug Scenes"
   | "Construction Basics"
   | "Measurement"
   | "Mathematical Demonstrations"
@@ -73,6 +78,16 @@ const sceneDoc = (id: string, title: string, objects: GeometryObject[], metadata
 };
 
 export const GEOMETRY_SCENE_GALLERY: GeometryGallerySceneEntry[] = [
+  ...GEOMETRY_DEBUG_SCENE_DOCUMENTS.map((scene, index) => ({
+    id: `scene:${scene.id}`,
+    title: scene.title,
+    category: "Debug Scenes" as const,
+    description: GEOMETRY_DEBUG_SCENE_DESCRIPTIONS.get(scene.id) ?? "Saved geometry debug scene.",
+    thumbnail: thumb(scene.title.replace("Debug: ", ""), `${scene.objects?.length ?? 0} objects`, ["#2563eb", "#7c3aed", "#ea580c", "#0f766e", "#dc2626"][index % 5]),
+    learningGoals: ["Load a repeatable debug state", "Inspect mixed geometry objects"],
+    initialScene: scene,
+    recommendedPanels: ["scene", "object", "analysis"],
+  })),
   {
     id: "scene:cube-transform-workflow",
     title: "Cube transform workflow",
@@ -421,6 +436,7 @@ export const GEOMETRY_SCENE_GALLERY: GeometryGallerySceneEntry[] = [
 export const GEOMETRY_SCENE_GALLERY_BY_ID = new Map(GEOMETRY_SCENE_GALLERY.map((entry) => [entry.id, entry] as const));
 
 export const GEOMETRY_SCENE_GALLERY_CATEGORY_ORDER: GeometrySceneGalleryCategory[] = [
+  "Debug Scenes",
   "Release Smoke",
   "Construction Basics",
   "Measurement",

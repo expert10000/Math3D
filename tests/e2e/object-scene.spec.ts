@@ -242,6 +242,39 @@ test("Geometry gallery: select vs add flow, quick add, and filtering", async () 
   }
 });
 
+test("Geometry debug scene selector loads saved multi-object scenes", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-debug-scenes-"));
+  const env = {
+    APPDATA: profileDir,
+    LOCALAPPDATA: profileDir,
+  };
+
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(env);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page);
+
+    const selector = page.getByTestId("geometry-debug-scene-select");
+    await expect(selector).toBeVisible();
+
+    await selector.selectOption("scene:debug-primitive-lineup");
+    await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(8);
+
+    await selector.selectOption("scene:debug-transform-grid");
+    await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(12);
+    await expect(selector).toHaveValue("scene:debug-transform-grid");
+    await expect(page.getByTestId("app-status-bar")).toContainText("Geometry viewer (procedural)");
+  } finally {
+    if (app) {
+      await app.close();
+    }
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
 test("Created object remains responsive while moving with the transform gizmo", async () => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-gizmo-move-"));
   const env = {

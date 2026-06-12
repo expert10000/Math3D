@@ -9632,6 +9632,10 @@ const App: React.FC = () => {
       })).filter((section) => section.scenes.length > 0),
     []
   );
+  const geometryDebugScenes = useMemo(
+    () => GEOMETRY_SCENE_GALLERY.filter((entry) => entry.category === "Debug Scenes"),
+    []
+  );
   const geometryGalleryPreviewRecipe = useMemo(() => {
     if (!geometryGallerySelectedRecipe) return null;
     return {
@@ -47534,6 +47538,29 @@ case "mobius":
                       </button>
                     );
                   })}
+                  <label style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: "auto", fontSize: 10, fontWeight: 700, color: "#344054" }}>
+                    Debug scene
+                    <select
+                      data-testid="geometry-debug-scene-select"
+                      value={
+                        geometrySceneGallerySelected?.category === "Debug Scenes"
+                          ? geometrySceneGallerySelected.id
+                          : ""
+                      }
+                      onChange={(event) => {
+                        const entry = GEOMETRY_SCENE_GALLERY_BY_ID.get(event.target.value);
+                        if (entry) openGeometrySceneGalleryEntry(entry);
+                      }}
+                      style={{ minWidth: 190, fontSize: 11 }}
+                    >
+                      <option value="" disabled>Select saved scene...</option>
+                      {geometryDebugScenes.map((entry) => (
+                        <option key={`geometry-debug-scene-option-${entry.id}`} value={entry.id}>
+                          {entry.title} ({entry.initialScene.objects?.length ?? 0})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
               )}
               {(geometryMode === "scratch" || geometryMode === "workbook") && (
@@ -59467,6 +59494,12 @@ case "mobius":
                           <div style={{ fontSize: 11, color: "#475467" }}>
                             Open complete demonstration scenes, then replay timeline steps for screenshot-ready walkthroughs.
                           </div>
+                          {geometrySceneGalleryActiveId && GEOMETRY_SCENE_GALLERY_BY_ID.get(geometrySceneGalleryActiveId)?.category === "Debug Scenes" ? (
+                            <div data-testid="geometry-debug-scene-status" style={{ fontSize: 10, color: "#0f766e" }}>
+                              Loaded {GEOMETRY_SCENE_GALLERY_BY_ID.get(geometrySceneGalleryActiveId)?.title} with{" "}
+                              {GEOMETRY_SCENE_GALLERY_BY_ID.get(geometrySceneGalleryActiveId)?.initialScene.objects?.length ?? 0} objects.
+                            </div>
+                          ) : null}
                           {!geometrySceneGalleryExpanded ? (
                             <div style={{ fontSize: 10, color: "#475467" }}>
                               Gallery UI is collapsed for better interactivity. Expand when you want to open or replay a curated scene.

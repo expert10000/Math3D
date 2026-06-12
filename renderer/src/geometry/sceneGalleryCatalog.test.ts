@@ -8,6 +8,13 @@ import {
 describe("sceneGalleryCatalog", () => {
   it("covers all requested categories and scenario titles", () => {
     const expected = new Map<string, string[]>([
+      ["Debug Scenes", [
+        "Debug: primitive lineup",
+        "Debug: polyhedron lab",
+        "Debug: stacked towers",
+        "Debug: transform grid",
+        "Debug: section comparison",
+      ]],
       ["Release Smoke", [
         "Release smoke: basic primitives",
         "Release smoke: dependency tree",
@@ -38,6 +45,7 @@ describe("sceneGalleryCatalog", () => {
 
   it("keeps entries structurally valid for scene open/replay flows", () => {
     expect(GEOMETRY_SCENE_GALLERY_CATEGORY_ORDER).toEqual([
+      "Debug Scenes",
       "Release Smoke",
       "Construction Basics",
       "Measurement",
@@ -57,6 +65,17 @@ describe("sceneGalleryCatalog", () => {
         const stepIds = new Set(entry.timeline.steps.map((step) => step.id));
         expect(stepIds.size).toBe(entry.timeline.steps.length);
       }
+    }
+  });
+
+  it("keeps debug scenes useful for repeatable manual testing", () => {
+    const debugScenes = GEOMETRY_SCENE_GALLERY.filter((entry) => entry.category === "Debug Scenes");
+    expect(debugScenes).toHaveLength(5);
+    for (const entry of debugScenes) {
+      expect(entry.initialScene.metadata?.debugScene).toBe(true);
+      expect(entry.initialScene.objects?.length).toBeGreaterThanOrEqual(5);
+      expect(entry.initialScene.objects?.length).toBeLessThanOrEqual(20);
+      expect(new Set(entry.initialScene.objects?.map((object) => object.id)).size).toBe(entry.initialScene.objects?.length);
     }
   });
 
