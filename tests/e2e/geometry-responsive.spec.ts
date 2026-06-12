@@ -128,6 +128,10 @@ test.describe("Geometry responsive workspace", () => {
       for (const section of ["construction-script-diagnostics", "construction-script-sync"]) {
         await expect(page.getByTestId(section)).not.toHaveAttribute("open", "");
       }
+      await page.getByTestId("construction-script-diagnostics").locator("summary").click();
+      await expect(page.getByTestId("construction-script-diagnostic-badges")).toContainText("16 steps");
+      await expect(page.getByTestId("construction-script-diagnostic-badges")).toContainText("15 objects");
+      await expect(page.getByTestId("construction-script-diagnostic-badges")).toContainText("1 claim");
 
       for (const tab of ["Claims", "Scene"] as const) {
         await clickFirstVisibleButton(page, tab);

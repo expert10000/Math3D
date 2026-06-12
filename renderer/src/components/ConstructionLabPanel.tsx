@@ -122,6 +122,9 @@ type ConstructionHistoryState = {
   disabledCheckIds: string[];
 };
 
+const formatCountLabel = (count: number, singular: string, plural = `${singular}s`) =>
+  `${count} ${count === 1 ? singular : plural}`;
+
 const PRESET_STORAGE_KEY = "math3d.geometry.sceneScriptPresets.v1";
 const BUILTIN_TASK_PRESET_NAME = "__builtin_olympiad_arc_task__";
 const BUILTIN_TASK_PRESET_LABEL = "Task: Olympiad Arc";
@@ -3130,13 +3133,45 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                 Diagnostics ({scriptDiagnostics.errors.length} errors, {scriptDiagnostics.warnings.length} warnings)
               </summary>
               <div style={{ marginTop: 7, display: "grid", gap: 6 }}>
-                <div style={{ fontSize: 11, fontFamily: "monospace", display: "grid", gap: 2 }}>
-                  <div>parsed steps: {scriptDiagnostics.parsedSteps}</div>
-                  <div>objects created: {scriptDiagnostics.objectCount}</div>
-                  <div>constraints created: {scriptDiagnostics.constraintCount}</div>
-                  <div>claims created: {scriptDiagnostics.claimCount}</div>
-                  <div>warnings: {scriptDiagnostics.warnings.length}</div>
-                  <div>errors: {scriptDiagnostics.errors.length}</div>
+                <div
+                  data-testid="construction-script-diagnostic-badges"
+                  style={{
+                    display: "flex",
+                    gap: 5,
+                    flexWrap: "nowrap",
+                    alignItems: "center",
+                    overflowX: "auto",
+                    paddingBottom: 1,
+                    fontSize: 10.5,
+                    fontFamily: "monospace",
+                  }}
+                >
+                  {[
+                    { icon: "\u2713", label: formatCountLabel(scriptDiagnostics.parsedSteps, "step"), color: "#166534", background: "#ecfdf3" },
+                    { icon: "\u25a0", label: formatCountLabel(scriptDiagnostics.objectCount, "object"), color: "#1d4ed8", background: "#eff6ff" },
+                    { icon: "\u25b3", label: formatCountLabel(scriptDiagnostics.constraintCount, "constraint"), color: "#7c3aed", background: "#f5f3ff" },
+                    { icon: "\u2605", label: formatCountLabel(scriptDiagnostics.claimCount, "claim"), color: "#a16207", background: "#fffbeb" },
+                    { icon: "\u26a0", label: formatCountLabel(scriptDiagnostics.warnings.length, "warning"), color: "#b45309", background: "#fff7ed" },
+                    { icon: "\u2716", label: formatCountLabel(scriptDiagnostics.errors.length, "error"), color: "#b42318", background: "#fef2f2" },
+                  ].map((badge) => (
+                    <span
+                      key={badge.label}
+                      style={{
+                        display: "inline-flex",
+                        gap: 3,
+                        alignItems: "center",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 999,
+                        padding: "1px 6px",
+                        color: badge.color,
+                        background: badge.background,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <span aria-hidden="true">{badge.icon}</span>
+                      {badge.label}
+                    </span>
+                  ))}
                 </div>
                 {scriptDiagnostics.diagnostics.map((diag, idx) => (
                   <button
