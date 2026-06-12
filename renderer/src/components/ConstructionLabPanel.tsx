@@ -7,6 +7,8 @@ import {
   serializeSceneProject,
   type SceneDocument,
 } from "@math3d/core";
+import { PROCEDURAL_SCENE_SCRIPT_STARTER } from "../geometry/scripting/sceneScriptExamples";
+import { parseSceneScript as parseProceduralSceneScript } from "../geometry/scripting/sceneScriptParser";
 import {
   buildPointLabelSet,
   type ConstructionConstraintDef,
@@ -54,6 +56,7 @@ type SceneMode = "plane2d" | "space3d";
 type SceneType = "task" | "free" | "demo";
 type ScriptSyncMode = "overwrite" | "appendNew" | "keepComments";
 type ClaimsSortMode = "status" | "name" | "residual";
+type ScriptSurfaceTab = "script" | "construction" | "automation";
 
 type SceneBundle = {
   version: number;
@@ -124,6 +127,65 @@ type ConstructionHistoryState = {
 
 const formatCountLabel = (count: number, singular: string, plural = `${singular}s`) =>
   `${count} ${count === 1 ? singular : plural}`;
+
+const AUTOMATION_SCRIPT_STARTER = [
+  "# Automation timeline script",
+  "frame 0",
+  "show A",
+  "",
+  "frame 10",
+  "move A 5 0 0",
+  "",
+  "frame 20",
+  "show sphere1",
+].join("\n");
+
+const parseAutomationTimelineScript = (script: string) => {
+  let frameCount = 0;
+  let actionCount = 0;
+  const diagnostics: Array<{ line: number; message: string }> = [];
+  const lines = script.split(/\r?\n/);
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const lineNumber = index + 1;
+    const trimmed = lines[index].trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const tokens = trimmed.split(/\s+/);
+    const head = tokens[0]?.toLowerCase();
+
+    if (head === "frame") {
+      const frame = Number(tokens[1]);
+      if (tokens.length !== 2 || !Number.isFinite(frame)) {
+        diagnostics.push({ line: lineNumber, message: "frame expects one numeric time value" });
+        continue;
+      }
+      frameCount += 1;
+      continue;
+    }
+
+    if (head === "show" || head === "hide") {
+      if (tokens.length !== 2) {
+        diagnostics.push({ line: lineNumber, message: `${head} expects one target id` });
+        continue;
+      }
+      actionCount += 1;
+      continue;
+    }
+
+    if (head === "move") {
+      if (tokens.length !== 5 || tokens.slice(2).some((value) => !Number.isFinite(Number(value)))) {
+        diagnostics.push({ line: lineNumber, message: "move expects target id plus x y z numbers" });
+        continue;
+      }
+      actionCount += 1;
+      continue;
+    }
+
+    diagnostics.push({ line: lineNumber, message: `unknown automation command '${tokens[0]}'` });
+  }
+
+  return { frameCount, actionCount, diagnostics };
+};
 
 const PRESET_STORAGE_KEY = "math3d.geometry.sceneScriptPresets.v1";
 const BUILTIN_TASK_PRESET_NAME = "__builtin_olympiad_arc_task__";
@@ -795,6 +857,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [highlightRequiredInputs, setHighlightRequiredInputs] = useState(false);
   const [selectionAId, setSelectionAId] = useState("");
   const [selectionBId, setSelectionBId] = useState("");
+  const [scriptSurfaceTab, setScriptSurfaceTab] = useState<ScriptSurfaceTab>("construction");
   const [selectedScriptTemplate, setSelectedScriptTemplate] = useState(SCRIPT_TEMPLATES[0]?.command ?? "");
   const [scriptTemplatesOpen, setScriptTemplatesOpen] = useState(false);
   const [lockedNodeIds, setLockedNodeIds] = useState<Set<string>>(() => new Set());
@@ -813,6 +876,8 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [paletteError, setPaletteError] = useState<string | null>(null);
 
   const [scriptText, setScriptText] = useState<string>(() => seededState?.scriptText ?? DEFAULT_INITIAL_SCENE.script);
+  const [proceduralSceneScriptText, setProceduralSceneScriptText] = useState(PROCEDURAL_SCENE_SCRIPT_STARTER);
+  const [automationScriptText, setAutomationScriptText] = useState(AUTOMATION_SCRIPT_STARTER);
   const [scriptError, setScriptError] = useState<string | null>(null);
   const [presetName, setPresetName] = useState("my-scene");
   const [presets, setPresets] = useState<ScriptPreset[]>(() => loadPresets());
@@ -929,6 +994,8 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   }, [checkDefs]);
 
   const scriptParsePreview = useMemo(() => parseSceneScript(scriptText), [scriptText]);
+  const proceduralScriptPreview = useMemo(() => parseProceduralSceneScript(proceduralSceneScriptText), [proceduralSceneScriptText]);
+  const automationScriptPreview = useMemo(() => parseAutomationTimelineScript(automationScriptText), [automationScriptText]);
   const scriptDiagnostics = useMemo(() => {
     const diagnostics: Array<{ line: number; kind: "error" | "warning"; message: string }> = [];
     const ids = new Set<string>();
@@ -3063,16 +3130,49 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
             borderTop: "1px solid #e5e7eb",
             paddingTop: 6,
             display: "grid",
-            gridTemplateRows: scriptTemplatesOpen
-              ? "auto minmax(0, 1fr) auto auto"
-              : "auto minmax(0, 1fr) auto",
+            gridTemplateRows:
+              scriptSurfaceTab === "construction" && scriptTemplatesOpen
+                ? "auto auto minmax(0, 1fr) auto auto"
+                : "auto auto minmax(0, 1fr) auto",
             gap: 4,
             minWidth: 0,
             maxWidth: "100%",
-            height: "min(900px, max(680px, calc(100vh - 170px)))",
+            height: "min(960px, max(760px, calc(100vh - 150px)))",
             minHeight: 0,
           }}
         >
+          <div
+            data-testid="scene-language-tabs"
+            style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}
+          >
+            {([
+              { id: "script" as const, label: "Script" },
+              { id: "construction" as const, label: "Construction" },
+              { id: "automation" as const, label: "Automation" },
+            ]).map((entry) => {
+              const active = scriptSurfaceTab === entry.id;
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  onClick={() => setScriptSurfaceTab(entry.id)}
+                  aria-pressed={active}
+                  style={{
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    border: "1px solid " + (active ? "#0a66c2" : "#d1d5db"),
+                    background: active ? "#e6f0ff" : "#fff",
+                    fontSize: 10.5,
+                    fontWeight: active ? 800 : 600,
+                  }}
+                >
+                  {entry.label}
+                </button>
+              );
+            })}
+          </div>
+          {scriptSurfaceTab === "construction" && (
+            <>
           <div
             style={{
               border: "1px solid #dbe4f0",
@@ -3237,6 +3337,114 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                 </div>
               </div>
             </div>
+          )}
+            </>
+          )}
+          {scriptSurfaceTab === "script" && (
+            <>
+              <div
+                style={{
+                  border: "1px solid #dbe4f0",
+                  borderRadius: 10,
+                  padding: "4px 7px",
+                  background: "#f8fbff",
+                  display: "grid",
+                  gap: 1,
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.15 }}>Procedural Scene Script</div>
+                <div style={{ fontSize: 11, lineHeight: 1.15, color: proceduralScriptPreview.diagnostics.length ? "#b42318" : "#166534" }}>
+                  {proceduralScriptPreview.diagnostics.length ? `${proceduralScriptPreview.diagnostics.length} parser errors` : "Parse OK"}
+                </div>
+                <div style={{ fontSize: 10.5, lineHeight: 1.15, color: "#475569" }}>
+                  {formatCountLabel(proceduralScriptPreview.commands.length, "command")} &middot; object/material/visibility language
+                </div>
+              </div>
+              <textarea
+                data-testid="procedural-scene-script-editor"
+                value={proceduralSceneScriptText}
+                onChange={(e) => setProceduralSceneScriptText(e.target.value)}
+                aria-label="Procedural scene script editor"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  minHeight: 0,
+                  minWidth: 0,
+                  resize: "vertical",
+                  boxSizing: "border-box",
+                  fontFamily: "monospace",
+                  fontSize: 11,
+                }}
+              />
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+                <button
+                  type="button"
+                  onClick={() => setProceduralSceneScriptText(PROCEDURAL_SCENE_SCRIPT_STARTER)}
+                  style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}
+                >
+                  Starter
+                </button>
+                <span style={{ fontSize: 10.5, color: "#475569" }}>
+                  Runs from Geometry &gt; Procedural &gt; Script; this tab reserves the unified language surface.
+                </span>
+              </div>
+            </>
+          )}
+          {scriptSurfaceTab === "automation" && (
+            <>
+              <div
+                style={{
+                  border: "1px solid #dbe4f0",
+                  borderRadius: 10,
+                  padding: "4px 7px",
+                  background: "#f8fbff",
+                  display: "grid",
+                  gap: 1,
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.15 }}>Automation Timeline</div>
+                <div style={{ fontSize: 11, lineHeight: 1.15, color: automationScriptPreview.diagnostics.length ? "#b42318" : "#166534" }}>
+                  {automationScriptPreview.diagnostics.length ? `${automationScriptPreview.diagnostics.length} timeline errors` : "Parse OK"}
+                </div>
+                <div style={{ fontSize: 10.5, lineHeight: 1.15, color: "#475569" }}>
+                  {formatCountLabel(automationScriptPreview.frameCount, "frame")} &middot; {formatCountLabel(automationScriptPreview.actionCount, "action")} &middot; Gallery Timelines bridge
+                </div>
+              </div>
+              <textarea
+                data-testid="automation-script-editor"
+                value={automationScriptText}
+                onChange={(e) => setAutomationScriptText(e.target.value)}
+                aria-label="Automation timeline script editor"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  minHeight: 0,
+                  minWidth: 0,
+                  resize: "vertical",
+                  boxSizing: "border-box",
+                  fontFamily: "monospace",
+                  fontSize: 11,
+                }}
+              />
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+                <button
+                  type="button"
+                  onClick={() => setAutomationScriptText(AUTOMATION_SCRIPT_STARTER)}
+                  style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}
+                >
+                  Starter
+                </button>
+                {automationScriptPreview.diagnostics.length > 0 ? (
+                  <span style={{ fontSize: 10.5, color: "#b42318" }}>
+                    line {automationScriptPreview.diagnostics[0]?.line}: {automationScriptPreview.diagnostics[0]?.message}
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 10.5, color: "#475569" }}>
+                    Draft commands: frame, show, hide, move.
+                  </span>
+                )}
+              </div>
+            </>
           )}
         </div>
       )}

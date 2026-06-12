@@ -111,6 +111,9 @@ test.describe("Geometry responsive workspace", () => {
         await clickFirstVisibleButton(page, "Script");
       }
       await expect(page.getByTestId("construction-script-workspace")).toBeVisible();
+      await expect(page.getByTestId("scene-language-tabs")).toContainText("Script");
+      await expect(page.getByTestId("scene-language-tabs")).toContainText("Construction");
+      await expect(page.getByTestId("scene-language-tabs")).toContainText("Automation");
       await expectNoHorizontalOverflow(page.getByTestId("geometry-left-panel"), "Scratch Script panel");
       await expectNoHorizontalOverflow(page.getByTestId("construction-script-workspace"), "Scratch Script workspace");
       await expectVerticalContentReachable(page.getByTestId("geometry-left-panel"), "Scratch Script panel");
@@ -132,6 +135,12 @@ test.describe("Geometry responsive workspace", () => {
       await expect(page.getByTestId("construction-script-diagnostic-badges")).toContainText("16 steps");
       await expect(page.getByTestId("construction-script-diagnostic-badges")).toContainText("15 objects");
       await expect(page.getByTestId("construction-script-diagnostic-badges")).toContainText("1 claim");
+      await page.getByTestId("scene-language-tabs").getByRole("button", { name: "Script", exact: true }).click();
+      await expect(page.getByTestId("procedural-scene-script-editor")).toBeVisible();
+      await page.getByTestId("scene-language-tabs").getByRole("button", { name: "Automation", exact: true }).click();
+      await expect(page.getByTestId("automation-script-editor")).toBeVisible();
+      await page.getByTestId("scene-language-tabs").getByRole("button", { name: "Construction", exact: true }).click();
+      await expect(page.getByTestId("construction-script-editor")).toBeVisible();
 
       for (const tab of ["Claims", "Scene"] as const) {
         await clickFirstVisibleButton(page, tab);
