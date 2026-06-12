@@ -9710,14 +9710,20 @@ const App: React.FC = () => {
       sortedGeometryGalleryVisibleCards,
     ]
   );
-  const handleSelectGeometryGalleryCard = useCallback((cardId: string) => {
-    const card = GEOMETRY_GALLERY_CARD_BY_ID.get(cardId);
-    if (!card) return;
-    setGeometryGallerySelectedCardId(card.id);
-    setGeometryGallerySelectedPresetId(null);
-    setGeometryCreateActionsOverlayOpen(true);
-    if (card.supported && card.defaultRecipe) setGeometryNewObjectType(card.defaultRecipe.type);
-  }, []);
+  const handleSelectGeometryGalleryCard = useCallback(
+    (cardId: string, overlayAction: "toggle" | "open" = "toggle") => {
+      const card = GEOMETRY_GALLERY_CARD_BY_ID.get(cardId);
+      if (!card) return;
+      const selectingCurrentCard = card.id === geometryGallerySelectedCardId;
+      setGeometryGallerySelectedCardId(card.id);
+      setGeometryGallerySelectedPresetId(null);
+      setGeometryCreateActionsOverlayOpen((open) =>
+        overlayAction === "open" || !selectingCurrentCard ? true : !open
+      );
+      if (card.supported && card.defaultRecipe) setGeometryNewObjectType(card.defaultRecipe.type);
+    },
+    [geometryGallerySelectedCardId]
+  );
   const handleToggleGeometryGalleryFavorite = useCallback((cardId: string) => {
     setGeometryGalleryFavoriteCardIds((prev) => {
       const next = new Set(prev);
@@ -51857,7 +51863,7 @@ case "mobius":
                                     }
                                     if (e.key === "Enter") {
                                       e.preventDefault();
-                                      handleSelectGeometryGalleryCard(card.id);
+                                      handleSelectGeometryGalleryCard(card.id, "open");
                                       if (card.supported) handleAddGeometryGalleryDefault(card);
                                       return;
                                     }
@@ -51867,7 +51873,7 @@ case "mobius":
                                     }
                                   }}
                                   onDoubleClick={() => {
-                                    handleSelectGeometryGalleryCard(card.id);
+                                    handleSelectGeometryGalleryCard(card.id, "open");
                                     if (card.supported) handleAddGeometryGalleryDefault(card);
                                   }}
                                   className={`gallery-scan-card geometry-gallery-scan-card${compactGeometryPanel ? " is-compact" : ""}${
@@ -51957,7 +51963,7 @@ case "mobius":
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           if (!card.supported) return;
-                                          handleSelectGeometryGalleryCard(card.id);
+                                          handleSelectGeometryGalleryCard(card.id, "open");
                                           handleAddGeometryGalleryDefault(card);
                                         }}
                                         title={card.supported ? "Open default in scene" : "Not yet available"}
