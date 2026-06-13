@@ -3192,8 +3192,10 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
             paddingTop: 6,
             display: "grid",
             gridTemplateRows:
-              scriptSurfaceTab === "construction" && scriptTemplatesOpen
-                ? "auto auto minmax(0, 1fr) auto auto"
+              scriptSurfaceTab === "construction"
+                ? scriptTemplatesOpen
+                  ? "auto minmax(0, 1fr) auto auto"
+                  : "auto minmax(0, 1fr) auto"
                 : "auto auto minmax(0, 1fr) auto",
             gap: 4,
             minWidth: 0,
@@ -3231,28 +3233,27 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                 </button>
               );
             })}
+            {scriptSurfaceTab === "construction" && (
+              <span
+                style={{
+                  fontSize: 10.5,
+                  lineHeight: 1.15,
+                  color: scriptParsePreview.error ? "#b42318" : "#166534",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {scriptParsePreview.error ? `Parse error: ${scriptParsePreview.error}` : "Parse OK"} ·{" "}
+                {scriptParsePreview.nodes.length} objects · {scriptParsePreview.checks.length} claims
+              </span>
+            )}
+            {scriptSurfaceTab === "construction" && scriptError && (
+              <span style={{ fontSize: 10.5, lineHeight: 1.15, color: "#b42318", whiteSpace: "nowrap" }}>
+                {scriptError}
+              </span>
+            )}
           </div>
           {scriptSurfaceTab === "construction" && (
             <>
-          <div
-            style={{
-              border: "1px solid #dbe4f0",
-              borderRadius: 10,
-              padding: "4px 7px",
-              background: "#f8fbff",
-              display: "grid",
-              gap: 1,
-            }}
-          >
-            <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.15 }}>Scene Script</div>
-            <div style={{ fontSize: 11, lineHeight: 1.15, color: scriptParsePreview.error ? "#b42318" : "#166534" }}>
-              {scriptParsePreview.error ? `Parse error: ${scriptParsePreview.error}` : "Parse OK"}
-            </div>
-            <div style={{ fontSize: 10.5, lineHeight: 1.15, color: "#475569" }}>
-              {scriptParsePreview.nodes.length} objects · {scriptParsePreview.checks.length} claims
-            </div>
-            {scriptError && <div style={{ fontSize: 11, color: "#b42318" }}>{scriptError}</div>}
-          </div>
           <textarea
             ref={scriptEditorRef}
             data-testid="construction-script-editor"
@@ -3286,8 +3287,13 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
             </button>
             <button type="button" onClick={() => setPaletteOpen(true)} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Palette</button>
             <button type="button" onClick={() => importSceneInputRef.current?.click()} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Import</button>
-            <button type="button" onClick={exportSceneBundle} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Export JSON</button>
-            <button type="button" onClick={exportSceneScript} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Export script</button>
+            <details style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "2px 6px", minWidth: 0 }}>
+              <summary style={{ cursor: "pointer", fontSize: 10.5, fontWeight: 700, lineHeight: 1.1 }}>Export</summary>
+              <div style={{ marginTop: 7, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button type="button" onClick={exportSceneBundle} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>JSON</button>
+                <button type="button" onClick={exportSceneScript} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Script</button>
+              </div>
+            </details>
             <details
               id="construction-script-diagnostics"
               data-testid="construction-script-diagnostics"
