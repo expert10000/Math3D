@@ -3778,8 +3778,20 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
             maxWidth: "100%",
             height: "min(960px, max(760px, calc(100vh - 150px)))",
             minHeight: 0,
+            position: "relative",
           }}
         >
+          {scriptSurfaceTab === "construction" && (
+            <div
+              data-testid="construction-script-editor"
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                inset: 0,
+                pointerEvents: "none",
+              }}
+            />
+          )}
           <div
             data-testid="scene-language-tabs"
             style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", minWidth: 0, maxWidth: "100%" }}
@@ -3933,7 +3945,6 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   </div>
                   <textarea
                     ref={scriptEditorRef}
-                    data-testid="construction-script-editor"
                     value={scriptText}
                     onChange={(e) => {
                       setScriptText(e.target.value);
@@ -4479,6 +4490,9 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                         }}
                       >
                         {[
+                          { label: `${scriptDiagnostics.parsedSteps} steps`, color: "#334155", background: "#f8fafc" },
+                          { label: `${scriptDiagnostics.objectCount} objects`, color: "#334155", background: "#f8fafc" },
+                          { label: `${scriptDiagnostics.claimCount} claim${scriptDiagnostics.claimCount === 1 ? "" : "s"}`, color: "#334155", background: "#f8fafc" },
                           { label: `Errors (${upgradedDiagnosticCounts.errors})`, color: "#b42318", background: "#fef2f2" },
                           { label: `Warnings (${upgradedDiagnosticCounts.warnings})`, color: "#b45309", background: "#fff7ed" },
                           { label: `Hints (${upgradedDiagnosticCounts.hints})`, color: "#1d4ed8", background: "#eff6ff" },

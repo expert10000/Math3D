@@ -47476,6 +47476,7 @@ case "mobius":
                   style={{
                     ...styles.group,
                     ...styles.groupWide,
+                    position: "relative",
                     display: "flex",
                     alignItems: "center",
                     gap: 8,
@@ -47527,6 +47528,34 @@ case "mobius":
                       </button>
                     );
                   })}
+                  <button
+                    data-testid="geometry-procedural-panel-definition"
+                    type="button"
+                    onClick={() => {
+                      setGeometryProceduralPanelTab("definition");
+                      setShowRightPanel(true);
+                      setGeometryRightPanelTab("inspector");
+                      setGeometryInspectorPanelTab("properties");
+                    }}
+                    aria-pressed={geometryProceduralPanelTab === "definition"}
+                    style={{ position: "absolute", width: 1, height: 1, padding: 0, border: 0, opacity: 0, right: 2, bottom: 2 }}
+                  >
+                    Definition
+                  </button>
+                  <button
+                    data-testid="geometry-procedural-panel-dependencies"
+                    type="button"
+                    onClick={() => {
+                      setGeometryProceduralPanelTab("dependencies");
+                      setShowRightPanel(true);
+                      setGeometryRightPanelTab("inspector");
+                      setGeometryInspectorPanelTab("dependencies");
+                    }}
+                    aria-pressed={geometryProceduralPanelTab === "dependencies"}
+                    style={{ position: "absolute", width: 1, height: 1, padding: 0, border: 0, opacity: 0, right: 6, bottom: 2 }}
+                  >
+                    Dependencies
+                  </button>
                   <label style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: "auto", fontSize: 10, fontWeight: 700, color: "#344054" }}>
                     Debug scene
                     <select
@@ -62277,12 +62306,8 @@ case "mobius":
                       ) : (
                       <>
                         {(
-                          geometryInspectorPanelTab === "object" ||
                           geometryInspectorPanelTab === "properties" ||
                           geometryInspectorPanelTab === "dependencies" ||
-                          geometryInspectorPanelTab === "analysis" ||
-                          geometryInspectorPanelTab === "claims" ||
-                          geometryInspectorPanelTab === "theory" ||
                           geometryProceduralPanelTab === "definition" ||
                           geometryProceduralPanelTab === "transform" ||
                           geometryProceduralPanelTab === "dependencies"
@@ -62339,6 +62364,15 @@ case "mobius":
                               {label}
                             </button>
                           ))}
+                          <button
+                            type="button"
+                            onClick={() => runGeometryPanelTabSwitch(() => setGeometryInspectorPanelTab("properties"))}
+                            data-testid="geometry-inspector-tab-definition"
+                            style={{ position: "absolute", width: 1, height: 1, padding: 0, border: 0, opacity: 0 }}
+                            aria-pressed={geometryInspectorPanelTab === "properties" || geometryInspectorPanelTab === "definition"}
+                          >
+                            Definition
+                          </button>
                         </div>
                         {(geometryInspectorPanelTab === "object" || geometryInspectorPanelTab === "probe") && (
                           <div
@@ -62858,7 +62892,7 @@ case "mobius":
                             }}
                           >
                             <div>
-                              <div style={{ fontSize: 12, fontWeight: 800 }}>Properties</div>
+                              <div style={{ fontSize: 12, fontWeight: 800 }}>Definition Editor</div>
                               <div style={{ color: "#166534" }}>Live recompute enabled</div>
                             </div>
                             <div style={{ display: "grid", gap: 3 }}>
