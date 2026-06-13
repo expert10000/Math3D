@@ -54,6 +54,11 @@ type ScriptPreset = {
   savedAt: number;
 };
 
+type ScriptOutlineEntry = {
+  line: number;
+  label: string;
+};
+
 type SceneMode = "plane2d" | "space3d";
 type SceneType = "task" | "free" | "demo";
 type ScriptSyncMode = "overwrite" | "appendNew" | "keepComments";
@@ -322,6 +327,45 @@ const parseNumber = (value: string, fallback: number) => {
 };
 
 const cleanId = (text: string) => (text || "").replace(/[^A-Za-z0-9_]/g, "");
+
+const buildConstructionScriptOutline = (script: string): ScriptOutlineEntry[] => {
+  const lines = script.split(/\r?\n/);
+  const explicit: ScriptOutlineEntry[] = [];
+  lines.forEach((raw, index) => {
+    const trimmed = raw.trim();
+    const match = trimmed.match(/^#\s*stage\s+(\d+)\s*[:.-]?\s*(.+)$/i);
+    if (match) explicit.push({ line: index + 1, label: `Stage ${match[1]} ${match[2].trim()}` });
+  });
+  if (explicit.length) return explicit;
+
+  const generated: ScriptOutlineEntry[] = [];
+  const seen = new Set<string>();
+  const addStage = (key: string, label: string, line: number) => {
+    if (seen.has(key)) return;
+    seen.add(key);
+    generated.push({ line, label });
+  };
+
+  lines.forEach((raw, index) => {
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed.startsWith("#")) return;
+    const command = trimmed.split(/\s+/)[0]?.toLowerCase() ?? "";
+    if (command === "point") addStage("triangle", "Stage 1 Triangle", index + 1);
+    else if (["circumcircle", "circumcenter", "circle", "circle3"].includes(command)) {
+      addStage("circles", "Stage 2 Circles", index + 1);
+    } else if (command === "midpoint" || command === "arc-midpoint") {
+      addStage("midpoints", "Stage 3 Midpoints", index + 1);
+    } else if (
+      ["line", "perp", "parallel", "perp-bisector", "angle-bisector", "intersection", "second-intersection"].includes(command)
+    ) {
+      addStage("constructions", "Stage 4 Constructions", index + 1);
+    } else if (command === "check" || command === "constraint") {
+      addStage("checks", "Stage 5 Checks", index + 1);
+    }
+  });
+
+  return generated;
+};
 
 const uniqueId = (base: string, existingIds: Set<string>) => {
   const root = cleanId(base) || "obj";
@@ -867,6 +911,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [claimExplainId, setClaimExplainId] = useState<string | null>(null);
   const importSceneInputRef = useRef<HTMLInputElement | null>(null);
   const scriptEditorRef = useRef<HTMLTextAreaElement | null>(null);
+  const scriptLineGutterRef = useRef<HTMLDivElement | null>(null);
   const historyRef = useRef<{ stack: ConstructionHistoryState[]; index: number; applying: boolean }>({
     stack: [],
     index: -1,
@@ -881,6 +926,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [proceduralSceneScriptText, setProceduralSceneScriptText] = useState(PROCEDURAL_SCENE_SCRIPT_STARTER);
   const [automationScriptText, setAutomationScriptText] = useState(AUTOMATION_SCRIPT_STARTER);
   const [scriptError, setScriptError] = useState<string | null>(null);
+  const [scriptCursorLine, setScriptCursorLine] = useState(1);
   const [presetName, setPresetName] = useState("my-scene");
   const [presets, setPresets] = useState<ScriptPreset[]>(() => loadPresets());
   const [selectedPresetName, setSelectedPresetName] = useState(BUILTIN_TASK_PRESET_NAME);
@@ -1034,6 +1080,30 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       diagnostics,
     };
   }, [scriptText]);
+  const scriptLineNumbers = useMemo(() => {
+    const count = Math.max(1, scriptText.split(/\r?\n/).length);
+    return Array.from({ length: count }, (_, index) => index + 1);
+  }, [scriptText]);
+  const scriptOutline = useMemo(() => buildConstructionScriptOutline(scriptText), [scriptText]);
+  const activeScriptOutlineIndex = useMemo(() => {
+    let active = 0;
+    for (let i = 0; i < scriptOutline.length; i++) {
+      if (scriptOutline[i].line <= scriptCursorLine) active = i;
+      else break;
+    }
+    return active;
+  }, [scriptCursorLine, scriptOutline]);
+  const updateScriptCursorLine = useCallback(() => {
+    const textarea = scriptEditorRef.current;
+    if (!textarea) return;
+    const nextLine = scriptText.slice(0, textarea.selectionStart).split(/\r?\n/).length;
+    setScriptCursorLine(Math.max(1, nextLine));
+  }, [scriptText]);
+  const syncScriptLineGutterScroll = useCallback((event: React.UIEvent<HTMLTextAreaElement>) => {
+    if (scriptLineGutterRef.current) {
+      scriptLineGutterRef.current.scrollTop = event.currentTarget.scrollTop;
+    }
+  }, []);
 
   const explainCheckInputs = useCallback((checkId: string) => {
     const check = checkDefById.get(checkId);
@@ -1123,6 +1193,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     }
     return rows;
   }, [checkDefs, checkResultById, claimsSortMode, disabledCheckIds]);
+  const passedClaimCount = useMemo(() => claimRows.filter((claim) => claim.status === "ok").length, [claimRows]);
 
   const snapshotCurrent = useCallback((): ConstructionHistoryState => ({
     nodes: nodes.map((node) => ({ ...node, style: node.style ? { ...node.style } : undefined })),
@@ -1717,6 +1788,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     const end = start + (lines[lineNumber - 1]?.length ?? 0);
     textarea.focus();
     textarea.setSelectionRange(start, end);
+    setScriptCursorLine(Math.max(1, lineNumber));
   }, [scriptText]);
 
   const runScriptFragment = useCallback((fragment: string, startLine = 1) => {
@@ -3194,8 +3266,8 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
             gridTemplateRows:
               scriptSurfaceTab === "construction"
                 ? scriptTemplatesOpen
-                  ? "auto minmax(0, 1fr) auto auto"
-                  : "auto minmax(0, 1fr) auto"
+                  ? "auto auto minmax(0, 1fr) auto auto"
+                  : "auto auto minmax(0, 1fr) auto"
                 : "auto auto minmax(0, 1fr) auto",
             gap: 4,
             minWidth: 0,
@@ -3254,134 +3326,302 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
           </div>
           {scriptSurfaceTab === "construction" && (
             <>
-          <textarea
-            ref={scriptEditorRef}
-            data-testid="construction-script-editor"
-            value={scriptText}
-            onChange={(e) => setScriptText(e.target.value)}
-            aria-label="Scene script editor"
-            style={{
-              width: "100%",
-              height: "100%",
-              minHeight: 0,
-              minWidth: 0,
-              resize: "vertical",
-              boxSizing: "border-box",
-              fontFamily: "monospace",
-              fontSize: 11,
-            }}
-          />
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
-            <button type="button" onClick={rebuildFromScript} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Run</button>
-            <button type="button" onClick={runSelectedScript} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Selection</button>
-            <button type="button" onClick={runScriptFromCursor} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Cursor</button>
-            <button type="button" onClick={regenerateScriptFromScene} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Generate</button>
-            <button
-              type="button"
-              data-testid="construction-script-templates-toggle"
-              onClick={() => setScriptTemplatesOpen((open) => !open)}
-              aria-expanded={scriptTemplatesOpen}
-              style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}
-            >
-              Templates
-            </button>
-            <button type="button" onClick={() => setPaletteOpen(true)} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Palette</button>
-            <button type="button" onClick={() => importSceneInputRef.current?.click()} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Import</button>
-            <details style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "2px 6px", minWidth: 0 }}>
-              <summary style={{ cursor: "pointer", fontSize: 10.5, fontWeight: 700, lineHeight: 1.1 }}>Export</summary>
-              <div style={{ marginTop: 7, display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <button type="button" onClick={exportSceneBundle} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>JSON</button>
-                <button type="button" onClick={exportSceneScript} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Script</button>
-              </div>
-            </details>
-            <details
-              id="construction-script-diagnostics"
-              data-testid="construction-script-diagnostics"
-              style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "2px 6px", minWidth: 0 }}
-            >
-              <summary style={{ cursor: "pointer", fontSize: 10.5, fontWeight: 700, lineHeight: 1.1 }}>
-                Diagnostics ({scriptDiagnostics.errors.length} errors, {scriptDiagnostics.warnings.length} warnings)
-              </summary>
-              <div style={{ marginTop: 7, display: "grid", gap: 6 }}>
+              <div
+                data-testid="construction-script-context"
+                style={{
+                  border: "1px solid #dbe4f0",
+                  borderRadius: 8,
+                  padding: "5px 7px",
+                  background: "#f8fbff",
+                  display: "grid",
+                  gap: 4,
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 800 }}>Context</div>
                 <div
-                  data-testid="construction-script-diagnostic-badges"
                   style={{
-                    display: "flex",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
                     gap: 5,
-                    flexWrap: "nowrap",
-                    alignItems: "center",
-                    overflowX: "auto",
-                    paddingBottom: 1,
                     fontSize: 10.5,
-                    fontFamily: "monospace",
+                    lineHeight: 1.2,
                   }}
                 >
-                  {[
-                    { icon: "\u2713", label: formatCountLabel(scriptDiagnostics.parsedSteps, "step"), color: "#166534", background: "#ecfdf3" },
-                    { icon: "\u25a0", label: formatCountLabel(scriptDiagnostics.objectCount, "object"), color: "#1d4ed8", background: "#eff6ff" },
-                    { icon: "\u25b3", label: formatCountLabel(scriptDiagnostics.constraintCount, "constraint"), color: "#7c3aed", background: "#f5f3ff" },
-                    { icon: "\u2605", label: formatCountLabel(scriptDiagnostics.claimCount, "claim"), color: "#a16207", background: "#fffbeb" },
-                    { icon: "\u26a0", label: formatCountLabel(scriptDiagnostics.warnings.length, "warning"), color: "#b45309", background: "#fff7ed" },
-                    { icon: "\u2716", label: formatCountLabel(scriptDiagnostics.errors.length, "error"), color: "#b42318", background: "#fef2f2" },
-                  ].map((badge) => (
-                    <span
-                      key={badge.label}
-                      style={{
-                        display: "inline-flex",
-                        gap: 3,
-                        alignItems: "center",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 999,
-                        padding: "1px 6px",
-                        color: badge.color,
-                        background: badge.background,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      <span aria-hidden="true">{badge.icon}</span>
-                      {badge.label}
-                    </span>
-                  ))}
+                  <div><strong>Pack:</strong> {sceneType === "task" ? "Olympiad constructions" : sceneType === "demo" ? "Demo constructions" : "Custom constructions"}</div>
+                  <div><strong>Theorem:</strong> {sceneName.trim() || "Untitled construction"}</div>
+                  <div><strong>Stage:</strong> {scriptOutline.length ? `${activeScriptOutlineIndex + 1} / ${scriptOutline.length}` : "0 / 0"}</div>
+                  <div><strong>Objects:</strong> {scriptDiagnostics.objectCount}</div>
+                  <div><strong>Claims:</strong> {passedClaimCount} passed</div>
                 </div>
-                {scriptDiagnostics.diagnostics.map((diag, idx) => (
-                  <button
-                    key={`${diag.line}:${idx}`}
-                    type="button"
-                    onClick={() => focusScriptLine(diag.line)}
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 4fr) minmax(96px, 1fr)",
+                  gap: 6,
+                  minHeight: 0,
+                }}
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "42px minmax(0, 1fr)",
+                    minHeight: 0,
+                    border: "1px solid #d1d5db",
+                    borderRadius: 8,
+                    overflow: "hidden",
+                    background: "#fff",
+                  }}
+                >
+                  <div
+                    ref={scriptLineGutterRef}
+                    aria-hidden="true"
                     style={{
-                      textAlign: "left",
-                      border: "1px solid " + (diag.kind === "error" ? "#fca5a5" : "#fde68a"),
-                      background: diag.kind === "error" ? "#fef2f2" : "#fffbeb",
-                      borderRadius: 6,
-                      padding: "4px 6px",
-                      fontSize: 11,
+                      overflow: "hidden",
+                      padding: "6px 6px 6px 0",
+                      borderRight: "1px solid #e5e7eb",
+                      background: "#f9fafb",
+                      color: "#64748b",
                       fontFamily: "monospace",
-                      cursor: "pointer",
+                      fontSize: 11,
+                      lineHeight: "16px",
+                      textAlign: "right",
+                      userSelect: "none",
                     }}
                   >
-                    line {diag.line}: {diag.message}
-                  </button>
-                ))}
-                <div style={{ fontSize: 10, opacity: 0.72 }}>
-                  Failed run keeps previous valid scene; fix diagnostics then rerun.
+                    {scriptLineNumbers.map((lineNumber) => (
+                      <div key={lineNumber} style={{ height: 16 }}>
+                        {lineNumber}
+                      </div>
+                    ))}
+                  </div>
+                  <textarea
+                    ref={scriptEditorRef}
+                    data-testid="construction-script-editor"
+                    value={scriptText}
+                    onChange={(e) => {
+                      setScriptText(e.target.value);
+                      setScriptCursorLine(Math.max(1, e.target.value.slice(0, e.target.selectionStart).split(/\r?\n/).length));
+                    }}
+                    onScroll={syncScriptLineGutterScroll}
+                    onSelect={updateScriptCursorLine}
+                    onKeyUp={updateScriptCursorLine}
+                    onClick={updateScriptCursorLine}
+                    aria-label="Scene script editor"
+                    wrap="off"
+                    spellCheck={false}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      minHeight: 0,
+                      minWidth: 0,
+                      resize: "vertical",
+                      border: 0,
+                      outline: "none",
+                      boxSizing: "border-box",
+                      fontFamily: "monospace",
+                      fontSize: 11,
+                      lineHeight: "16px",
+                      padding: "6px 8px",
+                      whiteSpace: "pre",
+                      overflow: "auto",
+                    }}
+                  />
+                </div>
+                <div style={{ display: "grid", gridTemplateRows: "minmax(0, 1fr) auto", gap: 6, minHeight: 0 }}>
+                  <div
+                    data-testid="construction-script-outline"
+                    style={{
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 8,
+                      padding: "6px",
+                      minHeight: 0,
+                      overflow: "auto",
+                      background: "#fff",
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 5 }}>Outline</div>
+                    <div style={{ display: "grid", gap: 4 }}>
+                      {scriptOutline.map((entry, index) => {
+                        const active = index === activeScriptOutlineIndex;
+                        return (
+                          <button
+                            key={`${entry.line}:${entry.label}`}
+                            type="button"
+                            onClick={() => focusScriptLine(entry.line)}
+                            style={{
+                              textAlign: "left",
+                              border: "1px solid " + (active ? "#93c5fd" : "#e5e7eb"),
+                              background: active ? "#eff6ff" : "#fff",
+                              borderRadius: 6,
+                              padding: "4px 5px",
+                              fontSize: 10.5,
+                              lineHeight: 1.2,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {entry.label}
+                          </button>
+                        );
+                      })}
+                      {!scriptOutline.length && <div style={{ fontSize: 10.5, opacity: 0.7 }}>No sections yet.</div>}
+                    </div>
+                  </div>
+                  <div
+                    data-testid="construction-script-claims"
+                    style={{
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 8,
+                      padding: "6px",
+                      background: "#fff",
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 5 }}>Claims</div>
+                    <div style={{ display: "grid", gap: 4, maxHeight: 112, overflow: "auto" }}>
+                      {claimRows.map((claim) => (
+                        <button
+                          key={claim.def.id}
+                          type="button"
+                          onClick={() => focusClaimInputs(claim.def.id)}
+                          disabled={!checkFocusRefs(claim.def.id).length}
+                          style={{
+                            textAlign: "left",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: 6,
+                            padding: "3px 5px",
+                            background: claim.status === "ok" ? "#ecfdf3" : claim.status === "fail" ? "#fef2f2" : "#f8fafc",
+                            color: claim.status === "ok" ? "#166534" : claim.status === "fail" ? "#b42318" : "#475569",
+                            fontSize: 10.5,
+                            lineHeight: 1.2,
+                            cursor: checkFocusRefs(claim.def.id).length ? "pointer" : "default",
+                          }}
+                        >
+                          <span aria-hidden="true">{claim.status === "ok" ? "\u2713" : claim.status === "fail" ? "\u2716" : "\u2022"}</span>{" "}
+                          {claim.def.label}
+                        </button>
+                      ))}
+                      {!claimRows.length && <div style={{ fontSize: 10.5, opacity: 0.7 }}>No claims yet.</div>}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </details>
-            <details
-              data-testid="construction-script-sync"
-              style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "2px 6px", minWidth: 0 }}
-            >
-              <summary style={{ cursor: "pointer", fontSize: 10.5, fontWeight: 700, lineHeight: 1.1 }}>Sync</summary>
-              <div style={{ marginTop: 7, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
-                <select value={scriptSyncMode} onChange={(e) => setScriptSyncMode(e.target.value as ScriptSyncMode)} style={{ minWidth: 0, flex: "1 1 220px" }}>
-                  <option value="overwrite">Overwrite script from scene</option>
-                  <option value="appendNew">Append new steps only</option>
-                  <option value="keepComments">Keep manual comments</option>
-                </select>
-                <button type="button" onClick={regenerateScriptFromScene}>Apply sync</button>
+              <div style={{ display: "grid", gap: 4 }}>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+                  <button type="button" onClick={rebuildFromScript} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Run</button>
+                  <button type="button" onClick={regenerateScriptFromScene} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Generate</button>
+                  <button
+                    type="button"
+                    data-testid="construction-script-templates-toggle"
+                    onClick={() => setScriptTemplatesOpen((open) => !open)}
+                    aria-expanded={scriptTemplatesOpen}
+                    style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}
+                  >
+                    Templates
+                  </button>
+                  <button type="button" onClick={() => importSceneInputRef.current?.click()} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Import</button>
+                </div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+                  <button type="button" onClick={runSelectedScript} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Selection</button>
+                  <button type="button" onClick={runScriptFromCursor} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Cursor</button>
+                  <button type="button" onClick={() => setPaletteOpen(true)} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Palette</button>
+                </div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+                  <details style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "2px 6px", minWidth: 0 }}>
+                    <summary style={{ cursor: "pointer", fontSize: 10.5, fontWeight: 700, lineHeight: 1.1 }}>Export</summary>
+                    <div style={{ marginTop: 7, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <button type="button" onClick={exportSceneBundle} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>JSON</button>
+                      <button type="button" onClick={exportSceneScript} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Script</button>
+                    </div>
+                  </details>
+                  <details
+                    id="construction-script-diagnostics"
+                    data-testid="construction-script-diagnostics"
+                    style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "2px 6px", minWidth: 0 }}
+                  >
+                    <summary style={{ cursor: "pointer", fontSize: 10.5, fontWeight: 700, lineHeight: 1.1 }}>
+                      Diagnostics ({scriptDiagnostics.errors.length} errors, {scriptDiagnostics.warnings.length} warnings)
+                    </summary>
+                    <div style={{ marginTop: 7, display: "grid", gap: 6 }}>
+                      <div
+                        data-testid="construction-script-diagnostic-badges"
+                        style={{
+                          display: "flex",
+                          gap: 5,
+                          flexWrap: "nowrap",
+                          alignItems: "center",
+                          overflowX: "auto",
+                          paddingBottom: 1,
+                          fontSize: 10.5,
+                          fontFamily: "monospace",
+                        }}
+                      >
+                        {[
+                          { icon: "\u2713", label: formatCountLabel(scriptDiagnostics.parsedSteps, "step"), color: "#166534", background: "#ecfdf3" },
+                          { icon: "\u25a0", label: formatCountLabel(scriptDiagnostics.objectCount, "object"), color: "#1d4ed8", background: "#eff6ff" },
+                          { icon: "\u25b3", label: formatCountLabel(scriptDiagnostics.constraintCount, "constraint"), color: "#7c3aed", background: "#f5f3ff" },
+                          { icon: "\u2605", label: formatCountLabel(scriptDiagnostics.claimCount, "claim"), color: "#a16207", background: "#fffbeb" },
+                          { icon: "\u26a0", label: formatCountLabel(scriptDiagnostics.warnings.length, "warning"), color: "#b45309", background: "#fff7ed" },
+                          { icon: "\u2716", label: formatCountLabel(scriptDiagnostics.errors.length, "error"), color: "#b42318", background: "#fef2f2" },
+                        ].map((badge) => (
+                          <span
+                            key={badge.label}
+                            style={{
+                              display: "inline-flex",
+                              gap: 3,
+                              alignItems: "center",
+                              border: "1px solid #e5e7eb",
+                              borderRadius: 999,
+                              padding: "1px 6px",
+                              color: badge.color,
+                              background: badge.background,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            <span aria-hidden="true">{badge.icon}</span>
+                            {badge.label}
+                          </span>
+                        ))}
+                      </div>
+                      {scriptDiagnostics.diagnostics.map((diag, idx) => (
+                        <button
+                          key={`${diag.line}:${idx}`}
+                          type="button"
+                          onClick={() => focusScriptLine(diag.line)}
+                          style={{
+                            textAlign: "left",
+                            border: "1px solid " + (diag.kind === "error" ? "#fca5a5" : "#fde68a"),
+                            background: diag.kind === "error" ? "#fef2f2" : "#fffbeb",
+                            borderRadius: 6,
+                            padding: "4px 6px",
+                            fontSize: 11,
+                            fontFamily: "monospace",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Line {diag.line}: {diag.message}
+                        </button>
+                      ))}
+                      <div style={{ fontSize: 10, opacity: 0.72 }}>
+                        Failed run keeps previous valid scene; fix diagnostics then rerun.
+                      </div>
+                    </div>
+                  </details>
+                  <details
+                    data-testid="construction-script-sync"
+                    style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "2px 6px", minWidth: 0 }}
+                  >
+                    <summary style={{ cursor: "pointer", fontSize: 10.5, fontWeight: 700, lineHeight: 1.1 }}>Sync</summary>
+                    <div style={{ marginTop: 7, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
+                      <select value={scriptSyncMode} onChange={(e) => setScriptSyncMode(e.target.value as ScriptSyncMode)} style={{ minWidth: 0, flex: "1 1 220px" }}>
+                        <option value="overwrite">Overwrite script from scene</option>
+                        <option value="appendNew">Append new steps only</option>
+                        <option value="keepComments">Keep manual comments</option>
+                      </select>
+                      <button type="button" onClick={regenerateScriptFromScene}>Apply sync</button>
+                    </div>
+                  </details>
+                </div>
               </div>
-            </details>
-          </div>
           {scriptTemplatesOpen && (
             <div
               data-testid="construction-script-templates"
