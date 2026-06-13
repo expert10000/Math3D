@@ -6,6 +6,7 @@ import path from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
+const E2E_VIEWPORT = { width: 1400, height: 900 };
 const COMPUTE_ENGINE_FIRST_LAUNCH_KEY = "math3d.computeEngines.firstLaunchSeen";
 
 type GeometryStats = {
@@ -29,6 +30,13 @@ const readGeometryStats = async (page: Page): Promise<GeometryStats> => {
   return parseGeometryStats(text);
 };
 
+const normalizeWindowScale = async (app: ElectronApplication): Promise<void> => {
+  await app.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win) win.webContents.setZoomFactor(1);
+  });
+};
+
 const launchApp = async (env: Record<string, string | undefined>): Promise<{ app: ElectronApplication; page: Page }> => {
   const launchEnv: Record<string, string | undefined> = {
     ...process.env,
@@ -38,11 +46,13 @@ const launchApp = async (env: Record<string, string | undefined>): Promise<{ app
   delete launchEnv.ELECTRON_RUN_AS_NODE;
 
   const app = await launchRepoElectron({
-    args: ["."],
+    args: [".", "--force-device-scale-factor=1"],
     cwd: repoRoot,
     env: launchEnv,
   });
   const page = await app.firstWindow();
+  await normalizeWindowScale(app);
+  await page.setViewportSize(E2E_VIEWPORT);
   await page.waitForLoadState("domcontentloaded");
   await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
   return { app, page };
