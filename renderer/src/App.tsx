@@ -3,6 +3,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import * as THREE from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
 import { ADDITION, Brush, Evaluator, INTERSECTION, REVERSE_SUBTRACTION, SUBTRACTION } from "three-bvh-csg";
+import {
+  getSceneDocumentExtension,
+  withSceneDocumentExtension,
+  type SceneDocument,
+  type SceneDocumentScript,
+} from "@math3d/core";
 import { uiStyles as styles } from "./uiStyles";
 
 import MobiusScreen from "./screens/MobiusScreen";
@@ -5979,6 +5985,66 @@ const toLinkedWorkspace = (workspace: WorkbookWorkspaceState | undefined): Workb
       })),
     },
   };
+};
+
+const collectWorkspaceSceneScripts = (
+  workspace: WorkbookWorkspaceState | undefined,
+  proceduralScriptText: string
+): SceneDocumentScript[] => {
+  const now = workspace?.savedAt;
+  const scripts: SceneDocumentScript[] = [];
+  const addScript = (
+    id: string,
+    title: string,
+    kind: SceneDocumentScript["kind"],
+    source: unknown,
+    metadata?: SceneDocumentScript["metadata"]
+  ) => {
+    if (typeof source !== "string" || !source.trim()) return;
+    scripts.push({
+      id,
+      title,
+      kind,
+      language: "math3d-scene-script",
+      source,
+      ...(Number.isFinite(now) ? { updatedAt: now } : {}),
+      ...(metadata ? { metadata } : {}),
+    });
+  };
+
+  addScript("geometry-procedural", "Geometry procedural script", "procedural", proceduralScriptText);
+  addScript("geometry-scratch", "Scratch scene script", "construction", workspace?.geometry?.scratchScene?.scriptText);
+  for (const [workbookId, seed] of Object.entries(workspace?.geometry?.workbookScenes ?? {})) {
+    addScript(
+      `workbook-${workbookId}`,
+      `Workbook scene script ${workbookId}`,
+      "workbook",
+      seed?.scriptText,
+      { workbookId }
+    );
+  }
+  return scripts;
+};
+
+const buildWorkspaceSceneDocument = (
+  payload: WorkbookReplayPayload,
+  proceduralScriptText: string,
+  savedAt: number
+): SceneDocument => {
+  const activeWorkbook = payload.workbooks.find((workbook) => workbook.id === payload.activeWorkbookId) ?? payload.workbooks[0];
+  const base: SceneDocument = {
+    id: activeWorkbook?.id ? `workbook-${activeWorkbook.id}` : "workbook-scene",
+    title: activeWorkbook?.title ?? "Math3D workbook scene",
+    createdAt: savedAt,
+    updatedAt: savedAt,
+    metadata: {
+      description: "Workbook workspace state and scene scripts exported from Math3D.",
+    },
+  };
+  return withSceneDocumentExtension(base, {
+    scripts: collectWorkspaceSceneScripts(payload.workspace, proceduralScriptText),
+    workbookWorkspace: payload.workspace,
+  });
 };
 
 const ensureMath3dExtension = (fileName: string): string => {
@@ -20876,9 +20942,6 @@ const App: React.FC = () => {
     () => hashString(workbookSessionJson),
     [workbookSessionJson]
   );
-  const workbookDirty = workbookManualSaveHash
-    ? workbookManualSaveHash !== workbookSessionHash
-    : true;
   const openGeometryWorkbookMode = useCallback(
     (seed?: ConstructionLabSeed | null) => {
       const setSeedForWorkbook = (workbookId: string) => {
@@ -34074,6 +34137,9 @@ case "mobius":
     () => hashString(workbookSessionJsonWithWorkspace),
     [workbookSessionJsonWithWorkspace]
   );
+  const workbookDirty = workbookManualSaveHash
+    ? workbookManualSaveHash !== workbookSessionHashWithWorkspace
+    : true;
   const workbookBundlePayload = useMemo<WorkbookReplayPayload>(
     () =>
       workbookBundleAssetMode === "embedded"
@@ -34084,14 +34150,24 @@ case "mobius":
           },
     [workbookBundleAssetMode, workbookSessionPayloadWithWorkspace]
   );
+  const workbookBundleSavedAt = workbookBundlePayload.workspace?.savedAt ?? Date.now();
+  const workbookBundleSceneDocument = useMemo(
+    () => buildWorkspaceSceneDocument(workbookBundlePayload, geometryProceduralScriptText, workbookBundleSavedAt),
+    [workbookBundlePayload, geometryProceduralScriptText, workbookBundleSavedAt]
+  );
   const workbookBundleJson = useMemo(
     () =>
       JSON.stringify(
-        buildWorkbookProjectEnvelope(workbookBundlePayload, workbookBundleAssetMode, Date.now()),
+        buildWorkbookProjectEnvelope(
+          workbookBundlePayload,
+          workbookBundleAssetMode,
+          workbookBundleSavedAt,
+          workbookBundleSceneDocument
+        ),
         null,
         2
       ),
-    [workbookBundlePayload, workbookBundleAssetMode]
+    [workbookBundlePayload, workbookBundleAssetMode, workbookBundleSavedAt, workbookBundleSceneDocument]
   );
 
   const markWorkbookManualSave = useCallback(
@@ -34457,19 +34533,22 @@ case "mobius":
       const nextStage = isWorkbookStageId(migratedPayload?.activeStageId) ? migratedPayload.activeStageId : "define";
       setActiveWorkbookId(nextActive);
       setActiveStageId(nextStage);
-      if (migratedPayload?.workspace) {
-        applyWorkbookWorkspace(migratedPayload.workspace as WorkbookWorkspaceState);
+      const importedWorkspace = migratedPayload?.workspace as WorkbookWorkspaceState | undefined;
+      if (importedWorkspace) {
+        applyWorkbookWorkspace(importedWorkspace);
       }
+      const nextPayload: WorkbookReplayPayload = {
+        workbooks: normalized,
+        activeWorkbookId: nextActive,
+        activeStageId: nextStage,
+        ...(importedWorkspace ? { workspace: importedWorkspace } : {}),
+      };
       const nextHash = hashString(
         JSON.stringify(
           {
             version: WORKBOOK_PROJECT_FORMAT_VERSION,
             format: WORKBOOK_PROJECT_FORMAT,
-            payload: {
-              workbooks: normalized,
-              activeWorkbookId: nextActive,
-              activeStageId: nextStage,
-            },
+            payload: nextPayload,
           },
           null,
           2
@@ -34599,8 +34678,8 @@ case "mobius":
         : sanitizeFileBase(activeWorkbook?.title ?? "workbook", "workbook");
     const fileName = `${base}-${new Date().toISOString().slice(0, 10)}.math3d`;
     downloadTextFile(workbookBundleJson, fileName, "application/json");
-    markWorkbookManualSave(workbookSessionHash, Date.now(), fileName);
-  }, [workbookBundleJson, workbookSessionHash, workbooks.length, activeWorkbook, markWorkbookManualSave]);
+    markWorkbookManualSave(workbookSessionHashWithWorkspace, Date.now(), fileName);
+  }, [workbookBundleJson, workbookSessionHashWithWorkspace, workbooks.length, activeWorkbook, markWorkbookManualSave]);
 
   const handleSaveWorkbook = useCallback(() => {
     const base =
@@ -34610,10 +34689,10 @@ case "mobius":
     const defaultName = `${base}-${new Date().toISOString().slice(0, 10)}.math3d`;
     const fileName = ensureMath3dExtension(workbookManualSaveName || defaultName);
     downloadTextFile(workbookBundleJson, fileName, "application/json");
-    markWorkbookManualSave(workbookSessionHash, Date.now(), fileName);
+    markWorkbookManualSave(workbookSessionHashWithWorkspace, Date.now(), fileName);
   }, [
     workbookBundleJson,
-    workbookSessionHash,
+    workbookSessionHashWithWorkspace,
     workbookManualSaveName,
     workbooks.length,
     activeWorkbook,
@@ -34912,7 +34991,13 @@ case "mobius":
         const decoded = parseWorkbookProject(parsed);
         if (!decoded) return;
         setWorkbookBundleAssetMode(decoded.assetMode === "linked" ? "linked" : "embedded");
-        applyWorkbookPayload(decoded.payload);
+        const sceneExtension = decoded.sceneDocument ? getSceneDocumentExtension(decoded.sceneDocument) : undefined;
+        const payload = decoded.payload as WorkbookReplayPayload;
+        applyWorkbookPayload(
+          !payload.workspace && sceneExtension?.workbookWorkspace
+            ? { ...payload, workspace: sceneExtension.workbookWorkspace as WorkbookWorkspaceState }
+            : payload
+        );
       } catch {
         // ignore
       }

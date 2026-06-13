@@ -1,5 +1,9 @@
 import { isFiniteNumber, isVec3 } from "./math";
-import type { SceneDocument } from "./sceneDocument";
+import {
+  SCENE_DOCUMENT_EXTENSION_KEY,
+  SCENE_DOCUMENT_EXTENSION_VERSION,
+  type SceneDocument,
+} from "./sceneDocument";
 import type { GeometryObject, GeometryScene } from "./sceneObjects";
 
 export type ValidationResult<T> =
@@ -53,6 +57,34 @@ const validateGeometryObject = (value: unknown, errors: string[], path: string):
   return errors.length === 0;
 };
 
+const validateSceneDocumentExtension = (value: unknown, errors: string[], path: string) => {
+  if (value === undefined) return;
+  if (!isRecord(value)) {
+    errors.push(`${path} must be an object.`);
+    return;
+  }
+  if (value.version !== SCENE_DOCUMENT_EXTENSION_VERSION) {
+    errors.push(`${path}.version must be ${SCENE_DOCUMENT_EXTENSION_VERSION}.`);
+  }
+  if (value.scripts !== undefined) {
+    if (!Array.isArray(value.scripts)) {
+      errors.push(`${path}.scripts must be an array when provided.`);
+    } else {
+      for (let i = 0; i < value.scripts.length; i += 1) {
+        const script = value.scripts[i];
+        if (!isRecord(script)) {
+          errors.push(`${path}.scripts[${i}] must be an object.`);
+          continue;
+        }
+        if (!hasString(script.id)) errors.push(`${path}.scripts[${i}].id is required.`);
+        if (!hasString(script.kind)) errors.push(`${path}.scripts[${i}].kind is required.`);
+        if (!hasString(script.language)) errors.push(`${path}.scripts[${i}].language is required.`);
+        if (typeof script.source !== "string") errors.push(`${path}.scripts[${i}].source must be a string.`);
+      }
+    }
+  }
+};
+
 export const validateSceneDocument = (value: unknown): ValidationResult<SceneDocument> => {
   const errors: string[] = [];
   if (!isRecord(value)) {
@@ -92,6 +124,18 @@ export const validateSceneDocument = (value: unknown): ValidationResult<SceneDoc
         if (!isVec3(camera.position)) errors.push(`scene.cameras[${i}].position must be Vec3.`);
         if (!isVec3(camera.target)) errors.push(`scene.cameras[${i}].target must be Vec3.`);
       }
+    }
+  }
+
+  if (value.extensions !== undefined) {
+    if (!isRecord(value.extensions)) {
+      errors.push("scene.extensions must be an object.");
+    } else {
+      validateSceneDocumentExtension(
+        value.extensions[SCENE_DOCUMENT_EXTENSION_KEY],
+        errors,
+        `scene.extensions.${SCENE_DOCUMENT_EXTENSION_KEY}`
+      );
     }
   }
 

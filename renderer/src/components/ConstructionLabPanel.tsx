@@ -4,7 +4,9 @@ import type { GeometryScene } from "../geometry/types";
 import {
   createSceneProjectDocument,
   deserializeSceneProject,
+  getSceneDocumentExtension,
   serializeSceneProject,
+  withSceneDocumentExtension,
   type SceneDocument,
 } from "@math3d/core";
 import { PROCEDURAL_SCENE_SCRIPT_STARTER } from "../geometry/scripting/sceneScriptExamples";
@@ -1894,7 +1896,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       checks: checkDefs,
       constraints,
     };
-    const doc: SceneDocument = {
+    const baseDoc: SceneDocument = {
       id: cleanId(sceneName) || `scene_${Date.now()}`,
       title: sceneName,
       createdAt: Date.now(),
@@ -1905,6 +1907,32 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
         [CONSTRUCTION_LAB_EXTENSION_KEY]: extension,
       },
     };
+    const doc = withSceneDocumentExtension(baseDoc, {
+      scripts: [
+        {
+          id: "construction-lab-script",
+          title: sceneName,
+          kind: "construction",
+          language: "math3d-scene-script",
+          source: scriptText,
+          updatedAt: baseDoc.updatedAt,
+        },
+      ],
+      workbookWorkspace: {
+        version: 2,
+        savedAt: baseDoc.updatedAt,
+        geometry: {
+          mode: "scratch",
+          scratchScene: {
+            nodes,
+            checkDefs,
+            constraints,
+            selectedNodeId,
+            scriptText,
+          },
+        },
+      },
+    });
     const project = createSceneProjectDocument(doc);
     try {
       const blob = new Blob([serializeSceneProject(project)], { type: "application/json" });
@@ -1917,7 +1945,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     } catch (err) {
       setScriptError(`Scene export failed: ${String(err)}`);
     }
-  }, [checkDefs, constraints, nodes, sceneMetadata, sceneMode, sceneName, sceneType, scriptText, solved.scene]);
+  }, [checkDefs, constraints, nodes, sceneMetadata, sceneMode, sceneName, sceneType, scriptText, selectedNodeId, solved.scene]);
 
   const exportSceneScript = useCallback(() => {
     try {
@@ -1950,13 +1978,46 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
         let nextMetadata = "";
 
         if (parsedProject.ok) {
+          const versionedExt = getSceneDocumentExtension(parsedProject.value.scene);
+          const workspace = versionedExt?.workbookWorkspace as any;
+          const scratchScene = workspace?.geometry?.scratchScene;
+          const versionedScript =
+            versionedExt?.scripts?.find((script) => script.kind === "construction") ??
+            versionedExt?.scripts?.[0] ??
+            null;
+          if (scratchScene && Array.isArray(scratchScene.nodes) && Array.isArray(scratchScene.checkDefs)) {
+            nextNodes = scratchScene.nodes as ConstructionNode[];
+            nextChecks = scratchScene.checkDefs as ProblemCheckDef[];
+            nextConstraints = Array.isArray(scratchScene.constraints)
+              ? (scratchScene.constraints as ConstructionConstraintDef[])
+              : [];
+            nextScript =
+              typeof scratchScene.scriptText === "string"
+                ? scratchScene.scriptText
+                : typeof versionedScript?.source === "string"
+                  ? versionedScript.source
+                  : null;
+            nextSceneName = parsedProject.value.scene.title || "Imported scene";
+            nextSceneType = "task";
+            nextSceneMode = "plane2d";
+            nextMetadata =
+              typeof parsedProject.value.scene.metadata?.description === "string"
+                ? parsedProject.value.scene.metadata.description
+                : "";
+          }
+
           const ext = parsedProject.value.scene.extensions?.[CONSTRUCTION_LAB_EXTENSION_KEY];
           const extObj = ext && typeof ext === "object" ? (ext as Partial<ConstructionLabExtension>) : null;
-          if (extObj && Array.isArray(extObj.nodes) && Array.isArray(extObj.checks)) {
+          if (!nextNodes && extObj && Array.isArray(extObj.nodes) && Array.isArray(extObj.checks)) {
             nextNodes = extObj.nodes as ConstructionNode[];
             nextChecks = extObj.checks as ProblemCheckDef[];
             nextConstraints = Array.isArray(extObj.constraints) ? (extObj.constraints as ConstructionConstraintDef[]) : [];
-            nextScript = typeof extObj.script === "string" ? extObj.script : null;
+            nextScript =
+              typeof extObj.script === "string"
+                ? extObj.script
+                : typeof versionedScript?.source === "string"
+                  ? versionedScript.source
+                  : null;
             nextSceneName = parsedProject.value.scene.title || "Imported scene";
             nextSceneType = extObj.sceneType === "demo" || extObj.sceneType === "free" ? extObj.sceneType : "task";
             nextSceneMode = extObj.sceneMode === "space3d" ? "space3d" : "plane2d";

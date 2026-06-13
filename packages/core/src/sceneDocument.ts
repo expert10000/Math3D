@@ -70,6 +70,28 @@ export type CameraPreset = {
   fovDeg?: number;
 };
 
+export const SCENE_DOCUMENT_EXTENSION_KEY = "math3d.sceneDocument" as const;
+export const SCENE_DOCUMENT_EXTENSION_VERSION = 1 as const;
+
+export type SceneDocumentScriptKind = "scene" | "construction" | "procedural" | "workbook";
+
+export type SceneDocumentScript = {
+  id: string;
+  title?: string;
+  kind: SceneDocumentScriptKind;
+  language: string;
+  source: string;
+  createdAt?: number;
+  updatedAt?: number;
+  metadata?: Record<string, string | number | boolean | null>;
+};
+
+export type SceneDocumentExtensionV1 = {
+  version: typeof SCENE_DOCUMENT_EXTENSION_VERSION;
+  scripts?: SceneDocumentScript[];
+  workbookWorkspace?: unknown;
+};
+
 export type SceneDocument = {
   id: string;
   title: string;
@@ -84,3 +106,26 @@ export type SceneDocument = {
   metadata?: Record<string, string | number | boolean | null>;
   extensions?: Record<string, unknown>;
 };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+export const getSceneDocumentExtension = (scene: SceneDocument): SceneDocumentExtensionV1 | undefined => {
+  const extension = scene.extensions?.[SCENE_DOCUMENT_EXTENSION_KEY];
+  if (!isRecord(extension) || extension.version !== SCENE_DOCUMENT_EXTENSION_VERSION) return undefined;
+  return extension as SceneDocumentExtensionV1;
+};
+
+export const withSceneDocumentExtension = (
+  scene: SceneDocument,
+  extension: Omit<SceneDocumentExtensionV1, "version"> | SceneDocumentExtensionV1
+): SceneDocument => ({
+  ...scene,
+  extensions: {
+    ...(scene.extensions ?? {}),
+    [SCENE_DOCUMENT_EXTENSION_KEY]: {
+      ...extension,
+      version: SCENE_DOCUMENT_EXTENSION_VERSION,
+    },
+  },
+});
