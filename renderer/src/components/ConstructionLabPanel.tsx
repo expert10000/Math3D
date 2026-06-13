@@ -59,6 +59,34 @@ type ScriptOutlineEntry = {
   label: string;
 };
 
+type ScriptSymbolKind = "point" | "line" | "circle" | "claim" | "constraint" | "object";
+
+type ScriptSymbol = {
+  id: string;
+  label: string;
+  kind: ScriptSymbolKind;
+  line: number;
+  summary: string;
+  dependencies: string[];
+  usedBy: string[];
+};
+
+type UpgradedScriptDiagnostic = {
+  level: "error" | "warning" | "hint";
+  line: number | null;
+  title: string;
+  message: string;
+  symbolId?: string;
+};
+
+type ScriptStageSection = {
+  index: number;
+  label: string;
+  line: number;
+  endLine: number;
+  symbols: ScriptSymbol[];
+};
+
 type SceneMode = "plane2d" | "space3d";
 type SceneType = "task" | "free" | "demo";
 type ScriptSyncMode = "overwrite" | "appendNew" | "keepComments";
@@ -366,6 +394,44 @@ const buildConstructionScriptOutline = (script: string): ScriptOutlineEntry[] =>
 
   return generated;
 };
+
+const scriptSymbolKindForNode = (node: ConstructionNode): ScriptSymbolKind => {
+  if (isPointNode(node)) return "point";
+  if (isLineNode(node)) return "line";
+  if (isCircleNode(node)) return "circle";
+  return "object";
+};
+
+const scriptSymbolKindLabel = (kind: ScriptSymbolKind) => {
+  if (kind === "point") return "Point";
+  if (kind === "line") return "Line";
+  if (kind === "circle") return "Circle";
+  if (kind === "claim") return "Claim";
+  if (kind === "constraint") return "Constraint";
+  return "Object";
+};
+
+const scriptCommandSuggestions = [
+  "point",
+  "line",
+  "circle",
+  "circumcircle",
+  "circumcenter",
+  "circle3",
+  "midpoint",
+  "arc-midpoint",
+  "perp",
+  "parallel",
+  "perp-bisector",
+  "angle-bisector",
+  "intersection",
+  "second-intersection",
+  "check point-on-circle",
+  "check collinear",
+  "check perpendicular",
+  "constraint perpendicular",
+  "constraint parallel",
+];
 
 const uniqueId = (base: string, existingIds: Set<string>) => {
   const root = cleanId(base) || "obj";
@@ -795,6 +861,70 @@ const parseSceneScript = (script: string) => {
   return { nodes: draftNodes, checks: draftChecks, constraints: draftConstraints, error: null as string | null };
 };
 
+const buildScriptSymbols = (script: string): ScriptSymbol[] => {
+  const symbols: ScriptSymbol[] = [];
+  const ids = new Set<string>();
+  const lines = script.split(/\r?\n/);
+  let claimCount = 0;
+  let constraintCount = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const parsed = parseCommandLine(trimmed, ids, claimCount + 1, constraintCount + 1);
+    if (!parsed.ok) break;
+
+    if (parsed.node) {
+      ids.add(parsed.node.id);
+      symbols.push({
+        id: parsed.node.id,
+        label: parsed.node.label ?? parsed.node.id,
+        kind: scriptSymbolKindForNode(parsed.node),
+        line: i + 1,
+        summary: parsed.summary,
+        dependencies: nodeDependencies(parsed.node),
+        usedBy: [],
+      });
+    }
+
+    if (parsed.check) {
+      claimCount += 1;
+      symbols.push({
+        id: parsed.check.id,
+        label: parsed.check.label,
+        kind: "claim",
+        line: i + 1,
+        summary: parsed.summary,
+        dependencies: checkReferencedIds(parsed.check),
+        usedBy: [],
+      });
+    }
+
+    if (parsed.constraint) {
+      constraintCount += 1;
+      symbols.push({
+        id: parsed.constraint.id,
+        label: parsed.constraint.label ?? parsed.constraint.id,
+        kind: "constraint",
+        line: i + 1,
+        summary: parsed.summary,
+        dependencies: [parsed.constraint.targetId, parsed.constraint.sourceId],
+        usedBy: [],
+      });
+    }
+  }
+
+  const byId = new Map(symbols.map((symbol) => [symbol.id, symbol]));
+  for (const symbol of symbols) {
+    for (const dep of symbol.dependencies) {
+      const target = byId.get(dep);
+      if (target && !target.usedBy.includes(symbol.id)) target.usedBy.push(symbol.id);
+    }
+  }
+
+  return symbols;
+};
+
 const DEFAULT_INITIAL_SCENE = (() => {
   const parsed = parseSceneScript(DEFAULT_OLYMPIAD_ARC_SCRIPT);
   if (!parsed.error && parsed.nodes.length > 0) {
@@ -927,6 +1057,14 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [automationScriptText, setAutomationScriptText] = useState(AUTOMATION_SCRIPT_STARTER);
   const [scriptError, setScriptError] = useState<string | null>(null);
   const [scriptCursorLine, setScriptCursorLine] = useState(1);
+  const [selectedScriptSymbolId, setSelectedScriptSymbolId] = useState<string | null>(null);
+  const [selectedScriptStageIndex, setSelectedScriptStageIndex] = useState<number | null>(null);
+  const [foldedScriptStageKeys, setFoldedScriptStageKeys] = useState<Set<number>>(() => new Set());
+  const [highlightedStageObjectIds, setHighlightedStageObjectIds] = useState<Set<string>>(() => new Set());
+  const [scriptRunStepIndex, setScriptRunStepIndex] = useState(0);
+  const [scriptDebugMode, setScriptDebugMode] = useState(false);
+  const [scriptAnimating, setScriptAnimating] = useState(false);
+  const scriptAnimationTimerRef = useRef<number | null>(null);
   const [presetName, setPresetName] = useState("my-scene");
   const [presets, setPresets] = useState<ScriptPreset[]>(() => loadPresets());
   const [selectedPresetName, setSelectedPresetName] = useState(BUILTIN_TASK_PRESET_NAME);
@@ -941,10 +1079,22 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
 
   const nodesForSolve = useMemo(
     () =>
-      helpersVisible
-        ? nodes
-        : nodes.map((node) => (helperNodeIds.has(node.id) ? { ...node, hidden: true } : node)),
-    [helperNodeIds, helpersVisible, nodes]
+      nodes.map((node) => {
+        const hidden = !helpersVisible && helperNodeIds.has(node.id);
+        if (!highlightedStageObjectIds.size) return hidden ? { ...node, hidden: true } : node;
+        const highlighted = highlightedStageObjectIds.has(node.id);
+        return {
+          ...node,
+          hidden: hidden || node.hidden,
+          style: {
+            ...node.style,
+            opacity: highlighted ? 1 : 0.16,
+            size: highlighted && node.style?.size ? node.style.size * 1.35 : node.style?.size,
+            radiusScale: highlighted ? (node.style?.radiusScale ?? 1) * 1.2 : node.style?.radiusScale,
+          },
+        };
+      }),
+    [helperNodeIds, helpersVisible, highlightedStageObjectIds, nodes]
   );
   const solved = useMemo(() => evaluateConstructionGraph(nodesForSolve, constraints), [constraints, nodesForSolve]);
   const activeCheckDefs = useMemo(
@@ -988,6 +1138,15 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     globalThis.addEventListener("keydown", onKeyDown);
     return () => globalThis.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  useEffect(
+    () => () => {
+      if (scriptAnimationTimerRef.current != null) {
+        window.clearTimeout(scriptAnimationTimerRef.current);
+      }
+    },
+    []
+  );
 
   const pointIds = useMemo(() => nodes.filter(isPointNode).map((node) => node.id), [nodes]);
   const lineIds = useMemo(() => nodes.filter(isLineNode).map((node) => node.id), [nodes]);
@@ -1085,6 +1244,123 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     return Array.from({ length: count }, (_, index) => index + 1);
   }, [scriptText]);
   const scriptOutline = useMemo(() => buildConstructionScriptOutline(scriptText), [scriptText]);
+  const scriptSymbols = useMemo(() => buildScriptSymbols(scriptText), [scriptText]);
+  const scriptSymbolById = useMemo(() => {
+    const map = new Map<string, ScriptSymbol>();
+    for (const symbol of scriptSymbols) map.set(symbol.id, symbol);
+    return map;
+  }, [scriptSymbols]);
+  const scriptSymbolsByKind = useMemo(() => {
+    const grouped: Record<ScriptSymbolKind, ScriptSymbol[]> = {
+      point: [],
+      line: [],
+      circle: [],
+      claim: [],
+      constraint: [],
+      object: [],
+    };
+    for (const symbol of scriptSymbols) grouped[symbol.kind].push(symbol);
+    return grouped;
+  }, [scriptSymbols]);
+  const scriptStageSections = useMemo<ScriptStageSection[]>(() => {
+    const totalLines = Math.max(1, scriptText.split(/\r?\n/).length);
+    return scriptOutline.map((entry, index) => {
+      const next = scriptOutline[index + 1];
+      const endLine = next ? Math.max(entry.line, next.line - 1) : totalLines;
+      return {
+        index,
+        label: entry.label,
+        line: entry.line,
+        endLine,
+        symbols: scriptSymbols.filter((symbol) => symbol.line >= entry.line && symbol.line <= endLine),
+      };
+    });
+  }, [scriptOutline, scriptSymbols, scriptText]);
+  const scriptObjectStats = useMemo(
+    () => ({
+      points: scriptSymbolsByKind.point.length,
+      lines: scriptSymbolsByKind.line.length,
+      circles: scriptSymbolsByKind.circle.length,
+      claims: scriptSymbolsByKind.claim.length,
+      dependencies: scriptSymbols.reduce((total, symbol) => total + symbol.dependencies.length, 0),
+    }),
+    [scriptSymbols, scriptSymbolsByKind]
+  );
+  const executableScriptLines = useMemo(
+    () => scriptSymbols.map((symbol) => symbol.line).filter((line, index, lines) => lines.indexOf(line) === index),
+    [scriptSymbols]
+  );
+  const hiddenScriptNodeIds = useMemo(() => new Set(nodes.filter((node) => node.hidden).map((node) => node.id)), [nodes]);
+  const upgradedScriptDiagnostics = useMemo(() => {
+    const diagnostics: UpgradedScriptDiagnostic[] = [
+      ...scriptDiagnostics.errors.map((diag) => ({
+        level: "error" as const,
+        line: diag.line,
+        title: "Script error",
+        message: diag.message,
+      })),
+      ...scriptDiagnostics.warnings.map((diag) => ({
+        level: "warning" as const,
+        line: diag.line,
+        title: "Script warning",
+        message: diag.message,
+      })),
+    ];
+
+    for (const symbol of scriptSymbols) {
+      if (symbol.kind !== "claim" && symbol.kind !== "constraint" && symbol.usedBy.length === 0) {
+        diagnostics.push({
+          level: "hint",
+          line: symbol.line,
+          title: "Unused object",
+          message: `${symbol.id} is not referenced by another object or claim.`,
+          symbolId: symbol.id,
+        });
+      }
+      if (symbol.kind !== "claim" && symbol.kind !== "constraint" && symbol.id.length <= 1 && symbol.line > 3) {
+        diagnostics.push({
+          level: "hint",
+          line: symbol.line,
+          title: "Object name too generic",
+          message: `${symbol.id} may be harder to scan in longer theorem scripts.`,
+          symbolId: symbol.id,
+        });
+      }
+    }
+
+    for (const claim of scriptSymbolsByKind.claim) {
+      for (const dep of claim.dependencies) {
+        if (hiddenScriptNodeIds.has(dep)) {
+          diagnostics.push({
+            level: "warning",
+            line: claim.line,
+            title: "Claim references hidden object",
+            message: `${claim.label} references hidden object ${dep}.`,
+            symbolId: claim.id,
+          });
+        }
+      }
+    }
+
+    if (!scriptOutline.length) {
+      diagnostics.push({
+        level: "hint",
+        line: null,
+        title: "Add stage comments",
+        message: "Use comments like # Stage 1 Triangle to improve Outline and Minimap labels.",
+      });
+    }
+
+    return diagnostics;
+  }, [hiddenScriptNodeIds, scriptDiagnostics.errors, scriptDiagnostics.warnings, scriptOutline.length, scriptSymbols, scriptSymbolsByKind.claim]);
+  const upgradedDiagnosticCounts = useMemo(
+    () => ({
+      errors: upgradedScriptDiagnostics.filter((diag) => diag.level === "error").length,
+      warnings: upgradedScriptDiagnostics.filter((diag) => diag.level === "warning").length,
+      hints: upgradedScriptDiagnostics.filter((diag) => diag.level === "hint").length,
+    }),
+    [upgradedScriptDiagnostics]
+  );
   const activeScriptOutlineIndex = useMemo(() => {
     let active = 0;
     for (let i = 0; i < scriptOutline.length; i++) {
@@ -1093,11 +1369,43 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     }
     return active;
   }, [scriptCursorLine, scriptOutline]);
+  const displayedScriptStageIndex =
+    selectedScriptStageIndex != null && selectedScriptStageIndex >= 0 && selectedScriptStageIndex < scriptStageSections.length
+      ? selectedScriptStageIndex
+      : activeScriptOutlineIndex;
+  const displayedScriptStage = scriptStageSections[displayedScriptStageIndex] ?? null;
+  const cursorScriptSymbol = useMemo(
+    () => scriptSymbols.find((symbol) => symbol.line === scriptCursorLine) ?? null,
+    [scriptCursorLine, scriptSymbols]
+  );
+  const selectedScriptSymbol = useMemo(
+    () => (selectedScriptSymbolId ? scriptSymbolById.get(selectedScriptSymbolId) ?? null : null) ?? cursorScriptSymbol,
+    [cursorScriptSymbol, scriptSymbolById, selectedScriptSymbolId]
+  );
+  const currentScriptLineText = useMemo(
+    () => scriptText.split(/\r?\n/)[Math.max(0, scriptCursorLine - 1)] ?? "",
+    [scriptCursorLine, scriptText]
+  );
+  const currentScriptCommandPrefix = useMemo(() => {
+    const trimmed = currentScriptLineText.trimStart();
+    if (!trimmed || trimmed.startsWith("#")) return "";
+    const firstToken = trimmed.split(/\s+/)[0] ?? "";
+    return firstToken.toLowerCase();
+  }, [currentScriptLineText]);
+  const activeCommandSuggestions = useMemo(() => {
+    if (!currentScriptCommandPrefix) return scriptCommandSuggestions.slice(0, 6);
+    return scriptCommandSuggestions
+      .filter((suggestion) => suggestion.toLowerCase().startsWith(currentScriptCommandPrefix))
+      .slice(0, 6);
+  }, [currentScriptCommandPrefix]);
   const updateScriptCursorLine = useCallback(() => {
     const textarea = scriptEditorRef.current;
     if (!textarea) return;
     const nextLine = scriptText.slice(0, textarea.selectionStart).split(/\r?\n/).length;
     setScriptCursorLine(Math.max(1, nextLine));
+    setSelectedScriptSymbolId(null);
+    setSelectedScriptStageIndex(null);
+    setHighlightedStageObjectIds(new Set());
   }, [scriptText]);
   const syncScriptLineGutterScroll = useCallback((event: React.UIEvent<HTMLTextAreaElement>) => {
     if (scriptLineGutterRef.current) {
@@ -1777,7 +2085,13 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       setSelectedPresetName(BUILTIN_TASK_PRESET_NAME);
     }
     applyScriptToScene(source);
+    setScriptRunStepIndex(executableScriptLines.length);
   };
+
+  const scriptPrefixThroughLine = useCallback((lineNumber: number) => {
+    const lines = scriptText.split(/\r?\n/);
+    return lines.slice(0, Math.max(0, lineNumber)).join("\n");
+  }, [scriptText]);
 
   const focusScriptLine = useCallback((lineNumber: number) => {
     const textarea = scriptEditorRef.current;
@@ -1790,6 +2104,172 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     textarea.setSelectionRange(start, end);
     setScriptCursorLine(Math.max(1, lineNumber));
   }, [scriptText]);
+
+  const stepScript = useCallback(() => {
+    if (!executableScriptLines.length) return;
+    const nextIndex = Math.min(scriptRunStepIndex, executableScriptLines.length - 1);
+    const lineNumber = executableScriptLines[nextIndex];
+    const prefix = scriptPrefixThroughLine(lineNumber);
+    if (applyScriptToScene(prefix)) {
+      setScriptRunStepIndex(nextIndex + 1);
+      focusScriptLine(lineNumber);
+    }
+  }, [applyScriptToScene, executableScriptLines, focusScriptLine, scriptPrefixThroughLine, scriptRunStepIndex]);
+
+  const resetScriptStepper = useCallback(() => {
+    if (scriptAnimationTimerRef.current != null) {
+      window.clearTimeout(scriptAnimationTimerRef.current);
+      scriptAnimationTimerRef.current = null;
+    }
+    setScriptAnimating(false);
+    setScriptRunStepIndex(0);
+    setScriptError(null);
+  }, []);
+
+  const animateScript = useCallback(() => {
+    if (scriptAnimating) {
+      if (scriptAnimationTimerRef.current != null) {
+        window.clearTimeout(scriptAnimationTimerRef.current);
+        scriptAnimationTimerRef.current = null;
+      }
+      setScriptAnimating(false);
+      return;
+    }
+    if (!executableScriptLines.length) return;
+    setScriptAnimating(true);
+    let index = 0;
+    const tick = () => {
+      const lineNumber = executableScriptLines[index];
+      if (lineNumber == null) {
+        setScriptAnimating(false);
+        scriptAnimationTimerRef.current = null;
+        setScriptRunStepIndex(executableScriptLines.length);
+        return;
+      }
+      if (applyScriptToScene(scriptPrefixThroughLine(lineNumber))) {
+        setScriptRunStepIndex(index + 1);
+        focusScriptLine(lineNumber);
+      }
+      index += 1;
+      scriptAnimationTimerRef.current = window.setTimeout(tick, 450);
+    };
+    tick();
+  }, [applyScriptToScene, executableScriptLines, focusScriptLine, scriptAnimating, scriptPrefixThroughLine]);
+
+  const focusScriptSymbol = useCallback((symbolId: string) => {
+    const symbol = scriptSymbolById.get(symbolId);
+    if (!symbol) return;
+    setSelectedScriptSymbolId(symbol.id);
+    focusScriptLine(symbol.line);
+    if (symbol.kind === "claim") {
+      const firstRef = symbol.dependencies[0];
+      if (firstRef) focusNodeInScene(firstRef);
+      return;
+    }
+    if (symbol.kind !== "constraint") {
+      setSelectedNodeId(symbol.id);
+      focusNodeInScene(symbol.id);
+    }
+  }, [focusNodeInScene, focusScriptLine, scriptSymbolById]);
+
+  const selectScriptStage = useCallback((stageIndex: number) => {
+    const stage = scriptStageSections[stageIndex];
+    if (!stage) return;
+    setSelectedScriptStageIndex(stage.index);
+    const objectIds = stage.symbols
+      .filter((symbol) => symbol.kind !== "claim" && symbol.kind !== "constraint")
+      .map((symbol) => symbol.id);
+    setHighlightedStageObjectIds(new Set(objectIds));
+    applyScriptToScene(scriptPrefixThroughLine(stage.endLine));
+    focusScriptLine(stage.line);
+    const firstObjectId = objectIds[0];
+    if (firstObjectId) {
+      setSelectedNodeId(firstObjectId);
+      focusNodeInScene(firstObjectId);
+    }
+  }, [applyScriptToScene, focusNodeInScene, focusScriptLine, scriptPrefixThroughLine, scriptStageSections]);
+
+  const selectAdjacentScriptStage = useCallback((direction: -1 | 1) => {
+    if (!scriptStageSections.length) return;
+    const nextIndex = Math.max(0, Math.min(scriptStageSections.length - 1, displayedScriptStageIndex + direction));
+    selectScriptStage(nextIndex);
+  }, [displayedScriptStageIndex, scriptStageSections.length, selectScriptStage]);
+
+  const toggleScriptStageFold = useCallback((stageIndex: number) => {
+    setFoldedScriptStageKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(stageIndex)) next.delete(stageIndex);
+      else next.add(stageIndex);
+      return next;
+    });
+  }, []);
+
+  const applyCommandSuggestion = useCallback((suggestion: string) => {
+    const lines = scriptText.split(/\r?\n/);
+    const index = Math.max(0, Math.min(lines.length - 1, scriptCursorLine - 1));
+    const current = lines[index] ?? "";
+    const indent = current.match(/^\s*/)?.[0] ?? "";
+    const rest = current.trimStart().replace(/^\S+\s*/, "");
+    const nextLine = `${indent}${suggestion}${rest ? ` ${rest}` : " "}`;
+    lines[index] = nextLine;
+    setScriptText(lines.join("\n"));
+    window.setTimeout(() => {
+      focusScriptLine(scriptCursorLine);
+    }, 0);
+  }, [focusScriptLine, scriptCursorLine, scriptText]);
+
+  const renderScriptDependencyTree = useCallback(
+    (symbol: ScriptSymbol | null, depth = 0, visited = new Set<string>()): React.ReactNode => {
+      if (!symbol) return null;
+      if (visited.has(symbol.id)) {
+        return (
+          <div style={{ paddingLeft: depth * 10, fontFamily: "monospace", fontSize: 10.5, color: "#64748b" }}>
+            {symbol.id} (cycle)
+          </div>
+        );
+      }
+      const nextVisited = new Set(visited);
+      nextVisited.add(symbol.id);
+      return (
+        <div key={`${symbol.id}-${depth}`}>
+          <button
+            type="button"
+            onClick={() => focusScriptSymbol(symbol.id)}
+            title={`${scriptSymbolKindLabel(symbol.kind)} ${symbol.id}\n${symbol.summary}\nUsed by ${symbol.usedBy.length} objects`}
+            style={{
+              display: "block",
+              width: "100%",
+              textAlign: "left",
+              border: "none",
+              background: "transparent",
+              padding: "2px 0 2px " + depth * 10,
+              fontFamily: "monospace",
+              fontSize: 10.5,
+              cursor: "pointer",
+            }}
+          >
+            {depth === 0 ? "" : "\u2514\u2500 "}
+            {symbol.id}
+          </button>
+          {symbol.dependencies.map((dep) => {
+            const depSymbol = scriptSymbolById.get(dep);
+            return depSymbol ? (
+              renderScriptDependencyTree(depSymbol, depth + 1, nextVisited)
+            ) : (
+              <div
+                key={`${symbol.id}-${dep}`}
+                style={{ paddingLeft: (depth + 1) * 10, fontFamily: "monospace", fontSize: 10.5, color: "#94a3b8" }}
+              >
+                {"\u2514\u2500 "}
+                {dep}
+              </div>
+            );
+          })}
+        </div>
+      );
+    },
+    [focusScriptSymbol, scriptSymbolById]
+  );
 
   const runScriptFragment = useCallback((fragment: string, startLine = 1) => {
     const lines = fragment.split(/\r?\n/);
@@ -3349,7 +3829,26 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                 >
                   <div><strong>Pack:</strong> {sceneType === "task" ? "Olympiad constructions" : sceneType === "demo" ? "Demo constructions" : "Custom constructions"}</div>
                   <div><strong>Theorem:</strong> {sceneName.trim() || "Untitled construction"}</div>
-                  <div><strong>Stage:</strong> {scriptOutline.length ? `${activeScriptOutlineIndex + 1} / ${scriptOutline.length}` : "0 / 0"}</div>
+                  <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={() => selectAdjacentScriptStage(-1)}
+                      disabled={!scriptStageSections.length || displayedScriptStageIndex <= 0}
+                      style={{ padding: "1px 5px", fontSize: 10, lineHeight: 1.15 }}
+                    >
+                      {"<"} Prev Stage
+                    </button>
+                    <strong>Stage:</strong>{" "}
+                    <span>{scriptStageSections.length ? `${displayedScriptStageIndex + 1} / ${scriptStageSections.length}` : "0 / 0"}</span>
+                    <button
+                      type="button"
+                      onClick={() => selectAdjacentScriptStage(1)}
+                      disabled={!scriptStageSections.length || displayedScriptStageIndex >= scriptStageSections.length - 1}
+                      style={{ padding: "1px 5px", fontSize: 10, lineHeight: 1.15 }}
+                    >
+                      Next Stage {">"}
+                    </button>
+                  </div>
                   <div><strong>Objects:</strong> {scriptDiagnostics.objectCount}</div>
                   <div><strong>Claims:</strong> {passedClaimCount} passed</div>
                 </div>
@@ -3362,6 +3861,14 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   minHeight: 0,
                 }}
               >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateRows: "minmax(0, 1fr) auto",
+                    gap: 5,
+                    minHeight: 0,
+                  }}
+                >
                 <div
                   style={{
                     display: "grid",
@@ -3428,7 +3935,51 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                     }}
                   />
                 </div>
-                <div style={{ display: "grid", gridTemplateRows: "minmax(0, 1fr) auto", gap: 6, minHeight: 0 }}>
+                <div
+                  data-testid="construction-script-language-services"
+                  style={{
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 8,
+                    padding: "5px 6px",
+                    background: "#fff",
+                    display: "grid",
+                    gap: 4,
+                    fontSize: 10.5,
+                    minWidth: 0,
+                  }}
+                >
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
+                    <strong>Language</strong>
+                    {selectedScriptSymbol ? (
+                      <>
+                        <span style={{ fontFamily: "monospace" }}>{selectedScriptSymbol.id}</span>
+                        <span>{scriptSymbolKindLabel(selectedScriptSymbol.kind)}</span>
+                        <span style={{ color: "#64748b" }}>Line {selectedScriptSymbol.line}</span>
+                        <span style={{ color: "#64748b" }}>Used by {selectedScriptSymbol.usedBy.length}</span>
+                      </>
+                    ) : (
+                      <span style={{ color: "#64748b" }}>No symbol on this line</span>
+                    )}
+                  </div>
+                  <div style={{ color: "#475569", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {selectedScriptSymbol?.summary ?? (currentScriptLineText.trim() || "Move the cursor over a construction command.")}
+                  </div>
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ color: "#64748b" }}>Suggest</span>
+                    {activeCommandSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => applyCommandSuggestion(suggestion)}
+                        style={{ padding: "1px 6px", fontSize: 10, lineHeight: 1.2 }}
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateRows: "auto minmax(0, 1fr) auto auto", gap: 6, minHeight: 0 }}>
                   <div
                     data-testid="construction-script-outline"
                     style={{
@@ -3442,29 +3993,251 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   >
                     <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 5 }}>Outline</div>
                     <div style={{ display: "grid", gap: 4 }}>
-                      {scriptOutline.map((entry, index) => {
-                        const active = index === activeScriptOutlineIndex;
+                      {scriptStageSections.map((stage) => {
+                        const active = stage.index === displayedScriptStageIndex;
+                        const folded = foldedScriptStageKeys.has(stage.index);
+                        const groupedStageSymbols: Array<[ScriptSymbolKind, string, ScriptSymbol[]]> = [
+                          ["point", "Points", stage.symbols.filter((symbol) => symbol.kind === "point")],
+                          ["line", "Lines", stage.symbols.filter((symbol) => symbol.kind === "line")],
+                          ["circle", "Circles", stage.symbols.filter((symbol) => symbol.kind === "circle")],
+                          ["claim", "Claims", stage.symbols.filter((symbol) => symbol.kind === "claim")],
+                          ["object", "Objects", stage.symbols.filter((symbol) => symbol.kind === "object")],
+                        ].filter(([, , group]) => group.length > 0);
                         return (
-                          <button
-                            key={`${entry.line}:${entry.label}`}
-                            type="button"
-                            onClick={() => focusScriptLine(entry.line)}
+                          <div
+                            key={`${stage.line}:${stage.label}`}
                             style={{
-                              textAlign: "left",
                               border: "1px solid " + (active ? "#93c5fd" : "#e5e7eb"),
                               background: active ? "#eff6ff" : "#fff",
                               borderRadius: 6,
-                              padding: "4px 5px",
-                              fontSize: 10.5,
-                              lineHeight: 1.2,
-                              cursor: "pointer",
+                              padding: 4,
                             }}
                           >
-                            {entry.label}
-                          </button>
+                            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                              <button
+                                type="button"
+                                onClick={() => toggleScriptStageFold(stage.index)}
+                                aria-label={folded ? `Expand ${stage.label}` : `Collapse ${stage.label}`}
+                                style={{ border: "none", background: "transparent", padding: 0, width: 14, cursor: "pointer" }}
+                              >
+                                {folded ? "\u25b6" : "\u25bc"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => selectScriptStage(stage.index)}
+                                style={{
+                                  flex: 1,
+                                  textAlign: "left",
+                                  border: "none",
+                                  background: "transparent",
+                                  padding: 0,
+                                  fontSize: 10.5,
+                                  lineHeight: 1.2,
+                                  cursor: "pointer",
+                                  fontWeight: active ? 800 : 600,
+                                }}
+                              >
+                                {stage.label}
+                              </button>
+                              <span style={{ fontSize: 10, color: "#64748b" }}>[{stage.symbols.length} objects]</span>
+                            </div>
+                            {!folded && (
+                              <div style={{ display: "grid", gap: 4, marginTop: 5, paddingLeft: 18 }}>
+                                {groupedStageSymbols.map(([kind, label, group]) => (
+                                  <div key={`${stage.index}-${kind}`}>
+                                    <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b" }}>{label}</div>
+                                    {group.map((symbol) => (
+                                      <button
+                                        key={`${stage.index}-${symbol.id}`}
+                                        type="button"
+                                        onClick={() => focusScriptSymbol(symbol.id)}
+                                        style={{
+                                          display: "block",
+                                          width: "100%",
+                                          textAlign: "left",
+                                          border: "none",
+                                          background: "transparent",
+                                          padding: "1px 0",
+                                          fontFamily: symbol.kind === "claim" ? undefined : "monospace",
+                                          fontSize: 10.5,
+                                          cursor: "pointer",
+                                        }}
+                                      >
+                                        {symbol.kind === "claim" ? symbol.label : symbol.id}
+                                      </button>
+                                    ))}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         );
                       })}
-                      {!scriptOutline.length && <div style={{ fontSize: 10.5, opacity: 0.7 }}>No sections yet.</div>}
+                      {!scriptStageSections.length && <div style={{ fontSize: 10.5, opacity: 0.7 }}>No sections yet.</div>}
+                    </div>
+                  </div>
+                  <div
+                    data-testid="construction-script-object-statistics"
+                    style={{
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 8,
+                      padding: "6px",
+                      background: "#fff",
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 5 }}>Object Statistics</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "2px 8px", fontSize: 10.5 }}>
+                      <span>Points</span><strong>{scriptObjectStats.points}</strong>
+                      <span>Lines</span><strong>{scriptObjectStats.lines}</strong>
+                      <span>Circles</span><strong>{scriptObjectStats.circles}</strong>
+                      <span>Claims</span><strong>{scriptObjectStats.claims}</strong>
+                      <span>Dependencies</span><strong>{scriptObjectStats.dependencies}</strong>
+                    </div>
+                  </div>
+                  <div
+                    data-testid="construction-script-scene-outline"
+                    style={{
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 8,
+                      padding: "6px",
+                      background: "#fff",
+                      maxHeight: 150,
+                      overflow: "auto",
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 5 }}>Scene</div>
+                    <div style={{ display: "grid", gap: 2, fontFamily: "monospace", fontSize: 10.5 }}>
+                      {scriptSymbols
+                        .filter((symbol) => symbol.kind !== "constraint")
+                        .map((symbol, index, list) => {
+                          const last = index === list.length - 1;
+                          const active = selectedScriptSymbol?.id === symbol.id;
+                          return (
+                            <button
+                              key={`scene-${symbol.id}`}
+                              type="button"
+                              onClick={() => focusScriptSymbol(symbol.id)}
+                              style={{
+                                border: "none",
+                                borderRadius: 5,
+                                background: active ? "#eff6ff" : "transparent",
+                                textAlign: "left",
+                                padding: "2px 4px",
+                                cursor: "pointer",
+                                fontFamily: "monospace",
+                                fontSize: 10.5,
+                              }}
+                            >
+                              {last ? "\u2514\u2500 " : "\u251c\u2500 "}
+                              {symbol.kind === "claim" ? `Claim: ${symbol.label}` : symbol.id}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
+                  <div
+                    data-testid="construction-script-symbol-explorer"
+                    style={{
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 8,
+                      padding: "6px",
+                      minHeight: 0,
+                      overflow: "auto",
+                      background: "#fff",
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 5 }}>Symbols</div>
+                    {([
+                      ["point", "POINTS"],
+                      ["line", "LINES"],
+                      ["circle", "CIRCLES"],
+                      ["claim", "CLAIMS"],
+                      ["constraint", "CONSTRAINTS"],
+                      ["object", "OBJECTS"],
+                    ] as Array<[ScriptSymbolKind, string]>).map(([kind, label]) => {
+                      const group = scriptSymbolsByKind[kind];
+                      if (!group.length) return null;
+                      return (
+                        <div key={kind} style={{ marginBottom: 6 }}>
+                          <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", marginBottom: 3 }}>{label}</div>
+                          <div style={{ display: "grid", gap: 3 }}>
+                            {group.map((symbol) => {
+                              const active = selectedScriptSymbol?.id === symbol.id;
+                              return (
+                                <button
+                                  key={symbol.id}
+                                  type="button"
+                                  onClick={() => focusScriptSymbol(symbol.id)}
+                                  title={`${scriptSymbolKindLabel(symbol.kind)} ${symbol.id}\n${symbol.summary}\nUsed by ${symbol.usedBy.length} objects`}
+                                  style={{
+                                    textAlign: "left",
+                                    border: "1px solid " + (active ? "#93c5fd" : "#e5e7eb"),
+                                    background: active ? "#eff6ff" : "#fff",
+                                    borderRadius: 6,
+                                    padding: "3px 5px",
+                                    fontSize: 10.5,
+                                    lineHeight: 1.15,
+                                    cursor: "pointer",
+                                    fontFamily: symbol.kind === "claim" ? undefined : "monospace",
+                                  }}
+                                >
+                                  {symbol.kind === "claim" ? symbol.label : symbol.id}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div
+                    data-testid="construction-script-dependency-view"
+                    style={{
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 8,
+                      padding: "6px",
+                      background: "#fff",
+                      maxHeight: 138,
+                      overflow: "auto",
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 5 }}>Dependency</div>
+                    {selectedScriptSymbol ? (
+                      renderScriptDependencyTree(selectedScriptSymbol)
+                    ) : (
+                      <div style={{ fontSize: 10.5, opacity: 0.7 }}>Select a symbol.</div>
+                    )}
+                  </div>
+                  <div
+                    data-testid="construction-script-minimap"
+                    style={{
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 8,
+                      padding: "6px",
+                      background: "#fff",
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 5 }}>Minimap</div>
+                    <div style={{ display: "grid", gap: 2 }}>
+                      {scriptOutline.map((entry, index) => {
+                        const active = index === displayedScriptStageIndex;
+                        return (
+                          <button
+                            key={`minimap-${entry.line}-${entry.label}`}
+                            type="button"
+                            aria-label={`Jump to ${entry.label}`}
+                            onClick={() => focusScriptLine(entry.line)}
+                            title={entry.label}
+                            style={{
+                              height: 8,
+                              border: 0,
+                              borderRadius: 999,
+                              background: active ? "#2563eb" : index % 2 === 0 ? "#bae6fd" : "#c7d2fe",
+                              cursor: "pointer",
+                            }}
+                          />
+                        );
+                      })}
                     </div>
                   </div>
                   <div
@@ -3496,8 +4269,21 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                             cursor: checkFocusRefs(claim.def.id).length ? "pointer" : "default",
                           }}
                         >
-                          <span aria-hidden="true">{claim.status === "ok" ? "\u2713" : claim.status === "fail" ? "\u2716" : "\u2022"}</span>{" "}
-                          {claim.def.label}
+                          <div style={{ display: "flex", gap: 4, alignItems: "center", fontWeight: 800 }}>
+                            <span aria-hidden="true">{claim.status === "ok" ? "\u2713" : claim.status === "fail" ? "\u2716" : "\u2022"}</span>
+                            <span>{claim.def.label}</span>
+                          </div>
+                          <div style={{ marginTop: 3, display: "grid", gap: 1, color: "#475569" }}>
+                            <span>Status: {claim.status === "ok" ? "Proven" : claim.status === "fail" ? "Failed" : "Unknown"}</span>
+                            <span>Tolerance: {claim.tolerance.toExponential(1)} {claim.unit}</span>
+                            <span>
+                              {claim.def.type === "perpendicular"
+                                ? `Computed angle: ${(90 + (claim.residual ?? 0)).toFixed(4)} deg`
+                                : claim.def.type === "parallel"
+                                  ? `Computed angle: ${(claim.residual ?? 0).toFixed(4)} deg`
+                                  : `Distance error: ${claim.residual == null ? "n/a" : claim.residual.toExponential(2)}`}
+                            </span>
+                          </div>
                         </button>
                       ))}
                       {!claimRows.length && <div style={{ fontSize: 10.5, opacity: 0.7 }}>No claims yet.</div>}
@@ -3508,6 +4294,40 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
               <div style={{ display: "grid", gap: 4 }}>
                 <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
                   <button type="button" onClick={rebuildFromScript} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Run</button>
+                  <button
+                    type="button"
+                    onClick={stepScript}
+                    disabled={!executableScriptLines.length || scriptRunStepIndex >= executableScriptLines.length}
+                    style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}
+                  >
+                    Step
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScriptDebugMode((debug) => !debug)}
+                    aria-pressed={scriptDebugMode}
+                    style={{
+                      padding: "2px 7px",
+                      fontSize: 10.5,
+                      lineHeight: 1.15,
+                      border: "1px solid " + (scriptDebugMode ? "#0a66c2" : "#d1d5db"),
+                      background: scriptDebugMode ? "#e6f0ff" : "#fff",
+                    }}
+                  >
+                    Debug
+                  </button>
+                  <button
+                    type="button"
+                    onClick={animateScript}
+                    disabled={!executableScriptLines.length}
+                    style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}
+                  >
+                    {scriptAnimating ? "Stop" : "Animate"}
+                  </button>
+                  <button type="button" onClick={resetScriptStepper} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Reset</button>
+                  <span style={{ fontSize: 10.5, color: "#64748b" }}>
+                    {Math.min(scriptRunStepIndex, executableScriptLines.length)} / {executableScriptLines.length}
+                  </span>
                   <button type="button" onClick={regenerateScriptFromScene} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Generate</button>
                   <button
                     type="button"
@@ -3539,7 +4359,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                     style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "2px 6px", minWidth: 0 }}
                   >
                     <summary style={{ cursor: "pointer", fontSize: 10.5, fontWeight: 700, lineHeight: 1.1 }}>
-                      Diagnostics ({scriptDiagnostics.errors.length} errors, {scriptDiagnostics.warnings.length} warnings)
+                      Diagnostics
                     </summary>
                     <div style={{ marginTop: 7, display: "grid", gap: 6 }}>
                       <div
@@ -3556,18 +4376,14 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                         }}
                       >
                         {[
-                          { icon: "\u2713", label: formatCountLabel(scriptDiagnostics.parsedSteps, "step"), color: "#166534", background: "#ecfdf3" },
-                          { icon: "\u25a0", label: formatCountLabel(scriptDiagnostics.objectCount, "object"), color: "#1d4ed8", background: "#eff6ff" },
-                          { icon: "\u25b3", label: formatCountLabel(scriptDiagnostics.constraintCount, "constraint"), color: "#7c3aed", background: "#f5f3ff" },
-                          { icon: "\u2605", label: formatCountLabel(scriptDiagnostics.claimCount, "claim"), color: "#a16207", background: "#fffbeb" },
-                          { icon: "\u26a0", label: formatCountLabel(scriptDiagnostics.warnings.length, "warning"), color: "#b45309", background: "#fff7ed" },
-                          { icon: "\u2716", label: formatCountLabel(scriptDiagnostics.errors.length, "error"), color: "#b42318", background: "#fef2f2" },
+                          { label: `Errors (${upgradedDiagnosticCounts.errors})`, color: "#b42318", background: "#fef2f2" },
+                          { label: `Warnings (${upgradedDiagnosticCounts.warnings})`, color: "#b45309", background: "#fff7ed" },
+                          { label: `Hints (${upgradedDiagnosticCounts.hints})`, color: "#1d4ed8", background: "#eff6ff" },
                         ].map((badge) => (
                           <span
                             key={badge.label}
                             style={{
                               display: "inline-flex",
-                              gap: 3,
                               alignItems: "center",
                               border: "1px solid #e5e7eb",
                               borderRadius: 999,
@@ -3577,30 +4393,53 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                               whiteSpace: "nowrap",
                             }}
                           >
-                            <span aria-hidden="true">{badge.icon}</span>
                             {badge.label}
                           </span>
                         ))}
                       </div>
-                      {scriptDiagnostics.diagnostics.map((diag, idx) => (
+                      {upgradedScriptDiagnostics.map((diag, idx) => (
                         <button
-                          key={`${diag.line}:${idx}`}
+                          key={`${diag.level}:${diag.line ?? "global"}:${idx}`}
                           type="button"
-                          onClick={() => focusScriptLine(diag.line)}
+                          onClick={() => {
+                            if (diag.symbolId) focusScriptSymbol(diag.symbolId);
+                            else if (diag.line != null) focusScriptLine(diag.line);
+                          }}
                           style={{
                             textAlign: "left",
-                            border: "1px solid " + (diag.kind === "error" ? "#fca5a5" : "#fde68a"),
-                            background: diag.kind === "error" ? "#fef2f2" : "#fffbeb",
+                            border:
+                              "1px solid " +
+                              (diag.level === "error" ? "#fca5a5" : diag.level === "warning" ? "#fde68a" : "#bfdbfe"),
+                            background: diag.level === "error" ? "#fef2f2" : diag.level === "warning" ? "#fffbeb" : "#eff6ff",
                             borderRadius: 6,
                             padding: "4px 6px",
                             fontSize: 11,
-                            fontFamily: "monospace",
                             cursor: "pointer",
                           }}
                         >
-                          Line {diag.line}: {diag.message}
+                          <strong>{diag.title}</strong>
+                          {diag.line != null ? ` - Line ${diag.line}` : ""}: {diag.message}
                         </button>
                       ))}
+                      {!upgradedScriptDiagnostics.length && (
+                        <div style={{ fontSize: 10.5, color: "#166534" }}>No diagnostics.</div>
+                      )}
+                      {scriptDebugMode && selectedScriptSymbol && (
+                        <div
+                          data-testid="construction-script-debug-readout"
+                          style={{
+                            border: "1px dashed #93c5fd",
+                            borderRadius: 6,
+                            padding: "4px 6px",
+                            background: "#f8fbff",
+                            fontFamily: "monospace",
+                            fontSize: 10.5,
+                          }}
+                        >
+                          Debug {selectedScriptSymbol.id}: deps [{selectedScriptSymbol.dependencies.join(", ") || "-"}], used by [
+                          {selectedScriptSymbol.usedBy.join(", ") || "-"}]
+                        </div>
+                      )}
                       <div style={{ fontSize: 10, opacity: 0.72 }}>
                         Failed run keeps previous valid scene; fix diagnostics then rerun.
                       </div>
