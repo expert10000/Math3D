@@ -92,6 +92,7 @@ type SceneType = "task" | "free" | "demo";
 type ScriptSyncMode = "overwrite" | "appendNew" | "keepComments";
 type ClaimsSortMode = "status" | "name" | "residual";
 type ScriptSurfaceTab = "script" | "construction" | "automation";
+type ScriptInspectorTab = "outline" | "scene" | "symbols" | "dependencies" | "claims";
 
 type SceneBundle = {
   version: number;
@@ -328,6 +329,16 @@ const SCRIPT_TEMPLATES: Array<{ label: string; command: string }> = [
   { label: "Constraint equal radius", command: "constraint equal-radius c2 c1" },
   { label: "Claim point on circle", command: "check point-on-circle X Omega" },
 ];
+
+const SCRIPT_INSPECTOR_TABS: Array<{ id: ScriptInspectorTab; label: string }> = [
+  { id: "outline", label: "Outline" },
+  { id: "scene", label: "Scene" },
+  { id: "symbols", label: "Symbols" },
+  { id: "dependencies", label: "Dependencies" },
+  { id: "claims", label: "Claims" },
+];
+
+const formatInspectorNumber = (value: number) => (Number.isFinite(value) ? value.toFixed(2) : "-");
 
 const isPointNode = (node: ConstructionNode) =>
   node.type === "freePoint" ||
@@ -1034,6 +1045,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [selectionAId, setSelectionAId] = useState("");
   const [selectionBId, setSelectionBId] = useState("");
   const [scriptSurfaceTab, setScriptSurfaceTab] = useState<ScriptSurfaceTab>("construction");
+  const [scriptInspectorTab, setScriptInspectorTab] = useState<ScriptInspectorTab>("dependencies");
   const [selectedScriptTemplate, setSelectedScriptTemplate] = useState(SCRIPT_TEMPLATES[0]?.command ?? "");
   const [scriptTemplatesOpen, setScriptTemplatesOpen] = useState(false);
   const [lockedNodeIds, setLockedNodeIds] = useState<Set<string>>(() => new Set());
@@ -1347,7 +1359,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
         level: "hint",
         line: null,
         title: "Add stage comments",
-        message: "Use comments like # Stage 1 Triangle to improve Outline and Minimap labels.",
+        message: "Use comments like # Stage 1 Triangle to improve Outline labels.",
       });
     }
 
@@ -1373,7 +1385,6 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     selectedScriptStageIndex != null && selectedScriptStageIndex >= 0 && selectedScriptStageIndex < scriptStageSections.length
       ? selectedScriptStageIndex
       : activeScriptOutlineIndex;
-  const displayedScriptStage = scriptStageSections[displayedScriptStageIndex] ?? null;
   const cursorScriptSymbol = useMemo(
     () => scriptSymbols.find((symbol) => symbol.line === scriptCursorLine) ?? null,
     [scriptCursorLine, scriptSymbols]
@@ -1483,7 +1494,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       const tolerance =
         def.type === "perpendicular" || def.type === "parallel"
           ? Math.abs(def.toleranceDeg ?? 0.6)
-          : Math.abs(def.tolerance ?? 1e-3);
+          : Math.abs(("tolerance" in def ? def.tolerance : 1e-3) ?? 1e-3);
       const unit = def.type === "perpendicular" || def.type === "parallel" ? "deg" : "unit";
       return { def, result, disabled, status, residual, tolerance, unit };
     });
@@ -2159,6 +2170,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const focusScriptSymbol = useCallback((symbolId: string) => {
     const symbol = scriptSymbolById.get(symbolId);
     if (!symbol) return;
+    setScriptInspectorTab("dependencies");
     setSelectedScriptSymbolId(symbol.id);
     focusScriptLine(symbol.line);
     if (symbol.kind === "claim") {
@@ -3742,6 +3754,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
           style={{
             borderTop: "1px solid #e5e7eb",
             paddingTop: 6,
+            boxSizing: "border-box",
             display: "grid",
             gridTemplateRows:
               scriptSurfaceTab === "construction"
@@ -3758,7 +3771,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
         >
           <div
             data-testid="scene-language-tabs"
-            style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}
+            style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", minWidth: 0, maxWidth: "100%" }}
           >
             {([
               { id: "script" as const, label: "Script" },
@@ -3791,7 +3804,8 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   fontSize: 10.5,
                   lineHeight: 1.15,
                   color: scriptParsePreview.error ? "#b42318" : "#166534",
-                  whiteSpace: "nowrap",
+                  minWidth: 0,
+                  overflowWrap: "anywhere",
                 }}
               >
                 {scriptParsePreview.error ? `Parse error: ${scriptParsePreview.error}` : "Parse OK"} ·{" "}
@@ -3799,7 +3813,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
               </span>
             )}
             {scriptSurfaceTab === "construction" && scriptError && (
-              <span style={{ fontSize: 10.5, lineHeight: 1.15, color: "#b42318", whiteSpace: "nowrap" }}>
+              <span style={{ fontSize: 10.5, lineHeight: 1.15, color: "#b42318", minWidth: 0, overflowWrap: "anywhere" }}>
                 {scriptError}
               </span>
             )}
@@ -3815,6 +3829,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   background: "#f8fbff",
                   display: "grid",
                   gap: 4,
+                  minWidth: 0,
                 }}
               >
                 <div style={{ fontSize: 11, fontWeight: 800 }}>Context</div>
@@ -3856,9 +3871,10 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "minmax(0, 4fr) minmax(96px, 1fr)",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))",
                   gap: 6,
                   minHeight: 0,
+                  minWidth: 0,
                 }}
               >
                 <div
@@ -3867,6 +3883,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                     gridTemplateRows: "minmax(0, 1fr) auto",
                     gap: 5,
                     minHeight: 0,
+                    minWidth: 0,
                   }}
                 >
                 <div
@@ -3874,6 +3891,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                     display: "grid",
                     gridTemplateColumns: "42px minmax(0, 1fr)",
                     minHeight: 0,
+                    minWidth: 0,
                     border: "1px solid #d1d5db",
                     borderRadius: 8,
                     overflow: "hidden",
@@ -3979,315 +3997,387 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   </div>
                 </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateRows: "auto minmax(0, 1fr) auto auto", gap: 6, minHeight: 0 }}>
-                  <div
-                    data-testid="construction-script-outline"
-                    style={{
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 8,
-                      padding: "6px",
-                      minHeight: 0,
-                      overflow: "auto",
-                      background: "#fff",
-                    }}
-                  >
-                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 5 }}>Outline</div>
-                    <div style={{ display: "grid", gap: 4 }}>
-                      {scriptStageSections.map((stage) => {
-                        const active = stage.index === displayedScriptStageIndex;
-                        const folded = foldedScriptStageKeys.has(stage.index);
-                        const groupedStageSymbols: Array<[ScriptSymbolKind, string, ScriptSymbol[]]> = [
-                          ["point", "Points", stage.symbols.filter((symbol) => symbol.kind === "point")],
-                          ["line", "Lines", stage.symbols.filter((symbol) => symbol.kind === "line")],
-                          ["circle", "Circles", stage.symbols.filter((symbol) => symbol.kind === "circle")],
-                          ["claim", "Claims", stage.symbols.filter((symbol) => symbol.kind === "claim")],
-                          ["object", "Objects", stage.symbols.filter((symbol) => symbol.kind === "object")],
-                        ].filter(([, , group]) => group.length > 0);
-                        return (
-                          <div
-                            key={`${stage.line}:${stage.label}`}
-                            style={{
-                              border: "1px solid " + (active ? "#93c5fd" : "#e5e7eb"),
-                              background: active ? "#eff6ff" : "#fff",
-                              borderRadius: 6,
-                              padding: 4,
-                            }}
-                          >
-                            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                              <button
-                                type="button"
-                                onClick={() => toggleScriptStageFold(stage.index)}
-                                aria-label={folded ? `Expand ${stage.label}` : `Collapse ${stage.label}`}
-                                style={{ border: "none", background: "transparent", padding: 0, width: 14, cursor: "pointer" }}
-                              >
-                                {folded ? "\u25b6" : "\u25bc"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => selectScriptStage(stage.index)}
-                                style={{
-                                  flex: 1,
-                                  textAlign: "left",
-                                  border: "none",
-                                  background: "transparent",
-                                  padding: 0,
-                                  fontSize: 10.5,
-                                  lineHeight: 1.2,
-                                  cursor: "pointer",
-                                  fontWeight: active ? 800 : 600,
-                                }}
-                              >
-                                {stage.label}
-                              </button>
-                              <span style={{ fontSize: 10, color: "#64748b" }}>[{stage.symbols.length} objects]</span>
-                            </div>
-                            {!folded && (
-                              <div style={{ display: "grid", gap: 4, marginTop: 5, paddingLeft: 18 }}>
-                                {groupedStageSymbols.map(([kind, label, group]) => (
-                                  <div key={`${stage.index}-${kind}`}>
-                                    <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b" }}>{label}</div>
-                                    {group.map((symbol) => (
-                                      <button
-                                        key={`${stage.index}-${symbol.id}`}
-                                        type="button"
-                                        onClick={() => focusScriptSymbol(symbol.id)}
-                                        style={{
-                                          display: "block",
-                                          width: "100%",
-                                          textAlign: "left",
-                                          border: "none",
-                                          background: "transparent",
-                                          padding: "1px 0",
-                                          fontFamily: symbol.kind === "claim" ? undefined : "monospace",
-                                          fontSize: 10.5,
-                                          cursor: "pointer",
-                                        }}
-                                      >
-                                        {symbol.kind === "claim" ? symbol.label : symbol.id}
-                                      </button>
-                                    ))}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                      {!scriptStageSections.length && <div style={{ fontSize: 10.5, opacity: 0.7 }}>No sections yet.</div>}
+                <div
+                  data-testid="construction-script-inspector"
+                  style={{
+                    border: "1px solid #dbe4f0",
+                    borderRadius: 8,
+                    background: "#fff",
+                    display: "grid",
+                    gridTemplateRows: "auto auto minmax(0, 1fr)",
+                    minHeight: 0,
+                    minWidth: 0,
+                    overflow: "hidden",
+                  }}
+                >
+                  <div style={{ padding: "6px 7px 4px", borderBottom: "1px solid #e5e7eb" }}>
+                    <div style={{ fontSize: 11, fontWeight: 800 }}>Inspector</div>
+                    <div style={{ marginTop: 3, display: "flex", gap: 5, flexWrap: "wrap", fontSize: 10, color: "#64748b" }}>
+                      <span>{scriptObjectStats.points} points</span>
+                      <span>{scriptObjectStats.lines} lines</span>
+                      <span>{scriptObjectStats.circles} circles</span>
+                      <span>{scriptObjectStats.claims} claims</span>
                     </div>
                   </div>
                   <div
-                    data-testid="construction-script-object-statistics"
+                    role="tablist"
+                    aria-label="Script inspector"
                     style={{
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 8,
-                      padding: "6px",
-                      background: "#fff",
+                      display: "flex",
+                      gap: 3,
+                      flexWrap: "wrap",
+                      padding: "5px 6px",
+                      borderBottom: "1px solid #e5e7eb",
+                      background: "#f8fafc",
                     }}
                   >
-                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 5 }}>Object Statistics</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "2px 8px", fontSize: 10.5 }}>
-                      <span>Points</span><strong>{scriptObjectStats.points}</strong>
-                      <span>Lines</span><strong>{scriptObjectStats.lines}</strong>
-                      <span>Circles</span><strong>{scriptObjectStats.circles}</strong>
-                      <span>Claims</span><strong>{scriptObjectStats.claims}</strong>
-                      <span>Dependencies</span><strong>{scriptObjectStats.dependencies}</strong>
-                    </div>
-                  </div>
-                  <div
-                    data-testid="construction-script-scene-outline"
-                    style={{
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 8,
-                      padding: "6px",
-                      background: "#fff",
-                      maxHeight: 150,
-                      overflow: "auto",
-                    }}
-                  >
-                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 5 }}>Scene</div>
-                    <div style={{ display: "grid", gap: 2, fontFamily: "monospace", fontSize: 10.5 }}>
-                      {scriptSymbols
-                        .filter((symbol) => symbol.kind !== "constraint")
-                        .map((symbol, index, list) => {
-                          const last = index === list.length - 1;
-                          const active = selectedScriptSymbol?.id === symbol.id;
-                          return (
-                            <button
-                              key={`scene-${symbol.id}`}
-                              type="button"
-                              onClick={() => focusScriptSymbol(symbol.id)}
-                              style={{
-                                border: "none",
-                                borderRadius: 5,
-                                background: active ? "#eff6ff" : "transparent",
-                                textAlign: "left",
-                                padding: "2px 4px",
-                                cursor: "pointer",
-                                fontFamily: "monospace",
-                                fontSize: 10.5,
-                              }}
-                            >
-                              {last ? "\u2514\u2500 " : "\u251c\u2500 "}
-                              {symbol.kind === "claim" ? `Claim: ${symbol.label}` : symbol.id}
-                            </button>
-                          );
-                        })}
-                    </div>
-                  </div>
-                  <div
-                    data-testid="construction-script-symbol-explorer"
-                    style={{
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 8,
-                      padding: "6px",
-                      minHeight: 0,
-                      overflow: "auto",
-                      background: "#fff",
-                    }}
-                  >
-                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 5 }}>Symbols</div>
-                    {([
-                      ["point", "POINTS"],
-                      ["line", "LINES"],
-                      ["circle", "CIRCLES"],
-                      ["claim", "CLAIMS"],
-                      ["constraint", "CONSTRAINTS"],
-                      ["object", "OBJECTS"],
-                    ] as Array<[ScriptSymbolKind, string]>).map(([kind, label]) => {
-                      const group = scriptSymbolsByKind[kind];
-                      if (!group.length) return null;
+                    {SCRIPT_INSPECTOR_TABS.map((tab) => {
+                      const active = scriptInspectorTab === tab.id;
                       return (
-                        <div key={kind} style={{ marginBottom: 6 }}>
-                          <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", marginBottom: 3 }}>{label}</div>
-                          <div style={{ display: "grid", gap: 3 }}>
-                            {group.map((symbol) => {
-                              const active = selectedScriptSymbol?.id === symbol.id;
-                              return (
-                                <button
-                                  key={symbol.id}
-                                  type="button"
-                                  onClick={() => focusScriptSymbol(symbol.id)}
-                                  title={`${scriptSymbolKindLabel(symbol.kind)} ${symbol.id}\n${symbol.summary}\nUsed by ${symbol.usedBy.length} objects`}
-                                  style={{
-                                    textAlign: "left",
-                                    border: "1px solid " + (active ? "#93c5fd" : "#e5e7eb"),
-                                    background: active ? "#eff6ff" : "#fff",
-                                    borderRadius: 6,
-                                    padding: "3px 5px",
-                                    fontSize: 10.5,
-                                    lineHeight: 1.15,
-                                    cursor: "pointer",
-                                    fontFamily: symbol.kind === "claim" ? undefined : "monospace",
-                                  }}
-                                >
-                                  {symbol.kind === "claim" ? symbol.label : symbol.id}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
+                        <button
+                          key={tab.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={active}
+                          onClick={() => setScriptInspectorTab(tab.id)}
+                          style={{
+                            border: "1px solid " + (active ? "#0a66c2" : "#d1d5db"),
+                            borderRadius: 6,
+                            background: active ? "#e6f0ff" : "#fff",
+                            color: active ? "#0a66c2" : "#334155",
+                            padding: "2px 6px",
+                            fontSize: 10,
+                            lineHeight: 1.2,
+                            fontWeight: active ? 800 : 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {tab.label}
+                        </button>
                       );
                     })}
                   </div>
-                  <div
-                    data-testid="construction-script-dependency-view"
-                    style={{
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 8,
-                      padding: "6px",
-                      background: "#fff",
-                      maxHeight: 138,
-                      overflow: "auto",
-                    }}
-                  >
-                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 5 }}>Dependency</div>
-                    {selectedScriptSymbol ? (
-                      renderScriptDependencyTree(selectedScriptSymbol)
-                    ) : (
-                      <div style={{ fontSize: 10.5, opacity: 0.7 }}>Select a symbol.</div>
+                  <div style={{ minHeight: 0, overflow: "auto", padding: 7 }}>
+                    {scriptInspectorTab === "outline" && (
+                      <div data-testid="construction-script-outline" style={{ display: "grid", gap: 5 }}>
+                        <div style={{ display: "grid", gap: 2, marginBottom: 4 }}>
+                          {scriptOutline.map((entry, index) => {
+                            const active = index === displayedScriptStageIndex;
+                            return (
+                              <button
+                                key={`minimap-${entry.line}-${entry.label}`}
+                                type="button"
+                                aria-label={`Jump to ${entry.label}`}
+                                onClick={() => focusScriptLine(entry.line)}
+                                title={entry.label}
+                                style={{
+                                  height: 8,
+                                  border: 0,
+                                  borderRadius: 999,
+                                  background: active ? "#2563eb" : index % 2 === 0 ? "#bae6fd" : "#c7d2fe",
+                                  cursor: "pointer",
+                                }}
+                              />
+                            );
+                          })}
+                        </div>
+                        {scriptStageSections.map((stage) => {
+                          const active = stage.index === displayedScriptStageIndex;
+                          const folded = foldedScriptStageKeys.has(stage.index);
+                          const groupedStageSymbols = ([
+                            ["point", "Points", stage.symbols.filter((symbol) => symbol.kind === "point")],
+                            ["line", "Lines", stage.symbols.filter((symbol) => symbol.kind === "line")],
+                            ["circle", "Circles", stage.symbols.filter((symbol) => symbol.kind === "circle")],
+                            ["claim", "Claims", stage.symbols.filter((symbol) => symbol.kind === "claim")],
+                            ["object", "Objects", stage.symbols.filter((symbol) => symbol.kind === "object")],
+                          ] as Array<[ScriptSymbolKind, string, ScriptSymbol[]]>).filter(([, , group]) => group.length > 0);
+                          return (
+                            <div
+                              key={`${stage.line}:${stage.label}`}
+                              style={{
+                                border: "1px solid " + (active ? "#93c5fd" : "#e5e7eb"),
+                                background: active ? "#eff6ff" : "#fff",
+                                borderRadius: 6,
+                                padding: 5,
+                              }}
+                            >
+                              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleScriptStageFold(stage.index)}
+                                  aria-label={folded ? `Expand ${stage.label}` : `Collapse ${stage.label}`}
+                                  style={{ border: "none", background: "transparent", padding: 0, width: 14, cursor: "pointer" }}
+                                >
+                                  {folded ? "\u25b6" : "\u25bc"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => selectScriptStage(stage.index)}
+                                  style={{
+                                    flex: 1,
+                                    textAlign: "left",
+                                    border: "none",
+                                    background: "transparent",
+                                    padding: 0,
+                                    fontSize: 10.5,
+                                    lineHeight: 1.2,
+                                    cursor: "pointer",
+                                    fontWeight: active ? 800 : 600,
+                                  }}
+                                >
+                                  {stage.label}
+                                </button>
+                                <span style={{ fontSize: 10, color: "#64748b" }}>[{stage.symbols.length}]</span>
+                              </div>
+                              {!folded && (
+                                <div style={{ display: "grid", gap: 4, marginTop: 5, paddingLeft: 18 }}>
+                                  {groupedStageSymbols.map(([kind, label, group]) => (
+                                    <div key={`${stage.index}-${kind}`}>
+                                      <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b" }}>{label}</div>
+                                      {group.map((symbol) => (
+                                        <button
+                                          key={`${stage.index}-${symbol.id}`}
+                                          type="button"
+                                          onClick={() => focusScriptSymbol(symbol.id)}
+                                          style={{
+                                            display: "block",
+                                            width: "100%",
+                                            textAlign: "left",
+                                            border: "none",
+                                            background: "transparent",
+                                            padding: "1px 0",
+                                            fontFamily: symbol.kind === "claim" ? undefined : "monospace",
+                                            fontSize: 10.5,
+                                            cursor: "pointer",
+                                          }}
+                                        >
+                                          {symbol.kind === "claim" ? symbol.label : symbol.id}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {!scriptStageSections.length && <div style={{ fontSize: 10.5, opacity: 0.7 }}>No sections yet.</div>}
+                      </div>
                     )}
-                  </div>
-                  <div
-                    data-testid="construction-script-minimap"
-                    style={{
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 8,
-                      padding: "6px",
-                      background: "#fff",
-                    }}
-                  >
-                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 5 }}>Minimap</div>
-                    <div style={{ display: "grid", gap: 2 }}>
-                      {scriptOutline.map((entry, index) => {
-                        const active = index === displayedScriptStageIndex;
-                        return (
+                    {scriptInspectorTab === "scene" && (
+                      <div data-testid="construction-script-scene-outline" style={{ display: "grid", gap: 2, fontFamily: "monospace", fontSize: 10.5 }}>
+                        {scriptSymbols
+                          .filter((symbol) => symbol.kind !== "constraint")
+                          .map((symbol, index, list) => {
+                            const last = index === list.length - 1;
+                            const active = selectedScriptSymbol?.id === symbol.id;
+                            return (
+                              <button
+                                key={`scene-${symbol.id}`}
+                                type="button"
+                                onClick={() => focusScriptSymbol(symbol.id)}
+                                style={{
+                                  border: "none",
+                                  borderRadius: 5,
+                                  background: active ? "#eff6ff" : "transparent",
+                                  textAlign: "left",
+                                  padding: "3px 4px",
+                                  cursor: "pointer",
+                                  fontFamily: "monospace",
+                                  fontSize: 10.5,
+                                }}
+                              >
+                                {last ? "\u2514\u2500 " : "\u251c\u2500 "}
+                                {symbol.kind === "claim" ? `Claim: ${symbol.label}` : symbol.id}
+                              </button>
+                            );
+                          })}
+                      </div>
+                    )}
+                    {scriptInspectorTab === "symbols" && (
+                      <div data-testid="construction-script-symbol-explorer">
+                        {([
+                          ["point", "POINTS"],
+                          ["line", "LINES"],
+                          ["circle", "CIRCLES"],
+                          ["claim", "CLAIMS"],
+                          ["constraint", "CONSTRAINTS"],
+                          ["object", "OBJECTS"],
+                        ] as Array<[ScriptSymbolKind, string]>).map(([kind, label]) => {
+                          const group = scriptSymbolsByKind[kind];
+                          if (!group.length) return null;
+                          return (
+                            <div key={kind} style={{ marginBottom: 9 }}>
+                              <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", marginBottom: 4 }}>{label}</div>
+                              <div style={{ display: "grid", gap: 4 }}>
+                                {group.map((symbol) => {
+                                  const active = selectedScriptSymbol?.id === symbol.id;
+                                  return (
+                                    <button
+                                      key={symbol.id}
+                                      type="button"
+                                      onClick={() => focusScriptSymbol(symbol.id)}
+                                      title={`${scriptSymbolKindLabel(symbol.kind)} ${symbol.id}\n${symbol.summary}\nUsed by ${symbol.usedBy.length} objects`}
+                                      style={{
+                                        textAlign: "left",
+                                        border: "1px solid " + (active ? "#93c5fd" : "#e5e7eb"),
+                                        background: active ? "#eff6ff" : "#fff",
+                                        borderRadius: 6,
+                                        padding: "4px 6px",
+                                        fontSize: 10.5,
+                                        lineHeight: 1.15,
+                                        cursor: "pointer",
+                                        fontFamily: symbol.kind === "claim" ? undefined : "monospace",
+                                      }}
+                                    >
+                                      {symbol.kind === "claim" ? symbol.label : symbol.id}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {scriptInspectorTab === "dependencies" && (
+                      <div data-testid="construction-script-dependency-view" style={{ display: "grid", gap: 10 }}>
+                        {selectedScriptSymbol ? (
+                          <>
+                            <div>
+                              <div style={{ fontSize: 11, fontWeight: 800 }}>Selected Object</div>
+                              <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", gap: "4px 8px", fontSize: 10.5 }}>
+                                <span style={{ color: "#64748b" }}>Name</span>
+                                <strong style={{ fontFamily: "monospace", overflowWrap: "anywhere" }}>{selectedScriptSymbol.id}</strong>
+                                <span style={{ color: "#64748b" }}>Type</span>
+                                <span>{scriptSymbolKindLabel(selectedScriptSymbol.kind)}</span>
+                                <span style={{ color: "#64748b" }}>Created At</span>
+                                <span>Line {selectedScriptSymbol.line}</span>
+                              </div>
+                            </div>
+                            {solved.points[selectedScriptSymbol.id] && (
+                              <div>
+                                <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", marginBottom: 4 }}>POSITION</div>
+                                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "3px 8px", fontFamily: "monospace", fontSize: 10.5 }}>
+                                  <span>X</span><strong>{formatInspectorNumber(solved.points[selectedScriptSymbol.id].x)}</strong>
+                                  <span>Y</span><strong>{formatInspectorNumber(solved.points[selectedScriptSymbol.id].y)}</strong>
+                                  <span>Z</span><strong>{formatInspectorNumber(solved.points[selectedScriptSymbol.id].z)}</strong>
+                                </div>
+                              </div>
+                            )}
+                            {solved.lines[selectedScriptSymbol.id] && (
+                              <div>
+                                <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", marginBottom: 4 }}>LINE</div>
+                                <div style={{ display: "grid", gap: 3, fontFamily: "monospace", fontSize: 10.5, overflowWrap: "anywhere" }}>
+                                  <span>
+                                    Origin ({formatInspectorNumber(solved.lines[selectedScriptSymbol.id].origin.x)}, {formatInspectorNumber(solved.lines[selectedScriptSymbol.id].origin.y)}, {formatInspectorNumber(solved.lines[selectedScriptSymbol.id].origin.z)})
+                                  </span>
+                                  <span>
+                                    Direction ({formatInspectorNumber(solved.lines[selectedScriptSymbol.id].direction.x)}, {formatInspectorNumber(solved.lines[selectedScriptSymbol.id].direction.y)}, {formatInspectorNumber(solved.lines[selectedScriptSymbol.id].direction.z)})
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                            {solved.circles[selectedScriptSymbol.id] && (
+                              <div>
+                                <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", marginBottom: 4 }}>CIRCLE</div>
+                                <div style={{ display: "grid", gap: 3, fontFamily: "monospace", fontSize: 10.5, overflowWrap: "anywhere" }}>
+                                  <span>
+                                    Center ({formatInspectorNumber(solved.circles[selectedScriptSymbol.id].center.x)}, {formatInspectorNumber(solved.circles[selectedScriptSymbol.id].center.y)}, {formatInspectorNumber(solved.circles[selectedScriptSymbol.id].center.z)})
+                                  </span>
+                                  <span>Radius {formatInspectorNumber(solved.circles[selectedScriptSymbol.id].radius)}</span>
+                                </div>
+                              </div>
+                            )}
+                            <div>
+                              <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", marginBottom: 4 }}>DEPENDS ON</div>
+                              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                                {selectedScriptSymbol.dependencies.map((id) => (
+                                  <button
+                                    key={`selected-dep-${id}`}
+                                    type="button"
+                                    onClick={() => focusScriptSymbol(id)}
+                                    disabled={!scriptSymbolById.has(id)}
+                                    style={{ padding: "2px 6px", fontSize: 10.5, fontFamily: "monospace" }}
+                                  >
+                                    {id}
+                                  </button>
+                                ))}
+                                {!selectedScriptSymbol.dependencies.length && <span style={{ fontSize: 10.5, color: "#64748b" }}>None</span>}
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", marginBottom: 4 }}>USED BY</div>
+                              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                                {selectedScriptSymbol.usedBy.map((id) => {
+                                  const usedBySymbol = scriptSymbolById.get(id);
+                                  return (
+                                    <button
+                                      key={`selected-used-by-${id}`}
+                                      type="button"
+                                      onClick={() => focusScriptSymbol(id)}
+                                      style={{ padding: "2px 6px", fontSize: 10.5, fontFamily: usedBySymbol?.kind === "claim" ? undefined : "monospace" }}
+                                    >
+                                      {usedBySymbol?.kind === "claim" ? usedBySymbol.label : id}
+                                    </button>
+                                  );
+                                })}
+                                {!selectedScriptSymbol.usedBy.length && <span style={{ fontSize: 10.5, color: "#64748b" }}>None</span>}
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", marginBottom: 4 }}>TREE</div>
+                              {renderScriptDependencyTree(selectedScriptSymbol)}
+                            </div>
+                          </>
+                        ) : (
+                          <div style={{ fontSize: 10.5, opacity: 0.7 }}>Select a symbol.</div>
+                        )}
+                      </div>
+                    )}
+                    {scriptInspectorTab === "claims" && (
+                      <div data-testid="construction-script-claims" style={{ display: "grid", gap: 5 }}>
+                        {claimRows.map((claim) => (
                           <button
-                            key={`minimap-${entry.line}-${entry.label}`}
+                            key={claim.def.id}
                             type="button"
-                            aria-label={`Jump to ${entry.label}`}
-                            onClick={() => focusScriptLine(entry.line)}
-                            title={entry.label}
-                            style={{
-                              height: 8,
-                              border: 0,
-                              borderRadius: 999,
-                              background: active ? "#2563eb" : index % 2 === 0 ? "#bae6fd" : "#c7d2fe",
-                              cursor: "pointer",
+                            onClick={() => {
+                              focusScriptSymbol(claim.def.id);
+                              focusClaimInputs(claim.def.id);
                             }}
-                          />
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <div
-                    data-testid="construction-script-claims"
-                    style={{
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 8,
-                      padding: "6px",
-                      background: "#fff",
-                    }}
-                  >
-                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 5 }}>Claims</div>
-                    <div style={{ display: "grid", gap: 4, maxHeight: 112, overflow: "auto" }}>
-                      {claimRows.map((claim) => (
-                        <button
-                          key={claim.def.id}
-                          type="button"
-                          onClick={() => focusClaimInputs(claim.def.id)}
-                          disabled={!checkFocusRefs(claim.def.id).length}
-                          style={{
-                            textAlign: "left",
-                            border: "1px solid #e5e7eb",
-                            borderRadius: 6,
-                            padding: "3px 5px",
-                            background: claim.status === "ok" ? "#ecfdf3" : claim.status === "fail" ? "#fef2f2" : "#f8fafc",
-                            color: claim.status === "ok" ? "#166534" : claim.status === "fail" ? "#b42318" : "#475569",
-                            fontSize: 10.5,
-                            lineHeight: 1.2,
-                            cursor: checkFocusRefs(claim.def.id).length ? "pointer" : "default",
-                          }}
-                        >
-                          <div style={{ display: "flex", gap: 4, alignItems: "center", fontWeight: 800 }}>
-                            <span aria-hidden="true">{claim.status === "ok" ? "\u2713" : claim.status === "fail" ? "\u2716" : "\u2022"}</span>
-                            <span>{claim.def.label}</span>
-                          </div>
-                          <div style={{ marginTop: 3, display: "grid", gap: 1, color: "#475569" }}>
-                            <span>Status: {claim.status === "ok" ? "Proven" : claim.status === "fail" ? "Failed" : "Unknown"}</span>
-                            <span>Tolerance: {claim.tolerance.toExponential(1)} {claim.unit}</span>
-                            <span>
-                              {claim.def.type === "perpendicular"
-                                ? `Computed angle: ${(90 + (claim.residual ?? 0)).toFixed(4)} deg`
-                                : claim.def.type === "parallel"
-                                  ? `Computed angle: ${(claim.residual ?? 0).toFixed(4)} deg`
-                                  : `Distance error: ${claim.residual == null ? "n/a" : claim.residual.toExponential(2)}`}
-                            </span>
-                          </div>
-                        </button>
-                      ))}
-                      {!claimRows.length && <div style={{ fontSize: 10.5, opacity: 0.7 }}>No claims yet.</div>}
-                    </div>
+                            disabled={!checkFocusRefs(claim.def.id).length}
+                            style={{
+                              textAlign: "left",
+                              border: "1px solid #e5e7eb",
+                              borderRadius: 6,
+                              padding: "5px 6px",
+                              background: claim.status === "ok" ? "#ecfdf3" : claim.status === "fail" ? "#fef2f2" : "#f8fafc",
+                              color: claim.status === "ok" ? "#166534" : claim.status === "fail" ? "#b42318" : "#475569",
+                              fontSize: 10.5,
+                              lineHeight: 1.2,
+                              cursor: checkFocusRefs(claim.def.id).length ? "pointer" : "default",
+                            }}
+                          >
+                            <div style={{ display: "flex", gap: 4, alignItems: "center", fontWeight: 800 }}>
+                              <span aria-hidden="true">{claim.status === "ok" ? "\u2713" : claim.status === "fail" ? "\u2716" : "\u2022"}</span>
+                              <span>{claim.def.label}</span>
+                            </div>
+                            <div style={{ marginTop: 3, display: "grid", gap: 1, color: "#475569" }}>
+                              <span>Status: {claim.status === "ok" ? "Proven" : claim.status === "fail" ? "Failed" : "Unknown"}</span>
+                              <span>Tolerance: {claim.tolerance.toExponential(1)} {claim.unit}</span>
+                              <span>
+                                {claim.def.type === "perpendicular"
+                                  ? `Computed angle: ${(90 + (claim.residual ?? 0)).toFixed(4)} deg`
+                                  : claim.def.type === "parallel"
+                                    ? `Computed angle: ${(claim.residual ?? 0).toFixed(4)} deg`
+                                    : `Distance error: ${claim.residual == null ? "n/a" : claim.residual.toExponential(2)}`}
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                        {!claimRows.length && <div style={{ fontSize: 10.5, opacity: 0.7 }}>No claims yet.</div>}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
