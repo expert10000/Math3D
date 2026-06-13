@@ -6043,7 +6043,7 @@ const buildWorkspaceSceneDocument = (
   };
   return withSceneDocumentExtension(base, {
     scripts: collectWorkspaceSceneScripts(payload.workspace, proceduralScriptText),
-    workbookWorkspace: payload.workspace,
+    workbookWorkspace: toLinkedWorkspace(payload.workspace),
   });
 };
 
@@ -34120,18 +34120,25 @@ case "mobius":
     [workbookSessionPayload, buildWorkbookWorkspaceState]
   );
 
+  const workbookSessionPayloadForHash = useMemo<WorkbookReplayPayload>(
+    () => ({
+      ...workbookSessionPayloadWithWorkspace,
+      workspace: toLinkedWorkspace(workbookSessionPayloadWithWorkspace.workspace),
+    }),
+    [workbookSessionPayloadWithWorkspace]
+  );
   const workbookSessionJsonWithWorkspace = useMemo(
     () =>
       JSON.stringify(
         {
           version: WORKBOOK_PROJECT_FORMAT_VERSION,
           format: WORKBOOK_PROJECT_FORMAT,
-          payload: workbookSessionPayloadWithWorkspace,
+          payload: workbookSessionPayloadForHash,
         },
         null,
         2
       ),
-    [workbookSessionPayloadWithWorkspace]
+    [workbookSessionPayloadForHash]
   );
   const workbookSessionHashWithWorkspace = useMemo(
     () => hashString(workbookSessionJsonWithWorkspace),
@@ -34150,24 +34157,21 @@ case "mobius":
           },
     [workbookBundleAssetMode, workbookSessionPayloadWithWorkspace]
   );
-  const workbookBundleSavedAt = workbookBundlePayload.workspace?.savedAt ?? Date.now();
-  const workbookBundleSceneDocument = useMemo(
-    () => buildWorkspaceSceneDocument(workbookBundlePayload, geometryProceduralScriptText, workbookBundleSavedAt),
-    [workbookBundlePayload, geometryProceduralScriptText, workbookBundleSavedAt]
-  );
-  const workbookBundleJson = useMemo(
-    () =>
-      JSON.stringify(
+  const buildWorkbookBundleJson = useCallback(
+    () => {
+      const savedAt = workbookBundlePayload.workspace?.savedAt ?? Date.now();
+      return JSON.stringify(
         buildWorkbookProjectEnvelope(
           workbookBundlePayload,
           workbookBundleAssetMode,
-          workbookBundleSavedAt,
-          workbookBundleSceneDocument
+          savedAt,
+          buildWorkspaceSceneDocument(workbookBundlePayload, geometryProceduralScriptText, savedAt)
         ),
         null,
         2
-      ),
-    [workbookBundlePayload, workbookBundleAssetMode, workbookBundleSavedAt, workbookBundleSceneDocument]
+      );
+    },
+    [workbookBundlePayload, workbookBundleAssetMode, geometryProceduralScriptText]
   );
 
   const markWorkbookManualSave = useCallback(
@@ -34677,9 +34681,9 @@ case "mobius":
         ? "math3d-book"
         : sanitizeFileBase(activeWorkbook?.title ?? "workbook", "workbook");
     const fileName = `${base}-${new Date().toISOString().slice(0, 10)}.math3d`;
-    downloadTextFile(workbookBundleJson, fileName, "application/json");
+    downloadTextFile(buildWorkbookBundleJson(), fileName, "application/json");
     markWorkbookManualSave(workbookSessionHashWithWorkspace, Date.now(), fileName);
-  }, [workbookBundleJson, workbookSessionHashWithWorkspace, workbooks.length, activeWorkbook, markWorkbookManualSave]);
+  }, [buildWorkbookBundleJson, workbookSessionHashWithWorkspace, workbooks.length, activeWorkbook, markWorkbookManualSave]);
 
   const handleSaveWorkbook = useCallback(() => {
     const base =
@@ -34688,10 +34692,10 @@ case "mobius":
         : sanitizeFileBase(activeWorkbook?.title ?? "workbook", "workbook");
     const defaultName = `${base}-${new Date().toISOString().slice(0, 10)}.math3d`;
     const fileName = ensureMath3dExtension(workbookManualSaveName || defaultName);
-    downloadTextFile(workbookBundleJson, fileName, "application/json");
+    downloadTextFile(buildWorkbookBundleJson(), fileName, "application/json");
     markWorkbookManualSave(workbookSessionHashWithWorkspace, Date.now(), fileName);
   }, [
-    workbookBundleJson,
+    buildWorkbookBundleJson,
     workbookSessionHashWithWorkspace,
     workbookManualSaveName,
     workbooks.length,
@@ -34913,11 +34917,11 @@ case "mobius":
 
   const handleExportWorkbooks = useCallback(() => {
     downloadTextFile(
-      workbookBundleJson,
+      buildWorkbookBundleJson(),
       `math3d-workbooks-${new Date().toISOString().slice(0, 10)}.math3d`,
       "application/json"
     );
-  }, [workbookBundleJson]);
+  }, [buildWorkbookBundleJson]);
 
   const handleExportWorkbooksMarkdown = useCallback(() => {
     const markdown = buildWorkbooksMarkdown(workbooks, activeWorkbookId);
