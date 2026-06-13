@@ -1053,6 +1053,7 @@ const SURFACE_RENDER_QUALITY_KEY = "math3d.surface.renderQuality.v1";
 const UI_THEME_KEY = "math3d.ui.theme.v1";
 const UI_ACCENT_KEY = "math3d.ui.accent.v1";
 const UI_DISPLAY_MODE_KEY = "math3d.ui.displayMode.v1";
+const UI_CHROME_HIDDEN_KEY = "math3d.ui.chromeHidden.v1";
 const UI_VIEWPORT_PRESET_KEY = "math3d.ui.viewportPreset.v1";
 const UI_VIEWPORT_OVERLAY_CONTROLS_KEY = "math3d.ui.viewportOverlayControls.v1";
 const UI_SURFACE_VIEW_GIZMO_KEY = "math3d.ui.surfaceViewGizmo.v1";
@@ -20565,6 +20566,10 @@ const App: React.FC = () => {
     const saved = localStorage.getItem(UI_DISPLAY_MODE_KEY);
     return isDisplayMode(saved) ? saved : "workspace";
   });
+  const [chromeHidden, setChromeHidden] = useState(() => {
+    if (IS_REPLAY_MODE) return false;
+    return localStorage.getItem(UI_CHROME_HIDDEN_KEY) === "1";
+  });
   const [geometryViewerSourceLabel, setGeometryViewerSourceLabel] = useState<string | null>(null);
   useEffect(() => {
     if (geometryMode === "workbook") return;
@@ -20636,6 +20641,20 @@ const App: React.FC = () => {
     if (IS_REPLAY_MODE) return;
     localStorage.setItem(UI_DISPLAY_MODE_KEY, displayMode);
   }, [displayMode]);
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    localStorage.setItem(UI_CHROME_HIDDEN_KEY, chromeHidden ? "1" : "0");
+  }, [chromeHidden]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "F11") return;
+      event.preventDefault();
+      setChromeHidden((hidden) => !hidden);
+      setViewMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
@@ -46130,6 +46149,30 @@ case "mobius":
           </div>
         </div>
       )}
+      {chromeHidden && (
+        <button
+          type="button"
+          onClick={() => setChromeHidden(false)}
+          title="Show top chrome (F11)"
+          style={{
+            position: "fixed",
+            top: 10,
+            right: 10,
+            zIndex: 120,
+            padding: "5px 10px",
+            borderRadius: 999,
+            border: "1px solid #0a66c2",
+            background: "#fff",
+            color: "#0f2a4a",
+            fontSize: 11,
+            fontWeight: 700,
+            boxShadow: "0 8px 18px rgba(15,23,42,0.16)",
+          }}
+        >
+          Show chrome
+        </button>
+      )}
+      {!chromeHidden && (
       <header
         style={
           isSurfacePreviewMode
@@ -46401,6 +46444,17 @@ case "mobius":
                     )}
                   </div>
                   <div style={topNavSegmentStyle}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setChromeHidden(true);
+                        setViewMenuOpen(false);
+                      }}
+                      title="Hide top chrome (F11)"
+                      style={topNavButtonStyle(false)}
+                    >
+                      Focus
+                    </button>
                     <button
                       type="button"
                       onClick={() => setCommandPaletteOpen(true)}
@@ -47653,8 +47707,9 @@ case "mobius":
           )}
         </div>}
       </header>
+      )}
 
-      {showSurfaceWorkflowStrip && (
+      {!chromeHidden && showSurfaceWorkflowStrip && (
         <div style={{ padding: isSurfacePreviewMode ? "0 0 6px" : "0 0 10px" }}>
           <div
             style={{
