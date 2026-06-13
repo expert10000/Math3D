@@ -2242,7 +2242,15 @@ type GeometryRepeatAxis = "x" | "y" | "z" | "custom";
 type GeometryRepeatGridPlane = "xy" | "xz" | "yz";
 type GeometryRepeatMirrorPlane = "xy" | "xz" | "yz" | "selected-face";
 type GeometryRightPanelTab = "inspector" | "scene";
-type GeometryInspectorPanelTab = "probe" | "dependencies" | "definition";
+type GeometryInspectorPanelTab =
+  | "object"
+  | "dependencies"
+  | "analysis"
+  | "claims"
+  | "theory"
+  | "properties"
+  | "probe"
+  | "definition";
 type GeometryDependencyState = "valid" | "updating" | "stale" | "broken-source" | "ambiguous-target" | "frozen";
 type GeometryProceduralPickInfo = {
   point: { x: number; y: number; z: number };
@@ -8065,7 +8073,12 @@ const App: React.FC = () => {
   const [geometryMathConstructionRelationships, setGeometryMathConstructionRelationships] = useState<GeometryMathConstructionRelationship[]>([]);
   const [geometrySelectedMathRelationshipId, setGeometrySelectedMathRelationshipId] = useState<string | null>(null);
   const [geometryRightPanelTab, setGeometryRightPanelTab] = useState<GeometryRightPanelTab>("inspector");
-  const [geometryInspectorPanelTab, setGeometryInspectorPanelTab] = useState<GeometryInspectorPanelTab>("probe");
+  const [geometryInspectorPanelTab, setGeometryInspectorPanelTab] = useState<GeometryInspectorPanelTab>("object");
+  const [geometryConstructionInspectorPortalTarget, setGeometryConstructionInspectorPortalTarget] =
+    useState<HTMLDivElement | null>(null);
+  const handleGeometryConstructionInspectorHostRef = useCallback((node: HTMLDivElement | null) => {
+    setGeometryConstructionInspectorPortalTarget((current) => (current === node ? current : node));
+  }, []);
   const [geometryShowConstructionLabels, setGeometryShowConstructionLabels] = useState(true);
   const [showDependencyOverlay, setShowDependencyOverlay] = useState(false);
   const [geometryHoveredDependencyNodeId, setGeometryHoveredDependencyNodeId] = useState<string | null>(null);
@@ -8196,7 +8209,7 @@ const App: React.FC = () => {
     return geometryConstructionState.nodes.flatMap((entry) =>
       entry.type === "freePoint" && wanted.has(entry.id)
         ? [{ id: entry.id, label: entry.label ?? entry.id, point: entry.point }]
-        : []
+      : []
     );
   }, [geometryConstructionState, geometrySelectedConstructionEditSourcePointIds]);
   const geometryConstructionEditHandlePointSets = useMemo(() => {
@@ -18222,7 +18235,7 @@ const App: React.FC = () => {
     if (editableTarget) {
       setGeometryTransformMode("edit");
       setGeometryRightPanelTab("inspector");
-      setGeometryInspectorPanelTab("definition");
+      setGeometryInspectorPanelTab("properties");
       setGeometryCreateActionStatus("Dependency target highlighted, fitted to view, and opened for editing.");
       return;
     }
@@ -19076,7 +19089,7 @@ const App: React.FC = () => {
     }
     if (mode === "edit") {
       setGeometryRightPanelTab("inspector");
-      setGeometryInspectorPanelTab("definition");
+      setGeometryInspectorPanelTab("properties");
     }
   }, []);
   const handleDetachActiveConstructionTarget = useCallback(() => {
@@ -21003,6 +21016,7 @@ const App: React.FC = () => {
       setGeometryEditorSeedToken((v) => v + 1);
     }
     setGeometryWorkbookPackStatus(null);
+    setGeometryWorkspaceTab("script");
     setGeometryMode("scratch");
   }, [geometryDemoFamily, activePlanimetryScratchSeed]);
   const handleOpenDemoWorkbook = useCallback(() => {
@@ -27564,8 +27578,8 @@ const App: React.FC = () => {
     if (mode !== "geometry" || geometryMode !== "procedural") return;
     if (displayMode !== "inspect") return;
     if (!showRightPanel) setShowRightPanel(true);
-    if (geometryInspectorPanelTab !== "probe" && geometryInspectorPanelTab !== "dependencies") {
-      setGeometryInspectorPanelTab("probe");
+    if (geometryInspectorPanelTab !== "object" && geometryInspectorPanelTab !== "dependencies") {
+      setGeometryInspectorPanelTab("object");
     }
   }, [displayMode, geometryInspectorPanelTab, geometryMode, mode, showRightPanel]);
   useEffect(() => {
@@ -44675,7 +44689,12 @@ case "mobius":
     (mode === "surfaces" ? (isPresentDisplayMode ? true : showRightPanel) : showRightPanel) &&
     !cleanScreenshotSurfaceActive;
   const showGeometryRightPanel =
-    mode === "geometry" && geometryMode === "procedural" && showRightPanel && !isPresentDisplayMode;
+    mode === "geometry" &&
+    (geometryMode === "procedural" ||
+      geometryMode === "scratch" ||
+      (geometryMode === "workbook" && geometryWorkbookUiMode === "compact")) &&
+    showRightPanel &&
+    !isPresentDisplayMode;
   const surfaceLeftPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(leftWidth, 280) : leftWidth;
   const surfaceRightPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(rightWidth, 280) : rightWidth;
   const geometryMinViewerWidth = 320;
@@ -47350,7 +47369,14 @@ case "mobius":
                 {([
                   { id: "procedural" as const, label: "Procedural", onClick: () => setGeometryMode("procedural") },
                   { id: "demo" as const, label: "Demo preview", onClick: () => setGeometryMode("demo") },
-                  { id: "scratch" as const, label: "Scratch editor", onClick: () => setGeometryMode("scratch") },
+                  {
+                    id: "scratch" as const,
+                    label: "Scratch editor",
+                    onClick: () => {
+                      setGeometryWorkspaceTab("script");
+                      setGeometryMode("scratch");
+                    },
+                  },
                   {
                     id: "workbook" as const,
                     label: "Workbook scene",
@@ -47460,21 +47486,16 @@ case "mobius":
                     background: "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
                   }}
                 >
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#334155", marginRight: 2 }}>Panel</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#334155", marginRight: 2 }}>Workflow</span>
                   {([
                     { key: "create", id: "create" as const, label: "Create" },
                     { key: "scene", id: "scene" as const, label: "Scene" },
-                    { key: "object", id: "object" as const, label: "Object" },
-                    { key: "definition", id: "definition" as const, label: "Definition" },
-                    { key: "construct", id: "construct" as const, label: "Construct" },
-                    { key: "dependencies", id: "dependencies" as const, label: "Dependencies" },
+                    { key: "construct", id: "construct" as const, label: "Build" },
                     { key: "transform", id: "transform" as const, label: "Edit" },
                     { key: "view", id: "view" as const, label: "View" },
                     { key: "history", id: "history" as const, label: "History" },
-                    { key: "analysis", id: "analysis" as const, label: "Analyze" },
-                    { key: "compare", id: "analysis" as const, label: "Compare" },
-                    { key: "demonstrations", id: "demonstrations" as const, label: "Demonstrations" },
-                    { key: "theory", id: "theory" as const, label: "Measure" },
+                    { key: "script", id: "script" as const, label: "Script" },
+                    { key: "demonstrations", id: "demonstrations" as const, label: "Demos" },
                   ] as const).map((entry) => {
                     const active = geometryProceduralPanelTab === entry.id;
                     return (
@@ -47484,19 +47505,12 @@ case "mobius":
                         type="button"
                         onClick={() => {
                           setGeometryProceduralPanelTab(entry.id);
-                          if (entry.id === "dependencies") {
+                          if (entry.id === "transform") {
                             setShowRightPanel(true);
                             setGeometryRightPanelTab("inspector");
-                            setGeometryInspectorPanelTab("dependencies");
-                          } else if (entry.id === "definition" || entry.id === "transform") {
-                            setShowRightPanel(true);
-                            setGeometryRightPanelTab("inspector");
-                            setGeometryInspectorPanelTab("definition");
+                            setGeometryInspectorPanelTab("properties");
                           } else if (entry.id !== "construct") {
-                            setGeometryInspectorPanelTab("probe");
-                          }
-                          if (entry.id === "analysis") {
-                            prepareGeometryCompareFromSelected();
+                            setGeometryInspectorPanelTab("object");
                           }
                         }}
                         aria-pressed={active}
@@ -55830,12 +55844,14 @@ case "mobius":
                               </div>
                               <div style={{ marginTop: 2, fontSize: 10, fontWeight: 700 }}>
                                 Geometry validity:{" "}
-                                {geometrySelectedSceneMeshInfo.readiness.canSafelyBecomeMeshObject
+                                {geometrySelectedSceneMeshInfo.readiness?.canSafelyBecomeMeshObject
                                   ? "safe to become mesh object"
-                                  : "needs attention before mesh handoff"}
+                                  : geometrySelectedSceneMeshInfo.readiness
+                                    ? "needs attention before mesh handoff"
+                                    : "not evaluated"}
                               </div>
                               <div style={{ fontSize: 10, opacity: 0.85, display: "grid", gap: 2 }}>
-                                {geometrySelectedSceneMeshInfo.readiness.checks.map((check) => (
+                                {geometrySelectedSceneMeshInfo.readiness?.checks.map((check) => (
                                   <div key={`geo-validity-proc-${check.id}`}>
                                     <strong>
                                       {check.status === "ok" ? "OK" : check.status === "warning" ? "Warning" : check.status === "error" ? "Error" : "Unknown"}
@@ -55844,9 +55860,9 @@ case "mobius":
                                   </div>
                                 ))}
                               </div>
-                              {geometrySelectedSceneMeshInfo.readiness.notes.length > 0 && (
+                              {(geometrySelectedSceneMeshInfo.readiness?.notes.length ?? 0) > 0 && (
                                 <div style={{ fontSize: 10, color: "#92400e", display: "grid", gap: 2 }}>
-                                  {geometrySelectedSceneMeshInfo.readiness.notes.map((note, index) => (
+                                  {geometrySelectedSceneMeshInfo.readiness?.notes.map((note, index) => (
                                     <div key={`geo-validity-note-proc-${index}`}>{note}</div>
                                   ))}
                                 </div>
@@ -57249,12 +57265,14 @@ case "mobius":
                               </div>
                               <div style={{ marginTop: 2, fontSize: 10, fontWeight: 700 }}>
                                 Geometry validity:{" "}
-                                {geometrySelectedSceneMeshInfo.readiness.canSafelyBecomeMeshObject
+                                {geometrySelectedSceneMeshInfo.readiness?.canSafelyBecomeMeshObject
                                   ? "safe to become mesh object"
-                                  : "needs attention before mesh handoff"}
+                                  : geometrySelectedSceneMeshInfo.readiness
+                                    ? "needs attention before mesh handoff"
+                                    : "not evaluated"}
                               </div>
                               <div style={{ fontSize: 10, opacity: 0.85, display: "grid", gap: 2 }}>
-                                {geometrySelectedSceneMeshInfo.readiness.checks.map((check) => (
+                                {geometrySelectedSceneMeshInfo.readiness?.checks.map((check) => (
                                   <div key={`geo-validity-mesh-${check.id}`}>
                                     <strong>
                                       {check.status === "ok" ? "OK" : check.status === "warning" ? "Warning" : check.status === "error" ? "Error" : "Unknown"}
@@ -57263,9 +57281,9 @@ case "mobius":
                                   </div>
                                 ))}
                               </div>
-                              {geometrySelectedSceneMeshInfo.readiness.notes.length > 0 && (
+                              {(geometrySelectedSceneMeshInfo.readiness?.notes.length ?? 0) > 0 && (
                                 <div style={{ fontSize: 10, color: "#92400e", display: "grid", gap: 2 }}>
-                                  {geometrySelectedSceneMeshInfo.readiness.notes.map((note, index) => (
+                                  {geometrySelectedSceneMeshInfo.readiness?.notes.map((note, index) => (
                                     <div key={`geo-validity-note-mesh-${index}`}>{note}</div>
                                   ))}
                                 </div>
@@ -58555,7 +58573,11 @@ case "mobius":
                               <div><strong>Normals:</strong> {geometrySelectedSceneMeshInfo.hasNormals ? "present" : "missing"}</div>
                               <div>
                                 <strong>Readiness:</strong>{" "}
-                                {geometrySelectedSceneMeshInfo.readiness.canSafelyBecomeMeshObject ? "ready" : "needs attention"}
+                                {geometrySelectedSceneMeshInfo.readiness?.canSafelyBecomeMeshObject
+                                  ? "ready"
+                                  : geometrySelectedSceneMeshInfo.readiness
+                                    ? "needs attention"
+                                    : "not evaluated"}
                               </div>
                               <div style={{ marginTop: 6, border: "1px solid #dbe2ea", borderRadius: 6, padding: "6px 8px", background: "#fff" }}>
                                 <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Analyze selected object</div>
@@ -60867,7 +60889,14 @@ case "mobius":
                           Open full workbook
                         </button>
                         {geometryMode === "workbook" ? (
-                          <button type="button" onClick={() => setGeometryMode("scratch")} style={{ fontSize: 11 }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setGeometryWorkspaceTab("script");
+                              setGeometryMode("scratch");
+                            }}
+                            style={{ fontSize: 11 }}
+                          >
                             Use scratch
                           </button>
                         ) : (
@@ -60925,6 +60954,8 @@ case "mobius":
                       workspaceTab={geometryWorkspaceTab}
                       onWorkspaceTabChange={setGeometryWorkspaceTab}
                       hideWorkspaceTabs={true}
+                      hideScriptInspector={true}
+                      scriptInspectorPortalTarget={geometryConstructionInspectorPortalTarget}
                       onChange={handleConstructionLabChange}
                       onPointPlacementModeChange={setGeometryPointPlacementEnabled}
                       viewportPickPoint={geometryPendingViewportPoint}
@@ -62226,7 +62257,7 @@ case "mobius":
                           onClick={() => {
                             runGeometryPanelTabSwitch(() => {
                               setGeometryRightPanelTab(tabId);
-                              if (tabId === "scene") setGeometryInspectorPanelTab("probe");
+                              if (tabId === "scene") setGeometryInspectorPanelTab("object");
                             });
                           }}
                           style={pill(geometryRightPanelTab === tabId)}
@@ -62237,8 +62268,21 @@ case "mobius":
                       ))}
                     </div>
                     {geometryRightPanelTab === "inspector" ? (
+                      geometryMode === "scratch" || geometryMode === "workbook" ? (
+                        <div
+                          ref={handleGeometryConstructionInspectorHostRef}
+                          data-testid="geometry-construction-inspector-host"
+                          style={{ minHeight: 0 }}
+                        />
+                      ) : (
                       <>
                         {(
+                          geometryInspectorPanelTab === "object" ||
+                          geometryInspectorPanelTab === "properties" ||
+                          geometryInspectorPanelTab === "dependencies" ||
+                          geometryInspectorPanelTab === "analysis" ||
+                          geometryInspectorPanelTab === "claims" ||
+                          geometryInspectorPanelTab === "theory" ||
                           geometryProceduralPanelTab === "definition" ||
                           geometryProceduralPanelTab === "transform" ||
                           geometryProceduralPanelTab === "dependencies"
@@ -62277,9 +62321,12 @@ case "mobius":
                         )}
                         <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
                           {([
-                            ["probe", "Probe"],
+                            ["object", "Object"],
                             ["dependencies", "Dependencies"],
-                            ["definition", "Definition"],
+                            ["analysis", "Analysis"],
+                            ["claims", "Claims"],
+                            ["theory", "Theory"],
+                            ["properties", "Properties"],
                           ] as const).map(([tabId, label]) => (
                             <button
                               key={`geometry-inspector-tab-${tabId}`}
@@ -62293,7 +62340,7 @@ case "mobius":
                             </button>
                           ))}
                         </div>
-                        {geometryInspectorPanelTab === "probe" && (
+                        {(geometryInspectorPanelTab === "object" || geometryInspectorPanelTab === "probe") && (
                           <div
                             style={{
                               border: "1px solid #dbe2ea",
@@ -62305,11 +62352,34 @@ case "mobius":
                               fontSize: 11,
                             }}
                           >
-                            <div style={{ fontSize: 12, fontWeight: 700 }}>Live probe readout</div>
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Object</div>
                             <div style={{ color: "#475467" }}>
-                              Canonical live pick details for the viewport. Set selection mode, then click mesh to inspect
-                              object/face/edge/vertex data.
+                              Selected object context plus live pick details for object/face/edge/vertex inspection.
                             </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "92px minmax(0, 1fr)", gap: "4px 8px" }}>
+                              <span style={{ color: "#64748b" }}>Name</span>
+                              <strong>{geometrySelectedSceneObject?.name ?? geometrySelectedMathConstructionEval?.object.id ?? "None"}</strong>
+                              <span style={{ color: "#64748b" }}>Type</span>
+                              <span>{geometrySelectionContext.type}</span>
+                              <span style={{ color: "#64748b" }}>Role</span>
+                              <span>{geometrySelectionContext.derived ? "Derived" : geometrySelectionContext.editable}</span>
+                              <span style={{ color: "#64748b" }}>Dependents</span>
+                              <strong>{geometrySelectionContext.outputCount}</strong>
+                            </div>
+                            {geometrySelectedSceneMeshInfo && (
+                              <div style={{ display: "grid", gridTemplateColumns: "92px minmax(0, 1fr)", gap: "4px 8px" }}>
+                                <span style={{ color: "#64748b" }}>Vertices</span>
+                                <strong>{geometrySelectedSceneMeshInfo.vertCount.toLocaleString()}</strong>
+                                <span style={{ color: "#64748b" }}>Faces</span>
+                                <strong>{geometrySelectedSceneMeshInfo.triCount.toLocaleString()}</strong>
+                                <span style={{ color: "#64748b" }}>Center</span>
+                                <span>
+                                  {geometrySelectedSceneMeshInfo.centroid
+                                    ? `(${fmt(geometrySelectedSceneMeshInfo.centroid.x)}, ${fmt(geometrySelectedSceneMeshInfo.centroid.y)}, ${fmt(geometrySelectedSceneMeshInfo.centroid.z)})`
+                                    : "n/a"}
+                                </span>
+                              </div>
+                            )}
                             <div>
                               <strong>Selection mode:</strong>
                               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
@@ -62623,7 +62693,158 @@ case "mobius":
                             </div>
                           </div>
                         )}
-                        {geometryInspectorPanelTab === "definition" && (
+                        {geometryInspectorPanelTab === "analysis" && (
+                          <div
+                            style={{
+                              border: "1px solid #dbe2ea",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#ffffff",
+                              display: "grid",
+                              gap: 8,
+                              fontSize: 11,
+                            }}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Analysis</div>
+                            {geometrySelectedSceneMeshInfo ? (
+                              <>
+                                <div><strong>Selected:</strong> {geometrySelectedSceneObject?.name ?? "n/a"}</div>
+                                <div>
+                                  <strong>Mesh:</strong> {geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} vertices /{" "}
+                                  {geometrySelectedSceneMeshInfo.triCount.toLocaleString()} faces
+                                </div>
+                                <div>
+                                  <strong>Readiness:</strong>{" "}
+                                  {geometrySelectedSceneMeshInfo.readiness?.canSafelyBecomeMeshObject
+                                    ? "ready"
+                                    : geometrySelectedSceneMeshInfo.readiness
+                                      ? "needs attention"
+                                      : "not evaluated"}
+                                </div>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                  <button type="button" onClick={handleRunGeometryQuickBasicMetrics} style={{ fontSize: 11 }}>
+                                    Basic metrics
+                                  </button>
+                                  <button type="button" onClick={handleRunGeometryQuickTopologySummary} style={{ fontSize: 11 }}>
+                                    Topology summary
+                                  </button>
+                                  <button type="button" onClick={handleRunGeometryQuickSectionAnalysis} style={{ fontSize: 11 }}>
+                                    Section analysis
+                                  </button>
+                                  <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(true)} style={{ fontSize: 11 }}>
+                                    Gauss map workflow
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <div style={{ color: "#64748b" }}>Select a mesh-backed object to run analysis.</div>
+                            )}
+                            {geometrySelectedQuickAnalysisResult && (
+                              <div style={{ border: "1px solid #dbe2ea", borderRadius: 6, padding: "6px 8px", background: "#fbfdff", display: "grid", gap: 3 }}>
+                                <div style={{ fontWeight: 700 }}>{geometrySelectedQuickAnalysisResult.title}</div>
+                                <div><strong>Source:</strong> {geometrySelectedQuickAnalysisResult.sourceObjectName}</div>
+                                {geometrySelectedQuickAnalysisResult.basicMetrics && (
+                                  <>
+                                    <div><strong>Volume:</strong> {fmt(geometrySelectedQuickAnalysisResult.basicMetrics.volume)}</div>
+                                    <div><strong>Area:</strong> {fmt(geometrySelectedQuickAnalysisResult.basicMetrics.area)}</div>
+                                  </>
+                                )}
+                                {geometrySelectedQuickAnalysisResult.topologySummary && (
+                                  <>
+                                    <div><strong>Euler characteristic:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.eulerCharacteristic}</div>
+                                    <div><strong>Manifold:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.manifold ? "yes" : "no"}</div>
+                                  </>
+                                )}
+                                {geometrySelectedQuickAnalysisResult.sectionSummary && (
+                                  <>
+                                    <div><strong>Section length:</strong> {fmt(geometrySelectedQuickAnalysisResult.sectionSummary.sectionLength)}</div>
+                                    <div><strong>Section area:</strong> {fmt(geometrySelectedQuickAnalysisResult.sectionSummary.sectionEnclosedArea)}</div>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {geometryInspectorPanelTab === "claims" && (
+                          <div
+                            style={{
+                              border: "1px solid #dbe2ea",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#ffffff",
+                              display: "grid",
+                              gap: 8,
+                              fontSize: 11,
+                            }}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Claims</div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button type="button" onClick={() => handleGeometryFit("claim")} style={{ fontSize: 11 }}>
+                                Fit claim
+                              </button>
+                              <button type="button" onClick={() => setGeometryProceduralPanelTab("analysis")} style={{ fontSize: 11 }}>
+                                Open annotation tools
+                              </button>
+                            </div>
+                            {geometryDerivedRelationConstraints.length ? (
+                              <div style={{ display: "grid", gap: 4 }}>
+                                {geometryDerivedRelationConstraints.slice(0, 12).map((entry) => (
+                                  <div key={`geometry-inspector-claim-relation-${entry.id}`} style={{ border: "1px solid #e2e8f0", borderRadius: 6, padding: "5px 7px", background: "#f8fafc" }}>
+                                    <strong>{entry.type}</strong> {entry.objectId} {"->"} {entry.derivedId}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : geometryConstraints.length ? (
+                              <div style={{ display: "grid", gap: 4 }}>
+                                {geometryConstraints.slice(0, 12).map((constraint) => (
+                                  <div key={`geometry-inspector-claim-${constraint.id}`} style={{ border: "1px solid #e2e8f0", borderRadius: 6, padding: "5px 7px", background: "#f8fafc" }}>
+                                    <strong>{constraint.status === "ok" ? "OK" : "Check"}</strong> {constraint.label}:{" "}
+                                    {formatConstraintValue(constraint.residual, constraint.unit)}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div style={{ color: "#64748b" }}>No active claims or constraints for the current scene.</div>
+                            )}
+                          </div>
+                        )}
+                        {geometryInspectorPanelTab === "theory" && (
+                          <div
+                            style={{
+                              border: "1px solid #dbe2ea",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#ffffff",
+                              display: "grid",
+                              gap: 8,
+                              fontSize: 11,
+                            }}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Theory</div>
+                            {geometrySelectedObject && geometryTheorySummary ? (
+                              <>
+                                <div><strong>Object:</strong> {geometrySelectedObject.name}</div>
+                                <div><strong>Definition:</strong> {geometryTheorySummary.definition}</div>
+                                {geometrySelectedPolyhedron?.counts && (
+                                  <div>
+                                    <strong>Euler:</strong> V={geometrySelectedPolyhedron.counts.vertices} E={geometrySelectedPolyhedron.counts.edges} F={geometrySelectedPolyhedron.counts.faces}
+                                  </div>
+                                )}
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                  <button type="button" onClick={() => setGeometryInspectorPanelTab("analysis")} style={{ fontSize: 11 }}>
+                                    Analyze
+                                  </button>
+                                  <button type="button" onClick={() => setGeometryProceduralPanelTab("theory")} style={{ fontSize: 11 }}>
+                                    Open measure workflow
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <div style={{ color: "#64748b" }}>Select an object to view theory notes.</div>
+                            )}
+                          </div>
+                        )}
+                        {(geometryInspectorPanelTab === "properties" || geometryInspectorPanelTab === "definition") && (
                           <div
                             data-testid="geometry-inspector-definition"
                             style={{
@@ -62637,7 +62858,7 @@ case "mobius":
                             }}
                           >
                             <div>
-                              <div style={{ fontSize: 12, fontWeight: 800 }}>Definition Editor</div>
+                              <div style={{ fontSize: 12, fontWeight: 800 }}>Properties</div>
                               <div style={{ color: "#166534" }}>Live recompute enabled</div>
                             </div>
                             <div style={{ display: "grid", gap: 3 }}>
@@ -62854,6 +63075,7 @@ case "mobius":
                           </div>
                         )}
                       </>
+                      )
                     ) : (
                       <div
                         style={{

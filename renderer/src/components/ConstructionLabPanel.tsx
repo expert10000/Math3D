@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { OverlayLabelSet } from "./SurfaceViewer";
 import type { GeometryScene } from "../geometry/types";
 import {
@@ -149,6 +150,8 @@ type ConstructionLabPanelProps = {
   workspaceTab?: ConstructionWorkspaceTab;
   onWorkspaceTabChange?: (tab: ConstructionWorkspaceTab) => void;
   hideWorkspaceTabs?: boolean;
+  hideScriptInspector?: boolean;
+  scriptInspectorPortalTarget?: Element | null;
 };
 
 type ConstructionHistoryState = {
@@ -1008,6 +1011,8 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   workspaceTab: controlledWorkspaceTab,
   onWorkspaceTabChange,
   hideWorkspaceTabs = false,
+  hideScriptInspector = false,
+  scriptInspectorPortalTarget = null,
 }) => {
   const seededState = normalizeConstructionSeed(seed);
   const [nodes, setNodes] = useState<ConstructionNode[]>(() =>
@@ -3020,6 +3025,12 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     );
   };
 
+  const renderScriptInspector = (content: React.ReactElement): React.ReactNode => {
+    if (scriptInspectorPortalTarget) return createPortal(content, scriptInspectorPortalTarget);
+    if (hideScriptInspector) return null;
+    return content;
+  };
+
   return (
     <div className="construction-lab-panel" style={{ display: "grid", gap: 12, minWidth: 0, maxWidth: "100%" }}>
       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
@@ -3997,6 +4008,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   </div>
                 </div>
                 </div>
+                {renderScriptInspector(
                 <div
                   data-testid="construction-script-inspector"
                   style={{
@@ -4380,6 +4392,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                     )}
                   </div>
                 </div>
+                )}
               </div>
               <div style={{ display: "grid", gap: 4 }}>
                 <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
