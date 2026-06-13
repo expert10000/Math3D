@@ -3285,6 +3285,9 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
               Templates
             </button>
             <button type="button" onClick={() => setPaletteOpen(true)} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Palette</button>
+            <button type="button" onClick={() => importSceneInputRef.current?.click()} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Import</button>
+            <button type="button" onClick={exportSceneBundle} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Export JSON</button>
+            <button type="button" onClick={exportSceneScript} style={{ padding: "2px 7px", fontSize: 10.5, lineHeight: 1.15 }}>Export script</button>
             <details
               id="construction-script-diagnostics"
               data-testid="construction-script-diagnostics"
