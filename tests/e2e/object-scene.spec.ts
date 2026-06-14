@@ -164,6 +164,10 @@ test("Object/scene behavior: create, toggle visibility, remove, overlay state re
     await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(initialStats.objectCount + 1);
     const createdStats = await readGeometryStats(page);
     expect(createdStats.visibleCount).toBe(initialStats.visibleCount + 1);
+    await page.keyboard.press("Control+Z");
+    await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(initialStats.objectCount);
+    await page.keyboard.press("Control+Y");
+    await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(createdStats.objectCount);
 
     await clickFirstVisibleButton(page, "Scene");
     const sceneTree = page.getByTestId("unified-object-tree");
@@ -420,6 +424,15 @@ test("Procedural script ownership appears in the shared dependency graph", async
     const saved = JSON.parse(readFileSync(savedPath, "utf8"));
     const savedGraph = saved.sceneDocument?.extensions?.["math3d.sceneDocument"]?.constructionGraph;
     expect(savedGraph?.nodes?.some((node: { id?: string }) => node.id === "script:geometry-procedural")).toBe(true);
+    expect(
+      savedGraph?.nodes?.some(
+        (node: { id?: string; data?: { id?: string; name?: string; type?: string } }) =>
+          node.id === "object:owned_box" &&
+          node.data?.id === "owned_box" &&
+          node.data?.name === "OwnedBox" &&
+          node.data?.type === "box"
+      )
+    ).toBe(true);
     expect(
       savedGraph?.edges?.some(
         (edge: { sourceId?: string; targetId?: string; relation?: string }) =>

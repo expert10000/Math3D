@@ -7,6 +7,7 @@ import {
   type ConstructionGraphNode,
   type ConstructionGraphNodeStatus,
 } from "@math3d/core";
+import type { GeometryObject } from "./proceduralObjects";
 
 export type ConstructionGraphNodeInput = Omit<ConstructionGraphNode, "kind" | "type"> & {
   kind: ConstructionGraphNode["kind"];
@@ -20,6 +21,134 @@ export type ConstructionGraphBuilder = {
   addNode: (node: ConstructionGraphNodeInput) => void;
   addEdge: (edge: ConstructionGraphEdgeInput) => void;
   build: () => ConstructionGraphIndex;
+};
+
+export type GeometryObjectGraphCommand =
+  | { type: "create"; object: GeometryObject }
+  | { type: "update"; objectId: string; update: (object: GeometryObject) => GeometryObject }
+  | { type: "delete"; objectId: string }
+  | { type: "replace"; objects: GeometryObject[] };
+
+export type ConstructionGraphCommandHistory = {
+  past: ConstructionGraph[];
+  future: ConstructionGraph[];
+};
+
+export const createConstructionGraphCommandHistory = (): ConstructionGraphCommandHistory => ({
+  past: [],
+  future: [],
+});
+
+export const commitConstructionGraphHistory = (
+  history: ConstructionGraphCommandHistory,
+  previousGraph: ConstructionGraph,
+  limit = 100
+): ConstructionGraphCommandHistory => ({
+  past: [...history.past, previousGraph].slice(-limit),
+  future: [],
+});
+
+export const undoConstructionGraphHistory = (
+  graph: ConstructionGraph,
+  history: ConstructionGraphCommandHistory
+): { graph: ConstructionGraph; history: ConstructionGraphCommandHistory } => {
+  const previous = history.past.at(-1);
+  if (!previous) return { graph, history };
+  return {
+    graph: previous,
+    history: {
+      past: history.past.slice(0, -1),
+      future: [graph, ...history.future],
+    },
+  };
+};
+
+export const redoConstructionGraphHistory = (
+  graph: ConstructionGraph,
+  history: ConstructionGraphCommandHistory
+): { graph: ConstructionGraph; history: ConstructionGraphCommandHistory } => {
+  const next = history.future[0];
+  if (!next) return { graph, history };
+  return {
+    graph: next,
+    history: {
+      past: [...history.past, graph],
+      future: history.future.slice(1),
+    },
+  };
+};
+
+const geometryObjectNodeId = (objectId: string): string => `object:${objectId}`;
+
+const geometryObjectToNode = (
+  object: GeometryObject,
+  previous?: ConstructionGraphNode
+): ConstructionGraphNode => ({
+  ...previous,
+  id: geometryObjectNodeId(object.id),
+  kind: "geometry",
+  type: "geometry-object",
+  label: object.name,
+  status: "valid",
+  visible: object.visible,
+  data: object,
+  metadata: {
+    ...(previous?.metadata ?? {}),
+    objectType: object.type,
+  },
+});
+
+const isGeometryObject = (value: unknown): value is GeometryObject => {
+  if (!value || typeof value !== "object") return false;
+  const object = value as Partial<GeometryObject>;
+  return (
+    typeof object.id === "string" &&
+    typeof object.type === "string" &&
+    typeof object.name === "string" &&
+    typeof object.visible === "boolean" &&
+    !!object.params &&
+    !!object.transform &&
+    !!object.material
+  );
+};
+
+export const projectGeometryObjectsFromConstructionGraph = (graph: ConstructionGraph): GeometryObject[] =>
+  graph.nodes
+    .filter((node) => node.kind === "geometry" && node.type === "geometry-object" && isGeometryObject(node.data))
+    .map((node) => node.data);
+
+export const replaceGeometryObjectsInConstructionGraph = (
+  graph: ConstructionGraph,
+  objects: GeometryObject[]
+): ConstructionGraph => {
+  const objectNodeIds = new Set(objects.map((object) => geometryObjectNodeId(object.id)));
+  const previousById = new Map(graph.nodes.map((node) => [node.id, node] as const));
+  const nodes = graph.nodes.filter((node) => node.kind !== "geometry" || node.type !== "geometry-object");
+  nodes.push(...objects.map((object) => geometryObjectToNode(object, previousById.get(geometryObjectNodeId(object.id)))));
+  const edges = graph.edges.filter(
+    (edge) =>
+      (!edge.sourceId.startsWith("object:") || objectNodeIds.has(edge.sourceId)) &&
+      (!edge.targetId.startsWith("object:") || objectNodeIds.has(edge.targetId))
+  );
+  return createConstructionGraph(nodes, edges);
+};
+
+export const applyGeometryObjectGraphCommand = (
+  graph: ConstructionGraph,
+  command: GeometryObjectGraphCommand
+): ConstructionGraph => {
+  const objects = projectGeometryObjectsFromConstructionGraph(graph);
+  if (command.type === "create") return replaceGeometryObjectsInConstructionGraph(graph, [command.object, ...objects]);
+  if (command.type === "delete") {
+    return replaceGeometryObjectsInConstructionGraph(graph, objects.filter((object) => object.id !== command.objectId));
+  }
+  if (command.type === "update") {
+    return replaceGeometryObjectsInConstructionGraph(
+      graph,
+      objects.map((object) => (object.id === command.objectId ? command.update(object) : object))
+    );
+  }
+  return replaceGeometryObjectsInConstructionGraph(graph, command.objects);
 };
 
 export const createConstructionGraphBuilder = (baseGraph: ConstructionGraph = createConstructionGraph()): ConstructionGraphBuilder => {
@@ -43,7 +172,7 @@ export const synchronizeScriptOwnershipGraph = (args: {
   scriptId: string;
   scriptTitle: string;
   scriptSource: string;
-  objects: Array<{ id: string; name: string; type: string }>;
+  objects: GeometryObject[];
   createdObjectIds: Iterable<string>;
   deletedObjectIds: Iterable<string>;
 }): ConstructionGraph => {
@@ -76,18 +205,7 @@ export const synchronizeScriptOwnershipGraph = (args: {
   for (const object of args.objects) {
     const id = `object:${object.id}`;
     const previous = nodes.find((node) => node.id === id);
-    const next: ConstructionGraphNode = {
-      ...previous,
-      id,
-      kind: "geometry",
-      type: "geometry-object",
-      label: object.name,
-      status: "valid",
-      metadata: {
-        ...(previous?.metadata ?? {}),
-        objectType: object.type,
-      },
-    };
+    const next = geometryObjectToNode(object, previous);
     const previousIndex = nodeIndexById.get(id) ?? -1;
     if (previousIndex >= 0) nodes[previousIndex] = next;
     else {
@@ -116,28 +234,5 @@ export const synchronizeScriptOwnershipGraph = (args: {
 
 export const synchronizeGeometryObjectGraph = (
   graph: ConstructionGraph,
-  objects: Array<{ id: string; name: string; type: string }>
-): ConstructionGraph => {
-  const objectIds = new Set(objects.map((object) => `object:${object.id}`));
-  const nodes = graph.nodes.filter((node) => node.kind !== "geometry" || node.type !== "geometry-object" || objectIds.has(node.id));
-  const nodeById = new Map(nodes.map((node) => [node.id, node] as const));
-  for (const object of objects) {
-    const id = `object:${object.id}`;
-    const previous = nodeById.get(id);
-    nodeById.set(id, {
-      ...previous,
-      id,
-      kind: "geometry",
-      type: "geometry-object",
-      label: object.name,
-      status: "valid",
-      metadata: { ...(previous?.metadata ?? {}), objectType: object.type },
-    });
-  }
-  const edges = graph.edges.filter((edge) => {
-    if (edge.sourceId.startsWith("object:") && !objectIds.has(edge.sourceId)) return false;
-    if (edge.targetId.startsWith("object:") && !objectIds.has(edge.targetId)) return false;
-    return true;
-  });
-  return createConstructionGraph(Array.from(nodeById.values()), edges);
-};
+  objects: GeometryObject[]
+): ConstructionGraph => replaceGeometryObjectsInConstructionGraph(graph, objects);

@@ -150,9 +150,14 @@ import { formatSceneScriptDiagnostic } from "./geometry/scripting/sceneScriptDia
 import { executeSceneScript } from "./geometry/scripting/sceneScriptExecutor";
 import { PROCEDURAL_SCENE_SCRIPT_STARTER } from "./geometry/scripting/sceneScriptExamples";
 import {
+  applyGeometryObjectGraphCommand,
+  commitConstructionGraphHistory,
+  createConstructionGraphCommandHistory,
   createConstructionGraphBuilder,
-  synchronizeGeometryObjectGraph,
+  projectGeometryObjectsFromConstructionGraph,
+  redoConstructionGraphHistory,
   synchronizeScriptOwnershipGraph,
+  undoConstructionGraphHistory,
 } from "./geometry/constructionGraphBuilder";
 import {
   GEOMETRY_GALLERY_CARD_BY_ID,
@@ -8368,10 +8373,58 @@ const App: React.FC = () => {
     [geometryDemo, geometryDemoFamily, geometryPlanimetryDemo]
   );
 
-  const [geometryObjects, setGeometryObjects] = useState<GeometryObject[]>(() => {
+  const [geometryConstructionGraph, setGeometryConstructionGraph] = useState<ConstructionGraph>(() => {
     const id = makeId();
-    return [createGeometryObject("box", id)];
+    return applyGeometryObjectGraphCommand(createConstructionGraph(), {
+      type: "create",
+      object: createGeometryObject("box", id),
+    });
   });
+  const geometryObjects = useMemo(
+    () => projectGeometryObjectsFromConstructionGraph(geometryConstructionGraph),
+    [geometryConstructionGraph]
+  );
+  const geometryGraphHistoryRef = useRef(createConstructionGraphCommandHistory());
+  const setGeometryObjects = useCallback<React.Dispatch<React.SetStateAction<GeometryObject[]>>>((action) => {
+    setGeometryConstructionGraph((graph) => {
+      const previous = projectGeometryObjectsFromConstructionGraph(graph);
+      const objects = typeof action === "function" ? action(previous) : action;
+      const next = applyGeometryObjectGraphCommand(graph, { type: "replace", objects });
+      geometryGraphHistoryRef.current = commitConstructionGraphHistory(geometryGraphHistoryRef.current, graph);
+      return next;
+    });
+  }, []);
+  const undoGeometryGraphCommand = useCallback(() => {
+    setGeometryConstructionGraph((graph) => {
+      const result = undoConstructionGraphHistory(graph, geometryGraphHistoryRef.current);
+      geometryGraphHistoryRef.current = result.history;
+      return result.graph;
+    });
+  }, []);
+  const redoGeometryGraphCommand = useCallback(() => {
+    setGeometryConstructionGraph((graph) => {
+      const result = redoConstructionGraphHistory(graph, geometryGraphHistoryRef.current);
+      geometryGraphHistoryRef.current = result.history;
+      return result.graph;
+    });
+  }, []);
+  useEffect(() => {
+    const handleGraphHistoryShortcut = (event: KeyboardEvent) => {
+      if (mode !== "geometry" || geometryMode !== "procedural" || !(event.ctrlKey || event.metaKey)) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable=true]")) return;
+      if (event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redoGeometryGraphCommand();
+        else undoGeometryGraphCommand();
+      } else if (event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        redoGeometryGraphCommand();
+      }
+    };
+    window.addEventListener("keydown", handleGraphHistoryShortcut);
+    return () => window.removeEventListener("keydown", handleGraphHistoryShortcut);
+  }, [geometryMode, mode, redoGeometryGraphCommand, undoGeometryGraphCommand]);
   const [geometryDatasetMeshObjects, setGeometryDatasetMeshObjects] = useState<GeometryDatasetMeshObject[]>([]);
   const [geometryLockedObjectIds, setGeometryLockedObjectIds] = useState<Set<string>>(() => new Set());
   const [geometrySelectedObjectId, setGeometrySelectedObjectId] = useState<string | null>(null);
@@ -8482,14 +8535,6 @@ const App: React.FC = () => {
   const [geometryProceduralScriptText, setGeometryProceduralScriptText] = useState(PROCEDURAL_SCENE_SCRIPT_STARTER);
   const [geometryProceduralScriptError, setGeometryProceduralScriptError] = useState<string | null>(null);
   const [geometryProceduralScriptStatus, setGeometryProceduralScriptStatus] = useState<string | null>(null);
-  const [geometryConstructionGraph, setGeometryConstructionGraph] = useState<ConstructionGraph>(() =>
-    createConstructionGraph()
-  );
-  useEffect(() => {
-    setGeometryConstructionGraph((graph) =>
-      synchronizeGeometryObjectGraph(graph, geometryObjects)
-    );
-  }, [geometryObjects]);
   const [geometryBakeError, setGeometryBakeError] = useState<string | null>(null);
   const geometryHistoryIntentQueueRef = useRef<Map<string, GeometryQueuedHistoryIntent[]>>(new Map());
   const [geometryGizmoEnabled, setGeometryGizmoEnabled] = useState(true);
@@ -35228,6 +35273,7 @@ case "mobius":
         const importedConstructionGraph = decoded.sceneDocument
           ? getSceneDocumentConstructionGraph(decoded.sceneDocument)
           : undefined;
+        geometryGraphHistoryRef.current = createConstructionGraphCommandHistory();
         setGeometryConstructionGraph(importedConstructionGraph ?? createConstructionGraph());
         const importedProceduralScript = sceneExtension?.scripts?.find((script) => script.id === "geometry-procedural");
         if (importedProceduralScript) setGeometryProceduralScriptText(importedProceduralScript.source);

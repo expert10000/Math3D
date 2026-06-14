@@ -1,10 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { createConstructionGraph } from "@math3d/core";
 import {
+  applyGeometryObjectGraphCommand,
+  commitConstructionGraphHistory,
+  createConstructionGraphCommandHistory,
   createConstructionGraphBuilder,
+  projectGeometryObjectsFromConstructionGraph,
+  redoConstructionGraphHistory,
+  replaceGeometryObjectsInConstructionGraph,
   synchronizeGeometryObjectGraph,
   synchronizeScriptOwnershipGraph,
+  undoConstructionGraphHistory,
 } from "./constructionGraphBuilder";
+import { createGeometryObject } from "./proceduralObjects";
 
 describe("construction graph builder", () => {
   it("merges live and projected graph entries with stable edge ids", () => {
@@ -29,12 +37,14 @@ describe("construction graph builder", () => {
   });
 
   it("synchronizes script ownership for created and deleted objects", () => {
+    const box = createGeometryObject("box", "box1");
+    const sphere = createGeometryObject("sphere", "sphere1");
     const initial = synchronizeScriptOwnershipGraph({
       graph: createConstructionGraph(),
       scriptId: "geometry-procedural",
       scriptTitle: "Geometry procedural script",
       scriptSource: "add box as box1",
-      objects: [{ id: "box1", name: "Box", type: "box" }],
+      objects: [box],
       createdObjectIds: ["box1"],
       deletedObjectIds: [],
     });
@@ -43,7 +53,7 @@ describe("construction graph builder", () => {
       scriptId: "geometry-procedural",
       scriptTitle: "Geometry procedural script",
       scriptSource: "delete box1\nadd sphere as sphere1",
-      objects: [{ id: "sphere1", name: "Sphere", type: "sphere" }],
+      objects: [sphere],
       createdObjectIds: ["sphere1"],
       deletedObjectIds: ["box1"],
     });
@@ -62,10 +72,51 @@ describe("construction graph builder", () => {
       ],
       [{ id: "defines-old", sourceId: "script:main", targetId: "object:old", relation: "defines" }]
     );
-    const next = synchronizeGeometryObjectGraph(graph, [{ id: "new", name: "New Box", type: "box" }]);
+    const object = { ...createGeometryObject("box", "new"), name: "New Box" };
+    const next = synchronizeGeometryObjectGraph(graph, [object]);
 
     expect(next.nodes.map((node) => node.id)).toEqual(["script:main", "object:new"]);
     expect(next.edges).toEqual([]);
     expect(next.nodes[1]?.label).toBe("New Box");
+    expect(next.nodes[1]?.data).toEqual(object);
+  });
+
+  it("uses graph commands as the geometry object source of truth", () => {
+    const box = createGeometryObject("box", "box");
+    const created = applyGeometryObjectGraphCommand(createConstructionGraph(), { type: "create", object: box });
+    const updated = applyGeometryObjectGraphCommand(created, {
+      type: "update",
+      objectId: "box",
+      update: (object) => ({ ...object, name: "Graph Box", visible: false }),
+    });
+
+    expect(projectGeometryObjectsFromConstructionGraph(updated)).toEqual([
+      { ...box, name: "Graph Box", visible: false },
+    ]);
+    expect(updated.nodes[0]).toMatchObject({
+      id: "object:box",
+      label: "Graph Box",
+      visible: false,
+    });
+
+    const replaced = replaceGeometryObjectsInConstructionGraph(updated, [createGeometryObject("sphere", "sphere")]);
+    expect(projectGeometryObjectsFromConstructionGraph(replaced).map((object) => object.id)).toEqual(["sphere"]);
+  });
+
+  it("undoes and redoes graph commands as complete snapshots", () => {
+    const initial = applyGeometryObjectGraphCommand(createConstructionGraph(), {
+      type: "create",
+      object: createGeometryObject("box", "box"),
+    });
+    const next = applyGeometryObjectGraphCommand(initial, {
+      type: "create",
+      object: createGeometryObject("sphere", "sphere"),
+    });
+    const committed = commitConstructionGraphHistory(createConstructionGraphCommandHistory(), initial);
+    const undone = undoConstructionGraphHistory(next, committed);
+    const redone = redoConstructionGraphHistory(undone.graph, undone.history);
+
+    expect(projectGeometryObjectsFromConstructionGraph(undone.graph).map((object) => object.id)).toEqual(["box"]);
+    expect(projectGeometryObjectsFromConstructionGraph(redone.graph).map((object) => object.id)).toEqual(["sphere", "box"]);
   });
 });

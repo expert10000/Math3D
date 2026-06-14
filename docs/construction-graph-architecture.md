@@ -63,6 +63,12 @@ The first live synchronization path is Script to Geometry:
 - Workspace export stores the graph in the SceneDocument extension; workspace
   import restores it before views are projected.
 
-The geometry renderer still consumes its existing object state during this
-incremental migration. That state is synchronized with the graph and should be
-considered a rendering cache, not a separate ownership model.
+Geometry objects are stored as complete definitions in geometry graph nodes.
+The renderer, Inspector, toolbar actions, scripts, project import, and project
+export all consume or mutate a projection of those nodes. Existing UI handlers
+retain their array-shaped update API, but that API now dispatches graph commands
+instead of owning independent React object state.
+
+Procedural Geometry also keeps bounded graph snapshots for command history.
+Undo and redo restore the complete graph, including script ownership edges, so
+views cannot drift apart while navigating history.
