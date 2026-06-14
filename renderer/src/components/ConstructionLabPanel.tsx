@@ -94,7 +94,15 @@ type SceneType = "task" | "free" | "demo";
 type ScriptSyncMode = "overwrite" | "appendNew" | "keepComments";
 type ClaimsSortMode = "status" | "name" | "residual";
 type ScriptSurfaceTab = "script" | "construction" | "automation";
-type ScriptInspectorTab = "present" | "outline" | "scene" | "symbols" | "dependencies" | "claims" | "history";
+type ScriptInspectorTab =
+  | "present"
+  | "outline"
+  | "scene"
+  | "symbols"
+  | "definition"
+  | "dependencies"
+  | "claims"
+  | "history";
 
 type SceneBundle = {
   version: number;
@@ -429,6 +437,7 @@ const SCRIPT_INSPECTOR_TABS: Array<{ id: ScriptInspectorTab; label: string }> = 
   { id: "outline", label: "Outline" },
   { id: "scene", label: "Scene" },
   { id: "symbols", label: "Symbols" },
+  { id: "definition", label: "Definition" },
   { id: "dependencies", label: "Dependencies" },
   { id: "claims", label: "Claims" },
   { id: "history", label: "History" },
@@ -638,28 +647,28 @@ const constructionNodeTypeLabel = (node: ConstructionNode): string => {
   }
 };
 
-const constructionNodeDefinition = (node: ConstructionNode): string => {
+const constructionNodeExpression = (node: ConstructionNode): string => {
   switch (node.type) {
     case "freePoint":
-      return `${node.id} = point(${node.point.x},${node.point.y},${node.point.z})`;
+      return `point(${node.point.x},${node.point.y},${node.point.z})`;
     case "midpoint":
-      return `${node.id} = midpoint(${node.a},${node.b})`;
+      return `midpoint(${node.a},${node.b})`;
     case "circumcenter":
-      return `${node.id} = circumcenter(${node.a},${node.b},${node.c})`;
+      return `circumcenter(${node.a},${node.b},${node.c})`;
     case "lineThroughPoints":
-      return `${node.id} = line(${node.a},${node.b})`;
+      return `line(${node.a},${node.b})`;
     case "lineFromPointDir":
-      return `${node.id} = lineFromPointDir(${node.point},(${node.direction.x},${node.direction.y},${node.direction.z}))`;
+      return `lineFromPointDir(${node.point},(${node.direction.x},${node.direction.y},${node.direction.z}))`;
     case "parallelLine":
-      return `${node.id} = parallel(${node.line},${node.point})`;
+      return `parallel(${node.line},${node.point})`;
     case "perpendicularLine":
-      return `${node.id} = perpendicular(${node.line},${node.point})`;
+      return `perpendicular(${node.line},${node.point})`;
     case "perpendicularBisector":
-      return `${node.id} = perpendicularBisector(${node.a},${node.b})`;
+      return `perpendicularBisector(${node.a},${node.b})`;
     case "angleBisector":
-      return `${node.id} = angleBisector(${node.a},${node.vertex},${node.c})`;
+      return `angleBisector(${node.a},${node.vertex},${node.c})`;
     case "lineLineIntersection":
-      return `${node.id} = intersection(${node.lineA},${node.lineB})`;
+      return `intersection(${node.lineA},${node.lineB})`;
     case "lineCircleIntersection": {
       const suffix =
         node.choice?.mode === "otherThan"
@@ -669,7 +678,7 @@ const constructionNodeDefinition = (node: ConstructionNode): string => {
             : node.choice?.mode
               ? `,${node.choice.mode}`
               : "";
-      return `${node.id} = intersection(${node.line},${node.circle}${suffix})`;
+      return `intersection(${node.line},${node.circle}${suffix})`;
     }
     case "circleCircleIntersection": {
       const suffix =
@@ -680,18 +689,20 @@ const constructionNodeDefinition = (node: ConstructionNode): string => {
             : node.choice?.mode
               ? `,${node.choice.mode}`
               : "";
-      return `${node.id} = intersection(${node.circleA},${node.circleB}${suffix})`;
+      return `intersection(${node.circleA},${node.circleB}${suffix})`;
     }
     case "circleCenterRadius":
-      return `${node.id} = circle(${node.center},${node.radius})`;
+      return `circle(${node.center},${node.radius})`;
     case "circleCenterPoint":
-      return `${node.id} = circle(${node.center},${node.point})`;
+      return `circle(${node.center},distance(${node.center},${node.point}))`;
     case "circleThrough3Points":
-      return `${node.id} = circle(${node.a},${node.b},${node.c})`;
+      return `circle(${node.a},${node.b},${node.c})`;
     case "arcMidpointOnCircle":
-      return `${node.id} = arcMidpoint(${node.circle},${node.b},${node.c}${node.excludePoint ? `,exclude=${node.excludePoint}` : ""})`;
+      return `arcMidpoint(${node.circle},${node.b},${node.c}${node.excludePoint ? `,exclude=${node.excludePoint}` : ""})`;
   }
 };
+
+const constructionNodeDefinition = (node: ConstructionNode): string => `${node.id} = ${constructionNodeExpression(node)}`;
 
 const fallbackConstructionStageLabel = (node: ConstructionNode): string => {
   switch (node.type) {
@@ -1674,6 +1685,27 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const selectedScriptSymbol = useMemo(
     () => (selectedScriptSymbolId ? scriptSymbolById.get(selectedScriptSymbolId) ?? null : null) ?? cursorScriptSymbol,
     [cursorScriptSymbol, scriptSymbolById, selectedScriptSymbolId]
+  );
+  const selectedScriptNode = useMemo(
+    () => (selectedScriptSymbol ? nodes.find((node) => node.id === selectedScriptSymbol.id) ?? null : null),
+    [nodes, selectedScriptSymbol]
+  );
+  const selectedScriptDependents = useMemo(
+    () =>
+      selectedScriptSymbol
+        ? selectedScriptSymbol.usedBy.filter((id) => {
+            const symbol = scriptSymbolById.get(id);
+            return !!symbol && symbol.kind !== "claim" && symbol.kind !== "constraint";
+          })
+        : [],
+    [scriptSymbolById, selectedScriptSymbol]
+  );
+  const selectedScriptClaims = useMemo(
+    () =>
+      selectedScriptSymbol
+        ? selectedScriptSymbol.usedBy.filter((id) => scriptSymbolById.get(id)?.kind === "claim")
+        : [],
+    [scriptSymbolById, selectedScriptSymbol]
   );
   const currentScriptLineText = useMemo(
     () => scriptText.split(/\r?\n/)[Math.max(0, scriptCursorLine - 1)] ?? "",
@@ -5188,6 +5220,89 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                             </div>
                           );
                         })}
+                      </div>
+                    )}
+                    {scriptInspectorTab === "definition" && (
+                      <div data-testid="construction-script-definition-view">
+                        {selectedScriptSymbol ? (
+                          <div style={{ display: "grid", gap: 10 }}>
+                            <div
+                              style={{
+                                border: "1px solid #bfdbfe",
+                                borderRadius: 8,
+                                background: "#f8fbff",
+                                padding: "8px 9px",
+                                display: "grid",
+                                gap: 8,
+                              }}
+                            >
+                              <strong style={{ fontFamily: "monospace", fontSize: 13, overflowWrap: "anywhere" }}>
+                                {selectedScriptSymbol.id}
+                              </strong>
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "auto minmax(0, 1fr)",
+                                  gap: "5px 9px",
+                                  alignItems: "baseline",
+                                  fontSize: 10.5,
+                                }}
+                              >
+                                <span style={{ color: "#64748b", fontWeight: 800 }}>Type</span>
+                                <strong>
+                                  {selectedScriptNode
+                                    ? constructionNodeTypeLabel(selectedScriptNode)
+                                    : scriptSymbolKindLabel(selectedScriptSymbol.kind)}
+                                </strong>
+                                <span style={{ color: "#64748b", fontWeight: 800 }}>Definition</span>
+                                <code style={{ color: "#1d4ed8", fontWeight: 800, overflowWrap: "anywhere" }}>
+                                  {selectedScriptNode ? constructionNodeExpression(selectedScriptNode) : selectedScriptSymbol.summary}
+                                </code>
+                                <span style={{ color: "#64748b", fontWeight: 800 }}>Inputs</span>
+                                <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                                  {selectedScriptSymbol.dependencies.map((id) => (
+                                    <button
+                                      key={`definition-input-${id}`}
+                                      type="button"
+                                      onClick={() => focusScriptSymbol(id)}
+                                      disabled={!scriptSymbolById.has(id)}
+                                      style={{ padding: "2px 6px", fontSize: 10.5, fontFamily: "monospace" }}
+                                    >
+                                      {id}
+                                    </button>
+                                  ))}
+                                  {!selectedScriptSymbol.dependencies.length && <span style={{ color: "#64748b" }}>None</span>}
+                                </span>
+                              </div>
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 5 }}>
+                              {[
+                                ["Dependencies", selectedScriptSymbol.dependencies.length],
+                                ["Dependents", selectedScriptDependents.length],
+                                ["Claims", selectedScriptClaims.length],
+                              ].map(([label, value]) => (
+                                <div
+                                  key={label}
+                                  style={{
+                                    minWidth: 0,
+                                    border: "1px solid #e2e8f0",
+                                    borderRadius: 7,
+                                    background: "#fff",
+                                    padding: "6px 5px",
+                                    textAlign: "center",
+                                  }}
+                                >
+                                  <div style={{ color: "#64748b", fontSize: 9.5, fontWeight: 800, overflowWrap: "anywhere" }}>
+                                    {label}
+                                  </div>
+                                  <strong style={{ display: "block", marginTop: 2, fontSize: 14 }}>{value}</strong>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 10.5, opacity: 0.7 }}>Select an object to inspect its definition.</div>
+                        )}
                       </div>
                     )}
                     {scriptInspectorTab === "dependencies" && (
