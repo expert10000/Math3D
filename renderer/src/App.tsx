@@ -7997,7 +7997,7 @@ const App: React.FC = () => {
   const [geometryPointPlacementEnabled, setGeometryPointPlacementEnabled] = useState(false);
   const [geometryProblemCameraOverride, setGeometryProblemCameraOverride] = useState<CameraSyncState | null>(null);
   const [geometryProblemCameraOverrideToken, setGeometryProblemCameraOverrideToken] = useState(0);
-  const [geometryPrincipalProjectionEnabled, setGeometryPrincipalProjectionEnabled] = useState(true);
+  const [geometryPrincipalProjectionEnabled, setGeometryPrincipalProjectionEnabled] = useState(false);
   const [geometryPrincipalProjectionXY, setGeometryPrincipalProjectionXY] = useState(true);
   const [geometryPrincipalProjectionYZ, setGeometryPrincipalProjectionYZ] = useState(true);
   const [geometryPrincipalProjectionZX, setGeometryPrincipalProjectionZX] = useState(true);
@@ -8181,6 +8181,9 @@ const App: React.FC = () => {
       faceIndex: info.faceIndex,
       vertexIndex: info.vertexIndex,
     });
+  }, []);
+  const handleProceduralPickHoverEnd = useCallback(() => {
+    setGeometryProceduralHoverPick(null);
   }, []);
   const handleProblemPick = useCallback((info: {
     point: { x: number; y: number; z: number };
@@ -8393,6 +8396,11 @@ const App: React.FC = () => {
       setGeometrySelectedObjectId(info.meshKey);
       setGeometrySelectedMathConstructionId(null);
       setGeometrySelectedDerivedConstructionId(null);
+      if (geometryProbeSelectionMode === "object") {
+        setShowRightPanel(true);
+        setGeometryRightPanelTab("inspector");
+        setGeometryInspectorPanelTab("properties");
+      }
       if (geometryProceduralPanelTab === "construct" && geometryProbeSelectionMode === "object") {
         const slot = geometryMathPickTargetSlot;
         if (slot === "A") {
@@ -10776,9 +10784,10 @@ const App: React.FC = () => {
   }, [geometryLockedObjectIds, queueGeometryHistoryIntent]);
 
   const executeProceduralScript = useCallback(
-    (options?: { switchToProcedural?: boolean }) => {
+    (options?: { switchToProcedural?: boolean; script?: string }) => {
+      const script = options?.script ?? geometryProceduralScriptText;
       const result = executeSceneScript({
-        script: geometryProceduralScriptText,
+        script,
         objects: geometryObjects,
         datasetObjectIds: geometryDatasetMeshObjects.map((object) => object.id),
         selectedObjectId: geometrySelectedObjectId,
@@ -10790,6 +10799,7 @@ const App: React.FC = () => {
       }
       setGeometryObjects(result.objects);
       setGeometrySelectedObjectId(result.selectedObjectId);
+      if (options?.script != null) setGeometryProceduralScriptText(options.script);
       setGeometryProceduralScriptError(null);
       setGeometryProceduralScriptStatus(
         `Applied ${result.objects.length} objects (${result.stats.created} created, ${result.stats.updated} updated, ${result.stats.deleted} deleted).`
@@ -20171,7 +20181,7 @@ const App: React.FC = () => {
         ? geometryDemoScene
         : geometryProblemScene;
   const [geometryWireframe, setGeometryWireframe] = useState(false);
-  const [geometryShowPlanes, setGeometryShowPlanes] = useState(true);
+  const [geometryShowPlanes, setGeometryShowPlanes] = useState(false);
   const [geometryOpacity, setGeometryOpacity] = useState(0.8);
   const [geometryResetToken, setGeometryResetToken] = useState(0);
   const [geometryCameraFitCommand, setGeometryCameraFitCommand] = useState<{
@@ -20193,11 +20203,15 @@ const App: React.FC = () => {
     groups: OverlayPolylineGroup[] | null;
     pointSets: OverlayPointSet[] | null;
   }>(() => {
-    if (!geometryConstructionState || !geometryHoveredConstructionObjectIds.length) {
+    if (!geometryConstructionState) {
       return { groups: null, pointSets: null };
     }
 
-    const ids = geometryHoveredConstructionObjectIds.filter((id, index, list) => id && list.indexOf(id) === index);
+    const selectedId = geometryConstructionState.selectedNodeId;
+    const ids = [selectedId, ...geometryHoveredConstructionObjectIds].filter(
+      (id, index, list): id is string => !!id && list.indexOf(id) === index
+    );
+    if (!ids.length) return { groups: null, pointSets: null };
     const points: Point3[] = [];
     const lines: PolylineSet = [];
     const hoverColor = 0xfacc15;
@@ -44205,10 +44219,28 @@ case "mobius":
     geometryTimelineSteps,
   ]);
   const geometryProceduralMeshOverridesForViewer = useMemo(() => {
-    if (!geometryTimelineGhostMeshOverride) return geometryProceduralMeshOverrides;
     const base = geometryProceduralMeshOverrides ?? [];
-    return [...base, geometryTimelineGhostMeshOverride];
-  }, [geometryProceduralMeshOverrides, geometryTimelineGhostMeshOverride]);
+    const withTimelineGhost = geometryTimelineGhostMeshOverride ? [...base, geometryTimelineGhostMeshOverride] : base;
+    const hoveredId = geometryProceduralHoverPick?.meshKey ?? null;
+    if (!geometrySelectedObjectId && !hoveredId) return withTimelineGhost;
+    return withTimelineGhost.map((mesh) => {
+      if (!mesh.id || isVariantGhostMeshKey(mesh.id) || mesh.id === "timeline-ghost-previous") return mesh;
+      const selected = mesh.id === geometrySelectedObjectId;
+      const hovered = mesh.id === hoveredId;
+      if (!selected && !hovered) return mesh;
+      return {
+        ...mesh,
+        color: hovered ? (selected ? 0xfb923c : 0xfacc15) : 0xf97316,
+        roughness: Math.min(mesh.roughness ?? 0.3, 0.24),
+        metalness: Math.max(mesh.metalness ?? 0.1, 0.16),
+      };
+    });
+  }, [
+    geometryProceduralHoverPick?.meshKey,
+    geometryProceduralMeshOverrides,
+    geometrySelectedObjectId,
+    geometryTimelineGhostMeshOverride,
+  ]);
   const showSurfaceWorkbookQuickStrip =
     mode === "surfaces" &&
     rightPanelTab === "workbook" &&
@@ -61079,6 +61111,11 @@ case "mobius":
                       hideScriptInspector={true}
                       scriptInspectorPortalTarget={geometryConstructionInspectorPortalTarget}
                       onChange={handleConstructionLabChange}
+                      proceduralSceneScriptText={geometryProceduralScriptText}
+                      onProceduralSceneScriptTextChange={setGeometryProceduralScriptText}
+                      onRunProceduralSceneScript={(script) => executeProceduralScript({ script, switchToProcedural: true })}
+                      proceduralSceneScriptStatus={geometryProceduralScriptStatus}
+                      proceduralSceneScriptError={geometryProceduralScriptError}
                       onPointPlacementModeChange={setGeometryPointPlacementEnabled}
                       viewportPickPoint={geometryPendingViewportPoint}
                       onViewportPickConsumed={() => setGeometryPendingViewportPoint(null)}
@@ -62354,6 +62391,9 @@ case "mobius":
                     geometryProceduralPanelTab !== "demonstrations"
                       ? handleProceduralPickHover
                       : undefined
+                  }
+                  onPickHoverEnd={
+                    geometryMode === "procedural" ? handleProceduralPickHoverEnd : undefined
                   }
                   inspectSelectionMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
                     />

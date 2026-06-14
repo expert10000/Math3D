@@ -1464,6 +1464,7 @@ type Props = {
     uv?: { u: number; v: number };
     xy?: { x: number; y: number };
   }) => void;
+  onInspectHoverEnd?: () => void;
   inspectSelectionMeshKey?: string | null;
   inspectPoint?: { x: number; y: number; z: number } | null;
   selectionOverlayVisible?: boolean;
@@ -1676,6 +1677,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     inspectEnabled = false,
     onInspectPick,
     onInspectHover,
+    onInspectHoverEnd,
     inspectSelectionMeshKey = null,
     inspectPoint = null,
     selectionOverlayVisible = true,
@@ -1802,6 +1804,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const showChartGridRef = useRef(showChartGrid);
   const onInspectPickRef = useRef(onInspectPick);
   const onInspectHoverRef = useRef(onInspectHover);
+  const onInspectHoverEndRef = useRef(onInspectHoverEnd);
   const onDragStartRef = useRef(onDragStart);
   const onDragRef = useRef(onDrag);
   const onDragEndRef = useRef(onDragEnd);
@@ -2202,6 +2205,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   useEffect(() => {
     onInspectHoverRef.current = onInspectHover;
   }, [onInspectHover]);
+  useEffect(() => {
+    onInspectHoverEndRef.current = onInspectHoverEnd;
+  }, [onInspectHoverEnd]);
   useEffect(() => {
     dragEnabledRef.current = dragEnabled;
   }, [dragEnabled]);
@@ -5193,7 +5199,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const hoverPickStartAt = performance.now();
       const intersects = raycaster.intersectObjects([surfaceObj], true);
       recordRaycastDuration(hoverPickStartAt);
-      if (!intersects.length) return;
+      if (!intersects.length) {
+        onInspectHoverEndRef.current?.();
+        return;
+      }
       const hit = intersects[0];
       const point = hit.point.clone();
       const hitMeshKey = (hit.object as any)?.userData?.__surfaceMeshOverrideId;
@@ -5242,6 +5251,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           xy: xyDomain,
         });
       }
+    };
+    const handlePointerLeave = () => {
+      onInspectHoverEndRef.current?.();
     };
 
       const handlePointerUp = (event: PointerEvent) => {
@@ -5309,6 +5321,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     renderer.domElement.addEventListener("pointerdown", handlePointerDown);
     renderer.domElement.addEventListener("pointermove", handlePointerMove);
+    renderer.domElement.addEventListener("pointerleave", handlePointerLeave);
     renderer.domElement.addEventListener("wheel", handleWheel, { passive: false });
     window.addEventListener("pointerup", handlePointerUp);
 
@@ -5439,6 +5452,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       window.removeEventListener("resize", handleResize);
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
       renderer.domElement.removeEventListener("pointermove", handlePointerMove);
+      renderer.domElement.removeEventListener("pointerleave", handlePointerLeave);
       renderer.domElement.removeEventListener("wheel", handleWheel);
       window.removeEventListener("pointerup", handlePointerUp);
       controls.removeEventListener("change", handleControlsChangeDebug);

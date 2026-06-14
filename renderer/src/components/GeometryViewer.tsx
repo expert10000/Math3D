@@ -97,6 +97,7 @@ export type GeometryViewerProps = {
     faceIndex?: number;
     vertexIndex?: number;
   }) => void;
+  onPickHoverEnd?: () => void;
   inspectSelectionMeshKey?: string | null;
   gizmoEnabled?: boolean;
   gizmoMeshKey?: string | null;
@@ -160,6 +161,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   pickEnabled = false,
   onPick,
   onPickHover,
+  onPickHoverEnd,
   inspectSelectionMeshKey = null,
   gizmoEnabled = false,
   gizmoMeshKey = null,
@@ -367,6 +369,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
             }
           : undefined
       }
+      onInspectHoverEnd={pickEnabled ? onPickHoverEnd : undefined}
       inspectSelectionMeshKey={inspectSelectionMeshKey}
       surfaceMeshFallbackMode="none"
     />

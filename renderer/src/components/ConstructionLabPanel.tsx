@@ -152,6 +152,11 @@ export type ConstructionLabSeed = {
 
 type ConstructionLabPanelProps = {
   onChange: (next: ConstructionLabState) => void;
+  proceduralSceneScriptText?: string;
+  onProceduralSceneScriptTextChange?: (script: string) => void;
+  onRunProceduralSceneScript?: (script: string) => void;
+  proceduralSceneScriptStatus?: string | null;
+  proceduralSceneScriptError?: string | null;
   onPointPlacementModeChange?: (enabled: boolean) => void;
   viewportPickPoint?: { x: number; y: number; z: number } | null;
   onViewportPickConsumed?: () => void;
@@ -1215,6 +1220,11 @@ const savePresets = (presets: ScriptPreset[]) => {
 
 export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   onChange,
+  proceduralSceneScriptText: controlledProceduralSceneScriptText,
+  onProceduralSceneScriptTextChange,
+  onRunProceduralSceneScript,
+  proceduralSceneScriptStatus,
+  proceduralSceneScriptError,
   onPointPlacementModeChange,
   viewportPickPoint = null,
   onViewportPickConsumed,
@@ -1286,7 +1296,15 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [paletteError, setPaletteError] = useState<string | null>(null);
 
   const [scriptText, setScriptText] = useState<string>(() => seededState?.scriptText ?? DEFAULT_INITIAL_SCENE.script);
-  const [proceduralSceneScriptText, setProceduralSceneScriptText] = useState(PROCEDURAL_SCENE_SCRIPT_STARTER);
+  const [localProceduralSceneScriptText, setLocalProceduralSceneScriptText] = useState(PROCEDURAL_SCENE_SCRIPT_STARTER);
+  const proceduralSceneScriptText = controlledProceduralSceneScriptText ?? localProceduralSceneScriptText;
+  const setProceduralSceneScriptText = useCallback(
+    (script: string) => {
+      setLocalProceduralSceneScriptText(script);
+      onProceduralSceneScriptTextChange?.(script);
+    },
+    [onProceduralSceneScriptTextChange]
+  );
   const [automationScriptText, setAutomationScriptText] = useState(AUTOMATION_SCRIPT_STARTER);
   const [scriptError, setScriptError] = useState<string | null>(null);
   const [scriptCursorLine, setScriptCursorLine] = useState(1);
@@ -2798,6 +2816,22 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       focusNodeInScene(symbol.id);
     }
   }, [focusNodeInScene, focusScriptLine, scriptSymbolById]);
+  const handleScriptEditorClick = useCallback(() => {
+    updateScriptCursorLine();
+    const textarea = scriptEditorRef.current;
+    if (!textarea) return;
+    const cursor = textarea.selectionStart;
+    const left = scriptText.slice(0, cursor).match(/[A-Za-z_][A-Za-z0-9_-]*$/)?.[0] ?? "";
+    const right = scriptText.slice(cursor).match(/^[A-Za-z0-9_-]*/)?.[0] ?? "";
+    const token = `${left}${right}`;
+    const symbol = scriptSymbolById.get(token);
+    if (!symbol || symbol.kind === "constraint") return;
+    setSelectedScriptSymbolId(symbol.id);
+    setSelectedScriptStageIndex(null);
+    setHighlightedStageObjectIds(new Set([symbol.id]));
+    setSelectedNodeId(symbol.id);
+    focusNodeInScene(symbol.id);
+  }, [focusNodeInScene, scriptSymbolById, scriptText, updateScriptCursorLine]);
 
   const selectScriptStage = useCallback((stageIndex: number) => {
     const stage = scriptStageSections[stageIndex];
@@ -4807,7 +4841,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                     onScroll={syncScriptLineGutterScroll}
                     onSelect={updateScriptCursorLine}
                     onKeyUp={updateScriptCursorLine}
-                    onClick={updateScriptCursorLine}
+                    onClick={handleScriptEditorClick}
                     aria-label="Scene script editor"
                     wrap="off"
                     spellCheck={false}
@@ -5752,7 +5786,18 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   gap: 1,
                 }}
               >
-                <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.15 }}>Procedural Scene Script</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.15 }}>Procedural Scene Script</div>
+                  <button
+                    type="button"
+                    data-testid="procedural-scene-script-run"
+                    onClick={() => onRunProceduralSceneScript?.(proceduralSceneScriptText)}
+                    disabled={proceduralScriptPreview.diagnostics.length > 0 || !onRunProceduralSceneScript}
+                    style={{ padding: "3px 12px", fontSize: 10.5, lineHeight: 1.15, fontWeight: 800 }}
+                  >
+                    Run script
+                  </button>
+                </div>
                 <div style={{ fontSize: 11, lineHeight: 1.15, color: proceduralScriptPreview.diagnostics.length ? "#b42318" : "#166534" }}>
                   {proceduralScriptPreview.diagnostics.length ? `${proceduralScriptPreview.diagnostics.length} parser errors` : "Parse OK"}
                 </div>
@@ -5785,9 +5830,14 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   Starter
                 </button>
                 <span style={{ fontSize: 10.5, color: "#475569" }}>
-                  Runs from Geometry &gt; Procedural &gt; Script; this tab reserves the unified language surface.
+                  Run updates the procedural scene and opens it in the viewer.
                 </span>
               </div>
+              {(proceduralSceneScriptError || proceduralSceneScriptStatus) && (
+                <div style={{ fontSize: 10.5, color: proceduralSceneScriptError ? "#b42318" : "#166534" }}>
+                  {proceduralSceneScriptError ?? proceduralSceneScriptStatus}
+                </div>
+              )}
             </>
           )}
           {scriptSurfaceTab === "automation" && (
