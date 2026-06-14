@@ -93,7 +93,8 @@ import {
   buildDemoPyramidConstruction,
 } from "./geometry/demoScene";
 import { buildGeometryRenderData } from "./geometry/render";
-import type { GeometryScene, Point3, Polygon3, Segment3 } from "./geometry/types";
+import type { GeometryScene, Line3, Point3, Polygon3, Segment3 } from "./geometry/types";
+import { buildCircleSegments } from "./geometry/construct";
 import { evaluateConstraints, formatConstraintValue } from "./geometry/analysis";
 import {
   computeGeometryAnalysisBasicMetrics,
@@ -7988,6 +7989,7 @@ const App: React.FC = () => {
     geometryDemoFamily === "stereometry" ? geometryDemo.scene : geometryPlanimetryScene;
   const [geometryTransformMode, setGeometryTransformMode] = useState<GeometryTransformMode>("move");
   const [geometryConstructionState, setGeometryConstructionState] = useState<ConstructionLabState | null>(null);
+  const [geometryHoveredConstructionObjectIds, setGeometryHoveredConstructionObjectIds] = useState<string[]>([]);
   const [geometryScratchSceneSeed, setGeometryScratchSceneSeed] = useState<ConstructionLabSeed | null>(null);
   const [geometryWorkbookSceneSeeds, setGeometryWorkbookSceneSeeds] = useState<Record<string, ConstructionLabSeed>>({});
   const [geometryEditorSeedToken, setGeometryEditorSeedToken] = useState(0);
@@ -18241,6 +18243,42 @@ const App: React.FC = () => {
     }
     setGeometryInspectorPanelTab("dependencies");
   }, [geometryDerivedConstructionOverlays.byId, geometryMathConstructionOverlays.byId, resolveGeometrySceneObjectById]);
+  const renderGeometryDependencyNodeToken = (nodeId: string, key = nodeId): React.ReactNode => {
+    const node = geometryDependencyGraph.nodeById.get(nodeId) ?? null;
+    if (!node) {
+      return (
+        <code key={key} style={{ color: "#b42318", overflowWrap: "anywhere" }}>
+          {nodeId}
+        </code>
+      );
+    }
+    const active = geometryInspectorSelectedDependencyNodeId === nodeId;
+    return (
+      <button
+        key={key}
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          handleSelectGeometryDependencyNode(nodeId);
+        }}
+        aria-pressed={active}
+        title={`${node.label} · ${node.kind.replaceAll("-", " ")}`}
+        style={{
+          border: `1px solid ${active ? "#93c5fd" : "#dbe2ea"}`,
+          borderRadius: 6,
+          background: active ? "#eff6ff" : "#fff",
+          color: active ? "#1d4ed8" : "#0f172a",
+          cursor: "pointer",
+          fontSize: 10.5,
+          fontWeight: 800,
+          lineHeight: 1.15,
+          padding: "2px 6px",
+        }}
+      >
+        {node.label}
+      </button>
+    );
+  };
   const handleUseDerivedPlaneForSectionSliceById = useCallback((derivedId: string) => {
     const selected = geometryDerivedConstructionOverlays.byId.get(derivedId) ?? null;
     if (!selected) {
@@ -20151,6 +20189,61 @@ const App: React.FC = () => {
       !!point && Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z),
     []
   );
+  const geometryConstructionHoverOverlays = useMemo<{
+    groups: OverlayPolylineGroup[] | null;
+    pointSets: OverlayPointSet[] | null;
+  }>(() => {
+    if (!geometryConstructionState || !geometryHoveredConstructionObjectIds.length) {
+      return { groups: null, pointSets: null };
+    }
+
+    const ids = geometryHoveredConstructionObjectIds.filter((id, index, list) => id && list.indexOf(id) === index);
+    const points: Point3[] = [];
+    const lines: PolylineSet = [];
+    const hoverColor = 0xfacc15;
+
+    const lineToPolyline = (line: Line3): [Point3, Point3] | null => {
+      if (!finitePoint3(line.origin)) return null;
+      const len = Math.hypot(line.direction.x, line.direction.y, line.direction.z);
+      if (!Number.isFinite(len) || len <= 1e-8) return null;
+      const ux = line.direction.x / len;
+      const uy = line.direction.y / len;
+      const uz = line.direction.z / len;
+      const halfLen = Number.isFinite(line.length ?? NaN) && (line.length ?? 0) > 1e-4 ? Number(line.length) * 0.5 : 4;
+      return [
+        { x: line.origin.x - ux * halfLen, y: line.origin.y - uy * halfLen, z: line.origin.z - uz * halfLen },
+        { x: line.origin.x + ux * halfLen, y: line.origin.y + uy * halfLen, z: line.origin.z + uz * halfLen },
+      ];
+    };
+
+    for (const id of ids) {
+      const point = geometryConstructionState.points[id];
+      if (point && finitePoint3(point)) points.push(point);
+
+      const line = geometryConstructionState.lines[id];
+      if (line) {
+        const polyline = lineToPolyline(line);
+        if (polyline) lines.push(polyline);
+      }
+
+      const circle = geometryConstructionState.circles[id];
+      if (circle) {
+        lines.push(
+          ...buildCircleSegments(circle.center, circle.normal, circle.radius, {
+            color: hoverColor,
+            opacity: 0.98,
+            radiusScale: Math.max(2.6, (circle.radiusScale ?? 1) * 3),
+            segments: Math.max(72, circle.segments ?? 48),
+          }).map((segment) => [segment.a, segment.b] as [Point3, Point3])
+        );
+      }
+    }
+
+    return {
+      groups: lines.length ? [{ lines, color: hoverColor, opacity: 0.98, radiusScale: 3 }] : null,
+      pointSets: points.length ? [{ points, color: hoverColor, size: 0.16, opacity: 1 }] : null,
+    };
+  }, [finitePoint3, geometryConstructionState, geometryHoveredConstructionObjectIds]);
 
   const geometryActiveStageNumber = useMemo(() => {
     if (geometryMode === "demo" && geometryDemoFamily === "planimetry" && geometryPlanimetryStages.length) {
@@ -60992,6 +61085,7 @@ case "mobius":
                       viewportMovePoint={geometryPendingViewportMovePoint}
                       onViewportMoveConsumed={() => setGeometryPendingViewportMovePoint(null)}
                       onFocusObjectInScene={handleConstructionLabFocusObjectInScene}
+                      onHoverObjectIds={setGeometryHoveredConstructionObjectIds}
                     />
                   </>
                 )}
@@ -62112,7 +62206,11 @@ case "mobius":
                   segmentRadiusScale={geometryMode === "demo" ? geometryDemoSegmentRadiusScale : 1}
                   edgeRadiusScale={geometryMode === "demo" ? geometryDemoEdgeRadiusScale : 1}
                   meshOverrides={geometryProceduralMeshOverridesForViewer}
-                  extraOverlayPolylineGroups={geometryProceduralViewerOverlayPolylineGroups}
+                  extraOverlayPolylineGroups={
+                    geometryMode === "scratch" || geometryMode === "workbook"
+                      ? geometryConstructionHoverOverlays.groups
+                      : geometryProceduralViewerOverlayPolylineGroups
+                  }
                   wireframe={geometryWireframe}
                   showPlanes={geometryShowPlanes}
                   planeGridSettings={planeGridSettings}
@@ -62147,8 +62245,11 @@ case "mobius":
                     geometryMode === "demo"
                       ? geometryHighlightPointSets
                       : geometryMode === "scratch" || geometryMode === "workbook"
-                        ? geometryConstructionEditHandlePointSets
-                        : geometryProceduralHighlightPointSets
+                        ? [
+                            ...(geometryConstructionEditHandlePointSets ?? []),
+                            ...(geometryConstructionHoverOverlays.pointSets ?? []),
+                          ]
+                      : geometryProceduralHighlightPointSets
                   }
                   overlayLabelSets={
                     geometryConstructionEditLabelSets
@@ -62674,8 +62775,12 @@ case "mobius":
                                   {geometryInspectorDependencyDetails.inputs.length ? (
                                     <div style={{ display: "grid", gap: 3 }}>
                                       {geometryInspectorDependencyDetails.inputs.map((edge) => (
-                                        <div key={`dep-input-${edge.sourceId}-${edge.targetId}-${edge.relation}`} style={{ color: "#475467" }}>
-                                          {edge.relation}: {geometryDependencyGraph.nodeById.get(edge.sourceId)?.label ?? edge.sourceId}
+                                        <div
+                                          key={`dep-input-${edge.sourceId}-${edge.targetId}-${edge.relation}`}
+                                          style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center", color: "#475467" }}
+                                        >
+                                          <span>{edge.relation}:</span>
+                                          {renderGeometryDependencyNodeToken(edge.sourceId, `dep-input-token-${edge.sourceId}`)}
                                         </div>
                                       ))}
                                     </div>
@@ -62688,8 +62793,12 @@ case "mobius":
                                   {geometryInspectorDependencyDetails.outputs.length ? (
                                     <div style={{ display: "grid", gap: 3 }}>
                                       {geometryInspectorDependencyDetails.outputs.map((edge) => (
-                                        <div key={`dep-output-${edge.sourceId}-${edge.targetId}-${edge.relation}`} style={{ color: "#475467" }}>
-                                          {edge.relation}: {geometryDependencyGraph.nodeById.get(edge.targetId)?.label ?? edge.targetId}
+                                        <div
+                                          key={`dep-output-${edge.sourceId}-${edge.targetId}-${edge.relation}`}
+                                          style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center", color: "#475467" }}
+                                        >
+                                          <span>{edge.relation}:</span>
+                                          {renderGeometryDependencyNodeToken(edge.targetId, `dep-output-token-${edge.targetId}`)}
                                         </div>
                                       ))}
                                     </div>
@@ -62716,7 +62825,9 @@ case "mobius":
                                         color: "#7f1d1d",
                                       }}
                                     >
-                                      <div style={{ fontWeight: 700 }}>{node.label}</div>
+                                      <div style={{ fontWeight: 700 }}>
+                                        {renderGeometryDependencyNodeToken(node.id, `dep-broken-token-${node.id}`)}
+                                      </div>
                                       <div>{geometryDependencyNodeStatusMeta(node).label}</div>
                                     </div>
                                   ))}
@@ -62823,8 +62934,23 @@ case "mobius":
                             {geometryDerivedRelationConstraints.length ? (
                               <div style={{ display: "grid", gap: 4 }}>
                                 {geometryDerivedRelationConstraints.slice(0, 12).map((entry) => (
-                                  <div key={`geometry-inspector-claim-relation-${entry.id}`} style={{ border: "1px solid #e2e8f0", borderRadius: 6, padding: "5px 7px", background: "#f8fafc" }}>
-                                    <strong>{entry.type}</strong> {entry.objectId} {"->"} {entry.derivedId}
+                                  <div
+                                    key={`geometry-inspector-claim-relation-${entry.id}`}
+                                    style={{
+                                      border: "1px solid #e2e8f0",
+                                      borderRadius: 6,
+                                      padding: "5px 7px",
+                                      background: "#f8fafc",
+                                      display: "flex",
+                                      gap: 5,
+                                      flexWrap: "wrap",
+                                      alignItems: "center",
+                                    }}
+                                  >
+                                    <strong>{GEOMETRY_DERIVED_RELATION_TYPE_LABELS[entry.type]}</strong>
+                                    {renderGeometryDependencyNodeToken(`object:${entry.objectId}`, `claim-object-${entry.id}`)}
+                                    <span>{"->"}</span>
+                                    {renderGeometryDependencyNodeToken(`derived:${entry.derivedId}`, `claim-derived-${entry.id}`)}
                                   </div>
                                 ))}
                               </div>

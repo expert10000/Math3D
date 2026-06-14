@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { OverlayLabelSet } from "./SurfaceViewer";
-import type { GeometryScene } from "../geometry/types";
+import type { GeometryScene, Line3, Point3 } from "../geometry/types";
 import {
   createSceneProjectDocument,
   deserializeSceneProject,
@@ -14,6 +14,7 @@ import { PROCEDURAL_SCENE_SCRIPT_STARTER } from "../geometry/scripting/sceneScri
 import { parseSceneScript as parseProceduralSceneScript } from "../geometry/scripting/sceneScriptParser";
 import {
   buildPointLabelSet,
+  type Circle3,
   type ConstructionConstraintDef,
   evaluateConstructionGraph,
   evaluateProblemChecks,
@@ -93,7 +94,7 @@ type SceneType = "task" | "free" | "demo";
 type ScriptSyncMode = "overwrite" | "appendNew" | "keepComments";
 type ClaimsSortMode = "status" | "name" | "residual";
 type ScriptSurfaceTab = "script" | "construction" | "automation";
-type ScriptInspectorTab = "outline" | "scene" | "symbols" | "dependencies" | "claims";
+type ScriptInspectorTab = "present" | "outline" | "scene" | "symbols" | "dependencies" | "claims" | "history";
 
 type SceneBundle = {
   version: number;
@@ -122,6 +123,9 @@ export type ConstructionLabState = {
   labels: OverlayLabelSet[] | null;
   checks: ProblemCheckResult[];
   graphObjects: ConstructionObjectSummary[];
+  points: Record<string, Point3>;
+  lines: Record<string, Line3>;
+  circles: Record<string, Circle3>;
   errors: string[];
   nodes: ConstructionNode[];
   checkDefs: ProblemCheckDef[];
@@ -146,6 +150,7 @@ type ConstructionLabPanelProps = {
   viewportMovePoint?: { id: string; point: { x: number; y: number; z: number } } | null;
   onViewportMoveConsumed?: () => void;
   onFocusObjectInScene?: (focus: { target: { x: number; y: number; z: number }; radius?: number }) => void;
+  onHoverObjectIds?: (ids: string[]) => void;
   seed?: ConstructionLabSeed | null;
   workspaceTab?: ConstructionWorkspaceTab;
   onWorkspaceTabChange?: (tab: ConstructionWorkspaceTab) => void;
@@ -256,6 +261,92 @@ const DEFAULT_OLYMPIAD_ARC_SCRIPT = [
   "check point-on-circle X Omega",
 ].join("\n");
 
+const PRESENTATION_SCENE_PRESETS = [
+  {
+    id: "triangle_skeleton",
+    label: "Triangle",
+    summary: "Triangle ABC with its three side lines.",
+    script: [
+      "point A -1.4 -0.7 0",
+      "point B 1.4 -0.7 0",
+      "point C 0 1.1 0",
+      "line A B as AB",
+      "line B C as BC",
+      "line A C as AC",
+    ].join("\n"),
+  },
+  {
+    id: "circumcircle_center",
+    label: "Circumcircle",
+    summary: "Triangle ABC with circumcircle Omega and center O.",
+    script: [
+      "point A -1.3 -0.65 0",
+      "point B 1.35 -0.65 0",
+      "point C 0.1 1.15 0",
+      "line A B as AB",
+      "line B C as BC",
+      "line A C as AC",
+      "circumcircle A B C as Omega",
+      "circumcenter A B C as O",
+      "check point-on-circle A Omega",
+    ].join("\n"),
+  },
+  {
+    id: "midline_theorem",
+    label: "Midline",
+    summary: "Midpoints M and N with the midline MN parallel to BC.",
+    script: [
+      "point A 0 1.25 0",
+      "point B -1.5 -0.75 0",
+      "point C 1.5 -0.75 0",
+      "line A B as AB",
+      "line A C as AC",
+      "line B C as BC",
+      "midpoint A B as M",
+      "midpoint A C as N",
+      "line M N as MN",
+      "check parallel MN BC",
+    ].join("\n"),
+  },
+  {
+    id: "altitude",
+    label: "Altitude",
+    summary: "Altitude from A to BC with a perpendicular claim.",
+    script: [
+      "point A 0 1.2 0",
+      "point B -1.4 -0.65 0",
+      "point C 1.35 -0.45 0",
+      "line A B as AB",
+      "line A C as AC",
+      "line B C as BC",
+      "perp BC through A as A_perp_BC",
+      "check perpendicular BC A_perp_BC",
+    ].join("\n"),
+  },
+  {
+    id: "parallel_lines",
+    label: "Parallels",
+    summary: "Two parallel lines with a transversal.",
+    script: [
+      "point A -1.4 -0.6 0",
+      "point B 1.4 -0.6 0",
+      "point C -1.2 0.75 0",
+      "point D 1.6 0.75 0",
+      "line A B as AB",
+      "line C D as CD",
+      "line A C as AC",
+      "parallel AB through C as C_parallel_AB",
+      "check parallel AB CD",
+    ].join("\n"),
+  },
+  {
+    id: "olympiad_arc",
+    label: "Olympiad Arc",
+    summary: "Full arc midpoint theorem construction with final claim.",
+    script: DEFAULT_OLYMPIAD_ARC_SCRIPT,
+  },
+];
+
 const OLYMPIAD_ARC_TASK_TEXT_PL =
   "Dany jest nierownoramienny trojkat ABC wpisany w okrag Omega o srodku O. " +
   "Punkt M jest srodkiem tego luku BC okregu Omega, ktory nie zawiera punktu A. " +
@@ -334,11 +425,13 @@ const SCRIPT_TEMPLATES: Array<{ label: string; command: string }> = [
 ];
 
 const SCRIPT_INSPECTOR_TABS: Array<{ id: ScriptInspectorTab; label: string }> = [
+  { id: "present", label: "Present" },
   { id: "outline", label: "Outline" },
   { id: "scene", label: "Scene" },
   { id: "symbols", label: "Symbols" },
   { id: "dependencies", label: "Dependencies" },
   { id: "claims", label: "Claims" },
+  { id: "history", label: "History" },
 ];
 
 const formatInspectorNumber = (value: number) => (Number.isFinite(value) ? value.toFixed(2) : "-");
@@ -504,6 +597,116 @@ const nodeDependencies = (node: ConstructionNode): string[] => {
       return [node.a, node.b, node.c];
     case "arcMidpointOnCircle":
       return [node.circle, node.b, node.c, ...(node.excludePoint ? [node.excludePoint] : [])];
+  }
+};
+
+const nodeImpactDependencies = (node: ConstructionNode): string[] => {
+  if (node.type === "lineCircleIntersection") return [node.line, node.circle];
+  if (node.type === "circleCircleIntersection") return [node.circleA, node.circleB];
+  return nodeDependencies(node);
+};
+
+const constructionNodeTypeLabel = (node: ConstructionNode): string => {
+  switch (node.type) {
+    case "freePoint":
+      return "Point";
+    case "midpoint":
+      return "Midpoint";
+    case "circumcenter":
+      return "Circumcenter";
+    case "lineThroughPoints":
+    case "lineFromPointDir":
+      return "Line";
+    case "parallelLine":
+      return "Parallel";
+    case "perpendicularLine":
+      return "Perpendicular";
+    case "perpendicularBisector":
+      return "Perpendicular Bisector";
+    case "angleBisector":
+      return "Angle Bisector";
+    case "lineLineIntersection":
+    case "lineCircleIntersection":
+    case "circleCircleIntersection":
+      return "Intersection";
+    case "circleCenterRadius":
+    case "circleCenterPoint":
+    case "circleThrough3Points":
+      return "Circle";
+    case "arcMidpointOnCircle":
+      return "Arc Midpoint";
+  }
+};
+
+const constructionNodeDefinition = (node: ConstructionNode): string => {
+  switch (node.type) {
+    case "freePoint":
+      return `${node.id} = point(${node.point.x},${node.point.y},${node.point.z})`;
+    case "midpoint":
+      return `${node.id} = midpoint(${node.a},${node.b})`;
+    case "circumcenter":
+      return `${node.id} = circumcenter(${node.a},${node.b},${node.c})`;
+    case "lineThroughPoints":
+      return `${node.id} = line(${node.a},${node.b})`;
+    case "lineFromPointDir":
+      return `${node.id} = lineFromPointDir(${node.point},(${node.direction.x},${node.direction.y},${node.direction.z}))`;
+    case "parallelLine":
+      return `${node.id} = parallel(${node.line},${node.point})`;
+    case "perpendicularLine":
+      return `${node.id} = perpendicular(${node.line},${node.point})`;
+    case "perpendicularBisector":
+      return `${node.id} = perpendicularBisector(${node.a},${node.b})`;
+    case "angleBisector":
+      return `${node.id} = angleBisector(${node.a},${node.vertex},${node.c})`;
+    case "lineLineIntersection":
+      return `${node.id} = intersection(${node.lineA},${node.lineB})`;
+    case "lineCircleIntersection": {
+      const suffix =
+        node.choice?.mode === "otherThan"
+          ? `,exclude=${node.choice.point}`
+          : node.choice?.mode === "nearest" || node.choice?.mode === "farthest"
+            ? `,${node.choice.mode}=${node.choice.point}`
+            : node.choice?.mode
+              ? `,${node.choice.mode}`
+              : "";
+      return `${node.id} = intersection(${node.line},${node.circle}${suffix})`;
+    }
+    case "circleCircleIntersection": {
+      const suffix =
+        node.choice?.mode === "otherThan"
+          ? `,exclude=${node.choice.point}`
+          : node.choice?.mode === "nearest" || node.choice?.mode === "farthest"
+            ? `,${node.choice.mode}=${node.choice.point}`
+            : node.choice?.mode
+              ? `,${node.choice.mode}`
+              : "";
+      return `${node.id} = intersection(${node.circleA},${node.circleB}${suffix})`;
+    }
+    case "circleCenterRadius":
+      return `${node.id} = circle(${node.center},${node.radius})`;
+    case "circleCenterPoint":
+      return `${node.id} = circle(${node.center},${node.point})`;
+    case "circleThrough3Points":
+      return `${node.id} = circle(${node.a},${node.b},${node.c})`;
+    case "arcMidpointOnCircle":
+      return `${node.id} = arcMidpoint(${node.circle},${node.b},${node.c}${node.excludePoint ? `,exclude=${node.excludePoint}` : ""})`;
+  }
+};
+
+const fallbackConstructionStageLabel = (node: ConstructionNode): string => {
+  switch (node.type) {
+    case "freePoint":
+      return "Stage 1";
+    case "circumcenter":
+    case "circleCenterRadius":
+    case "circleCenterPoint":
+    case "circleThrough3Points":
+      return "Stage 2";
+    case "midpoint":
+    case "arcMidpointOnCircle":
+      return "Stage 3";
+    default:
+      return "Stage 4";
   }
 };
 
@@ -1013,6 +1216,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   hideWorkspaceTabs = false,
   hideScriptInspector = false,
   scriptInspectorPortalTarget = null,
+  onHoverObjectIds,
 }) => {
   const seededState = normalizeConstructionSeed(seed);
   const [nodes, setNodes] = useState<ConstructionNode[]>(() =>
@@ -1025,6 +1229,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     seededState?.constraints ?? DEFAULT_INITIAL_SCENE.constraints.map((constraint) => ({ ...constraint }))
   );
   const [selectedNodeId, setSelectedNodeId] = useState<string>(() => seededState?.selectedNodeId ?? DEFAULT_INITIAL_SCENE.nodes[0]?.id ?? "");
+  const [objectSearchQuery, setObjectSearchQuery] = useState("");
 
   const [buildMode, setBuildMode] = useState<BuildMode>("create");
   const [workspaceTabState, setWorkspaceTabState] = useState<ConstructionWorkspaceTab>("build");
@@ -1135,6 +1340,9 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       labels,
       checks: checkResults,
       graphObjects: solved.objects,
+      points: solved.points,
+      lines: solved.lines,
+      circles: solved.circles,
       errors: solved.errors,
       nodes,
       checkDefs,
@@ -1204,12 +1412,46 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       .filter((constraint) => constraint.sourceId === selectedNode.id || constraint.targetId === selectedNode.id)
       .map((constraint) => constraint.label ?? constraint.id);
   }, [constraints, selectedNode]);
-
   const graphObjectById = useMemo(() => {
     const map = new Map<string, ConstructionObjectSummary>();
     for (const obj of solved.objects) map.set(obj.id, obj);
     return map;
   }, [solved.objects]);
+  const nodeById = useMemo(() => {
+    const map = new Map<string, ConstructionNode>();
+    for (const node of nodes) map.set(node.id, node);
+    return map;
+  }, [nodes]);
+  const normalizedObjectSearchQuery = objectSearchQuery.trim().toLowerCase();
+  const objectMatchesSearch = useCallback(
+    (id: string) => {
+      if (!normalizedObjectSearchQuery) return true;
+      const node = nodeById.get(id);
+      const obj = graphObjectById.get(id);
+      const searchable = [
+        id,
+        node?.label,
+        obj?.label,
+        obj?.type,
+        obj?.summary,
+        node ? constructionNodeTypeLabel(node) : "",
+        node ? constructionNodeDefinition(node) : "",
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return searchable.includes(normalizedObjectSearchQuery);
+    },
+    [graphObjectById, nodeById, normalizedObjectSearchQuery]
+  );
+  const filteredSolvedObjects = useMemo(
+    () => solved.objects.filter((obj) => objectMatchesSearch(obj.id)),
+    [objectMatchesSearch, solved.objects]
+  );
+  const filteredConstructionNodes = useMemo(
+    () => nodes.filter((node) => objectMatchesSearch(node.id)),
+    [nodes, objectMatchesSearch]
+  );
 
   const checkDefById = useMemo(() => {
     const map = new Map<string, ProblemCheckDef>();
@@ -1293,6 +1535,17 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       };
     });
   }, [scriptOutline, scriptSymbols, scriptText]);
+  const nodeStageById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const section of scriptStageSections) {
+      const stageMatch = section.label.match(/stage\s+(\d+)/i);
+      const label = stageMatch ? `Stage ${stageMatch[1]}` : section.label;
+      for (const symbol of section.symbols) {
+        if (symbol.kind !== "claim" && symbol.kind !== "constraint") map.set(symbol.id, label);
+      }
+    }
+    return map;
+  }, [scriptStageSections]);
   const scriptObjectStats = useMemo(
     () => ({
       points: scriptSymbolsByKind.point.length,
@@ -1303,6 +1556,30 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     }),
     [scriptSymbols, scriptSymbolsByKind]
   );
+  const scriptStageStatsByIndex = useMemo(() => {
+    const map = new Map<
+      number,
+      {
+        points: number;
+        lines: number;
+        circles: number;
+        objects: number;
+        dependencies: number;
+        claims: number;
+      }
+    >();
+    for (const stage of scriptStageSections) {
+      map.set(stage.index, {
+        points: stage.symbols.filter((symbol) => symbol.kind === "point").length,
+        lines: stage.symbols.filter((symbol) => symbol.kind === "line").length,
+        circles: stage.symbols.filter((symbol) => symbol.kind === "circle").length,
+        objects: stage.symbols.filter((symbol) => symbol.kind === "object").length,
+        dependencies: stage.symbols.reduce((total, symbol) => total + symbol.dependencies.length, 0),
+        claims: stage.symbols.filter((symbol) => symbol.kind === "claim").length,
+      });
+    }
+    return map;
+  }, [scriptStageSections]);
   const executableScriptLines = useMemo(
     () => scriptSymbols.map((symbol) => symbol.line).filter((line, index, lines) => lines.indexOf(line) === index),
     [scriptSymbols]
@@ -1485,6 +1762,238 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     }
   }, [onFocusObjectInScene, solved.circles, solved.lines, solved.points]);
 
+  const selectConstructionObject = useCallback(
+    (id: string, options: { focus?: boolean; openInspector?: boolean } = {}) => {
+      if (!nodes.some((node) => node.id === id)) return;
+      setSelectedNodeId(id);
+      setBuildMode("select");
+      const symbol = scriptSymbolById.get(id);
+      if (symbol) setSelectedScriptSymbolId(symbol.id);
+      if (options.openInspector !== false) setWorkspaceTab("inspect");
+      if (options.focus !== false) focusNodeInScene(id);
+    },
+    [focusNodeInScene, nodes, scriptSymbolById]
+  );
+
+  const hoverConstructionObjects = useCallback(
+    (ids: string[]) => {
+      if (!onHoverObjectIds) return;
+      const validIds = ids.filter((id, index) => nodes.some((node) => node.id === id) && ids.indexOf(id) === index);
+      onHoverObjectIds(validIds);
+    },
+    [nodes, onHoverObjectIds]
+  );
+  const clearConstructionHover = useCallback(() => onHoverObjectIds?.([]), [onHoverObjectIds]);
+
+  const constructionObjectTokenStyle = (active: boolean): React.CSSProperties => ({
+    border: `1px solid ${active ? "#93c5fd" : "#dbe2ea"}`,
+    borderRadius: 6,
+    background: active ? "#eff6ff" : "#fff",
+    color: active ? "#1d4ed8" : "#0f172a",
+    cursor: "pointer",
+    fontFamily: "monospace",
+    fontSize: 10.5,
+    fontWeight: 800,
+    lineHeight: 1.15,
+    padding: "2px 6px",
+  });
+
+  const renderConstructionObjectToken = (id: string, key = id): React.ReactNode => {
+    const node = nodes.find((entry) => entry.id === id) ?? null;
+    const object = graphObjectById.get(id) ?? null;
+    if (!node) {
+      return (
+        <code key={key} style={{ color: "#b42318", overflowWrap: "anywhere" }}>
+          {id}
+        </code>
+      );
+    }
+    const label = object?.label || node.label || id;
+    return (
+      <button
+        key={key}
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          selectConstructionObject(id);
+        }}
+        onMouseEnter={() => hoverConstructionObjects([id])}
+        onMouseLeave={clearConstructionHover}
+        onFocus={() => hoverConstructionObjects([id])}
+        onBlur={clearConstructionHover}
+        aria-pressed={selectedNodeId === id}
+        title={object?.summary ? `${id}: ${object.summary}` : id}
+        style={constructionObjectTokenStyle(selectedNodeId === id)}
+      >
+        {label}
+      </button>
+    );
+  };
+
+  const renderConstructionObjectTokens = (ids: string[]): React.ReactNode =>
+    ids.length ? (
+      <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+        {ids.map((id) => renderConstructionObjectToken(id))}
+      </span>
+    ) : (
+      "-"
+    );
+
+  const renderClaimStatement = (check: ProblemCheckDef): React.ReactNode => {
+    const pair = (left: string, relation: string, right: string) => (
+      <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+        {renderConstructionObjectToken(left, `${check.id}-${left}`)}
+        <span>{relation}</span>
+        {renderConstructionObjectToken(right, `${check.id}-${right}`)}
+      </span>
+    );
+    if (check.type === "pointOnCircle") return pair(check.point, "on", check.circle);
+    if (check.type === "perpendicular") return pair(check.lines[0], "perpendicular to", check.lines[1]);
+    if (check.type === "parallel") return pair(check.lines[0], "parallel to", check.lines[1]);
+    if (check.type === "samePower") {
+      return (
+        <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+          <span>pow</span>
+          {renderConstructionObjectToken(check.point, `${check.id}-${check.point}`)}
+          <span>on</span>
+          {renderConstructionObjectToken(check.circles[0], `${check.id}-${check.circles[0]}`)}
+          <span>=</span>
+          {renderConstructionObjectToken(check.circles[1], `${check.id}-${check.circles[1]}`)}
+        </span>
+      );
+    }
+    if (check.type === "equalLength") {
+      const [[a, b], [c, d]] = check.segments;
+      return (
+        <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+          <span>|</span>
+          {renderConstructionObjectToken(a, `${check.id}-${a}-a`)}
+          {renderConstructionObjectToken(b, `${check.id}-${b}-b`)}
+          <span>| = |</span>
+          {renderConstructionObjectToken(c, `${check.id}-${c}-c`)}
+          {renderConstructionObjectToken(d, `${check.id}-${d}-d`)}
+          <span>|</span>
+        </span>
+      );
+    }
+    if (check.type === "equalAngle") {
+      return (
+        <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+          {check.angles[0].map((id, index) => renderConstructionObjectToken(id, `${check.id}-angle-a-${id}-${index}`))}
+          <span>=</span>
+          {check.angles[1].map((id, index) => renderConstructionObjectToken(id, `${check.id}-angle-b-${id}-${index}`))}
+        </span>
+      );
+    }
+    const ids = check.type === "collinear" || check.type === "concyclic" ? [...check.points] : checkReferencedIds(check);
+    return (
+      <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+        {ids.map((id, index) => renderConstructionObjectToken(id, `${check.id}-${id}-${index}`))}
+        <span>{check.type === "collinear" ? "collinear" : "concyclic"}</span>
+      </span>
+    );
+  };
+
+  const renderConstructionFormulaPanel = (node: ConstructionNode): React.ReactNode => (
+    <div
+      data-testid="construction-formula-panel"
+      style={{
+        border: "1px solid #bfdbfe",
+        borderRadius: 8,
+        background: "#f8fbff",
+        padding: "7px 8px",
+        display: "grid",
+        gap: 4,
+      }}
+    >
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "3px 8px", alignItems: "baseline" }}>
+        <span style={{ color: "#64748b", fontWeight: 800 }}>Object</span>
+        <strong style={{ fontFamily: "monospace" }}>{node.id}</strong>
+        <span style={{ color: "#64748b", fontWeight: 800 }}>Type</span>
+        <strong>{constructionNodeTypeLabel(node)}</strong>
+        <span style={{ color: "#64748b", fontWeight: 800 }}>Definition</span>
+        <code style={{ color: "#1d4ed8", fontWeight: 800, overflowWrap: "anywhere" }}>
+          {constructionNodeDefinition(node)}
+        </code>
+      </div>
+    </div>
+  );
+
+  const renderObjectMetadataPanel = (node: ConstructionNode): React.ReactNode => {
+    const metadataRows = [
+      ["Created At", nodeStageById.get(node.id) ?? fallbackConstructionStageLabel(node)],
+      ["Author", "Construction"],
+      ["Generated", node.type === "freePoint" ? "No" : "Yes"],
+      ["Locked", lockedNodeIds.has(node.id) ? "Yes" : "No"],
+    ];
+
+    return (
+      <div
+        data-testid="construction-object-metadata"
+        style={{
+          border: "1px solid #e2e8f0",
+          borderRadius: 8,
+          background: "#ffffff",
+          padding: "7px 8px",
+          display: "grid",
+          gap: 4,
+        }}
+      >
+        <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", textTransform: "uppercase" }}>
+          Object Metadata
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "3px 8px", alignItems: "baseline" }}>
+          {metadataRows.map(([label, value]) => (
+            <React.Fragment key={label}>
+              <span style={{ color: "#64748b", fontWeight: 800 }}>{label}</span>
+              <strong>{value}</strong>
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderDependencyImpactPanel = (node: ConstructionNode): React.ReactNode => {
+    const impactIds = nodes
+      .filter((entry) => entry.id !== node.id && nodeImpactDependencies(entry).includes(node.id))
+      .map((entry) => entry.id);
+
+    return (
+      <div
+        data-testid="construction-dependency-impact"
+        style={{
+          border: "1px solid #bbf7d0",
+          borderRadius: 8,
+          background: "#f7fff9",
+          padding: "7px 8px",
+          display: "grid",
+          gap: 6,
+        }}
+      >
+        <div style={{ fontSize: 10, fontWeight: 800, color: "#166534", textTransform: "uppercase" }}>Impact</div>
+        <div style={{ display: "grid", gap: 4 }}>
+          <div style={{ fontSize: 11 }}>
+            Changing <strong style={{ fontFamily: "monospace" }}>{node.id}</strong> affects:
+          </div>
+          {impactIds.length ? (
+            <div style={{ display: "grid", gap: 3 }}>
+              {impactIds.map((id) => (
+                <div key={`impact-${node.id}-${id}`} style={{ display: "flex", gap: 6, alignItems: "center", minWidth: 0 }}>
+                  <span style={{ color: "#16a34a", fontWeight: 900 }}>✓</span>
+                  {renderConstructionObjectToken(id, `impact-token-${node.id}-${id}`)}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: "#64748b" }}>No dependent objects.</div>
+          )}
+          <div style={{ fontSize: 11, fontWeight: 800 }}>Total affected: {impactIds.length}</div>
+        </div>
+      </div>
+    );
+  };
+
   const checkResultById = useMemo(() => {
     const map = new Map<string, ProblemCheckResult>();
     for (const row of checkResults) map.set(row.id, row);
@@ -1518,6 +2027,75 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     return rows;
   }, [checkDefs, checkResultById, claimsSortMode, disabledCheckIds]);
   const passedClaimCount = useMemo(() => claimRows.filter((claim) => claim.status === "ok").length, [claimRows]);
+  const validationRows = useMemo(() => {
+    const rows: Array<{
+      id: string;
+      kind: "claim" | "definition" | "constraint";
+      status: "validated" | "failed" | "warning";
+      label: string;
+      objectIds: string[];
+      claim?: ProblemCheckDef;
+    }> = [];
+
+    for (const claim of claimRows) {
+      rows.push({
+        id: claim.def.id,
+        kind: "claim",
+        status: claim.disabled ? "warning" : claim.status === "ok" ? "validated" : "failed",
+        label: claim.def.label,
+        objectIds: checkReferencedIds(claim.def),
+        claim: claim.def,
+      });
+    }
+
+    for (const node of nodes) {
+      if (node.type === "freePoint") continue;
+      const valid = graphObjectById.get(node.id)?.valid ?? false;
+      rows.push({
+        id: `definition-${node.id}`,
+        kind: "definition",
+        status: node.hidden ? "warning" : valid ? "validated" : "failed",
+        label: constructionNodeDefinition(node),
+        objectIds: [node.id, ...nodeDependencies(node)],
+      });
+    }
+
+    for (const constraint of constraints) {
+      rows.push({
+        id: `constraint-${constraint.id}`,
+        kind: "constraint",
+        status: constraint.enabled === false ? "warning" : "validated",
+        label: constraint.label ?? `${constraint.targetId} ${CONSTRAINT_TYPE_LABELS[constraint.type]} ${constraint.sourceId}`,
+        objectIds: [constraint.targetId, constraint.sourceId],
+      });
+    }
+
+    return rows;
+  }, [claimRows, constraints, graphObjectById, nodes]);
+  const validationCounts = useMemo(
+    () => ({
+      validated: validationRows.filter((row) => row.status === "validated").length,
+      failed: validationRows.filter((row) => row.status === "failed").length,
+      warnings: validationRows.filter((row) => row.status === "warning").length,
+    }),
+    [validationRows]
+  );
+  const constructionHistoryRows = useMemo(
+    () =>
+      scriptSymbols
+        .filter((symbol) => symbol.kind !== "constraint")
+        .map((symbol, index) => ({
+          step: index + 1,
+          symbol,
+          action: symbol.kind === "claim" ? "Create Claim" : `Create ${symbol.id}`,
+          objectIds: symbol.kind === "claim"
+            ? checkDefById.get(symbol.id)
+              ? checkReferencedIds(checkDefById.get(symbol.id)!)
+              : symbol.dependencies
+            : [symbol.id],
+        })),
+    [checkDefById, scriptSymbols]
+  );
 
   const snapshotCurrent = useCallback((): ConstructionHistoryState => ({
     nodes: nodes.map((node) => ({ ...node, style: node.style ? { ...node.style } : undefined })),
@@ -2288,6 +2866,105 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     [focusScriptSymbol, scriptSymbolById]
   );
 
+  const renderScriptDependentTree = useCallback(
+    (root: ScriptSymbol | null): React.ReactNode => {
+      if (!root) return null;
+      const reachable = new Set<string>();
+      const queue = [...root.usedBy];
+      while (queue.length) {
+        const id = queue.shift();
+        if (!id || reachable.has(id)) continue;
+        const symbol = scriptSymbolById.get(id);
+        if (!symbol) continue;
+        reachable.add(id);
+        queue.push(...symbol.usedBy);
+      }
+
+      const childrenByParent = new Map<string, string[]>();
+      const appendChild = (parentId: string, childId: string) => {
+        const current = childrenByParent.get(parentId) ?? [];
+        if (!current.includes(childId)) childrenByParent.set(parentId, [...current, childId]);
+      };
+
+      for (const id of reachable) {
+        const symbol = scriptSymbolById.get(id);
+        if (!symbol) continue;
+        const dependencies = symbol.dependencies.filter((dep) => dep === root.id || reachable.has(dep));
+        const rootIndex = dependencies.indexOf(root.id);
+        let parentId = root.id;
+        if (rootIndex >= 0 && rootIndex < dependencies.length - 1) {
+          parentId = dependencies[dependencies.length - 1] ?? root.id;
+        } else if (rootIndex < 0 && dependencies.length) {
+          parentId = dependencies[dependencies.length - 1] ?? root.id;
+        }
+        if (parentId === id) parentId = root.id;
+        appendChild(parentId, id);
+      }
+
+      const renderNode = (symbolId: string, prefix = "", isLast = true, visited = new Set<string>()): React.ReactNode => {
+        const symbol = scriptSymbolById.get(symbolId);
+        if (!symbol) return null;
+        const active = selectedScriptSymbol?.id === symbol.id;
+        const nextVisited = new Set(visited);
+        nextVisited.add(symbol.id);
+        const childIds = (childrenByParent.get(symbol.id) ?? []).filter((childId) => !nextVisited.has(childId));
+        const connector = prefix ? (isLast ? "\u2514\u2500 " : "\u251c\u2500 ") : "";
+        const childPrefix = prefix + (prefix ? (isLast ? "   " : "\u2502  ") : "");
+        return (
+          <div key={`dependent-tree-${symbol.id}-${prefix || "root"}`} style={{ display: "grid", gap: 1 }}>
+            <button
+              type="button"
+              onClick={() => focusScriptSymbol(symbol.id)}
+              title={`${scriptSymbolKindLabel(symbol.kind)} ${symbol.id}\n${symbol.summary}\nDepends on ${symbol.dependencies.length} objects`}
+              style={{
+                border: "none",
+                borderRadius: 5,
+                background: active ? "#eff6ff" : "transparent",
+                color: active ? "#1d4ed8" : "#0f172a",
+                cursor: "pointer",
+                fontFamily: "monospace",
+                fontSize: 10.5,
+                fontWeight: prefix ? 600 : 800,
+                padding: "2px 4px",
+                textAlign: "left",
+                whiteSpace: "pre",
+              }}
+            >
+              {prefix}
+              {connector}
+              {symbol.kind === "claim" ? `Claim: ${symbol.label}` : symbol.id}
+            </button>
+            {childIds.map((childId, index) =>
+              renderNode(childId, childPrefix, index === childIds.length - 1, nextVisited)
+            )}
+          </div>
+        );
+      };
+
+      return (
+        <div
+          data-testid="construction-script-dependent-tree"
+          style={{
+            border: "1px solid #dbe2ea",
+            borderRadius: 8,
+            background: "#f8fafc",
+            padding: "6px 8px",
+            display: "grid",
+            gap: 1,
+          }}
+        >
+          {renderNode(root.id)}
+          {!reachable.size && (
+            <div style={{ fontFamily: "monospace", fontSize: 10.5, color: "#64748b", padding: "2px 4px" }}>
+              {root.id}
+            </div>
+          )}
+        </div>
+      );
+    },
+    [focusScriptSymbol, scriptSymbolById, selectedScriptSymbol]
+  );
+
   const runScriptFragment = useCallback((fragment: string, startLine = 1) => {
     const lines = fragment.split(/\r?\n/);
     const ids = new Set(nodes.map((node) => node.id));
@@ -2394,6 +3071,16 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     setScriptText(preset.script);
     applyScriptToScene(preset.script);
   };
+  const loadPresentationScene = useCallback((preset: (typeof PRESENTATION_SCENE_PRESETS)[number]) => {
+    setSceneName(preset.label);
+    setSceneType(preset.id === "olympiad_arc" ? "task" : "demo");
+    setSceneMode("plane2d");
+    setSceneMetadata(preset.summary);
+    setScriptText(preset.script);
+    setSelectedPresetName("");
+    setScriptInspectorTab("outline");
+    applyScriptToScene(preset.script);
+  }, [applyScriptToScene]);
 
   const deleteSelectedPreset = () => {
     if (!selectedPresetName || selectedPresetIsBuiltin) return;
@@ -3069,6 +3756,52 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
           Redo
         </button>
       </div>
+      <div style={{ display: "grid", gap: 4 }}>
+        <input
+          type="search"
+          value={objectSearchQuery}
+          onChange={(e) => setObjectSearchQuery(e.target.value)}
+          placeholder="Search objects..."
+          aria-label="Search objects"
+          style={{ width: "100%", fontSize: 12 }}
+        />
+        {normalizedObjectSearchQuery && (
+          <div style={{ display: "grid", gap: 5 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", fontSize: 10, color: "#64748b" }}>
+              <span>
+                {filteredSolvedObjects.length} of {solved.objects.length} objects
+              </span>
+              <button type="button" onClick={() => setObjectSearchQuery("")} style={{ padding: "2px 6px", fontSize: 10 }}>
+                Clear
+              </button>
+            </div>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+              {filteredSolvedObjects.slice(0, 8).map((obj) => (
+                <button
+                  key={`search-${obj.id}`}
+                  type="button"
+                  onClick={() => selectConstructionObject(obj.id)}
+                  onMouseEnter={() => hoverConstructionObjects([obj.id])}
+                  onMouseLeave={clearConstructionHover}
+                  style={{
+                    border: "1px solid " + (selectedNodeId === obj.id ? "#93c5fd" : "#e5e7eb"),
+                    borderRadius: 6,
+                    background: selectedNodeId === obj.id ? "#eff6ff" : "#fff",
+                    padding: "3px 7px",
+                    fontSize: 10.5,
+                    fontFamily: "monospace",
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  {obj.label || obj.id}
+                </button>
+              ))}
+              {!filteredSolvedObjects.length && <span style={{ fontSize: 10.5, color: "#64748b" }}>No matches</span>}
+            </div>
+          </div>
+        )}
+      </div>
 
       {workspaceTab === "task" && (
         <div
@@ -3145,9 +3878,11 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
               {sceneObjectStats.invalid > 0 ? ` · Invalid ${sceneObjectStats.invalid}` : ""}
             </div>
             <div style={{ display: "grid", gap: 4, maxHeight: 180, overflowY: "auto" }}>
-              {solved.objects.map((obj) => (
+              {filteredSolvedObjects.map((obj) => (
                 <div
                   key={obj.id}
+                  onMouseEnter={() => hoverConstructionObjects([obj.id])}
+                  onMouseLeave={clearConstructionHover}
                   onClick={() => {
                     setSelectedNodeId(obj.id);
                     setBuildMode("select");
@@ -3206,6 +3941,9 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   </span>
                 </div>
               ))}
+              {!filteredSolvedObjects.length && normalizedObjectSearchQuery && (
+                <div style={{ fontSize: 11, opacity: 0.7 }}>No objects match this search.</div>
+              )}
             </div>
           </>
         ) : (
@@ -3387,7 +4125,10 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
           <div style={{ fontSize: 12, fontWeight: 700 }}>Inspector</div>
           {selectedNode ? (
             <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
-              <div>Selected object type: <b>{selectedNode.type}</b></div>
+              <div>Selected object type: <b>{constructionNodeTypeLabel(selectedNode)}</b></div>
+              {selectedNode.type !== "freePoint" && renderConstructionFormulaPanel(selectedNode)}
+              {renderObjectMetadataPanel(selectedNode)}
+              {renderDependencyImpactPanel(selectedNode)}
               <label>
                 Rename
                 <input
@@ -3401,7 +4142,10 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   style={{ width: "100%", marginTop: 4 }}
                 />
               </label>
-              <div>Dependencies: {nodeDependencies(selectedNode).join(", ") || "-"}</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span>Dependencies:</span>
+                {renderConstructionObjectTokens(nodeDependencies(selectedNode))}
+              </div>
               <div>Constraints: {selectedNodeUsedByConstraints.join(", ") || "-"}</div>
               <div style={{ fontFamily: "monospace", opacity: 0.75 }}>
                 Parameters:{" "}
@@ -3420,9 +4164,11 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
           <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8 }}>
             <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Construction graph</div>
             <div style={{ display: "grid", gap: 6 }}>
-              {nodes.map((node, idx) => (
+              {filteredConstructionNodes.map((node, idx) => (
                 <div
                   key={node.id}
+                  onMouseEnter={() => hoverConstructionObjects([node.id])}
+                  onMouseLeave={clearConstructionHover}
                   style={{
                     display: "grid",
                     gridTemplateColumns: "auto auto 1fr auto auto auto",
@@ -3492,6 +4238,9 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   </button>
                 </div>
               ))}
+              {!filteredConstructionNodes.length && normalizedObjectSearchQuery && (
+                <div style={{ fontSize: 11, opacity: 0.7 }}>No construction nodes match this search.</div>
+              )}
             </div>
             <button type="button" onClick={() => setNodes((prev) => prev.map((node) => ({ ...node })))} style={{ marginTop: 8 }}>
               Rebuild
@@ -3507,9 +4256,12 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
           <div style={{ fontSize: 12, fontWeight: 700 }}>Inspector</div>
           {selectedNode ? (
             <div style={{ display: "grid", gap: 8, fontSize: 11 }}>
-              <div>Type: <b>{selectedNode.type}</b></div>
+              <div>Type: <b>{constructionNodeTypeLabel(selectedNode)}</b></div>
               <div>Alias: <code>{selectedNode.id}</code></div>
               <div>Role: <b>{selectedNode.type === "freePoint" ? "free" : "derived"}</b></div>
+              {selectedNode.type !== "freePoint" && renderConstructionFormulaPanel(selectedNode)}
+              {renderObjectMetadataPanel(selectedNode)}
+              {renderDependencyImpactPanel(selectedNode)}
               <label>
                 Name / label
                 <input
@@ -3535,8 +4287,14 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                       .join(", ")
                   : "-"}
               </div>
-              <div>Dependencies: {nodeDependencies(selectedNode).join(", ") || "-"}</div>
-              <div>Used by: {selectedNodeUsedBy.join(", ") || "-"}</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span>Dependencies:</span>
+                {renderConstructionObjectTokens(nodeDependencies(selectedNode))}
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span>Used by:</span>
+                {renderConstructionObjectTokens(selectedNodeUsedBy)}
+              </div>
               <div>Used in claims: {selectedNodeUsedByClaims.join(" | ") || "-"}</div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -3613,6 +4371,63 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
               <option value="residual">Sort by residual</option>
             </select>
           </div>
+          <div
+            data-testid="construction-validation-center"
+            style={{
+              border: "1px solid #dbeafe",
+              borderRadius: 8,
+              padding: "7px 8px",
+              display: "grid",
+              gap: 7,
+              background: "#f8fbff",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ fontSize: 11, fontWeight: 800 }}>Validation Center</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 10.5 }}>
+                <span style={{ color: "#166534", fontWeight: 800 }}>Validated: {validationCounts.validated}</span>
+                <span style={{ color: "#b42318", fontWeight: 800 }}>Failed: {validationCounts.failed}</span>
+                <span style={{ color: "#a16207", fontWeight: 800 }}>Warnings: {validationCounts.warnings}</span>
+              </div>
+            </div>
+            <div style={{ display: "grid", gap: 4, maxHeight: 220, overflowY: "auto" }}>
+              {validationRows.map((row) => {
+                const color =
+                  row.status === "validated" ? "#166534" : row.status === "failed" ? "#b42318" : "#a16207";
+                const mark = row.status === "validated" ? "✓" : row.status === "failed" ? "✕" : "!";
+                return (
+                  <div
+                    key={row.id}
+                    onMouseEnter={() => hoverConstructionObjects(row.objectIds)}
+                    onMouseLeave={clearConstructionHover}
+                    onFocus={() => hoverConstructionObjects(row.objectIds)}
+                    onBlur={clearConstructionHover}
+                    tabIndex={0}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "auto minmax(0, 1fr) auto",
+                      gap: 7,
+                      alignItems: "center",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 7,
+                      background: "#fff",
+                      padding: "4px 6px",
+                      fontSize: 11,
+                    }}
+                  >
+                    <span style={{ color, fontWeight: 900 }}>{mark}</span>
+                    <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                      {row.claim ? renderClaimStatement(row.claim) : row.kind === "definition" ? <code>{row.label}</code> : row.label}
+                    </span>
+                    <span style={{ color: "#64748b", fontSize: 10, textTransform: "uppercase", fontWeight: 800 }}>
+                      {row.kind}
+                    </span>
+                  </div>
+                );
+              })}
+              {!validationRows.length && <div style={{ fontSize: 11, opacity: 0.7 }}>No validations yet.</div>}
+            </div>
+          </div>
           <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 8px", display: "grid", gap: 6 }}>
             <div style={{ fontSize: 11, fontWeight: 700 }}>Add new claim</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -3661,6 +4476,8 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
             {constraints.map((constraint) => (
               <div
                 key={constraint.id}
+                onMouseEnter={() => hoverConstructionObjects([constraint.targetId, constraint.sourceId])}
+                onMouseLeave={clearConstructionHover}
                 style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 8, alignItems: "center", fontSize: 11 }}
               >
                 <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -3679,8 +4496,11 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   />
                   enabled
                 </label>
-                <span>
-                  {constraint.label ?? `${constraint.targetId} ${CONSTRAINT_TYPE_LABELS[constraint.type]} ${constraint.sourceId}`}
+                <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                  {constraint.label && <span>{constraint.label}:</span>}
+                  {renderConstructionObjectToken(constraint.targetId, `${constraint.id}-target`)}
+                  <span>{CONSTRAINT_TYPE_LABELS[constraint.type]}</span>
+                  {renderConstructionObjectToken(constraint.sourceId, `${constraint.id}-source`)}
                 </span>
                 <button type="button" onClick={() => setConstraints((prev) => prev.filter((entry) => entry.id !== constraint.id))}>
                   Delete
@@ -3694,6 +4514,8 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
               <div
                 key={claim.def.id}
                 onClick={() => focusClaimInputs(claim.def.id)}
+                onMouseEnter={() => hoverConstructionObjects(checkReferencedIds(claim.def))}
+                onMouseLeave={clearConstructionHover}
                 style={{
                   border: "1px solid #e5e7eb",
                   borderRadius: 8,
@@ -3707,7 +4529,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   <span style={{ color: CHECK_BADGE_COLORS[claim.status], fontWeight: 700 }}>
                     {claim.disabled ? "DISABLED" : claim.status.toUpperCase()}
                   </span>
-                  <span>{claim.def.label}</span>
+                  <span>{renderClaimStatement(claim.def)}</span>
                   <span style={{ fontFamily: "monospace", opacity: 0.75 }}>
                     {formatConstraintValue(claim.residual, claim.unit === "deg" ? "deg" : "unit")}
                     {" / "}
@@ -4081,8 +4903,78 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                     })}
                   </div>
                   <div style={{ minHeight: 0, overflow: "auto", padding: 7 }}>
+                    {scriptInspectorTab === "present" && (
+                      <div data-testid="construction-presentation-scenes" style={{ display: "grid", gap: 6 }}>
+                        <div
+                          style={{
+                            border: "1px solid #bfdbfe",
+                            borderRadius: 6,
+                            background: "#eff6ff",
+                            color: "#1e3a8a",
+                            padding: "6px 7px",
+                            fontSize: 10.5,
+                            lineHeight: 1.3,
+                          }}
+                        >
+                          <strong>Presentation scenes</strong>
+                          <div style={{ marginTop: 2 }}>Load a ready-made construction into the scratch editor.</div>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 5 }}>
+                          {PRESENTATION_SCENE_PRESETS.map((preset) => {
+                            const active = sceneName === preset.label && scriptText === preset.script;
+                            return (
+                              <button
+                                key={preset.id}
+                                type="button"
+                                aria-pressed={active}
+                                title={preset.summary}
+                                onClick={() => loadPresentationScene(preset)}
+                                style={{
+                                  minWidth: 0,
+                                  minHeight: 52,
+                                  display: "grid",
+                                  alignContent: "center",
+                                  gap: 3,
+                                  border: `1px solid ${active ? "#2563eb" : "#d1d5db"}`,
+                                  borderRadius: 6,
+                                  background: active ? "#dbeafe" : "#fff",
+                                  color: active ? "#1e40af" : "#0f172a",
+                                  padding: "6px 7px",
+                                  textAlign: "left",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <span style={{ fontSize: 10.5, fontWeight: 800, overflowWrap: "anywhere" }}>
+                                  {preset.label}
+                                </span>
+                                <span style={{ color: active ? "#1d4ed8" : "#64748b", fontSize: 9.5, lineHeight: 1.2 }}>
+                                  {active ? "Loaded" : "Load scene"}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                     {scriptInspectorTab === "outline" && (
                       <div data-testid="construction-script-outline" style={{ display: "grid", gap: 5 }}>
+                        <div
+                          style={{
+                            border: "1px solid #dbe4f0",
+                            borderRadius: 6,
+                            background: "#f8fafc",
+                            padding: "5px 6px",
+                            display: "flex",
+                            gap: 8,
+                            flexWrap: "wrap",
+                            alignItems: "center",
+                            fontSize: 10.5,
+                          }}
+                        >
+                          <strong>Scene complexity</strong>
+                          <span>Dependencies: {scriptObjectStats.dependencies}</span>
+                          <span>Claims: {scriptObjectStats.claims}</span>
+                        </div>
                         <div style={{ display: "grid", gap: 2, marginBottom: 4 }}>
                           {scriptOutline.map((entry, index) => {
                             const active = index === displayedScriptStageIndex;
@@ -4107,6 +4999,22 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                         {scriptStageSections.map((stage) => {
                           const active = stage.index === displayedScriptStageIndex;
                           const folded = foldedScriptStageKeys.has(stage.index);
+                          const stageStats = scriptStageStatsByIndex.get(stage.index) ?? {
+                            points: 0,
+                            lines: 0,
+                            circles: 0,
+                            objects: 0,
+                            dependencies: 0,
+                            claims: 0,
+                          };
+                          const stageStatChips = [
+                            stageStats.points ? formatCountLabel(stageStats.points, "point") : null,
+                            stageStats.lines ? formatCountLabel(stageStats.lines, "line") : null,
+                            stageStats.circles ? formatCountLabel(stageStats.circles, "circle") : null,
+                            stageStats.objects ? formatCountLabel(stageStats.objects, "object") : null,
+                            `Dependencies: ${stageStats.dependencies}`,
+                            `Claims: ${stageStats.claims}`,
+                          ].filter(Boolean) as string[];
                           const groupedStageSymbols = ([
                             ["point", "Points", stage.symbols.filter((symbol) => symbol.kind === "point")],
                             ["line", "Lines", stage.symbols.filter((symbol) => symbol.kind === "line")],
@@ -4151,6 +5059,25 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                                   {stage.label}
                                 </button>
                                 <span style={{ fontSize: 10, color: "#64748b" }}>[{stage.symbols.length}]</span>
+                              </div>
+                              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 5, paddingLeft: 18 }}>
+                                {stageStatChips.map((chip) => (
+                                  <span
+                                    key={`${stage.index}-${chip}`}
+                                    style={{
+                                      border: "1px solid #e2e8f0",
+                                      borderRadius: 999,
+                                      background: "#f8fafc",
+                                      color: "#475569",
+                                      fontSize: 10,
+                                      lineHeight: 1.1,
+                                      padding: "2px 6px",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    {chip}
+                                  </span>
+                                ))}
                               </div>
                               {!folded && (
                                 <div style={{ display: "grid", gap: 4, marginTop: 5, paddingLeft: 18 }}>
@@ -4273,11 +5200,27 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                                 <span style={{ color: "#64748b" }}>Name</span>
                                 <strong style={{ fontFamily: "monospace", overflowWrap: "anywhere" }}>{selectedScriptSymbol.id}</strong>
                                 <span style={{ color: "#64748b" }}>Type</span>
-                                <span>{scriptSymbolKindLabel(selectedScriptSymbol.kind)}</span>
-                                <span style={{ color: "#64748b" }}>Created At</span>
+                                <span>
+                                  {nodes.find((node) => node.id === selectedScriptSymbol.id)
+                                    ? constructionNodeTypeLabel(nodes.find((node) => node.id === selectedScriptSymbol.id)!)
+                                    : scriptSymbolKindLabel(selectedScriptSymbol.kind)}
+                                </span>
+                                <span style={{ color: "#64748b" }}>Script Line</span>
                                 <span>Line {selectedScriptSymbol.line}</span>
                               </div>
                             </div>
+                            {(() => {
+                              const node = nodes.find((entry) => entry.id === selectedScriptSymbol.id) ?? null;
+                              return node && node.type !== "freePoint" ? renderConstructionFormulaPanel(node) : null;
+                            })()}
+                            {(() => {
+                              const node = nodes.find((entry) => entry.id === selectedScriptSymbol.id) ?? null;
+                              return node ? renderObjectMetadataPanel(node) : null;
+                            })()}
+                            {(() => {
+                              const node = nodes.find((entry) => entry.id === selectedScriptSymbol.id) ?? null;
+                              return node ? renderDependencyImpactPanel(node) : null;
+                            })()}
                             {solved.points[selectedScriptSymbol.id] && (
                               <div>
                                 <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", marginBottom: 4 }}>POSITION</div>
@@ -4349,7 +5292,11 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                               </div>
                             </div>
                             <div>
-                              <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", marginBottom: 4 }}>TREE</div>
+                              <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", marginBottom: 4 }}>DEPENDENT TREE</div>
+                              {renderScriptDependentTree(selectedScriptSymbol)}
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", marginBottom: 4 }}>DEPENDS ON TREE</div>
                               {renderScriptDependencyTree(selectedScriptSymbol)}
                             </div>
                           </>
@@ -4361,14 +5308,22 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                     {scriptInspectorTab === "claims" && (
                       <div data-testid="construction-script-claims" style={{ display: "grid", gap: 5 }}>
                         {claimRows.map((claim) => (
-                          <button
+                          <div
                             key={claim.def.id}
-                            type="button"
+                            role="button"
+                            tabIndex={checkFocusRefs(claim.def.id).length ? 0 : -1}
+                            onMouseEnter={() => hoverConstructionObjects(checkReferencedIds(claim.def))}
+                            onMouseLeave={clearConstructionHover}
                             onClick={() => {
                               focusScriptSymbol(claim.def.id);
                               focusClaimInputs(claim.def.id);
                             }}
-                            disabled={!checkFocusRefs(claim.def.id).length}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter" && event.key !== " ") return;
+                              event.preventDefault();
+                              focusScriptSymbol(claim.def.id);
+                              focusClaimInputs(claim.def.id);
+                            }}
                             style={{
                               textAlign: "left",
                               border: "1px solid #e5e7eb",
@@ -4383,10 +5338,13 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                           >
                             <div style={{ display: "flex", gap: 4, alignItems: "center", fontWeight: 800 }}>
                               <span aria-hidden="true">{claim.status === "ok" ? "\u2713" : claim.status === "fail" ? "\u2716" : "\u2022"}</span>
-                              <span>{claim.def.label}</span>
+                              <span>{renderClaimStatement(claim.def)}</span>
                             </div>
                             <div style={{ marginTop: 3, display: "grid", gap: 1, color: "#475569" }}>
                               <span>Status: {claim.status === "ok" ? "Proven" : claim.status === "fail" ? "Failed" : "Unknown"}</span>
+                              <span style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+                                Objects: {checkReferencedIds(claim.def).map((id, index) => renderConstructionObjectToken(id, `script-claim-${claim.def.id}-${id}-${index}`))}
+                              </span>
                               <span>Tolerance: {claim.tolerance.toExponential(1)} {claim.unit}</span>
                               <span>
                                 {claim.def.type === "perpendicular"
@@ -4396,14 +5354,75 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                                     : `Distance error: ${claim.residual == null ? "n/a" : claim.residual.toExponential(2)}`}
                               </span>
                             </div>
-                          </button>
+                          </div>
                         ))}
                         {!claimRows.length && <div style={{ fontSize: 10.5, opacity: 0.7 }}>No claims yet.</div>}
                       </div>
                     )}
+                    {scriptInspectorTab === "history" && (
+                      <div data-testid="construction-history-timeline" style={{ display: "grid", gap: 5 }}>
+                        <div
+                          style={{
+                            border: "1px solid #dbe4f0",
+                            borderRadius: 6,
+                            background: "#f8fafc",
+                            padding: "5px 6px",
+                            display: "flex",
+                            gap: 8,
+                            flexWrap: "wrap",
+                            alignItems: "center",
+                            fontSize: 10.5,
+                          }}
+                        >
+                          <strong>History</strong>
+                          <span>{constructionHistoryRows.length} steps</span>
+                          <span>{scriptObjectStats.dependencies} dependencies</span>
+                          <span>{scriptObjectStats.claims} claims</span>
+                        </div>
+                        {constructionHistoryRows.map((row) => {
+                          const active = selectedScriptSymbol?.id === row.symbol.id;
+                          return (
+                            <button
+                              key={`history-${row.step}-${row.symbol.id}`}
+                              type="button"
+                              onClick={() => focusScriptSymbol(row.symbol.id)}
+                              onMouseEnter={() => hoverConstructionObjects(row.objectIds)}
+                              onMouseLeave={clearConstructionHover}
+                              onFocus={() => hoverConstructionObjects(row.objectIds)}
+                              onBlur={clearConstructionHover}
+                              title={`Line ${row.symbol.line}: ${row.symbol.summary}`}
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "2.4ch minmax(0, 1fr) auto",
+                                gap: 7,
+                                alignItems: "center",
+                                textAlign: "left",
+                                border: "1px solid " + (active ? "#93c5fd" : "#e5e7eb"),
+                                borderRadius: 7,
+                                background: active ? "#eff6ff" : "#fff",
+                                padding: "5px 7px",
+                                cursor: "pointer",
+                                fontSize: 10.5,
+                              }}
+                            >
+                              <span style={{ color: "#64748b", fontFamily: "monospace", fontWeight: 800 }}>{row.step}</span>
+                              <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                                {row.action}
+                              </span>
+                              <span style={{ color: "#64748b", fontSize: 10, textTransform: "uppercase", fontWeight: 800 }}>
+                                {scriptSymbolKindLabel(row.symbol.kind)}
+                              </span>
+                            </button>
+                          );
+                        })}
+                        {!constructionHistoryRows.length && (
+                          <div style={{ fontSize: 10.5, opacity: 0.7 }}>No construction history yet.</div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
-                )}
+              )}
               </div>
               <div style={{ display: "grid", gap: 4 }}>
                 <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
