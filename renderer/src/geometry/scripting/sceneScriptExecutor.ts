@@ -142,6 +142,9 @@ export const executeSceneScript = ({
   let selectedId = selectedObjectId && objectMap.has(selectedObjectId) ? selectedObjectId : null;
   let generatedIdCounter = objectMap.size + 1;
   const stats: SceneScriptExecutionStats = { created: 0, updated: 0, deleted: 0 };
+  const createdObjectIds = new Set<string>();
+  const updatedObjectIds = new Set<string>();
+  const deletedObjectIds = new Set<string>();
 
   const fail = (error: SceneScriptDiagnostic): SceneScriptExecutionResult => ({
     ok: false,
@@ -166,6 +169,7 @@ export const executeSceneScript = ({
     }
 
     if (command.kind === "clear") {
+      for (const id of objectMap.keys()) deletedObjectIds.add(id);
       objectMap.clear();
       selectedId = null;
       continue;
@@ -186,6 +190,8 @@ export const executeSceneScript = ({
         if (error) return fail(error);
       }
       objectMap.set(id, object);
+      createdObjectIds.add(id);
+      deletedObjectIds.delete(id);
       selectedId = id;
       stats.created += 1;
       continue;
@@ -201,10 +207,14 @@ export const executeSceneScript = ({
         if (error) return fail(error);
       }
       stats.updated += 1;
+      updatedObjectIds.add(command.id);
       continue;
     }
     if (command.kind === "delete") {
       objectMap.delete(command.id);
+      deletedObjectIds.add(command.id);
+      createdObjectIds.delete(command.id);
+      updatedObjectIds.delete(command.id);
       if (selectedId === command.id) selectedId = null;
       stats.deleted += 1;
       continue;
@@ -212,6 +222,7 @@ export const executeSceneScript = ({
     if (command.kind === "setVisibility") {
       object.visible = command.visible;
       stats.updated += 1;
+      updatedObjectIds.add(command.id);
       continue;
     }
     selectedId = command.id;
@@ -225,5 +236,10 @@ export const executeSceneScript = ({
     objects: nextObjects,
     selectedObjectId: selectedId ?? nextObjects[0]?.id ?? null,
     stats,
+    changes: {
+      createdObjectIds: Array.from(createdObjectIds),
+      updatedObjectIds: Array.from(updatedObjectIds),
+      deletedObjectIds: Array.from(deletedObjectIds),
+    },
   };
 };

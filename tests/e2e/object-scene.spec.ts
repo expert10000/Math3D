@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { ElectronApplication } from "playwright";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
@@ -380,6 +380,55 @@ test("Dependency node click highlights, fits, and opens the target for editing",
     await expect(definition).toBeVisible();
     await expect(definition).toContainText("Definition Editor");
     await expect(definition).toContainText(objectName);
+  } finally {
+    if (app) {
+      await app.close();
+    }
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
+test("Procedural script ownership appears in the shared dependency graph", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-script-ownership-"));
+  const env = {
+    APPDATA: profileDir,
+    LOCALAPPDATA: profileDir,
+  };
+
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(env);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page);
+
+    await page.getByTestId("geometry-procedural-panel-script").click();
+    await page.getByTestId("geometry-procedural-script-editor").fill("clear\nadd box as owned_box name=OwnedBox");
+    await clickFirstVisibleButton(page, "Run script");
+    await expect(page.getByText(/Applied 1 objects/)).toBeVisible();
+
+    await page.getByTestId("geometry-procedural-panel-dependencies").click();
+    const graph = page.getByTestId("geometry-scene-dependency-graph");
+    await expect(graph.locator('[data-node-id="script:geometry-procedural"]')).toBeVisible();
+    await expect(graph.locator('[data-node-id="object:owned_box"]')).toBeVisible();
+    await graph.locator('[data-node-id="script:geometry-procedural"]').click();
+    await expect(graph.locator("text").filter({ hasText: "owns 1 object" })).toBeVisible();
+    await expect(graph.locator("text").filter({ hasText: "OwnedBox" })).toBeVisible();
+
+    const savedPath = await saveWorkspace(page);
+    const saved = JSON.parse(readFileSync(savedPath, "utf8"));
+    const savedGraph = saved.sceneDocument?.extensions?.["math3d.sceneDocument"]?.constructionGraph;
+    expect(savedGraph?.nodes?.some((node: { id?: string }) => node.id === "script:geometry-procedural")).toBe(true);
+    expect(
+      savedGraph?.edges?.some(
+        (edge: { sourceId?: string; targetId?: string; relation?: string }) =>
+          edge.sourceId === "script:geometry-procedural" &&
+          edge.targetId === "object:owned_box" &&
+          edge.relation === "defines"
+      )
+    ).toBe(true);
+    rmSync(savedPath, { force: true });
   } finally {
     if (app) {
       await app.close();

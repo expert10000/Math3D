@@ -20,6 +20,11 @@ describe("scene script executor", () => {
     });
     expect(result.selectedObjectId).toBe("box1");
     expect(result.stats).toEqual({ created: 1, updated: 0, deleted: 0 });
+    expect(result.changes).toEqual({
+      createdObjectIds: ["box1"],
+      updatedObjectIds: [],
+      deletedObjectIds: [],
+    });
   });
 
   it("sets object fields", () => {
@@ -47,6 +52,7 @@ describe("scene script executor", () => {
     if (!result.ok) return;
     expect(result.objects.map((object) => object.id)).toEqual(["sphere1"]);
     expect(result.selectedObjectId).toBe("sphere1");
+    expect(result.changes.deletedObjectIds).toEqual(["box1"]);
   });
 
   it("shows and hides an object", () => {

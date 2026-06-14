@@ -4,8 +4,16 @@ import * as THREE from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
 import { ADDITION, Brush, Evaluator, INTERSECTION, REVERSE_SUBTRACTION, SUBTRACTION } from "three-bvh-csg";
 import {
+  createConstructionGraph,
+  getSceneDocumentConstructionGraph,
   getSceneDocumentExtension,
+  indexConstructionGraph,
+  projectConstructionGraph,
   withSceneDocumentExtension,
+  type ConstructionGraph,
+  type ConstructionGraphEdge,
+  type ConstructionGraphNode,
+  type ConstructionGraphNodeKind,
   type SceneDocument,
   type SceneDocumentScript,
 } from "@math3d/core";
@@ -141,6 +149,11 @@ import {
 import { formatSceneScriptDiagnostic } from "./geometry/scripting/sceneScriptDiagnostics";
 import { executeSceneScript } from "./geometry/scripting/sceneScriptExecutor";
 import { PROCEDURAL_SCENE_SCRIPT_STARTER } from "./geometry/scripting/sceneScriptExamples";
+import {
+  createConstructionGraphBuilder,
+  synchronizeGeometryObjectGraph,
+  synchronizeScriptOwnershipGraph,
+} from "./geometry/constructionGraphBuilder";
 import {
   GEOMETRY_GALLERY_CARD_BY_ID,
   GEOMETRY_GALLERY_CARDS,
@@ -2414,10 +2427,10 @@ type GeometryDependencyNodeKind =
   | "derived-circle"
   | "measurement"
   | "section-result"
-  | "comparison";
-type GeometryDependencyNode = {
-  id: string;
-  kind: GeometryDependencyNodeKind;
+  | "comparison"
+  | "scene-script";
+type GeometryDependencyNode = ConstructionGraphNode & {
+  type: GeometryDependencyNodeKind;
   label: string;
   objectId?: string;
   derivedId?: string;
@@ -2425,10 +2438,51 @@ type GeometryDependencyNode = {
   liveValidityKind?: GeometryLiveValidityKind;
   recomputeMs?: number;
 };
-type GeometryDependencyEdge = {
-  sourceId: string;
-  targetId: string;
-  relation: "contains" | "derived-from" | "depends-on" | "measured-from" | "section-of" | "compared-with" | "aligned-to";
+type GeometryDependencyNodeInput = Omit<GeometryDependencyNode, "kind" | "type"> & {
+  kind: GeometryDependencyNodeKind;
+};
+type GeometryDependencyEdgeRelation =
+  | "contains"
+  | "derived-from"
+  | "depends-on"
+  | "measured-from"
+  | "section-of"
+  | "compared-with"
+  | "aligned-to"
+  | "defines";
+type GeometryDependencyEdge = ConstructionGraphEdge & {
+  relation: GeometryDependencyEdgeRelation;
+};
+type GeometryDependencyEdgeInput = Omit<GeometryDependencyEdge, "id">;
+const constructionGraphKindFromGeometryDependencyKind = (
+  kind: GeometryDependencyNodeKind
+): ConstructionGraphNodeKind => {
+  if (kind === "scene-root" || kind === "dependency-group") return "root";
+  if (kind === "parameter") return "parameter";
+  if (kind === "geometry-object" || kind === "face-reference") return "geometry";
+  if (kind === "scene-script") return "script";
+  if (kind === "analysis" || kind === "measurement" || kind === "section-result" || kind === "comparison") {
+    return "analysis";
+  }
+  return "construction";
+};
+type GeometryDependencyGraphView = Omit<ReturnType<typeof indexConstructionGraph>, "graph" | "nodeById"> & {
+  graph: ConstructionGraph;
+  nodes: GeometryDependencyNode[];
+  edges: GeometryDependencyEdge[];
+  nodeById: Map<string, GeometryDependencyNode>;
+  brokenNodes: GeometryDependencyNode[];
+};
+const emptyGeometryDependencyGraphView = (): GeometryDependencyGraphView => {
+  const graph = createConstructionGraph();
+  const graphIndex = indexConstructionGraph(graph);
+  return {
+    ...graphIndex,
+    nodes: [],
+    edges: [],
+    nodeById: graphIndex.nodeById as Map<string, GeometryDependencyNode>,
+    brokenNodes: [],
+  };
 };
 type ConeDependencyFeature =
   | "center"
@@ -6039,6 +6093,7 @@ const collectWorkspaceSceneScripts = (
 const buildWorkspaceSceneDocument = (
   payload: WorkbookReplayPayload,
   proceduralScriptText: string,
+  constructionGraph: ConstructionGraph,
   savedAt: number
 ): SceneDocument => {
   const activeWorkbook = payload.workbooks.find((workbook) => workbook.id === payload.activeWorkbookId) ?? payload.workbooks[0];
@@ -6052,6 +6107,7 @@ const buildWorkspaceSceneDocument = (
     },
   };
   return withSceneDocumentExtension(base, {
+    constructionGraph,
     scripts: collectWorkspaceSceneScripts(payload.workspace, proceduralScriptText),
     workbookWorkspace: toLinkedWorkspace(payload.workspace),
   });
@@ -8426,6 +8482,14 @@ const App: React.FC = () => {
   const [geometryProceduralScriptText, setGeometryProceduralScriptText] = useState(PROCEDURAL_SCENE_SCRIPT_STARTER);
   const [geometryProceduralScriptError, setGeometryProceduralScriptError] = useState<string | null>(null);
   const [geometryProceduralScriptStatus, setGeometryProceduralScriptStatus] = useState<string | null>(null);
+  const [geometryConstructionGraph, setGeometryConstructionGraph] = useState<ConstructionGraph>(() =>
+    createConstructionGraph()
+  );
+  useEffect(() => {
+    setGeometryConstructionGraph((graph) =>
+      synchronizeGeometryObjectGraph(graph, geometryObjects)
+    );
+  }, [geometryObjects]);
   const [geometryBakeError, setGeometryBakeError] = useState<string | null>(null);
   const geometryHistoryIntentQueueRef = useRef<Map<string, GeometryQueuedHistoryIntent[]>>(new Map());
   const [geometryGizmoEnabled, setGeometryGizmoEnabled] = useState(true);
@@ -10798,6 +10862,17 @@ const App: React.FC = () => {
         return;
       }
       setGeometryObjects(result.objects);
+      setGeometryConstructionGraph((graph) =>
+        synchronizeScriptOwnershipGraph({
+          graph,
+          scriptId: "geometry-procedural",
+          scriptTitle: "Geometry procedural script",
+          scriptSource: script,
+          objects: result.objects,
+          createdObjectIds: result.changes.createdObjectIds,
+          deletedObjectIds: result.changes.deletedObjectIds,
+        })
+      );
       setGeometrySelectedObjectId(result.selectedObjectId);
       if (options?.script != null) setGeometryProceduralScriptText(options.script);
       setGeometryProceduralScriptError(null);
@@ -17491,27 +17566,19 @@ const App: React.FC = () => {
   }, [geometryDerivedConstructionOverlays.byId, resolveGeometrySceneMeshById]);
   const geometryDependencyGraph = useMemo(() => {
     if (!geometryDependenciesPanelActive) {
-      return {
-        nodes: [] as GeometryDependencyNode[],
-        edges: [] as GeometryDependencyEdge[],
-        nodeById: new Map<string, GeometryDependencyNode>(),
-        brokenNodes: [] as GeometryDependencyNode[],
-      };
+      return emptyGeometryDependencyGraphView();
     }
-    const nodes: GeometryDependencyNode[] = [];
-    const edges: GeometryDependencyEdge[] = [];
-    const nodeById = new Map<string, GeometryDependencyNode>();
-    const edgeIds = new Set<string>();
-    const addNode = (node: GeometryDependencyNode) => {
-      if (nodeById.has(node.id)) return;
-      nodeById.set(node.id, node);
-      nodes.push(node);
+    const builder = createConstructionGraphBuilder(geometryConstructionGraph);
+    const addNode = (input: GeometryDependencyNodeInput) => {
+      const node: GeometryDependencyNode = {
+        ...input,
+        kind: constructionGraphKindFromGeometryDependencyKind(input.kind),
+        type: input.kind,
+      };
+      builder.addNode(node);
     };
-    const addEdge = (edge: GeometryDependencyEdge) => {
-      const key = `${edge.sourceId}->${edge.targetId}:${edge.relation}`;
-      if (edgeIds.has(key)) return;
-      edgeIds.add(key);
-      edges.push(edge);
+    const addEdge = (input: GeometryDependencyEdgeInput) => {
+      builder.addEdge(input);
     };
     addNode({
       id: "scene",
@@ -17792,6 +17859,9 @@ const App: React.FC = () => {
         relation: "compared-with",
       });
     }
+    const graphIndex = builder.build();
+    const nodes = graphIndex.graph.nodes as GeometryDependencyNode[];
+    const edges = graphIndex.graph.edges as GeometryDependencyEdge[];
     const brokenNodes = nodes.filter(
       (node) =>
         node.status === "broken-source" ||
@@ -17799,10 +17869,18 @@ const App: React.FC = () => {
         node.liveValidityKind === "missing-source" ||
         node.liveValidityKind === "broken-dependency"
     );
-    return { nodes, edges, nodeById, brokenNodes };
+    return {
+      ...graphIndex,
+      graph: graphIndex.graph,
+      nodes,
+      edges,
+      nodeById: graphIndex.nodeById as Map<string, GeometryDependencyNode>,
+      brokenNodes,
+    } satisfies GeometryDependencyGraphView;
   }, [
     geometryCompareObjectAId,
     geometryCompareObjectBId,
+    geometryConstructionGraph,
     geometryDatasetMeshObjects,
     geometryDerivedConstructions,
     geometryDerivedRelationConstraints,
@@ -17833,6 +17911,7 @@ const App: React.FC = () => {
     if (focusedBoxNode && geometrySelectedSceneObject?.id === focusedBoxNode.objectId) return geometryDependencyFocusedNodeId;
     const focusedBoxGroupNode = parseBoxDependencyGroupNodeId(geometryDependencyFocusedNodeId);
     if (focusedBoxGroupNode && geometrySelectedSceneObject?.id === focusedBoxGroupNode.objectId) return geometryDependencyFocusedNodeId;
+    if (geometryDependencyFocusedNodeId?.startsWith("script:")) return geometryDependencyFocusedNodeId;
     if (geometrySelectedMathConstructionId) return `math:${geometrySelectedMathConstructionId}`;
     if (geometrySelectedDerivedConstructionId) return `derived:${geometrySelectedDerivedConstructionId}`;
     if (geometrySelectedSceneObject) return `object:${geometrySelectedSceneObject.id}`;
@@ -17848,8 +17927,8 @@ const App: React.FC = () => {
     if (!nodeId) return null;
     const node = geometryDependencyGraph.nodeById.get(nodeId) ?? null;
     if (!node) return null;
-    const inputs = geometryDependencyGraph.edges.filter((edge) => edge.targetId === nodeId);
-    const outputs = geometryDependencyGraph.edges.filter((edge) => edge.sourceId === nodeId);
+    const inputs = (geometryDependencyGraph.incomingById.get(nodeId) ?? []) as GeometryDependencyEdge[];
+    const outputs = (geometryDependencyGraph.outgoingById.get(nodeId) ?? []) as GeometryDependencyEdge[];
     return { node, inputs, outputs };
   }, [geometryDependencyGraph, geometryInspectorSelectedDependencyNodeId]);
   const geometryConstructionDependencyTree = useMemo(() => {
@@ -17866,19 +17945,18 @@ const App: React.FC = () => {
       "derived-circle",
       "measurement",
     ]);
-    const visibleNodes = geometryDependencyGraph.nodes.filter((node) => visibleKinds.has(node.kind));
+    const visibleNodes = geometryDependencyGraph.nodes.filter((node) => visibleKinds.has(node.type));
     const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
+    const projection = projectConstructionGraph(geometryDependencyGraph.graph, { nodeIds: visibleNodeIds });
     const treeNodes: ConstructionDependencyTreeInputNode[] = visibleNodes.map((node) => ({
       id: node.id,
       label: node.label,
-      kind: node.kind,
+      kind: node.type,
       status: node.status,
       liveValidityKind: node.liveValidityKind,
       recomputeMs: node.recomputeMs,
     }));
-    const treeEdges: ConstructionDependencyTreeInputEdge[] = geometryDependencyGraph.edges.filter(
-      (edge) => visibleNodeIds.has(edge.sourceId) && visibleNodeIds.has(edge.targetId)
-    ).map((edge) => ({
+    const treeEdges: ConstructionDependencyTreeInputEdge[] = projection.edges.map((edge) => ({
       sourceId: edge.sourceId,
       targetId: edge.targetId,
       relation: edge.relation,
@@ -17900,7 +17978,7 @@ const App: React.FC = () => {
       "measurement",
     ]);
     const visibleNodeIds = new Set(
-      geometryDependencyGraph.nodes.filter((node) => visibleKinds.has(node.kind)).map((node) => node.id)
+      geometryDependencyGraph.nodes.filter((node) => visibleKinds.has(node.type)).map((node) => node.id)
     );
     const inputsById = new Map<string, Array<{ label: string; sourceId: string; sourceLabel: string; sourceKind: string }>>();
     for (const edge of geometryDependencyGraph.edges) {
@@ -17909,10 +17987,10 @@ const App: React.FC = () => {
       const source = geometryDependencyGraph.nodeById.get(edge.sourceId);
       if (!source) continue;
       const prev = inputsById.get(edge.targetId) ?? [];
-      const label = source.kind === "geometry-object" ? `Input ${String.fromCharCode(65 + prev.length)}` : "depends on";
+      const label = source.type === "geometry-object" ? `Input ${String.fromCharCode(65 + prev.length)}` : "depends on";
       inputsById.set(edge.targetId, [
         ...prev,
-        { label, sourceId: source.id, sourceLabel: source.label, sourceKind: source.kind },
+        { label, sourceId: source.id, sourceLabel: source.label, sourceKind: source.type },
       ]);
     }
     return inputsById;
@@ -17932,7 +18010,7 @@ const App: React.FC = () => {
       "measurement",
     ]);
     const visibleNodeIds = new Set(
-      geometryDependencyGraph.nodes.filter((node) => visibleKinds.has(node.kind)).map((node) => node.id)
+      geometryDependencyGraph.nodes.filter((node) => visibleKinds.has(node.type)).map((node) => node.id)
     );
     const outputsById = new Map<string, Array<{ label: string; targetId: string; targetLabel: string; targetKind: string }>>();
     for (const edge of geometryDependencyGraph.edges) {
@@ -17943,7 +18021,7 @@ const App: React.FC = () => {
       const prev = outputsById.get(edge.sourceId) ?? [];
       outputsById.set(edge.sourceId, [
         ...prev,
-        { label: edge.relation, targetId: target.id, targetLabel: target.label, targetKind: target.kind },
+        { label: edge.relation, targetId: target.id, targetLabel: target.label, targetKind: target.type },
       ]);
     }
     return outputsById;
@@ -17951,11 +18029,11 @@ const App: React.FC = () => {
   const geometryConstructionDependencyCounts = useMemo(() => {
     const counts = { objects: 0, points: 0, lines: 0, planes: 0, circles: 0, constraints: 0 };
     for (const node of geometryDependencyGraph.nodes) {
-      if (node.kind === "geometry-object") counts.objects += 1;
-      else if (node.kind === "derived-point") counts.points += 1;
-      else if (node.kind === "derived-line") counts.lines += 1;
-      else if (node.kind === "derived-plane") counts.planes += 1;
-      else if (node.kind === "derived-circle") counts.circles += 1;
+      if (node.type === "geometry-object") counts.objects += 1;
+      else if (node.type === "derived-point") counts.points += 1;
+      else if (node.type === "derived-line") counts.lines += 1;
+      else if (node.type === "derived-plane") counts.planes += 1;
+      else if (node.type === "derived-circle") counts.circles += 1;
     }
     counts.constraints = geometryMathConstructionRelationships.length + geometryDerivedRelationConstraints.length;
     return counts;
@@ -17975,20 +18053,19 @@ const App: React.FC = () => {
       "derived-circle",
       "measurement",
     ]);
-    const visibleNodes = geometryDependencyGraph.nodes.filter((node) => visibleKinds.has(node.kind));
+    const visibleNodes = geometryDependencyGraph.nodes.filter((node) => visibleKinds.has(node.type));
     const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
     if (!visibleNodeIds.has(geometryInspectorSelectedDependencyNodeId)) return [];
+    const projection = projectConstructionGraph(geometryDependencyGraph.graph, { nodeIds: visibleNodeIds });
     const treeNodes: ConstructionDependencyTreeInputNode[] = visibleNodes.map((node) => ({
       id: node.id,
       label: node.label,
-      kind: node.kind,
+      kind: node.type,
       status: node.status,
       liveValidityKind: node.liveValidityKind,
       recomputeMs: node.recomputeMs,
     }));
-    const treeEdges: ConstructionDependencyTreeInputEdge[] = geometryDependencyGraph.edges.filter(
-      (edge) => visibleNodeIds.has(edge.sourceId) && visibleNodeIds.has(edge.targetId)
-    ).map((edge) => ({
+    const treeEdges: ConstructionDependencyTreeInputEdge[] = projection.edges.map((edge) => ({
       sourceId: edge.sourceId,
       targetId: edge.targetId,
       relation: edge.relation,
@@ -18206,6 +18283,13 @@ const App: React.FC = () => {
       setGeometrySelectedMathConstructionId(null);
       setGeometrySelectedDerivedConstructionId(null);
       setGeometryProbeSelectionMode("face");
+    } else if (nodeId.startsWith("script:")) {
+      setGeometryDependencyFocusedNodeId(nodeId);
+      setGeometrySelectedObjectId(null);
+      setGeometrySelectedMathConstructionId(null);
+      setGeometrySelectedDerivedConstructionId(null);
+      setGeometryRightPanelTab("inspector");
+      setGeometryInspectorPanelTab("dependencies");
     }
     if (editableTarget) {
       setGeometryDependencyFocusedNodeId(nodeId);
@@ -18272,7 +18356,7 @@ const App: React.FC = () => {
           handleSelectGeometryDependencyNode(nodeId);
         }}
         aria-pressed={active}
-        title={`${node.label} · ${node.kind.replaceAll("-", " ")}`}
+        title={`${node.label} · ${node.type.replaceAll("-", " ")}`}
         style={{
           border: `1px solid ${active ? "#93c5fd" : "#dbe2ea"}`,
           borderRadius: 6,
@@ -18802,7 +18886,7 @@ const App: React.FC = () => {
       type = "Probe Selection";
     }
     const outputCount = nodeId
-      ? geometryDependencyGraph.edges.filter((edge) => edge.sourceId === nodeId && edge.relation !== "contains").length
+      ? (geometryDependencyGraph.outgoingById.get(nodeId) ?? []).filter((edge) => edge.relation !== "contains").length
       : 0;
     return { name, type: type.replace(/\b\w/g, (letter) => letter.toUpperCase()), outputCount };
   }, [
@@ -34305,13 +34389,18 @@ case "mobius":
           workbookBundlePayload,
           workbookBundleAssetMode,
           savedAt,
-          buildWorkspaceSceneDocument(workbookBundlePayload, geometryProceduralScriptText, savedAt)
+          buildWorkspaceSceneDocument(
+            workbookBundlePayload,
+            geometryProceduralScriptText,
+            geometryConstructionGraph,
+            savedAt
+          )
         ),
         null,
         2
       );
     },
-    [workbookBundlePayload, workbookBundleAssetMode, geometryProceduralScriptText]
+    [workbookBundlePayload, workbookBundleAssetMode, geometryConstructionGraph, geometryProceduralScriptText]
   );
 
   const markWorkbookManualSave = useCallback(
@@ -35136,6 +35225,12 @@ case "mobius":
         if (!decoded) return;
         setWorkbookBundleAssetMode(decoded.assetMode === "linked" ? "linked" : "embedded");
         const sceneExtension = decoded.sceneDocument ? getSceneDocumentExtension(decoded.sceneDocument) : undefined;
+        const importedConstructionGraph = decoded.sceneDocument
+          ? getSceneDocumentConstructionGraph(decoded.sceneDocument)
+          : undefined;
+        setGeometryConstructionGraph(importedConstructionGraph ?? createConstructionGraph());
+        const importedProceduralScript = sceneExtension?.scripts?.find((script) => script.id === "geometry-procedural");
+        if (importedProceduralScript) setGeometryProceduralScriptText(importedProceduralScript.source);
         const payload = decoded.payload as WorkbookReplayPayload;
         applyWorkbookPayload(
           !payload.workspace && sceneExtension?.workbookWorkspace
@@ -53233,6 +53328,7 @@ case "mobius":
                         clear | add box as b x=0 y=0 z=0 width=2 color=#8aa4ff | set b opacity=0.8 | delete b
                       </div>
                       <textarea
+                        data-testid="geometry-procedural-script-editor"
                         value={geometryProceduralScriptText}
                         onChange={(e) => setGeometryProceduralScriptText(e.target.value)}
                         rows={7}
@@ -62231,8 +62327,7 @@ case "mobius":
                   )}
                   {geometryMode === "procedural" && geometryProceduralPanelTab === "dependencies" ? (
                     <SceneDependencyGraph
-                      nodes={geometryDependencyGraph.nodes}
-                      edges={geometryDependencyGraph.edges}
+                      graph={geometryDependencyGraph.graph}
                       selectedId={geometryInspectorSelectedDependencyNodeId}
                       onSelect={handleSelectGeometryDependencyNode}
                     />

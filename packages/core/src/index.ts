@@ -1,4 +1,5 @@
 export * from "./commands";
+export * from "./constructionGraph";
 export * from "./geometry";
 export * from "./math";
 export * from "./sceneDocument";

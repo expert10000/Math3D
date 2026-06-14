@@ -83,6 +83,12 @@ export type SceneScriptExecutionStats = {
   deleted: number;
 };
 
+export type SceneScriptExecutionChanges = {
+  createdObjectIds: string[];
+  updatedObjectIds: string[];
+  deletedObjectIds: string[];
+};
+
 export type SceneScriptExecutionSuccess = {
   ok: true;
   commands: SceneScriptCommand[];
@@ -90,6 +96,7 @@ export type SceneScriptExecutionSuccess = {
   objects: GeometryObject[];
   selectedObjectId: string | null;
   stats: SceneScriptExecutionStats;
+  changes: SceneScriptExecutionChanges;
 };
 
 export type SceneScriptExecutionFailure = {

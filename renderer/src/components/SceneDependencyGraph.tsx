@@ -1,22 +1,9 @@
 import React, { useMemo, useState } from "react";
+import type { ConstructionGraph } from "@math3d/core";
 import { layoutDependencyDag } from "../geometry/dependencyDagLayout";
 
-export type SceneDependencyGraphNode = {
-  id: string;
-  label: string;
-  kind: string;
-  status: string;
-};
-
-export type SceneDependencyGraphEdge = {
-  sourceId: string;
-  targetId: string;
-  relation: string;
-};
-
 type Props = {
-  nodes: SceneDependencyGraphNode[];
-  edges: SceneDependencyGraphEdge[];
+  graph: ConstructionGraph;
   selectedId: string | null;
   onSelect: (id: string) => void;
 };
@@ -28,12 +15,14 @@ const nodeMeta = (kind: string) => {
   if (kind.includes("plane")) return { icon: "▭", color: "#6d28d9", fill: "#f5f3ff", border: "#a78bfa" };
   if (kind === "analysis") return { icon: "∑", color: "#be123c", fill: "#fff1f2", border: "#fb7185" };
   if (kind === "measurement") return { icon: "📏", color: "#475569", fill: "#f8fafc", border: "#94a3b8" };
+  if (kind === "scene-script") return { icon: "</>", color: "#0f766e", fill: "#f0fdfa", border: "#2dd4bf" };
   if (kind === "scene-root") return { icon: "◇", color: "#0f172a", fill: "#f1f5f9", border: "#64748b" };
   return { icon: "◆", color: "#1e3a8a", fill: "#eef2ff", border: "#818cf8" };
 };
 
-export const SceneDependencyGraph: React.FC<Props> = ({ nodes, edges, selectedId, onSelect }) => {
+export const SceneDependencyGraph: React.FC<Props> = ({ graph, selectedId, onSelect }) => {
   const [zoom, setZoom] = useState(1);
+  const { nodes, edges } = graph;
   const visibleEdges = useMemo(() => edges.filter((edge) => edge.relation !== "contains"), [edges]);
   const connectedNodeIds = useMemo(() => {
     const ids = new Set<string>();
@@ -41,7 +30,7 @@ export const SceneDependencyGraph: React.FC<Props> = ({ nodes, edges, selectedId
       ids.add(edge.sourceId);
       ids.add(edge.targetId);
     });
-    nodes.filter((node) => node.kind === "geometry-object").forEach((node) => ids.add(node.id));
+    nodes.filter((node) => node.type === "geometry-object").forEach((node) => ids.add(node.id));
     return ids;
   }, [nodes, visibleEdges]);
   const visibleNodes = useMemo(() => nodes.filter((node) => connectedNodeIds.has(node.id)), [connectedNodeIds, nodes]);
@@ -89,29 +78,51 @@ export const SceneDependencyGraph: React.FC<Props> = ({ nodes, edges, selectedId
               const targetY = target.y;
               const midY = sourceY + (targetY - sourceY) / 2;
               return (
-                <path
+                <g
                   key={`${edge.sourceId}-${edge.targetId}-${edge.relation}-${index}`}
-                  d={`M ${sourceX} ${sourceY} C ${sourceX} ${midY}, ${targetX} ${midY}, ${targetX} ${targetY}`}
-                  fill="none"
-                  stroke="#94a3b8"
-                  strokeWidth="1.4"
-                  markerEnd="url(#scene-dependency-arrow)"
                 >
-                  <title>{edge.relation}</title>
-                </path>
+                  <path
+                    d={`M ${sourceX} ${sourceY} C ${sourceX} ${midY}, ${targetX} ${midY}, ${targetX} ${targetY}`}
+                    fill="none"
+                    stroke="#94a3b8"
+                    strokeWidth="1.4"
+                    markerEnd="url(#scene-dependency-arrow)"
+                  >
+                    <title>{edge.relation}</title>
+                  </path>
+                  <text
+                    x={(sourceX + targetX) / 2}
+                    y={midY - 4}
+                    fill="#64748b"
+                    fontSize="7.5"
+                    fontWeight="700"
+                    textAnchor="middle"
+                  >
+                    {edge.relation}
+                  </text>
+                </g>
               );
             })}
             {visibleNodes.map((node) => {
               const position = layout.positions.get(node.id);
               if (!position) return null;
-              const meta = nodeMeta(node.kind);
+              const meta = nodeMeta(node.type);
               const selected = node.id === selectedId;
+              const label = node.label ?? node.id;
+              const ownedObjectCount =
+                node.type === "scene-script"
+                  ? visibleEdges.filter((edge) => edge.sourceId === node.id && edge.relation === "defines").length
+                  : 0;
+              const detail =
+                node.type === "scene-script"
+                  ? `owns ${ownedObjectCount} object${ownedObjectCount === 1 ? "" : "s"} · ${node.status ?? "valid"}`
+                  : `${node.type.replaceAll("-", " ")} · ${node.status ?? "valid"}`;
               return (
                 <g
                   key={node.id}
                   role="button"
                   tabIndex={0}
-                  aria-label={node.label}
+                  aria-label={label}
                   data-node-id={node.id}
                   onClick={() => onSelect(node.id)}
                   onKeyDown={(event) => {
@@ -130,12 +141,12 @@ export const SceneDependencyGraph: React.FC<Props> = ({ nodes, edges, selectedId
                     strokeWidth={selected ? 2.5 : 1.3}
                   />
                   <text x={position.x + 11} y={position.y + 20} fill={meta.color} fontSize="11" fontWeight="800">
-                    {meta.icon} {node.label.length > 20 ? `${node.label.slice(0, 19)}…` : node.label}
+                    {meta.icon} {label.length > 20 ? `${label.slice(0, 19)}…` : label}
                   </text>
                   <text x={position.x + 11} y={position.y + 36} fill="#64748b" fontSize="8.5" fontWeight="700">
-                    {node.kind.replaceAll("-", " ")} · {node.status}
+                    {detail}
                   </text>
-                  <title>{node.label}</title>
+                  <title>{label}</title>
                 </g>
               );
             })}

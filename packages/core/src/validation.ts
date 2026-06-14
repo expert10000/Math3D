@@ -1,4 +1,5 @@
 import { isFiniteNumber, isVec3 } from "./math";
+import { CONSTRUCTION_GRAPH_VERSION, indexConstructionGraph, type ConstructionGraph } from "./constructionGraph";
 import {
   SCENE_DOCUMENT_EXTENSION_KEY,
   SCENE_DOCUMENT_EXTENSION_VERSION,
@@ -80,6 +81,46 @@ const validateSceneDocumentExtension = (value: unknown, errors: string[], path: 
         if (!hasString(script.kind)) errors.push(`${path}.scripts[${i}].kind is required.`);
         if (!hasString(script.language)) errors.push(`${path}.scripts[${i}].language is required.`);
         if (typeof script.source !== "string") errors.push(`${path}.scripts[${i}].source must be a string.`);
+      }
+    }
+  }
+  if (value.constructionGraph !== undefined) {
+    const graphPath = `${path}.constructionGraph`;
+    if (!isRecord(value.constructionGraph)) {
+      errors.push(`${graphPath} must be an object when provided.`);
+    } else {
+      const graph = value.constructionGraph;
+      if (graph.version !== CONSTRUCTION_GRAPH_VERSION) {
+        errors.push(`${graphPath}.version must be ${CONSTRUCTION_GRAPH_VERSION}.`);
+      }
+      if (!Array.isArray(graph.nodes)) errors.push(`${graphPath}.nodes must be an array.`);
+      if (!Array.isArray(graph.edges)) errors.push(`${graphPath}.edges must be an array.`);
+      if (Array.isArray(graph.nodes) && Array.isArray(graph.edges)) {
+        let entriesValid = true;
+        for (let i = 0; i < graph.nodes.length; i += 1) {
+          const node = graph.nodes[i];
+          if (!isRecord(node) || !hasString(node.id) || !hasString(node.kind) || !hasString(node.type)) {
+            entriesValid = false;
+            errors.push(`${graphPath}.nodes[${i}] must have string id, kind, and type fields.`);
+          }
+        }
+        for (let i = 0; i < graph.edges.length; i += 1) {
+          const edge = graph.edges[i];
+          if (
+            !isRecord(edge) ||
+            !hasString(edge.id) ||
+            !hasString(edge.sourceId) ||
+            !hasString(edge.targetId) ||
+            !hasString(edge.relation)
+          ) {
+            entriesValid = false;
+            errors.push(`${graphPath}.edges[${i}] must have string id, sourceId, targetId, and relation fields.`);
+          }
+        }
+        if (entriesValid) {
+          const graphErrors = indexConstructionGraph(graph as unknown as ConstructionGraph).errors;
+          errors.push(...graphErrors.map((error) => `${graphPath}: ${error}`));
+        }
       }
     }
   }

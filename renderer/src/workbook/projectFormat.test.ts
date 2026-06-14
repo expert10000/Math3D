@@ -18,6 +18,11 @@ describe("workbook project format", () => {
       extensions: {
         "math3d.sceneDocument": {
           version: 1,
+          constructionGraph: {
+            version: 1,
+            nodes: [{ id: "script:geometry-procedural", kind: "script", type: "scene-script" }],
+            edges: [],
+          },
           scripts: [{ id: "script-1", kind: "workbook", language: "math3d-scene-script", source: "clear" }],
           workbookWorkspace: { version: 2 },
         },

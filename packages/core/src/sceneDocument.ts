@@ -1,5 +1,6 @@
 import type { Vec3 } from "./math";
 import type { GeometryObject, GeometryScene } from "./sceneObjects";
+import type { ConstructionGraph } from "./constructionGraph";
 
 export type SurfaceDefinition =
   | {
@@ -88,6 +89,7 @@ export type SceneDocumentScript = {
 
 export type SceneDocumentExtensionV1 = {
   version: typeof SCENE_DOCUMENT_EXTENSION_VERSION;
+  constructionGraph?: ConstructionGraph;
   scripts?: SceneDocumentScript[];
   workbookWorkspace?: unknown;
 };
@@ -129,3 +131,17 @@ export const withSceneDocumentExtension = (
     },
   },
 });
+
+export const getSceneDocumentConstructionGraph = (scene: SceneDocument): ConstructionGraph | undefined =>
+  getSceneDocumentExtension(scene)?.constructionGraph;
+
+export const withSceneDocumentConstructionGraph = (
+  scene: SceneDocument,
+  constructionGraph: ConstructionGraph
+): SceneDocument => {
+  const extension = getSceneDocumentExtension(scene);
+  return withSceneDocumentExtension(scene, {
+    ...(extension ?? {}),
+    constructionGraph,
+  });
+};
