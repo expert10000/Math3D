@@ -197,7 +197,10 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
     [scene, lineRadiusScale, segmentRadiusScale, edgeRadiusScale]
   );
 
-  const meshOverrideList = meshOverrides?.length ? meshOverrides : null;
+  const meshOverrideList = useMemo(
+    () => meshOverrides?.length ? [...(renderData.mesh ? [renderData.mesh] : []), ...meshOverrides] : null,
+    [meshOverrides, renderData.mesh]
+  );
   const mesh = meshOverrideList ? null : meshOverride ?? renderData.mesh;
   const highlightGroups = useMemo(() => {
     if (!highlightPolygons?.length) return [];

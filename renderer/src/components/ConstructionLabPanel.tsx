@@ -24,9 +24,17 @@ import {
   type ProblemCheckResult,
 } from "../geometry/problemGraph";
 import { formatConstraintValue } from "../geometry/analysis";
+import {
+  createGeometryObject,
+  type GeometryObject,
+  type GeometryObjectType,
+} from "../geometry/proceduralObjects";
 
 type BuildMode = "select" | "create" | "check";
 export type ConstructionWorkspaceTab = "task" | "build" | "inspect" | "claims" | "script" | "scene";
+export type ScratchSolidKind = Extract<GeometryObjectType, "box" | "sphere" | "cylinder" | "cone">;
+export type ScratchSolid = GeometryObject & { type: ScratchSolidKind };
+type ScratchPlacementKind = "point" | ScratchSolidKind;
 
 type ToolKind =
   | "point"
@@ -114,6 +122,8 @@ type SceneBundle = {
   nodes: ConstructionNode[];
   checks: ProblemCheckDef[];
   constraints?: ConstructionConstraintDef[];
+  solids?: ScratchSolid[];
+  selectedSolidId?: string | null;
 };
 
 type ConstructionLabExtension = {
@@ -124,6 +134,8 @@ type ConstructionLabExtension = {
   nodes: ConstructionNode[];
   checks: ProblemCheckDef[];
   constraints?: ConstructionConstraintDef[];
+  solids?: ScratchSolid[];
+  selectedSolidId?: string | null;
 };
 
 export type ConstructionLabState = {
@@ -140,6 +152,8 @@ export type ConstructionLabState = {
   constraints: ConstructionConstraintDef[];
   selectedNodeId: string;
   scriptText: string;
+  solids: ScratchSolid[];
+  selectedSolidId: string | null;
 };
 
 export type ConstructionLabSeed = {
@@ -148,6 +162,8 @@ export type ConstructionLabSeed = {
   constraints?: ConstructionConstraintDef[];
   selectedNodeId?: string | null;
   scriptText?: string;
+  solids?: ScratchSolid[];
+  selectedSolidId?: string | null;
 };
 
 type ConstructionLabPanelProps = {
@@ -159,6 +175,7 @@ type ConstructionLabPanelProps = {
   proceduralSceneScriptError?: string | null;
   onPointPlacementModeChange?: (enabled: boolean) => void;
   viewportPickPoint?: { x: number; y: number; z: number } | null;
+  viewportPickMeshKey?: string | null;
   onViewportPickConsumed?: () => void;
   viewportMovePoint?: { id: string; point: { x: number; y: number; z: number } } | null;
   onViewportMoveConsumed?: () => void;
@@ -177,6 +194,8 @@ type ConstructionHistoryState = {
   checkDefs: ProblemCheckDef[];
   constraints: ConstructionConstraintDef[];
   selectedNodeId: string;
+  solids: ScratchSolid[];
+  selectedSolidId: string | null;
   lockedNodeIds: string[];
   helperNodeIds: string[];
   disabledCheckIds: string[];
@@ -1189,7 +1208,27 @@ const normalizeConstructionSeed = (seed: ConstructionLabSeed | null | undefined)
     typeof seed.scriptText === "string" && seed.scriptText.trim().length
       ? seed.scriptText
       : buildScriptFromState(nodes, checks, constraints);
-  return { nodes, checks, constraints, selectedNodeId, scriptText };
+  const solids = Array.isArray(seed.solids)
+    ? seed.solids
+        .filter((solid): solid is ScratchSolid =>
+          !!solid && ["box", "sphere", "cylinder", "cone"].includes(solid.type)
+        )
+        .map((solid) => ({
+          ...solid,
+          params: { ...solid.params },
+          transform: {
+            position: { ...solid.transform.position },
+            rotation: { ...solid.transform.rotation },
+            scale: { ...solid.transform.scale },
+          },
+          material: { ...solid.material },
+        }))
+    : [];
+  const selectedSolidId =
+    typeof seed.selectedSolidId === "string" && solids.some((solid) => solid.id === seed.selectedSolidId)
+      ? seed.selectedSolidId
+      : null;
+  return { nodes, checks, constraints, selectedNodeId, scriptText, solids, selectedSolidId };
 };
 
 const loadPresets = (): ScriptPreset[] => {
@@ -1227,6 +1266,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   proceduralSceneScriptError,
   onPointPlacementModeChange,
   viewportPickPoint = null,
+  viewportPickMeshKey = null,
   onViewportPickConsumed,
   viewportMovePoint = null,
   onViewportMoveConsumed,
@@ -1250,11 +1290,14 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     seededState?.constraints ?? DEFAULT_INITIAL_SCENE.constraints.map((constraint) => ({ ...constraint }))
   );
   const [selectedNodeId, setSelectedNodeId] = useState<string>(() => seededState?.selectedNodeId ?? DEFAULT_INITIAL_SCENE.nodes[0]?.id ?? "");
+  const [solids, setSolids] = useState<ScratchSolid[]>(() => seededState?.solids ?? []);
+  const [selectedSolidId, setSelectedSolidId] = useState<string | null>(() => seededState?.selectedSolidId ?? null);
   const [objectSearchQuery, setObjectSearchQuery] = useState("");
 
   const [buildMode, setBuildMode] = useState<BuildMode>("create");
   const [workspaceTabState, setWorkspaceTabState] = useState<ConstructionWorkspaceTab>("build");
   const [tool, setTool] = useState<ToolKind>("point");
+  const [scratchPlacementKind, setScratchPlacementKind] = useState<ScratchPlacementKind | null>("point");
   const [toolForm, setToolForm] = useState<Record<string, string>>({});
   const [toolError, setToolError] = useState<string | null>(null);
 
@@ -1378,11 +1421,18 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       constraints,
       selectedNodeId,
       scriptText,
+      solids,
+      selectedSolidId,
     });
-  }, [onChange, solved, labels, checkResults, nodes, checkDefs, constraints, selectedNodeId, scriptText]);
+  }, [onChange, solved, labels, checkResults, nodes, checkDefs, constraints, selectedNodeId, scriptText, solids, selectedSolidId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setScratchPlacementKind(null);
+        setBuildMode("select");
+        return;
+      }
       const isPaletteShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k";
       if (!isPaletteShortcut) return;
       event.preventDefault();
@@ -1407,6 +1457,10 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const circleIds = useMemo(() => nodes.filter(isCircleNode).map((node) => node.id), [nodes]);
 
   const selectedNode = useMemo(() => nodes.find((node) => node.id === selectedNodeId) ?? null, [nodes, selectedNodeId]);
+  const selectedSolid = useMemo(
+    () => solids.find((solid) => solid.id === selectedSolidId) ?? null,
+    [selectedSolidId, solids]
+  );
   const selectedGraphObject = useMemo(
     () => solved.objects.find((entry) => entry.id === selectedNodeId) ?? null,
     [solved.objects, selectedNodeId]
@@ -2152,10 +2206,21 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     checkDefs: checkDefs.map((check) => ({ ...check })),
     constraints: constraints.map((constraint) => ({ ...constraint })),
     selectedNodeId,
+    solids: solids.map((solid) => ({
+      ...solid,
+      params: { ...solid.params },
+      transform: {
+        position: { ...solid.transform.position },
+        rotation: { ...solid.transform.rotation },
+        scale: { ...solid.transform.scale },
+      },
+      material: { ...solid.material },
+    })),
+    selectedSolidId,
     lockedNodeIds: Array.from(lockedNodeIds).sort(),
     helperNodeIds: Array.from(helperNodeIds).sort(),
     disabledCheckIds: Array.from(disabledCheckIds).sort(),
-  }), [checkDefs, constraints, disabledCheckIds, helperNodeIds, lockedNodeIds, nodes, selectedNodeId]);
+  }), [checkDefs, constraints, disabledCheckIds, helperNodeIds, lockedNodeIds, nodes, selectedNodeId, selectedSolidId, solids]);
 
   const snapshotSignature = useMemo(
     () => JSON.stringify(snapshotCurrent()),
@@ -2181,6 +2246,8 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     setCheckDefs(state.checkDefs.map((check) => ({ ...check })));
     setConstraints(state.constraints.map((constraint) => ({ ...constraint })));
     setSelectedNodeId(state.selectedNodeId);
+    setSolids(state.solids);
+    setSelectedSolidId(state.selectedSolidId);
     setLockedNodeIds(new Set(state.lockedNodeIds));
     setHelperNodeIds(new Set(state.helperNodeIds));
     setDisabledCheckIds(new Set(state.disabledCheckIds));
@@ -2277,7 +2344,17 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     () => toolRequiredFields[tool].filter((field) => !String(toolForm[field] ?? "").trim().length),
     [tool, toolForm]
   );
-  const pointPlacementMode = workspaceTab === "build" && buildMode === "create" && tool === "point";
+  const pointPlacementMode =
+    workspaceTab === "build" &&
+    buildMode === "create" &&
+    scratchPlacementKind === "point" &&
+    tool === "point";
+  const solidPlacementMode =
+    workspaceTab === "build" &&
+    buildMode === "create" &&
+    scratchPlacementKind != null &&
+    scratchPlacementKind !== "point";
+  const viewportPlacementMode = pointPlacementMode || solidPlacementMode;
 
   const useSelectedObjectsForTool = useCallback(() => {
     if (!selectedNodeId) {
@@ -2385,6 +2462,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const addNode = useCallback((node: ConstructionNode, nextMode: BuildMode = "select") => {
     setNodes((prev) => [...prev, node]);
     setSelectedNodeId(node.id);
+    setSelectedSolidId(null);
     setBuildMode(nextMode);
   }, []);
 
@@ -2394,11 +2472,34 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   }, []);
 
   useEffect(() => {
-    onPointPlacementModeChange?.(pointPlacementMode);
-  }, [onPointPlacementModeChange, pointPlacementMode]);
+    onPointPlacementModeChange?.(viewportPlacementMode);
+  }, [onPointPlacementModeChange, viewportPlacementMode]);
 
   useEffect(() => {
-    if (!pointPlacementMode || !viewportPickPoint) return;
+    if (!viewportPickPoint) return;
+    if (!viewportPlacementMode) {
+      if (viewportPickMeshKey && solids.some((solid) => solid.id === viewportPickMeshKey)) {
+        setSelectedSolidId(viewportPickMeshKey);
+        setSelectedNodeId("");
+        setBuildMode("select");
+        setWorkspaceTab("build");
+      }
+      onViewportPickConsumed?.();
+      return;
+    }
+    if (solidPlacementMode && scratchPlacementKind) {
+      const ids = new Set([...nodes.map((node) => node.id), ...solids.map((solid) => solid.id)]);
+      const id = uniqueId(scratchPlacementKind, ids);
+      const solid = createGeometryObject(scratchPlacementKind, id) as ScratchSolid;
+      solid.name = `${scratchPlacementKind[0].toUpperCase()}${scratchPlacementKind.slice(1)}`;
+      solid.transform.position = { ...viewportPickPoint };
+      setSolids((prev) => [...prev, solid]);
+      setSelectedSolidId(id);
+      setSelectedNodeId("");
+      onViewportPickConsumed?.();
+      return;
+    }
+    if (!pointPlacementMode) return;
     const ids = new Set(nodes.map((node) => node.id));
     const requestedId = cleanId(toolForm["id"] ?? "");
     const id = uniqueId(requestedId || "P", ids);
@@ -2409,6 +2510,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       point: { x: viewportPickPoint.x, y: viewportPickPoint.y, z: viewportPickPoint.z },
       style: { color: 0xef4444, size: 0.045 },
     }, "create");
+    setSelectedSolidId(null);
     setToolForm((prev) => ({
       ...prev,
       x: viewportPickPoint.x.toFixed(3),
@@ -2416,7 +2518,20 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       z: viewportPickPoint.z.toFixed(3),
     }));
     onViewportPickConsumed?.();
-  }, [addNode, nodes, onViewportPickConsumed, pointPlacementMode, toolForm, viewportPickPoint]);
+  }, [
+    addNode,
+    nodes,
+    onViewportPickConsumed,
+    pointPlacementMode,
+    scratchPlacementKind,
+    solidPlacementMode,
+    solids,
+    tool,
+    toolForm,
+    viewportPickMeshKey,
+    viewportPickPoint,
+    viewportPlacementMode,
+  ]);
 
   useEffect(() => {
     if (!viewportMovePoint) return;
@@ -2445,6 +2560,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
 
   useEffect(() => {
     const ids = new Set(nodes.map((node) => node.id));
+    if (selectedSolidId && solids.some((solid) => solid.id === selectedSolidId)) return;
     if (!ids.size) {
       if (selectedNodeId) setSelectedNodeId("");
       return;
@@ -2452,7 +2568,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     if (!selectedNodeId || !ids.has(selectedNodeId)) {
       setSelectedNodeId(nodes[0]?.id ?? "");
     }
-  }, [nodes, selectedNodeId]);
+  }, [nodes, selectedNodeId, selectedSolidId, solids]);
 
   useEffect(() => {
     const ids = new Set(nodes.map((node) => node.id));
@@ -3217,6 +3333,8 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       nodes,
       checks: checkDefs,
       constraints,
+      solids,
+      selectedSolidId,
     };
     const baseDoc: SceneDocument = {
       id: cleanId(sceneName) || `scene_${Date.now()}`,
@@ -3251,6 +3369,8 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
             constraints,
             selectedNodeId,
             scriptText,
+            solids,
+            selectedSolidId,
           },
         },
       },
@@ -3267,7 +3387,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     } catch (err) {
       setScriptError(`Scene export failed: ${String(err)}`);
     }
-  }, [checkDefs, constraints, nodes, sceneMetadata, sceneMode, sceneName, sceneType, scriptText, selectedNodeId, solved.scene]);
+  }, [checkDefs, constraints, nodes, sceneMetadata, sceneMode, sceneName, sceneType, scriptText, selectedNodeId, selectedSolidId, solids, solved.scene]);
 
   const exportSceneScript = useCallback(() => {
     try {
@@ -3293,6 +3413,8 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
         let nextNodes: ConstructionNode[] | null = null;
         let nextChecks: ProblemCheckDef[] | null = null;
         let nextConstraints: ConstructionConstraintDef[] = [];
+        let nextSolids: ScratchSolid[] = [];
+        let nextSelectedSolidId: string | null = null;
         let nextScript: string | null = null;
         let nextSceneName: string | null = null;
         let nextSceneType: SceneType = "task";
@@ -3313,6 +3435,8 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
             nextConstraints = Array.isArray(scratchScene.constraints)
               ? (scratchScene.constraints as ConstructionConstraintDef[])
               : [];
+            nextSolids = Array.isArray(scratchScene.solids) ? scratchScene.solids as ScratchSolid[] : [];
+            nextSelectedSolidId = typeof scratchScene.selectedSolidId === "string" ? scratchScene.selectedSolidId : null;
             nextScript =
               typeof scratchScene.scriptText === "string"
                 ? scratchScene.scriptText
@@ -3334,6 +3458,8 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
             nextNodes = extObj.nodes as ConstructionNode[];
             nextChecks = extObj.checks as ProblemCheckDef[];
             nextConstraints = Array.isArray(extObj.constraints) ? (extObj.constraints as ConstructionConstraintDef[]) : [];
+            nextSolids = Array.isArray(extObj.solids) ? extObj.solids as ScratchSolid[] : [];
+            nextSelectedSolidId = typeof extObj.selectedSolidId === "string" ? extObj.selectedSolidId : null;
             nextScript =
               typeof extObj.script === "string"
                 ? extObj.script
@@ -3360,6 +3486,8 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
           nextNodes = parsedLegacy.nodes as ConstructionNode[];
           nextChecks = parsedLegacy.checks as ProblemCheckDef[];
           nextConstraints = Array.isArray(parsedLegacy.constraints) ? (parsedLegacy.constraints as ConstructionConstraintDef[]) : [];
+          nextSolids = Array.isArray(parsedLegacy.solids) ? parsedLegacy.solids as ScratchSolid[] : [];
+          nextSelectedSolidId = typeof parsedLegacy.selectedSolidId === "string" ? parsedLegacy.selectedSolidId : null;
           nextScript = typeof parsedLegacy.script === "string" ? parsedLegacy.script : null;
           nextSceneName = typeof parsedLegacy.sceneName === "string" && parsedLegacy.sceneName.trim() ? parsedLegacy.sceneName : "Imported scene";
           nextSceneType = parsedLegacy.sceneType === "demo" || parsedLegacy.sceneType === "free" ? parsedLegacy.sceneType : "task";
@@ -3371,6 +3499,8 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
         setNodes(nextNodes);
         setCheckDefs(nextChecks);
         setConstraints(nextConstraints);
+        setSolids(nextSolids);
+        setSelectedSolidId(nextSolids.some((solid) => solid.id === nextSelectedSolidId) ? nextSelectedSolidId : null);
         setLockedNodeIds(new Set());
         setHelperNodeIds(new Set());
         setDisabledCheckIds(new Set());
@@ -3822,6 +3952,49 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
           Redo
         </button>
       </div>
+      {(
+        <div data-testid="scratch-placement-toolbar" style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            aria-pressed={scratchPlacementKind === "point"}
+            onClick={() => {
+              setWorkspaceTab("build");
+              setBuildMode("create");
+              setTool("point");
+              setScratchPlacementKind("point");
+            }}
+          >
+            Point
+          </button>
+          <button type="button" onClick={() => { setWorkspaceTab("build"); setBuildMode("create"); setTool("line"); setScratchPlacementKind(null); }}>Line</button>
+          <button type="button" onClick={() => { setWorkspaceTab("build"); setBuildMode("create"); setTool("circle"); setScratchPlacementKind(null); }}>Circle</button>
+          <span style={{ width: 1, alignSelf: "stretch", background: "#d1d5db" }} />
+          {(["box", "sphere", "cylinder", "cone"] as ScratchSolidKind[]).map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              aria-pressed={scratchPlacementKind === kind}
+              onClick={() => {
+                setWorkspaceTab("build");
+                setBuildMode("create");
+                setScratchPlacementKind(kind);
+              }}
+            >
+              {kind[0].toUpperCase() + kind.slice(1)}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => {
+              setWorkspaceTab("build");
+              setScratchPlacementKind(null);
+              setBuildMode("select");
+            }}
+          >
+            Select
+          </button>
+        </div>
+      )}
       <div style={{ display: "grid", gap: 4 }}>
         <input
           type="search"
@@ -3930,14 +4103,14 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
           <div style={{ fontSize: 12, fontWeight: 700 }}>Scene contents</div>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <div style={{ fontSize: 10, opacity: 0.72 }}>
-              {sceneObjectStats.visible}/{sceneObjectStats.total} visible
+              {sceneObjectStats.visible + solids.filter((solid) => solid.visible).length}/{sceneObjectStats.total + solids.length} visible
             </div>
             <button type="button" onClick={() => setHelpersVisible((v) => !v)} style={{ fontSize: 10, padding: "2px 6px" }}>
               {helpersVisible ? "Hide helpers" : "Show helpers"}
             </button>
           </div>
         </div>
-        {sceneObjectStats.total > 0 ? (
+        {sceneObjectStats.total > 0 || solids.length > 0 ? (
           <>
             <div style={{ fontSize: 10, opacity: 0.72 }}>
               Points {sceneObjectStats.point} · Lines {sceneObjectStats.line} · Circles {sceneObjectStats.circle}
@@ -3951,6 +4124,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   onMouseLeave={clearConstructionHover}
                   onClick={() => {
                     setSelectedNodeId(obj.id);
+                    setSelectedSolidId(null);
                     setBuildMode("select");
                   }}
                   style={{
@@ -4007,6 +4181,48 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   </span>
                 </div>
               ))}
+              {solids.map((solid) => (
+                <div
+                  key={solid.id}
+                  onClick={() => {
+                    setSelectedSolidId(solid.id);
+                    setSelectedNodeId("");
+                    setBuildMode("select");
+                    setWorkspaceTab("build");
+                  }}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "auto 1fr auto",
+                    gap: 6,
+                    alignItems: "center",
+                    border: selectedSolidId === solid.id ? "1px solid #93c5fd" : "1px solid #e5e7eb",
+                    borderRadius: 8,
+                    padding: "4px 6px",
+                    background: selectedSolidId === solid.id ? "#eff6ff" : "#fff",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={solid.visible}
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={() =>
+                      setSolids((prev) => prev.map((entry) => entry.id === solid.id ? { ...entry, visible: !entry.visible } : entry))
+                    }
+                  />
+                  <span style={{ fontSize: 11, fontWeight: 600 }}>{solid.name} <small>({solid.type})</small></span>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSolids((prev) => prev.filter((entry) => entry.id !== solid.id));
+                      setSelectedSolidId((current) => current === solid.id ? null : current);
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
               {!filteredSolvedObjects.length && normalizedObjectSearchQuery && (
                 <div style={{ fontSize: 11, opacity: 0.7 }}>No objects match this search.</div>
               )}
@@ -4031,7 +4247,10 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   <button
                     key={kind}
                     type="button"
-                    onClick={() => setTool(kind)}
+                    onClick={() => {
+                      setTool(kind);
+                      setScratchPlacementKind(kind === "point" ? "point" : null);
+                    }}
                     style={{
                       padding: "4px 8px",
                       borderRadius: 8,
@@ -4189,7 +4408,115 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       {buildMode === "select" && (
         <div style={{ display: "grid", gap: 10 }}>
           <div style={{ fontSize: 12, fontWeight: 700 }}>Inspector</div>
-          {selectedNode ? (
+          {selectedSolid ? (
+            <div data-testid="scratch-solid-inspector" style={{ display: "grid", gap: 7, fontSize: 11 }}>
+              <div>Selected solid type: <b>{selectedSolid.type}</b></div>
+              <label>
+                Name
+                <input
+                  value={selectedSolid.name}
+                  onChange={(event) =>
+                    setSolids((prev) => prev.map((solid) => solid.id === selectedSolid.id ? { ...solid, name: event.target.value } : solid))
+                  }
+                  style={{ width: "100%", marginTop: 4 }}
+                />
+              </label>
+              {(["position", "rotation", "scale"] as const).map((group) => (
+                <div key={group} style={{ display: "grid", gap: 3 }}>
+                  <strong>{group[0].toUpperCase() + group.slice(1)}</strong>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 4 }}>
+                    {(["x", "y", "z"] as const).map((axis) => (
+                      <label key={axis}>
+                        {axis}
+                        <input
+                          type="number"
+                          step={group === "rotation" ? 0.1 : 0.05}
+                          value={selectedSolid.transform[group][axis]}
+                          onChange={(event) => {
+                            const value = Number(event.target.value);
+                            if (!Number.isFinite(value)) return;
+                            setSolids((prev) => prev.map((solid) => solid.id === selectedSolid.id ? {
+                              ...solid,
+                              transform: {
+                                ...solid.transform,
+                                [group]: { ...solid.transform[group], [axis]: group === "scale" ? Math.max(0.001, value) : value },
+                              },
+                            } : solid));
+                          }}
+                          style={{ width: "100%" }}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <div style={{ display: "grid", gap: 4 }}>
+                <strong>Parameters</strong>
+                {Object.entries(selectedSolid.params).map(([key, raw]) => (
+                  <label key={key}>
+                    {key}
+                    {typeof raw === "boolean" ? (
+                      <input
+                        type="checkbox"
+                        checked={raw}
+                        onChange={(event) =>
+                          setSolids((prev) => prev.map((solid) => solid.id === selectedSolid.id ? {
+                            ...solid,
+                            params: { ...solid.params, [key]: event.target.checked },
+                          } : solid))
+                        }
+                      />
+                    ) : (
+                      <input
+                        type={typeof raw === "number" ? "number" : "text"}
+                        value={String(raw)}
+                        onChange={(event) => {
+                          const value = typeof raw === "number" ? Number(event.target.value) : event.target.value;
+                          if (typeof raw === "number" && !Number.isFinite(value)) return;
+                          setSolids((prev) => prev.map((solid) => solid.id === selectedSolid.id ? {
+                            ...solid,
+                            params: { ...solid.params, [key]: value },
+                          } : solid));
+                        }}
+                        style={{ width: "100%", marginTop: 2 }}
+                      />
+                    )}
+                  </label>
+                ))}
+              </div>
+              <label>
+                Color
+                <input
+                  type="color"
+                  value={`#${(selectedSolid.material.color ?? 0x8aa4ff).toString(16).padStart(6, "0")}`}
+                  onChange={(event) =>
+                    setSolids((prev) => prev.map((solid) => solid.id === selectedSolid.id ? {
+                      ...solid,
+                      material: { ...solid.material, color: Number.parseInt(event.target.value.slice(1), 16) },
+                    } : solid))
+                  }
+                />
+              </label>
+              <label>
+                Opacity
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={selectedSolid.material.opacity ?? 1}
+                  onChange={(event) => {
+                    const opacity = Number(event.target.value);
+                    if (!Number.isFinite(opacity)) return;
+                    setSolids((prev) => prev.map((solid) => solid.id === selectedSolid.id ? {
+                      ...solid,
+                      material: { ...solid.material, opacity: Math.max(0, Math.min(1, opacity)) },
+                    } : solid));
+                  }}
+                />
+              </label>
+            </div>
+          ) : selectedNode ? (
             <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
               <div>Selected object type: <b>{constructionNodeTypeLabel(selectedNode)}</b></div>
               {selectedNode.type !== "freePoint" && renderConstructionFormulaPanel(selectedNode)}

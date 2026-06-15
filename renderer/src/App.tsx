@@ -5864,7 +5864,25 @@ function normalizeConstructionLabSeed(raw: unknown): ConstructionLabSeed | null 
       ? seed.selectedNodeId
       : nodes[0].id;
   const scriptText = typeof seed.scriptText === "string" ? seed.scriptText : undefined;
-  return { nodes, checkDefs, constraints, selectedNodeId, scriptText };
+  const solids = Array.isArray(seed.solids)
+    ? seed.solids
+        .filter((solid) => !!solid && typeof solid.id === "string" && ["box", "sphere", "cylinder", "cone"].includes(solid.type))
+        .map((solid) => ({
+          ...solid,
+          params: { ...solid.params },
+          transform: {
+            position: { ...solid.transform.position },
+            rotation: { ...solid.transform.rotation },
+            scale: { ...solid.transform.scale },
+          },
+          material: { ...solid.material },
+        }))
+    : undefined;
+  const selectedSolidId =
+    typeof seed.selectedSolidId === "string" && solids?.some((solid) => solid.id === seed.selectedSolidId)
+      ? seed.selectedSolidId
+      : undefined;
+  return { nodes, checkDefs, constraints, selectedNodeId, scriptText, solids, selectedSolidId };
 }
 
 function normalizeConstructionLabSeedRecord(raw: unknown): Record<string, ConstructionLabSeed> {
@@ -8087,6 +8105,7 @@ const App: React.FC = () => {
     y: number;
     z: number;
   } | null>(null);
+  const [geometryPendingViewportMeshKey, setGeometryPendingViewportMeshKey] = useState<string | null>(null);
   const [geometryPendingViewportMovePoint, setGeometryPendingViewportMovePoint] = useState<{
     id: string;
     point: { x: number; y: number; z: number };
@@ -8272,6 +8291,7 @@ const App: React.FC = () => {
     meshKey?: string;
   }) => {
     setGeometryPendingViewportPoint(info.point);
+    setGeometryPendingViewportMeshKey(info.meshKey ?? null);
   }, []);
   const geometrySelectedConstructionFreePoint = useMemo(() => {
     const selectedId = geometryConstructionState?.selectedNodeId;
@@ -8375,6 +8395,7 @@ const App: React.FC = () => {
     if (geometryMode === "scratch" || geometryMode === "workbook") return;
     setGeometryPointPlacementEnabled(false);
     setGeometryPendingViewportPoint(null);
+    setGeometryPendingViewportMeshKey(null);
     setGeometryPendingViewportMovePoint(null);
     geometryProblemDragRef.current = null;
     setGeometryProblemCameraOverride(null);
@@ -20448,6 +20469,27 @@ const App: React.FC = () => {
     geometryPrincipalProjectionYZ,
     geometryPrincipalProjectionZX,
   ]);
+  const geometryScratchSolidMeshOverrides = useMemo(() => {
+    if (geometryMode !== "scratch" && geometryMode !== "workbook") return null;
+    const solids = geometryConstructionState?.solids ?? [];
+    const meshes = solids.flatMap((solid) => {
+      if (!solid.visible) return [];
+      const resolved = buildSurfaceMeshFromGeometryObjectSnapshot(solid, solid.name);
+      if (!resolved) return [];
+      return [{
+        ...resolved.mesh,
+        id: solid.id,
+        label: solid.name,
+        color: solid.material.color,
+        opacity: solid.material.opacity,
+        roughness: solid.material.roughness,
+        metalness: solid.material.metalness,
+        flatShading: resolved.flatShading,
+        transform: resolved.transform,
+      }];
+    });
+    return meshes.length ? meshes : null;
+  }, [geometryConstructionState?.solids, geometryMode]);
   const geometryScene: GeometryScene =
     geometryMode === "procedural"
       ? proceduralScene
@@ -21298,6 +21340,8 @@ const App: React.FC = () => {
       constraints: geometryConstructionState.constraints,
       selectedNodeId: geometryConstructionState.selectedNodeId,
       scriptText: geometryConstructionState.scriptText,
+      solids: geometryConstructionState.solids,
+      selectedSolidId: geometryConstructionState.selectedSolidId,
     });
     if (!nextSeed) return;
     if (geometryMode === "scratch") {
@@ -52217,7 +52261,13 @@ case "mobius":
                     lineRadiusScale={geometryMode === "demo" ? geometryDemoLineRadiusScale : 1}
                     segmentRadiusScale={geometryMode === "demo" ? geometryDemoSegmentRadiusScale : 1}
                     edgeRadiusScale={geometryMode === "demo" ? geometryDemoEdgeRadiusScale : 1}
-                    meshOverrides={geometryMode === "procedural" ? proceduralMeshSet.meshes : null}
+                    meshOverrides={
+                      geometryMode === "procedural"
+                        ? proceduralMeshSet.meshes
+                        : geometryMode === "scratch" || geometryMode === "workbook"
+                          ? geometryScratchSolidMeshOverrides
+                          : null
+                    }
                     wireframe={geometryWireframe}
                     showPlanes={geometryShowPlanes}
                     planeGridSettings={planeGridSettings}
@@ -61572,7 +61622,11 @@ case "mobius":
                       proceduralSceneScriptError={geometryProceduralScriptError}
                       onPointPlacementModeChange={setGeometryPointPlacementEnabled}
                       viewportPickPoint={geometryPendingViewportPoint}
-                      onViewportPickConsumed={() => setGeometryPendingViewportPoint(null)}
+                      viewportPickMeshKey={geometryPendingViewportMeshKey}
+                      onViewportPickConsumed={() => {
+                        setGeometryPendingViewportPoint(null);
+                        setGeometryPendingViewportMeshKey(null);
+                      }}
                       viewportMovePoint={geometryPendingViewportMovePoint}
                       onViewportMoveConsumed={() => setGeometryPendingViewportMovePoint(null)}
                       onFocusObjectInScene={handleConstructionLabFocusObjectInScene}
@@ -62695,7 +62749,13 @@ case "mobius":
                   lineRadiusScale={geometryMode === "demo" ? geometryDemoLineRadiusScale : 1}
                   segmentRadiusScale={geometryMode === "demo" ? geometryDemoSegmentRadiusScale : 1}
                   edgeRadiusScale={geometryMode === "demo" ? geometryDemoEdgeRadiusScale : 1}
-                  meshOverrides={geometryProceduralMeshOverridesForViewer}
+                  meshOverrides={
+                    geometryMode === "procedural"
+                      ? geometryProceduralMeshOverridesForViewer
+                      : geometryMode === "scratch" || geometryMode === "workbook"
+                        ? geometryScratchSolidMeshOverrides
+                        : null
+                  }
                   extraOverlayPolylineGroups={
                     geometryMode === "scratch" || geometryMode === "workbook"
                       ? geometryConstructionHoverOverlays.groups
@@ -62827,7 +62887,8 @@ case "mobius":
                   pickEnabled={
                     geometryMode === "demo" ||
                     (geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations") ||
-                    ((geometryMode === "scratch" || geometryMode === "workbook") && geometryPointPlacementEnabled)
+                    geometryMode === "scratch" ||
+                    geometryMode === "workbook"
                   }
                   onPick={
                     geometryMode === "demo"
@@ -62848,7 +62909,13 @@ case "mobius":
                   onPickHoverEnd={
                     geometryMode === "procedural" ? handleProceduralPickHoverEnd : undefined
                   }
-                  inspectSelectionMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
+                  inspectSelectionMeshKey={
+                    geometryMode === "procedural"
+                      ? geometrySelectedObjectId
+                      : geometryMode === "scratch" || geometryMode === "workbook"
+                        ? geometryConstructionState?.selectedSolidId ?? null
+                        : null
+                  }
                     />
                   )}
                 </div>
