@@ -8,6 +8,7 @@ import {
   type ConstructionGraphNodeStatus,
 } from "@math3d/core";
 import type { GeometryObject } from "./proceduralObjects";
+import { synchronizeGeometryParameterGraph } from "./constructionGraphParameters";
 
 export type ConstructionGraphNodeInput = Omit<ConstructionGraphNode, "kind" | "type"> & {
   kind: ConstructionGraphNode["kind"];
@@ -130,7 +131,7 @@ export const replaceGeometryObjectsInConstructionGraph = (
       (!edge.sourceId.startsWith("object:") || objectNodeIds.has(edge.sourceId)) &&
       (!edge.targetId.startsWith("object:") || objectNodeIds.has(edge.targetId))
   );
-  return createConstructionGraph(nodes, edges);
+  return synchronizeGeometryParameterGraph(createConstructionGraph(nodes, edges), objects);
 };
 
 export const applyGeometryObjectGraphCommand = (

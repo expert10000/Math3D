@@ -160,6 +160,11 @@ import {
   undoConstructionGraphHistory,
 } from "./geometry/constructionGraphBuilder";
 import {
+  geometryParameterNodeId,
+  isGeometryParameterNodeData,
+  setGeometryParameterExpression,
+} from "./geometry/constructionGraphParameters";
+import {
   GEOMETRY_GALLERY_CARD_BY_ID,
   GEOMETRY_GALLERY_CARDS,
   GEOMETRY_GALLERY_CATEGORIES,
@@ -10507,6 +10512,14 @@ const App: React.FC = () => {
       prev.map((o) => (o.id === id ? { ...o, params: { ...o.params, [key]: value } } : o))
     );
   }, [geometryLockedObjectIds, geometryObjects, queueGeometryHistoryIntent]);
+  const handleSetGeometryParameterExpression = useCallback((objectId: string, key: string, expression: string) => {
+    if (geometryLockedObjectIds.has(objectId)) return;
+    setGeometryConstructionGraph((graph) => {
+      const next = setGeometryParameterExpression(graph, geometryParameterNodeId(objectId, `params.${key}`), expression);
+      geometryGraphHistoryRef.current = commitConstructionGraphHistory(geometryGraphHistoryRef.current, graph);
+      return next;
+    });
+  }, [geometryLockedObjectIds]);
   const geometryProbeSelectionDetailsRef = useRef<GeometryProbeSelectionDetails | null>(null);
   const handleUpdateGeometryObjectParam = useCallback(
     (id: string, key: string, value: number | boolean | string) => {
@@ -47759,6 +47772,7 @@ case "mobius":
                     { key: "scene", id: "scene" as const, label: "Scene" },
                     { key: "construct", id: "construct" as const, label: "Build" },
                     { key: "transform", id: "transform" as const, label: "Edit" },
+                    { key: "definition", id: "definition" as const, label: "Definition" },
                     { key: "view", id: "view" as const, label: "View" },
                     { key: "history", id: "history" as const, label: "History" },
                     { key: "script", id: "script" as const, label: "Script" },
@@ -47794,20 +47808,6 @@ case "mobius":
                       </button>
                     );
                   })}
-                  <button
-                    data-testid="geometry-procedural-panel-definition"
-                    type="button"
-                    onClick={() => {
-                      setGeometryProceduralPanelTab("definition");
-                      setShowRightPanel(true);
-                      setGeometryRightPanelTab("inspector");
-                      setGeometryInspectorPanelTab("properties");
-                    }}
-                    aria-pressed={geometryProceduralPanelTab === "definition"}
-                    style={{ position: "absolute", width: 1, height: 1, padding: 0, border: 0, opacity: 0, right: 2, bottom: 2 }}
-                  >
-                    Definition
-                  </button>
                   <button
                     data-testid="geometry-procedural-panel-dependencies"
                     type="button"
@@ -53543,7 +53543,7 @@ case "mobius":
 
                           <div style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: "8px 10px", background: "#fff", display: "grid", gap: 7 }}>
                             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
-                              <div style={{ fontSize: 11, fontWeight: 800 }}>Parameters</div>
+                              <div style={{ fontSize: 11, fontWeight: 800 }}>Parameter Manager</div>
                               {geometrySelectedObject && (
                                 <span style={{ fontSize: 10, color: "#64748b" }}>
                                   {geometryObjectLiveRebuild ? "Updates live" : "Rebuild to apply"}
@@ -53555,12 +53555,31 @@ case "mobius":
                                 ? GEOMETRY_OBJECT_REGISTRY[geometrySelectedObject.type]?.params.find((param) => param.id === row.id)
                                 : null;
                               const disabled = !!geometrySelectedObject && geometryLockedObjectIds.has(geometrySelectedObject.id);
+                              const parameterNode = geometrySelectedObject
+                                ? geometryConstructionGraph.nodes.find(
+                                    (node) => node.id === geometryParameterNodeId(geometrySelectedObject.id, `params.${row.id}`)
+                                  )
+                                : null;
+                              const parameterData = isGeometryParameterNodeData(parameterNode?.data) ? parameterNode.data : null;
+                              const expression = parameterData?.expression ?? "";
+                              const dependentCount = parameterNode
+                                ? geometryConstructionGraph.edges.filter(
+                                    (edge) => edge.sourceId === parameterNode.id && edge.targetId.startsWith("parameter:")
+                                  ).length
+                                : 0;
                               return (
                                 <label
                                   key={`definition-parameter-${row.id}`}
                                   style={{ display: "grid", gridTemplateColumns: "minmax(105px, 0.8fr) minmax(0, 1.2fr)", gap: 8, alignItems: "center", fontSize: 10.5 }}
                                 >
-                                  <span>{row.label}</span>
+                                  <span>
+                                    {row.label}
+                                    {dependentCount > 0 && (
+                                      <small style={{ display: "block", color: "#b45309" }}>
+                                        affects {dependentCount}
+                                      </small>
+                                    )}
+                                  </span>
                                   {geometrySelectedObject && paramDef?.kind === "toggle" ? (
                                     <input
                                       type="checkbox"
@@ -53579,18 +53598,43 @@ case "mobius":
                                       ))}
                                     </select>
                                   ) : geometrySelectedObject && typeof row.value === "number" ? (
-                                    <input
-                                      type="number"
-                                      value={row.value}
-                                      min={paramDef?.min}
-                                      max={paramDef?.max}
-                                      step={paramDef?.step ?? 0.1}
-                                      disabled={disabled}
-                                      onChange={(event) => {
-                                        const value = Number(event.target.value);
-                                        if (Number.isFinite(value)) handleUpdateGeometryObjectParam(geometrySelectedObject.id, row.id, value);
-                                      }}
-                                    />
+                                    <span style={{ display: "grid", gap: 4 }}>
+                                      <input
+                                        data-testid={`geometry-parameter-value-${row.id}`}
+                                        type="number"
+                                        value={row.value}
+                                        min={paramDef?.min}
+                                        max={paramDef?.max}
+                                        step={paramDef?.step ?? 0.1}
+                                        disabled={disabled || !!expression}
+                                        onChange={(event) => {
+                                          const value = Number(event.target.value);
+                                          if (Number.isFinite(value)) handleUpdateGeometryObjectParam(geometrySelectedObject.id, row.id, value);
+                                        }}
+                                      />
+                                      <input
+                                        key={`expression-${row.id}-${expression}`}
+                                        data-testid={`geometry-parameter-expression-${row.id}`}
+                                        type="text"
+                                        defaultValue={expression}
+                                        placeholder="Expression, e.g. box.width * 0.75"
+                                        disabled={disabled}
+                                        onBlur={(event) =>
+                                          handleSetGeometryParameterExpression(geometrySelectedObject.id, row.id, event.target.value)
+                                        }
+                                        onKeyDown={(event) => {
+                                          if (event.key === "Enter") event.currentTarget.blur();
+                                        }}
+                                        style={{
+                                          fontFamily: "monospace",
+                                          fontSize: 9.5,
+                                          borderColor: parameterNode?.status === "invalid" ? "#dc2626" : undefined,
+                                        }}
+                                      />
+                                      {parameterData?.error && (
+                                        <small style={{ color: "#b42318" }}>{parameterData.error}</small>
+                                      )}
+                                    </span>
                                   ) : (
                                     <code style={{ color: "#334155", overflowWrap: "anywhere" }}>{String(row.value)}</code>
                                   )}

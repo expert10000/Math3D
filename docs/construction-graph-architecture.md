@@ -72,3 +72,20 @@ instead of owning independent React object state.
 Procedural Geometry also keeps bounded graph snapshots for command history.
 Undo and redo restore the complete graph, including script ownership edges, so
 views cannot drift apart while navigating history.
+
+## Graph parameters and expressions
+
+Every procedural geometry parameter and transform scalar is represented by a
+persisted `parameter` node. A parameter has a `depends-on` edge to the geometry
+object it defines. Expressions add parameter-to-parameter dependency edges:
+
+```text
+box.height = box.width * 0.75
+sphere.radius = box.width / 2
+```
+
+The parameter engine resolves object IDs or unique object names, evaluates
+arithmetic expressions in graph topological order, updates affected geometry
+definitions, and marks unresolved or cyclic expressions invalid. The Definition
+Editor acts as the Parameter Manager, while the Dependency View projects the
+same nodes and downstream effects.

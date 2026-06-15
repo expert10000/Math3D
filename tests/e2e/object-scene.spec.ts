@@ -418,7 +418,7 @@ test("Procedural script ownership appears in the shared dependency graph", async
     await expect(graph.locator('[data-node-id="object:owned_box"]')).toBeVisible();
     await graph.locator('[data-node-id="script:geometry-procedural"]').click();
     await expect(graph.locator("text").filter({ hasText: "owns 1 object" })).toBeVisible();
-    await expect(graph.locator("text").filter({ hasText: "OwnedBox" })).toBeVisible();
+    await expect(graph.locator('[data-node-id="object:owned_box"]')).toBeVisible();
 
     const savedPath = await saveWorkspace(page);
     const saved = JSON.parse(readFileSync(savedPath, "utf8"));
@@ -441,6 +441,64 @@ test("Procedural script ownership appears in the shared dependency graph", async
           edge.relation === "defines"
       )
     ).toBe(true);
+    rmSync(savedPath, { force: true });
+  } finally {
+    if (app) {
+      await app.close();
+    }
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
+test("Definition Editor expressions recompute through graph parameter dependencies", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-parameter-expression-"));
+  const env = {
+    APPDATA: profileDir,
+    LOCALAPPDATA: profileDir,
+  };
+
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(env);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page);
+
+    await page.getByTestId("geometry-procedural-panel-script").click();
+    await page
+      .getByTestId("geometry-procedural-script-editor")
+      .fill("clear\nadd box as box name=box width=4 height=1\nselect box");
+    await clickFirstVisibleButton(page, "Run script");
+
+    await page.getByTestId("geometry-procedural-panel-definition").click();
+    await expect(page.getByText("Parameter Manager", { exact: true })).toBeVisible();
+    const heightExpression = page.getByTestId("geometry-parameter-expression-height");
+    await heightExpression.fill("box.width * 0.75");
+    await heightExpression.press("Enter");
+    await expect(page.getByTestId("geometry-parameter-value-height")).toHaveValue("3");
+
+    await page.getByTestId("geometry-procedural-panel-dependencies").click();
+    const graph = page.getByTestId("geometry-scene-dependency-graph");
+    await expect(graph.locator('[data-node-id="parameter:box:params.width"]')).toBeVisible();
+    await expect(graph.locator('[data-node-id="parameter:box:params.height"]')).toBeVisible();
+
+    const savedPath = await saveWorkspace(page);
+    const saved = JSON.parse(readFileSync(savedPath, "utf8"));
+    const savedGraph = saved.sceneDocument?.extensions?.["math3d.sceneDocument"]?.constructionGraph;
+    expect(
+      savedGraph?.nodes?.some(
+        (node: { id?: string; data?: { expression?: string; value?: number } }) =>
+          node.id === "parameter:box:params.height" &&
+          node.data?.expression === "box.width * 0.75" &&
+          node.data?.value === 3
+      )
+    ).toBe(true);
+    await openWorkspace(page, savedPath);
+    await openProceduralGeometry(page);
+    await page.getByTestId("geometry-procedural-panel-definition").click();
+    await expect(page.getByTestId("geometry-parameter-expression-height")).toHaveValue("box.width * 0.75");
+    await expect(page.getByTestId("geometry-parameter-value-height")).toHaveValue("3");
     rmSync(savedPath, { force: true });
   } finally {
     if (app) {

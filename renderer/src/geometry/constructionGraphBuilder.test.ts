@@ -75,8 +75,9 @@ describe("construction graph builder", () => {
     const object = { ...createGeometryObject("box", "new"), name: "New Box" };
     const next = synchronizeGeometryObjectGraph(graph, [object]);
 
-    expect(next.nodes.map((node) => node.id)).toEqual(["script:main", "object:new"]);
-    expect(next.edges).toEqual([]);
+    expect(next.nodes.slice(0, 2).map((node) => node.id)).toEqual(["script:main", "object:new"]);
+    expect(next.nodes.some((node) => node.id === "parameter:new:params.width")).toBe(true);
+    expect(next.edges.some((edge) => edge.sourceId === "parameter:new:params.width" && edge.targetId === "object:new")).toBe(true);
     expect(next.nodes[1]?.label).toBe("New Box");
     expect(next.nodes[1]?.data).toEqual(object);
   });
