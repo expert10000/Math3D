@@ -477,11 +477,23 @@ test("Definition Editor expressions recompute through graph parameter dependenci
     await heightExpression.fill("box.width * 0.75");
     await heightExpression.press("Enter");
     await expect(page.getByTestId("geometry-parameter-value-height")).toHaveValue("3");
+    await expect(page.getByTestId("geometry-analysis-volume")).toContainText("12");
+    await page
+      .getByTestId("geometry-claims-editor")
+      .fill(
+        "claim box.height = box.width * 0.75\nclaim box.volume > 10\nclaim box.volume > 20\nclaim missing.volume > 1"
+      );
+    await page.getByTestId("geometry-evaluate-claims").click();
+    await expect(page.locator('[data-testid="geometry-claim-verified"]')).toHaveCount(2);
+    await expect(page.locator('[data-testid="geometry-claim-failed"]')).toHaveCount(1);
+    await expect(page.locator('[data-testid="geometry-claim-unresolved"]')).toHaveCount(1);
 
     await page.getByTestId("geometry-procedural-panel-dependencies").click();
     const graph = page.getByTestId("geometry-scene-dependency-graph");
     await expect(graph.locator('[data-node-id="parameter:box:params.width"]')).toBeVisible();
     await expect(graph.locator('[data-node-id="parameter:box:params.height"]')).toBeVisible();
+    await expect(graph.locator('[data-node-id="analysis:box:volume"]')).toBeVisible();
+    await expect(graph.locator('[data-node-id="claim:1"]')).toBeVisible();
 
     const savedPath = await saveWorkspace(page);
     const saved = JSON.parse(readFileSync(savedPath, "utf8"));
@@ -494,11 +506,18 @@ test("Definition Editor expressions recompute through graph parameter dependenci
           node.data?.value === 3
       )
     ).toBe(true);
+    expect(
+      savedGraph?.nodes?.some(
+        (node: { id?: string; data?: { result?: string } }) =>
+          node.id === "claim:1" && node.data?.result === "verified"
+      )
+    ).toBe(true);
     await openWorkspace(page, savedPath);
     await openProceduralGeometry(page);
     await page.getByTestId("geometry-procedural-panel-definition").click();
     await expect(page.getByTestId("geometry-parameter-expression-height")).toHaveValue("box.width * 0.75");
     await expect(page.getByTestId("geometry-parameter-value-height")).toHaveValue("3");
+    await expect(page.locator('[data-testid="geometry-claim-verified"]')).toHaveCount(2);
     rmSync(savedPath, { force: true });
   } finally {
     if (app) {

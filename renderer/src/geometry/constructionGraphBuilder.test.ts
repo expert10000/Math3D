@@ -94,7 +94,7 @@ describe("construction graph builder", () => {
     expect(projectGeometryObjectsFromConstructionGraph(updated)).toEqual([
       { ...box, name: "Graph Box", visible: false },
     ]);
-    expect(updated.nodes[0]).toMatchObject({
+    expect(updated.nodes.find((node) => node.id === "object:box")).toMatchObject({
       id: "object:box",
       label: "Graph Box",
       visible: false,

@@ -165,6 +165,12 @@ import {
   setGeometryParameterExpression,
 } from "./geometry/constructionGraphParameters";
 import {
+  getGeometryClaimSources,
+  isGeometryAnalysisNodeData,
+  isGeometryClaimNodeData,
+  synchronizeGeometryClaimGraph,
+} from "./geometry/constructionGraphAnalysisClaims";
+import {
   GEOMETRY_GALLERY_CARD_BY_ID,
   GEOMETRY_GALLERY_CARDS,
   GEOMETRY_GALLERY_CATEGORIES,
@@ -8540,6 +8546,10 @@ const App: React.FC = () => {
   const [geometryProceduralScriptText, setGeometryProceduralScriptText] = useState(PROCEDURAL_SCENE_SCRIPT_STARTER);
   const [geometryProceduralScriptError, setGeometryProceduralScriptError] = useState<string | null>(null);
   const [geometryProceduralScriptStatus, setGeometryProceduralScriptStatus] = useState<string | null>(null);
+  const [geometryClaimDraftText, setGeometryClaimDraftText] = useState("");
+  useEffect(() => {
+    setGeometryClaimDraftText(getGeometryClaimSources(geometryConstructionGraph).join("\n"));
+  }, [geometryConstructionGraph]);
   const [geometryBakeError, setGeometryBakeError] = useState<string | null>(null);
   const geometryHistoryIntentQueueRef = useRef<Map<string, GeometryQueuedHistoryIntent[]>>(new Map());
   const [geometryGizmoEnabled, setGeometryGizmoEnabled] = useState(true);
@@ -10520,6 +10530,14 @@ const App: React.FC = () => {
       return next;
     });
   }, [geometryLockedObjectIds]);
+  const handleEvaluateGeometryClaims = useCallback(() => {
+    const sources = geometryClaimDraftText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    setGeometryConstructionGraph((graph) => {
+      const next = synchronizeGeometryClaimGraph(graph, sources);
+      geometryGraphHistoryRef.current = commitConstructionGraphHistory(geometryGraphHistoryRef.current, graph);
+      return next;
+    });
+  }, [geometryClaimDraftText]);
   const geometryProbeSelectionDetailsRef = useRef<GeometryProbeSelectionDetails | null>(null);
   const handleUpdateGeometryObjectParam = useCallback(
     (id: string, key: string, value: number | boolean | string) => {
@@ -19227,6 +19245,25 @@ const App: React.FC = () => {
     geometrySelectedSceneObject,
     geometryObjects,
   ]);
+  const geometrySelectedGraphAnalyses = useMemo(() => {
+    if (!geometrySelectedObject) return [];
+    return geometryConstructionGraph.nodes
+      .filter(
+        (node) =>
+          node.kind === "analysis" &&
+          isGeometryAnalysisNodeData(node.data) &&
+          node.data.objectId === geometrySelectedObject.id
+      )
+      .map((node) => ({ node, data: node.data }))
+      .sort((a, b) => a.data.analysis.localeCompare(b.data.analysis));
+  }, [geometryConstructionGraph, geometrySelectedObject]);
+  const geometryGraphClaims = useMemo(
+    () =>
+      geometryConstructionGraph.nodes
+        .filter((node) => node.kind === "claim" && isGeometryClaimNodeData(node.data))
+        .map((node) => ({ node, data: node.data })),
+    [geometryConstructionGraph]
+  );
   const handleUpdateSelectedDerivedEditParams = useCallback(
     (patch: NonNullable<GeometryDerivedConstructionObject["params"]>) => {
       if (!geometrySelectedDerivedConstructionId) return;
@@ -53649,6 +53686,68 @@ case "mobius":
                                 Rebuild object
                               </button>
                             )}
+                          </div>
+
+                          <div
+                            data-testid="geometry-live-analysis"
+                            style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: "8px 10px", background: "#fff", display: "grid", gap: 7 }}
+                          >
+                            <div style={{ fontSize: 11, fontWeight: 800 }}>Live Analysis</div>
+                            {geometrySelectedGraphAnalyses.map(({ node, data }) => (
+                              <button
+                                key={node.id}
+                                data-testid={`geometry-analysis-${data.analysis}`}
+                                type="button"
+                                onClick={() => handleSelectGeometryDependencyNode(node.id)}
+                                style={{ display: "flex", justifyContent: "space-between", gap: 8, textAlign: "left", padding: "6px 8px" }}
+                              >
+                                <span>{data.analysis}</span>
+                                <strong>{data.value == null ? "unavailable" : fmt(data.value)}</strong>
+                              </button>
+                            ))}
+                            {!geometrySelectedGraphAnalyses.length && (
+                              <div style={{ fontSize: 10.5, color: "#64748b" }}>No graph analysis for this selection.</div>
+                            )}
+                          </div>
+
+                          <div
+                            data-testid="geometry-claims-manager"
+                            style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: "8px 10px", background: "#fff", display: "grid", gap: 7 }}
+                          >
+                            <div style={{ fontSize: 11, fontWeight: 800 }}>Claims / Theorem Verification</div>
+                            <textarea
+                              data-testid="geometry-claims-editor"
+                              value={geometryClaimDraftText}
+                              onChange={(event) => setGeometryClaimDraftText(event.target.value)}
+                              rows={4}
+                              placeholder={"claim box.height = box.width\nclaim box.volume > 10"}
+                              style={{ width: "100%", fontFamily: "monospace", fontSize: 10 }}
+                            />
+                            <button type="button" data-testid="geometry-evaluate-claims" onClick={handleEvaluateGeometryClaims}>
+                              Evaluate claims
+                            </button>
+                            {geometryGraphClaims.map(({ node, data }) => (
+                              <button
+                                key={node.id}
+                                data-testid={`geometry-claim-${data.result}`}
+                                type="button"
+                                onClick={() => handleSelectGeometryDependencyNode(node.id)}
+                                style={{
+                                  display: "grid",
+                                  gap: 2,
+                                  textAlign: "left",
+                                  padding: "6px 8px",
+                                  borderColor: data.result === "verified" ? "#16a34a" : data.result === "failed" ? "#dc2626" : "#d97706",
+                                }}
+                              >
+                                <strong>{data.result.toUpperCase()}</strong>
+                                <span>{data.source}</span>
+                                {data.leftValue != null && data.rightValue != null && (
+                                  <small>{fmt(data.leftValue)} vs {fmt(data.rightValue)}</small>
+                                )}
+                                {data.error && <small style={{ color: "#b42318" }}>{data.error}</small>}
+                              </button>
+                            ))}
                           </div>
 
                           <div style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: "8px 10px", background: "#fff", display: "grid", gap: 7 }}>

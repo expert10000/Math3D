@@ -14,6 +14,7 @@ const nodeMeta = (kind: string) => {
   if (kind.includes("line")) return { icon: "▬", color: "#15803d", fill: "#f0fdf4", border: "#4ade80" };
   if (kind.includes("plane")) return { icon: "▭", color: "#6d28d9", fill: "#f5f3ff", border: "#a78bfa" };
   if (kind === "analysis") return { icon: "∑", color: "#be123c", fill: "#fff1f2", border: "#fb7185" };
+  if (kind === "claim") return { icon: "✓", color: "#166534", fill: "#f0fdf4", border: "#4ade80" };
   if (kind === "measurement") return { icon: "📏", color: "#475569", fill: "#f8fafc", border: "#94a3b8" };
   if (kind === "scene-script") return { icon: "</>", color: "#0f766e", fill: "#f0fdfa", border: "#2dd4bf" };
   if (kind === "scene-root") return { icon: "◇", color: "#0f172a", fill: "#f1f5f9", border: "#64748b" };
@@ -106,7 +107,7 @@ export const SceneDependencyGraph: React.FC<Props> = ({ graph, selectedId, onSel
             {visibleNodes.map((node) => {
               const position = layout.positions.get(node.id);
               if (!position) return null;
-              const meta = nodeMeta(node.type);
+              const meta = nodeMeta(node.kind === "root" || node.kind === "geometry" ? node.type : node.kind);
               const selected = node.id === selectedId;
               const label = node.label ?? node.id;
               const ownedObjectCount =

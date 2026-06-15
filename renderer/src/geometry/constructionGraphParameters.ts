@@ -5,6 +5,7 @@ import {
   type ConstructionGraphNode,
 } from "@math3d/core";
 import type { GeometryObject } from "./proceduralObjects";
+import { synchronizeGeometryAnalysisGraph } from "./constructionGraphAnalysisClaims";
 
 export type GeometryParameterNodeData = {
   objectId: string;
@@ -214,7 +215,25 @@ export const synchronizeGeometryParameterGraph = (
       });
     }
   }
-  return recomputeGeometryParameterGraph(createConstructionGraph(nodes, edges));
+  const recomputed = recomputeGeometryParameterGraph(createConstructionGraph(nodes, edges));
+  const recomputedObjects = recomputed.nodes
+    .filter((node) => node.kind === "geometry" && node.type === "geometry-object")
+    .map((node) => node.data as GeometryObject);
+  const affectedObjectIds = new Set<string>();
+  for (const node of recomputed.nodes) {
+    if (node.kind !== "parameter" || !isGeometryParameterNodeData(node.data)) continue;
+    const previous = previousById.get(node.id);
+    const previousData = isGeometryParameterNodeData(previous?.data) ? previous.data : null;
+    if (
+      !previousData ||
+      previousData.value !== node.data.value ||
+      previousData.expression !== node.data.expression ||
+      previous?.status !== node.status
+    ) {
+      affectedObjectIds.add(node.data.objectId);
+    }
+  }
+  return synchronizeGeometryAnalysisGraph(recomputed, recomputedObjects, affectedObjectIds);
 };
 
 export const setGeometryParameterExpression = (

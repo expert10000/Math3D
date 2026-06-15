@@ -89,3 +89,23 @@ arithmetic expressions in graph topological order, updates affected geometry
 definitions, and marks unresolved or cyclic expressions invalid. The Definition
 Editor acts as the Parameter Manager, while the Dependency View projects the
 same nodes and downstream effects.
+
+## Analysis and claims
+
+Procedural geometry publishes graph-backed analysis nodes for volume, surface
+area, distance from the origin, and bounding dimensions. Geometry nodes connect
+to these results with `analyzes` edges. Parameter recomputation regenerates only
+analysis nodes belonging to affected objects.
+
+Claims are persisted `claim` nodes connected to their parameter and analysis
+inputs with `verifies` edges. The theorem-verification evaluator supports
+arithmetic and comparison expressions:
+
+```text
+claim box.height = box.width * 0.75
+claim sphere.radius = box.width / 2
+claim box.volume > 10
+```
+
+Claim results are stored as `verified`, `failed`, or `unresolved` and are shown
+in both the Definition Editor and Dependency View.
