@@ -124,6 +124,9 @@ const validateSceneDocumentExtension = (value: unknown, errors: string[], path: 
       }
     }
   }
+  if (value.constructionTransactions !== undefined && !Array.isArray(value.constructionTransactions)) {
+    errors.push(`${path}.constructionTransactions must be an array when provided.`);
+  }
 };
 
 export const validateSceneDocument = (value: unknown): ValidationResult<SceneDocument> => {

@@ -151,14 +151,21 @@ import { executeSceneScript } from "./geometry/scripting/sceneScriptExecutor";
 import { PROCEDURAL_SCENE_SCRIPT_STARTER } from "./geometry/scripting/sceneScriptExamples";
 import {
   applyGeometryObjectGraphCommand,
-  commitConstructionGraphHistory,
-  createConstructionGraphCommandHistory,
   createConstructionGraphBuilder,
   projectGeometryObjectsFromConstructionGraph,
-  redoConstructionGraphHistory,
   synchronizeScriptOwnershipGraph,
-  undoConstructionGraphHistory,
 } from "./geometry/constructionGraphBuilder";
+import {
+  commitConstructionGraphTransaction,
+  createConstructionGraphTransaction,
+  createConstructionGraphTransactionHistory,
+  isConstructionGraphTransaction,
+  redoConstructionGraphTransaction,
+  undoConstructionGraphTransaction,
+  type ConstructionGraphTransaction,
+  type ConstructionGraphTransactionKind,
+  type ConstructionGraphTransactionSource,
+} from "./geometry/constructionGraphTransactions";
 import {
   geometryParameterNodeId,
   isGeometryParameterNodeData,
@@ -6110,6 +6117,7 @@ const buildWorkspaceSceneDocument = (
   payload: WorkbookReplayPayload,
   proceduralScriptText: string,
   constructionGraph: ConstructionGraph,
+  constructionTransactions: ConstructionGraphTransaction[],
   savedAt: number
 ): SceneDocument => {
   const activeWorkbook = payload.workbooks.find((workbook) => workbook.id === payload.activeWorkbookId) ?? payload.workbooks[0];
@@ -6124,6 +6132,7 @@ const buildWorkspaceSceneDocument = (
   };
   return withSceneDocumentExtension(base, {
     constructionGraph,
+    constructionTransactions,
     scripts: collectWorkspaceSceneScripts(payload.workspace, proceduralScriptText),
     workbookWorkspace: toLinkedWorkspace(payload.workspace),
   });
@@ -8395,27 +8404,84 @@ const App: React.FC = () => {
     () => projectGeometryObjectsFromConstructionGraph(geometryConstructionGraph),
     [geometryConstructionGraph]
   );
-  const geometryGraphHistoryRef = useRef(createConstructionGraphCommandHistory());
+  const geometryGraphHistoryRef = useRef(createConstructionGraphTransactionHistory());
+  const [geometryGraphTransactions, setGeometryGraphTransactions] = useState<ConstructionGraphTransaction[]>([]);
+  const [geometrySelectedGraphTransactionId, setGeometrySelectedGraphTransactionId] = useState<string | null>(null);
+  const recordGeometryGraphTransaction = useCallback((
+    before: ConstructionGraph,
+    after: ConstructionGraph,
+    metadata: {
+      kind: ConstructionGraphTransactionKind;
+      label: string;
+      sourceView: ConstructionGraphTransactionSource;
+      beforeValues?: Record<string, unknown>;
+      afterValues?: Record<string, unknown>;
+    }
+  ) => {
+    const transaction = createConstructionGraphTransaction(before, after, metadata);
+    if (!transaction) return;
+    geometryGraphHistoryRef.current = commitConstructionGraphTransaction(geometryGraphHistoryRef.current, transaction);
+    setGeometryGraphTransactions(geometryGraphHistoryRef.current.past);
+    setGeometrySelectedGraphTransactionId(transaction.id);
+  }, []);
+  const geometrySelectedGraphTransaction = useMemo(
+    () => geometryGraphTransactions.find((transaction) => transaction.id === geometrySelectedGraphTransactionId) ?? null,
+    [geometryGraphTransactions, geometrySelectedGraphTransactionId]
+  );
   const setGeometryObjects = useCallback<React.Dispatch<React.SetStateAction<GeometryObject[]>>>((action) => {
     setGeometryConstructionGraph((graph) => {
       const previous = projectGeometryObjectsFromConstructionGraph(graph);
       const objects = typeof action === "function" ? action(previous) : action;
       const next = applyGeometryObjectGraphCommand(graph, { type: "replace", objects });
-      geometryGraphHistoryRef.current = commitConstructionGraphHistory(geometryGraphHistoryRef.current, graph);
+      const previousIds = new Set(previous.map((object) => object.id));
+      const created = objects.filter((object) => !previousIds.has(object.id));
+      const previousNodeById = new Map(graph.nodes.map((node) => [node.id, node] as const));
+      const editedParameterNodes = next.nodes.filter(
+        (node) => node.kind === "parameter" && JSON.stringify(previousNodeById.get(node.id)) !== JSON.stringify(node)
+      );
+      const parameterValues = (nodes: ConstructionGraphNode[]) =>
+        Object.fromEntries(
+          nodes.map((node) => [
+            node.id,
+            node.data && typeof node.data === "object" && "value" in node.data
+              ? (node.data as { value?: unknown }).value
+              : node.data,
+          ])
+        );
+      const previousParameterNodes = editedParameterNodes
+        .map((node) => previousNodeById.get(node.id))
+        .filter((node): node is ConstructionGraphNode => Boolean(node));
+      recordGeometryGraphTransaction(graph, next, {
+        kind: created.length ? "create-object" : editedParameterNodes.length ? "edit-parameter" : "graph-update",
+        label: created.length
+          ? `Create ${created.map((object) => object.name).join(", ")}`
+          : editedParameterNodes.length
+            ? `Edit ${editedParameterNodes[0]?.label ?? "geometry parameter"}`
+            : "Update geometry graph",
+        sourceView: created.length ? "create" : "geometry",
+        beforeValues: editedParameterNodes.length
+          ? parameterValues(previousParameterNodes)
+          : { objectCount: previous.length },
+        afterValues: editedParameterNodes.length
+          ? parameterValues(editedParameterNodes)
+          : { objectCount: objects.length },
+      });
       return next;
     });
-  }, []);
+  }, [recordGeometryGraphTransaction]);
   const undoGeometryGraphCommand = useCallback(() => {
     setGeometryConstructionGraph((graph) => {
-      const result = undoConstructionGraphHistory(graph, geometryGraphHistoryRef.current);
+      const result = undoConstructionGraphTransaction(graph, geometryGraphHistoryRef.current);
       geometryGraphHistoryRef.current = result.history;
+      setGeometryGraphTransactions(result.history.past);
       return result.graph;
     });
   }, []);
   const redoGeometryGraphCommand = useCallback(() => {
     setGeometryConstructionGraph((graph) => {
-      const result = redoConstructionGraphHistory(graph, geometryGraphHistoryRef.current);
+      const result = redoConstructionGraphTransaction(graph, geometryGraphHistoryRef.current);
       geometryGraphHistoryRef.current = result.history;
+      setGeometryGraphTransactions(result.history.past);
       return result.graph;
     });
   }, []);
@@ -10525,19 +10591,40 @@ const App: React.FC = () => {
   const handleSetGeometryParameterExpression = useCallback((objectId: string, key: string, expression: string) => {
     if (geometryLockedObjectIds.has(objectId)) return;
     setGeometryConstructionGraph((graph) => {
-      const next = setGeometryParameterExpression(graph, geometryParameterNodeId(objectId, `params.${key}`), expression);
-      geometryGraphHistoryRef.current = commitConstructionGraphHistory(geometryGraphHistoryRef.current, graph);
+      const parameterNodeId = geometryParameterNodeId(objectId, `params.${key}`);
+      const parameterNode = graph.nodes.find((node) => node.id === parameterNodeId);
+      const previousExpression =
+        parameterNode?.data && typeof parameterNode.data === "object" && "expression" in parameterNode.data
+          ? (parameterNode.data as { expression?: unknown }).expression
+          : undefined;
+      const next = setGeometryParameterExpression(graph, parameterNodeId, expression);
+      recordGeometryGraphTransaction(graph, next, {
+        kind: "set-expression",
+        label: `Set ${objectId}.${key} expression`,
+        sourceView: "definition",
+        beforeValues: { expression: previousExpression },
+        afterValues: { expression },
+      });
       return next;
     });
-  }, [geometryLockedObjectIds]);
+  }, [geometryLockedObjectIds, recordGeometryGraphTransaction]);
   const handleEvaluateGeometryClaims = useCallback(() => {
     const sources = geometryClaimDraftText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
     setGeometryConstructionGraph((graph) => {
+      const previousClaims = graph.nodes
+        .filter((node) => node.kind === "claim" && isGeometryClaimNodeData(node.data))
+        .map((node) => node.data.source);
       const next = synchronizeGeometryClaimGraph(graph, sources);
-      geometryGraphHistoryRef.current = commitConstructionGraphHistory(geometryGraphHistoryRef.current, graph);
+      recordGeometryGraphTransaction(graph, next, {
+        kind: "add-claim",
+        label: `Evaluate ${sources.length} claim${sources.length === 1 ? "" : "s"}`,
+        sourceView: "claims",
+        beforeValues: { claims: previousClaims },
+        afterValues: { claims: sources },
+      });
       return next;
     });
-  }, [geometryClaimDraftText]);
+  }, [geometryClaimDraftText, recordGeometryGraphTransaction]);
   const geometryProbeSelectionDetailsRef = useRef<GeometryProbeSelectionDetails | null>(null);
   const handleUpdateGeometryObjectParam = useCallback(
     (id: string, key: string, value: number | boolean | string) => {
@@ -10937,18 +11024,26 @@ const App: React.FC = () => {
         setGeometryProceduralScriptError(formatSceneScriptDiagnostic(result.error));
         return;
       }
-      setGeometryObjects(result.objects);
-      setGeometryConstructionGraph((graph) =>
-        synchronizeScriptOwnershipGraph({
-          graph,
+      setGeometryConstructionGraph((graph) => {
+        const objectGraph = applyGeometryObjectGraphCommand(graph, { type: "replace", objects: result.objects });
+        const next = synchronizeScriptOwnershipGraph({
+          graph: objectGraph,
           scriptId: "geometry-procedural",
           scriptTitle: "Geometry procedural script",
           scriptSource: script,
           objects: result.objects,
           createdObjectIds: result.changes.createdObjectIds,
           deletedObjectIds: result.changes.deletedObjectIds,
-        })
-      );
+        });
+        recordGeometryGraphTransaction(graph, next, {
+          kind: "execute-script",
+          label: "Execute procedural script",
+          sourceView: "script",
+          beforeValues: { objectCount: geometryObjects.length },
+          afterValues: { objectCount: result.objects.length, script },
+        });
+        return next;
+      });
       setGeometrySelectedObjectId(result.selectedObjectId);
       if (options?.script != null) setGeometryProceduralScriptText(options.script);
       setGeometryProceduralScriptError(null);
@@ -10957,7 +11052,7 @@ const App: React.FC = () => {
       );
       if (options?.switchToProcedural) setGeometryMode("procedural");
     },
-    [geometryDatasetMeshObjects, geometryObjects, geometryProceduralScriptText, geometrySelectedObjectId]
+    [geometryDatasetMeshObjects, geometryObjects, geometryProceduralScriptText, geometrySelectedObjectId, recordGeometryGraphTransaction]
   );
 
   const geometryDragRef = useRef<{
@@ -34488,6 +34583,7 @@ case "mobius":
             workbookBundlePayload,
             geometryProceduralScriptText,
             geometryConstructionGraph,
+            geometryGraphTransactions,
             savedAt
           )
         ),
@@ -34495,7 +34591,7 @@ case "mobius":
         2
       );
     },
-    [workbookBundlePayload, workbookBundleAssetMode, geometryConstructionGraph, geometryProceduralScriptText]
+    [workbookBundlePayload, workbookBundleAssetMode, geometryConstructionGraph, geometryGraphTransactions, geometryProceduralScriptText]
   );
 
   const markWorkbookManualSave = useCallback(
@@ -35323,7 +35419,11 @@ case "mobius":
         const importedConstructionGraph = decoded.sceneDocument
           ? getSceneDocumentConstructionGraph(decoded.sceneDocument)
           : undefined;
-        geometryGraphHistoryRef.current = createConstructionGraphCommandHistory();
+        const importedTransactions = Array.isArray(sceneExtension?.constructionTransactions)
+          ? sceneExtension.constructionTransactions.filter(isConstructionGraphTransaction)
+          : [];
+        geometryGraphHistoryRef.current = createConstructionGraphTransactionHistory(importedTransactions);
+        setGeometryGraphTransactions(importedTransactions);
         setGeometryConstructionGraph(importedConstructionGraph ?? createConstructionGraph());
         const importedProceduralScript = sceneExtension?.scripts?.find((script) => script.id === "geometry-procedural");
         if (importedProceduralScript) setGeometryProceduralScriptText(importedProceduralScript.source);
@@ -53516,6 +53616,75 @@ case "mobius":
                       )}
                     </details>
                     </>
+                    )}
+
+                    {geometryProceduralPanelTab === "history" && (
+                    <div data-testid="geometry-construction-history" style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                      <div
+                        style={{
+                          border: "1px solid #cbd5e1",
+                          borderRadius: 10,
+                          padding: "10px 12px",
+                          background: "#f8fafc",
+                          display: "grid",
+                          gap: 7,
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <strong>Construction History</strong>
+                          <span style={{ fontSize: 10.5, color: "#64748b" }}>
+                            {geometryGraphTransactions.length} committed transaction{geometryGraphTransactions.length === 1 ? "" : "s"}
+                          </span>
+                          <span style={{ flex: 1 }} />
+                          <button type="button" data-testid="geometry-transaction-undo" onClick={undoGeometryGraphCommand} disabled={!geometryGraphHistoryRef.current.past.length}>
+                            Undo
+                          </button>
+                          <button type="button" data-testid="geometry-transaction-redo" onClick={redoGeometryGraphCommand} disabled={!geometryGraphHistoryRef.current.future.length}>
+                            Redo
+                          </button>
+                        </div>
+                        <div style={{ fontSize: 10.5, color: "#475569" }}>
+                          Transactions record changed nodes, affected nodes, source view, and before/after values.
+                        </div>
+                      </div>
+                      <div style={{ display: "grid", gap: 6 }}>
+                        {[...geometryGraphTransactions].reverse().map((transaction) => (
+                          <button
+                            key={transaction.id}
+                            data-testid={`geometry-transaction-${transaction.kind}`}
+                            type="button"
+                            onClick={() => setGeometrySelectedGraphTransactionId(transaction.id)}
+                            style={{
+                              textAlign: "left",
+                              borderRadius: 8,
+                              padding: "7px 9px",
+                              border: `1px solid ${geometrySelectedGraphTransactionId === transaction.id ? "#2563eb" : "#dbe2ea"}`,
+                              background: geometrySelectedGraphTransactionId === transaction.id ? "#eff6ff" : "#fff",
+                              display: "grid",
+                              gap: 2,
+                            }}
+                          >
+                            <strong>{transaction.label}</strong>
+                            <small>{transaction.kind} - {transaction.sourceView} - {new Date(transaction.timestamp).toLocaleTimeString()}</small>
+                            <small>{transaction.changedNodeIds.length} changed - {transaction.affectedNodeIds.length} affected</small>
+                          </button>
+                        ))}
+                        {!geometryGraphTransactions.length && (
+                          <div style={{ border: "1px dashed #cbd5e1", borderRadius: 8, padding: 12, color: "#64748b" }}>
+                            No graph transactions yet.
+                          </div>
+                        )}
+                      </div>
+                      {geometrySelectedGraphTransaction && (
+                        <div data-testid="geometry-transaction-details" style={{ border: "1px solid #dbe2ea", borderRadius: 8, padding: "8px 10px", background: "#fff", display: "grid", gap: 5, fontSize: 10.5 }}>
+                          <strong>Transaction details</strong>
+                          <div><strong>Changed:</strong> {geometrySelectedGraphTransaction.changedNodeIds.join(", ") || "none"}</div>
+                          <div><strong>Affected:</strong> {geometrySelectedGraphTransaction.affectedNodeIds.join(", ") || "none"}</div>
+                          <div><strong>Before:</strong> {JSON.stringify(geometrySelectedGraphTransaction.beforeValues ?? {})}</div>
+                          <div><strong>After:</strong> {JSON.stringify(geometrySelectedGraphTransaction.afterValues ?? {})}</div>
+                        </div>
+                      )}
+                    </div>
                     )}
 
                     {geometryProceduralPanelTab === "definition" && (

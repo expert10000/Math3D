@@ -90,6 +90,7 @@ export type SceneDocumentScript = {
 export type SceneDocumentExtensionV1 = {
   version: typeof SCENE_DOCUMENT_EXTENSION_VERSION;
   constructionGraph?: ConstructionGraph;
+  constructionTransactions?: unknown[];
   scripts?: SceneDocumentScript[];
   workbookWorkspace?: unknown;
 };

@@ -30,55 +30,6 @@ export type GeometryObjectGraphCommand =
   | { type: "delete"; objectId: string }
   | { type: "replace"; objects: GeometryObject[] };
 
-export type ConstructionGraphCommandHistory = {
-  past: ConstructionGraph[];
-  future: ConstructionGraph[];
-};
-
-export const createConstructionGraphCommandHistory = (): ConstructionGraphCommandHistory => ({
-  past: [],
-  future: [],
-});
-
-export const commitConstructionGraphHistory = (
-  history: ConstructionGraphCommandHistory,
-  previousGraph: ConstructionGraph,
-  limit = 100
-): ConstructionGraphCommandHistory => ({
-  past: [...history.past, previousGraph].slice(-limit),
-  future: [],
-});
-
-export const undoConstructionGraphHistory = (
-  graph: ConstructionGraph,
-  history: ConstructionGraphCommandHistory
-): { graph: ConstructionGraph; history: ConstructionGraphCommandHistory } => {
-  const previous = history.past.at(-1);
-  if (!previous) return { graph, history };
-  return {
-    graph: previous,
-    history: {
-      past: history.past.slice(0, -1),
-      future: [graph, ...history.future],
-    },
-  };
-};
-
-export const redoConstructionGraphHistory = (
-  graph: ConstructionGraph,
-  history: ConstructionGraphCommandHistory
-): { graph: ConstructionGraph; history: ConstructionGraphCommandHistory } => {
-  const next = history.future[0];
-  if (!next) return { graph, history };
-  return {
-    graph: next,
-    history: {
-      past: [...history.past, graph],
-      future: history.future.slice(1),
-    },
-  };
-};
-
 const geometryObjectNodeId = (objectId: string): string => `object:${objectId}`;
 
 const geometryObjectToNode = (

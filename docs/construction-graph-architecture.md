@@ -69,9 +69,22 @@ export all consume or mutate a projection of those nodes. Existing UI handlers
 retain their array-shaped update API, but that API now dispatches graph commands
 instead of owning independent React object state.
 
-Procedural Geometry also keeps bounded graph snapshots for command history.
-Undo and redo restore the complete graph, including script ownership edges, so
-views cannot drift apart while navigating history.
+## Construction transactions
+
+Procedural Geometry records graph mutations as bounded, typed transactions
+instead of complete graph snapshots. Transaction kinds currently cover object
+creation, parameter edits, expressions, script execution, and claims, with a
+generic graph-update fallback for remaining mutations.
+
+Each transaction stores its timestamp, source view, changed nodes, affected
+nodes, before/after values, and the node and edge patches needed for undo and
+redo. Applying those patches keeps geometry, parameters, analysis, claims, and
+script ownership synchronized while navigating history.
+
+The visible Construction History timeline exposes this metadata and provides
+undo/redo controls. Committed transactions are saved beside the construction
+graph in the SceneDocument extension and restored when a `.math3d` project is
+opened.
 
 ## Graph parameters and expressions
 

@@ -168,6 +168,8 @@ test("Object/scene behavior: create, toggle visibility, remove, overlay state re
     await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(initialStats.objectCount);
     await page.keyboard.press("Control+Y");
     await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(createdStats.objectCount);
+    await page.getByTestId("geometry-procedural-panel-history").click();
+    await expect(page.getByTestId("geometry-transaction-create-object")).toBeVisible();
 
     await clickFirstVisibleButton(page, "Scene");
     const sceneTree = page.getByTestId("unified-object-tree");
@@ -495,9 +497,19 @@ test("Definition Editor expressions recompute through graph parameter dependenci
     await expect(graph.locator('[data-node-id="analysis:box:volume"]')).toBeVisible();
     await expect(graph.locator('[data-node-id="claim:1"]')).toBeVisible();
 
+    await page.getByTestId("geometry-procedural-panel-history").click();
+    await expect(page.getByTestId("geometry-construction-history")).toBeVisible();
+    await expect(page.getByTestId("geometry-transaction-execute-script")).toBeVisible();
+    await expect(page.getByTestId("geometry-transaction-set-expression")).toBeVisible();
+    await expect(page.getByTestId("geometry-transaction-add-claim")).toBeVisible();
+    await page.getByTestId("geometry-transaction-set-expression").click();
+    await expect(page.getByTestId("geometry-transaction-details")).toContainText("box.width * 0.75");
+
     const savedPath = await saveWorkspace(page);
     const saved = JSON.parse(readFileSync(savedPath, "utf8"));
     const savedGraph = saved.sceneDocument?.extensions?.["math3d.sceneDocument"]?.constructionGraph;
+    const savedTransactions =
+      saved.sceneDocument?.extensions?.["math3d.sceneDocument"]?.constructionTransactions;
     expect(
       savedGraph?.nodes?.some(
         (node: { id?: string; data?: { expression?: string; value?: number } }) =>
@@ -512,12 +524,25 @@ test("Definition Editor expressions recompute through graph parameter dependenci
           node.id === "claim:1" && node.data?.result === "verified"
       )
     ).toBe(true);
+    expect(
+      savedTransactions?.some((transaction: { kind?: string }) => transaction.kind === "execute-script")
+    ).toBe(true);
+    expect(
+      savedTransactions?.some((transaction: { kind?: string }) => transaction.kind === "set-expression")
+    ).toBe(true);
+    expect(
+      savedTransactions?.some((transaction: { kind?: string }) => transaction.kind === "add-claim")
+    ).toBe(true);
     await openWorkspace(page, savedPath);
     await openProceduralGeometry(page);
     await page.getByTestId("geometry-procedural-panel-definition").click();
     await expect(page.getByTestId("geometry-parameter-expression-height")).toHaveValue("box.width * 0.75");
     await expect(page.getByTestId("geometry-parameter-value-height")).toHaveValue("3");
     await expect(page.locator('[data-testid="geometry-claim-verified"]')).toHaveCount(2);
+    await page.getByTestId("geometry-procedural-panel-history").click();
+    await expect(page.getByTestId("geometry-transaction-execute-script")).toBeVisible();
+    await expect(page.getByTestId("geometry-transaction-set-expression")).toBeVisible();
+    await expect(page.getByTestId("geometry-transaction-add-claim")).toBeVisible();
     rmSync(savedPath, { force: true });
   } finally {
     if (app) {

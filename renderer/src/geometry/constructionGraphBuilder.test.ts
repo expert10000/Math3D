@@ -2,15 +2,11 @@ import { describe, expect, it } from "vitest";
 import { createConstructionGraph } from "@math3d/core";
 import {
   applyGeometryObjectGraphCommand,
-  commitConstructionGraphHistory,
-  createConstructionGraphCommandHistory,
   createConstructionGraphBuilder,
   projectGeometryObjectsFromConstructionGraph,
-  redoConstructionGraphHistory,
   replaceGeometryObjectsInConstructionGraph,
   synchronizeGeometryObjectGraph,
   synchronizeScriptOwnershipGraph,
-  undoConstructionGraphHistory,
 } from "./constructionGraphBuilder";
 import { createGeometryObject } from "./proceduralObjects";
 
@@ -104,20 +100,4 @@ describe("construction graph builder", () => {
     expect(projectGeometryObjectsFromConstructionGraph(replaced).map((object) => object.id)).toEqual(["sphere"]);
   });
 
-  it("undoes and redoes graph commands as complete snapshots", () => {
-    const initial = applyGeometryObjectGraphCommand(createConstructionGraph(), {
-      type: "create",
-      object: createGeometryObject("box", "box"),
-    });
-    const next = applyGeometryObjectGraphCommand(initial, {
-      type: "create",
-      object: createGeometryObject("sphere", "sphere"),
-    });
-    const committed = commitConstructionGraphHistory(createConstructionGraphCommandHistory(), initial);
-    const undone = undoConstructionGraphHistory(next, committed);
-    const redone = redoConstructionGraphHistory(undone.graph, undone.history);
-
-    expect(projectGeometryObjectsFromConstructionGraph(undone.graph).map((object) => object.id)).toEqual(["box"]);
-    expect(projectGeometryObjectsFromConstructionGraph(redone.graph).map((object) => object.id)).toEqual(["sphere", "box"]);
-  });
 });
