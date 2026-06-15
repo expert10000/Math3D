@@ -60,6 +60,8 @@ const config = {
       "libuuid1",
       "libsecret-1-0",
       "libgl1",
+      "libgbm1",
+      "libasound2 | libasound2t64",
     ],
     recommends: [],
   },
@@ -76,6 +78,8 @@ const config = {
       "libuuid",
       "libsecret",
       "mesa-libGL",
+      "mesa-libgbm",
+      "alsa-lib",
     ],
   },
   nsis: {

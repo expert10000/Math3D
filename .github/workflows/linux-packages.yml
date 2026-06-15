@@ -67,11 +67,12 @@ jobs:
       - name: Install deb and smoke installed worker
         run: |
           sudo apt-get update
-          sudo apt-get install -y ./release/*.deb
+          sudo apt-get install -y xvfb ./release/*.deb
           installed_worker="$(find /opt -path '*/resources/python-worker/worker' -type f -print -quit)"
           test -n "$installed_worker"
           test -x "$installed_worker"
           node scripts/smoke-python-worker.mjs --exe "$installed_worker"
+          bash scripts/smoke-linux-installed-app.sh
 
       - name: Pack worker portability artifact
         run: tar -C release/linux-unpacked/resources/python-worker -czf release/linux-worker-portability.tar.gz worker
@@ -174,11 +175,12 @@ jobs:
       - name: Install deb and smoke installed worker
         run: |
           apt-get update
-          apt-get install -y ./packages/*.deb
+          apt-get install -y xvfb ./packages/*.deb
           installed_worker="$(find /opt -path '*/resources/python-worker/worker' -type f -print -quit)"
           test -n "$installed_worker"
           test -x "$installed_worker"
           node scripts/smoke-python-worker.mjs --exe "$installed_worker"
+          bash scripts/smoke-linux-installed-app.sh
 
   rpm-install:
     needs: build-linux-packages
@@ -211,10 +213,11 @@ jobs:
 
       - name: Install rpm and smoke installed worker
         run: |
-          dnf install -y ./packages/*.rpm
+          dnf install -y xorg-x11-server-Xvfb ./packages/*.rpm
           installed_desktop="$(find /usr/share/applications -iname '*math3d*.desktop' -type f -print -quit)"
           installed_worker="$(find /opt -path '*/resources/python-worker/worker' -type f -print -quit)"
           test -n "$installed_desktop"
           test -n "$installed_worker"
           test -x "$installed_worker"
           node scripts/smoke-python-worker.mjs --exe "$installed_worker"
+          bash scripts/smoke-linux-installed-app.sh

@@ -70,9 +70,10 @@ The outputs are written to `release/Math3D-<version>-<arch>.AppImage`,
 `release/Math3D-<version>-<arch>.deb`, and `release/Math3D-<version>-<arch>.rpm`.
 The GitHub Actions workflow
 `.github/workflows/linux-packages.yml` builds all three, installs and smoke-tests the
-`.deb` on Ubuntu 22.04, Ubuntu 24.04, and Debian 12, smoke-tests the packaged
-worker, installs and smoke-tests the `.rpm` on Fedora 43 and Fedora 44, and
-checks frozen-worker portability on Ubuntu 24.04, Debian 12, and Fedora 44. Tagged
+`.deb` on Ubuntu 22.04, Ubuntu 24.04, and Debian 12, launches the installed app
+under a virtual display, smoke-tests the packaged worker, installs and
+smoke-tests the `.rpm` on Fedora 43 and Fedora 44, launches the Fedora install,
+and checks frozen-worker portability on Ubuntu 24.04, Debian 12, and Fedora 44. Tagged
 releases publish normalized AppImage, `.deb`, and `.rpm` names plus
 `SHA256SUMS-linux.txt` alongside the Windows release files.
 
