@@ -228,6 +228,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
+          prerelease: ${{ contains(steps.meta.outputs.version, '-') }}
           fail_on_unmatched_files: true
           generate_release_notes: true
           files: ${{ steps.assets.outputs.asset_glob }}
@@ -363,6 +364,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
+          prerelease: ${{ contains(steps.meta.outputs.version, '-') }}
           fail_on_unmatched_files: true
           generate_release_notes: true
           files: ${{ steps.assets.outputs.asset_glob }}
