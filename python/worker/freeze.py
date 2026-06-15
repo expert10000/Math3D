@@ -126,7 +126,8 @@ def main() -> int:
     if result.returncode != 0:
         return result.returncode
 
-    exe_path = os.path.join(dist_dir, "worker.exe")
+    worker_name = "worker.exe" if os.name == "nt" else "worker"
+    exe_path = os.path.join(dist_dir, worker_name)
     if not os.path.exists(exe_path):
         print(f"[freeze] expected output missing: {exe_path}", file=sys.stderr)
         return 3

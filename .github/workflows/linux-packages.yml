@@ -1,0 +1,220 @@
+name: Linux Packages CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: linux-packages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-linux-packages:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            renderer/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: python/worker/requirements.freeze.txt
+
+      - name: Install npm dependencies
+        run: |
+          npm ci
+          npm --prefix renderer ci
+
+      - name: Install frozen worker dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller numpy scipy sympy vtk
+
+      - name: Build and smoke frozen Linux worker
+        run: |
+          npm run test:worker:smoke:portable
+          build/python-worker-dist/worker --ping
+          build/python-worker-dist/worker --version
+
+      - name: Build AppImage, deb, and rpm
+        run: npm run dist:linux:ci
+
+      - name: Smoke packaged worker
+        run: |
+          test -x release/linux-unpacked/resources/python-worker/worker
+          node scripts/smoke-python-worker.mjs --exe release/linux-unpacked/resources/python-worker/worker
+
+      - name: Install deb and smoke installed worker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ./release/*.deb
+          installed_worker="$(find /opt -path '*/resources/python-worker/worker' -type f -print -quit)"
+          test -n "$installed_worker"
+          test -x "$installed_worker"
+          node scripts/smoke-python-worker.mjs --exe "$installed_worker"
+
+      - name: Pack worker portability artifact
+        run: tar -C release/linux-unpacked/resources/python-worker -czf release/linux-worker-portability.tar.gz worker
+
+      - name: Upload Linux packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: Math3D-linux-x86_64-packages
+          if-no-files-found: error
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/*.rpm
+            release/builder-debug.yml
+
+      - name: Upload worker portability artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Math3D-linux-x86_64-worker-portability
+          if-no-files-found: error
+          path: release/linux-worker-portability.tar.gz
+
+  worker-portability:
+    needs: build-linux-packages
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Ubuntu 24.04
+            image: ubuntu:24.04
+            install: apt-get update && apt-get install -y libgl1
+          - name: Debian 12
+            image: debian:12
+            install: apt-get update && apt-get install -y libgl1
+          - name: Fedora 44
+            image: fedora:44
+            install: dnf install -y mesa-libGL
+    name: Worker portability (${{ matrix.name }})
+    container:
+      image: ${{ matrix.image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install runtime libraries
+        run: ${{ matrix.install }}
+
+      - name: Download worker
+        uses: actions/download-artifact@v4
+        with:
+          name: Math3D-linux-x86_64-worker-portability
+          path: portability
+
+      - name: Smoke worker
+        run: |
+          tar -xzf portability/linux-worker-portability.tar.gz -C portability
+          portability/worker --ping
+          portability/worker --version
+          node scripts/smoke-python-worker.mjs --exe portability/worker
+
+  deb-install:
+    needs: build-linux-packages
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Ubuntu 24.04
+            image: ubuntu:24.04
+          - name: Debian 12
+            image: debian:12
+    name: deb install (${{ matrix.name }})
+    container:
+      image: ${{ matrix.image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Download Linux packages
+        uses: actions/download-artifact@v4
+        with:
+          name: Math3D-linux-x86_64-packages
+          path: packages
+
+      - name: Install deb and smoke installed worker
+        run: |
+          apt-get update
+          apt-get install -y ./packages/*.deb
+          installed_worker="$(find /opt -path '*/resources/python-worker/worker' -type f -print -quit)"
+          test -n "$installed_worker"
+          test -x "$installed_worker"
+          node scripts/smoke-python-worker.mjs --exe "$installed_worker"
+
+  rpm-install:
+    needs: build-linux-packages
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        fedora:
+          - "43"
+          - "44"
+    name: rpm install (Fedora ${{ matrix.fedora }})
+    container:
+      image: fedora:${{ matrix.fedora }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Download Linux packages
+        uses: actions/download-artifact@v4
+        with:
+          name: Math3D-linux-x86_64-packages
+          path: packages
+
+      - name: Install rpm and smoke installed worker
+        run: |
+          dnf install -y ./packages/*.rpm
+          installed_desktop="$(find /usr/share/applications -iname '*math3d*.desktop' -type f -print -quit)"
+          installed_worker="$(find /opt -path '*/resources/python-worker/worker' -type f -print -quit)"
+          test -n "$installed_desktop"
+          test -n "$installed_worker"
+          test -x "$installed_worker"
+          node scripts/smoke-python-worker.mjs --exe "$installed_worker"

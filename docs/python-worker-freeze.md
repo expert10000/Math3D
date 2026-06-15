@@ -1,8 +1,9 @@
-# Python Worker Freeze (Windows)
+# Python Worker Freeze
 
 ## Output artifact
 
-- `build/python-worker-dist/worker.exe`
+- Windows: `build/python-worker-dist/worker.exe`
+- Linux: `build/python-worker-dist/worker`
 
 ## Reproducible build commands
 
@@ -11,12 +12,15 @@
   - or `npm run build:python-worker`
 - Build + smoke checks:
   - `powershell -ExecutionPolicy Bypass -File scripts/build-python-worker.ps1 -SmokeTest`
-  - or `npm run build:python-worker:smoke`
+  - or, on Linux, `npm run test:worker:smoke:portable`
+
+PyInstaller builds for the current operating system. Build the Linux worker and
+AppImage on Linux; a Windows build cannot produce the Linux worker.
 
 ## Smoke test coverage
 
-- `worker.exe --ping`
-- `worker.exe --version`
+- `worker.exe --ping` / `worker --ping`
+- `worker.exe --version` / `worker --version`
 - JSON/stdin protocol check using `scripts/smoke-python-worker.mjs`:
   - sends `ping`
   - sends `mesh.preview`

@@ -12,6 +12,9 @@ const config = {
   appId,
   productName,
   artifactName: "${productName} Setup ${version}.${ext}",
+  extraMetadata: {
+    homepage: "https://github.com/expert10000/Math3D",
+  },
   directories: {
     output: outputDir,
   },
@@ -36,6 +39,44 @@ const config = {
   win: {
     target: "nsis",
     icon: "assets/icon.ico",
+  },
+  linux: {
+    target: ["AppImage", "deb", "rpm"],
+    category: "Education;Science;Math;",
+    maintainer: "Math3D Project",
+    vendor: "Math3D Project",
+    artifactName: "${productName}-${version}-${arch}.${ext}",
+  },
+  deb: {
+    packageCategory: "science",
+    depends: [
+      "libgtk-3-0",
+      "libnotify4",
+      "libnss3",
+      "libxss1",
+      "libxtst6",
+      "xdg-utils",
+      "libatspi2.0-0",
+      "libuuid1",
+      "libsecret-1-0",
+      "libgl1",
+    ],
+    recommends: [],
+  },
+  rpm: {
+    packageCategory: "Applications/Engineering",
+    depends: [
+      "gtk3",
+      "libnotify",
+      "nss",
+      "libXScrnSaver",
+      "libXtst",
+      "xdg-utils",
+      "at-spi2-core",
+      "libuuid",
+      "libsecret",
+      "mesa-libGL",
+    ],
   },
   nsis: {
     oneClick: false,

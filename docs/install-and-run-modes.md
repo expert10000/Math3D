@@ -26,6 +26,9 @@ Quick start after install (pick one):
 | Mode | Where it runs | Worker/Python setup needed on host? | When to use |
 | --- | --- | --- | --- |
 | Desktop (installer, Windows) | Installed desktop app | No. Worker is embedded in installer build (`resources/python-worker/worker.exe`) | End-user desktop usage without local Python setup |
+| Desktop (AppImage, Linux x86_64) | Portable desktop app | No. Worker is embedded in the AppImage (`resources/python-worker/worker`) | First Linux distribution target |
+| Desktop (`.deb`, Linux x86_64) | Installed desktop app | No. Worker is embedded in the package | Ubuntu, Debian, and Linux Mint |
+| Desktop (`.rpm`, Linux x86_64) | Installed desktop app | No. Worker is embedded in the package | Fedora and RPM-family distributions |
 | Desktop (local source run) | Electron launched from repo | Yes by default for CGAL/VTK: Python + worker deps. Optional: use local `worker.exe` instead | Desktop development from source |
 | Browser (local) | Your local browser + local Node proxy | Yes for CGAL/VTK: provide one backend (`worker.exe` or Python + deps) | Fast local web development and testing |
 | Browser + Docker | Browser UI on host, backend in container | No on host. Backend is inside Docker image (Python venv + deps) | Self-contained, reproducible web runtime |
@@ -33,6 +36,7 @@ Quick start after install (pick one):
 Worker setup details:
 
 - Desktop installer (`npm run dist` output): bundled `worker.exe` is included, so no separate Python/worker install on user machine.
+- Linux packages (`npm run dist:linux` on Linux): the AppImage, `.deb`, and `.rpm` include the bundled `worker`, so no separate Python install is needed on the user machine.
 - Desktop local source run (`npm run build` / `npm run dev`):
   - default (`MATH3D_WORKER_MODE=auto`): uses Python script backend in dev, so install Python deps (`numpy scipy sympy pygalmesh vtk`)
   - optional exe path: `npm run build:python-worker` then set `MATH3D_WORKER_MODE=exe`
@@ -47,6 +51,33 @@ How `worker.exe` is created:
 - Output: `build/python-worker-dist/worker.exe`.
 - Optional smoke verification: `npm run build:python-worker:smoke`.
 - Installer packaging (`npm run dist`) already builds and embeds this artifact into `resources/python-worker/worker.exe`.
+- Linux packaging (`npm run dist:linux`) builds the AppImage, `.deb`, and `.rpm` on Linux and embeds `build/python-worker-dist/worker` into `resources/python-worker/worker`.
+
+## Linux Packages
+
+The broad Linux target is an x86_64 AppImage. A `.deb` is produced for
+Debian-family distributions and an `.rpm` for Fedora-family distributions.
+Build all three on an x86_64 Linux machine:
+
+```bash
+python -m pip install pyinstaller numpy scipy sympy vtk
+npm ci
+npm --prefix renderer ci
+npm run dist:linux
+```
+
+The outputs are written to `release/Math3D-<version>-<arch>.AppImage`,
+`release/Math3D-<version>-<arch>.deb`, and `release/Math3D-<version>-<arch>.rpm`.
+The GitHub Actions workflow
+`.github/workflows/linux-packages.yml` builds all three, installs and smoke-tests the
+`.deb` on Ubuntu 22.04, Ubuntu 24.04, and Debian 12, smoke-tests the packaged
+worker, installs and smoke-tests the `.rpm` on Fedora 43 and Fedora 44, and
+checks frozen-worker portability on Ubuntu 24.04, Debian 12, and Fedora 44. Tagged
+releases publish normalized AppImage, `.deb`, and `.rpm` names plus
+`SHA256SUMS-linux.txt` alongside the Windows release files.
+
+Build only the AppImage with `npm run dist:linux:appimage`.
+Build only the RPM with `npm run dist:linux:rpm`.
 
 Environment variable notes:
 

@@ -1012,7 +1012,8 @@ function dedupePaths(candidates: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const item of candidates) {
-    const key = path.normalize(item).toLowerCase();
+    const normalized = path.normalize(item);
+    const key = process.platform === "win32" ? normalized.toLowerCase() : normalized;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(item);
@@ -1055,16 +1056,17 @@ function resolveWorkerScriptCandidates(): string[] {
 
 function resolveBundledWorkerExeCandidates(): string[] {
   const fromEnv = (process.env.MATH3D_WORKER_EXE || "").trim();
+  const workerName = process.platform === "win32" ? "worker.exe" : "worker";
   const candidates = [
     ...(fromEnv ? [path.resolve(fromEnv)] : []),
     ...(process.resourcesPath
       ? [
-          path.join(process.resourcesPath, "python-worker", "worker.exe"),
-          path.join(process.resourcesPath, "app.asar.unpacked", "python-worker", "worker.exe"),
+          path.join(process.resourcesPath, "python-worker", workerName),
+          path.join(process.resourcesPath, "app.asar.unpacked", "python-worker", workerName),
         ]
       : []),
-    path.join(path.dirname(process.execPath), "resources", "python-worker", "worker.exe"),
-    path.join(process.cwd(), "build", "python-worker-dist", "worker.exe"),
+    path.join(path.dirname(process.execPath), "resources", "python-worker", workerName),
+    path.join(process.cwd(), "build", "python-worker-dist", workerName),
   ];
   return dedupePaths(candidates);
 }
@@ -1115,7 +1117,7 @@ function resolveBundledExeLaunch(mode: WorkerResolutionMode, source: string): Wo
   if (!exePath) {
     throw workerNotFoundError(
       "Bundled worker executable",
-      "Expected packaged worker at resources/python-worker/worker.exe. Set MATH3D_WORKER_EXE to override.",
+      `Expected packaged worker at resources/python-worker/${process.platform === "win32" ? "worker.exe" : "worker"}. Set MATH3D_WORKER_EXE to override.`,
       candidates
     );
   }

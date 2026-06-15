@@ -148,9 +148,10 @@ class WorkerClient {
 
 async function main() {
   const args = parseArgs(process.argv);
+  const workerName = process.platform === "win32" ? "worker.exe" : "worker";
   const exePath = args.exe
     ? path.resolve(args.exe)
-    : path.resolve(process.cwd(), "build", "python-worker-dist", "worker.exe");
+    : path.resolve(process.cwd(), "build", "python-worker-dist", workerName);
 
   const client = new WorkerClient(exePath);
   try {
