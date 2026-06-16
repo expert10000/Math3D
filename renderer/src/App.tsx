@@ -1032,7 +1032,7 @@ const CURVE_PRESETS: CurvePreset[] = [
   },
   {
     id: "intersectionSpherePlane3d",
-    label: "Intersection (sphere â© plane)",
+    label: "Intersection (sphere ∩ plane)",
     group: "derived",
     category: "intersection",
     kind: "derived",
@@ -2096,7 +2096,7 @@ const MOBIUS_WORKBOOK_DEMOS: MobiusWorkbookDemoSpec[] = [
   {
     id: "mobius_cross_ratio",
     title: "Cross-ratio preservation",
-    focus: "Confirm MĂ¶bius invariance of cross-ratio on chosen quadruples.",
+    focus: "Confirm Möbius invariance of cross-ratio on chosen quadruples.",
     formula: "w = (2z + 1)/(z + 3)",
     params: {
       a: { re: 2, im: 0 },
@@ -2123,7 +2123,7 @@ const MOBIUS_WORKBOOK_DEMOS: MobiusWorkbookDemoSpec[] = [
 
 const buildMobiusWorkbookFromDemo = (demo: MobiusWorkbookDemoSpec, makeId: () => string): Workbook => {
   const wb = createDefaultWorkbook(makeId);
-  wb.title = `MĂ¶bius demo: ${demo.title}`;
+  wb.title = `Möbius demo: ${demo.title}`;
   wb.updatedAt = Date.now();
   const defineStage = wb.stages.find((s) => s.id === "define");
   const visualizeStage = wb.stages.find((s) => s.id === "visualize");
@@ -2171,7 +2171,7 @@ const buildMobiusWorkbookFromDemo = (demo: MobiusWorkbookDemoSpec, makeId: () =>
       {
         id: makeId(),
         type: "visualize",
-        title: "MĂ¶bius map view",
+        title: "Möbius map view",
         inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }],
         outputs: [{ id: "snapshot", label: "Snapshot", type: "snapshot" }],
         visualize: { live: true, snapshotA: null, snapshotB: null, notes: "Capture Z-plane/W-plane and Riemann sphere snapshots." },
@@ -2845,13 +2845,13 @@ const geometryConstructionExplorerCanUseForSection = (type: GeometryDerivedConst
   type === "face-parallel-face-plane" ||
   type === "object-symmetry-plane-preview";
 const geometryDependencyOverlayTypeMeta = (kind: string | undefined) => {
-  if (kind === "point") return { icon: "â—Ź", label: "Point", color: "#2563eb", background: "#eff6ff", border: "#93c5fd" };
-  if (kind === "parameter") return { icon: "â—§", label: "Parameter", color: "#b45309", background: "#fffbeb", border: "#fcd34d" };
-  if (kind === "line") return { icon: "â–¬", label: "Line", color: "#16a34a", background: "#f0fdf4", border: "#86efac" };
-  if (kind === "plane") return { icon: "â–­", label: "Plane", color: "#7c3aed", background: "#f5f3ff", border: "#c4b5fd" };
-  if (kind === "analysis") return { icon: "â‘", label: "Analysis", color: "#be123c", background: "#fff1f2", border: "#fda4af" };
-  if (kind === "measurement") return { icon: "đź“Ź", label: "Measurement", color: "#64748b", background: "#f8fafc", border: "#cbd5e1" };
-  return { icon: "â—†", label: "Object", color: "#475569", background: "#f8fafc", border: "#cbd5e1" };
+  if (kind === "point") return { icon: "●", label: "Point", color: "#2563eb", background: "#eff6ff", border: "#93c5fd" };
+  if (kind === "parameter") return { icon: "◧", label: "Parameter", color: "#b45309", background: "#fffbeb", border: "#fcd34d" };
+  if (kind === "line") return { icon: "▬", label: "Line", color: "#16a34a", background: "#f0fdf4", border: "#86efac" };
+  if (kind === "plane") return { icon: "▭", label: "Plane", color: "#7c3aed", background: "#f5f3ff", border: "#c4b5fd" };
+  if (kind === "analysis") return { icon: "∑", label: "Analysis", color: "#be123c", background: "#fff1f2", border: "#fda4af" };
+  if (kind === "measurement") return { icon: "📏", label: "Measurement", color: "#64748b", background: "#f8fafc", border: "#cbd5e1" };
+  return { icon: "◆", label: "Object", color: "#475569", background: "#f8fafc", border: "#cbd5e1" };
 };
 type GeometryMeasuredEdgeEntry = {
   id: string;
@@ -2955,11 +2955,11 @@ const GEOMETRY_DERIVED_STATUS_META: Record<
   GeometryDerivedStatus,
   { symbol: string; label: string; border: string; background: string; color: string }
 > = {
-  ready: { symbol: "âś“", label: "ready", border: "#16a34a", background: "#ecfdf5", color: "#166534" },
+  ready: { symbol: "✓", label: "ready", border: "#16a34a", background: "#ecfdf5", color: "#166534" },
   stale: { symbol: "!", label: "stale", border: "#ef4444", background: "#fef2f2", color: "#991b1b" },
   available: { symbol: "+", label: "available", border: "#2563eb", background: "#eff6ff", color: "#1d4ed8" },
   planned: { symbol: "", label: "planned", border: "#f59e0b", background: "#fffbeb", color: "#92400e" },
-  failed: { symbol: "Ă—", label: "failed", border: "#dc2626", background: "#fef2f2", color: "#991b1b" },
+  failed: { symbol: "×", label: "failed", border: "#dc2626", background: "#fef2f2", color: "#991b1b" },
 };
 
 type GeometryDatasetMeshObject = {
@@ -4117,7 +4117,7 @@ const inferGeometryHistoryIntent = (
       label: "Transform updated",
       operationType: "Transform",
       target: after.name,
-      parameters: `position ${formatHistoryVec3(after.transform.position)} Â· scale ${formatHistoryVec3(after.transform.scale)}`,
+      parameters: `position ${formatHistoryVec3(after.transform.position)} · scale ${formatHistoryVec3(after.transform.scale)}`,
       destructive: false,
     };
   }
@@ -4170,14 +4170,14 @@ const summarizeGeometryHistorySnapshot = (snapshot: GeometryObject | GeometryDat
     const faceCount = snapshot.mesh.indices?.length
       ? Math.floor(snapshot.mesh.indices.length / 3)
       : Math.floor(snapshot.mesh.positions.length / 9);
-    return `mesh V${vertexCount.toLocaleString()} F${faceCount.toLocaleString()} Â· ${transformSummary}`;
+    return `mesh V${vertexCount.toLocaleString()} F${faceCount.toLocaleString()} · ${transformSummary}`;
   }
   const sampleParams = Object.entries(snapshot.params)
     .filter(([, raw]) => typeof raw === "number" || typeof raw === "boolean" || typeof raw === "string")
     .slice(0, 2)
     .map(([key, raw]) => `${key}=${typeof raw === "number" ? formatHistoryNumber(raw) : String(raw)}`);
-  const paramsSummary = sampleParams.length ? ` Â· ${sampleParams.join(", ")}` : "";
-  return `${snapshot.type}${paramsSummary} Â· ${transformSummary}`;
+  const paramsSummary = sampleParams.length ? ` · ${sampleParams.join(", ")}` : "";
+  return `${snapshot.type}${paramsSummary} · ${transformSummary}`;
 };
 
 const summarizeGeometryHistoryChange = (
@@ -4191,19 +4191,19 @@ const summarizeGeometryHistoryChange = (
   if ("mesh" in before && "mesh" in after) {
     const beforeV = Math.floor(before.mesh.positions.length / 3);
     const afterV = Math.floor(after.mesh.positions.length / 3);
-    if (beforeV !== afterV) changes.push(`vertices ${beforeV}â†’${afterV}`);
+    if (beforeV !== afterV) changes.push(`vertices ${beforeV}→${afterV}`);
     const beforeF = before.mesh.indices?.length ? Math.floor(before.mesh.indices.length / 3) : Math.floor(before.mesh.positions.length / 9);
     const afterF = after.mesh.indices?.length ? Math.floor(after.mesh.indices.length / 3) : Math.floor(after.mesh.positions.length / 9);
-    if (beforeF !== afterF) changes.push(`faces ${beforeF}â†’${afterF}`);
+    if (beforeF !== afterF) changes.push(`faces ${beforeF}→${afterF}`);
   } else if (!("mesh" in before) && !("mesh" in after)) {
-    if (before.type !== after.type) changes.push(`${before.type}â†’${after.type}`);
+    if (before.type !== after.type) changes.push(`${before.type}→${after.type}`);
     if (JSON.stringify(before.params) !== JSON.stringify(after.params)) changes.push("params updated");
   } else {
     changes.push("object kind changed");
   }
   if (JSON.stringify(before.transform) !== JSON.stringify(after.transform)) changes.push("transform updated");
   if (JSON.stringify(before.material) !== JSON.stringify(after.material)) changes.push("material updated");
-  return changes.length ? changes.join(" Â· ") : "No visible change";
+  return changes.length ? changes.join(" · ") : "No visible change";
 };
 
 const buildMeshEdgePolylines = (
@@ -4883,8 +4883,8 @@ const FUNCTION_EXPLORER_CORE_PRESET_IDS = [
 const FUNCTION_EXPLORER_OTHER_PRESETS: Array<{ id: string; label: string; expr: string; note: string }> = [
   { id: "one_over_z", label: "1/z", expr: "1/z", note: "Simple pole at 0; classic residue demo." },
   { id: "one_over_z_minus_a", label: "1/(z-a)", expr: "1/(z-1)", note: "Simple pole at z=a (edit '1' to any real or complex a)." },
-  { id: "one_over_z2_plus_1", label: "1/(z^2+1)", expr: "1/(z^2+1)", note: "Poles at Â±i; residues can cancel by contour choice." },
-  { id: "z_over_z2_plus_1", label: "z/(z^2+1)", expr: "z/(z^2+1)", note: "Odd residues around Â±i." },
+  { id: "one_over_z2_plus_1", label: "1/(z^2+1)", expr: "1/(z^2+1)", note: "Poles at ±i; residues can cancel by contour choice." },
+  { id: "z_over_z2_plus_1", label: "z/(z^2+1)", expr: "z/(z^2+1)", note: "Odd residues around ±i." },
   { id: "one_over_z_minus_1_sq", label: "1/(z-1)^2", expr: "1/(z-1)^2", note: "Higher-order pole at z=1." },
   { id: "z2_plus_1_over_z_minus_2", label: "(z^2+1)/(z-2)", expr: "(z^2+1)/(z-2)", note: "Simple pole at z=2 with polynomial numerator." },
   { id: "exp_over_z", label: "exp(z)/z", expr: "exp(z)/z", note: "Essential numerator + simple pole at 0." },
@@ -4899,7 +4899,7 @@ const FUNCTION_EXPLORER_OTHER_PRESETS: Array<{ id: string; label: string; expr: 
   { id: "sqrt_z2m1", label: "sqrt(z^2-1)", expr: "sqrt(z^2-1)", note: "Branch points at -1 and 1 with cut on [-1,1]." },
   { id: "sin", label: "sin(z)", expr: "sin(z)", note: "Entire function with periodic stripes." },
   { id: "cos", label: "cos(z)", expr: "cos(z)", note: "Entire function with shifted periodic stripes." },
-  { id: "frac", label: "(z-1)/(z^2+1)", expr: "(z-1)/(z^2+1)", note: "Rational map with poles at Â±i." },
+  { id: "frac", label: "(z-1)/(z^2+1)", expr: "(z-1)/(z^2+1)", note: "Rational map with poles at ±i." },
   { id: "removable", label: "(z-1)/(z^2-1)", expr: "(z-1)/(z^2-1)", note: "Removable singularity at z=1." },
   { id: "pole3", label: "1/(z-2)^3", expr: "1/(z-2)^3", note: "Pole at z=2 of order 3." },
 ];
@@ -4909,7 +4909,7 @@ const BRANCH_LAB_PROFILES: Record<Exclude<BranchLabProfileId, "none">, BranchLab
     label: "log(z)",
     branchPoints: [{ re: 0, im: 0 }],
     cutLabel: "negative real axis",
-    monodromyNote: "Looping once around z=0 adds 2Ď€i to log(z).",
+    monodromyNote: "Looping once around z=0 adds 2πi to log(z).",
     includesInfinityByDefault: true,
   },
   sqrt: {
@@ -4931,7 +4931,7 @@ const BRANCH_LAB_PROFILES: Record<Exclude<BranchLabProfileId, "none">, BranchLab
     label: "z^(1/3)",
     branchPoints: [{ re: 0, im: 0 }],
     cutLabel: "negative real axis",
-    monodromyNote: "Each loop around z=0 rotates value by 2Ď€/3 in argument (next sheet).",
+    monodromyNote: "Each loop around z=0 rotates value by 2π/3 in argument (next sheet).",
   },
   sqrt_z2m1: {
     id: "sqrt_z2m1",
@@ -5045,7 +5045,7 @@ const COMPLEX_MAP_DEFAULT_SPEC: ComplexMapSweepSpec = {
   branchCutAngle: 0,
 };
 
-const COMPLEX_MAP_LABEL = "Complex Map Sweep (zâ†’w)";
+const COMPLEX_MAP_LABEL = "Complex Map Sweep (z→w)";
 const COMPLEX_MAP_OUTPUT_LABELS: Record<ComplexMapSweepSpec["outputMode"], string> = {
   sweep: COMPLEX_MAP_LABEL,
   re: "Complex Map Surface (Re)",
@@ -5160,11 +5160,11 @@ const SURFACES_EQ_META: {
   formula: string;
   note: string;
 }[] = [
-    { id: "sphere", label: "Sphere", formula: "xÂ˛ + yÂ˛ + zÂ˛ = RÂ˛", note: "Perfectly symmetric in all directions." },
-    { id: "hyperboloid", label: "Hyperboloid", formula: "xÂ˛ + yÂ˛ â’ zÂ˛ = 1  (one sheet)", note: "Ruled surface; circles + hyperbolas." },
-    { id: "paraboloid", label: "Paraboloid", formula: "z = xÂ˛ + yÂ˛  (elliptic)", note: "Like a satellite dish; vertical sections are parabolas." },
-    { id: "cone", label: "Cone", formula: "xÂ˛ + yÂ˛ = zÂ˛", note: "Double cone with vertex at the origin." },
-    { id: "cylinder", label: "Cylinder", formula: "xÂ˛ + yÂ˛ = RÂ˛", note: "Circle extruded along an axis." },
+    { id: "sphere", label: "Sphere", formula: "x² + y² + z² = R²", note: "Perfectly symmetric in all directions." },
+    { id: "hyperboloid", label: "Hyperboloid", formula: "x² + y² − z² = 1  (one sheet)", note: "Ruled surface; circles + hyperbolas." },
+    { id: "paraboloid", label: "Paraboloid", formula: "z = x² + y²  (elliptic)", note: "Like a satellite dish; vertical sections are parabolas." },
+    { id: "cone", label: "Cone", formula: "x² + y² = z²", note: "Double cone with vertex at the origin." },
+    { id: "cylinder", label: "Cylinder", formula: "x² + y² = R²", note: "Circle extruded along an axis." },
 
     { id: "hyperboloid_twoSheet", label: "Two-sheet hyperboloid", formula: "z^2/c^2 - x^2/a^2 - y^2/b^2 = 1", note: "Two disconnected bowls along z." },
     { id: "ellipsoid", label: "Ellipsoid", formula: "x^2/a^2 + y^2/b^2 + z^2/c^2 = 1", note: "Stretched sphere with three radii." },
@@ -5175,10 +5175,10 @@ const SURFACES_EQ_META: {
     { id: "scherk", label: "Scherk minimal surface", formula: "sin z - sinh x sinh y = 0", note: "Periodic minimal surface with saddle sheets." },
 
     // graph surfaces
-    { id: "graph_saddle", label: "Saddle graph", formula: "z = xÂ˛ â’ yÂ˛", note: "Classical saddle; negative curvature at the origin." },
-    { id: "graph_rotatedSaddle", label: "Rotated saddle", formula: "z = 2xy", note: "Same as xÂ˛ â’ yÂ˛ rotated by 45Â°." },
-    { id: "graph_monkey", label: "Monkey saddle", formula: "z = xÂł â’ 3xyÂ˛", note: "Saddle with 3 valleys; higher-order critical point." },
-    { id: "graph_wave", label: "Wave", formula: "z = sin x Â· cos y", note: "Periodic surface; good for gradients." },
+    { id: "graph_saddle", label: "Saddle graph", formula: "z = x² − y²", note: "Classical saddle; negative curvature at the origin." },
+    { id: "graph_rotatedSaddle", label: "Rotated saddle", formula: "z = 2xy", note: "Same as x² − y² rotated by 45°." },
+    { id: "graph_monkey", label: "Monkey saddle", formula: "z = x³ − 3xy²", note: "Saddle with 3 valleys; higher-order critical point." },
+    { id: "graph_wave", label: "Wave", formula: "z = sin x · cos y", note: "Periodic surface; good for gradients." },
     { id: "graph_paraboloid", label: "Paraboloid graph", formula: "z = 0.3(x^2+y^2)", note: "Convex bowl; positive curvature." },
     { id: "graph_gaussian", label: "Gaussian bump", formula: "z = exp(-(x^2+y^2))", note: "Bell-shaped bump with fast decay." },
     { id: "graph_ripple", label: "Ripple", formula: "z = sin(3r)/(3r)", note: "Radial ripples, r = sqrt(x^2+y^2)." },
@@ -5419,91 +5419,91 @@ const PARAM_SURFACES_META: {
   formula: string;
   note: string;
 }[] = [
-  { id: "plane", label: "Plane", formula: "Ď(u,v) = (u, v, 0)", note: "Developable; K = 0." },
+  { id: "plane", label: "Plane", formula: "σ(u,v) = (u, v, 0)", note: "Developable; K = 0." },
   {
     id: "bezierSurface",
     label: "Bezier surface",
-    formula: "Ď(u,v) = ÎŁ_i ÎŁ_j B_i^m(u) B_j^n(v) P_ij",
+    formula: "σ(u,v) = Σ_i Σ_j B_i^m(u) B_j^n(v) P_ij",
     note: "Tensor-product Bezier patch from a control grid.",
   },
   {
     id: "bSplineSurface",
     label: "B-spline surface",
-    formula: "Ď(u,v) = ÎŁ_i ÎŁ_j N_i,p(u) M_j,q(v) P_ij",
+    formula: "σ(u,v) = Σ_i Σ_j N_i,p(u) M_j,q(v) P_ij",
     note: "Tensor-product B-spline patch with clamped knot vectors.",
   },
   {
     id: "nurbsSurface",
     label: "NURBS surface",
-    formula: "Ď(u,v) = (ÎŁ_i ÎŁ_j N_i,p M_j,q w_ij P_ij) / (ÎŁ_i ÎŁ_j N_i,p M_j,q w_ij)",
+    formula: "σ(u,v) = (Σ_i Σ_j N_i,p M_j,q w_ij P_ij) / (Σ_i Σ_j N_i,p M_j,q w_ij)",
     note: "Rational B-spline patch using per-control-point weights.",
   },
   {
     id: "rotationalDevelopable",
     label: "Rotational linear profile",
-    formula: "Ď(u,v) = ((a + b v) cos u, (a + b v) sin u, c + d v)",
+    formula: "σ(u,v) = ((a + b v) cos u, (a + b v) sin u, c + d v)",
     note: "Linear profile (r(v), z(v)); cylinder/cone/frustum family.",
   },
   {
     id: "rotationalGraph",
     label: "Rotational graph",
-    formula: "Ď(u,v) = (f(v) cos u, f(v) sin u, v)",
+    formula: "σ(u,v) = (f(v) cos u, f(v) sin u, v)",
     note: "Function-profile form with r(v)=f(v), z(v)=v.",
   },
   {
     id: "rotationalBell",
     label: "Bell / vase rotational",
-    formula: "Ď(u,v) = ((1 + 0.2 sin 3v) cos u, (1 + 0.2 sin 3v) sin u, v)",
+    formula: "σ(u,v) = ((1 + 0.2 sin 3v) cos u, (1 + 0.2 sin 3v) sin u, v)",
     note: "Oscillating profile around axis (vase-like family).",
   },
   {
     id: "rotationalSpheroid",
     label: "Spheroid of revolution",
-    formula: "Ď(u,v) = (a sin v cos u, a sin v sin u, c cos v)",
+    formula: "σ(u,v) = (a sin v cos u, a sin v sin u, c cos v)",
     note: "Ellipsoid of revolution around the z-axis.",
   },
   {
     id: "rotationalHyperboloid",
     label: "Hyperboloid rotational",
-    formula: "Ď(u,v) = (a cosh v cos u, a cosh v sin u, c sinh v)",
+    formula: "σ(u,v) = (a cosh v cos u, a cosh v sin u, c sinh v)",
     note: "One-sheet hyperboloid as a rotational classical surface.",
   },
   {
     id: "rotationalFreeProfile",
     label: "Free-profile rotational",
-    formula: "Ď(u,v) = (r(v) cos u, r(v) sin u, z(v))",
+    formula: "σ(u,v) = (r(v) cos u, r(v) sin u, z(v))",
     note: "General parametric profile (r(v), z(v)); most general rotational form.",
   },
-  { id: "cylinder", label: "Circular cylinder", formula: "Ď(u,v) = (cos u, sin u, v)", note: "One principal curvature is 0." },
-  { id: "cone", label: "Cone (away from tip)", formula: "Ď(u,v) = (v cos u, v sin u, v)", note: "Rulings through a vertex; tip is singular." },
-  { id: "helicoid", label: "Helicoid", formula: "Ď(u,v) = (v cos u, v sin u, a u)", note: "Minimal ruled surface." },
-  { id: "catenoid", label: "Catenoid", formula: "Ď(u,v) = (cosh v cos u, cosh v sin u, v)", note: "Minimal rotational surface." },
-  { id: "sphere", label: "Sphere", formula: "Ď(u,v) = (R sin v cos u, R sin v sin u, R cos v)", note: "Spherical coordinates." },
-  { id: "ellipsoid", label: "Ellipsoid", formula: "Ď(u,v) = (a sin v cos u, b sin v sin u, c cos v)", note: "Scaled sphere with three axes." },
-  { id: "paraboloid", label: "Paraboloid (param)", formula: "Ď(u,v) = (v cos u, v sin u, v^2)", note: "Rotational graph surface." },
-  { id: "pseudosphere", label: "Pseudosphere", formula: "Ď(u,v) = (cos u sech v, sin u sech v, v - tanh v)", note: "Classical rotational negative-curvature surface." },
-  { id: "dini", label: "Dini surface", formula: "Ď(u,v) = (cos u sin v, sin u sin v, cos v + log tan(v/2) + b u)", note: "Twisted pseudosphere." },
-  { id: "twistedStrip", label: "Twisted strip", formula: "Ď(u,v) = ((1+v cos 2u) cos u, (1+v cos 2u) sin u, v sin 2u)", note: "Strip with two twists." },
-  { id: "torus", label: "Torus", formula: "Ď(u,v) = ((R + r cos v) cos u, (R + r cos v) sin u, r sin v)", note: "Torus as special rotational family." },
-  { id: "mobius", label: "MĂ¶bius strip", formula: "Ď(u,v) â‰ ((1 + v/2 cos(u/2)) cos u, â€¦)", note: "Non-orientable strip." },
-  { id: "kleinBottle", label: "Klein bottle", formula: "Ď(u,v) = immersion in â„ťÂł (self-intersecting)", note: "Embedding needs â„ťâ´." },
-  { id: "hyperbolicParaboloid", label: "Hyperbolic paraboloid", formula: "Ď(u,v) = (u, v, u v)", note: "Saddle; ruled (two families)." },
-  { id: "enneper", label: "Enneper surface", formula: "Ď(u,v) = (u â’ uÂł/3 + u vÂ˛, v â’ vÂł/3 + v uÂ˛, uÂ˛ â’ vÂ˛)", note: "Minimal; self-intersections." },
-  { id: "sweepLinearExtrusion", label: "Linear extrusion", formula: "Ď(u,v) = (p_x(u), p_y(u), v)", note: "Sweep profile along a straight axis." },
-  { id: "sweepDirectional", label: "Directional sweep", formula: "Ď(u,v) = p(u) + v d", note: "Profile translated in a fixed direction vector d." },
-  { id: "sweepPath", label: "Path sweep", formula: "Ď(u,v) = C(v) + frame(v) Â· p(u)", note: "Profile swept along a spatial path C(v)." },
-  { id: "sweepHelical", label: "Helical sweep", formula: "Ď(u,v) = C_helix(v) + frame(v) Â· p(u)", note: "Profile swept along a helical centerline." },
-  { id: "sweepScaled", label: "Scaled sweep", formula: "Ď(u,v) = C(v) + s(v) p(u)", note: "Sweep with profile scale varying along v." },
-  { id: "sweepTwisted", label: "Twisted sweep", formula: "Ď(u,v) = C(v) + R(Î¸(v)) p(u)", note: "Sweep with profile twist angle varying along v." },
-  { id: "ribbonRMF", label: "Ribbon (RMF)", formula: "Ď(u,v) = C(v) + w u n_RMF(v, Î¸(v))", note: "Rotation-minimizing-frame ribbon with optional twist." },
-  { id: "tubeConstant", label: "Constant-radius tube", formula: "Ď(u,v) = C(v) + r (cos u n(v) + sin u b(v))", note: "Tube with fixed radius around a centerline." },
-  { id: "tubeVariable", label: "Variable-radius tube", formula: "Ď(u,v) = C(v) + r(v) (cos u n(v) + sin u b(v))", note: "Tube with radius changing along v." },
-  { id: "tubeClosed", label: "Closed tube", formula: "Ď(u,v) = ((R + r cos u) cos v, (R + r cos u) sin v, r sin u)", note: "Closed-centerline tube (torus-like)." },
-  { id: "tubeOpen", label: "Open tube", formula: "Ď(u,v) = C_open(v) + r (cos u n(v) + sin u b(v))", note: "Tube over an open centerline segment." },
-  { id: "expCone", label: "Exp cone / funnel", formula: "Ď(u,v) = (v cos u, v sin u, log v)", note: "Graph-type rotational funnel (v>0)." },
-  { id: "helicoidUV", label: "Helicoid (u,v)", formula: "Ď(u,v) = (u cos v, u sin v, v)", note: "v is angle + height; use a few turns (no wrapV)." },
-  { id: "boy", label: "Boy's surface", formula: "Ď(u,v) = Bryant-Kusner param", note: "Immersion of RP2; self-intersections." },
-  { id: "custom", label: "Custom Ď(u,v)", formula: "Ď(u,v) = (X(u,v), Y(u,v), Z(u,v))", note: "User-defined parametrisation." },
+  { id: "cylinder", label: "Circular cylinder", formula: "σ(u,v) = (cos u, sin u, v)", note: "One principal curvature is 0." },
+  { id: "cone", label: "Cone (away from tip)", formula: "σ(u,v) = (v cos u, v sin u, v)", note: "Rulings through a vertex; tip is singular." },
+  { id: "helicoid", label: "Helicoid", formula: "σ(u,v) = (v cos u, v sin u, a u)", note: "Minimal ruled surface." },
+  { id: "catenoid", label: "Catenoid", formula: "σ(u,v) = (cosh v cos u, cosh v sin u, v)", note: "Minimal rotational surface." },
+  { id: "sphere", label: "Sphere", formula: "σ(u,v) = (R sin v cos u, R sin v sin u, R cos v)", note: "Spherical coordinates." },
+  { id: "ellipsoid", label: "Ellipsoid", formula: "σ(u,v) = (a sin v cos u, b sin v sin u, c cos v)", note: "Scaled sphere with three axes." },
+  { id: "paraboloid", label: "Paraboloid (param)", formula: "σ(u,v) = (v cos u, v sin u, v^2)", note: "Rotational graph surface." },
+  { id: "pseudosphere", label: "Pseudosphere", formula: "σ(u,v) = (cos u sech v, sin u sech v, v - tanh v)", note: "Classical rotational negative-curvature surface." },
+  { id: "dini", label: "Dini surface", formula: "σ(u,v) = (cos u sin v, sin u sin v, cos v + log tan(v/2) + b u)", note: "Twisted pseudosphere." },
+  { id: "twistedStrip", label: "Twisted strip", formula: "σ(u,v) = ((1+v cos 2u) cos u, (1+v cos 2u) sin u, v sin 2u)", note: "Strip with two twists." },
+  { id: "torus", label: "Torus", formula: "σ(u,v) = ((R + r cos v) cos u, (R + r cos v) sin u, r sin v)", note: "Torus as special rotational family." },
+  { id: "mobius", label: "Möbius strip", formula: "σ(u,v) ≈ ((1 + v/2 cos(u/2)) cos u, …)", note: "Non-orientable strip." },
+  { id: "kleinBottle", label: "Klein bottle", formula: "σ(u,v) = immersion in ℝ³ (self-intersecting)", note: "Embedding needs ℝ⁴." },
+  { id: "hyperbolicParaboloid", label: "Hyperbolic paraboloid", formula: "σ(u,v) = (u, v, u v)", note: "Saddle; ruled (two families)." },
+  { id: "enneper", label: "Enneper surface", formula: "σ(u,v) = (u − u³/3 + u v², v − v³/3 + v u², u² − v²)", note: "Minimal; self-intersections." },
+  { id: "sweepLinearExtrusion", label: "Linear extrusion", formula: "σ(u,v) = (p_x(u), p_y(u), v)", note: "Sweep profile along a straight axis." },
+  { id: "sweepDirectional", label: "Directional sweep", formula: "σ(u,v) = p(u) + v d", note: "Profile translated in a fixed direction vector d." },
+  { id: "sweepPath", label: "Path sweep", formula: "σ(u,v) = C(v) + frame(v) · p(u)", note: "Profile swept along a spatial path C(v)." },
+  { id: "sweepHelical", label: "Helical sweep", formula: "σ(u,v) = C_helix(v) + frame(v) · p(u)", note: "Profile swept along a helical centerline." },
+  { id: "sweepScaled", label: "Scaled sweep", formula: "σ(u,v) = C(v) + s(v) p(u)", note: "Sweep with profile scale varying along v." },
+  { id: "sweepTwisted", label: "Twisted sweep", formula: "σ(u,v) = C(v) + R(θ(v)) p(u)", note: "Sweep with profile twist angle varying along v." },
+  { id: "ribbonRMF", label: "Ribbon (RMF)", formula: "σ(u,v) = C(v) + w u n_RMF(v, θ(v))", note: "Rotation-minimizing-frame ribbon with optional twist." },
+  { id: "tubeConstant", label: "Constant-radius tube", formula: "σ(u,v) = C(v) + r (cos u n(v) + sin u b(v))", note: "Tube with fixed radius around a centerline." },
+  { id: "tubeVariable", label: "Variable-radius tube", formula: "σ(u,v) = C(v) + r(v) (cos u n(v) + sin u b(v))", note: "Tube with radius changing along v." },
+  { id: "tubeClosed", label: "Closed tube", formula: "σ(u,v) = ((R + r cos u) cos v, (R + r cos u) sin v, r sin u)", note: "Closed-centerline tube (torus-like)." },
+  { id: "tubeOpen", label: "Open tube", formula: "σ(u,v) = C_open(v) + r (cos u n(v) + sin u b(v))", note: "Tube over an open centerline segment." },
+  { id: "expCone", label: "Exp cone / funnel", formula: "σ(u,v) = (v cos u, v sin u, log v)", note: "Graph-type rotational funnel (v>0)." },
+  { id: "helicoidUV", label: "Helicoid (u,v)", formula: "σ(u,v) = (u cos v, u sin v, v)", note: "v is angle + height; use a few turns (no wrapV)." },
+  { id: "boy", label: "Boy's surface", formula: "σ(u,v) = Bryant-Kusner param", note: "Immersion of RP2; self-intersections." },
+  { id: "custom", label: "Custom σ(u,v)", formula: "σ(u,v) = (X(u,v), Y(u,v), Z(u,v))", note: "User-defined parametrisation." },
 ];
 
 const ROTATIONAL_PARAM_SURFACE_IDS = new Set<ParamSurfaceId>([
@@ -6457,11 +6457,11 @@ function createStarterWorkbooks(makeIdFn: () => string): Workbook[] {
 }
 
 function autoLabelGraphDomain(xSpan: number, ySpan: number) {
-  return `xÂ±${xSpan.toFixed(2)} yÂ±${ySpan.toFixed(2)}`;
+  return `x±${xSpan.toFixed(2)} y±${ySpan.toFixed(2)}`;
 }
 
 function autoLabelImplicitDomain(xSpan: number, ySpan: number) {
-  return `xĂ±${xSpan.toFixed(2)} yĂ±${ySpan.toFixed(2)}`;
+  return `xñ${xSpan.toFixed(2)} yñ${ySpan.toFixed(2)}`;
 }
 
 function sanitizeFileBase(label: string, fallback: string) {
@@ -6491,7 +6491,7 @@ const formatExportTimestamp = (ts: number) => {
 const formatSpan = (value: number) => (Number.isFinite(value) ? value.toFixed(2) : "?");
 
 const formatSpanDomain = (domain?: { xSpan: number; ySpan: number }) =>
-  domain ? `xÂ±${formatSpan(domain.xSpan)} yÂ±${formatSpan(domain.ySpan)}` : null;
+  domain ? `x±${formatSpan(domain.xSpan)} y±${formatSpan(domain.ySpan)}` : null;
 
 const formatParamDomain = (domain?: { uMin: number; uMax: number; vMin: number; vMax: number }) =>
   domain
@@ -6597,7 +6597,7 @@ const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string 
           lines.push(block.formula ?? "");
           lines.push("```");
         } else if (block.type === "compute") {
-          lines.push(`Operator: ${block.compute?.operatorId ?? "â€”"}`);
+          lines.push(`Operator: ${block.compute?.operatorId ?? "—"}`);
           if (block.compute?.lastRun?.status) lines.push(`Status: ${block.compute.lastRun.status}`);
           if (block.compute?.summary) lines.push(`Summary: ${block.compute.summary}`);
         } else if (block.type === "interaction") {
@@ -6796,7 +6796,7 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
           body = `<div class="block-body"><pre>${escapeHtml(block.formula ?? "")}</pre></div>`;
         } else if (block.type === "compute") {
           body = `<div class="block-body">
-            <div>Operator: ${escapeHtml(block.compute?.operatorId ?? "â€”")}</div>
+            <div>Operator: ${escapeHtml(block.compute?.operatorId ?? "—")}</div>
             ${block.compute?.lastRun?.status ? `<div>Status: ${escapeHtml(block.compute.lastRun.status)}</div>` : ""}
             ${block.compute?.summary ? `<div>Summary: ${escapeHtml(block.compute.summary)}</div>` : ""}
           </div>`;
@@ -9721,7 +9721,7 @@ const App: React.FC = () => {
   }, [geometrySelectedHistoryStepId, geometrySelectedObjectId]);
   const handleSaveSelectedHistoryStepAsPreset = useCallback(() => {
     if (!geometrySelectedHistoryStep) return;
-    const defaultName = `${geometrySelectedHistoryStep.objectName} Â· ${geometrySelectedHistoryStep.label}`;
+    const defaultName = `${geometrySelectedHistoryStep.objectName} · ${geometrySelectedHistoryStep.label}`;
     const name = window.prompt("Preset name", defaultName);
     if (!name?.trim()) return;
     const snapshot = cloneGeometrySceneObjectSnapshot(geometrySelectedHistoryStep.snapshot);
@@ -10057,7 +10057,7 @@ const App: React.FC = () => {
         ...sections,
         {
           key: `sorted-${geometryGallerySortPreset}`,
-          label: `All cards Â· ${label}`,
+          label: `All cards · ${label}`,
           cards: sortedGeometryGalleryVisibleCards.filter((card) => !featuredIds.has(card.id)),
         },
       ].filter((section) => section.cards.length);
@@ -10871,7 +10871,7 @@ const App: React.FC = () => {
           target: keys.join(", "),
           parameters: keys
             .map((key) => `${key}=${String((patch as Record<string, unknown>)[key])}`)
-            .join(" Â· "),
+            .join(" · "),
           destructive: false,
         });
       }
@@ -10911,7 +10911,7 @@ const App: React.FC = () => {
         label: "Transform edit",
         operationType: "Transform",
         target: axes.length ? axes.join(", ") : "transform",
-        parameters: axes.length ? axes.join(" Â· ") : "transform patch",
+        parameters: axes.length ? axes.join(" · ") : "transform patch",
         destructive: false,
       });
       const probeSelectionDetails = geometryProbeSelectionDetailsRef.current;
@@ -15070,14 +15070,14 @@ const App: React.FC = () => {
       combinatorics.push("Vertices: 8");
       combinatorics.push("Edges: 12");
       combinatorics.push("Faces: 6");
-      eulerLine = "Ď‡ = V - E + F = 8 - 12 + 6 = 2";
+      eulerLine = "χ = V - E + F = 8 - 12 + 6 = 2";
       related.push("cube", "cuboid", "rectangular prism");
     } else if (selected.type === "sphere") {
       const r = Number(selected.params.radius ?? 0);
       definition = "Sphere. A constant-radius surface where every point is equally distant from the center.";
-      formulas.push(`Volume: V = (4/3)Ď€rÂł${Number.isFinite(r) ? ` = ${formatTheoryNumber((4 / 3) * Math.PI * r * r * r)}` : ""}`);
-      formulas.push(`Surface area: A = 4Ď€rÂ˛${Number.isFinite(r) ? ` = ${formatTheoryNumber(4 * Math.PI * r * r)}` : ""}`);
-      eulerLine = "Smooth limit topology: Ď‡ = 2 (genus 0).";
+      formulas.push(`Volume: V = (4/3)πr³${Number.isFinite(r) ? ` = ${formatTheoryNumber((4 / 3) * Math.PI * r * r * r)}` : ""}`);
+      formulas.push(`Surface area: A = 4πr²${Number.isFinite(r) ? ` = ${formatTheoryNumber(4 * Math.PI * r * r)}` : ""}`);
+      eulerLine = "Smooth limit topology: χ = 2 (genus 0).";
       notes.push("Parameter: radius r.");
       related.push("ball", "ellipsoid", "icosphere");
     } else if (selected.type === "cylinder") {
@@ -15089,11 +15089,11 @@ const App: React.FC = () => {
       const r = isRightCylinder ? rTop : (rTop + rBottom) * 0.5;
       definition = "Cylinder. A radius-and-height primitive with circular cross-sections approximated by radial segments.";
       if (isRightCylinder) {
-        formulas.push("Volume: V = Ď€rÂ˛h");
-        formulas.push("Surface area: A = 2Ď€rÂ˛ + 2Ď€rh");
+        formulas.push("Volume: V = πr²h");
+        formulas.push("Surface area: A = 2πr² + 2πrh");
       } else {
-        formulas.push("Frustum volume: V = (1/3)Ď€h(r1Â˛ + r1r2 + r2Â˛)");
-        formulas.push("Frustum area: A = Ď€(r1 + r2)s + Ď€r1Â˛ + Ď€r2Â˛,  s = sqrt((r1-r2)Â˛ + hÂ˛)");
+        formulas.push("Frustum volume: V = (1/3)πh(r1² + r1r2 + r2²)");
+        formulas.push("Frustum area: A = π(r1 + r2)s + πr1² + πr2²,  s = sqrt((r1-r2)² + h²)");
       }
       if (Number.isFinite(h) && Number.isFinite(rTop) && Number.isFinite(rBottom)) {
         if (isRightCylinder) {
@@ -15121,9 +15121,9 @@ const App: React.FC = () => {
       const h = Number(selected.params.height ?? 0);
       const radialSegments = Math.max(3, Math.round(Number(selected.params.radialSegments ?? 24)));
       definition = "Cone. A base-radius and height primitive with an apex singularity.";
-      formulas.push("Volume: V = (1/3)Ď€rÂ˛h");
-      formulas.push("Slant height: l = sqrt(rÂ˛ + hÂ˛)");
-      formulas.push("Surface area: A = Ď€rÂ˛ + Ď€rl");
+      formulas.push("Volume: V = (1/3)πr²h");
+      formulas.push("Slant height: l = sqrt(r² + h²)");
+      formulas.push("Surface area: A = πr² + πrl");
       if (Number.isFinite(r) && Number.isFinite(h)) {
         const slant = Math.sqrt(r * r + h * h);
         formulas.push(`Current l = ${formatTheoryNumber(slant)}`);
@@ -15136,13 +15136,13 @@ const App: React.FC = () => {
       const R = Number(selected.params.radius ?? 0);
       const r = Number(selected.params.tube ?? 0);
       definition = "Torus. A ring surface controlled by major radius R and tube radius r.";
-      formulas.push("Volume: V = 2Ď€Â˛RrÂ˛");
-      formulas.push("Surface area: A = 4Ď€Â˛Rr");
+      formulas.push("Volume: V = 2π²Rr²");
+      formulas.push("Surface area: A = 4π²Rr");
       if (Number.isFinite(R) && Number.isFinite(r)) {
         formulas.push(`Current V = ${formatTheoryNumber(2 * Math.PI * Math.PI * R * r * r)}`);
         formulas.push(`Current A = ${formatTheoryNumber(4 * Math.PI * Math.PI * R * r)}`);
       }
-      combinatorics.push("Euler characteristic Ď‡ = 0 (torus topology).");
+      combinatorics.push("Euler characteristic χ = 0 (torus topology).");
       notes.push("Parameters: major radius R, tube radius r.");
       if (Number.isFinite(R) && Number.isFinite(r)) {
         notes.push(
@@ -15160,9 +15160,9 @@ const App: React.FC = () => {
       const thetaLength = Number(selected.params.thetaLength ?? Math.PI * 2);
       const theta = Number.isFinite(thetaLength) ? Math.max(0, thetaLength) : Math.PI * 2;
       definition = "Circular disk/sector primitive triangulated with radial segments.";
-      formulas.push("Sector area: A = (1/2)rÂ˛Î¸,  Î¸ in radians");
-      formulas.push("Arc length: L = rÎ¸");
-      formulas.push("Full disk (Î¸ = 2Ď€): A = Ď€rÂ˛");
+      formulas.push("Sector area: A = (1/2)r²θ,  θ in radians");
+      formulas.push("Arc length: L = rθ");
+      formulas.push("Full disk (θ = 2π): A = πr²");
       if (Number.isFinite(r)) {
         formulas.push(`Current A = ${formatTheoryNumber(0.5 * r * r * theta)}`);
         formulas.push(`Current L = ${formatTheoryNumber(r * theta)}`);
@@ -15182,19 +15182,19 @@ const App: React.FC = () => {
       }
       combinatorics.push("Rectangular patch corners: 4");
       combinatorics.push("Patch edges: 4");
-      eulerLine = "Patch topology (disk-like): Ď‡ = 1";
+      eulerLine = "Patch topology (disk-like): χ = 1";
       notes.push("A plane primitive is finite in this editor (rectangular patch), even though mathematical planes are unbounded.");
       related.push("coordinate plane", "rectangle patch");
     } else if (selected.type === "polyhedron") {
       definition = "Polyhedron primitive family (platonic / prism / pyramid / bipyramid / antiprism / geodesic).";
-      formulas.push("Euler characteristic (closed orientable): Ď‡ = V - E + F");
-      formulas.push("Genus relation: Ď‡ = 2 - 2g");
+      formulas.push("Euler characteristic (closed orientable): χ = V - E + F");
+      formulas.push("Genus relation: χ = 2 - 2g");
       const family = String(selected.params.family ?? "platonic");
       const counts = getPolyhedronCounts(family, selected.params);
       combinatorics.push(`Vertices: ${counts.vertices}`);
       combinatorics.push(`Edges: ${counts.edges}`);
       combinatorics.push(`Faces: ${counts.faces}`);
-      eulerLine = `Ď‡ = ${counts.vertices} - ${counts.edges} + ${counts.faces} = ${counts.vertices - counts.edges + counts.faces}`;
+      eulerLine = `χ = ${counts.vertices} - ${counts.edges} + ${counts.faces} = ${counts.vertices - counts.edges + counts.faces}`;
       related.push("platonic solids", "prisms", "antiprisms");
     }
     return {
@@ -17865,11 +17865,11 @@ const App: React.FC = () => {
           const id = coneDependencyNodeId(object.id, feature.feature);
           const label =
             feature.feature === "volume" && coneMetrics
-              ? `Volume Â· ${fmt(coneMetrics.volume)}`
+              ? `Volume · ${fmt(coneMetrics.volume)}`
               : feature.feature === "surface-area" && coneMetrics
-                ? `Surface Area Â· ${fmt(coneMetrics.surfaceArea)}`
+                ? `Surface Area · ${fmt(coneMetrics.surfaceArea)}`
                 : feature.feature === "measurements"
-                  ? `Measurements Â· ${coneMeasurementCount}`
+                  ? `Measurements · ${coneMeasurementCount}`
                   : feature.label;
           addNode({
             id,
@@ -17903,11 +17903,11 @@ const App: React.FC = () => {
           const id = boxDependencyNodeId(object.id, feature.feature);
           const label =
             feature.feature === "volume" && boxMetrics
-              ? `Volume Â· ${fmt(boxMetrics.volume)}`
+              ? `Volume · ${fmt(boxMetrics.volume)}`
               : feature.feature === "surface-area" && boxMetrics
-                ? `Surface Area Â· ${fmt(boxMetrics.surfaceArea)}`
+                ? `Surface Area · ${fmt(boxMetrics.surfaceArea)}`
                 : feature.feature === "measurements"
-                  ? `Measurements Â· ${boxMeasurementCount}`
+                  ? `Measurements · ${boxMeasurementCount}`
                   : feature.label;
           addNode({ id, kind: feature.kind, label, objectId: object.id, status: "valid" });
           addEdge({ sourceId: boxDependencyGroupNodeId(object.id, feature.group), targetId: id, relation: "contains" });
@@ -18609,7 +18609,7 @@ const App: React.FC = () => {
           handleSelectGeometryDependencyNode(nodeId);
         }}
         aria-pressed={active}
-        title={`${node.label} Â· ${node.type.replaceAll("-", " ")}`}
+        title={`${node.label} · ${node.type.replaceAll("-", " ")}`}
         style={{
           border: `1px solid ${active ? "#93c5fd" : "#dbe2ea"}`,
           borderRadius: 6,
@@ -19219,7 +19219,7 @@ const App: React.FC = () => {
     return sourceIds.flatMap((id, index) => {
       const source = resolveGeometrySceneObjectById(id);
       return source
-        ? [{ id, label: `Input ${String.fromCharCode(65 + index)} Â· ${source.name}`, object: source }]
+        ? [{ id, label: `Input ${String.fromCharCode(65 + index)} · ${source.name}`, object: source }]
         : [];
     });
   }, [
@@ -19995,9 +19995,9 @@ const App: React.FC = () => {
       { text: "Symmetry Plane", position: nodes.symmetryPlane },
       { text: "ANALYSIS", position: nodes.analysisHeading, color: 0xbe123c, borderColor: 0xfda4af },
       { text: "Curvature", position: nodes.curvature },
-      { text: `Measurements Â· ${measurementCount}`, position: nodes.measurements },
-      { text: `Volume Â· ${fmt(metrics.volume)}`, position: nodes.volume },
-      { text: `Surface Area Â· ${fmt(metrics.surfaceArea)}`, position: nodes.surfaceArea },
+      { text: `Measurements · ${measurementCount}`, position: nodes.measurements },
+      { text: `Volume · ${fmt(metrics.volume)}`, position: nodes.volume },
+      { text: `Surface Area · ${fmt(metrics.surfaceArea)}`, position: nodes.surfaceArea },
     ].map((label) => ({
       color: 0x334155,
       backgroundColor: 0xffffff,
@@ -20055,24 +20055,24 @@ const App: React.FC = () => {
         geometrySelectedObject.type === "box"
           ? "V = w h d"
           : geometrySelectedObject.type === "sphere"
-            ? "V = (4/3) Ď€ rÂł"
+            ? "V = (4/3) π r³"
             : isCylinder && Math.abs(radiusTop - radiusBottom) <= 1e-6
-              ? "V = Ď€ rÂ˛ h"
+              ? "V = π r² h"
               : isCylinder
-                ? "V = (Ď€h/3)(RÂ˛ + Rr + rÂ˛)"
+                ? "V = (πh/3)(R² + Rr + r²)"
                 : geometrySelectedObject.type === "cone"
-                  ? "V = (Ď€ rÂ˛ h)/3"
-                  : "V = â­Î© dV";
+                  ? "V = (π r² h)/3"
+                  : "V = ∭Ω dV";
       const surfaceAreaFormula =
         geometrySelectedObject.type === "box"
           ? "A = 2(wh + wd + hd)"
           : geometrySelectedObject.type === "sphere"
-            ? "A = 4Ď€ rÂ˛"
+            ? "A = 4π r²"
             : isCylinder && Math.abs(radiusTop - radiusBottom) <= 1e-6
-              ? "A = 2Ď€r(r + h)"
+              ? "A = 2πr(r + h)"
               : geometrySelectedObject.type === "cone"
-                ? "A = Ď€r(r + âš(hÂ˛ + rÂ˛))"
-                : "A = â¬S dA";
+                ? "A = πr(r + √(h² + r²))"
+                : "A = ∬S dA";
       return {
         selected: geometrySelectedObject.name,
         selectedId: `object:${geometrySelectedObject.id}`,
@@ -20083,10 +20083,10 @@ const App: React.FC = () => {
           { id: nodeId("symmetry-plane"), label: "Symmetry Plane", kind: "plane" },
         ],
         analysis: [
-          { id: nodeId("curvature"), label: "Curvature", kind: "analysis", formula: "K = kâ‚ kâ‚‚" },
-          { id: nodeId("measurements"), label: `Measurements Â· ${measurementCount}`, kind: "measurement" },
-          { id: nodeId("volume"), label: metrics ? `Volume Â· ${fmt(metrics.volume)}` : "Volume", kind: "measurement", formula: volumeFormula },
-          { id: nodeId("surface-area"), label: metrics ? `Surface Area Â· ${fmt(metrics.surfaceArea)}` : "Surface Area", kind: "measurement", formula: surfaceAreaFormula },
+          { id: nodeId("curvature"), label: "Curvature", kind: "analysis", formula: "K = k₁ k₂" },
+          { id: nodeId("measurements"), label: `Measurements · ${measurementCount}`, kind: "measurement" },
+          { id: nodeId("volume"), label: metrics ? `Volume · ${fmt(metrics.volume)}` : "Volume", kind: "measurement", formula: volumeFormula },
+          { id: nodeId("surface-area"), label: metrics ? `Surface Area · ${fmt(metrics.surfaceArea)}` : "Surface Area", kind: "measurement", formula: surfaceAreaFormula },
         ],
       };
     }
@@ -20158,7 +20158,7 @@ const App: React.FC = () => {
         ? node?.recomputeMs != null
           ? `${node.recomputeMs.toFixed(2)} ms`
           : "< 0.1 ms"
-        : "â€”",
+        : "—",
     };
   }, [
     geometryDependencyGraph.nodeById,
@@ -20188,8 +20188,8 @@ const App: React.FC = () => {
         steps: [
           {
             label: "Volume",
-            symbolic: "V = width Ă— height Ă— depth",
-            substitution: `V = ${fmt(width)} Ă— ${fmt(height)} Ă— ${fmt(depth)}`,
+            symbolic: "V = width × height × depth",
+            substitution: `V = ${fmt(width)} × ${fmt(height)} × ${fmt(depth)}`,
             result: fmt(width * height * depth),
           },
         ],
@@ -20208,14 +20208,14 @@ const App: React.FC = () => {
           steps: [
             {
               label: "Base area",
-              symbolic: "A_base = Ď€rÂ˛",
-              substitution: `A_base = Ď€ Ă— ${fmt(radiusTop)}Â˛`,
+              symbolic: "A_base = πr²",
+              substitution: `A_base = π × ${fmt(radiusTop)}²`,
               result: fmt(baseArea),
             },
             {
               label: "Volume",
-              symbolic: "V = Ď€rÂ˛h",
-              substitution: `V = Ď€ Ă— ${fmt(radiusTop)}Â˛ Ă— ${fmt(height)}`,
+              symbolic: "V = πr²h",
+              substitution: `V = π × ${fmt(radiusTop)}² × ${fmt(height)}`,
               result: fmt(baseArea * height),
             },
           ],
@@ -20233,8 +20233,8 @@ const App: React.FC = () => {
         ],
         steps: [{
           label: "Volume",
-          symbolic: "V = (Ď€h/3)(RÂ˛ + Rr + rÂ˛)",
-          substitution: `V = (Ď€ Ă— ${fmt(height)} / 3)(${fmt(radiusTop)}Â˛ + ${fmt(radiusTop)} Ă— ${fmt(radiusBottom)} + ${fmt(radiusBottom)}Â˛)`,
+          symbolic: "V = (πh/3)(R² + Rr + r²)",
+          substitution: `V = (π × ${fmt(height)} / 3)(${fmt(radiusTop)}² + ${fmt(radiusTop)} × ${fmt(radiusBottom)} + ${fmt(radiusBottom)}²)`,
           result: fmt(volume),
         }],
       };
@@ -20249,14 +20249,14 @@ const App: React.FC = () => {
         steps: [
           {
             label: "Base area",
-            symbolic: "A_base = Ď€rÂ˛",
-            substitution: `A_base = Ď€ Ă— ${fmt(radius)}Â˛`,
+            symbolic: "A_base = πr²",
+            substitution: `A_base = π × ${fmt(radius)}²`,
             result: fmt(baseArea),
           },
           {
             label: "Volume",
-            symbolic: "V = (1/3)Ď€rÂ˛h",
-            substitution: `V = (1/3) Ă— Ď€ Ă— ${fmt(radius)}Â˛ Ă— ${fmt(height)}`,
+            symbolic: "V = (1/3)πr²h",
+            substitution: `V = (1/3) × π × ${fmt(radius)}² × ${fmt(height)}`,
             result: fmt(baseArea * height / 3),
           },
         ],
@@ -21550,7 +21550,7 @@ const App: React.FC = () => {
     }
   }, [workbookManualSaveHash, workbookSessionHash]);
 
-  // MĂ¶bius params
+  // Möbius params
   const [mobiusParams, setMobiusParams] = useState<MobiusParams>(identityParams);
   const [mobiusSubTab, setMobiusSubTab] = useState<MobiusSubTab>("map");
   const [functionExplorerScene, setFunctionExplorerScene] = useState<FunctionExplorerScene>("mobius");
@@ -21640,7 +21640,7 @@ const App: React.FC = () => {
   const [otherComplexContourBandMode, setOtherComplexContourBandMode] = useState<
     "modulus" | "argument" | "u" | "v" | "cr_residual" | "conformal_scale" | "local_rotation"
   >("modulus");
-  // 0..4 steps: z -> TÎ´ -> J -> SÎ˛ -> TÎ±
+  // 0..4 steps: z -> Tδ -> J -> Sβ -> Tα
   const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const mobiusFormulaCardRef = useRef<HTMLDivElement | null>(null);
   const mobiusSummary = useMemo(() => {
@@ -21663,7 +21663,7 @@ const App: React.FC = () => {
       ? "affine"
       : cAbs2(A) < eps && cAbs2(D) < eps
         ? "inversion-like"
-        : "general MĂ¶bius";
+        : "general Möbius";
     return {
       det,
       affine,
@@ -21727,7 +21727,7 @@ const App: React.FC = () => {
     setGeometryWorkbookUiMode("full");
     setRightPanelTab("workbook");
     setMode("geometry");
-    setMobiusIntegrationStatus(`Workbook demos created: ${created.length} (Complex Analysis â†’ Mobius).`);
+    setMobiusIntegrationStatus(`Workbook demos created: ${created.length} (Complex Analysis → Mobius).`);
   }, []);
 
   const handleMobiusPromoteToSceneOverlay = useCallback(() => {
@@ -21747,7 +21747,7 @@ const App: React.FC = () => {
       clampAbs: prev.clampAbs ?? 8,
     }));
     setComplexMapError(null);
-    setMobiusIntegrationStatus("Loaded as complex-map scene overlay input in Surfaces â†’ Complex.");
+    setMobiusIntegrationStatus("Loaded as complex-map scene overlay input in Surfaces → Complex.");
   }, [mobiusParams]);
 
   const handleMobiusExportZWPlaneImage = useCallback(() => {
@@ -21790,13 +21790,13 @@ const App: React.FC = () => {
     setComplexMapSphereStacked(true);
     setViewMenuOpen(true);
     setShowScreenshotTools(true);
-    setScreenshotStatus("Riemann sphere scene prepared in Surfaces â†’ Complex. Use Screenshot or object export.");
-    setMobiusIntegrationStatus("Riemann sphere scene prepared for export in Surfaces â†’ Complex.");
+    setScreenshotStatus("Riemann sphere scene prepared in Surfaces → Complex. Use Screenshot or object export.");
+    setMobiusIntegrationStatus("Riemann sphere scene prepared for export in Surfaces → Complex.");
   }, [mobiusParams]);
 
   const handleMobiusCreateLessonCard = useCallback(() => {
     const lesson = [
-      "Lesson card: MĂ¶bius map",
+      "Lesson card: Möbius map",
       `Map: w = (az+b)/(cz+d) with a=${cToStr(mobiusParams.a)}, b=${cToStr(mobiusParams.b)}, c=${cToStr(mobiusParams.c)}, d=${cToStr(mobiusParams.d)}`,
       "Focus: circle-line invariance, pole behavior, fixed points, and infinity on the Riemann sphere.",
     ].join("\n");
@@ -21818,7 +21818,7 @@ const App: React.FC = () => {
                           {
                             id: makeId(),
                             type: "text",
-                            title: "MĂ¶bius lesson card",
+                            title: "Möbius lesson card",
                             text: lesson,
                             outputs: [{ id: "text", label: "Text", type: "text" }],
                           },
@@ -21838,7 +21838,7 @@ const App: React.FC = () => {
     }
     if (IS_REPLAY_MODE) return;
     const wb = createDefaultWorkbook(makeId);
-    wb.title = "MĂ¶bius lesson card";
+    wb.title = "Möbius lesson card";
     wb.updatedAt = Date.now();
     const explainStage = wb.stages.find((s) => s.id === "explain");
     if (explainStage) {
@@ -21846,7 +21846,7 @@ const App: React.FC = () => {
         {
           id: makeId(),
           type: "text",
-          title: "MĂ¶bius lesson card",
+          title: "Möbius lesson card",
           text: lesson,
           outputs: [{ id: "text", label: "Text", type: "text" }],
         },
@@ -23927,7 +23927,7 @@ const App: React.FC = () => {
         id: "sqrt",
         label: "sqrt(z)",
         expr: "sqrt(z)",
-        preview: "Two sheets, branch points 0 and âž.",
+        preview: "Two sheets, branch points 0 and ∞.",
         theory: "One loop around z=0 swaps sheets (order 2 monodromy).",
       },
       {
@@ -23942,7 +23942,7 @@ const App: React.FC = () => {
         label: "log(z)",
         expr: "log(z)",
         preview: "Infinite sheet stack / helicoid-style continuation.",
-        theory: "Each loop adds +2Ď€i; sheet index k is unbounded.",
+        theory: "Each loop adds +2πi; sheet index k is unbounded.",
       },
       {
         id: "sqrt_z2m1",
@@ -24649,7 +24649,7 @@ const App: React.FC = () => {
     if (otherComplexBranchCutMode === "negative_real_axis") return "negative real axis";
     if (otherComplexBranchCutMode === "positive_real_axis") return "positive real axis";
     if (otherComplexBranchCutMode === "radial_from_point") {
-      return `radial from selected point, angle ${otherComplexBranchCutRadialAngleDeg.toFixed(0)}Â°`;
+      return `radial from selected point, angle ${otherComplexBranchCutRadialAngleDeg.toFixed(0)}°`;
     }
     if (otherComplexBranchCutMode === "between_branch_points") return "between branch points";
     return "custom polyline";
@@ -25793,7 +25793,7 @@ const App: React.FC = () => {
   const [cgalMeshState, setCgalMeshState] = useState<CgalMeshState | null>(null);
   const [cgalMeshToken, setCgalMeshToken] = useState(0);
 
-  // custom parametric Ď(u,v)
+  // custom parametric σ(u,v)
   const [paramXExpr, setParamXExpr] = useState("u");
   const [paramYExpr, setParamYExpr] = useState("v");
   const [paramZExpr, setParamZExpr] = useState("0");
@@ -29241,10 +29241,10 @@ const App: React.FC = () => {
     const critical = otherComplexMarkers2d?.critical.z.length ?? 0;
     const branchPoints = otherComplexBranchProfile.branchPoints.length
       ? `${otherComplexBranchProfile.branchPoints.map((pt) => cToStr(pt)).join(", ")}${
-          otherComplexIncludeInfinityBranchPointEffective ? ", âž" : ""
+          otherComplexIncludeInfinityBranchPointEffective ? ", ∞" : ""
         }`
       : otherComplexIncludeInfinityBranchPointEffective
-        ? "âž"
+        ? "∞"
       : "none detected";
     return { zeros, poles, critical, branchPoints };
   }, [otherComplexRationalInspection, otherComplexMarkers2d, otherComplexBranchProfile, otherComplexIncludeInfinityBranchPointEffective]);
@@ -29666,7 +29666,7 @@ const App: React.FC = () => {
       title = "exp covering";
       formula = "exp(w) = z  (implemented as w = exp(z))";
       coverSpaceLabel = "Cover space (w): domain plane";
-      baseSpaceLabel = "Base space (z â‰  0): image plane";
+      baseSpaceLabel = "Base space (z ≠ 0): image plane";
       basePoint = selectedW && cAbs(selectedW) > 1e-9 ? selectedW : fallbackBaseW;
       const principal = { re: Math.log(Math.max(1e-12, cAbs(basePoint))), im: Math.atan2(basePoint.im, basePoint.re) };
       for (let k = -fiberWindow; k <= fiberWindow; k++) {
@@ -29676,10 +29676,10 @@ const App: React.FC = () => {
       const deckTo = { re: principal.re, im: principal.im + twoPi * kShift };
       deckSegmentZ = [deckFrom, deckTo];
       const err = closeError(expComplex(deckFrom), expComplex(deckTo));
-      fiberRule = "Fiber over selected base point z0: w = Log(z0) + 2Ď€ik, k â Z.";
-      deckRule = "Deck transformation: w -> w + 2Ď€ik.";
+      fiberRule = "Fiber over selected base point z0: w = Log(z0) + 2πik, k ∈ Z.";
+      deckRule = "Deck transformation: w -> w + 2πik.";
       monodromySummary = "Monodromy group: Z (infinite cyclic).";
-      invariantCheck = `exp(w + 2Ď€iÂ·${kShift}) matches exp(w): error ${err.toExponential(2)}`;
+      invariantCheck = `exp(w + 2πi·${kShift}) matches exp(w): error ${err.toExponential(2)}`;
     } else if (otherComplexCoveringExample === "square" || otherComplexCoveringExample === "power_n") {
       const n = otherComplexCoveringExample === "square" ? 2 : powerN;
       title = n === 2 ? "z -> z^2 covering" : `z -> z^${n} covering`;
@@ -29694,13 +29694,13 @@ const App: React.FC = () => {
       deckSegmentZ = [deckFrom, deckTo];
       const err = closeError(powInt(deckFrom, n), powInt(deckTo, n));
       fiberRule = `Fiber over selected base point w0: n roots of w0 (${n} sheet${n === 1 ? "" : "s"}).`;
-      deckRule = `Deck transformation: z -> exp(2Ď€iÂ·k/${n}) z.`;
+      deckRule = `Deck transformation: z -> exp(2πi·k/${n}) z.`;
       monodromySummary = `Monodromy group: C${n}.`;
       invariantCheck = `Deck invariance w(z) = w(deck(z)): error ${err.toExponential(2)}`;
     } else if (otherComplexCoveringExample === "log") {
       title = "log as inverse of exp";
-      formula = "w = Log(z) + 2Ď€ik i";
-      coverSpaceLabel = "Base space: domain z-plane (z â‰  0)";
+      formula = "w = Log(z) + 2πik i";
+      coverSpaceLabel = "Base space: domain z-plane (z ≠ 0)";
       baseSpaceLabel = "Sheet values in w-plane";
       basePoint = cAbs(selectedZ) > 1e-9 ? selectedZ : fallbackBaseZ;
       const principal = { re: Math.log(Math.max(1e-12, cAbs(basePoint))), im: Math.atan2(basePoint.im, basePoint.re) };
@@ -29711,10 +29711,10 @@ const App: React.FC = () => {
       const deckTo = { re: principal.re, im: principal.im + twoPi * kShift };
       deckSegmentW = [deckFrom, deckTo];
       const err = closeError(expComplex(deckFrom), expComplex(deckTo));
-      fiberRule = "Fiber over selected base point z0: all logarithms Log(z0)+2Ď€ik i.";
-      deckRule = "Deck transformation on sheets: w -> w + 2Ď€ik.";
+      fiberRule = "Fiber over selected base point z0: all logarithms Log(z0)+2πik i.";
+      deckRule = "Deck transformation on sheets: w -> w + 2πik.";
       monodromySummary = "Monodromy group: Z (infinite cyclic).";
-      invariantCheck = `exp(w + 2Ď€iÂ·${kShift}) = exp(w): error ${err.toExponential(2)}`;
+      invariantCheck = `exp(w + 2πi·${kShift}) = exp(w): error ${err.toExponential(2)}`;
     } else {
       title = "sqrt as inverse of z^2";
       formula = "w^2 = z  (implemented as w = sqrt(z))";
@@ -29727,7 +29727,7 @@ const App: React.FC = () => {
       else wFiberPoints = [principal, other];
       deckSegmentW = [principal, cMul(principal, { re: Math.cos(Math.PI * kShift), im: Math.sin(Math.PI * kShift) })];
       const err = closeError(cMul(principal, principal), cMul(other, other));
-      fiberRule = "Fiber over selected base point z0: w = Â±sqrt(z0).";
+      fiberRule = "Fiber over selected base point z0: w = ±sqrt(z0).";
       deckRule = "Deck transformation: w -> -w (order 2).";
       monodromySummary = "Monodromy group: C2.";
       invariantCheck = `Square invariance under sign change: error ${err.toExponential(2)}`;
@@ -30299,8 +30299,8 @@ const App: React.FC = () => {
                 : "sqrt(z)";
           endValueText = idx === 0 ? `${base}` : `-${base}`;
         } else {
-          multiplierText = idx === 0 ? "1" : `exp(2Ď€iÂ·${idx}/${sheetCount})`;
-          endValueText = `exp(2Ď€iÂ·${idx}/${sheetCount}) Â· ${otherComplexBranchProfile.label}`;
+          multiplierText = idx === 0 ? "1" : `exp(2πi·${idx}/${sheetCount})`;
+          endValueText = `exp(2πi·${idx}/${sheetCount}) · ${otherComplexBranchProfile.label}`;
         }
         valueShiftText = "0";
       } else {
@@ -30336,10 +30336,10 @@ const App: React.FC = () => {
       return {
         title: "Monodromy group",
         groupLabel: "Z (infinite cyclic)",
-        generator: "k â†’ k + 1 per positive loop around z=0",
+        generator: "k → k + 1 per positive loop around z=0",
         bullets: [
-          "loop once  -> log(z) + 2Ď€i",
-          "loop k times -> log(z) + 2Ď€ik",
+          "loop once  -> log(z) + 2πi",
+          "loop k times -> log(z) + 2πik",
         ],
       };
     }
@@ -30379,7 +30379,7 @@ const App: React.FC = () => {
     let multiplierText = "n/a";
     if (sheetCount && currentSheetIndex != null) {
       if (sheetCount === 2) multiplierText = currentSheetIndex === 0 ? "1" : "-1";
-      else multiplierText = currentSheetIndex === 0 ? "1" : `exp(2Ď€i/${sheetCount}Â·${currentSheetIndex})`;
+      else multiplierText = currentSheetIndex === 0 ? "1" : `exp(2πi/${sheetCount}·${currentSheetIndex})`;
     }
     const logShift = otherComplexBranchProfile.id === "log" ? 2 * Math.PI * kCurrent : null;
     return {
@@ -30424,9 +30424,9 @@ const App: React.FC = () => {
     if (otherComplexBranchProfile.id === "log") {
       return {
         title: "log(z): symbolic infinite-sheet preview",
-        sheetModel: "Sheets indexed by k â Z (helicoid-like covering).",
-        cutModel: "Principal cut is a ray from 0 to âž (default negative real axis).",
-        continuationRule: "One positive loop around z=0 sends k â†’ k+1 and adds +2Ď€i to log(z).",
+        sheetModel: "Sheets indexed by k ∈ Z (helicoid-like covering).",
+        cutModel: "Principal cut is a ray from 0 to ∞ (default negative real axis).",
+        continuationRule: "One positive loop around z=0 sends k → k+1 and adds +2πi to log(z).",
         returnPeriodLabel,
         previewRows,
       };
@@ -30435,7 +30435,7 @@ const App: React.FC = () => {
       return {
         title: "z^(1/3): symbolic 3-sheet preview",
         sheetModel: "Three sheets cyclically glued along the branch cut.",
-        cutModel: "Default cut is a ray from 0 to âž; crossing/looping changes branch selection.",
+        cutModel: "Default cut is a ray from 0 to ∞; crossing/looping changes branch selection.",
         continuationRule: "One loop around z=0 advances sheet by +1 mod 3.",
         returnPeriodLabel,
         previewRows,
@@ -30467,7 +30467,7 @@ const App: React.FC = () => {
     return {
       title: `${otherComplexBranchProfile.label}: symbolic 2-sheet preview`,
       sheetModel: "Two sheets glued along the branch cut.",
-      cutModel: "Default cut is a ray from 0 to âž (negative real axis).",
+      cutModel: "Default cut is a ray from 0 to ∞ (negative real axis).",
       continuationRule: "One loop around z=0 swaps sheets (shift +1 mod 2).",
       returnPeriodLabel,
       previewRows,
@@ -30841,7 +30841,7 @@ const App: React.FC = () => {
       `Integral estimate: ${fmt(otherComplexIntegralEstimate.re)} ${sign} ${fmt(
         Math.abs(otherComplexIntegralEstimate.im)
       )}i (segments ${otherComplexIntegralEstimate.used}/${otherComplexIntegralEstimate.total})${
-        residueErr ? `; residue theorem error |Î”|=${fmt(residueErr.abs)}.` : "."
+        residueErr ? `; residue theorem error |Δ|=${fmt(residueErr.abs)}.` : "."
       }`
     );
   }, [otherComplexIntegralEstimate, otherComplexContourAnalysis.residueTheoremError]);
@@ -42723,7 +42723,7 @@ case "mobius":
         name: entry.name,
         type: `derived/math-${entry.type}`,
         sourceDefinition: dependencyNames.length ? dependencyNames.join(", ") : "No sources",
-        displayState: `${entry.visible ? "visible" : "hidden"} Â· ${liveValidity.label}${relationCount ? ` Â· ${relationCount} relationship${relationCount === 1 ? "" : "s"}` : ""}`,
+        displayState: `${entry.visible ? "visible" : "hidden"} · ${liveValidity.label}${relationCount ? ` · ${relationCount} relationship${relationCount === 1 ? "" : "s"}` : ""}`,
         parentId: mathParentId(entry),
         category: "derived",
         sceneRole: "overlay",
@@ -43118,7 +43118,7 @@ case "mobius":
         name: derived.name,
         type: derived.type,
         sourceDefinition: derived.sourceDefinition,
-        displayState: `${derived.displayState} Â· ${(derived.derivedStatus ?? "ready").toUpperCase()}`,
+        displayState: `${derived.displayState} · ${(derived.derivedStatus ?? "ready").toUpperCase()}`,
         parentId: derived.parentId,
         category: "derived",
         canDelete: true,
@@ -45854,7 +45854,7 @@ case "mobius":
   const cgalServiceStatusText = !cgalHealthState
     ? "checking..."
     : cgalServiceReady
-      ? `available${cgalHealthState.version ? ` Â· v${cgalHealthState.version}` : ""}`
+      ? `available${cgalHealthState.version ? ` · v${cgalHealthState.version}` : ""}`
       : "unavailable";
   const vtkServiceReady = vtkBridgeReady && cgalServiceReady;
   const vtkServiceStatusText = !vtkBridgeReady
@@ -45890,7 +45890,7 @@ case "mobius":
       : surfaceViewerKind === "implicit"
         ? (implicitSurfaceId === "implicit_custom" ? "Already custom" : "Edit custom f(x,y,z)")
         : surfaceViewerKind === "param"
-          ? (paramSurfaceId === "custom" ? "Already custom" : "Start as custom Ď(u,v)")
+          ? (paramSurfaceId === "custom" ? "Already custom" : "Start as custom σ(u,v)")
           : null;
   const surfacesQuickEditEnabled =
     surfaceViewerKind === "graph"
@@ -46786,7 +46786,7 @@ case "mobius":
                       title="Workspace back"
                       style={workspaceNavButtonStyle(canGoWorkspaceBack)}
                     >
-                      â†
+                      ←
                     </button>
                     <button
                       type="button"
@@ -46796,7 +46796,7 @@ case "mobius":
                       title="Workspace forward"
                       style={workspaceNavButtonStyle(canGoWorkspaceForward)}
                     >
-                      â†’
+                      →
                     </button>
                   </div>
                   <div style={topNavSegmentStyle}>
@@ -47492,7 +47492,7 @@ case "mobius":
                 }}
                 style={pill(mode === "mobius" && functionExplorerScene === "mobius" && mobiusSubTab !== "riemann")}
               >
-                MĂ¶bius Lab
+                Möbius Lab
               </button>
               <button
                 type="button"
@@ -48014,7 +48014,7 @@ case "mobius":
                     const active = geometryWorkflowActiveStepId === step.id;
                     return (
                       <React.Fragment key={`geometry-workflow-step-${step.id}`}>
-                        {index > 0 && <span style={{ color: "#94a3b8", fontSize: 11 }}>â†’</span>}
+                        {index > 0 && <span style={{ color: "#94a3b8", fontSize: 11 }}>→</span>}
                         <button
                           type="button"
                           onClick={() => handleGeometryWorkflowStepClick(step.id)}
@@ -48347,7 +48347,7 @@ case "mobius":
                     : "#334155";
               return (
                 <React.Fragment key={`surface-workflow-${step.id}`}>
-                  {index > 0 && <span style={{ color: "#94a3b8", fontSize: 11 }}>â†’</span>}
+                  {index > 0 && <span style={{ color: "#94a3b8", fontSize: 11 }}>→</span>}
                   <button
                     type="button"
                     data-testid={`surface-workflow-${step.id}`}
@@ -48843,12 +48843,12 @@ case "mobius":
                     <div>Parametric surface: X(u, v) = (x(u,v), y(u,v), z(u,v))</div>
                   </div>
                   <div style={{ fontSize: 11, opacity: 0.82, lineHeight: 1.6 }}>
-                    <div>First form: E = XuÂ·Xu, F = XuÂ·Xv, G = XvÂ·Xv</div>
-                    <div>Second form: e = nÂ·Xuu, f = nÂ·Xuv, g = nÂ·Xvv</div>
-                    <div>K = (eg - fÂ˛)/(EG - FÂ˛), H = (Eg - 2Ff + Ge)/(2(EG - FÂ˛))</div>
+                    <div>First form: E = Xu·Xu, F = Xu·Xv, G = Xv·Xv</div>
+                    <div>Second form: e = n·Xuu, f = n·Xuv, g = n·Xvv</div>
+                    <div>K = (eg - f²)/(EG - F²), H = (Eg - 2Ff + Ge)/(2(EG - F²))</div>
                   </div>
                   <div style={{ fontSize: 11, color: "#334155" }}>
-                    Live picking/probing is in right panel: <strong>Inspector â†’ Probe</strong>.
+                    Live picking/probing is in right panel: <strong>Inspector → Probe</strong>.
                   </div>
                 </div>
               )}
@@ -49808,7 +49808,7 @@ case "mobius":
                               </div>
                               <div style={{ marginTop: 2, fontSize: 13, fontWeight: 700, color: "#0f172a" }}>{surfaceMeshLabel}</div>
                               <div style={{ marginTop: 2, fontSize: 11, color: "#334155" }}>
-                                {surfaceMeshStats.vertCount.toLocaleString()} vertices Â· {surfaceMeshStats.triCount.toLocaleString()} triangles
+                                {surfaceMeshStats.vertCount.toLocaleString()} vertices · {surfaceMeshStats.triCount.toLocaleString()} triangles
                               </div>
                               {surfaceMeshSourceLabel && (
                                 <div style={{ marginTop: 2, fontSize: 10, color: "#64748b" }}>Source: {surfaceMeshSourceLabel}</div>
@@ -50094,7 +50094,7 @@ case "mobius":
                                       }}
                                     >
                                       <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", letterSpacing: 0.2 }}>
-                                        Expression Â· z = f(x,y)
+                                        Expression · z = f(x,y)
                                       </div>
                                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                                         <span style={{ fontSize: 10, color: "#64748b", fontWeight: 700 }}>Examples</span>
@@ -50245,7 +50245,7 @@ case "mobius":
                                             padding: "4px 7px",
                                           }}
                                         >
-                                          {surfaceFormulaEditorValidation.ok ? "Parse ok" : "Parse issue"} Â· {surfaceFormulaEditorValidation.detail}
+                                          {surfaceFormulaEditorValidation.ok ? "Parse ok" : "Parse issue"} · {surfaceFormulaEditorValidation.detail}
                                         </div>
                                         <div style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                                           <button
@@ -50299,7 +50299,7 @@ case "mobius":
                                       }}
                                     >
                                       <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", letterSpacing: 0.2 }}>
-                                        Expression Â· F(x,y,z) = 0
+                                        Expression · F(x,y,z) = 0
                                       </div>
                                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                                         <span style={{ fontSize: 10, color: "#64748b", fontWeight: 700 }}>Examples</span>
@@ -50450,7 +50450,7 @@ case "mobius":
                                             padding: "4px 7px",
                                           }}
                                         >
-                                          {surfaceFormulaEditorValidation.ok ? "Parse ok" : "Parse issue"} Â· {surfaceFormulaEditorValidation.detail}
+                                          {surfaceFormulaEditorValidation.ok ? "Parse ok" : "Parse issue"} · {surfaceFormulaEditorValidation.detail}
                                         </div>
                                         <div style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                                           <button
@@ -51763,10 +51763,10 @@ case "mobius":
                           <strong>{curveRenderState.probe?.point ? fmt3(curveRenderState.probe.point) : "n/a"}</strong>
                         </div>
                         <div>
-                          curvature Îş(t) = <strong>{fmt(curveRenderState.probe?.curvature ?? NaN)}</strong>
+                          curvature κ(t) = <strong>{fmt(curveRenderState.probe?.curvature ?? NaN)}</strong>
                         </div>
                         <div>
-                          torsion Ď„(t) = <strong>{fmt(curveRenderState.probe?.torsion ?? NaN)}</strong>
+                          torsion τ(t) = <strong>{fmt(curveRenderState.probe?.torsion ?? NaN)}</strong>
                         </div>
                       </div>
                     </div>
@@ -51916,7 +51916,7 @@ case "mobius":
                       background: "#fff",
                     }}
                   >
-                    â‹Ż
+                    ⋯
                   </summary>
                   <div
                     style={{
@@ -52735,8 +52735,8 @@ case "mobius":
                               );
                               const cardFallbackThumb = card.diagramThumbnailDataUrl;
                               const secondaryLine = card.defaultRecipe?.type
-                                ? `${card.badge} Â· ${card.defaultRecipe.type}`
-                                : `${card.badge} Â· ${section.label}`;
+                                ? `${card.badge} · ${card.defaultRecipe.type}`
+                                : `${card.badge} · ${section.label}`;
                               const summary = compactSummary(card.description, 72);
                               const chips = withPrimaryFirst(card.badge, [
                                 ...card.tags.slice(0, 2),
@@ -52993,21 +52993,21 @@ case "mobius":
                           onClick={handleBakeSelectedGeometryObject}
                           disabled={!geometrySelectedObjectId}
                         >
-                          Selected objects â†’ Dataset
+                          Selected objects → Dataset
                         </button>
                         <button
                           type="button"
                           onClick={handleBakeAllGeometryObjects}
                           disabled={!proceduralMeshSet.meshes.length}
                         >
-                          All visible â†’ Dataset
+                          All visible → Dataset
                         </button>
                         <button
                           type="button"
                           onClick={handleBakeVisibleGeometryObjectsAsMeshGroup}
                           disabled={!proceduralMeshSet.meshes.length}
                         >
-                          All visible â†’ Mesh group
+                          All visible → Mesh group
                         </button>
                         <button
                           type="button"
@@ -53016,14 +53016,14 @@ case "mobius":
                           }}
                           disabled={!proceduralMeshSet.meshes.length}
                         >
-                          All visible â†’ GLB
+                          All visible → GLB
                         </button>
                         <button
                           type="button"
                           onClick={handleDatasetToGeometryScene}
                           disabled={datasetKind === "volume" || !surfaceMeshData?.positions?.length}
                         >
-                          SurfaceMesh â†’ Mesh
+                          SurfaceMesh → Mesh
                         </button>
                       </div>
                       <div style={{ fontSize: 10, opacity: 0.65, marginTop: 4 }}>
@@ -53147,7 +53147,7 @@ case "mobius":
                                 onClick={() => setGeometryProceduralPanelTab("transform")}
                                 style={{ textAlign: "left", padding: "6px 8px" }}
                               >
-                                <strong>Center</strong> Â· {fmt3(geometrySelectedSceneObject.transform.position)}
+                                <strong>Center</strong> · {fmt3(geometrySelectedSceneObject.transform.position)}
                               </button>
                             )}
                             {geometryDefinitionWorkspace.inputs.map((entry) => (
@@ -53157,7 +53157,7 @@ case "mobius":
                                 onClick={() => handleSelectGeometryDependencyNode(entry.id)}
                                 style={{ textAlign: "left", padding: "6px 8px" }}
                               >
-                                <strong>{entry.label}</strong> Â· {entry.relation}
+                                <strong>{entry.label}</strong> · {entry.relation}
                               </button>
                             ))}
                             {!geometrySelectedSceneObject && !geometryDefinitionWorkspace.inputs.length && (
@@ -53352,7 +53352,7 @@ case "mobius":
                               </button>
                             </div>
                             <div style={{ fontSize: 10.5, color: "#475569" }}>
-                              {geometryDefinitionWorkspace.inputs.length} upstream Â· {geometryDefinitionWorkspace.outputs.length} downstream
+                              {geometryDefinitionWorkspace.inputs.length} upstream · {geometryDefinitionWorkspace.outputs.length} downstream
                             </div>
                             {geometryInspectorDependencyDetails?.node && (
                               <div style={{ fontSize: 10.5 }}>
@@ -53371,7 +53371,7 @@ case "mobius":
                                   onClick={() => handleSelectGeometryDependencyNode(entry.id)}
                                   style={{ textAlign: "left", padding: "6px 8px" }}
                                 >
-                                  <strong>{entry.label}</strong> Â· {entry.relation}
+                                  <strong>{entry.label}</strong> · {entry.relation}
                                 </button>
                               ))
                             ) : (
@@ -54930,7 +54930,7 @@ case "mobius":
                                 onChange={(e) => setGeometryRepeatCircularAngleDeg(Number(e.target.value) || 0)}
                                 style={{ marginLeft: 6, width: 72 }}
                               />
-                              Â°
+                              °
                             </label>
                           </div>
                         )}
@@ -55005,10 +55005,10 @@ case "mobius":
                           Selected plane/edge source:{" "}
                           {geometryProbeSelectionDetails
                             ? `${geometryProbeSelectionDetails.mode}${
-                                geometryProbeSelectionDetails!.faceIndex != null ? ` Â· face #${geometryProbeSelectionDetails!.faceIndex}` : ""
+                                geometryProbeSelectionDetails!.faceIndex != null ? ` · face #${geometryProbeSelectionDetails!.faceIndex}` : ""
                               }${
                                 geometryProbeSelectionDetails!.edgeVertexPair
-                                  ? ` Â· edge [${geometryProbeSelectionDetails!.edgeVertexPair[0]}, ${geometryProbeSelectionDetails!.edgeVertexPair[1]}]`
+                                  ? ` · edge [${geometryProbeSelectionDetails!.edgeVertexPair[0]}, ${geometryProbeSelectionDetails!.edgeVertexPair[1]}]`
                                   : ""
                               }`
                             : "none"}
@@ -55036,7 +55036,7 @@ case "mobius":
                               onChange={(e) => setGeometryConstraintAngleInputDeg(Number(e.target.value) || 0)}
                               style={{ marginLeft: 6, width: 82 }}
                             />
-                            Â°
+                            °
                           </label>
                           <button type="button" onClick={handleApplyConstraintAngle} disabled={!geometrySelectedSceneObject}>
                             Apply angle
@@ -55055,7 +55055,7 @@ case "mobius":
                                 <option value="">Select derived object</option>
                                 {geometryRelationDerivedCandidates.map((entry) => (
                                   <option key={`geometry-relation-target-${entry.id}`} value={entry.id}>
-                                    {entry.label} Â· {entry.sourceName}
+                                    {entry.label} · {entry.sourceName}
                                   </option>
                                 ))}
                               </select>
@@ -55204,7 +55204,7 @@ case "mobius":
                             <div style={{ fontSize: 12, fontWeight: 700 }}>{geometrySelectedSceneObject.name}</div>
                             <div style={{ fontSize: 11, color: "#475569" }}>
                               {geometrySelectedTransformSummary
-                                ? `${geometrySelectedTransformSummary.roleLabel} Â· ${geometrySelectedTransformSummary.typeLabel} Â· ${geometrySelectedTransformSummary.statusLabel}`
+                                ? `${geometrySelectedTransformSummary.roleLabel} · ${geometrySelectedTransformSummary.typeLabel} · ${geometrySelectedTransformSummary.statusLabel}`
                                 : "n/a"}
                             </div>
                           </>
@@ -55366,7 +55366,7 @@ case "mobius":
                             }}
                             style={{ width: 72 }}
                           />
-                          Â°
+                          °
                         </label>
                         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
                           <input
@@ -55750,7 +55750,7 @@ case "mobius":
                             geometrySelectedObject.group === "helper" ? "ReferenceObject" : "PrimaryObject",
                             "Procedural primitive",
                             geometrySelectedSceneMeshInfo ? "Mesh ready" : "Mesh pending",
-                          ].join(" Â· ")}
+                          ].join(" · ")}
                         </div>
                         <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
                           <div
@@ -55835,7 +55835,7 @@ case "mobius":
                                 )}
                               </div>
                               <div style={{ fontSize: 11 }}>
-                                {geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} verts Â·{" "}
+                                {geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} verts ·{" "}
                                 {geometrySelectedSceneMeshInfo.triCount.toLocaleString()} tris
                               </div>
                               <div style={{ fontSize: 10, opacity: 0.8 }}>Source: {geometrySelectedSceneMeshInfo.sourceLabel}</div>
@@ -55845,7 +55845,7 @@ case "mobius":
                               <div style={{ fontSize: 10, opacity: 0.8 }}>
                                 Bounds:{" "}
                                 {geometrySelectedSceneMeshInfo.bounds
-                                  ? `min (${fmt(geometrySelectedSceneMeshInfo.bounds.min[0])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.min[1])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.min[2])}) Â· max (${fmt(geometrySelectedSceneMeshInfo.bounds.max[0])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.max[1])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.max[2])})`
+                                  ? `min (${fmt(geometrySelectedSceneMeshInfo.bounds.min[0])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.min[1])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.min[2])}) · max (${fmt(geometrySelectedSceneMeshInfo.bounds.max[0])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.max[1])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.max[2])})`
                                   : "n/a"}
                               </div>
                               <div style={{ fontSize: 10, opacity: 0.8 }}>
@@ -55861,11 +55861,11 @@ case "mobius":
                                   : "n/a"}
                               </div>
                               <div style={{ fontSize: 10, opacity: 0.8 }}>
-                                Manifold: {geometrySelectedSceneMeshInfo.manifold ? "yes" : "no"} Â· Watertight:{" "}
+                                Manifold: {geometrySelectedSceneMeshInfo.manifold ? "yes" : "no"} · Watertight:{" "}
                                 {geometrySelectedSceneMeshInfo.watertight ? "yes" : "no"}
                               </div>
                               <div style={{ fontSize: 10, opacity: 0.8 }}>
-                                Boundary edges: {geometrySelectedSceneMeshInfo.boundaryEdgeCount.toLocaleString()} Â· Non-manifold edges:{" "}
+                                Boundary edges: {geometrySelectedSceneMeshInfo.boundaryEdgeCount.toLocaleString()} · Non-manifold edges:{" "}
                                 {geometrySelectedSceneMeshInfo.nonManifoldEdgeCount.toLocaleString()}
                               </div>
                               <div style={{ marginTop: 2, fontSize: 10, fontWeight: 700 }}>
@@ -55925,8 +55925,8 @@ case "mobius":
                               </div>
                               {geometrySectionPreview && (
                                 <div style={{ marginTop: 4, fontSize: 10, opacity: 0.88 }}>
-                                  Section Result: length {fmt(geometrySectionPreview.section.curveLength)} Â· area {fmt(geometrySectionPreview.section.area)} Â·
-                                  segments {geometrySectionPreview.section.segmentCount.toLocaleString()} Â· closed{" "}
+                                  Section Result: length {fmt(geometrySectionPreview.section.curveLength)} · area {fmt(geometrySectionPreview.section.area)} ·
+                                  segments {geometrySectionPreview.section.segmentCount.toLocaleString()} · closed{" "}
                                   {geometrySectionPreview.section.closed ? "yes" : "no"}
                                 </div>
                               )}
@@ -56450,7 +56450,7 @@ case "mobius":
                                   <div style={{ fontSize: 11, opacity: 0.8 }}>
                                     <div style={{ fontWeight: 600, marginTop: 4 }}>Derived counts</div>
                                     <div style={{ fontFamily: "monospace", marginTop: 2 }}>
-                                      V={polyCounts.vertices} Â· E={polyCounts.edges} Â· F={polyCounts.faces} Â· triangles=
+                                      V={polyCounts.vertices} · E={polyCounts.edges} · F={polyCounts.faces} · triangles=
                                       {polyCounts.triangles}
                                     </div>
                                   </div>
@@ -57088,7 +57088,7 @@ case "mobius":
                                 }}
                               >
                                 <div style={{ fontWeight: 700 }}>
-                                  {entry.label} Â· {new Date(entry.at).toLocaleTimeString()}
+                                  {entry.label} · {new Date(entry.at).toLocaleTimeString()}
                                 </div>
                                 <div style={{ opacity: 0.82 }}>{entry.changeSummary}</div>
                                 <div style={{ opacity: 0.72 }}>
@@ -57142,7 +57142,7 @@ case "mobius":
                           Object / DatasetMesh / {geometrySelectedDatasetMeshObject.name}
                         </div>
                         <div style={{ marginTop: 3, fontSize: 10.5, opacity: 0.75 }}>
-                          Dataset mesh object Â· {geometrySelectedSceneMeshInfo ? "Mesh ready" : "Mesh pending"}
+                          Dataset mesh object · {geometrySelectedSceneMeshInfo ? "Mesh ready" : "Mesh pending"}
                         </div>
                         <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
                           <div
@@ -57256,7 +57256,7 @@ case "mobius":
                                 )}
                               </div>
                               <div style={{ fontSize: 11 }}>
-                                {geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} verts Â·{" "}
+                                {geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} verts ·{" "}
                                 {geometrySelectedSceneMeshInfo.triCount.toLocaleString()} tris
                               </div>
                               <div style={{ fontSize: 10, opacity: 0.8 }}>Source: {geometrySelectedSceneMeshInfo.sourceLabel}</div>
@@ -57266,7 +57266,7 @@ case "mobius":
                               <div style={{ fontSize: 10, opacity: 0.8 }}>
                                 Bounds:{" "}
                                 {geometrySelectedSceneMeshInfo.bounds
-                                  ? `min (${fmt(geometrySelectedSceneMeshInfo.bounds.min[0])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.min[1])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.min[2])}) Â· max (${fmt(geometrySelectedSceneMeshInfo.bounds.max[0])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.max[1])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.max[2])})`
+                                  ? `min (${fmt(geometrySelectedSceneMeshInfo.bounds.min[0])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.min[1])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.min[2])}) · max (${fmt(geometrySelectedSceneMeshInfo.bounds.max[0])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.max[1])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.max[2])})`
                                   : "n/a"}
                               </div>
                               <div style={{ fontSize: 10, opacity: 0.8 }}>
@@ -57282,11 +57282,11 @@ case "mobius":
                                   : "n/a"}
                               </div>
                               <div style={{ fontSize: 10, opacity: 0.8 }}>
-                                Manifold: {geometrySelectedSceneMeshInfo.manifold ? "yes" : "no"} Â· Watertight:{" "}
+                                Manifold: {geometrySelectedSceneMeshInfo.manifold ? "yes" : "no"} · Watertight:{" "}
                                 {geometrySelectedSceneMeshInfo.watertight ? "yes" : "no"}
                               </div>
                               <div style={{ fontSize: 10, opacity: 0.8 }}>
-                                Boundary edges: {geometrySelectedSceneMeshInfo.boundaryEdgeCount.toLocaleString()} Â· Non-manifold edges:{" "}
+                                Boundary edges: {geometrySelectedSceneMeshInfo.boundaryEdgeCount.toLocaleString()} · Non-manifold edges:{" "}
                                 {geometrySelectedSceneMeshInfo.nonManifoldEdgeCount.toLocaleString()}
                               </div>
                               <div style={{ marginTop: 2, fontSize: 10, fontWeight: 700 }}>
@@ -57346,8 +57346,8 @@ case "mobius":
                               </div>
                               {geometrySectionPreview && (
                                 <div style={{ marginTop: 4, fontSize: 10, opacity: 0.88 }}>
-                                  Section Result: length {fmt(geometrySectionPreview.section.curveLength)} Â· area {fmt(geometrySectionPreview.section.area)} Â·
-                                  segments {geometrySectionPreview.section.segmentCount.toLocaleString()} Â· closed{" "}
+                                  Section Result: length {fmt(geometrySectionPreview.section.curveLength)} · area {fmt(geometrySectionPreview.section.area)} ·
+                                  segments {geometrySectionPreview.section.segmentCount.toLocaleString()} · closed{" "}
                                   {geometrySectionPreview.section.closed ? "yes" : "no"}
                                 </div>
                               )}
@@ -57587,7 +57587,7 @@ case "mobius":
                             <div>Mode: {GEOMETRY_PROMOTION_MODE_LABELS[geometrySelectedDatasetMeshObject.promotion.promotionMode]}</div>
                             <div>Source geometry id: {geometrySelectedDatasetMeshObject.promotion.sourceGeometryId ?? "n/a"}</div>
                             <div>
-                              Counts: {geometrySelectedDatasetMeshObject.promotion.vertexCount.toLocaleString()} verts Â·{" "}
+                              Counts: {geometrySelectedDatasetMeshObject.promotion.vertexCount.toLocaleString()} verts ·{" "}
                               {geometrySelectedDatasetMeshObject.promotion.faceCount.toLocaleString()} faces
                             </div>
                             <div>
@@ -57774,7 +57774,7 @@ case "mobius":
                                 }}
                               >
                                 <div style={{ fontWeight: 700 }}>
-                                  {entry.label} Â· {new Date(entry.at).toLocaleTimeString()}
+                                  {entry.label} · {new Date(entry.at).toLocaleTimeString()}
                                 </div>
                                 <div style={{ opacity: 0.82 }}>{entry.changeSummary}</div>
                                 <div style={{ opacity: 0.72 }}>
@@ -57857,7 +57857,7 @@ case "mobius":
                                 gap: 6,
                               }}
                             >
-                              <div style={{ fontSize: 12, fontWeight: 700 }}>Operation history Â· {geometrySelectedSceneObject.name}</div>
+                              <div style={{ fontSize: 12, fontWeight: 700 }}>Operation history · {geometrySelectedSceneObject.name}</div>
                               {geometrySelectedObjectHistory.length ? (
                                 geometrySelectedObjectHistory.slice(0, 24).map((entry) => (
                                   <button
@@ -58121,7 +58121,7 @@ case "mobius":
                             )}
                             <div style={{ fontSize: 12, fontWeight: 700 }}>Related objects</div>
                             <div style={{ fontSize: 11, color: "#475467" }}>
-                              {geometryTheorySummary.related.length ? geometryTheorySummary.related.join(" Â· ") : "n/a"}
+                              {geometryTheorySummary.related.length ? geometryTheorySummary.related.join(" · ") : "n/a"}
                             </div>
                             <div style={{ fontSize: 12, fontWeight: 700 }}>PR14 preview: local editing</div>
                             <div
@@ -58373,7 +58373,7 @@ case "mobius":
                                       style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}
                                     >
                                       <div>
-                                        {entry.objectName} Â· [{entry.edgeVertexPair[0]}, {entry.edgeVertexPair[1]}]
+                                        {entry.objectName} · [{entry.edgeVertexPair[0]}, {entry.edgeVertexPair[1]}]
                                       </div>
                                       <button type="button" onClick={() => handleDeleteMarkedEdge(entry.id)} style={{ fontSize: 10 }}>
                                         Remove
@@ -58401,7 +58401,7 @@ case "mobius":
                                   <div style={{ fontWeight: 700 }}>Recent edge measurements</div>
                                   {geometryMeasuredEdges.slice(0, 6).map((entry) => (
                                     <div key={`geometry-edge-measure-${entry.id}`}>
-                                      {entry.objectName} Â· edge [{entry.edgeVertexPair[0]}, {entry.edgeVertexPair[1]}] Â· L={fmt(entry.length)} Â·{" "}
+                                      {entry.objectName} · edge [{entry.edgeVertexPair[0]}, {entry.edgeVertexPair[1]}] · L={fmt(entry.length)} ·{" "}
                                       {new Date(entry.at).toLocaleTimeString()}
                                     </div>
                                   ))}
@@ -58528,8 +58528,8 @@ case "mobius":
                                 >
                                   <div>
                                     {entry.kind}
-                                    {entry.objectId ? ` Â· ${entry.objectId}` : ""}
-                                    {entry.text ? ` Â· ${entry.text}` : ""}
+                                    {entry.objectId ? ` · ${entry.objectId}` : ""}
+                                    {entry.text ? ` · ${entry.text}` : ""}
                                   </div>
                                   <button type="button" onClick={() => handleDeleteGeometryAnnotation(entry.id)} style={{ fontSize: 10 }}>
                                     Remove
@@ -58842,7 +58842,7 @@ case "mobius":
                               <div>
                                 <strong>loops:</strong> {geometrySectionPreview.section.polylines.length.toLocaleString()}
                                 {geometrySectionPreview.section.equivalentRadius != null
-                                  ? ` Â· equiv radius ${fmt(geometrySectionPreview.section.equivalentRadius)}`
+                                  ? ` · equiv radius ${fmt(geometrySectionPreview.section.equivalentRadius)}`
                                   : ""}
                               </div>
                             </div>
@@ -59519,7 +59519,7 @@ case "mobius":
                             gap: 8,
                           }}
                         >
-                          <div style={{ fontSize: 12, fontWeight: 700 }}>Geometry â†’ Demonstrations</div>
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>Geometry → Demonstrations</div>
                           <div style={{ fontSize: 11, color: "#475467" }}>
                             Guided theorem workflows built on existing section planes, comparison metrics, annotations, and Euler counts.
                           </div>
@@ -59782,7 +59782,7 @@ case "mobius":
                                                 background: active ? "#eef4ff" : "#fff",
                                               }}
                                             >
-                                              <span style={{ fontWeight: 700 }}>{index + 1}. {step.label}</span> Â· {step.note}
+                                              <span style={{ fontWeight: 700 }}>{index + 1}. {step.label}</span> · {step.note}
                                             </button>
                                           );
                                         })}
@@ -59830,16 +59830,16 @@ case "mobius":
                               </button>
                             </div>
                             <div style={{ fontFamily: "monospace", color: "#334155" }}>
-                              h = {fmt(geometrySectionPlaneOffset)} Â· section plane = {geometrySectionPlanePreset.toUpperCase()}
+                              h = {fmt(geometrySectionPlaneOffset)} · section plane = {geometrySectionPlanePreset.toUpperCase()}
                             </div>
                             {geometryCavalieriDemo ? (
                               <div style={{ display: "grid", gap: 4, border: "1px solid #e2e8f0", borderRadius: 6, padding: "6px 8px", background: "#fff" }}>
                                 <div><strong>Cavalieri pair</strong>: {geometryCavalieriDemo.a.object.name} vs {geometryCavalieriDemo.b.object.name}</div>
                                 <div style={{ fontFamily: "monospace" }}>
-                                  A1(h)={fmt(geometryCavalieriDemo.a.section.area)} Â· A2(h)={fmt(geometryCavalieriDemo.b.section.area)} Â· Î”A={fmt(geometryCavalieriDemo.areaDelta)}
+                                  A1(h)={fmt(geometryCavalieriDemo.a.section.area)} · A2(h)={fmt(geometryCavalieriDemo.b.section.area)} · ΔA={fmt(geometryCavalieriDemo.areaDelta)}
                                 </div>
                                 <div style={{ fontFamily: "monospace" }}>
-                                  V1={fmt(geometryCavalieriDemo.a.metrics.volume)} Â· V2={fmt(geometryCavalieriDemo.b.metrics.volume)} Â· Î”V={fmt(geometryCavalieriDemo.volumeDelta)}
+                                  V1={fmt(geometryCavalieriDemo.a.metrics.volume)} · V2={fmt(geometryCavalieriDemo.b.metrics.volume)} · ΔV={fmt(geometryCavalieriDemo.volumeDelta)}
                                 </div>
                                 <div>
                                   {geometryCavalieriDemo.areasNearEqual
@@ -59862,7 +59862,7 @@ case "mobius":
                                   r(h)^2 = R^2 - h^2 = {fmt(geometrySphereSectionDemo.R)}^2 - {fmt(geometrySphereSectionDemo.h)}^2 = {fmt(geometrySphereSectionDemo.predictedRadiusSquared)}
                                 </div>
                                 <div style={{ fontFamily: "monospace" }}>
-                                  Area = Ď€(R^2 - h^2) = {fmt(geometrySphereSectionDemo.predictedArea)} Â· measured area = {fmt(geometrySphereSectionDemo.measuredArea)}
+                                  Area = π(R^2 - h^2) = {fmt(geometrySphereSectionDemo.predictedArea)} · measured area = {fmt(geometrySphereSectionDemo.measuredArea)}
                                 </div>
                               </div>
                             ) : (
@@ -60004,13 +60004,13 @@ case "mobius":
                             {geometryVolumeRelationDemo ? (
                               <div style={{ display: "grid", gap: 4, border: "1px solid #e2e8f0", borderRadius: 6, padding: "6px 8px", background: "#fff" }}>
                                 <div style={{ fontFamily: "monospace" }}>
-                                  V(cylinder)={fmt(geometryVolumeRelationDemo.cylinder.volume)} Â· V(cone)={fmt(geometryVolumeRelationDemo.cone.volume)} Â· V(sphere)={fmt(geometryVolumeRelationDemo.sphere.volume)}
+                                  V(cylinder)={fmt(geometryVolumeRelationDemo.cylinder.volume)} · V(cone)={fmt(geometryVolumeRelationDemo.cone.volume)} · V(sphere)={fmt(geometryVolumeRelationDemo.sphere.volume)}
                                 </div>
                                 <div style={{ fontFamily: "monospace" }}>
                                   V(sphere) - (V(cylinder) - V(cone)) = {fmt(geometryVolumeRelationDemo.sphereMinusCylMinusCone)}
                                 </div>
                                 <div style={{ fontFamily: "monospace" }}>
-                                  V(sphere)/V(cylinder) = {fmtMaybe(geometryVolumeRelationDemo.sphereToCylinderRatio)} Â· V(sphere)/V(cone) = {fmtMaybe(geometryVolumeRelationDemo.sphereToConeRatio)}
+                                  V(sphere)/V(cylinder) = {fmtMaybe(geometryVolumeRelationDemo.sphereToCylinderRatio)} · V(sphere)/V(cone) = {fmtMaybe(geometryVolumeRelationDemo.sphereToConeRatio)}
                                 </div>
                                 <div style={{ color: "#475467" }}>
                                   For the classical Archimedes setup (same radius R, height 2R): V(sphere)=V(cylinder)-V(cone)=2/3 V(cylinder).
@@ -60054,21 +60054,21 @@ case "mobius":
                             {geometryScalingDemo ? (
                               <div style={{ display: "grid", gap: 4, border: "1px solid #e2e8f0", borderRadius: 6, padding: "6px 8px", background: "#fff" }}>
                                 <div style={{ fontFamily: "monospace" }}>
-                                  sâ‰{fmt(geometryScalingDemo.sMean)} Â· scale=({fmt(geometryScalingDemo.sx)}, {fmt(geometryScalingDemo.sy)}, {fmt(geometryScalingDemo.sz)})
+                                  s≈{fmt(geometryScalingDemo.sMean)} · scale=({fmt(geometryScalingDemo.sx)}, {fmt(geometryScalingDemo.sy)}, {fmt(geometryScalingDemo.sz)})
                                 </div>
                                 {geometryScalingDemo.uniformDeviation > 1e-3 && (
                                   <div style={{ color: "#b42318" }}>
-                                    Non-uniform scaling detected. Exact s, sÂ˛, sÂł law applies to uniform scale only.
+                                    Non-uniform scaling detected. Exact s, s², s³ law applies to uniform scale only.
                                   </div>
                                 )}
                                 <div style={{ fontFamily: "monospace" }}>
-                                  Length Ă— s â†’ measured {fmtMaybe(geometryScalingDemo.lengthRatio)} Â· expected {fmt(geometryScalingDemo.sMean)}
+                                  Length × s → measured {fmtMaybe(geometryScalingDemo.lengthRatio)} · expected {fmt(geometryScalingDemo.sMean)}
                                 </div>
                                 <div style={{ fontFamily: "monospace" }}>
-                                  Area Ă— sÂ˛ â†’ measured {fmtMaybe(geometryScalingDemo.areaRatio)} Â· expected {fmt(geometryScalingDemo.expectedAreaRatio)}
+                                  Area × s² → measured {fmtMaybe(geometryScalingDemo.areaRatio)} · expected {fmt(geometryScalingDemo.expectedAreaRatio)}
                                 </div>
                                 <div style={{ fontFamily: "monospace" }}>
-                                  Volume Ă— sÂł â†’ measured {fmtMaybe(geometryScalingDemo.volumeRatio)} Â· expected {fmt(geometryScalingDemo.expectedVolumeRatio)}
+                                  Volume × s³ → measured {fmtMaybe(geometryScalingDemo.volumeRatio)} · expected {fmt(geometryScalingDemo.expectedVolumeRatio)}
                                 </div>
                               </div>
                             ) : (
@@ -60111,7 +60111,7 @@ case "mobius":
                               <div style={{ display: "grid", gap: 4, border: "1px solid #e2e8f0", borderRadius: 6, padding: "6px 8px", background: "#fff" }}>
                                 <div>{geometryEulerActiveMeshLabel}</div>
                                 <div style={{ fontFamily: "monospace" }}>
-                                  V={geometryEulerActiveMeshCounts.c0.toLocaleString()} Â· E={geometryEulerActiveMeshCounts.c1.toLocaleString()} Â· F={geometryEulerActiveMeshCounts.c2.toLocaleString()}
+                                  V={geometryEulerActiveMeshCounts.c0.toLocaleString()} · E={geometryEulerActiveMeshCounts.c1.toLocaleString()} · F={geometryEulerActiveMeshCounts.c2.toLocaleString()}
                                 </div>
                                 <div style={{ fontFamily: "monospace" }}>
                                   V - E + F = {geometryEulerActiveMeshCounts.chi.toLocaleString()}
@@ -60743,11 +60743,11 @@ case "mobius":
                               >
                                 <div style={{ fontWeight: 700 }}>
                                   {geometryPlanimetryDemo.theoremCheck.isVerified
-                                    ? "Theorem verified: ZD âź‚ BC"
+                                    ? "Theorem verified: ZD ⟂ BC"
                                     : "Theorem check failed: ZD is not perpendicular to BC"}
                                 </div>
                                 <div style={{ fontFamily: "monospace", opacity: 0.85 }}>
-                                  |(Z-D)Â·(C-B)| ={" "}
+                                  |(Z-D)·(C-B)| ={" "}
                                   {formatConstraintValue(geometryPlanimetryDemo.theoremCheck.dotResidual, "unit")}
                                 </div>
                               </div>
@@ -60787,7 +60787,7 @@ case "mobius":
                                   </span>
                                   <div>{c.label}</div>
                                   <div style={{ fontFamily: "monospace", opacity: 0.7 }}>
-                                    {formatConstraintValue(c.residual, c.unit)} â‰¤ {formatConstraintValue(c.tolerance, c.unit)}
+                                    {formatConstraintValue(c.residual, c.unit)} ≤ {formatConstraintValue(c.tolerance, c.unit)}
                                   </div>
                                 </div>
                               );
@@ -60994,8 +60994,8 @@ case "mobius":
 
                 <div data-testid="geometry-scene-stats" style={{ marginTop: 12, fontSize: 11, opacity: 0.75 }}>
                   {geometryStats.mode === "procedural"
-                    ? `${geometryStats.objectCount} objects (${geometryStats.visibleCount} visible) Â· ${geometryStats.vertCount.toLocaleString()} verts Â· ${geometryStats.triCount.toLocaleString()} tris`
-                    : `${geometryStats.pointCount} points Â· ${geometryStats.segmentCount} segments Â· ${geometryStats.triangleCount} triangles Â· ${geometryStats.polygonCount} polygons Â· ${geometryStats.polyhedronFaces} polyhedron faces`}
+                    ? `${geometryStats.objectCount} objects (${geometryStats.visibleCount} visible) · ${geometryStats.vertCount.toLocaleString()} verts · ${geometryStats.triCount.toLocaleString()} tris`
+                    : `${geometryStats.pointCount} points · ${geometryStats.segmentCount} segments · ${geometryStats.triangleCount} triangles · ${geometryStats.polygonCount} polygons · ${geometryStats.polyhedronFaces} polyhedron faces`}
                 </div>
               </section>
             </div>
@@ -61345,7 +61345,7 @@ case "mobius":
                     }}
                   >
                     <span style={{ fontSize: 12, fontWeight: 700, color: "#1e3a8a", marginRight: 2 }}>
-                      Quality {geometryGlobalQualityOverrideMode === "auto" && geometryHeavySceneActive ? "Autoâ†’Fast" : ""}
+                      Quality {geometryGlobalQualityOverrideMode === "auto" && geometryHeavySceneActive ? "Auto→Fast" : ""}
                     </span>
                     <button
                       type="button"
@@ -61704,7 +61704,7 @@ case "mobius":
                           <>
                             <strong style={{ color: "#0f172a" }}>{geometryDependencyOverlayCard.selected}</strong>
                             <span style={{ color: "#475569" }}>
-                              Inputs: {geometryDependencyOverlayCard.inputs.length} Â· Derived: {geometryDependencyOverlayCard.derived.length} Â· Analysis: {geometryDependencyOverlayCard.analysis.length}
+                              Inputs: {geometryDependencyOverlayCard.inputs.length} · Derived: {geometryDependencyOverlayCard.derived.length} · Analysis: {geometryDependencyOverlayCard.analysis.length}
                             </span>
                             <span style={{ color: "#475569" }}>
                               Total: {geometryDependencyOverlayCard.inputs.length + geometryDependencyOverlayCard.derived.length + geometryDependencyOverlayCard.analysis.length}
@@ -61869,7 +61869,7 @@ case "mobius":
                               <rect x={x} y={y} width="100" height="22" rx="6" fill={active ? "#fffbeb" : meta.background} stroke={active ? "#f59e0b" : meta.border} />
                               <text x={x + 7} y={y + 14.5} fill={meta.color} fontSize="8.2" fontWeight="700">
                                 <tspan fontSize="8.5">{meta.icon}</tspan>
-                                <tspan dx="4">{row.label.length > 17 ? `${row.label.slice(0, 16)}â€¦` : row.label}</tspan>
+                                <tspan dx="4">{row.label.length > 17 ? `${row.label.slice(0, 16)}…` : row.label}</tspan>
                               </text>
                               <title>{`${row.group}: ${row.label}`}</title>
                             </g>
@@ -61965,7 +61965,7 @@ case "mobius":
                                 <rect x="123" y={objectY} width="114" height="86" rx="9" fill="#eff6ff" stroke="#2563eb" strokeWidth="1.5" />
                                 <text x="180" y={objectY + 19} textAnchor="middle" fill="#0f172a" fontSize="11" fontWeight="800">
                                   {geometryDependencyOverlayCard.selected.length > 16
-                                    ? `${geometryDependencyOverlayCard.selected.slice(0, 15)}â€¦`
+                                    ? `${geometryDependencyOverlayCard.selected.slice(0, 15)}…`
                                     : geometryDependencyOverlayCard.selected}
                                 </text>
                                 <text x="180" y={objectY + 33} textAnchor="middle" fill="#1e3a8a" fontSize="8" fontWeight="700">SceneObject</text>
@@ -62010,7 +62010,7 @@ case "mobius":
                                 fontWeight: 800,
                               }}
                             >
-                              <span>{expanded ? "â–Ľ" : "â–¶"} {String(label)} ({(rows as Array<unknown>).length})</span>
+                              <span>{expanded ? "▼" : "▶"} {String(label)} ({(rows as Array<unknown>).length})</span>
                             </button>
                             {expanded && ((rows as Array<{ id: string | null; label: string; kind?: string; formula?: string }>).length ? (
                               (rows as Array<{ id: string | null; label: string; kind?: string; formula?: string }>).map((row) => {
@@ -62086,7 +62086,7 @@ case "mobius":
                       <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 6, display: "grid", gap: 2, color: "#64748b" }}>
                         <strong style={{ color: "#334155" }}>Status</strong>
                         <span style={{ color: geometryDependencyOverlayDiagnostics.color, fontWeight: 800 }}>
-                          {geometryDependencyOverlayCard.selected ? "âś“ " : ""}{geometryDependencyOverlayDiagnostics.label}
+                          {geometryDependencyOverlayCard.selected ? "✓ " : ""}{geometryDependencyOverlayDiagnostics.label}
                         </span>
                         <span>Last recompute: {geometryDependencyOverlayDiagnostics.recompute}</span>
                         <span>Update count: {geometryDependencyOverlayUpdateCount}</span>
@@ -63021,7 +63021,7 @@ case "mobius":
                                             {step.symbolic}
                                           </div>
                                           <code style={{ color: "#475569", overflowWrap: "anywhere" }}>{step.substitution}</code>
-                                          <div style={{ color: "#166534", fontWeight: 800 }}>â‰ {step.result}</div>
+                                          <div style={{ color: "#166534", fontWeight: 800 }}>≈ {step.result}</div>
                                         </div>
                                       ))}
                                     </div>
@@ -63191,12 +63191,12 @@ case "mobius":
                         <div style={{ color: "#475467" }}>
                           {geometryStats.mode === "procedural"
                             ? `${geometryStats.objectCount} objects (${geometryStats.visibleCount} visible)`
-                            : `${geometryStats.pointCount} points Â· ${geometryStats.segmentCount} segments`}
+                            : `${geometryStats.pointCount} points · ${geometryStats.segmentCount} segments`}
                         </div>
                         <div style={{ color: "#475467" }}>
                           {geometryStats.mode === "procedural"
-                            ? `${geometryStats.vertCount.toLocaleString()} verts Â· ${geometryStats.triCount.toLocaleString()} tris`
-                            : `${geometryStats.triangleCount} triangles Â· ${geometryStats.polygonCount} polygons Â· ${geometryStats.polyhedronFaces} polyhedron faces`}
+                            ? `${geometryStats.vertCount.toLocaleString()} verts · ${geometryStats.triCount.toLocaleString()} tris`
+                            : `${geometryStats.triangleCount} triangles · ${geometryStats.polygonCount} polygons · ${geometryStats.polyhedronFaces} polyhedron faces`}
                         </div>
                           </>
                         )}
@@ -63631,13 +63631,13 @@ case "mobius":
                               f(z)
                             </button>
                             <button type="button" onClick={() => setOtherComplexVectorFieldMode("grad_u")} style={pill(otherComplexVectorFieldMode === "grad_u")}>
-                              â‡u
+                              ∇u
                             </button>
                             <button type="button" onClick={() => setOtherComplexVectorFieldMode("grad_v")} style={pill(otherComplexVectorFieldMode === "grad_v")}>
-                              â‡v
+                              ∇v
                             </button>
                             <button type="button" onClick={() => setOtherComplexVectorFieldMode("grad_both")} style={pill(otherComplexVectorFieldMode === "grad_both")}>
-                              â‡u + â‡v
+                              ∇u + ∇v
                             </button>
                           </div>
                         )}
@@ -63750,13 +63750,13 @@ case "mobius":
                         </div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button type="button" onClick={() => activateOtherComplexCoveringExample("exp")} style={pill(otherComplexCoveringExample === "exp")}>
-                            exp: C â†’ C*
+                            exp: C → C*
                           </button>
                           <button type="button" onClick={() => activateOtherComplexCoveringExample("square")} style={pill(otherComplexCoveringExample === "square")}>
-                            z â†’ zÂ˛
+                            z → z²
                           </button>
                           <button type="button" onClick={() => activateOtherComplexCoveringExample("power_n")} style={pill(otherComplexCoveringExample === "power_n")}>
-                            z â†’ zâż
+                            z → zⁿ
                           </button>
                           <button type="button" onClick={() => activateOtherComplexCoveringExample("log")} style={pill(otherComplexCoveringExample === "log")}>
                             log inverse
@@ -63789,7 +63789,7 @@ case "mobius":
                           </label>
                         )}
                         <label style={{ display: "grid", gap: 2, fontSize: 11, maxWidth: 360 }}>
-                          <span>fiber window (k range): Â±{Math.max(1, Math.round(otherComplexCoveringFiberWindow))}</span>
+                          <span>fiber window (k range): ±{Math.max(1, Math.round(otherComplexCoveringFiberWindow))}</span>
                           <input
                             type="range"
                             min={1}
@@ -63827,12 +63827,12 @@ case "mobius":
                       <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
                         <div style={{ fontWeight: 700, fontSize: 12 }}>BRANCH / MONODROMY LAB</div>
                         <div style={{ fontSize: 11, opacity: 0.78 }}>
-                          Workflow: function â†’ branch points â†’ branch cut â†’ path â†’ continuation â†’ monodromy inspector.
+                          Workflow: function → branch points → branch cut → path → continuation → monodromy inspector.
                         </div>
                         <div style={{ display: "grid", gap: 6, borderTop: "1px dashed #dbe2ea", paddingTop: 6 }}>
                           <div style={{ fontWeight: 700, fontSize: 12 }}>3D Surface Preview</div>
                           <div style={{ fontSize: 11, opacity: 0.78 }}>
-                            Complex Analysis â†’ Branches â†’ 3D Surface Preview
+                            Complex Analysis → Branches → 3D Surface Preview
                           </div>
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                             {(
@@ -63894,10 +63894,10 @@ case "mobius":
                             auto-detected:{" "}
                             {otherComplexBranchProfile.branchPoints.length
                               ? `${otherComplexBranchProfile.branchPoints.map((pt) => cToStr(pt)).join(" ; ")}${
-                                  otherComplexIncludeInfinityBranchPointEffective ? " ; âž" : ""
+                                  otherComplexIncludeInfinityBranchPointEffective ? " ; ∞" : ""
                                 }`
                               : otherComplexIncludeInfinityBranchPointEffective
-                                ? "âž"
+                                ? "∞"
                               : "none"}
                           </div>
                           <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -63933,7 +63933,7 @@ case "mobius":
                         </div>
                         {otherComplexBranchCutMode === "radial_from_point" && (
                           <label style={{ display: "grid", gap: 2, fontSize: 11 }}>
-                            <span>radial angle: {otherComplexBranchCutRadialAngleDeg.toFixed(0)}Â°</span>
+                            <span>radial angle: {otherComplexBranchCutRadialAngleDeg.toFixed(0)}°</span>
                             <input
                               type="range"
                               min={-180}
@@ -64289,7 +64289,7 @@ case "mobius":
                         ) : (
                           <div style={{ display: "grid", gap: 6 }}>
                             <div style={{ fontSize: 11, opacity: 0.72 }}>
-                              Drag with mouse in Z-plane to draw Îł(t). Release to finish stroke.
+                              Drag with mouse in Z-plane to draw γ(t). Release to finish stroke.
                             </div>
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                               <button type="button" onClick={() => setOtherComplexFreehandPath([])}>
@@ -64513,7 +64513,7 @@ case "mobius":
                         }}
                       >
                         <div>
-                          <div style={{ fontWeight: 800, marginBottom: 4 }}>MĂ¶bius map</div>
+                          <div style={{ fontWeight: 800, marginBottom: 4 }}>Möbius map</div>
                           <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 12 }}>
                             w = (az + b) / (cz + d)
                           </div>
@@ -64635,7 +64635,7 @@ case "mobius":
                               />
                             </label>
                             <label style={{ display: "grid", gap: 2 }}>
-                              <span>Domain range (extent): Â±{mobiusDomainExtent.toFixed(1)}</span>
+                              <span>Domain range (extent): ±{mobiusDomainExtent.toFixed(1)}</span>
                               <input
                                 type="range"
                                 min={2}
@@ -64685,7 +64685,7 @@ case "mobius":
                           Click in Z-plane to choose a selected point. It is mapped to W-plane and drawn with a cross marker.
                         </div>
                         <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
-                          z* = {cToStr(mobiusSelectedPoint)} ; w* = {mobiusSelectedImage && cFinite(mobiusSelectedImage) ? cToStr(mobiusSelectedImage) : "âž (clipped/pole)"}
+                          z* = {cToStr(mobiusSelectedPoint)} ; w* = {mobiusSelectedImage && cFinite(mobiusSelectedImage) ? cToStr(mobiusSelectedImage) : "∞ (clipped/pole)"}
                         </div>
                       </div>
                     </>
@@ -64769,10 +64769,10 @@ case "mobius":
                           </label>
                         </div>
                         <div style={{ fontSize: 11, opacity: 0.78 }}>
-                          f_t(z): coefficient interpolation between identity and target MĂ¶bius map (visual demo interpolation).
+                          f_t(z): coefficient interpolation between identity and target Möbius map (visual demo interpolation).
                         </div>
                         <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
-                          t = {mobiusAnimationT.toFixed(3)} | z* = {cToStr(mobiusEffectiveSelectedPoint)} | w* = {mobiusSelectedImage && cFinite(mobiusSelectedImage) ? cToStr(mobiusSelectedImage) : "âž (clipped/pole)"}
+                          t = {mobiusAnimationT.toFixed(3)} | z* = {cToStr(mobiusEffectiveSelectedPoint)} | w* = {mobiusSelectedImage && cFinite(mobiusSelectedImage) ? cToStr(mobiusSelectedImage) : "∞ (clipped/pole)"}
                         </div>
                       </div>
                       <div
@@ -64971,7 +64971,7 @@ case "mobius":
                                 style={{ height: 320 }}
                               />
                               <div style={{ fontSize: 11, opacity: 0.74 }}>
-                                Sphere coloring: hue = arg(Â·), value = |Â·|.
+                                Sphere coloring: hue = arg(·), value = |·|.
                               </div>
                             </div>
                             {otherComplexShowWPanel && (
@@ -64979,7 +64979,7 @@ case "mobius":
                                 <h3 style={styles.h3}>W-plane (image)</h3>
                                 {false && (
                                   <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
-                                    <div style={{ opacity: 0.82 }}>f(Îł), direction arrows, and selected point image.</div>
+                                    <div style={{ opacity: 0.82 }}>f(γ), direction arrows, and selected point image.</div>
                                     <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                                       <button
                                         type="button"
@@ -65056,7 +65056,7 @@ case "mobius":
                                 <h3 style={styles.h3}>W preview</h3>
                                 {false && (
                                   <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
-                                    <div style={{ opacity: 0.82 }}>f(Îł), direction arrows, and selected point image.</div>
+                                    <div style={{ opacity: 0.82 }}>f(γ), direction arrows, and selected point image.</div>
                                     <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                                       <button
                                         type="button"
@@ -65132,7 +65132,7 @@ case "mobius":
                                 <h3 style={styles.h3}>W-plane (image)</h3>
                                 {(otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue") && (
                                   <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
-                                    <div style={{ opacity: 0.82 }}>f(Îł), direction arrows, and selected point image.</div>
+                                    <div style={{ opacity: 0.82 }}>f(γ), direction arrows, and selected point image.</div>
                                     <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                                       <button
                                         type="button"
@@ -65317,7 +65317,7 @@ case "mobius":
                                   visible fiber markers: z={otherComplexCoveringLab.zFiberPoints.length}, w={otherComplexCoveringLab.wFiberPoints.length}
                                 </div>
                                 <div style={{ fontSize: 11, opacity: 0.8 }}>
-                                  exp/log deck shift: vertical translation by 2Ď€i preserves exp. For power maps, deck action is multiplication by roots of unity.
+                                  exp/log deck shift: vertical translation by 2πi preserves exp. For power maps, deck action is multiplication by roots of unity.
                                 </div>
                               </>
                             ) : (
@@ -65336,7 +65336,7 @@ case "mobius":
                                 ? otherComplexBranchProfile.branchPoints.map((pt) => cToStr(pt)).join(" ; ")
                                 : "none detected"}
                             </div>
-                            {otherComplexIncludeInfinityBranchPointEffective && <div>includes branch point at âž (for conceptual tracking).</div>}
+                            {otherComplexIncludeInfinityBranchPointEffective && <div>includes branch point at ∞ (for conceptual tracking).</div>}
                             {otherComplexBranchAnalysis.selectedBranchPoint && (
                               <div>selected branch point: {cToStr(otherComplexBranchAnalysis.selectedBranchPoint.point)}</div>
                             )}
@@ -65463,7 +65463,7 @@ case "mobius":
                                               ? row.loopCount
                                               : row.loopCount === 0
                                                 ? "start (0 loops)"
-                                                : `${row.pathLabel} Ă— ${row.loopCount}`}
+                                                : `${row.pathLabel} × ${row.loopCount}`}
                                           </td>
                                           {otherComplexMonodromyTable.profile === "log" ? (
                                             <>
@@ -65725,7 +65725,7 @@ case "mobius":
                             <div>|f(z)| = {Number.isFinite(otherComplexSelectedPointInfo.absW) ? otherComplexSelectedPointInfo.absW.toFixed(6) : "n/a"}</div>
                             <div>arg(f(z)) = {Number.isFinite(otherComplexSelectedPointInfo.argW) ? otherComplexSelectedPointInfo.argW.toFixed(6) : "n/a"}</div>
                             <div>f'(z) = {otherComplexSelectedPointInfo.derivative ? cToStr(otherComplexSelectedPointInfo.derivative) : "n/a"}</div>
-                            <div>Jacobian scale â‰ {otherComplexSelectedPointStatus.jacobianScale == null ? "n/a" : otherComplexSelectedPointStatus.jacobianScale.toFixed(6)}</div>
+                            <div>Jacobian scale ≈ {otherComplexSelectedPointStatus.jacobianScale == null ? "n/a" : otherComplexSelectedPointStatus.jacobianScale.toFixed(6)}</div>
                             <div>local rotation = {otherComplexSelectedPointStatus.localRotation == null ? "n/a" : otherComplexSelectedPointStatus.localRotation.toFixed(6)}</div>
                             <div>status: {otherComplexSelectedPointStatus.finiteW ? otherComplexSelectedPointStatus.status : "pole"}</div>
                           </div>
@@ -65762,7 +65762,7 @@ case "mobius":
                                     : "n/a"}
                                 </div>
                                 <div>
-                                  Î”arg(Îł(t)-a), unwrapped:{" "}
+                                  Δarg(γ(t)-a), unwrapped:{" "}
                                   {otherComplexBranchAnalysis.selectedBranchPoint?.totalArgChange == null
                                     ? "n/a"
                                     : otherComplexBranchAnalysis.selectedBranchPoint.totalArgChange.toFixed(6)}
@@ -65825,7 +65825,7 @@ case "mobius":
                         {otherComplexInspectorTab === "residue" && (
                           <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
                             <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
-                              â®Îł f(z)dz = 2Ď€i ÎŁ n(Îł, ak) Res(f, ak)
+                              ∮γ f(z)dz = 2πi Σ n(γ, ak) Res(f, ak)
                             </div>
                             <div>function: f(z) = {otherComplexFunctionExpr || "z"}</div>
                             <div>contour: {otherComplexPathMode}{otherComplexContourAnalysis.loopCount > 1 ? ` (${otherComplexContourAnalysis.loopCount} loops)` : ""}</div>
@@ -65862,30 +65862,30 @@ case "mobius":
                               <div style={{ display: "grid", gap: 2, fontSize: 11 }}>
                                 {otherComplexContourAnalysis.singularityWinding.map((entry, idx) => (
                                   <div key={`wind:${entry.point.re}:${entry.point.im}:${idx}`}>
-                                    n(Îł, {cToStr(entry.point)}) = {entry.winding.toFixed(6)}
+                                    n(γ, {cToStr(entry.point)}) = {entry.winding.toFixed(6)}
                                   </div>
                                 ))}
                               </div>
                             )}
                             <div>
-                              â® f(z) dz (numerical):{" "}
+                              ∮ f(z) dz (numerical):{" "}
                               {otherComplexContourAnalysis.integral
                                 ? `${otherComplexContourAnalysis.integral.re.toFixed(6)} ${otherComplexContourAnalysis.integral.im >= 0 ? "+" : "-"} ${Math.abs(otherComplexContourAnalysis.integral.im).toFixed(6)}i`
                                 : "n/a"}
                             </div>
                             <div>
-                              2Ď€i Â· ÎŁ n(Îł,ak)Res(f,ak):{" "}
+                              2πi · Σ n(γ,ak)Res(f,ak):{" "}
                               {otherComplexContourAnalysis.residueIntegral
                                 ? `${otherComplexContourAnalysis.residueIntegral.re.toFixed(6)} ${otherComplexContourAnalysis.residueIntegral.im >= 0 ? "+" : "-"} ${Math.abs(otherComplexContourAnalysis.residueIntegral.im).toFixed(6)}i`
                                 : "n/a (closed contour + rational form required)"}
                             </div>
                             <div>
-                              residue sum ÎŁ n(Îł,ak)Res(f,ak):{" "}
+                              residue sum Σ n(γ,ak)Res(f,ak):{" "}
                               {otherComplexContourAnalysis.residueSum
                                 ? `${otherComplexContourAnalysis.residueSum.re.toFixed(6)} ${otherComplexContourAnalysis.residueSum.im >= 0 ? "+" : "-"} ${Math.abs(otherComplexContourAnalysis.residueSum.im).toFixed(6)}i`
                                 : "n/a"}
                             </div>
-                            <div>error |â®f dz â’ 2Ď€iÎŁnRes|: {otherComplexContourAnalysis.residueTheoremError ? otherComplexContourAnalysis.residueTheoremError.abs.toFixed(6) : "n/a"}</div>
+                            <div>error |∮f dz − 2πiΣnRes|: {otherComplexContourAnalysis.residueTheoremError ? otherComplexContourAnalysis.residueTheoremError.abs.toFixed(6) : "n/a"}</div>
                           </div>
                         )}
                         {otherComplexInspectorTab === "laurent" && (
@@ -65902,7 +65902,7 @@ case "mobius":
                               {!otherComplexLocalExpansion.reliable ? " (low confidence)" : ""}
                             </div>
                             <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
-                              f(z) â‰ c_-2/(z-a)^2 + c_-1/(z-a) + c_0 + c_1(z-a)
+                              f(z) ≈ c_-2/(z-a)^2 + c_-1/(z-a) + c_0 + c_1(z-a)
                             </div>
                             <div>c_-2 = {formatLocalComplex(otherComplexLocalExpansion.coeffN2)}</div>
                             <div>c_-1 = {formatLocalComplex(otherComplexLocalExpansion.coeffN1)}</div>
@@ -66340,23 +66340,23 @@ type TransformPanelProps = {
 };
 
 const TransformPanel: React.FC<TransformPanelProps> = ({ kind, value, onChangeKind, onChangeValue }) => {
-  const labelParam = kind === "circle" ? "r" : kind === "vline" ? "xâ‚€" : "yâ‚€";
+  const labelParam = kind === "circle" ? "r" : kind === "vline" ? "x₀" : "y₀";
 
   return (
     <section>
-      <h2 style={styles.h2}>Transform viewer (z â†¦ zÂ˛)</h2>
+      <h2 style={styles.h2}>Transform viewer (z ↦ z²)</h2>
 
       <label>Primitive</label>
       <select value={kind} onChange={(e) => onChangeKind(e.target.value as TransformPrimitive)}>
-        <option value="vline">Vertical line (Re z = xâ‚€)</option>
-        <option value="hline">Horizontal line (Im z = yâ‚€)</option>
+        <option value="vline">Vertical line (Re z = x₀)</option>
+        <option value="hline">Horizontal line (Im z = y₀)</option>
         <option value="circle">Circle (center 0, radius r)</option>
       </select>
 
       <label style={{ marginTop: 8, display: "block" }}>Parameter {labelParam}</label>
       <input type="number" step={0.1} value={value} onChange={(e) => onChangeValue(Number(e.target.value) || 0)} />
 
-      <p style={styles.hint}>Domain curve is drawn in the Z-plane; its image under f(z)=zÂ˛ appears in the W-plane.</p>
+      <p style={styles.hint}>Domain curve is drawn in the Z-plane; its image under f(z)=z² appears in the W-plane.</p>
     </section>
   );
 };
@@ -66375,19 +66375,19 @@ const MAPS_META: Array<{
 }> = [
   {
     id: "upperHalfToDisk",
-    label: "Upper half-plane â†’ disk",
+    label: "Upper half-plane → disk",
     desc: "Cayley transform from Im(z)>0 to the unit disk.",
     formula: "w = (z - i) / (z + i)",
     domain: "Upper half-plane (sampled as y > 0).",
     image: "Unit disk.",
     boundary: "Real axis maps to unit circle.",
-    specialPoints: "z=i -> w=0, z=0 -> w=-1, z=âž -> w=1",
+    specialPoints: "z=i -> w=0, z=0 -> w=-1, z=∞ -> w=1",
   },
   {
     id: "diskAutomorphism",
     label: "Disk automorphism",
     desc: "Automorphism of unit disk with rotation and point shift.",
-    formula: "w = e^{iÎ¸} (z-a)/(1-conj(a)z), a=0.45+0.2i",
+    formula: "w = e^{iθ} (z-a)/(1-conj(a)z), a=0.45+0.2i",
     domain: "Unit disk.",
     image: "Unit disk.",
     boundary: "|z|=1 maps to |w|=1.",
@@ -66395,9 +66395,9 @@ const MAPS_META: Array<{
   },
   {
     id: "stripToHalfPlane",
-    label: "Strip â†’ half-plane",
+    label: "Strip → half-plane",
     desc: "Horizontal strip 0<Im(z)<1 mapped to upper half-plane.",
-    formula: "w = exp(Ď€z)",
+    formula: "w = exp(πz)",
     domain: "Strip 0 < y < 1.",
     image: "Upper half-plane Im(w) > 0.",
     boundary: "y=0 and y=1 map to positive/negative real axis.",
@@ -66405,9 +66405,9 @@ const MAPS_META: Array<{
   },
   {
     id: "stripToDisk",
-    label: "Strip â†’ disk",
+    label: "Strip → disk",
     desc: "Strip mapped to disk via exp then Cayley.",
-    formula: "w = (exp(Ď€z)-i)/(exp(Ď€z)+i)",
+    formula: "w = (exp(πz)-i)/(exp(πz)+i)",
     domain: "Strip 0 < y < 1.",
     image: "Unit disk.",
     boundary: "Strip boundaries map to unit-circle arcs.",
@@ -66427,11 +66427,11 @@ const MAPS_META: Array<{
     id: "logarithm",
     label: "Logarithm map",
     desc: "Principal branch with branch cut along negative real axis.",
-    formula: "w = Log(z) = ln|z| + i Arg(z), Arg in (-Ď€, Ď€)",
+    formula: "w = Log(z) = ln|z| + i Arg(z), Arg in (-π, π)",
     domain: "Punctured plane minus branch cut.",
     image: "Horizontal strip in w-plane.",
-    boundary: "Approaching cut from above/below lands on Im(w)=Â±Ď€.",
-    specialPoints: "z=1 -> w=0, z=i -> w=iĎ€/2",
+    boundary: "Approaching cut from above/below lands on Im(w)=±π.",
+    specialPoints: "z=1 -> w=0, z=i -> w=iπ/2",
   },
   {
     id: "joukowski",
@@ -66441,7 +66441,7 @@ const MAPS_META: Array<{
     domain: "Exterior of near-unit circle.",
     image: "Plane with slit/airfoil-style boundary image.",
     boundary: "Circle boundary maps to segment-like curve with cusp behavior.",
-    specialPoints: "Critical points at z=Â±1",
+    specialPoints: "Critical points at z=±1",
   },
   {
     id: "powerN",
@@ -66879,7 +66879,7 @@ const formatGalleryCardFormulaLines = (card: GeometryGalleryCard): string[] => {
     return ["Parameters: major R, tube r", "Volume: V = 2*pi^2*R*r^2", "Area: A = 4*pi^2*R*r"];
   }
   if (card.id === "polygon") {
-    return ["Parameters: sides n, radius r", "Regular n-gon perimeter: P â‰ 2*n*r*sin(pi/n)", "Planar primitive"];
+    return ["Parameters: sides n, radius r", "Regular n-gon perimeter: P ≈ 2*n*r*sin(pi/n)", "Planar primitive"];
   }
   if (card.badge === "Polyhedron") {
     return ["Topology: chi = V - E + F", "Closed orientable genus: g = (2 - chi) / 2", "Parameterized family preset"];
@@ -67046,7 +67046,7 @@ const compactSummary = (value: string, maxLen = 74): string => {
   const firstSentence = normalized.split(/[.!?]/)[0]?.trim() ?? normalized;
   if (!firstSentence) return normalized.slice(0, maxLen);
   if (firstSentence.length <= maxLen) return firstSentence;
-  return `${firstSentence.slice(0, maxLen - 1).trimEnd()}â€¦`;
+  return `${firstSentence.slice(0, maxLen - 1).trimEnd()}…`;
 };
 
 const withPrimaryFirst = (first: string, chips: string[]): string[] => {
@@ -67055,18 +67055,18 @@ const withPrimaryFirst = (first: string, chips: string[]): string[] => {
 };
 
 const EQ_FORMULA_LINE_MAP: Partial<Record<SurfaceId, string>> = {
-  sphere: "xÂ˛ + yÂ˛ + zÂ˛ = RÂ˛",
-  hyperboloid: "xÂ˛ + yÂ˛ - zÂ˛ = 1",
-  paraboloid: "z = xÂ˛ + yÂ˛",
-  cone: "xÂ˛ + yÂ˛ = zÂ˛",
-  cylinder: "xÂ˛ + yÂ˛ = RÂ˛",
-  hyperboloid_twoSheet: "zÂ˛/cÂ˛ - xÂ˛/aÂ˛ - yÂ˛/bÂ˛ = 1",
-  ellipsoid: "xÂ˛/aÂ˛ + yÂ˛/bÂ˛ + zÂ˛/cÂ˛ = 1",
-  torus_implicit: "(sqrt(xÂ˛+yÂ˛)-R)Â˛ + zÂ˛ = rÂ˛",
-  graph_saddle: "z = xÂ˛ - yÂ˛",
+  sphere: "x² + y² + z² = R²",
+  hyperboloid: "x² + y² - z² = 1",
+  paraboloid: "z = x² + y²",
+  cone: "x² + y² = z²",
+  cylinder: "x² + y² = R²",
+  hyperboloid_twoSheet: "z²/c² - x²/a² - y²/b² = 1",
+  ellipsoid: "x²/a² + y²/b² + z²/c² = 1",
+  torus_implicit: "(sqrt(x²+y²)-R)² + z² = r²",
+  graph_saddle: "z = x² - y²",
   graph_rotatedSaddle: "z = 2xy",
   graph_wave: "z = sin(x) cos(y)",
-  graph_mexican: "z = (1-rÂ˛)e^(-rÂ˛/2)",
+  graph_mexican: "z = (1-r²)e^(-r²/2)",
 };
 
 const EQ_CARD_CHIPS_BY_ID: Partial<Record<SurfaceId, readonly string[]>> = {
@@ -67217,11 +67217,11 @@ const SURFACE_GALLERY_CARDS: SurfaceGalleryCard[] = [
   },
   {
     id: "mobius",
-    title: "MĂ¶bius Strip",
+    title: "Möbius Strip",
     subtitle: "sigma(u,v)",
     typeTag: "Constructed",
     description: "One-sided strip for non-orientable topology visuals.",
-    thumbDataUrl: makeSurfaceGalleryThumb("MĂ¶bius", "Constructed", "Constructed", "constructed"),
+    thumbDataUrl: makeSurfaceGalleryThumb("Möbius", "Constructed", "Constructed", "constructed"),
   },
 ];
 
@@ -68358,7 +68358,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             </label>
             <label
               style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
-              title="Graph snapshots only: shows |Î”K| curvature heatmap on the left pane."
+              title="Graph snapshots only: shows |ΔK| curvature heatmap on the left pane."
             >
               <input
                 type="checkbox"
@@ -69808,7 +69808,7 @@ const WorkflowActionOverlayDialog: React.FC<WorkflowActionOverlayDialogProps> = 
             <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>Result details</div>
             {details.length ? details.map((line, idx) => (
               <div key={`workflow-action-detail-${idx}`} style={{ fontSize: 12, color: "#334155", display: "flex", gap: 8 }}>
-                <span style={{ color: "#94a3b8" }}>â€˘</span>
+                <span style={{ color: "#94a3b8" }}>•</span>
                 <span>{line}</span>
               </div>
             )) : (
@@ -69822,7 +69822,7 @@ const WorkflowActionOverlayDialog: React.FC<WorkflowActionOverlayDialogProps> = 
             <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>Current behavior</div>
             {behavior.length ? behavior.map((line, idx) => (
               <div key={`workflow-action-behavior-${idx}`} style={{ fontSize: 12, color: "#334155", display: "flex", gap: 8 }}>
-                <span style={{ color: "#94a3b8" }}>â€˘</span>
+                <span style={{ color: "#94a3b8" }}>•</span>
                 <span>{line}</span>
               </div>
             )) : (
@@ -69906,14 +69906,14 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
   const kindLabel = (kind: string) => typeMeta(kind).label;
   const kindColor = (kind: string) => typeMeta(kind).color;
   const kindIcon = (kind: string) => {
-    if (kind === "scene-root") return "â—†";
-    if (kind === "geometry-object") return "â– ";
-    if (kind === "face-reference" || kind === "derived-plane") return "â—§";
-    if (kind === "derived-point") return "â—Ź";
-    if (kind === "derived-line") return "â”€";
-    if (kind === "derived-circle") return "â—‹";
-    if (kind === "constraint") return "âŚ";
-    return "â€˘";
+    if (kind === "scene-root") return "◆";
+    if (kind === "geometry-object") return "■";
+    if (kind === "face-reference" || kind === "derived-plane") return "◧";
+    if (kind === "derived-point") return "●";
+    if (kind === "derived-line") return "─";
+    if (kind === "derived-circle") return "○";
+    if (kind === "constraint") return "⌁";
+    return "•";
   };
   const toggleRootCollapsed = (id: string) => {
     setCollapsedRootIds((prev) => {
@@ -70119,10 +70119,10 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
                 }}
               >
                 <span aria-hidden="true" style={{ color: "#94a3b8", textAlign: "right" }}>
-                  {index === inputs.length - 1 ? "â””â”€" : "â”śâ”€"}
+                  {index === inputs.length - 1 ? "└─" : "├─"}
                 </span>
                 <span style={{ color: "#64748b", fontWeight: 700 }}>{input.label}:</span>
-                <span aria-hidden="true" style={{ color: "#94a3b8", fontWeight: 900 }}>â†’</span>
+                <span aria-hidden="true" style={{ color: "#94a3b8", fontWeight: 900 }}>→</span>
                 <span
                   style={{
                     color: kindColor(input.sourceKind),
@@ -70176,8 +70176,8 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
                   fontSize: 10.5,
                 }}
               >
-                <span aria-hidden="true" style={{ color: "#94a3b8" }}>{index === outputs.length - 1 ? "â””â”€" : "â”śâ”€"}</span>
-                <span aria-hidden="true" style={{ color: "#94a3b8" }}>â†’</span>
+                <span aria-hidden="true" style={{ color: "#94a3b8" }}>{index === outputs.length - 1 ? "└─" : "├─"}</span>
+                <span aria-hidden="true" style={{ color: "#94a3b8" }}>→</span>
                 <span style={{ color: kindColor(output.targetKind), fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {kindIcon(output.targetKind)} {output.targetLabel}
                 </span>
@@ -70219,12 +70219,12 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
         }}
       >
         {[
-          ["â– ", "Objects", counts.objects],
-          ["â—Ź", "Points", counts.points],
-          ["â”€", "Lines", counts.lines],
-          ["â—§", "Planes", counts.planes],
-          ["â—‹", "Circles", counts.circles],
-          ["âŚ", "Constraints", counts.constraints],
+          ["■", "Objects", counts.objects],
+          ["●", "Points", counts.points],
+          ["─", "Lines", counts.lines],
+          ["◧", "Planes", counts.planes],
+          ["○", "Circles", counts.circles],
+          ["⌁", "Constraints", counts.constraints],
         ].map(([icon, label, count]) => (
           <div key={String(label)} style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
             <span aria-hidden="true" style={{ color: "#64748b", width: 10, textAlign: "center" }}>{icon}</span>
@@ -70403,11 +70403,11 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
           : derivedStatus === "ready"
             ? "#166534"
             : "#64748b";
-    const metaLine = [roleLabel, typeLabel, sourceKind].join(" Â· ");
-    const withSource = derivedFrom ? `${metaLine} Â· Derived from ${derivedFrom}` : metaLine;
+    const metaLine = [roleLabel, typeLabel, sourceKind].join(" · ");
+    const withSource = derivedFrom ? `${metaLine} · Derived from ${derivedFrom}` : metaLine;
     const statusMeta = derivedStatus ? GEOMETRY_DERIVED_STATUS_META[derivedStatus] : null;
     const metadataLine = statusMeta
-      ? `${withSource} Â· ${statusMeta.symbol ? `${statusMeta.symbol} ` : ""}${statusMeta.label.toUpperCase()}`
+      ? `${withSource} · ${statusMeta.symbol ? `${statusMeta.symbol} ` : ""}${statusMeta.label.toUpperCase()}`
       : withSource;
     return (
       <div
@@ -70760,7 +70760,7 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
           <div style={{ display: "grid", gap: 6, fontSize: 11, overflowWrap: "anywhere" }}>
             <div style={{ fontSize: 12, fontWeight: 700 }}>{selected.name}</div>
             <div style={{ color: "#475569" }}>
-              {selectedRoleLabel} Â· {shortTypeLabel(selected.type)} Â· mesh {selectedMeshReady ? "ready" : "n/a"} Â·{" "}
+              {selectedRoleLabel} · {shortTypeLabel(selected.type)} · mesh {selectedMeshReady ? "ready" : "n/a"} ·{" "}
               {typeof selected.visible === "boolean" ? (selected.visible ? "visible" : "hidden") : "n/a"}
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -70932,13 +70932,13 @@ const GeometryStaleSummaryPanel: React.FC<GeometryStaleSummaryPanelProps> = ({ p
     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
       <div style={{ fontSize: 11, fontWeight: 700 }}>Derived dependency status</div>
       <span style={{ fontSize: 10, fontWeight: 800, color: products.length ? "#92400e" : "#166534" }}>
-        {products.length ? `! ${products.length} stale` : "âś“ up to date"}
+        {products.length ? `! ${products.length} stale` : "✓ up to date"}
       </span>
     </div>
     {products.length ? (
       <>
         <div style={{ fontSize: 10, color: "#475569" }}>
-          {products.map((product) => `${product.name} from ${product.sourceName}`).join(" Â· ")}
+          {products.map((product) => `${product.name} from ${product.sourceName}`).join(" · ")}
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <button type="button" onClick={onRegenerateAll} style={{ fontSize: 10 }}>Regenerate all stale</button>
@@ -71702,7 +71702,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
                   fontWeight: 700,
                 }}
               >
-                {item.label} Â· {item.status !== "missing" && GEOMETRY_DERIVED_STATUS_META[item.status].symbol
+                {item.label} · {item.status !== "missing" && GEOMETRY_DERIVED_STATUS_META[item.status].symbol
                   ? `${GEOMETRY_DERIVED_STATUS_META[item.status].symbol} `
                   : ""}{item.status.toUpperCase()}
               </span>
@@ -71982,14 +71982,14 @@ const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
             <div>
               {geometryProbeSelectionDetails
                 ? `${geometryProbeSelectionDetails.mode}${
-                    geometryProbeSelectionDetails!.faceIndex != null ? ` Â· face #${geometryProbeSelectionDetails!.faceIndex}` : ""
+                    geometryProbeSelectionDetails!.faceIndex != null ? ` · face #${geometryProbeSelectionDetails!.faceIndex}` : ""
                   }${
                     geometryProbeSelectionDetails!.edgeVertexPair
-                      ? ` Â· edge [${geometryProbeSelectionDetails!.edgeVertexPair[0]}, ${geometryProbeSelectionDetails!.edgeVertexPair[1]}]`
+                      ? ` · edge [${geometryProbeSelectionDetails!.edgeVertexPair[0]}, ${geometryProbeSelectionDetails!.edgeVertexPair[1]}]`
                       : ""
                   }${
                     geometryProbeSelectionDetails!.vertexIndex != null
-                      ? ` Â· vertex #${geometryProbeSelectionDetails!.vertexIndex}`
+                      ? ` · vertex #${geometryProbeSelectionDetails!.vertexIndex}`
                       : ""
                   }`
                 : "none"}
@@ -71999,14 +71999,14 @@ const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
             <div>
               {geometryProbeHoverSelectionDetails
                 ? `${geometryProbeHoverSelectionDetails.mode}${
-                    geometryProbeHoverSelectionDetails.faceIndex != null ? ` Â· face #${geometryProbeHoverSelectionDetails.faceIndex}` : ""
+                    geometryProbeHoverSelectionDetails.faceIndex != null ? ` · face #${geometryProbeHoverSelectionDetails.faceIndex}` : ""
                   }${
                     geometryProbeHoverSelectionDetails.edgeVertexPair
-                      ? ` Â· edge [${geometryProbeHoverSelectionDetails.edgeVertexPair[0]}, ${geometryProbeHoverSelectionDetails.edgeVertexPair[1]}]`
+                      ? ` · edge [${geometryProbeHoverSelectionDetails.edgeVertexPair[0]}, ${geometryProbeHoverSelectionDetails.edgeVertexPair[1]}]`
                       : ""
                   }${
                     geometryProbeHoverSelectionDetails.vertexIndex != null
-                      ? ` Â· vertex #${geometryProbeHoverSelectionDetails.vertexIndex}`
+                      ? ` · vertex #${geometryProbeHoverSelectionDetails.vertexIndex}`
                       : ""
                   }`
                 : "none"}
@@ -72138,7 +72138,7 @@ const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
                   dragToPick={navigatorDrag}
                 />
                 <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
-                  Click/hover in the rectangle to sample Ď(u,v) on the surface.
+                  Click/hover in the rectangle to sample σ(u,v) on the surface.
                 </div>
               </>
             )}
@@ -73927,7 +73927,7 @@ onChangeImplicitExpr,
   const cgalStatusText = !cgalHealthState
     ? "checking..."
     : cgalHealthState.ok
-      ? `available${cgalHealthState.version ? ` Â· v${cgalHealthState.version}` : ""}`
+      ? `available${cgalHealthState.version ? ` · v${cgalHealthState.version}` : ""}`
       : "unavailable";
   const cgalStatusColor = cgalHealthState ? (cgalHealthState.ok ? "#1f894f" : "#b42318") : "#777";
   const cgalDisabled = cgalBusy || cgalHealthState?.ok !== true;
@@ -73960,7 +73960,7 @@ onChangeImplicitExpr,
           ? "complex map surface  w(u,v) = Re + i Im"
           : viewerKind === "mesh"
             ? "surface mesh (triangles)"
-            : "parametric surface  Ď(u,v)";
+            : "parametric surface  σ(u,v)";
 
   const isGraphCustom = viewerKind === "graph" && surfaceId === "graph_custom";
   const isImplicitCustom = viewerKind === "implicit" && surfaceId === "implicit_custom";
@@ -74837,7 +74837,7 @@ onChangeImplicitExpr,
               </button>
             </div>
             <div style={{ fontSize: 10, opacity: 0.65, marginTop: 6 }}>
-              Spacing: {fmtVal(volumeSamplingSpacing[0], 3)} Ă— {fmtVal(volumeSamplingSpacing[1], 3)} Ă—{" "}
+              Spacing: {fmtVal(volumeSamplingSpacing[0], 3)} × {fmtVal(volumeSamplingSpacing[1], 3)} ×{" "}
               {fmtVal(volumeSamplingSpacing[2], 3)} (world units)
             </div>
           </div>
@@ -74994,7 +74994,7 @@ onChangeImplicitExpr,
           </div>
           {volumeCrosshairWorld && (
             <div style={{ fontSize: 11, color: "#566273", marginTop: 2 }}>
-              F={fmtVal(volumeCrosshairValue ?? 0, 4)} Â· |â‡F|={fmtVal(volumeCrosshairGradMag ?? 0, 4)}
+              F={fmtVal(volumeCrosshairValue ?? 0, 4)} · |∇F|={fmtVal(volumeCrosshairGradMag ?? 0, 4)}
             </div>
           )}
 
@@ -75069,14 +75069,14 @@ onChangeImplicitExpr,
               <VolumeSliceHistogram stats={volumeSliceReport} />
               <div style={{ fontSize: 10, color: "#566273" }}>
                 <div>
-                  min {fmtVal(volumeSliceReport.min)} Â· max {fmtVal(volumeSliceReport.max)}
+                  min {fmtVal(volumeSliceReport.min)} · max {fmtVal(volumeSliceReport.max)}
                 </div>
                 <div>
-                  window {fmtVal(volumeSliceReport.window.low)} â†’ {fmtVal(volumeSliceReport.window.high)} (
+                  window {fmtVal(volumeSliceReport.window.low)} → {fmtVal(volumeSliceReport.window.high)} (
                   {volumeSliceReport.window.mode})
                 </div>
                 <div>
-                  mean {fmtVal(volumeSliceReport.mean)} Â· Ď {fmtVal(volumeSliceReport.std)}
+                  mean {fmtVal(volumeSliceReport.mean)} · σ {fmtVal(volumeSliceReport.std)}
                 </div>
               </div>
             </div>
@@ -75086,7 +75086,7 @@ onChangeImplicitExpr,
               ? `Hover: (${fmtVal(volumeSliceHover.world[0], 3)}, ${fmtVal(volumeSliceHover.world[1], 3)}, ${fmtVal(
                   volumeSliceHover.world[2],
                   3
-                )})  F=${fmtVal(volumeSliceHover.value, 4)}  |â‡F|=${fmtVal(volumeSliceHover.gradMag ?? 0, 4)}`
+                )})  F=${fmtVal(volumeSliceHover.value, 4)}  |∇F|=${fmtVal(volumeSliceHover.gradMag ?? 0, 4)}`
               : "Hover over a slice to read F(x,y,z)."}
           </div>
           <div style={{ fontWeight: 700, margin: "10px 0 6px" }}>Isosurface</div>
@@ -75258,7 +75258,7 @@ onChangeImplicitExpr,
 
       {viewerKind === "complex" && (
       <div style={{ ...cardStyle, marginTop: 10 }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Complex Map Sweep (zâ†’w)</div>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Complex Map Sweep (z→w)</div>
         <div style={{ fontSize: 11, opacity: 0.75 }}>
           {complexMapIsRiemann
             ? "Define p(z) and render the k-sheet surface w^k = p(z)."
@@ -75968,7 +75968,7 @@ onChangeImplicitExpr,
               { id: "re", label: "Re(w)=c" },
               { id: "im", label: "Im(w)=c" },
               { id: "abs", label: "|w|=r" },
-              { id: "arg", label: "arg(w)=Î¸" },
+              { id: "arg", label: "arg(w)=θ" },
             ] as const
           ).map((mode) => (
             <button
@@ -76005,7 +76005,7 @@ onChangeImplicitExpr,
           </label>
           {complexPreimageMode === "arg" && (
             <span style={{ fontSize: 11, opacity: 0.7 }}>
-              Î¸ = {(complexPreimageValue * (180 / Math.PI)).toFixed(1)}Â°
+              θ = {(complexPreimageValue * (180 / Math.PI)).toFixed(1)}°
             </span>
           )}
           <span style={{ fontSize: 11, opacity: 0.7 }}>
@@ -76028,7 +76028,7 @@ onChangeImplicitExpr,
                   checked={complexMapShowCritical}
                   onChange={(e) => setComplexMapShowCritical(e.target.checked)}
                 />
-                critical |detJ| â‰¤ {fmtVal(complexMapMarkerData?.thresholds.critical ?? 0, 4)}
+                critical |detJ| ≤ {fmtVal(complexMapMarkerData?.thresholds.critical ?? 0, 4)}
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <input
@@ -76036,7 +76036,7 @@ onChangeImplicitExpr,
                   checked={complexMapShowZeros}
                   onChange={(e) => setComplexMapShowZeros(e.target.checked)}
                 />
-                zeros |w| â‰¤ {fmtVal(complexMapMarkerData?.thresholds.zero ?? 0, 4)}
+                zeros |w| ≤ {fmtVal(complexMapMarkerData?.thresholds.zero ?? 0, 4)}
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <input
@@ -76044,7 +76044,7 @@ onChangeImplicitExpr,
                   checked={complexMapShowPoles}
                   onChange={(e) => setComplexMapShowPoles(e.target.checked)}
                 />
-                poles |w| â‰Ą {fmtVal(complexMapMarkerData?.thresholds.pole ?? 0, 4)}
+                poles |w| ≥ {fmtVal(complexMapMarkerData?.thresholds.pole ?? 0, 4)}
               </label>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 6, fontSize: 11 }}>
@@ -76134,7 +76134,7 @@ onChangeImplicitExpr,
                 [
                   { id: "none", label: "Off" },
                   { id: "area", label: "Area |detJ|" },
-                  { id: "anisotropy", label: "Ďmax/Ďmin" },
+                  { id: "anisotropy", label: "σmax/σmin" },
                   { id: "conformal", label: "Conformal error" },
                 ] as const
               ).map((mode) => (
@@ -76175,7 +76175,7 @@ onChangeImplicitExpr,
                 </button>
               </div>
               {complexDistortionMode === "conformal" && (
-                <span style={{ opacity: 0.7 }}>Log scale only applies to |detJ| and Ďmax/Ďmin.</span>
+                <span style={{ opacity: 0.7 }}>Log scale only applies to |detJ| and σmax/σmin.</span>
               )}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 6, fontSize: 11 }}>
@@ -76201,14 +76201,14 @@ onChangeImplicitExpr,
             <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
               {complexMapDistortionProbe ? (
                 <>
-                  u={fmtVal(complexMapDistortionProbe.u, 3)} v={fmtVal(complexMapDistortionProbe.v, 3)} Â· |detJ|=
-                  {fmtVal(complexMapDistortionProbe.detAbs, 4)} Â· Ďmax/Ďmin=
-                  {fmtVal(complexMapDistortionProbe.ratio, 3)} Â· conf=
+                  u={fmtVal(complexMapDistortionProbe.u, 3)} v={fmtVal(complexMapDistortionProbe.v, 3)} · |detJ|=
+                  {fmtVal(complexMapDistortionProbe.detAbs, 4)} · σmax/σmin=
+                  {fmtVal(complexMapDistortionProbe.ratio, 3)} · conf=
                   {fmtVal(complexMapDistortionProbe.conformalErr, 4)}
                   {complexDistortionScale === "log" &&
                     (complexDistortionMode === "area" || complexDistortionMode === "anisotropy") && (
                       <>
-                        {" "}Â· log10(1+v)=
+                        {" "}· log10(1+v)=
                         {complexDistortionMode === "area"
                           ? fmtVal(Math.log10(1 + Math.max(0, complexMapDistortionProbe.detAbs)), 4)
                           : fmtVal(Math.log10(1 + Math.max(0, complexMapDistortionProbe.ratio)), 4)}
@@ -76236,12 +76236,12 @@ onChangeImplicitExpr,
         <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6, lineHeight: 1.4 }}>
           {complexMapProbe ? (
             <>
-              u={fmtVal(complexMapProbe.u, 3)} v={fmtVal(complexMapProbe.v, 3)} Â· w=
-              {fmtVal(complexMapProbe.w.re, 3)} + {fmtVal(complexMapProbe.w.im, 3)}i Â· |w|=
-              {fmtVal(complexMapProbe.w.mag, 3)} Â· arg(w)={fmtVal(complexMapProbe.w.arg, 3)} (
-              {fmtVal((complexMapProbe.w.arg * 180) / Math.PI, 1)}Â°)
+              u={fmtVal(complexMapProbe.u, 3)} v={fmtVal(complexMapProbe.v, 3)} · w=
+              {fmtVal(complexMapProbe.w.re, 3)} + {fmtVal(complexMapProbe.w.im, 3)}i · |w|=
+              {fmtVal(complexMapProbe.w.mag, 3)} · arg(w)={fmtVal(complexMapProbe.w.arg, 3)} (
+              {fmtVal((complexMapProbe.w.arg * 180) / Math.PI, 1)}°)
               <br />
-              local scale={fmtVal(complexMapProbe.localScale, 4)} Â· detJ={fmtVal(complexMapProbe.det, 4)}
+              local scale={fmtVal(complexMapProbe.localScale, 4)} · detJ={fmtVal(complexMapProbe.det, 4)}
             </>
           ) : (
             "Click the Z-plane, W-plane, or 3D surface to inspect a point."
@@ -76278,7 +76278,7 @@ onChangeImplicitExpr,
                 }}
               >
                 <div style={{ flex: 1 }}>
-                  u={fmtVal(pin.u, 3)} v={fmtVal(pin.v, 3)} Â· |w|={fmtVal(pin.w.mag, 3)} Â· detJ=
+                  u={fmtVal(pin.u, 3)} v={fmtVal(pin.v, 3)} · |w|={fmtVal(pin.w.mag, 3)} · detJ=
                   {fmtVal(pin.det, 3)}
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
@@ -76358,7 +76358,7 @@ onChangeImplicitExpr,
               disabled={!surfaceMeshExportable}
               style={{ padding: "4px 10px" }}
             >
-              Promote to SurfaceMeshâ€¦
+              Promote to SurfaceMesh…
             </button>
             <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
               {surfaceMeshExportable
@@ -76694,7 +76694,7 @@ onChangeImplicitExpr,
                 {implicitBakeBusy && (
                   <div style={{ marginTop: 6 }}>
                     <div style={{ fontSize: 11, color: "#555" }}>
-                      {implicitBakePhase === "marching" ? "Marching cubes" : "Sampling grid"} Â· {implicitBakePercent}%
+                      {implicitBakePhase === "marching" ? "Marching cubes" : "Sampling grid"} · {implicitBakePercent}%
                     </div>
                     <div style={{ height: 6, background: "#eee", borderRadius: 999, overflow: "hidden", marginTop: 4 }}>
                       <div style={{ width: `${implicitBakePercent}%`, height: "100%", background: "#0a66c2" }} />
@@ -76715,7 +76715,7 @@ onChangeImplicitExpr,
             <div style={{ fontSize: 12, opacity: 0.85 }}>{surfaceMeshLabel}</div>
             {surfaceMeshStats && (
               <div style={{ fontSize: 11, opacity: 0.75, marginTop: 4 }}>
-                {surfaceMeshStats.vertCount.toLocaleString()} verts Â· {surfaceMeshStats.triCount.toLocaleString()} tris
+                {surfaceMeshStats.vertCount.toLocaleString()} verts · {surfaceMeshStats.triCount.toLocaleString()} tris
               </div>
             )}
             {surfaceMeshSource && (
@@ -77017,7 +77017,7 @@ onChangeImplicitExpr,
             {surfaceMeshBounds && (
               <div>
                 <strong>Bounds:</strong> min ({fmtVal(surfaceMeshBounds.min[0], 3)}, {fmtVal(surfaceMeshBounds.min[1], 3)},{" "}
-                {fmtVal(surfaceMeshBounds.min[2], 3)}) Â· max ({fmtVal(surfaceMeshBounds.max[0], 3)},{" "}
+                {fmtVal(surfaceMeshBounds.min[2], 3)}) · max ({fmtVal(surfaceMeshBounds.max[0], 3)},{" "}
                 {fmtVal(surfaceMeshBounds.max[1], 3)}, {fmtVal(surfaceMeshBounds.max[2], 3)})
               </div>
             )}
@@ -79191,7 +79191,7 @@ onChangeImplicitExpr,
         style={pill(colorPalette === p)}
         aria-pressed={colorPalette === p}
       >
-        {p === "blueRed" ? "blueâ€“red" : p === "redYellow" ? "redâ€“yellow" : p}
+        {p === "blueRed" ? "blue–red" : p === "redYellow" ? "red–yellow" : p}
       </button>
     ))}
   </div>
@@ -79470,7 +79470,7 @@ onChangeImplicitExpr,
               <div style={{ fontSize: 11, color: "#b42318", marginBottom: 6 }}>{weierstrassDiagnosticError}</div>
             ) : (
               <div style={{ fontSize: 11, color: "#555", marginBottom: 6 }}>
-                Path-independence is checked by integrating Î¦(z) along the UV box boundary. The status
+                Path-independence is checked by integrating Φ(z) along the UV box boundary. The status
                 follows the thresholds: green &lt; 1e-3, yellow 1e-3..1e-2, red &gt; 1e-2.
               </div>
             )}
@@ -79511,7 +79511,7 @@ onChangeImplicitExpr,
         <div style={{ marginTop: 12 }}>
           <label style={{ fontWeight: 600, fontSize: 13, display: "block" }}>Rotational profile</label>
           <p style={styles.hint}>
-            General form: <code>(r(v), z(v)) â†’ (r(v) cos u, r(v) sin u, z(v))</code> with x/y/z or arbitrary axis.
+            General form: <code>(r(v), z(v)) → (r(v) cos u, r(v) sin u, z(v))</code> with x/y/z or arbitrary axis.
           </p>
 
           <div style={pillRow}>
@@ -79711,7 +79711,7 @@ onChangeImplicitExpr,
 
           {isBezierPatchParam && (
             <>
-              <label style={{ fontSize: 12 }}>Control grid Páµ˘â±Ľ</label>
+              <label style={{ fontSize: 12 }}>Control grid Pᵢⱼ</label>
               <textarea
                 value={bezierControlGridText}
                 onChange={(e) => onChangeBezierControlGridText(e.target.value)}
@@ -79738,7 +79738,7 @@ onChangeImplicitExpr,
 
           {(isBSplinePatchParam || isNurbsPatchParam) && (
             <>
-              <label style={{ fontSize: 12 }}>Control grid Páµ˘â±Ľ</label>
+              <label style={{ fontSize: 12 }}>Control grid Pᵢⱼ</label>
               <textarea
                 value={isNurbsPatchParam ? nurbsControlGridText : bSplineControlGridText}
                 onChange={(e) =>
@@ -79837,7 +79837,7 @@ onChangeImplicitExpr,
 
               {isNurbsPatchParam && (
                 <>
-                  <label style={{ fontSize: 12, marginTop: 8, display: "block" }}>Weights wáµ˘â±Ľ</label>
+                  <label style={{ fontSize: 12, marginTop: 8, display: "block" }}>Weights wᵢⱼ</label>
                   <textarea
                     value={nurbsWeightsText}
                     onChange={(e) => onChangeNurbsWeightsText(e.target.value)}
@@ -79890,7 +79890,7 @@ onChangeImplicitExpr,
             disabled={!canEditParamAsCustom}
             style={{ padding: "4px 10px" }}
           >
-            Start as Custom Ď(u,v)
+            Start as Custom σ(u,v)
           </button>
           <div style={styles.hint}>
             Copies the active parametric preset into editable <code>x(u,v)</code>, <code>y(u,v)</code>, <code>z(u,v)</code>.
@@ -79901,7 +79901,7 @@ onChangeImplicitExpr,
       {/* custom param */}
       {isParamCustom && (
         <div style={{ marginTop: 12 }}>
-          <label style={{ fontWeight: 600, fontSize: 13, display: "block" }}>Custom Ď(u,v)</label>
+          <label style={{ fontWeight: 600, fontSize: 13, display: "block" }}>Custom σ(u,v)</label>
           <p style={styles.hint}>
             Enter three expressions in <code>u</code>, <code>v</code>. Use <code>Math.*</code>.
           </p>
@@ -80653,7 +80653,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const cgalStatusText = !cgalHealthState
     ? "checking..."
     : cgalHealthState.ok
-      ? `available${cgalHealthState.version ? ` Â· v${cgalHealthState.version}` : ""}`
+      ? `available${cgalHealthState.version ? ` · v${cgalHealthState.version}` : ""}`
       : "unavailable";
   const cgalStatusColor = cgalHealthState ? (cgalHealthState.ok ? "#1f894f" : "#b42318") : "#777";
   const cgalDisabled = cgalBusy || cgalHealthState?.ok !== true;
@@ -81336,7 +81336,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         <div>
           <strong>Renderer memory:</strong>{" "}
           {surfacePerformanceSnapshot
-            ? `geometries ${formatInspectorCount(surfacePerformanceSnapshot.rendererMemory.geometries)} Â· textures ${formatInspectorCount(surfacePerformanceSnapshot.rendererMemory.textures)}`
+            ? `geometries ${formatInspectorCount(surfacePerformanceSnapshot.rendererMemory.geometries)} · textures ${formatInspectorCount(surfacePerformanceSnapshot.rendererMemory.textures)}`
             : "n/a"}
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
@@ -81449,7 +81449,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 <div>
                   <strong>Bounds:</strong>{" "}
                   {surfaceMeshBounds
-                    ? `min (${fmt(surfaceMeshBounds.min[0])}, ${fmt(surfaceMeshBounds.min[1])}, ${fmt(surfaceMeshBounds.min[2])}) Â· max (${fmt(surfaceMeshBounds.max[0])}, ${fmt(surfaceMeshBounds.max[1])}, ${fmt(surfaceMeshBounds.max[2])})`
+                    ? `min (${fmt(surfaceMeshBounds.min[0])}, ${fmt(surfaceMeshBounds.min[1])}, ${fmt(surfaceMeshBounds.min[2])}) · max (${fmt(surfaceMeshBounds.max[0])}, ${fmt(surfaceMeshBounds.max[1])}, ${fmt(surfaceMeshBounds.max[2])})`
                     : "n/a"}
                 </div>
                 <div><strong>Watertight:</strong> {watertight == null ? "unknown" : watertight ? "yes" : "no"}</div>
@@ -81614,7 +81614,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                   <div><strong>GPU memory estimate:</strong> {surfacePerformanceSnapshot?.gpuMemoryEstimateLabel ?? "n/a"}</div>
                   <div>
                     <strong>Renderer memory:</strong>{" "}
-                    {`geometries ${formatInspectorCount(surfacePerformanceSnapshot?.rendererMemory.geometries ?? null)} Â· textures ${formatInspectorCount(surfacePerformanceSnapshot?.rendererMemory.textures ?? null)}`}
+                    {`geometries ${formatInspectorCount(surfacePerformanceSnapshot?.rendererMemory.geometries ?? null)} · textures ${formatInspectorCount(surfacePerformanceSnapshot?.rendererMemory.textures ?? null)}`}
                   </div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
                     <button
@@ -81853,7 +81853,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                     <div><strong>Status:</strong> {topologyDiagnosticsStatus}</div>
                     <div><strong>Connected components:</strong> {formatInspectorCount(meshInspectorStats.connectedComponentCount)}</div>
                     <div><strong>Boundary loops:</strong> {topologyBoundaryLoopsLabel}</div>
-                    <div><strong>Euler characteristic Ď‡:</strong> {topologyEulerCharacteristic != null && Number.isFinite(topologyEulerCharacteristic) ? fmt(topologyEulerCharacteristic) : "n/a"}</div>
+                    <div><strong>Euler characteristic χ:</strong> {topologyEulerCharacteristic != null && Number.isFinite(topologyEulerCharacteristic) ? fmt(topologyEulerCharacteristic) : "n/a"}</div>
                     <div><strong>Orientability:</strong> {topologyOrientabilityLabel}</div>
                   </div>
                 </div>
@@ -81912,11 +81912,11 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           <div>
             <strong>Domain:</strong>{" "}
             {isGraphViewer
-              ? `x in Â±${fmt(safeGraphDomain.xSpan)}, y in Â±${fmt(safeGraphDomain.ySpan)}`
+              ? `x in ±${fmt(safeGraphDomain.xSpan)}, y in ±${fmt(safeGraphDomain.ySpan)}`
               : isParamViewer
                 ? `u in [${fmt(safeParamDomain.uMin)}, ${fmt(safeParamDomain.uMax)}], v in [${fmt(safeParamDomain.vMin)}, ${fmt(safeParamDomain.vMax)}]`
                 : isImplicitViewer
-                  ? `x in Â±${fmt(safeImplicitDomain.xSpan)}, y in Â±${fmt(safeImplicitDomain.ySpan)}`
+                  ? `x in ±${fmt(safeImplicitDomain.xSpan)}, y in ±${fmt(safeImplicitDomain.ySpan)}`
                   : "mesh domain"}
           </div>
           <div><strong>Resolution:</strong> {Math.round(activeResolution)}</div>
@@ -81937,8 +81937,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         <div style={{ fontSize: 11, opacity: 0.85, marginTop: 4 }}>Source: {identitySourceKind}</div>
         {isMeshViewer && surfaceMeshStats && (
           <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
-            {surfaceMeshStats.vertCount.toLocaleString()} verts Â· {surfaceMeshStats.triCount.toLocaleString()} tris
-            {surfaceMeshSource ? ` Â· ${formatSurfaceMeshSource(surfaceMeshSource)}` : ""}
+            {surfaceMeshStats.vertCount.toLocaleString()} verts · {surfaceMeshStats.triCount.toLocaleString()} tris
+            {surfaceMeshSource ? ` · ${formatSurfaceMeshSource(surfaceMeshSource)}` : ""}
           </div>
         )}
       </div>
@@ -82063,7 +82063,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           )}
           {isGraphViewer && (
             <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 8 }}>
-              x span: Â±{fmt(safeGraphDomain.xSpan)} Â· y span: Â±{fmt(safeGraphDomain.ySpan)}
+              x span: ±{fmt(safeGraphDomain.xSpan)} · y span: ±{fmt(safeGraphDomain.ySpan)}
             </div>
           )}
           {isParamViewer && (
@@ -82073,7 +82073,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           )}
           {isImplicitViewer && (
             <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 8 }}>
-              x span: Â±{fmt(safeImplicitDomain.xSpan)} Â· y span: Â±{fmt(safeImplicitDomain.ySpan)}
+              x span: ±{fmt(safeImplicitDomain.xSpan)} · y span: ±{fmt(safeImplicitDomain.ySpan)}
             </div>
           )}
         </div>
@@ -82579,7 +82579,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           <div><strong>Status:</strong> {topologyDiagnosticsStatus}</div>
           <div><strong>Connected components:</strong> {formatInspectorCount(meshInspectorStats.connectedComponentCount)}</div>
           <div><strong>Boundary loops:</strong> {topologyBoundaryLoopsLabel}</div>
-          <div><strong>Euler characteristic Ď‡:</strong> {topologyEulerCharacteristic != null && Number.isFinite(topologyEulerCharacteristic) ? fmt(topologyEulerCharacteristic) : "n/a"}</div>
+          <div><strong>Euler characteristic χ:</strong> {topologyEulerCharacteristic != null && Number.isFinite(topologyEulerCharacteristic) ? fmt(topologyEulerCharacteristic) : "n/a"}</div>
           <div><strong>Orientability:</strong> {topologyOrientabilityLabel}</div>
         </div>
       </div>
@@ -82668,7 +82668,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             {renderWorkflowStatus("Mesh", "mesh")}
           </div>
           <div style={{ fontSize: 11, color: "#556", lineHeight: 1.5 }}>
-            Use <strong>Object â†’ SurfaceMesh â†’ Generate</strong> for VTK preview and robust CGAL meshing controls.
+            Use <strong>Object → SurfaceMesh → Generate</strong> for VTK preview and robust CGAL meshing controls.
           </div>
         </div>
       )}
@@ -83035,7 +83035,7 @@ const XYDomainPreview = React.memo(function XYDomainPreview({
       </svg>
 
       <div style={{ padding: "8px 10px", fontSize: 11, borderTop: "1px solid #eee", display: "flex", justifyContent: "space-between" }}>
-        <span style={{ opacity: 0.75 }}>x in Â±{xSpan.toFixed(2)}  y in Â±{ySpan.toFixed(2)}  linked to 3D probe</span>
+        <span style={{ opacity: 0.75 }}>x in ±{xSpan.toFixed(2)}  y in ±{ySpan.toFixed(2)}  linked to 3D probe</span>
         <span style={{ fontFamily: "monospace", textAlign: "right" }}>
           {picked ? `pick ${fmt(picked.x)}, ${fmt(picked.y)}` : "pick (none)"}
           {mode !== "hover" && hovered ? ` | hover ${fmt(hovered.x)}, ${fmt(hovered.y)}` : ""}
@@ -83279,7 +83279,7 @@ const cSqrt = (z: C): C => {
   return { re, im };
 };
 
-const cToStr = (z: C) => `${z.re.toFixed(4)}${z.im < 0 ? " â’ " : " + "}${Math.abs(z.im).toFixed(4)}i`;
+const cToStr = (z: C) => `${z.re.toFixed(4)}${z.im < 0 ? " − " : " + "}${Math.abs(z.im).toFixed(4)}i`;
 const cFinite = (z: C) => Number.isFinite(z.re) && Number.isFinite(z.im);
 const cAbs = (z: C) => Math.hypot(z.re, z.im);
 const cDot = (a: C, b: C) => a.re * b.re + a.im * b.im;
@@ -83356,10 +83356,10 @@ function mobiusParamsAtDecomposeStep(p: MobiusParams, step: number, eps = 1e-12)
 
   // Build step matrix:
   // step0: id
-  // step1: TÎ´
-  // step2: SÎ» â TÎ´
-  // step3: J â SÎ» â TÎ´
-  // step4: TÎ˛ â J â SÎ» â TÎ´
+  // step1: Tδ
+  // step2: Sλ ∘ Tδ
+  // step3: J ∘ Sλ ∘ Tδ
+  // step4: Tβ ∘ J ∘ Sλ ∘ Tδ
   let M = mId();
 
   if (step >= 1) M = mMul(mT(delta), M);
@@ -83393,10 +83393,10 @@ const MobiusDecomposeCard: React.FC<{
 
   const stepsLabel = [
     "0: z",
-    "1: TÎ´(z)=z+Î´",
-    "2: SÎ»(z)=Î»(z+Î´)",
-    "3: J(z)=1/(Î»(z+Î´))",
-    "4: TÎ˛(z)=Î˛+1/(Î»(z+Î´))",
+    "1: Tδ(z)=z+δ",
+    "2: Sλ(z)=λ(z+δ)",
+    "3: J(z)=1/(λ(z+δ))",
+    "4: Tβ(z)=β+1/(λ(z+δ))",
   ];
 
   const copyLatex = async () => {
@@ -83404,7 +83404,7 @@ const MobiusDecomposeCard: React.FC<{
       isAffine
         ? `f(z)=\\frac{Az+B}{D}=\\left(\\frac{A}{D}\\right)z+\\frac{B}{D}`
         : isSingular
-          ? `\\det=AD-BC=0\\text{ (singular matrix): no MĂ¶bius decomposition}`
+          ? `\\det=AD-BC=0\\text{ (singular matrix): no Möbius decomposition}`
           : `\\delta=\\frac{D}{C},\\ \\lambda=\\frac{C^2}{BC-AD},\\ \\beta=\\frac{A}{C},\\quad f(z)=\\beta+\\frac{1}{\\lambda(z+\\delta)}=T_\\beta\\circ J\\circ S_\\lambda\\circ T_\\delta`;
     await navigator.clipboard.writeText(latex);
   };
@@ -83431,27 +83431,27 @@ const MobiusDecomposeCard: React.FC<{
 
       {isAffine ? (
         <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
-          Affine case (Câ‰0): f(z) = (A/D)z + (B/D). Stepper disabled.
+          Affine case (C≈0): f(z) = (A/D)z + (B/D). Stepper disabled.
         </div>
       ) : isSingular ? (
         <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
-          Singular case (AD-BCâ‰0): decomposition disabled because this is not an invertible MĂ¶bius map.
+          Singular case (AD-BC≈0): decomposition disabled because this is not an invertible Möbius map.
         </div>
       ) : (
         <>
           <div style={{ marginTop: 8, fontSize: 12 }}>
-            <div style={{ fontFamily: "monospace" }}>Î´ = D/C = {delta ? cToStr(delta) : ""}</div>
-            <div style={{ fontFamily: "monospace" }}>Î» = CÂ˛/(BC-AD) = {lambda ? cToStr(lambda) : ""}</div>
-            <div style={{ fontFamily: "monospace" }}>Î˛ = A/C = {finalShift ? cToStr(finalShift) : ""}</div>
+            <div style={{ fontFamily: "monospace" }}>δ = D/C = {delta ? cToStr(delta) : ""}</div>
+            <div style={{ fontFamily: "monospace" }}>λ = C²/(BC-AD) = {lambda ? cToStr(lambda) : ""}</div>
+            <div style={{ fontFamily: "monospace" }}>β = A/C = {finalShift ? cToStr(finalShift) : ""}</div>
           </div>
 
           <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.5 }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>Pipeline</div>
             <div style={{ fontFamily: "monospace" }}>Z-plane</div>
-            <div style={{ marginLeft: 10 }}>â†“ translation: z â†’ z + Î´</div>
-            <div style={{ marginLeft: 10 }}>â†“ scaling/rotation: z â†’ Î»z</div>
-            <div style={{ marginLeft: 10 }}>â†“ inversion: z â†’ 1/z</div>
-            <div style={{ marginLeft: 10 }}>â†“ final translation: z â†’ z + Î˛</div>
+            <div style={{ marginLeft: 10 }}>↓ translation: z → z + δ</div>
+            <div style={{ marginLeft: 10 }}>↓ scaling/rotation: z → λz</div>
+            <div style={{ marginLeft: 10 }}>↓ inversion: z → 1/z</div>
+            <div style={{ marginLeft: 10 }}>↓ final translation: z → z + β</div>
             <div style={{ fontFamily: "monospace", marginTop: 2 }}>W-plane</div>
           </div>
 
@@ -83575,7 +83575,7 @@ const MobiusInvariantsCard: React.FC<{ params: MobiusParams }> = ({ params }) =>
           </div>
           <div>
             <b>image of infinity:</b>{" "}
-            {fInf ? <span style={{ fontFamily: "monospace" }}>a/c = {cToStr(fInf)}</span> : "âž (affine c = 0)"}
+            {fInf ? <span style={{ fontFamily: "monospace" }}>a/c = {cToStr(fInf)}</span> : "∞ (affine c = 0)"}
           </div>
           <div>
             <b>preimage of infinity:</b>{" "}
@@ -83584,14 +83584,14 @@ const MobiusInvariantsCard: React.FC<{ params: MobiusParams }> = ({ params }) =>
           <div><b>fixed points:</b> {fixedLabel}</div>
           <div><b>derivative:</b> <span style={{ fontFamily: "monospace" }}>f'(z) = (ad - bc) / (cz + d)^2</span></div>
           <div><b>local scale:</b> <span style={{ fontFamily: "monospace" }}>|f'(z)| = |ad - bc| / |cz + d|^2</span></div>
-          <div><b>angle preservation:</b> {isSingular ? "no (degenerate: ad - bc = 0)" : "yes, where defined (cz + d â‰  0)"}</div>
+          <div><b>angle preservation:</b> {isSingular ? "no (degenerate: ad - bc = 0)" : "yes, where defined (cz + d ≠ 0)"}</div>
         </div>
         <div style={{ marginTop: 8, fontSize: 12 }}>
           <div style={{ fontWeight: 700, marginBottom: 2 }}>Preserved</div>
-          <div>â€˘ generalized circles</div>
-          <div>â€˘ angles</div>
-          <div>â€˘ cross-ratios</div>
-          <div>â€˘ orientation locally (where defined)</div>
+          <div>• generalized circles</div>
+          <div>• angles</div>
+          <div>• cross-ratios</div>
+          <div>• orientation locally (where defined)</div>
         </div>
       </div>
 
@@ -83820,7 +83820,7 @@ const MobiusCirclesCard: React.FC<{ params: MobiusParams }> = ({ params }) => {
       <div style={cardStyle}>
         <div style={{ fontWeight: 800, marginBottom: 6 }}>Circles / Lines</div>
         <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>
-          MĂ¶bius maps send generalized circles to generalized circles. A circle through the pole maps to a line.
+          Möbius maps send generalized circles to generalized circles. A circle through the pole maps to a line.
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           <button type="button" onClick={addCircle}>Add circle</button>
@@ -83878,7 +83878,7 @@ const MobiusCirclesCard: React.FC<{ params: MobiusParams }> = ({ params }) => {
           </div>
         )}
         <div style={{ marginTop: 8, fontSize: 12, opacity: 0.84 }}>
-          Rule summary: line â†’ {isAffine ? "line" : "line or circle"}, circle â†’ {isAffine ? "circle" : "circle (or line if through pole)"}.
+          Rule summary: line → {isAffine ? "line" : "line or circle"}, circle → {isAffine ? "circle" : "circle (or line if through pole)"}.
         </div>
       </div>
     </div>
@@ -83950,7 +83950,7 @@ const MobiusRiemannCard: React.FC<{ params: MobiusParams }> = ({ params }) => {
       return mag > 1 ? "loxodromic-like (expanding)" : "loxodromic-like (contracting)";
     }
     if (fixed.kind === "pair") return "general two-fixed-point map";
-    return "general MĂ¶bius";
+    return "general Möbius";
   }, [fixed.kind, params]);
 
   useEffect(() => {
@@ -84366,7 +84366,7 @@ const MobiusRiemannCard: React.FC<{ params: MobiusParams }> = ({ params }) => {
           )}
           <div style={{ display: "grid", gap: 4, fontSize: 11 }}>
             <label style={{ display: "flex", gap: 6 }}><input type="checkbox" checked={showPresetCurve} onChange={(e) => setShowPresetCurve(e.target.checked)} />Show object on sphere</label>
-            <label style={{ display: "flex", gap: 6 }}><input type="checkbox" checked={showMappedCurve} onChange={(e) => setShowMappedCurve(e.target.checked)} />Show MĂ¶bius image on sphere</label>
+            <label style={{ display: "flex", gap: 6 }}><input type="checkbox" checked={showMappedCurve} onChange={(e) => setShowMappedCurve(e.target.checked)} />Show Möbius image on sphere</label>
             <label style={{ display: "flex", gap: 6 }}><input type="checkbox" checked={showSphereGrid} onChange={(e) => setShowSphereGrid(e.target.checked)} />Show meridians / guides</label>
             <label style={{ display: "flex", gap: 6 }}><input type="checkbox" checked={showSphereGuide} onChange={(e) => setShowSphereGuide(e.target.checked)} />Show sphere wireframe</label>
           </div>
@@ -84376,7 +84376,7 @@ const MobiusRiemannCard: React.FC<{ params: MobiusParams }> = ({ params }) => {
         </div>
 
         <div style={cardStyle}>
-          <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>MĂ¶bius on the Sphere</div>
+          <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Möbius on the Sphere</div>
           <div style={{ display: "grid", gap: 4, fontSize: 11 }}>
             <div>visual mode: {modeLabel}</div>
             <div>fixed points: {fixed.kind === "all" ? "all points" : fixed.kind === "none" ? "none" : fixed.values.map(cToStr).join(" ; ")}</div>
@@ -84407,7 +84407,7 @@ const MobiusRiemannCard: React.FC<{ params: MobiusParams }> = ({ params }) => {
           <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Analysis / Inspector</div>
           <div style={{ display: "grid", gap: 4, fontSize: 11 }}>
             <div><b>selected z:</b> {cToStr(sampleZ)}</div>
-            <div><b>|z|:</b> {cAbs(sampleZ).toFixed(6)} Â· <b>arg(z):</b> {Math.atan2(sampleZ.im, sampleZ.re).toFixed(6)}</div>
+            <div><b>|z|:</b> {cAbs(sampleZ).toFixed(6)} · <b>arg(z):</b> {Math.atan2(sampleZ.im, sampleZ.re).toFixed(6)}</div>
             <div><b>sphere (z):</b> X={zSphere.x.toFixed(6)}, Y={zSphere.y.toFixed(6)}, Z={zSphere.z.toFixed(6)}</div>
             <div><b>projected back:</b> {zBackProjected ? cToStr(zBackProjected) : "infinity"}</div>
             <div><b>image f(z):</b> {sampleW && cFinite(sampleW) ? cToStr(sampleW) : "infinity"}</div>
@@ -84495,11 +84495,11 @@ const MobiusRiemannCard: React.FC<{ params: MobiusParams }> = ({ params }) => {
       {layoutMode === "beforeAfter" && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(320px, 1fr))", gap: 10 }}>
           <div style={{ ...cardStyle, marginTop: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Before MĂ¶bius (z on sphere)</div>
+            <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Before Möbius (z on sphere)</div>
             <RiemannSpherePlot lines={beforeOnlySphereLines} points={[{ x: zSphere.x, y: zSphere.y, z: zSphere.z, color: 0x111111, size: 0.072 }]} guideSpheres={sphereGuides} style={{ height: 360 }} />
           </div>
           <div style={{ ...cardStyle, marginTop: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>After MĂ¶bius (f(z) on sphere)</div>
+            <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>After Möbius (f(z) on sphere)</div>
             <RiemannSpherePlot lines={afterOnlySphereLines} points={[{ x: wSphere.x, y: wSphere.y, z: wSphere.z, color: 0x0a66c2, size: 0.072 }]} guideSpheres={sphereGuides} style={{ height: 360 }} />
           </div>
         </div>
