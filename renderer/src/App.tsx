@@ -2226,7 +2226,7 @@ const splitterStyle: React.CSSProperties = {
   background: "linear-gradient(to right, transparent 0, #ddd 3px, transparent 6px)",
 };
 
-type SurfaceRightPanelTab = "inspector" | "tools" | "performance" | "workbook";
+type SurfaceRightPanelTab = "inspector" | "tools" | "performance" | "theory" | "workbook";
 
 const GEOMETRY_BADGE_COLORS = {
   ok: "#2e7d32",
@@ -21046,7 +21046,7 @@ const App: React.FC = () => {
   const [rightPanelTab, setRightPanelTab] = useState<SurfaceRightPanelTab>(() => {
     if (IS_REPLAY_MODE) return "workbook";
     const saved = localStorage.getItem(WORKBOOK_PANEL_KEY);
-    return saved === "workbook" || saved === "tools" || saved === "performance" ? saved : "inspector";
+    return saved === "workbook" || saved === "tools" || saved === "performance" || saved === "theory" ? saved : "inspector";
   });
   const [analysisFocusedSection, setAnalysisFocusedSection] = useState<AnalysisFocusedSection>("vector-calculus");
   const [showRightPanel, setShowRightPanel] = useState(true);
@@ -44634,10 +44634,39 @@ case "mobius":
   ]);
   const showSurfaceWorkbookQuickStrip =
     mode === "surfaces" &&
+    surfaceViewerKind !== "complex" &&
     rightPanelTab === "workbook" &&
     !isPresentDisplayMode &&
     !cleanScreenshotSurfaceActive &&
     !isSurfacePreviewMode;
+  const activeSurfaceRightPanelTab: SurfaceRightPanelTab =
+    surfaceViewerKind === "complex" && rightPanelTab === "workbook" ? "inspector" : rightPanelTab;
+  const surfaceRightPanelTabs: Array<[SurfaceRightPanelTab, string]> =
+    surfaceViewerKind === "complex"
+      ? [
+          ["inspector", "Inspector"],
+          ["performance", "Performance"],
+          ["tools", "Tool"],
+          ["theory", "Theory"],
+        ]
+      : [
+          ["inspector", "Inspector"],
+          ["tools", "Tools"],
+          ["performance", "Performance"],
+          ["workbook", "Workbook"],
+        ];
+  const complexMapEquationSummary =
+    complexMapSpec.inputMode === "fz"
+      ? `${complexMapIsRiemann ? "p" : "f"}(z)=${complexMapSpec.fExpr || "z"}`
+      : `Re=${complexMapSpec.reExpr || "0"}; Im=${complexMapSpec.imExpr || "0"}`;
+  const complexMapDomainSummary = `u[${complexMapSpec.uMin}, ${complexMapSpec.uMax}] v[${complexMapSpec.vMin}, ${complexMapSpec.vMax}]`;
+  const complexMapOutputSummary =
+    complexMapSpec.outputMode === "both"
+      ? "Re + Im"
+      : complexMapSpec.outputMode === "sweep"
+        ? `Sweep by ${complexMapSpec.sweepAxis}`
+        : complexMapSpec.outputMode.toUpperCase();
+  const complexMapSamplingSummary = `${complexMapSpec.nu} x ${complexMapSpec.nv}`;
   const surfacePreviewReframePaddingFactor = isSurfacePreviewMode ? 0.92 : 1.08;
   const showSurfaceFormulaEditorLauncher =
     mode === "surfaces" &&
@@ -46015,12 +46044,12 @@ case "mobius":
     ].join("\n");
   }, []);
 
-  const renderSurfacesInspectorPanel = (panelMode: "analysis" | "tools") => (
+  const renderSurfacesInspectorPanel = (panelMode: "analysis" | "tools" | "theory") => (
                 <SurfacesLeftPanel
                   showInternalTabs={false}
                   hideViewControls={panelMode === "tools"}
                   toolsPanel={panelMode === "tools"}
-                  initialLeftTab={panelMode === "analysis" ? "analysis" : "scene"}
+                  initialLeftTab={panelMode === "analysis" ? "analysis" : panelMode === "theory" ? "theory" : "scene"}
                   onChangeAnalysisFocusedSection={setAnalysisFocusedSection}
                   viewerKind={surfaceViewerKind}
                   surfaceId={activeEqSurfaceId}
@@ -49146,6 +49175,90 @@ case "mobius":
                           background: "linear-gradient(180deg, rgba(249,251,253,0.98), rgba(244,247,251,0.98))",
                         }}
                       >
+                        {surfaceViewerKind === "complex" ? (
+                          <>
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+                              <span
+                                style={{
+                                  borderRadius: 8,
+                                  border: "1px solid #c7d2e2",
+                                  background: "#fff",
+                                  color: "#0f172a",
+                                  fontWeight: 800,
+                                  fontSize: 11,
+                                  padding: "5px 10px",
+                                }}
+                              >
+                                Complex Map Viewer
+                              </span>
+                              {[
+                                ["equation", complexMapEquationSummary],
+                                ["domain", complexMapDomainSummary],
+                                ["output", complexMapOutputSummary],
+                                ["sampling", complexMapSamplingSummary],
+                              ].map(([label, value]) => (
+                                <span
+                                  key={`complex-viewer-summary-${label}`}
+                                  title={value}
+                                  style={{
+                                    maxWidth: label === "equation" ? 260 : 180,
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                    borderRadius: 8,
+                                    border: "1px solid #dbe4f0",
+                                    background: "#f8fafc",
+                                    color: "#334155",
+                                    fontWeight: 650,
+                                    fontSize: 11,
+                                    padding: "5px 10px",
+                                  }}
+                                >
+                                  {label}: {value}
+                                </span>
+                              ))}
+                            </div>
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                onClick={handleBuildComplexMapSweep}
+                                style={{
+                                  borderRadius: 8,
+                                  border: "1px solid #0a66c2",
+                                  background: "#e6f0ff",
+                                  color: "#0a66c2",
+                                  fontWeight: 750,
+                                  fontSize: 11,
+                                  padding: "5px 10px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Generate
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSurfacesLeftTab("analysis");
+                                  if (!showRightPanel) setShowRightPanel(true);
+                                  setRightPanelTab("performance");
+                                }}
+                                style={{
+                                  borderRadius: 8,
+                                  border: "1px solid #c7d2e2",
+                                  background: "#f8fafc",
+                                  color: "#334155",
+                                  fontWeight: 650,
+                                  fontSize: 11,
+                                  padding: "5px 10px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Analyze
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                           {showSurfaceFormulaEditorLauncher && (
                             <button
@@ -49286,71 +49399,8 @@ case "mobius":
                           </span>
                         </div>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                          {surfaceViewerKind === "complex" && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={handleBuildComplexMapSweep}
-                                style={{
-                                  borderRadius: 8,
-                                  border: "1px solid #0a66c2",
-                                  background: "#e6f0ff",
-                                  color: "#0a66c2",
-                                  fontWeight: 750,
-                                  fontSize: 11,
-                                  padding: "5px 10px",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                Run
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSurfacesLeftTab("scene");
-                                  enterSurfacePreviewFocus();
-                                }}
-                                style={{
-                                  borderRadius: 8,
-                                  border: "1px solid #c7d2e2",
-                                  background: "#f8fafc",
-                                  color: "#334155",
-                                  fontWeight: 650,
-                                  fontSize: 11,
-                                  padding: "5px 10px",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                Preview
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setMeshSaveOverlayOpen(true)}
-                                disabled={!showMeshSaveOverlayLauncher}
-                                style={{
-                                  borderRadius: 8,
-                                  border: "1px solid " + (showMeshSaveOverlayLauncher ? "#0f766e" : "#d1d5db"),
-                                  background: showMeshSaveOverlayLauncher ? "#ecfdf5" : "#f8fafc",
-                                  color: showMeshSaveOverlayLauncher ? "#0f766e" : "#94a3b8",
-                                  fontWeight: 650,
-                                  fontSize: 11,
-                                  padding: "5px 10px",
-                                  cursor: showMeshSaveOverlayLauncher ? "pointer" : "not-allowed",
-                                }}
-                              >
-                                Save Mesh
-                              </button>
-                            </>
-                          )}
-                          {(
-                            [
-                              ["inspector", "Inspector"],
-                              ["tools", "Tools"],
-                              ["performance", "Performance"],
-                              ["workbook", "Workbook"],
-                            ] as const
-                          ).map(([tab, label]) => {
-                            const active = rightPanelTab === tab;
+                          {surfaceRightPanelTabs.map(([tab, label]) => {
+                            const active = activeSurfaceRightPanelTab === tab;
                             return (
                               <button
                                 key={`surface-local-tab-${tab}`}
@@ -49376,6 +49426,8 @@ case "mobius":
                             );
                           })}
                         </div>
+                          </>
+                        )}
                       </div>
                     )}
                     <div
@@ -51008,30 +51060,23 @@ case "mobius":
               ) : (
                 <>
                   <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-                    {(
-                      [
-                        ["inspector", "Inspector"],
-                        ["tools", "Tools"],
-                        ["performance", "Performance"],
-                        ["workbook", "Workbook"],
-                      ] as const
-                    ).map(([tab, label]) => (
+                    {surfaceRightPanelTabs.map(([tab, label]) => (
                       <button
                         key={tab}
                         type="button"
                         onClick={() => setRightPanelTab(tab)}
-                        style={pill(rightPanelTab === tab)}
-                        aria-pressed={rightPanelTab === tab}
+                        style={pill(activeSurfaceRightPanelTab === tab)}
+                        aria-pressed={activeSurfaceRightPanelTab === tab}
                       >
                         {label}
                       </button>
                     ))}
                   </div>
 
-                  {rightPanelTab === "inspector" || rightPanelTab === "performance" ? (
+                  {activeSurfaceRightPanelTab === "inspector" || activeSurfaceRightPanelTab === "performance" ? (
                     <>
                     <SurfacesRightPanel
-                      panelMode={rightPanelTab === "performance" ? "performance" : "inspector"}
+                      panelMode={activeSurfaceRightPanelTab === "performance" ? "performance" : "inspector"}
                       viewerKind={surfaceViewerKind}
                       surfaceId={activeEqSurfaceId}
                       paramId={paramSurfaceId}
@@ -51216,8 +51261,10 @@ case "mobius":
                       onRemoveImplicitDomainPreset={removeImplicitDomainPreset}
                     />
                     </>
-                  ) : rightPanelTab === "tools" ? (
+                  ) : activeSurfaceRightPanelTab === "tools" ? (
                     renderSurfacesInspectorPanel("tools")
+                  ) : activeSurfaceRightPanelTab === "theory" ? (
+                    renderSurfacesInspectorPanel("theory")
                   ) : (
                     <WorkbookPanel
                       workbooks={workbooks}
@@ -74815,6 +74862,7 @@ onChangeImplicitExpr,
     if (!initialLeftTab) return;
     setLeftTab(normalizeLeftTab(initialLeftTab));
   }, [initialLeftTab, normalizeLeftTab]);
+  const standaloneTheoryPanel = !showInternalTabs && leftTab === "theory";
   const showSceneObjectControls = leftTab === "scene" || leftTab === "object" || leftTab === "controls";
   const showViewControls = leftTab === "view" || leftTab === "controls";
   const surfaceSectionTabs: Array<{ id: Exclude<SurfacesLeftTab, "controls">; label: string }> = [
@@ -75394,10 +75442,20 @@ onChangeImplicitExpr,
 
   return (
     <section>
-      <h2 style={styles.h2}>{isVolume ? "Volume viewer (three.js)" : "Surface viewer (three.js)"}</h2>
-      <p style={styles.hint}>
-        Rotate with mouse, scroll to zoom. In <strong>probe mode</strong> click the surface to read point p and unit normal n.
-      </p>
+      <h2 style={styles.h2}>
+        {toolsPanel && viewerKind === "complex"
+          ? "Tool Settings"
+          : standaloneTheoryPanel
+            ? "Theory"
+            : isVolume
+              ? "Volume viewer (three.js)"
+              : "Surface viewer (three.js)"}
+      </h2>
+      {!(toolsPanel && viewerKind === "complex") && !standaloneTheoryPanel && (
+        <p style={styles.hint}>
+          Rotate with mouse, scroll to zoom. In <strong>probe mode</strong> click the surface to read point p and unit normal n.
+        </p>
+      )}
 
       {showInternalTabs && (
         <div
@@ -75434,10 +75492,14 @@ onChangeImplicitExpr,
       )}
 
       <div style={{ display: leftTab !== "theory" ? "block" : "none" }}>
-      <h3 style={styles.h3}>{activeMeta.label}</h3>
-      <p style={styles.hint}>
-        Mode: <strong>{modeLabel}</strong>
-      </p>
+      {!(toolsPanel && viewerKind === "complex") && (
+        <>
+          <h3 style={styles.h3}>{activeMeta.label}</h3>
+          <p style={styles.hint}>
+            Mode: <strong>{modeLabel}</strong>
+          </p>
+        </>
+      )}
 
       {showSceneObjectControls && (
       <>
@@ -82219,7 +82281,6 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               </div>
             </div>
 
-            {false && (
             <div style={inspectorSectionCard}>
               <div style={inspectorSectionTitle}>Operation Result</div>
               {vtkLastResult ? (
@@ -82245,7 +82306,6 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 <div style={{ fontSize: 11, color: "#556" }}>No mesh operation result yet.</div>
               )}
             </div>
-            )}
 
             {false && isMeshViewer && (
               <div style={inspectorSectionCard}>
