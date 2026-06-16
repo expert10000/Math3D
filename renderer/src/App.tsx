@@ -4802,11 +4802,61 @@ const WEIERSTRASS_DEFAULTS = {
   recenter: true,
 };
 
-const COMPLEX_MAP_PRESETS = [
+type ComplexMapPreset = {
+  id: string;
+  label: string;
+  inputMode?: ComplexMapInputMode;
+  fExpr?: string;
+  reExpr: string;
+  imExpr: string;
+  specPatch?: Partial<ComplexMapSweepSpec>;
+};
+
+const COMPLEX_MAP_PRESETS: ComplexMapPreset[] = [
   { id: "z", label: "w = z", reExpr: "u", imExpr: "v" },
   { id: "z2", label: "w = z^2", reExpr: "u^2 - v^2", imExpr: "2*u*v" },
   { id: "z3", label: "w = z^3", reExpr: "u^3 - 3*u*v^2", imExpr: "3*u^2*v - v^3" },
   { id: "exp", label: "w = exp(z)", reExpr: "exp(u) * cos(v)", imExpr: "exp(u) * sin(v)" },
+  {
+    id: "sin",
+    label: "w = sin(z)",
+    inputMode: "fz",
+    fExpr: "sin(z)",
+    reExpr: "sin(u) * cosh(v)",
+    imExpr: "cos(u) * sinh(v)",
+    specPatch: {
+      uMin: -Math.PI,
+      uMax: Math.PI,
+      vMin: -1.5,
+      vMax: 1.5,
+      sweepAxis: "u",
+      outputMode: "sweep",
+      showIsolines: true,
+      isolinesCountU: 9,
+      isolinesCountV: 7,
+      clampAbs: 5,
+    },
+  },
+  {
+    id: "cos",
+    label: "w = cos(z)",
+    inputMode: "fz",
+    fExpr: "cos(z)",
+    reExpr: "cos(u) * cosh(v)",
+    imExpr: "-sin(u) * sinh(v)",
+    specPatch: {
+      uMin: -Math.PI,
+      uMax: Math.PI,
+      vMin: -1.5,
+      vMax: 1.5,
+      sweepAxis: "u",
+      outputMode: "sweep",
+      showIsolines: true,
+      isolinesCountU: 9,
+      isolinesCountV: 7,
+      clampAbs: 5,
+    },
+  },
 ];
 const COMPLEX_MAP_CUSTOM_ID = "custom";
 
@@ -4844,6 +4894,7 @@ const FUNCTION_EXPLORER_OTHER_PRESETS: Array<{ id: string; label: string; expr: 
   { id: "pow_third", label: "z^(1/3)", expr: "z^(1/3)", note: "Three-sheet branch: each loop advances one sheet." },
   { id: "sqrt_z2m1", label: "sqrt(z^2-1)", expr: "sqrt(z^2-1)", note: "Branch points at -1 and 1 with cut on [-1,1]." },
   { id: "sin", label: "sin(z)", expr: "sin(z)", note: "Entire function with periodic stripes." },
+  { id: "cos", label: "cos(z)", expr: "cos(z)", note: "Entire function with shifted periodic stripes." },
   { id: "frac", label: "(z-1)/(z^2+1)", expr: "(z-1)/(z^2+1)", note: "Rational map with poles at ±i." },
   { id: "removable", label: "(z-1)/(z^2-1)", expr: "(z-1)/(z^2-1)", note: "Removable singularity at z=1." },
   { id: "pole3", label: "1/(z-2)^3", expr: "1/(z-2)^3", note: "Pole at z=2 of order 3." },
@@ -23628,9 +23679,12 @@ const App: React.FC = () => {
     }
     setComplexMapSpec((prev) => ({
       ...prev,
-      inputMode: "reim",
+      inputMode: preset.inputMode ?? "reim",
+      fExpr: preset.fExpr ?? prev.fExpr,
       reExpr: preset.reExpr,
       imExpr: preset.imExpr,
+      mapMode: "standard",
+      ...(preset.specPatch ?? {}),
     }));
     setComplexMapError(null);
   }, []);

@@ -73,4 +73,26 @@ describe("complexMapSweep f(z) parser", () => {
     expect(res.build).toBeDefined();
     expect((res.build?.indices.length ?? 0) > 0).toBe(true);
   });
+
+  it("embeds sin(z) as x = swept z-line coordinate and yz = w-plane value", () => {
+    const res = buildComplexMapSweep({
+      ...baseSpec,
+      inputMode: "fz",
+      fExpr: "sin(z)",
+      uMin: 0,
+      uMax: 1,
+      vMin: 0,
+      vMax: 0.1,
+      nu: 3,
+      nv: 2,
+      sweepAxis: "u",
+      outputMode: "sweep",
+    });
+    expect(res.error).toBeUndefined();
+    const positions = res.build?.positions;
+    expect(positions).toBeDefined();
+    expect(positions?.[3]).toBeCloseTo(0.5, 8);
+    expect(positions?.[4]).toBeCloseTo(Math.sin(0.5), 7);
+    expect(positions?.[5]).toBeCloseTo(0, 8);
+  });
 });
