@@ -2226,6 +2226,8 @@ const splitterStyle: React.CSSProperties = {
   background: "linear-gradient(to right, transparent 0, #ddd 3px, transparent 6px)",
 };
 
+type SurfaceRightPanelTab = "inspector" | "tools" | "performance" | "workbook";
+
 const GEOMETRY_BADGE_COLORS = {
   ok: "#2e7d32",
   fail: "#c62828",
@@ -21041,10 +21043,10 @@ const App: React.FC = () => {
   }, []);
 
   const samples = 800;
-  const [rightPanelTab, setRightPanelTab] = useState<"inspector" | "workbook">(() => {
+  const [rightPanelTab, setRightPanelTab] = useState<SurfaceRightPanelTab>(() => {
     if (IS_REPLAY_MODE) return "workbook";
     const saved = localStorage.getItem(WORKBOOK_PANEL_KEY);
-    return saved === "workbook" ? "workbook" : "inspector";
+    return saved === "workbook" || saved === "tools" || saved === "performance" ? saved : "inspector";
   });
   const [analysisFocusedSection, setAnalysisFocusedSection] = useState<AnalysisFocusedSection>("vector-calculus");
   const [showRightPanel, setShowRightPanel] = useState(true);
@@ -46015,9 +46017,10 @@ case "mobius":
 
   const renderSurfacesInspectorPanel = (panelMode: "analysis" | "tools") => (
                 <SurfacesLeftPanel
-                  showInternalTabs={panelMode === "tools"}
+                  showInternalTabs={false}
                   hideViewControls={panelMode === "tools"}
-                  initialLeftTab={panelMode === "analysis" ? "analysis" : "controls"}
+                  toolsPanel={panelMode === "tools"}
+                  initialLeftTab={panelMode === "analysis" ? "analysis" : "scene"}
                   onChangeAnalysisFocusedSection={setAnalysisFocusedSection}
                   viewerKind={surfaceViewerKind}
                   surfaceId={activeEqSurfaceId}
@@ -49283,7 +49286,70 @@ case "mobius":
                           </span>
                         </div>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                          {(["inspector", "workbook"] as const).map((tab) => {
+                          {surfaceViewerKind === "complex" && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={handleBuildComplexMapSweep}
+                                style={{
+                                  borderRadius: 8,
+                                  border: "1px solid #0a66c2",
+                                  background: "#e6f0ff",
+                                  color: "#0a66c2",
+                                  fontWeight: 750,
+                                  fontSize: 11,
+                                  padding: "5px 10px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Run
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSurfacesLeftTab("scene");
+                                  enterSurfacePreviewFocus();
+                                }}
+                                style={{
+                                  borderRadius: 8,
+                                  border: "1px solid #c7d2e2",
+                                  background: "#f8fafc",
+                                  color: "#334155",
+                                  fontWeight: 650,
+                                  fontSize: 11,
+                                  padding: "5px 10px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Preview
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setMeshSaveOverlayOpen(true)}
+                                disabled={!showMeshSaveOverlayLauncher}
+                                style={{
+                                  borderRadius: 8,
+                                  border: "1px solid " + (showMeshSaveOverlayLauncher ? "#0f766e" : "#d1d5db"),
+                                  background: showMeshSaveOverlayLauncher ? "#ecfdf5" : "#f8fafc",
+                                  color: showMeshSaveOverlayLauncher ? "#0f766e" : "#94a3b8",
+                                  fontWeight: 650,
+                                  fontSize: 11,
+                                  padding: "5px 10px",
+                                  cursor: showMeshSaveOverlayLauncher ? "pointer" : "not-allowed",
+                                }}
+                              >
+                                Save Mesh
+                              </button>
+                            </>
+                          )}
+                          {(
+                            [
+                              ["inspector", "Inspector"],
+                              ["tools", "Tools"],
+                              ["performance", "Performance"],
+                              ["workbook", "Workbook"],
+                            ] as const
+                          ).map(([tab, label]) => {
                             const active = rightPanelTab === tab;
                             return (
                               <button
@@ -49305,7 +49371,7 @@ case "mobius":
                                   cursor: "pointer",
                                 }}
                               >
-                                {tab === "inspector" ? "Inspector" : "Workbook"}
+                                {label}
                               </button>
                             );
                           })}
@@ -50942,7 +51008,14 @@ case "mobius":
               ) : (
                 <>
                   <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-                    {(["inspector", "workbook"] as const).map((tab) => (
+                    {(
+                      [
+                        ["inspector", "Inspector"],
+                        ["tools", "Tools"],
+                        ["performance", "Performance"],
+                        ["workbook", "Workbook"],
+                      ] as const
+                    ).map(([tab, label]) => (
                       <button
                         key={tab}
                         type="button"
@@ -50950,14 +51023,15 @@ case "mobius":
                         style={pill(rightPanelTab === tab)}
                         aria-pressed={rightPanelTab === tab}
                       >
-                        {tab === "inspector" ? "Inspector" : "Workbook"}
+                        {label}
                       </button>
                     ))}
                   </div>
 
-                  {rightPanelTab === "inspector" ? (
+                  {rightPanelTab === "inspector" || rightPanelTab === "performance" ? (
                     <>
                     <SurfacesRightPanel
+                      panelMode={rightPanelTab === "performance" ? "performance" : "inspector"}
                       viewerKind={surfaceViewerKind}
                       surfaceId={activeEqSurfaceId}
                       paramId={paramSurfaceId}
@@ -51141,13 +51215,9 @@ case "mobius":
                       onRemoveParamDomainPreset={removeParamDomainPreset}
                       onRemoveImplicitDomainPreset={removeImplicitDomainPreset}
                     />
-                    <details style={{ marginTop: 10 }} open={isInspectDisplayMode}>
-                      <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Tools</summary>
-                      <div style={{ marginTop: 8 }}>
-                        {renderSurfacesInspectorPanel("tools")}
-                      </div>
-                    </details>
                     </>
+                  ) : rightPanelTab === "tools" ? (
+                    renderSurfacesInspectorPanel("tools")
                   ) : (
                     <WorkbookPanel
                       workbooks={workbooks}
@@ -73312,6 +73382,7 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
 type SurfacesLeftPanelProps = {
   showInternalTabs?: boolean;
   hideViewControls?: boolean;
+  toolsPanel?: boolean;
   initialLeftTab?: "controls" | "scene" | "object" | "view" | "analysis" | "theory";
   viewerKind: SurfaceViewerKind;
   surfaceId: SurfaceId;
@@ -73962,6 +74033,7 @@ type ComplexMapGridPanelData = {
 const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   showInternalTabs = true,
   hideViewControls = false,
+  toolsPanel = false,
   initialLeftTab,
   viewerKind,
   surfaceId,
@@ -75311,6 +75383,7 @@ onChangeImplicitExpr,
 
   const wrapComplexAdvancedTools = (content: React.ReactNode) => {
     if (viewerKind !== "complex") return content;
+    if (toolsPanel) return <div style={{ marginTop: 10 }}>{content}</div>;
     return (
       <details style={{ ...cardStyle, marginTop: 10 }}>
         <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Mesh tools (advanced)</summary>
@@ -79464,7 +79537,7 @@ onChangeImplicitExpr,
         {(viewerKind === "mesh" || viewerKind === "complex") && (
           <div style={{ fontSize: 12, opacity: 0.75 }}>
             {viewerKind === "complex"
-              ? "Complex map controls live in the left panel."
+              ? "Complex map controls live in the Tools tab."
               : "SurfaceMesh presets and import live in the left panel."}
           </div>
         )}
@@ -80934,6 +81007,7 @@ onChangeImplicitExpr,
 /* ---------------- Right Panel (domain previews) ---------------- */
 
 type SurfacesRightPanelProps = {
+  panelMode?: "inspector" | "performance";
   viewerKind: SurfaceViewerKind;
   surfaceId: SurfaceId;
   paramId: ParamSurfaceId;
@@ -81133,6 +81207,7 @@ type InspectorPanelTab = "object" | "selection" | "probe" | "analysis" | "warnin
 type AnalysisResultsView = "show-all" | "current-screen";
 
 const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
+  panelMode = "inspector",
   viewerKind,
   surfaceId,
   paramId,
@@ -81892,8 +81967,193 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     MESH_PERF_BENCHMARK_PRESETS.find((entry) => entry.id === meshPerformanceBenchmarkId)?.label ?? null;
   const formatPerfMetric = (value: number | null | undefined, digits = 1) =>
     value == null || !Number.isFinite(value) ? "n/a" : Number(value).toFixed(digits);
+  const meshRuntimePerformanceCard = isMeshViewer ? (
+    <div style={inspectorSectionCard}>
+      <div style={inspectorSectionTitle}>Interaction Quality</div>
+      <div style={{ fontSize: 11, display: "grid", gap: 8 }}>
+        <div style={{ fontWeight: 600 }}>Quality during interaction</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {(
+            [
+              ["full", "Full"],
+              ["adaptive", "Adaptive"],
+              ["fast-preview", "Fast Preview"],
+            ] as const
+          ).map(([mode, label]) => (
+            <button
+              key={`mesh-runtime-mode-${mode}`}
+              type="button"
+              onClick={() => onChangeMeshInteractionQualityMode(mode)}
+              style={pill(meshInteractionQualityMode === mode)}
+              aria-pressed={meshInteractionQualityMode === mode}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ minWidth: 164 }}>Restore full quality after</span>
+          <input
+            type="number"
+            min={50}
+            max={2000}
+            step={10}
+            value={Math.max(50, Math.min(2000, Math.round(meshInteractionRestoreDelayMs)))}
+            onChange={(event) => {
+              const value = Number(event.target.value);
+              if (!Number.isFinite(value)) return;
+              onChangeMeshInteractionRestoreDelayMs(Math.max(50, Math.min(2000, Math.round(value))));
+            }}
+            style={{ width: 96 }}
+          />
+          <span>ms idle</span>
+        </label>
+        <div style={{ fontWeight: 600 }}>Hide during interaction</div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={meshInteractionHideVertexMarkers}
+            onChange={(event) => onChangeMeshInteractionHideVertexMarkers(event.target.checked)}
+          />
+          Vertex markers
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={meshInteractionHideFaceNormals}
+            onChange={(event) => onChangeMeshInteractionHideFaceNormals(event.target.checked)}
+          />
+          Face normals
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={meshInteractionHideCurvatureGlyphs}
+            onChange={(event) => onChangeMeshInteractionHideCurvatureGlyphs(event.target.checked)}
+          />
+          Curvature glyphs
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={meshInteractionHideWireframe}
+            onChange={(event) => onChangeMeshInteractionHideWireframe(event.target.checked)}
+          />
+          Wireframe
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ minWidth: 164 }}>Preview triangle target</span>
+          <input
+            type="number"
+            min={5000}
+            max={5000000}
+            step={1000}
+            value={Math.max(5000, Math.min(5000000, Math.round(meshInteractionPreviewTriangleTarget)))}
+            onChange={(event) => {
+              const value = Number(event.target.value);
+              if (!Number.isFinite(value)) return;
+              onChangeMeshInteractionPreviewTriangleTarget(Math.max(5000, Math.min(5000000, Math.round(value))));
+            }}
+            style={{ width: 120 }}
+          />
+        </label>
+      </div>
+    </div>
+  ) : null;
+  const meshBenchmarkPerformanceCard = (
+    <div style={inspectorSectionCard}>
+      <div style={inspectorSectionTitle}>Mesh Performance</div>
+      <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+        <div><strong>Mode:</strong> {meshPerformanceModeLabel}</div>
+        {activeMeshPerformancePresetLabel && (
+          <div><strong>Benchmark:</strong> {activeMeshPerformancePresetLabel}</div>
+        )}
+        <div><strong>FPS:</strong> {formatPerfMetric(surfacePerformanceSnapshot?.fps ?? null, 1)}</div>
+        <div><strong>Frame time:</strong> {formatPerfMetric(surfacePerformanceSnapshot?.frameTimeMs ?? null, 1)} ms</div>
+        <div><strong>Triangles visible:</strong> {formatInspectorCount(surfacePerformanceSnapshot?.triangles ?? null)}</div>
+        <div><strong>Vertices visible:</strong> {formatInspectorCount(surfacePerformanceSnapshot?.vertices ?? null)}</div>
+        <div><strong>Draw calls:</strong> {formatInspectorCount(surfacePerformanceSnapshot?.drawCalls ?? null)}</div>
+        <div><strong>Mesh objects:</strong> {formatInspectorCount(surfacePerformanceSnapshot?.meshObjects ?? null)}</div>
+        <div><strong>Overlay objects:</strong> {formatInspectorCount(surfacePerformanceSnapshot?.overlayObjects ?? null)}</div>
+        <div><strong>Raycast time:</strong> {formatPerfMetric(surfacePerformanceSnapshot?.raycastTimeMs ?? null, 2)} ms</div>
+        <div>
+          <strong>Last mesh build:</strong>{" "}
+          {formatPerfMetric(surfacePerformanceSnapshot?.lastMeshBuildMs ?? meshPerformanceLastBuildMs, 1)} ms
+        </div>
+        <div><strong>LOD level:</strong> {surfacePerformanceSnapshot?.lodLevel ?? "n/a"}</div>
+        <div><strong>BVH status:</strong> {surfacePerformanceSnapshot?.bvhStatus ?? "n/a"}</div>
+        <div><strong>GPU memory estimate:</strong> {surfacePerformanceSnapshot?.gpuMemoryEstimateLabel ?? "n/a"}</div>
+        <div>
+          <strong>Renderer memory:</strong>{" "}
+          {surfacePerformanceSnapshot
+            ? `geometries ${formatInspectorCount(surfacePerformanceSnapshot.rendererMemory.geometries)} · textures ${formatInspectorCount(surfacePerformanceSnapshot.rendererMemory.textures)}`
+            : "n/a"}
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+          <button
+            type="button"
+            onClick={() => {
+              const payload = {
+                capturedAt: new Date().toISOString(),
+                mode: meshPerformanceModeLabel,
+                benchmark: activeMeshPerformancePresetLabel,
+                snapshot: surfacePerformanceSnapshot,
+              };
+              const text = JSON.stringify(payload, null, 2);
+              const clipboard = typeof navigator !== "undefined" ? navigator.clipboard : undefined;
+              if (clipboard?.writeText) {
+                void clipboard.writeText(text);
+              }
+            }}
+          >
+            Copy performance snapshot
+          </button>
+          <button
+            type="button"
+            onClick={onRestoreMeshPerformanceBaseline}
+            disabled={!meshPerformanceBenchmarkId}
+          >
+            Restore baseline
+          </button>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+          {MESH_PERF_BENCHMARK_PRESETS.map((preset) => (
+            <button
+              key={`mesh-perf-benchmark-${preset.id}`}
+              type="button"
+              onClick={() => onRunMeshPerformanceBenchmark(preset.id)}
+              style={pill(meshPerformanceBenchmarkId === preset.id)}
+              aria-pressed={meshPerformanceBenchmarkId === preset.id}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 
   const resultsOnlyInspector = true;
+  if (panelMode === "performance") {
+    return (
+      <section>
+        <h2 style={styles.h2}>PERFORMANCE</h2>
+        {meshRuntimePerformanceCard}
+        {isDevMode ? meshBenchmarkPerformanceCard : (
+          <div style={inspectorSectionCard}>
+            <div style={inspectorSectionTitle}>Mesh Performance</div>
+            <div style={{ fontSize: 11, color: "#556" }}>Developer performance benchmarks are hidden in this mode.</div>
+          </div>
+        )}
+        {!meshRuntimePerformanceCard && (
+          <div style={{ fontSize: 11, color: "#556" }}>
+            Performance controls are available for mesh-like surface viewers.
+          </div>
+        )}
+      </section>
+    );
+  }
+
   if (resultsOnlyInspector) {
     return (
       <section>
@@ -81959,6 +82219,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               </div>
             </div>
 
+            {false && (
             <div style={inspectorSectionCard}>
               <div style={inspectorSectionTitle}>Operation Result</div>
               {vtkLastResult ? (
@@ -81984,8 +82245,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 <div style={{ fontSize: 11, color: "#556" }}>No mesh operation result yet.</div>
               )}
             </div>
+            )}
 
-            {isMeshViewer && (
+            {false && isMeshViewer && (
               <div style={inspectorSectionCard}>
                 <div style={inspectorSectionTitle}>Performance</div>
                 <div style={{ fontSize: 11, display: "grid", gap: 8 }}>
@@ -82079,7 +82341,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               </div>
             )}
 
-            {isDevMode && (
+            {false && isDevMode && (
               <div style={inspectorSectionCard}>
                 <div style={inspectorSectionTitle}>Mesh Performance</div>
                 <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
