@@ -301,7 +301,7 @@ jobs:
       - name: Install deb and smoke installed worker
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb ./release/*.deb
+          sudo apt-get install -y xvfb xauth ./release/*.deb
           installed_worker="$(find /opt -path '*/resources/python-worker/worker' -type f -print -quit)"
           test -n "$installed_worker"
           test -x "$installed_worker"
@@ -315,7 +315,7 @@ jobs:
             -w /workspace \
             fedora:44 \
             bash -lc '
-              dnf install -y nodejs xorg-x11-server-Xvfb ./release/*.rpm
+              dnf install -y nodejs xorg-x11-server-Xvfb xorg-x11-xauth ./release/*.rpm
               installed_desktop="$(find /usr/share/applications -iname "*math3d*.desktop" -type f -print -quit)"
               installed_worker="$(find /opt -path "*/resources/python-worker/worker" -type f -print -quit)"
               test -n "$installed_desktop"

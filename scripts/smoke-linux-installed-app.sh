@@ -63,7 +63,16 @@ if [[ -z "$app_path" || ! -x "$app_path" ]]; then
 fi
 
 log="${RUNNER_TEMP:-/tmp}/math3d-linux-app-smoke.log"
+resolved_path="$(readlink -f "$app_path" 2>/dev/null || printf '%s\n' "$app_path")"
 echo "[linux-app-smoke] launching: $app_path"
+echo "[linux-app-smoke] resolved: $resolved_path"
+echo "[linux-app-smoke] file info:"
+file "$resolved_path" || true
+
+if command -v ldd >/dev/null 2>&1; then
+  echo "[linux-app-smoke] ldd missing libraries:"
+  ldd "$resolved_path" 2>/dev/null | grep 'not found' || true
+fi
 
 set +e
 timeout "$seconds" \
