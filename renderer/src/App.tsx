@@ -47060,6 +47060,7 @@ case "mobius":
                     <div style={topNavSegmentStyle}>
                       <button
                         type="button"
+                        data-testid="surfaces-layout-1"
                         onClick={() => {
                           setSurfacesLayoutVariant("layout1");
                           setSurfacesPanelState("browse");
@@ -47071,6 +47072,7 @@ case "mobius":
                       </button>
                       <button
                         type="button"
+                        data-testid="surfaces-layout-2"
                         onClick={() => {
                           setSurfacesLayoutVariant("layout2");
                           setSurfacesPanelState("work");
@@ -47083,6 +47085,7 @@ case "mobius":
                       </button>
                       <button
                         type="button"
+                        data-testid="surfaces-layout-3"
                         onClick={() => {
                           setSurfacesLayoutVariant("layout3");
                           setSurfacesPanelState("browse");
@@ -47094,6 +47097,7 @@ case "mobius":
                       </button>
                       <button
                         type="button"
+                        data-testid="surfaces-layout-4"
                         onClick={() => {
                           setSurfacesLayoutVariant("layout4");
                           setSurfacesPanelState("browse");

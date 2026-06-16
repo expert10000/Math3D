@@ -73,7 +73,7 @@ const shouldCaptureMesh = captureTargets.has("mesh");
 const captureMeshAssets = (process.env.MATH3D_THUMBNAIL_CAPTURE_MESH_ASSETS ?? "").trim() === "1";
 const captureDelayMs = Number(process.env.MATH3D_THUMBNAIL_CAPTURE_DELAY_MS ?? (fullCaptureMode ? 450 : 160));
 const captureTestTimeoutMs = Number(process.env.MATH3D_THUMBNAIL_TEST_TIMEOUT_MS ?? (fullCaptureMode ? 45 * 60 * 1000 : 15 * 60 * 1000));
-const captureLimitPerGroup = Number(process.env.MATH3D_THUMBNAIL_CAPTURE_LIMIT_PER_GROUP ?? (fullCaptureMode ? 0 : 2));
+const captureLimitPerGroup = Number(process.env.MATH3D_THUMBNAIL_CAPTURE_LIMIT_PER_GROUP ?? (fullCaptureMode ? 0 : 1));
 const THUMBNAIL_ASPECT = 16 / 10;
 
 const CANONICAL_CAPTURE_POLICY: CaptureViewPolicy = {
@@ -273,10 +273,7 @@ const openProceduralGeometry = async (page: Page): Promise<void> => {
 const openSurfacesWorkspace = async (page: Page): Promise<void> => {
   await clickFirstVisibleButton(page, "Surfaces");
   await expect(page.getByTestId("surface-family-explicit")).toBeVisible();
-  const layout3Button = page.getByRole("button", { name: /^(Layout 3|L3)$/ });
-  if ((await layout3Button.count()) > 0 && (await layout3Button.first().isVisible())) {
-    await clickFirstVisible(layout3Button, 'button "Layout 3/L3"');
-  }
+  await setSurfacesLayout(page, 3);
 };
 
 const openMeshWorkspace = async (page: Page): Promise<void> => {
@@ -296,6 +293,14 @@ const getSurfacesLayout3ModeToggle = (page: Page) => page.getByTestId("surfaces-
 const readToggleLabel = async (toggle: ReturnType<typeof getSurfacesLayout3ModeToggle>): Promise<string> =>
   (await toggle.innerText()).replace(/\s+/g, " ").trim().toLowerCase();
 
+const clickElementByTestId = async (page: Page, testId: string): Promise<boolean> =>
+  page.evaluate((id) => {
+    const el = document.querySelector(`[data-testid="${id}"]`);
+    if (!(el instanceof HTMLElement)) return false;
+    el.click();
+    return true;
+  }, testId);
+
 const ensureSurfacesGalleryMode = async (page: Page): Promise<void> => {
   await setSurfacesLayout(page, 3);
   await setSurfacesLayout3PanelMode(page, "browse");
@@ -303,11 +308,26 @@ const ensureSurfacesGalleryMode = async (page: Page): Promise<void> => {
 };
 
 const setSurfacesLayout = async (page: Page, layout: 1 | 2 | 3): Promise<void> => {
+  if (layout === 3 && (await getSurfacesLayout3ModeToggle(page).count()) > 0) return;
   const layoutLabel = `Layout ${layout}`;
   const shortLabel = `L${layout}`;
-  const buttons = page.getByRole("button", { name: new RegExp(`^(${layoutLabel}|${shortLabel})$`) });
+  const layoutTestId = `surfaces-layout-${layout}`;
+  const testIdButton = page.getByTestId(layoutTestId);
+  const buttons =
+    (await testIdButton.count()) > 0
+      ? testIdButton
+      : page.getByRole("button", { name: new RegExp(`^(${layoutLabel}|${shortLabel})$`) });
   if ((await buttons.count()) === 0 || !(await buttons.first().isVisible())) return;
-  await clickFirstVisible(buttons, `button "${layoutLabel}/${shortLabel}"`);
+  try {
+    if ((await testIdButton.count()) > 0 && (await clickElementByTestId(page, layoutTestId))) {
+      await settleRenderer(page);
+      return;
+    }
+    await clickFirstVisible(buttons, `button "${layoutLabel}/${shortLabel}"`);
+  } catch (error) {
+    if (layout === 3 && (await getSurfacesLayout3ModeToggle(page).count()) > 0) return;
+    throw error;
+  }
   await settleRenderer(page);
 };
 
@@ -316,12 +336,16 @@ const setSurfacesLayout3PanelMode = async (page: Page, mode: "browse" | "work"):
   if ((await toggle.count()) === 0 || !(await toggle.isVisible())) return;
   const label = await readToggleLabel(toggle);
   if (mode === "work" && (label.includes("show scene/object tabs") || label.includes("tabs"))) {
-    await clickFirstVisible(toggle, 'data-testid="surfaces-layout3-mode-toggle"');
+    if (!(await clickElementByTestId(page, "surfaces-layout3-mode-toggle"))) {
+      await clickFirstVisible(toggle, 'data-testid="surfaces-layout3-mode-toggle"');
+    }
     await settleRenderer(page);
     return;
   }
   if (mode === "browse" && label === "gallery") {
-    await clickFirstVisible(toggle, 'data-testid="surfaces-layout3-mode-toggle"');
+    if (!(await clickElementByTestId(page, "surfaces-layout3-mode-toggle"))) {
+      await clickFirstVisible(toggle, 'data-testid="surfaces-layout3-mode-toggle"');
+    }
     await settleRenderer(page);
   }
 };
@@ -660,34 +684,36 @@ test("Capture gallery thumbnails for objects and surfaces", async () => {
         folder: path.join("surfaces", "parametric"),
       });
 
-      await page.getByTestId("surface-family-spline").click();
-      await captureSurfaceCards(page, outputRoot, manifest, {
-        family: "spline",
-        testIdPrefix: "param-preset-card-",
-        folder: path.join("surfaces", "spline"),
-      });
-
-      await page.getByTestId("surface-family-constructed").click();
-      for (const subtype of ["rotational", "sweep", "tube", "ruled"] as const) {
-        await page.getByTestId(`param-constructed-subtype-${subtype}`).click();
+      if (fullCaptureMode) {
+        await page.getByTestId("surface-family-spline").click();
         await captureSurfaceCards(page, outputRoot, manifest, {
-          family: "constructed",
-          subtype,
+          family: "spline",
           testIdPrefix: "param-preset-card-",
-          folder: path.join("surfaces", "constructed", subtype),
+          folder: path.join("surfaces", "spline"),
+        });
+
+        await page.getByTestId("surface-family-constructed").click();
+        for (const subtype of ["rotational", "sweep", "tube", "ruled"] as const) {
+          await page.getByTestId(`param-constructed-subtype-${subtype}`).click();
+          await captureSurfaceCards(page, outputRoot, manifest, {
+            family: "constructed",
+            subtype,
+            testIdPrefix: "param-preset-card-",
+            folder: path.join("surfaces", "constructed", subtype),
+          });
+        }
+
+        const weierstrassFamilyButton = page.getByTestId("surface-family-weierstrass");
+        if (!(await weierstrassFamilyButton.isVisible())) {
+          await page.getByTestId("surface-family-more").click();
+        }
+        await page.getByTestId("surface-family-weierstrass").click();
+        await captureSurfaceCards(page, outputRoot, manifest, {
+          family: "weierstrass",
+          testIdPrefix: "weierstrass-preset-card-",
+          folder: path.join("surfaces", "weierstrass"),
         });
       }
-
-      const weierstrassFamilyButton = page.getByTestId("surface-family-weierstrass");
-      if (!(await weierstrassFamilyButton.isVisible())) {
-        await page.getByTestId("surface-family-more").click();
-      }
-      await page.getByTestId("surface-family-weierstrass").click();
-      await captureSurfaceCards(page, outputRoot, manifest, {
-        family: "weierstrass",
-        testIdPrefix: "weierstrass-preset-card-",
-        folder: path.join("surfaces", "weierstrass"),
-      });
     }
 
     if (shouldCaptureMesh) {
