@@ -6,6 +6,7 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { SSAOPass } from "three/examples/jsm/postprocessing/SSAOPass.js";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { Realization3D, Vec3 } from "./types";
 
 type OrientationFlipOverlay = {
@@ -109,10 +110,7 @@ const StudioPostprocessing: React.FC = () => {
 
 const PresentationCameraController: React.FC<{
   config: PresentationCamera | null;
-  controlsRef: React.RefObject<{
-    target: THREE.Vector3;
-    update: () => void;
-  } | null>;
+  controlsRef: React.RefObject<OrbitControlsImpl | null>;
 }> = ({ config, controlsRef }) => {
   const { camera } = useThree();
 
@@ -731,10 +729,7 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
     return { minY, floorSize, center };
   }, [realization.faceRealizationMesh]);
   const floorY = sceneBounds.minY - 0.48;
-  const studioControlsRef = useRef<{
-    target: THREE.Vector3;
-    update: () => void;
-  } | null>(null);
+  const studioControlsRef = useRef<OrbitControlsImpl | null>(null);
   const defaultStudioTarget: [number, number, number] = [sceneBounds.center.x, sceneBounds.center.y, sceneBounds.center.z];
   const activeCameraTarget = presentationCamera?.target ?? defaultStudioTarget;
   const cameraPosition = presentationCamera?.position ?? (isStudioRealization ? [5.2, 3.95, 5.7] : [3.6, 3.2, 3.8]);

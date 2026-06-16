@@ -472,7 +472,7 @@ const GIZMO_MENU_ITEMS: Array<{ id: GizmoMenuView; label: string }> = [
   { id: "iso", label: "Iso" },
 ];
 
-const iconCommonProps = {
+const iconCommonProps: React.SVGProps<SVGSVGElement> = {
   width: 14,
   height: 14,
   viewBox: "0 0 24 24",
@@ -3554,7 +3554,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const transformControls = new TransformControls(camera, renderer.domElement);
     transformControls.enabled = false;
-    transformControls.visible = false;
+    (transformControls as unknown as THREE.Object3D).visible = false;
     transformControls.setSize(1.35);
     transformControls.setMode(gizmoMode);
     transformControls.setSpace(gizmoSpace);
@@ -3856,8 +3856,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         });
       });
     };
-    const handleGizmoDraggingChanged = (event: { value?: boolean }) => {
-      const dragging = !!event?.value;
+    const handleGizmoDraggingChanged = (event: { value?: unknown }) => {
+      const dragging = event?.value === true;
       gizmoDraggingRef.current = dragging;
       const ctrls = controlsRef.current;
       if (ctrls) ctrls.enabled = !dragging;
@@ -4543,14 +4543,18 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const negLen = gizmoSize * 0.75;
     const headLen = Math.max(0.14, arrowLen * 0.22);
     const headWidth = Math.max(0.08, headLen * 0.6);
+    const disableDepth = (material: THREE.Material | THREE.Material[]) => {
+      for (const mat of Array.isArray(material) ? material : [material]) {
+        mat.depthTest = false;
+        mat.depthWrite = false;
+      }
+    };
 
     const makeArrow = (dir: THREE.Vector3, len: number, color: number) => {
       const arrow = new THREE.ArrowHelper(dir, new THREE.Vector3(0, 0, 0), len, color, headLen, headWidth);
       arrow.renderOrder = 450;
-      arrow.line.material.depthTest = false;
-      arrow.line.material.depthWrite = false;
-      arrow.cone.material.depthTest = false;
-      arrow.cone.material.depthWrite = false;
+      disableDepth(arrow.line.material);
+      disableDepth(arrow.cone.material);
       viewGizmo.add(arrow);
       return arrow;
     };
@@ -5761,7 +5765,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     tc?.detach();
     if (!tc) return;
     tc.enabled = false;
-    tc.visible = false;
+    (tc as unknown as THREE.Object3D).visible = false;
     if (helper) helper.visible = false;
     if (!gizmoEnabled || surfaceId !== "surface_mesh" || !gizmoMeshKey) return;
     const root = surfaceObjRef.current;
@@ -5778,7 +5782,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (!target) return;
     tc.attach(target);
     tc.enabled = true;
-    tc.visible = true;
+    (tc as unknown as THREE.Object3D).visible = true;
     if (helper) helper.visible = true;
   }, [gizmoEnabled, gizmoMeshKey, surfaceId, sceneEpoch, surfaceMeshOverride, surfaceMeshOverrides]);
 
@@ -6114,7 +6118,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     tc?.detach();
     if (tc) {
       tc.enabled = false;
-      tc.visible = false;
+      (tc as unknown as THREE.Object3D).visible = false;
       if (helper) helper.visible = false;
       if (gizmoEnabled && surfaceId === "surface_mesh" && gizmoMeshKey) {
         let target: THREE.Object3D | null = null;
@@ -6128,7 +6132,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         if (target) {
           tc.attach(target);
           tc.enabled = true;
-          tc.visible = true;
+          (tc as unknown as THREE.Object3D).visible = true;
           if (helper) helper.visible = true;
         }
       }
@@ -9768,7 +9772,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const span = getGraphSpan(1.5, 1.5);
       const xMax = span.xSpan;
       const yMax = span.ySpan;
-      const steps = 120;
+        const steps: number = 120;
 
       const addGraphGrid = (axis: "x" | "y", count: number, color: number) => {
         const positions: number[] = [];
@@ -9976,7 +9980,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         }
       }
 
-      const steps = 48;
+        const steps: number = 48;
       const addLocalGrid = (axis: "u" | "v", count: number, color: number) => {
         const positions: number[] = [];
         const mat = new THREE.LineBasicMaterial({

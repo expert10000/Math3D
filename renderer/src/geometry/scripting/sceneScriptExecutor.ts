@@ -53,6 +53,13 @@ const parseScriptColor = (value: string): number | null => {
   return clampNumber(Math.round(numeric), 0, 0xffffff);
 };
 
+const resolveScriptObjectType = (objectType: string): GeometryObjectType | null => {
+  const normalized = objectType.trim().toLowerCase();
+  if (normalized === "cube") return "box";
+  if (normalized in GEOMETRY_OBJECT_REGISTRY) return normalized as GeometryObjectType;
+  return null;
+};
+
 const applyAssignment = (
   object: GeometryObject,
   assignment: SceneScriptAssignment,
@@ -85,6 +92,18 @@ const applyAssignment = (
     object.material.opacity = clampNumber(number, 0, 1);
     return null;
   }
+  if (keyLower === "roughness") {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return createSceneScriptDiagnostic(line, "invalid-number", "invalid roughness");
+    object.material.roughness = clampNumber(number, 0, 1);
+    return null;
+  }
+  if (keyLower === "metalness") {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return createSceneScriptDiagnostic(line, "invalid-number", "invalid metalness");
+    object.material.metalness = clampNumber(number, 0, 1);
+    return null;
+  }
   if (keyLower === "color") {
     const color = parseScriptColor(value);
     if (color == null) return createSceneScriptDiagnostic(line, "invalid-color", `invalid color '${value}'`);
@@ -97,8 +116,21 @@ const applyAssignment = (
     object.visible = visible;
     return null;
   }
+  if (keyLower === "size" && object.type === "box") {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return createSceneScriptDiagnostic(line, "invalid-number", "invalid cube size");
+    const size = clampNumber(number, 0.1, 10);
+    object.params.width = size;
+    object.params.height = size;
+    object.params.depth = size;
+    return null;
+  }
   if (keyLower === "name") {
     object.name = value;
+    return null;
+  }
+  if (keyLower === "group") {
+    object.group = value || "default";
     return null;
   }
 
@@ -176,7 +208,8 @@ export const executeSceneScript = ({
     }
 
     if (command.kind === "add") {
-      if (!(command.objectType in GEOMETRY_OBJECT_REGISTRY)) {
+      const objectType = resolveScriptObjectType(command.objectType);
+      if (!objectType) {
         return fail(createSceneScriptDiagnostic(command.line, "unknown-object-type", `unknown object type '${command.objectType}'`));
       }
       const id = command.id || nextGeneratedId();
@@ -184,7 +217,13 @@ export const executeSceneScript = ({
         return fail(createSceneScriptDiagnostic(command.line, "duplicate-object-id", `id '${id}' already exists`));
       }
       if (parseError) return fail(parseError);
-      const object = createGeometryObject(command.objectType as GeometryObjectType, id);
+      const object = createGeometryObject(objectType, id);
+      if (command.objectType.trim().toLowerCase() === "cube") {
+        const size = Number(object.params.width ?? 1.6);
+        object.params.height = size;
+        object.params.depth = size;
+        object.name = "Cube";
+      }
       for (const assignment of command.assignments) {
         const error = applyAssignment(object, assignment, command.line);
         if (error) return fail(error);

@@ -59,7 +59,7 @@ describe("sceneGalleryCatalog", () => {
       expect(entry.description.length).toBeGreaterThan(0);
       expect(entry.initialScene.id.length).toBeGreaterThan(0);
       expect(entry.initialScene.title.length).toBeGreaterThan(0);
-      expect(entry.initialScene.objects.length).toBeGreaterThan(0);
+      expect(entry.initialScene.objects?.length ?? 0).toBeGreaterThan(0);
       if (entry.timeline) {
         expect(entry.timeline.steps.length).toBeGreaterThan(0);
         const stepIds = new Set(entry.timeline.steps.map((step) => step.id));

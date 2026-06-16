@@ -256,6 +256,7 @@ export type WorkbookComputeOutputs = {
     colorMode?: ColorMode;
     showWireframe?: boolean;
     showContours?: boolean;
+    contourCount?: number;
     showChartGrid?: boolean;
     probeEnabled?: boolean;
     showProbeNormal?: boolean;

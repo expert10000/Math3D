@@ -752,7 +752,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       const rect = dom.getBoundingClientRect();
       const x = ((clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1;
       const y = -((clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1;
-      raycaster.setFromCamera({ x, y }, camera);
+      raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
 
       const normal = new THREE.Vector3(...data.plane.normal).normalize();
       const center = new THREE.Vector3(...data.plane.center);

@@ -53,7 +53,7 @@ export const supportsVtkVolumeDistance = (): boolean => getMeshBackendCapabiliti
 
 function toArrayBuffer(data: ArrayBuffer | ArrayBufferView): ArrayBuffer {
   if (data instanceof ArrayBuffer) return data;
-  return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+  return new Uint8Array(data.buffer, data.byteOffset, data.byteLength).slice().buffer;
 }
 
 export async function vtkVolumeSlice(

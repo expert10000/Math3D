@@ -350,7 +350,8 @@ export function solveContinuousGraphGeodesic(
     return { points: points.slice(0, bestIndex + 1), bestDist };
   };
 
-  let best: { points: { x: number; y: number }[]; bestDist: number; angle: number } | null = null;
+  type BestCandidate = { points: { x: number; y: number }[]; bestDist: number; angle: number };
+  let best: BestCandidate | null = null;
   const step = (Math.PI * 2) / Math.max(6, angleSamples);
   for (let i = 0; i < angleSamples; i++) {
     const angle = i * step;
@@ -368,7 +369,7 @@ export function solveContinuousGraphGeodesic(
   let window = step;
   for (let pass = 0; pass < refinePasses; pass++) {
     const center = best.angle;
-    let localBest = best;
+    let localBest: BestCandidate = best;
     const samples = 7;
     const half = (samples - 1) / 2;
     for (let i = 0; i < samples; i++) {
@@ -383,7 +384,8 @@ export function solveContinuousGraphGeodesic(
     window *= 0.4;
   }
 
-  const polyline = best.points.map((p) => {
+  const finalBest = best;
+  const polyline = finalBest.points.map((p) => {
     const z = f(p.x, p.y);
     return { x: p.x, y: z, z: p.y };
   });
@@ -392,5 +394,5 @@ export function solveContinuousGraphGeodesic(
   }
 
   const length = pathLength3D(polyline);
-  return { ok: true, polyline, length, bestError: Math.sqrt(best.bestDist) };
+  return { ok: true, polyline, length, bestError: Math.sqrt(finalBest.bestDist) };
 }

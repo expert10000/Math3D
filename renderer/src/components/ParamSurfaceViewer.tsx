@@ -43,6 +43,7 @@ import type {
   SliceNormal,
   SlicePreset,
   OverlayPolylineGroup,
+  OverlayPointSet,
   ViewportDebugSnapshot,
 } from "./SurfaceViewer";
 import AxisGizmo from "./AxisGizmo";
@@ -342,6 +343,8 @@ type Props = {
   colorMode?: ColorMode;
   colorPalette?: ColorPalette;
   showChartGrid?: boolean;
+  chartGridMode?: "local" | "mesh-face";
+  onSurfaceCellSelectionEnabledChange?: (enabled: boolean) => void;
   chartGridCountU?: number;
   chartGridCountV?: number;
   paramDomain?: ParamDomain;
@@ -421,6 +424,7 @@ type Props = {
   geodesicHeatmapValues?: number[] | null;
   geodesicHeatmapEnabled?: boolean;
   overlayPolylineGroups?: OverlayPolylineGroup[] | null;
+  overlayPointSets?: OverlayPointSet[] | null;
   geodesicDiskEnabled?: boolean;
   geodesicDiskPickEnabled?: boolean;
   onGeodesicDiskPick?: (info: {
@@ -521,7 +525,7 @@ function makeSafeParamExpr(
   const trimmed = (expr ?? "").trim();
   if (!trimmed) return fallback;
 
-  let compiled: (u: number, v: number) => number;
+  let compiled: (u: number, v: number, pi: number, e: number, PI: number, E: number) => number;
   try {
     compiled = new Function(
       "u",
@@ -6133,7 +6137,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const { wrapU, wrapV } = wrapFlagsFor(surfaceId);
     const uCount = Math.max(2, Math.round(chartGridCountU));
     const vCount = Math.max(2, Math.round(chartGridCountV));
-    const steps = 120;
+      const steps: number = 120;
 
     const group = new THREE.Group();
     group.name = "surface-cell-grid";

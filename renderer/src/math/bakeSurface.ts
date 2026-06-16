@@ -505,7 +505,7 @@ export function bakeGraphSurface(params: {
   label: string;
 }): BakeResult {
   const built = buildGraphFn(params.surfaceId, params.graphExpr);
-  if ("error" in built) return { error: built.error };
+  if ("error" in built) return { error: built.error ?? "Invalid graph expression." };
   const grid = buildGraphGrid(built.fn, params.domain, params.resolution);
   const indices = triangulateGrid(grid.nx, grid.ny, grid.valid);
   if (!indices.length) return { error: "No valid triangles produced. Check the expression or domain." };

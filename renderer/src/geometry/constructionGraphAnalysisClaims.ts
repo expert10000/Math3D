@@ -280,8 +280,7 @@ export const synchronizeGeometryAnalysisGraph = (
 
 export const getGeometryClaimSources = (graph: ConstructionGraph): string[] =>
   graph.nodes
-    .filter((node) => node.kind === "claim" && isGeometryClaimNodeData(node.data))
-    .map((node) => node.data.source);
+    .flatMap((node) => (node.kind === "claim" && isGeometryClaimNodeData(node.data) ? [node.data.source] : []));
 
 export const synchronizeGeometryClaimGraph = (
   graph: ConstructionGraph,

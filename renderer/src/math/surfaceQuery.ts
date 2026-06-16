@@ -269,7 +269,7 @@ export function sampleMeshAt(opts: {
 
   const meanEdge =
     Number.isFinite(mesh.meanEdgeLength) && (mesh.meanEdgeLength ?? 0) > 0 ? mesh.meanEdgeLength : 1;
-  const scale = Math.max(1e-6, meanEdge);
+  const scale = Math.max(1e-6, meanEdge ?? 1);
   const du = vScale(frame.tangentU, scale);
   const dv = vScale(frame.tangentV, scale);
   const nRaw = vCross(du, dv);

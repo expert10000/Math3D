@@ -155,7 +155,7 @@ export const buildDemoPyramidConstruction = (): GeometryDemo => {
       ? { ...incenter.center, label, color: 0x16a34a, size: 0.03 }
       : null;
     let residual: number | null = null;
-    if (incenterPoint) {
+    if (incenter && incenterPoint) {
       const line12 = lineThroughPoints(p1, p2);
       const line23 = lineThroughPoints(p2, p3);
       const line31 = lineThroughPoints(p3, p1);
@@ -170,7 +170,7 @@ export const buildDemoPyramidConstruction = (): GeometryDemo => {
         }
       }
     }
-    if (incenterPoint) {
+    if (incenter && incenterPoint) {
       incenterPoints.push(incenterPoint);
       faceIncircleSegments.push(
         ...buildCircleSegments(incenter.center, incenter.normal, incenter.radius, {

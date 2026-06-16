@@ -66,8 +66,9 @@ const isGeometryObject = (value: unknown): value is GeometryObject => {
 
 export const projectGeometryObjectsFromConstructionGraph = (graph: ConstructionGraph): GeometryObject[] =>
   graph.nodes
-    .filter((node) => node.kind === "geometry" && node.type === "geometry-object" && isGeometryObject(node.data))
-    .map((node) => node.data);
+    .flatMap((node) =>
+      node.kind === "geometry" && node.type === "geometry-object" && isGeometryObject(node.data) ? [node.data] : []
+    );
 
 export const replaceGeometryObjectsInConstructionGraph = (
   graph: ConstructionGraph,

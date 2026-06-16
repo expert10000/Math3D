@@ -150,7 +150,8 @@ export function solveContinuousParamGeodesic(
     return { pts: trimmed, err: bestDist, theta };
   };
 
-  let best: { pts: THREE.Vector3[]; err: number; theta: number } | null = null;
+  type BestCandidate = { pts: THREE.Vector3[]; err: number; theta: number };
+  let best: BestCandidate | null = null;
   const sampleStep = (2 * span) / Math.max(2, angleSamples - 1);
   for (let i = 0; i < angleSamples; i++) {
     const t = -span + sampleStep * i;
@@ -165,7 +166,7 @@ export function solveContinuousParamGeodesic(
 
   let window = sampleStep;
   for (let pass = 0; pass < refinePasses; pass++) {
-    let localBest = best;
+    let localBest: BestCandidate = best;
     const samples = 7;
     const half = (samples - 1) / 2;
     for (let i = 0; i < samples; i++) {
@@ -178,12 +179,13 @@ export function solveContinuousParamGeodesic(
     window *= 0.4;
   }
 
+  const finalBest = best;
   const acceptDist = Math.max(desiredSeg * 8, chordLen * 0.5);
-  if (!Number.isFinite(best.err) || best.err > acceptDist) {
+  if (!Number.isFinite(finalBest.err) || finalBest.err > acceptDist) {
     return { ok: false, error: "Continuous solver did not converge to the target." };
   }
 
-  const polyline = best.pts.map((p) => ({ x: p.x, y: p.y, z: p.z }));
-  const length = pathLength(best.pts);
-  return { ok: true, polyline, length, bestError: best.err };
+  const polyline = finalBest.pts.map((p) => ({ x: p.x, y: p.y, z: p.z }));
+  const length = pathLength(finalBest.pts);
+  return { ok: true, polyline, length, bestError: finalBest.err };
 }

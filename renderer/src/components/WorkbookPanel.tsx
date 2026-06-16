@@ -562,7 +562,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
       if (status === "failed") return { state: "fail", label: "failed" };
       if (status === "ok") return { state: "ok", label: "ok" };
       if (status === "disabled") return { state: "disabled", label: "disabled" };
-      return { state: "stale", label: status === "idle" ? "stale" : status };
+      return { state: "stale", label: status };
     }
     if (block.type === "assert") {
       const st = block.assert?.status ?? "pending";

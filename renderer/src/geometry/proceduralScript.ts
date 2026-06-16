@@ -1,5 +1,6 @@
 export { executeSceneScript as executeGeometryProceduralScript } from "./scripting/sceneScriptExecutor";
 export { parseSceneScript as parseGeometryProceduralScript } from "./scripting/sceneScriptParser";
+export { serializeSceneToScript as serializeGeometryProceduralSceneToScript } from "./scripting/sceneScriptSerializer";
 export type {
   ExecuteSceneScriptInput as ExecuteGeometryProceduralScriptInput,
   SceneScriptAssignment as GeometryProceduralScriptAssignment,

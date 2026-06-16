@@ -160,6 +160,7 @@ export function buildComplexMapSweep(
   });
   if (compiled.error) return { error: compiled.error };
   const { reFn, imFn } = compiled;
+  if (!reFn || !imFn) return { error: "Unable to compile complex map expressions." };
 
   const nu = Math.max(2, Math.round(spec.nu));
   const nv = Math.max(2, Math.round(spec.nv));

@@ -20,24 +20,24 @@ import { normalizeVec3, scaleVec3 } from "../geometry/vec";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 import type { ReferencePlaneGridSettings } from "./layeredReferenceGrid";
 
+type GeometrySurfaceMeshOverride = SurfaceMeshData & {
+  id?: string;
+  color?: number;
+  opacity?: number;
+  roughness?: number;
+  metalness?: number;
+  flatShading?: boolean;
+  transform?: {
+    position?: { x: number; y: number; z: number };
+    rotation?: { x: number; y: number; z: number };
+    scale?: { x: number; y: number; z: number };
+  };
+};
+
 export type GeometryViewerProps = {
   scene: GeometryScene;
   meshOverride?: SurfaceMeshData | null;
-  meshOverrides?: Array<
-    SurfaceMeshData & {
-      id?: string;
-      color?: number;
-      opacity?: number;
-      roughness?: number;
-      metalness?: number;
-      flatShading?: boolean;
-      transform?: {
-        position?: { x: number; y: number; z: number };
-        rotation?: { x: number; y: number; z: number };
-        scale?: { x: number; y: number; z: number };
-      };
-    }
-  > | null;
+  meshOverrides?: GeometrySurfaceMeshOverride[] | null;
   colorMode?: ColorMode;
   wireframe?: boolean;
   materialOpacity?: number;
@@ -197,8 +197,11 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
     [scene, lineRadiusScale, segmentRadiusScale, edgeRadiusScale]
   );
 
-  const meshOverrideList = useMemo(
-    () => meshOverrides?.length ? [...(renderData.mesh ? [renderData.mesh] : []), ...meshOverrides] : null,
+  const meshOverrideList = useMemo<GeometrySurfaceMeshOverride[] | null>(
+    () =>
+      meshOverrides?.length
+        ? [...(renderData.mesh ? [renderData.mesh as GeometrySurfaceMeshOverride] : []), ...meshOverrides]
+        : null,
     [meshOverrides, renderData.mesh]
   );
   const mesh = meshOverrideList ? null : meshOverride ?? renderData.mesh;

@@ -41,6 +41,22 @@ describe("scene script executor", () => {
     });
   });
 
+  it("accepts cube as a script-friendly box alias", () => {
+    const result = executeSceneScript({
+      script: "add cube as cube1 size=2",
+      objects: [],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.objects[0]).toMatchObject({
+      id: "cube1",
+      type: "box",
+      name: "Cube",
+      params: { width: 2, height: 2, depth: 2 },
+    });
+  });
+
   it("deletes an object", () => {
     const result = executeSceneScript({
       script: "delete box1",
