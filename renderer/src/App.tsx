@@ -44655,9 +44655,10 @@ case "mobius":
           ["performance", "Performance"],
           ["workbook", "Workbook"],
         ];
+  const complexMapSummaryIsRiemann = complexMapSpec.mapMode === "riemann";
   const complexMapEquationSummary =
     complexMapSpec.inputMode === "fz"
-      ? `${complexMapIsRiemann ? "p" : "f"}(z)=${complexMapSpec.fExpr || "z"}`
+      ? `${complexMapSummaryIsRiemann ? "p" : "f"}(z)=${complexMapSpec.fExpr || "z"}`
       : `Re=${complexMapSpec.reExpr || "0"}; Im=${complexMapSpec.imExpr || "0"}`;
   const complexMapDomainSummary = `u[${complexMapSpec.uMin}, ${complexMapSpec.uMax}] v[${complexMapSpec.vMin}, ${complexMapSpec.vMax}]`;
   const complexMapOutputSummary =
