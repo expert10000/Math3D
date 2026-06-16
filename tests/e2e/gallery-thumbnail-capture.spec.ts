@@ -630,6 +630,34 @@ const captureMeshCards = async (page: Page, outputRoot: string, manifest: Captur
   }
 };
 
+const runThumbnailSmoke = async (page: Page): Promise<void> => {
+  if (shouldCaptureObjects) {
+    await clickFirstVisibleButton(page, "Geometry");
+    await clickFirstVisibleButton(page, "Procedural");
+    await expect(page.getByTestId("geometry-gallery")).toBeVisible();
+    await expect.poll(async () => page.locator("[data-testid^='geometry-gallery-card-']").count()).toBeGreaterThan(0);
+  }
+
+  if (shouldCaptureSurfaces) {
+    await openSurfacesWorkspace(page);
+    await ensureSurfacesGalleryMode(page);
+
+    await page.getByTestId("surface-family-explicit").click();
+    await expect.poll(async () => page.locator("[data-testid^='surface-preset-card-']").count()).toBeGreaterThan(0);
+
+    await page.getByTestId("surface-family-implicit").click();
+    await expect.poll(async () => page.locator("[data-testid^='surface-preset-card-']").count()).toBeGreaterThan(0);
+
+    await page.getByTestId("surface-family-parametric").click();
+    await expect.poll(async () => page.locator("[data-testid^='param-preset-card-']").count()).toBeGreaterThan(0);
+  }
+
+  if (shouldCaptureMesh) {
+    await clickFirstVisibleButton(page, "Mesh");
+    await expect.poll(async () => page.locator("[data-testid^='mesh-preset-card-']").count()).toBeGreaterThan(0);
+  }
+};
+
 test.setTimeout(captureTestTimeoutMs);
 test.skip(!runThumbnailCapture, "Set MATH3D_RUN_THUMBNAIL_CAPTURE_E2E=1 to run thumbnail capture.");
 
@@ -653,6 +681,11 @@ test("Capture gallery thumbnails for objects and surfaces", async () => {
     app = launched.app;
     const page = launched.page;
     await resetStorage(page);
+
+    if (!fullCaptureMode) {
+      await runThumbnailSmoke(page);
+      return;
+    }
 
     if (shouldCaptureObjects) {
       await openProceduralGeometry(page);
