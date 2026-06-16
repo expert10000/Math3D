@@ -23,7 +23,7 @@ export const clickFirstVisible = async (
     if (!(await candidate.isVisible())) continue;
 
     for (let attempt = 0; attempt <= retries; attempt++) {
-      await candidate.scrollIntoViewIfNeeded().catch(() => undefined);
+      await candidate.scrollIntoViewIfNeeded({ timeout: timeoutMs }).catch(() => undefined);
       try {
         await candidate.click({ timeout: timeoutMs });
         return;
@@ -39,9 +39,16 @@ export const clickFirstVisible = async (
       }
 
       try {
+        await candidate.dispatchEvent("click", undefined, { timeout: timeoutMs });
+        return;
+      } catch (error) {
+        errors.push(`index ${i} dispatch-click attempt ${attempt + 1}: ${toErrorMessage(error)}`);
+      }
+
+      try {
         await candidate.evaluate((node) => {
           if (node instanceof HTMLElement) node.click();
-        });
+        }, undefined, { timeout: timeoutMs });
         return;
       } catch (error) {
         errors.push(`index ${i} dom-click attempt ${attempt + 1}: ${toErrorMessage(error)}`);
