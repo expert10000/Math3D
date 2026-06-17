@@ -8850,6 +8850,7 @@ const App: React.FC = () => {
   const [geometrySceneGalleryStatus, setGeometrySceneGalleryStatus] = useState<string | null>(null);
   const [geometrySceneGalleryExpanded, setGeometrySceneGalleryExpanded] = useState(false);
   const [geometryCreateActionStatus, setGeometryCreateActionStatus] = useState<string | null>(null);
+  const [geometryGalleryDropActive, setGeometryGalleryDropActive] = useState(false);
   const [geometryCreateSelectedCardExpanded, setGeometryCreateSelectedCardExpanded] = useState(false);
   const [geometryCreateActionsOverlayOpen, setGeometryCreateActionsOverlayOpen] = useState(true);
   const geometryWorkspaceRef = useRef<HTMLDivElement | null>(null);
@@ -10748,6 +10749,64 @@ const App: React.FC = () => {
     handleAddGeometryObject,
     markGeometryGalleryCardUsed,
   ]);
+  const handleGeometryGalleryCardDragStart = useCallback((event: React.DragEvent<HTMLElement>, card: GeometryGalleryCard) => {
+    if (!card.supported || !card.defaultRecipe) {
+      event.preventDefault();
+      return;
+    }
+    setGeometryGallerySelectedCardId(card.id);
+    setGeometryGallerySelectedPresetId(null);
+    const payload = JSON.stringify({ cardId: card.id });
+    event.dataTransfer.effectAllowed = "copy";
+    event.dataTransfer.setData("application/x-math3d-geometry-card", payload);
+    event.dataTransfer.setData("text/plain", card.name);
+  }, []);
+  const handleGeometryGalleryCardDragEnd = useCallback(() => {
+    setGeometryGalleryDropActive(false);
+  }, []);
+  const eventHasGeometryGalleryCardPayload = (event: React.DragEvent<HTMLElement>) =>
+    Array.from(event.dataTransfer.types).includes("application/x-math3d-geometry-card");
+  const handleGeometryViewerDragOver = useCallback((event: React.DragEvent<HTMLElement>) => {
+    if (!eventHasGeometryGalleryCardPayload(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setGeometryGalleryDropActive(true);
+  }, []);
+  const handleGeometryViewerDragLeave = useCallback((event: React.DragEvent<HTMLElement>) => {
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
+    setGeometryGalleryDropActive(false);
+  }, []);
+  const handleGeometryViewerDrop = useCallback(
+    (event: React.DragEvent<HTMLElement>) => {
+      if (!eventHasGeometryGalleryCardPayload(event)) return;
+      event.preventDefault();
+      setGeometryGalleryDropActive(false);
+      const raw = event.dataTransfer.getData("application/x-math3d-geometry-card");
+      let cardId = "";
+      try {
+        const parsed = JSON.parse(raw) as { cardId?: unknown };
+        cardId = typeof parsed.cardId === "string" ? parsed.cardId : "";
+      } catch {
+        cardId = "";
+      }
+      const card = GEOMETRY_GALLERY_CARD_BY_ID.get(cardId);
+      if (!card?.supported || !card.defaultRecipe) {
+        setGeometryCreateActionStatus("That gallery card cannot be dropped into the scene yet.");
+        return;
+      }
+      setGeometryMode("procedural");
+      setMode("geometry");
+      setGeometryGallerySelectedCardId(card.id);
+      setGeometryGallerySelectedPresetId(null);
+      const createdId = handleAddGeometryObject(card.defaultRecipe);
+      setGeometrySelectedObjectId(createdId);
+      setGeometryPendingFocusObjectId(createdId);
+      markGeometryGalleryCardUsed(card.id);
+      setGeometryCreateActionStatus(`Dropped ${card.name} into the scene.`);
+    },
+    [handleAddGeometryObject, markGeometryGalleryCardUsed]
+  );
 
   const handleRemoveGeometryObject = useCallback((id: string) => {
     if (geometryLockedObjectIds.has(id)) return;
@@ -53020,7 +53079,10 @@ case "mobius":
                                   key={card.id}
                                   role="button"
                                   tabIndex={0}
+                                  draggable={card.supported && !!card.defaultRecipe}
                                   data-testid={`geometry-gallery-card-${card.id}`}
+                                  onDragStart={(event) => handleGeometryGalleryCardDragStart(event, card)}
+                                  onDragEnd={handleGeometryGalleryCardDragEnd}
                                   onClick={() => handleSelectGeometryGalleryCard(card.id)}
                                   onKeyDown={(e) => {
                                     if (e.key === "ArrowLeft") {
@@ -53061,7 +53123,7 @@ case "mobius":
                                   className={`gallery-scan-card geometry-gallery-scan-card${compactGeometryPanel ? " is-compact" : ""}${
                                     selected ? " is-browser-selected" : ""
                                   }${!card.supported ? " is-disabled" : ""}`}
-                                  title={`${card.name}\n${card.description}`}
+                                  title={`${card.name}\n${card.description}${card.supported ? "\nDrag into the viewport to add." : ""}`}
                                 >
                                   <div className="gallery-scan-card-preview">
                                     <div className="gallery-scan-card-preview-frame">
@@ -61284,6 +61346,10 @@ case "mobius":
             {/* RIGHT */}
             <div
               data-testid="geometry-viewer-stack"
+              onDragOver={handleGeometryViewerDragOver}
+              onDragEnter={handleGeometryViewerDragOver}
+              onDragLeave={handleGeometryViewerDragLeave}
+              onDrop={handleGeometryViewerDrop}
               style={{
                 ...styles.stack,
                 flex: isGeometryStackedLayout ? "0 0 420px" : styles.stack.flex,
@@ -61298,6 +61364,29 @@ case "mobius":
                 zIndex: 1,
               }}
             >
+              {geometryGalleryDropActive && (
+                <div
+                  data-testid="geometry-gallery-drop-target"
+                  style={{
+                    position: "absolute",
+                    inset: 10,
+                    zIndex: 20,
+                    pointerEvents: "none",
+                    border: "2px dashed #2563eb",
+                    borderRadius: 10,
+                    background: "rgba(219, 234, 254, 0.62)",
+                    color: "#1e3a8a",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    boxShadow: "inset 0 0 0 1px rgba(37, 99, 235, 0.24)",
+                  }}
+                >
+                  Drop to add object
+                </div>
+              )}
               {geometryViewerControlsOpen && (
               <div
                 style={{
