@@ -4822,6 +4822,26 @@ const COMPLEX_MAP_PRESETS: ComplexMapPreset[] = [
   { id: "z3", label: "w = z^3", reExpr: "u^3 - 3*u*v^2", imExpr: "3*u^2*v - v^3" },
   { id: "exp", label: "w = exp(z)", reExpr: "exp(u) * cos(v)", imExpr: "exp(u) * sin(v)" },
   {
+    id: "reciprocal",
+    label: "w = 1/z",
+    inputMode: "fz",
+    fExpr: "1/z",
+    reExpr: "u/(u^2 + v^2)",
+    imExpr: "-v/(u^2 + v^2)",
+    specPatch: {
+      uMin: -2,
+      uMax: 2,
+      vMin: -2,
+      vMax: 2,
+      sweepAxis: "v",
+      outputMode: "sweep",
+      showIsolines: true,
+      isolinesCountU: 9,
+      isolinesCountV: 9,
+      clampAbs: 5,
+    },
+  },
+  {
     id: "sin",
     label: "w = sin(z)",
     inputMode: "fz",
@@ -4861,8 +4881,204 @@ const COMPLEX_MAP_PRESETS: ComplexMapPreset[] = [
       clampAbs: 5,
     },
   },
+  {
+    id: "tan",
+    label: "w = tan(z)",
+    inputMode: "fz",
+    fExpr: "tan(z)",
+    reExpr: "sin(2*u)/(cos(2*u) + cosh(2*v))",
+    imExpr: "sinh(2*v)/(cos(2*u) + cosh(2*v))",
+    specPatch: {
+      uMin: -Math.PI / 2,
+      uMax: Math.PI / 2,
+      vMin: -1.5,
+      vMax: 1.5,
+      sweepAxis: "u",
+      outputMode: "sweep",
+      showIsolines: true,
+      isolinesCountU: 9,
+      isolinesCountV: 7,
+      clampAbs: 5,
+    },
+  },
+  {
+    id: "log",
+    label: "w = log(z)",
+    inputMode: "fz",
+    fExpr: "log(z)",
+    reExpr: "log(sqrt(u^2 + v^2))",
+    imExpr: "atan2(v, u)",
+    specPatch: {
+      uMin: -2.5,
+      uMax: 2.5,
+      vMin: -2.5,
+      vMax: 2.5,
+      sweepAxis: "v",
+      outputMode: "sweep",
+      showIsolines: true,
+      isolinesCountU: 9,
+      isolinesCountV: 9,
+      clampAbs: 5,
+    },
+  },
+  {
+    id: "sqrt",
+    label: "w = sqrt(z)",
+    inputMode: "fz",
+    fExpr: "sqrt(z)",
+    reExpr: "sqrt((sqrt(u^2 + v^2) + u)/2)",
+    imExpr: "sign(v) * sqrt((sqrt(u^2 + v^2) - u)/2)",
+    specPatch: {
+      uMin: -2,
+      uMax: 2,
+      vMin: -2,
+      vMax: 2,
+      sweepAxis: "v",
+      outputMode: "sweep",
+      showIsolines: true,
+      isolinesCountU: 9,
+      isolinesCountV: 9,
+      clampAbs: 4,
+      mapMode: "riemann",
+      sheetCount: 2,
+      sheetMode: "all",
+    },
+  },
 ];
 const COMPLEX_MAP_CUSTOM_ID = "custom";
+
+type ComplexMapGalleryKind = "basic" | "entire" | "singular" | "branch";
+type ComplexMapGalleryMeta = {
+  kind: ComplexMapGalleryKind;
+  summary: string;
+  chips: string[];
+  thumbKind: "identity" | "power" | "exponential" | "reciprocal" | "trig" | "branch";
+};
+
+const COMPLEX_MAP_GALLERY_META: Record<string, ComplexMapGalleryMeta> = {
+  z: {
+    kind: "basic",
+    summary: "Identity map for baseline grid and linked-plane checks.",
+    chips: ["Baseline", "Linear", "Conformal"],
+    thumbKind: "identity",
+  },
+  z2: {
+    kind: "basic",
+    summary: "Squares radius and doubles argument around the origin.",
+    chips: ["Power", "Critical", "2-fold"],
+    thumbKind: "power",
+  },
+  z3: {
+    kind: "basic",
+    summary: "Triple winding with stronger stretching away from zero.",
+    chips: ["Power", "Critical", "3-fold"],
+    thumbKind: "power",
+  },
+  exp: {
+    kind: "entire",
+    summary: "Periodic strips unwrap into radial growth in the w-plane.",
+    chips: ["Entire", "Periodic", "Covering"],
+    thumbKind: "exponential",
+  },
+  reciprocal: {
+    kind: "singular",
+    summary: "Inversion with a pole at zero and radius reversal.",
+    chips: ["Pole", "Inversion", "Rational"],
+    thumbKind: "reciprocal",
+  },
+  sin: {
+    kind: "entire",
+    summary: "Periodic entire map with horizontal and vertical stripe structure.",
+    chips: ["Entire", "Periodic", "Zeros"],
+    thumbKind: "trig",
+  },
+  cos: {
+    kind: "entire",
+    summary: "Shifted trigonometric map with the same hyperbolic growth pattern.",
+    chips: ["Entire", "Periodic", "Zeros"],
+    thumbKind: "trig",
+  },
+  tan: {
+    kind: "singular",
+    summary: "Meromorphic trigonometric map with repeating poles.",
+    chips: ["Meromorphic", "Poles", "Periodic"],
+    thumbKind: "trig",
+  },
+  log: {
+    kind: "branch",
+    summary: "Principal logarithm with branch behavior around the origin.",
+    chips: ["Branch", "Cut", "Covering"],
+    thumbKind: "branch",
+  },
+  sqrt: {
+    kind: "branch",
+    summary: "Two-sheet square-root surface with a branch point at zero.",
+    chips: ["Branch", "2 sheets", "Riemann"],
+    thumbKind: "branch",
+  },
+};
+
+const COMPLEX_MAP_GALLERY_KIND_LABELS: Record<ComplexMapGalleryKind, string> = {
+  basic: "Basic maps",
+  entire: "Entire functions",
+  singular: "Singular / meromorphic",
+  branch: "Branch maps",
+};
+
+const makeComplexMapGalleryThumb = (
+  title: string,
+  formula: string,
+  kind: ComplexMapGalleryMeta["thumbKind"]
+): string => {
+  const palette =
+    kind === "identity"
+      ? { top: "#ecfeff", bottom: "#dbeafe", accent: "#0f766e", warm: "#2563eb", ink: "#164e63" }
+      : kind === "power"
+        ? { top: "#fef3c7", bottom: "#fde68a", accent: "#b45309", warm: "#dc2626", ink: "#78350f" }
+        : kind === "exponential"
+          ? { top: "#ecfdf5", bottom: "#d1fae5", accent: "#047857", warm: "#0f766e", ink: "#064e3b" }
+          : kind === "reciprocal"
+            ? { top: "#f8fafc", bottom: "#e2e8f0", accent: "#475569", warm: "#be123c", ink: "#1e293b" }
+            : kind === "trig"
+              ? { top: "#eef2ff", bottom: "#ddd6fe", accent: "#4f46e5", warm: "#db2777", ink: "#312e81" }
+              : { top: "#fff7ed", bottom: "#fed7aa", accent: "#c2410c", warm: "#7c2d12", ink: "#7c2d12" };
+  const grid = Array.from({ length: 5 }, (_, i) => 18 + i * 23)
+    .map(
+      (x) =>
+        `<path d="M${x} 18 C${x - 8} 36, ${x + 8} 48, ${x} 66" fill="none" stroke="${palette.accent}" stroke-width="1.4" opacity="0.42" />`
+    )
+    .join("");
+  const waves =
+    kind === "branch"
+      ? `<path d="M22 60 C36 22, 55 18, 69 42 C82 64, 99 62, 112 28" fill="none" stroke="${palette.warm}" stroke-width="3" />
+<path d="M66 18 L66 70" fill="none" stroke="${palette.ink}" stroke-width="1.4" stroke-dasharray="4 4" opacity="0.72" />`
+      : kind === "reciprocal"
+        ? `<circle cx="66" cy="42" r="22" fill="none" stroke="${palette.warm}" stroke-width="3" />
+<path d="M32 42 L100 42 M66 12 L66 72" stroke="${palette.accent}" stroke-width="1.5" opacity="0.7" />`
+        : kind === "trig"
+          ? `<path d="M18 44 C28 22, 40 22, 50 44 S72 66, 82 44 S104 22, 114 44" fill="none" stroke="${palette.warm}" stroke-width="3" />
+<path d="M18 56 C28 34, 40 34, 50 56 S72 78, 82 56 S104 34, 114 56" fill="none" stroke="${palette.accent}" stroke-width="2" opacity="0.62" />`
+          : kind === "exponential"
+            ? `<path d="M20 60 C38 56, 54 48, 66 38 C80 26, 96 20, 116 18" fill="none" stroke="${palette.warm}" stroke-width="3" />
+<path d="M22 26 C42 22, 58 30, 72 43 C88 58, 102 64, 116 64" fill="none" stroke="${palette.accent}" stroke-width="2" opacity="0.75" />`
+            : `<path d="M18 60 C38 24, 62 20, 84 42 C98 56, 106 58, 116 50" fill="none" stroke="${palette.warm}" stroke-width="3" />
+<path d="M18 26 C38 48, 62 54, 86 30 C98 18, 106 18, 116 24" fill="none" stroke="${palette.accent}" stroke-width="2" opacity="0.72" />`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="264" height="168" viewBox="0 0 132 84">
+<defs>
+  <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="${palette.top}" />
+    <stop offset="100%" stop-color="${palette.bottom}" />
+  </linearGradient>
+</defs>
+<rect x="0.5" y="0.5" width="131" height="83" rx="10" fill="url(#g)" stroke="#d1d5db" />
+${grid}
+${waves}
+<rect x="8" y="63" width="116" height="15" rx="4" fill="#ffffff" opacity="0.82" />
+<text x="12" y="73" font-family="Segoe UI, Arial, sans-serif" font-size="8.2" font-weight="700" fill="${palette.ink}">${title}</text>
+<text x="12" y="13" font-family="Segoe UI, Arial, sans-serif" font-size="7.8" fill="${palette.ink}" opacity="0.82">${formula}</text>
+</svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
 
 const FUNCTION_EXPLORER_CORE_PRESET_IDS = [
   "one_over_z",
@@ -47738,6 +47954,10 @@ case "mobius":
                   quickEditCustomEnabled={surfacesQuickEditEnabled}
                   onQuickEditCustom={handleSurfacesQuickEdit}
                   showWorkGallery={surfacesWorkGalleryOpen}
+                  complexMapPresetId={complexMapPresetId}
+                  complexMapSpec={complexMapSpec}
+                  onChangeComplexMapPreset={applyComplexMapPreset}
+                  onChangeComplexMapSpec={updateComplexMapSpec}
                   surfaceMeshPresets={SURFACE_MESH_PRESETS}
                   surfaceMeshAssetPresets={SURFACE_MESH_ASSET_PRESETS}
                   onGenerateSurfaceMeshPreset={handleGenerateSurfaceMeshPreset}
@@ -48540,6 +48760,27 @@ case "mobius":
                   {objectTabContextDetail && (
                     <div style={{ fontSize: 10, color: "#64748b" }}>{objectTabContextDetail}</div>
                   )}
+                  {isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "complex" && (
+                    <button
+                      type="button"
+                      onClick={() => setSurfacesWorkGalleryOpen((value) => !value)}
+                      aria-pressed={surfacesWorkGalleryOpen}
+                      style={{
+                        marginLeft: "auto",
+                        padding: "4px 10px",
+                        borderRadius: 999,
+                        border: `1px solid ${surfacesWorkGalleryOpen ? "#0a66c2" : "#cbd5e1"}`,
+                        background: surfacesWorkGalleryOpen ? "#e6f0ff" : "#fff",
+                        color: surfacesWorkGalleryOpen ? "#0a66c2" : "#1e293b",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        boxShadow: surfacesWorkGalleryOpen ? "0 2px 8px rgba(10, 102, 194, 0.16)" : "none",
+                      }}
+                    >
+                      Gallery
+                    </button>
+                  )}
                 </div>
               )}
               {surfacesLayoutUsesLeftBrowseWork && (
@@ -48602,6 +48843,10 @@ case "mobius":
                   quickEditCustomEnabled={surfacesQuickEditEnabled}
                   onQuickEditCustom={handleSurfacesQuickEdit}
                   showWorkGallery={surfacesWorkGalleryOpen}
+                  complexMapPresetId={complexMapPresetId}
+                  complexMapSpec={complexMapSpec}
+                  onChangeComplexMapPreset={applyComplexMapPreset}
+                  onChangeComplexMapSpec={updateComplexMapSpec}
                   surfaceMeshPresets={SURFACE_MESH_PRESETS}
                   surfaceMeshAssetPresets={SURFACE_MESH_ASSET_PRESETS}
                   onGenerateSurfaceMeshPreset={handleGenerateSurfaceMeshPreset}
@@ -67276,6 +67521,10 @@ type SurfacesControlsProps = {
   quickEditCustomEnabled?: boolean;
   onQuickEditCustom?: () => void;
   showWorkGallery: boolean;
+  complexMapPresetId?: string;
+  complexMapSpec?: ComplexMapSweepSpec;
+  onChangeComplexMapPreset?: (id: string) => void;
+  onChangeComplexMapSpec?: (patch: Partial<ComplexMapSweepSpec>) => void;
   surfaceMeshPresets: SurfaceMeshPreset[];
   surfaceMeshAssetPresets: SurfaceMeshAssetPreset[];
   onGenerateSurfaceMeshPreset: (id: string) => void;
@@ -67331,6 +67580,10 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   quickEditCustomEnabled = false,
   onQuickEditCustom = () => {},
   showWorkGallery,
+  complexMapPresetId = COMPLEX_MAP_CUSTOM_ID,
+  complexMapSpec = COMPLEX_MAP_DEFAULT_SPEC,
+  onChangeComplexMapPreset = () => {},
+  onChangeComplexMapSpec = () => {},
   surfaceMeshPresets,
   surfaceMeshAssetPresets,
   onGenerateSurfaceMeshPreset,
@@ -67508,6 +67761,26 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
       )
     );
   }, [surfaceCardSortPreset]);
+  const complexMapGallerySections = useMemo(() => {
+    const sections = new Map<
+      ComplexMapGalleryKind,
+      Array<ComplexMapPreset & { meta: ComplexMapGalleryMeta; thumbDataUrl: string }>
+    >();
+    for (const preset of COMPLEX_MAP_PRESETS) {
+      const meta = COMPLEX_MAP_GALLERY_META[preset.id];
+      if (!meta) continue;
+      const cards = sections.get(meta.kind) ?? [];
+      cards.push({
+        ...preset,
+        meta,
+        thumbDataUrl: makeComplexMapGalleryThumb(preset.label.replace(/^w =\s*/, ""), preset.fExpr ?? preset.label, meta.thumbKind),
+      });
+      sections.set(meta.kind, cards);
+    }
+    return (["basic", "entire", "singular", "branch"] as ComplexMapGalleryKind[])
+      .map((kind) => ({ kind, label: COMPLEX_MAP_GALLERY_KIND_LABELS[kind], cards: sections.get(kind) ?? [] }))
+      .filter((section) => section.cards.length > 0);
+  }, []);
   const browseCardMode = browsePresetLayout === "cards";
   const bandStyle: React.CSSProperties = {
     border: "1px solid #dbe4f0",
@@ -67702,7 +67975,9 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
 
       {panelMode === "work" && showWorkGallery && (
         <div style={bandStyle}>
-          <div style={bandTitleStyle}>{isSurfaceDatasetKind(datasetKind) && viewerKind === "mesh" ? "Mesh gallery" : "Surface gallery"}</div>
+          <div style={bandTitleStyle}>
+            {isComplex ? "Complex map gallery" : isSurfaceDatasetKind(datasetKind) && viewerKind === "mesh" ? "Mesh gallery" : "Surface gallery"}
+          </div>
           {isSurfaceDatasetKind(datasetKind) && viewerKind === "complex" && (
             <div
               style={{
@@ -67714,37 +67989,121 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                 color: "#475569",
               }}
             >
-              <span style={{ fontWeight: 600 }}>Mesh/Complex mode:</span>
-              <span>switch to a preset family</span>
-              <button type="button" onClick={() => switchToPresetFamily("graph")} style={toolbarChipStyle(false, "family")}>
-                Explicit
-              </button>
-              <button type="button" onClick={() => switchToPresetFamily("implicit")} style={toolbarChipStyle(false, "family")}>
-                Implicit
-              </button>
-              <button
-                type="button"
-                onClick={() => switchToPresetFamily("param-formula")}
-                style={toolbarChipStyle(false, "family")}
-              >
-                Parametric
-              </button>
-              <button type="button" onClick={() => switchToPresetFamily("param-spline")} style={toolbarChipStyle(false, "family")}>
-                Spline
-              </button>
-              <button
-                type="button"
-                onClick={() => switchToPresetFamily("param-constructed")}
-                style={toolbarChipStyle(false, "family")}
-              >
-                Constructed
-              </button>
-              <button type="button" onClick={() => switchToPresetFamily("weierstrass")} style={toolbarChipStyle(false, "family")}>
-                Weierstrass
-              </button>
+              <span style={{ fontWeight: 700 }}>Output:</span>
+              {(
+                [
+                  { id: "sweep", label: "Sweep Re/Im" },
+                  { id: "re", label: "Re" },
+                  { id: "im", label: "Im" },
+                  { id: "both", label: "Re + Im" },
+                ] as const
+              ).map((mode) => (
+                <button
+                  key={`complex-gallery-output-${mode.id}`}
+                  type="button"
+                  onClick={() => onChangeComplexMapSpec({ outputMode: mode.id })}
+                  style={toolbarChipStyle(complexMapSpec.outputMode === mode.id, "family")}
+                  aria-pressed={complexMapSpec.outputMode === mode.id}
+                >
+                  {mode.label}
+                </button>
+              ))}
+              <span style={{ fontWeight: 700, marginLeft: 6 }}>Sweep by:</span>
+              {(["u", "v"] as const).map((axis) => (
+                <button
+                  key={`complex-gallery-sweep-${axis}`}
+                  type="button"
+                  onClick={() => onChangeComplexMapSpec({ sweepAxis: axis })}
+                  style={toolbarChipStyle(complexMapSpec.sweepAxis === axis, "aux")}
+                  aria-pressed={complexMapSpec.sweepAxis === axis}
+                >
+                  {axis}
+                </button>
+              ))}
             </div>
           )}
-          {isSurfaceDatasetKind(datasetKind) && viewerKind === "mesh" ? (
+          {isComplex ? (
+            <div className="gallery-panel-scroll" style={{ maxHeight: 520 }}>
+              {complexMapGallerySections.map((section) => (
+                <div key={`complex-map-work-gallery-${section.kind}`} className="gallery-section">
+                  <div className="gallery-section-header">
+                    <span>{section.label}</span>
+                    <span>{section.cards.length}</span>
+                  </div>
+                  <div
+                    className="surface-card-grid"
+                    data-testid={`complex-map-work-gallery-${section.kind}`}
+                    data-gallery-grid="true"
+                  >
+                    {section.cards.map((card) => {
+                      const active = complexMapPresetId === card.id;
+                      const formulaLine =
+                        card.inputMode === "fz" && card.fExpr ? `f(z) = ${card.fExpr}` : `${card.reExpr} + i(${card.imExpr})`;
+                      return (
+                        <button
+                          key={`complex-map-work-gallery-card-${card.id}`}
+                          type="button"
+                          onClick={() => onChangeComplexMapPreset(card.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "ArrowLeft") {
+                              e.preventDefault();
+                              focusGalleryCardNeighbor(e.currentTarget, "left");
+                            } else if (e.key === "ArrowRight") {
+                              e.preventDefault();
+                              focusGalleryCardNeighbor(e.currentTarget, "right");
+                            } else if (e.key === "ArrowUp") {
+                              e.preventDefault();
+                              focusGalleryCardNeighbor(e.currentTarget, "up");
+                            } else if (e.key === "ArrowDown") {
+                              e.preventDefault();
+                              focusGalleryCardNeighbor(e.currentTarget, "down");
+                            }
+                          }}
+                          className={`gallery-scan-card surface-preset-card${active ? " is-scene-active" : ""}`}
+                          data-testid={`complex-map-work-gallery-card-${card.id}`}
+                        >
+                          <div className="gallery-scan-card-preview">
+                            <div className="gallery-scan-card-preview-frame">
+                              <img
+                                src={card.thumbDataUrl}
+                                alt=""
+                                className="gallery-scan-card-preview-image"
+                                loading="lazy"
+                                decoding="async"
+                                aria-hidden="true"
+                              />
+                            </div>
+                          </div>
+                          <div className="gallery-scan-card-meta">
+                            <div className="gallery-scan-card-title-row">
+                              <div className="gallery-scan-card-title">{card.label}</div>
+                              {active && <span className="gallery-scan-card-selected-pill is-scene">Active</span>}
+                            </div>
+                            <div className="gallery-scan-card-summary" title={card.meta.summary}>
+                              {card.meta.summary}
+                            </div>
+                            <div className="gallery-scan-card-formula">{formulaLine}</div>
+                            <div className="gallery-scan-card-chips">
+                              {card.meta.chips.map((chip) => (
+                                <span key={`${card.id}-${chip}`} className="gallery-scan-card-chip">
+                                  {chip}
+                                </span>
+                              ))}
+                            </div>
+                            <div className="gallery-scan-card-footer">
+                              <span className={`gallery-scan-card-cta${active ? " is-active" : ""}`}>
+                                {active ? "Active" : "Open"}
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : isSurfaceDatasetKind(datasetKind) && viewerKind === "mesh" ? (
             <div style={{ display: "grid", gap: 8 }}>
               <div style={{ fontSize: 11, color: "#475569" }}>
                 Mesh presets are available directly in Mesh mode.
@@ -74140,6 +74499,26 @@ onChangeImplicitExpr,
     { id: "double-cone", label: "Double cone", expr: "x^2 + y^2 - z^2" },
     { id: "saddle-implicit", label: "Saddle (implicit)", expr: "z - x^2 + y^2" },
   ];
+  const complexMapGallerySections = useMemo(() => {
+    const sections = new Map<
+      ComplexMapGalleryKind,
+      Array<ComplexMapPreset & { meta: ComplexMapGalleryMeta; thumbDataUrl: string }>
+    >();
+    for (const preset of COMPLEX_MAP_PRESETS) {
+      const meta = COMPLEX_MAP_GALLERY_META[preset.id];
+      if (!meta) continue;
+      const cards = sections.get(meta.kind) ?? [];
+      cards.push({
+        ...preset,
+        meta,
+        thumbDataUrl: makeComplexMapGalleryThumb(preset.label.replace(/^w =\s*/, ""), preset.fExpr ?? preset.label, meta.thumbKind),
+      });
+      sections.set(meta.kind, cards);
+    }
+    return (["basic", "entire", "singular", "branch"] as ComplexMapGalleryKind[])
+      .map((kind) => ({ kind, label: COMPLEX_MAP_GALLERY_KIND_LABELS[kind], cards: sections.get(kind) ?? [] }))
+      .filter((section) => section.cards.length > 0);
+  }, []);
 
   const handleZPlaneClick = useCallback(
     (pt: { re: number; im: number }, ev: MouseEvent) => {
@@ -75261,6 +75640,90 @@ onChangeImplicitExpr,
       )}
 
       {viewerKind === "complex" && (
+      <>
+      <div style={{ ...cardStyle, marginTop: 10 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Gallery</div>
+        <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 10 }}>
+          Open common complex maps directly here, then refine the function, domain, and surface output below.
+        </div>
+        <div className="gallery-panel-scroll" style={{ maxHeight: 520 }}>
+          {complexMapGallerySections.map((section) => (
+            <div key={`complex-map-gallery-${section.kind}`} className="gallery-section">
+              <div className="gallery-section-header">
+                <span>{section.label}</span>
+                <span>{section.cards.length}</span>
+              </div>
+              <div className="surface-card-grid" data-testid={`complex-map-gallery-${section.kind}`} data-gallery-grid="true">
+                {section.cards.map((card) => {
+                  const active = complexMapPresetId === card.id;
+                  const formulaLine =
+                    card.inputMode === "fz" && card.fExpr ? `f(z) = ${card.fExpr}` : `${card.reExpr} + i(${card.imExpr})`;
+                  return (
+                    <button
+                      key={`complex-map-gallery-card-${card.id}`}
+                      type="button"
+                      onClick={() => onChangeComplexMapPreset(card.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "ArrowLeft") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "left");
+                        } else if (e.key === "ArrowRight") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "right");
+                        } else if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "up");
+                        } else if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "down");
+                        }
+                      }}
+                      className={`gallery-scan-card surface-preset-card${active ? " is-scene-active" : ""}`}
+                      data-testid={`complex-map-gallery-card-${card.id}`}
+                    >
+                      <div className="gallery-scan-card-preview">
+                        <div className="gallery-scan-card-preview-frame">
+                          <img
+                            className="gallery-scan-card-preview-image"
+                            src={card.thumbDataUrl}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            aria-hidden="true"
+                          />
+                        </div>
+                      </div>
+                      <div className="gallery-scan-card-meta">
+                        <div className="gallery-scan-card-title-row">
+                          <div className="gallery-scan-card-title">{card.label}</div>
+                          {active && <span className="gallery-scan-card-selected-pill is-scene">Active</span>}
+                        </div>
+                        <div className="gallery-scan-card-summary" title={card.meta.summary}>
+                          {card.meta.summary}
+                        </div>
+                        <div className="gallery-scan-card-formula">{formulaLine}</div>
+                        <div className="gallery-scan-card-chips">
+                          {card.meta.chips.map((chip) => (
+                            <span key={`${card.id}-${chip}`} className="gallery-scan-card-chip">
+                              {chip}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="gallery-scan-card-footer">
+                          <span className={`gallery-scan-card-cta${active ? " is-active" : ""}`}>
+                            {active ? "Active" : "Open"}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div style={{ ...cardStyle, marginTop: 10 }}>
         <div style={{ fontWeight: 700, marginBottom: 6 }}>Complex Map Sweep (z→w)</div>
         <div style={{ fontSize: 11, opacity: 0.75 }}>
@@ -76321,6 +76784,7 @@ onChangeImplicitExpr,
           <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{complexMapError}</div>
         )}
       </div>
+      </>
       )}
 
       {leftTab === "object" && wrapComplexAdvancedTools(
