@@ -11312,7 +11312,7 @@ const App: React.FC = () => {
   }, [geometryLockedObjectIds, queueGeometryHistoryIntent]);
 
   const executeProceduralScript = useCallback(
-    (options?: { switchToProcedural?: boolean; script?: string }) => {
+    (options?: { switchToProcedural?: boolean; script?: string; successMessage?: string }) => {
       const script = options?.script ?? geometryProceduralScriptText;
       const result = executeSceneScript({
         script,
@@ -11349,7 +11349,8 @@ const App: React.FC = () => {
       if (options?.script != null) setGeometryProceduralScriptText(options.script);
       setGeometryProceduralScriptError(null);
       setGeometryProceduralScriptStatus(
-        `Applied ${result.objects.length} objects (${result.stats.created} created, ${result.stats.updated} updated, ${result.stats.deleted} deleted).`
+        options?.successMessage ??
+          `Applied ${result.objects.length} objects (${result.stats.created} created, ${result.stats.updated} updated, ${result.stats.deleted} deleted).`
       );
       if (options?.switchToProcedural) setGeometryMode("procedural");
     },
@@ -11360,8 +11361,17 @@ const App: React.FC = () => {
     const script = serializeSceneToScript(geometryObjects, { selectedObjectId: geometrySelectedObjectId });
     setGeometryProceduralScriptText(script);
     setGeometryProceduralScriptError(null);
-    setGeometryProceduralScriptStatus(`Generated script from ${geometryObjects.length} scene objects.`);
+    setGeometryProceduralScriptStatus(`Scene -> script generated from ${geometryObjects.length} objects.`);
   }, [geometryObjects, geometrySelectedObjectId]);
+
+  const handleRoundTripProceduralScriptFromScene = useCallback(() => {
+    const script = serializeSceneToScript(geometryObjects, { selectedObjectId: geometrySelectedObjectId });
+    executeProceduralScript({
+      script,
+      switchToProcedural: true,
+      successMessage: `Scene -> script -> render matched ${geometryObjects.length} objects.`,
+    });
+  }, [executeProceduralScript, geometryObjects, geometrySelectedObjectId]);
 
   const geometryDragRef = useRef<{
     id: string;
@@ -43636,6 +43646,7 @@ case "mobius":
       const node = unifiedObjectModel.nodeById.get(nodeId);
       if (node?.category === "sceneObject" && node.objectRefId) {
         setGeometrySelectedObjectId(node.objectRefId);
+        setGeometryPendingFocusObjectId(node.objectRefId);
       }
       if (mode === "surfaces") {
         setSurfacesLeftTab("object");
@@ -43643,6 +43654,9 @@ case "mobius":
       }
       if (mode === "geometry" && geometryMode === "procedural") {
         setGeometryProceduralPanelTab("object");
+        setShowRightPanel(true);
+        setGeometryRightPanelTab("inspector");
+        setGeometryInspectorPanelTab(node?.category === "sceneObject" ? "properties" : "dependencies");
       }
     },
     [geometryMode, mode, unifiedObjectModel.nodeById]
@@ -43652,10 +43666,20 @@ case "mobius":
     const node = unifiedObjectModel.nodeById.get(nodeId);
     if (node?.category === "sceneObject" && node.objectRefId) {
       setGeometrySelectedObjectId(node.objectRefId);
+      setGeometryPendingFocusObjectId(node.objectRefId);
       setGeometrySelectedMathConstructionId(null);
       setGeometrySelectedDerivedConstructionId(null);
+      if (mode === "geometry") {
+        setShowRightPanel(true);
+        setGeometryRightPanelTab("inspector");
+        setGeometryInspectorPanelTab("properties");
+      }
+    } else if (mode === "geometry") {
+      setShowRightPanel(true);
+      setGeometryRightPanelTab("inspector");
+      setGeometryInspectorPanelTab("dependencies");
     }
-  }, [unifiedObjectModel.nodeById]);
+  }, [mode, unifiedObjectModel.nodeById]);
   const handleToggleUnifiedNodeVisibility = useCallback(
     (nodeId: string) => {
       const node = unifiedObjectModel.nodeById.get(nodeId);
@@ -53183,10 +53207,13 @@ case "mobius":
                       />
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <button type="button" onClick={() => executeProceduralScript()}>
-                          Run script
+                          Script -&gt; scene
                         </button>
                         <button type="button" onClick={handleGenerateProceduralScriptFromScene}>
-                          Generate from scene
+                          Scene -&gt; script
+                        </button>
+                        <button type="button" onClick={handleRoundTripProceduralScriptFromScene}>
+                          Scene -&gt; script -&gt; render
                         </button>
                         <button
                           type="button"
@@ -53227,6 +53254,7 @@ case "mobius":
                       onIsolateSelected={handleIsolateUnifiedSelectedObject}
                       canShowAllSceneObjects={unifiedCanShowAllSceneObjects}
                       onShowAllSceneObjects={handleShowAllUnifiedObjects}
+                      organizationMode="sceneHierarchy"
                     />
                     <GeometryStaleSummaryPanel
                       products={geometryStaleDerivedSummary}
@@ -70216,6 +70244,7 @@ type UnifiedObjectTreePanelProps = {
   canShowAllSceneObjects?: boolean;
   onShowAllSceneObjects?: () => void;
   fillHeight?: boolean;
+  organizationMode?: "roles" | "sceneHierarchy";
 };
 
 type ConstructionDependencyTreePanelProps = {
@@ -70640,8 +70669,16 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
   canShowAllSceneObjects = false,
   onShowAllSceneObjects,
   fillHeight = false,
+  organizationMode = "roles",
 }) => {
-  const [listMode, setListMode] = useState<"grouped" | "flat">("grouped");
+  const [listMode, setListMode] = useState<"hierarchy" | "grouped" | "flat">(
+    organizationMode === "sceneHierarchy" ? "hierarchy" : "grouped"
+  );
+  useEffect(() => {
+    if (organizationMode !== "sceneHierarchy" && listMode === "hierarchy") {
+      setListMode("grouped");
+    }
+  }, [listMode, organizationMode]);
   const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const roleOrder: UnifiedSceneRole[] = ["primaryObject", "overlay", "derivedResult", "referenceObject"];
   const nodesByRole = useMemo(() => {
@@ -70653,6 +70690,53 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
       if (bucket) bucket.push(node);
     }
     return grouped;
+  }, [nodes]);
+  const hierarchyGroups = useMemo(() => {
+    const groups: Array<{ id: string; label: string; nodes: UnifiedObjectNode[] }> = [
+      { id: "primitives", label: "Primitives", nodes: [] },
+      { id: "curves", label: "Curves", nodes: [] },
+      { id: "analysis", label: "Analysis", nodes: [] },
+      { id: "helpers", label: "Helpers", nodes: [] },
+    ];
+    const groupById = new Map(groups.map((group) => [group.id, group]));
+    const addTo = (id: string, node: UnifiedObjectNode) => groupById.get(id)?.nodes.push(node);
+    for (const node of nodes) {
+      const role = node.sceneRole ?? inferUnifiedSceneRole(node.category, node.type, node.sourceDefinition);
+      const haystack = `${node.name} ${node.type} ${node.sourceDefinition}`.toLowerCase();
+      if (
+        haystack.includes("bounding-box") ||
+        haystack.includes("bounding box") ||
+        haystack.includes("analysis") ||
+        haystack.includes("curvature") ||
+        haystack.includes("normal") ||
+        haystack.includes("section") ||
+        haystack.includes("compare") ||
+        haystack.includes("quality")
+      ) {
+        addTo("analysis", node);
+      } else if (
+        haystack.includes("curve") ||
+        haystack.includes("tube along") ||
+        haystack.includes("line") ||
+        haystack.includes("arc") ||
+        haystack.includes("geodesic")
+      ) {
+        addTo("curves", node);
+      } else if (
+        role === "overlay" ||
+        haystack.includes("helper") ||
+        haystack.includes("grid") ||
+        haystack.includes("wireframe") ||
+        haystack.includes("axis") ||
+        haystack.includes("axes") ||
+        haystack.includes("plane")
+      ) {
+        addTo("helpers", node);
+      } else {
+        addTo("primitives", node);
+      }
+    }
+    return groups;
   }, [nodes]);
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
   const shortTypeLabel = (raw: string) => {
@@ -71013,6 +71097,24 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
                 padding: 2,
               }}
             >
+              {organizationMode === "sceneHierarchy" && (
+                <button
+                  type="button"
+                  onClick={() => setListMode("hierarchy")}
+                  aria-pressed={listMode === "hierarchy"}
+                  style={{
+                    padding: "3px 10px",
+                    fontSize: 10,
+                    borderRadius: 999,
+                    border: "1px solid " + (listMode === "hierarchy" ? "#0a66c2" : "transparent"),
+                    background: listMode === "hierarchy" ? "#e6f0ff" : "transparent",
+                    color: listMode === "hierarchy" ? "#0a66c2" : "#334155",
+                    fontWeight: listMode === "hierarchy" ? 700 : 600,
+                  }}
+                >
+                  Hierarchy
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setListMode("grouped")}
@@ -71062,7 +71164,75 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
             minHeight: fillHeight ? 0 : undefined,
           }}
         >
-          {listMode === "flat"
+          {listMode === "hierarchy"
+            ? (
+              <div style={{ display: "grid", gap: 6 }}>
+                <div
+                  style={{
+                    border: "1px solid #dbe2ea",
+                    borderRadius: 8,
+                    background: "#fff",
+                    padding: "7px 8px",
+                    display: "grid",
+                    gap: 6,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, fontWeight: 800, color: "#0f172a" }}>
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 6,
+                        border: "1px solid #cbd5e1",
+                        background: "#f8fafc",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "#475569",
+                      }}
+                    >
+                      S
+                    </span>
+                    <span>Scene</span>
+                    <span style={{ marginLeft: "auto", color: "#64748b", fontSize: 10, fontWeight: 700 }}>
+                      {nodes.length}
+                    </span>
+                  </div>
+                  <div style={{ display: "grid", gap: 7, paddingLeft: 10, borderLeft: "1px solid #e2e8f0" }}>
+                    {hierarchyGroups.map((group) => (
+                      <div key={`scene-hierarchy-${group.id}`} style={{ display: "grid", gap: 5 }}>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "18px minmax(0, 1fr) auto",
+                            gap: 6,
+                            alignItems: "center",
+                            fontSize: 10.5,
+                            color: "#334155",
+                            fontWeight: 800,
+                          }}
+                        >
+                          <span aria-hidden="true" style={{ color: "#94a3b8", textAlign: "center" }}>
+                            {group.nodes.length ? "v" : "-"}
+                          </span>
+                          <span>{group.label}</span>
+                          <span style={{ color: "#64748b", fontSize: 10 }}>{group.nodes.length}</span>
+                        </div>
+                        {group.nodes.length ? (
+                          <div style={{ display: "grid", gap: 5, paddingLeft: 18 }}>
+                            {group.nodes.map((node) => renderRow(node))}
+                          </div>
+                        ) : (
+                          <div style={{ paddingLeft: 22, fontSize: 10.5, color: "#94a3b8" }}>Empty</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )
+            : listMode === "flat"
             ? nodes.map((node) => renderRow(node))
             : roleOrder.map((role) => {
                 const rows = nodesByRole.get(role) ?? [];

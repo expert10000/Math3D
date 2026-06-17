@@ -35,4 +35,34 @@ describe("scene script serializer", () => {
     expect(result.selectedObjectId).toBe("base");
     expect(result.objects).toEqual([box, sphere]);
   });
+
+  it("keeps scene-to-script-to-scene serialization stable", () => {
+    const cylinder = createGeometryObject("cylinder", "axis");
+    cylinder.name = "Central axis";
+    cylinder.params.radiusTop = 0.25;
+    cylinder.params.radiusBottom = 0.35;
+    cylinder.params.height = 3;
+    cylinder.transform.position = { x: 0.5, y: 1.5, z: -0.25 };
+    cylinder.material.color = 0xf97316;
+
+    const torus = createGeometryObject("torus", "ring");
+    torus.name = "Orbit ring";
+    torus.group = "round trip";
+    torus.params.radius = 1.3;
+    torus.params.tube = 0.08;
+    torus.transform.rotation = { x: Math.PI / 2, y: 0, z: 0 };
+    torus.material = { color: 0x14b8a6, opacity: 0.58, roughness: 0.3, metalness: 0.08 };
+
+    const firstScript = serializeSceneToScript([cylinder, torus], { selectedObjectId: "ring" });
+    const result = executeSceneScript({ script: firstScript, objects: [] });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const secondScript = serializeSceneToScript(result.objects, { selectedObjectId: result.selectedObjectId });
+    expect(secondScript).toBe(firstScript);
+    expect(result.selectedObjectId).toBe("ring");
+    expect(result.objects.map((object) => object.id)).toEqual(["axis", "ring"]);
+    expect(result.objects.map((object) => object.type)).toEqual(["cylinder", "torus"]);
+  });
 });
