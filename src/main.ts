@@ -271,13 +271,20 @@ function createWindow() {
   });
 
   const sendWindowState = (reason: string) => {
-    if (win.isDestroyed()) return;
-    win.webContents.send("app:window-state", {
-      reason,
-      maximized: win.isMaximized(),
-      fullscreen: win.isFullScreen(),
-      bounds: win.getContentBounds(),
-    });
+    if (win.isDestroyed() || win.webContents.isDestroyed()) return;
+    try {
+      win.webContents.send("app:window-state", {
+        reason,
+        maximized: win.isMaximized(),
+        fullscreen: win.isFullScreen(),
+        bounds: win.getContentBounds(),
+      });
+    } catch (error: any) {
+      console.warn("[window-state] skipped send", {
+        reason,
+        error: String(error?.message ?? error),
+      });
+    }
   };
   win.on("maximize", () => sendWindowState("maximize"));
   win.on("unmaximize", () => sendWindowState("unmaximize"));
@@ -285,6 +292,9 @@ function createWindow() {
   win.on("leave-full-screen", () => sendWindowState("leave-full-screen"));
   win.on("resize", () => sendWindowState("resize"));
   win.webContents.on("did-finish-load", () => sendWindowState("initial"));
+  win.webContents.on("render-process-gone", (_event, details) => {
+    console.error("[renderer] process gone", details);
+  });
 
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
     const devUrl = new URL(process.env.VITE_DEV_SERVER_URL);
@@ -592,6 +602,14 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   stopPythonWorker();
+});
+
+(app as any).on("gpu-process-crashed", (_event: unknown, killed: unknown) => {
+  console.error("[gpu] process crashed", { killed });
+});
+
+app.on("child-process-gone", (_event, details) => {
+  console.error("[app] child process gone", details);
 });
 
 app.on("will-quit", () => {

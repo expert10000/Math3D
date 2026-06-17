@@ -1,17 +1,19 @@
-# Math3D 1.4.5
+# Math3D 1.4.6-beta.3
 
 ## Type
-Stabilization release with selected extension features.
+Beta build for Linux graphics diagnostics and selected extension stability.
 
 ## Added
 - Added selected extension subset.
 - Added/improved dependency tree workflow.
 - Added safer handling of construction dependencies.
+- Added clearer renderer/GPU crash diagnostics for white-screen reports.
 
 ## Improved
 - Improved geometry workflow stability.
 - Improved object selection and inspector synchronization.
 - Improved scene state persistence.
+- Improved main-window state messaging after renderer shutdown.
 
 ## Fixed
 - Fixed crashes caused by stale dependencies.
