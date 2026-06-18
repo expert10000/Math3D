@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { sphereToStereographic } from "../math/riemannSphere";
+import { installWebGLContextLogger, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
 
 export type SphereLine = {
   points: { x: number; y: number; z: number }[];
@@ -101,8 +102,9 @@ const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = ({
     const mount = mountRef.current;
     if (!mount) return;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    const renderer = new THREE.WebGLRenderer(vmSafeRendererParams({ antialias: true, alpha: true }));
+    const removeWebGLContextLogger = installWebGLContextLogger(renderer.domElement, "riemann-sphere");
+    renderer.setPixelRatio(vmSafePixelRatio(window.devicePixelRatio || 1, 2));
     mount.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
@@ -169,6 +171,7 @@ const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = ({
       controls.dispose();
       scene.traverse(disposeObject3D);
       renderer.dispose();
+      removeWebGLContextLogger();
       if (renderer.domElement.parentElement) {
         renderer.domElement.parentElement.removeChild(renderer.domElement);
       }

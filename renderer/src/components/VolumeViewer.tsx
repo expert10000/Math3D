@@ -25,6 +25,7 @@ import {
   vtkVolumeStreamlines,
 } from "../services/vtkVolumeClient";
 import { vtkSmooth } from "../services/vtkMeshClient";
+import { installWebGLContextLogger, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
 
 export type VolumeViewerProps = {
   dataset: VolumeDataset | null;
@@ -364,8 +365,9 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     camera.position.set(2.6, 2.4, 2.8);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    const renderer = new THREE.WebGLRenderer(vmSafeRendererParams({ antialias: true, alpha: true }));
+    const removeWebGLContextLogger = installWebGLContextLogger(renderer.domElement, "volume");
+    renderer.setPixelRatio(vmSafePixelRatio(window.devicePixelRatio || 1, 2));
     renderer.setSize(mount.clientWidth || 1, mount.clientHeight || 1);
     mount.appendChild(renderer.domElement);
 
@@ -473,6 +475,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       window.removeEventListener("resize", handleResize);
       controls.dispose();
       renderer.dispose();
+      removeWebGLContextLogger();
       renderer.domElement.remove();
 
       if (sliceMeshRef.current) {

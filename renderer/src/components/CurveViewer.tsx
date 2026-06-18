@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { installWebGLContextLogger, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
 
 export type CurveViewerVec3 = { x: number; y: number; z: number };
 
@@ -79,8 +80,9 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
     const width = Math.max(2, host.clientWidth);
     const height = Math.max(2, host.clientHeight);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    const renderer = new THREE.WebGLRenderer(vmSafeRendererParams({ antialias: true }));
+    const removeWebGLContextLogger = installWebGLContextLogger(renderer.domElement, "curve");
+    renderer.setPixelRatio(vmSafePixelRatio(window.devicePixelRatio || 1, 2));
     renderer.setSize(width, height);
     renderer.setClearColor(0xf8fafc, 1);
     host.appendChild(renderer.domElement);
@@ -251,6 +253,7 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
       controls.dispose();
       disposeSceneObjects(scene);
       renderer.dispose();
+      removeWebGLContextLogger();
       renderer.domElement.remove();
     };
   }, [

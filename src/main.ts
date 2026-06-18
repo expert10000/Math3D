@@ -17,6 +17,9 @@ import * as fs from "node:fs";
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 const isStartupSmoke = ["1", "true", "yes", "on", "y"].includes(String(process.env.MATH3D_STARTUP_SMOKE || "").toLowerCase());
 const isGeometrySmoke = ["1", "true", "yes", "on", "y"].includes(String(process.env.MATH3D_GEOMETRY_SMOKE || "").toLowerCase());
+const isLinuxVmSafeGraphics =
+  process.platform === "linux" &&
+  !["0", "false", "no", "off"].includes(String(process.env.MATH3D_VM_SAFE_GRAPHICS || "1").toLowerCase());
 const geometrySmokeTimeoutMs = Math.max(
   30000,
   Number.isFinite(Number(process.env.MATH3D_GEOMETRY_SMOKE_TIMEOUT_MS))
@@ -38,6 +41,15 @@ if (process.platform === "win32") {
   app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
   app.commandLine.appendSwitch("disable-renderer-backgrounding");
   app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
+}
+
+if (isLinuxVmSafeGraphics) {
+  app.commandLine.appendSwitch("enable-unsafe-swiftshader");
+  app.commandLine.appendSwitch("ignore-gpu-blocklist");
+  app.commandLine.appendSwitch("disable-gpu-compositing");
+  app.commandLine.appendSwitch("disable-accelerated-2d-canvas");
+  app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
+  app.commandLine.appendSwitch("disable-renderer-backgrounding");
 }
 
 type AppRuntimeMode = "development" | "packaged";
@@ -270,8 +282,9 @@ function createWindow() {
     win.focus();
   });
 
+  let rendererFrameReady = false;
   const sendWindowState = (reason: string) => {
-    if (win.isDestroyed() || win.webContents.isDestroyed()) return;
+    if (!rendererFrameReady || win.isDestroyed() || win.webContents.isDestroyed()) return;
     try {
       win.webContents.send("app:window-state", {
         reason,
@@ -291,8 +304,15 @@ function createWindow() {
   win.on("enter-full-screen", () => sendWindowState("enter-full-screen"));
   win.on("leave-full-screen", () => sendWindowState("leave-full-screen"));
   win.on("resize", () => sendWindowState("resize"));
-  win.webContents.on("did-finish-load", () => sendWindowState("initial"));
+  win.webContents.on("did-finish-load", () => {
+    rendererFrameReady = true;
+    sendWindowState("initial");
+  });
+  win.webContents.on("did-start-loading", () => {
+    rendererFrameReady = false;
+  });
   win.webContents.on("render-process-gone", (_event, details) => {
+    rendererFrameReady = false;
     console.error("[renderer] process gone", details);
   });
 
@@ -301,13 +321,21 @@ function createWindow() {
     if (isGeometrySmoke) {
       devUrl.searchParams.set("geometrySmoke", "1");
     }
+    if (isLinuxVmSafeGraphics) {
+      devUrl.searchParams.set("vmSafeGraphics", "1");
+    }
     win.loadURL(devUrl.toString());
     win.webContents.openDevTools();
   } else {
     const indexPath = path.join(__dirname, "..", "renderer", "dist", "index.html");
-    if (isGeometrySmoke) {
+    if (isGeometrySmoke || isLinuxVmSafeGraphics) {
       const indexUrl = pathToFileURL(indexPath);
-      indexUrl.searchParams.set("geometrySmoke", "1");
+      if (isGeometrySmoke) {
+        indexUrl.searchParams.set("geometrySmoke", "1");
+      }
+      if (isLinuxVmSafeGraphics) {
+        indexUrl.searchParams.set("vmSafeGraphics", "1");
+      }
       win.loadURL(indexUrl.toString());
     } else {
       win.loadFile(indexPath);

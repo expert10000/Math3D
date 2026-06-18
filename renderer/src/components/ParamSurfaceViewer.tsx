@@ -69,6 +69,7 @@ import {
   type ReferencePlaneGridSettings,
 } from "@math3d/renderer-web";
 import type { ParamSurfaceId as CoreParamSurfaceId } from "@math3d/core";
+import { installWebGLContextLogger, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
 
 type ParamPreset = {
   id: string;
@@ -2546,7 +2547,10 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     camera.position.set(4, 3, 5);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: renderQuality !== "performance", alpha: true });
+    const renderer = new THREE.WebGLRenderer(
+      vmSafeRendererParams({ antialias: renderQuality !== "performance", alpha: true })
+    );
+    const removeWebGLContextLogger = installWebGLContextLogger(renderer.domElement, "param-surface");
     const heavySurface = surfaceId === "torus";
     const maxPixelRatio =
       renderQuality === "performance"
@@ -2562,7 +2566,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const qualityScale =
       renderQuality === "performance" ? 1 : renderQuality === "sharp" ? 1.75 : 1.15;
     const targetPixelRatio = devicePixelRatio * qualityScale;
-    renderer.setPixelRatio(Math.min(targetPixelRatio, maxPixelRatio));
+    renderer.setPixelRatio(vmSafePixelRatio(targetPixelRatio, maxPixelRatio));
     renderer.setSize(width, height, false);
     renderer.setClearColor(background.color, background.alpha);
     renderer.localClippingEnabled = true;
@@ -3800,7 +3804,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       const h = Math.max(1, Math.round(rawHeight));
       const nextDevicePixelRatio = Math.max(1, window.devicePixelRatio || 1);
       const nextTargetPixelRatio = nextDevicePixelRatio * qualityScale;
-      renderer.setPixelRatio(Math.min(nextTargetPixelRatio, maxPixelRatio));
+      renderer.setPixelRatio(vmSafePixelRatio(nextTargetPixelRatio, maxPixelRatio));
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h, false);
@@ -3944,6 +3948,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       }
 
       renderer.dispose();
+      removeWebGLContextLogger();
       if (renderer.domElement.parentNode === mount) {
         mount.removeChild(renderer.domElement);
       }

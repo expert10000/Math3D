@@ -6,6 +6,7 @@ import type { GaussColorMode } from "./gaussMapUtils";
 import type { GaussCapSelection, SelectionMask } from "../math/selection/selectionModel";
 import type { SurfaceSample } from "../math/sampling/surfaceSampling";
 import { computeGaussDensityGrid } from "../math/selection/gaussDensity";
+import { installWebGLContextLogger, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
 
 type GaussMapPanelProps = {
   samples: SurfaceSample[];
@@ -316,8 +317,9 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
     if (!mount) return;
 
     const { width: w, height: h } = initialSizeRef.current;
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    const renderer = new THREE.WebGLRenderer(vmSafeRendererParams({ antialias: true, alpha: true }));
+    const removeWebGLContextLogger = installWebGLContextLogger(renderer.domElement, "gauss-map");
+    renderer.setPixelRatio(vmSafePixelRatio(window.devicePixelRatio || 1, 2));
     renderer.setSize(w, h);
     renderer.domElement.style.width = "100%";
     renderer.domElement.style.height = "100%";
@@ -531,6 +533,7 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
       }
 
       renderer.dispose();
+      removeWebGLContextLogger();
       rendererRef.current = null;
       sceneRef.current = null;
       cameraRef.current = null;

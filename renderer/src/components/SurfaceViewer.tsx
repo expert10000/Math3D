@@ -34,6 +34,7 @@ import {
   DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
   type ReferencePlaneGridSettings,
 } from "@math3d/renderer-web";
+import { installWebGLContextLogger, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
 
 export type ColorMode = CoreColorMode;
 
@@ -3514,7 +3515,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const { width, height } = getSize();
 
-    const renderer = new THREE.WebGLRenderer({ antialias: renderQuality !== "performance", alpha: true });
+    const renderer = new THREE.WebGLRenderer(
+      vmSafeRendererParams({ antialias: renderQuality !== "performance", alpha: true })
+    );
+    const removeWebGLContextLogger = installWebGLContextLogger(renderer.domElement, "surface");
     const heavySurface = surfaceId === "surface_mesh" || surfaceId === "torus_implicit";
     const maxPixelRatio =
       renderQuality === "performance"
@@ -3530,7 +3534,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const qualityScale =
       renderQuality === "performance" ? 1 : renderQuality === "sharp" ? 1.75 : 1.15;
     const targetPixelRatio = devicePixelRatio * qualityScale;
-    renderer.setPixelRatio(Math.min(targetPixelRatio, maxPixelRatio));
+    renderer.setPixelRatio(vmSafePixelRatio(targetPixelRatio, maxPixelRatio));
     renderer.setSize(width, height, false);
     renderer.setClearColor(sceneBackgroundColor, sceneBackgroundAlpha);
     renderer.domElement.style.width = "100%";
@@ -5339,7 +5343,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const h = Math.max(1, Math.round(rawHeight));
       const nextDevicePixelRatio = Math.max(1, window.devicePixelRatio || 1);
       const nextTargetPixelRatio = nextDevicePixelRatio * qualityScale;
-      renderer.setPixelRatio(Math.min(nextTargetPixelRatio, maxPixelRatio));
+      renderer.setPixelRatio(vmSafePixelRatio(nextTargetPixelRatio, maxPixelRatio));
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h, false);
@@ -5595,6 +5599,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       });
 
       renderer.dispose();
+      removeWebGLContextLogger();
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
       rendererRef.current = null;
       applyProbeFromDomainRef.current = null;
