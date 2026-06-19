@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import type { ConstructionGraph } from "@math3d/core";
+import { getAffectedConstructionGraphNodeIds, type ConstructionGraph } from "@math3d/core";
 import { layoutDependencyDag } from "../geometry/dependencyDagLayout";
 
 type Props = {
@@ -23,8 +23,17 @@ const nodeMeta = (kind: string) => {
 
 export const SceneDependencyGraph: React.FC<Props> = ({ graph, selectedId, onSelect }) => {
   const [zoom, setZoom] = useState(1);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const { nodes, edges } = graph;
   const visibleEdges = useMemo(() => edges.filter((edge) => edge.relation !== "contains"), [edges]);
+  const impactSourceId = hoveredId ?? selectedId;
+  const impactNodeIds = useMemo(() => {
+    if (!impactSourceId) return new Set<string>();
+    return new Set([
+      impactSourceId,
+      ...getAffectedConstructionGraphNodeIds({ ...graph, edges: visibleEdges }, [impactSourceId]),
+    ]);
+  }, [graph, impactSourceId, visibleEdges]);
   const connectedNodeIds = useMemo(() => {
     const ids = new Set<string>();
     visibleEdges.forEach((edge) => {
@@ -73,6 +82,7 @@ export const SceneDependencyGraph: React.FC<Props> = ({ graph, selectedId, onSel
               const source = layout.positions.get(edge.sourceId);
               const target = layout.positions.get(edge.targetId);
               if (!source || !target) return null;
+              const inImpactPath = impactNodeIds.has(edge.sourceId) && impactNodeIds.has(edge.targetId);
               const sourceX = source.x + source.width / 2;
               const sourceY = source.y + source.height;
               const targetX = target.x + target.width / 2;
@@ -85,8 +95,9 @@ export const SceneDependencyGraph: React.FC<Props> = ({ graph, selectedId, onSel
                   <path
                     d={`M ${sourceX} ${sourceY} C ${sourceX} ${midY}, ${targetX} ${midY}, ${targetX} ${targetY}`}
                     fill="none"
-                    stroke="#94a3b8"
-                    strokeWidth="1.4"
+                    stroke={inImpactPath ? "#f59e0b" : "#94a3b8"}
+                    strokeWidth={inImpactPath ? 2.4 : 1.4}
+                    opacity={impactNodeIds.size && !inImpactPath ? 0.28 : 1}
                     markerEnd="url(#scene-dependency-arrow)"
                   >
                     <title>{edge.relation}</title>
@@ -94,7 +105,7 @@ export const SceneDependencyGraph: React.FC<Props> = ({ graph, selectedId, onSel
                   <text
                     x={(sourceX + targetX) / 2}
                     y={midY - 4}
-                    fill="#64748b"
+                    fill={inImpactPath ? "#92400e" : "#64748b"}
                     fontSize="7.5"
                     fontWeight="700"
                     textAnchor="middle"
@@ -109,6 +120,7 @@ export const SceneDependencyGraph: React.FC<Props> = ({ graph, selectedId, onSel
               if (!position) return null;
               const meta = nodeMeta(node.kind === "root" || node.kind === "geometry" ? node.type : node.kind);
               const selected = node.id === selectedId;
+              const inImpactPath = impactNodeIds.has(node.id);
               const label = node.label ?? node.id;
               const ownedObjectCount =
                 node.type === "scene-script"
@@ -126,6 +138,10 @@ export const SceneDependencyGraph: React.FC<Props> = ({ graph, selectedId, onSel
                   aria-label={label}
                   data-node-id={node.id}
                   onClick={() => onSelect(node.id)}
+                  onMouseEnter={() => setHoveredId(node.id)}
+                  onMouseLeave={() => setHoveredId(null)}
+                  onFocus={() => setHoveredId(node.id)}
+                  onBlur={() => setHoveredId(null)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") onSelect(node.id);
                   }}
@@ -137,9 +153,10 @@ export const SceneDependencyGraph: React.FC<Props> = ({ graph, selectedId, onSel
                     width={position.width}
                     height={position.height}
                     rx="8"
-                    fill={selected ? "#dbeafe" : meta.fill}
-                    stroke={selected ? "#2563eb" : meta.border}
-                    strokeWidth={selected ? 2.5 : 1.3}
+                    fill={selected ? "#dbeafe" : inImpactPath ? "#fffbeb" : meta.fill}
+                    stroke={selected ? "#2563eb" : inImpactPath ? "#f59e0b" : meta.border}
+                    strokeWidth={selected || inImpactPath ? 2.5 : 1.3}
+                    opacity={impactNodeIds.size && !inImpactPath ? 0.46 : 1}
                   />
                   <text x={position.x + 11} y={position.y + 20} fill={meta.color} fontSize="11" fontWeight="800">
                     {meta.icon} {label.length > 20 ? `${label.slice(0, 19)}…` : label}

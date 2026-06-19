@@ -1,28 +1,20 @@
-# Math3D 1.4.6-beta.4
+# Math3D 1.4.6-beta.5
 
 ## Type
-Beta build for Linux/VMware graphics stability and selected extension stability.
+Beta build for Linux renderer stability and no-WebGL diagnostics.
 
 ## Added
-- Added selected extension subset.
-- Added/improved dependency tree workflow.
-- Added safer handling of construction dependencies.
-- Added VM-safe graphics mode for Linux Electron builds.
-- Added clearer renderer/GPU crash diagnostics for white-screen reports.
+- Added a `MATH3D_NO_WEBGL=1` launch path that opens packaged/dev builds with 3D viewers paused.
+- Added no-WebGL fallback panels for renderer-heavy viewers to isolate CPU-side leaks from GPU/WebGL issues.
 
 ## Improved
-- Improved geometry workflow stability.
-- Improved object selection and inspector synchronization.
-- Improved scene state persistence.
-- Improved main-window state messaging after renderer shutdown.
-- Reduced WebGL pressure in 3D viewers when VM-safe graphics mode is active.
+- Improved surface viewer scene lifecycle stability by keeping long-lived Three.js handlers independent from changing callback identities.
+- Reduced parent sample-state churn during surface viewer cleanup/rebuild paths.
 
 ## Fixed
-- Fixed crashes caused by stale dependencies.
-- Fixed UI desynchronization after object deletion.
-- Fixed selected-object refresh after recomputation.
+- Fixed a renderer-side churn path that could repeatedly rebuild surface viewer state and grow memory during startup/interaction.
+- Kept Linux VM-safe graphics behavior while adding a stronger diagnostic mode for white-screen/freezing reports.
 
 ## Known limitations
-- Some extension features remain experimental.
-- Full parametric geometry is planned for a later release.
-- Deep mesh editing remains outside this release scope.
+- `MATH3D_NO_WEBGL=1` is diagnostic mode; 3D viewer canvases are intentionally paused.
+- Some geometry/dependency inspector features remain experimental.

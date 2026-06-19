@@ -25,7 +25,8 @@ import {
   vtkVolumeStreamlines,
 } from "../services/vtkVolumeClient";
 import { vtkSmooth } from "../services/vtkMeshClient";
-import { installWebGLContextLogger, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
+import { installWebGLContextLogger, isNoWebGLMode, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
+import { NoWebGLPanel } from "./NoWebGLPanel";
 
 export type VolumeViewerProps = {
   dataset: VolumeDataset | null;
@@ -184,7 +185,12 @@ const findNearestPointOnMesh = (geom: THREE.BufferGeometry, point: THREE.Vector3
   return best;
 };
 
-export const VolumeViewer: React.FC<VolumeViewerProps> = ({
+export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
+  if (isNoWebGLMode()) {
+    return <NoWebGLPanel title="3D volume viewer paused" />;
+  }
+
+  const {
   dataset,
   vectorGrid,
   axis,
@@ -216,7 +222,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   streamlineMaxLength,
   captureToken = 0,
   onCaptureThumbnail,
-}) => {
+  } = props;
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);

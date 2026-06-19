@@ -17,6 +17,7 @@ import * as fs from "node:fs";
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 const isStartupSmoke = ["1", "true", "yes", "on", "y"].includes(String(process.env.MATH3D_STARTUP_SMOKE || "").toLowerCase());
 const isGeometrySmoke = ["1", "true", "yes", "on", "y"].includes(String(process.env.MATH3D_GEOMETRY_SMOKE || "").toLowerCase());
+const isNoWebGLMode = ["1", "true", "yes", "on", "y"].includes(String(process.env.MATH3D_NO_WEBGL || "").toLowerCase());
 const isLinuxVmSafeGraphics =
   process.platform === "linux" &&
   !["0", "false", "no", "off"].includes(String(process.env.MATH3D_VM_SAFE_GRAPHICS || "1").toLowerCase());
@@ -324,17 +325,23 @@ function createWindow() {
     if (isLinuxVmSafeGraphics) {
       devUrl.searchParams.set("vmSafeGraphics", "1");
     }
+    if (isNoWebGLMode) {
+      devUrl.searchParams.set("noWebGL", "1");
+    }
     win.loadURL(devUrl.toString());
     win.webContents.openDevTools();
   } else {
     const indexPath = path.join(__dirname, "..", "renderer", "dist", "index.html");
-    if (isGeometrySmoke || isLinuxVmSafeGraphics) {
+    if (isGeometrySmoke || isLinuxVmSafeGraphics || isNoWebGLMode) {
       const indexUrl = pathToFileURL(indexPath);
       if (isGeometrySmoke) {
         indexUrl.searchParams.set("geometrySmoke", "1");
       }
       if (isLinuxVmSafeGraphics) {
         indexUrl.searchParams.set("vmSafeGraphics", "1");
+      }
+      if (isNoWebGLMode) {
+        indexUrl.searchParams.set("noWebGL", "1");
       }
       win.loadURL(indexUrl.toString());
     } else {

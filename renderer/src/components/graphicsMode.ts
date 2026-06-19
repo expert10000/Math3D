@@ -21,6 +21,22 @@ const readVmSafeFlag = (): boolean => {
 
 export const isVmSafeGraphicsMode = (): boolean => readVmSafeFlag();
 
+export const isNoWebGLMode = (): boolean => {
+  if (typeof window === "undefined") return false;
+  const params = new URLSearchParams(window.location.search);
+  const query = params.get("noWebGL");
+  if (query && truthy.has(query.toLowerCase())) return true;
+  if (query && falsy.has(query.toLowerCase())) return false;
+  try {
+    const stored = window.localStorage.getItem("math3d.noWebGL");
+    if (stored && truthy.has(stored.toLowerCase())) return true;
+    if (stored && falsy.has(stored.toLowerCase())) return false;
+  } catch {
+    // localStorage can be unavailable in restricted contexts.
+  }
+  return false;
+};
+
 export const vmSafeRendererParams = (
   params: WebGLRendererParameters = {}
 ): WebGLRendererParameters => {

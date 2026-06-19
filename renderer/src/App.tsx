@@ -5,6 +5,7 @@ import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js"
 import { ADDITION, Brush, Evaluator, INTERSECTION, REVERSE_SUBTRACTION, SUBTRACTION } from "three-bvh-csg";
 import {
   createConstructionGraph,
+  getAffectedConstructionGraphNodeIds,
   getSceneDocumentConstructionGraph,
   getSceneDocumentExtension,
   indexConstructionGraph,
@@ -2481,6 +2482,13 @@ type GeometryDependencyEdge = ConstructionGraphEdge & {
   relation: GeometryDependencyEdgeRelation;
 };
 type GeometryDependencyEdgeInput = Omit<GeometryDependencyEdge, "id">;
+const formatGeometryRecomputeCost = (value?: number | null): string => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "pending";
+  if (value < 0.1) return "<0.1 ms";
+  return `${value.toFixed(value < 10 ? 1 : 0)} ms`;
+};
+const visibleGeometryImpactNode = (node: GeometryDependencyNode): boolean =>
+  node.type !== "scene-root" && node.type !== "dependency-group" && node.type !== "face-reference";
 const constructionGraphKindFromGeometryDependencyKind = (
   kind: GeometryDependencyNodeKind
 ): ConstructionGraphNodeKind => {
@@ -8477,7 +8485,7 @@ const App: React.FC = () => {
   const [geometryDependencyOverlayLineageTarget, setGeometryDependencyOverlayLineageTarget] = useState<{
     id: string | null;
     label: string;
-    group: "Inputs" | "Derived Geometry" | "Analysis";
+    group: "Inputs" | "Parameters" | "Derived Geometry" | "Analysis";
   } | null>(null);
   const geometryPanelTabSwitchLockedRef = useRef(false);
   const geometryDependenciesPanelActive =
@@ -18465,9 +18473,41 @@ const App: React.FC = () => {
     if (!nodeId) return null;
     const node = geometryDependencyGraph.nodeById.get(nodeId) ?? null;
     if (!node) return null;
-    const inputs = (geometryDependencyGraph.incomingById.get(nodeId) ?? []) as GeometryDependencyEdge[];
-    const outputs = (geometryDependencyGraph.outgoingById.get(nodeId) ?? []) as GeometryDependencyEdge[];
-    return { node, inputs, outputs };
+    const inputs = ((geometryDependencyGraph.incomingById.get(nodeId) ?? []) as GeometryDependencyEdge[])
+      .filter((edge) => edge.relation !== "contains");
+    const outputs = ((geometryDependencyGraph.outgoingById.get(nodeId) ?? []) as GeometryDependencyEdge[])
+      .filter((edge) => edge.relation !== "contains");
+    const parameters = inputs.filter((edge) => geometryDependencyGraph.nodeById.get(edge.sourceId)?.type === "parameter");
+    const dependencies = inputs.filter((edge) => geometryDependencyGraph.nodeById.get(edge.sourceId)?.type !== "parameter");
+    return { node, inputs: dependencies, parameters, outputs };
+  }, [geometryDependencyGraph, geometryInspectorSelectedDependencyNodeId]);
+  const geometryInspectorDependencyImpact = useMemo(() => {
+    const nodeId = geometryInspectorSelectedDependencyNodeId;
+    if (!nodeId) {
+      return {
+        nodes: [] as GeometryDependencyNode[],
+        knownCostMs: 0,
+        unknownCostCount: 0,
+      };
+    }
+    const dependencyGraph = createConstructionGraph(
+      geometryDependencyGraph.nodes,
+      geometryDependencyGraph.edges.filter((edge) => edge.relation !== "contains")
+    );
+    const affectedIds = getAffectedConstructionGraphNodeIds(dependencyGraph, [nodeId]);
+    const nodes = affectedIds
+      .map((id) => geometryDependencyGraph.nodeById.get(id) ?? null)
+      .filter((node): node is GeometryDependencyNode => !!node && visibleGeometryImpactNode(node));
+    let knownCostMs = 0;
+    let unknownCostCount = 0;
+    for (const node of nodes) {
+      if (typeof node.recomputeMs === "number" && Number.isFinite(node.recomputeMs)) {
+        knownCostMs += node.recomputeMs;
+      } else {
+        unknownCostCount += 1;
+      }
+    }
+    return { nodes, knownCostMs, unknownCostCount };
   }, [geometryDependencyGraph, geometryInspectorSelectedDependencyNodeId]);
   const geometryConstructionDependencyTree = useMemo(() => {
     const visibleKinds = new Set<GeometryDependencyNodeKind>([
@@ -20311,6 +20351,7 @@ const App: React.FC = () => {
       selected: null as string | null,
       selectedId: null as string | null,
       inputs: [] as Row[],
+      parameters: [] as Row[],
       derived: [] as Row[],
       analysis: [] as Row[],
     };
@@ -20326,9 +20367,10 @@ const App: React.FC = () => {
             : `object:${geometrySelectedObject.id}`;
       const registry = GEOMETRY_OBJECT_REGISTRY[geometrySelectedObject.type];
       const inputs: Row[] = [{ id: nodeId("center"), label: "Center Point", kind: "point" }];
+      const parameters: Row[] = [];
       for (const param of registry?.params ?? []) {
         if (param.id.toLowerCase().includes("segment") || param.id === "openEnded") continue;
-        inputs.push({ id: nodeId(param.id), label: param.label, kind: "parameter" });
+        parameters.push({ id: nodeId(param.id), label: param.label, kind: "parameter" });
       }
       const resolved = resolveGeometrySceneMeshById(geometrySelectedObject.id);
       const metrics = resolved ? computeTriangleMeshGeometricMetrics(resolved.mesh) : null;
@@ -20362,6 +20404,7 @@ const App: React.FC = () => {
         selected: geometrySelectedObject.name,
         selectedId: `object:${geometrySelectedObject.id}`,
         inputs,
+        parameters,
         derived: [
           { id: nodeId("bounding-box"), label: "Bounding Box", kind: "line" },
           { id: nodeId("principal-axes"), label: "Principal Axes", kind: "line" },
@@ -35419,6 +35462,22 @@ case "mobius":
       // ignore
     }
   }, [workbookSessionPayloadWithWorkspace, workbookSessionHashWithWorkspace]);
+
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    const flushAutosave = () => commitWorkbookAutosave();
+    const flushWhenHidden = () => {
+      if (document.visibilityState === "hidden") commitWorkbookAutosave();
+    };
+    window.addEventListener("pagehide", flushAutosave);
+    window.addEventListener("beforeunload", flushAutosave);
+    document.addEventListener("visibilitychange", flushWhenHidden);
+    return () => {
+      window.removeEventListener("pagehide", flushAutosave);
+      window.removeEventListener("beforeunload", flushAutosave);
+      document.removeEventListener("visibilitychange", flushWhenHidden);
+    };
+  }, [commitWorkbookAutosave]);
 
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
@@ -62070,10 +62129,10 @@ case "mobius":
                           <>
                             <strong style={{ color: "#0f172a" }}>{geometryDependencyOverlayCard.selected}</strong>
                             <span style={{ color: "#475569" }}>
-                              Inputs: {geometryDependencyOverlayCard.inputs.length} · Derived: {geometryDependencyOverlayCard.derived.length} · Analysis: {geometryDependencyOverlayCard.analysis.length}
+                              Inputs: {geometryDependencyOverlayCard.inputs.length} · Parameters: {geometryDependencyOverlayCard.parameters.length} · Derived: {geometryDependencyOverlayCard.derived.length} · Analysis: {geometryDependencyOverlayCard.analysis.length}
                             </span>
                             <span style={{ color: "#475569" }}>
-                              Total: {geometryDependencyOverlayCard.inputs.length + geometryDependencyOverlayCard.derived.length + geometryDependencyOverlayCard.analysis.length}
+                              Total: {geometryDependencyOverlayCard.inputs.length + geometryDependencyOverlayCard.parameters.length + geometryDependencyOverlayCard.derived.length + geometryDependencyOverlayCard.analysis.length}
                             </span>
                           </>
                         ) : (
@@ -62112,7 +62171,7 @@ case "mobius":
                                   onClick={() => {
                                     setGeometryDependencyOverlayView("list");
                                     setGeometryDependencyOverlayChainMode(
-                                      geometryDependencyOverlayLineageTarget.group === "Inputs" ? "direct" : "full"
+                                      geometryDependencyOverlayLineageTarget.group === "Inputs" || geometryDependencyOverlayLineageTarget.group === "Parameters" ? "direct" : "full"
                                     );
                                     setGeometryDependencyOverlayExpandedGroups((previous) => {
                                       const next = new Set(previous);
@@ -62142,6 +62201,8 @@ case "mobius":
                             <span style={{ color: "#475569", fontSize: 9.5, lineHeight: 1.35 }}>
                               {geometryDependencyOverlayLineageTarget.group === "Inputs"
                                 ? `${geometryDependencyOverlayLineageTarget.label} is an input to ${geometryDependencyOverlayCard.selected}.`
+                                : geometryDependencyOverlayLineageTarget.group === "Parameters"
+                                  ? `${geometryDependencyOverlayLineageTarget.label} is a parameter of ${geometryDependencyOverlayCard.selected}.`
                                 : `${geometryDependencyOverlayLineageTarget.label} derived from ${geometryDependencyOverlayCard.selected}, derived from Center Point + Parameters.`}
                             </span>
                           )}
@@ -62168,8 +62229,10 @@ case "mobius":
                         </label>
                       </div>
                       {geometryDependencyOverlayCard.selected && geometryDependencyOverlayView === "graph" && (() => {
-                        type GraphRow = { id: string | null; label: string; kind?: string; group: "Inputs" | "Derived Geometry" | "Analysis"; aggregate?: boolean };
+                        type GraphRow = { id: string | null; label: string; kind?: string; group: "Inputs" | "Parameters" | "Derived Geometry" | "Analysis"; aggregate?: boolean };
                         const inputs: GraphRow[] = geometryDependencyOverlayCard.inputs.map((row) => ({ ...row, group: "Inputs" }));
+                        const parameters: GraphRow[] = geometryDependencyOverlayCard.parameters.map((row) => ({ ...row, group: "Parameters" }));
+                        const leftRows = [...inputs, ...parameters];
                         const outputs: GraphRow[] = geometryDependencyOverlayChainMode === "full"
                           ? [
                               ...geometryDependencyOverlayCard.derived.map((row) => ({ ...row, group: "Derived Geometry" as const })),
@@ -62185,14 +62248,15 @@ case "mobius":
                             ]
                           : [];
                         const rowHeight = 31;
-                        const height = Math.max(190, Math.max(inputs.length, outputs.length) * rowHeight + 34);
+                        const height = Math.max(190, Math.max(leftRows.length, outputs.length) * rowHeight + 34);
                         const objectY = height / 2 - 43;
                         const activeNodeId = geometryHoveredDependencyNodeId;
                         const activeInput = inputs.find((row) => row.id === activeNodeId) ?? null;
+                        const activeParameter = parameters.find((row) => row.id === activeNodeId) ?? null;
                         const activeOutput = outputs.find((row) => row.id === activeNodeId) ?? null;
                         const showAllOutputs =
                           geometryDependencyOverlayDirection === "affects" &&
-                          (activeNodeId === geometryDependencyOverlayCard.selectedId || !!activeInput);
+                          (activeNodeId === geometryDependencyOverlayCard.selectedId || !!activeInput || !!activeParameter);
                         const renderGraphNode = (row: GraphRow, x: number, y: number) => {
                           const meta = geometryDependencyOverlayTypeMeta(row.kind ?? (row.group === "Analysis" ? "analysis" : undefined));
                           const active = row.id === activeNodeId;
@@ -62276,11 +62340,11 @@ case "mobius":
                                   <path d="M 0 0 L 6 3 L 0 6 z" fill="#f59e0b" />
                                 </marker>
                               </defs>
-                              {inputs.map((row, index) => {
+                              {leftRows.map((row, index) => {
                                 const y = 12 + index * rowHeight;
-                                const active = row.id === activeInput?.id;
+                                const active = row.id === activeInput?.id || row.id === activeParameter?.id;
                                 return (
-                                  <React.Fragment key={`dependency-input-${row.label}`}>
+                                  <React.Fragment key={`dependency-left-${row.group}-${row.label}`}>
                                     {active && (
                                       <line
                                         data-testid="geometry-dependency-hover-connector"
@@ -62335,9 +62399,10 @@ case "mobius":
                                     : geometryDependencyOverlayCard.selected}
                                 </text>
                                 <text x="180" y={objectY + 33} textAnchor="middle" fill="#1e3a8a" fontSize="8" fontWeight="700">SceneObject</text>
-                                <text x="134" y={objectY + 50} fill="#475569" fontSize="7.5" fontWeight="700">Inputs: {geometryDependencyOverlayCard.inputs.length}</text>
-                                <text x="134" y={objectY + 63} fill="#475569" fontSize="7.5" fontWeight="700">Derived: {geometryDependencyOverlayCard.derived.length}</text>
-                                <text x="134" y={objectY + 76} fill="#475569" fontSize="7.5" fontWeight="700">Analysis: {geometryDependencyOverlayCard.analysis.length}</text>
+                                <text x="134" y={objectY + 48} fill="#475569" fontSize="7.5" fontWeight="700">Inputs: {geometryDependencyOverlayCard.inputs.length}</text>
+                                <text x="134" y={objectY + 60} fill="#475569" fontSize="7.5" fontWeight="700">Parameters: {geometryDependencyOverlayCard.parameters.length}</text>
+                                <text x="134" y={objectY + 72} fill="#475569" fontSize="7.5" fontWeight="700">Derived: {geometryDependencyOverlayCard.derived.length}</text>
+                                <text x="134" y={objectY + 84} fill="#475569" fontSize="7.5" fontWeight="700">Analysis: {geometryDependencyOverlayCard.analysis.length}</text>
                               </g>
                             </svg>
                           </div>
@@ -62346,9 +62411,10 @@ case "mobius":
                       {geometryDependencyOverlayCard.selected && geometryDependencyOverlayView === "list" &&
                         [
                           ["Inputs", geometryDependencyOverlayCard.inputs],
+                          ["Parameters", geometryDependencyOverlayCard.parameters],
                           ["Derived Geometry", geometryDependencyOverlayCard.derived],
                           ["Analysis", geometryDependencyOverlayCard.analysis],
-                        ].filter(([label]) => geometryDependencyOverlayChainMode === "full" || label === "Inputs").map(([label, rows]) => {
+                        ].filter(([label]) => geometryDependencyOverlayChainMode === "full" || label === "Inputs" || label === "Parameters").map(([label, rows]) => {
                           const expanded = geometryDependencyOverlayExpandedGroups.has(label as string);
                           return (
                           <div key={`dependency-overlay-${label}`} style={{ display: "grid", gap: 3 }}>
@@ -62393,7 +62459,7 @@ case "mobius":
                                         setGeometryDependencyOverlayLineageTarget({
                                           id: row.id,
                                           label: row.label,
-                                          group: label as "Inputs" | "Derived Geometry" | "Analysis",
+                                          group: label as "Inputs" | "Parameters" | "Derived Geometry" | "Analysis",
                                         });
                                         if (row.id) handleSelectGeometryDependencyNode(row.id);
                                       }}
@@ -63054,7 +63120,7 @@ case "mobius":
                                   </span>
                                 </div>
                                 <div>
-                                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Inputs</div>
+                                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Depends On</div>
                                   {geometryInspectorDependencyDetails.inputs.length ? (
                                     <div style={{ display: "grid", gap: 3 }}>
                                       {geometryInspectorDependencyDetails.inputs.map((edge) => (
@@ -63072,7 +63138,25 @@ case "mobius":
                                   )}
                                 </div>
                                 <div>
-                                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Outputs</div>
+                                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Parameters</div>
+                                  {geometryInspectorDependencyDetails.parameters.length ? (
+                                    <div style={{ display: "grid", gap: 3 }}>
+                                      {geometryInspectorDependencyDetails.parameters.map((edge) => (
+                                        <div
+                                          key={`dep-parameter-${edge.sourceId}-${edge.targetId}-${edge.relation}`}
+                                          style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center", color: "#475467" }}
+                                        >
+                                          <span>{edge.relation}:</span>
+                                          {renderGeometryDependencyNodeToken(edge.sourceId, `dep-parameter-token-${edge.sourceId}`)}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div style={{ color: "#64748b" }}>None</div>
+                                  )}
+                                </div>
+                                <div>
+                                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Used By</div>
                                   {geometryInspectorDependencyDetails.outputs.length ? (
                                     <div style={{ display: "grid", gap: 3 }}>
                                       {geometryInspectorDependencyDetails.outputs.map((edge) => (
@@ -63082,12 +63166,106 @@ case "mobius":
                                         >
                                           <span>{edge.relation}:</span>
                                           {renderGeometryDependencyNodeToken(edge.targetId, `dep-output-token-${edge.targetId}`)}
+                                          <span style={{ marginLeft: "auto", color: "#64748b", fontFamily: "monospace" }}>
+                                            {formatGeometryRecomputeCost(geometryDependencyGraph.nodeById.get(edge.targetId)?.recomputeMs)}
+                                          </span>
                                         </div>
                                       ))}
                                     </div>
                                   ) : (
                                     <div style={{ color: "#64748b" }}>None</div>
                                   )}
+                                </div>
+                                <div
+                                  style={{
+                                    border: "1px solid #bbf7d0",
+                                    borderRadius: 8,
+                                    padding: "7px 8px",
+                                    background: "#f7fff9",
+                                    display: "grid",
+                                    gap: 6,
+                                  }}
+                                >
+                                  <div style={{ fontWeight: 700 }}>Dependency Impact</div>
+                                  <div style={{ color: "#475569" }}>
+                                    Editing this node will recompute {geometryInspectorDependencyImpact.nodes.length} downstream node
+                                    {geometryInspectorDependencyImpact.nodes.length === 1 ? "" : "s"}.
+                                  </div>
+                                  {geometryInspectorDependencyImpact.nodes.length ? (
+                                    <div style={{ display: "grid", gap: 3 }}>
+                                      {geometryInspectorDependencyImpact.nodes.slice(0, 12).map((node) => (
+                                        <div
+                                          key={`dep-impact-${node.id}`}
+                                          style={{
+                                            display: "grid",
+                                            gridTemplateColumns: "minmax(0, 1fr) auto",
+                                            gap: 8,
+                                            alignItems: "center",
+                                            color: "#475467",
+                                          }}
+                                        >
+                                          {renderGeometryDependencyNodeToken(node.id, `dep-impact-token-${node.id}`)}
+                                          <span style={{ color: "#166534", fontFamily: "monospace", fontWeight: 800 }}>
+                                            {formatGeometryRecomputeCost(node.recomputeMs)}
+                                          </span>
+                                        </div>
+                                      ))}
+                                      {geometryInspectorDependencyImpact.nodes.length > 12 && (
+                                        <div style={{ color: "#64748b" }}>
+                                          +{geometryInspectorDependencyImpact.nodes.length - 12} more downstream nodes
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div style={{ color: "#64748b" }}>No downstream consumers.</div>
+                                  )}
+                                  <div style={{ fontWeight: 800, color: "#166534" }}>
+                                    Total downstream cost:{" "}
+                                    {geometryInspectorDependencyImpact.knownCostMs > 0 || !geometryInspectorDependencyImpact.unknownCostCount
+                                      ? formatGeometryRecomputeCost(geometryInspectorDependencyImpact.knownCostMs)
+                                      : "pending"}
+                                    {geometryInspectorDependencyImpact.unknownCostCount
+                                      ? ` (${geometryInspectorDependencyImpact.unknownCostCount} pending)`
+                                      : ""}
+                                  </div>
+                                </div>
+                                <div
+                                  style={{
+                                    border: "1px solid #e2e8f0",
+                                    borderRadius: 8,
+                                    padding: "7px 8px",
+                                    background: "#f8fafc",
+                                    display: "grid",
+                                    gap: 6,
+                                  }}
+                                >
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                    <div style={{ fontWeight: 700 }}>Dependency History</div>
+                                    <span
+                                      style={{
+                                        fontSize: 10,
+                                        fontWeight: 800,
+                                        color: "#92400e",
+                                        border: "1px solid #fcd34d",
+                                        borderRadius: 999,
+                                        background: "#fffbeb",
+                                        padding: "1px 7px",
+                                      }}
+                                    >
+                                      Not implemented yet
+                                    </span>
+                                  </div>
+                                  <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "3px 10px", color: "#475569" }}>
+                                    <span style={{ fontWeight: 800 }}>Created</span>
+                                    <span>not tracked yet</span>
+                                    <span style={{ fontWeight: 800 }}>Recomputed</span>
+                                    <span>not tracked yet</span>
+                                    <span style={{ fontWeight: 800 }}>Update count</span>
+                                    <span>not tracked yet</span>
+                                  </div>
+                                  <div style={{ color: "#64748b" }}>
+                                    Planned: per-node creation time, recompute timestamps, and total update count for procedural-scene debugging.
+                                  </div>
                                 </div>
                               </>
                             ) : (
@@ -63397,7 +63575,12 @@ case "mobius":
                                 </div>
                                 <div style={{ display: "grid", gap: 3 }}>
                                   <span style={{ color: "#475569", fontWeight: 800 }}>Dependencies</span>
-                                  <span>{geometryDependencyOverlayCard.inputs.length} direct inputs define {geometrySelectedObject.name}.</span>
+                                  <span>
+                                    {geometryDependencyOverlayCard.inputs.length} direct input
+                                    {geometryDependencyOverlayCard.inputs.length === 1 ? "" : "s"} and{" "}
+                                    {geometryDependencyOverlayCard.parameters.length} parameter
+                                    {geometryDependencyOverlayCard.parameters.length === 1 ? "" : "s"} define {geometrySelectedObject.name}.
+                                  </span>
                                 </div>
                                 <div style={{ display: "grid", gap: 3 }}>
                                   <span style={{ color: "#475569", fontWeight: 800 }}>Dependents</span>

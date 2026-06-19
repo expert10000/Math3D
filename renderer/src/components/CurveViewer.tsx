@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { installWebGLContextLogger, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
+import { installWebGLContextLogger, isNoWebGLMode, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
+import { NoWebGLPanel } from "./NoWebGLPanel";
 
 export type CurveViewerVec3 = { x: number; y: number; z: number };
 
@@ -59,7 +60,12 @@ const disposeSceneObjects = (root: THREE.Object3D) => {
   });
 };
 
-export const CurveViewer: React.FC<CurveViewerProps> = ({
+export const CurveViewer: React.FC<CurveViewerProps> = (props) => {
+  if (isNoWebGLMode()) {
+    return <NoWebGLPanel title="3D curve viewer paused" />;
+  }
+
+  const {
   samples,
   dimension,
   closed = false,
@@ -70,7 +76,7 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
   showBinormal = true,
   frameScale = 0.5,
   resetToken = 0,
-}) => {
+  } = props;
   const hostRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {

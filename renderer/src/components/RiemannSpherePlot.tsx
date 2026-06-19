@@ -3,7 +3,8 @@ import React, { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { sphereToStereographic } from "../math/riemannSphere";
-import { installWebGLContextLogger, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
+import { installWebGLContextLogger, isNoWebGLMode, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
+import { NoWebGLPanel } from "./NoWebGLPanel";
 
 export type SphereLine = {
   points: { x: number; y: number; z: number }[];
@@ -67,13 +68,18 @@ const clearGroup = (group: THREE.Group | null) => {
   });
 };
 
-const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = ({
+const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = (props) => {
+  if (isNoWebGLMode()) {
+    return <NoWebGLPanel title="Riemann sphere viewer paused" />;
+  }
+
+  const {
   lines,
   points,
   guideSpheres,
   sphereSurfaceColoring,
   style,
-}) => {
+  } = props;
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);

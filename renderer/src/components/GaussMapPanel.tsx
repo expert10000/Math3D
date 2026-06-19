@@ -6,7 +6,8 @@ import type { GaussColorMode } from "./gaussMapUtils";
 import type { GaussCapSelection, SelectionMask } from "../math/selection/selectionModel";
 import type { SurfaceSample } from "../math/sampling/surfaceSampling";
 import { computeGaussDensityGrid } from "../math/selection/gaussDensity";
-import { installWebGLContextLogger, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
+import { installWebGLContextLogger, isNoWebGLMode, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
+import { NoWebGLPanel } from "./NoWebGLPanel";
 
 type GaussMapPanelProps = {
   samples: SurfaceSample[];
@@ -139,7 +140,12 @@ const resetButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
+const GaussMapPanel: React.FC<GaussMapPanelProps> = (props) => {
+  if (isNoWebGLMode()) {
+    return <NoWebGLPanel title="Gauss map viewer paused" />;
+  }
+
+  const {
   samples,
   palette,
   colorMode,
@@ -152,7 +158,7 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
   onGaussSelection,
   densityNormals = null,
   densitySelectionIndices = null,
-}) => {
+  } = props;
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);

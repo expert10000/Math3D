@@ -35,6 +35,8 @@ import {
   type ReferencePlaneGridSettings,
 } from "@math3d/renderer-web";
 import { installWebGLContextLogger, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
+import { isNoWebGLMode } from "./graphicsMode";
+import { NoWebGLPanel } from "./NoWebGLPanel";
 
 export type ColorMode = CoreColorMode;
 
@@ -1538,6 +1540,10 @@ type PrincipalField = {
 /* ---------- main viewer ---------- */
 
 export const SurfaceViewer: React.FC<Props> = (props) => {
+  if (isNoWebGLMode()) {
+    return <NoWebGLPanel title="3D surface viewer paused" />;
+  }
+
   const {
     surfaceId,
     graphExpr,
@@ -1942,6 +1948,11 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const onCameraTourEventRef = useRef<Props["onCameraTourEvent"] | undefined>(undefined);
   const onPerformanceSnapshotRef = useRef<Props["onPerformanceSnapshot"] | undefined>(undefined);
   const onMeshInteractionStateChangeRef = useRef<Props["onMeshInteractionStateChange"] | undefined>(undefined);
+  const onSampleSetRef = useRef<Props["onSampleSet"] | undefined>(undefined);
+  const interruptCameraTourRef = useRef<() => void>(() => undefined);
+  const beginMeshInteractionRef = useRef<() => void>(() => undefined);
+  const endMeshInteractionRef = useRef<() => void>(() => undefined);
+  const stopCameraTourRef = useRef<(reason: "stopped" | "interrupted", notify?: boolean) => void>(() => undefined);
   const lastMeshBuildMsRef = useRef<number | null>(lastMeshBuildMs);
   const perfFrameRef = useRef<{ lastFrameAt: number; fps: number; frameTimeMs: number; lastEmitAt: number }>({
     lastFrameAt: 0,
@@ -2047,6 +2058,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
       onMeshInteractionStateChangeRef.current = onMeshInteractionStateChange;
     }, [onMeshInteractionStateChange]);
     useEffect(() => {
+      onSampleSetRef.current = onSampleSet;
+    }, [onSampleSet]);
+    useEffect(() => {
       lastMeshBuildMsRef.current = Number.isFinite(lastMeshBuildMs) ? Number(lastMeshBuildMs) : null;
     }, [lastMeshBuildMs]);
 
@@ -2073,6 +2087,18 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   );
   const interruptCameraTour = useCallback(() => {
     stopCameraTour("interrupted");
+  }, [stopCameraTour]);
+  useEffect(() => {
+    interruptCameraTourRef.current = interruptCameraTour;
+  }, [interruptCameraTour]);
+  useEffect(() => {
+    beginMeshInteractionRef.current = beginMeshInteraction;
+  }, [beginMeshInteraction]);
+  useEffect(() => {
+    endMeshInteractionRef.current = endMeshInteraction;
+  }, [endMeshInteraction]);
+  useEffect(() => {
+    stopCameraTourRef.current = stopCameraTour;
   }, [stopCameraTour]);
 
   useEffect(() => {
@@ -3774,11 +3800,11 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       emitCameraSync();
     }
     const handleControlsStart = () => {
-      interruptCameraTour();
-      beginMeshInteraction();
+      interruptCameraTourRef.current();
+      beginMeshInteractionRef.current();
     };
     const handleControlsEnd = () => {
-      endMeshInteraction();
+      endMeshInteractionRef.current();
     };
     controls.addEventListener("start", handleControlsStart);
     controls.addEventListener("end", handleControlsEnd);
@@ -4519,7 +4545,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     }
 
     sampleSetRef.current = nextSampleSet;
-    onSampleSet?.(nextSampleSet);
+    onSampleSetRef.current?.(nextSampleSet);
 
     const box = new THREE.Box3().setFromObject(surfaceObj);
     const center = new THREE.Vector3();
@@ -5445,7 +5471,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     return () => {
       forceReframeRef.current = null;
-      stopCameraTour("stopped", false);
+      stopCameraTourRef.current("stopped", false);
       cancelAnimationFrame(frameId);
       if (gizmoOverlayRestoreFrameRef.current != null) {
         cancelAnimationFrame(gizmoOverlayRestoreFrameRef.current);
@@ -5605,7 +5631,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       applyProbeFromDomainRef.current = null;
 
       sampleSetRef.current = null;
-      onSampleSet?.(null);
+      onSampleSetRef.current?.(null);
       sceneRef.current = null;
 
       surfaceObjRef.current = null;
@@ -5646,10 +5672,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     graphDomain?.ySpan,
     isCameraLeader,
     onCameraSync,
-    interruptCameraTour,
-    beginMeshInteraction,
-    endMeshInteraction,
-    stopCameraTour,
   ]);
 
   useEffect(() => {
@@ -6089,7 +6111,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       nextSampleSet = { samples: [], meshData };
     }
     sampleSetRef.current = nextSampleSet;
-    onSampleSet?.(nextSampleSet);
+    onSampleSetRef.current?.(nextSampleSet);
 
     const box = new THREE.Box3().setFromObject(activeSurfaceObj);
     const center = new THREE.Vector3();
@@ -6159,7 +6181,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     includeSamplesUV,
     sampleMaxPoints,
     showBoundingBox,
-    onSampleSet,
     gizmoEnabled,
     gizmoMeshKey,
   ]);

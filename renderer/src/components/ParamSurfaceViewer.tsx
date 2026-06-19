@@ -69,7 +69,8 @@ import {
   type ReferencePlaneGridSettings,
 } from "@math3d/renderer-web";
 import type { ParamSurfaceId as CoreParamSurfaceId } from "@math3d/core";
-import { installWebGLContextLogger, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
+import { installWebGLContextLogger, isNoWebGLMode, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
+import { NoWebGLPanel } from "./NoWebGLPanel";
 
 type ParamPreset = {
   id: string;
@@ -1431,7 +1432,12 @@ function clearGroup(group: THREE.Group) {
   });
 }
 
-export const ParamSurfaceViewer: React.FC<Props> = ({
+export const ParamSurfaceViewer: React.FC<Props> = (props) => {
+  if (isNoWebGLMode()) {
+    return <NoWebGLPanel title="3D parametric viewer paused" />;
+  }
+
+  const {
   surfaceId,
   customX,
   customY,
@@ -1580,7 +1586,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   onSetCustomY,
   onSetCustomZ,
   onParamGeodesicState,
-}) => {
+  } = props;
   const surfaceParamResolution = surfaceId === "torus" ? Math.min(paramResolution, 40) : paramResolution;
   const planeGridShowGrid = planeGridSettings.showGrid;
   const planeGridShowMinor = planeGridSettings.showMinorGrid;
