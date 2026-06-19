@@ -15,47 +15,60 @@ export const clickFirstVisible = async (
 ): Promise<void> => {
   const timeoutMs = options.timeoutMs ?? DEFAULT_CLICK_TIMEOUT_MS;
   const retries = Math.max(0, options.retries ?? DEFAULT_CLICK_RETRIES);
-  const count = await locator.count();
   const errors: string[] = [];
+  const deadline = Date.now() + timeoutMs;
 
-  for (let i = 0; i < count; i++) {
-    const candidate = locator.nth(i);
-    if (!(await candidate.isVisible())) continue;
+  while (Date.now() <= deadline) {
+    const count = await locator.count().catch((error) => {
+      errors.push(`count: ${toErrorMessage(error)}`);
+      return 0;
+    });
 
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      await candidate.scrollIntoViewIfNeeded({ timeout: timeoutMs }).catch(() => undefined);
-      try {
-        await candidate.click({ timeout: timeoutMs });
-        return;
-      } catch (error) {
-        errors.push(`index ${i} click attempt ${attempt + 1}: ${toErrorMessage(error)}`);
+    for (let i = 0; i < count; i++) {
+      const candidate = locator.nth(i);
+      const visible = await candidate.isVisible().catch((error) => {
+        errors.push(`index ${i} visible check: ${toErrorMessage(error)}`);
+        return false;
+      });
+      if (!visible) continue;
+
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        await candidate.scrollIntoViewIfNeeded({ timeout: timeoutMs }).catch(() => undefined);
+        try {
+          await candidate.click({ timeout: timeoutMs });
+          return;
+        } catch (error) {
+          errors.push(`index ${i} click attempt ${attempt + 1}: ${toErrorMessage(error)}`);
+        }
+
+        try {
+          await candidate.click({ timeout: timeoutMs, force: true });
+          return;
+        } catch (error) {
+          errors.push(`index ${i} force-click attempt ${attempt + 1}: ${toErrorMessage(error)}`);
+        }
+
+        try {
+          await candidate.dispatchEvent("click", undefined, { timeout: timeoutMs });
+          return;
+        } catch (error) {
+          errors.push(`index ${i} dispatch-click attempt ${attempt + 1}: ${toErrorMessage(error)}`);
+        }
+
+        try {
+          await candidate.evaluate((node) => {
+            if (node instanceof HTMLElement) node.click();
+          }, undefined, { timeout: timeoutMs });
+          return;
+        } catch (error) {
+          errors.push(`index ${i} dom-click attempt ${attempt + 1}: ${toErrorMessage(error)}`);
+        }
+
+        await locator.page().waitForTimeout(80 * (attempt + 1));
       }
-
-      try {
-        await candidate.click({ timeout: timeoutMs, force: true });
-        return;
-      } catch (error) {
-        errors.push(`index ${i} force-click attempt ${attempt + 1}: ${toErrorMessage(error)}`);
-      }
-
-      try {
-        await candidate.dispatchEvent("click", undefined, { timeout: timeoutMs });
-        return;
-      } catch (error) {
-        errors.push(`index ${i} dispatch-click attempt ${attempt + 1}: ${toErrorMessage(error)}`);
-      }
-
-      try {
-        await candidate.evaluate((node) => {
-          if (node instanceof HTMLElement) node.click();
-        }, undefined, { timeout: timeoutMs });
-        return;
-      } catch (error) {
-        errors.push(`index ${i} dom-click attempt ${attempt + 1}: ${toErrorMessage(error)}`);
-      }
-
-      await locator.page().waitForTimeout(80 * (attempt + 1));
     }
+
+    await locator.page().waitForTimeout(100);
   }
 
   const detail = errors.length ? ` (${errors[errors.length - 1]})` : "";
