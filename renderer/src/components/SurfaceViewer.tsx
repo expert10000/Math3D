@@ -34,8 +34,13 @@ import {
   DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
   type ReferencePlaneGridSettings,
 } from "@math3d/renderer-web";
-import { installWebGLContextLogger, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
-import { isNoWebGLMode } from "./graphicsMode";
+import {
+  installWebGLContextLogger,
+  isNoWebGLMode,
+  isVmSafeGraphicsMode,
+  vmSafePixelRatio,
+  vmSafeRendererParams,
+} from "./graphicsMode";
 import { NoWebGLPanel } from "./NoWebGLPanel";
 
 export type ColorMode = CoreColorMode;
@@ -160,6 +165,7 @@ const DEG_TO_RAD = Math.PI / 180;
 const RAD_TO_DEG = 180 / Math.PI;
 const DEFAULT_MESH_PREVIEW_TRIANGLE_TARGET = 100_000;
 const IDLE_RENDER_MIN_FRAME_MS = 1000 / 2;
+const VM_SAFE_IDLE_RENDER_MIN_FRAME_MS = 5000;
 
 type SurfaceMeshLodBuffers = {
   positions: Float32Array;
@@ -5447,7 +5453,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         meshInteractionActiveRef.current ||
         cameraTourFrameRef.current != null ||
         zoomAnimRef.current != null;
-      if (!hasContinuousMotion && now - lastRenderedAtRef.current < IDLE_RENDER_MIN_FRAME_MS) {
+      const idleRenderMinFrameMs = isVmSafeGraphicsMode()
+        ? VM_SAFE_IDLE_RENDER_MIN_FRAME_MS
+        : IDLE_RENDER_MIN_FRAME_MS;
+      if (!hasContinuousMotion && now - lastRenderedAtRef.current < idleRenderMinFrameMs) {
         return;
       }
       if (hasContinuousMotion) {

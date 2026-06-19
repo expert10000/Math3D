@@ -50076,7 +50076,9 @@ case "mobius":
                             windowReframeToken={windowReframeToken}
                             reframePaddingFactor={surfacePreviewReframePaddingFactor}
                             onViewportDebug={handlePrimaryViewportDebug}
-                            onPerformanceSnapshot={handleSurfacePerformanceSnapshot}
+                            onPerformanceSnapshot={
+                              activeSurfaceRightPanelTab === "performance" ? handleSurfacePerformanceSnapshot : undefined
+                            }
                             lastMeshBuildMs={meshPerformanceLastBuildMs}
                             graphProbeXY={graphProbeXY}
                             graphProbeToken={graphProbeToken}
