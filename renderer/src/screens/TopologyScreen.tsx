@@ -2,6 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import * as THREE from "three";
 import { uiStyles as styles } from "../uiStyles";
 import {
+  disposeSceneResources,
+  disposeWebGLRenderer,
+  registerWebGLRenderer,
+} from "../viewer/threeResourceDisposal";
+import {
   addEdgeToDiagram,
   addVertexToDiagram,
   buildPlannedOperations,
@@ -1125,16 +1130,6 @@ const createDunceStageScene = (stageIndex: number): THREE.Object3D => {
   return root;
 };
 
-const disposeObject3D = (root: THREE.Object3D): void => {
-  root.traverse((child) => {
-    const geom = (child as { geometry?: THREE.BufferGeometry }).geometry;
-    if (geom) geom.dispose();
-    const mat = (child as { material?: THREE.Material | THREE.Material[] }).material;
-    if (Array.isArray(mat)) mat.forEach((entry) => entry.dispose());
-    else mat?.dispose();
-  });
-};
-
 const renderDunceStageThumbnail = (stageIndex: number): string => {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xf7f9fc);
@@ -1142,10 +1137,12 @@ const renderDunceStageThumbnail = (stageIndex: number): string => {
   const object = createDunceStageScene(stageIndex);
   scene.add(object);
   const camera = createDunceStageThumbnailCamera(stageIndex);
-  const renderer = new THREE.WebGLRenderer({
-    antialias: true,
-    preserveDrawingBuffer: true,
-  });
+  const renderer = registerWebGLRenderer(
+    new THREE.WebGLRenderer({
+      antialias: true,
+      preserveDrawingBuffer: true,
+    })
+  );
   renderer.setSize(DUNCE_STAGE_THUMBNAIL_WIDTH, DUNCE_STAGE_THUMBNAIL_HEIGHT, false);
   renderer.setPixelRatio(2);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1155,8 +1152,8 @@ const renderDunceStageThumbnail = (stageIndex: number): string => {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.render(scene, camera);
   const dataUrl = renderer.domElement.toDataURL("image/png");
-  disposeObject3D(object);
-  renderer.dispose();
+  disposeSceneResources(scene);
+  disposeWebGLRenderer(renderer);
   return dataUrl;
 };
 

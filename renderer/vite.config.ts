@@ -25,6 +25,10 @@ export default defineConfig({
   base: "./",        // 👈 IMPORTANT for Electron / file://
   plugins: [react()],
   build: {
+    // The workspace is loaded through React.lazy. Preloading every transitive
+    // dependency from index.html defeats that boundary and eagerly fetches
+    // inactive viewers before the shell has mounted.
+    modulePreload: false,
     chunkSizeWarningLimit: 1300,
     rollupOptions: {
       output: {
@@ -39,23 +43,44 @@ export default defineConfig({
           }
           if (mod.includes("/node_modules/d3/")) return "vendor-d3";
 
-          if (mod.includes("/src/components/VolumeViewer.tsx") || mod.includes("/src/scene/volume/")) {
+          // Keep lazy screen/viewer entry modules out of broad feature chunks.
+          // Their shared utilities can still be cached in the feature chunks,
+          // while the React/WebGL setup code is downloaded only when activated.
+          const lazyEntryChunks: Array<[string, string]> = [
+            ["/src/components/SurfaceViewer.tsx", "viewer-surface"],
+            ["/src/components/WorkbookPanel.tsx", "panel-workbook"],
+            ["/src/topology/TopologyRealization3DView.tsx", "viewer-topology-realization"],
+            ["/src/screens/MobiusScreen.tsx", "viewer-mobius"],
+            ["/src/screens/ChebyshevScreen.tsx", "viewer-chebyshev"],
+            ["/src/components/ParamSurfaceViewer.tsx", "viewer-param-surface"],
+            ["/src/components/VolumeViewer.tsx", "viewer-volume"],
+            ["/src/components/GeometryViewer.tsx", "viewer-geometry"],
+            ["/src/components/ConstructionLabPanel.tsx", "panel-construction-lab"],
+            ["/src/components/StereometryAnalyzerPanel.tsx", "panel-stereometry"],
+            ["/src/components/PlanePlot.tsx", "viewer-plane"],
+            ["/src/components/RiemannSpherePlot.tsx", "viewer-riemann-sphere"],
+            ["/src/components/GaussMapPanel.tsx", "viewer-gauss-map"],
+            ["/src/components/CurveViewer.tsx", "viewer-curve"],
+            ["/src/components/SceneDependencyGraph.tsx", "panel-scene-dependencies"],
+            ["/src/components/VolumeSliceHistogram.tsx", "panel-volume-histogram"],
+          ];
+          for (const [source, chunk] of lazyEntryChunks) {
+            if (mod.includes(source)) return chunk;
+          }
+
+          if (mod.includes("/src/scene/volume/")) {
             return "feature-volume";
           }
           if (mod.includes("/src/components/WorkbookPanel.tsx") || mod.includes("/src/workbook/")) {
             return "feature-workbook";
           }
           if (
-            mod.includes("/src/components/GeometryViewer.tsx") ||
-            mod.includes("/src/components/ConstructionLabPanel.tsx") ||
-            mod.includes("/src/components/StereometryAnalyzerPanel.tsx") ||
             mod.includes("/src/geometry/")
           ) {
             return "feature-geometry";
           }
           if (
             mod.includes("/src/components/SurfaceViewer.tsx") ||
-            mod.includes("/src/components/ParamSurfaceViewer.tsx") ||
             mod.includes("/src/math/")
           ) {
             return "feature-surfaces";
@@ -63,21 +88,15 @@ export default defineConfig({
           if (
             mod.includes("/src/components/") &&
             !mod.includes("/src/components/SurfaceViewer.tsx") &&
-            !mod.includes("/src/components/ParamSurfaceViewer.tsx") &&
-            !mod.includes("/src/components/VolumeViewer.tsx") &&
             !mod.includes("/src/components/WorkbookPanel.tsx") &&
-            !mod.includes("/src/components/GeometryViewer.tsx") &&
-            !mod.includes("/src/components/ConstructionLabPanel.tsx") &&
-            !mod.includes("/src/components/StereometryAnalyzerPanel.tsx")
+            !mod.includes("/src/components/ParamSurfaceViewer.tsx")
           ) {
             return "feature-ui";
           }
           if (mod.includes("/src/services/")) return "feature-services";
           if (mod.includes("/src/mesh/")) return "feature-mesh";
           if (
-            mod.includes("/src/d3/") ||
-            mod.includes("/src/screens/MobiusScreen.tsx") ||
-            mod.includes("/src/screens/ChebyshevScreen.tsx")
+            mod.includes("/src/d3/")
           ) {
             return "feature-complex";
           }

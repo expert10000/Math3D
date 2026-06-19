@@ -3,6 +3,12 @@ import React, { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { sphereToStereographic } from "../math/riemannSphere";
+import {
+  disposeObject3DResources,
+  disposeSceneResources,
+  disposeWebGLRenderer,
+  registerWebGLRenderer,
+} from "../viewer/threeResourceDisposal";
 
 export type SphereLine = {
   points: { x: number; y: number; z: number }[];
@@ -45,17 +51,7 @@ type RiemannSpherePlotProps = {
 const BASE_SPHERE_SEGMENTS = 48;
 const DEFAULT_POINT_SIZE = 0.045;
 
-const disposeObject3D = (obj: THREE.Object3D) => {
-  const anyObj = obj as any;
-  if (anyObj.geometry && typeof anyObj.geometry.dispose === "function") {
-    anyObj.geometry.dispose();
-  }
-  const mat = anyObj.material as THREE.Material | THREE.Material[] | undefined;
-  if (mat) {
-    if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-    else mat.dispose();
-  }
-};
+const disposeObject3D = (obj: THREE.Object3D) => disposeObject3DResources(obj);
 
 const clearGroup = (group: THREE.Group | null) => {
   if (!group) return;
@@ -101,7 +97,9 @@ const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = ({
     const mount = mountRef.current;
     if (!mount) return;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = registerWebGLRenderer(
+      new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    );
     renderer.setPixelRatio(window.devicePixelRatio || 1);
     mount.appendChild(renderer.domElement);
 
@@ -167,8 +165,8 @@ const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = ({
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
       observer.disconnect();
       controls.dispose();
-      scene.traverse(disposeObject3D);
-      renderer.dispose();
+      disposeSceneResources(scene);
+      disposeWebGLRenderer(renderer);
       if (renderer.domElement.parentElement) {
         renderer.domElement.parentElement.removeChild(renderer.domElement);
       }

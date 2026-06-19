@@ -24,6 +24,7 @@ apps/mobile/.expo/
 
 # Python
 .venv/
+.venv-worker/
 __pycache__/
 *.pyc
 

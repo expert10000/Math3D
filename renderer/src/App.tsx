@@ -18,69 +18,57 @@ import {
   type SceneDocumentScript,
 } from "@math3d/core";
 import { uiStyles as styles } from "./uiStyles";
-
-import MobiusScreen from "./screens/MobiusScreen";
-import { ChebyshevScreen } from "./screens/ChebyshevScreen";
-import TopologyScreen from "./screens/TopologyScreen";
 import {
-  TopologyRealization3DView,
+  bumpMemoryCounter,
+  setMemoryGauge,
+} from "./diagnostics/memoryDiagnostics";
+
+import {
   buildDiagramFromPolygonWord,
   buildNonOrientableGenusWord,
   buildOrientableGenusWord,
-  buildQuotientPipeline,
   classifyPolygonWord,
   formatPolygonWord,
   formatPolygonWordToken,
   parsePolygonWord,
-  type FundamentalDiagram,
   type PolygonWordEdge,
-} from "./topology";
+} from "./topology/polygonWord";
+import { buildQuotientPipeline } from "./topology/quotientBuilder";
+import type { FundamentalDiagram } from "./topology/types";
 
-import { PlanePlot, type PlanePlotHandle } from "./components/PlanePlot";
-import {
-  RiemannSpherePlot,
-  type SphereGuide as RiemannSphereGuide,
-  type SphereLine as RiemannSphereLine,
-  type SpherePoint as RiemannSpherePoint,
+import type { PlanePlotHandle } from "./components/PlanePlot";
+import type {
+  SphereGuide as RiemannSphereGuide,
+  SphereLine as RiemannSphereLine,
+  SpherePoint as RiemannSpherePoint,
 } from "./components/RiemannSpherePlot";
-import GaussMapPanel from "./components/GaussMapPanel";
 import { SelectionStatsPanel } from "./components/SelectionStatsPanel";
 import { DiskStatsPanel } from "./components/DiskStatsPanel";
-import { WorkbookPanel } from "./components/WorkbookPanel";
 
-import {
-  SurfaceViewer,
-  type SurfaceId,
-  type ColorMode,
-  type SurfacePerformanceSnapshot,
-  type OverlayLabelSet,
-  type OverlayPointSet,
-  type OverlayPolylineGroup,
-  type ProbeInfo,
-  type CameraTourCommand,
-  type CameraTourEvent,
-  type CameraTourMode,
-  type CameraTourCaptureFormat,
-  type MeshInteractionQualityMode,
-  type RenderQuality,
-  type SceneBackgroundMode,
-  type ViewportDebugSnapshot,
+import type {
+  SurfaceId,
+  ColorMode,
+  SurfacePerformanceSnapshot,
+  OverlayLabelSet,
+  OverlayPointSet,
+  OverlayPolylineGroup,
+  ProbeInfo,
+  CameraTourCommand,
+  CameraTourEvent,
+  CameraTourMode,
+  CameraTourCaptureFormat,
+  MeshInteractionQualityMode,
+  RenderQuality,
+  SceneBackgroundMode,
+  ViewportDebugSnapshot,
 } from "./components/SurfaceViewer";
-import { GeometryViewer } from "./components/GeometryViewer";
-import { StereometryAnalyzerPanel } from "./components/StereometryAnalyzerPanel";
-import {
-  ConstructionLabPanel,
-  type ConstructionLabSeed,
-  type ConstructionLabState,
-  type ConstructionWorkspaceTab,
+import type {
+  ConstructionLabSeed,
+  ConstructionLabState,
+  ConstructionWorkspaceTab,
 } from "./components/ConstructionLabPanel";
-import { VolumeViewer } from "./components/VolumeViewer";
-import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
-import OctaveLabPanel from "./features/octaveLab/OctaveLabPanel";
-import SageSymbolicPanel from "./features/sageLab/SageSymbolicPanel";
-import ComputeEngineManagerPanel from "./features/computeEngines/ComputeEngineManagerPanel";
 
-import { ParamSurfaceViewer, type ParamSurfaceId } from "./components/ParamSurfaceViewer";
+import type { ParamSurfaceId } from "./components/ParamSurfaceViewer";
 import { solidColorForPalette, type ColorPalette } from "./components/colorPalette";
 import {
   DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
@@ -255,8 +243,7 @@ import {
   solveContinuousParamGeodesic,
   type ParamGeodesicState,
 } from "./math/paramGeodesicContinuous";
-import { CurveViewer, type CurveViewerGlyph, type CurveViewerVec3 } from "./components/CurveViewer";
-import { SceneDependencyGraph } from "./components/SceneDependencyGraph";
+import type { CurveViewerGlyph, CurveViewerVec3 } from "./components/CurveViewer";
 import {
   arcLength as curveArcLength,
   curvature as curveCurvature,
@@ -428,6 +415,76 @@ import {
   parseWorkbookProject,
   type WorkbookBundleAssetMode,
 } from "./workbook/projectFormat";
+
+const lazyNamed = <T extends React.ComponentType<any>>(
+  loader: () => Promise<Record<string, unknown>>,
+  exportName: string
+) =>
+  React.lazy(async () => {
+    const module = await loader();
+    return { default: module[exportName] as T };
+  });
+
+const MobiusScreen = React.lazy(() => import("./screens/MobiusScreen"));
+const ChebyshevScreen = lazyNamed<React.ComponentType<any>>(
+  () => import("./screens/ChebyshevScreen"),
+  "ChebyshevScreen"
+);
+const TopologyScreen = React.lazy(() => import("./screens/TopologyScreen"));
+const TopologyRealization3DView = React.lazy(
+  () => import("./topology/TopologyRealization3DView")
+);
+const SurfaceViewer = lazyNamed<React.ComponentType<any>>(
+  () => import("./components/SurfaceViewer"),
+  "SurfaceViewer"
+);
+const WorkbookPanel = lazyNamed<React.ComponentType<any>>(
+  () => import("./components/WorkbookPanel"),
+  "WorkbookPanel"
+);
+const PlanePlot = lazyNamed<React.ComponentType<any>>(
+  () => import("./components/PlanePlot"),
+  "PlanePlot"
+);
+const RiemannSpherePlot = React.lazy(() => import("./components/RiemannSpherePlot"));
+const GaussMapPanel = React.lazy(() => import("./components/GaussMapPanel"));
+const GeometryViewer = lazyNamed<React.ComponentType<any>>(
+  () => import("./components/GeometryViewer"),
+  "GeometryViewer"
+);
+const StereometryAnalyzerPanel = lazyNamed<React.ComponentType<any>>(
+  () => import("./components/StereometryAnalyzerPanel"),
+  "StereometryAnalyzerPanel"
+);
+const ConstructionLabPanel = lazyNamed<React.ComponentType<any>>(
+  () => import("./components/ConstructionLabPanel"),
+  "ConstructionLabPanel"
+);
+const VolumeViewer = lazyNamed<React.ComponentType<any>>(
+  () => import("./components/VolumeViewer"),
+  "VolumeViewer"
+);
+const VolumeSliceHistogram = lazyNamed<React.ComponentType<any>>(
+  () => import("./components/VolumeSliceHistogram"),
+  "VolumeSliceHistogram"
+);
+const OctaveLabPanel = React.lazy(() => import("./features/octaveLab/OctaveLabPanel"));
+const SageSymbolicPanel = React.lazy(() => import("./features/sageLab/SageSymbolicPanel"));
+const ComputeEngineManagerPanel = React.lazy(
+  () => import("./features/computeEngines/ComputeEngineManagerPanel")
+);
+const ParamSurfaceViewer = lazyNamed<React.ComponentType<any>>(
+  () => import("./components/ParamSurfaceViewer"),
+  "ParamSurfaceViewer"
+);
+const CurveViewer = lazyNamed<React.ComponentType<any>>(
+  () => import("./components/CurveViewer"),
+  "CurveViewer"
+);
+const SceneDependencyGraph = lazyNamed<React.ComponentType<any>>(
+  () => import("./components/SceneDependencyGraph"),
+  "SceneDependencyGraph"
+);
 /* ---------------- App modes ---------------- */
 
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces" | "curves" | "topology" | "geometry";
@@ -1171,8 +1228,9 @@ type WorkbookStoredSession = {
   savedAt: number;
   payload: WorkbookReplayPayload;
 };
-type WorkbookAutosaveJournalEntry = WorkbookStoredSession & {
+type WorkbookAutosaveJournalEntry = {
   id: string;
+  savedAt: number;
   hash: string;
 };
 type WorkbookNamedSnapshot = WorkbookStoredSession & {
@@ -4046,6 +4104,72 @@ const cloneGeometryDatasetMeshObject = (obj: GeometryDatasetMeshObject): Geometr
 const cloneGeometrySceneObjectSnapshot = (
   obj: GeometryObject | GeometryDatasetMeshObject
 ): GeometryObject | GeometryDatasetMeshObject => ("mesh" in obj ? cloneGeometryDatasetMeshObject(obj) : cloneGeometryObject(obj));
+
+const historyMeshSamplesMatch = (a: SurfaceMeshData, b: SurfaceMeshData): boolean => {
+  if (a.positions.length !== b.positions.length || (a.indices?.length ?? 0) !== (b.indices?.length ?? 0)) {
+    return false;
+  }
+  const sampleMatches = (left: ArrayLike<number>, right: ArrayLike<number>) => {
+    const sampleCount = Math.min(24, left.length);
+    for (let i = 0; i < sampleCount; i++) {
+      if (left[i] !== right[i]) return false;
+    }
+    for (let i = Math.max(sampleCount, left.length - 24); i < left.length; i++) {
+      if (left[i] !== right[i]) return false;
+    }
+    return true;
+  };
+  return (
+    sampleMatches(a.positions, b.positions) &&
+    (!a.indices || !b.indices || sampleMatches(a.indices, b.indices))
+  );
+};
+
+// History entries are immutable. Reuse the previous immutable mesh snapshot
+// for transform/material edits, and clone only when sampled geometry changes.
+const cloneGeometrySceneObjectHistorySnapshot = (
+  obj: GeometryObject | GeometryDatasetMeshObject,
+  previous: GeometryObject | GeometryDatasetMeshObject | null
+): GeometryObject | GeometryDatasetMeshObject => {
+  if (!("mesh" in obj)) return cloneGeometryObject(obj);
+  const reuseMesh =
+    previous && "mesh" in previous && historyMeshSamplesMatch(previous.mesh, obj.mesh);
+  const mesh = reuseMesh ? previous.mesh : cloneSurfaceMeshData(obj.mesh);
+  bumpMemoryCounter(reuseMesh ? "history.meshSnapshotsReused" : "history.meshSnapshotsCloned");
+  return {
+    ...obj,
+    mesh,
+    transform: {
+      position: { ...obj.transform.position },
+      rotation: { ...obj.transform.rotation },
+      scale: { ...obj.transform.scale },
+    },
+    material: normalizeGeometryMaterial((obj as { material?: unknown })?.material),
+    promotion: cloneGeometryPromotionMetadata(obj.promotion),
+  };
+};
+
+const updateGeometryHistoryMemoryGauges = (
+  historyById: Record<string, GeometryObjectHistoryStep[]>
+) => {
+  const buffers = new Set<ArrayBuffer>();
+  let stepCount = 0;
+  for (const history of Object.values(historyById)) {
+    stepCount += history.length;
+    for (const step of history) {
+      if (!("mesh" in step.snapshot)) continue;
+      const mesh = step.snapshot.mesh;
+      for (const view of [mesh.positions, mesh.indices, mesh.normals, mesh.uvs]) {
+        if (view) buffers.add(view.buffer as ArrayBuffer);
+      }
+    }
+  }
+  let retainedBytes = 0;
+  for (const buffer of buffers) retainedBytes += buffer.byteLength;
+  setMemoryGauge("history.stepsRetained", stepCount);
+  setMemoryGauge("history.uniqueMeshBuffers", buffers.size);
+  setMemoryGauge("history.meshBytesRetained", retainedBytes);
+};
 
 const formatHistoryNumber = (value: number): string => {
   if (!Number.isFinite(value)) return "0";
@@ -7792,22 +7916,6 @@ const buildVectorFieldArrows = (opts: {
   return { lines, count: arrowCount };
 };
 
-const stableStringify = (value: unknown) => {
-  const seen = new WeakSet();
-  const walk = (val: any): any => {
-    if (val === null || typeof val !== "object") return val;
-    if (seen.has(val)) return "[Circular]";
-    seen.add(val);
-    if (Array.isArray(val)) return val.map(walk);
-    const out: Record<string, any> = {};
-    for (const key of Object.keys(val).sort()) {
-      out[key] = walk(val[key]);
-    }
-    return out;
-  };
-  return JSON.stringify(walk(value));
-};
-
 const hashString = (input: string) => {
   let hash = 2166136261;
   for (let i = 0; i < input.length; i++) {
@@ -7817,7 +7925,58 @@ const hashString = (input: string) => {
   return (hash >>> 0).toString(16);
 };
 
-const hashValue = (value: unknown) => hashString(stableStringify(value));
+/** Deterministic FNV-1a hashing without constructing a normalized object or JSON string. */
+const hashValue = (value: unknown) => {
+  let hash = 2166136261;
+  const seen = new WeakSet<object>();
+  const write = (input: string) => {
+    for (let i = 0; i < input.length; i += 1) {
+      hash ^= input.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+  };
+  const walk = (val: any): void => {
+    if (val === null) {
+      write("null;");
+      return;
+    }
+    const type = typeof val;
+    if (type !== "object") {
+      write(`${type}:${String(val)};`);
+      return;
+    }
+    if (seen.has(val)) {
+      write("circular;");
+      return;
+    }
+    seen.add(val);
+    if (ArrayBuffer.isView(val)) {
+      write(`${val.constructor?.name ?? "TypedArray"}[${val.length ?? val.byteLength}]:`);
+      if (typeof val.length === "number") {
+        for (let i = 0; i < val.length; i += 1) write(`${String(val[i])},`);
+      } else {
+        const bytes = new Uint8Array(val.buffer, val.byteOffset, val.byteLength);
+        for (let i = 0; i < bytes.length; i += 1) write(`${bytes[i]},`);
+      }
+      write(";");
+      return;
+    }
+    if (Array.isArray(val)) {
+      write("[");
+      val.forEach(walk);
+      write("]");
+      return;
+    }
+    write("{");
+    for (const key of Object.keys(val).sort()) {
+      write(`${key.length}:${key}=`);
+      walk(val[key]);
+    }
+    write("}");
+  };
+  walk(value);
+  return (hash >>> 0).toString(16);
+};
 
 const WORKBOOK_PARAM_CATALOG: WorkbookParamDef[] = [
   { id: "graphResolution", label: "Graph resolution", kind: "number", min: 20, max: 320, step: 1, defaultValue: 80 },
@@ -8061,6 +8220,20 @@ const App: React.FC = () => {
     [activeCurveDomain, activeCurveFormulas, activeCurvePreset?.dimension, activeCurvePreset?.id, activeCurvePreset?.kind, activeCurvePreset?.label]
   );
   const curveRenderState = useMemo(() => {
+    if (mode !== "curves") {
+      return {
+        curve: null as CoreAnyCurve | null,
+        source: "inactive",
+        errors: [] as string[],
+        samplePoints: [] as CurveViewerVec3[],
+        frameSamples: [] as CurveFrameSample[],
+        probe: null as CurveFrameSample | null,
+        probeT: NaN,
+        arcLength: NaN,
+        curvatureSummary: null as CurveMetricSummary | null,
+        torsionSummary: null as CurveMetricSummary | null,
+      };
+    }
     if (curveImportedSection) {
       const samplePoints = curveImportedSection.points.filter((point) => isFiniteCurveVec3(point));
       const probe = curvePolylineProbeAt(samplePoints, curveImportedSection.closed, curveProbeU);
@@ -8162,6 +8335,7 @@ const App: React.FC = () => {
       torsionSummary,
     };
   }, [
+    mode,
     curveImportedSection,
     activeCurveInput,
     curveAdaptiveMaxDepth,
@@ -9605,7 +9779,9 @@ const App: React.FC = () => {
           activeVariantId,
         };
       }
-      return changed ? next : prev;
+      const result = changed ? next : prev;
+      updateGeometryHistoryMemoryGauges(result);
+      return result;
     });
   }, [geometryDatasetMeshObjects, geometryObjects]);
   const geometryTransformReferenceOptions = useMemo(
@@ -9797,7 +9973,7 @@ const App: React.FC = () => {
         else geometryHistoryIntentQueueRef.current.delete(obj.id);
         const inferredIntent = inferGeometryHistoryIntent(previousSnapshot, obj);
         const intent = queuedIntent ?? inferredIntent;
-        const afterSnapshot = cloneGeometrySceneObjectSnapshot(obj);
+        const afterSnapshot = cloneGeometrySceneObjectHistorySnapshot(obj, previousSnapshot);
         const beforeTopology = countGeometrySnapshotTopology(previousSnapshot);
         const afterTopology = countGeometrySnapshotTopology(afterSnapshot);
         const step: GeometryObjectHistoryStep = {
@@ -11760,6 +11936,11 @@ const App: React.FC = () => {
 
   const proceduralMeshSet = useMemo(() => {
     const cache = geometryObjectGeomCacheRef.current;
+    if (mode !== "geometry") {
+      for (const entry of cache.values()) entry.geom.dispose();
+      cache.clear();
+      return { meshes: [], vertCount: 0, triCount: 0 };
+    }
     const activeIds = new Set(geometryObjects.map((o) => o.id));
     for (const [id, entry] of cache.entries()) {
       if (!activeIds.has(id)) {
@@ -11874,7 +12055,7 @@ const App: React.FC = () => {
     }
 
     return { meshes, vertCount, triCount };
-  }, [geometryObjects, geometryDatasetMeshObjects]);
+  }, [geometryObjects, geometryDatasetMeshObjects, mode]);
   const resolveGeometrySceneMeshById = useCallback(
     (id: string): { object: GeometryObject | GeometryDatasetMeshObject; mesh: SurfaceMeshData } | null => {
       const object = resolveGeometrySceneObjectById(id);
@@ -20987,6 +21168,7 @@ const App: React.FC = () => {
 
   const geometryObjectMeta = useMemo<GeometryObjectMeta[]>(() => {
     const rows: GeometryObjectMeta[] = [];
+    if (mode !== "geometry") return rows;
     const push = (entry: GeometryObjectMeta) => {
       if (rows.some((row) => row.id === entry.id)) return;
       rows.push(entry);
@@ -21099,6 +21281,7 @@ const App: React.FC = () => {
     }
     return rows;
   }, [
+    mode,
     geometryMode,
     geometryDemoFamily,
     geometryPlanimetryPresetId,
@@ -21586,7 +21769,12 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
-    saveArray(WORKBOOK_STORAGE_KEY, workbooks);
+    // Keep the legacy workbook store for startup compatibility, but avoid a
+    // full JSON allocation for every keystroke while a block is being edited.
+    const timer = window.setTimeout(() => {
+      saveArray(WORKBOOK_STORAGE_KEY, workbooks);
+    }, WORKBOOK_AUTOSAVE_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
   }, [workbooks]);
 
   useEffect(() => {
@@ -21648,6 +21836,18 @@ const App: React.FC = () => {
     () => workbooks.find((w) => w.id === activeWorkbookId) ?? null,
     [workbooks, activeWorkbookId]
   );
+  useEffect(() => {
+    // Calculated fields belong to the active workbook and can contain full-size
+    // sample arrays. Release them immediately when the workbook changes.
+    workbookScalarFieldByBlockRef.current.clear();
+    workbookVectorFieldByBlockRef.current.clear();
+    setWorkbookScalarFields(new Map());
+    setWorkbookVectorFields(new Map());
+    setWorkbookVectorFieldOverlay(null);
+    setWorkbookVectorFieldOverlayGhost(null);
+    setWorkbookHeatmapValues(null);
+    setWorkbookHeatmapEnabled(false);
+  }, [activeWorkbookId]);
   const olympiadIncircleReflectionSeed = useMemo(
     () => normalizeConstructionLabSeed(PLANIMETRY_SCRATCH_SEEDS.incircle_reflection),
     []
@@ -21734,21 +21934,14 @@ const App: React.FC = () => {
     }),
     [workbooks, activeWorkbookId, activeStageId]
   );
-  const workbookSessionExportPayload = useMemo(
-    () => ({
-      version: WORKBOOK_PROJECT_FORMAT_VERSION,
-      format: WORKBOOK_PROJECT_FORMAT,
-      payload: workbookSessionPayload,
-    }),
-    [workbookSessionPayload]
-  );
-  const workbookSessionJson = useMemo(
-    () => JSON.stringify(workbookSessionExportPayload, null, 2),
-    [workbookSessionExportPayload]
-  );
   const workbookSessionHash = useMemo(
-    () => hashString(workbookSessionJson),
-    [workbookSessionJson]
+    () =>
+      hashValue({
+        version: WORKBOOK_PROJECT_FORMAT_VERSION,
+        format: WORKBOOK_PROJECT_FORMAT,
+        payload: workbookSessionPayload,
+      }),
+    [workbookSessionPayload]
   );
   const openGeometryWorkbookMode = useCallback(
     (seed?: ConstructionLabSeed | null) => {
@@ -22180,6 +22373,7 @@ const App: React.FC = () => {
   const [volumeDatasetOverride, setVolumeDatasetOverride] = useState<VolumeDataset | null>(null);
   const [volumeDistanceBusy, setVolumeDistanceBusy] = useState(false);
   const [volumeDistanceError, setVolumeDistanceError] = useState<string | null>(null);
+  const volumeDistanceRequestRef = useRef(0);
   const [volumeDistanceSigned, setVolumeDistanceSigned] = useState(false);
   const [volumeDistanceAutoBounds, setVolumeDistanceAutoBounds] = useState(true);
   const [volumePresetId, setVolumePresetId] = useState<VolumePresetId>(DEFAULT_VOLUME_PRESET_ID);
@@ -26303,6 +26497,13 @@ const App: React.FC = () => {
   const [gaussHoverIndex, setGaussHoverIndex] = useState<number | null>(null);
   const [surfaceSampleSet, setSurfaceSampleSet] = useState<SurfaceSampleSet | null>(null);
   useEffect(() => {
+    if (mode === "surfaces") return;
+    // Samples, curvature arrays and mesh neighborhoods are derived viewer data.
+    // Releasing them here prevents inactive modes from retaining and recomputing
+    // full-resolution surface fields.
+    setSurfaceSampleSet(null);
+  }, [mode]);
+  useEffect(() => {
     workbookScalarFieldByBlockRef.current.clear();
     workbookVectorFieldByBlockRef.current.clear();
     setWorkbookScalarFields(new Map());
@@ -26397,6 +26598,7 @@ const App: React.FC = () => {
   const implicitBakeWorkerRef = useRef<Worker | null>(null);
   const implicitBakeJobRef = useRef<string | null>(null);
   const implicitBakeKeyRef = useRef<string | null>(null);
+  const [implicitBakeWorkerGeneration, setImplicitBakeWorkerGeneration] = useState(0);
   const implicitBakeCacheRef = useRef(new Map<string, { mesh: SurfaceMeshData; ts: number }>());
   const [inspectEnabled, setInspectEnabled] = useState(false);
   const [inspectIdx, setInspectIdx] = useState<number | null>(null);
@@ -32089,6 +32291,7 @@ case "mobius":
   );
 
   const graphCurvatures = useMemo(() => {
+    if (mode !== "surfaces") return null;
     if (!surfaceSampleSet?.samples?.length) return null;
     if (surfaceViewerKind !== "graph" || !isGraphSurface(activeEqSurfaceId)) return null;
     const count = surfaceSampleSet.samples.length;
@@ -32112,12 +32315,16 @@ case "mobius":
       }
     }
     return { K, H, k1, k2 };
-  }, [surfaceSampleSet, surfaceViewerKind, activeEqSurfaceId, graphExpr]);
+  }, [mode, surfaceSampleSet, surfaceViewerKind, activeEqSurfaceId, graphExpr]);
 
-  const sampleNeighbors = useMemo(() => buildSampleNeighbors(surfaceSampleSet), [surfaceSampleSet]);
+  const sampleNeighbors = useMemo(
+    () => (mode === "surfaces" ? buildSampleNeighbors(surfaceSampleSet) : null),
+    [mode, surfaceSampleSet]
+  );
 
   const surfaceScalarFields = useMemo(() => {
     const map = new Map<string, SurfaceScalarField>();
+    if (mode !== "surfaces") return map;
     if (surfaceSampleSet?.samples?.length) {
       const samples = surfaceSampleSet.samples;
       const height = new Float32Array(samples.length);
@@ -32162,6 +32369,7 @@ case "mobius":
     }
     return map;
   }, [
+    mode,
     calculusScalarFields,
     graphCurvatures,
     meshDataset?.fields?.scalars,
@@ -32172,6 +32380,7 @@ case "mobius":
 
   const surfaceVectorFields = useMemo(() => {
     const map = new Map<string, SurfaceVectorField>();
+    if (mode !== "surfaces") return map;
     const meshVectors = meshDataset?.fields?.vectors;
     if (meshVectors?.length) {
       meshVectors.forEach((field) => map.set(field.name, field));
@@ -32183,7 +32392,7 @@ case "mobius":
       calculusVectorFields.forEach((field, name) => map.set(name, field));
     }
     return map;
-  }, [calculusVectorFields, meshDataset?.fields?.vectors, workbookVectorFields]);
+  }, [mode, calculusVectorFields, meshDataset?.fields?.vectors, workbookVectorFields]);
 
   const calculusScalarOptions = useMemo(() => {
     const out: Array<{ value: string; label: string }> = [];
@@ -34939,22 +35148,14 @@ case "mobius":
     }),
     [workbookSessionPayloadWithWorkspace]
   );
-  const workbookSessionJsonWithWorkspace = useMemo(
-    () =>
-      JSON.stringify(
-        {
-          version: WORKBOOK_PROJECT_FORMAT_VERSION,
-          format: WORKBOOK_PROJECT_FORMAT,
-          payload: workbookSessionPayloadForHash,
-        },
-        null,
-        2
-      ),
-    [workbookSessionPayloadForHash]
-  );
   const workbookSessionHashWithWorkspace = useMemo(
-    () => hashString(workbookSessionJsonWithWorkspace),
-    [workbookSessionJsonWithWorkspace]
+    () =>
+      hashValue({
+        version: WORKBOOK_PROJECT_FORMAT_VERSION,
+        format: WORKBOOK_PROJECT_FORMAT,
+        payload: workbookSessionPayloadForHash,
+      }),
+    [workbookSessionPayloadForHash]
   );
   const workbookDirty = workbookManualSaveHash
     ? workbookManualSaveHash !== workbookSessionHashWithWorkspace
@@ -35393,26 +35594,27 @@ case "mobius":
       payload: workbookSessionPayloadWithWorkspace,
     };
     try {
-      localStorage.setItem(WORKBOOK_AUTOSAVE_KEY, JSON.stringify(entry));
+      const serializedEntry = JSON.stringify(entry);
+      localStorage.setItem(WORKBOOK_AUTOSAVE_KEY, serializedEntry);
+      bumpMemoryCounter("workbook.autosavesCommitted");
+      setMemoryGauge("workbook.lastAutosaveBytes", serializedEntry.length * 2);
       const journal = safeParseArray<WorkbookAutosaveJournalEntry>(localStorage.getItem(WORKBOOK_AUTOSAVE_JOURNAL_KEY))
         .filter(
           (item) =>
             !!item &&
             typeof item.id === "string" &&
             Number.isFinite(item.savedAt) &&
-            typeof item.hash === "string" &&
-            isWorkbookReplayPayload(item.payload)
-        );
+            typeof item.hash === "string"
+        )
+        .map((item) => ({ id: item.id, savedAt: item.savedAt, hash: item.hash }));
       journal.push({
         id: makeId(),
         savedAt: entry.savedAt,
         hash: workbookSessionHashWithWorkspace,
-        payload: entry.payload,
       });
-      localStorage.setItem(
-        WORKBOOK_AUTOSAVE_JOURNAL_KEY,
-        JSON.stringify(journal.slice(-WORKBOOK_AUTOSAVE_JOURNAL_LIMIT))
-      );
+      const serializedJournal = JSON.stringify(journal.slice(-WORKBOOK_AUTOSAVE_JOURNAL_LIMIT));
+      localStorage.setItem(WORKBOOK_AUTOSAVE_JOURNAL_KEY, serializedJournal);
+      setMemoryGauge("workbook.autosaveJournalBytes", serializedJournal.length * 2);
       setWorkbookAutosaveAt(entry.savedAt);
       workbookAutosaveHashRef.current = workbookSessionHashWithWorkspace;
     } catch {
@@ -36932,6 +37134,22 @@ case "mobius":
     return implicitBakeWorkerRef.current;
   }, []);
 
+  const cancelImplicitBake = useCallback(() => {
+    implicitBakeJobRef.current = null;
+    implicitBakeKeyRef.current = null;
+    if (implicitBakeWorkerRef.current) {
+      // terminate() stops sampling/marching immediately; invalidating a job id
+      // alone only suppresses its eventual result while CPU and memory stay busy.
+      implicitBakeWorkerRef.current.terminate();
+      implicitBakeWorkerRef.current = null;
+    }
+    setImplicitBakeBusy(false);
+    setImplicitBakePhase("idle");
+    setImplicitBakeProgress(0);
+    setImplicitBakeError("Implicit bake canceled.");
+    setImplicitBakeWorkerGeneration((generation) => generation + 1);
+  }, []);
+
   useEffect(() => {
     const worker = getImplicitBakeWorker();
     if (!worker) return;
@@ -36979,7 +37197,14 @@ case "mobius":
     return () => {
       worker.removeEventListener("message", handleMessage);
     };
-  }, [buildActiveMeshLabel, getImplicitBakeWorker, handleChangeViewerKind, setMeshDataset, storeImplicitBakeCache]);
+  }, [
+    buildActiveMeshLabel,
+    getImplicitBakeWorker,
+    handleChangeViewerKind,
+    implicitBakeWorkerGeneration,
+    setMeshDataset,
+    storeImplicitBakeCache,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -37295,7 +37520,16 @@ case "mobius":
   ]);
 
   const handleBuildDistanceVolume = useCallback(async () => {
-    if (volumeDistanceBusy) return;
+    if (volumeDistanceBusy) {
+      // VTK volume work runs in the shared Python worker. Stopping that worker
+      // aborts the native calculation instead of merely ignoring its result.
+      volumeDistanceRequestRef.current += 1;
+      await stopCgalWorker();
+      setVolumeDistanceBusy(false);
+      setVolumeDistanceError("Distance-field calculation canceled.");
+      refreshCgalHealthAfterWorkerAction();
+      return;
+    }
     if (cgalHealthState?.ok === false) {
       setVolumeDistanceError(cgalHealthState.error ?? "Python worker unavailable.");
       return;
@@ -37345,6 +37579,7 @@ case "mobius":
 
     setVolumeDistanceBusy(true);
     setVolumeDistanceError(null);
+    const requestId = ++volumeDistanceRequestRef.current;
     try {
       const res = await vtkVolumeDistance({
         dims: sampling.dims,
@@ -37355,6 +37590,7 @@ case "mobius":
         signed: volumeDistanceSigned,
         windingNumber: volumeDistanceSigned,
       });
+      if (requestId !== volumeDistanceRequestRef.current) return;
       if (!res.ok) {
         setVolumeDistanceError(res.error);
         return;
@@ -37381,10 +37617,13 @@ case "mobius":
       setVolumeShowIsosurface(true);
       setVolumeIsoValue(0);
     } catch (err: any) {
+      if (requestId !== volumeDistanceRequestRef.current) return;
       setVolumeDistanceError(err?.message ?? "Distance field failed.");
     } finally {
-      setVolumeDistanceBusy(false);
-      refreshCgalHealthAfterWorkerAction();
+      if (requestId === volumeDistanceRequestRef.current) {
+        setVolumeDistanceBusy(false);
+        refreshCgalHealthAfterWorkerAction();
+      }
     }
   }, [
     volumeDistanceBusy,
@@ -37421,7 +37660,10 @@ case "mobius":
       setImplicitBakeError("Implicit bake is disabled in replay mode.");
       return;
     }
-    if (implicitBakeBusy) return;
+    if (implicitBakeBusy) {
+      cancelImplicitBake();
+      return;
+    }
     setImplicitBakeError(null);
 
     const expr = (activeImplicitExpr ?? "").trim();
@@ -37476,6 +37718,7 @@ case "mobius":
   }, [
     activeImplicitExpr,
     buildImplicitBakeKey,
+    cancelImplicitBake,
     getImplicitBakeWorker,
     handleChangeViewerKind,
     implicitBakeBusy,
@@ -39267,18 +39510,22 @@ case "mobius":
   );
 
   const registerWorkbookScalarField = useCallback((blockId: string, field: SurfaceScalarField) => {
+    const previous = workbookScalarFieldByBlockRef.current.get(blockId);
     workbookScalarFieldByBlockRef.current.set(blockId, field);
     setWorkbookScalarFields((prev) => {
       const next = new Map(prev);
+      if (previous && previous.name !== field.name) next.delete(previous.name);
       next.set(field.name, field);
       return next;
     });
   }, []);
 
   const registerWorkbookVectorField = useCallback((blockId: string, field: SurfaceVectorField) => {
+    const previous = workbookVectorFieldByBlockRef.current.get(blockId);
     workbookVectorFieldByBlockRef.current.set(blockId, field);
     setWorkbookVectorFields((prev) => {
       const next = new Map(prev);
+      if (previous && previous.name !== field.name) next.delete(previous.name);
       next.set(field.name, field);
       return next;
     });
@@ -66956,6 +67203,26 @@ type PresetThumbKind =
   | "weierstrass";
 
 const PRESET_THUMB_CACHE = new Map<string, string>();
+const PRESET_THUMB_CACHE_MAX_ENTRIES = 128;
+
+const readPresetThumbCache = (key: string): string | undefined => {
+  const value = PRESET_THUMB_CACHE.get(key);
+  if (value === undefined) return undefined;
+  // Map iteration order gives us a cheap LRU list.
+  PRESET_THUMB_CACHE.delete(key);
+  PRESET_THUMB_CACHE.set(key, value);
+  return value;
+};
+
+const writePresetThumbCache = (key: string, value: string): void => {
+  PRESET_THUMB_CACHE.delete(key);
+  PRESET_THUMB_CACHE.set(key, value);
+  while (PRESET_THUMB_CACHE.size > PRESET_THUMB_CACHE_MAX_ENTRIES) {
+    const oldestKey = PRESET_THUMB_CACHE.keys().next().value as string | undefined;
+    if (oldestKey === undefined) break;
+    PRESET_THUMB_CACHE.delete(oldestKey);
+  }
+};
 
 const escapeSvgText = (value: string) =>
   value
@@ -67154,7 +67421,7 @@ const makePresetThumb = (
     if (captured) return captured;
   }
   const key = `${id}|${label}|${subtitle}|${kind}|${viewMode}`;
-  const cached = PRESET_THUMB_CACHE.get(key);
+  const cached = readPresetThumbCache(key);
   if (cached) return cached;
 
   const palette =
@@ -67205,7 +67472,7 @@ ${shape}
 </svg>`;
 
   const url = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-  PRESET_THUMB_CACHE.set(key, url);
+  writePresetThumbCache(key, url);
   return url;
 };
 
@@ -67367,34 +67634,54 @@ const useGalleryThumbPrefetch = (urls: string[]) => {
     let disposed = false;
     let index = 0;
     const scheduled = new Set<number>();
-    const batchSize = 5;
+    const activeImages = new Set<HTMLImageElement>();
+    const maxConcurrentDecodes = 2;
+    let activeCount = 0;
 
     const schedule = (cb: () => void) => {
       if (typeof win.requestIdleCallback === "function") {
-        const id = win.requestIdleCallback(() => cb());
+        const id = win.requestIdleCallback(() => {
+          scheduled.delete(id);
+          cb();
+        });
         scheduled.add(id);
       } else {
-        const id = window.setTimeout(cb, 32);
+        const id = window.setTimeout(() => {
+          scheduled.delete(id);
+          cb();
+        }, 32);
         scheduled.add(id);
       }
     };
 
-    const runBatch = () => {
+    const pump = () => {
       if (disposed) return;
-      const batch = uniqueUrls.slice(index, index + batchSize);
-      index += batchSize;
-      for (const url of batch) {
+      while (activeCount < maxConcurrentDecodes && index < uniqueUrls.length) {
+        const url = uniqueUrls[index++];
         const img = new Image();
+        activeImages.add(img);
+        activeCount += 1;
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          img.onload = null;
+          img.onerror = null;
+          activeImages.delete(img);
+          activeCount = Math.max(0, activeCount - 1);
+          if (!disposed && index < uniqueUrls.length) schedule(pump);
+        };
+        img.onload = finish;
+        img.onerror = finish;
         img.decoding = "async";
         img.src = url;
         if (typeof img.decode === "function") {
-          void img.decode().catch(() => undefined);
+          void img.decode().then(finish, finish);
         }
       }
-      if (index < uniqueUrls.length) schedule(runBatch);
     };
 
-    schedule(runBatch);
+    schedule(pump);
     return () => {
       disposed = true;
       for (const id of scheduled) {
@@ -67402,6 +67689,12 @@ const useGalleryThumbPrefetch = (urls: string[]) => {
         else window.clearTimeout(id);
       }
       scheduled.clear();
+      for (const img of activeImages) {
+        img.onload = null;
+        img.onerror = null;
+        img.src = "";
+      }
+      activeImages.clear();
     };
   }, [uniqueUrls]);
 };
@@ -75355,10 +75648,9 @@ onChangeImplicitExpr,
                 <button
                   type="button"
                   onClick={onBuildDistanceVolume}
-                  disabled={volumeDistanceBusy}
                   style={{ padding: "4px 8px" }}
                 >
-                  {volumeDistanceBusy ? "Rebuilding..." : "Rebuild distance field"}
+                  {volumeDistanceBusy ? "Cancel rebuild" : "Rebuild distance field"}
                 </button>
               </div>
               {volumeDistanceError && (
@@ -77411,8 +77703,8 @@ onChangeImplicitExpr,
                   </button>
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                  <button type="button" onClick={onBakeImplicit} disabled={implicitBakeBusy} style={{ padding: "4px 10px" }}>
-                    {implicitBakeBusy ? "Baking..." : "Bake (marching cubes)"}
+                  <button type="button" onClick={onBakeImplicit} style={{ padding: "4px 10px" }}>
+                    {implicitBakeBusy ? "Cancel bake" : "Bake (marching cubes)"}
                   </button>
                 </div>
                 <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
@@ -77700,10 +77992,10 @@ onChangeImplicitExpr,
             <button
               type="button"
               onClick={onBuildDistanceVolume}
-              disabled={volumeDistanceBusy || !pythonWorkerAvailable}
+              disabled={!volumeDistanceBusy && !pythonWorkerAvailable}
               style={{ padding: "4px 10px" }}
             >
-              {volumeDistanceBusy ? "Building..." : "Surface -> Volume (distance)"}
+              {volumeDistanceBusy ? "Cancel build" : "Surface -> Volume (distance)"}
             </button>
           </div>
           {!pythonWorkerAvailable && (

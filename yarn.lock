@@ -1452,19 +1452,19 @@
     lodash "^4.17.15"
     tmp-promise "^3.0.2"
 
-"@math3d/api-client@file:../../packages/api-client", "@math3d/api-client@file:G:\\Function-viewer-2026-02-05\\Math3D\\packages\\api-client":
-  version "1.4.5"
+"@math3d/api-client@file:../../packages/api-client", "@math3d/api-client@file:/home/u/Math3D/packages/api-client":
+  version "1.4.6-beta.7"
   resolved "file:packages/api-client"
   dependencies:
     "@math3d/core" "file:../core"
     base-64 "^1.0.0"
 
-"@math3d/app-desktop@file:G:\\Function-viewer-2026-02-05\\Math3D\\apps\\desktop":
-  version "1.4.5"
+"@math3d/app-desktop@file:/home/u/Math3D/apps/desktop":
+  version "1.4.6-beta.7"
   resolved "file:apps/desktop"
 
-"@math3d/app-mobile@file:G:\\Function-viewer-2026-02-05\\Math3D\\apps\\mobile":
-  version "1.4.5"
+"@math3d/app-mobile@file:/home/u/Math3D/apps/mobile":
+  version "1.4.6-beta.7"
   resolved "file:apps/mobile"
   dependencies:
     "@math3d/api-client" "file:../../packages/api-client"
@@ -1479,31 +1479,31 @@
     react-native "0.81.5"
     three "0.181.2"
 
-"@math3d/app-web@file:G:\\Function-viewer-2026-02-05\\Math3D\\apps\\web":
-  version "1.4.5"
+"@math3d/app-web@file:/home/u/Math3D/apps/web":
+  version "1.4.6-beta.7"
   resolved "file:apps/web"
 
-"@math3d/core@file:../../packages/core", "@math3d/core@file:../core", "@math3d/core@file:G:\\Function-viewer-2026-02-05\\Math3D\\packages\\core":
-  version "1.4.5"
+"@math3d/core@file:../../packages/core", "@math3d/core@file:../core", "@math3d/core@file:/home/u/Math3D/packages/core":
+  version "1.4.6-beta.7"
   resolved "file:packages/core"
 
-"@math3d/public-site@file:G:\\Function-viewer-2026-02-05\\Math3D\\apps\\public-site":
-  version "1.4.5"
+"@math3d/public-site@file:/home/u/Math3D/apps/public-site":
+  version "1.4.6-beta.7"
   resolved "file:apps/public-site"
 
-"@math3d/renderer-web@file:G:\\Function-viewer-2026-02-05\\Math3D\\packages\\renderer-web":
-  version "1.4.5"
+"@math3d/renderer-web@file:/home/u/Math3D/packages/renderer-web":
+  version "1.4.6-beta.7"
   resolved "file:packages/renderer-web"
   dependencies:
     "@math3d/core" "file:../core"
     three "^0.181.2"
 
-"@math3d/ui@file:G:\\Function-viewer-2026-02-05\\Math3D\\packages\\ui":
-  version "1.4.5"
+"@math3d/ui@file:/home/u/Math3D/packages/ui":
+  version "1.4.6-beta.7"
   resolved "file:packages/ui"
 
-"@math3d/workbook@file:G:\\Function-viewer-2026-02-05\\Math3D\\packages\\workbook":
-  version "1.4.5"
+"@math3d/workbook@file:/home/u/Math3D/packages/workbook":
+  version "1.4.6-beta.7"
   resolved "file:packages/workbook"
   dependencies:
     "@math3d/core" "file:../core"
@@ -5290,10 +5290,10 @@ lighthouse-logger@^1.0.0:
     debug "^2.6.9"
     marky "^1.2.2"
 
-lightningcss-win32-x64-msvc@1.32.0:
+lightningcss-linux-x64-gnu@1.32.0:
   version "1.32.0"
-  resolved "https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.32.0.tgz"
-  integrity sha512-Amq9B/SoZYdDi1kFrojnoqPLxYhQ4Wo5XiL8EVJrVsB8ARoC1PWW6VGtT0WKCemjy8aC+louJnjS7U18x3b06Q==
+  resolved "https://registry.npmjs.org/lightningcss-linux-x64-gnu/-/lightningcss-linux-x64-gnu-1.32.0.tgz"
+  integrity sha512-V7Qr52IhZmdKPVr+Vtw8o+WLsQJYCTd8loIfpDaMRWGUZfBOYEJeyJIkqGIDMZPwPx24pUMfwSxxI8phr/MbOA==
 
 lightningcss@^1.30.1:
   version "1.32.0"

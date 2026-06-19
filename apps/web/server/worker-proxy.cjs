@@ -10,6 +10,7 @@ const PORT = Number(process.env.MATH3D_WEB_WORKER_PROXY_PORT || 8787);
 const BODY_LIMIT_MB = Math.max(1, Number(process.env.MATH3D_WEB_WORKER_PROXY_BODY_LIMIT_MB || 256));
 const BODY_LIMIT_BYTES = BODY_LIMIT_MB * 1024 * 1024;
 const ROOT_DIR = path.resolve(__dirname, "..", "..", "..");
+const BINARY_CONTENT_TYPE = "application/x-math3d-binary";
 
 const diagnosticsState = {
   startupChecked: false,
@@ -499,9 +500,9 @@ class PythonWorkerClient {
     const normals = payloads.normals;
     return {
       ok: true,
-      positions_b64: Buffer.from(pos).toString("base64"),
-      indices_b64: Buffer.from(idx).toString("base64"),
-      normals_b64: normals ? Buffer.from(normals).toString("base64") : undefined,
+      positions: Buffer.from(pos),
+      indices: Buffer.from(idx),
+      normals: normals ? Buffer.from(normals) : undefined,
       vertexCount: Number(res.vertexCount) || Math.floor(pos.byteLength / 12),
       triCount: Number(res.triCount) || Math.floor(idx.byteLength / 12),
     };
@@ -540,9 +541,9 @@ class PythonWorkerClient {
     const normals = payloads.normals;
     return {
       ok: true,
-      positions_b64: Buffer.from(pos).toString("base64"),
-      indices_b64: Buffer.from(idx).toString("base64"),
-      normals_b64: normals ? Buffer.from(normals).toString("base64") : undefined,
+      positions: Buffer.from(pos),
+      indices: Buffer.from(idx),
+      normals: normals ? Buffer.from(normals) : undefined,
       vertexCount: Number(res.vertexCount) || Math.floor(pos.byteLength / 12),
       triCount: Number(res.triCount) || Math.floor(idx.byteLength / 12),
     };
@@ -572,9 +573,9 @@ class PythonWorkerClient {
     const normals = payloads.normals;
     return {
       ok: true,
-      positions_b64: Buffer.from(pos).toString("base64"),
-      indices_b64: Buffer.from(idx).toString("base64"),
-      normals_b64: normals ? Buffer.from(normals).toString("base64") : undefined,
+      positions: Buffer.from(pos),
+      indices: Buffer.from(idx),
+      normals: normals ? Buffer.from(normals) : undefined,
       vertexCount: Number(res.vertexCount) || Math.floor(pos.byteLength / 12),
       triCount: Number(res.triCount) || Math.floor(idx.byteLength / 12),
     };
@@ -608,7 +609,7 @@ class PythonWorkerClient {
     }
     return {
       ok: true,
-      data_b64: Buffer.from(data).toString("base64"),
+      data: Buffer.from(data),
       width: Number(res.width) || 0,
       height: Number(res.height) || 0,
       format: "rgba8",
@@ -644,9 +645,9 @@ class PythonWorkerClient {
     const normals = payloads.normals;
     return {
       ok: true,
-      positions_b64: Buffer.from(pos).toString("base64"),
-      indices_b64: Buffer.from(idx).toString("base64"),
-      normals_b64: normals ? Buffer.from(normals).toString("base64") : undefined,
+      positions: Buffer.from(pos),
+      indices: Buffer.from(idx),
+      normals: normals ? Buffer.from(normals) : undefined,
       vertexCount: Number(res.vertexCount) || Math.floor(pos.byteLength / 12),
       triCount: Number(res.triCount) || Math.floor(idx.byteLength / 12),
     };
@@ -682,7 +683,7 @@ class PythonWorkerClient {
     }
     return {
       ok: true,
-      scalars_b64: Buffer.from(scalars).toString("base64"),
+      scalars: Buffer.from(scalars),
       dims: Array.isArray(res.dims) && res.dims.length === 3 ? res.dims : req.dims,
     };
   }
@@ -793,6 +794,51 @@ function json(res, statusCode, payload) {
   res.end(body);
 }
 
+function binary(res, statusCode, payload) {
+  const fields = ["positions", "indices", "normals", "data", "scalars"];
+  const parts = [];
+  const metadata = { ...payload };
+  for (const name of fields) {
+    if (!Buffer.isBuffer(metadata[name])) continue;
+    parts.push({ name, data: metadata[name] });
+    delete metadata[name];
+  }
+  const header = Buffer.from(
+    JSON.stringify({
+      ...metadata,
+      binary: parts.map((part) => ({ name: part.name, bytes: part.data.byteLength })),
+    }),
+    "utf8"
+  );
+  const prefix = Buffer.allocUnsafe(4);
+  prefix.writeUInt32LE(header.byteLength, 0);
+  const contentLength = 4 + header.byteLength + parts.reduce((sum, part) => sum + part.data.byteLength, 0);
+  res.writeHead(statusCode, {
+    "Content-Type": BINARY_CONTENT_TYPE,
+    "Content-Length": contentLength,
+    "Cache-Control": "no-store",
+  });
+  res.write(prefix);
+  res.write(header);
+  for (const part of parts) res.write(part.data);
+  res.end();
+}
+
+function jsonCompatibleResult(payload) {
+  const result = { ...payload };
+  for (const name of ["positions", "indices", "normals", "data", "scalars"]) {
+    if (!Buffer.isBuffer(result[name])) continue;
+    result[`${name}_b64`] = result[name].toString("base64");
+    delete result[name];
+  }
+  return result;
+}
+
+function sendWorkerResult(res, requestBody, payload) {
+  if (requestBody?.isBinary) binary(res, 200, payload);
+  else json(res, 200, jsonCompatibleResult(payload));
+}
+
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let bytes = 0;
@@ -824,6 +870,51 @@ function readJsonBody(req) {
       }
     });
   });
+}
+
+function readBodyBuffer(req) {
+  return new Promise((resolve, reject) => {
+    let bytes = 0;
+    const chunks = [];
+    req.on("data", (chunk) => {
+      bytes += chunk.length;
+      if (bytes > BODY_LIMIT_BYTES) {
+        reject(new Error(`Request body too large (limit=${BODY_LIMIT_MB}MB)`));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("error", reject);
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+  });
+}
+
+async function readWorkerBody(req) {
+  const contentType = String(req.headers["content-type"] || "").toLowerCase();
+  if (!contentType.includes(BINARY_CONTENT_TYPE)) {
+    return { ...(await readJsonBody(req)), binaryPayloads: {}, isBinary: false };
+  }
+  const raw = await readBodyBuffer(req);
+  if (raw.byteLength < 4) throw new Error("Invalid binary request");
+  const headerLength = raw.readUInt32LE(0);
+  if (headerLength < 2 || 4 + headerLength > raw.byteLength) {
+    throw new Error("Invalid binary request header");
+  }
+  const header = JSON.parse(raw.subarray(4, 4 + headerLength).toString("utf8"));
+  const binaryPayloads = {};
+  let offset = 4 + headerLength;
+  for (const part of Array.isArray(header?.binary) ? header.binary : []) {
+    const name = String(part?.name || "");
+    const bytes = Number(part?.bytes || 0);
+    if (!name || bytes < 0 || offset + bytes > raw.byteLength) {
+      throw new Error("Invalid binary request payload");
+    }
+    binaryPayloads[name] = raw.subarray(offset, offset + bytes);
+    offset += bytes;
+  }
+  const { binary: _binary, ...metadata } = header;
+  return { ...metadata, binaryPayloads, isBinary: true };
 }
 
 function nextJobId(prefix) {
@@ -909,12 +1000,12 @@ async function handleRoute(req, res, pathname) {
     }
 
     if (req.method === "POST" && pathname === "/api/worker/vtk/clean") {
-      const body = await readJsonBody(req);
+      const body = await readWorkerBody(req);
       const worker = await getPythonWorker();
       const result = await worker.vtkMesh("vtk_clean_normals", {
         jobId: String(body?.jobId || nextJobId("vtk-clean")),
-        positions: toBuffer(body?.positions_b64),
-        indices: toBuffer(body?.indices_b64),
+        positions: body.binaryPayloads.positions || toBuffer(body?.positions_b64),
+        indices: body.binaryPayloads.indices || toBuffer(body?.indices_b64),
         options: body?.options || {},
       });
       if (!result.ok) {
@@ -923,17 +1014,17 @@ async function handleRoute(req, res, pathname) {
         return;
       }
       recordWorkerSuccess();
-      json(res, 200, result);
+      sendWorkerResult(res, body, result);
       return;
     }
 
     if (req.method === "POST" && pathname === "/api/worker/vtk/decimate") {
-      const body = await readJsonBody(req);
+      const body = await readWorkerBody(req);
       const worker = await getPythonWorker();
       const result = await worker.vtkMesh("vtk_decimate", {
         jobId: String(body?.jobId || nextJobId("vtk-decimate")),
-        positions: toBuffer(body?.positions_b64),
-        indices: toBuffer(body?.indices_b64),
+        positions: body.binaryPayloads.positions || toBuffer(body?.positions_b64),
+        indices: body.binaryPayloads.indices || toBuffer(body?.indices_b64),
         options: body?.options || {},
       });
       if (!result.ok) {
@@ -942,17 +1033,17 @@ async function handleRoute(req, res, pathname) {
         return;
       }
       recordWorkerSuccess();
-      json(res, 200, result);
+      sendWorkerResult(res, body, result);
       return;
     }
 
     if (req.method === "POST" && pathname === "/api/worker/vtk/smooth") {
-      const body = await readJsonBody(req);
+      const body = await readWorkerBody(req);
       const worker = await getPythonWorker();
       const result = await worker.vtkMesh("vtk_smooth", {
         jobId: String(body?.jobId || nextJobId("vtk-smooth")),
-        positions: toBuffer(body?.positions_b64),
-        indices: toBuffer(body?.indices_b64),
+        positions: body.binaryPayloads.positions || toBuffer(body?.positions_b64),
+        indices: body.binaryPayloads.indices || toBuffer(body?.indices_b64),
         options: body?.options || {},
       });
       if (!result.ok) {
@@ -961,20 +1052,20 @@ async function handleRoute(req, res, pathname) {
         return;
       }
       recordWorkerSuccess();
-      json(res, 200, result);
+      sendWorkerResult(res, body, result);
       return;
     }
 
     if (req.method === "POST" && pathname === "/api/worker/vtk/boolean") {
-      const body = await readJsonBody(req);
+      const body = await readWorkerBody(req);
       const worker = await getPythonWorker();
       const result = await worker.vtkBoolean({
         jobId: String(body?.jobId || nextJobId("vtk-boolean")),
         operation: String(body?.operation || "union"),
-        positionsA: toBuffer(body?.positionsA_b64),
-        indicesA: toBuffer(body?.indicesA_b64),
-        positionsB: toBuffer(body?.positionsB_b64),
-        indicesB: toBuffer(body?.indicesB_b64),
+        positionsA: body.binaryPayloads.positionsA || toBuffer(body?.positionsA_b64),
+        indicesA: body.binaryPayloads.indicesA || toBuffer(body?.indicesA_b64),
+        positionsB: body.binaryPayloads.positionsB || toBuffer(body?.positionsB_b64),
+        indicesB: body.binaryPayloads.indicesB || toBuffer(body?.indicesB_b64),
         options: body?.options || {},
       });
       if (!result.ok) {
@@ -983,12 +1074,12 @@ async function handleRoute(req, res, pathname) {
         return;
       }
       recordWorkerSuccess();
-      json(res, 200, result);
+      sendWorkerResult(res, body, result);
       return;
     }
 
     if (req.method === "POST" && pathname === "/api/worker/vtk/preview") {
-      const body = await readJsonBody(req);
+      const body = await readWorkerBody(req);
       const worker = await getPythonWorker();
       const payload = {
         ...body,
@@ -1001,17 +1092,17 @@ async function handleRoute(req, res, pathname) {
         return;
       }
       recordWorkerSuccess();
-      json(res, 200, result);
+      sendWorkerResult(res, body, result);
       return;
     }
 
     if (req.method === "POST" && pathname === "/api/worker/volume/slice") {
-      const body = await readJsonBody(req);
+      const body = await readWorkerBody(req);
       const worker = await getPythonWorker();
       const result = await worker.vtkVolumeSlice({
         ...body,
         jobId: String(body?.jobId || nextJobId("volume-slice")),
-        scalars: toBuffer(body?.scalars_b64),
+        scalars: body.binaryPayloads.scalars || toBuffer(body?.scalars_b64),
       });
       if (!result.ok) {
         const diag = recordWorkerFailure(result.error, "web:volume:slice", "WORKER_OPERATION_FAILED");
@@ -1019,17 +1110,17 @@ async function handleRoute(req, res, pathname) {
         return;
       }
       recordWorkerSuccess();
-      json(res, 200, result);
+      sendWorkerResult(res, body, result);
       return;
     }
 
     if (req.method === "POST" && pathname === "/api/worker/volume/isosurface") {
-      const body = await readJsonBody(req);
+      const body = await readWorkerBody(req);
       const worker = await getPythonWorker();
       const result = await worker.vtkVolumeIsosurface({
         ...body,
         jobId: String(body?.jobId || nextJobId("volume-isosurface")),
-        scalars: toBuffer(body?.scalars_b64),
+        scalars: body.binaryPayloads.scalars || toBuffer(body?.scalars_b64),
       });
       if (!result.ok) {
         const diag = recordWorkerFailure(result.error, "web:volume:isosurface", "WORKER_OPERATION_FAILED");
@@ -1037,18 +1128,18 @@ async function handleRoute(req, res, pathname) {
         return;
       }
       recordWorkerSuccess();
-      json(res, 200, result);
+      sendWorkerResult(res, body, result);
       return;
     }
 
     if (req.method === "POST" && pathname === "/api/worker/volume/distance") {
-      const body = await readJsonBody(req);
+      const body = await readWorkerBody(req);
       const worker = await getPythonWorker();
       const result = await worker.vtkVolumeDistance({
         ...body,
         jobId: String(body?.jobId || nextJobId("volume-distance")),
-        positions: toBuffer(body?.positions_b64),
-        indices: toBuffer(body?.indices_b64),
+        positions: body.binaryPayloads.positions || toBuffer(body?.positions_b64),
+        indices: body.binaryPayloads.indices || toBuffer(body?.indices_b64),
       });
       if (!result.ok) {
         const diag = recordWorkerFailure(result.error, "web:volume:distance", "WORKER_OPERATION_FAILED");
@@ -1056,17 +1147,17 @@ async function handleRoute(req, res, pathname) {
         return;
       }
       recordWorkerSuccess();
-      json(res, 200, result);
+      sendWorkerResult(res, body, result);
       return;
     }
 
     if (req.method === "POST" && pathname === "/api/worker/volume/streamlines") {
-      const body = await readJsonBody(req);
+      const body = await readWorkerBody(req);
       const worker = await getPythonWorker();
       const result = await worker.vtkVolumeStreamlines({
         ...body,
         jobId: String(body?.jobId || nextJobId("volume-streamlines")),
-        vectors: toBuffer(body?.vectors_b64),
+        vectors: body.binaryPayloads.vectors || toBuffer(body?.vectors_b64),
       });
       if (!result.ok) {
         const diag = recordWorkerFailure(result.error, "web:volume:streamlines", "WORKER_OPERATION_FAILED");
@@ -1074,7 +1165,7 @@ async function handleRoute(req, res, pathname) {
         return;
       }
       recordWorkerSuccess();
-      json(res, 200, result);
+      sendWorkerResult(res, body, result);
       return;
     }
   } catch (error) {

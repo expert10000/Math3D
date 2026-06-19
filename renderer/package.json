@@ -1,7 +1,7 @@
 {
   "name": "renderer",
   "private": true,
-  "version": "1.4.5",
+  "version": "1.4.6-beta.7",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,8 @@
     "build:web:pages": "vite build --base ./ --outDir ../apps/web/dist --emptyOutDir",
     "preview": "vite preview",
     "preview:web": "vite preview --host --port 4173 --strictPort --base / --outDir ../apps/web/dist",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:memory": "vitest run src/viewer/threeLifecycle.test.ts"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",

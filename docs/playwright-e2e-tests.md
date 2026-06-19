@@ -40,6 +40,9 @@
 - run only packaged desktop flow tests:
   - `npm run test:app:e2e:packaged`
   - requires: `MATH3D_RUN_PACKAGED_E2E=1`
+- run the renderer memory stress gate:
+  - `npm run build:core`
+  - `npm run test:app:e2e:memory`
 
 ## Failure injection toggle
 
@@ -58,6 +61,9 @@ If installed binaries are in non-default paths, set:
 - `MATH3D_INSTALL_ROOT`
 - or `MATH3D_INSTALLED_APP_EXE` and `MATH3D_INSTALLED_WORKER_EXE`
 - and enable packaged checks with `MATH3D_RUN_PACKAGED_E2E=1`
+
+Repository Electron E2E launches add `--no-sandbox` on Linux so the suite works
+in containers and CI environments without a root-owned SUID sandbox helper.
 
 ## Where Playwright helps most
 

@@ -1,3 +1,5 @@
+import { bumpMemoryCounter, setMemoryGauge } from "../diagnostics/memoryDiagnostics";
+
 const proxyBaseRaw = (import.meta as any)?.env?.VITE_MATH3D_WORKER_PROXY_BASE as string | undefined;
 const proxyEnabledRaw = (import.meta as any)?.env?.VITE_MATH3D_WORKER_PROXY_ENABLED as string | undefined;
 
@@ -7,6 +9,7 @@ const proxyEnabled =
     : !["0", "false", "no", "off"].includes(String(proxyEnabledRaw).toLowerCase());
 
 const proxyBase = (proxyBaseRaw || "/api/worker").replace(/\/+$/, "");
+const BINARY_CONTENT_TYPE = "application/x-math3d-binary";
 
 const isStaticPagesHost = (): boolean => {
   if (typeof window === "undefined") return false;
@@ -27,25 +30,87 @@ const toByteView = (data: ArrayBuffer | ArrayBufferView): Uint8Array => {
   return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
 };
 
-const encodeBase64 = (data: ArrayBuffer | ArrayBufferView): string => {
-  const bytes = toByteView(data);
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    const slice = bytes.subarray(i, i + chunk);
-    binary += String.fromCharCode(...slice);
-  }
-  return btoa(binary);
+type BinaryPart = {
+  name: string;
+  data: ArrayBuffer | ArrayBufferView;
 };
 
-const decodeBase64 = (base64: string): ArrayBuffer => {
-  const binary = atob(base64 || "");
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
+const asArrayBuffer = (data: ArrayBuffer | ArrayBufferView): ArrayBuffer => {
+  if (data instanceof ArrayBuffer) return data;
+  const view = toByteView(data);
+  if (view.byteOffset === 0 && view.byteLength === view.buffer.byteLength) {
+    return view.buffer as ArrayBuffer;
   }
-  return bytes.buffer;
+  return view.slice().buffer;
 };
+
+const decodeBinaryEnvelope = (buffer: ArrayBuffer): any => {
+  if (buffer.byteLength < 4) throw new Error("Invalid binary worker response");
+  const headerLength = new DataView(buffer, 0, 4).getUint32(0, true);
+  if (headerLength < 2 || 4 + headerLength > buffer.byteLength) {
+    throw new Error("Invalid binary worker response header");
+  }
+  const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 4, headerLength)));
+  const payloads: Record<string, ArrayBuffer> = {};
+  let offset = 4 + headerLength;
+  for (const part of Array.isArray(header?.binary) ? header.binary : []) {
+    const bytes = Number(part?.bytes || 0);
+    const name = String(part?.name || "");
+    if (!name || bytes < 0 || offset + bytes > buffer.byteLength) {
+      throw new Error("Invalid binary worker response payload");
+    }
+    payloads[name] = buffer.slice(offset, offset + bytes);
+    offset += bytes;
+  }
+  const { binary: _binary, ...metadata } = header;
+  return { ...metadata, binaryPayloads: payloads };
+};
+
+async function requestBinary<T>(
+  path: string,
+  metadata: Record<string, unknown>,
+  parts: BinaryPart[] = []
+): Promise<T> {
+  const normalizedParts = parts.map((part) => ({ ...part, buffer: asArrayBuffer(part.data) }));
+  const headerBytes = new TextEncoder().encode(
+    JSON.stringify({
+      ...metadata,
+      binary: normalizedParts.map((part) => ({ name: part.name, bytes: part.buffer.byteLength })),
+    })
+  );
+  const prefix = new Uint8Array(4);
+  new DataView(prefix.buffer).setUint32(0, headerBytes.byteLength, true);
+  const requestBytes =
+    prefix.byteLength +
+    headerBytes.byteLength +
+    normalizedParts.reduce((sum, part) => sum + part.buffer.byteLength, 0);
+  bumpMemoryCounter("transport.binaryRequests");
+  bumpMemoryCounter("transport.binaryBytesSent", requestBytes);
+  setMemoryGauge("transport.lastRequestBytes", requestBytes);
+  const response = await fetch(`${proxyBase}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": BINARY_CONTENT_TYPE,
+      Accept: `${BINARY_CONTENT_TYPE}, application/json`,
+    },
+    body: new Blob([prefix.buffer, headerBytes.buffer, ...normalizedParts.map((part) => part.buffer)]),
+  });
+  const contentType = response.headers.get("content-type") || "";
+  let data: any;
+  if (contentType.includes(BINARY_CONTENT_TYPE)) {
+    const responseBuffer = await response.arrayBuffer();
+    bumpMemoryCounter("transport.binaryResponses");
+    bumpMemoryCounter("transport.binaryBytesReceived", responseBuffer.byteLength);
+    setMemoryGauge("transport.lastResponseBytes", responseBuffer.byteLength);
+    data = decodeBinaryEnvelope(responseBuffer);
+  } else {
+    data = await response.json().catch(() => null);
+  }
+  if (!response.ok) {
+    throw new Error(data?.error || `HTTP ${response.status}`);
+  }
+  return data as T;
+}
 
 async function requestJson<T>(method: "GET" | "POST", path: string, body?: Record<string, JsonValue>): Promise<T> {
   const response = await fetch(`${proxyBase}${path}`, {
@@ -114,40 +179,42 @@ function installVtkMeshBridge(win: Window & typeof globalThis) {
   if ((win as any).vtkMesh) return;
 
   const withMeshBuffers = async (path: string, req: any) => {
-    const payload = {
+    const res = await requestBinary<any>(path, {
       jobId: req.jobId,
       options: req.options || {},
-      positions_b64: encodeBase64(req.positions),
-      indices_b64: encodeBase64(req.indices),
-    };
-    const res = await requestJson<any>("POST", path, payload);
+    }, [
+      { name: "positions", data: req.positions },
+      { name: "indices", data: req.indices },
+    ]);
     if (!res?.ok) return { ok: false, error: res?.error || "VTK proxy failed" };
+    const binary = res.binaryPayloads || {};
     return {
       ok: true,
-      positions: decodeBase64(String(res.positions_b64 || "")),
-      indices: decodeBase64(String(res.indices_b64 || "")),
-      normals: res.normals_b64 ? decodeBase64(String(res.normals_b64)) : undefined,
+      positions: binary.positions,
+      indices: binary.indices,
+      normals: binary.normals,
       vertexCount: Number(res.vertexCount) || 0,
       triCount: Number(res.triCount) || 0,
     };
   };
   const withBooleanBuffers = async (path: string, req: any) => {
-    const payload = {
+    const res = await requestBinary<any>(path, {
       jobId: req.jobId,
       operation: req.operation,
       options: req.options || {},
-      positionsA_b64: encodeBase64(req.positionsA),
-      indicesA_b64: encodeBase64(req.indicesA),
-      positionsB_b64: encodeBase64(req.positionsB),
-      indicesB_b64: encodeBase64(req.indicesB),
-    };
-    const res = await requestJson<any>("POST", path, payload);
+    }, [
+      { name: "positionsA", data: req.positionsA },
+      { name: "indicesA", data: req.indicesA },
+      { name: "positionsB", data: req.positionsB },
+      { name: "indicesB", data: req.indicesB },
+    ]);
     if (!res?.ok) return { ok: false, error: res?.error || "VTK proxy failed" };
+    const binary = res.binaryPayloads || {};
     return {
       ok: true,
-      positions: decodeBase64(String(res.positions_b64 || "")),
-      indices: decodeBase64(String(res.indices_b64 || "")),
-      normals: res.normals_b64 ? decodeBase64(String(res.normals_b64)) : undefined,
+      positions: binary.positions,
+      indices: binary.indices,
+      normals: binary.normals,
       vertexCount: Number(res.vertexCount) || 0,
       triCount: Number(res.triCount) || 0,
     };
@@ -184,13 +251,14 @@ function installVtkMeshBridge(win: Window & typeof globalThis) {
     },
     previewImplicit: async (req: any) => {
       try {
-        const res = await requestJson<any>("POST", "/vtk/preview", req);
+        const res = await requestBinary<any>("/vtk/preview", req);
         if (!res?.ok) return { ok: false, error: res?.error || "VTK preview failed" };
+        const binary = res.binaryPayloads || {};
         return {
           ok: true,
-          positions: decodeBase64(String(res.positions_b64 || "")),
-          indices: decodeBase64(String(res.indices_b64 || "")),
-          normals: res.normals_b64 ? decodeBase64(String(res.normals_b64)) : undefined,
+          positions: binary.positions,
+          indices: binary.indices,
+          normals: binary.normals,
           vertexCount: Number(res.vertexCount) || 0,
           triCount: Number(res.triCount) || 0,
         };
@@ -206,12 +274,13 @@ function installVtkVolumeBridge(win: Window & typeof globalThis) {
   (win as any).vtkVolume = {
     slice: async (req: any) => {
       try {
-        const payload = { ...req, scalars_b64: encodeBase64(req.scalars) };
-        const res = await requestJson<any>("POST", "/volume/slice", payload);
+        const { scalars, ...metadata } = req;
+        const res = await requestBinary<any>("/volume/slice", metadata, [{ name: "scalars", data: scalars }]);
         if (!res?.ok) return { ok: false, error: res?.error || "VTK volume slice failed" };
+        const binary = res.binaryPayloads || {};
         return {
           ok: true,
-          data: decodeBase64(String(res.data_b64 || "")),
+          data: binary.data,
           width: Number(res.width) || 0,
           height: Number(res.height) || 0,
           format: "rgba8",
@@ -224,14 +293,15 @@ function installVtkVolumeBridge(win: Window & typeof globalThis) {
     },
     isosurface: async (req: any) => {
       try {
-        const payload = { ...req, scalars_b64: encodeBase64(req.scalars) };
-        const res = await requestJson<any>("POST", "/volume/isosurface", payload);
+        const { scalars, ...metadata } = req;
+        const res = await requestBinary<any>("/volume/isosurface", metadata, [{ name: "scalars", data: scalars }]);
         if (!res?.ok) return { ok: false, error: res?.error || "VTK volume isosurface failed" };
+        const binary = res.binaryPayloads || {};
         return {
           ok: true,
-          positions: decodeBase64(String(res.positions_b64 || "")),
-          indices: decodeBase64(String(res.indices_b64 || "")),
-          normals: res.normals_b64 ? decodeBase64(String(res.normals_b64)) : undefined,
+          positions: binary.positions,
+          indices: binary.indices,
+          normals: binary.normals,
           vertexCount: Number(res.vertexCount) || 0,
           triCount: Number(res.triCount) || 0,
         };
@@ -241,16 +311,15 @@ function installVtkVolumeBridge(win: Window & typeof globalThis) {
     },
     distanceField: async (req: any) => {
       try {
-        const payload = {
-          ...req,
-          positions_b64: encodeBase64(req.positions),
-          indices_b64: encodeBase64(req.indices),
-        };
-        const res = await requestJson<any>("POST", "/volume/distance", payload);
+        const { positions, indices, ...metadata } = req;
+        const res = await requestBinary<any>("/volume/distance", metadata, [
+          { name: "positions", data: positions },
+          { name: "indices", data: indices },
+        ]);
         if (!res?.ok) return { ok: false, error: res?.error || "VTK volume distance failed" };
         return {
           ok: true,
-          scalars: decodeBase64(String(res.scalars_b64 || "")),
+          scalars: res.binaryPayloads?.scalars,
           dims: Array.isArray(res.dims) ? res.dims : req.dims,
         };
       } catch (error) {
@@ -259,8 +328,8 @@ function installVtkVolumeBridge(win: Window & typeof globalThis) {
     },
     streamlines: async (req: any) => {
       try {
-        const payload = { ...req, vectors_b64: encodeBase64(req.vectors) };
-        return await requestJson<any>("POST", "/volume/streamlines", payload);
+        const { vectors, ...metadata } = req;
+        return await requestBinary<any>("/volume/streamlines", metadata, [{ name: "vectors", data: vectors }]);
       } catch (error) {
         return { ok: false, error: asErrorMessage(error, "VTK volume proxy unavailable") };
       }

@@ -14,6 +14,12 @@ import { buildStreamlineSegments, buildVertexAdjacency, traceStreamlineBidirecti
 import { buildVertexAdjacency as buildRidgeAdjacency, detectRidgeValleySegments } from "../math/ridgeValley";
 import { stitchRidgeValleyCurves } from "../math/ridgeValleyStitch";
 import { integrateGeodesic } from "../math/geodesic";
+import {
+  disposeObject3DResources,
+  disposeSceneResources,
+  disposeWebGLRenderer,
+  registerWebGLRenderer,
+} from "../viewer/threeResourceDisposal";
 
 import { scalarToColor01, type ColorPalette, solidColorForPalette } from "./colorPalette";
 import type { GaussPoint } from "./gaussMapUtils";
@@ -404,22 +410,53 @@ const DBG_COLORS = false;
 const TAU = Math.PI * 2;
 
 function disposeObject3D(obj: THREE.Object3D) {
-  const anyObj = obj as any;
-  if (anyObj.geometry && typeof anyObj.geometry.dispose === "function") {
-    anyObj.geometry.dispose();
+  disposeObject3DResources(obj);
+}
+
+function replaceSceneLights(
+  scene: THREE.Scene,
+  preset: "studio" | "soft" | "contrast" | "neutral" | "warm"
+) {
+  const previous = scene.getObjectByName("__math3d_lights");
+  if (previous) scene.remove(previous);
+  const group = new THREE.Group();
+  group.name = "__math3d_lights";
+  if (preset === "contrast") {
+    group.add(new THREE.AmbientLight(0xffffff, 0.18));
+    const key = new THREE.DirectionalLight(0xffffff, 1.15);
+    key.position.set(4, 6, 3);
+    group.add(key);
+    const rim = new THREE.DirectionalLight(0xffffff, 0.35);
+    rim.position.set(-3, -2, -4);
+    group.add(rim);
+  } else if (preset === "soft") {
+    group.add(new THREE.AmbientLight(0xffffff, 0.45));
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
+    hemi.position.set(0, 6, 0);
+    group.add(hemi);
+  } else if (preset === "neutral") {
+    group.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const key = new THREE.DirectionalLight(0xffffff, 0.7);
+    key.position.set(4, 4.5, 4);
+    group.add(key);
+  } else if (preset === "warm") {
+    group.add(new THREE.AmbientLight(0xfff4e6, 0.5));
+    const key = new THREE.DirectionalLight(0xffe2c7, 0.85);
+    key.position.set(4, 5, 3);
+    group.add(key);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.25);
+    fill.position.set(-4, 2, -3);
+    group.add(fill);
+  } else {
+    group.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const key = new THREE.DirectionalLight(0xffffff, 0.85);
+    key.position.set(3, 5, 4);
+    group.add(key);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.35);
+    fill.position.set(-4, 2, -3);
+    group.add(fill);
   }
-  const mat = anyObj.material as THREE.Material | THREE.Material[] | undefined;
-  if (mat) {
-    const disposeMat = (m: THREE.Material) => {
-      const anyMat = m as any;
-      if (anyMat?.map && typeof anyMat.map.dispose === "function") {
-        anyMat.map.dispose();
-      }
-      m.dispose();
-    };
-    if (Array.isArray(mat)) mat.forEach((m) => disposeMat(m));
-    else disposeMat(mat);
-  }
+  scene.add(group);
 }
 
 function clearGroup(group: THREE.Group) {
@@ -3514,7 +3551,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const { width, height } = getSize();
 
-    const renderer = new THREE.WebGLRenderer({ antialias: renderQuality !== "performance", alpha: true });
+    const renderer = registerWebGLRenderer(
+      new THREE.WebGLRenderer({ antialias: renderQuality !== "performance", alpha: true })
+    );
     const heavySurface = surfaceId === "surface_mesh" || surfaceId === "torus_implicit";
     const maxPixelRatio =
       renderQuality === "performance"
@@ -3883,41 +3922,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     transformControls.addEventListener("dragging-changed", handleGizmoDraggingChanged);
     transformControls.addEventListener("objectChange", handleGizmoObjectChange);
 
-    if (lightPreset === "contrast") {
-      scene.add(new THREE.AmbientLight(0xffffff, 0.18));
-      const key = new THREE.DirectionalLight(0xffffff, 1.15);
-      key.position.set(4, 6, 3);
-      scene.add(key);
-      const rim = new THREE.DirectionalLight(0xffffff, 0.35);
-      rim.position.set(-3, -2, -4);
-      scene.add(rim);
-    } else if (lightPreset === "soft") {
-      scene.add(new THREE.AmbientLight(0xffffff, 0.45));
-      const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
-      hemi.position.set(0, 6, 0);
-      scene.add(hemi);
-    } else if (lightPreset === "neutral") {
-      scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-      const key = new THREE.DirectionalLight(0xffffff, 0.7);
-      key.position.set(4, 4.5, 4);
-      scene.add(key);
-    } else if (lightPreset === "warm") {
-      scene.add(new THREE.AmbientLight(0xfff4e6, 0.5));
-      const key = new THREE.DirectionalLight(0xffe2c7, 0.85);
-      key.position.set(4, 5, 3);
-      scene.add(key);
-      const fill = new THREE.DirectionalLight(0xffffff, 0.25);
-      fill.position.set(-4, 2, -3);
-      scene.add(fill);
-    } else {
-      scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-      const key = new THREE.DirectionalLight(0xffffff, 0.85);
-      key.position.set(3, 5, 4);
-      scene.add(key);
-      const fill = new THREE.DirectionalLight(0xffffff, 0.35);
-      fill.position.set(-4, 2, -3);
-      scene.add(fill);
-    }
+    replaceSceneLights(scene, lightPreset);
 
     const sliceGroup = new THREE.Group();
     sliceGroupRef.current = sliceGroup;
@@ -5581,20 +5586,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       sliceGroupRef.current = null;
 
-      scene.traverse((obj) => {
-        const anyO = obj as any;
-        if (anyO?.isMesh) {
-          const mesh = obj as THREE.Mesh;
-          if (mesh.geometry) mesh.geometry.dispose();
-          const matAny = (mesh as any).material as THREE.Material | THREE.Material[] | undefined;
-          if (matAny) {
-            if (Array.isArray(matAny)) matAny.forEach((m) => m.dispose());
-            else matAny.dispose();
-          }
-        }
-      });
-
-      renderer.dispose();
+      disposeSceneResources(scene);
+      disposeWebGLRenderer(renderer);
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
       rendererRef.current = null;
       applyProbeFromDomainRef.current = null;
@@ -5613,7 +5606,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     implicitExpr,
     wireframe,
     showPlanes,
-    lightPreset,
     colorMode,
     colorPalette,
     implicitOverlay,
@@ -5646,6 +5638,11 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     endMeshInteraction,
     stopCameraTour,
   ]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (scene) replaceSceneLights(scene, lightPreset);
+  }, [lightPreset, sceneEpoch]);
 
   useEffect(() => {
     const renderer = rendererRef.current;

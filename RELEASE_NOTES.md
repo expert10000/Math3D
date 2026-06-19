@@ -1,22 +1,26 @@
-# Math3D 1.4.5
+# Math3D 1.4.6-beta.7
 
 ## Type
-Stabilization release with selected extension features.
-
-## Added
-- Added selected extension subset.
-- Added/improved dependency tree workflow.
-- Added safer handling of construction dependencies.
+Beta stabilization release focused on renderer memory and startup behavior.
 
 ## Improved
-- Improved geometry workflow stability.
-- Improved object selection and inspector synchronization.
-- Improved scene state persistence.
+- Bounded gallery thumbnail caching and image decode concurrency.
+- Released inactive surface samples, calculated workbook fields, and procedural mesh caches.
+- Replaced repeated full-workbook hash serialization with incremental deterministic hashing.
+- Added underlying cancellation for worker-backed mesh and volume calculations.
+- Lazy-loaded mode-specific viewers and reduced the bootstrap entry to under 1 KB minified.
+- Added automated renderer memory diagnostics and repeated navigation stress coverage.
 
-## Fixed
-- Fixed crashes caused by stale dependencies.
-- Fixed UI desynchronization after object deletion.
-- Fixed selected-object refresh after recomputation.
+## Validation
+- Renderer production build passes.
+- Workbook, worker-contract, and Three.js lifecycle tests pass.
+- Repeated Surfaces/Volume/Geometry/Curves/Topology navigation passes memory thresholds.
+- WebGL context creation/disposal remains balanced after stress navigation.
+
+## Beta limitations
+- `pygalmesh` remains optional; robust CGAL meshing requires a build containing that native dependency.
+- The large workspace module is deferred but still requires further component extraction before a stable release.
+- This candidate must pass installed Debian-package smoke testing before publication.
 
 ## Known limitations
 - Some extension features remain experimental.

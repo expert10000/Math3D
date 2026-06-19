@@ -1,6 +1,11 @@
 import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import {
+  disposeSceneResources,
+  disposeWebGLRenderer,
+  registerWebGLRenderer,
+} from "../viewer/threeResourceDisposal";
 
 export type CurveViewerVec3 = { x: number; y: number; z: number };
 
@@ -42,22 +47,6 @@ const safeUnit = (value: CurveViewerVec3 | null | undefined) => {
   return v.multiplyScalar(1 / len);
 };
 
-const disposeSceneObjects = (root: THREE.Object3D) => {
-  root.traverse((node) => {
-    const withGeometry = node as THREE.Object3D & { geometry?: THREE.BufferGeometry };
-    if (withGeometry.geometry) withGeometry.geometry.dispose();
-
-    const withMaterial = node as THREE.Object3D & {
-      material?: THREE.Material | THREE.Material[] | null;
-    };
-    if (Array.isArray(withMaterial.material)) {
-      withMaterial.material.forEach((material) => material.dispose());
-    } else if (withMaterial.material) {
-      withMaterial.material.dispose();
-    }
-  });
-};
-
 export const CurveViewer: React.FC<CurveViewerProps> = ({
   samples,
   dimension,
@@ -79,7 +68,7 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
     const width = Math.max(2, host.clientWidth);
     const height = Math.max(2, host.clientHeight);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = registerWebGLRenderer(new THREE.WebGLRenderer({ antialias: true }));
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(width, height);
     renderer.setClearColor(0xf8fafc, 1);
@@ -249,8 +238,8 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
       window.cancelAnimationFrame(animationFrame);
       resizeObserver.disconnect();
       controls.dispose();
-      disposeSceneObjects(scene);
-      renderer.dispose();
+      disposeSceneResources(scene);
+      disposeWebGLRenderer(renderer);
       renderer.domElement.remove();
     };
   }, [

@@ -716,8 +716,14 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
       el.scrollIntoView({ behavior: coarsePointer ? "auto" : "smooth", block: "start" });
       setPendingScrollId(null);
     };
-    const raf = requestAnimationFrame(() => requestAnimationFrame(runScroll));
-    return () => cancelAnimationFrame(raf);
+    let innerRaf = 0;
+    const outerRaf = requestAnimationFrame(() => {
+      innerRaf = requestAnimationFrame(runScroll);
+    });
+    return () => {
+      cancelAnimationFrame(outerRaf);
+      if (innerRaf) cancelAnimationFrame(innerRaf);
+    };
   }, [pendingScrollId, activeStageId, activeWorkbookId]);
 
   useEffect(() => {

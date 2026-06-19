@@ -25,6 +25,11 @@ import {
   vtkVolumeStreamlines,
 } from "../services/vtkVolumeClient";
 import { vtkSmooth } from "../services/vtkMeshClient";
+import {
+  disposeSceneResources,
+  disposeWebGLRenderer,
+  registerWebGLRenderer,
+} from "../viewer/threeResourceDisposal";
 
 export type VolumeViewerProps = {
   dataset: VolumeDataset | null;
@@ -364,7 +369,9 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     camera.position.set(2.6, 2.4, 2.8);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = registerWebGLRenderer(
+      new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    );
     renderer.setPixelRatio(window.devicePixelRatio || 1);
     renderer.setSize(mount.clientWidth || 1, mount.clientHeight || 1);
     mount.appendChild(renderer.domElement);
@@ -472,7 +479,6 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       ro.disconnect();
       window.removeEventListener("resize", handleResize);
       controls.dispose();
-      renderer.dispose();
       renderer.domElement.remove();
 
       if (sliceMeshRef.current) {
@@ -522,6 +528,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
         cropBoxRef.current = null;
       }
       if (cropGizmoHelperRef.current) {
+        disposeSceneResources(cropGizmoHelperRef.current);
         scene.remove(cropGizmoHelperRef.current);
         cropGizmoHelperRef.current = null;
       }
@@ -533,6 +540,8 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
         sliceTextureRef.current.dispose();
         sliceTextureRef.current = null;
       }
+      disposeSceneResources(scene);
+      disposeWebGLRenderer(renderer);
     };
   }, []);
 

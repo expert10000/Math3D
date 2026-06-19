@@ -3,6 +3,12 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { ParametricGeometry } from "three/examples/jsm/geometries/ParametricGeometry.js";
+import {
+  disposeObject3DResources,
+  disposeSceneResources,
+  disposeWebGLRenderer,
+  registerWebGLRenderer,
+} from "../viewer/threeResourceDisposal";
 
 import DomainDirectionPicker from "./DomainDirectionPicker";
 import { integrateGeodesic } from "../math/geodesic";
@@ -1411,15 +1417,50 @@ function wrapFlagsFor(surfaceId: ParamSurfaceId) {
 }
 
 function disposeObject3D(obj: THREE.Object3D) {
-  const anyObj = obj as any;
-  if (anyObj.geometry && typeof anyObj.geometry.dispose === "function") {
-    anyObj.geometry.dispose();
+  disposeObject3DResources(obj);
+}
+
+function replaceSceneLights(
+  scene: THREE.Scene,
+  preset: "studio" | "soft" | "contrast" | "neutral" | "warm"
+) {
+  const previous = scene.getObjectByName("__math3d_lights");
+  if (previous) scene.remove(previous);
+  const group = new THREE.Group();
+  group.name = "__math3d_lights";
+  if (preset === "contrast") {
+    group.add(new THREE.AmbientLight(0xffffff, 0.18));
+    const key = new THREE.DirectionalLight(0xffffff, 1.15);
+    key.position.set(4, 6, 3);
+    group.add(key);
+    const rim = new THREE.DirectionalLight(0xffffff, 0.35);
+    rim.position.set(-3, -2, -4);
+    group.add(rim);
+  } else if (preset === "soft") {
+    group.add(new THREE.AmbientLight(0xffffff, 0.45));
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
+    hemi.position.set(0, 6, 0);
+    group.add(hemi);
+  } else if (preset === "neutral") {
+    group.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const key = new THREE.DirectionalLight(0xffffff, 0.7);
+    key.position.set(4, 4.5, 4);
+    group.add(key);
+  } else if (preset === "warm") {
+    group.add(new THREE.AmbientLight(0xfff4e6, 0.5));
+    const key = new THREE.DirectionalLight(0xffe2c7, 0.85);
+    key.position.set(4, 5, 3);
+    group.add(key);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.25);
+    fill.position.set(-4, 2, -3);
+    group.add(fill);
+  } else {
+    const key = new THREE.DirectionalLight(0xffffff, 0.9);
+    key.position.set(5, 6, 4);
+    group.add(key);
+    group.add(new THREE.AmbientLight(0xffffff, 0.3));
   }
-  const mat = anyObj.material as THREE.Material | THREE.Material[] | undefined;
-  if (mat) {
-    if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-    else mat.dispose();
-  }
+  scene.add(group);
 }
 
 function clearGroup(group: THREE.Group) {
@@ -2546,7 +2587,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     camera.position.set(4, 3, 5);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: renderQuality !== "performance", alpha: true });
+    const renderer = registerWebGLRenderer(
+      new THREE.WebGLRenderer({ antialias: renderQuality !== "performance", alpha: true })
+    );
     const heavySurface = surfaceId === "torus";
     const maxPixelRatio =
       renderQuality === "performance"
@@ -2661,39 +2704,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       emitCameraSync();
     }
 
-    if (lightPreset === "contrast") {
-      scene.add(new THREE.AmbientLight(0xffffff, 0.18));
-      const key = new THREE.DirectionalLight(0xffffff, 1.15);
-      key.position.set(4, 6, 3);
-      scene.add(key);
-      const rim = new THREE.DirectionalLight(0xffffff, 0.35);
-      rim.position.set(-3, -2, -4);
-      scene.add(rim);
-    } else if (lightPreset === "soft") {
-      scene.add(new THREE.AmbientLight(0xffffff, 0.45));
-      const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
-      hemi.position.set(0, 6, 0);
-      scene.add(hemi);
-    } else if (lightPreset === "neutral") {
-      scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-      const key = new THREE.DirectionalLight(0xffffff, 0.7);
-      key.position.set(4, 4.5, 4);
-      scene.add(key);
-    } else if (lightPreset === "warm") {
-      scene.add(new THREE.AmbientLight(0xfff4e6, 0.5));
-      const key = new THREE.DirectionalLight(0xffe2c7, 0.85);
-      key.position.set(4, 5, 3);
-      scene.add(key);
-      const fill = new THREE.DirectionalLight(0xffffff, 0.25);
-      fill.position.set(-4, 2, -3);
-      scene.add(fill);
-    } else {
-      const light1 = new THREE.DirectionalLight(0xffffff, 0.9);
-      light1.position.set(5, 6, 4);
-      scene.add(light1);
-      const light2 = new THREE.AmbientLight(0xffffff, 0.3);
-      scene.add(light2);
-    }
+    replaceSceneLights(scene, lightPreset);
 
     const sheetsGroup = new THREE.Group();
     sliceSheetsRef.current = sheetsGroup;
@@ -3781,8 +3792,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
     renderer.domElement.addEventListener("pointerdown", handlePointerDown);
 
+    let frameId = 0;
     const animate = () => {
-      requestAnimationFrame(animate);
+      frameId = requestAnimationFrame(animate);
       if (sliceDirtyRef.current && surfaceObjRef.current) {
         updateSlice(surfaceObjRef.current);
         sliceDirtyRef.current = false;
@@ -3859,6 +3871,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     emitViewportDebug("init");
 
       return () => {
+        cancelAnimationFrame(frameId);
         // dispose geodesic line if present
         if (geodesicLineRef.current) {
           scene.remove(geodesicLineRef.current);
@@ -3943,7 +3956,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         probeLabelRef.current = null;
       }
 
-      renderer.dispose();
+      disposeSceneResources(scene);
+      disposeWebGLRenderer(renderer);
       if (renderer.domElement.parentNode === mount) {
         mount.removeChild(renderer.domElement);
       }
@@ -4083,7 +4097,6 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     planeGridAutoScale,
     planeGridDensity,
     planeGridOpacity,
-    lightPreset,
     colorMode,
     showBoundingBox,
     renderQuality,
@@ -4117,6 +4130,11 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     onParamGeodesicState,
     resolveSceneBackground,
   ]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (scene) replaceSceneLights(scene, lightPreset);
+  }, [lightPreset, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;

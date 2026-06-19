@@ -1005,6 +1005,16 @@ function resolvePythonExe(): string {
   const env = process.env.MATH3D_PYTHON;
   if (env && env.trim().length) return env;
 
+  if (!app.isPackaged) {
+    const executable = process.platform === "win32" ? path.join("Scripts", "python.exe") : path.join("bin", "python");
+    const localEnvironments = [
+      path.resolve(process.cwd(), ".venv-worker", executable),
+      path.resolve(app.getAppPath(), ".venv-worker", executable),
+    ];
+    const localPython = localEnvironments.find((candidate) => fs.existsSync(candidate));
+    if (localPython) return localPython;
+  }
+
   return process.platform === "win32" ? "python" : "python3";
 }
 
