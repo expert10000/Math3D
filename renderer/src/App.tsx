@@ -53448,7 +53448,11 @@ case "mobius":
                         style={{ width: "100%", fontFamily: "monospace", fontSize: 11 }}
                       />
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <button type="button" onClick={() => executeProceduralScript()}>
+                        <button
+                          type="button"
+                          data-testid="geometry-run-procedural-script"
+                          onClick={() => executeProceduralScript()}
+                        >
                           Script -&gt; scene
                         </button>
                         <button type="button" onClick={handleGenerateProceduralScriptFromScene}>

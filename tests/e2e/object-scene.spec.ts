@@ -86,6 +86,12 @@ const openProceduralGeometry = async (page: Page) => {
   await expect(page.getByTestId("geometry-scene-stats")).toBeVisible();
 };
 
+const runProceduralScript = async (page: Page) => {
+  const runButton = page.getByTestId("geometry-run-procedural-script");
+  await expect(runButton).toBeVisible();
+  await runButton.click();
+};
+
 const openWorkbookPanel = async (page: Page) => {
   await clickFirstVisibleButton(page, "Surfaces");
   await clickFirstVisibleButton(page, "Workbook");
@@ -411,7 +417,7 @@ test("Procedural script ownership appears in the shared dependency graph", async
 
     await page.getByTestId("geometry-procedural-panel-script").click();
     await page.getByTestId("geometry-procedural-script-editor").fill("clear\nadd box as owned_box name=OwnedBox");
-    await clickFirstVisibleButton(page, "Run script");
+    await runProceduralScript(page);
     await expect(page.getByText(/Applied 1 objects/)).toBeVisible();
 
     await page.getByTestId("geometry-procedural-panel-dependencies").click();
@@ -471,7 +477,7 @@ test("Definition Editor expressions recompute through graph parameter dependenci
     await page
       .getByTestId("geometry-procedural-script-editor")
       .fill("clear\nadd box as box name=box width=4 height=1\nselect box");
-    await clickFirstVisibleButton(page, "Run script");
+    await runProceduralScript(page);
 
     await page.getByTestId("geometry-procedural-panel-definition").click();
     await expect(page.getByText("Parameter Manager", { exact: true })).toBeVisible();
@@ -623,7 +629,8 @@ test("Cone and Box dependency trees expose grouped automatic semantic children",
     const overlayCard = page.getByTestId("geometry-dependency-overlay-card");
     await expect(overlayCard).toBeVisible();
     await expect(overlayCard).toContainText("Box");
-    await expect(overlayCard).toContainText("Inputs: 4");
+    await expect(overlayCard).toContainText("Inputs: 1");
+    await expect(overlayCard).toContainText("Parameters: 3");
     await expect(overlayCard).toContainText("Derived: 3");
     await expect(overlayCard).toContainText("Analysis: 4");
     await expect(overlayCard).toContainText("Total: 11");
@@ -654,7 +661,7 @@ test("Cone and Box dependency trees expose grouped automatic semantic children",
     await expect(educationalFormula).toContainText("width");
     await expect(educationalFormula).toContainText("≈");
     await overlayCard.getByRole("button", { name: "List", exact: true }).click();
-    await overlayCard.getByRole("button", { name: "▶ Inputs (4)", exact: true }).click();
+    await overlayCard.getByRole("button", { name: "▶ Parameters (3)", exact: true }).click();
     const widthOverlayRow = overlayCard.getByRole("button", { name: "Width Parameter", exact: true });
     await widthOverlayRow.hover();
     await expect(widthOverlayRow).toHaveCSS("background-color", "rgb(255, 251, 235)");
@@ -662,9 +669,9 @@ test("Cone and Box dependency trees expose grouped automatic semantic children",
     await expect(page.getByTestId("geometry-inspector-definition")).toContainText("Width");
     const lineage = overlayCard.getByTestId("geometry-dependency-overlay-lineage");
     await expect(lineage).toContainText("Scene");
-    await expect(lineage).toContainText("Inputs");
+    await expect(lineage).toContainText("Parameters");
     await expect(lineage).toContainText("Width");
-    await expect(lineage).toContainText("Width is an input to Box.");
+    await expect(lineage).toContainText("Width is a parameter of Box.");
     await overlayCard.getByLabel("Full dependency chain").check();
     await expect(overlayCard.getByRole("button", { name: "▶ Derived Geometry (3)", exact: true })).toBeVisible();
     await expect(overlayCard.getByRole("button", { name: "▶ Analysis (4)", exact: true })).toBeVisible();
