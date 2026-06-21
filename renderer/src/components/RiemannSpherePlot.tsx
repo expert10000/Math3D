@@ -5,6 +5,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { sphereToStereographic } from "../math/riemannSphere";
 import { installWebGLContextLogger, isNoWebGLMode, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
 import { NoWebGLPanel } from "./NoWebGLPanel";
+import { disposeObject3DResources, disposeRendererResources } from "./threeDisposal";
 
 export type SphereLine = {
   points: { x: number; y: number; z: number }[];
@@ -48,15 +49,7 @@ const BASE_SPHERE_SEGMENTS = 48;
 const DEFAULT_POINT_SIZE = 0.045;
 
 const disposeObject3D = (obj: THREE.Object3D) => {
-  const anyObj = obj as any;
-  if (anyObj.geometry && typeof anyObj.geometry.dispose === "function") {
-    anyObj.geometry.dispose();
-  }
-  const mat = anyObj.material as THREE.Material | THREE.Material[] | undefined;
-  if (mat) {
-    if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-    else mat.dispose();
-  }
+  disposeObject3DResources(obj);
 };
 
 const clearGroup = (group: THREE.Group | null) => {
@@ -176,9 +169,7 @@ const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = (props) => {
       observer.disconnect();
       controls.dispose();
       scene.traverse(disposeObject3D);
-      renderer.renderLists.dispose();
-      renderer.dispose();
-      renderer.forceContextLoss();
+      disposeRendererResources(renderer);
       removeWebGLContextLogger();
       if (renderer.domElement.parentElement) {
         renderer.domElement.parentElement.removeChild(renderer.domElement);

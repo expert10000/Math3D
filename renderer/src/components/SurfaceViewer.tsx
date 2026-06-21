@@ -42,6 +42,11 @@ import {
   vmSafeRendererParams,
 } from "./graphicsMode";
 import { NoWebGLPanel } from "./NoWebGLPanel";
+import {
+  disposeMaterialOrMaterials,
+  disposeObject3DResources,
+  disposeRendererResources,
+} from "./threeDisposal";
 import { registerThreeResourceDiagnostics } from "./threeResourceDiagnostics";
 
 export type ColorMode = CoreColorMode;
@@ -414,22 +419,7 @@ const DBG_COLORS = false;
 const TAU = Math.PI * 2;
 
 function disposeObject3D(obj: THREE.Object3D) {
-  const anyObj = obj as any;
-  if (anyObj.geometry && typeof anyObj.geometry.dispose === "function") {
-    anyObj.geometry.dispose();
-  }
-  const mat = anyObj.material as THREE.Material | THREE.Material[] | undefined;
-  if (mat) {
-    const disposeMat = (m: THREE.Material) => {
-      const anyMat = m as any;
-      if (anyMat?.map && typeof anyMat.map.dispose === "function") {
-        anyMat.map.dispose();
-      }
-      m.dispose();
-    };
-    if (Array.isArray(mat)) mat.forEach((m) => disposeMat(m));
-    else disposeMat(mat);
-  }
+  disposeObject3DResources(obj);
 }
 
 function clearGroup(group: THREE.Group) {
@@ -5548,21 +5538,18 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (principalGlyphsRef.current) {
         if (principalGlyphsRef.current.d1) {
           scene.remove(principalGlyphsRef.current.d1);
-          principalGlyphsRef.current.d1.geometry.dispose();
-          (principalGlyphsRef.current.d1.material as THREE.Material).dispose();
+          disposeObject3DResources(principalGlyphsRef.current.d1);
         }
         if (principalGlyphsRef.current.d2) {
           scene.remove(principalGlyphsRef.current.d2);
-          principalGlyphsRef.current.d2.geometry.dispose();
-          (principalGlyphsRef.current.d2.material as THREE.Material).dispose();
+          disposeObject3DResources(principalGlyphsRef.current.d2);
         }
         principalGlyphsRef.current = null;
       }
 
       if (curvatureLinesRef.current) {
         scene.remove(curvatureLinesRef.current);
-        curvatureLinesRef.current.geometry.dispose();
-        (curvatureLinesRef.current.material as THREE.Material).dispose();
+        disposeObject3DResources(curvatureLinesRef.current);
         curvatureLinesRef.current = null;
       }
 
@@ -5613,12 +5600,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
 
       if (implicitOverlayLines) {
-        implicitOverlayLines.geometry.dispose();
-        const matAny = implicitOverlayLines.material as THREE.Material | THREE.Material[] | undefined;
-        if (matAny) {
-          if (Array.isArray(matAny)) matAny.forEach((m) => m.dispose());
-          else matAny.dispose();
-        }
+        disposeObject3DResources(implicitOverlayLines);
       }
 
       sliceGroupRef.current = null;
@@ -5628,17 +5610,11 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         if (anyO?.isMesh) {
           const mesh = obj as THREE.Mesh;
           if (mesh.geometry) mesh.geometry.dispose();
-          const matAny = (mesh as any).material as THREE.Material | THREE.Material[] | undefined;
-          if (matAny) {
-            if (Array.isArray(matAny)) matAny.forEach((m) => m.dispose());
-            else matAny.dispose();
-          }
+          disposeMaterialOrMaterials((mesh as any).material as THREE.Material | THREE.Material[] | undefined);
         }
       });
 
-      renderer.renderLists.dispose();
-      renderer.dispose();
-      renderer.forceContextLoss();
+      disposeRendererResources(renderer);
       removeWebGLContextLogger();
       resourceDiagnostics.unregister("after-cleanup");
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);

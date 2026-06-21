@@ -37,6 +37,7 @@ import {
   type VertexStarDisconnectionDiagnostic,
   isTopologyDocument,
 } from "../topology";
+import { disposeObject3DResources, disposeRendererResources } from "../components/threeDisposal";
 
 type TopologyView = TopologyDocumentView | "compare";
 type TopologyBuildMode = "preset" | "editor";
@@ -1127,11 +1128,7 @@ const createDunceStageScene = (stageIndex: number): THREE.Object3D => {
 
 const disposeObject3D = (root: THREE.Object3D): void => {
   root.traverse((child) => {
-    const geom = (child as { geometry?: THREE.BufferGeometry }).geometry;
-    if (geom) geom.dispose();
-    const mat = (child as { material?: THREE.Material | THREE.Material[] }).material;
-    if (Array.isArray(mat)) mat.forEach((entry) => entry.dispose());
-    else mat?.dispose();
+    disposeObject3DResources(child);
   });
 };
 
@@ -1156,9 +1153,7 @@ const renderDunceStageThumbnail = (stageIndex: number): string => {
   renderer.render(scene, camera);
   const dataUrl = renderer.domElement.toDataURL("image/png");
   disposeObject3D(object);
-  renderer.renderLists.dispose();
-  renderer.dispose();
-  renderer.forceContextLoss();
+  disposeRendererResources(renderer);
   return dataUrl;
 };
 

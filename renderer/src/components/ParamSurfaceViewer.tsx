@@ -77,6 +77,7 @@ import {
   vmSafeRendererParams,
 } from "./graphicsMode";
 import { NoWebGLPanel } from "./NoWebGLPanel";
+import { disposeObject3DResources, disposeRendererResources } from "./threeDisposal";
 import { registerThreeResourceDiagnostics } from "./threeResourceDiagnostics";
 
 type ParamPreset = {
@@ -1423,15 +1424,7 @@ function wrapFlagsFor(surfaceId: ParamSurfaceId) {
 }
 
 function disposeObject3D(obj: THREE.Object3D) {
-  const anyObj = obj as any;
-  if (anyObj.geometry && typeof anyObj.geometry.dispose === "function") {
-    anyObj.geometry.dispose();
-  }
-  const mat = anyObj.material as THREE.Material | THREE.Material[] | undefined;
-  if (mat) {
-    if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-    else mat.dispose();
-  }
+  disposeObject3DResources(obj);
 }
 
 function clearGroup(group: THREE.Group) {
@@ -3925,32 +3918,27 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
         // dispose geodesic line if present
         if (geodesicLineRef.current) {
           scene.remove(geodesicLineRef.current);
-          geodesicLineRef.current.geometry.dispose();
-          (geodesicLineRef.current.material as THREE.Material).dispose();
+          disposeObject3DResources(geodesicLineRef.current);
           geodesicLineRef.current = null;
         }
         if (geodesicPathLineRef.current) {
           scene.remove(geodesicPathLineRef.current);
-          geodesicPathLineRef.current.geometry.dispose();
-          (geodesicPathLineRef.current.material as THREE.Material).dispose();
+          disposeObject3DResources(geodesicPathLineRef.current);
           geodesicPathLineRef.current = null;
         }
         if (geodesicPathRawLineRef.current) {
           scene.remove(geodesicPathRawLineRef.current);
-          geodesicPathRawLineRef.current.geometry.dispose();
-          (geodesicPathRawLineRef.current.material as THREE.Material).dispose();
+          disposeObject3DResources(geodesicPathRawLineRef.current);
           geodesicPathRawLineRef.current = null;
         }
         if (geodesicPathMarkersRef.current.start) {
           scene.remove(geodesicPathMarkersRef.current.start);
-          geodesicPathMarkersRef.current.start.geometry.dispose();
-          (geodesicPathMarkersRef.current.start.material as THREE.Material).dispose();
+          disposeObject3DResources(geodesicPathMarkersRef.current.start);
           geodesicPathMarkersRef.current.start = null;
         }
         if (geodesicPathMarkersRef.current.end) {
           scene.remove(geodesicPathMarkersRef.current.end);
-          geodesicPathMarkersRef.current.end.geometry.dispose();
-          (geodesicPathMarkersRef.current.end.material as THREE.Material).dispose();
+          disposeObject3DResources(geodesicPathMarkersRef.current.end);
           geodesicPathMarkersRef.current.end = null;
         }
         if (geodesicHeatLineRef.current) {
@@ -3960,14 +3948,12 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
         }
         if (geodesicHeatMarkersRef.current.start) {
           scene.remove(geodesicHeatMarkersRef.current.start);
-          geodesicHeatMarkersRef.current.start.geometry.dispose();
-          (geodesicHeatMarkersRef.current.start.material as THREE.Material).dispose();
+          disposeObject3DResources(geodesicHeatMarkersRef.current.start);
           geodesicHeatMarkersRef.current.start = null;
         }
         if (geodesicHeatMarkersRef.current.end) {
           scene.remove(geodesicHeatMarkersRef.current.end);
-          geodesicHeatMarkersRef.current.end.geometry.dispose();
-          (geodesicHeatMarkersRef.current.end.material as THREE.Material).dispose();
+          disposeObject3DResources(geodesicHeatMarkersRef.current.end);
           geodesicHeatMarkersRef.current.end = null;
         }
 
@@ -4010,29 +3996,14 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
         probeLabelRef.current = null;
       }
 
-      renderer.renderLists.dispose();
-      renderer.dispose();
-      renderer.forceContextLoss();
-      removeWebGLContextLogger();
-      resourceDiagnostics.unregister("after-cleanup");
-      if (renderer.domElement.parentNode === mount) {
-        mount.removeChild(renderer.domElement);
-      }
-      rendererRef.current = null;
-
       sampleSetRef.current = null;
       onSampleSet?.(null);
       onParamGeodesicState?.(null);
 
-      if (sliceLinesRef.current) sliceLinesRef.current.geometry.dispose();
+      if (sliceLinesRef.current) disposeObject3DResources(sliceLinesRef.current);
       if (sliceMatRef.current) sliceMatRef.current.dispose();
       if (sliceSheetsRef.current) {
-        sliceSheetsRef.current.traverse((obj) => {
-          const m = (obj as any).material as THREE.Material | undefined;
-          if (m) m.dispose();
-          const g = (obj as any).geometry as THREE.BufferGeometry | undefined;
-          if (g) g.dispose();
-        });
+        sliceSheetsRef.current.traverse(disposeObject3DResources);
       }
       if (sliceGroupRef.current) {
         clearGroup(sliceGroupRef.current);
@@ -4051,21 +4022,18 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
       if (principalGlyphsRef.current) {
         if (principalGlyphsRef.current.d1) {
           scene.remove(principalGlyphsRef.current.d1);
-          principalGlyphsRef.current.d1.geometry.dispose();
-          (principalGlyphsRef.current.d1.material as THREE.Material).dispose();
+          disposeObject3DResources(principalGlyphsRef.current.d1);
         }
         if (principalGlyphsRef.current.d2) {
           scene.remove(principalGlyphsRef.current.d2);
-          principalGlyphsRef.current.d2.geometry.dispose();
-          (principalGlyphsRef.current.d2.material as THREE.Material).dispose();
+          disposeObject3DResources(principalGlyphsRef.current.d2);
         }
         principalGlyphsRef.current = null;
       }
 
       if (curvatureLinesRef.current) {
         scene.remove(curvatureLinesRef.current);
-        curvatureLinesRef.current.geometry.dispose();
-        (curvatureLinesRef.current.material as THREE.Material).dispose();
+        disposeObject3DResources(curvatureLinesRef.current);
         curvatureLinesRef.current = null;
       }
 
@@ -4090,8 +4058,7 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
 
       if (gaussHighlightRef.current) {
         scene.remove(gaussHighlightRef.current);
-        gaussHighlightRef.current.geometry.dispose();
-        (gaussHighlightRef.current.material as THREE.Material).dispose();
+        disposeObject3DResources(gaussHighlightRef.current);
         gaussHighlightRef.current = null;
       }
 
@@ -4103,23 +4070,28 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
 
       if (selectionOverlayRef.current) {
         scene.remove(selectionOverlayRef.current);
-        selectionOverlayRef.current.geometry.dispose();
-        (selectionOverlayRef.current.material as THREE.Material).dispose();
+        disposeObject3DResources(selectionOverlayRef.current);
         selectionOverlayRef.current = null;
       }
 
       if (selectionSphereRef.current) {
         scene.remove(selectionSphereRef.current);
-        selectionSphereRef.current.geometry.dispose();
-        (selectionSphereRef.current.material as THREE.Material).dispose();
+        disposeObject3DResources(selectionSphereRef.current);
         selectionSphereRef.current = null;
       }
       if (inspectMarkerRef.current) {
         scene.remove(inspectMarkerRef.current);
-        inspectMarkerRef.current.geometry.dispose();
-        (inspectMarkerRef.current.material as THREE.Material).dispose();
+        disposeObject3DResources(inspectMarkerRef.current);
         inspectMarkerRef.current = null;
       }
+
+      disposeRendererResources(renderer);
+      removeWebGLContextLogger();
+      resourceDiagnostics.unregister("after-cleanup");
+      if (renderer.domElement.parentNode === mount) {
+        mount.removeChild(renderer.domElement);
+      }
+      rendererRef.current = null;
 
       surfaceObjRef.current = null;
       sceneRef.current = null;

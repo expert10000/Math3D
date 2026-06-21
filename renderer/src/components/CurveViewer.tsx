@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { installWebGLContextLogger, isNoWebGLMode, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
 import { NoWebGLPanel } from "./NoWebGLPanel";
+import { disposeObject3DResources, disposeRendererResources } from "./threeDisposal";
 
 export type CurveViewerVec3 = { x: number; y: number; z: number };
 
@@ -46,17 +47,7 @@ const safeUnit = (value: CurveViewerVec3 | null | undefined) => {
 
 const disposeSceneObjects = (root: THREE.Object3D) => {
   root.traverse((node) => {
-    const withGeometry = node as THREE.Object3D & { geometry?: THREE.BufferGeometry };
-    if (withGeometry.geometry) withGeometry.geometry.dispose();
-
-    const withMaterial = node as THREE.Object3D & {
-      material?: THREE.Material | THREE.Material[] | null;
-    };
-    if (Array.isArray(withMaterial.material)) {
-      withMaterial.material.forEach((material) => material.dispose());
-    } else if (withMaterial.material) {
-      withMaterial.material.dispose();
-    }
+    disposeObject3DResources(node);
   });
 };
 
@@ -258,9 +249,7 @@ export const CurveViewer: React.FC<CurveViewerProps> = (props) => {
       resizeObserver.disconnect();
       controls.dispose();
       disposeSceneObjects(scene);
-      renderer.renderLists.dispose();
-      renderer.dispose();
-      renderer.forceContextLoss();
+      disposeRendererResources(renderer);
       removeWebGLContextLogger();
       renderer.domElement.remove();
     };
