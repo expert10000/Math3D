@@ -176,7 +176,9 @@ const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = (props) => {
       observer.disconnect();
       controls.dispose();
       scene.traverse(disposeObject3D);
+      renderer.renderLists.dispose();
       renderer.dispose();
+      renderer.forceContextLoss();
       removeWebGLContextLogger();
       if (renderer.domElement.parentElement) {
         renderer.domElement.parentElement.removeChild(renderer.domElement);

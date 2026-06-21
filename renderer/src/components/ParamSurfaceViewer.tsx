@@ -69,8 +69,15 @@ import {
   type ReferencePlaneGridSettings,
 } from "@math3d/renderer-web";
 import type { ParamSurfaceId as CoreParamSurfaceId } from "@math3d/core";
-import { installWebGLContextLogger, isNoWebGLMode, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
+import {
+  installWebGLContextLogger,
+  isNoWebGLMode,
+  isVmSafeGraphicsMode,
+  vmSafePixelRatio,
+  vmSafeRendererParams,
+} from "./graphicsMode";
 import { NoWebGLPanel } from "./NoWebGLPanel";
+import { registerThreeResourceDiagnostics } from "./threeResourceDiagnostics";
 
 type ParamPreset = {
   id: string;
@@ -80,6 +87,9 @@ type ParamPreset = {
   zExpr: string;
   createdAt: number;
 };
+
+const IDLE_RENDER_MIN_FRAME_MS = 1000 / 2;
+const VM_SAFE_IDLE_RENDER_MIN_FRAME_MS = 5000;
 type SurfaceCellData = {
   id: string;
   i: number;
@@ -2581,6 +2591,7 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
     renderer.domElement.style.display = "block";
     mount.appendChild(renderer.domElement);
     rendererRef.current = renderer;
+    const resourceDiagnostics = registerThreeResourceDiagnostics("param-surface", scene, renderer);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -2661,10 +2672,26 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
       lastViewportDebugAt = now;
       emitViewportDebug(phase);
     };
+    let lastRenderedAt = 0;
+    let controlsInteractionActive = false;
+    const renderSoon = () => {
+      lastRenderedAt = 0;
+    };
     const handleControlsChangeDebug = () => {
+      renderSoon();
       emitViewportDebugThrottled("controls");
     };
+    const handleControlsStart = () => {
+      controlsInteractionActive = true;
+      renderSoon();
+    };
+    const handleControlsEnd = () => {
+      controlsInteractionActive = false;
+      renderSoon();
+    };
     controls.addEventListener("change", handleControlsChangeDebug);
+    controls.addEventListener("start", handleControlsStart);
+    controls.addEventListener("end", handleControlsEnd);
 
     if (isCameraLeader && onCameraSync) {
       controls.addEventListener("change", emitCameraSync);
@@ -3791,13 +3818,36 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
 
     renderer.domElement.addEventListener("pointerdown", handlePointerDown);
 
+    let frameId = 0;
+    let pageVisible = document.visibilityState !== "hidden";
+    const handleVisibilityChange = () => {
+      pageVisible = document.visibilityState !== "hidden";
+      if (pageVisible) {
+        renderSoon();
+        onResize();
+      }
+    };
     const animate = () => {
-      requestAnimationFrame(animate);
+      frameId = requestAnimationFrame(animate);
+      if (!pageVisible) return;
       if (sliceDirtyRef.current && surfaceObjRef.current) {
         updateSlice(surfaceObjRef.current);
         sliceDirtyRef.current = false;
+        renderSoon();
       }
-      controls.update();
+      const now = performance.now();
+      const hasContinuousMotion =
+        controlsInteractionActive ||
+        cameraTourFrameRef.current != null ||
+        zoomAnimRef.current != null;
+      const idleRenderMinFrameMs = isVmSafeGraphicsMode()
+        ? VM_SAFE_IDLE_RENDER_MIN_FRAME_MS
+        : IDLE_RENDER_MIN_FRAME_MS;
+      if (!hasContinuousMotion && now - lastRenderedAt < idleRenderMinFrameMs) {
+        return;
+      }
+      if (hasContinuousMotion) controls.update();
+      lastRenderedAt = now;
       renderer.render(scene, camera);
     };
     animate();
@@ -3814,6 +3864,7 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h, false);
+      renderSoon();
 
       const radius = radiusRef.current;
       if (!Number.isFinite(radius) || radius <= 0) return;
@@ -3863,12 +3914,14 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
     };
 
     window.addEventListener("resize", onResize);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     const ro = new ResizeObserver(onResize);
     ro.observe(mount);
     onResize();
     emitViewportDebug("init");
 
       return () => {
+        resourceDiagnostics.snapshot("before-cleanup");
         // dispose geodesic line if present
         if (geodesicLineRef.current) {
           scene.remove(geodesicLineRef.current);
@@ -3924,7 +3977,11 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
         if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
         ro.disconnect();
         window.removeEventListener("resize", onResize);
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+        cancelAnimationFrame(frameId);
         controls.removeEventListener("change", handleControlsChangeDebug);
+        controls.removeEventListener("start", handleControlsStart);
+        controls.removeEventListener("end", handleControlsEnd);
         renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
         if (isCameraLeader && onCameraSync) {
           controls.removeEventListener("change", emitCameraSync);
@@ -3953,8 +4010,11 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
         probeLabelRef.current = null;
       }
 
+      renderer.renderLists.dispose();
       renderer.dispose();
+      renderer.forceContextLoss();
       removeWebGLContextLogger();
+      resourceDiagnostics.unregister("after-cleanup");
       if (renderer.domElement.parentNode === mount) {
         mount.removeChild(renderer.domElement);
       }

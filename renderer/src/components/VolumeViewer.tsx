@@ -25,8 +25,15 @@ import {
   vtkVolumeStreamlines,
 } from "../services/vtkVolumeClient";
 import { vtkSmooth } from "../services/vtkMeshClient";
-import { installWebGLContextLogger, isNoWebGLMode, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
+import {
+  installWebGLContextLogger,
+  isNoWebGLMode,
+  isVmSafeGraphicsMode,
+  vmSafePixelRatio,
+  vmSafeRendererParams,
+} from "./graphicsMode";
 import { NoWebGLPanel } from "./NoWebGLPanel";
+import { registerThreeResourceDiagnostics } from "./threeResourceDiagnostics";
 
 export type VolumeViewerProps = {
   dataset: VolumeDataset | null;
@@ -61,6 +68,10 @@ export type VolumeViewerProps = {
   captureToken?: number;
   onCaptureThumbnail?: (dataUrl: string | null) => void;
 };
+
+const IDLE_RENDER_MIN_FRAME_MS = 1000 / 2;
+const VM_SAFE_IDLE_RENDER_MIN_FRAME_MS = 5000;
+const VM_SAFE_HOVER_MIN_FRAME_MS = 250;
 
 const disposeMesh = (mesh: THREE.Mesh) => {
   mesh.geometry.dispose();
@@ -376,12 +387,30 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
     renderer.setPixelRatio(vmSafePixelRatio(window.devicePixelRatio || 1, 2));
     renderer.setSize(mount.clientWidth || 1, mount.clientHeight || 1);
     mount.appendChild(renderer.domElement);
+    const resourceDiagnostics = registerThreeResourceDiagnostics("volume", scene, renderer);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.target.set(0, 0, 0);
     controls.update();
+
+    let lastRenderedAt = 0;
+    let controlsInteractionActive = false;
+    const renderSoon = () => {
+      lastRenderedAt = 0;
+    };
+    const handleControlsStart = () => {
+      controlsInteractionActive = true;
+      renderSoon();
+    };
+    const handleControlsEnd = () => {
+      controlsInteractionActive = false;
+      renderSoon();
+    };
+    controls.addEventListener("start", handleControlsStart);
+    controls.addEventListener("end", handleControlsEnd);
+    controls.addEventListener("change", renderSoon);
 
     const axes = new THREE.AxesHelper(1.25);
     const axesMat = axes.material as THREE.Material | THREE.Material[];
@@ -432,9 +461,12 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
     cropGizmo.addEventListener("dragging-changed", (evt: any) => {
       const dragging = !!evt?.value;
       cropDraggingRef.current = dragging;
+      controlsInteractionActive = dragging;
+      renderSoon();
       controls.enabled = !dragging;
     });
     cropGizmo.addEventListener("objectChange", () => {
+      renderSoon();
       const obj = cropBoxRef.current;
       if (!obj) return;
       const center: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
@@ -461,6 +493,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
+      renderSoon();
     };
 
     const ro = new ResizeObserver(handleResize);
@@ -468,19 +501,45 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
     window.addEventListener("resize", handleResize);
 
     let frameId = 0;
+    let pageVisible = document.visibilityState !== "hidden";
+    const handleVisibilityChange = () => {
+      pageVisible = document.visibilityState !== "hidden";
+      if (pageVisible) {
+        renderSoon();
+        handleResize();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     const animate = () => {
       frameId = requestAnimationFrame(animate);
-      controls.update();
+      if (!pageVisible) return;
+      const now = performance.now();
+      const idleRenderMinFrameMs = isVmSafeGraphicsMode()
+        ? VM_SAFE_IDLE_RENDER_MIN_FRAME_MS
+        : IDLE_RENDER_MIN_FRAME_MS;
+      if (!controlsInteractionActive && now - lastRenderedAt < idleRenderMinFrameMs) {
+        return;
+      }
+      if (controlsInteractionActive) controls.update();
+      lastRenderedAt = now;
       renderer.render(scene, camera);
     };
     animate();
 
     return () => {
+      resourceDiagnostics.snapshot("before-cleanup");
       cancelAnimationFrame(frameId);
       ro.disconnect();
       window.removeEventListener("resize", handleResize);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      controls.removeEventListener("start", handleControlsStart);
+      controls.removeEventListener("end", handleControlsEnd);
+      controls.removeEventListener("change", renderSoon);
       controls.dispose();
+      renderer.renderLists.dispose();
       renderer.dispose();
+      renderer.forceContextLoss();
       removeWebGLContextLogger();
       renderer.domElement.remove();
 
@@ -542,6 +601,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
         sliceTextureRef.current.dispose();
         sliceTextureRef.current = null;
       }
+      resourceDiagnostics.unregister("after-cleanup");
     };
   }, []);
 
@@ -809,8 +869,13 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
       setHoverInfo({ world, value, gradMag });
     };
 
+    let lastHoverAt = 0;
     const handleMove = (e: PointerEvent) => {
       hoverPendingRef.current = { x: e.clientX, y: e.clientY };
+      const now = performance.now();
+      const hoverMinFrameMs = isVmSafeGraphicsMode() ? VM_SAFE_HOVER_MIN_FRAME_MS : 0;
+      if (hoverMinFrameMs > 0 && now - lastHoverAt < hoverMinFrameMs) return;
+      lastHoverAt = now;
       if (hoverRafRef.current !== null) return;
       hoverRafRef.current = window.requestAnimationFrame(process);
     };

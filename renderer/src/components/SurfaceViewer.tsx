@@ -42,6 +42,7 @@ import {
   vmSafeRendererParams,
 } from "./graphicsMode";
 import { NoWebGLPanel } from "./NoWebGLPanel";
+import { registerThreeResourceDiagnostics } from "./threeResourceDiagnostics";
 
 export type ColorMode = CoreColorMode;
 
@@ -3578,6 +3579,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const scene = new THREE.Scene();
     sceneRef.current = scene;
+    const resourceDiagnostics = registerThreeResourceDiagnostics("surface", scene, renderer);
 
     const camera = new THREE.PerspectiveCamera(35, width / height, 0.1, 100);
     camera.position.set(3, 3, 4);
@@ -5479,6 +5481,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     animate();
 
     return () => {
+      resourceDiagnostics.snapshot("before-cleanup");
       forceReframeRef.current = null;
       stopCameraTourRef.current("stopped", false);
       cancelAnimationFrame(frameId);
@@ -5633,8 +5636,11 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         }
       });
 
+      renderer.renderLists.dispose();
       renderer.dispose();
+      renderer.forceContextLoss();
       removeWebGLContextLogger();
+      resourceDiagnostics.unregister("after-cleanup");
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
       rendererRef.current = null;
       applyProbeFromDomainRef.current = null;

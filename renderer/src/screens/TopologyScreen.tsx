@@ -1156,9 +1156,13 @@ const renderDunceStageThumbnail = (stageIndex: number): string => {
   renderer.render(scene, camera);
   const dataUrl = renderer.domElement.toDataURL("image/png");
   disposeObject3D(object);
+  renderer.renderLists.dispose();
   renderer.dispose();
+  renderer.forceContextLoss();
   return dataUrl;
 };
+
+let dunceStageThumbnailUrlCache: string[] | null = null;
 
 const DunceMapReference3D: React.FC = () => {
   const [thumbnailUrls, setThumbnailUrls] = useState<string[]>([]);
@@ -1166,7 +1170,10 @@ const DunceMapReference3D: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
     try {
-      const next = DUNCE_3D_STAGE_TITLES.map((_, stageIndex) => renderDunceStageThumbnail(stageIndex));
+      const next =
+        dunceStageThumbnailUrlCache ??
+        DUNCE_3D_STAGE_TITLES.map((_, stageIndex) => renderDunceStageThumbnail(stageIndex));
+      dunceStageThumbnailUrlCache = next;
       if (!cancelled) setThumbnailUrls(next);
     } catch {
       if (!cancelled) setThumbnailUrls([]);

@@ -538,7 +538,9 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = (props) => {
         (selectedPointsRef.current.material as THREE.Material).dispose();
       }
 
+      renderer.renderLists.dispose();
       renderer.dispose();
+      renderer.forceContextLoss();
       removeWebGLContextLogger();
       rendererRef.current = null;
       sceneRef.current = null;

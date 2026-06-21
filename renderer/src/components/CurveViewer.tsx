@@ -258,7 +258,9 @@ export const CurveViewer: React.FC<CurveViewerProps> = (props) => {
       resizeObserver.disconnect();
       controls.dispose();
       disposeSceneObjects(scene);
+      renderer.renderLists.dispose();
       renderer.dispose();
+      renderer.forceContextLoss();
       removeWebGLContextLogger();
       renderer.domElement.remove();
     };

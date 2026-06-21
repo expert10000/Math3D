@@ -7963,7 +7963,56 @@ const resolveBlockPorts = (block: WorkbookBlock): { inputs: WorkbookPort[]; outp
 
 /* ---------------- App ---------------- */
 
+const SURFACE_VIEWER_HANDOFF_DEBOUNCE_MS = 1000;
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => setDebouncedValue(value), delayMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [value, delayMs]);
+
+  return debouncedValue;
+}
+
 const App: React.FC = () => {
+  const lastHeavyWorkspaceActionAtRef = useRef(Number.NEGATIVE_INFINITY);
+  const pendingHeavyWorkspaceActionRef = useRef<(() => void) | null>(null);
+  const pendingHeavyWorkspaceTimeoutRef = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (pendingHeavyWorkspaceTimeoutRef.current != null) {
+        window.clearTimeout(pendingHeavyWorkspaceTimeoutRef.current);
+      }
+    },
+    []
+  );
+  const runHeavyWorkspaceAction = useCallback((action: () => void) => {
+    const now = performance.now();
+    const remainingMs = 700 - (now - lastHeavyWorkspaceActionAtRef.current);
+    if (remainingMs > 0) {
+      pendingHeavyWorkspaceActionRef.current = action;
+      if (pendingHeavyWorkspaceTimeoutRef.current == null) {
+        pendingHeavyWorkspaceTimeoutRef.current = window.setTimeout(() => {
+          pendingHeavyWorkspaceTimeoutRef.current = null;
+          const pendingAction = pendingHeavyWorkspaceActionRef.current;
+          pendingHeavyWorkspaceActionRef.current = null;
+          if (!pendingAction) return;
+          lastHeavyWorkspaceActionAtRef.current = performance.now();
+          pendingAction();
+        }, remainingMs);
+      }
+      return;
+    }
+    if (pendingHeavyWorkspaceTimeoutRef.current != null) {
+      window.clearTimeout(pendingHeavyWorkspaceTimeoutRef.current);
+      pendingHeavyWorkspaceTimeoutRef.current = null;
+      pendingHeavyWorkspaceActionRef.current = null;
+    }
+    lastHeavyWorkspaceActionAtRef.current = now;
+    action();
+  }, []);
   const [mode, setMode] = useState<Mode>("surfaces");
   const [curvePresetCategoryFilter, setCurvePresetCategoryFilter] = useState<CurvePresetCategory | "all">("all");
   const [curvePresetId, setCurvePresetId] = useState<string>("circle2d");
@@ -27845,6 +27894,51 @@ const App: React.FC = () => {
     : compareParamId;
   const primaryOverlay = compareEnabled ? compareOverlayA : baseOverlaySettings;
   const secondaryOverlay = compareEnabled ? compareOverlayB : baseOverlaySettings;
+  const surfaceViewerHandoff = useMemo(
+    () => ({
+      mode,
+      surfaceViewerKind,
+      datasetKind,
+      primarySurfaceId,
+      primaryParamId,
+      activeParamLikeDomain,
+      activeParamLikeResolution,
+      activeCgalMesh,
+      surfaceMeshData,
+      activeGraphDomain,
+      graphSampleMaxPoints,
+    }),
+    [
+      mode,
+      surfaceViewerKind,
+      datasetKind,
+      primarySurfaceId,
+      primaryParamId,
+      activeParamLikeDomain,
+      activeParamLikeResolution,
+      activeCgalMesh,
+      surfaceMeshData,
+      activeGraphDomain,
+      graphSampleMaxPoints,
+    ]
+  );
+  const debouncedSurfaceViewerHandoff = useDebouncedValue(
+    surfaceViewerHandoff,
+    SURFACE_VIEWER_HANDOFF_DEBOUNCE_MS
+  );
+  const {
+    mode: debouncedSurfaceViewerMode,
+    surfaceViewerKind: debouncedSurfaceViewerKind,
+    datasetKind: debouncedDatasetKind,
+    primarySurfaceId: debouncedPrimarySurfaceId,
+    primaryParamId: debouncedPrimaryParamId,
+    activeParamLikeDomain: debouncedActiveParamLikeDomain,
+    activeParamLikeResolution: debouncedActiveParamLikeResolution,
+    activeCgalMesh: debouncedActiveCgalMesh,
+    surfaceMeshData: debouncedSurfaceMeshData,
+    activeGraphDomain: debouncedActiveGraphDomain,
+    graphSampleMaxPoints: debouncedGraphSampleMaxPoints,
+  } = debouncedSurfaceViewerHandoff;
   const showParamSurfaceOverlayContext =
     mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "param";
   const paramSurfaceOverlayHasRotationalTab =
@@ -42126,6 +42220,18 @@ case "mobius":
       };
 
       switch (command) {
+        case "app:memory-pressure-warning": {
+          const packet = payload as { rssGb?: number; thresholdGb?: number } | null | undefined;
+          const rss = typeof packet?.rssGb === "number" ? `${packet.rssGb.toFixed(2)} GB` : "high";
+          notify(`Performance recovery warning: renderer memory is ${rss}.`);
+          return;
+        }
+        case "app:memory-pressure-reload": {
+          const packet = payload as { rssGb?: number; thresholdGb?: number } | null | undefined;
+          const rss = typeof packet?.rssGb === "number" ? `${packet.rssGb.toFixed(2)} GB` : "high";
+          notify(`Performance recovery: reloading the view after renderer memory reached ${rss}.`);
+          return;
+        }
         case "file:new-workspace":
           setMode("surfaces");
           setShowRightPanel(true);
@@ -47165,7 +47271,11 @@ case "mobius":
                         <button
                           key={`mode-${entry.id}`}
                           type="button"
-                          onClick={entry.onSelect}
+                          onClick={
+                            entry.id === "complex_analysis" || entry.id === "topology"
+                              ? () => runHeavyWorkspaceAction(entry.onSelect)
+                              : entry.onSelect
+                          }
                           disabled={disabled}
                           aria-pressed={active}
                           style={{
@@ -47829,12 +47939,12 @@ case "mobius":
               <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.78 }}>Complex Analysis:</span>
               <button
                 type="button"
-                onClick={() => {
+                onClick={() => runHeavyWorkspaceAction(() => {
                   setMode("mobius");
                   setFunctionExplorerScene("other_complex");
                   setOtherComplexMainViewMode("plane");
                   setOtherComplexInspectorTab("branch");
-                }}
+                })}
                 style={pill(
                   mode === "mobius" &&
                     functionExplorerScene === "other_complex" &&
@@ -47847,73 +47957,73 @@ case "mobius":
               </button>
               <button
                 type="button"
-                onClick={() => {
+                onClick={() => runHeavyWorkspaceAction(() => {
                   setMode("mobius");
                   setFunctionExplorerScene("mobius");
                   setMobiusSubTab("map");
-                }}
+                })}
                 style={pill(mode === "mobius" && functionExplorerScene === "mobius" && mobiusSubTab !== "riemann")}
               >
                 Möbius Lab
               </button>
               <button
                 type="button"
-                onClick={() => {
+                onClick={() => runHeavyWorkspaceAction(() => {
                   setMode("mobius");
                   setFunctionExplorerScene("mobius");
                   setMobiusSubTab("riemann");
-                }}
+                })}
                 style={pill(mode === "mobius" && functionExplorerScene === "mobius" && mobiusSubTab === "riemann")}
               >
                 Riemann Sphere
               </button>
               <button
                 type="button"
-                onClick={() => {
+                onClick={() => runHeavyWorkspaceAction(() => {
                   setMode("mobius");
                   setFunctionExplorerScene("other_complex");
                   setOtherComplexMainViewMode("residue");
                   setOtherComplexInspectorTab("monodromy");
                   setOtherComplexShowPathMapping(true);
-                }}
+                })}
                 style={pill(mode === "mobius" && functionExplorerScene === "other_complex" && otherComplexMainViewMode === "residue")}
               >
                 Residue Lab
               </button>
               <button
                 type="button"
-                onClick={() => {
+                onClick={() => runHeavyWorkspaceAction(() => {
                   setMode("mobius");
                   setFunctionExplorerScene("other_complex");
                   setOtherComplexMainViewMode("path");
                   setOtherComplexInspectorTab("branch");
                   setOtherComplexShowBranchCuts(true);
                   setOtherComplexShowPathMapping(true);
-                }}
+                })}
                 style={pill(mode === "mobius" && functionExplorerScene === "other_complex" && otherComplexMainViewMode === "path")}
               >
                 Branch Lab
               </button>
               <button
                 type="button"
-                onClick={() => {
+                onClick={() => runHeavyWorkspaceAction(() => {
                   setMode("mobius");
                   setFunctionExplorerScene("other_complex");
                   activateOtherComplexCoveringExample("exp");
-                }}
+                })}
                 style={pill(mode === "mobius" && functionExplorerScene === "other_complex" && otherComplexMainViewMode === "covering")}
               >
                 Covering Lab
               </button>
               <button
                 type="button"
-                onClick={() => {
+                onClick={() => runHeavyWorkspaceAction(() => {
                   setMode("surfaces");
                   setDatasetKind("surface");
                   handleChangeViewerKind("complex");
                   setSurfacesPanelState("work");
                   setSurfacesLeftTab("scene");
-                }}
+                })}
                 style={pill(mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "complex")}
               >
                 Complex map
@@ -49877,9 +49987,14 @@ case "mobius":
                           height: "100%",
                         }}
                       >
-                        {surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? (
+                        {debouncedSurfaceViewerMode !== mode ? (
+                          <div
+                            data-testid="surface-viewer-handoff-pending"
+                            style={{ width: "100%", height: "100%", background: cleanScreenshotSceneContainerBackground }}
+                          />
+                        ) : debouncedSurfaceViewerKind === "param" || debouncedSurfaceViewerKind === "weierstrass" ? (
                         <ParamSurfaceViewer
-                            surfaceId={primaryParamId}
+                            surfaceId={debouncedPrimaryParamId}
                             renderQuality={surfaceRenderQuality}
                             sceneBackgroundMode={cleanScreenshotSceneBackgroundMode}
                             customX={paramXExpr}
@@ -49904,7 +50019,7 @@ case "mobius":
                             materialRoughness={materialRoughness}
                             materialMetalness={materialMetalness}
                             materialOpacity={materialOpacity}
-                            paramResolution={activeParamLikeResolution}
+                            paramResolution={debouncedActiveParamLikeResolution}
                             colorMode={primaryOverlay.colorMode}
                             colorPalette={primaryOverlay.colorPalette}
                             showChartGrid={cleanScreenshotSurfaceActive ? false : primaryOverlay.showChartGrid}
@@ -49914,7 +50029,7 @@ case "mobius":
                             showViewGizmo={showSurfaceViewGizmo}
                             chartGridCountU={chartGridCountU}
                             chartGridCountV={chartGridCountV}
-                            paramDomain={activeParamLikeDomain}
+                            paramDomain={debouncedActiveParamLikeDomain}
                             splineSettings={splineSurfaceSettings}
                             weierstrassGExpr={weierstrassGExpr}
                             weierstrassPhiExpr={weierstrassPhiExpr}
@@ -49969,8 +50084,8 @@ case "mobius":
                             onCameraSync={cameraSyncEnabled ? setCameraSync : undefined}
                             cameraOverride={cameraOverride}
                             cameraOverrideToken={cameraOverrideToken}
-                            cameraTourCommand={isSurfaceDatasetKind(datasetKind) ? surfacesCameraTourCommand : null}
-                            onCameraTourEvent={isSurfaceDatasetKind(datasetKind) ? handleSurfacesCameraTourEvent : undefined}
+                            cameraTourCommand={isSurfaceDatasetKind(debouncedDatasetKind) ? surfacesCameraTourCommand : null}
+                            onCameraTourEvent={isSurfaceDatasetKind(debouncedDatasetKind) ? handleSurfacesCameraTourEvent : undefined}
                             captureToken={workbookCaptureToken}
                             onCaptureThumbnail={handleWorkbookThumbnail}
                           gaussMapEnabled={cleanScreenshotSurfaceActive ? false : showGaussMap}
@@ -50023,14 +50138,14 @@ case "mobius":
                             zoomToRegion={zoomToRegion}
                             zoomToRegionToken={zoomNowToken}
                             weierstrassDiagnostics={
-                              surfaceViewerKind === "weierstrass" ? weierstrassDiagnostics : null
+                              debouncedSurfaceViewerKind === "weierstrass" ? weierstrassDiagnostics : null
                             }
-                            showDriftArrow={surfaceViewerKind === "weierstrass" ? showDriftArrow : false}
+                            showDriftArrow={debouncedSurfaceViewerKind === "weierstrass" ? showDriftArrow : false}
                             onParamGeodesicState={handleParamGeodesicState}
                           />
                         ) : (
                         <SurfaceViewer
-                              surfaceId={primarySurfaceId}
+                              surfaceId={debouncedPrimarySurfaceId}
                               renderQuality={surfaceRenderQuality}
                               meshInteractionQualityMode={meshInteractionQualityMode}
                               meshInteractionRestoreDelayMs={meshInteractionRestoreDelayMs}
@@ -50042,12 +50157,16 @@ case "mobius":
                               sceneBackgroundMode={cleanScreenshotSceneBackgroundMode}
                               graphExpr={graphExpr}
                             implicitExpr={implicitExpr}
-                            implicitMeshOverride={activeCgalMesh}
+                            implicitMeshOverride={debouncedActiveCgalMesh}
                             surfaceMeshOverride={
-                              surfaceViewerKind === "mesh" || surfaceViewerKind === "complex" ? surfaceMeshData : null
+                              debouncedSurfaceViewerKind === "mesh" || debouncedSurfaceViewerKind === "complex"
+                                ? debouncedSurfaceMeshData
+                                : null
                             }
                             implicitMeshToken={cgalMeshToken}
-                            sampleMaxPoints={surfaceViewerKind === "graph" ? graphSampleMaxPoints : undefined}
+                            sampleMaxPoints={
+                              debouncedSurfaceViewerKind === "graph" ? debouncedGraphSampleMaxPoints : undefined
+                            }
                               wireframe={primaryOverlay.showWireframe}
                               showPlanes={cleanScreenshotSurfaceActive ? false : primaryOverlay.showPlanes}
                               showPrincipalProjections={cleanScreenshotSurfaceActive ? false : showPrincipalProjections}
@@ -50061,7 +50180,7 @@ case "mobius":
                             materialOpacity={materialOpacity}
                             graphResolution={graphResolution}
                             implicitResolution={implicitResolution}
-                            implicitDomainSize={implicitDomainSizeFor(primarySurfaceId)}
+                            implicitDomainSize={implicitDomainSizeFor(debouncedPrimarySurfaceId)}
                             colorMode={primaryOverlay.colorMode}
                             colorPalette={primaryOverlay.colorPalette}
                             showChartGrid={cleanScreenshotSurfaceActive ? false : primaryOverlay.showChartGrid}
@@ -50070,7 +50189,7 @@ case "mobius":
                             chartGridCountU={chartGridCountU}
                             chartGridCountV={chartGridCountV}
                             implicitOverlay={implicitOverlay}
-                            graphDomain={activeGraphDomain}
+                            graphDomain={debouncedActiveGraphDomain}
                             showBoundingBox={cleanScreenshotSurfaceActive ? false : primaryOverlay.showBoundingBox}
                             resetToken={cameraResetToken}
                             windowReframeToken={windowReframeToken}
@@ -50125,8 +50244,8 @@ case "mobius":
                             onCameraSync={cameraSyncEnabled ? setCameraSync : undefined}
                             cameraOverride={cameraOverride}
                             cameraOverrideToken={cameraOverrideToken}
-                            cameraTourCommand={isSurfaceDatasetKind(datasetKind) ? surfacesCameraTourCommand : null}
-                            onCameraTourEvent={isSurfaceDatasetKind(datasetKind) ? handleSurfacesCameraTourEvent : undefined}
+                            cameraTourCommand={isSurfaceDatasetKind(debouncedDatasetKind) ? surfacesCameraTourCommand : null}
+                            onCameraTourEvent={isSurfaceDatasetKind(debouncedDatasetKind) ? handleSurfacesCameraTourEvent : undefined}
                             captureToken={workbookCaptureToken}
                             onCaptureThumbnail={handleWorkbookThumbnail}
                           gaussMapEnabled={cleanScreenshotSurfaceActive ? false : showGaussMap}

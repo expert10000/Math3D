@@ -27,6 +27,28 @@ const geometrySmokeTimeoutMs = Math.max(
     ? Number(process.env.MATH3D_GEOMETRY_SMOKE_TIMEOUT_MS)
     : 120000
 );
+const GIB = 1024 * 1024 * 1024;
+const rendererMemoryWarnGb = Number.isFinite(Number(process.env.MATH3D_RENDERER_MEMORY_WARN_GB))
+  ? Number(process.env.MATH3D_RENDERER_MEMORY_WARN_GB)
+  : 4.5;
+const rendererMemoryReloadGb = Number.isFinite(Number(process.env.MATH3D_RENDERER_MEMORY_RELOAD_GB))
+  ? Number(process.env.MATH3D_RENDERER_MEMORY_RELOAD_GB)
+  : 5.5;
+const rendererMemorySampleMs = Math.max(
+  500,
+  Number.isFinite(Number(process.env.MATH3D_RENDERER_MEMORY_SAMPLE_MS))
+    ? Number(process.env.MATH3D_RENDERER_MEMORY_SAMPLE_MS)
+    : 1000
+);
+
+type RendererMemoryPressureLevel = "warning" | "reloading";
+type RendererMemoryPressurePacket = {
+  level: RendererMemoryPressureLevel;
+  rssGb: number;
+  thresholdGb: number;
+  rendererPid: number;
+  at: number;
+};
 
 // Work around Windows occlusion/background throttling glitches that can freeze
 // interactive text controls until a maximize/minimize/devtools reframe occurs.
@@ -260,6 +282,123 @@ const waitForMainWindowReady = (win: BrowserWindow, timeoutMs = 30000): Promise<
   });
 };
 
+const formatGb = (bytes: number): number => Number((bytes / GIB).toFixed(2));
+
+const getRendererWorkingSetBytes = (win: BrowserWindow): { pid: number; bytes: number } | null => {
+  if (win.isDestroyed() || win.webContents.isDestroyed()) return null;
+  const pid = win.webContents.getOSProcessId();
+  if (!pid || pid <= 0) return null;
+  const metric = app.getAppMetrics().find((entry) => entry.pid === pid);
+  const workingSetKb = Number(metric?.memory?.workingSetSize);
+  if (!Number.isFinite(workingSetKb) || workingSetKb <= 0) return null;
+  return { pid, bytes: workingSetKb * 1024 };
+};
+
+const sendRendererMemoryPressure = (
+  win: BrowserWindow,
+  level: RendererMemoryPressureLevel,
+  bytes: number,
+  thresholdGb: number,
+  rendererPid: number
+): void => {
+  if (win.isDestroyed() || win.webContents.isDestroyed()) return;
+  const packet: RendererMemoryPressurePacket = {
+    level,
+    rssGb: formatGb(bytes),
+    thresholdGb,
+    rendererPid,
+    at: Date.now(),
+  };
+  try {
+    win.webContents.send("app:menu-command", {
+      command: level === "warning" ? "app:memory-pressure-warning" : "app:memory-pressure-reload",
+      payload: packet,
+    });
+  } catch {
+    // The hard guard must still be able to reload even if the renderer is not receiving IPC.
+  }
+};
+
+const installRendererMemoryGuard = (win: BrowserWindow): void => {
+  let warnedRendererPid: number | null = null;
+  let reloading = false;
+  let lastReloadAt = 0;
+  let interval: NodeJS.Timeout | null = null;
+
+  const clear = () => {
+    if (interval) {
+      clearInterval(interval);
+      interval = null;
+    }
+  };
+
+  const sample = () => {
+    if (win.isDestroyed() || win.webContents.isDestroyed()) {
+      clear();
+      return;
+    }
+    const rendererMemory = getRendererWorkingSetBytes(win);
+    if (!rendererMemory) return;
+    const { pid, bytes } = rendererMemory;
+    const rssGb = formatGb(bytes);
+
+    if (bytes >= rendererMemoryWarnGb * GIB && warnedRendererPid !== pid) {
+      warnedRendererPid = pid;
+      console.warn("[memory-guard] renderer memory warning", {
+        rendererPid: pid,
+        rssGb,
+        thresholdGb: rendererMemoryWarnGb,
+      });
+      sendRendererMemoryPressure(win, "warning", bytes, rendererMemoryWarnGb, pid);
+    }
+
+    if (bytes < rendererMemoryReloadGb * GIB || reloading) return;
+
+    const now = Date.now();
+    if (now - lastReloadAt < 8000) return;
+    reloading = true;
+    lastReloadAt = now;
+    console.error("[memory-guard] renderer memory reload", {
+      rendererPid: pid,
+      rssGb,
+      thresholdGb: rendererMemoryReloadGb,
+    });
+    sendRendererMemoryPressure(win, "reloading", bytes, rendererMemoryReloadGb, pid);
+    try {
+      const bounds = win.getBounds();
+      const maximized = win.isMaximized();
+      const fullscreen = win.isFullScreen();
+      const replacement = createWindow();
+      replacement.setBounds(bounds);
+      if (maximized) replacement.maximize();
+      if (fullscreen) replacement.setFullScreen(true);
+      buildAppMenu(replacement);
+      const closeOldWindow = () => {
+        if (!win.isDestroyed()) win.destroy();
+      };
+      replacement.webContents.once("did-finish-load", closeOldWindow);
+      setTimeout(closeOldWindow, 10000);
+    } catch (error: any) {
+      console.error("[memory-guard] renderer reload failed", String(error?.message ?? error));
+      reloading = false;
+    }
+  };
+
+  win.webContents.on("did-start-loading", () => {
+    warnedRendererPid = null;
+  });
+  win.webContents.on("did-finish-load", () => {
+    reloading = false;
+    warnedRendererPid = null;
+  });
+  win.webContents.on("render-process-gone", () => {
+    warnedRendererPid = null;
+  });
+  win.on("closed", clear);
+
+  interval = setInterval(sample, rendererMemorySampleMs);
+};
+
 // Guard against running this entrypoint under plain Node (Electron APIs unavailable).
 if (!(app && typeof app.whenReady === "function")) {
   console.error("Electron app is not available. Run via the Electron runtime.");
@@ -316,6 +455,7 @@ function createWindow() {
     rendererFrameReady = false;
     console.error("[renderer] process gone", details);
   });
+  installRendererMemoryGuard(win);
 
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
     const devUrl = new URL(process.env.VITE_DEV_SERVER_URL);
