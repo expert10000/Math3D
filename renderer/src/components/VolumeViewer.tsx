@@ -26,20 +26,10 @@ import {
 } from "../services/vtkVolumeClient";
 import { vtkSmooth } from "../services/vtkMeshClient";
 import {
-  installWebGLContextLogger,
-  isNoWebGLMode,
-  isVmSafeGraphicsMode,
-  vmSafePixelRatio,
-  vmSafeRendererParams,
-} from "./graphicsMode";
-import { NoWebGLPanel } from "./NoWebGLPanel";
-import {
-  clearGroupResources,
-  disposeMaterialOrMaterials,
-  disposeObject3DResources,
-  disposeRendererResources,
-} from "./threeDisposal";
-import { registerThreeResourceDiagnostics } from "./threeResourceDiagnostics";
+  disposeSceneResources,
+  disposeWebGLRenderer,
+  registerWebGLRenderer,
+} from "../viewer/threeResourceDisposal";
 
 export type VolumeViewerProps = {
   dataset: VolumeDataset | null;
@@ -75,17 +65,30 @@ export type VolumeViewerProps = {
   onCaptureThumbnail?: (dataUrl: string | null) => void;
 };
 
-const IDLE_RENDER_MIN_FRAME_MS = 1000 / 2;
-const VM_SAFE_IDLE_RENDER_MIN_FRAME_MS = 5000;
-const VM_SAFE_HOVER_MIN_FRAME_MS = 250;
-
 const disposeMesh = (mesh: THREE.Mesh) => {
   mesh.geometry.dispose();
-  disposeMaterialOrMaterials(mesh.material as THREE.Material | THREE.Material[]);
+  const mat = mesh.material as THREE.Material | THREE.Material[];
+  if (Array.isArray(mat)) {
+    mat.forEach((m) => m.dispose());
+  } else {
+    mat.dispose();
+  }
 };
 
 const clearGroup = (group: THREE.Group) => {
-  clearGroupResources(group);
+  const children = [...group.children];
+  for (const child of children) {
+    group.remove(child);
+    const anyChild = child as any;
+    if (anyChild.geometry) {
+      anyChild.geometry.dispose?.();
+    }
+    if (anyChild.material) {
+      const mat = anyChild.material as THREE.Material | THREE.Material[];
+      if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+      else mat.dispose();
+    }
+  }
 };
 
 const VTK_SLICE_THRESHOLD = 64 * 64 * 64;
@@ -185,12 +188,7 @@ const findNearestPointOnMesh = (geom: THREE.BufferGeometry, point: THREE.Vector3
   return best;
 };
 
-export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
-  if (isNoWebGLMode()) {
-    return <NoWebGLPanel title="3D volume viewer paused" />;
-  }
-
-  const {
+export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   dataset,
   vectorGrid,
   axis,
@@ -222,7 +220,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
   streamlineMaxLength,
   captureToken = 0,
   onCaptureThumbnail,
-  } = props;
+}) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -371,35 +369,18 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
     camera.position.set(2.6, 2.4, 2.8);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer(vmSafeRendererParams({ antialias: true, alpha: true }));
-    const removeWebGLContextLogger = installWebGLContextLogger(renderer.domElement, "volume");
-    renderer.setPixelRatio(vmSafePixelRatio(window.devicePixelRatio || 1, 2));
+    const renderer = registerWebGLRenderer(
+      new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    );
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
     renderer.setSize(mount.clientWidth || 1, mount.clientHeight || 1);
     mount.appendChild(renderer.domElement);
-    const resourceDiagnostics = registerThreeResourceDiagnostics("volume", scene, renderer);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.target.set(0, 0, 0);
     controls.update();
-
-    let lastRenderedAt = 0;
-    let controlsInteractionActive = false;
-    const renderSoon = () => {
-      lastRenderedAt = 0;
-    };
-    const handleControlsStart = () => {
-      controlsInteractionActive = true;
-      renderSoon();
-    };
-    const handleControlsEnd = () => {
-      controlsInteractionActive = false;
-      renderSoon();
-    };
-    controls.addEventListener("start", handleControlsStart);
-    controls.addEventListener("end", handleControlsEnd);
-    controls.addEventListener("change", renderSoon);
 
     const axes = new THREE.AxesHelper(1.25);
     const axesMat = axes.material as THREE.Material | THREE.Material[];
@@ -450,12 +431,9 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
     cropGizmo.addEventListener("dragging-changed", (evt: any) => {
       const dragging = !!evt?.value;
       cropDraggingRef.current = dragging;
-      controlsInteractionActive = dragging;
-      renderSoon();
       controls.enabled = !dragging;
     });
     cropGizmo.addEventListener("objectChange", () => {
-      renderSoon();
       const obj = cropBoxRef.current;
       if (!obj) return;
       const center: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
@@ -482,7 +460,6 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
-      renderSoon();
     };
 
     const ro = new ResizeObserver(handleResize);
@@ -490,42 +467,19 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
     window.addEventListener("resize", handleResize);
 
     let frameId = 0;
-    let pageVisible = document.visibilityState !== "hidden";
-    const handleVisibilityChange = () => {
-      pageVisible = document.visibilityState !== "hidden";
-      if (pageVisible) {
-        renderSoon();
-        handleResize();
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
     const animate = () => {
       frameId = requestAnimationFrame(animate);
-      if (!pageVisible) return;
-      const now = performance.now();
-      const idleRenderMinFrameMs = isVmSafeGraphicsMode()
-        ? VM_SAFE_IDLE_RENDER_MIN_FRAME_MS
-        : IDLE_RENDER_MIN_FRAME_MS;
-      if (!controlsInteractionActive && now - lastRenderedAt < idleRenderMinFrameMs) {
-        return;
-      }
-      if (controlsInteractionActive) controls.update();
-      lastRenderedAt = now;
+      controls.update();
       renderer.render(scene, camera);
     };
     animate();
 
     return () => {
-      resourceDiagnostics.snapshot("before-cleanup");
       cancelAnimationFrame(frameId);
       ro.disconnect();
       window.removeEventListener("resize", handleResize);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      controls.removeEventListener("start", handleControlsStart);
-      controls.removeEventListener("end", handleControlsEnd);
-      controls.removeEventListener("change", renderSoon);
       controls.dispose();
+      renderer.domElement.remove();
 
       if (sliceMeshRef.current) {
         scene.remove(sliceMeshRef.current);
@@ -549,7 +503,9 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
       }
       if (hoverMarkerRef.current) {
         scene.remove(hoverMarkerRef.current);
-        disposeObject3DResources(hoverMarkerRef.current);
+        hoverMarkerRef.current.geometry.dispose();
+        const mat = hoverMarkerRef.current.material as THREE.Material | undefined;
+        if (mat) mat.dispose();
         hoverMarkerRef.current = null;
       }
       if (crosshairGroupRef.current) {
@@ -559,15 +515,20 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
       }
       if (isoMarkerRef.current) {
         scene.remove(isoMarkerRef.current);
-        disposeObject3DResources(isoMarkerRef.current);
+        isoMarkerRef.current.geometry.dispose();
+        const mat = isoMarkerRef.current.material as THREE.Material | undefined;
+        if (mat) mat.dispose();
         isoMarkerRef.current = null;
       }
       if (cropBoxRef.current) {
         scene.remove(cropBoxRef.current);
-        disposeObject3DResources(cropBoxRef.current);
+        cropBoxRef.current.geometry.dispose();
+        const mat = cropBoxRef.current.material as THREE.Material | undefined;
+        if (mat) mat.dispose();
         cropBoxRef.current = null;
       }
       if (cropGizmoHelperRef.current) {
+        disposeSceneResources(cropGizmoHelperRef.current);
         scene.remove(cropGizmoHelperRef.current);
         cropGizmoHelperRef.current = null;
       }
@@ -579,10 +540,8 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
         sliceTextureRef.current.dispose();
         sliceTextureRef.current = null;
       }
-      disposeRendererResources(renderer);
-      removeWebGLContextLogger();
-      renderer.domElement.remove();
-      resourceDiagnostics.unregister("after-cleanup");
+      disposeSceneResources(scene);
+      disposeWebGLRenderer(renderer);
     };
   }, []);
 
@@ -850,13 +809,8 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
       setHoverInfo({ world, value, gradMag });
     };
 
-    let lastHoverAt = 0;
     const handleMove = (e: PointerEvent) => {
       hoverPendingRef.current = { x: e.clientX, y: e.clientY };
-      const now = performance.now();
-      const hoverMinFrameMs = isVmSafeGraphicsMode() ? VM_SAFE_HOVER_MIN_FRAME_MS : 0;
-      if (hoverMinFrameMs > 0 && now - lastHoverAt < hoverMinFrameMs) return;
-      lastHoverAt = now;
       if (hoverRafRef.current !== null) return;
       hoverRafRef.current = window.requestAnimationFrame(process);
     };
@@ -900,7 +854,9 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
     if (!hoverInfo || !data) {
       if (hoverMarkerRef.current) {
         scene.remove(hoverMarkerRef.current);
-        disposeObject3DResources(hoverMarkerRef.current);
+        hoverMarkerRef.current.geometry.dispose();
+        const mat = hoverMarkerRef.current.material as THREE.Material | undefined;
+        if (mat) mat.dispose();
         hoverMarkerRef.current = null;
       }
       return;
@@ -984,7 +940,9 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
     if (!showIsosurface || !crosshair || !isoMeshRef.current) {
       if (isoMarkerRef.current) {
         scene.remove(isoMarkerRef.current);
-        disposeObject3DResources(isoMarkerRef.current);
+        isoMarkerRef.current.geometry.dispose();
+        const mat = isoMarkerRef.current.material as THREE.Material | undefined;
+        if (mat) mat.dispose();
         isoMarkerRef.current = null;
       }
       return;
@@ -1025,7 +983,9 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = (props) => {
     if (!showCropBox || !cropCenter || !cropExtents) {
       if (cropBoxRef.current) {
         scene.remove(cropBoxRef.current);
-        disposeObject3DResources(cropBoxRef.current);
+        cropBoxRef.current.geometry.dispose();
+        const mat = cropBoxRef.current.material as THREE.Material | undefined;
+        if (mat) mat.dispose();
         cropBoxRef.current = null;
       }
       if (cropGizmoRef.current) {

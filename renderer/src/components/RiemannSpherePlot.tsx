@@ -3,9 +3,12 @@ import React, { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { sphereToStereographic } from "../math/riemannSphere";
-import { installWebGLContextLogger, isNoWebGLMode, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
-import { NoWebGLPanel } from "./NoWebGLPanel";
-import { disposeObject3DResources, disposeRendererResources } from "./threeDisposal";
+import {
+  disposeObject3DResources,
+  disposeSceneResources,
+  disposeWebGLRenderer,
+  registerWebGLRenderer,
+} from "../viewer/threeResourceDisposal";
 
 export type SphereLine = {
   points: { x: number; y: number; z: number }[];
@@ -48,9 +51,7 @@ type RiemannSpherePlotProps = {
 const BASE_SPHERE_SEGMENTS = 48;
 const DEFAULT_POINT_SIZE = 0.045;
 
-const disposeObject3D = (obj: THREE.Object3D) => {
-  disposeObject3DResources(obj);
-};
+const disposeObject3D = (obj: THREE.Object3D) => disposeObject3DResources(obj);
 
 const clearGroup = (group: THREE.Group | null) => {
   if (!group) return;
@@ -61,18 +62,13 @@ const clearGroup = (group: THREE.Group | null) => {
   });
 };
 
-const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = (props) => {
-  if (isNoWebGLMode()) {
-    return <NoWebGLPanel title="Riemann sphere viewer paused" />;
-  }
-
-  const {
+const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = ({
   lines,
   points,
   guideSpheres,
   sphereSurfaceColoring,
   style,
-  } = props;
+}) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -101,9 +97,10 @@ const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = (props) => {
     const mount = mountRef.current;
     if (!mount) return;
 
-    const renderer = new THREE.WebGLRenderer(vmSafeRendererParams({ antialias: true, alpha: true }));
-    const removeWebGLContextLogger = installWebGLContextLogger(renderer.domElement, "riemann-sphere");
-    renderer.setPixelRatio(vmSafePixelRatio(window.devicePixelRatio || 1, 2));
+    const renderer = registerWebGLRenderer(
+      new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    );
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
     mount.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
@@ -168,9 +165,8 @@ const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = (props) => {
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
       observer.disconnect();
       controls.dispose();
-      scene.traverse(disposeObject3D);
-      disposeRendererResources(renderer);
-      removeWebGLContextLogger();
+      disposeSceneResources(scene);
+      disposeWebGLRenderer(renderer);
       if (renderer.domElement.parentElement) {
         renderer.domElement.parentElement.removeChild(renderer.domElement);
       }

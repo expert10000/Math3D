@@ -14,6 +14,12 @@ import { buildStreamlineSegments, buildVertexAdjacency, traceStreamlineBidirecti
 import { buildVertexAdjacency as buildRidgeAdjacency, detectRidgeValleySegments } from "../math/ridgeValley";
 import { stitchRidgeValleyCurves } from "../math/ridgeValleyStitch";
 import { integrateGeodesic } from "../math/geodesic";
+import {
+  disposeObject3DResources,
+  disposeSceneResources,
+  disposeWebGLRenderer,
+  registerWebGLRenderer,
+} from "../viewer/threeResourceDisposal";
 
 import { scalarToColor01, type ColorPalette, solidColorForPalette } from "./colorPalette";
 import type { GaussPoint } from "./gaussMapUtils";
@@ -34,20 +40,6 @@ import {
   DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
   type ReferencePlaneGridSettings,
 } from "@math3d/renderer-web";
-import {
-  installWebGLContextLogger,
-  isNoWebGLMode,
-  isVmSafeGraphicsMode,
-  vmSafePixelRatio,
-  vmSafeRendererParams,
-} from "./graphicsMode";
-import { NoWebGLPanel } from "./NoWebGLPanel";
-import {
-  disposeMaterialOrMaterials,
-  disposeObject3DResources,
-  disposeRendererResources,
-} from "./threeDisposal";
-import { registerThreeResourceDiagnostics } from "./threeResourceDiagnostics";
 
 export type ColorMode = CoreColorMode;
 
@@ -171,7 +163,6 @@ const DEG_TO_RAD = Math.PI / 180;
 const RAD_TO_DEG = 180 / Math.PI;
 const DEFAULT_MESH_PREVIEW_TRIANGLE_TARGET = 100_000;
 const IDLE_RENDER_MIN_FRAME_MS = 1000 / 2;
-const VM_SAFE_IDLE_RENDER_MIN_FRAME_MS = 5000;
 
 type SurfaceMeshLodBuffers = {
   positions: Float32Array;
@@ -420,6 +411,52 @@ const TAU = Math.PI * 2;
 
 function disposeObject3D(obj: THREE.Object3D) {
   disposeObject3DResources(obj);
+}
+
+function replaceSceneLights(
+  scene: THREE.Scene,
+  preset: "studio" | "soft" | "contrast" | "neutral" | "warm"
+) {
+  const previous = scene.getObjectByName("__math3d_lights");
+  if (previous) scene.remove(previous);
+  const group = new THREE.Group();
+  group.name = "__math3d_lights";
+  if (preset === "contrast") {
+    group.add(new THREE.AmbientLight(0xffffff, 0.18));
+    const key = new THREE.DirectionalLight(0xffffff, 1.15);
+    key.position.set(4, 6, 3);
+    group.add(key);
+    const rim = new THREE.DirectionalLight(0xffffff, 0.35);
+    rim.position.set(-3, -2, -4);
+    group.add(rim);
+  } else if (preset === "soft") {
+    group.add(new THREE.AmbientLight(0xffffff, 0.45));
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
+    hemi.position.set(0, 6, 0);
+    group.add(hemi);
+  } else if (preset === "neutral") {
+    group.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const key = new THREE.DirectionalLight(0xffffff, 0.7);
+    key.position.set(4, 4.5, 4);
+    group.add(key);
+  } else if (preset === "warm") {
+    group.add(new THREE.AmbientLight(0xfff4e6, 0.5));
+    const key = new THREE.DirectionalLight(0xffe2c7, 0.85);
+    key.position.set(4, 5, 3);
+    group.add(key);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.25);
+    fill.position.set(-4, 2, -3);
+    group.add(fill);
+  } else {
+    group.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const key = new THREE.DirectionalLight(0xffffff, 0.85);
+    key.position.set(3, 5, 4);
+    group.add(key);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.35);
+    fill.position.set(-4, 2, -3);
+    group.add(fill);
+  }
+  scene.add(group);
 }
 
 function clearGroup(group: THREE.Group) {
@@ -1537,10 +1574,6 @@ type PrincipalField = {
 /* ---------- main viewer ---------- */
 
 export const SurfaceViewer: React.FC<Props> = (props) => {
-  if (isNoWebGLMode()) {
-    return <NoWebGLPanel title="3D surface viewer paused" />;
-  }
-
   const {
     surfaceId,
     graphExpr,
@@ -1945,11 +1978,6 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const onCameraTourEventRef = useRef<Props["onCameraTourEvent"] | undefined>(undefined);
   const onPerformanceSnapshotRef = useRef<Props["onPerformanceSnapshot"] | undefined>(undefined);
   const onMeshInteractionStateChangeRef = useRef<Props["onMeshInteractionStateChange"] | undefined>(undefined);
-  const onSampleSetRef = useRef<Props["onSampleSet"] | undefined>(undefined);
-  const interruptCameraTourRef = useRef<() => void>(() => undefined);
-  const beginMeshInteractionRef = useRef<() => void>(() => undefined);
-  const endMeshInteractionRef = useRef<() => void>(() => undefined);
-  const stopCameraTourRef = useRef<(reason: "stopped" | "interrupted", notify?: boolean) => void>(() => undefined);
   const lastMeshBuildMsRef = useRef<number | null>(lastMeshBuildMs);
   const perfFrameRef = useRef<{ lastFrameAt: number; fps: number; frameTimeMs: number; lastEmitAt: number }>({
     lastFrameAt: 0,
@@ -2055,9 +2083,6 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
       onMeshInteractionStateChangeRef.current = onMeshInteractionStateChange;
     }, [onMeshInteractionStateChange]);
     useEffect(() => {
-      onSampleSetRef.current = onSampleSet;
-    }, [onSampleSet]);
-    useEffect(() => {
       lastMeshBuildMsRef.current = Number.isFinite(lastMeshBuildMs) ? Number(lastMeshBuildMs) : null;
     }, [lastMeshBuildMs]);
 
@@ -2084,18 +2109,6 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   );
   const interruptCameraTour = useCallback(() => {
     stopCameraTour("interrupted");
-  }, [stopCameraTour]);
-  useEffect(() => {
-    interruptCameraTourRef.current = interruptCameraTour;
-  }, [interruptCameraTour]);
-  useEffect(() => {
-    beginMeshInteractionRef.current = beginMeshInteraction;
-  }, [beginMeshInteraction]);
-  useEffect(() => {
-    endMeshInteractionRef.current = endMeshInteraction;
-  }, [endMeshInteraction]);
-  useEffect(() => {
-    stopCameraTourRef.current = stopCameraTour;
   }, [stopCameraTour]);
 
   useEffect(() => {
@@ -3538,10 +3551,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const { width, height } = getSize();
 
-    const renderer = new THREE.WebGLRenderer(
-      vmSafeRendererParams({ antialias: renderQuality !== "performance", alpha: true })
+    const renderer = registerWebGLRenderer(
+      new THREE.WebGLRenderer({ antialias: renderQuality !== "performance", alpha: true })
     );
-    const removeWebGLContextLogger = installWebGLContextLogger(renderer.domElement, "surface");
     const heavySurface = surfaceId === "surface_mesh" || surfaceId === "torus_implicit";
     const maxPixelRatio =
       renderQuality === "performance"
@@ -3557,7 +3569,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const qualityScale =
       renderQuality === "performance" ? 1 : renderQuality === "sharp" ? 1.75 : 1.15;
     const targetPixelRatio = devicePixelRatio * qualityScale;
-    renderer.setPixelRatio(vmSafePixelRatio(targetPixelRatio, maxPixelRatio));
+    renderer.setPixelRatio(Math.min(targetPixelRatio, maxPixelRatio));
     renderer.setSize(width, height, false);
     renderer.setClearColor(sceneBackgroundColor, sceneBackgroundAlpha);
     renderer.domElement.style.width = "100%";
@@ -3569,7 +3581,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    const resourceDiagnostics = registerThreeResourceDiagnostics("surface", scene, renderer);
 
     const camera = new THREE.PerspectiveCamera(35, width / height, 0.1, 100);
     camera.position.set(3, 3, 4);
@@ -3798,11 +3809,11 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       emitCameraSync();
     }
     const handleControlsStart = () => {
-      interruptCameraTourRef.current();
-      beginMeshInteractionRef.current();
+      interruptCameraTour();
+      beginMeshInteraction();
     };
     const handleControlsEnd = () => {
-      endMeshInteractionRef.current();
+      endMeshInteraction();
     };
     controls.addEventListener("start", handleControlsStart);
     controls.addEventListener("end", handleControlsEnd);
@@ -3911,41 +3922,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     transformControls.addEventListener("dragging-changed", handleGizmoDraggingChanged);
     transformControls.addEventListener("objectChange", handleGizmoObjectChange);
 
-    if (lightPreset === "contrast") {
-      scene.add(new THREE.AmbientLight(0xffffff, 0.18));
-      const key = new THREE.DirectionalLight(0xffffff, 1.15);
-      key.position.set(4, 6, 3);
-      scene.add(key);
-      const rim = new THREE.DirectionalLight(0xffffff, 0.35);
-      rim.position.set(-3, -2, -4);
-      scene.add(rim);
-    } else if (lightPreset === "soft") {
-      scene.add(new THREE.AmbientLight(0xffffff, 0.45));
-      const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
-      hemi.position.set(0, 6, 0);
-      scene.add(hemi);
-    } else if (lightPreset === "neutral") {
-      scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-      const key = new THREE.DirectionalLight(0xffffff, 0.7);
-      key.position.set(4, 4.5, 4);
-      scene.add(key);
-    } else if (lightPreset === "warm") {
-      scene.add(new THREE.AmbientLight(0xfff4e6, 0.5));
-      const key = new THREE.DirectionalLight(0xffe2c7, 0.85);
-      key.position.set(4, 5, 3);
-      scene.add(key);
-      const fill = new THREE.DirectionalLight(0xffffff, 0.25);
-      fill.position.set(-4, 2, -3);
-      scene.add(fill);
-    } else {
-      scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-      const key = new THREE.DirectionalLight(0xffffff, 0.85);
-      key.position.set(3, 5, 4);
-      scene.add(key);
-      const fill = new THREE.DirectionalLight(0xffffff, 0.35);
-      fill.position.set(-4, 2, -3);
-      scene.add(fill);
-    }
+    replaceSceneLights(scene, lightPreset);
 
     const sliceGroup = new THREE.Group();
     sliceGroupRef.current = sliceGroup;
@@ -4543,7 +4520,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     }
 
     sampleSetRef.current = nextSampleSet;
-    onSampleSetRef.current?.(nextSampleSet);
+    onSampleSet?.(nextSampleSet);
 
     const box = new THREE.Box3().setFromObject(surfaceObj);
     const center = new THREE.Vector3();
@@ -5367,7 +5344,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const h = Math.max(1, Math.round(rawHeight));
       const nextDevicePixelRatio = Math.max(1, window.devicePixelRatio || 1);
       const nextTargetPixelRatio = nextDevicePixelRatio * qualityScale;
-      renderer.setPixelRatio(vmSafePixelRatio(nextTargetPixelRatio, maxPixelRatio));
+      renderer.setPixelRatio(Math.min(nextTargetPixelRatio, maxPixelRatio));
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h, false);
@@ -5445,10 +5422,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         meshInteractionActiveRef.current ||
         cameraTourFrameRef.current != null ||
         zoomAnimRef.current != null;
-      const idleRenderMinFrameMs = isVmSafeGraphicsMode()
-        ? VM_SAFE_IDLE_RENDER_MIN_FRAME_MS
-        : IDLE_RENDER_MIN_FRAME_MS;
-      if (!hasContinuousMotion && now - lastRenderedAtRef.current < idleRenderMinFrameMs) {
+      if (!hasContinuousMotion && now - lastRenderedAtRef.current < IDLE_RENDER_MIN_FRAME_MS) {
         return;
       }
       if (hasContinuousMotion) {
@@ -5471,9 +5445,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     animate();
 
     return () => {
-      resourceDiagnostics.snapshot("before-cleanup");
       forceReframeRef.current = null;
-      stopCameraTourRef.current("stopped", false);
+      stopCameraTour("stopped", false);
       cancelAnimationFrame(frameId);
       if (gizmoOverlayRestoreFrameRef.current != null) {
         cancelAnimationFrame(gizmoOverlayRestoreFrameRef.current);
@@ -5538,18 +5511,21 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (principalGlyphsRef.current) {
         if (principalGlyphsRef.current.d1) {
           scene.remove(principalGlyphsRef.current.d1);
-          disposeObject3DResources(principalGlyphsRef.current.d1);
+          principalGlyphsRef.current.d1.geometry.dispose();
+          (principalGlyphsRef.current.d1.material as THREE.Material).dispose();
         }
         if (principalGlyphsRef.current.d2) {
           scene.remove(principalGlyphsRef.current.d2);
-          disposeObject3DResources(principalGlyphsRef.current.d2);
+          principalGlyphsRef.current.d2.geometry.dispose();
+          (principalGlyphsRef.current.d2.material as THREE.Material).dispose();
         }
         principalGlyphsRef.current = null;
       }
 
       if (curvatureLinesRef.current) {
         scene.remove(curvatureLinesRef.current);
-        disposeObject3DResources(curvatureLinesRef.current);
+        curvatureLinesRef.current.geometry.dispose();
+        (curvatureLinesRef.current.material as THREE.Material).dispose();
         curvatureLinesRef.current = null;
       }
 
@@ -5600,29 +5576,24 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
 
       if (implicitOverlayLines) {
-        disposeObject3DResources(implicitOverlayLines);
+        implicitOverlayLines.geometry.dispose();
+        const matAny = implicitOverlayLines.material as THREE.Material | THREE.Material[] | undefined;
+        if (matAny) {
+          if (Array.isArray(matAny)) matAny.forEach((m) => m.dispose());
+          else matAny.dispose();
+        }
       }
 
       sliceGroupRef.current = null;
 
-      scene.traverse((obj) => {
-        const anyO = obj as any;
-        if (anyO?.isMesh) {
-          const mesh = obj as THREE.Mesh;
-          if (mesh.geometry) mesh.geometry.dispose();
-          disposeMaterialOrMaterials((mesh as any).material as THREE.Material | THREE.Material[] | undefined);
-        }
-      });
-
-      disposeRendererResources(renderer);
-      removeWebGLContextLogger();
-      resourceDiagnostics.unregister("after-cleanup");
+      disposeSceneResources(scene);
+      disposeWebGLRenderer(renderer);
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
       rendererRef.current = null;
       applyProbeFromDomainRef.current = null;
 
       sampleSetRef.current = null;
-      onSampleSetRef.current?.(null);
+      onSampleSet?.(null);
       sceneRef.current = null;
 
       surfaceObjRef.current = null;
@@ -5635,7 +5606,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     implicitExpr,
     wireframe,
     showPlanes,
-    lightPreset,
     colorMode,
     colorPalette,
     implicitOverlay,
@@ -5663,7 +5633,16 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     graphDomain?.ySpan,
     isCameraLeader,
     onCameraSync,
+    interruptCameraTour,
+    beginMeshInteraction,
+    endMeshInteraction,
+    stopCameraTour,
   ]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (scene) replaceSceneLights(scene, lightPreset);
+  }, [lightPreset, sceneEpoch]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -6102,7 +6081,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       nextSampleSet = { samples: [], meshData };
     }
     sampleSetRef.current = nextSampleSet;
-    onSampleSetRef.current?.(nextSampleSet);
+    onSampleSet?.(nextSampleSet);
 
     const box = new THREE.Box3().setFromObject(activeSurfaceObj);
     const center = new THREE.Vector3();
@@ -6172,6 +6151,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     includeSamplesUV,
     sampleMaxPoints,
     showBoundingBox,
+    onSampleSet,
     gizmoEnabled,
     gizmoMeshKey,
   ]);

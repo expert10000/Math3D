@@ -2,6 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import * as THREE from "three";
 import { uiStyles as styles } from "../uiStyles";
 import {
+  disposeSceneResources,
+  disposeWebGLRenderer,
+  registerWebGLRenderer,
+} from "../viewer/threeResourceDisposal";
+import {
   addEdgeToDiagram,
   addVertexToDiagram,
   buildPlannedOperations,
@@ -37,7 +42,6 @@ import {
   type VertexStarDisconnectionDiagnostic,
   isTopologyDocument,
 } from "../topology";
-import { disposeObject3DResources, disposeRendererResources } from "../components/threeDisposal";
 
 type TopologyView = TopologyDocumentView | "compare";
 type TopologyBuildMode = "preset" | "editor";
@@ -1126,12 +1130,6 @@ const createDunceStageScene = (stageIndex: number): THREE.Object3D => {
   return root;
 };
 
-const disposeObject3D = (root: THREE.Object3D): void => {
-  root.traverse((child) => {
-    disposeObject3DResources(child);
-  });
-};
-
 const renderDunceStageThumbnail = (stageIndex: number): string => {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xf7f9fc);
@@ -1139,10 +1137,12 @@ const renderDunceStageThumbnail = (stageIndex: number): string => {
   const object = createDunceStageScene(stageIndex);
   scene.add(object);
   const camera = createDunceStageThumbnailCamera(stageIndex);
-  const renderer = new THREE.WebGLRenderer({
-    antialias: true,
-    preserveDrawingBuffer: true,
-  });
+  const renderer = registerWebGLRenderer(
+    new THREE.WebGLRenderer({
+      antialias: true,
+      preserveDrawingBuffer: true,
+    })
+  );
   renderer.setSize(DUNCE_STAGE_THUMBNAIL_WIDTH, DUNCE_STAGE_THUMBNAIL_HEIGHT, false);
   renderer.setPixelRatio(2);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1152,12 +1152,10 @@ const renderDunceStageThumbnail = (stageIndex: number): string => {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.render(scene, camera);
   const dataUrl = renderer.domElement.toDataURL("image/png");
-  disposeObject3D(object);
-  disposeRendererResources(renderer);
+  disposeSceneResources(scene);
+  disposeWebGLRenderer(renderer);
   return dataUrl;
 };
-
-let dunceStageThumbnailUrlCache: string[] | null = null;
 
 const DunceMapReference3D: React.FC = () => {
   const [thumbnailUrls, setThumbnailUrls] = useState<string[]>([]);
@@ -1165,10 +1163,7 @@ const DunceMapReference3D: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
     try {
-      const next =
-        dunceStageThumbnailUrlCache ??
-        DUNCE_3D_STAGE_TITLES.map((_, stageIndex) => renderDunceStageThumbnail(stageIndex));
-      dunceStageThumbnailUrlCache = next;
+      const next = DUNCE_3D_STAGE_TITLES.map((_, stageIndex) => renderDunceStageThumbnail(stageIndex));
       if (!cancelled) setThumbnailUrls(next);
     } catch {
       if (!cancelled) setThumbnailUrls([]);

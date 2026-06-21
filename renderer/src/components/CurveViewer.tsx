@@ -1,9 +1,11 @@
 import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { installWebGLContextLogger, isNoWebGLMode, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
-import { NoWebGLPanel } from "./NoWebGLPanel";
-import { disposeObject3DResources, disposeRendererResources } from "./threeDisposal";
+import {
+  disposeSceneResources,
+  disposeWebGLRenderer,
+  registerWebGLRenderer,
+} from "../viewer/threeResourceDisposal";
 
 export type CurveViewerVec3 = { x: number; y: number; z: number };
 
@@ -45,18 +47,7 @@ const safeUnit = (value: CurveViewerVec3 | null | undefined) => {
   return v.multiplyScalar(1 / len);
 };
 
-const disposeSceneObjects = (root: THREE.Object3D) => {
-  root.traverse((node) => {
-    disposeObject3DResources(node);
-  });
-};
-
-export const CurveViewer: React.FC<CurveViewerProps> = (props) => {
-  if (isNoWebGLMode()) {
-    return <NoWebGLPanel title="3D curve viewer paused" />;
-  }
-
-  const {
+export const CurveViewer: React.FC<CurveViewerProps> = ({
   samples,
   dimension,
   closed = false,
@@ -67,7 +58,7 @@ export const CurveViewer: React.FC<CurveViewerProps> = (props) => {
   showBinormal = true,
   frameScale = 0.5,
   resetToken = 0,
-  } = props;
+}) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -77,9 +68,8 @@ export const CurveViewer: React.FC<CurveViewerProps> = (props) => {
     const width = Math.max(2, host.clientWidth);
     const height = Math.max(2, host.clientHeight);
 
-    const renderer = new THREE.WebGLRenderer(vmSafeRendererParams({ antialias: true }));
-    const removeWebGLContextLogger = installWebGLContextLogger(renderer.domElement, "curve");
-    renderer.setPixelRatio(vmSafePixelRatio(window.devicePixelRatio || 1, 2));
+    const renderer = registerWebGLRenderer(new THREE.WebGLRenderer({ antialias: true }));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(width, height);
     renderer.setClearColor(0xf8fafc, 1);
     host.appendChild(renderer.domElement);
@@ -248,9 +238,8 @@ export const CurveViewer: React.FC<CurveViewerProps> = (props) => {
       window.cancelAnimationFrame(animationFrame);
       resizeObserver.disconnect();
       controls.dispose();
-      disposeSceneObjects(scene);
-      disposeRendererResources(renderer);
-      removeWebGLContextLogger();
+      disposeSceneResources(scene);
+      disposeWebGLRenderer(renderer);
       renderer.domElement.remove();
     };
   }, [

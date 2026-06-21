@@ -3,6 +3,12 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { ParametricGeometry } from "three/examples/jsm/geometries/ParametricGeometry.js";
+import {
+  disposeObject3DResources,
+  disposeSceneResources,
+  disposeWebGLRenderer,
+  registerWebGLRenderer,
+} from "../viewer/threeResourceDisposal";
 
 import DomainDirectionPicker from "./DomainDirectionPicker";
 import { integrateGeodesic } from "../math/geodesic";
@@ -69,16 +75,6 @@ import {
   type ReferencePlaneGridSettings,
 } from "@math3d/renderer-web";
 import type { ParamSurfaceId as CoreParamSurfaceId } from "@math3d/core";
-import {
-  installWebGLContextLogger,
-  isNoWebGLMode,
-  isVmSafeGraphicsMode,
-  vmSafePixelRatio,
-  vmSafeRendererParams,
-} from "./graphicsMode";
-import { NoWebGLPanel } from "./NoWebGLPanel";
-import { disposeObject3DResources, disposeRendererResources } from "./threeDisposal";
-import { registerThreeResourceDiagnostics } from "./threeResourceDiagnostics";
 
 type ParamPreset = {
   id: string;
@@ -88,9 +84,6 @@ type ParamPreset = {
   zExpr: string;
   createdAt: number;
 };
-
-const IDLE_RENDER_MIN_FRAME_MS = 1000 / 2;
-const VM_SAFE_IDLE_RENDER_MIN_FRAME_MS = 5000;
 type SurfaceCellData = {
   id: string;
   i: number;
@@ -1427,6 +1420,49 @@ function disposeObject3D(obj: THREE.Object3D) {
   disposeObject3DResources(obj);
 }
 
+function replaceSceneLights(
+  scene: THREE.Scene,
+  preset: "studio" | "soft" | "contrast" | "neutral" | "warm"
+) {
+  const previous = scene.getObjectByName("__math3d_lights");
+  if (previous) scene.remove(previous);
+  const group = new THREE.Group();
+  group.name = "__math3d_lights";
+  if (preset === "contrast") {
+    group.add(new THREE.AmbientLight(0xffffff, 0.18));
+    const key = new THREE.DirectionalLight(0xffffff, 1.15);
+    key.position.set(4, 6, 3);
+    group.add(key);
+    const rim = new THREE.DirectionalLight(0xffffff, 0.35);
+    rim.position.set(-3, -2, -4);
+    group.add(rim);
+  } else if (preset === "soft") {
+    group.add(new THREE.AmbientLight(0xffffff, 0.45));
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
+    hemi.position.set(0, 6, 0);
+    group.add(hemi);
+  } else if (preset === "neutral") {
+    group.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const key = new THREE.DirectionalLight(0xffffff, 0.7);
+    key.position.set(4, 4.5, 4);
+    group.add(key);
+  } else if (preset === "warm") {
+    group.add(new THREE.AmbientLight(0xfff4e6, 0.5));
+    const key = new THREE.DirectionalLight(0xffe2c7, 0.85);
+    key.position.set(4, 5, 3);
+    group.add(key);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.25);
+    fill.position.set(-4, 2, -3);
+    group.add(fill);
+  } else {
+    const key = new THREE.DirectionalLight(0xffffff, 0.9);
+    key.position.set(5, 6, 4);
+    group.add(key);
+    group.add(new THREE.AmbientLight(0xffffff, 0.3));
+  }
+  scene.add(group);
+}
+
 function clearGroup(group: THREE.Group) {
   const children = [...group.children];
   children.forEach((child) => {
@@ -1435,12 +1471,7 @@ function clearGroup(group: THREE.Group) {
   });
 }
 
-export const ParamSurfaceViewer: React.FC<Props> = (props) => {
-  if (isNoWebGLMode()) {
-    return <NoWebGLPanel title="3D parametric viewer paused" />;
-  }
-
-  const {
+export const ParamSurfaceViewer: React.FC<Props> = ({
   surfaceId,
   customX,
   customY,
@@ -1589,7 +1620,7 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
   onSetCustomY,
   onSetCustomZ,
   onParamGeodesicState,
-  } = props;
+}) => {
   const surfaceParamResolution = surfaceId === "torus" ? Math.min(paramResolution, 40) : paramResolution;
   const planeGridShowGrid = planeGridSettings.showGrid;
   const planeGridShowMinor = planeGridSettings.showMinorGrid;
@@ -2556,10 +2587,9 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
     camera.position.set(4, 3, 5);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer(
-      vmSafeRendererParams({ antialias: renderQuality !== "performance", alpha: true })
+    const renderer = registerWebGLRenderer(
+      new THREE.WebGLRenderer({ antialias: renderQuality !== "performance", alpha: true })
     );
-    const removeWebGLContextLogger = installWebGLContextLogger(renderer.domElement, "param-surface");
     const heavySurface = surfaceId === "torus";
     const maxPixelRatio =
       renderQuality === "performance"
@@ -2575,7 +2605,7 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
     const qualityScale =
       renderQuality === "performance" ? 1 : renderQuality === "sharp" ? 1.75 : 1.15;
     const targetPixelRatio = devicePixelRatio * qualityScale;
-    renderer.setPixelRatio(vmSafePixelRatio(targetPixelRatio, maxPixelRatio));
+    renderer.setPixelRatio(Math.min(targetPixelRatio, maxPixelRatio));
     renderer.setSize(width, height, false);
     renderer.setClearColor(background.color, background.alpha);
     renderer.localClippingEnabled = true;
@@ -2584,7 +2614,6 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
     renderer.domElement.style.display = "block";
     mount.appendChild(renderer.domElement);
     rendererRef.current = renderer;
-    const resourceDiagnostics = registerThreeResourceDiagnostics("param-surface", scene, renderer);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -2665,65 +2694,17 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
       lastViewportDebugAt = now;
       emitViewportDebug(phase);
     };
-    let lastRenderedAt = 0;
-    let controlsInteractionActive = false;
-    const renderSoon = () => {
-      lastRenderedAt = 0;
-    };
     const handleControlsChangeDebug = () => {
-      renderSoon();
       emitViewportDebugThrottled("controls");
     };
-    const handleControlsStart = () => {
-      controlsInteractionActive = true;
-      renderSoon();
-    };
-    const handleControlsEnd = () => {
-      controlsInteractionActive = false;
-      renderSoon();
-    };
     controls.addEventListener("change", handleControlsChangeDebug);
-    controls.addEventListener("start", handleControlsStart);
-    controls.addEventListener("end", handleControlsEnd);
 
     if (isCameraLeader && onCameraSync) {
       controls.addEventListener("change", emitCameraSync);
       emitCameraSync();
     }
 
-    if (lightPreset === "contrast") {
-      scene.add(new THREE.AmbientLight(0xffffff, 0.18));
-      const key = new THREE.DirectionalLight(0xffffff, 1.15);
-      key.position.set(4, 6, 3);
-      scene.add(key);
-      const rim = new THREE.DirectionalLight(0xffffff, 0.35);
-      rim.position.set(-3, -2, -4);
-      scene.add(rim);
-    } else if (lightPreset === "soft") {
-      scene.add(new THREE.AmbientLight(0xffffff, 0.45));
-      const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
-      hemi.position.set(0, 6, 0);
-      scene.add(hemi);
-    } else if (lightPreset === "neutral") {
-      scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-      const key = new THREE.DirectionalLight(0xffffff, 0.7);
-      key.position.set(4, 4.5, 4);
-      scene.add(key);
-    } else if (lightPreset === "warm") {
-      scene.add(new THREE.AmbientLight(0xfff4e6, 0.5));
-      const key = new THREE.DirectionalLight(0xffe2c7, 0.85);
-      key.position.set(4, 5, 3);
-      scene.add(key);
-      const fill = new THREE.DirectionalLight(0xffffff, 0.25);
-      fill.position.set(-4, 2, -3);
-      scene.add(fill);
-    } else {
-      const light1 = new THREE.DirectionalLight(0xffffff, 0.9);
-      light1.position.set(5, 6, 4);
-      scene.add(light1);
-      const light2 = new THREE.AmbientLight(0xffffff, 0.3);
-      scene.add(light2);
-    }
+    replaceSceneLights(scene, lightPreset);
 
     const sheetsGroup = new THREE.Group();
     sliceSheetsRef.current = sheetsGroup;
@@ -3812,35 +3793,13 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
     renderer.domElement.addEventListener("pointerdown", handlePointerDown);
 
     let frameId = 0;
-    let pageVisible = document.visibilityState !== "hidden";
-    const handleVisibilityChange = () => {
-      pageVisible = document.visibilityState !== "hidden";
-      if (pageVisible) {
-        renderSoon();
-        onResize();
-      }
-    };
     const animate = () => {
       frameId = requestAnimationFrame(animate);
-      if (!pageVisible) return;
       if (sliceDirtyRef.current && surfaceObjRef.current) {
         updateSlice(surfaceObjRef.current);
         sliceDirtyRef.current = false;
-        renderSoon();
       }
-      const now = performance.now();
-      const hasContinuousMotion =
-        controlsInteractionActive ||
-        cameraTourFrameRef.current != null ||
-        zoomAnimRef.current != null;
-      const idleRenderMinFrameMs = isVmSafeGraphicsMode()
-        ? VM_SAFE_IDLE_RENDER_MIN_FRAME_MS
-        : IDLE_RENDER_MIN_FRAME_MS;
-      if (!hasContinuousMotion && now - lastRenderedAt < idleRenderMinFrameMs) {
-        return;
-      }
-      if (hasContinuousMotion) controls.update();
-      lastRenderedAt = now;
+      controls.update();
       renderer.render(scene, camera);
     };
     animate();
@@ -3853,11 +3812,10 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
       const h = Math.max(1, Math.round(rawHeight));
       const nextDevicePixelRatio = Math.max(1, window.devicePixelRatio || 1);
       const nextTargetPixelRatio = nextDevicePixelRatio * qualityScale;
-      renderer.setPixelRatio(vmSafePixelRatio(nextTargetPixelRatio, maxPixelRatio));
+      renderer.setPixelRatio(Math.min(nextTargetPixelRatio, maxPixelRatio));
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h, false);
-      renderSoon();
 
       const radius = radiusRef.current;
       if (!Number.isFinite(radius) || radius <= 0) return;
@@ -3907,38 +3865,42 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
     };
 
     window.addEventListener("resize", onResize);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
     const ro = new ResizeObserver(onResize);
     ro.observe(mount);
     onResize();
     emitViewportDebug("init");
 
       return () => {
-        resourceDiagnostics.snapshot("before-cleanup");
+        cancelAnimationFrame(frameId);
         // dispose geodesic line if present
         if (geodesicLineRef.current) {
           scene.remove(geodesicLineRef.current);
-          disposeObject3DResources(geodesicLineRef.current);
+          geodesicLineRef.current.geometry.dispose();
+          (geodesicLineRef.current.material as THREE.Material).dispose();
           geodesicLineRef.current = null;
         }
         if (geodesicPathLineRef.current) {
           scene.remove(geodesicPathLineRef.current);
-          disposeObject3DResources(geodesicPathLineRef.current);
+          geodesicPathLineRef.current.geometry.dispose();
+          (geodesicPathLineRef.current.material as THREE.Material).dispose();
           geodesicPathLineRef.current = null;
         }
         if (geodesicPathRawLineRef.current) {
           scene.remove(geodesicPathRawLineRef.current);
-          disposeObject3DResources(geodesicPathRawLineRef.current);
+          geodesicPathRawLineRef.current.geometry.dispose();
+          (geodesicPathRawLineRef.current.material as THREE.Material).dispose();
           geodesicPathRawLineRef.current = null;
         }
         if (geodesicPathMarkersRef.current.start) {
           scene.remove(geodesicPathMarkersRef.current.start);
-          disposeObject3DResources(geodesicPathMarkersRef.current.start);
+          geodesicPathMarkersRef.current.start.geometry.dispose();
+          (geodesicPathMarkersRef.current.start.material as THREE.Material).dispose();
           geodesicPathMarkersRef.current.start = null;
         }
         if (geodesicPathMarkersRef.current.end) {
           scene.remove(geodesicPathMarkersRef.current.end);
-          disposeObject3DResources(geodesicPathMarkersRef.current.end);
+          geodesicPathMarkersRef.current.end.geometry.dispose();
+          (geodesicPathMarkersRef.current.end.material as THREE.Material).dispose();
           geodesicPathMarkersRef.current.end = null;
         }
         if (geodesicHeatLineRef.current) {
@@ -3948,12 +3910,14 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
         }
         if (geodesicHeatMarkersRef.current.start) {
           scene.remove(geodesicHeatMarkersRef.current.start);
-          disposeObject3DResources(geodesicHeatMarkersRef.current.start);
+          geodesicHeatMarkersRef.current.start.geometry.dispose();
+          (geodesicHeatMarkersRef.current.start.material as THREE.Material).dispose();
           geodesicHeatMarkersRef.current.start = null;
         }
         if (geodesicHeatMarkersRef.current.end) {
           scene.remove(geodesicHeatMarkersRef.current.end);
-          disposeObject3DResources(geodesicHeatMarkersRef.current.end);
+          geodesicHeatMarkersRef.current.end.geometry.dispose();
+          (geodesicHeatMarkersRef.current.end.material as THREE.Material).dispose();
           geodesicHeatMarkersRef.current.end = null;
         }
 
@@ -3963,11 +3927,7 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
         if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
         ro.disconnect();
         window.removeEventListener("resize", onResize);
-        document.removeEventListener("visibilitychange", handleVisibilityChange);
-        cancelAnimationFrame(frameId);
         controls.removeEventListener("change", handleControlsChangeDebug);
-        controls.removeEventListener("start", handleControlsStart);
-        controls.removeEventListener("end", handleControlsEnd);
         renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
         if (isCameraLeader && onCameraSync) {
           controls.removeEventListener("change", emitCameraSync);
@@ -3996,14 +3956,26 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
         probeLabelRef.current = null;
       }
 
+      disposeSceneResources(scene);
+      disposeWebGLRenderer(renderer);
+      if (renderer.domElement.parentNode === mount) {
+        mount.removeChild(renderer.domElement);
+      }
+      rendererRef.current = null;
+
       sampleSetRef.current = null;
       onSampleSet?.(null);
       onParamGeodesicState?.(null);
 
-      if (sliceLinesRef.current) disposeObject3DResources(sliceLinesRef.current);
+      if (sliceLinesRef.current) sliceLinesRef.current.geometry.dispose();
       if (sliceMatRef.current) sliceMatRef.current.dispose();
       if (sliceSheetsRef.current) {
-        sliceSheetsRef.current.traverse(disposeObject3DResources);
+        sliceSheetsRef.current.traverse((obj) => {
+          const m = (obj as any).material as THREE.Material | undefined;
+          if (m) m.dispose();
+          const g = (obj as any).geometry as THREE.BufferGeometry | undefined;
+          if (g) g.dispose();
+        });
       }
       if (sliceGroupRef.current) {
         clearGroup(sliceGroupRef.current);
@@ -4022,18 +3994,21 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
       if (principalGlyphsRef.current) {
         if (principalGlyphsRef.current.d1) {
           scene.remove(principalGlyphsRef.current.d1);
-          disposeObject3DResources(principalGlyphsRef.current.d1);
+          principalGlyphsRef.current.d1.geometry.dispose();
+          (principalGlyphsRef.current.d1.material as THREE.Material).dispose();
         }
         if (principalGlyphsRef.current.d2) {
           scene.remove(principalGlyphsRef.current.d2);
-          disposeObject3DResources(principalGlyphsRef.current.d2);
+          principalGlyphsRef.current.d2.geometry.dispose();
+          (principalGlyphsRef.current.d2.material as THREE.Material).dispose();
         }
         principalGlyphsRef.current = null;
       }
 
       if (curvatureLinesRef.current) {
         scene.remove(curvatureLinesRef.current);
-        disposeObject3DResources(curvatureLinesRef.current);
+        curvatureLinesRef.current.geometry.dispose();
+        (curvatureLinesRef.current.material as THREE.Material).dispose();
         curvatureLinesRef.current = null;
       }
 
@@ -4058,7 +4033,8 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
 
       if (gaussHighlightRef.current) {
         scene.remove(gaussHighlightRef.current);
-        disposeObject3DResources(gaussHighlightRef.current);
+        gaussHighlightRef.current.geometry.dispose();
+        (gaussHighlightRef.current.material as THREE.Material).dispose();
         gaussHighlightRef.current = null;
       }
 
@@ -4070,28 +4046,23 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
 
       if (selectionOverlayRef.current) {
         scene.remove(selectionOverlayRef.current);
-        disposeObject3DResources(selectionOverlayRef.current);
+        selectionOverlayRef.current.geometry.dispose();
+        (selectionOverlayRef.current.material as THREE.Material).dispose();
         selectionOverlayRef.current = null;
       }
 
       if (selectionSphereRef.current) {
         scene.remove(selectionSphereRef.current);
-        disposeObject3DResources(selectionSphereRef.current);
+        selectionSphereRef.current.geometry.dispose();
+        (selectionSphereRef.current.material as THREE.Material).dispose();
         selectionSphereRef.current = null;
       }
       if (inspectMarkerRef.current) {
         scene.remove(inspectMarkerRef.current);
-        disposeObject3DResources(inspectMarkerRef.current);
+        inspectMarkerRef.current.geometry.dispose();
+        (inspectMarkerRef.current.material as THREE.Material).dispose();
         inspectMarkerRef.current = null;
       }
-
-      disposeRendererResources(renderer);
-      removeWebGLContextLogger();
-      resourceDiagnostics.unregister("after-cleanup");
-      if (renderer.domElement.parentNode === mount) {
-        mount.removeChild(renderer.domElement);
-      }
-      rendererRef.current = null;
 
       surfaceObjRef.current = null;
       sceneRef.current = null;
@@ -4126,7 +4097,6 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
     planeGridAutoScale,
     planeGridDensity,
     planeGridOpacity,
-    lightPreset,
     colorMode,
     showBoundingBox,
     renderQuality,
@@ -4160,6 +4130,11 @@ export const ParamSurfaceViewer: React.FC<Props> = (props) => {
     onParamGeodesicState,
     resolveSceneBackground,
   ]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (scene) replaceSceneLights(scene, lightPreset);
+  }, [lightPreset, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;

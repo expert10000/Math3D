@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 REQUIRED_DEPENDENCIES = ["numpy", "scipy", "sympy", "vtk"]
 OPTIONAL_DEPENDENCIES = ["pygalmesh"]
+HEAVY_DEPENDENCIES = [*REQUIRED_DEPENDENCIES, *OPTIONAL_DEPENDENCIES]
 
 
 def is_frozen() -> bool:

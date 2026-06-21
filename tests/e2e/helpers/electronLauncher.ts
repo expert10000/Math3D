@@ -25,8 +25,13 @@ export async function launchRepoElectron(options: ElectronLaunchOptions): Promis
     MATH3D_E2E: "1",
   };
   delete env.ELECTRON_RUN_AS_NODE;
+  const args = [...(options.args ?? [])];
+  if (process.platform === "linux" && !args.includes("--no-sandbox")) {
+    args.unshift("--no-sandbox");
+  }
   return electron.launch({
     ...options,
+    args,
     env,
     executablePath,
   });

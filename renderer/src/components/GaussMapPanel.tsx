@@ -6,9 +6,11 @@ import type { GaussColorMode } from "./gaussMapUtils";
 import type { GaussCapSelection, SelectionMask } from "../math/selection/selectionModel";
 import type { SurfaceSample } from "../math/sampling/surfaceSampling";
 import { computeGaussDensityGrid } from "../math/selection/gaussDensity";
-import { installWebGLContextLogger, isNoWebGLMode, vmSafePixelRatio, vmSafeRendererParams } from "./graphicsMode";
-import { NoWebGLPanel } from "./NoWebGLPanel";
-import { disposeObject3DResources, disposeRendererResources } from "./threeDisposal";
+import {
+  disposeSceneResources,
+  disposeWebGLRenderer,
+  registerWebGLRenderer,
+} from "../viewer/threeResourceDisposal";
 
 type GaussMapPanelProps = {
   samples: SurfaceSample[];
@@ -141,12 +143,7 @@ const resetButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const GaussMapPanel: React.FC<GaussMapPanelProps> = (props) => {
-  if (isNoWebGLMode()) {
-    return <NoWebGLPanel title="Gauss map viewer paused" />;
-  }
-
-  const {
+const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
   samples,
   palette,
   colorMode,
@@ -159,7 +156,7 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = (props) => {
   onGaussSelection,
   densityNormals = null,
   densitySelectionIndices = null,
-  } = props;
+}) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -324,9 +321,10 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = (props) => {
     if (!mount) return;
 
     const { width: w, height: h } = initialSizeRef.current;
-    const renderer = new THREE.WebGLRenderer(vmSafeRendererParams({ antialias: true, alpha: true }));
-    const removeWebGLContextLogger = installWebGLContextLogger(renderer.domElement, "gauss-map");
-    renderer.setPixelRatio(vmSafePixelRatio(window.devicePixelRatio || 1, 2));
+    const renderer = registerWebGLRenderer(
+      new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    );
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
     renderer.setSize(w, h);
     renderer.domElement.style.width = "100%";
     renderer.domElement.style.height = "100%";
@@ -500,40 +498,47 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = (props) => {
 
       if (sphereRef.current) {
         scene.remove(sphereRef.current);
-        disposeObject3DResources(sphereRef.current);
+        sphereRef.current.geometry.dispose();
       }
       sphereMaterialRef.current?.dispose();
       if (hoverRef.current) {
         scene.remove(hoverRef.current);
-        disposeObject3DResources(hoverRef.current);
+        hoverRef.current.geometry.dispose();
+        (hoverRef.current.material as THREE.Material).dispose();
       }
       if (probeRef.current) {
         scene.remove(probeRef.current);
-        disposeObject3DResources(probeRef.current);
+        probeRef.current.geometry.dispose();
+        (probeRef.current.material as THREE.Material).dispose();
       }
       if (inspectRef.current) {
         scene.remove(inspectRef.current);
-        disposeObject3DResources(inspectRef.current);
+        inspectRef.current.geometry.dispose();
+        (inspectRef.current.material as THREE.Material).dispose();
       }
       if (axesRef.current) {
         scene.remove(axesRef.current);
-        disposeObject3DResources(axesRef.current);
+        axesRef.current.geometry.dispose();
+        (axesRef.current.material as THREE.Material).dispose();
       }
       if (equatorRef.current) {
         scene.remove(equatorRef.current);
-        disposeObject3DResources(equatorRef.current);
+        equatorRef.current.geometry.dispose();
+        (equatorRef.current.material as THREE.Material).dispose();
       }
       if (pointsRef.current) {
         scene.remove(pointsRef.current);
-        disposeObject3DResources(pointsRef.current);
+        pointsRef.current.geometry.dispose();
+        (pointsRef.current.material as THREE.Material).dispose();
       }
       if (selectedPointsRef.current) {
         scene.remove(selectedPointsRef.current);
-        disposeObject3DResources(selectedPointsRef.current);
+        selectedPointsRef.current.geometry.dispose();
+        (selectedPointsRef.current.material as THREE.Material).dispose();
       }
 
-      disposeRendererResources(renderer);
-      removeWebGLContextLogger();
+      disposeSceneResources(scene);
+      disposeWebGLRenderer(renderer);
       rendererRef.current = null;
       sceneRef.current = null;
       cameraRef.current = null;
@@ -548,7 +553,8 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = (props) => {
 
     if (pointsRef.current) {
       scene.remove(pointsRef.current);
-      disposeObject3DResources(pointsRef.current);
+      pointsRef.current.geometry.dispose();
+      (pointsRef.current.material as THREE.Material).dispose();
       pointsRef.current = null;
       pointsIndexMapRef.current = [];
       entriesRef.current = [];
@@ -629,7 +635,8 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = (props) => {
 
     if (selectedPointsRef.current) {
       scene.remove(selectedPointsRef.current);
-      disposeObject3DResources(selectedPointsRef.current);
+      selectedPointsRef.current.geometry.dispose();
+      (selectedPointsRef.current.material as THREE.Material).dispose();
       selectedPointsRef.current = null;
     }
 
