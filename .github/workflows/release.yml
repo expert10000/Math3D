@@ -331,12 +331,14 @@ jobs:
         run: npm run build:core
 
       - name: Run Ubuntu startup smoke
-        run: xvfb-run -a npm run test:app:startup:smoke
+        env:
+          MATH3D_STARTUP_SMOKE_TIMEOUT_MS: "180000"
+        run: timeout --kill-after=20s 5m xvfb-run -a npm run test:app:startup:smoke
 
       - name: Run Ubuntu geometry smoke
         env:
           MATH3D_GEOMETRY_SMOKE_TIMEOUT_MS: "180000"
-        run: xvfb-run -a npm run test:app:geometry:smoke
+        run: timeout --kill-after=20s 5m xvfb-run -a npm run test:app:geometry:smoke
 
       - name: Build Linux packages
         run: npm run dist:linux:ci
