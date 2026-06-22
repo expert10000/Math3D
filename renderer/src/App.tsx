@@ -32766,6 +32766,15 @@ case "mobius":
     recoveryPromptShownRef.current = true;
     const stored = safeParseObject<WorkbookStoredSession>(localStorage.getItem(WORKBOOK_AUTOSAVE_KEY));
     if (!stored || !isWorkbookReplayPayload(stored.payload) || !Number.isFinite(stored.savedAt)) return;
+    const params = new URLSearchParams(window.location.search);
+    const shouldSkipRecovery = params.get("memoryGuardRecovery") === "1" || params.get("skipAutosaveRecovery") === "1";
+    if (shouldSkipRecovery) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("memoryGuardRecovery");
+      url.searchParams.delete("skipAutosaveRecovery");
+      window.history.replaceState(null, document.title, `${url.pathname}${url.search}${url.hash}`);
+      return;
+    }
     const dismissedAt = Number(localStorage.getItem(WORKBOOK_AUTOSAVE_RECOVERY_DISMISSED_AT_KEY));
     if (Number.isFinite(dismissedAt) && dismissedAt >= stored.savedAt) return;
     const manualAt = workbookManualSaveAt ?? 0;

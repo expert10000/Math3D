@@ -23,16 +23,50 @@ const geometrySmokeTimeoutMs = Math.max(
     ? Number(process.env.MATH3D_GEOMETRY_SMOKE_TIMEOUT_MS)
     : 120000
 );
+const GIB = 1024 * 1024 * 1024;
+
+const parsePositiveNumberEnv = (name: string, fallback: number): number => {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+};
+
+const parsePositiveIntegerEnv = (name: string, fallback: number): number => {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+};
+
+const isRendererMemoryAutoReloadEnabled = !["0", "false", "no", "off", "n"].includes(
+  String(process.env.MATH3D_RENDERER_MEMORY_AUTO_RELOAD ?? "1").toLowerCase()
+);
+const rendererMemorySampleMs = Math.max(500, parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_SAMPLE_MS", 1000));
+const rendererMemoryWarmupMs = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_WARMUP_MS", 30000);
+const rendererMemoryWarnBytes = parsePositiveNumberEnv("MATH3D_RENDERER_MEMORY_WARN_GB", 4.5) * GIB;
+const rendererMemoryReloadBytes = parsePositiveNumberEnv("MATH3D_RENDERER_MEMORY_RELOAD_GB", 5.5) * GIB;
+const rendererMemoryEmergencyBytes = parsePositiveNumberEnv("MATH3D_RENDERER_MEMORY_EMERGENCY_GB", 11) * GIB;
+const rendererMemoryResetBytes = parsePositiveNumberEnv("MATH3D_RENDERER_MEMORY_RESET_GB", 3) * GIB;
+const rendererMemoryWarnSamples = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_WARN_SAMPLES", 3);
+const rendererMemoryReloadSamples = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_RELOAD_SAMPLES", 15);
+const rendererMemoryEmergencySamples = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_EMERGENCY_SAMPLES", 2);
+const rendererGpuMode = String(process.env.MATH3D_GPU_MODE ?? (isGeometrySmoke ? "swiftshader" : "disabled")).toLowerCase();
+type MainWindowOptions = {
+  memoryGuardRecovery?: boolean;
+};
+const shouldStartMaximized = ["1", "true", "yes", "on", "y"].includes(
+  String(process.env.MATH3D_START_MAXIMIZED ?? "").toLowerCase()
+);
+const shouldSkipAutosaveRecovery = ["1", "true", "yes", "on", "y"].includes(
+  String(process.env.MATH3D_SKIP_AUTOSAVE_RECOVERY ?? "").toLowerCase()
+);
 
 // Work around Windows occlusion/background throttling glitches that can freeze
 // interactive text controls until a maximize/minimize/devtools reframe occurs.
 if (process.platform === "win32") {
-  if (isGeometrySmoke) {
+  if (rendererGpuMode === "swiftshader") {
     // Geometry smoke runs in CI/headless-like environments where GPU access can be
     // inconsistent; force SwiftShader explicitly to avoid unstable fallback paths.
     app.commandLine.appendSwitch("enable-unsafe-swiftshader");
     app.commandLine.appendSwitch("use-angle", "swiftshader");
-  } else {
+  } else if (rendererGpuMode !== "hardware") {
     app.disableHardwareAcceleration();
   }
   app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
@@ -247,13 +281,163 @@ const waitForMainWindowReady = (win: BrowserWindow, timeoutMs = 30000): Promise<
   });
 };
 
+const formatGb = (bytes: number): number => Number((bytes / GIB).toFixed(2));
+
+const getRendererWorkingSetBytes = (win: BrowserWindow): { pid: number; bytes: number } | null => {
+  if (win.isDestroyed() || win.webContents.isDestroyed()) return null;
+  const pid = win.webContents.getOSProcessId();
+  if (!pid || pid <= 0) return null;
+  const metric = app.getAppMetrics().find((entry) => entry.pid === pid);
+  const workingSetKb = Number(metric?.memory?.workingSetSize);
+  if (!Number.isFinite(workingSetKb) || workingSetKb <= 0) return null;
+  return { pid, bytes: workingSetKb * 1024 };
+};
+
+const installRendererMemoryGuard = (win: BrowserWindow): void => {
+  if (!isRendererMemoryAutoReloadEnabled) {
+    console.info("[memory-guard] renderer auto reload disabled");
+    return;
+  }
+
+  let rendererPid: number | null = null;
+  let rendererStartedAt = Date.now();
+  let warningSamples = 0;
+  let recoverySamples = 0;
+  let emergencySamples = 0;
+  let warnedRendererPid: number | null = null;
+  let reloading = false;
+  let sampling = false;
+  let interval: NodeJS.Timeout | null = null;
+
+  const resetCounters = (now = Date.now()) => {
+    warningSamples = 0;
+    recoverySamples = 0;
+    emergencySamples = 0;
+    warnedRendererPid = null;
+    rendererStartedAt = now;
+  };
+
+  const noteRendererPid = (pid: number) => {
+    if (rendererPid === pid) return;
+    rendererPid = pid;
+    resetCounters();
+  };
+
+  const clear = () => {
+    if (!interval) return;
+    clearInterval(interval);
+    interval = null;
+  };
+
+  const reloadWindow = (reason: "recovery" | "emergency", bytes: number, thresholdBytes: number, pid: number) => {
+    if (reloading) return;
+    reloading = true;
+    console.error("[memory-guard] renderer memory reload", {
+      reason,
+      rendererPid: pid,
+      rssGb: formatGb(bytes),
+      thresholdGb: formatGb(thresholdBytes),
+      warningSamples,
+      recoverySamples,
+      emergencySamples,
+    });
+
+    try {
+      const bounds = win.getBounds();
+      const maximized = win.isMaximized();
+      const fullscreen = win.isFullScreen();
+      const replacement = createWindow({ memoryGuardRecovery: true });
+      replacement.setBounds(bounds);
+      if (maximized) replacement.maximize();
+      if (fullscreen) replacement.setFullScreen(true);
+      buildAppMenu(replacement);
+      const closeOldWindow = () => {
+        if (!win.isDestroyed()) win.destroy();
+      };
+      replacement.webContents.once("did-finish-load", closeOldWindow);
+      setTimeout(closeOldWindow, 10000);
+    } catch (error: any) {
+      console.error("[memory-guard] renderer reload failed", String(error?.message ?? error));
+      reloading = false;
+    }
+  };
+
+  const sample = () => {
+    if (sampling) return;
+    sampling = true;
+    try {
+      if (win.isDestroyed() || win.webContents.isDestroyed()) {
+        clear();
+        return;
+      }
+
+      const rendererMemory = getRendererWorkingSetBytes(win);
+      if (!rendererMemory) return;
+      const { pid, bytes } = rendererMemory;
+      const now = Date.now();
+      noteRendererPid(pid);
+
+      if (bytes < rendererMemoryResetBytes) {
+        if (warningSamples || recoverySamples || emergencySamples || warnedRendererPid != null) {
+          console.info("[memory-guard] renderer memory counters reset", {
+            rendererPid: pid,
+            rssGb: formatGb(bytes),
+            resetGb: formatGb(rendererMemoryResetBytes),
+          });
+        }
+        resetCounters(now);
+        return;
+      }
+
+      warningSamples = bytes > rendererMemoryWarnBytes ? warningSamples + 1 : 0;
+      recoverySamples = bytes > rendererMemoryReloadBytes ? recoverySamples + 1 : 0;
+      emergencySamples = bytes > rendererMemoryEmergencyBytes ? emergencySamples + 1 : 0;
+
+      if (warningSamples >= rendererMemoryWarnSamples && warnedRendererPid !== pid) {
+        warnedRendererPid = pid;
+        console.warn("[memory-guard] renderer memory warning", {
+          rendererPid: pid,
+          rssGb: formatGb(bytes),
+          thresholdGb: formatGb(rendererMemoryWarnBytes),
+          samples: warningSamples,
+          requiredSamples: rendererMemoryWarnSamples,
+        });
+      }
+
+      if (reloading) return;
+
+      if (emergencySamples >= rendererMemoryEmergencySamples) {
+        reloadWindow("emergency", bytes, rendererMemoryEmergencyBytes, pid);
+        return;
+      }
+
+      const pastWarmup = now - rendererStartedAt >= rendererMemoryWarmupMs;
+      if (recoverySamples >= rendererMemoryReloadSamples && pastWarmup) {
+        reloadWindow("recovery", bytes, rendererMemoryReloadBytes, pid);
+      }
+    } finally {
+      sampling = false;
+    }
+  };
+
+  win.webContents.on("did-start-loading", () => resetCounters());
+  win.webContents.on("did-finish-load", () => {
+    reloading = false;
+    resetCounters();
+  });
+  win.webContents.on("render-process-gone", () => resetCounters());
+  win.on("closed", clear);
+
+  interval = setInterval(sample, rendererMemorySampleMs);
+};
+
 // Guard against running this entrypoint under plain Node (Electron APIs unavailable).
 if (!(app && typeof app.whenReady === "function")) {
   console.error("Electron app is not available. Run via the Electron runtime.");
   process.exit(0);
 }
 
-function createWindow() {
+function createWindow(options: MainWindowOptions = {}) {
   const win = new BrowserWindow({
     width: 1100,
     height: 750,
@@ -266,6 +450,9 @@ function createWindow() {
   });
   win.once("ready-to-show", () => {
     if (win.isDestroyed()) return;
+    if (shouldStartMaximized && !win.isMaximized()) {
+      win.maximize();
+    }
     win.show();
     win.focus();
   });
@@ -285,19 +472,37 @@ function createWindow() {
   win.on("leave-full-screen", () => sendWindowState("leave-full-screen"));
   win.on("resize", () => sendWindowState("resize"));
   win.webContents.on("did-finish-load", () => sendWindowState("initial"));
+  win.webContents.on("render-process-gone", (_event, details) => {
+    console.error("[window] render-process-gone", details);
+  });
+  installRendererMemoryGuard(win);
 
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
     const devUrl = new URL(process.env.VITE_DEV_SERVER_URL);
     if (isGeometrySmoke) {
       devUrl.searchParams.set("geometrySmoke", "1");
     }
+    if (options.memoryGuardRecovery) {
+      devUrl.searchParams.set("memoryGuardRecovery", "1");
+    }
+    if (shouldSkipAutosaveRecovery) {
+      devUrl.searchParams.set("skipAutosaveRecovery", "1");
+    }
     win.loadURL(devUrl.toString());
     win.webContents.openDevTools();
   } else {
     const indexPath = path.join(__dirname, "..", "renderer", "dist", "index.html");
-    if (isGeometrySmoke) {
+    if (isGeometrySmoke || options.memoryGuardRecovery || shouldSkipAutosaveRecovery) {
       const indexUrl = pathToFileURL(indexPath);
-      indexUrl.searchParams.set("geometrySmoke", "1");
+      if (isGeometrySmoke) {
+        indexUrl.searchParams.set("geometrySmoke", "1");
+      }
+      if (options.memoryGuardRecovery) {
+        indexUrl.searchParams.set("memoryGuardRecovery", "1");
+      }
+      if (shouldSkipAutosaveRecovery) {
+        indexUrl.searchParams.set("skipAutosaveRecovery", "1");
+      }
       win.loadURL(indexUrl.toString());
     } else {
       win.loadFile(indexPath);
