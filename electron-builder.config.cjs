@@ -37,6 +37,16 @@ const config = {
     target: "nsis",
     icon: "assets/icon.ico",
   },
+  linux: {
+    target: [
+      { target: "AppImage", arch: ["x64"] },
+      { target: "deb", arch: ["x64"] },
+      { target: "rpm", arch: ["x64"] },
+    ],
+    category: "Science",
+    synopsis: "Interactive 3D mathematics workspace",
+    description: "Interactive 3D mathematics workspace for surfaces, topology, geometry, and analysis.",
+  },
   nsis: {
     oneClick: false,
     allowToChangeInstallationDirectory: true,
