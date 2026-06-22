@@ -229,5 +229,5 @@ jobs:
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
           fail_on_unmatched_files: true
-          generate_release_notes: true
+          body_path: RELEASE_NOTES.md
           files: ${{ steps.assets.outputs.asset_glob }}

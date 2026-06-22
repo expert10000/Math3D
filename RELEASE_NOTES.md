@@ -1,24 +1,23 @@
-# Math3D 1.4.5
+# Math3D 1.4.6
 
 ## Type
-Stabilization release with selected extension features.
+Stability release based on the clean Math3D 1.4.5 line.
 
 ## Added
-- Added selected extension subset.
-- Added/improved dependency tree workflow.
-- Added safer handling of construction dependencies.
+- Added a renderer memory guard for heavy 3D viewer workloads.
+- Added a paced navigation and memory diagnostic runner for hardware, disabled-GPU, and SwiftShader comparisons.
 
 ## Improved
-- Improved geometry workflow stability.
-- Improved object selection and inspector synchronization.
-- Improved scene state persistence.
+- Tolerates normal first-viewer warm-up memory spikes before recovery actions.
+- Suppresses the autosave recovery prompt after guard-triggered performance recovery reloads.
+- Keeps hardware acceleration as the preferred release/default path.
 
 ## Fixed
-- Fixed crashes caused by stale dependencies.
-- Fixed UI desynchronization after object deletion.
-- Fixed selected-object refresh after recomputation.
+- Fixed premature reload loops caused by transient renderer memory peaks.
+- Fixed stale/blank recovery behavior during guarded reloads.
+- Avoided SwiftShader as a release confidence path after it proved unstable during first heavy surface warm-up.
 
 ## Known limitations
-- Some extension features remain experimental.
-- Full parametric geometry is planned for a later release.
-- Deep mesh editing remains outside this release scope.
+- Deep Three.js viewer lifetime cleanup remains the next priority.
+- Disabled-GPU mode remains slower and can produce test actionability delays.
+- SwiftShader is not recommended for this release path.
