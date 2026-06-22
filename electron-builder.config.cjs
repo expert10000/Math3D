@@ -44,6 +44,7 @@ const config = {
       { target: "rpm", arch: ["x64"] },
     ],
     category: "Science",
+    maintainer: "expert10000 <expert10000@users.noreply.github.com>",
     synopsis: "Interactive 3D mathematics workspace",
     description: "Interactive 3D mathematics workspace for surfaces, topology, geometry, and analysis.",
   },
