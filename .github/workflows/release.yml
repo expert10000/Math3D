@@ -289,6 +289,7 @@ jobs:
             libnss3 \
             libxss1 \
             rpm \
+            unzip \
             xvfb
           sudo apt-get install -y libasound2t64 || sudo apt-get install -y libasound2
 
@@ -320,6 +321,11 @@ jobs:
 
       - name: Set package version from tag
         run: npm version --no-git-tag-version --allow-same-version ${{ steps.meta.outputs.version }}
+
+      - name: Ensure Linux Electron binary
+        env:
+          MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: "600000"
+        run: timeout --kill-after=20s 10m npm run ensure:electron
 
       - name: Install Python dependencies for frozen worker
         run: |

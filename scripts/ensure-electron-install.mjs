@@ -266,10 +266,46 @@ function extractElectronZipWithWindowsNativeTools(zipPath, distPath, timeoutMs) 
   throw lastError ?? new Error("Windows zip extraction failed.");
 }
 
+function extractElectronZipWithPosixNativeTools(zipPath, distPath, timeoutMs) {
+  const attempts = [
+    {
+      label: "unzip",
+      command: "unzip",
+      args: ["-q", zipPath, "-d", distPath],
+    },
+  ];
+  let lastError = null;
+
+  for (const attempt of attempts) {
+    resetDistPath(distPath);
+    try {
+      runZipExtractCommand(attempt.label, attempt.command, attempt.args, timeoutMs);
+      return;
+    } catch (error) {
+      lastError = error;
+      process.stderr.write(
+        `[ensure-electron] zip extract (${attempt.label}) failed: ${String(error?.message ?? error)}\n`
+      );
+    }
+  }
+
+  throw lastError ?? new Error("POSIX zip extraction failed.");
+}
+
 async function extractElectronZip(paths, zipPath, distPath, timeoutMs) {
   if (getTargetPlatform() === "win32") {
     extractElectronZipWithWindowsNativeTools(zipPath, distPath, timeoutMs);
     return;
+  }
+
+  try {
+    extractElectronZipWithPosixNativeTools(zipPath, distPath, timeoutMs);
+    return;
+  } catch (error) {
+    process.stderr.write(
+      `[ensure-electron] native zip extraction unavailable; falling back to node extraction: ${String(error?.message ?? error)}\n`
+    );
+    resetDistPath(distPath);
   }
 
   const extract = require("extract-zip");
