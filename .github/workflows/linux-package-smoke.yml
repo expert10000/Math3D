@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   linux-package-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 150
     env:
       electron_config_cache: ${{ github.workspace }}/.cache/electron
