@@ -39,6 +39,22 @@ function normalizeOutput(text) {
   return String(text || "").replace(/\r\n/g, "\n");
 }
 
+function truthy(value) {
+  return ["1", "true", "yes", "on", "y"].includes(String(value || "").toLowerCase());
+}
+
+function falsey(value) {
+  return ["0", "false", "no", "off", "n"].includes(String(value || "").toLowerCase());
+}
+
+function getElectronArgs() {
+  const sandboxOverride = process.env.MATH3D_ELECTRON_NO_SANDBOX;
+  const disableSandbox = sandboxOverride == null || sandboxOverride === ""
+    ? process.platform === "linux" && truthy(process.env.CI)
+    : !falsey(sandboxOverride);
+  return disableSandbox ? ["--no-sandbox", "."] : ["."];
+}
+
 async function run() {
   const electronBinary = await ensureElectronExecutablePath();
 
@@ -51,7 +67,7 @@ async function run() {
   };
   delete childEnv.ELECTRON_RUN_AS_NODE;
 
-  const child = spawn(electronBinary, ["."], {
+  const child = spawn(electronBinary, getElectronArgs(), {
     cwd: repoRoot,
     env: childEnv,
     stdio: ["ignore", "pipe", "pipe"],
