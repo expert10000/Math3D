@@ -1075,16 +1075,19 @@ function resolveWorkerScriptCandidates(): string[] {
 
 function resolveBundledWorkerExeCandidates(): string[] {
   const fromEnv = (process.env.MATH3D_WORKER_EXE || "").trim();
+  const workerExeNames = process.platform === "win32" ? ["worker.exe"] : ["worker", "worker.exe"];
   const candidates = [
     ...(fromEnv ? [path.resolve(fromEnv)] : []),
     ...(process.resourcesPath
-      ? [
-          path.join(process.resourcesPath, "python-worker", "worker.exe"),
-          path.join(process.resourcesPath, "app.asar.unpacked", "python-worker", "worker.exe"),
-        ]
+      ? workerExeNames.flatMap((name) => [
+          path.join(process.resourcesPath, "python-worker", name),
+          path.join(process.resourcesPath, "app.asar.unpacked", "python-worker", name),
+        ])
       : []),
-    path.join(path.dirname(process.execPath), "resources", "python-worker", "worker.exe"),
-    path.join(process.cwd(), "build", "python-worker-dist", "worker.exe"),
+    ...workerExeNames.flatMap((name) => [
+      path.join(path.dirname(process.execPath), "resources", "python-worker", name),
+      path.join(process.cwd(), "build", "python-worker-dist", name),
+    ]),
   ];
   return dedupePaths(candidates);
 }
