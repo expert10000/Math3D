@@ -2,12 +2,12 @@
   "name": "math3d",
   "private": true,
   "license": "Apache-2.0",
-  "version": "1.4.6",
+  "version": "1.4.7",
   "workspaces": [
     "packages/*",
     "apps/*"
   ],
-  "description": "Interactive Möbius & Chebyshev viewer (Electron + React + D3)",
+  "description": "Interactive 3D mathematics workspace for surfaces, topology, geometry, and analysis.",
   "author": "developer",
   "main": "dist/main.js",
   "scripts": {

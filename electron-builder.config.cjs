@@ -38,6 +38,7 @@ const config = {
     icon: "assets/icon.ico",
   },
   linux: {
+    artifactName: "${productName}-${version}-linux-${arch}.${ext}",
     target: [
       { target: "AppImage", arch: ["x64"] },
       { target: "deb", arch: ["x64"] },
@@ -46,7 +47,8 @@ const config = {
     category: "Science",
     maintainer: "expert10000 <expert10000@users.noreply.github.com>",
     synopsis: "Interactive 3D mathematics workspace",
-    description: "Interactive 3D mathematics workspace for surfaces, topology, geometry, and analysis.",
+    description:
+      "Math3D is an interactive 3D mathematics workspace for explicit, implicit, and parametric surfaces; topology; geometry; complex analysis; mesh inspection; and Python-backed computation.",
   },
   nsis: {
     oneClick: false,
