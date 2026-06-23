@@ -19,7 +19,7 @@ apps/mobile/.expo/
 /docs/from-A/
 /.tools/
 
-# Large demo/reference assets live in Cloudflare R2, not in the deploy branch.
+# Large demo/reference assets are local-only unless explicitly committed.
 /data/
 
 # TS build

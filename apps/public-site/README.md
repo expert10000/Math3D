@@ -27,9 +27,3 @@ Output:
 ```bash
 npm run preview:public-site
 ```
-
-## Cloudflare Pages setup
-
-- Project root: repository root (`Math3D`)
-- Build command: `npm run build:public-site`
-- Build output directory: `apps/public-site/dist`

@@ -1,5 +1,4 @@
 import type { GeometryObjectType } from "./proceduralObjects";
-import { resolveRuntimeAssetPath } from "../services/assetBase";
 
 type GeometryParamValue = number | boolean | string;
 
@@ -173,12 +172,17 @@ const CAPTURED_OBJECT_THUMB_IDS = new Set<string>([
 ]);
 
 const resolveGalleryAssetPath = (relativePath: string): string => {
+  const normalized = relativePath.replace(/^\/+/, "");
   const basePath = (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? "/";
   const baseHref =
     typeof window === "undefined"
       ? basePath
       : new URL(basePath.endsWith("/") ? basePath : `${basePath}/`, window.location.origin).toString();
-  return resolveRuntimeAssetPath(relativePath, { baseHref });
+  try {
+    return new URL(normalized, baseHref).toString();
+  } catch {
+    return `${basePath.endsWith("/") ? basePath : `${basePath}/`}${normalized}`;
+  }
 };
 
 const capturedObjectThumbPath = (objectId: string): string | null =>

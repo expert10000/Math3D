@@ -65,7 +65,6 @@ import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
 import OctaveLabPanel from "./features/octaveLab/OctaveLabPanel";
 import SageSymbolicPanel from "./features/sageLab/SageSymbolicPanel";
 import ComputeEngineManagerPanel from "./features/computeEngines/ComputeEngineManagerPanel";
-import { resolveRuntimeAssetPath } from "./services/assetBase";
 
 import { ParamSurfaceViewer, type ParamSurfaceId } from "./components/ParamSurfaceViewer";
 import { solidColorForPalette, type ColorPalette } from "./components/colorPalette";
@@ -4799,7 +4798,7 @@ const SURFACE_MESH_ASSET_PRESETS: SurfaceMeshAssetPreset[] = [
   {
     id: "mesh_stanford_bunny",
     label: "Stanford bunny (OBJ)",
-    assetUrl: resolveRuntimeAssetPath("mesh-presets/stanford-bunny.obj"),
+    assetUrl: "/mesh-presets/stanford-bunny.obj",
     fileName: "stanford-bunny.obj",
   },
 ];
@@ -62795,10 +62794,23 @@ const CAPTURED_PRESET_IDS_BY_KIND: Partial<Record<PresetThumbKind, ReadonlySet<s
 };
 
 const resolveGalleryAssetPath = (relativePath: string): string => {
+  const normalized = relativePath.replace(/^\/+/, "");
+  const base =
+    typeof document !== "undefined" && document.baseURI
+      ? document.baseURI
+      : typeof window !== "undefined"
+        ? window.location.href
+        : "/";
   // Desktop runs from file:///.../renderer/dist/index.html.
   // Captured thumbnails live at repo/app root: ../../gallery-images/...
   // Rebase only those paths so rendered cards resolve instead of falling back to diagrams.
-  return resolveRuntimeAssetPath(relativePath, { desktopFilePrefix: "../../" });
+  const resolvedPath =
+    typeof window !== "undefined" && window.location.protocol === "file:" ? `../../${normalized}` : normalized;
+  try {
+    return new URL(resolvedPath, base).toString();
+  } catch {
+    return `./${resolvedPath}`;
+  }
 };
 
 const capturedPresetThumbPath = (id: string, kind: PresetThumbKind): string | null => {

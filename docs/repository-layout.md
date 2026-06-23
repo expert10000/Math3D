@@ -7,7 +7,7 @@ This page describes what each top-level folder is for in the Math3D repository.
 - `.github/workflows/` - CI/CD workflows (build, test, release, docs).
 - `analysis/` - generated architecture/dependency analysis artifacts.
 - `apps/` - runtime shells (`apps/desktop`, `apps/web`).
-- `data/` - optional local-only demo/reference assets. Large public demo assets should live in Cloudflare R2, not in the deploy branch.
+- `data/` - optional local-only demo/reference assets; keep large generated files out of the default deploy path unless they are intentionally published.
 - `docs/` - MkDocs content and generated API docs inputs.
 - `gallery-images/` - gallery source captures and generated thumbnails.
 - `packages/` - shared workspace packages (`core`, `renderer`, `ui`, `workbook`).

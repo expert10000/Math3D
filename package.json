@@ -19,7 +19,6 @@
     "dev:mobile": "npm --prefix apps/mobile run dev",
     "build:web": "npm --prefix apps/web run build",
     "build:web:pages": "npm --prefix apps/web run build:pages",
-    "r2:upload:demo-assets": "node scripts/upload-r2-demo-assets.mjs",
     "build:public-site": "npm --prefix apps/public-site run build",
     "preview:web": "concurrently \"npm:preview:web:proxy\" \"npm:preview:web:client\"",
     "preview:web:proxy": "npm --prefix apps/web run proxy",

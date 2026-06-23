@@ -35,7 +35,6 @@ Regenerate thumbnails with Playwright: `npm run test:app:e2e:thumbnails`
 
 Live links:
 - Web app: https://expert10000.github.io/Math3D/app/
-- Web app (app.math3dlab.com): https://app.math3dlab.com/
 - Landing page (hosted on GitHub Pages): https://expert10000.github.io/Math3D/landing/
 
 Requirements:
@@ -214,9 +213,6 @@ Note:
 - Local dev: `npm run dev:public-site`
 - Build: `npm run build:public-site`
 - Preview build: `npm run preview:public-site`
-- Cloudflare Pages:
-  - Build command: `npm run build:public-site`
-  - Build output directory: `apps/public-site/dist`
 
 ## Python worker modes
 
