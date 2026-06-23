@@ -7,6 +7,14 @@ const appRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(appRoot, "..", "..");
 const srcCapturedDir = path.join(repoRoot, "gallery-images", "captured");
 const outCapturedDir = path.join(appRoot, "dist", "gallery-images", "captured");
+const skipLocalGalleryCopy =
+  String(process.env.MATH3D_SKIP_LOCAL_GALLERY_ASSET_COPY ?? "").trim() === "1" ||
+  String(process.env.VITE_MATH3D_ASSET_BASE_URL ?? "").trim().length > 0;
+
+if (skipLocalGalleryCopy) {
+  console.log("[web] skipped local gallery asset copy; external asset base is enabled");
+  process.exit(0);
+}
 
 function copyRecursive(source, target) {
   const stat = fs.statSync(source);

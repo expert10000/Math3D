@@ -19,6 +19,9 @@ apps/mobile/.expo/
 /docs/from-A/
 /.tools/
 
+# Large demo/reference assets live in Cloudflare R2, not in the deploy branch.
+/data/
+
 # TS build
 *.tsbuildinfo
 
