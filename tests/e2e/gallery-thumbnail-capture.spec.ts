@@ -67,6 +67,15 @@ const captureTargets = new Set(
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean)
 );
+const captureGroups = new Set(
+  (process.env.MATH3D_THUMBNAIL_CAPTURE_GROUPS ??
+    (fullCaptureMode
+      ? "objects,explicit,implicit,parametric,spline,constructed,weierstrass,mesh"
+      : "objects,explicit,implicit,parametric,mesh"))
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean)
+);
 const shouldCaptureObjects = captureTargets.has("objects");
 const shouldCaptureSurfaces = captureTargets.has("surfaces");
 const shouldCaptureMesh = captureTargets.has("mesh");
@@ -197,6 +206,8 @@ const applyCaptureLimit = (ids: string[]): string[] => {
   if (!Number.isFinite(captureLimitPerGroup) || captureLimitPerGroup <= 0) return ids;
   return ids.slice(0, captureLimitPerGroup);
 };
+
+const shouldCaptureGroup = (group: string): boolean => captureGroups.has(group.trim().toLowerCase());
 
 const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication; page: Page }> => {
   const env: Record<string, string | undefined> = {
@@ -486,17 +497,19 @@ const clearGeometryObjects = async (page: Page): Promise<void> => {
 const getIdsByTestIdPrefix = async (
   page: Page,
   prefix: string,
-  options: { visibleOnly?: boolean } = {}
+  options: { visibleOnly?: boolean; limit?: number } = {}
 ): Promise<string[]> => {
   const locator = page.locator(`[data-testid^='${prefix}']`);
   const count = await locator.count();
   const ids: string[] = [];
+  const limit = Number.isFinite(options.limit) && Number(options.limit) > 0 ? Number(options.limit) : 0;
   for (let i = 0; i < count; i++) {
     const item = locator.nth(i);
     if (options.visibleOnly && !(await item.isVisible())) continue;
     const testId = await item.getAttribute("data-testid");
     if (!testId || !testId.startsWith(prefix)) continue;
     ids.push(testId.slice(prefix.length));
+    if (limit > 0 && ids.length >= limit) break;
   }
   return ids;
 };
@@ -506,7 +519,9 @@ const captureObjectGallery = async (
   outputRoot: string,
   manifest: CaptureManifest
 ): Promise<void> => {
-  const ids = applyCaptureLimit(await getIdsByTestIdPrefix(page, "geometry-gallery-card-"));
+  const ids = applyCaptureLimit(
+    await getIdsByTestIdPrefix(page, "geometry-gallery-card-", { limit: captureLimitPerGroup })
+  );
   for (const id of ids) {
     const card = page.getByTestId(`geometry-gallery-card-${id}`);
     const quickAdd = page.getByTestId(`geometry-gallery-quick-add-${id}`);
@@ -537,7 +552,12 @@ const captureSurfaceCards = async (
 ): Promise<void> => {
   await ensureSurfacesGalleryMode(page);
   await expect.poll(async () => page.locator(`[data-testid^='${options.testIdPrefix}']`).count()).toBeGreaterThan(0);
-  const ids = applyCaptureLimit(await getIdsByTestIdPrefix(page, options.testIdPrefix, { visibleOnly: true }));
+  const ids = applyCaptureLimit(
+    await getIdsByTestIdPrefix(page, options.testIdPrefix, {
+      visibleOnly: true,
+      limit: captureLimitPerGroup,
+    })
+  );
   for (const id of ids) {
     await ensureSurfacesGalleryMode(page);
     await setSurfacesLayout(page, 3);
@@ -565,7 +585,12 @@ const captureSurfaceCards = async (
 const captureMeshCards = async (page: Page, outputRoot: string, manifest: CaptureManifest): Promise<void> => {
   await openMeshWorkspace(page);
   await expect.poll(async () => page.locator("[data-testid^='mesh-preset-card-']").count()).toBeGreaterThan(0);
-  const presetIds = applyCaptureLimit(await getIdsByTestIdPrefix(page, "mesh-preset-card-", { visibleOnly: true }));
+  const presetIds = applyCaptureLimit(
+    await getIdsByTestIdPrefix(page, "mesh-preset-card-", {
+      visibleOnly: true,
+      limit: captureLimitPerGroup,
+    })
+  );
   for (const id of presetIds) {
     await openMeshWorkspace(page);
     const card = page.getByTestId(`mesh-preset-card-${id}`);
@@ -585,7 +610,12 @@ const captureMeshCards = async (page: Page, outputRoot: string, manifest: Captur
   }
 
   if (captureMeshAssets) {
-    const assetIds = applyCaptureLimit(await getIdsByTestIdPrefix(page, "mesh-asset-card-", { visibleOnly: true }));
+    const assetIds = applyCaptureLimit(
+      await getIdsByTestIdPrefix(page, "mesh-asset-card-", {
+        visibleOnly: true,
+        limit: captureLimitPerGroup,
+      })
+    );
     for (const id of assetIds) {
       await openMeshWorkspace(page);
       const card = page.getByTestId(`mesh-asset-card-${id}`);
@@ -632,65 +662,79 @@ test("Capture gallery thumbnails for objects and surfaces", async () => {
 
     if (shouldCaptureObjects) {
       await openProceduralGeometry(page);
-      await captureObjectGallery(page, outputRoot, manifest);
+      if (shouldCaptureGroup("objects")) {
+        await captureObjectGallery(page, outputRoot, manifest);
+      }
     }
 
     if (shouldCaptureSurfaces) {
       await openSurfacesWorkspace(page);
       await ensureSurfacesGalleryMode(page);
 
-      await page.getByTestId("surface-family-explicit").click();
-      await captureSurfaceCards(page, outputRoot, manifest, {
-        family: "explicit",
-        testIdPrefix: "surface-preset-card-",
-        folder: path.join("surfaces", "explicit"),
-      });
-
-      await page.getByTestId("surface-family-implicit").click();
-      await captureSurfaceCards(page, outputRoot, manifest, {
-        family: "implicit",
-        testIdPrefix: "surface-preset-card-",
-        folder: path.join("surfaces", "implicit"),
-      });
-
-      await page.getByTestId("surface-family-parametric").click();
-      await captureSurfaceCards(page, outputRoot, manifest, {
-        family: "parametric",
-        testIdPrefix: "param-preset-card-",
-        folder: path.join("surfaces", "parametric"),
-      });
-
-      await page.getByTestId("surface-family-spline").click();
-      await captureSurfaceCards(page, outputRoot, manifest, {
-        family: "spline",
-        testIdPrefix: "param-preset-card-",
-        folder: path.join("surfaces", "spline"),
-      });
-
-      await page.getByTestId("surface-family-constructed").click();
-      for (const subtype of ["rotational", "sweep", "tube", "ruled"] as const) {
-        await page.getByTestId(`param-constructed-subtype-${subtype}`).click();
+      if (shouldCaptureGroup("explicit")) {
+        await page.getByTestId("surface-family-explicit").click();
         await captureSurfaceCards(page, outputRoot, manifest, {
-          family: "constructed",
-          subtype,
-          testIdPrefix: "param-preset-card-",
-          folder: path.join("surfaces", "constructed", subtype),
+          family: "explicit",
+          testIdPrefix: "surface-preset-card-",
+          folder: path.join("surfaces", "explicit"),
         });
       }
 
-      const weierstrassFamilyButton = page.getByTestId("surface-family-weierstrass");
-      if (!(await weierstrassFamilyButton.isVisible())) {
-        await page.getByTestId("surface-family-more").click();
+      if (shouldCaptureGroup("implicit")) {
+        await page.getByTestId("surface-family-implicit").click();
+        await captureSurfaceCards(page, outputRoot, manifest, {
+          family: "implicit",
+          testIdPrefix: "surface-preset-card-",
+          folder: path.join("surfaces", "implicit"),
+        });
       }
-      await page.getByTestId("surface-family-weierstrass").click();
-      await captureSurfaceCards(page, outputRoot, manifest, {
-        family: "weierstrass",
-        testIdPrefix: "weierstrass-preset-card-",
-        folder: path.join("surfaces", "weierstrass"),
-      });
+
+      if (shouldCaptureGroup("parametric")) {
+        await page.getByTestId("surface-family-parametric").click();
+        await captureSurfaceCards(page, outputRoot, manifest, {
+          family: "parametric",
+          testIdPrefix: "param-preset-card-",
+          folder: path.join("surfaces", "parametric"),
+        });
+      }
+
+      if (shouldCaptureGroup("spline")) {
+        await page.getByTestId("surface-family-spline").click();
+        await captureSurfaceCards(page, outputRoot, manifest, {
+          family: "spline",
+          testIdPrefix: "param-preset-card-",
+          folder: path.join("surfaces", "spline"),
+        });
+      }
+
+      if (shouldCaptureGroup("constructed")) {
+        await page.getByTestId("surface-family-constructed").click();
+        for (const subtype of ["rotational", "sweep", "tube", "ruled"] as const) {
+          await page.getByTestId(`param-constructed-subtype-${subtype}`).click();
+          await captureSurfaceCards(page, outputRoot, manifest, {
+            family: "constructed",
+            subtype,
+            testIdPrefix: "param-preset-card-",
+            folder: path.join("surfaces", "constructed", subtype),
+          });
+        }
+      }
+
+      if (shouldCaptureGroup("weierstrass")) {
+        const weierstrassFamilyButton = page.getByTestId("surface-family-weierstrass");
+        if (!(await weierstrassFamilyButton.isVisible())) {
+          await page.getByTestId("surface-family-more").click();
+        }
+        await page.getByTestId("surface-family-weierstrass").click();
+        await captureSurfaceCards(page, outputRoot, manifest, {
+          family: "weierstrass",
+          testIdPrefix: "weierstrass-preset-card-",
+          folder: path.join("surfaces", "weierstrass"),
+        });
+      }
     }
 
-    if (shouldCaptureMesh) {
+    if (shouldCaptureMesh && shouldCaptureGroup("mesh")) {
       await captureMeshCards(page, outputRoot, manifest);
     }
 
