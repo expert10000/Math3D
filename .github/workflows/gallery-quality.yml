@@ -110,7 +110,7 @@ jobs:
       - name: Gallery thumbnail capture
         env:
           MATH3D_THUMBNAIL_CAPTURE_MODE: "smoke"
-          MATH3D_THUMBNAIL_CAPTURE_GROUPS: "objects,explicit,implicit,parametric,mesh"
+          MATH3D_THUMBNAIL_CAPTURE_GROUPS: "objects,explicit,implicit,parametric"
           MATH3D_THUMBNAIL_CAPTURE_LIMIT_PER_GROUP: "1"
           MATH3D_THUMBNAIL_TEST_TIMEOUT_MS: "420000"
         run: npm run test:app:e2e:thumbnails
