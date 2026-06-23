@@ -24,6 +24,7 @@ and preview builds:
 ```text
 GIT_LFS_SKIP_SMUDGE=1
 MATH3D_SKIP_LOCAL_GALLERY_ASSET_COPY=1
+NODE_VERSION=24
 VITE_MATH3D_ASSET_BASE_URL=https://assets.example.com/math3d-demo/v1/
 ```
 
