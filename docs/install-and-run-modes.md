@@ -43,15 +43,15 @@ Worker setup details:
 
 How `worker.exe` is created:
 
-- Build command: `npm run build:python-worker` (runs `python python/worker/freeze.py` via PyInstaller).
+- Build command: `npm run build:python-worker` (runs `scripts/build-python-worker.mjs`, which launches `python/worker/freeze.py` via PyInstaller).
 - Output: `build/python-worker-dist/worker.exe`.
 - Optional smoke verification: `npm run build:python-worker:smoke`.
 - Installer packaging (`npm run dist`) already builds and embeds this artifact into `resources/python-worker/worker.exe`.
 
 Environment variable notes:
 
-- `MATH3D_PYTHON` affects runtime only for the Python-script backend.
-- `MATH3D_PYTHON` does not control `npm run build:python-worker`; that build uses `python` from the active shell/PATH.
+- `MATH3D_PYTHON` affects the Python-script backend and `npm run build:python-worker`.
+- `npm run build:python-worker` refuses the Windows Store Python alias. Set `MATH3D_PYTHON`, install a real Python, or create `.venv-worker`.
 - Resolution defaults differ by runtime:
   - desktop local `auto` -> Python-script backend
   - browser local proxy `auto` -> prefer local `worker.exe`, fallback to Python-script backend
@@ -62,15 +62,14 @@ Environment variable notes:
 conda create -n math3d-cgal python=3.11 -y
 conda activate math3d-cgal
 python -m pip install --upgrade pip
-python -m pip install numpy scipy sympy vtk pyinstaller
-python -m pip install pygalmesh
+python -m pip install pyinstaller -r python/worker/requirements.freeze.txt
 $env:MATH3D_PYTHON = (Get-Command python).Source
 ```
 
 Notes:
 
 - `pyinstaller` is needed when building `worker.exe` (`npm run build:python-worker`).
-- `pygalmesh` is optional for many flows; if unavailable, `mesh.generate` may be unavailable while preview/VTK workflows still work.
+- `pygalmesh` is required for release/package builds that must include robust CGAL meshing. It may require CGAL/Eigen build prerequisites on the build machine.
 
 ## Windows + Conda command recipes
 

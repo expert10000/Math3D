@@ -319,6 +319,11 @@ jobs:
           npm ci
           npm --prefix renderer ci
 
+      - name: Install native pygalmesh build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libcgal-dev libeigen3-dev
+
       - name: Set package version from tag
         run: npm version --no-git-tag-version --allow-same-version ${{ steps.meta.outputs.version }}
 
@@ -330,8 +335,7 @@ jobs:
       - name: Install Python dependencies for frozen worker
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyinstaller numpy scipy sympy vtk
-          python -m pip install pygalmesh || echo "Optional dependency pygalmesh failed to install; continuing without mesh.generate support."
+          python -m pip install pyinstaller -r python/worker/requirements.freeze.txt
 
       - name: Build app before Ubuntu smoke
         run: npm run build:core
@@ -347,6 +351,8 @@ jobs:
         run: timeout --kill-after=20s 5m xvfb-run -a npm run test:app:geometry:smoke
 
       - name: Build Linux packages
+        env:
+          MATH3D_REQUIRE_PYGALMESH: "1"
         run: npm run dist:linux:ci
 
       - name: Prepare Linux release assets

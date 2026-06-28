@@ -411,16 +411,16 @@ class PythonWorker {
     });
   }
 
-  async ping(): Promise<{ ok: boolean; pong: boolean }> {
+  async ping(timeoutMs = 15000): Promise<{ ok: boolean; pong: boolean }> {
     const jobId = `ping-${Date.now()}`;
-    const res = await this.request({ type: "ping", jobId }, 15000);
+    const res = await this.request({ type: "ping", jobId }, timeoutMs);
     const pong = res?.type === "pong" || res?.pong === true;
     return { ok: pong, pong };
   }
 
-  async version(): Promise<WorkerVersionResult> {
+  async version(timeoutMs = 15000): Promise<WorkerVersionResult> {
     const jobId = `version-${Date.now()}`;
-    const res = await this.request({ type: "version", jobId }, 15000);
+    const res = await this.request({ type: "version", jobId }, timeoutMs);
     return {
       version: String(res?.version ?? "unknown"),
       protocol: String(res?.protocol ?? "legacy"),
@@ -994,6 +994,12 @@ const workerStartupHealthTimeoutMs = resolveTimeoutMs(
   300000
 );
 
+type PythonCommand = {
+  command: string;
+  args: string[];
+  pythonExe: string;
+};
+
 function resolveWorkerFailureInjectionMode(): WorkerFailureInjectionMode {
   const direct = (process.env.MATH3D_WORKER_FAILURE_INJECTION || "").trim();
   const legacy = (process.env.MATH3D_WORKER_FAILURE_MODE || "").trim();
@@ -1021,11 +1027,75 @@ if (workerFailureInjectionMode !== "none") {
   });
 }
 
-function resolvePythonExe(): string {
-  const env = process.env.MATH3D_PYTHON;
-  if (env && env.trim().length) return env;
+function isWindowsStorePythonAlias(candidate: string): boolean {
+  if (process.platform !== "win32") return false;
+  const normalized = path.normalize(candidate).toLowerCase();
+  return (
+    normalized.endsWith(path.normalize("\\Microsoft\\WindowsApps\\python.exe").toLowerCase()) ||
+    normalized.endsWith(path.normalize("\\Microsoft\\WindowsApps\\python3.exe").toLowerCase())
+  );
+}
 
-  return process.platform === "win32" ? "python" : "python3";
+function pathEntries(): string[] {
+  return String(process.env.PATH || "")
+    .split(path.delimiter)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function findExecutablesOnPath(names: string[]): string[] {
+  const candidates: string[] = [];
+  for (const dir of pathEntries()) {
+    for (const name of names) {
+      const candidate = path.join(dir, name);
+      if (fs.existsSync(candidate)) candidates.push(candidate);
+    }
+  }
+  return dedupePaths(candidates);
+}
+
+function resolvePythonCommand(): PythonCommand {
+  const env = process.env.MATH3D_PYTHON;
+  if (env && env.trim().length) {
+    const command = env.trim();
+    return { command, args: [], pythonExe: command };
+  }
+
+  if (!app.isPackaged) {
+    const executable = process.platform === "win32" ? path.join("Scripts", "python.exe") : path.join("bin", "python");
+    const localEnvironments = [
+      path.resolve(process.cwd(), ".venv-worker", executable),
+      path.resolve(app.getAppPath(), ".venv-worker", executable),
+    ];
+    const localPython = localEnvironments.find((candidate) => fs.existsSync(candidate));
+    if (localPython) return { command: localPython, args: [], pythonExe: localPython };
+  }
+
+  if (process.platform === "win32") {
+    const pythonCandidates = findExecutablesOnPath(["python.exe", "python3.exe"]);
+    const python = pythonCandidates.find((candidate) => !isWindowsStorePythonAlias(candidate));
+    if (python) {
+      return { command: python, args: [], pythonExe: python };
+    }
+
+    const pyLauncher = findExecutablesOnPath(["py.exe"])[0];
+    if (pyLauncher) {
+      return { command: pyLauncher, args: ["-3"], pythonExe: `${pyLauncher} -3` };
+    }
+
+    const ignoredAliases = pythonCandidates.filter(isWindowsStorePythonAlias);
+    const ignored = ignoredAliases.length ? ` Ignored Windows Store alias: ${ignoredAliases.join(", ")}.` : "";
+    throw new Error(
+      [
+        "No usable Python interpreter found for the Python worker.",
+        "Install Python 3.11+, set MATH3D_PYTHON to a real python.exe,",
+        "or run npm run build:python-worker and use MATH3D_WORKER_MODE=exe.",
+        ignored,
+      ].join(" ")
+    );
+  }
+
+  return { command: "python3", args: [], pythonExe: "python3" };
 }
 
 function dedupePaths(candidates: string[]): string[] {
@@ -1110,21 +1180,21 @@ function workerNotFoundError(kind: string, detail: string, candidates: string[])
 }
 
 function resolvePythonScriptLaunch(mode: WorkerResolutionMode, source: string): WorkerLaunchConfig {
-  const pythonExe = resolvePythonExe();
+  const python = resolvePythonCommand();
   const candidates = resolveWorkerScriptCandidates();
   const scriptPath = firstExistingPath(candidates);
   if (!scriptPath) {
     throw workerNotFoundError(
       "Python worker entrypoint",
-      `python: ${pythonExe}. Set MATH3D_PYTHON to override Python or MATH3D_WORKER_SCRIPT to override the script path.`,
+      `python: ${python.pythonExe}. Set MATH3D_PYTHON to override Python or MATH3D_WORKER_SCRIPT to override the script path.`,
       candidates
     );
   }
   return {
     backend: "python-script",
-    command: pythonExe,
-    args: [scriptPath],
-    pythonExe,
+    command: python.command,
+    args: [...python.args, scriptPath],
+    pythonExe: python.pythonExe,
     scriptPath,
     mode,
     modeSource: source,
@@ -1169,6 +1239,7 @@ function resolveWorkerLaunch(): WorkerLaunchConfig {
       attempts.push(() => resolvePythonScriptLaunch(mode, `${source}+packaged-python-fallback`));
     }
   } else {
+    attempts.push(() => resolveBundledExeLaunch(mode, `${source}+local-exe-fallback`));
     attempts.push(() => resolvePythonScriptLaunch(mode, source));
   }
 
@@ -1238,11 +1309,11 @@ export async function getPythonWorker(): Promise<PythonWorker> {
     });
 
     try {
-      const ping = await worker.ping();
+      const ping = await worker.ping(workerStartupHealthTimeoutMs);
       if (!ping.ok) {
         throw new Error(`Python worker ping failed (${launch.backend})`);
       }
-      await worker.version();
+      await worker.version(workerStartupHealthTimeoutMs);
       await worker.health(workerStartupHealthTimeoutMs);
     } catch (err) {
       worker.kill();
@@ -1286,7 +1357,7 @@ export async function runPythonWorkerStartupCheck(): Promise<PythonWorkerStartup
 
   try {
     const worker = await getPythonWorker();
-    const ping = await worker.ping();
+    const ping = await worker.ping(workerStartupHealthTimeoutMs);
     if (!ping.ok) {
       return {
         ok: false,
@@ -1297,7 +1368,7 @@ export async function runPythonWorkerStartupCheck(): Promise<PythonWorkerStartup
         },
       };
     }
-    const version = await worker.version();
+    const version = await worker.version(workerStartupHealthTimeoutMs);
     const launch = lastLaunchConfig || resolvedLaunch;
     return {
       ok: true,

@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 $repo = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repo
 
-python python/worker/freeze.py
+node (Join-Path $repo "scripts/build-python-worker.mjs")
 
 $exe = Join-Path $repo "build/python-worker-dist/worker.exe"
 if (!(Test-Path $exe)) {

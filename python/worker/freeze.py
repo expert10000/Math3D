@@ -14,6 +14,10 @@ def has_module(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
 
 
+def truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on", "y"}
+
+
 def repo_root() -> str:
     here = os.path.dirname(os.path.abspath(__file__))
     return os.path.abspath(os.path.join(here, "..", ".."))
@@ -113,9 +117,21 @@ def main() -> int:
         cmd.extend(["--exclude-module", name])
 
     if has_module("pygalmesh"):
-        cmd.extend(["--hidden-import", "pygalmesh"])
+        cmd.extend([
+            "--hidden-import",
+            "pygalmesh",
+            "--collect-binaries",
+            "pygalmesh",
+            "--collect-data",
+            "pygalmesh",
+        ])
     else:
-        print("[freeze] pygalmesh not installed; mesh.generate will be unavailable in this build.")
+        message = "[freeze] pygalmesh not installed; mesh.generate will be unavailable in this build."
+        if truthy_env("MATH3D_REQUIRE_PYGALMESH"):
+            print(message, file=sys.stderr)
+            print("[freeze] MATH3D_REQUIRE_PYGALMESH is set, failing worker build.", file=sys.stderr)
+            return 4
+        print(message)
 
     print("[freeze] running:", " ".join(cmd))
     env = dict(os.environ)

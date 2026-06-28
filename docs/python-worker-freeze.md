@@ -7,8 +7,8 @@
 ## Reproducible build commands
 
 - Build only:
-  - `python python/worker/freeze.py`
   - or `npm run build:python-worker`
+  - direct: `python python/worker/freeze.py`
 - Build + smoke checks:
   - `powershell -ExecutionPolicy Bypass -File scripts/build-python-worker.ps1 -SmokeTest`
   - or `npm run build:python-worker:smoke`
@@ -28,11 +28,15 @@
 - VTK binaries and package data are collected via:
   - `--collect-binaries vtkmodules`
   - `--collect-data vtkmodules`
+- When installed, `pygalmesh` binaries and package data are collected via:
+  - `--collect-binaries pygalmesh`
+  - `--collect-data pygalmesh`
 - Build logs may include missing optional MKL/cluster DLL warnings (`msmpi.dll`, `impi.dll`, `pgc.dll`, etc.).
   - These warnings were non-fatal on the current build machine.
   - `worker.exe` still passed `ping` and `mesh.preview` smoke tests.
-- `pygalmesh` is optional in current environment:
-  - if not installed, `mesh.generate` is unavailable at runtime
+- `pygalmesh` can be required for package/release builds:
+  - set `MATH3D_REQUIRE_PYGALMESH=1` to fail the freeze if it is missing
+  - if not installed and not required, `mesh.generate` is unavailable at runtime
   - other worker operations (for example `mesh.preview`, VTK transforms, geodesic) continue to work
 
 ## Installer packaging verification
