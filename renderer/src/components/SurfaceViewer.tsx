@@ -157,7 +157,8 @@ type SurfaceMeshOverride = {
 const DEG_TO_RAD = Math.PI / 180;
 const RAD_TO_DEG = 180 / Math.PI;
 const DEFAULT_MESH_PREVIEW_TRIANGLE_TARGET = 100_000;
-const IDLE_RENDER_MIN_FRAME_MS = 1000 / 8;
+const IDLE_RENDER_MIN_FRAME_MS = 500;
+const PERFORMANCE_SNAPSHOT_MIN_MS = 2000;
 
 type SurfaceMeshLodBuffers = {
   positions: Float32Array;
@@ -3705,7 +3706,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (!perfCb) return;
       const now = performance.now();
       const perfFrame = perfFrameRef.current;
-      if (perfFrame.lastEmitAt !== 0 && now - perfFrame.lastEmitAt < 250) return;
+      if (perfFrame.lastEmitAt !== 0 && now - perfFrame.lastEmitAt < PERFORMANCE_SNAPSHOT_MIN_MS) return;
       perfFrame.lastEmitAt = now;
       const renderInfo = renderer.info.render;
       const drawCalls = Math.max(0, Math.round(renderInfo.calls ?? 0));

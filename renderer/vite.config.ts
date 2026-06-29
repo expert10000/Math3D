@@ -1,9 +1,11 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rootDir = fileURLToPath(new URL(".", import.meta.url));
+const galleryImagesDir = path.resolve(rootDir, "../gallery-images");
 const proxyTarget = process.env.MATH3D_WEB_WORKER_PROXY_TARGET || "http://127.0.0.1:8787";
 const proxyEnabledRaw = String(process.env.MATH3D_WEB_WORKER_PROXY_ENABLED ?? "1").toLowerCase();
 const proxyEnabled = !["0", "false", "no", "off"].includes(proxyEnabledRaw);
@@ -20,10 +22,61 @@ const workerProxy = proxyEnabled
     }
   : undefined;
 
+const contentTypeForGalleryAsset = (filePath: string): string => {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".png") return "image/png";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".svg") return "image/svg+xml";
+  if (ext === ".webp") return "image/webp";
+  return "application/octet-stream";
+};
+
+const galleryImagesDevServer = () => ({
+  name: "math3d-gallery-images-dev-server",
+  configureServer(server) {
+    server.middlewares.use((req, res, next) => {
+      const rawUrl = req.url?.split("?")[0] ?? "";
+      let pathname = "";
+      try {
+        pathname = decodeURIComponent(rawUrl);
+      } catch {
+        next();
+        return;
+      }
+
+      if (!pathname.startsWith("/gallery-images/")) {
+        next();
+        return;
+      }
+
+      const relativePath = pathname.slice("/gallery-images/".length);
+      const filePath = path.resolve(galleryImagesDir, relativePath);
+      const insideGallery =
+        filePath === galleryImagesDir || filePath.startsWith(`${galleryImagesDir}${path.sep}`);
+      if (!insideGallery) {
+        res.statusCode = 403;
+        res.end("Forbidden");
+        return;
+      }
+
+      fs.stat(filePath, (statError, stat) => {
+        if (statError || !stat.isFile()) {
+          next();
+          return;
+        }
+
+        res.setHeader("Content-Type", contentTypeForGalleryAsset(filePath));
+        res.setHeader("Cache-Control", "no-cache");
+        fs.createReadStream(filePath).pipe(res);
+      });
+    });
+  },
+});
+
 // https://vitejs.dev/config/
 export default defineConfig({
   base: "./",        // 👈 IMPORTANT for Electron / file://
-  plugins: [react()],
+  plugins: [react(), galleryImagesDevServer()],
   build: {
     chunkSizeWarningLimit: 1300,
     rollupOptions: {

@@ -25617,6 +25617,7 @@ const App: React.FC = () => {
   const [viewportDebugPrimary, setViewportDebugPrimary] = useState<ViewportDebugSnapshot | null>(null);
   const [viewportDebugSecondary, setViewportDebugSecondary] = useState<ViewportDebugSnapshot | null>(null);
   const [surfacePerformanceSnapshot, setSurfacePerformanceSnapshot] = useState<SurfacePerformanceSnapshot | null>(null);
+  const surfacePerformanceSnapshotUpdatedAtRef = useRef(0);
   const [meshPerformanceLastBuildMs, setMeshPerformanceLastBuildMs] = useState<number | null>(null);
   const [meshPerfBenchmarkId, setMeshPerfBenchmarkId] = useState<MeshPerfBenchmarkId | null>(null);
   const meshPerfBaselineRef = useRef<{
@@ -25633,6 +25634,8 @@ const App: React.FC = () => {
     setViewportDebugSecondary(snapshot);
   }, []);
   const handleSurfacePerformanceSnapshot = useCallback((snapshot: SurfacePerformanceSnapshot) => {
+    if (snapshot.ts - surfacePerformanceSnapshotUpdatedAtRef.current < 2000) return;
+    surfacePerformanceSnapshotUpdatedAtRef.current = snapshot.ts;
     setSurfacePerformanceSnapshot(snapshot);
   }, []);
   const handleRunMeshPerformanceBenchmark = useCallback(

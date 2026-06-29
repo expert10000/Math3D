@@ -47,7 +47,7 @@ const rendererMemoryResetBytes = parsePositiveNumberEnv("MATH3D_RENDERER_MEMORY_
 const rendererMemoryWarnSamples = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_WARN_SAMPLES", 3);
 const rendererMemoryReloadSamples = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_RELOAD_SAMPLES", 15);
 const rendererMemoryEmergencySamples = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_EMERGENCY_SAMPLES", 2);
-const rendererGpuMode = String(process.env.MATH3D_GPU_MODE ?? (isGeometrySmoke ? "swiftshader" : "disabled")).toLowerCase();
+const rendererGpuMode = String(process.env.MATH3D_GPU_MODE ?? (isGeometrySmoke ? "swiftshader" : "hardware")).toLowerCase();
 type MainWindowOptions = {
   memoryGuardRecovery?: boolean;
 };
