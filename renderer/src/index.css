@@ -241,6 +241,120 @@ button:focus-visible {
   contain-intrinsic-size: 210px;
 }
 
+.geometry-gallery-scan-card {
+  content-visibility: visible;
+  contain: paint style;
+  contain-intrinsic-size: 260px;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+.geometry-gallery-scan-card:hover {
+  transform: none;
+}
+
+.construction-lab-panel input,
+.construction-lab-panel select,
+.construction-lab-panel textarea,
+.construction-lab-panel button {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.construction-lab-panel input,
+.construction-lab-panel select,
+.construction-lab-panel textarea {
+  min-width: 0;
+}
+
+.construction-lab-panel button {
+  white-space: normal;
+}
+
+.gallery-panel-scroll.geometry-gallery-compact {
+  max-height: min(52vh, 600px);
+  gap: 8px;
+  overflow-anchor: none;
+}
+
+.geometry-gallery-compact .gallery-section {
+  gap: 5px;
+}
+
+.geometry-gallery-compact .gallery-card-grid {
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  gap: 8px;
+}
+
+.geometry-gallery-scan-card.is-compact {
+  grid-template-columns: 48px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 62px;
+  contain-intrinsic-size: 62px;
+  border-radius: 8px;
+}
+
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-preview {
+  padding: 6px 0 6px 6px;
+}
+
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-preview-frame {
+  min-height: 42px;
+  height: 42px;
+  aspect-ratio: 1;
+  border-radius: 7px;
+}
+
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-badge-btn {
+  display: none;
+}
+
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-meta {
+  border-top: 0;
+  min-width: 0;
+  padding: 6px 6px 5px;
+  gap: 2px;
+  align-content: start;
+}
+
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-title {
+  font-size: 11px;
+  line-height: 1.05;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-summary,
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-chips,
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-selected-pill,
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-footer-tools {
+  display: none;
+}
+
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-formula {
+  font-size: 8px;
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-footer {
+  min-height: 18px;
+  margin-top: 1px;
+  justify-content: flex-start;
+}
+
+.geometry-gallery-scan-card.is-compact .gallery-scan-card-action-btn {
+  font-size: 9px;
+  line-height: 1.05;
+  padding: 1px 6px;
+  max-width: 76px;
+  white-space: normal;
+}
+
 .gallery-scan-card:hover {
   transform: translateY(-2px);
   border-color: #84aedd;

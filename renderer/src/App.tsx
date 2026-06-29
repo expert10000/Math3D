@@ -7951,6 +7951,7 @@ const App: React.FC = () => {
   const [geometryGalleryPreviewParams, setGeometryGalleryPreviewParams] = useState<Record<string, number | boolean | string>>({});
   const [geometryGalleryRecentCardIds, setGeometryGalleryRecentCardIds] = useState<string[]>([]);
   const [galleryCardViewMode, setGalleryCardViewMode] = useState<GalleryCardViewMode>("rendered");
+  const [geometryGalleryCardSizeMode, setGeometryGalleryCardSizeMode] = useState<"compact" | "large">("compact");
   const [geometryGallerySortPreset, setGeometryGallerySortPreset] = useState<GallerySortPreset>("family");
   const [geometryGallerySearchText, setGeometryGallerySearchText] = useState("");
   const [geometryGalleryCategoryFilter, setGeometryGalleryCategoryFilter] =
@@ -43096,6 +43097,17 @@ case "mobius":
     showViewportDebug && !(mode === "surfaces" && isPresentDisplayMode) && !cleanScreenshotSurfaceActive;
   const isPhoneLandscapeLayout =
     viewportSize.width > viewportSize.height && viewportSize.width <= 980 && viewportSize.height <= 560;
+  const isGeometryStackedLayout = isPhoneLandscapeLayout || viewportSize.width <= 980;
+  const compactGeometryPanel =
+    (geometryMode === "procedural" && geometryProceduralPanelTab === "create") ||
+    viewportSize.height < 900 ||
+    isGeometryStackedLayout;
+  const compactGeometryCreatePanel =
+    geometryMode === "procedural" && geometryProceduralPanelTab === "create" && compactGeometryPanel;
+  const geometryCreateLeftPanelWidth =
+    geometryMode === "procedural" && geometryProceduralPanelTab === "create"
+      ? leftWidth
+      : leftWidth;
   const showGeometryFullWorkbookWorkspace =
     mode === "geometry" && geometryMode === "workbook" && geometryWorkbookUiMode === "full";
   const showSurfacesRightPanel =
@@ -50166,22 +50178,31 @@ case "mobius":
               flex: 1,
               minHeight: 0,
               display: "flex",
-              flexDirection: isPhoneLandscapeLayout ? "column" : "row",
+              flexDirection: isGeometryStackedLayout ? "column" : "row",
               alignItems: "stretch",
-              gap: isPhoneLandscapeLayout ? 8 : 0,
+              gap: isGeometryStackedLayout ? 8 : 0,
             }}
           >
             {/* LEFT */}
             <div
+              data-testid="geometry-left-panel"
+              data-compact-geometry-panel={compactGeometryPanel ? "true" : "false"}
               style={{
                 ...styles.panelLeft,
-                width: isPhoneLandscapeLayout ? "100%" : leftWidth,
-                maxWidth: isPhoneLandscapeLayout ? "100%" : undefined,
-                maxHeight: isPhoneLandscapeLayout ? Math.max(180, Math.floor(viewportSize.height * 0.46)) : undefined,
-                order: isPhoneLandscapeLayout ? 2 : 0,
+                width: isGeometryStackedLayout ? "100%" : geometryCreateLeftPanelWidth,
+                maxWidth: isGeometryStackedLayout ? "100%" : undefined,
+                maxHeight: isGeometryStackedLayout ? Math.max(180, Math.floor(viewportSize.height * 0.46)) : undefined,
+                overflowY: compactGeometryCreatePanel ? "hidden" : undefined,
+                order: isGeometryStackedLayout ? 2 : 0,
               }}
             >
-              <section>
+              <section
+                style={
+                  compactGeometryCreatePanel
+                    ? { height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }
+                    : undefined
+                }
+              >
                 <h2 style={styles.h2}>Geometry Viewer</h2>
                 <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
                   Procedural objects and classic construction scenes.
@@ -50192,7 +50213,7 @@ case "mobius":
                     {geometryProceduralPanelTab === "create" && (
                     <>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Object gallery</div>
-                    <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
+                    <div style={{ display: "grid", gap: 6, marginBottom: 8, flex: "0 0 auto" }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6 }}>
                         <input
                           type="search"
@@ -50273,17 +50294,96 @@ case "mobius":
                             </button>
                           ))}
                         </div>
+                        <div style={{ display: "inline-flex", border: "1px solid #cbd5e1", borderRadius: 999, overflow: "hidden" }}>
+                          {([
+                            { id: "compact" as const, label: "Compact" },
+                            { id: "large" as const, label: "Large" },
+                          ] as const).map((sizeOption) => (
+                            <button
+                              key={`geometry-gallery-size-${sizeOption.id}`}
+                              type="button"
+                              onClick={() => setGeometryGalleryCardSizeMode(sizeOption.id)}
+                              aria-pressed={geometryGalleryCardSizeMode === sizeOption.id}
+                              style={{
+                                border: "none",
+                                borderRight: sizeOption.id === "large" ? "none" : "1px solid #cbd5e1",
+                                borderRadius: 0,
+                                padding: "3px 8px",
+                                fontSize: 10,
+                                boxShadow: "none",
+                                background: geometryGalleryCardSizeMode === sizeOption.id ? "#dbeafe" : "#fff",
+                                fontWeight: geometryGalleryCardSizeMode === sizeOption.id ? 700 : 500,
+                              }}
+                            >
+                              {sizeOption.label}
+                            </button>
+                          ))}
+                        </div>
                         <div style={{ marginLeft: "auto", fontSize: 10, opacity: 0.72 }}>
                           {geometryGalleryVisibleCards.length} cards
                         </div>
                       </div>
+                      {geometryGallerySelectedCard && (
+                        <div
+                          data-testid="geometry-create-selected-card"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            flexWrap: "wrap",
+                            border: "1px solid #cfe1f6",
+                            borderRadius: 8,
+                            background: "#eff6ff",
+                            padding: "6px 8px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              minWidth: 0,
+                              fontSize: 11,
+                              color: "#1e3a8a",
+                              fontWeight: 800,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              flex: "1 1 160px",
+                            }}
+                            title={geometryGallerySelectedCard.name}
+                          >
+                            Selected: {geometryGallerySelectedCard.name}
+                          </div>
+                          <button
+                            type="button"
+                            data-testid="geometry-add-object-toolbar"
+                            onClick={handleAddGeometryGallerySelected}
+                            disabled={!geometryGallerySelectedCard.supported}
+                            style={{ fontSize: 11, fontWeight: 800, padding: "4px 10px" }}
+                          >
+                            Add selected
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddGeometryGalleryDefault(geometryGallerySelectedCard)}
+                            disabled={!geometryGallerySelectedCard.supported || !geometryGallerySelectedCard.defaultRecipe}
+                            style={{ fontSize: 11, fontWeight: 800, padding: "4px 10px" }}
+                          >
+                            Add preset
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     <div
                       data-testid="geometry-gallery"
                       data-gallery-grid="true"
-                      className="gallery-panel-scroll"
-                      style={{ paddingBottom: geometryGallerySelectedCard ? 14 : 0 }}
+                      data-card-size={geometryGalleryCardSizeMode}
+                      className={`gallery-panel-scroll${geometryGalleryCardSizeMode === "compact" ? " geometry-gallery-compact" : ""}`}
+                      style={{
+                        paddingBottom: 0,
+                        flex: compactGeometryCreatePanel ? "1 1 auto" : undefined,
+                        minHeight: compactGeometryCreatePanel ? 90 : undefined,
+                        maxHeight: compactGeometryCreatePanel ? "none" : undefined,
+                      }}
                     >
                       <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Cards</div>
                       {geometryGallerySections.map((section) => (
@@ -50292,7 +50392,16 @@ case "mobius":
                             <span>{section.label}</span>
                             <span>{section.cards.length}</span>
                           </div>
-                          <div className="gallery-card-grid">
+                          <div
+                            className="gallery-card-grid"
+                            style={{
+                              gridTemplateColumns:
+                                geometryGalleryCardSizeMode === "compact"
+                                  ? "repeat(auto-fill, minmax(128px, 1fr))"
+                                  : "repeat(auto-fill, minmax(220px, 1fr))",
+                              gap: geometryGalleryCardSizeMode === "compact" ? 8 : 10,
+                            }}
+                          >
                             {section.cards.map((card) => {
                               const selected = geometryGallerySelectedCard?.id === card.id;
                               const favorite = geometryGalleryFavoriteCardIds.has(card.id);
@@ -50354,6 +50463,8 @@ case "mobius":
                                     if (card.supported) handleAddGeometryGalleryDefault(card);
                                   }}
                                   className={`gallery-scan-card geometry-gallery-scan-card${
+                                    geometryGalleryCardSizeMode === "compact" ? " is-compact" : ""
+                                  }${
                                     selected ? " is-browser-selected" : ""
                                   }${!card.supported ? " is-disabled" : ""}`}
                                   title={`${card.name}\n${card.description}`}
@@ -50484,9 +50595,9 @@ case "mobius":
                       )}
                     </div>
 
-                    {geometryGallerySelectedCard && (
+                    {false && geometryGallerySelectedCard && (
                       <div
-                        data-testid="geometry-create-selected-card"
+                        data-testid="geometry-create-selected-card-legacy"
                         style={{
                           marginTop: 10,
                           position: viewportSize.height >= 900 && !isPhoneLandscapeLayout ? "sticky" : "relative",
