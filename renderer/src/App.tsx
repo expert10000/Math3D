@@ -120,6 +120,7 @@ import {
   type ConstructionDependencyTreeInputNode,
   type ConstructionDependencyTreeNode,
 } from "./geometry/constructionDependencyTree";
+import { buildConstructionViewportBadgeById } from "./geometry/constructionViewportBadges";
 import { pointInPolygonOnPlane } from "./geometry/polyhedra";
 import {
   GEOMETRY_OBJECT_REGISTRY,
@@ -2355,6 +2356,9 @@ type GeometryDerivedConstructionEvaluation = {
 type GeometryDependencyNodeKind =
   | "scene-root"
   | "geometry-object"
+  | "parameter"
+  | "analysis"
+  | "claim"
   | "face-reference"
   | "derived-point"
   | "derived-line"
@@ -2374,7 +2378,17 @@ type GeometryDependencyNode = {
 type GeometryDependencyEdge = {
   sourceId: string;
   targetId: string;
-  relation: "contains" | "derived-from" | "depends-on" | "measured-from" | "section-of" | "compared-with" | "aligned-to";
+  relation:
+    | "contains"
+    | "parameterizes"
+    | "analyzes"
+    | "verifies"
+    | "derived-from"
+    | "depends-on"
+    | "measured-from"
+    | "section-of"
+    | "compared-with"
+    | "aligned-to";
 };
 type GeometryDerivedRelationType =
   | "center-on-derived-point"
@@ -7799,6 +7813,15 @@ const App: React.FC = () => {
   const [geometryMathConstructionRelationshipTargetCircleId, setGeometryMathConstructionRelationshipTargetCircleId] = useState<string | null>(null);
   const [geometryMathConstructionRelationshipTargetPointId, setGeometryMathConstructionRelationshipTargetPointId] = useState<string | null>(null);
   const [geometryMathConstructionRelationships, setGeometryMathConstructionRelationships] = useState<GeometryMathConstructionRelationship[]>([]);
+  const [geometryShowViewportBadges, setGeometryShowViewportBadges] = useState(true);
+  const [showGeometryDependencyOverlay, setShowGeometryDependencyOverlay] = useState(false);
+  const [geometryDependencyOverlayView, setGeometryDependencyOverlayView] = useState<"list" | "graph">("list");
+  const [geometryDependencyOverlayDirection, setGeometryDependencyOverlayDirection] =
+    useState<"affected-by" | "affects">("affects");
+  const [geometryDependencyOverlayChainMode, setGeometryDependencyOverlayChainMode] = useState<"direct" | "full">(
+    "full"
+  );
+  const [geometryFocusedDependencyNodeId, setGeometryFocusedDependencyNodeId] = useState<string | null>(null);
   const [geometryRelationTargetDerivedId, setGeometryRelationTargetDerivedId] = useState<string | null>(null);
   const [geometryRelationLocalAxis, setGeometryRelationLocalAxis] = useState<"x" | "y" | "z">("y");
   const [geometryRelationFaceSide, setGeometryRelationFaceSide] = useState<"min" | "max">("max");
@@ -7974,6 +7997,7 @@ const App: React.FC = () => {
   const [geometrySceneGalleryExpanded, setGeometrySceneGalleryExpanded] = useState(false);
   const [geometryCreateActionStatus, setGeometryCreateActionStatus] = useState<string | null>(null);
   const [geometryCreateSelectedCardExpanded, setGeometryCreateSelectedCardExpanded] = useState(false);
+  const [geometryCreateActionsOverlayOpen, setGeometryCreateActionsOverlayOpen] = useState(true);
   const [geometryAddSelectNewObject, setGeometryAddSelectNewObject] = useState(true);
   const [geometryAddFocusCamera, setGeometryAddFocusCamera] = useState(true);
   const [geometryAddOpenObjectTab, setGeometryAddOpenObjectTab] = useState(false);
@@ -17053,6 +17077,91 @@ const App: React.FC = () => {
         relation: "contains",
       });
     }
+    for (const object of geometryObjects) {
+      const registry = GEOMETRY_OBJECT_REGISTRY[object.type];
+      for (const param of registry?.params ?? []) {
+        if (param.id.toLowerCase().includes("segment") || param.id === "openEnded") continue;
+        addNode({
+          id: `parameter:${object.id}:${param.id}`,
+          kind: "parameter",
+          label: `${object.name}.${param.label}`,
+          objectId: object.id,
+          status: "valid",
+        });
+        addEdge({
+          sourceId: `parameter:${object.id}:${param.id}`,
+          targetId: `object:${object.id}`,
+          relation: "parameterizes",
+        });
+      }
+    }
+    for (const object of [...geometryObjects, ...geometryDatasetMeshObjects]) {
+      const resolved = resolveGeometrySceneMeshById(object.id);
+      const metrics = resolved ? computeTriangleMeshGeometricMetrics(resolved.mesh) : null;
+      const analysisRows = [
+        { key: "volume", label: "Volume", value: metrics?.volume ?? null },
+        { key: "surface-area", label: "Surface Area", value: metrics?.surfaceArea ?? null },
+        { key: "bounds-width", label: "Bounds Width", value: metrics?.dimensions?.x ?? null },
+        { key: "bounds-height", label: "Bounds Height", value: metrics?.dimensions?.y ?? null },
+        { key: "bounds-depth", label: "Bounds Depth", value: metrics?.dimensions?.z ?? null },
+      ];
+      for (const row of analysisRows) {
+        const valueOk = row.value != null && Number.isFinite(row.value);
+        addNode({
+          id: `analysis:${object.id}:${row.key}`,
+          kind: "analysis",
+          label: valueOk ? `${row.label}: ${fmt(row.value!)}` : row.label,
+          objectId: object.id,
+          status: valueOk ? "valid" : "stale",
+        });
+        addEdge({
+          sourceId: `object:${object.id}`,
+          targetId: `analysis:${object.id}:${row.key}`,
+          relation: "analyzes",
+        });
+      }
+      const claimRows = [
+        {
+          key: "positive-volume",
+          label: "Claim: volume > 0",
+          sourceId: `analysis:${object.id}:volume`,
+          verified: (metrics?.volume ?? 0) > 1e-9,
+          applicable: !!metrics,
+        },
+        {
+          key: "positive-area",
+          label: "Claim: surface area > 0",
+          sourceId: `analysis:${object.id}:surface-area`,
+          verified: (metrics?.surfaceArea ?? 0) > 1e-9,
+          applicable: !!metrics,
+        },
+        {
+          key: "finite-bounds",
+          label: "Claim: finite bounds",
+          sourceId: `analysis:${object.id}:bounds-width`,
+          verified:
+            !!metrics?.dimensions &&
+            Number.isFinite(metrics.dimensions.x) &&
+            Number.isFinite(metrics.dimensions.y) &&
+            Number.isFinite(metrics.dimensions.z),
+          applicable: !!metrics,
+        },
+      ];
+      for (const claim of claimRows) {
+        addNode({
+          id: `claim:${object.id}:${claim.key}`,
+          kind: "claim",
+          label: claim.label,
+          objectId: object.id,
+          status: !claim.applicable ? "stale" : claim.verified ? "valid" : "broken-source",
+        });
+        addEdge({
+          sourceId: claim.sourceId,
+          targetId: `claim:${object.id}:${claim.key}`,
+          relation: "verifies",
+        });
+      }
+    }
     const faceNodeId = (objectId: string, faceIndex: number) => `face:${objectId}:${faceIndex}`;
     const addFaceNode = (
       objectId: string,
@@ -17265,12 +17374,23 @@ const App: React.FC = () => {
     geometrySelectedSceneObject,
     resolveGeometrySceneMeshById,
   ]);
+  useEffect(() => {
+    if (!geometryFocusedDependencyNodeId) return;
+    if (geometryDependencyGraph.nodeById.has(geometryFocusedDependencyNodeId)) return;
+    setGeometryFocusedDependencyNodeId(null);
+  }, [geometryDependencyGraph.nodeById, geometryFocusedDependencyNodeId]);
   const geometryInspectorSelectedDependencyNodeId = useMemo(() => {
+    if (geometryFocusedDependencyNodeId) return geometryFocusedDependencyNodeId;
     if (geometrySelectedMathConstructionId) return `math:${geometrySelectedMathConstructionId}`;
     if (geometrySelectedDerivedConstructionId) return `derived:${geometrySelectedDerivedConstructionId}`;
     if (geometrySelectedSceneObject) return `object:${geometrySelectedSceneObject.id}`;
     return null;
-  }, [geometrySelectedDerivedConstructionId, geometrySelectedMathConstructionId, geometrySelectedSceneObject]);
+  }, [
+    geometryFocusedDependencyNodeId,
+    geometrySelectedDerivedConstructionId,
+    geometrySelectedMathConstructionId,
+    geometrySelectedSceneObject,
+  ]);
   const geometryInspectorDependencyDetails = useMemo(() => {
     const nodeId = geometryInspectorSelectedDependencyNodeId;
     if (!nodeId) return null;
@@ -17280,10 +17400,111 @@ const App: React.FC = () => {
     const outputs = geometryDependencyGraph.edges.filter((edge) => edge.sourceId === nodeId);
     return { node, inputs, outputs };
   }, [geometryDependencyGraph, geometryInspectorSelectedDependencyNodeId]);
+  const geometryDependencyOverlayModel = useMemo(() => {
+    const selectedId = geometryInspectorSelectedDependencyNodeId;
+    const selectedNode = selectedId ? geometryDependencyGraph.nodeById.get(selectedId) ?? null : null;
+    const usableEdges = geometryDependencyGraph.edges.filter((edge) => edge.relation !== "contains");
+    const directInputs = selectedId ? usableEdges.filter((edge) => edge.targetId === selectedId) : [];
+    const directOutputs = selectedId ? usableEdges.filter((edge) => edge.sourceId === selectedId) : [];
+    const selectedEdges = geometryDependencyOverlayDirection === "affected-by" ? directInputs : directOutputs;
+    const graphEdges: GeometryDependencyEdge[] = [];
+    const nodeIds = new Set<string>();
+    const depthById = new Map<string, number>();
+
+    if (selectedId && selectedNode) {
+      const queue: Array<{ id: string; depth: number }> = [{ id: selectedId, depth: 0 }];
+      nodeIds.add(selectedId);
+      depthById.set(selectedId, 0);
+      const seen = new Set<string>([selectedId]);
+      while (queue.length) {
+        const current = queue.shift()!;
+        const candidateEdges = usableEdges.filter((edge) =>
+          geometryDependencyOverlayDirection === "affected-by"
+            ? edge.targetId === current.id
+            : edge.sourceId === current.id
+        );
+        for (const edge of candidateEdges) {
+          graphEdges.push(edge);
+          const nextId = geometryDependencyOverlayDirection === "affected-by" ? edge.sourceId : edge.targetId;
+          nodeIds.add(edge.sourceId);
+          nodeIds.add(edge.targetId);
+          if (!depthById.has(nextId)) depthById.set(nextId, current.depth + 1);
+          if (geometryDependencyOverlayChainMode === "full" && !seen.has(nextId) && graphEdges.length < 80) {
+            seen.add(nextId);
+            queue.push({ id: nextId, depth: current.depth + 1 });
+          }
+        }
+        if (geometryDependencyOverlayChainMode === "direct") break;
+      }
+    }
+
+    const chainRows = graphEdges
+      .map((edge) => {
+        const nodeId = geometryDependencyOverlayDirection === "affected-by" ? edge.sourceId : edge.targetId;
+        const node = geometryDependencyGraph.nodeById.get(nodeId) ?? null;
+        return node ? { node, edge } : null;
+      })
+      .filter((entry): entry is { node: GeometryDependencyNode; edge: GeometryDependencyEdge } => !!entry);
+    const graphNodes = Array.from(nodeIds)
+      .map((id) => {
+        const node = geometryDependencyGraph.nodeById.get(id) ?? null;
+        return node ? { node, depth: depthById.get(id) ?? 0 } : null;
+      })
+      .filter((entry): entry is { node: GeometryDependencyNode; depth: number } => !!entry);
+
+    return {
+      selectedId,
+      selectedNode,
+      directInputs,
+      directOutputs,
+      selectedEdges,
+      chainRows,
+      graphEdges,
+      graphNodes,
+      totalRelated: new Set([...directInputs, ...directOutputs].flatMap((edge) => [edge.sourceId, edge.targetId])).size,
+    };
+  }, [
+    geometryDependencyGraph,
+    geometryDependencyOverlayChainMode,
+    geometryDependencyOverlayDirection,
+    geometryInspectorSelectedDependencyNodeId,
+  ]);
+  const geometryDependencyOverlayGraphLayout = useMemo(() => {
+    const width = 300;
+    const nodesByDepth = new Map<number, Array<{ node: GeometryDependencyNode; depth: number }>>();
+    for (const entry of geometryDependencyOverlayModel.graphNodes) {
+      nodesByDepth.set(entry.depth, [...(nodesByDepth.get(entry.depth) ?? []), entry]);
+    }
+    const maxDepth = Math.max(1, ...Array.from(nodesByDepth.keys(), (depth) => depth));
+    const maxColumnSize = Math.max(1, ...Array.from(nodesByDepth.values(), (entries) => entries.length));
+    const height = Math.max(154, Math.min(280, 58 + maxColumnSize * 44));
+    const step = Math.min(84, 210 / maxDepth);
+    const positions = new Map<string, { x: number; y: number }>();
+    for (const [depth, entries] of nodesByDepth) {
+      const x =
+        geometryDependencyOverlayDirection === "affects"
+          ? 42 + depth * step
+          : width - 42 - depth * step;
+      const gap = height / (entries.length + 1);
+      entries.forEach((entry, index) => {
+        positions.set(entry.node.id, { x, y: gap * (index + 1) });
+      });
+    }
+    return {
+      width,
+      height,
+      positions,
+      edges: geometryDependencyOverlayModel.graphEdges,
+      nodes: geometryDependencyOverlayModel.graphNodes,
+    };
+  }, [geometryDependencyOverlayDirection, geometryDependencyOverlayModel]);
   const geometryConstructionDependencyTree = useMemo(() => {
     const visibleKinds = new Set<GeometryDependencyNodeKind>([
       "scene-root",
       "geometry-object",
+      "parameter",
+      "analysis",
+      "claim",
       "face-reference",
       "derived-point",
       "derived-line",
@@ -17311,6 +17532,9 @@ const App: React.FC = () => {
     const visibleKinds = new Set<GeometryDependencyNodeKind>([
       "scene-root",
       "geometry-object",
+      "parameter",
+      "analysis",
+      "claim",
       "face-reference",
       "derived-point",
       "derived-line",
@@ -17337,6 +17561,9 @@ const App: React.FC = () => {
     const visibleKinds = new Set<GeometryDependencyNodeKind>([
       "scene-root",
       "geometry-object",
+      "parameter",
+      "analysis",
+      "claim",
       "face-reference",
       "derived-point",
       "derived-line",
@@ -17364,6 +17591,7 @@ const App: React.FC = () => {
     );
   }, [geometryDependencyGraph, geometryInspectorSelectedDependencyNodeId]);
   const handleSelectGeometryDependencyNode = useCallback((nodeId: string) => {
+    setGeometryFocusedDependencyNodeId(nodeId);
     if (nodeId.startsWith("object:")) {
       setGeometrySelectedObjectId(nodeId.slice("object:".length));
       setGeometrySelectedMathConstructionId(null);
@@ -17380,6 +17608,15 @@ const App: React.FC = () => {
       setGeometrySelectedMathConstructionId(null);
       setGeometrySelectedDerivedConstructionId(null);
       setGeometryProbeSelectionMode("face");
+    } else if (
+      nodeId.startsWith("parameter:") ||
+      nodeId.startsWith("analysis:") ||
+      nodeId.startsWith("claim:")
+    ) {
+      const [, objectId] = nodeId.split(":");
+      if (objectId) setGeometrySelectedObjectId(objectId);
+      setGeometrySelectedMathConstructionId(null);
+      setGeometrySelectedDerivedConstructionId(null);
     }
     setGeometryInspectorPanelTab("dependencies");
   }, []);
@@ -18166,6 +18403,77 @@ const App: React.FC = () => {
     if (geometrySectionCapPolygons?.length) polys.push(...geometrySectionCapPolygons);
     return polys.length ? polys : null;
   }, [geometryMode, geometryProceduralSelectionHighlightPolygons, geometrySectionCapPolygons]);
+  const geometryConstructionViewportBadgeById = useMemo(
+    () =>
+      buildConstructionViewportBadgeById([
+        ...geometryMathConstructions.map((entry) => ({
+          id: `math:${entry.id}`,
+          type: entry.type,
+          createdAt: entry.createdAt,
+        })),
+        ...geometryDerivedConstructions.map((entry) => ({
+          id: `derived:${entry.id}`,
+          type: entry.type,
+          createdAt: entry.createdAt,
+        })),
+      ]),
+    [geometryDerivedConstructions, geometryMathConstructions]
+  );
+  const geometryConstructionViewportBadgeLabelSets = useMemo<OverlayLabelSet[] | null>(() => {
+    if (geometryMode !== "procedural" || !geometryShowViewportBadges) return null;
+    const labels: OverlayLabelSet["labels"] = [];
+    const resolveLabelPoint = (
+      origin: { x: number; y: number; z: number } | null | undefined,
+      pointSets: OverlayPointSet[] | null | undefined
+    ) => origin ?? pointSets?.find((set) => set.points.length > 0)?.points[0] ?? null;
+    const pushBadge = (
+      id: string,
+      point: { x: number; y: number; z: number } | null,
+      status: GeometryDependencyState | GeometryMathConstructionStatus | null,
+      visible: boolean
+    ) => {
+      if (!visible || !point) return;
+      const text = geometryConstructionViewportBadgeById.get(id);
+      if (!text) return;
+      const problem = status === "broken-source" || status === "ambiguous-target" || status === "invalid";
+      labels.push({
+        text,
+        position: { x: point.x + 0.08, y: point.y + 0.12, z: point.z + 0.08 },
+        color: problem ? 0xb91c1c : 0x1d4ed8,
+        size: 0.82,
+        opacity: 0.98,
+      });
+    };
+
+    for (const entry of geometryMathConstructions) {
+      const evalEntry = geometryMathConstructionOverlays.byId.get(entry.id) ?? null;
+      pushBadge(
+        `math:${entry.id}`,
+        evalEntry ? resolveLabelPoint(evalEntry.origin, evalEntry.pointSets) : null,
+        evalEntry?.status ?? null,
+        entry.visible
+      );
+    }
+    for (const entry of geometryDerivedConstructions) {
+      const evalEntry = geometryDerivedConstructionOverlays.byId.get(entry.id) ?? null;
+      pushBadge(
+        `derived:${entry.id}`,
+        evalEntry ? resolveLabelPoint(evalEntry.origin, evalEntry.pointSets) : null,
+        evalEntry?.dependencyState ?? null,
+        entry.visible
+      );
+    }
+
+    return labels.length ? [{ labels, size: 0.9 }] : null;
+  }, [
+    geometryConstructionViewportBadgeById,
+    geometryDerivedConstructionOverlays.byId,
+    geometryDerivedConstructions,
+    geometryMathConstructionOverlays.byId,
+    geometryMathConstructions,
+    geometryMode,
+    geometryShowViewportBadges,
+  ]);
   const geometryProceduralViewerLabelSets = useMemo<OverlayLabelSet[] | null>(() => {
     if (geometryMode === "demo") return geometryTimelineShowAnnotations ? geometryLabelSets : null;
     if (geometryMode === "scratch" || geometryMode === "workbook") {
@@ -18176,6 +18484,7 @@ const App: React.FC = () => {
     if (geometryProceduralFeatureOverlays.labelSets?.length) labels.push(...geometryProceduralFeatureOverlays.labelSets);
     if (geometryDerivedConstructionOverlays.labelSets?.length) labels.push(...geometryDerivedConstructionOverlays.labelSets);
     if (geometryMathConstructionOverlays.labelSets?.length) labels.push(...geometryMathConstructionOverlays.labelSets);
+    if (geometryConstructionViewportBadgeLabelSets?.length) labels.push(...geometryConstructionViewportBadgeLabelSets);
     if (geometryTimelineShowAnnotations && geometryProceduralAnnotationOverlays.labelSets?.length) {
       labels.push(...geometryProceduralAnnotationOverlays.labelSets);
     }
@@ -18187,6 +18496,7 @@ const App: React.FC = () => {
     geometryProceduralFeatureOverlays.labelSets,
     geometryDerivedConstructionOverlays.labelSets,
     geometryMathConstructionOverlays.labelSets,
+    geometryConstructionViewportBadgeLabelSets,
     geometryProceduralAnnotationOverlays.labelSets,
     geometryTimelineShowAnnotations,
   ]);
@@ -58508,6 +58818,34 @@ case "mobius":
                   />
                   Axes
                 </label>
+                {geometryMode === "procedural" && (
+                  <>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                      <input
+                        type="checkbox"
+                        checked={geometryShowViewportBadges}
+                        onChange={(e) => setGeometryShowViewportBadges(e.target.checked)}
+                      />
+                      Badges
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                      <input
+                        type="checkbox"
+                        checked={showGeometryDependencyOverlay}
+                        onChange={(e) => setShowGeometryDependencyOverlay(e.target.checked)}
+                      />
+                      Dependencies
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                      <input
+                        type="checkbox"
+                        checked={geometryCreateActionsOverlayOpen}
+                        onChange={(e) => setGeometryCreateActionsOverlayOpen(e.target.checked)}
+                      />
+                      Create overlay
+                    </label>
+                  </>
+                )}
                 <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                   Opacity
                   <input
@@ -58718,8 +59056,450 @@ case "mobius":
                     minWidth: 0,
                     overflow: "hidden",
                     background: "#f8fbff",
+                    position: "relative",
                   }}
                 >
+                  {geometryMode === "procedural" && showGeometryDependencyOverlay && (
+                    <div
+                      data-testid="geometry-viewport-dependency-overlay"
+                      style={{
+                        position: "absolute",
+                        top: 10,
+                        right: 10,
+                        zIndex: 8,
+                        width: "min(320px, calc(100% - 20px))",
+                        maxHeight: "calc(100% - 20px)",
+                        overflow: "auto",
+                        border: "1px solid #b6c6db",
+                        borderRadius: 8,
+                        background: "rgba(255,255,255,0.94)",
+                        boxShadow: "0 10px 28px rgba(15,23,42,0.16)",
+                        padding: "8px 10px",
+                        display: "grid",
+                        gap: 8,
+                        fontSize: 11,
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                        <div style={{ fontSize: 12, fontWeight: 800 }}>Dependency overlay</div>
+                        <button
+                          type="button"
+                          onClick={() => setShowGeometryDependencyOverlay(false)}
+                          aria-label="Close dependency overlay"
+                          style={{ fontSize: 10, padding: "2px 7px" }}
+                        >
+                          Close
+                        </button>
+                      </div>
+                      {geometryInspectorDependencyDetails ? (
+                        <>
+                          <div style={{ display: "grid", gap: 3 }}>
+                            <div style={{ color: "#475569", fontWeight: 700 }}>Selected</div>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                              <strong style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                                {geometryInspectorDependencyDetails.node.label}
+                              </strong>
+                              <span
+                                style={{
+                                  flex: "0 0 auto",
+                                  fontSize: 10,
+                                  fontWeight: 800,
+                                  color: GEOMETRY_DEPENDENCY_STATE_META[geometryInspectorDependencyDetails.node.status].color,
+                                  border: `1px solid ${GEOMETRY_DEPENDENCY_STATE_META[geometryInspectorDependencyDetails.node.status].border}`,
+                                  background: GEOMETRY_DEPENDENCY_STATE_META[geometryInspectorDependencyDetails.node.status].background,
+                                  borderRadius: 999,
+                                  padding: "2px 7px",
+                                }}
+                              >
+                                {GEOMETRY_DEPENDENCY_STATE_META[geometryInspectorDependencyDetails.node.status].label}
+                              </span>
+                            </div>
+                          </div>
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                              {(["list", "graph"] as const).map((view) => (
+                                <button
+                                  key={`geometry-dependency-overlay-view-${view}`}
+                                  type="button"
+                                  aria-pressed={geometryDependencyOverlayView === view}
+                                  onClick={() => setGeometryDependencyOverlayView(view)}
+                                  style={{ ...pill(geometryDependencyOverlayView === view), fontSize: 10, padding: "2px 8px" }}
+                                >
+                                  {view === "list" ? "List" : "Graph"}
+                                </button>
+                              ))}
+                              {(["affects", "affected-by"] as const).map((direction) => (
+                                <button
+                                  key={`geometry-dependency-overlay-direction-${direction}`}
+                                  type="button"
+                                  aria-pressed={geometryDependencyOverlayDirection === direction}
+                                  onClick={() => setGeometryDependencyOverlayDirection(direction)}
+                                  style={{ ...pill(geometryDependencyOverlayDirection === direction), fontSize: 10, padding: "2px 8px" }}
+                                >
+                                  {direction === "affects" ? "Outputs" : "Inputs"}
+                                </button>
+                              ))}
+                              {(["direct", "full"] as const).map((chainMode) => (
+                                <button
+                                  key={`geometry-dependency-overlay-chain-${chainMode}`}
+                                  type="button"
+                                  aria-pressed={geometryDependencyOverlayChainMode === chainMode}
+                                  onClick={() => setGeometryDependencyOverlayChainMode(chainMode)}
+                                  style={{ ...pill(geometryDependencyOverlayChainMode === chainMode), fontSize: 10, padding: "2px 8px" }}
+                                >
+                                  {chainMode === "direct" ? "Direct" : "Full"}
+                                </button>
+                              ))}
+                            </div>
+                            <div style={{ color: "#64748b" }}>
+                              Inputs {geometryDependencyOverlayModel.directInputs.length} · Outputs {geometryDependencyOverlayModel.directOutputs.length} · Showing {geometryDependencyOverlayModel.chainRows.length}
+                            </div>
+                          </div>
+                          {geometryDependencyOverlayView === "list" ? (
+                            <>
+                          <div style={{ display: "grid", gap: 5 }}>
+                            <div style={{ color: "#475569", fontWeight: 700 }}>Inputs</div>
+                            {geometryInspectorDependencyDetails.inputs.filter((edge) => edge.relation !== "contains").length ? (
+                              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                {geometryInspectorDependencyDetails.inputs
+                                  .filter((edge) => edge.relation !== "contains")
+                                  .slice(0, 8)
+                                  .map((edge) => {
+                                    const source = geometryDependencyGraph.nodeById.get(edge.sourceId);
+                                    return (
+                                      <button
+                                        key={`viewport-dep-input-${edge.sourceId}-${edge.targetId}-${edge.relation}`}
+                                        type="button"
+                                        onClick={() => handleSelectGeometryDependencyNode(edge.sourceId)}
+                                        style={{ ...pill(false), fontSize: 10, padding: "2px 7px" }}
+                                      >
+                                        {source?.label ?? edge.sourceId}
+                                      </button>
+                                    );
+                                  })}
+                              </div>
+                            ) : (
+                              <div style={{ color: "#64748b" }}>No direct inputs.</div>
+                            )}
+                          </div>
+                          <div style={{ display: "grid", gap: 5 }}>
+                            <div style={{ color: "#475569", fontWeight: 700 }}>Outputs</div>
+                            {geometryInspectorDependencyDetails.outputs.filter((edge) => edge.relation !== "contains").length ? (
+                              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                {geometryInspectorDependencyDetails.outputs
+                                  .filter((edge) => edge.relation !== "contains")
+                                  .slice(0, 8)
+                                  .map((edge) => {
+                                    const target = geometryDependencyGraph.nodeById.get(edge.targetId);
+                                    return (
+                                      <button
+                                        key={`viewport-dep-output-${edge.sourceId}-${edge.targetId}-${edge.relation}`}
+                                        type="button"
+                                        onClick={() => handleSelectGeometryDependencyNode(edge.targetId)}
+                                        style={{ ...pill(false), fontSize: 10, padding: "2px 7px" }}
+                                      >
+                                        {target?.label ?? edge.targetId}
+                                      </button>
+                                    );
+                                  })}
+                              </div>
+                            ) : (
+                              <div style={{ color: "#64748b" }}>No downstream outputs.</div>
+                            )}
+                          </div>
+                          <div style={{ display: "grid", gap: 5 }}>
+                            <div style={{ color: "#475569", fontWeight: 700 }}>
+                              {geometryDependencyOverlayDirection === "affects" ? "Output trace" : "Input trace"}
+                            </div>
+                            {geometryDependencyOverlayModel.chainRows.length ? (
+                              <div style={{ display: "grid", gap: 4 }}>
+                                {geometryDependencyOverlayModel.chainRows.slice(0, 12).map(({ node, edge }) => {
+                                  const meta = GEOMETRY_DEPENDENCY_STATE_META[node.status];
+                                  return (
+                                    <button
+                                      key={`viewport-dep-trace-${edge.sourceId}-${edge.targetId}-${edge.relation}-${node.id}`}
+                                      type="button"
+                                      onClick={() => handleSelectGeometryDependencyNode(node.id)}
+                                      style={{
+                                        textAlign: "left",
+                                        border: `1px solid ${meta.border}`,
+                                        borderRadius: 7,
+                                        background: meta.background,
+                                        color: meta.color,
+                                        padding: "4px 7px",
+                                        display: "grid",
+                                        gap: 2,
+                                        fontSize: 10.5,
+                                      }}
+                                    >
+                                      <strong>{node.label}</strong>
+                                      <span style={{ color: "#64748b" }}>{edge.relation} · {node.kind}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div style={{ color: "#64748b" }}>No trace for this direction.</div>
+                            )}
+                          </div>
+                          {geometryDependencyGraph.brokenNodes.length > 0 && (
+                            <div
+                              style={{
+                                border: "1px solid #fecaca",
+                                borderRadius: 7,
+                                background: "#fef2f2",
+                                color: "#991b1b",
+                                padding: "6px 7px",
+                                display: "grid",
+                                gap: 4,
+                              }}
+                            >
+                              <strong>{geometryDependencyGraph.brokenNodes.length} broken or ambiguous link(s)</strong>
+                              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                {geometryDependencyGraph.brokenNodes.slice(0, 4).map((node) => (
+                                  <button
+                                    key={`viewport-dep-broken-${node.id}`}
+                                    type="button"
+                                    onClick={() => handleSelectGeometryDependencyNode(node.id)}
+                                    style={{ ...pill(false), fontSize: 10, padding: "2px 7px", borderColor: "#fca5a5" }}
+                                  >
+                                    {node.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                            </>
+                          ) : (
+                            <div
+                              data-testid="geometry-dependency-overlay-graph"
+                              style={{
+                                border: "1px solid #dbeafe",
+                                borderRadius: 7,
+                                background: "#f8fbff",
+                                padding: 6,
+                                display: "grid",
+                                gap: 6,
+                              }}
+                            >
+                              <svg
+                                width="100%"
+                                viewBox={`0 0 ${geometryDependencyOverlayGraphLayout.width} ${geometryDependencyOverlayGraphLayout.height}`}
+                                role="img"
+                                aria-label="Geometry dependency graph"
+                                style={{ display: "block", minHeight: 154 }}
+                              >
+                                {geometryDependencyOverlayGraphLayout.edges.map((edge, index) => {
+                                  const source = geometryDependencyOverlayGraphLayout.positions.get(edge.sourceId);
+                                  const target = geometryDependencyOverlayGraphLayout.positions.get(edge.targetId);
+                                  if (!source || !target) return null;
+                                  return (
+                                    <g key={`geometry-dependency-graph-edge-${edge.sourceId}-${edge.targetId}-${edge.relation}-${index}`}>
+                                      <line
+                                        x1={source.x}
+                                        y1={source.y}
+                                        x2={target.x}
+                                        y2={target.y}
+                                        stroke="#94a3b8"
+                                        strokeWidth={1.4}
+                                      />
+                                      <text
+                                        x={(source.x + target.x) / 2}
+                                        y={(source.y + target.y) / 2 - 3}
+                                        fill="#64748b"
+                                        fontSize="8"
+                                        textAnchor="middle"
+                                      >
+                                        {edge.relation}
+                                      </text>
+                                    </g>
+                                  );
+                                })}
+                                {geometryDependencyOverlayGraphLayout.nodes.map(({ node }) => {
+                                  const pos = geometryDependencyOverlayGraphLayout.positions.get(node.id);
+                                  if (!pos) return null;
+                                  const selected = node.id === geometryDependencyOverlayModel.selectedId;
+                                  const meta = GEOMETRY_DEPENDENCY_STATE_META[node.status];
+                                  return (
+                                    <g
+                                      key={`geometry-dependency-graph-node-${node.id}`}
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={() => handleSelectGeometryDependencyNode(node.id)}
+                                      onKeyDown={(event) => {
+                                        if (event.key === "Enter" || event.key === " ") handleSelectGeometryDependencyNode(node.id);
+                                      }}
+                                      style={{ cursor: "pointer" }}
+                                    >
+                                      <circle
+                                        cx={pos.x}
+                                        cy={pos.y}
+                                        r={selected ? 16 : 13}
+                                        fill={selected ? "#eff6ff" : meta.background}
+                                        stroke={selected ? "#2563eb" : meta.border}
+                                        strokeWidth={selected ? 2.2 : 1.4}
+                                      />
+                                      <text x={pos.x} y={pos.y + 3} fill={meta.color} fontSize="8.5" fontWeight="800" textAnchor="middle">
+                                        {node.kind === "geometry-object"
+                                          ? "Obj"
+                                          : node.kind === "parameter"
+                                            ? "Par"
+                                            : node.kind === "analysis"
+                                              ? "An"
+                                              : node.kind === "claim"
+                                                ? "Clm"
+                                                : node.kind.includes("plane")
+                                                  ? "Pln"
+                                                  : node.kind.includes("line")
+                                                    ? "Lin"
+                                                    : node.kind.includes("point")
+                                                      ? "Pt"
+                                                      : "Dep"}
+                                      </text>
+                                      <text x={pos.x} y={pos.y + 25} fill="#334155" fontSize="8.5" fontWeight={selected ? "800" : "600"} textAnchor="middle">
+                                        {node.label.length > 18 ? `${node.label.slice(0, 16)}...` : node.label}
+                                      </text>
+                                    </g>
+                                  );
+                                })}
+                              </svg>
+                              {geometryDependencyOverlayModel.chainRows.length ? (
+                                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                  {geometryDependencyOverlayModel.chainRows.slice(0, 8).map(({ node, edge }) => (
+                                    <button
+                                      key={`geometry-dependency-graph-row-${edge.sourceId}-${edge.targetId}-${edge.relation}-${node.id}`}
+                                      type="button"
+                                      onClick={() => handleSelectGeometryDependencyNode(node.id)}
+                                      style={{ ...pill(false), fontSize: 10, padding: "2px 7px" }}
+                                    >
+                                      {node.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div style={{ color: "#64748b" }}>
+                                  No {geometryDependencyOverlayDirection === "affects" ? "outputs" : "inputs"} for this node.
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setGeometryRightPanelTab("inspector");
+                                setGeometryInspectorPanelTab("dependencies");
+                                setShowRightPanel(true);
+                              }}
+                              style={{ fontSize: 10.5 }}
+                            >
+                              Open full tree
+                            </button>
+                            <button type="button" onClick={() => handleGeometryFit("scene")} style={{ fontSize: 10.5 }}>
+                              Fit scene
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ color: "#64748b" }}>Select an object or construction to inspect dependencies.</div>
+                      )}
+                    </div>
+                  )}
+                  {geometryMode === "procedural" &&
+                    geometryProceduralPanelTab === "create" &&
+                    geometryCreateActionsOverlayOpen &&
+                    geometryGallerySelectedCard && (
+                      <div
+                        data-testid="geometry-viewport-create-overlay"
+                        style={{
+                          position: "absolute",
+                          left: 10,
+                          bottom: 10,
+                          zIndex: 8,
+                          width: "min(340px, calc(100% - 20px))",
+                          border: "1px solid #b6c6db",
+                          borderRadius: 8,
+                          background: "rgba(255,255,255,0.94)",
+                          boxShadow: "0 10px 28px rgba(15,23,42,0.16)",
+                          padding: "8px 10px",
+                          display: "grid",
+                          gap: 8,
+                          fontSize: 11,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 800, overflowWrap: "anywhere" }}>
+                              {geometryGallerySelectedCard.name}
+                            </div>
+                            <div style={{ color: "#64748b" }}>
+                              {geometryGallerySelectedCard.badge} · {geometryGallerySelectedCard.supported ? "ready" : "planned"}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setGeometryCreateActionsOverlayOpen(false)}
+                            aria-label="Close create overlay"
+                            style={{ fontSize: 10, padding: "2px 7px", flex: "0 0 auto" }}
+                          >
+                            Close
+                          </button>
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            data-testid="geometry-viewport-add-selected"
+                            onClick={() => handleAddGeometryGallerySelectedAtOrigin(false)}
+                            disabled={!geometryGallerySelectedCard.supported}
+                            style={{ fontSize: 10.5 }}
+                          >
+                            Add
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddGeometryGallerySelectedAtOrigin(true)}
+                            disabled={!geometryGallerySelectedCard.supported}
+                            style={{ fontSize: 10.5 }}
+                          >
+                            Add & place
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenGeometryGalleryCustomEditor()}
+                            disabled={!geometryGallerySelectedCard.supported || !geometryGallerySelectedCard.defaultRecipe}
+                            style={{ fontSize: 10.5 }}
+                          >
+                            Customize
+                          </button>
+                        </div>
+                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                          <span style={{ color: "#475569", fontWeight: 700 }}>Placement</span>
+                          {GEOMETRY_CREATE_PLACEMENT_TARGET_OPTIONS.slice(0, 4).map((option) => {
+                            const active = geometryCreatePlacementTarget === option.id;
+                            return (
+                              <button
+                                key={`viewport-create-placement-${option.id}`}
+                                type="button"
+                                aria-pressed={active}
+                                onClick={() => {
+                                  setGeometryCreatePlacementTarget(option.id);
+                                  setGeometryAddEnterPlacementMode(option.id !== "click-viewer");
+                                  setGeometryCreatePlacementSnapToGrid(option.id === "on-grid");
+                                }}
+                                style={{ ...pill(active), fontSize: 10, padding: "2px 7px" }}
+                              >
+                                {option.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {(geometryCreatePlacementStatus || geometryCreateActionStatus) && (
+                          <div style={{ color: geometryCreatePlacementStatus ? "#1d4ed8" : "#166534", fontWeight: 600 }}>
+                            {geometryCreatePlacementStatus ?? geometryCreateActionStatus}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   <GeometryViewer
                   scene={geometryScene}
                   lineRadiusScale={geometryMode === "demo" ? geometryDemoLineRadiusScale : 1}
@@ -65939,6 +66719,9 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
   const kindLabel = (kind: string) => {
     if (kind === "scene-root") return "Scene";
     if (kind === "geometry-object") return "Object";
+    if (kind === "parameter") return "Parameter";
+    if (kind === "analysis") return "Analysis";
+    if (kind === "claim") return "Claim";
     if (kind === "face-reference") return "Face";
     if (kind === "derived-point") return "Point";
     if (kind === "derived-line") return "Line";
@@ -65948,6 +66731,9 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
     return kind.replaceAll("-", " ");
   };
   const kindColor = (kind: string) => {
+    if (kind === "parameter") return "#b45309";
+    if (kind === "analysis") return "#be123c";
+    if (kind === "claim") return "#166534";
     if (kind === "derived-point") return "#2563eb";
     if (kind === "derived-line") return "#16a34a";
     if (kind === "derived-plane") return "#7c3aed";
