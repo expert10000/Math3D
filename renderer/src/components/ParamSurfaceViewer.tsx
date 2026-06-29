@@ -67,6 +67,7 @@ import {
   DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
   type ReferencePlaneGridSettings,
 } from "@math3d/renderer-web";
+import { debugLog } from "../utils/debugLog";
 import type { ParamSurfaceId as CoreParamSurfaceId } from "@math3d/core";
 
 type ParamPreset = {
@@ -3517,7 +3518,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const pointer = new THREE.Vector2();
 
       const handlePointerDown = (event: PointerEvent) => {
-        console.log("[ParamSurfaceViewer] pointer down", {
+        debugLog("[ParamSurfaceViewer] pointer down", {
           selectRegionEnabled: selectRegionEnabledRef.current,
           probeEnabled: probeEnabledRef.current,
           geodesicPathEnabled: geodesicPathEnabledRef.current,
@@ -3759,7 +3760,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
             nearest = { index: bestIdx, sample: sampleSet.samples[bestIdx] };
           }
         }
-        console.log("[ParamSurfaceViewer] selection pick", {
+        debugLog("[ParamSurfaceViewer] selection pick", {
           point: { x: point.x, y: point.y, z: point.z },
           normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
           uv: uvDomain,
@@ -4788,7 +4789,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         best.pts[0] = rawPoints[0].clone();
         best.pts[best.pts.length - 1] = rawPoints[rawPoints.length - 1].clone();
         if (geodesicPathDebug) {
-          console.log("[geodesic][shoot]", {
+          debugLog("[geodesic][shoot]", {
             surfaceId,
             err: best.err,
             rawLen,

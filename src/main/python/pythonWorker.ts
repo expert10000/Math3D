@@ -2,6 +2,7 @@ import { ChildProcessWithoutNullStreams, spawn } from "child_process";
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+import { mainDebugLog } from "../debugLog";
 import type {
   CgalMeshRequest,
   CgalMeshResponse,
@@ -307,7 +308,7 @@ class PythonWorker {
       const phase = msg.phase ? ` ${msg.phase}` : "";
       const pct = typeof msg.pct === "number" ? ` ${msg.pct}%` : "";
       const detail = msg.msg ? ` - ${msg.msg}` : "";
-      console.log(`[CGAL worker] ${jobId}${phase}${pct}${detail}`);
+      mainDebugLog(`[CGAL worker] ${jobId}${phase}${pct}${detail}`);
       return;
     }
 
@@ -435,7 +436,7 @@ class PythonWorker {
 
   async meshCgal(req: CgalMeshRequest): Promise<CgalMeshResponse> {
     this.logStderr = this.envLogStderr || !!req.verbose;
-    console.log("[CGAL worker] mesh request", {
+    mainDebugLog("[CGAL worker] mesh request", {
       jobId: req.jobId,
       iso: req.iso,
       domain: req.domain,
@@ -463,7 +464,7 @@ class PythonWorker {
     const t0 = Date.now();
     const res = await this.request(msg, 180000);
     const t1 = Date.now();
-    console.log("[CGAL worker] response received", {
+    mainDebugLog("[CGAL worker] response received", {
       jobId: req.jobId,
       type: res?.type,
       ms: t1 - t0,
@@ -489,7 +490,7 @@ class PythonWorker {
         ? decodeUint32(res.indices_b64)
         : [];
     const t3 = Date.now();
-    console.log("[CGAL worker] decode complete", {
+    mainDebugLog("[CGAL worker] decode complete", {
       jobId: req.jobId,
       ms: t3 - t2,
       positions: positions.length,
@@ -514,7 +515,7 @@ class PythonWorker {
   }
 
   async geodesicHeat(req: GeodesicHeatRequest): Promise<GeodesicHeatResponse> {
-    console.log("[CGAL worker] geodesic heat request", {
+    mainDebugLog("[CGAL worker] geodesic heat request", {
       jobId: req.jobId,
       faces: req.mesh?.F?.length ?? 0,
       vertices: req.mesh?.V?.length ?? 0,
@@ -533,7 +534,7 @@ class PythonWorker {
     const t0 = Date.now();
     const res = await this.request(msg, 180000);
     const t1 = Date.now();
-    console.log("[CGAL worker] geodesic heat response received", {
+    mainDebugLog("[CGAL worker] geodesic heat response received", {
       jobId: req.jobId,
       type: res?.type,
       ms: t1 - t0,
@@ -578,7 +579,7 @@ class PythonWorker {
     const t0 = Date.now();
     const res = await this.request(msg, 180000, [positionsBuf, indicesBuf]);
     const t1 = Date.now();
-    console.log("[CGAL worker] vtk response received", {
+    mainDebugLog("[CGAL worker] vtk response received", {
       jobId: req.jobId,
       type: res?.type,
       ms: t1 - t0,
@@ -676,7 +677,7 @@ class PythonWorker {
     const t0 = Date.now();
     const res = await this.request(msg, 180000);
     const t1 = Date.now();
-    console.log("[CGAL worker] vtk preview response", {
+    mainDebugLog("[CGAL worker] vtk preview response", {
       jobId: req.jobId,
       type: res?.type,
       ms: t1 - t0,
@@ -731,7 +732,7 @@ class PythonWorker {
     const t0 = Date.now();
     const res = await this.request(msg, 180000, [positionsABuf, indicesABuf, positionsBBuf, indicesBBuf]);
     const t1 = Date.now();
-    console.log("[CGAL worker] vtk boolean response", {
+    mainDebugLog("[CGAL worker] vtk boolean response", {
       jobId: req.jobId,
       type: res?.type,
       operation: req.operation,
@@ -783,7 +784,7 @@ class PythonWorker {
     const t0 = Date.now();
     const res = await this.request(msg, 180000, [scalarsBuf]);
     const t1 = Date.now();
-    console.log("[CGAL worker] vtk volume slice response", {
+    mainDebugLog("[CGAL worker] vtk volume slice response", {
       jobId: req.jobId,
       type: res?.type,
       ms: t1 - t0,
@@ -831,7 +832,7 @@ class PythonWorker {
     const t0 = Date.now();
     const res = await this.request(msg, 180000, [scalarsBuf]);
     const t1 = Date.now();
-    console.log("[CGAL worker] vtk volume isosurface response", {
+    mainDebugLog("[CGAL worker] vtk volume isosurface response", {
       jobId: req.jobId,
       type: res?.type,
       ms: t1 - t0,
@@ -885,7 +886,7 @@ class PythonWorker {
     const t0 = Date.now();
     const res = await this.request(msg, 180000, [positionsBuf, indicesBuf]);
     const t1 = Date.now();
-    console.log("[CGAL worker] vtk volume distance response", {
+    mainDebugLog("[CGAL worker] vtk volume distance response", {
       jobId: req.jobId,
       type: res?.type,
       ms: t1 - t0,
@@ -930,7 +931,7 @@ class PythonWorker {
     const t0 = Date.now();
     const res = await this.request(msg, 180000, [vectorsBuf]);
     const t1 = Date.now();
-    console.log("[CGAL worker] vtk streamlines response", {
+    mainDebugLog("[CGAL worker] vtk streamlines response", {
       jobId: req.jobId,
       type: res?.type,
       ms: t1 - t0,
@@ -1264,7 +1265,7 @@ function resolveWorkerLaunch(): WorkerLaunchConfig {
 }
 
 function logWorkerLaunch(config: WorkerLaunchConfig): void {
-  console.log("[python-worker] using backend", {
+  mainDebugLog("[python-worker] using backend", {
     backend: config.backend,
     command: config.command,
     args: config.args,

@@ -6,6 +6,7 @@ import type { GaussColorMode } from "./gaussMapUtils";
 import type { GaussCapSelection, SelectionMask } from "../math/selection/selectionModel";
 import type { SurfaceSample } from "../math/sampling/surfaceSampling";
 import { computeGaussDensityGrid } from "../math/selection/gaussDensity";
+import { debugLog } from "../utils/debugLog";
 
 type GaussMapPanelProps = {
   samples: SurfaceSample[];
@@ -287,26 +288,26 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
 
   const handlePointSizeChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const next = Number(event.target.value);
-    console.log("[GaussMapPanel] point size slider moved to", next);
+    debugLog("[GaussMapPanel] point size slider moved to", next);
     setPointSize(next);
   }, []);
 
   const handleSamplingStepChange = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
     const next = Number(event.target.value);
-    console.log("[GaussMapPanel] sampling step set to", next);
+    debugLog("[GaussMapPanel] sampling step set to", next);
     setSamplingStep(next);
   }, []);
 
   const handleCapAngleChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const next = Number(event.target.value);
-    console.log("[GaussMapPanel] Gauss cap angle slider moved to", next);
+    debugLog("[GaussMapPanel] Gauss cap angle slider moved to", next);
     setGaussCapAngleDeg(next);
   }, []);
 
   const handleOccludeToggle = useCallback(() => {
     setOccludeBack((prev) => {
       const next = !prev;
-      console.log("[GaussMapPanel] occlude toggled", next ? "enabling" : "disabling");
+      debugLog("[GaussMapPanel] occlude toggled", next ? "enabling" : "disabling");
       return next;
     });
   }, []);
@@ -448,7 +449,7 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
       const intersects = raycaster.intersectObject(sphereRef.current, false);
       if (!intersects.length) return;
       const capNormal = intersects[0].point.clone().normalize();
-      console.log("[GaussMapPanel] gauss sphere click", {
+      debugLog("[GaussMapPanel] gauss sphere click", {
         angleDeg: gaussCapAngleRef.current,
         normal: capNormal.toArray(),
       });

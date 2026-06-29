@@ -7,6 +7,7 @@ import React, {
   forwardRef,
 } from "react";
 import * as d3 from "d3";
+import { debugLog } from "../utils/debugLog";
 import { scalarToColor01, type ColorPalette } from "./colorPalette";
 import { scalarToColor01, type ColorPalette } from "./colorPalette";
 import { scalarToColor01, type ColorPalette } from "./colorPalette";
@@ -50,7 +51,7 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
       const x = xScaleRef.current;
       const y = yScaleRef.current;
       if (!gContent || !x || !y) {
-        console.log("[PlanePlot] drawFullGrid skipped (no content/scales)", {
+        debugLog("[PlanePlot] drawFullGrid skipped (no content/scales)", {
           id,
           hasG: !!gContent,
           hasX: !!x,
@@ -59,7 +60,7 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
         return;
       }
 
-      console.log("[PlanePlot] drawFullGrid", { id, stepLocal });
+      debugLog("[PlanePlot] drawFullGrid", { id, stepLocal });
 
       gContent.selectAll("*").remove();
 
@@ -116,7 +117,7 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
 
     useEffect(() => {
       if (!svgRef.current) {
-        console.log("[PlanePlot] no svgRef", { id });
+        debugLog("[PlanePlot] no svgRef", { id });
         return;
       }
 
@@ -144,7 +145,7 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
       xScaleRef.current = x;
       yScaleRef.current = y;
 
-      console.log("[PlanePlot] init scales", {
+      debugLog("[PlanePlot] init scales", {
         id,
         domainX: x.domain(),
         domainY: y.domain(),
@@ -168,7 +169,7 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
         svg.transition().duration(200).call(zoom.transform, d3.zoomIdentity);
       });
 
-      console.log("[PlanePlot] init done", { id });
+      debugLog("[PlanePlot] init done", { id });
 
       return () => {
         svg.on(".zoom", null);
@@ -179,24 +180,24 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
       ref,
       () => ({
         clear() {
-          console.log("[PlanePlot] clear", { id });
+          debugLog("[PlanePlot] clear", { id });
           gContentRef.current?.selectAll("*").remove();
         },
         drawGrid(stepLocal: number) {
-          console.log("[PlanePlot] drawGrid via handle", { id, stepLocal });
+          debugLog("[PlanePlot] drawGrid via handle", { id, stepLocal });
           drawFullGrid(stepLocal);
         },
         x(re: number) {
           const x = xScaleRef.current;
           const val = x ? x(re) : 0;
           // small log, commented to avoid spam – uncomment if needed
-          // console.log("[PlanePlot] x()", { id, re, val });
+          // debugLog("[PlanePlot] x()", { id, re, val });
           return val;
         },
         y(im: number) {
           const y = yScaleRef.current;
           const val = y ? y(im) : 0;
-          // console.log("[PlanePlot] y()", { id, im, val });
+          // debugLog("[PlanePlot] y()", { id, im, val });
           return val;
         },
         drawCurve(points: [number, number][], stroke: string) {
@@ -204,7 +205,7 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
           const x = xScaleRef.current;
           const y = yScaleRef.current;
 
-          console.log("[PlanePlot] drawCurve called", {
+          debugLog("[PlanePlot] drawCurve called", {
             id,
             stroke,
             nPoints: points.length,
@@ -224,7 +225,7 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
 
           const dAttr = lineGen(points);
           if (!dAttr) {
-            console.log("[PlanePlot] drawCurve – empty dAttr", { id });
+            debugLog("[PlanePlot] drawCurve – empty dAttr", { id });
             return;
           }
 
@@ -303,7 +304,7 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
       const x = xScaleRef.current;
       const y = yScaleRef.current;
       if (!gContent || !x || !y) {
-        console.log("[PlanePlot] drawFullGrid skipped (no content/scales)", {
+        debugLog("[PlanePlot] drawFullGrid skipped (no content/scales)", {
           id,
           hasG: !!gContent,
           hasX: !!x,
@@ -312,7 +313,7 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
         return;
       }
 
-      console.log("[PlanePlot] drawFullGrid", { id, stepLocal });
+      debugLog("[PlanePlot] drawFullGrid", { id, stepLocal });
 
       gContent.selectAll("*").remove();
 
@@ -369,7 +370,7 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
 
     useEffect(() => {
       if (!svgRef.current) {
-        console.log("[PlanePlot] no svgRef", { id });
+        debugLog("[PlanePlot] no svgRef", { id });
         return;
       }
 
@@ -408,7 +409,7 @@ const svg = d3
       xScaleRef.current = x;
       yScaleRef.current = y;
 
-      console.log("[PlanePlot] init scales", {
+      debugLog("[PlanePlot] init scales", {
         id,
         domainX: x.domain(),
         domainY: y.domain(),
@@ -433,7 +434,7 @@ const svg = d3
         svg.transition().duration(200).call(zoom.transform, d3.zoomIdentity);
       });
 
-      console.log("[PlanePlot] init done", { id });
+      debugLog("[PlanePlot] init done", { id });
 
       return () => {
         svg.on(".zoom", null);
@@ -444,11 +445,11 @@ const svg = d3
       ref,
       () => ({
         clear() {
-          console.log("[PlanePlot] clear", { id });
+          debugLog("[PlanePlot] clear", { id });
           gContentRef.current?.selectAll("*").remove();
         },
         drawGrid(stepLocal: number) {
-          console.log("[PlanePlot] drawGrid via handle", { id, stepLocal });
+          debugLog("[PlanePlot] drawGrid via handle", { id, stepLocal });
           drawFullGrid(stepLocal);
         },
         x(re: number) {
@@ -466,7 +467,7 @@ const svg = d3
           const x = xScaleRef.current;
           const y = yScaleRef.current;
 
-          console.log("[PlanePlot] drawCurve called", {
+          debugLog("[PlanePlot] drawCurve called", {
             id,
             stroke,
             nPoints: points.length,
@@ -486,7 +487,7 @@ const svg = d3
 
           const dAttr = lineGen(points);
           if (!dAttr) {
-            console.log("[PlanePlot] drawCurve – empty dAttr", { id });
+            debugLog("[PlanePlot] drawCurve – empty dAttr", { id });
             return;
           }
 

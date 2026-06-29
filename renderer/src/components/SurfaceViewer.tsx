@@ -34,6 +34,7 @@ import {
   DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
   type ReferencePlaneGridSettings,
 } from "@math3d/renderer-web";
+import { debugLog } from "../utils/debugLog";
 
 export type ColorMode = CoreColorMode;
 
@@ -705,7 +706,7 @@ function applyVertexColors(
   stampGeom(geometry, `vertexColors mode=${colorMode} palette=${palette} min=${min.toFixed(3)} max=${max.toFixed(3)}`);
 
   if (DBG_COLORS) {
-    console.log("[applyVertexColors] done", { colorMode, palette, min, max, range, colorAttr: colorAttrStats(geometry) });
+    debugLog("[applyVertexColors] done", { colorMode, palette, min, max, range, colorAttr: colorAttrStats(geometry) });
   }
 
 }
@@ -1019,10 +1020,10 @@ function debugMesh(tag: string, mesh: THREE.Mesh, extra?: any) {
   const mat = mesh.material as any;
 
   console.groupCollapsed(`${tag} :: ${mesh.name || mesh.uuid}`);
-  console.log("extra", extra ?? {});
-  console.log("geom.color", colorAttrStats(geom));
-  console.log("geom.stamp", readStamp(geom));
-  console.log("mat.type", mat?.type, "vertexColors=", !!mat?.vertexColors, "wireframe=", !!mat?.wireframe);
+  debugLog("extra", extra ?? {});
+  debugLog("geom.color", colorAttrStats(geom));
+  debugLog("geom.stamp", readStamp(geom));
+  debugLog("mat.type", mat?.type, "vertexColors=", !!mat?.vertexColors, "wireframe=", !!mat?.wireframe);
   console.trace("trace");
   console.groupEnd();
 }
@@ -1138,9 +1139,9 @@ function applyCurvatureHeatToGraph(
   if (DBG_COLORS) {
     const st = colorAttrStats(geometry);
     console.groupCollapsed("[applyCurvatureHeatToGraph] done");
-    console.log({ palette, n, mx, s });
-    console.log("colorAttr", st);
-    console.log("sample tt @0, mid, last:", {
+    debugLog({ palette, n, mx, s });
+    debugLog("colorAttr", st);
+    debugLog("sample tt @0, mid, last:", {
       c0: st.has ? [ (geometry.getAttribute("color") as any).getX(0),
                      (geometry.getAttribute("color") as any).getY(0),
                      (geometry.getAttribute("color") as any).getZ(0)] : null,
@@ -2856,7 +2857,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
           m.needsUpdate = true;
 
           if (DBG_COLORS) {
-            console.log("[recolorTraverse] mat", {
+            debugLog("[recolorTraverse] mat", {
               type: (m as any).type,
               vertexColors: !!(m as any).vertexColors,
               wireframe: !!(m as any).wireframe,
@@ -11087,4 +11088,3 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     </div>
   );
 };
-
