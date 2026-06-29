@@ -26030,13 +26030,26 @@ const App: React.FC = () => {
     e.preventDefault();
     const startX = e.clientX;
     const startWidth = leftWidth;
+    let frameId = 0;
+    let nextWidth = startWidth;
+
+    const applyWidth = () => {
+      frameId = 0;
+      setLeftWidth(nextWidth);
+    };
 
     const onMove = (ev: MouseEvent) => {
       const delta = ev.clientX - startX;
-      setLeftWidth(Math.min(maxLeft, Math.max(minLeft, startWidth + delta)));
+      nextWidth = Math.min(maxLeft, Math.max(minLeft, startWidth + delta));
+      if (!frameId) frameId = window.requestAnimationFrame(applyWidth);
     };
 
     const onUp = () => {
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+        frameId = 0;
+      }
+      setLeftWidth(nextWidth);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
@@ -26049,13 +26062,26 @@ const App: React.FC = () => {
     e.preventDefault();
     const startX = e.clientX;
     const startWidth = rightWidth;
+    let frameId = 0;
+    let nextWidth = startWidth;
+
+    const applyWidth = () => {
+      frameId = 0;
+      setRightWidth(nextWidth);
+    };
 
     const onMove = (ev: MouseEvent) => {
       const delta = startX - ev.clientX; // drag left to expand right panel
-      setRightWidth(Math.min(maxRight, Math.max(minRight, startWidth + delta)));
+      nextWidth = Math.min(maxRight, Math.max(minRight, startWidth + delta));
+      if (!frameId) frameId = window.requestAnimationFrame(applyWidth);
     };
 
     const onUp = () => {
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+        frameId = 0;
+      }
+      setRightWidth(nextWidth);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };

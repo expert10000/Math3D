@@ -197,6 +197,43 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
 
   const meshOverrideList = meshOverrides?.length ? meshOverrides : null;
   const mesh = meshOverrideList ? null : meshOverride ?? renderData.mesh;
+  const surfaceMeshOverrideForViewer = useMemo(
+    () =>
+      mesh
+        ? {
+            positions: mesh.positions,
+            indices: mesh.indices,
+            normals: mesh.normals ?? null,
+            uvs: mesh.uvs ?? null,
+            adjacency: mesh.adjacency ?? null,
+            meanEdgeLength: mesh.meanEdgeLength ?? null,
+            validation: mesh.validation ?? null,
+          }
+        : null,
+    [mesh]
+  );
+  const surfaceMeshOverridesForViewer = useMemo(
+    () =>
+      meshOverrideList
+        ? meshOverrideList.map((entry) => ({
+            id: entry.id,
+            positions: entry.positions,
+            indices: entry.indices,
+            normals: entry.normals ?? null,
+            uvs: entry.uvs ?? null,
+            adjacency: entry.adjacency ?? null,
+            meanEdgeLength: entry.meanEdgeLength ?? null,
+            validation: entry.validation ?? null,
+            color: entry.color,
+            opacity: entry.opacity,
+            roughness: entry.roughness,
+            metalness: entry.metalness,
+            flatShading: entry.flatShading,
+            transform: entry.transform,
+          }))
+        : null,
+    [meshOverrideList]
+  );
   const highlightGroups = useMemo(() => {
     if (!highlightPolygons?.length) return [];
     const lines: PolylineSet = [];
@@ -263,39 +300,8 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   return (
     <SurfaceViewer
       surfaceId="surface_mesh"
-      surfaceMeshOverride={
-        mesh
-          ? {
-              positions: mesh.positions,
-              indices: mesh.indices,
-              normals: mesh.normals ?? null,
-              uvs: mesh.uvs ?? null,
-              adjacency: mesh.adjacency ?? null,
-              meanEdgeLength: mesh.meanEdgeLength ?? null,
-              validation: mesh.validation ?? null,
-            }
-          : null
-      }
-      surfaceMeshOverrides={
-        meshOverrideList
-          ? meshOverrideList.map((entry) => ({
-              id: entry.id,
-              positions: entry.positions,
-              indices: entry.indices,
-              normals: entry.normals ?? null,
-              uvs: entry.uvs ?? null,
-              adjacency: entry.adjacency ?? null,
-              meanEdgeLength: entry.meanEdgeLength ?? null,
-              validation: entry.validation ?? null,
-              color: entry.color,
-              opacity: entry.opacity,
-              roughness: entry.roughness,
-              metalness: entry.metalness,
-              flatShading: entry.flatShading,
-              transform: entry.transform,
-            }))
-          : null
-      }
+      surfaceMeshOverride={surfaceMeshOverrideForViewer}
+      surfaceMeshOverrides={surfaceMeshOverridesForViewer}
       colorMode={colorMode}
       wireframe={wireframe}
       materialOpacity={materialOpacity}
