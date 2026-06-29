@@ -396,6 +396,7 @@ type GeometryProceduralPanelTab =
   | "history"
   | "analysis"
   | "demonstrations"
+  | "debug"
   | "theory"
   | "script"
   | "euler";
@@ -549,6 +550,7 @@ const GEOMETRY_PROCEDURAL_PANEL_VALUES: GeometryProceduralPanelTab[] = [
   "history",
   "analysis",
   "demonstrations",
+  "debug",
   "theory",
   "script",
   "euler",
@@ -9257,6 +9259,17 @@ const App: React.FC = () => {
         scenes: GEOMETRY_SCENE_GALLERY.filter((entry) => entry.category === category),
       })).filter((section) => section.scenes.length > 0),
     []
+  );
+  const geometryDebugScenes = useMemo(
+    () => GEOMETRY_SCENE_GALLERY.filter((entry) => entry.category === "Debug Scenes"),
+    []
+  );
+  const geometryDebugSceneSelected = useMemo(
+    () =>
+      geometrySceneGallerySelected?.category === "Debug Scenes"
+        ? geometrySceneGallerySelected
+        : geometryDebugScenes[0] ?? null,
+    [geometryDebugScenes, geometrySceneGallerySelected]
   );
   const geometryGalleryPreviewRecipe = useMemo(() => {
     if (!geometryGallerySelectedRecipe) return null;
@@ -45844,6 +45857,7 @@ case "mobius":
                   {([
                     { key: "create", id: "create" as const, label: "Create" },
                     { key: "scene", id: "scene" as const, label: "Scene" },
+                    { key: "debug", id: "debug" as const, label: "Presets" },
                     { key: "script", id: "script" as const, label: "Script" },
                     { key: "object", id: "object" as const, label: "Object" },
                     { key: "construct", id: "construct" as const, label: "Construct" },
@@ -57270,6 +57284,155 @@ case "mobius":
                         </div>
                       </div>
                     )}
+                    {geometryProceduralPanelTab === "debug" && (
+                    <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 800 }}>Scene presets</div>
+                          <div style={{ fontSize: 10.5, color: "#475569" }}>
+                            Repeatable Geometry scenes for renderer, inspector, section, and transform checks.
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 10.5, color: "#475569" }}>{geometryDebugScenes.length} presets</div>
+                      </div>
+                      {geometryDebugScenes.length ? (
+                        <>
+                          <div
+                            data-testid="geometry-debug-scene-gallery"
+                            className="gallery-panel-scroll geometry-gallery-compact"
+                            style={{ maxHeight: "min(48vh, 420px)", paddingRight: 3 }}
+                          >
+                            <div className="gallery-card-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 8 }}>
+                              {geometryDebugScenes.map((entry) => {
+                                const selected = geometryDebugSceneSelected?.id === entry.id;
+                                const objectCount = entry.initialScene.objects?.length ?? 0;
+                                return (
+                                  <article
+                                    key={`geometry-debug-scene-card-${entry.id}`}
+                                    role="button"
+                                    tabIndex={0}
+                                    data-testid={`geometry-debug-scene-card-${entry.id}`}
+                                    onClick={() => setGeometrySceneGallerySelectedId(entry.id)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter") {
+                                        event.preventDefault();
+                                        setGeometrySceneGallerySelectedId(entry.id);
+                                        openGeometrySceneGalleryEntry(entry);
+                                      }
+                                      if (event.key === " ") {
+                                        event.preventDefault();
+                                        setGeometrySceneGallerySelectedId(entry.id);
+                                      }
+                                    }}
+                                    className={`gallery-scan-card geometry-gallery-scan-card is-compact${selected ? " is-browser-selected" : ""}`}
+                                    title={`${entry.title}\n${entry.description}`}
+                                  >
+                                    <div className="gallery-scan-card-preview">
+                                      <div className="gallery-scan-card-preview-frame">
+                                        {entry.thumbnail ? (
+                                          <img
+                                            src={entry.thumbnail}
+                                            alt={`${entry.title} thumbnail`}
+                                            className="gallery-scan-card-preview-image"
+                                            loading="lazy"
+                                            decoding="async"
+                                          />
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                    <div className="gallery-scan-card-meta">
+                                      <div className="gallery-scan-card-title-row">
+                                        <div className="gallery-scan-card-title">{entry.title.replace("Debug: ", "")}</div>
+                                      </div>
+                                      <div className="gallery-scan-card-formula">{objectCount} objects</div>
+                                      <div className="gallery-scan-card-footer">
+                                        <button
+                                          type="button"
+                                          data-testid={`geometry-debug-scene-open-${entry.id}`}
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            setGeometrySceneGallerySelectedId(entry.id);
+                                            openGeometrySceneGalleryEntry(entry);
+                                          }}
+                                          className="gallery-scan-card-action-btn"
+                                        >
+                                          Open
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </article>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          {geometryDebugSceneSelected && (
+                            <div
+                              data-testid="geometry-debug-scene-selected"
+                              style={{
+                                border: "1px solid #cfe1f6",
+                                borderRadius: 8,
+                                background: "#eff6ff",
+                                padding: "7px 8px",
+                                display: "grid",
+                                gap: 6,
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                <div style={{ minWidth: 0, flex: "1 1 160px" }}>
+                                  <div style={{ fontSize: 12, fontWeight: 800, color: "#1e3a8a" }}>
+                                    {geometryDebugSceneSelected.title}
+                                  </div>
+                                  <div style={{ fontSize: 10.5, color: "#475569" }}>
+                                    {geometryDebugSceneSelected.description}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => openGeometrySceneGalleryEntry(geometryDebugSceneSelected)}
+                                  style={{ fontSize: 11, fontWeight: 800, padding: "4px 10px" }}
+                                >
+                                  {geometrySceneGalleryActiveId === geometryDebugSceneSelected.id ? "Re-open scene" : "Open scene"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleReplayGeometrySceneGallery}
+                                  disabled={!geometrySceneGalleryReplaySteps.length}
+                                  style={{ fontSize: 11, padding: "4px 10px" }}
+                                >
+                                  Replay
+                                </button>
+                              </div>
+                              <div style={{ display: "flex", gap: 5, flexWrap: "wrap", fontSize: 10 }}>
+                                {(geometryDebugSceneSelected.recommendedPanels ?? []).map((panel) => (
+                                  <button
+                                    key={`geometry-debug-scene-panel-${geometryDebugSceneSelected.id}-${panel}`}
+                                    type="button"
+                                    onClick={() => {
+                                      if (!GEOMETRY_PROCEDURAL_PANEL_VALUES.includes(panel as GeometryProceduralPanelTab)) return;
+                                      setGeometryProceduralPanelTab(panel as GeometryProceduralPanelTab);
+                                    }}
+                                    style={{ fontSize: 10, padding: "2px 6px" }}
+                                  >
+                                    {panel}
+                                  </button>
+                                ))}
+                                {geometrySceneGalleryStatus && (
+                                  <span style={{ fontFamily: "monospace", color: "#334155", padding: "2px 0" }}>
+                                    {geometrySceneGalleryStatus}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div style={{ border: "1px dashed #cbd5e1", borderRadius: 8, padding: "10px 12px", fontSize: 11, color: "#475569" }}>
+                          No scene presets are available.
+                        </div>
+                      )}
+                    </div>
+                    )}
+
                     {geometryProceduralPanelTab === "demonstrations" && (
                       <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
                         <div
