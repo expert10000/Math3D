@@ -152,6 +152,29 @@ import {
   type GeometryGallerySceneEntry,
   type GeometrySceneTimelineAction,
 } from "./geometry/sceneGalleryCatalog";
+import { GeometryScenePresetsPanel } from "./geometry/GeometryScenePresetsPanel";
+import {
+  GEOMETRY_DEMONSTRATION_CATEGORY_OPTIONS,
+  GEOMETRY_PROCEDURAL_PANEL_VALUES,
+  GEOMETRY_PROMOTION_MODE_LABELS,
+  GEOMETRY_VOLUME_RELATION_FOCUS_OPTIONS,
+  isGeometryDemoTabValue,
+  isGeometryModeValue,
+  isGeometryProceduralPanelTabValue,
+  isPlanimetryPresetValue,
+  type GeometryDemoFamily,
+  type GeometryDemoTab,
+  type GeometryDemonstrationCategory,
+  type GeometryEulerPolygonTemplateId,
+  type GeometryEulerScope,
+  type GeometryFitMode,
+  type GeometryMode,
+  type GeometryObjectRole,
+  type GeometryProceduralPanelTab,
+  type GeometryVolumeRelationFocusMode,
+  type GeometryWorkbookUiMode,
+  type PlanimetryPresetId,
+} from "./geometry/geometryModeConfig";
 import {
   filterGeometryDerivedProducts,
   filterGeometryMeshKeyRefs,
@@ -382,37 +405,6 @@ import {
 /* ---------------- App modes ---------------- */
 
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces" | "curves" | "topology" | "geometry";
-type GeometryMode = "procedural" | "demo" | "scratch" | "workbook";
-type GeometryWorkbookUiMode = "compact" | "full";
-type GeometryDemoFamily = "stereometry" | "planimetry";
-type PlanimetryPresetId = "task" | "euler" | "tangent" | "incircle_reflection";
-type GeometryProceduralPanelTab =
-  | "create"
-  | "scene"
-  | "object"
-  | "construct"
-  | "transform"
-  | "view"
-  | "history"
-  | "analysis"
-  | "demonstrations"
-  | "debug"
-  | "theory"
-  | "script"
-  | "euler";
-type GeometryDemonstrationCategory =
-  | "cross_sections"
-  | "volume_relations"
-  | "scaling"
-  | "polyhedra_topology";
-type GeometryVolumeRelationFocusMode = "sphere" | "cylinder" | "cone" | "cylinder_cone" | "all";
-type GeometryEulerScope = "selected" | "scene";
-type GeometryEulerPolygonTemplateId =
-  | "torus_abab_inv"
-  | "projective_aa"
-  | "klein_abainvb"
-  | "mobius_baca_inv"
-  | "cylinder_uava_inv";
 type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass" | "mesh" | "complex";
 type MeshBooleanOperation = "union" | "difference" | "intersection" | "split" | "imprint";
 type ChartMode = "auto" | "xy" | "uv" | "local";
@@ -423,9 +415,6 @@ type SurfaceMeshAssetPreset = {
   assetUrl: string;
   fileName: string;
 };
-type GeometryDemoTab = "task" | "objects" | "solve" | "script";
-type GeometryFitMode = "scene" | "stage" | "claim";
-type GeometryObjectRole = "primary" | "construction" | "helper" | "claim" | "diagnostic";
 type GeometrySavedSectionCurve = {
   id: string;
   name: string;
@@ -538,65 +527,18 @@ type WorkspaceNavigationState = {
   forwardStack: WorkspaceLocationEntry[];
 };
 const MAX_WORKSPACE_HISTORY = 120;
-const GEOMETRY_MODE_VALUES: GeometryMode[] = ["procedural", "demo", "scratch", "workbook"];
-const GEOMETRY_DEMO_TAB_VALUES: GeometryDemoTab[] = ["task", "objects", "solve", "script"];
-const GEOMETRY_PROCEDURAL_PANEL_VALUES: GeometryProceduralPanelTab[] = [
-  "create",
-  "scene",
-  "object",
-  "construct",
-  "transform",
-  "view",
-  "history",
-  "analysis",
-  "demonstrations",
-  "debug",
-  "theory",
-  "script",
-  "euler",
-];
-const GEOMETRY_DEMONSTRATION_CATEGORY_OPTIONS: Array<{ id: GeometryDemonstrationCategory; label: string }> = [
-  { id: "cross_sections", label: "Cross-sections" },
-  { id: "volume_relations", label: "Volume relations" },
-  { id: "scaling", label: "Scaling" },
-  { id: "polyhedra_topology", label: "Polyhedra topology" },
-];
-const GEOMETRY_VOLUME_RELATION_FOCUS_OPTIONS: Array<{ id: GeometryVolumeRelationFocusMode; label: string }> = [
-  { id: "sphere", label: "1: Sphere" },
-  { id: "cylinder", label: "1: Cylinder" },
-  { id: "cone", label: "1: Cone" },
-  { id: "cylinder_cone", label: "2: Cyl + Cone" },
-  { id: "all", label: "3: All" },
-];
 const GEOMETRY_WORKSPACE_TAB_VALUES: ConstructionWorkspaceTab[] = ["task", "build", "inspect", "claims", "script", "scene"];
 const SURFACES_LEFT_TAB_VALUES = ["scene", "object", "view", "analysis", "services", "theory"] as const;
 const MOBIUS_SUB_TAB_VALUES: MobiusSubTab[] = ["map", "decompose", "invariants", "circles", "riemann", "animation"];
 const VARIANT_GHOST_MESH_KEY_PREFIX = "variant-ghost:";
 const isVariantGhostMeshKey = (meshKey: string | null | undefined): boolean =>
   !!meshKey && meshKey.startsWith(VARIANT_GHOST_MESH_KEY_PREFIX);
-const GEOMETRY_PROMOTION_MODE_LABELS: Record<GeometryToMeshPromotionMode, string> = {
-  raw_mesh: "Raw mesh",
-  triangulated_mesh: "Triangulated mesh",
-  repaired_mesh: "Repaired mesh",
-  analysis_ready_mesh: "Analysis-ready mesh",
-  frozen_baked_object: "Frozen/baked object",
-  editable_mesh_object: "Editable mesh object",
-};
-const PLANIMETRY_PRESET_VALUES: PlanimetryPresetId[] = ["task", "euler", "tangent", "incircle_reflection"];
-const isGeometryModeValue = (value: string | undefined): value is GeometryMode =>
-  !!value && GEOMETRY_MODE_VALUES.includes(value as GeometryMode);
-const isGeometryDemoTabValue = (value: string | undefined): value is GeometryDemoTab =>
-  !!value && GEOMETRY_DEMO_TAB_VALUES.includes(value as GeometryDemoTab);
-const isGeometryProceduralPanelTabValue = (value: string | undefined): value is GeometryProceduralPanelTab =>
-  !!value && GEOMETRY_PROCEDURAL_PANEL_VALUES.includes(value as GeometryProceduralPanelTab);
 const isConstructionWorkspaceTabValue = (value: string | undefined): value is ConstructionWorkspaceTab =>
   !!value && GEOMETRY_WORKSPACE_TAB_VALUES.includes(value as ConstructionWorkspaceTab);
 const isSurfacesLeftTabValue = (value: string | undefined): value is (typeof SURFACES_LEFT_TAB_VALUES)[number] =>
   !!value && SURFACES_LEFT_TAB_VALUES.includes(value as (typeof SURFACES_LEFT_TAB_VALUES)[number]);
 const isMobiusSubTabValue = (value: string | undefined): value is MobiusSubTab =>
   !!value && MOBIUS_SUB_TAB_VALUES.includes(value as MobiusSubTab);
-const isPlanimetryPresetValue = (value: string | undefined): value is PlanimetryPresetId =>
-  !!value && PLANIMETRY_PRESET_VALUES.includes(value as PlanimetryPresetId);
 const isWorkspaceModuleValue = (value: string | undefined): value is WorkspaceModule =>
   value === "surfaces" ||
   value === "mesh" ||
@@ -50368,7 +50310,7 @@ case "mobius":
                           </div>
                           <button
                             type="button"
-                            data-testid="geometry-add-object-toolbar"
+                            data-testid="geometry-add-object"
                             onClick={handleAddGeometryGallerySelected}
                             disabled={!geometryGallerySelectedCard.supported}
                             style={{ fontSize: 11, fontWeight: 800, padding: "4px 10px" }}
@@ -50395,7 +50337,7 @@ case "mobius":
                       style={{
                         paddingBottom: 0,
                         flex: compactGeometryCreatePanel ? "1 1 auto" : undefined,
-                        minHeight: compactGeometryCreatePanel ? 90 : undefined,
+                        minHeight: compactGeometryCreatePanel ? "min(360px, 52vh)" : undefined,
                         maxHeight: compactGeometryCreatePanel ? "none" : undefined,
                       }}
                     >
@@ -57285,152 +57227,20 @@ case "mobius":
                       </div>
                     )}
                     {geometryProceduralPanelTab === "debug" && (
-                    <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                        <div>
-                          <div style={{ fontSize: 12, fontWeight: 800 }}>Scene presets</div>
-                          <div style={{ fontSize: 10.5, color: "#475569" }}>
-                            Repeatable Geometry scenes for renderer, inspector, section, and transform checks.
-                          </div>
-                        </div>
-                        <div style={{ fontSize: 10.5, color: "#475569" }}>{geometryDebugScenes.length} presets</div>
-                      </div>
-                      {geometryDebugScenes.length ? (
-                        <>
-                          <div
-                            data-testid="geometry-debug-scene-gallery"
-                            className="gallery-panel-scroll geometry-gallery-compact"
-                            style={{ maxHeight: "min(48vh, 420px)", paddingRight: 3 }}
-                          >
-                            <div className="gallery-card-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 8 }}>
-                              {geometryDebugScenes.map((entry) => {
-                                const selected = geometryDebugSceneSelected?.id === entry.id;
-                                const objectCount = entry.initialScene.objects?.length ?? 0;
-                                return (
-                                  <article
-                                    key={`geometry-debug-scene-card-${entry.id}`}
-                                    role="button"
-                                    tabIndex={0}
-                                    data-testid={`geometry-debug-scene-card-${entry.id}`}
-                                    onClick={() => setGeometrySceneGallerySelectedId(entry.id)}
-                                    onKeyDown={(event) => {
-                                      if (event.key === "Enter") {
-                                        event.preventDefault();
-                                        setGeometrySceneGallerySelectedId(entry.id);
-                                        openGeometrySceneGalleryEntry(entry);
-                                      }
-                                      if (event.key === " ") {
-                                        event.preventDefault();
-                                        setGeometrySceneGallerySelectedId(entry.id);
-                                      }
-                                    }}
-                                    className={`gallery-scan-card geometry-gallery-scan-card is-compact${selected ? " is-browser-selected" : ""}`}
-                                    title={`${entry.title}\n${entry.description}`}
-                                  >
-                                    <div className="gallery-scan-card-preview">
-                                      <div className="gallery-scan-card-preview-frame">
-                                        {entry.thumbnail ? (
-                                          <img
-                                            src={entry.thumbnail}
-                                            alt={`${entry.title} thumbnail`}
-                                            className="gallery-scan-card-preview-image"
-                                            loading="lazy"
-                                            decoding="async"
-                                          />
-                                        ) : null}
-                                      </div>
-                                    </div>
-                                    <div className="gallery-scan-card-meta">
-                                      <div className="gallery-scan-card-title-row">
-                                        <div className="gallery-scan-card-title">{entry.title.replace("Debug: ", "")}</div>
-                                      </div>
-                                      <div className="gallery-scan-card-formula">{objectCount} objects</div>
-                                      <div className="gallery-scan-card-footer">
-                                        <button
-                                          type="button"
-                                          data-testid={`geometry-debug-scene-open-${entry.id}`}
-                                          onClick={(event) => {
-                                            event.stopPropagation();
-                                            setGeometrySceneGallerySelectedId(entry.id);
-                                            openGeometrySceneGalleryEntry(entry);
-                                          }}
-                                          className="gallery-scan-card-action-btn"
-                                        >
-                                          Open
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </article>
-                                );
-                              })}
-                            </div>
-                          </div>
-                          {geometryDebugSceneSelected && (
-                            <div
-                              data-testid="geometry-debug-scene-selected"
-                              style={{
-                                border: "1px solid #cfe1f6",
-                                borderRadius: 8,
-                                background: "#eff6ff",
-                                padding: "7px 8px",
-                                display: "grid",
-                                gap: 6,
-                              }}
-                            >
-                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                                <div style={{ minWidth: 0, flex: "1 1 160px" }}>
-                                  <div style={{ fontSize: 12, fontWeight: 800, color: "#1e3a8a" }}>
-                                    {geometryDebugSceneSelected.title}
-                                  </div>
-                                  <div style={{ fontSize: 10.5, color: "#475569" }}>
-                                    {geometryDebugSceneSelected.description}
-                                  </div>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => openGeometrySceneGalleryEntry(geometryDebugSceneSelected)}
-                                  style={{ fontSize: 11, fontWeight: 800, padding: "4px 10px" }}
-                                >
-                                  {geometrySceneGalleryActiveId === geometryDebugSceneSelected.id ? "Re-open scene" : "Open scene"}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={handleReplayGeometrySceneGallery}
-                                  disabled={!geometrySceneGalleryReplaySteps.length}
-                                  style={{ fontSize: 11, padding: "4px 10px" }}
-                                >
-                                  Replay
-                                </button>
-                              </div>
-                              <div style={{ display: "flex", gap: 5, flexWrap: "wrap", fontSize: 10 }}>
-                                {(geometryDebugSceneSelected.recommendedPanels ?? []).map((panel) => (
-                                  <button
-                                    key={`geometry-debug-scene-panel-${geometryDebugSceneSelected.id}-${panel}`}
-                                    type="button"
-                                    onClick={() => {
-                                      if (!GEOMETRY_PROCEDURAL_PANEL_VALUES.includes(panel as GeometryProceduralPanelTab)) return;
-                                      setGeometryProceduralPanelTab(panel as GeometryProceduralPanelTab);
-                                    }}
-                                    style={{ fontSize: 10, padding: "2px 6px" }}
-                                  >
-                                    {panel}
-                                  </button>
-                                ))}
-                                {geometrySceneGalleryStatus && (
-                                  <span style={{ fontFamily: "monospace", color: "#334155", padding: "2px 0" }}>
-                                    {geometrySceneGalleryStatus}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <div style={{ border: "1px dashed #cbd5e1", borderRadius: 8, padding: "10px 12px", fontSize: 11, color: "#475569" }}>
-                          No scene presets are available.
-                        </div>
-                      )}
-                    </div>
+                      <GeometryScenePresetsPanel
+                        scenes={geometryDebugScenes}
+                        selectedScene={geometryDebugSceneSelected}
+                        activeSceneId={geometrySceneGalleryActiveId}
+                        status={geometrySceneGalleryStatus}
+                        replayEnabled={geometrySceneGalleryReplaySteps.length > 0}
+                        onSelectScene={setGeometrySceneGallerySelectedId}
+                        onOpenScene={openGeometrySceneGalleryEntry}
+                        onReplayScene={handleReplayGeometrySceneGallery}
+                        onChoosePanel={(panel) => {
+                          if (!GEOMETRY_PROCEDURAL_PANEL_VALUES.includes(panel as GeometryProceduralPanelTab)) return;
+                          setGeometryProceduralPanelTab(panel as GeometryProceduralPanelTab);
+                        }}
+                      />
                     )}
 
                     {geometryProceduralPanelTab === "demonstrations" && (
