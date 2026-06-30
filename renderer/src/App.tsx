@@ -2154,6 +2154,7 @@ type GeometryTransformPatch = {
   scale?: Partial<Vec3>;
 };
 
+type GeometryGizmoMode = "translate" | "rotate" | "scale";
 type GeometryGizmoSpace = "world" | "local" | "parent";
 type GeometryTransformPivotMode = "center" | "origin" | "bboxCenter" | "bottomCenter" | "custom";
 type GeometryProbeSelectionMode = "object" | "face" | "edge" | "vertex";
@@ -2200,6 +2201,13 @@ type GeometryProbeSelectionDetails = {
   edgePoints: [{ x: number; y: number; z: number }, { x: number; y: number; z: number }] | null;
   faceVertices: [{ x: number; y: number; z: number }, { x: number; y: number; z: number }, { x: number; y: number; z: number }] | null;
 };
+
+const GEOMETRY_GIZMO_MODE_OPTIONS: Array<{ id: GeometryGizmoMode; label: string; title: string }> = [
+  { id: "translate", label: "Move", title: "Move / Translate (W)" },
+  { id: "rotate", label: "Rotate", title: "Rotate around X/Y/Z rings (E)" },
+  { id: "scale", label: "Scale", title: "Scale along axes or uniformly (R)" },
+];
+
 type GeometryDerivedConstructionType =
   | "vertex-point-marker"
   | "vertex-coordinate-label"
@@ -7951,11 +7959,11 @@ const App: React.FC = () => {
   const [geometryBakeError, setGeometryBakeError] = useState<string | null>(null);
   const geometryHistoryIntentQueueRef = useRef<Map<string, GeometryQueuedHistoryIntent[]>>(new Map());
   const [geometryGizmoEnabled, setGeometryGizmoEnabled] = useState(true);
-  const [geometryGizmoMode, setGeometryGizmoMode] = useState<"translate" | "rotate" | "scale">("translate");
+  const [geometryGizmoMode, setGeometryGizmoMode] = useState<GeometryGizmoMode>("translate");
   const [geometryGizmoSpace, setGeometryGizmoSpace] = useState<GeometryGizmoSpace>("world");
   const [geometryTransformPivotMode, setGeometryTransformPivotMode] = useState<GeometryTransformPivotMode>("center");
   const [geometryTransformPivotCustom, setGeometryTransformPivotCustom] = useState<Vec3>({ x: 0, y: 0, z: 0 });
-  const [geometryUniformScaleLock, setGeometryUniformScaleLock] = useState(true);
+  const [geometryUniformScaleLock, setGeometryUniformScaleLock] = useState(false);
   const [geometryLockXEnabled, setGeometryLockXEnabled] = useState(false);
   const [geometryLockYEnabled, setGeometryLockYEnabled] = useState(false);
   const [geometryLockZEnabled, setGeometryLockZEnabled] = useState(false);
@@ -7972,6 +7980,25 @@ const App: React.FC = () => {
   const [geometrySnapRotateStepDeg, setGeometrySnapRotateStepDeg] = useState(15);
   const [geometrySnapScaleEnabled, setGeometrySnapScaleEnabled] = useState(false);
   const [geometrySnapScaleStep, setGeometrySnapScaleStep] = useState(0.1);
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || target?.isContentEditable) return;
+      const nextMode =
+        event.key.toLowerCase() === "w" ? "translate" :
+        event.key.toLowerCase() === "e" ? "rotate" :
+        event.key.toLowerCase() === "r" ? "scale" :
+        null;
+      if (!nextMode) return;
+      event.preventDefault();
+      setGeometryGizmoMode(nextMode);
+      setGeometryGizmoEnabled(true);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
   const [geometryAdvancedSnapOpen, setGeometryAdvancedSnapOpen] = useState(false);
   const [geometryGridSnapEnabled, setGeometryGridSnapEnabled] = useState(false);
   const [geometrySurfaceSnapEnabled, setGeometrySurfaceSnapEnabled] = useState(false);
@@ -10378,6 +10405,7 @@ const App: React.FC = () => {
   const geometrySelectedPivotPointRef = useRef<SnapPoint3 | null>(null);
   const handleProceduralDragStart = useCallback(
     (info: { meshKey?: string }) => {
+      if (geometryGizmoMode !== "translate") return;
       if (!info.meshKey) return;
       if (isVariantGhostMeshKey(info.meshKey)) return;
       if (geometryLockedObjectIds.has(info.meshKey)) return;
@@ -10391,10 +10419,11 @@ const App: React.FC = () => {
         startPosition: { ...obj.transform.position },
       };
     },
-    [geometryDatasetMeshObjects, geometryLockedObjectIds, geometryObjects]
+    [geometryDatasetMeshObjects, geometryGizmoMode, geometryLockedObjectIds, geometryObjects]
   );
   const handleProceduralDrag = useCallback(
     (info: { meshKey?: string; delta: { x: number; y: number; z: number } }) => {
+      if (geometryGizmoMode !== "translate") return;
       const drag = geometryDragRef.current;
       if (isVariantGhostMeshKey(info.meshKey)) return;
       if (!drag || !info.meshKey || info.meshKey !== drag.id) return;
@@ -10405,7 +10434,7 @@ const App: React.FC = () => {
       };
       handleUpdateGeometryTransform(drag.id, { position: nextPos });
     },
-    [handleUpdateGeometryTransform]
+    [geometryGizmoMode, handleUpdateGeometryTransform]
   );
   const handleProceduralDragEnd = useCallback(() => {
     geometryDragRef.current = null;
@@ -10601,10 +10630,13 @@ const App: React.FC = () => {
       const nextScale =
         geometryUniformScaleLock && geometryGizmoMode === "scale"
           ? (() => {
-              const uniform = Math.max(
-                1e-6,
-                (Math.max(1e-6, info.scale.x) + Math.max(1e-6, info.scale.y) + Math.max(1e-6, info.scale.z)) / 3
+              const currentScale = targetObj?.transform.scale ?? { x: 1, y: 1, z: 1 };
+              const changedAxis = (["x", "y", "z"] as const).reduce((best, axis) =>
+                Math.abs(info.scale[axis] - currentScale[axis]) > Math.abs(info.scale[best] - currentScale[best])
+                  ? axis
+                  : best
               );
+              const uniform = Math.max(1e-6, info.scale[changedAxis]);
               return { x: uniform, y: uniform, z: uniform };
             })()
           : {
@@ -10613,15 +10645,42 @@ const App: React.FC = () => {
               z: Math.max(1e-6, info.scale.z),
             };
 
-      handleUpdateGeometryTransform(info.meshKey, {
-        position: nextPosition,
-        rotation: {
-          x: info.rotation.x,
-          y: info.rotation.y,
-          z: info.rotation.z,
-        },
-        scale: nextScale,
-      });
+      const transformPatch: GeometryTransformPatch =
+        geometryGizmoMode === "rotate"
+          ? {
+              rotation: {
+                x: info.rotation.x,
+                y: info.rotation.y,
+                z: info.rotation.z,
+              },
+            }
+          : geometryGizmoMode === "scale"
+            ? { scale: nextScale }
+            : { position: nextPosition };
+
+      const currentTransform = targetObj?.transform;
+      const nextVector =
+        geometryGizmoMode === "rotate"
+          ? transformPatch.rotation
+          : geometryGizmoMode === "scale"
+            ? transformPatch.scale
+            : transformPatch.position;
+      const currentVector =
+        geometryGizmoMode === "rotate"
+          ? currentTransform?.rotation
+          : geometryGizmoMode === "scale"
+            ? currentTransform?.scale
+            : currentTransform?.position;
+      if (
+        nextVector &&
+        currentVector &&
+        Math.abs((nextVector.x ?? currentVector.x) - currentVector.x) < 1e-7 &&
+        Math.abs((nextVector.y ?? currentVector.y) - currentVector.y) < 1e-7 &&
+        Math.abs((nextVector.z ?? currentVector.z) - currentVector.z) < 1e-7
+      ) {
+        return;
+      }
+      handleUpdateGeometryTransform(info.meshKey, transformPatch);
     },
     [
       geometryLockedObjectIds,
@@ -44487,6 +44546,56 @@ case "mobius":
               />
   );
 
+  const geometryRenderTraceLastRef = useRef<Record<string, unknown> | null>(null);
+  useEffect(() => {
+    if (!import.meta.env.DEV && localStorage.getItem("MATH3D_GEOMETRY_RENDER_TRACE") !== "1") return;
+    if (mode !== "geometry") return;
+    const hover = geometryProceduralHoverPick
+      ? [
+          geometryProceduralHoverPick.meshKey ?? "",
+          geometryProceduralHoverPick.faceIndex ?? "",
+          geometryProceduralHoverPick.vertexIndex ?? "",
+          geometryProceduralHoverPick.point.x.toFixed(4),
+          geometryProceduralHoverPick.point.y.toFixed(4),
+          geometryProceduralHoverPick.point.z.toFixed(4),
+        ].join(":")
+      : null;
+    const pick = geometryProceduralPick
+      ? [
+          geometryProceduralPick.meshKey ?? "",
+          geometryProceduralPick.faceIndex ?? "",
+          geometryProceduralPick.vertexIndex ?? "",
+        ].join(":")
+      : null;
+    const snapshot: Record<string, unknown> = {
+      mode,
+      geometryMode,
+      geometryProceduralPanelTab,
+      geometryRightPanelTab,
+      geometryInspectorPanelTab,
+      geometrySelectedObjectId,
+      geometryDemoInteractionActive,
+      geometryEffectiveRenderQuality,
+      geometryEffectiveInteractionQualityMode,
+      hover,
+      pick,
+      objectCount: geometryObjects.length,
+      datasetObjectCount: geometryDatasetMeshObjects.length,
+      overlayOpen: geometryCreateActionsOverlayOpen,
+      dependencyHover: geometryHoveredDependencyNodeId,
+      cgalCheckedAt: cgalHealthState?.checkedAt ?? null,
+      surfacePerfTs: surfacePerformanceSnapshot?.ts ?? null,
+    };
+    const previous = geometryRenderTraceLastRef.current;
+    const changes = Object.entries(snapshot).filter(([key, value]) => !Object.is(previous?.[key], value));
+    if (changes.length) {
+      console.log("[math3d-render-trace]", changes.map(([key, value]) => `${key}=${String(value)}`).join(", "));
+    } else {
+      console.log("[math3d-render-trace] rerender without tracked state change");
+    }
+    geometryRenderTraceLastRef.current = snapshot;
+  });
+
   return (
     <div data-testid="app-shell" style={rootStyle}>
       {isDev && devError && (
@@ -52986,18 +53095,34 @@ case "mobius":
                           Enable transform gizmo
                         </label>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          <label style={{ fontSize: 11 }}>
-                            Mode
-                            <select
-                              value={geometryGizmoMode}
-                              onChange={(e) => setGeometryGizmoMode(e.target.value as "translate" | "rotate" | "scale")}
-                              style={{ marginLeft: 6 }}
-                            >
-                              <option value="translate">Move</option>
-                              <option value="rotate">Rotate</option>
-                              <option value="scale">Scale</option>
-                            </select>
-                          </label>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: 11 }}>
+                            <span style={{ fontWeight: 700 }}>Mode</span>
+                            {GEOMETRY_GIZMO_MODE_OPTIONS.map((option) => {
+                              const active = geometryGizmoMode === option.id;
+                              return (
+                                <button
+                                  key={`transform-tab-mode-${option.id}`}
+                                  type="button"
+                                  title={option.title}
+                                  onClick={() => {
+                                    setGeometryGizmoMode(option.id);
+                                    setGeometryGizmoEnabled(true);
+                                  }}
+                                  style={{
+                                    padding: "3px 8px",
+                                    borderRadius: 6,
+                                    border: "1px solid " + (active ? "#2563eb" : "#cbd5e1"),
+                                    background: active ? "#dbeafe" : "#fff",
+                                    color: active ? "#1d4ed8" : "#334155",
+                                    fontWeight: active ? 800 : 600,
+                                    fontSize: 11,
+                                  }}
+                                >
+                                  {option.label}
+                                </button>
+                              );
+                            })}
+                          </div>
                           <label style={{ fontSize: 11 }}>
                             Space
                             <select
@@ -59025,6 +59150,67 @@ case "mobius":
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto", flexWrap: "wrap" }}>
+                  {geometryMode === "procedural" && (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        border: "1px solid #93c5fd",
+                        borderRadius: 999,
+                        padding: "2px 6px",
+                        background: "#eff6ff",
+                      }}
+                    >
+                      <span style={{ fontSize: 10, color: "#1e3a8a", fontWeight: 800, marginRight: 2 }}>
+                        Transform
+                      </span>
+                      {GEOMETRY_GIZMO_MODE_OPTIONS.map((option) => {
+                        const active = geometryGizmoEnabled && geometryGizmoMode === option.id;
+                        return (
+                          <button
+                            key={`viewer-transform-mode-${option.id}`}
+                            type="button"
+                            title={option.title}
+                            aria-pressed={active}
+                            onClick={() => {
+                              setGeometryGizmoMode(option.id);
+                              setGeometryGizmoEnabled(true);
+                            }}
+                            style={{
+                              ...pill(active),
+                              fontSize: 11,
+                              lineHeight: 1.1,
+                              padding: "4px 9px",
+                            }}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                      {geometryGizmoMode === "scale" && (
+                        <label
+                          title="Scale all axes together"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            fontSize: 11,
+                            color: "#1e3a8a",
+                            fontWeight: 700,
+                            paddingLeft: 2,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={geometryUniformScaleLock}
+                            onChange={(event) => setGeometryUniformScaleLock(event.target.checked)}
+                          />
+                          Uniform
+                        </label>
+                      )}
+                    </div>
+                  )}
                   <div
                     style={{
                       display: "flex",
@@ -59959,13 +60145,16 @@ case "mobius":
                   overlayLabelSets={geometryProceduralViewerLabelSets}
                   dragEnabled={
                     (geometryMode === "procedural" &&
-                      geometryProceduralPanelTab !== "demonstrations") ||
+                      geometryProceduralPanelTab !== "demonstrations" &&
+                      geometryGizmoMode === "translate") ||
                     ((geometryMode === "scratch" || geometryMode === "workbook") &&
                       !!geometrySelectedConstructionFreePoint &&
                       !geometryPointPlacementEnabled)
                   }
                   onDragStart={
-                    geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations"
+                    geometryMode === "procedural" &&
+                    geometryProceduralPanelTab !== "demonstrations" &&
+                    geometryGizmoMode === "translate"
                       ? handleProceduralDragStart
                       : (geometryMode === "scratch" || geometryMode === "workbook") &&
                           geometrySelectedConstructionFreePoint &&
@@ -59974,7 +60163,9 @@ case "mobius":
                       : undefined
                   }
                   onDrag={
-                    geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations"
+                    geometryMode === "procedural" &&
+                    geometryProceduralPanelTab !== "demonstrations" &&
+                    geometryGizmoMode === "translate"
                       ? handleProceduralDrag
                       : (geometryMode === "scratch" || geometryMode === "workbook") &&
                           geometrySelectedConstructionFreePoint &&
@@ -59983,7 +60174,9 @@ case "mobius":
                       : undefined
                   }
                   onDragEnd={
-                    geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations"
+                    geometryMode === "procedural" &&
+                    geometryProceduralPanelTab !== "demonstrations" &&
+                    geometryGizmoMode === "translate"
                       ? handleProceduralDragEnd
                       : (geometryMode === "scratch" || geometryMode === "workbook") &&
                           geometrySelectedConstructionFreePoint &&
