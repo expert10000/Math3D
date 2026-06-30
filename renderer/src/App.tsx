@@ -43130,10 +43130,8 @@ case "mobius":
     isGeometryStackedLayout;
   const compactGeometryCreatePanel =
     geometryMode === "procedural" && geometryProceduralPanelTab === "create" && compactGeometryPanel;
-  const geometryCreateLeftPanelWidth =
-    geometryMode === "procedural" && geometryProceduralPanelTab === "create"
-      ? leftWidth
-      : leftWidth;
+  const geometrySidePanelWidth = Math.max(240, Math.min(360, Math.round(viewportSize.width * 0.18)));
+  const geometryCreateLeftPanelWidth = Math.min(leftWidth, geometrySidePanelWidth);
   const showGeometryFullWorkbookWorkspace =
     mode === "geometry" && geometryMode === "workbook" && geometryWorkbookUiMode === "full";
   const showSurfacesRightPanel =
@@ -43144,7 +43142,7 @@ case "mobius":
     mode === "geometry" && geometryMode === "procedural" && showRightPanel && !isPresentDisplayMode;
   const surfaceLeftPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(leftWidth, 280) : leftWidth;
   const surfaceRightPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(rightWidth, 280) : rightWidth;
-  const geometryRightPanelWidth = rightWidth;
+  const geometryRightPanelWidth = Math.min(rightWidth, geometrySidePanelWidth);
   const showSurfaceSideCompanions =
     (showGaussMap || (surfaceViewerKind === "complex" && complexMapShowSphere)) &&
     !(mode === "surfaces" && isPresentDisplayMode) &&
