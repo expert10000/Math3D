@@ -5239,6 +5239,14 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     setSceneEpoch((v) => v + 1);
 
+    const renderResizeFrame = () => {
+      if (suspendRenderingRef.current) return;
+      const now = performance.now();
+      controls.update();
+      lastRenderedAtRef.current = now;
+      renderer.render(scene, camera);
+    };
+
     const syncRendererSize = (reframe = false) => {
       const { width: rawWidth, height: rawHeight } = getSize();
       if (!Number.isFinite(rawWidth) || !Number.isFinite(rawHeight)) return;
@@ -5251,6 +5259,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h, false);
+      renderResizeFrame();
 
       const radius = radiusRef.current;
       if (!Number.isFinite(radius) || radius <= 0) return;
@@ -5274,6 +5283,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       controls.target.copy(center);
       camera.lookAt(center);
       controls.update();
+      renderResizeFrame();
     };
     forceReframeRef.current = () => {
       syncRendererSize(true);

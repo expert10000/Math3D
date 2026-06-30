@@ -58880,25 +58880,91 @@ case "mobius":
                   padding: "8px 10px",
                   background: "linear-gradient(180deg, #f8fbff 0%, #f1f6fd 100%)",
                   display: "flex",
-                  alignItems: "flex-start",
+                  alignItems: "stretch",
                   flexWrap: "wrap",
-                  gap: 10,
+                  gap: 8,
                 }}
               >
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 10, minWidth: 0, flex: "1 1 420px" }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#1e3a8a", marginRight: 2, paddingTop: 3 }}>Viewer</span>
+                <span style={{ alignSelf: "center", fontSize: 11, fontWeight: 800, color: "#1e3a8a", marginRight: 2 }}>
+                  Viewport
+                </span>
+                {geometryMode === "procedural" && (
                   <div
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 10,
+                      gap: 4,
                       flexWrap: "wrap",
-                      minWidth: 0,
-                      overflowX: "auto",
-                      scrollbarWidth: "thin",
-                      paddingBottom: 1,
+                      padding: "4px 6px",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: 6,
+                      background: "#fff",
+                      fontSize: 12,
                     }}
                   >
+                    <span style={{ fontWeight: 700, color: "#1e3a8a", marginRight: 2 }}>Transform</span>
+                    {GEOMETRY_GIZMO_MODE_OPTIONS.map((option) => {
+                      const active = geometryGizmoEnabled && geometryGizmoMode === option.id;
+                      return (
+                        <button
+                          key={`viewer-transform-mode-${option.id}`}
+                          type="button"
+                          title={option.title}
+                          aria-pressed={active}
+                          onClick={() => {
+                            setGeometryGizmoMode(option.id);
+                            setGeometryGizmoEnabled(true);
+                          }}
+                          style={{
+                            padding: "3px 8px",
+                            borderRadius: 6,
+                            border: "1px solid " + (active ? "#2563eb" : "#cbd5e1"),
+                            background: active ? "#dbeafe" : "#fff",
+                            color: active ? "#1d4ed8" : "#334155",
+                            fontWeight: active ? 800 : 600,
+                            fontSize: 11,
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                    {geometryGizmoMode === "scale" && (
+                      <label
+                        title="Scale all axes together"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                          fontSize: 11,
+                          color: "#1e3a8a",
+                          fontWeight: 700,
+                          paddingLeft: 2,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={geometryUniformScaleLock}
+                          onChange={(event) => setGeometryUniformScaleLock(event.target.checked)}
+                        />
+                        Uniform
+                      </label>
+                    )}
+                  </div>
+                )}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    padding: "4px 6px",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: 6,
+                    background: "#fff",
+                  }}
+                >
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#1e3a8a" }}>Display</span>
                 <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                   <input
                     type="checkbox"
@@ -59147,82 +59213,20 @@ case "mobius":
                     </label>
                   </>
                 )}
-                  </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto", flexWrap: "wrap" }}>
-                  {geometryMode === "procedural" && (
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                        border: "1px solid #93c5fd",
-                        borderRadius: 999,
-                        padding: "2px 6px",
-                        background: "#eff6ff",
-                      }}
-                    >
-                      <span style={{ fontSize: 10, color: "#1e3a8a", fontWeight: 800, marginRight: 2 }}>
-                        Transform
-                      </span>
-                      {GEOMETRY_GIZMO_MODE_OPTIONS.map((option) => {
-                        const active = geometryGizmoEnabled && geometryGizmoMode === option.id;
-                        return (
-                          <button
-                            key={`viewer-transform-mode-${option.id}`}
-                            type="button"
-                            title={option.title}
-                            aria-pressed={active}
-                            onClick={() => {
-                              setGeometryGizmoMode(option.id);
-                              setGeometryGizmoEnabled(true);
-                            }}
-                            style={{
-                              ...pill(active),
-                              fontSize: 11,
-                              lineHeight: 1.1,
-                              padding: "4px 9px",
-                            }}
-                          >
-                            {option.label}
-                          </button>
-                        );
-                      })}
-                      {geometryGizmoMode === "scale" && (
-                        <label
-                          title="Scale all axes together"
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 4,
-                            fontSize: 11,
-                            color: "#1e3a8a",
-                            fontWeight: 700,
-                            paddingLeft: 2,
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={geometryUniformScaleLock}
-                            onChange={(event) => setGeometryUniformScaleLock(event.target.checked)}
-                          />
-                          Uniform
-                        </label>
-                      )}
-                    </div>
-                  )}
                   <div
                     style={{
                       display: "flex",
                       alignItems: "center",
                       gap: 4,
                       border: "1px solid #d1d5db",
-                      borderRadius: 999,
-                      padding: "2px 6px",
+                      borderRadius: 6,
+                      padding: "4px 6px",
                       background: "#fff",
                     }}
                   >
-                    <span style={{ fontSize: 10, color: "#475467", marginRight: 2 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#1e3a8a", marginRight: 2 }}>
                       Quality {geometryGlobalQualityOverrideMode === "auto" && geometryHeavySceneActive ? "Auto→Fast" : ""}
                     </span>
                     <button
@@ -59250,6 +59254,20 @@ case "mobius":
                       Full
                     </button>
                   </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      flex: "1 1 420px",
+                      flexWrap: "wrap",
+                      padding: "4px 6px",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: 6,
+                      background: "#fff",
+                    }}
+                  >
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#1e3a8a", marginRight: 2 }}>Camera</span>
                   <button
                     type="button"
                     onClick={() => handleGeometryApplyViewPreset("3d")}
@@ -59323,6 +59341,7 @@ case "mobius":
                     />
                     Include helper objects in fit
                   </label>
+                  </div>
                 </div>
               </div>
               )}
