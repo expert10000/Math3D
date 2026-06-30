@@ -42201,6 +42201,175 @@ case "mobius":
     },
     [geometryScratchSceneSeed, openGeometryWorkbookMode, prepareGeometryCompareFromSelected]
   );
+  const geometryWorkflowStageLabel =
+    GEOMETRY_WORKFLOW_STEPS.find((step) => step.id === geometryWorkflowActiveStepId)?.label ?? "Create";
+  const geometryWorkflowCommandEntries = useMemo<
+    Array<{
+      key: string;
+      label: string;
+      panel?: GeometryProceduralPanelTab;
+      active?: boolean;
+      onClick?: () => void;
+    }>
+  >(() => {
+    const openProceduralPanel = (panel: GeometryProceduralPanelTab, options?: { compare?: boolean }) => () => {
+      setGeometryMode("procedural");
+      setGeometryProceduralPanelTab(panel);
+      if (options?.compare) prepareGeometryCompareFromSelected();
+    };
+    const openPlacementTarget = (target: GeometryCreatePlacementTarget) => () => {
+      setGeometryMode("procedural");
+      setGeometryProceduralPanelTab("create");
+      setGeometryCreatePlacementTarget(target);
+      setGeometryAddEnterPlacementMode(true);
+      setGeometryCreatePlacementSnapToGrid(target === "on-grid");
+    };
+    const openTransformGizmo = (gizmoMode: GeometryGizmoMode) => () => {
+      setGeometryMode("procedural");
+      setGeometryProceduralPanelTab("transform");
+      setGeometryGizmoMode(gizmoMode);
+      setGeometryGizmoEnabled(true);
+    };
+    if (geometryWorkflowActiveStepId === "create") {
+      return [
+        {
+          key: "primitive",
+          label: "Primitive",
+          panel: "create",
+          active: geometryProceduralPanelTab === "create" && !geometryAddEnterPlacementMode,
+          onClick: openProceduralPanel("create"),
+        },
+        { key: "curve", label: "Curve", panel: "construct", onClick: openProceduralPanel("construct") },
+        { key: "surface", label: "Surface", panel: "create", onClick: openProceduralPanel("create") },
+        { key: "mesh", label: "Mesh", panel: "object", onClick: openProceduralPanel("object") },
+        { key: "import", label: "Import", panel: "script", onClick: openProceduralPanel("script") },
+        { key: "library", label: "Library", panel: "debug", onClick: openProceduralPanel("debug") },
+      ];
+    }
+    if (geometryWorkflowActiveStepId === "place") {
+      return [
+        { key: "scene-tree", label: "Scene tree", panel: "scene", onClick: openProceduralPanel("scene") },
+        {
+          key: "click-viewer",
+          label: "Click viewer",
+          active: geometryProceduralPanelTab === "create" && geometryAddEnterPlacementMode && geometryCreatePlacementTarget === "click-viewer",
+          onClick: openPlacementTarget("click-viewer"),
+        },
+        {
+          key: "grid",
+          label: "Grid",
+          active: geometryProceduralPanelTab === "create" && geometryAddEnterPlacementMode && geometryCreatePlacementTarget === "on-grid",
+          onClick: openPlacementTarget("on-grid"),
+        },
+        {
+          key: "face",
+          label: "Face",
+          active:
+            geometryProceduralPanelTab === "create" &&
+            geometryAddEnterPlacementMode &&
+            geometryCreatePlacementTarget === "on-selected-face",
+          onClick: openPlacementTarget("on-selected-face"),
+        },
+        {
+          key: "vertex",
+          label: "Vertex",
+          active:
+            geometryProceduralPanelTab === "create" &&
+            geometryAddEnterPlacementMode &&
+            geometryCreatePlacementTarget === "on-selected-vertex",
+          onClick: openPlacementTarget("on-selected-vertex"),
+        },
+        {
+          key: "edge",
+          label: "Edge",
+          active:
+            geometryProceduralPanelTab === "create" &&
+            geometryAddEnterPlacementMode &&
+            geometryCreatePlacementTarget === "along-selected-edge",
+          onClick: openPlacementTarget("along-selected-edge"),
+        },
+      ];
+    }
+    if (geometryWorkflowActiveStepId === "transform") {
+      return [
+        {
+          key: "move",
+          label: "Move",
+          panel: "transform",
+          active: geometryProceduralPanelTab === "transform" && geometryGizmoEnabled && geometryGizmoMode === "translate",
+          onClick: openTransformGizmo("translate"),
+        },
+        {
+          key: "rotate",
+          label: "Rotate",
+          panel: "transform",
+          active: geometryProceduralPanelTab === "transform" && geometryGizmoEnabled && geometryGizmoMode === "rotate",
+          onClick: openTransformGizmo("rotate"),
+        },
+        {
+          key: "scale",
+          label: "Scale",
+          panel: "transform",
+          active: geometryProceduralPanelTab === "transform" && geometryGizmoEnabled && geometryGizmoMode === "scale",
+          onClick: openTransformGizmo("scale"),
+        },
+        { key: "mirror", label: "Mirror", panel: "transform", onClick: openProceduralPanel("transform") },
+        { key: "align", label: "Align", panel: "transform", onClick: openProceduralPanel("transform") },
+        { key: "boolean", label: "Boolean", panel: "transform", onClick: openProceduralPanel("transform") },
+      ];
+    }
+    if (geometryWorkflowActiveStepId === "analyze") {
+      return [
+        {
+          key: "compare",
+          label: "Compare",
+          panel: "analysis",
+          active: geometryProceduralPanelTab === "analysis",
+          onClick: openProceduralPanel("analysis", { compare: true }),
+        },
+        { key: "measurements", label: "Measurements", panel: "theory", onClick: openProceduralPanel("theory") },
+        { key: "demonstrations", label: "Demonstrations", panel: "demonstrations", onClick: openProceduralPanel("demonstrations") },
+        { key: "gaussian", label: "Gaussian", panel: "analysis", onClick: openProceduralPanel("analysis", { compare: true }) },
+        { key: "curvature", label: "Curvature", panel: "analysis", onClick: openProceduralPanel("analysis", { compare: true }) },
+        { key: "topology", label: "Topology", panel: "euler", onClick: openProceduralPanel("euler") },
+        { key: "reports", label: "Reports", panel: "history", onClick: openProceduralPanel("history") },
+      ];
+    }
+    return [
+      {
+        key: "workbook",
+        label: "Workbook",
+        active: geometryMode === "workbook",
+        onClick: () => {
+          openGeometryWorkbookMode(geometryScratchSceneSeed);
+          setGeometryWorkbookUiMode("full");
+        },
+      },
+      {
+        key: "selected",
+        label: "Selected",
+        panel: "object",
+        onClick: openProceduralPanel("object"),
+      },
+      { key: "glb", label: "GLB", onClick: () => void handleExportAllVisibleGeometryObjectsGlb() },
+      { key: "snapshot", label: "Snapshot", onClick: handleSaveWorkbook },
+      { key: "reports", label: "Reports", panel: "history", onClick: openProceduralPanel("history") },
+    ];
+  }, [
+    geometryAddEnterPlacementMode,
+    geometryCreatePlacementTarget,
+    geometryGizmoEnabled,
+    geometryGizmoMode,
+    geometryMode,
+    geometryProceduralPanelTab,
+    geometryScratchSceneSeed,
+    geometryWorkflowActiveStepId,
+    handleExportAllVisibleGeometryObjectsGlb,
+    handleSaveWorkbook,
+    openGeometryWorkbookMode,
+    prepareGeometryCompareFromSelected,
+    setGeometryCreatePlacementSnapToGrid,
+  ]);
   const activeWorkbookStage = useMemo(
     () => activeWorkbook?.stages.find((stage) => stage.id === activeStageId) ?? null,
     [activeWorkbook, activeStageId]
@@ -45862,44 +46031,45 @@ case "mobius":
                     ...styles.groupWide,
                     display: "flex",
                     alignItems: "center",
-                    gap: 6,
+                    justifyContent: "center",
+                    gap: 7,
                     flexWrap: "wrap",
-                    border: "1px solid #dbe4f0",
+                    border: "1px solid #bfdbfe",
                     borderRadius: 10,
-                    padding: "5px 8px",
-                    background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
+                    padding: "6px 10px",
+                    background: "linear-gradient(180deg, #ffffff 0%, #eff6ff 100%)",
                   }}
                 >
-                  <span style={{ fontSize: 10.5, fontWeight: 700, color: "#334155", marginRight: 2 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "#1d4ed8", marginRight: 3 }}>
                     Workflow
                   </span>
                   {GEOMETRY_WORKFLOW_STEPS.map((step, index) => {
                     const active = geometryWorkflowActiveStepId === step.id;
                     return (
                       <React.Fragment key={`geometry-workflow-step-${step.id}`}>
-                        {index > 0 && <span style={{ color: "#94a3b8", fontSize: 11 }}>→</span>}
+                        {index > 0 && <span style={{ color: "#94a3b8", fontSize: 11 }}>{"->"}</span>}
                         <button
                           type="button"
                           onClick={() => handleGeometryWorkflowStepClick(step.id)}
                           aria-current={active ? "step" : undefined}
                           style={{
                             ...pill(active),
-                            fontSize: 10.5,
+                            fontSize: 11,
                             border: "1px solid " + (active ? "#0a66c2" : "#cbd5e1"),
-                            background: active ? "#e6f0ff" : "#ffffff",
+                            background: active ? "linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%)" : "#ffffff",
                             color: active ? "#0a66c2" : "#334155",
-                            boxShadow: active ? "0 3px 8px rgba(10, 102, 194, 0.15)" : "none",
-                            padding: "3px 9px",
+                            boxShadow: active ? "0 4px 10px rgba(37, 99, 235, 0.2)" : "none",
+                            padding: "4px 10px",
                           }}
                         >
-                          {step.label}
+                          {index + 1} {step.label}
                         </button>
                       </React.Fragment>
                     );
                   })}
                 </div>
               )}
-              {geometryMode === "procedural" && (
+              {showGeometryWorkflowStrip && (
                 <div
                   style={{
                     ...styles.group,
@@ -45914,41 +46084,24 @@ case "mobius":
                     background: "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
                   }}
                 >
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#334155", marginRight: 2 }}>Panel</span>
-                  {([
-                    { key: "create", id: "create" as const, label: "Create" },
-                    { key: "scene", id: "scene" as const, label: "Scene" },
-                    { key: "debug", id: "debug" as const, label: "Presets" },
-                    { key: "script", id: "script" as const, label: "Script" },
-                    { key: "object", id: "object" as const, label: "Object" },
-                    { key: "construct", id: "construct" as const, label: "Construct" },
-                    { key: "transform", id: "transform" as const, label: "Edit" },
-                    { key: "view", id: "view" as const, label: "View" },
-                    { key: "history", id: "history" as const, label: "History" },
-                    { key: "analysis", id: "analysis" as const, label: "Analyze" },
-                    { key: "compare", id: "analysis" as const, label: "Compare" },
-                    { key: "demonstrations", id: "demonstrations" as const, label: "Demonstrations" },
-                    { key: "theory", id: "theory" as const, label: "Measure" },
-                  ] as const).map((entry) => {
-                    const active = geometryProceduralPanelTab === entry.id;
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "#334155", marginRight: 2 }}>
+                    {geometryWorkflowStageLabel}
+                  </span>
+                  {geometryWorkflowCommandEntries.map((entry) => {
+                    const active = entry.active ?? (entry.panel != null && geometryProceduralPanelTab === entry.panel);
                     return (
                       <button
-                        key={`geometry-procedural-panel-top-${entry.key}`}
+                        key={`geometry-workflow-command-${geometryWorkflowActiveStepId}-${entry.key}`}
                         type="button"
-                        onClick={() => {
-                          setGeometryProceduralPanelTab(entry.id);
-                          if (entry.id === "analysis") {
-                            prepareGeometryCompareFromSelected();
-                          }
-                        }}
+                        onClick={entry.onClick}
                         aria-pressed={active}
                         style={{
                           ...pill(active),
                           fontSize: 11,
-                          border: "1px solid " + (active ? "#334155" : "#99a1ac"),
-                          background: active ? "linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%)" : "#f8fafc",
-                          color: active ? "#0f172a" : "#334155",
-                          boxShadow: active ? "0 4px 10px rgba(51, 65, 85, 0.18)" : "none",
+                          border: "1px solid " + (active ? "#0a66c2" : "#99a1ac"),
+                          background: active ? "linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%)" : "#f8fafc",
+                          color: active ? "#1e3a8a" : "#334155",
+                          boxShadow: active ? "0 4px 10px rgba(37, 99, 235, 0.2)" : "none",
                         }}
                       >
                         {entry.label}
