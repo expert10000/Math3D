@@ -258,7 +258,7 @@ const setCheckboxValueIfVisible = async (page: Page, label: string, checked: boo
 };
 
 const prepareGeometryCaptureUi = async (page: Page): Promise<void> => {
-  const transformTab = page.getByRole("button", { name: "Transform", exact: true });
+  const transformTab = page.getByRole("button", { name: /^(?:\d+\s+)?Transform$/ });
   if ((await transformTab.count()) > 0 && (await transformTab.first().isVisible())) {
     await clickFirstVisible(transformTab, 'button "Transform"');
     await settleRenderer(page);
@@ -266,11 +266,41 @@ const prepareGeometryCaptureUi = async (page: Page): Promise<void> => {
   await setCheckboxValueIfVisible(page, "Enable transform gizmo", false);
   await setCheckboxValueIfVisible(page, "Bounding box", false);
   await setCheckboxValueIfVisible(page, "Show 3D gizmo", false);
-  const sceneTab = page.getByRole("button", { name: "Scene", exact: true });
-  if ((await sceneTab.count()) > 0 && (await sceneTab.first().isVisible())) {
-    await clickFirstVisible(sceneTab, 'button "Scene"');
+  const createStep = page.getByRole("button", { name: /^(?:\d+\s+)?Create$/ });
+  if ((await createStep.count()) > 0 && (await createStep.first().isVisible())) {
+    await clickFirstVisible(createStep, 'button "Create"');
     await settleRenderer(page);
   }
+};
+
+const openGeometryCreateTools = async (page: Page): Promise<void> => {
+  await clickFirstVisible(page.getByRole("button", { name: /^(?:\d+\s+)?Create$/ }), 'button "Create"');
+  await expect(page.getByTestId("geometry-gallery")).toBeVisible();
+};
+
+const openGeometrySceneTree = async (page: Page): Promise<void> => {
+  await clickFirstVisible(page.getByRole("button", { name: /^(?:\d+\s+)?Place$/ }), 'button "Place"');
+  await clickFirstVisibleButton(page, "Scene tree");
+  await expect(page.getByTestId("unified-object-tree")).toBeVisible();
+};
+
+const readGeometryStatusMeshCounts = async (page: Page): Promise<{ vertices: number; faces: number }> => {
+  const text = await page.getByTestId("app-status-bar").innerText();
+  const match = text.match(/(\d[\d,]*)\s+vertices\s*\/\s*(\d[\d,]*)\s+faces/i);
+  if (!match) return { vertices: 0, faces: 0 };
+  return {
+    vertices: Number(match[1].replace(/,/g, "")),
+    faces: Number(match[2].replace(/,/g, "")),
+  };
+};
+
+const runGeometryScript = async (page: Page, script: string): Promise<void> => {
+  await openGeometryCreateTools(page);
+  await clickFirstVisibleButton(page, "Script");
+  await expect(page.getByText("Procedural scripting", { exact: true })).toBeVisible();
+  await page.locator("textarea").first().fill(script);
+  await clickFirstVisibleButton(page, "Script -> scene");
+  await settleRenderer(page);
 };
 
 const openProceduralGeometry = async (page: Page): Promise<void> => {
@@ -485,13 +515,9 @@ const captureScene = async (
 };
 
 const clearGeometryObjects = async (page: Page): Promise<void> => {
-  const rows = page.getByTestId("geometry-object-row");
-  while (true) {
-    const count = await rows.count();
-    if (count === 0) break;
-    await page.getByTestId("geometry-object-delete").first().click();
-    await expect.poll(async () => rows.count()).toBeLessThan(count);
-  }
+  await runGeometryScript(page, "clear");
+  await expect.poll(async () => (await readGeometryStatusMeshCounts(page)).vertices).toBe(0);
+  await openGeometryCreateTools(page);
 };
 
 const getIdsByTestIdPrefix = async (
@@ -530,7 +556,7 @@ const captureObjectGallery = async (
 
     await clearGeometryObjects(page);
     await clickFirstVisible(quickAdd, `data-testid=geometry-gallery-quick-add-${id}`);
-    await expect.poll(async () => page.getByTestId("geometry-object-row").count()).toBeGreaterThan(0);
+    await expect.poll(async () => (await readGeometryStatusMeshCounts(page)).vertices).toBeGreaterThan(0);
     await settleRenderer(page);
 
     const outPath = path.join(outputRoot, "objects", `${id}.png`);

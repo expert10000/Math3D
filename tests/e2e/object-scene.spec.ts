@@ -57,8 +57,8 @@ const resetStorage = async (page: Page) => {
   await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
 };
 
-const clickFirstVisibleButton = async (page: Page, name: string) => {
-  const buttons = page.getByRole("button", { name, exact: true });
+const clickFirstVisibleButton = async (page: Page, name: string | RegExp) => {
+  const buttons = page.getByRole("button", typeof name === "string" ? { name, exact: true } : { name });
   const count = await buttons.count();
   for (let i = 0; i < count; i++) {
     const button = buttons.nth(i);
@@ -66,7 +66,7 @@ const clickFirstVisibleButton = async (page: Page, name: string) => {
     await button.click();
     return;
   }
-  throw new Error(`Visible button not found: ${name}`);
+  throw new Error(`Visible button not found: ${String(name)}`);
 };
 
 const openProceduralGeometry = async (page: Page) => {
@@ -74,6 +74,12 @@ const openProceduralGeometry = async (page: Page) => {
   await expect(page.getByRole("heading", { name: "Geometry Viewer", exact: true })).toBeVisible();
   await clickFirstVisibleButton(page, "Procedural");
   await expect(page.getByTestId("geometry-scene-stats")).toBeVisible();
+};
+
+const openGeometrySceneTree = async (page: Page) => {
+  await clickFirstVisibleButton(page, /^(?:\d+\s+)?Place$/);
+  await clickFirstVisibleButton(page, "Scene tree");
+  await expect(page.getByTestId("unified-object-tree")).toBeVisible();
 };
 
 const openWorkbookPanel = async (page: Page) => {
@@ -146,17 +152,17 @@ test("Object/scene behavior: create, toggle visibility, remove, overlay state re
 
     await resetStorage(page);
     await openProceduralGeometry(page);
-    await clickFirstVisibleButton(page, "Scene");
+    await openGeometrySceneTree(page);
 
     const initialStats = await readGeometryStats(page);
 
-    await clickFirstVisibleButton(page, "Create");
+    await clickFirstVisibleButton(page, /^(?:\d+\s+)?Create$/);
     await page.getByTestId("geometry-add-object").click();
     await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(initialStats.objectCount + 1);
     const createdStats = await readGeometryStats(page);
     expect(createdStats.visibleCount).toBe(initialStats.visibleCount + 1);
 
-    await clickFirstVisibleButton(page, "Scene");
+    await openGeometrySceneTree(page);
     const sceneTree = page.getByTestId("unified-object-tree");
     const hideButton = sceneTree.getByRole("button", { name: /^Hide$/ }).first();
     await expect(hideButton).toBeVisible();

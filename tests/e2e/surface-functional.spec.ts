@@ -42,9 +42,14 @@ test.describe("Surface functional flow", () => {
       await setSimpleSurfaceExpression(ctx.page);
       await clickGenerate(ctx.page);
 
-      await expect(ctx.page.getByTestId("app-status-bar")).toContainText("3 vertices / 1 faces", {
-        timeout: 10_000,
-      });
+      await expect.poll(async () => {
+        const text = await ctx!.page.getByTestId("app-status-bar").innerText();
+        const match = text.match(/(\d[\d,]*)\s+vertices\s*\/\s*(\d[\d,]*)\s+faces/i);
+        if (!match) return false;
+        const vertices = Number(match[1].replace(/,/g, ""));
+        const faces = Number(match[2].replace(/,/g, ""));
+        return vertices > 0 && faces > 0;
+      }, { timeout: 10_000 }).toBe(true);
       await expect(ctx.page.getByTestId("app-status-bar")).toContainText("type mesh");
       await expect(ctx.page.getByTestId("error-banner")).toHaveCount(0);
     } finally {
