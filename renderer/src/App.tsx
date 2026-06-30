@@ -42247,7 +42247,7 @@ case "mobius":
         { key: "curve", label: "Curve", panel: "construct", onClick: openProceduralPanel("construct") },
         { key: "surface", label: "Surface", panel: "create", onClick: openProceduralPanel("create") },
         { key: "mesh", label: "Mesh", panel: "object", onClick: openProceduralPanel("object") },
-        { key: "import", label: "Import", panel: "script", onClick: openProceduralPanel("script") },
+        { key: "script", label: "Script", panel: "script", onClick: openProceduralPanel("script") },
         { key: "library", label: "Library", panel: "debug", onClick: openProceduralPanel("debug") },
       ];
     }
