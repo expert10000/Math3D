@@ -42201,8 +42201,13 @@ case "mobius":
     },
     [geometryScratchSceneSeed, openGeometryWorkbookMode, prepareGeometryCompareFromSelected]
   );
-  const geometryWorkflowStageLabel =
-    GEOMETRY_WORKFLOW_STEPS.find((step) => step.id === geometryWorkflowActiveStepId)?.label ?? "Create";
+  const geometryWorkflowToolTitle: Record<GeometryWorkflowStepId, string> = {
+    create: "Create tools",
+    place: "Placement tools",
+    transform: "Transform tools",
+    analyze: "Analysis tools",
+    export: "Export tools",
+  };
   const geometryWorkflowCommandEntries = useMemo<
     Array<{
       key: string;
@@ -42370,6 +42375,14 @@ case "mobius":
     prepareGeometryCompareFromSelected,
     setGeometryCreatePlacementSnapToGrid,
   ]);
+  const geometryWorkflowActiveCommandKey = useMemo(() => {
+    const explicitActive = geometryWorkflowCommandEntries.find((entry) => entry.active === true);
+    if (explicitActive) return explicitActive.key;
+    const panelActive = geometryWorkflowCommandEntries.find(
+      (entry) => entry.active !== false && entry.panel != null && geometryProceduralPanelTab === entry.panel
+    );
+    return panelActive?.key ?? geometryWorkflowCommandEntries[0]?.key ?? null;
+  }, [geometryProceduralPanelTab, geometryWorkflowCommandEntries]);
   const activeWorkbookStage = useMemo(
     () => activeWorkbook?.stages.find((stage) => stage.id === activeStageId) ?? null,
     [activeWorkbook, activeStageId]
@@ -46084,11 +46097,20 @@ case "mobius":
                     background: "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
                   }}
                 >
-                  <span style={{ fontSize: 11, fontWeight: 800, color: "#334155", marginRight: 2 }}>
-                    {geometryWorkflowStageLabel}
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color: "#1f2937",
+                      marginRight: 4,
+                      minWidth: 96,
+                      flex: "0 0 auto",
+                    }}
+                  >
+                    {geometryWorkflowToolTitle[geometryWorkflowActiveStepId]}
                   </span>
                   {geometryWorkflowCommandEntries.map((entry) => {
-                    const active = entry.active ?? (entry.panel != null && geometryProceduralPanelTab === entry.panel);
+                    const active = entry.key === geometryWorkflowActiveCommandKey;
                     return (
                       <button
                         key={`geometry-workflow-command-${geometryWorkflowActiveStepId}-${entry.key}`}
