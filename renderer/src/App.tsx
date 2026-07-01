@@ -4707,7 +4707,7 @@ const SURFACE_MESH_ASSET_PRESETS: SurfaceMeshAssetPreset[] = [
   {
     id: "mesh_stanford_bunny",
     label: "Stanford bunny (OBJ)",
-    assetUrl: "/mesh-presets/stanford-bunny.obj",
+    assetUrl: "mesh-presets/stanford-bunny.obj",
     fileName: "stanford-bunny.obj",
   },
 ];
@@ -34075,12 +34075,12 @@ case "mobius":
       setSurfaceMeshImportBusy(true);
       setSurfaceMeshImportError(null);
       try {
-        const resp = await fetch(preset.assetUrl);
+        const resp = await fetch(new URL(preset.assetUrl, window.location.href));
         if (!resp.ok) throw new Error(`Failed to fetch ${preset.label} (${resp.status})`);
         const blob = await resp.blob();
         const file = new File([blob], preset.fileName, { type: blob.type || "application/octet-stream" });
         const base = await loadSurfaceMeshFromFile([file], { mergeVertices: surfaceMeshMergeVertices });
-        const meshReady = applySurfaceMeshOps(base);
+        const meshReady = { ...applySurfaceMeshOps(base), label: preset.label };
         setMeshDataset(meshReady);
         setDatasetKind("mesh");
         setSurfaceViewerKind("mesh");

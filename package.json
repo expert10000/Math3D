@@ -55,6 +55,8 @@
     "test:app:e2e:memory-profile:module-chain": "powershell -ExecutionPolicy Bypass -File scripts/run-memory-profile-module-chain.ps1",
     "test:app:e2e:memory-profile:surface-gallery": "powershell -ExecutionPolicy Bypass -File scripts/run-memory-profile-surface-gallery.ps1",
     "test:app:e2e:memory-profile:summary": "node scripts/summarize-memory-profiles.mjs",
+    "test:app:e2e:release-149-mesh-geometry": "powershell -ExecutionPolicy Bypass -File scripts/run-release-149-mesh-geometry.ps1",
+    "test:app:e2e:release-149-topology-complex": "powershell -ExecutionPolicy Bypass -File scripts/run-release-149-topology-complex.ps1",
     "test:app:e2e:worker-failures": "playwright test tests/e2e/worker-failure-injection.spec.ts",
     "test:app:e2e:packaged": "playwright test tests/e2e/packaged-desktop.spec.ts",
     "phase5:mobile:gate": "node scripts/mobile-phase5-gate.mjs",

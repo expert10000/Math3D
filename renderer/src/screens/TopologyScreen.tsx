@@ -5050,6 +5050,7 @@ export const TopologyScreen: React.FC = () => {
                     <button
                       key={`topology-preset-${preset.id}`}
                       type="button"
+                      data-testid={`topology-preset-card-${preset.id}`}
                       onClick={() => applyPreset(preset.id)}
                       style={{
                         textAlign: "left",
@@ -5078,7 +5079,7 @@ export const TopologyScreen: React.FC = () => {
               >
                 <div style={{ fontSize: 11, fontWeight: 700 }}>Selected polygon preset</div>
                 <div style={{ fontSize: 11 }}>
-                  <strong>{activePresetLabel}</strong>
+                  <strong data-testid="topology-selected-preset">{activePresetLabel}</strong>
                 </div>
                 <div style={{ fontSize: 10, color: "#475569", fontFamily: "ui-monospace, Consolas, monospace" }}>
                   word: {selectedPresetBoundaryWord}
@@ -5308,7 +5309,7 @@ export const TopologyScreen: React.FC = () => {
           </div>
           <div style={{ fontSize: 10, color: dirty ? "#b45309" : "#166534" }}>{dirty ? "Unsaved changes." : "Saved."}</div>
           {currentDocumentPath && <div style={{ fontSize: 10, color: "#475569" }}>Path: {currentDocumentPath}</div>}
-          {docStatus && <div style={{ fontSize: 10, color: "#166534" }}>{docStatus}</div>}
+          {docStatus && <div data-testid="topology-doc-status" style={{ fontSize: 10, color: "#166534" }}>{docStatus}</div>}
           {docError && <div style={{ fontSize: 10, color: "#b42318" }}>{docError}</div>}
         </section>
       </div>
