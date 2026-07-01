@@ -2,7 +2,7 @@
   "name": "math3d",
   "private": true,
   "license": "Apache-2.0",
-  "version": "1.4.7",
+  "version": "1.4.8",
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -49,6 +49,12 @@
     "test:app:e2e:thumbnails": "set MATH3D_RUN_THUMBNAIL_CAPTURE_E2E=1&& playwright test tests/e2e/gallery-thumbnail-capture.spec.ts",
     "test:app:e2e:visual": "playwright test tests/e2e/gallery-visual.spec.ts",
     "test:app:e2e:functional": "playwright test tests/e2e/surface-functional.spec.ts",
+    "test:app:e2e:memory-profile": "playwright test tests/e2e/memory-profile.spec.ts --reporter=list",
+    "test:app:e2e:memory-profile:compare": "powershell -ExecutionPolicy Bypass -File scripts/run-memory-profile-comparison.ps1",
+    "test:app:e2e:memory-profile:module-clicks": "powershell -ExecutionPolicy Bypass -File scripts/run-memory-profile-module-clicks.ps1",
+    "test:app:e2e:memory-profile:module-chain": "powershell -ExecutionPolicy Bypass -File scripts/run-memory-profile-module-chain.ps1",
+    "test:app:e2e:memory-profile:surface-gallery": "powershell -ExecutionPolicy Bypass -File scripts/run-memory-profile-surface-gallery.ps1",
+    "test:app:e2e:memory-profile:summary": "node scripts/summarize-memory-profiles.mjs",
     "test:app:e2e:worker-failures": "playwright test tests/e2e/worker-failure-injection.spec.ts",
     "test:app:e2e:packaged": "playwright test tests/e2e/packaged-desktop.spec.ts",
     "phase5:mobile:gate": "node scripts/mobile-phase5-gate.mjs",

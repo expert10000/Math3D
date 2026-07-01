@@ -1452,19 +1452,19 @@
     lodash "^4.17.15"
     tmp-promise "^3.0.2"
 
-"@math3d/api-client@file:../../packages/api-client", "@math3d/api-client@file:C:\\Math3D-1.4.5-guard\\packages\\api-client":
-  version "1.4.7"
+"@math3d/api-client@file:../../packages/api-client", "@math3d/api-client@file:C:\\Math3D\\packages\\api-client":
+  version "1.4.8"
   resolved "file:packages/api-client"
   dependencies:
     "@math3d/core" "file:../core"
     base-64 "^1.0.0"
 
-"@math3d/app-desktop@file:C:\\Math3D-1.4.5-guard\\apps\\desktop":
-  version "1.4.7"
+"@math3d/app-desktop@file:C:\\Math3D\\apps\\desktop":
+  version "1.4.8"
   resolved "file:apps/desktop"
 
-"@math3d/app-mobile@file:C:\\Math3D-1.4.5-guard\\apps\\mobile":
-  version "1.4.7"
+"@math3d/app-mobile@file:C:\\Math3D\\apps\\mobile":
+  version "1.4.8"
   resolved "file:apps/mobile"
   dependencies:
     "@math3d/api-client" "file:../../packages/api-client"
@@ -1479,31 +1479,31 @@
     react-native "0.81.5"
     three "0.181.2"
 
-"@math3d/app-web@file:C:\\Math3D-1.4.5-guard\\apps\\web":
-  version "1.4.7"
+"@math3d/app-web@file:C:\\Math3D\\apps\\web":
+  version "1.4.8"
   resolved "file:apps/web"
 
-"@math3d/core@file:../../packages/core", "@math3d/core@file:../core", "@math3d/core@file:C:\\Math3D-1.4.5-guard\\packages\\core":
-  version "1.4.7"
+"@math3d/core@file:../../packages/core", "@math3d/core@file:../core", "@math3d/core@file:C:\\Math3D\\packages\\core":
+  version "1.4.8"
   resolved "file:packages/core"
 
-"@math3d/public-site@file:C:\\Math3D-1.4.5-guard\\apps\\public-site":
-  version "1.4.7"
+"@math3d/public-site@file:C:\\Math3D\\apps\\public-site":
+  version "1.4.8"
   resolved "file:apps/public-site"
 
-"@math3d/renderer-web@file:C:\\Math3D-1.4.5-guard\\packages\\renderer-web":
-  version "1.4.7"
+"@math3d/renderer-web@file:C:\\Math3D\\packages\\renderer-web":
+  version "1.4.8"
   resolved "file:packages/renderer-web"
   dependencies:
     "@math3d/core" "file:../core"
     three "^0.181.2"
 
-"@math3d/ui@file:C:\\Math3D-1.4.5-guard\\packages\\ui":
-  version "1.4.7"
+"@math3d/ui@file:C:\\Math3D\\packages\\ui":
+  version "1.4.8"
   resolved "file:packages/ui"
 
-"@math3d/workbook@file:C:\\Math3D-1.4.5-guard\\packages\\workbook":
-  version "1.4.7"
+"@math3d/workbook@file:C:\\Math3D\\packages\\workbook":
+  version "1.4.8"
   resolved "file:packages/workbook"
   dependencies:
     "@math3d/core" "file:../core"
