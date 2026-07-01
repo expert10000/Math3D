@@ -228,7 +228,9 @@ async function waitAfterAction(
   let recordedBlank = false;
   let recordedVisualBlank = false;
   let nextVisualCheckAt = 0;
+  let nextGcAt = 0;
   const visualChecksEnabled = process.env.MATH3D_MEMORY_PROFILE_VISUAL_WHITE_SCREEN !== "0";
+  const forceGcEnabled = process.env.MATH3D_MEMORY_PROFILE_FORCE_GC === "1";
   while (Date.now() < deadline) {
     if (page.isClosed()) {
       if (!recordedBlank) {
@@ -254,6 +256,12 @@ async function waitAfterAction(
         hasHeading: state.hasHeading,
       });
       recordedBlank = true;
+    }
+    if (forceGcEnabled && Date.now() >= nextGcAt) {
+      nextGcAt = Date.now() + 1_000;
+      await page.evaluate(() => {
+        (globalThis as { gc?: () => void }).gc?.();
+      }).catch(() => undefined);
     }
     if (visualChecksEnabled && !recordedVisualBlank && Date.now() >= nextVisualCheckAt) {
       nextVisualCheckAt = Date.now() + 1_000;

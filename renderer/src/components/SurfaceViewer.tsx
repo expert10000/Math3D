@@ -5495,7 +5495,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         }
       });
 
+      renderer.setAnimationLoop(null);
+      renderer.renderLists.dispose();
       renderer.dispose();
+      (renderer as { forceContextLoss?: () => void }).forceContextLoss?.();
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
       rendererRef.current = null;
       applyProbeFromDomainRef.current = null;

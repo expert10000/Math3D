@@ -48,6 +48,7 @@ const rendererMemoryWarnSamples = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMOR
 const rendererMemoryReloadSamples = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_RELOAD_SAMPLES", 15);
 const rendererMemoryEmergencySamples = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_EMERGENCY_SAMPLES", 2);
 const rendererGpuMode = String(process.env.MATH3D_GPU_MODE ?? (isGeometrySmoke ? "swiftshader" : "hardware")).toLowerCase();
+const rendererV8Mode = String(process.env.MATH3D_V8_MODE ?? (process.platform === "win32" ? "jitless" : "default")).toLowerCase();
 type MainWindowOptions = {
   memoryGuardRecovery?: boolean;
 };
@@ -65,6 +66,12 @@ if (rendererGpuMode === "swiftshader") {
   app.commandLine.appendSwitch("use-angle", "swiftshader");
 } else if (rendererGpuMode !== "hardware") {
   app.disableHardwareAcceleration();
+}
+
+if (rendererV8Mode === "jitless") {
+  // Windows/Electron 39 can briefly inflate renderer working set by ~10 GiB while
+  // V8 warms JIT code for the bundled renderer. Jitless mode removes that spike.
+  app.commandLine.appendSwitch("js-flags", "--jitless");
 }
 
 // Work around Windows occlusion/background throttling glitches that can freeze
