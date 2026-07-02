@@ -9343,13 +9343,15 @@ const App: React.FC = () => {
       }
     }
     let cardCount = 0;
-    for (const section of geometryGallerySections) {
-      for (const card of section.cards) {
-        if (card.id === geometryGallerySelectedCard?.id) continue;
-        addThumb(card.renderedThumbnailDataUrl, card.diagramThumbnailDataUrl);
-        cardCount += 1;
-        if (cardCount >= GEOMETRY_GALLERY_PREFETCH_CARD_LIMIT) {
-          return Array.from(urls);
+    if (GEOMETRY_GALLERY_PREFETCH_CARD_LIMIT > 0) {
+      for (const section of geometryGallerySections) {
+        for (const card of section.cards) {
+          if (card.id === geometryGallerySelectedCard?.id) continue;
+          addThumb(card.renderedThumbnailDataUrl, card.diagramThumbnailDataUrl);
+          cardCount += 1;
+          if (cardCount >= GEOMETRY_GALLERY_PREFETCH_CARD_LIMIT) {
+            return Array.from(urls);
+          }
         }
       }
     }
@@ -64482,8 +64484,8 @@ const GALLERY_SORT_OPTIONS: Array<{ value: GallerySortPreset; label: string }> =
   { value: "complexity", label: "Complexity" },
   { value: "demoReady", label: "Demo-ready" },
 ];
-const GEOMETRY_GALLERY_PREFETCH_CARD_LIMIT = 18;
-const GEOMETRY_GALLERY_PREFETCH_PRESET_LIMIT = 3;
+const GEOMETRY_GALLERY_PREFETCH_CARD_LIMIT = 0;
+const GEOMETRY_GALLERY_PREFETCH_PRESET_LIMIT = 0;
 
 const thumbByViewMode = (
   renderedThumb: string,

@@ -329,6 +329,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
       meshInteractionHideWireframe={meshInteractionHideWireframe}
       meshInteractionHideSceneOverlays={meshInteractionHideSceneOverlays}
       onMeshInteractionStateChange={onMeshInteractionStateChange}
+      sampleSetEnabled={Boolean(pickEnabled || dragEnabled || gizmoEnabled)}
       dragEnabled={dragEnabled}
       onDragStart={onDragStart}
       onDrag={onDrag}

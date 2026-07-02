@@ -1382,6 +1382,7 @@ type Props = {
   onGaussPoints?: (points: GaussPoint[]) => void;
   gaussHighlightPoint?: { x: number; y: number; z: number } | null;
   sampleMaxPoints?: number;
+  sampleSetEnabled?: boolean;
   includeSamplesUV?: boolean;
   onSampleSet?: (set: SurfaceSampleSet | null) => void;
   selectionMask?: SelectionMask | null;
@@ -1640,6 +1641,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     onGaussPoints,
     gaussHighlightPoint = null,
     sampleMaxPoints = 900,
+    sampleSetEnabled = true,
     includeSamplesUV = true,
     onSampleSet,
     selectionMask = null,
@@ -4341,53 +4343,55 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
     });
 
-    const aggregatedSamples: SurfaceSampleSet["samples"] = [];
-    const meshData: SurfaceSampleSet["meshData"] = [];
-    let nextId = 0;
-    let remainingSamples = Math.max(1, Math.floor(sampleMaxPoints));
-    for (const mesh of meshList) {
-      if (!mesh.geometry || remainingSamples <= 0) continue;
-      mesh.updateMatrixWorld(true);
-      const posAttr = mesh.geometry.getAttribute("position") as THREE.BufferAttribute | null;
-      if (posAttr) {
-        const indexAttr = mesh.geometry.getIndex();
-        const drawCount = getNonIndexedDrawCount(mesh.geometry as THREE.BufferGeometry, posAttr);
-        const positions =
-          drawCount != null
-            ? (posAttr.array as Float32Array).subarray(0, drawCount * 3)
-            : (posAttr.array as Float32Array);
-        const meshKey = (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid;
-        meshData.push({
-          key: meshKey,
-          positions,
-          indices: indexAttr ? indexAttr.array : null,
+    let nextSampleSet: SurfaceSampleSet | null = null;
+    if (sampleSetEnabled) {
+      const aggregatedSamples: SurfaceSampleSet["samples"] = [];
+      const meshData: SurfaceSampleSet["meshData"] = [];
+      let nextId = 0;
+      let remainingSamples = Math.max(1, Math.floor(sampleMaxPoints));
+      for (const mesh of meshList) {
+        if (!mesh.geometry || remainingSamples <= 0) continue;
+        mesh.updateMatrixWorld(true);
+        const posAttr = mesh.geometry.getAttribute("position") as THREE.BufferAttribute | null;
+        if (posAttr) {
+          const indexAttr = mesh.geometry.getIndex();
+          const drawCount = getNonIndexedDrawCount(mesh.geometry as THREE.BufferGeometry, posAttr);
+          const positions =
+            drawCount != null
+              ? (posAttr.array as Float32Array).subarray(0, drawCount * 3)
+              : (posAttr.array as Float32Array);
+          const meshKey = (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid;
+          meshData.push({
+            key: meshKey,
+            positions,
+            indices: indexAttr ? indexAttr.array : null,
+          });
+        }
+        const { samples: chunk } = buildSurfaceSampleSetFromViewer({
+          geometry: mesh.geometry as THREE.BufferGeometry,
+          worldMatrix: mesh.matrixWorld,
+          maxSamples: remainingSamples,
+          includeUV: includeSamplesUV,
+          startId: nextId,
+          meshKey: (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid,
         });
+        if (!chunk.length) continue;
+        aggregatedSamples.push(...chunk);
+        nextId += chunk.length;
+        remainingSamples -= chunk.length;
       }
-      const { samples: chunk } = buildSurfaceSampleSetFromViewer({
-        geometry: mesh.geometry as THREE.BufferGeometry,
-        worldMatrix: mesh.matrixWorld,
-        maxSamples: remainingSamples,
-        includeUV: includeSamplesUV,
-        startId: nextId,
-        meshKey: (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid,
-      });
-      if (!chunk.length) continue;
-      aggregatedSamples.push(...chunk);
-      nextId += chunk.length;
-      remainingSamples -= chunk.length;
-    }
 
-    let nextSampleSet: SurfaceSampleSet;
-    if (aggregatedSamples.length) {
-      const box = new THREE.Box3().setFromPoints(aggregatedSamples.map((s) => s.position));
-      nextSampleSet = {
-        samples: aggregatedSamples,
-        bbox: box,
-        center: box.getCenter(new THREE.Vector3()),
-        meshData,
-      };
-    } else {
-      nextSampleSet = { samples: [], meshData };
+      if (aggregatedSamples.length) {
+        const box = new THREE.Box3().setFromPoints(aggregatedSamples.map((s) => s.position));
+        nextSampleSet = {
+          samples: aggregatedSamples,
+          bbox: box,
+          center: box.getCenter(new THREE.Vector3()),
+          meshData,
+        };
+      } else {
+        nextSampleSet = { samples: [], meshData };
+      }
     }
     let implicitOverlayLines: THREE.LineSegments | null = null;
     const findImplicitObj = (): THREE.Object3D | null => {
@@ -5541,6 +5545,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     implicitResolution,
     implicitMeshToken,
     implicitDomainSize,
+    sampleSetEnabled,
     graphDomain?.xSpan,
     graphDomain?.ySpan,
     isCameraLeader,
@@ -5963,53 +5968,55 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
     });
 
-    const aggregatedSamples: SurfaceSampleSet["samples"] = [];
-    const meshData: SurfaceSampleSet["meshData"] = [];
-    let nextId = 0;
-    let remainingSamples = Math.max(1, Math.floor(sampleMaxPoints));
-    for (const mesh of meshList) {
-      if (!mesh.geometry || remainingSamples <= 0) continue;
-      mesh.updateMatrixWorld(true);
-      const posAttr = mesh.geometry.getAttribute("position") as THREE.BufferAttribute | null;
-      if (posAttr) {
-        const indexAttr = mesh.geometry.getIndex();
-        const drawCount = getNonIndexedDrawCount(mesh.geometry as THREE.BufferGeometry, posAttr);
-        const positions =
-          drawCount != null
-            ? (posAttr.array as Float32Array).subarray(0, drawCount * 3)
-            : (posAttr.array as Float32Array);
-        const meshKey = (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid;
-        meshData.push({
-          key: meshKey,
-          positions,
-          indices: indexAttr ? indexAttr.array : null,
+    let nextSampleSet: SurfaceSampleSet | null = null;
+    if (sampleSetEnabled) {
+      const aggregatedSamples: SurfaceSampleSet["samples"] = [];
+      const meshData: SurfaceSampleSet["meshData"] = [];
+      let nextId = 0;
+      let remainingSamples = Math.max(1, Math.floor(sampleMaxPoints));
+      for (const mesh of meshList) {
+        if (!mesh.geometry || remainingSamples <= 0) continue;
+        mesh.updateMatrixWorld(true);
+        const posAttr = mesh.geometry.getAttribute("position") as THREE.BufferAttribute | null;
+        if (posAttr) {
+          const indexAttr = mesh.geometry.getIndex();
+          const drawCount = getNonIndexedDrawCount(mesh.geometry as THREE.BufferGeometry, posAttr);
+          const positions =
+            drawCount != null
+              ? (posAttr.array as Float32Array).subarray(0, drawCount * 3)
+              : (posAttr.array as Float32Array);
+          const meshKey = (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid;
+          meshData.push({
+            key: meshKey,
+            positions,
+            indices: indexAttr ? indexAttr.array : null,
+          });
+        }
+        const { samples: chunk } = buildSurfaceSampleSetFromViewer({
+          geometry: mesh.geometry as THREE.BufferGeometry,
+          worldMatrix: mesh.matrixWorld,
+          maxSamples: remainingSamples,
+          includeUV: includeSamplesUV,
+          startId: nextId,
+          meshKey: (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid,
         });
+        if (!chunk.length) continue;
+        aggregatedSamples.push(...chunk);
+        nextId += chunk.length;
+        remainingSamples -= chunk.length;
       }
-      const { samples: chunk } = buildSurfaceSampleSetFromViewer({
-        geometry: mesh.geometry as THREE.BufferGeometry,
-        worldMatrix: mesh.matrixWorld,
-        maxSamples: remainingSamples,
-        includeUV: includeSamplesUV,
-        startId: nextId,
-        meshKey: (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid,
-      });
-      if (!chunk.length) continue;
-      aggregatedSamples.push(...chunk);
-      nextId += chunk.length;
-      remainingSamples -= chunk.length;
-    }
 
-    let nextSampleSet: SurfaceSampleSet;
-    if (aggregatedSamples.length) {
-      const box = new THREE.Box3().setFromPoints(aggregatedSamples.map((s) => s.position));
-      nextSampleSet = {
-        samples: aggregatedSamples,
-        bbox: box,
-        center: box.getCenter(new THREE.Vector3()),
-        meshData,
-      };
-    } else {
-      nextSampleSet = { samples: [], meshData };
+      if (aggregatedSamples.length) {
+        const box = new THREE.Box3().setFromPoints(aggregatedSamples.map((s) => s.position));
+        nextSampleSet = {
+          samples: aggregatedSamples,
+          bbox: box,
+          center: box.getCenter(new THREE.Vector3()),
+          meshData,
+        };
+      } else {
+        nextSampleSet = { samples: [], meshData };
+      }
     }
     sampleSetRef.current = nextSampleSet;
     onSampleSet?.(nextSampleSet);
@@ -6081,6 +6088,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     normalizedMeshPreviewTriangleTarget,
     includeSamplesUV,
     sampleMaxPoints,
+    sampleSetEnabled,
     showBoundingBox,
     onSampleSet,
     gizmoEnabled,
