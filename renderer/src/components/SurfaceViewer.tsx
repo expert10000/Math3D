@@ -146,6 +146,7 @@ type SurfaceMeshOverride = {
   roughness?: number;
   metalness?: number;
   wireframe?: boolean;
+  visible?: boolean;
   flatShading?: boolean;
   transform?: {
     position?: { x: number; y: number; z: number };
@@ -3943,6 +3944,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       if (colorMode !== "solid") applyVertexColors(geom, colorMode, colorPalette);
       const mesh = new THREE.Mesh(geom, makeMaterial(override));
+      mesh.visible = override.visible ?? true;
       if (override.id) {
         (mesh as any).userData.__surfaceMeshOverrideId = override.id;
       }
@@ -3950,6 +3952,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         color: override.color,
         opacity: override.opacity,
         wireframe: override.wireframe,
+        visible: override.visible,
         flatShading: override.flatShading,
       };
       applySurfaceMeshOverrideTransform(mesh, override.transform);
@@ -5758,6 +5761,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       if (colorMode !== "solid") applyVertexColors(geom, colorMode, colorPalette);
       const mesh = new THREE.Mesh(geom, makeMaterial(override));
+      mesh.visible = override.visible ?? true;
       if (override.id) {
         (mesh as any).userData.__surfaceMeshOverrideId = override.id;
       }
@@ -5772,6 +5776,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         roughness: override.roughness,
         metalness: override.metalness,
         wireframe: override.wireframe,
+        visible: override.visible,
         flatShading: override.flatShading,
       };
       applySurfaceMeshOverrideTransform(mesh, override.transform);
@@ -5870,8 +5875,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         roughness: override.roughness,
         metalness: override.metalness,
         wireframe: override.wireframe,
+        visible: override.visible,
         flatShading: override.flatShading,
       };
+      mesh.visible = style.visible ?? true;
       (mesh as any).userData.__surfaceMeshLod = {
         runtimeQuality: runtimeQualityForMesh,
         fullTriangleCount: lodBuffers.fullTriangleCount,
