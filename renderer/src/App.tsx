@@ -42248,7 +42248,7 @@ case "mobius":
         { key: "surface", label: "Surface", panel: "create", onClick: openProceduralPanel("create") },
         { key: "mesh", label: "Mesh", panel: "object", onClick: openProceduralPanel("object") },
         { key: "script", label: "Script", panel: "script", onClick: openProceduralPanel("script") },
-        { key: "library", label: "Library", panel: "debug", onClick: openProceduralPanel("debug") },
+        { key: "presets", label: "Presets", panel: "debug", onClick: openProceduralPanel("debug") },
       ];
     }
     if (geometryWorkflowActiveStepId === "place") {

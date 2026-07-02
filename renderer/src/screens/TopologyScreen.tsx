@@ -1156,7 +1156,10 @@ const renderDunceStageThumbnail = (stageIndex: number): string => {
   renderer.render(scene, camera);
   const dataUrl = renderer.domElement.toDataURL("image/png");
   disposeObject3D(object);
+  renderer.setAnimationLoop(null);
+  renderer.renderLists.dispose();
   renderer.dispose();
+  (renderer as { forceContextLoss?: () => void }).forceContextLoss?.();
   return dataUrl;
 };
 

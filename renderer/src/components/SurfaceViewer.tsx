@@ -5900,15 +5900,39 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     });
 
     let needsRebuild = false;
+    let patchedOverrideGroup = false;
     if (useOverrides && surfaceMeshOverrides) {
-      if (meshById.size !== surfaceMeshOverrides.length) {
+      if (!(surfaceObj as THREE.Group).isGroup) {
         needsRebuild = true;
       } else {
+        const nextIds = new Set<string>();
         for (const override of surfaceMeshOverrides) {
-          if (!override?.id || !meshById.has(String(override.id))) {
+          if (!override?.id) {
             needsRebuild = true;
             break;
           }
+          nextIds.add(String(override.id));
+        }
+
+        if (!needsRebuild) {
+          const group = surfaceObj as THREE.Group;
+          for (const [id, mesh] of meshById) {
+            if (nextIds.has(id)) continue;
+            group.remove(mesh);
+            mesh.traverse(disposeObject3D);
+            meshById.delete(id);
+          }
+
+          for (const override of surfaceMeshOverrides) {
+            const id = String(override.id);
+            const mesh = meshById.get(id);
+            if (mesh) {
+              updateGeometryFromOverride(mesh, override);
+            } else {
+              group.add(makeSurfaceMeshOverrideMesh(override));
+            }
+          }
+          patchedOverrideGroup = true;
         }
       }
     } else if (useOverride) {
@@ -5917,7 +5941,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     if (needsRebuild) {
       rebuildSurfaceObject();
-    } else if (useOverrides && surfaceMeshOverrides) {
+    } else if (useOverrides && surfaceMeshOverrides && !patchedOverrideGroup) {
       for (const override of surfaceMeshOverrides) {
         if (!override?.id) continue;
         const mesh = meshById.get(String(override.id));

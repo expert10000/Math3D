@@ -60,6 +60,12 @@ const positiveIntFromEnv = (name: string, fallback: number): number => {
 const actionDelayMs = positiveIntFromEnv("MATH3D_RELEASE_CHECK_ACTION_DELAY_MS", 5_000);
 const actionsPerArea = positiveIntFromEnv("MATH3D_RELEASE_CHECK_ACTIONS_PER_AREA", 12);
 const sceneLoadTimeoutMs = positiveIntFromEnv("MATH3D_RELEASE_CHECK_SCENE_LOAD_TIMEOUT_MS", 30_000);
+const selectedAreas = new Set(
+  String(process.env.MATH3D_RELEASE_CHECK_AREAS ?? "topology,complex")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean)
+);
 
 const complexActions: ComplexAction[] = [
   { target: "Function Explorer", expected: "Complex Function Explorer", afterClick: "Preset" },
@@ -348,8 +354,13 @@ test.describe("release 1.4.9 topology and complex analysis check", () => {
       const rootPid = ctx.app.process().pid;
       samples.push(await sampleProcessTreeSafely(rootPid, performance.now() - startedAt));
 
-      actions.push(...(await runTopologyArea(ctx.page, rootPid, actionsPerArea, startedAt, samples, whiteScreenEvents)));
-      actions.push(...(await runComplexArea(ctx.page, rootPid, actionsPerArea, startedAt, samples, whiteScreenEvents)));
+      if (selectedAreas.has("topology")) {
+        actions.push(...(await runTopologyArea(ctx.page, rootPid, actionsPerArea, startedAt, samples, whiteScreenEvents)));
+      }
+      if (selectedAreas.has("complex")) {
+        actions.push(...(await runComplexArea(ctx.page, rootPid, actionsPerArea, startedAt, samples, whiteScreenEvents)));
+      }
+      if (!actions.length) throw new Error("No release-check areas selected. Use topology, complex, or both.");
 
       samples.push({ ...(await sampleProcessTreeSafely(rootPid, performance.now() - startedAt)), final: true });
       const summary = summarizeProcessMemory(samples);
@@ -361,6 +372,7 @@ test.describe("release 1.4.9 topology and complex analysis check", () => {
         cwd: repoRoot,
         actionDelayMs,
         sceneLoadTimeoutMs,
+        selectedAreas: [...selectedAreas],
         actionsPerArea,
         totalLoads: actions.length,
         whiteScreenEvents,
@@ -401,8 +413,8 @@ test.describe("release 1.4.9 topology and complex analysis check", () => {
 
       expect(whiteScreenEvents).toHaveLength(0);
       expect(actions.every((action) => action.matchedSceneState)).toBe(true);
-      expect(actions.filter((action) => action.area === "topology")).toHaveLength(actionsPerArea);
-      expect(actions.filter((action) => action.area === "complex")).toHaveLength(actionsPerArea);
+      if (selectedAreas.has("topology")) expect(actions.filter((action) => action.area === "topology")).toHaveLength(actionsPerArea);
+      if (selectedAreas.has("complex")) expect(actions.filter((action) => action.area === "complex")).toHaveLength(actionsPerArea);
     } finally {
       await closeReleaseCheckApp(ctx);
     }

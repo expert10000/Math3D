@@ -168,7 +168,10 @@ const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = ({
       observer.disconnect();
       controls.dispose();
       scene.traverse(disposeObject3D);
+      renderer.setAnimationLoop(null);
+      renderer.renderLists.dispose();
       renderer.dispose();
+      (renderer as { forceContextLoss?: () => void }).forceContextLoss?.();
       if (renderer.domElement.parentElement) {
         renderer.domElement.parentElement.removeChild(renderer.domElement);
       }

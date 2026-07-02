@@ -1,7 +1,7 @@
 {
   "name": "@math3d/public-site",
   "private": true,
-  "version": "1.4.8",
+  "version": "1.4.9",
   "scripts": {
     "dev": "node scripts/dev-server.cjs src 4321",
     "build": "node scripts/build.cjs",

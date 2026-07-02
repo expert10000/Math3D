@@ -56,6 +56,12 @@ const positiveIntFromEnv = (name: string, fallback: number): number => {
 const actionDelayMs = positiveIntFromEnv("MATH3D_RELEASE_CHECK_ACTION_DELAY_MS", 5_000);
 const actionsPerArea = positiveIntFromEnv("MATH3D_RELEASE_CHECK_ACTIONS_PER_AREA", 12);
 const sceneLoadTimeoutMs = positiveIntFromEnv("MATH3D_RELEASE_CHECK_SCENE_LOAD_TIMEOUT_MS", 30_000);
+const selectedAreas = new Set(
+  String(process.env.MATH3D_RELEASE_CHECK_AREAS ?? "mesh,geometry")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean)
+);
 
 const compactBytesByRole = (bytesByRole: Record<string, number>): Record<string, number> =>
   Object.fromEntries(
@@ -361,17 +367,23 @@ test.describe("release 1.4.9 mesh and geometry preset check", () => {
       const rootPid = ctx.app.process().pid;
       samples.push(await sampleProcessTreeSafely(rootPid, performance.now() - startedAt));
 
-      await openMeshGallery(ctx.page);
-      await waitAfterAction(ctx.page, actionDelayMs, "mesh:open-gallery", startedAt, whiteScreenEvents);
-      actions.push(
-        ...(await runPresetArea(ctx.page, rootPid, "mesh", actionsPerArea, startedAt, samples, whiteScreenEvents))
-      );
+      if (selectedAreas.has("mesh")) {
+        await openMeshGallery(ctx.page);
+        await waitAfterAction(ctx.page, actionDelayMs, "mesh:open-gallery", startedAt, whiteScreenEvents);
+        actions.push(
+          ...(await runPresetArea(ctx.page, rootPid, "mesh", actionsPerArea, startedAt, samples, whiteScreenEvents))
+        );
+      }
 
-      await openGeometryGallery(ctx.page);
-      await waitAfterAction(ctx.page, actionDelayMs, "geometry:open-gallery", startedAt, whiteScreenEvents);
-      actions.push(
-        ...(await runPresetArea(ctx.page, rootPid, "geometry", actionsPerArea, startedAt, samples, whiteScreenEvents))
-      );
+      if (selectedAreas.has("geometry")) {
+        await openGeometryGallery(ctx.page);
+        await waitAfterAction(ctx.page, actionDelayMs, "geometry:open-gallery", startedAt, whiteScreenEvents);
+        actions.push(
+          ...(await runPresetArea(ctx.page, rootPid, "geometry", actionsPerArea, startedAt, samples, whiteScreenEvents))
+        );
+      }
+
+      if (!actions.length) throw new Error("No release-check areas selected. Use mesh, geometry, or both.");
 
       samples.push({ ...(await sampleProcessTreeSafely(rootPid, performance.now() - startedAt)), final: true });
       const summary = summarizeProcessMemory(samples);
@@ -383,6 +395,7 @@ test.describe("release 1.4.9 mesh and geometry preset check", () => {
         cwd: repoRoot,
         actionDelayMs,
         sceneLoadTimeoutMs,
+        selectedAreas: [...selectedAreas],
         actionsPerArea,
         totalPresetLoads: actions.length,
         whiteScreenEvents,
@@ -423,8 +436,8 @@ test.describe("release 1.4.9 mesh and geometry preset check", () => {
 
       expect(whiteScreenEvents).toHaveLength(0);
       expect(actions.every((action) => action.matchedSceneState)).toBe(true);
-      expect(actions.filter((action) => action.area === "mesh")).toHaveLength(actionsPerArea);
-      expect(actions.filter((action) => action.area === "geometry")).toHaveLength(actionsPerArea);
+      if (selectedAreas.has("mesh")) expect(actions.filter((action) => action.area === "mesh")).toHaveLength(actionsPerArea);
+      if (selectedAreas.has("geometry")) expect(actions.filter((action) => action.area === "geometry")).toHaveLength(actionsPerArea);
     } finally {
       await closeReleaseCheckApp(ctx);
     }
