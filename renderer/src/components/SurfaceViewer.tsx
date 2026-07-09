@@ -4705,19 +4705,20 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       return { index: bestIdx, sample: sampleSet.samples[bestIdx] };
     };
 
-      const handlePointerDown = (event: PointerEvent) => {
-        interruptCameraTour();
-        if (
-          !(showChartGridRef.current && surfaceCellSelectionEnabledRef.current) &&
-          !probeEnabled &&
-          !selectRegionEnabledRef.current &&
-          !geodesicPathEnabledRef.current &&
-          !geodesicHeatEnabledRef.current &&
-          !geodesicDiskPickEnabledRef.current &&
-          !inspectEnabledRef.current &&
-          !dragEnabledRef.current
-        )
-          return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (document.body.dataset.math3dPanelResizing === "true") return;
+      interruptCameraTour();
+      if (
+        !(showChartGridRef.current && surfaceCellSelectionEnabledRef.current) &&
+        !probeEnabled &&
+        !selectRegionEnabledRef.current &&
+        !geodesicPathEnabledRef.current &&
+        !geodesicHeatEnabledRef.current &&
+        !geodesicDiskPickEnabledRef.current &&
+        !inspectEnabledRef.current &&
+        !dragEnabledRef.current
+      )
+        return;
 
         const activeTransformControls = transformControlsRef.current;
         if (
@@ -5082,46 +5083,24 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
     };
 
-    const handlePointerMove = (event: PointerEvent) => {
-      const dragState = dragStateRef.current;
+    let hoverPickFrameId = 0;
+    let hoverPickQueued: { clientX: number; clientY: number } | null = null;
+    let lastHoverPickAt = 0;
+    const minHoverPickIntervalMs = 48;
+
+    const runHoverPick = (clientX: number, clientY: number) => {
       const inspectHoverCb = onInspectHoverRef.current;
-      if (!dragState) {
-        if (!inspectEnabledRef.current || !inspectHoverCb) return;
-      }
-      if (
-        !dragState &&
-        canUseMeshInteractionLod &&
-        meshRuntimeQualityRef.current !== "accurate"
-      ) {
-        return;
-      }
+      if (!inspectEnabledRef.current || !inspectHoverCb) return;
+      if (canUseMeshInteractionLod && meshRuntimeQualityRef.current !== "accurate") return;
+      const now = performance.now();
+      if (now - lastHoverPickAt < minHoverPickIntervalMs) return;
+      lastHoverPickAt = now;
       const rect = renderer.domElement.getBoundingClientRect();
-      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      const x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((clientY - rect.top) / rect.height) * 2 + 1;
       pointer.set(x, y);
       raycaster.setFromCamera(pointer, camera);
 
-        if (dragState && event.pointerId === dragState.pointerId) {
-        const hitPoint = new THREE.Vector3();
-        if (!raycaster.ray.intersectPlane(dragState.plane, hitPoint)) return;
-        dragState.lastPoint.copy(hitPoint);
-        const delta = hitPoint.clone().sub(dragState.startPoint);
-        if (delta.lengthSq() > 1e-6) {
-          dragState.moved = true;
-        }
-        const dragCb = onDragRef.current;
-        if (dragCb) {
-          dragCb({
-            point: { x: hitPoint.x, y: hitPoint.y, z: hitPoint.z },
-            normal: { x: dragState.normal.x, y: dragState.normal.y, z: dragState.normal.z },
-            delta: { x: delta.x, y: delta.y, z: delta.z },
-            meshKey: dragState.meshKey,
-          });
-        }
-        return;
-      }
-
-      if (!inspectEnabledRef.current || !inspectHoverCb) return;
       const hoverPickStartAt = performance.now();
       const intersects = raycaster.intersectObjects([surfaceObj], true);
       recordRaycastDuration(hoverPickStartAt);
@@ -5173,6 +5152,52 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
           xy: xyDomain,
         });
+      }
+    };
+
+    const scheduleHoverPick = (event: PointerEvent) => {
+      hoverPickQueued = { clientX: event.clientX, clientY: event.clientY };
+      if (hoverPickFrameId) return;
+      hoverPickFrameId = requestAnimationFrame(() => {
+        hoverPickFrameId = 0;
+        const queued = hoverPickQueued;
+        hoverPickQueued = null;
+        if (!queued) return;
+        runHoverPick(queued.clientX, queued.clientY);
+      });
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (document.body.dataset.math3dPanelResizing === "true") return;
+      const dragState = dragStateRef.current;
+      if (!dragState) {
+        scheduleHoverPick(event);
+        return;
+      }
+      const rect = renderer.domElement.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      pointer.set(x, y);
+      raycaster.setFromCamera(pointer, camera);
+
+      if (dragState && event.pointerId === dragState.pointerId) {
+        const hitPoint = new THREE.Vector3();
+        if (!raycaster.ray.intersectPlane(dragState.plane, hitPoint)) return;
+        dragState.lastPoint.copy(hitPoint);
+        const delta = hitPoint.clone().sub(dragState.startPoint);
+        if (delta.lengthSq() > 1e-6) {
+          dragState.moved = true;
+        }
+        const dragCb = onDragRef.current;
+        if (dragCb) {
+          dragCb({
+            point: { x: hitPoint.x, y: hitPoint.y, z: hitPoint.z },
+            normal: { x: dragState.normal.x, y: dragState.normal.y, z: dragState.normal.z },
+            delta: { x: delta.x, y: delta.y, z: delta.z },
+            meshKey: dragState.meshKey,
+          });
+        }
+        return;
       }
     };
 
@@ -5300,14 +5325,14 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     let resizeFrameId = 0;
     let resizeTimeoutId: ReturnType<typeof setTimeout> | null = null;
     const handleResize = () => {
-      syncRendererSize(false);
       emitViewportDebug("resize");
-      if (resizeFrameId) cancelAnimationFrame(resizeFrameId);
-      resizeFrameId = requestAnimationFrame(() => {
-        resizeFrameId = 0;
-        syncRendererSize(false);
-        emitViewportDebug("resize-raf");
-      });
+      if (!resizeFrameId) {
+        resizeFrameId = requestAnimationFrame(() => {
+          resizeFrameId = 0;
+          syncRendererSize(false);
+          emitViewportDebug("resize-raf");
+        });
+      }
       if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
       resizeTimeoutId = setTimeout(() => {
         resizeTimeoutId = null;
@@ -5359,6 +5384,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       forceReframeRef.current = null;
       stopCameraTour("stopped", false);
       cancelAnimationFrame(frameId);
+      if (hoverPickFrameId) cancelAnimationFrame(hoverPickFrameId);
       if (resizeFrameId) cancelAnimationFrame(resizeFrameId);
       if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
       ro.disconnect();

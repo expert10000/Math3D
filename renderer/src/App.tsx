@@ -11344,18 +11344,22 @@ const App: React.FC = () => {
         rotation: { x: 0, y: 0, z: 0 },
         scale: { x: 1, y: 1, z: 1 },
       };
-      const worldMesh = transformSurfaceMeshByGeometryTransform(
-        sourceMesh,
+      const worldMatrix = buildGeometryTransformMatrix(
         (sourceMesh.transform as GeometryObjectTransform | undefined) ?? identityTransform
       );
-      const positions = worldMesh.positions;
+      const positions = sourceMesh.positions;
       const vertexCount = Math.floor((positions?.length ?? 0) / 3);
       if (!vertexCount) return fallback;
       const getPoint = (idx: number) => {
         const base = idx * 3;
-        return { x: positions[base] ?? 0, y: positions[base + 1] ?? 0, z: positions[base + 2] ?? 0 };
+        const v = new THREE.Vector3(
+          positions[base] ?? 0,
+          positions[base + 1] ?? 0,
+          positions[base + 2] ?? 0
+        ).applyMatrix4(worldMatrix);
+        return { x: v.x, y: v.y, z: v.z };
       };
-      const indices = worldMesh.indices ?? null;
+      const indices = sourceMesh.indices ?? null;
       const triCount =
         indices && indices.length >= 3 ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
       const query = pick.point;
@@ -26104,6 +26108,11 @@ const App: React.FC = () => {
 
   const startDragLeft = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
+    document.body.dataset.math3dPanelResizing = "true";
+    const prevCursor = document.body.style.cursor;
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
     const startX = e.clientX;
     const startWidth = leftWidth;
     let frameId = 0;
@@ -26114,10 +26123,14 @@ const App: React.FC = () => {
       setLeftWidth(nextWidth);
     };
 
+    const scheduleWidth = () => {
+      if (!frameId) frameId = window.requestAnimationFrame(applyWidth);
+    };
+
     const onMove = (ev: MouseEvent) => {
       const delta = ev.clientX - startX;
       nextWidth = Math.min(maxLeft, Math.max(minLeft, startWidth + delta));
-      if (!frameId) frameId = window.requestAnimationFrame(applyWidth);
+      scheduleWidth();
     };
 
     const onUp = () => {
@@ -26125,6 +26138,9 @@ const App: React.FC = () => {
         window.cancelAnimationFrame(frameId);
         frameId = 0;
       }
+      delete document.body.dataset.math3dPanelResizing;
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevUserSelect;
       setLeftWidth(nextWidth);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
@@ -26136,6 +26152,11 @@ const App: React.FC = () => {
 
   const startDragRight = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
+    document.body.dataset.math3dPanelResizing = "true";
+    const prevCursor = document.body.style.cursor;
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
     const startX = e.clientX;
     const startWidth = rightWidth;
     let frameId = 0;
@@ -26146,10 +26167,14 @@ const App: React.FC = () => {
       setRightWidth(nextWidth);
     };
 
+    const scheduleWidth = () => {
+      if (!frameId) frameId = window.requestAnimationFrame(applyWidth);
+    };
+
     const onMove = (ev: MouseEvent) => {
       const delta = startX - ev.clientX; // drag left to expand right panel
       nextWidth = Math.min(maxRight, Math.max(minRight, startWidth + delta));
-      if (!frameId) frameId = window.requestAnimationFrame(applyWidth);
+      scheduleWidth();
     };
 
     const onUp = () => {
@@ -26157,6 +26182,9 @@ const App: React.FC = () => {
         window.cancelAnimationFrame(frameId);
         frameId = 0;
       }
+      delete document.body.dataset.math3dPanelResizing;
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevUserSelect;
       setRightWidth(nextWidth);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
@@ -52371,7 +52399,7 @@ case "mobius":
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           {([
                             ["object", "Object"],
-                            ["face", "Face"],
+                            ["face", "Select face"],
                             ["edge", "Edge"],
                             ["vertex", "Vertex"],
                           ] as const).map(([modeId, label]) => (
@@ -56637,7 +56665,7 @@ case "mobius":
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
                               {([
                                 ["object", "Object"],
-                                ["face", "Face"],
+                                ["face", "Select face"],
                                 ["edge", "Edge"],
                                 ["vertex", "Vertex"],
                               ] as const).map(([modeId, label]) => (
@@ -60737,7 +60765,7 @@ case "mobius":
                               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
                                 {([
                                   ["object", "Object"],
-                                  ["face", "Face"],
+                                  ["face", "Select face"],
                                   ["edge", "Edge"],
                                   ["vertex", "Vertex"],
                                 ] as const).map(([modeId, label]) => (
