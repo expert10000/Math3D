@@ -4842,16 +4842,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           });
         if (!heatHit) return;
         hit = heatHit;
-      } else if (inspectEnabledRef.current && !dragEnabledRef.current && intersects.length > 1) {
-        const selectedMeshKey = inspectSelectionMeshKeyRef.current;
-        const firstHitMeshKey = resolveHitMeshKey(intersects[0]);
-        if (selectedMeshKey && firstHitMeshKey === selectedMeshKey) {
-          const alternate = intersects.find((candidate) => {
-            const candidateKey = resolveHitMeshKey(candidate);
-            return !!candidateKey && candidateKey !== selectedMeshKey;
-          });
-          if (alternate) hit = alternate;
-        }
       }
       const point = hit.point.clone();
       const hitMeshKeyValue = (hit.object as any)?.userData?.__surfaceMeshOverrideId;

@@ -14672,13 +14672,11 @@ const App: React.FC = () => {
   const geometryProceduralSelectionHighlightPolygons = useMemo<Polygon3[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     const polygons: Polygon3[] = [];
-    const hover = geometryProbeHoverSelectionDetails;
     const click = geometryProbeSelectionDetails;
-    if (hover?.mode === "face" && hover.faceVertices) {
-      polygons.push({ vertices: hover.faceVertices });
-    }
     if (click?.mode === "face" && click.faceVertices) {
       polygons.push({ vertices: click.faceVertices });
+    } else if (geometryProbeHoverSelectionDetails?.mode === "face" && geometryProbeHoverSelectionDetails.faceVertices) {
+      polygons.push({ vertices: geometryProbeHoverSelectionDetails.faceVertices });
     }
     return polygons.length ? polygons : null;
   }, [geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails]);
@@ -60493,12 +60491,9 @@ case "mobius":
                   gizmoScaleSnap={geometrySnapScaleEnabled ? geometrySnapScaleStep : null}
                   onGizmoTransform={geometryMode === "procedural" ? handleProceduralGizmoTransform : undefined}
                   pickEnabled={
-                    !geometryFastModeActive &&
-                    (
-                      geometryMode === "demo" ||
-                      (geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations") ||
-                      ((geometryMode === "scratch" || geometryMode === "workbook") && geometryPointPlacementEnabled)
-                    )
+                    geometryMode === "demo" ||
+                    (geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations") ||
+                    ((geometryMode === "scratch" || geometryMode === "workbook") && geometryPointPlacementEnabled)
                   }
                   onPick={
                     geometryMode === "demo"
