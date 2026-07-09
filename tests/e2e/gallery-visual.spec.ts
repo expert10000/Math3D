@@ -93,6 +93,9 @@ const geometrySnapshotOpts = {
   ...snapshotOpts,
   maxDiffPixels: 6_000,
 };
+const geometrySnapshotMatchOpts = {
+  maxDiffPixels: geometrySnapshotOpts.maxDiffPixels,
+};
 const surfaceSnapshotOpts = {
   ...snapshotOpts,
   maxDiffPixels: 30_000,
@@ -118,6 +121,7 @@ const stabilizeGalleryVisuals = async (page: Page): Promise<void> => {
         width: 191px !important;
         max-width: 191px !important;
         padding-bottom: 0 !important;
+        margin-left: 4px !important;
         margin-bottom: 0 !important;
       }
       [data-testid="geometry-gallery"] > div:first-child {
@@ -236,6 +240,33 @@ const waitForImagesLoaded = async (scope: Locator): Promise<void> => {
   await scope.page().waitForTimeout(350);
 };
 
+const alignGeometryGalleryForSnapshot = async (page: Page): Promise<void> => {
+  await page.getByTestId("geometry-left-panel").evaluate((panel) => {
+    const gallery = panel.querySelector<HTMLElement>("[data-testid='geometry-gallery']");
+    if (!gallery) return;
+    gallery.scrollTop = 0;
+    panel.scrollTop = Math.max(0, gallery.offsetTop - panel.offsetTop);
+  });
+};
+
+const captureGeometryGallerySnapshot = async (page: Page, gallery: Locator): Promise<Buffer> => {
+  const box = await gallery.boundingBox();
+  if (!box) throw new Error("Geometry gallery bounding box unavailable");
+  const y = Math.max(0, Math.floor(box.y));
+  const height = Math.ceil(box.y + box.height) - y;
+  return page.screenshot({
+    animations: "disabled",
+    caret: "hide",
+    scale: "css",
+    clip: {
+      x: Math.max(0, Math.floor(box.x)),
+      y,
+      width: Math.ceil(box.width),
+      height,
+    },
+  });
+};
+
 test.setTimeout(10 * 60 * 1000);
 
 test("Gallery cards visual baseline", async () => {
@@ -269,8 +300,12 @@ test("Gallery cards visual baseline", async () => {
     });
     const geometryGallery = page.getByTestId("geometry-gallery");
     await expect(geometryGallery).toBeVisible();
+    await alignGeometryGalleryForSnapshot(page);
     await waitForImagesLoaded(geometryGallery);
-    await expect(geometryGallery).toHaveScreenshot("geometry-gallery-cards.png", geometrySnapshotOpts);
+    expect(await captureGeometryGallerySnapshot(page, geometryGallery)).toMatchSnapshot(
+      "geometry-gallery-cards.png",
+      geometrySnapshotMatchOpts
+    );
 
     await ensureSurfacesGalleryMode(page);
     await clickFirstVisibleByTestId(page, "surface-family-implicit");
