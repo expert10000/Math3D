@@ -146,7 +146,6 @@ type SurfaceMeshOverride = {
   roughness?: number;
   metalness?: number;
   wireframe?: boolean;
-  visible?: boolean;
   flatShading?: boolean;
   transform?: {
     position?: { x: number; y: number; z: number };
@@ -1383,7 +1382,6 @@ type Props = {
   onGaussPoints?: (points: GaussPoint[]) => void;
   gaussHighlightPoint?: { x: number; y: number; z: number } | null;
   sampleMaxPoints?: number;
-  sampleSetEnabled?: boolean;
   includeSamplesUV?: boolean;
   onSampleSet?: (set: SurfaceSampleSet | null) => void;
   selectionMask?: SelectionMask | null;
@@ -1642,7 +1640,6 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     onGaussPoints,
     gaussHighlightPoint = null,
     sampleMaxPoints = 900,
-    sampleSetEnabled = true,
     includeSamplesUV = true,
     onSampleSet,
     selectionMask = null,
@@ -3944,7 +3941,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       if (colorMode !== "solid") applyVertexColors(geom, colorMode, colorPalette);
       const mesh = new THREE.Mesh(geom, makeMaterial(override));
-      mesh.visible = override.visible ?? true;
       if (override.id) {
         (mesh as any).userData.__surfaceMeshOverrideId = override.id;
       }
@@ -3952,7 +3948,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         color: override.color,
         opacity: override.opacity,
         wireframe: override.wireframe,
-        visible: override.visible,
         flatShading: override.flatShading,
       };
       applySurfaceMeshOverrideTransform(mesh, override.transform);
@@ -4346,55 +4341,53 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
     });
 
-    let nextSampleSet: SurfaceSampleSet | null = null;
-    if (sampleSetEnabled) {
-      const aggregatedSamples: SurfaceSampleSet["samples"] = [];
-      const meshData: SurfaceSampleSet["meshData"] = [];
-      let nextId = 0;
-      let remainingSamples = Math.max(1, Math.floor(sampleMaxPoints));
-      for (const mesh of meshList) {
-        if (!mesh.geometry || remainingSamples <= 0) continue;
-        mesh.updateMatrixWorld(true);
-        const posAttr = mesh.geometry.getAttribute("position") as THREE.BufferAttribute | null;
-        if (posAttr) {
-          const indexAttr = mesh.geometry.getIndex();
-          const drawCount = getNonIndexedDrawCount(mesh.geometry as THREE.BufferGeometry, posAttr);
-          const positions =
-            drawCount != null
-              ? (posAttr.array as Float32Array).subarray(0, drawCount * 3)
-              : (posAttr.array as Float32Array);
-          const meshKey = (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid;
-          meshData.push({
-            key: meshKey,
-            positions,
-            indices: indexAttr ? indexAttr.array : null,
-          });
-        }
-        const { samples: chunk } = buildSurfaceSampleSetFromViewer({
-          geometry: mesh.geometry as THREE.BufferGeometry,
-          worldMatrix: mesh.matrixWorld,
-          maxSamples: remainingSamples,
-          includeUV: includeSamplesUV,
-          startId: nextId,
-          meshKey: (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid,
+    const aggregatedSamples: SurfaceSampleSet["samples"] = [];
+    const meshData: SurfaceSampleSet["meshData"] = [];
+    let nextId = 0;
+    let remainingSamples = Math.max(1, Math.floor(sampleMaxPoints));
+    for (const mesh of meshList) {
+      if (!mesh.geometry || remainingSamples <= 0) continue;
+      mesh.updateMatrixWorld(true);
+      const posAttr = mesh.geometry.getAttribute("position") as THREE.BufferAttribute | null;
+      if (posAttr) {
+        const indexAttr = mesh.geometry.getIndex();
+        const drawCount = getNonIndexedDrawCount(mesh.geometry as THREE.BufferGeometry, posAttr);
+        const positions =
+          drawCount != null
+            ? (posAttr.array as Float32Array).subarray(0, drawCount * 3)
+            : (posAttr.array as Float32Array);
+        const meshKey = (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid;
+        meshData.push({
+          key: meshKey,
+          positions,
+          indices: indexAttr ? indexAttr.array : null,
         });
-        if (!chunk.length) continue;
-        aggregatedSamples.push(...chunk);
-        nextId += chunk.length;
-        remainingSamples -= chunk.length;
       }
+      const { samples: chunk } = buildSurfaceSampleSetFromViewer({
+        geometry: mesh.geometry as THREE.BufferGeometry,
+        worldMatrix: mesh.matrixWorld,
+        maxSamples: remainingSamples,
+        includeUV: includeSamplesUV,
+        startId: nextId,
+        meshKey: (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid,
+      });
+      if (!chunk.length) continue;
+      aggregatedSamples.push(...chunk);
+      nextId += chunk.length;
+      remainingSamples -= chunk.length;
+    }
 
-      if (aggregatedSamples.length) {
-        const box = new THREE.Box3().setFromPoints(aggregatedSamples.map((s) => s.position));
-        nextSampleSet = {
-          samples: aggregatedSamples,
-          bbox: box,
-          center: box.getCenter(new THREE.Vector3()),
-          meshData,
-        };
-      } else {
-        nextSampleSet = { samples: [], meshData };
-      }
+    let nextSampleSet: SurfaceSampleSet;
+    if (aggregatedSamples.length) {
+      const box = new THREE.Box3().setFromPoints(aggregatedSamples.map((s) => s.position));
+      nextSampleSet = {
+        samples: aggregatedSamples,
+        bbox: box,
+        center: box.getCenter(new THREE.Vector3()),
+        meshData,
+      };
+    } else {
+      nextSampleSet = { samples: [], meshData };
     }
     let implicitOverlayLines: THREE.LineSegments | null = null;
     const findImplicitObj = (): THREE.Object3D | null => {
@@ -4705,20 +4698,19 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       return { index: bestIdx, sample: sampleSet.samples[bestIdx] };
     };
 
-    const handlePointerDown = (event: PointerEvent) => {
-      if (document.body.dataset.math3dPanelResizing === "true") return;
-      interruptCameraTour();
-      if (
-        !(showChartGridRef.current && surfaceCellSelectionEnabledRef.current) &&
-        !probeEnabled &&
-        !selectRegionEnabledRef.current &&
-        !geodesicPathEnabledRef.current &&
-        !geodesicHeatEnabledRef.current &&
-        !geodesicDiskPickEnabledRef.current &&
-        !inspectEnabledRef.current &&
-        !dragEnabledRef.current
-      )
-        return;
+      const handlePointerDown = (event: PointerEvent) => {
+        interruptCameraTour();
+        if (
+          !(showChartGridRef.current && surfaceCellSelectionEnabledRef.current) &&
+          !probeEnabled &&
+          !selectRegionEnabledRef.current &&
+          !geodesicPathEnabledRef.current &&
+          !geodesicHeatEnabledRef.current &&
+          !geodesicDiskPickEnabledRef.current &&
+          !inspectEnabledRef.current &&
+          !dragEnabledRef.current
+        )
+          return;
 
         const activeTransformControls = transformControlsRef.current;
         if (
@@ -4842,6 +4834,16 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           });
         if (!heatHit) return;
         hit = heatHit;
+      } else if (inspectEnabledRef.current && !dragEnabledRef.current && intersects.length > 1) {
+        const selectedMeshKey = inspectSelectionMeshKeyRef.current;
+        const firstHitMeshKey = resolveHitMeshKey(intersects[0]);
+        if (selectedMeshKey && firstHitMeshKey === selectedMeshKey) {
+          const alternate = intersects.find((candidate) => {
+            const candidateKey = resolveHitMeshKey(candidate);
+            return !!candidateKey && candidateKey !== selectedMeshKey;
+          });
+          if (alternate) hit = alternate;
+        }
       }
       const point = hit.point.clone();
       const hitMeshKeyValue = (hit.object as any)?.userData?.__surfaceMeshOverrideId;
@@ -5073,24 +5075,46 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
     };
 
-    let hoverPickFrameId = 0;
-    let hoverPickQueued: { clientX: number; clientY: number } | null = null;
-    let lastHoverPickAt = 0;
-    const minHoverPickIntervalMs = 48;
-
-    const runHoverPick = (clientX: number, clientY: number) => {
+    const handlePointerMove = (event: PointerEvent) => {
+      const dragState = dragStateRef.current;
       const inspectHoverCb = onInspectHoverRef.current;
-      if (!inspectEnabledRef.current || !inspectHoverCb) return;
-      if (canUseMeshInteractionLod && meshRuntimeQualityRef.current !== "accurate") return;
-      const now = performance.now();
-      if (now - lastHoverPickAt < minHoverPickIntervalMs) return;
-      lastHoverPickAt = now;
+      if (!dragState) {
+        if (!inspectEnabledRef.current || !inspectHoverCb) return;
+      }
+      if (
+        !dragState &&
+        canUseMeshInteractionLod &&
+        meshRuntimeQualityRef.current !== "accurate"
+      ) {
+        return;
+      }
       const rect = renderer.domElement.getBoundingClientRect();
-      const x = ((clientX - rect.left) / rect.width) * 2 - 1;
-      const y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       pointer.set(x, y);
       raycaster.setFromCamera(pointer, camera);
 
+        if (dragState && event.pointerId === dragState.pointerId) {
+        const hitPoint = new THREE.Vector3();
+        if (!raycaster.ray.intersectPlane(dragState.plane, hitPoint)) return;
+        dragState.lastPoint.copy(hitPoint);
+        const delta = hitPoint.clone().sub(dragState.startPoint);
+        if (delta.lengthSq() > 1e-6) {
+          dragState.moved = true;
+        }
+        const dragCb = onDragRef.current;
+        if (dragCb) {
+          dragCb({
+            point: { x: hitPoint.x, y: hitPoint.y, z: hitPoint.z },
+            normal: { x: dragState.normal.x, y: dragState.normal.y, z: dragState.normal.z },
+            delta: { x: delta.x, y: delta.y, z: delta.z },
+            meshKey: dragState.meshKey,
+          });
+        }
+        return;
+      }
+
+      if (!inspectEnabledRef.current || !inspectHoverCb) return;
       const hoverPickStartAt = performance.now();
       const intersects = raycaster.intersectObjects([surfaceObj], true);
       recordRaycastDuration(hoverPickStartAt);
@@ -5142,52 +5166,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
           xy: xyDomain,
         });
-      }
-    };
-
-    const scheduleHoverPick = (event: PointerEvent) => {
-      hoverPickQueued = { clientX: event.clientX, clientY: event.clientY };
-      if (hoverPickFrameId) return;
-      hoverPickFrameId = requestAnimationFrame(() => {
-        hoverPickFrameId = 0;
-        const queued = hoverPickQueued;
-        hoverPickQueued = null;
-        if (!queued) return;
-        runHoverPick(queued.clientX, queued.clientY);
-      });
-    };
-
-    const handlePointerMove = (event: PointerEvent) => {
-      if (document.body.dataset.math3dPanelResizing === "true") return;
-      const dragState = dragStateRef.current;
-      if (!dragState) {
-        scheduleHoverPick(event);
-        return;
-      }
-      const rect = renderer.domElement.getBoundingClientRect();
-      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      pointer.set(x, y);
-      raycaster.setFromCamera(pointer, camera);
-
-      if (dragState && event.pointerId === dragState.pointerId) {
-        const hitPoint = new THREE.Vector3();
-        if (!raycaster.ray.intersectPlane(dragState.plane, hitPoint)) return;
-        dragState.lastPoint.copy(hitPoint);
-        const delta = hitPoint.clone().sub(dragState.startPoint);
-        if (delta.lengthSq() > 1e-6) {
-          dragState.moved = true;
-        }
-        const dragCb = onDragRef.current;
-        if (dragCb) {
-          dragCb({
-            point: { x: hitPoint.x, y: hitPoint.y, z: hitPoint.z },
-            normal: { x: dragState.normal.x, y: dragState.normal.y, z: dragState.normal.z },
-            delta: { x: delta.x, y: delta.y, z: delta.z },
-            meshKey: dragState.meshKey,
-          });
-        }
-        return;
       }
     };
 
@@ -5315,14 +5293,14 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     let resizeFrameId = 0;
     let resizeTimeoutId: ReturnType<typeof setTimeout> | null = null;
     const handleResize = () => {
+      syncRendererSize(false);
       emitViewportDebug("resize");
-      if (!resizeFrameId) {
-        resizeFrameId = requestAnimationFrame(() => {
-          resizeFrameId = 0;
-          syncRendererSize(false);
-          emitViewportDebug("resize-raf");
-        });
-      }
+      if (resizeFrameId) cancelAnimationFrame(resizeFrameId);
+      resizeFrameId = requestAnimationFrame(() => {
+        resizeFrameId = 0;
+        syncRendererSize(false);
+        emitViewportDebug("resize-raf");
+      });
       if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
       resizeTimeoutId = setTimeout(() => {
         resizeTimeoutId = null;
@@ -5374,7 +5352,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       forceReframeRef.current = null;
       stopCameraTour("stopped", false);
       cancelAnimationFrame(frameId);
-      if (hoverPickFrameId) cancelAnimationFrame(hoverPickFrameId);
       if (resizeFrameId) cancelAnimationFrame(resizeFrameId);
       if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
       ro.disconnect();
@@ -5564,7 +5541,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     implicitResolution,
     implicitMeshToken,
     implicitDomainSize,
-    sampleSetEnabled,
     graphDomain?.xSpan,
     graphDomain?.ySpan,
     isCameraLeader,
@@ -5777,7 +5753,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       if (colorMode !== "solid") applyVertexColors(geom, colorMode, colorPalette);
       const mesh = new THREE.Mesh(geom, makeMaterial(override));
-      mesh.visible = override.visible ?? true;
       if (override.id) {
         (mesh as any).userData.__surfaceMeshOverrideId = override.id;
       }
@@ -5792,7 +5767,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         roughness: override.roughness,
         metalness: override.metalness,
         wireframe: override.wireframe,
-        visible: override.visible,
         flatShading: override.flatShading,
       };
       applySurfaceMeshOverrideTransform(mesh, override.transform);
@@ -5891,10 +5865,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         roughness: override.roughness,
         metalness: override.metalness,
         wireframe: override.wireframe,
-        visible: override.visible,
         flatShading: override.flatShading,
       };
-      mesh.visible = style.visible ?? true;
       (mesh as any).userData.__surfaceMeshLod = {
         runtimeQuality: runtimeQualityForMesh,
         fullTriangleCount: lodBuffers.fullTriangleCount,
@@ -5991,55 +5963,53 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
     });
 
-    let nextSampleSet: SurfaceSampleSet | null = null;
-    if (sampleSetEnabled) {
-      const aggregatedSamples: SurfaceSampleSet["samples"] = [];
-      const meshData: SurfaceSampleSet["meshData"] = [];
-      let nextId = 0;
-      let remainingSamples = Math.max(1, Math.floor(sampleMaxPoints));
-      for (const mesh of meshList) {
-        if (!mesh.geometry || remainingSamples <= 0) continue;
-        mesh.updateMatrixWorld(true);
-        const posAttr = mesh.geometry.getAttribute("position") as THREE.BufferAttribute | null;
-        if (posAttr) {
-          const indexAttr = mesh.geometry.getIndex();
-          const drawCount = getNonIndexedDrawCount(mesh.geometry as THREE.BufferGeometry, posAttr);
-          const positions =
-            drawCount != null
-              ? (posAttr.array as Float32Array).subarray(0, drawCount * 3)
-              : (posAttr.array as Float32Array);
-          const meshKey = (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid;
-          meshData.push({
-            key: meshKey,
-            positions,
-            indices: indexAttr ? indexAttr.array : null,
-          });
-        }
-        const { samples: chunk } = buildSurfaceSampleSetFromViewer({
-          geometry: mesh.geometry as THREE.BufferGeometry,
-          worldMatrix: mesh.matrixWorld,
-          maxSamples: remainingSamples,
-          includeUV: includeSamplesUV,
-          startId: nextId,
-          meshKey: (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid,
+    const aggregatedSamples: SurfaceSampleSet["samples"] = [];
+    const meshData: SurfaceSampleSet["meshData"] = [];
+    let nextId = 0;
+    let remainingSamples = Math.max(1, Math.floor(sampleMaxPoints));
+    for (const mesh of meshList) {
+      if (!mesh.geometry || remainingSamples <= 0) continue;
+      mesh.updateMatrixWorld(true);
+      const posAttr = mesh.geometry.getAttribute("position") as THREE.BufferAttribute | null;
+      if (posAttr) {
+        const indexAttr = mesh.geometry.getIndex();
+        const drawCount = getNonIndexedDrawCount(mesh.geometry as THREE.BufferGeometry, posAttr);
+        const positions =
+          drawCount != null
+            ? (posAttr.array as Float32Array).subarray(0, drawCount * 3)
+            : (posAttr.array as Float32Array);
+        const meshKey = (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid;
+        meshData.push({
+          key: meshKey,
+          positions,
+          indices: indexAttr ? indexAttr.array : null,
         });
-        if (!chunk.length) continue;
-        aggregatedSamples.push(...chunk);
-        nextId += chunk.length;
-        remainingSamples -= chunk.length;
       }
+      const { samples: chunk } = buildSurfaceSampleSetFromViewer({
+        geometry: mesh.geometry as THREE.BufferGeometry,
+        worldMatrix: mesh.matrixWorld,
+        maxSamples: remainingSamples,
+        includeUV: includeSamplesUV,
+        startId: nextId,
+        meshKey: (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid,
+      });
+      if (!chunk.length) continue;
+      aggregatedSamples.push(...chunk);
+      nextId += chunk.length;
+      remainingSamples -= chunk.length;
+    }
 
-      if (aggregatedSamples.length) {
-        const box = new THREE.Box3().setFromPoints(aggregatedSamples.map((s) => s.position));
-        nextSampleSet = {
-          samples: aggregatedSamples,
-          bbox: box,
-          center: box.getCenter(new THREE.Vector3()),
-          meshData,
-        };
-      } else {
-        nextSampleSet = { samples: [], meshData };
-      }
+    let nextSampleSet: SurfaceSampleSet;
+    if (aggregatedSamples.length) {
+      const box = new THREE.Box3().setFromPoints(aggregatedSamples.map((s) => s.position));
+      nextSampleSet = {
+        samples: aggregatedSamples,
+        bbox: box,
+        center: box.getCenter(new THREE.Vector3()),
+        meshData,
+      };
+    } else {
+      nextSampleSet = { samples: [], meshData };
     }
     sampleSetRef.current = nextSampleSet;
     onSampleSet?.(nextSampleSet);
@@ -6111,7 +6081,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     normalizedMeshPreviewTriangleTarget,
     includeSamplesUV,
     sampleMaxPoints,
-    sampleSetEnabled,
     showBoundingBox,
     onSampleSet,
     gizmoEnabled,

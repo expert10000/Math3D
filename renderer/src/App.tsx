@@ -52,7 +52,7 @@ import {
   type SceneBackgroundMode,
   type ViewportDebugSnapshot,
 } from "./components/SurfaceViewer";
-import { GeometryViewer, type GeometryViewportDisplayMode } from "./components/GeometryViewer";
+import { GeometryViewer } from "./components/GeometryViewer";
 import { StereometryAnalyzerPanel } from "./components/StereometryAnalyzerPanel";
 import {
   ConstructionLabPanel,
@@ -2120,16 +2120,10 @@ const mobiusParamsToComplexMapExpressions = (p: MobiusParams): { reExpr: string;
 };
 
 const splitterStyle: React.CSSProperties = {
-  width: 12,
-  minWidth: 12,
-  flex: "0 0 12px",
+  width: 6,
   cursor: "col-resize",
   alignSelf: "stretch",
-  background:
-    "linear-gradient(to right, transparent 0, transparent 4px, #94a3b8 4px, #94a3b8 8px, transparent 8px)",
-  borderLeft: "1px solid #dbe4f0",
-  borderRight: "1px solid #dbe4f0",
-  touchAction: "none",
+  background: "linear-gradient(to right, transparent 0, #ddd 3px, transparent 6px)",
 };
 
 const GEOMETRY_BADGE_COLORS = {
@@ -2184,15 +2178,8 @@ type GeometryBooleanPreviewMesh = SurfaceMeshData & {
 type GeometryRepeatAxis = "x" | "y" | "z" | "custom";
 type GeometryRepeatGridPlane = "xy" | "xz" | "yz";
 type GeometryRepeatMirrorPlane = "xy" | "xz" | "yz" | "selected-face";
-type GeometryRightPanelTab = "create" | "inspector" | "scene";
+type GeometryRightPanelTab = "inspector" | "scene";
 type GeometryInspectorPanelTab = "probe" | "dependencies";
-const GEOMETRY_VIEWPORT_DISPLAY_MODE_OPTIONS: Array<{ id: GeometryViewportDisplayMode; label: string }> = [
-  { id: "solid", label: "Solid" },
-  { id: "transparent", label: "Transparent" },
-  { id: "wireframe", label: "Wireframe" },
-  { id: "edges", label: "Edges" },
-  { id: "normals", label: "Normals" },
-];
 type GeometryDependencyState = "valid" | "updating" | "stale" | "broken-source" | "ambiguous-target" | "frozen";
 type GeometryProceduralPickInfo = {
   point: { x: number; y: number; z: number };
@@ -7919,7 +7906,7 @@ const App: React.FC = () => {
   const [geometrySceneGalleryExpanded, setGeometrySceneGalleryExpanded] = useState(false);
   const [geometryCreateActionStatus, setGeometryCreateActionStatus] = useState<string | null>(null);
   const [geometryCreateSelectedCardExpanded, setGeometryCreateSelectedCardExpanded] = useState(false);
-  const [geometryCreateActionsOverlayOpen, setGeometryCreateActionsOverlayOpen] = useState(false);
+  const [geometryCreateActionsOverlayOpen, setGeometryCreateActionsOverlayOpen] = useState(true);
   const [geometryAddSelectNewObject, setGeometryAddSelectNewObject] = useState(true);
   const [geometryAddFocusCamera, setGeometryAddFocusCamera] = useState(true);
   const [geometryAddOpenObjectTab, setGeometryAddOpenObjectTab] = useState(false);
@@ -9356,15 +9343,13 @@ const App: React.FC = () => {
       }
     }
     let cardCount = 0;
-    if (GEOMETRY_GALLERY_PREFETCH_CARD_LIMIT > 0) {
-      for (const section of geometryGallerySections) {
-        for (const card of section.cards) {
-          if (card.id === geometryGallerySelectedCard?.id) continue;
-          addThumb(card.renderedThumbnailDataUrl, card.diagramThumbnailDataUrl);
-          cardCount += 1;
-          if (cardCount >= GEOMETRY_GALLERY_PREFETCH_CARD_LIMIT) {
-            return Array.from(urls);
-          }
+    for (const section of geometryGallerySections) {
+      for (const card of section.cards) {
+        if (card.id === geometryGallerySelectedCard?.id) continue;
+        addThumb(card.renderedThumbnailDataUrl, card.diagramThumbnailDataUrl);
+        cardCount += 1;
+        if (cardCount >= GEOMETRY_GALLERY_PREFETCH_CARD_LIMIT) {
+          return Array.from(urls);
         }
       }
     }
@@ -9768,7 +9753,6 @@ const App: React.FC = () => {
     setGeometryGallerySelectedCardId(card.id);
     setGeometryGallerySelectedPresetId(null);
     handleAddGeometryObject(card.defaultRecipe);
-    setGeometryProceduralPanelTab("object");
     markGeometryGalleryCardUsed(card.id);
   }, [handleAddGeometryObject, markGeometryGalleryCardUsed]);
   const handleAddGeometryGalleryPreset = useCallback(
@@ -9804,7 +9788,6 @@ const App: React.FC = () => {
       setGeometryCreatePlacementModeActive(false);
       setGeometryCreatePlacementStatus(null);
       setGeometrySnapPreview(null);
-      setGeometryProceduralPanelTab("object");
     }
   }, [
     geometryCreatePlacementTarget,
@@ -10765,43 +10748,39 @@ const App: React.FC = () => {
       const smoothNormals =
         obj.type === "polyhedron" ? Boolean(obj.params.smoothNormals ?? true) : true;
       const geom = base.clone();
-      try {
-        const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
-        if (!posAttr || posAttr.count < 3) continue;
-        const mesh = computeVertexNormals(
-          buildSurfaceMeshFromGeometry(
-            geom,
-            obj.name,
-            { kind: "proceduralObjects" },
-            { mergeVertices: false }
-          )
-        );
-        if (!mesh.positions.length) continue;
-        const meshVertCount = Math.floor(mesh.positions.length / 3);
-        vertCount += meshVertCount;
-        if (mesh.indices && mesh.indices.length >= 3) {
-          triCount += Math.floor(mesh.indices.length / 3);
-        } else {
-          triCount += Math.floor(meshVertCount / 3);
-        }
-        meshes.push({
-          ...mesh,
-          id: obj.id,
-          label: obj.name,
-          color: material.color,
-          opacity: material.opacity,
-          roughness: material.roughness,
-          metalness: material.metalness,
-          flatShading: !smoothNormals,
-          transform: {
-            position: { ...obj.transform.position },
-            rotation: { ...obj.transform.rotation },
-            scale: { ...obj.transform.scale },
-          },
-        });
-      } finally {
-        geom.dispose();
+      const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
+      if (!posAttr || posAttr.count < 3) continue;
+      const mesh = computeVertexNormals(
+        buildSurfaceMeshFromGeometry(
+          geom,
+          obj.name,
+          { kind: "proceduralObjects" },
+          { mergeVertices: false }
+        )
+      );
+      if (!mesh.positions.length) continue;
+      const meshVertCount = Math.floor(mesh.positions.length / 3);
+      vertCount += meshVertCount;
+      if (mesh.indices && mesh.indices.length >= 3) {
+        triCount += Math.floor(mesh.indices.length / 3);
+      } else {
+        triCount += Math.floor(meshVertCount / 3);
       }
+      meshes.push({
+        ...mesh,
+        id: obj.id,
+        label: obj.name,
+        color: material.color,
+        opacity: material.opacity,
+        roughness: material.roughness,
+        metalness: material.metalness,
+        flatShading: !smoothNormals,
+        transform: {
+          position: { ...obj.transform.position },
+          rotation: { ...obj.transform.rotation },
+          scale: { ...obj.transform.scale },
+        },
+      });
     }
 
     for (const obj of geometryDatasetMeshObjects) {
@@ -11350,22 +11329,18 @@ const App: React.FC = () => {
         rotation: { x: 0, y: 0, z: 0 },
         scale: { x: 1, y: 1, z: 1 },
       };
-      const worldMatrix = buildGeometryTransformMatrix(
+      const worldMesh = transformSurfaceMeshByGeometryTransform(
+        sourceMesh,
         (sourceMesh.transform as GeometryObjectTransform | undefined) ?? identityTransform
       );
-      const positions = sourceMesh.positions;
+      const positions = worldMesh.positions;
       const vertexCount = Math.floor((positions?.length ?? 0) / 3);
       if (!vertexCount) return fallback;
       const getPoint = (idx: number) => {
         const base = idx * 3;
-        const v = new THREE.Vector3(
-          positions[base] ?? 0,
-          positions[base + 1] ?? 0,
-          positions[base + 2] ?? 0
-        ).applyMatrix4(worldMatrix);
-        return { x: v.x, y: v.y, z: v.z };
+        return { x: positions[base] ?? 0, y: positions[base + 1] ?? 0, z: positions[base + 2] ?? 0 };
       };
-      const indices = sourceMesh.indices ?? null;
+      const indices = worldMesh.indices ?? null;
       const triCount =
         indices && indices.length >= 3 ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
       const query = pick.point;
@@ -14678,11 +14653,13 @@ const App: React.FC = () => {
   const geometryProceduralSelectionHighlightPolygons = useMemo<Polygon3[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     const polygons: Polygon3[] = [];
+    const hover = geometryProbeHoverSelectionDetails;
     const click = geometryProbeSelectionDetails;
+    if (hover?.mode === "face" && hover.faceVertices) {
+      polygons.push({ vertices: hover.faceVertices });
+    }
     if (click?.mode === "face" && click.faceVertices) {
       polygons.push({ vertices: click.faceVertices });
-    } else if (geometryProbeHoverSelectionDetails?.mode === "face" && geometryProbeHoverSelectionDetails.faceVertices) {
-      polygons.push({ vertices: geometryProbeHoverSelectionDetails.faceVertices });
     }
     return polygons.length ? polygons : null;
   }, [geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails]);
@@ -18683,8 +18660,6 @@ const App: React.FC = () => {
         ? geometryDemoScene
         : geometryProblemScene;
   const [geometryWireframe, setGeometryWireframe] = useState(false);
-  const [geometryViewportDisplayMode, setGeometryViewportDisplayMode] =
-    useState<GeometryViewportDisplayMode>("solid");
   const [geometryShowPlanes, setGeometryShowPlanes] = useState(true);
   const [geometryOpacity, setGeometryOpacity] = useState(0.8);
   const [geometryResetToken, setGeometryResetToken] = useState(0);
@@ -26112,11 +26087,6 @@ const App: React.FC = () => {
 
   const startDragLeft = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
-    document.body.dataset.math3dPanelResizing = "true";
-    const prevCursor = document.body.style.cursor;
-    const prevUserSelect = document.body.style.userSelect;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
     const startX = e.clientX;
     const startWidth = leftWidth;
     let frameId = 0;
@@ -26127,14 +26097,10 @@ const App: React.FC = () => {
       setLeftWidth(nextWidth);
     };
 
-    const scheduleWidth = () => {
-      if (!frameId) frameId = window.requestAnimationFrame(applyWidth);
-    };
-
     const onMove = (ev: MouseEvent) => {
       const delta = ev.clientX - startX;
       nextWidth = Math.min(maxLeft, Math.max(minLeft, startWidth + delta));
-      scheduleWidth();
+      if (!frameId) frameId = window.requestAnimationFrame(applyWidth);
     };
 
     const onUp = () => {
@@ -26142,9 +26108,6 @@ const App: React.FC = () => {
         window.cancelAnimationFrame(frameId);
         frameId = 0;
       }
-      delete document.body.dataset.math3dPanelResizing;
-      document.body.style.cursor = prevCursor;
-      document.body.style.userSelect = prevUserSelect;
       setLeftWidth(nextWidth);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
@@ -26156,11 +26119,6 @@ const App: React.FC = () => {
 
   const startDragRight = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
-    document.body.dataset.math3dPanelResizing = "true";
-    const prevCursor = document.body.style.cursor;
-    const prevUserSelect = document.body.style.userSelect;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
     const startX = e.clientX;
     const startWidth = rightWidth;
     let frameId = 0;
@@ -26171,14 +26129,10 @@ const App: React.FC = () => {
       setRightWidth(nextWidth);
     };
 
-    const scheduleWidth = () => {
-      if (!frameId) frameId = window.requestAnimationFrame(applyWidth);
-    };
-
     const onMove = (ev: MouseEvent) => {
       const delta = startX - ev.clientX; // drag left to expand right panel
       nextWidth = Math.min(maxRight, Math.max(minRight, startWidth + delta));
-      scheduleWidth();
+      if (!frameId) frameId = window.requestAnimationFrame(applyWidth);
     };
 
     const onUp = () => {
@@ -26186,9 +26140,6 @@ const App: React.FC = () => {
         window.cancelAnimationFrame(frameId);
         frameId = 0;
       }
-      delete document.body.dataset.math3dPanelResizing;
-      document.body.style.cursor = prevCursor;
-      document.body.style.userSelect = prevUserSelect;
       setRightWidth(nextWidth);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
@@ -42222,31 +42173,6 @@ case "mobius":
     }
     return "create";
   }, [geometryAddEnterPlacementMode, geometryMode, geometryProceduralPanelTab]);
-  const geometryRightPanelEffectiveTab: GeometryRightPanelTab =
-    geometryWorkflowActiveStepId === "create"
-      ? "create"
-      : geometryWorkflowActiveStepId === "analyze"
-        ? geometryRightPanelTab === "scene"
-          ? "scene"
-          : "inspector"
-        : geometryRightPanelTab === "inspector"
-          ? "inspector"
-          : "scene";
-  const geometryRightPanelTabs = useMemo<Array<{ id: GeometryRightPanelTab; label: string }>>(() => {
-    if (geometryWorkflowActiveStepId === "create") {
-      return [{ id: "create", label: "Create" }];
-    }
-    if (geometryWorkflowActiveStepId === "analyze") {
-      return [
-        { id: "inspector", label: "Inspector" },
-        { id: "scene", label: "Scene" },
-      ];
-    }
-    return [
-      { id: "inspector", label: "Inspector" },
-      { id: "scene", label: "Scene" },
-    ];
-  }, [geometryWorkflowActiveStepId]);
   const handleGeometryWorkflowStepClick = useCallback(
     (stepId: GeometryWorkflowStepId) => {
       if (stepId === "create") {
@@ -43395,10 +43321,7 @@ case "mobius":
     (mode === "surfaces" ? (isPresentDisplayMode ? true : showRightPanel) : showRightPanel) &&
     !cleanScreenshotSurfaceActive;
   const showGeometryRightPanel =
-    mode === "geometry" &&
-    geometryMode === "procedural" &&
-    (showRightPanel || geometryProceduralPanelTab === "create") &&
-    !isPresentDisplayMode;
+    mode === "geometry" && geometryMode === "procedural" && showRightPanel && !isPresentDisplayMode;
   const surfaceLeftPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(leftWidth, 280) : leftWidth;
   const surfaceRightPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(rightWidth, 280) : rightWidth;
   const geometryRightPanelWidth = Math.min(rightWidth, geometrySidePanelWidth);
@@ -50454,7 +50377,6 @@ case "mobius":
                     meshInteractionHideWireframe={geometryEffectiveHideWireframe}
                     meshInteractionHideSceneOverlays={geometryEffectiveHideSceneOverlays}
                     renderQuality={geometryEffectiveRenderQuality}
-                    viewportDisplayMode={geometryViewportDisplayMode}
                     onMeshInteractionStateChange={handleGeometryViewerInteractionStateChange}
                     cameraOverride={
                       geometryMode === "scratch" || geometryMode === "workbook" ? geometryProblemCameraOverride : null
@@ -52406,7 +52328,7 @@ case "mobius":
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           {([
                             ["object", "Object"],
-                            ["face", "Select face"],
+                            ["face", "Face"],
                             ["edge", "Edge"],
                             ["vertex", "Vertex"],
                           ] as const).map(([modeId, label]) => (
@@ -56672,7 +56594,7 @@ case "mobius":
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
                               {([
                                 ["object", "Object"],
-                                ["face", "Select face"],
+                                ["face", "Face"],
                                 ["edge", "Edge"],
                                 ["vertex", "Vertex"],
                               ] as const).map(([modeId, label]) => (
@@ -59216,29 +59138,13 @@ case "mobius":
                   }}
                 >
                 <span style={{ fontSize: 12, fontWeight: 700, color: "#1e3a8a" }}>Display</span>
-                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
-                  {GEOMETRY_VIEWPORT_DISPLAY_MODE_OPTIONS.map((option) => {
-                    const active = geometryViewportDisplayMode === option.id;
-                    return (
-                      <button
-                        key={`geometry-display-mode-${option.id}`}
-                        type="button"
-                        aria-pressed={active}
-                        onClick={() => setGeometryViewportDisplayMode(option.id)}
-                        style={{ ...pill(active), fontSize: 11, padding: "2px 7px" }}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
                 <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                   <input
                     type="checkbox"
                     checked={geometryWireframe}
                     onChange={(e) => setGeometryWireframe(e.target.checked)}
                   />
-                  Mesh wireframe
+                  Wireframe
                 </label>
                 <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                   <input
@@ -59395,6 +59301,14 @@ case "mobius":
                         onChange={(e) => setShowGeometryDependencyOverlay(e.target.checked)}
                       />
                       Dependencies
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                      <input
+                        type="checkbox"
+                        checked={geometryCreateActionsOverlayOpen}
+                        onChange={(e) => setGeometryCreateActionsOverlayOpen(e.target.checked)}
+                      />
+                      Create overlay
                     </label>
                   </>
                 )}
@@ -60283,7 +60197,6 @@ case "mobius":
                   )}
                   {geometryMode === "procedural" &&
                     geometryProceduralPanelTab === "create" &&
-                    compactGeometryCreatePanel &&
                     geometryCreateActionsOverlayOpen &&
                     geometryGallerySelectedCard && (
                       <div
@@ -60406,7 +60319,6 @@ case "mobius":
                   meshInteractionHideWireframe={geometryEffectiveHideWireframe}
                   meshInteractionHideSceneOverlays={geometryEffectiveHideSceneOverlays}
                   renderQuality={geometryEffectiveRenderQuality}
-                  viewportDisplayMode={geometryViewportDisplayMode}
                   onMeshInteractionStateChange={handleGeometryViewerInteractionStateChange}
                   highlightPolygons={
                     geometryMode === "demo"
@@ -60500,9 +60412,12 @@ case "mobius":
                   gizmoScaleSnap={geometrySnapScaleEnabled ? geometrySnapScaleStep : null}
                   onGizmoTransform={geometryMode === "procedural" ? handleProceduralGizmoTransform : undefined}
                   pickEnabled={
-                    geometryMode === "demo" ||
-                    (geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations") ||
-                    ((geometryMode === "scratch" || geometryMode === "workbook") && geometryPointPlacementEnabled)
+                    !geometryFastModeActive &&
+                    (
+                      geometryMode === "demo" ||
+                      (geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations") ||
+                      ((geometryMode === "scratch" || geometryMode === "workbook") && geometryPointPlacementEnabled)
+                    )
                   }
                   onPick={
                     geometryMode === "demo"
@@ -60521,7 +60436,6 @@ case "mobius":
                       : undefined
                   }
                   inspectSelectionMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
-                  selectedMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
                 />
                 </div>
                 {showGeometryRightPanel && !isPhoneLandscapeLayout && <div onMouseDown={startDragRight} style={splitterStyle} />}
@@ -60538,198 +60452,22 @@ case "mobius":
                     }}
                   >
                     <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-                      {geometryRightPanelTabs.map(({ id: tabId, label }) => (
+                      {([
+                        ["inspector", "Inspector"],
+                        ["scene", "Scene"],
+                      ] as const).map(([tabId, label]) => (
                         <button
                           key={`geometry-right-panel-tab-${tabId}`}
                           type="button"
                           onClick={() => setGeometryRightPanelTab(tabId)}
-                          style={pill(geometryRightPanelEffectiveTab === tabId)}
-                          aria-pressed={geometryRightPanelEffectiveTab === tabId}
+                          style={pill(geometryRightPanelTab === tabId)}
+                          aria-pressed={geometryRightPanelTab === tabId}
                         >
                           {label}
                         </button>
                       ))}
                     </div>
-                    {geometryRightPanelEffectiveTab === "create" ? (
-                      <div
-                        style={{
-                          border: "1px solid #dbe2ea",
-                          borderRadius: 8,
-                          padding: "8px 10px",
-                          background: "#ffffff",
-                          display: "grid",
-                          gap: 10,
-                          fontSize: 11,
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: 12, fontWeight: 800, overflowWrap: "anywhere" }}>
-                              {geometryGallerySelectedCard?.name ?? "No primitive selected"}
-                            </div>
-                            <div style={{ color: "#64748b", marginTop: 2 }}>
-                              {geometryGallerySelectedCard
-                                ? [
-                                    geometryGallerySelectedCard.badge || "Primitive",
-                                    geometryGallerySelectedCard.supported ? "ready" : "planned",
-                                    geometryGallerySelectedCard.presets.length ? "presets" : "custom",
-                                  ].join(" | ")
-                                : "Choose a primitive from the gallery."}
-                            </div>
-                          </div>
-                          {geometryGallerySelectedCard && (
-                            <span
-                              style={{
-                                fontSize: 10,
-                                fontWeight: 800,
-                                color: geometryGallerySelectedCard.supported ? "#166534" : "#92400e",
-                                border: "1px solid " + (geometryGallerySelectedCard.supported ? "#bbf7d0" : "#fde68a"),
-                                borderRadius: 999,
-                                padding: "2px 8px",
-                                background: geometryGallerySelectedCard.supported ? "#f0fdf4" : "#fffbeb",
-                                flex: "0 0 auto",
-                              }}
-                            >
-                              {geometryGallerySelectedCard.supported ? "Ready" : "Planned"}
-                            </span>
-                          )}
-                        </div>
-
-                        <div style={{ display: "grid", gap: 6 }}>
-                          <div style={{ fontSize: 11, fontWeight: 700 }}>Placement</div>
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                            <button
-                              type="button"
-                              aria-pressed={!geometryAddEnterPlacementMode}
-                              onClick={() => {
-                                setGeometryAddEnterPlacementMode(false);
-                                setGeometryCreatePlacementModeActive(false);
-                                setGeometryCreatePlacementStatus(null);
-                                setGeometryPendingPlacementObjectId(null);
-                                setGeometryProceduralHoverPick(null);
-                                setGeometrySnapPreview(null);
-                              }}
-                              style={{ ...pill(!geometryAddEnterPlacementMode), fontSize: 10.5, padding: "2px 8px" }}
-                            >
-                              At origin
-                            </button>
-                            {GEOMETRY_CREATE_PLACEMENT_TARGET_OPTIONS.map((option) => {
-                              const active = geometryAddEnterPlacementMode && geometryCreatePlacementTarget === option.id;
-                              return (
-                                <button
-                                  key={`geometry-right-placement-target-${option.id}`}
-                                  type="button"
-                                  aria-pressed={active}
-                                  onClick={() => {
-                                    setGeometryAddEnterPlacementMode(true);
-                                    setGeometryCreatePlacementTarget(option.id);
-                                    setGeometryCreatePlacementSnapToGrid(option.id === "on-grid");
-                                  }}
-                                  style={{ ...pill(active), fontSize: 10.5, padding: "2px 8px" }}
-                                >
-                                  {option.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        <div style={{ display: "grid", gap: 6 }}>
-                          <div style={{ fontSize: 11, fontWeight: 700 }}>Parameters</div>
-                          {geometryCreateQuickParamEntries.length ? (
-                            geometryCreateQuickParamEntries.map((entry) => (
-                              <label
-                                key={`geometry-right-create-param-${entry.key}`}
-                                style={{
-                                  display: "grid",
-                                  gridTemplateColumns: "1fr auto",
-                                  gap: 8,
-                                  alignItems: "center",
-                                  fontSize: 10.5,
-                                }}
-                              >
-                                <span style={{ color: "#334155" }}>{entry.key}</span>
-                                {typeof entry.value === "boolean" ? (
-                                  <input
-                                    type="checkbox"
-                                    checked={entry.value}
-                                    onChange={(e) =>
-                                      setGeometryGalleryPreviewParams((prev) => ({
-                                        ...prev,
-                                        [entry.key]: e.target.checked,
-                                      }))
-                                    }
-                                  />
-                                ) : typeof entry.value === "number" ? (
-                                  <input
-                                    type="number"
-                                    step={0.1}
-                                    value={entry.value}
-                                    onChange={(e) => {
-                                      const raw = Number(e.target.value);
-                                      if (!Number.isFinite(raw)) return;
-                                      setGeometryGalleryPreviewParams((prev) => ({
-                                        ...prev,
-                                        [entry.key]: raw,
-                                      }));
-                                    }}
-                                    style={{ width: 86, fontSize: 10.5 }}
-                                  />
-                                ) : (
-                                  <input
-                                    type="text"
-                                    value={String(entry.value)}
-                                    onChange={(e) =>
-                                      setGeometryGalleryPreviewParams((prev) => ({
-                                        ...prev,
-                                        [entry.key]: e.target.value,
-                                      }))
-                                    }
-                                    style={{ width: 110, fontSize: 10.5 }}
-                                  />
-                                )}
-                              </label>
-                            ))
-                          ) : (
-                            <div style={{ color: "#64748b" }}>Select a gallery item with editable parameters.</div>
-                          )}
-                        </div>
-
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          <button
-                            type="button"
-                            data-testid="geometry-right-add-selected"
-                            onClick={() => handleAddGeometryGallerySelectedAtOrigin(false)}
-                            disabled={!geometryGallerySelectedCard?.supported}
-                            style={{ fontSize: 11 }}
-                          >
-                            Add
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleAddGeometryGallerySelectedAtOrigin(true)}
-                            disabled={!geometryGallerySelectedCard?.supported}
-                            style={{ fontSize: 11 }}
-                          >
-                            Add & place
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleOpenGeometryGalleryCustomEditor}
-                            disabled={!geometryGallerySelectedCard?.supported || !geometryGallerySelectedCard.defaultRecipe}
-                            style={{ fontSize: 11 }}
-                          >
-                            Customize
-                          </button>
-                        </div>
-
-                        {(geometryCreatePlacementStatus || geometryCreateActionStatus) && (
-                          <div style={{ color: geometryCreatePlacementStatus ? "#1d4ed8" : "#166534", fontWeight: 600 }}>
-                            {geometryCreatePlacementStatus ?? geometryCreateActionStatus}
-                          </div>
-                        )}
-                      </div>
-                    ) : geometryRightPanelEffectiveTab === "inspector" ? (
+                    {geometryRightPanelTab === "inspector" ? (
                       <>
                         <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
                           {([
@@ -60769,7 +60507,7 @@ case "mobius":
                               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
                                 {([
                                   ["object", "Object"],
-                                  ["face", "Select face"],
+                                  ["face", "Face"],
                                   ["edge", "Edge"],
                                   ["vertex", "Vertex"],
                                 ] as const).map(([modeId, label]) => (
@@ -64744,8 +64482,8 @@ const GALLERY_SORT_OPTIONS: Array<{ value: GallerySortPreset; label: string }> =
   { value: "complexity", label: "Complexity" },
   { value: "demoReady", label: "Demo-ready" },
 ];
-const GEOMETRY_GALLERY_PREFETCH_CARD_LIMIT = 0;
-const GEOMETRY_GALLERY_PREFETCH_PRESET_LIMIT = 0;
+const GEOMETRY_GALLERY_PREFETCH_CARD_LIMIT = 18;
+const GEOMETRY_GALLERY_PREFETCH_PRESET_LIMIT = 3;
 
 const thumbByViewMode = (
   renderedThumb: string,
