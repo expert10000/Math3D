@@ -9768,6 +9768,7 @@ const App: React.FC = () => {
     setGeometryGallerySelectedCardId(card.id);
     setGeometryGallerySelectedPresetId(null);
     handleAddGeometryObject(card.defaultRecipe);
+    setGeometryProceduralPanelTab("object");
     markGeometryGalleryCardUsed(card.id);
   }, [handleAddGeometryObject, markGeometryGalleryCardUsed]);
   const handleAddGeometryGalleryPreset = useCallback(
@@ -9803,6 +9804,7 @@ const App: React.FC = () => {
       setGeometryCreatePlacementModeActive(false);
       setGeometryCreatePlacementStatus(null);
       setGeometrySnapPreview(null);
+      setGeometryProceduralPanelTab("object");
     }
   }, [
     geometryCreatePlacementTarget,
@@ -10763,39 +10765,43 @@ const App: React.FC = () => {
       const smoothNormals =
         obj.type === "polyhedron" ? Boolean(obj.params.smoothNormals ?? true) : true;
       const geom = base.clone();
-      const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
-      if (!posAttr || posAttr.count < 3) continue;
-      const mesh = computeVertexNormals(
-        buildSurfaceMeshFromGeometry(
-          geom,
-          obj.name,
-          { kind: "proceduralObjects" },
-          { mergeVertices: false }
-        )
-      );
-      if (!mesh.positions.length) continue;
-      const meshVertCount = Math.floor(mesh.positions.length / 3);
-      vertCount += meshVertCount;
-      if (mesh.indices && mesh.indices.length >= 3) {
-        triCount += Math.floor(mesh.indices.length / 3);
-      } else {
-        triCount += Math.floor(meshVertCount / 3);
+      try {
+        const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
+        if (!posAttr || posAttr.count < 3) continue;
+        const mesh = computeVertexNormals(
+          buildSurfaceMeshFromGeometry(
+            geom,
+            obj.name,
+            { kind: "proceduralObjects" },
+            { mergeVertices: false }
+          )
+        );
+        if (!mesh.positions.length) continue;
+        const meshVertCount = Math.floor(mesh.positions.length / 3);
+        vertCount += meshVertCount;
+        if (mesh.indices && mesh.indices.length >= 3) {
+          triCount += Math.floor(mesh.indices.length / 3);
+        } else {
+          triCount += Math.floor(meshVertCount / 3);
+        }
+        meshes.push({
+          ...mesh,
+          id: obj.id,
+          label: obj.name,
+          color: material.color,
+          opacity: material.opacity,
+          roughness: material.roughness,
+          metalness: material.metalness,
+          flatShading: !smoothNormals,
+          transform: {
+            position: { ...obj.transform.position },
+            rotation: { ...obj.transform.rotation },
+            scale: { ...obj.transform.scale },
+          },
+        });
+      } finally {
+        geom.dispose();
       }
-      meshes.push({
-        ...mesh,
-        id: obj.id,
-        label: obj.name,
-        color: material.color,
-        opacity: material.opacity,
-        roughness: material.roughness,
-        metalness: material.metalness,
-        flatShading: !smoothNormals,
-        transform: {
-          position: { ...obj.transform.position },
-          rotation: { ...obj.transform.rotation },
-          scale: { ...obj.transform.scale },
-        },
-      });
     }
 
     for (const obj of geometryDatasetMeshObjects) {
@@ -42223,8 +42229,8 @@ case "mobius":
         ? geometryRightPanelTab === "scene"
           ? "scene"
           : "inspector"
-        : geometryRightPanelTab === "scene"
-          ? "scene"
+        : geometryRightPanelTab === "inspector"
+          ? "inspector"
           : "scene";
   const geometryRightPanelTabs = useMemo<Array<{ id: GeometryRightPanelTab; label: string }>>(() => {
     if (geometryWorkflowActiveStepId === "create") {
@@ -42236,7 +42242,10 @@ case "mobius":
         { id: "scene", label: "Scene" },
       ];
     }
-    return [{ id: "scene", label: "Scene" }];
+    return [
+      { id: "inspector", label: "Inspector" },
+      { id: "scene", label: "Scene" },
+    ];
   }, [geometryWorkflowActiveStepId]);
   const handleGeometryWorkflowStepClick = useCallback(
     (stepId: GeometryWorkflowStepId) => {

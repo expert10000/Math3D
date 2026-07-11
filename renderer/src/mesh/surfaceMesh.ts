@@ -265,7 +265,13 @@ export function buildSurfaceMeshFromGeometry(
   opts: GeometryOpts = { mergeVertices: false }
 ): SurfaceMeshData {
   const geom = normalizeGeometry(geometry, opts);
-  return surfaceMeshFromGeometry(geom, label, source);
+  try {
+    return surfaceMeshFromGeometry(geom, label, source);
+  } finally {
+    if (geom !== geometry) {
+      geom.dispose();
+    }
+  }
 }
 
 export function weldSurfaceMeshVertices(
