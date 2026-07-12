@@ -64372,21 +64372,25 @@ const CAPTURED_PRESET_IDS_BY_KIND: Partial<Record<PresetThumbKind, ReadonlySet<s
 
 const resolveGalleryAssetPath = (relativePath: string): string => {
   const normalized = relativePath.replace(/^\/+/, "");
+  const basePath = (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? "/";
   const base =
     typeof document !== "undefined" && document.baseURI
       ? document.baseURI
       : typeof window !== "undefined"
         ? window.location.href
         : "/";
-  // Desktop runs from file:///.../renderer/dist/index.html.
-  // Captured thumbnails live at repo/app root: ../../gallery-images/...
-  // Rebase only those paths so rendered cards resolve instead of falling back to diagrams.
-  const resolvedPath =
-    typeof window !== "undefined" && window.location.protocol === "file:" ? `../../${normalized}` : normalized;
+  const galleryBase =
+    typeof window === "undefined"
+      ? basePath
+      : window.location.protocol === "file:"
+        ? new URL("../../", base).toString()
+        : basePath.startsWith("/")
+          ? new URL(basePath.endsWith("/") ? basePath : `${basePath}/`, window.location.origin).toString()
+          : new URL(basePath.endsWith("/") ? basePath : `${basePath}/`, base).toString();
   try {
-    return new URL(resolvedPath, base).toString();
+    return new URL(normalized, galleryBase).toString();
   } catch {
-    return `./${resolvedPath}`;
+    return `${basePath.endsWith("/") ? basePath : `${basePath}/`}${normalized}`;
   }
 };
 

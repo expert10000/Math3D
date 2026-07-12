@@ -1,9 +1,12 @@
 const proxyBaseRaw = (import.meta as any)?.env?.VITE_MATH3D_WORKER_PROXY_BASE as string | undefined;
 const proxyEnabledRaw = (import.meta as any)?.env?.VITE_MATH3D_WORKER_PROXY_ENABLED as string | undefined;
 
+const isStaticGithubPagesHost = () =>
+  typeof window !== "undefined" && window.location.hostname.toLowerCase().endsWith(".github.io");
+
 const proxyEnabled =
   proxyEnabledRaw == null
-    ? true
+    ? !isStaticGithubPagesHost()
     : !["0", "false", "no", "off"].includes(String(proxyEnabledRaw).toLowerCase());
 
 const proxyBase = (proxyBaseRaw || "/api/worker").replace(/\/+$/, "");
