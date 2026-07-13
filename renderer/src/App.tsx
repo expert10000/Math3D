@@ -17976,6 +17976,99 @@ const App: React.FC = () => {
     geometrySelectedSceneObject,
     handleUseDerivedPlaneForSectionSliceById,
   ]);
+  const handleResizeSelectedConstructionLineOperation = useCallback(
+    (mode: "extend" | "trim") => {
+      const selectedDerived = geometrySelectedDerivedConstructionId
+        ? geometryDerivedConstructions.find((entry) => entry.id === geometrySelectedDerivedConstructionId) ?? null
+        : null;
+      if (!selectedDerived) {
+        setGeometryCreateActionStatus("Select a derived line, axis, vector, or segment construction to extend or trim.");
+        return;
+      }
+      const evalEntry = geometryDerivedConstructionOverlays.byId.get(selectedDerived.id) ?? null;
+      if (!evalEntry || evalEntry.status !== "valid" || !evalEntry.origin || !evalEntry.direction) {
+        setGeometryCreateActionStatus("Selected construction must resolve to a valid directed line.");
+        return;
+      }
+      const dirLen = Math.hypot(evalEntry.direction.x, evalEntry.direction.y, evalEntry.direction.z);
+      if (!Number.isFinite(dirLen) || dirLen < 1e-9) {
+        setGeometryCreateActionStatus("Selected construction direction is invalid.");
+        return;
+      }
+      const direction = {
+        x: evalEntry.direction.x / dirLen,
+        y: evalEntry.direction.y / dirLen,
+        z: evalEntry.direction.z / dirLen,
+      };
+      const firstLine = evalEntry.groups[0]?.lines[0] ?? null;
+      const currentLength =
+        firstLine && firstLine.length >= 2
+          ? Math.max(
+              0.25,
+              Math.hypot(
+                firstLine[1].x - firstLine[0].x,
+                firstLine[1].y - firstLine[0].y,
+                firstLine[1].z - firstLine[0].z
+              )
+            )
+          : Math.max(0.5, Number(selectedDerived.params?.length ?? selectedDerived.params?.distance ?? geometryConstructCopiedLength) || 1);
+      const delta = Math.max(0.05, Number(geometryConstructCopiedLength) || 0.5);
+      const nextLength = mode === "extend" ? currentLength + delta : Math.max(0.25, currentLength - delta);
+      const half = nextLength * 0.5;
+      const a = {
+        x: evalEntry.origin.x - direction.x * half,
+        y: evalEntry.origin.y - direction.y * half,
+        z: evalEntry.origin.z - direction.z * half,
+      };
+      const b = {
+        x: evalEntry.origin.x + direction.x * half,
+        y: evalEntry.origin.y + direction.y * half,
+        z: evalEntry.origin.z + direction.z * half,
+      };
+      cloneDerivedConstructionForOperation(selectedDerived, mode === "extend" ? "extended" : "trimmed", {
+        dependent: false,
+        frozenAt: Date.now(),
+        frozenSnapshot: {
+          origin: { ...evalEntry.origin },
+          direction,
+          groups: [
+            {
+              lines: [[a, b]],
+              color: mode === "extend" ? 0x2563eb : 0xf97316,
+              opacity: 0.95,
+              radiusScale: 2,
+            },
+          ],
+          pointSets: [],
+          labelSets: [
+            {
+              size: 0.9,
+              labels: [
+                {
+                  text: `${mode === "extend" ? "extended" : "trimmed"} ${geometryDerivedConstructionName(selectedDerived)}`,
+                  position: { x: b.x + 0.04, y: b.y + 0.04, z: b.z + 0.04 },
+                  color: 0x0f172a,
+                },
+              ],
+            },
+          ],
+        },
+      });
+    },
+    [
+      cloneDerivedConstructionForOperation,
+      geometryConstructCopiedLength,
+      geometryDerivedConstructionOverlays.byId,
+      geometryDerivedConstructions,
+      geometrySelectedDerivedConstructionId,
+    ]
+  );
+  const handleExtendSelectedConstructionOperation = useCallback(() => {
+    handleResizeSelectedConstructionLineOperation("extend");
+  }, [handleResizeSelectedConstructionLineOperation]);
+  const handleTrimSelectedConstructionOperation = useCallback(() => {
+    handleResizeSelectedConstructionLineOperation("trim");
+  }, [handleResizeSelectedConstructionLineOperation]);
   const handleOffsetSelectedConstructionOperation = useCallback(() => {
     const selectedDerived = geometrySelectedDerivedConstructionId
       ? geometryDerivedConstructions.find((entry) => entry.id === geometrySelectedDerivedConstructionId) ?? null
@@ -52042,45 +52135,65 @@ case "mobius":
                           <div style={{ fontSize: 10.5, color: "#475569" }}>
                             Operations modify or derive from the selected construction, probe entity, or scene object.
                           </div>
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                            <button type="button" onClick={handleRenameSelectedConstructionOperation}>
-                              Rename
-                            </button>
-                            <button type="button" onClick={() => handleDuplicateSelectedConstructionOperation("Duplicate")}>
-                              Duplicate
-                            </button>
-                            <button type="button" onClick={handleConvertSelectedConstructionOperation}>
-                              Convert
-                            </button>
-                            <button type="button" onClick={handleProjectSelectedConstructionOperation}>
-                              Project
-                            </button>
-                            <button
-                              type="button"
-                              disabled
-                              title="Extend needs editable line/curve endpoints in the construction graph."
-                            >
-                              Extend
-                            </button>
-                            <button
-                              type="button"
-                              disabled
-                              title="Trim needs intersection-aware line/curve topology editing."
-                            >
-                              Trim
-                            </button>
-                            <button type="button" onClick={handleOffsetSelectedConstructionOperation}>
-                              Offset
-                            </button>
-                            <button type="button" onClick={handleAlignSelectedConstructionOperation}>
-                              Align
-                            </button>
-                            <button type="button" onClick={handleMirrorSelectedConstructionOperation}>
-                              Mirror
-                            </button>
-                            <button type="button" onClick={() => handleDuplicateSelectedConstructionOperation("Copy")}>
-                              Copy
-                            </button>
+                          <div style={{ display: "grid", gap: 7 }}>
+                            <div style={{ display: "grid", gap: 4 }}>
+                              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Identity</div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button type="button" onClick={handleRenameSelectedConstructionOperation}>
+                                  Rename
+                                </button>
+                                <button type="button" onClick={() => handleDuplicateSelectedConstructionOperation("Duplicate")}>
+                                  Duplicate
+                                </button>
+                                <button type="button" onClick={() => handleDuplicateSelectedConstructionOperation("Copy")}>
+                                  Copy
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{ display: "grid", gap: 4 }}>
+                              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Conversion</div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button type="button" onClick={handleConvertSelectedConstructionOperation}>
+                                  Convert
+                                </button>
+                                <button type="button" onClick={handleProjectSelectedConstructionOperation}>
+                                  Project
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{ display: "grid", gap: 4 }}>
+                              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Shape edits</div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  onClick={handleExtendSelectedConstructionOperation}
+                                  title="Creates a frozen extended copy of the selected derived line, axis, vector, or segment."
+                                >
+                                  Extend
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleTrimSelectedConstructionOperation}
+                                  title="Creates a frozen trimmed copy of the selected derived line, axis, vector, or segment."
+                                >
+                                  Trim
+                                </button>
+                                <button type="button" onClick={handleOffsetSelectedConstructionOperation}>
+                                  Offset
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{ display: "grid", gap: 4 }}>
+                              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Placement</div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button type="button" onClick={handleAlignSelectedConstructionOperation}>
+                                  Align
+                                </button>
+                                <button type="button" onClick={handleMirrorSelectedConstructionOperation}>
+                                  Mirror
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         </div>
                         <div style={{ borderTop: "1px dashed #d6dce7", paddingTop: 8, display: "grid", gap: 6 }}>

@@ -19,7 +19,7 @@ import {
 } from "../geometry/problemGraph";
 import { formatConstraintValue } from "../geometry/analysis";
 
-type BuildMode = "select" | "create" | "check";
+type BuildMode = "select" | "create" | "check" | "operations";
 export type ConstructionWorkspaceTab = "task" | "build" | "inspect" | "claims" | "script" | "scene";
 
 type ToolKind =
@@ -39,6 +39,17 @@ type ToolKind =
   | "secondIntersection";
 
 type CheckKind = "collinear" | "concyclic" | "perpendicular" | "parallel" | "pointOnCircle" | "equalDistance";
+type OperationKind =
+  | "rename"
+  | "duplicate"
+  | "convert"
+  | "project"
+  | "extend"
+  | "trim"
+  | "offset"
+  | "align"
+  | "mirror"
+  | "copy";
 
 type ParseResult =
   | { ok: true; summary: string; node?: ConstructionNode; check?: ProblemCheckDef; constraint?: ConstructionConstraintDef }
@@ -191,6 +202,33 @@ const CHECK_LABELS: Record<CheckKind, string> = {
   pointOnCircle: "Point on circle",
   equalDistance: "Equal distance",
 };
+
+const BUILD_MODE_LABELS: Record<BuildMode, string> = {
+  select: "Select",
+  create: "Create by type",
+  check: "Relationships",
+  operations: "Operations",
+};
+
+const OPERATION_LABELS: Record<OperationKind, string> = {
+  rename: "Rename",
+  duplicate: "Duplicate",
+  convert: "Convert",
+  project: "Project",
+  extend: "Extend",
+  trim: "Trim",
+  offset: "Offset",
+  align: "Align",
+  mirror: "Mirror",
+  copy: "Copy",
+};
+
+const OPERATION_GROUPS: Array<{ title: string; operations: OperationKind[] }> = [
+  { title: "Identity", operations: ["rename", "duplicate", "copy"] },
+  { title: "Conversion", operations: ["convert", "project"] },
+  { title: "Shape edits", operations: ["extend", "trim", "offset"] },
+  { title: "Placement", operations: ["align", "mirror"] },
+];
 
 const CONSTRAINT_TYPE_LABELS: Record<ConstructionConstraintDef["type"], string> = {
   parallel: "parallel",
@@ -778,6 +816,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [checkKind, setCheckKind] = useState<CheckKind>("pointOnCircle");
   const [checkForm, setCheckForm] = useState<Record<string, string>>({});
   const [checkError, setCheckError] = useState<string | null>(null);
+  const [operationStatus, setOperationStatus] = useState<string | null>(null);
 
   const [sceneName, setSceneName] = useState("Olympiad construction");
   const [sceneType, setSceneType] = useState<SceneType>("task");
@@ -2129,6 +2168,201 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     }, "create");
   }, [addNode, nodes, selectionA, selectionB]);
 
+  const getSolvedPoint = useCallback((id: string) => solved.points[id] ?? null, [solved.points]);
+
+  const cloneConstructionNode = useCallback((node: ConstructionNode, id: string, label: string): ConstructionNode => {
+    const clone = {
+      ...node,
+      id,
+      label,
+      style: node.style ? { ...node.style } : undefined,
+    } as ConstructionNode;
+    if (clone.type === "freePoint") {
+      clone.point = {
+        x: clone.point.x + 0.25,
+        y: clone.point.y + 0.25,
+        z: clone.point.z,
+      };
+    }
+    return clone;
+  }, []);
+
+  const addDetachedPoint = useCallback(
+    (baseId: string, label: string, point: { x: number; y: number; z: number }, color = 0xf97316) => {
+      const ids = new Set(nodes.map((node) => node.id));
+      const id = uniqueId(baseId, ids);
+      addNode(
+        {
+          id,
+          label,
+          type: "freePoint",
+          point: { x: point.x, y: point.y, z: point.z },
+          style: { color, size: 0.045 },
+        },
+        "operations"
+      );
+      return id;
+    },
+    [addNode, nodes]
+  );
+
+  const updateSelectedFreePoint = useCallback(
+    (updater: (point: { x: number; y: number; z: number }) => { x: number; y: number; z: number }, fallbackLabel: string) => {
+      if (!selectedNode) {
+        setOperationStatus("Select a point first.");
+        return;
+      }
+      const point = getSolvedPoint(selectedNode.id);
+      if (!point) {
+        setOperationStatus("Selected object does not resolve to a point.");
+        return;
+      }
+      const nextPoint = updater({ x: point.x, y: point.y, z: point.z });
+      if (selectedNode.type === "freePoint" && !selectedNodeLocked) {
+        setNodes((prev) =>
+          prev.map((node) => (node.id === selectedNode.id && node.type === "freePoint" ? { ...node, point: nextPoint } : node))
+        );
+        setOperationStatus(`${fallbackLabel} applied to ${selectedNode.id}.`);
+        return;
+      }
+      const id = addDetachedPoint(`${selectedNode.id}_${cleanId(fallbackLabel).toLowerCase() || "point"}`, `${selectedNode.id} ${fallbackLabel}`, nextPoint);
+      setOperationStatus(`${fallbackLabel} created as ${id}.`);
+    },
+    [addDetachedPoint, getSolvedPoint, selectedNode, selectedNodeLocked]
+  );
+
+  const applyConstructionOperation = useCallback(
+    async (operation: OperationKind) => {
+      setOperationStatus(null);
+      if (!selectedNode) {
+        setOperationStatus("Select a construction object first.");
+        return;
+      }
+      if (operation !== "copy" && operation !== "rename" && selectedNodeLocked) {
+        setOperationStatus("Unlock the selected object before editing it.");
+        return;
+      }
+
+      if (operation === "rename") {
+        const nextName = globalThis.prompt?.("Rename construction object", selectedNode.label ?? selectedNode.id);
+        if (nextName == null) return;
+        const trimmed = nextName.trim();
+        if (!trimmed) {
+          setOperationStatus("Name cannot be empty.");
+          return;
+        }
+        setNodes((prev) => prev.map((node) => (node.id === selectedNode.id ? { ...node, label: trimmed } : node)));
+        setOperationStatus(`Renamed ${selectedNode.id}.`);
+        return;
+      }
+
+      if (operation === "duplicate") {
+        const ids = new Set(nodes.map((node) => node.id));
+        const id = uniqueId(`${selectedNode.id}_copy`, ids);
+        addNode(cloneConstructionNode(selectedNode, id, `${selectedNode.label ?? selectedNode.id} copy`), "operations");
+        setOperationStatus(`Duplicated ${selectedNode.id} as ${id}.`);
+        return;
+      }
+
+      if (operation === "copy") {
+        const command = buildScriptFromState([selectedNode], [], []);
+        try {
+          await globalThis.navigator?.clipboard?.writeText(command);
+          setOperationStatus(`Copied command for ${selectedNode.id}.`);
+        } catch {
+          setOperationStatus(command || `Selected ${selectedNode.id}.`);
+        }
+        return;
+      }
+
+      if (operation === "convert") {
+        const point = getSolvedPoint(selectedNode.id);
+        if (!point) {
+          setOperationStatus("Convert currently supports solved point objects.");
+          return;
+        }
+        const id = addDetachedPoint(`${selectedNode.id}_free`, `${selectedNode.id} free point`, point);
+        setOperationStatus(`Converted ${selectedNode.id} to detached free point ${id}.`);
+        return;
+      }
+
+      if (operation === "project") {
+        updateSelectedFreePoint((point) => ({ ...point, z: 0 }), "projected");
+        return;
+      }
+
+      if (operation === "extend" || operation === "trim") {
+        if (!isLineNode(selectedNode)) {
+          setOperationStatus(`${OPERATION_LABELS[operation]} requires a line object.`);
+          return;
+        }
+        const delta = operation === "extend" ? 1 : -1;
+        setNodes((prev) =>
+          prev.map((node) =>
+            node.id === selectedNode.id
+              ? {
+                  ...node,
+                  style: {
+                    ...(node.style ?? {}),
+                    length: Math.max(0.5, Number(node.style?.length ?? 6) + delta),
+                  },
+                }
+              : node
+          )
+        );
+        setOperationStatus(`${OPERATION_LABELS[operation]} updated display length for ${selectedNode.id}.`);
+        return;
+      }
+
+      if (operation === "offset") {
+        updateSelectedFreePoint((point) => ({ x: point.x + 0.25, y: point.y + 0.25, z: point.z }), "offset");
+        return;
+      }
+
+      if (operation === "align") {
+        const ref = selectionAId ? getSolvedPoint(selectionAId) : null;
+        if (!ref) {
+          setOperationStatus("Align needs Selection A set to a solved point.");
+          return;
+        }
+        updateSelectedFreePoint((point) => ({ x: point.x, y: ref.y, z: ref.z }), `aligned to ${selectionAId}`);
+        return;
+      }
+
+      const axisA = selectionAId ? getSolvedPoint(selectionAId) : null;
+      const axisB = selectionBId ? getSolvedPoint(selectionBId) : null;
+      const point = getSolvedPoint(selectedNode.id);
+      if (!point || !axisA || !axisB) {
+        setOperationStatus("Mirror needs a selected point plus Selection A and B as the mirror axis.");
+        return;
+      }
+      const ab = { x: axisB.x - axisA.x, y: axisB.y - axisA.y, z: axisB.z - axisA.z };
+      const lenSq = ab.x * ab.x + ab.y * ab.y + ab.z * ab.z;
+      if (lenSq <= 1e-10) {
+        setOperationStatus("Mirror axis points must be distinct.");
+        return;
+      }
+      updateSelectedFreePoint((p) => {
+        const ap = { x: p.x - axisA.x, y: p.y - axisA.y, z: p.z - axisA.z };
+        const t = (ap.x * ab.x + ap.y * ab.y + ap.z * ab.z) / lenSq;
+        const foot = { x: axisA.x + ab.x * t, y: axisA.y + ab.y * t, z: axisA.z + ab.z * t };
+        return { x: 2 * foot.x - p.x, y: 2 * foot.y - p.y, z: 2 * foot.z - p.z };
+      }, `mirrored across ${selectionAId}${selectionBId}`);
+    },
+    [
+      addDetachedPoint,
+      addNode,
+      cloneConstructionNode,
+      getSolvedPoint,
+      nodes,
+      selectedNode,
+      selectedNodeLocked,
+      selectionAId,
+      selectionBId,
+      updateSelectedFreePoint,
+    ]
+  );
+
   const renderToolInputs = () => {
     if (tool === "point") {
       return (
@@ -2392,7 +2626,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
         <>
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             <div style={{ fontSize: 12, fontWeight: 700, marginRight: 6 }}>Guided build:</div>
-            {(["select", "create", "check"] as BuildMode[]).map((mode) => (
+            {(["select", "create", "check", "operations"] as BuildMode[]).map((mode) => (
               <button
                 key={mode}
                 type="button"
@@ -2406,7 +2640,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   fontSize: 11,
                 }}
               >
-                {mode[0].toUpperCase() + mode.slice(1)}
+                {BUILD_MODE_LABELS[mode]}
               </button>
             ))}
           </div>
@@ -2789,6 +3023,76 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
             <button type="button" onClick={() => setNodes((prev) => prev.map((node) => ({ ...node })))} style={{ marginTop: 8 }}>
               Rebuild
             </button>
+          </div>
+        </div>
+      )}
+
+      {buildMode === "operations" && (
+        <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>Operations</div>
+            <div style={{ fontSize: 10, opacity: 0.72 }}>
+              {selectedNode ? `Selected ${selectedNode.id}` : "No selected object"}
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr auto", gap: 6, alignItems: "center" }}>
+            <select value={selectionAId} onChange={(e) => setSelectionAId(e.target.value)}>
+              <option value="">Selection A</option>
+              {solved.objects.map((obj) => (
+                <option key={`ops-a-${obj.id}`} value={obj.id}>{obj.id}</option>
+              ))}
+            </select>
+            <button type="button" onClick={() => useSelectedAsSelectionSlot("a")}>Use selected</button>
+            <select value={selectionBId} onChange={(e) => setSelectionBId(e.target.value)}>
+              <option value="">Selection B</option>
+              {solved.objects.map((obj) => (
+                <option key={`ops-b-${obj.id}`} value={obj.id}>{obj.id}</option>
+              ))}
+            </select>
+            <button type="button" onClick={() => useSelectedAsSelectionSlot("b")}>Use selected</button>
+          </div>
+          {OPERATION_GROUPS.map((group) => (
+            <div key={group.title} style={{ display: "grid", gap: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.8 }}>{group.title}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {group.operations.map((operation) => (
+                  <button
+                    key={operation}
+                    type="button"
+                    onClick={() => void applyConstructionOperation(operation)}
+                    disabled={!selectedNode}
+                    title={
+                      operation === "align"
+                        ? "Align selected point to Selection A on the workplane."
+                        : operation === "mirror"
+                          ? "Mirror selected point across the line through Selection A and Selection B."
+                          : operation === "extend" || operation === "trim"
+                            ? "Adjust the display length of a selected line."
+                            : undefined
+                    }
+                    style={{
+                      padding: "4px 8px",
+                      borderRadius: 8,
+                      border: "1px solid #d1d5db",
+                      background: "#fff",
+                      fontSize: 11,
+                    }}
+                  >
+                    {OPERATION_LABELS[operation]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div style={{ borderTop: "1px dashed #e5e7eb", paddingTop: 8, display: "grid", gap: 4, fontSize: 11 }}>
+            <div><strong>Current:</strong> {selectedNode ? `${selectedNode.label ?? selectedNode.id} (${selectedNode.type})` : "-"}</div>
+            <div><strong>A:</strong> {selectionA?.id ?? "-"} ({selectionA?.type ?? "-"})</div>
+            <div><strong>B:</strong> {selectionB?.id ?? "-"} ({selectionB?.type ?? "-"})</div>
+            {operationStatus && (
+              <div style={{ color: operationStatus.includes("requires") || operationStatus.includes("needs") || operationStatus.includes("Select") || operationStatus.includes("Unlock") ? "#b42318" : "#166534" }}>
+                {operationStatus}
+              </div>
+            )}
           </div>
         </div>
       )}
