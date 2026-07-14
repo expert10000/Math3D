@@ -59987,9 +59987,6 @@ case "mobius":
                   gap: 8,
                 }}
               >
-                <span style={{ alignSelf: "center", fontSize: 11, fontWeight: 800, color: "#1e3a8a", marginRight: 2 }}>
-                  Viewport
-                </span>
                 {geometryMode === "procedural" && (
                   <div
                     style={{
@@ -60320,6 +60317,9 @@ case "mobius":
                 )}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto", flexWrap: "wrap" }}>
+                  <span style={{ alignSelf: "center", fontSize: 11, fontWeight: 800, color: "#1e3a8a", marginRight: 2 }}>
+                    Viewport
+                  </span>
                   <div
                     style={{
                       display: "flex",
