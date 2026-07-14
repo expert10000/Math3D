@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { resolveGeometryPick, type GeometryPickContext, type GeometryRawHit } from "./picking";
+import {
+  isGeometryTopologyReferenceStale,
+  resolveGeometryPick,
+  type GeometryPickContext,
+  type GeometryRawHit,
+} from "./picking";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 
 const triangleMesh: SurfaceMeshData = {
@@ -51,6 +56,15 @@ describe("resolveGeometryPick", () => {
 
     expect(pick?.kind).toBe("face");
     expect(pick?.faceIndex).toBe(0);
+    expect(pick?.topologyReference).toEqual({
+      objectId: "tri-1",
+      topologyVersion: 3,
+      kind: "face",
+      faceIndex: 0,
+      fallbackWorldPoint: [0.2, 0.2, 0],
+    });
+    expect(isGeometryTopologyReferenceStale(pick?.topologyReference, 3)).toBe(false);
+    expect(isGeometryTopologyReferenceStale(pick?.topologyReference, 4)).toBe(true);
     expect(pick?.sourceTriangle).toEqual([0, 1, 2]);
     expect(pick?.normal).toEqual([0, 0, 1]);
     expect(pick?.faceNormal).toEqual([0, 0, 1]);
@@ -119,5 +133,23 @@ describe("resolveGeometryPick", () => {
     expect(pick?.tangent).toBeUndefined();
     expect(pick?.bitangent).toBeUndefined();
     expect(pick?.tangentKind).toBeUndefined();
+  });
+
+  it("honors explicit renderable pick policies", () => {
+    const neverContext: GeometryPickContext = {
+      objects: [{ ...context.objects[0], pickPolicy: "never" }],
+    };
+    const objectOnlyContext: GeometryPickContext = {
+      objects: [{ ...context.objects[0], pickPolicy: "object-only" }],
+    };
+    const helperContext: GeometryPickContext = {
+      objects: [{ ...context.objects[0], pickPolicy: "helper" }],
+    };
+
+    expect(resolveGeometryPick(rawHit, "object", neverContext)).toBeNull();
+    expect(resolveGeometryPick(rawHit, "face", objectOnlyContext)).toBeNull();
+    expect(resolveGeometryPick(rawHit, "object", objectOnlyContext)?.kind).toBe("object");
+    expect(resolveGeometryPick(rawHit, "face", helperContext)).toBeNull();
+    expect(resolveGeometryPick(rawHit, "face", { ...helperContext, includeHelperPicks: true })?.kind).toBe("face");
   });
 });

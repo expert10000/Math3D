@@ -3,6 +3,22 @@ import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 
 export type GeometryPickKind = "object" | "face" | "edge" | "vertex";
 export type GeometryPickTangentKind = "face-frame" | "edge-direction";
+export type GeometryPickPolicy = "never" | "object-only" | "topology" | "helper";
+
+export interface GeometryRenderableMetadata {
+  objectId: string;
+  pickPolicy: GeometryPickPolicy;
+}
+
+export interface GeometryTopologyReference {
+  objectId: string;
+  topologyVersion: number;
+  kind: Exclude<GeometryPickKind, "object">;
+  faceIndex?: number;
+  edgeVertices?: [number, number];
+  vertexIndex?: number;
+  fallbackWorldPoint?: [number, number, number];
+}
 
 export interface GeometryPickResult {
   kind: GeometryPickKind;
@@ -35,6 +51,7 @@ export interface GeometryPickResult {
   distanceFromRay?: number;
   sourceTriangle?: [number, number, number];
 
+  topologyReference?: GeometryTopologyReference;
   stale?: boolean;
   label: string;
 }
@@ -56,6 +73,7 @@ export type GeometryPickObjectContext = {
   objectType: string;
   meshKey?: string;
   topologyVersion?: number;
+  pickPolicy?: GeometryPickPolicy;
   worldMesh?: SurfaceMeshData | null;
 };
 
@@ -66,6 +84,7 @@ export type GeometryPickContext = {
     vertex: number;
     edge: number;
   };
+  includeHelperPicks?: boolean;
 };
 
 type Vec3Tuple = [number, number, number];
@@ -98,6 +117,45 @@ const normalizeTupleOptional = (value: Vec3Tuple | undefined): Vec3Tuple | undef
 
 export function makeGeometryEdgeKey(a: number, b: number): string {
   return a < b ? `${a}:${b}` : `${b}:${a}`;
+}
+
+export function geometryPickPolicyAllowsMode(
+  policy: GeometryPickPolicy | undefined,
+  mode: GeometryPickKind,
+  includeHelperPicks = false
+): boolean {
+  const resolved = policy ?? "topology";
+  if (resolved === "never") return false;
+  if (resolved === "object-only") return mode === "object";
+  if (resolved === "helper") return includeHelperPicks;
+  return true;
+}
+
+export function makeGeometryTopologyReference(
+  pick: Pick<
+    GeometryPickResult,
+    "kind" | "objectId" | "topologyVersion" | "faceIndex" | "edgeVertices" | "vertexIndex" | "worldPoint"
+  >
+): GeometryTopologyReference | null {
+  if (pick.kind === "object") return null;
+  const topologyVersion = pick.topologyVersion ?? 0;
+  return {
+    objectId: pick.objectId,
+    topologyVersion,
+    kind: pick.kind,
+    faceIndex: pick.faceIndex,
+    edgeVertices: pick.edgeVertices,
+    vertexIndex: pick.vertexIndex,
+    fallbackWorldPoint: pick.worldPoint,
+  };
+}
+
+export function isGeometryTopologyReferenceStale(
+  reference: GeometryTopologyReference | null | undefined,
+  topologyVersion: number | null | undefined
+): boolean {
+  if (!reference) return false;
+  return reference.topologyVersion !== (topologyVersion ?? 0);
 }
 
 const orthonormalTangentFrame = (
@@ -273,6 +331,7 @@ export function resolveGeometryPick(
 ): GeometryPickResult | null {
   const object = findObjectContext(rawHit, context);
   if (!object) return null;
+  if (!geometryPickPolicyAllowsMode(object.pickPolicy, mode, context.includeHelperPicks)) return null;
 
   const objectLabel = object.objectLabel || object.objectId;
   const mesh = object.worldMesh ?? null;
@@ -288,7 +347,7 @@ export function resolveGeometryPick(
   if (mode === "face") {
     if (!face) return makeBasePick("face", rawHit, object, `${objectLabel} face`);
     const faceNormal = tupleFromVector(face.normal);
-    return {
+    const pick = {
       ...makeBasePick("face", rawHit, object, `${objectLabel} face #${face.faceIndex}`),
       faceIndex: face.faceIndex,
       sourceTriangle: face.vertexIndices,
@@ -299,6 +358,7 @@ export function resolveGeometryPick(
       tangentKind: "face-frame",
       barycentric: barycentricForFace(hitPoint, face),
     };
+    return { ...pick, topologyReference: makeGeometryTopologyReference(pick) };
   }
 
   if (mode === "vertex") {
@@ -332,7 +392,7 @@ export function resolveGeometryPick(
     const vertexNormal = readNormal(mesh, vertexIndex);
     const faceNormal = face ? tupleFromVector(face.normal) : undefined;
     const normal = vertexNormal ?? faceNormal ?? normalizeTuple(rawHit.normal);
-    return {
+    const pick = {
       ...makeBasePick("vertex", rawHit, object, `${objectLabel} vertex #${vertexIndex}`),
       worldPoint: tupleFromVector(vertexPoint),
       vertexIndex,
@@ -342,6 +402,7 @@ export function resolveGeometryPick(
       faceNormal,
       vertexNormal,
     };
+    return { ...pick, topologyReference: makeGeometryTopologyReference(pick) };
   }
 
   const edge = face ? nearestEdgeOnFace(hitPoint, face, rawHit.screenPoint, rawHit.sourceTriangleScreen) : null;
@@ -367,7 +428,7 @@ export function resolveGeometryPick(
       : edge.tangent;
   const bitangent = new THREE.Vector3().crossVectors(vectorFromTuple(normal), edgeTangent);
   if (bitangent.lengthSq() > 1e-12) bitangent.normalize();
-  return {
+  const pick = {
     ...makeBasePick("edge", rawHit, object, `${objectLabel} edge [${edge.edgeVertices[0]}, ${edge.edgeVertices[1]}]`),
     worldPoint: tupleFromVector(edge.point),
     faceIndex: face?.faceIndex,
@@ -380,4 +441,5 @@ export function resolveGeometryPick(
     bitangent: tupleFromVector(bitangent),
     tangentKind: "edge-direction",
   };
+  return { ...pick, topologyReference: makeGeometryTopologyReference(pick) };
 }

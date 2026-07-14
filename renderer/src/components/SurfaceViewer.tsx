@@ -29,6 +29,7 @@ import {
 } from "../math/sampling/surfaceSampling";
 import type { SelectionMask } from "../math/selection/selectionModel";
 import type { PolylineSet } from "../scene/renderPrimitives";
+import type { GeometryPickPolicy, GeometryRenderableMetadata } from "../geometry/picking";
 import {
   createLayeredReferenceGrid,
   DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
@@ -147,6 +148,8 @@ type SurfaceMeshOverride = {
   metalness?: number;
   wireframe?: boolean;
   flatShading?: boolean;
+  pickPolicy?: GeometryPickPolicy;
+  renderableMetadata?: GeometryRenderableMetadata;
   transform?: {
     position?: { x: number; y: number; z: number };
     rotation?: { x: number; y: number; z: number };
@@ -181,6 +184,19 @@ const triangleCountFromBuffers = (positions: ArrayLike<number>, indices?: ArrayL
   if (indices && indices.length >= 3) return Math.floor(indices.length / 3);
   return Math.floor((positions.length ?? 0) / 9);
 };
+
+const geometryPickPolicyFromObject = (object: THREE.Object3D | null | undefined): GeometryPickPolicy => {
+  let current: THREE.Object3D | null | undefined = object;
+  while (current) {
+    const policy = (current as any)?.userData?.__geometryPickPolicy as GeometryPickPolicy | undefined;
+    if (policy) return policy;
+    current = current.parent;
+  }
+  return "topology";
+};
+
+const isGeometryPickableIntersection = (candidate: THREE.Intersection<THREE.Object3D>) =>
+  geometryPickPolicyFromObject(candidate.object) !== "never";
 
 const computeMeshPreviewTriangleTarget = (
   fullTriangles: number,
@@ -1931,6 +1947,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const controlsRef = useRef<OrbitControls | null>(null);
   const transformControlsRef = useRef<TransformControls | null>(null);
   const transformControlsHelperRef = useRef<THREE.Object3D | null>(null);
+  const transformControlsPivotRef = useRef<THREE.Object3D | null>(null);
   const zoomDebounceRef = useRef<number | null>(null);
   const zoomAnimRef = useRef<number | null>(null);
   const zoomNowRef = useRef(0);
@@ -3824,8 +3841,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
     };
     const handleGizmoObjectChange = () => {
-      const tc = transformControlsRef.current;
-      if ((tc as any)?.dragging) return;
       emitGizmoObjectChange();
     };
     transformControls.addEventListener("dragging-changed", handleGizmoDraggingChanged);
@@ -3963,9 +3978,15 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       if (colorMode !== "solid") applyVertexColors(geom, colorMode, colorPalette);
       const mesh = new THREE.Mesh(geom, makeMaterial(override));
+      const pickPolicy = override.renderableMetadata?.pickPolicy ?? override.pickPolicy ?? "topology";
       if (override.id) {
         (mesh as any).userData.__surfaceMeshOverrideId = override.id;
       }
+      (mesh as any).userData.__geometryPickPolicy = pickPolicy;
+      (mesh as any).userData.__geometryRenderableMetadata = override.renderableMetadata ?? {
+        objectId: override.id ?? mesh.uuid,
+        pickPolicy,
+      };
       (mesh as any).userData.__surfaceMeshOverrideStyle = {
         color: override.color,
         opacity: override.opacity,
@@ -4822,7 +4843,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const pickStartAt = performance.now();
       const intersects = raycaster.intersectObjects([surfaceObj], true);
       recordRaycastDuration(pickStartAt);
-      if (!intersects.length) {
+      const pickableIntersects = intersects.filter(isGeometryPickableIntersection);
+      if (!pickableIntersects.length) {
         const anchor = dragPlaneAnchorRef.current;
         const anchorPoint = anchor?.point;
         if (dragEnabledRef.current && event.button === 0 && anchorPoint) {
@@ -4887,22 +4909,22 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       const isGraphSurface = isGraphId(surfaceId);
       const allowMeshPick = isGraphSurface || surfaceId === "surface_mesh";
-      let hit = intersects[0];
+      let hit = pickableIntersects[0];
       if (geodesicHeatEnabledRef.current || geodesicDiskPickEnabledRef.current) {
         const heatHit = allowMeshPick
-          ? intersects.find((candidate) => typeof (candidate as any).faceIndex === "number")
-          : intersects.find((candidate) => {
+          ? pickableIntersects.find((candidate) => typeof (candidate as any).faceIndex === "number")
+          : pickableIntersects.find((candidate) => {
             const obj = candidate.object as any;
             const implicitMeta = obj?.userData?.__implicit as { source?: string } | undefined;
             return implicitMeta?.source === "cgal" && typeof (candidate as any).faceIndex === "number";
           });
         if (!heatHit) return;
         hit = heatHit;
-      } else if (inspectEnabledRef.current && !dragEnabledRef.current && intersects.length > 1) {
+      } else if (inspectEnabledRef.current && !dragEnabledRef.current && pickableIntersects.length > 1) {
         const selectedMeshKey = inspectSelectionMeshKeyRef.current;
-        const firstHitMeshKey = resolveHitMeshKey(intersects[0]);
+        const firstHitMeshKey = resolveHitMeshKey(pickableIntersects[0]);
         if (selectedMeshKey && firstHitMeshKey === selectedMeshKey) {
-          const alternate = intersects.find((candidate) => {
+          const alternate = pickableIntersects.find((candidate) => {
             const candidateKey = resolveHitMeshKey(candidate);
             return !!candidateKey && candidateKey !== selectedMeshKey;
           });
@@ -5192,11 +5214,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const hoverPickStartAt = performance.now();
       const intersects = raycaster.intersectObjects([surfaceObj], true);
       recordRaycastDuration(hoverPickStartAt);
-      if (!intersects.length) {
+      const pickableIntersects = intersects.filter(isGeometryPickableIntersection);
+      if (!pickableIntersects.length) {
         onInspectHoverMissRef.current?.();
         return;
       }
-      const hit = intersects[0];
+      const hit = pickableIntersects[0];
       const point = hit.point.clone();
       const hitMeshKey = (hit.object as any)?.userData?.__surfaceMeshOverrideId;
       const inspectScreenInfo = buildInspectScreenInfo(hit, event, rect);
@@ -5533,6 +5556,11 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         gaussHighlightRef.current = null;
       }
 
+      if (transformControlsPivotRef.current) {
+        scene.remove(transformControlsPivotRef.current);
+        transformControlsPivotRef.current = null;
+      }
+
       if (principalProjectionGroupRef.current) {
         scene.remove(principalProjectionGroupRef.current);
         principalProjectionGroupRef.current.traverse(disposeObject3D);
@@ -5762,19 +5790,23 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     tc.visible = false;
     if (helper) helper.visible = false;
     if (!gizmoEnabled || surfaceId !== "surface_mesh" || !gizmoMeshKey) return;
-    const root = surfaceObjRef.current;
-    if (!root) return;
-
-    let target: THREE.Object3D | null = null;
-    root.traverse((obj) => {
-      if (target) return;
-      const id = (obj as any)?.userData?.__surfaceMeshOverrideId;
-      if (id != null && String(id) === gizmoMeshKey && (obj as any)?.isMesh) {
-        target = obj;
-      }
-    });
-    if (!target) return;
-    tc.attach(target);
+    const selectedOverride =
+      surfaceMeshOverrides?.find((override) => override.id != null && String(override.id) === gizmoMeshKey) ??
+      (surfaceMeshOverride?.id != null && String(surfaceMeshOverride.id) === gizmoMeshKey ? surfaceMeshOverride : null);
+    if (!selectedOverride) return;
+    const scene = sceneRef.current;
+    if (!scene) return;
+    let pivot = transformControlsPivotRef.current;
+    if (!pivot) {
+      pivot = new THREE.Object3D();
+      transformControlsPivotRef.current = pivot;
+      scene.add(pivot);
+    } else if (!pivot.parent) {
+      scene.add(pivot);
+    }
+    (pivot as any).userData.__surfaceMeshOverrideId = selectedOverride.id;
+    applySurfaceMeshOverrideTransform(pivot, selectedOverride.transform);
+    tc.attach(pivot);
     tc.enabled = true;
     tc.visible = true;
     if (helper) helper.visible = true;
@@ -5843,9 +5875,15 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       if (colorMode !== "solid") applyVertexColors(geom, colorMode, colorPalette);
       const mesh = new THREE.Mesh(geom, makeMaterial(override));
+      const pickPolicy = override.renderableMetadata?.pickPolicy ?? override.pickPolicy ?? "topology";
       if (override.id) {
         (mesh as any).userData.__surfaceMeshOverrideId = override.id;
       }
+      (mesh as any).userData.__geometryPickPolicy = pickPolicy;
+      (mesh as any).userData.__geometryRenderableMetadata = override.renderableMetadata ?? {
+        objectId: override.id ?? mesh.uuid,
+        pickPolicy,
+      };
       (mesh as any).userData.__surfaceMeshLod = {
         runtimeQuality: runtimeQualityForMesh,
         fullTriangleCount: lodBuffers.fullTriangleCount,
@@ -6139,16 +6177,21 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       tc.visible = false;
       if (helper) helper.visible = false;
       if (gizmoEnabled && surfaceId === "surface_mesh" && gizmoMeshKey) {
-        let target: THREE.Object3D | null = null;
-        activeSurfaceObj.traverse((obj) => {
-          if (target) return;
-          const id = (obj as any)?.userData?.__surfaceMeshOverrideId;
-          if (id != null && String(id) === gizmoMeshKey && (obj as any)?.isMesh) {
-            target = obj;
+        const selectedOverride =
+          surfaceMeshOverrides?.find((override) => override.id != null && String(override.id) === gizmoMeshKey) ??
+          (surfaceMeshOverride?.id != null && String(surfaceMeshOverride.id) === gizmoMeshKey ? surfaceMeshOverride : null);
+        if (selectedOverride) {
+          let pivot = transformControlsPivotRef.current;
+          if (!pivot) {
+            pivot = new THREE.Object3D();
+            transformControlsPivotRef.current = pivot;
+            scene.add(pivot);
+          } else if (!pivot.parent) {
+            scene.add(pivot);
           }
-        });
-        if (target) {
-          tc.attach(target);
+          (pivot as any).userData.__surfaceMeshOverrideId = selectedOverride.id;
+          applySurfaceMeshOverrideTransform(pivot, selectedOverride.transform);
+          tc.attach(pivot);
           tc.enabled = true;
           tc.visible = true;
           if (helper) helper.visible = true;

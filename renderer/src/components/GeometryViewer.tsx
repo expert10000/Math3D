@@ -20,6 +20,7 @@ import { polygonNormalFromVertices } from "../geometry/polyhedra";
 import { normalizeVec3, scaleVec3 } from "../geometry/vec";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 import type { ReferencePlaneGridSettings } from "./layeredReferenceGrid";
+import type { GeometryPickPolicy, GeometryRenderableMetadata } from "../geometry/picking";
 
 export type GeometryViewerProps = {
   scene: GeometryScene;
@@ -32,6 +33,8 @@ export type GeometryViewerProps = {
       roughness?: number;
       metalness?: number;
       flatShading?: boolean;
+      pickPolicy?: GeometryPickPolicy;
+      renderableMetadata?: GeometryRenderableMetadata;
       transform?: {
         position?: { x: number; y: number; z: number };
         rotation?: { x: number; y: number; z: number };
@@ -246,6 +249,8 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
             roughness: entry.roughness,
             metalness: entry.metalness,
             flatShading: entry.flatShading,
+            pickPolicy: entry.pickPolicy,
+            renderableMetadata: entry.renderableMetadata,
             transform: entry.transform,
           }))
         : null,
