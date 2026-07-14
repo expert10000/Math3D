@@ -19904,6 +19904,12 @@ const App: React.FC = () => {
   });
   const [geometryRightPanelTab, setGeometryRightPanelTab] = useState<GeometryRightPanelTab>("inspector");
   const [geometryInspectorPanelTab, setGeometryInspectorPanelTab] = useState<GeometryInspectorPanelTab>("probe");
+  const geometryTransformGizmoActive =
+    geometryMode === "procedural" &&
+    geometryProceduralPanelTab !== "demonstrations" &&
+    geometryGizmoEnabled &&
+    (!(geometryRightPanelTab === "inspector" && geometryInspectorPanelTab === "probe") ||
+      geometryProbeSelectionMode === "object");
   const [analysisFocusedSection, setAnalysisFocusedSection] = useState<AnalysisFocusedSection>("vector-calculus");
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [displayMode, setDisplayMode] = useState<DisplayMode>(() => {
@@ -61274,21 +61280,13 @@ case "mobius":
                   }
                   overlayLabelSets={geometryProceduralViewerLabelSets}
                   dragEnabled={
-                    (geometryMode === "procedural" &&
-                      geometryProceduralPanelTab !== "demonstrations" &&
-                      geometryGizmoMode === "translate" &&
-                      (!(geometryRightPanelTab === "inspector" && geometryInspectorPanelTab === "probe") ||
-                        geometryProbeSelectionMode === "object")) ||
+                    (geometryTransformGizmoActive && geometryGizmoMode === "translate") ||
                     ((geometryMode === "scratch" || geometryMode === "workbook") &&
                       !!geometrySelectedConstructionFreePoint &&
                       !geometryPointPlacementEnabled)
                   }
                   onDragStart={
-                    geometryMode === "procedural" &&
-                    geometryProceduralPanelTab !== "demonstrations" &&
-                    geometryGizmoMode === "translate" &&
-                    (!(geometryRightPanelTab === "inspector" && geometryInspectorPanelTab === "probe") ||
-                      geometryProbeSelectionMode === "object")
+                    geometryTransformGizmoActive && geometryGizmoMode === "translate"
                       ? handleProceduralDragStart
                       : (geometryMode === "scratch" || geometryMode === "workbook") &&
                           geometrySelectedConstructionFreePoint &&
@@ -61297,11 +61295,7 @@ case "mobius":
                       : undefined
                   }
                   onDrag={
-                    geometryMode === "procedural" &&
-                    geometryProceduralPanelTab !== "demonstrations" &&
-                    geometryGizmoMode === "translate" &&
-                    (!(geometryRightPanelTab === "inspector" && geometryInspectorPanelTab === "probe") ||
-                      geometryProbeSelectionMode === "object")
+                    geometryTransformGizmoActive && geometryGizmoMode === "translate"
                       ? handleProceduralDrag
                       : (geometryMode === "scratch" || geometryMode === "workbook") &&
                           geometrySelectedConstructionFreePoint &&
@@ -61310,11 +61304,7 @@ case "mobius":
                       : undefined
                   }
                   onDragEnd={
-                    geometryMode === "procedural" &&
-                    geometryProceduralPanelTab !== "demonstrations" &&
-                    geometryGizmoMode === "translate" &&
-                    (!(geometryRightPanelTab === "inspector" && geometryInspectorPanelTab === "probe") ||
-                      geometryProbeSelectionMode === "object")
+                    geometryTransformGizmoActive && geometryGizmoMode === "translate"
                       ? handleProceduralDragEnd
                       : (geometryMode === "scratch" || geometryMode === "workbook") &&
                           geometrySelectedConstructionFreePoint &&
@@ -61332,6 +61322,7 @@ case "mobius":
                           meshKey: geometrySelectedConstructionFreePoint.id,
                         }
                       : geometryMode === "procedural" &&
+                          geometryTransformGizmoActive &&
                           geometrySelectedSceneObject &&
                           !geometryLockedObjectIds.has(geometrySelectedSceneObject.id)
                         ? {
@@ -61346,11 +61337,7 @@ case "mobius":
                       : undefined
                   }
                   gizmoEnabled={
-                    geometryMode === "procedural" &&
-                    geometryProceduralPanelTab !== "demonstrations" &&
-                    geometryGizmoEnabled &&
-                    (!(geometryRightPanelTab === "inspector" && geometryInspectorPanelTab === "probe") ||
-                      geometryProbeSelectionMode === "object")
+                    geometryTransformGizmoActive
                   }
                   gizmoMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
                   gizmoMode={geometryGizmoMode}
@@ -61360,13 +61347,11 @@ case "mobius":
                   gizmoScaleSnap={geometrySnapScaleEnabled ? geometrySnapScaleStep : null}
                   onGizmoTransform={geometryMode === "procedural" ? handleProceduralGizmoTransform : undefined}
                   pickEnabled={
-                    (geometryInspectorPanelTab === "probe" && geometryMode === "procedural") ||
-                    (!geometryFastModeActive &&
-                      (
-                      geometryMode === "demo" ||
-                      (geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations") ||
-                      ((geometryMode === "scratch" || geometryMode === "workbook") && geometryPointPlacementEnabled)
-                      ))
+                    geometryMode === "procedural"
+                      ? geometryProceduralPanelTab !== "demonstrations"
+                      : !geometryFastModeActive &&
+                        (geometryMode === "demo" ||
+                          ((geometryMode === "scratch" || geometryMode === "workbook") && geometryPointPlacementEnabled))
                   }
                   onPick={
                     geometryMode === "demo"
