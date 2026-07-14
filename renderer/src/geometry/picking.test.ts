@@ -30,7 +30,7 @@ const context: GeometryPickContext = {
 const rawHit: GeometryRawHit = {
   renderObjectId: "tri-1",
   point: [0.2, 0.2, 0],
-  normal: [0, 0, 1],
+  normal: [0, 1, 0],
   faceIndex: 0,
   distance: 2,
 };
@@ -53,8 +53,11 @@ describe("resolveGeometryPick", () => {
     expect(pick?.faceIndex).toBe(0);
     expect(pick?.sourceTriangle).toEqual([0, 1, 2]);
     expect(pick?.normal).toEqual([0, 0, 1]);
+    expect(pick?.faceNormal).toEqual([0, 0, 1]);
+    expect(pick?.surfaceNormal).toEqual([0, 1, 0]);
     expect(pick?.tangent).toEqual([1, 0, 0]);
     expect(pick?.bitangent).toEqual([0, 1, 0]);
+    expect(pick?.tangentKind).toBe("face-frame");
     expect(pick?.barycentric?.reduce((sum, value) => sum + value, 0)).toBeCloseTo(1);
   });
 
@@ -63,8 +66,11 @@ describe("resolveGeometryPick", () => {
 
     expect(pick?.kind).toBe("edge");
     expect(pick?.edgeVertices).toEqual([0, 1]);
+    expect(pick?.edgeKey).toBe("0:1");
     expect(pick?.label).toBe("Triangle A edge [0, 1]");
     expect(pick?.tangent).toEqual([1, 0, 0]);
+    expect(pick?.bitangent).toEqual([0, 1, 0]);
+    expect(pick?.tangentKind).toBe("edge-direction");
   });
 
   it("uses pixel thresholds before accepting edge picks", () => {
@@ -107,6 +113,11 @@ describe("resolveGeometryPick", () => {
     expect(pick?.kind).toBe("vertex");
     expect(pick?.vertexIndex).toBe(2);
     expect(pick?.worldPoint).toEqual([0, 1, 0]);
+    expect(pick?.surfaceNormal).toEqual([0, 1, 0]);
+    expect(pick?.vertexNormal).toEqual([0, 0, 1]);
     expect(pick?.normal).toEqual([0, 0, 1]);
+    expect(pick?.tangent).toBeUndefined();
+    expect(pick?.bitangent).toBeUndefined();
+    expect(pick?.tangentKind).toBeUndefined();
   });
 });

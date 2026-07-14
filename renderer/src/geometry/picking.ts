@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 
 export type GeometryPickKind = "object" | "face" | "edge" | "vertex";
+export type GeometryPickTangentKind = "face-frame" | "edge-direction";
 
 export interface GeometryPickResult {
   kind: GeometryPickKind;
@@ -19,10 +20,15 @@ export interface GeometryPickResult {
   faceIndex?: number;
   vertexIndex?: number;
   edgeVertices?: [number, number];
+  edgeKey?: string;
 
   normal?: [number, number, number];
+  faceNormal?: [number, number, number];
+  surfaceNormal?: [number, number, number];
+  vertexNormal?: [number, number, number];
   tangent?: [number, number, number];
   bitangent?: [number, number, number];
+  tangentKind?: GeometryPickTangentKind;
 
   barycentric?: [number, number, number];
 
@@ -82,6 +88,40 @@ const normalizeTuple = (value: Vec3Tuple | undefined, fallback: Vec3Tuple = fall
   return tupleFromVector(vector);
 };
 
+const normalizeTupleOptional = (value: Vec3Tuple | undefined): Vec3Tuple | undefined => {
+  if (!value || !isFiniteTuple(value)) return undefined;
+  const vector = vectorFromTuple(value);
+  if (vector.lengthSq() <= 1e-12) return undefined;
+  vector.normalize();
+  return tupleFromVector(vector);
+};
+
+export function makeGeometryEdgeKey(a: number, b: number): string {
+  return a < b ? `${a}:${b}` : `${b}:${a}`;
+}
+
+const orthonormalTangentFrame = (
+  normalInput: THREE.Vector3,
+  preferredInput: THREE.Vector3
+): { normal: THREE.Vector3; tangent: THREE.Vector3; bitangent: THREE.Vector3 } => {
+  const normal = normalInput.lengthSq() > 1e-12 ? normalInput.clone().normalize() : vectorFromTuple(fallbackNormal);
+  let tangent = preferredInput.clone().sub(normal.clone().multiplyScalar(preferredInput.dot(normal)));
+  if (tangent.lengthSq() <= 1e-12) {
+    const ref =
+      Math.abs(normal.x) <= Math.abs(normal.y) && Math.abs(normal.x) <= Math.abs(normal.z)
+        ? new THREE.Vector3(1, 0, 0)
+        : Math.abs(normal.y) <= Math.abs(normal.z)
+          ? new THREE.Vector3(0, 1, 0)
+          : new THREE.Vector3(0, 0, 1);
+    tangent = ref.sub(normal.clone().multiplyScalar(ref.dot(normal)));
+  }
+  tangent.normalize();
+  const bitangent = new THREE.Vector3().crossVectors(normal, tangent);
+  if (bitangent.lengthSq() <= 1e-12) bitangent.set(0, 0, 1);
+  else bitangent.normalize();
+  return { normal, tangent, bitangent };
+};
+
 const readVertex = (mesh: SurfaceMeshData, index: number): THREE.Vector3 | null => {
   const positions = mesh.positions;
   const vertexCount = Math.floor((positions?.length ?? 0) / 3);
@@ -114,12 +154,12 @@ const readFace = (mesh: SurfaceMeshData, faceIndex: number) => {
   if (!a || !b || !c) return null;
   const ab = new THREE.Vector3().subVectors(b, a);
   const ac = new THREE.Vector3().subVectors(c, a);
-  const normal = new THREE.Vector3().crossVectors(ab, ac);
-  const area = normal.length() * 0.5;
-  if (normal.lengthSq() > 1e-12) normal.normalize();
-  const tangent = ab.lengthSq() > 1e-12 ? ab.clone().normalize() : new THREE.Vector3(1, 0, 0);
-  const bitangent = new THREE.Vector3().crossVectors(normal, tangent);
-  if (bitangent.lengthSq() > 1e-12) bitangent.normalize();
+  const normalRaw = new THREE.Vector3().crossVectors(ab, ac);
+  const area = normalRaw.length() * 0.5;
+  const frame = orthonormalTangentFrame(normalRaw, ab);
+  const normal = frame.normal;
+  const tangent = frame.tangent;
+  const bitangent = frame.bitangent;
   return { faceIndex, vertexIndices: [ia, ib, ic] as [number, number, number], vertices: [a, b, c] as const, normal, tangent, bitangent, area };
 };
 
@@ -221,6 +261,7 @@ const makeBasePick = (
   topologyVersion: object.topologyVersion,
   worldPoint: rawHit.point,
   normal: normalizeTuple(rawHit.normal),
+  surfaceNormal: normalizeTupleOptional(rawHit.normal),
   distanceFromRay: Number.isFinite(rawHit.distance) ? rawHit.distance : undefined,
   label,
 });
@@ -246,13 +287,16 @@ export function resolveGeometryPick(
 
   if (mode === "face") {
     if (!face) return makeBasePick("face", rawHit, object, `${objectLabel} face`);
+    const faceNormal = tupleFromVector(face.normal);
     return {
       ...makeBasePick("face", rawHit, object, `${objectLabel} face #${face.faceIndex}`),
       faceIndex: face.faceIndex,
       sourceTriangle: face.vertexIndices,
-      normal: tupleFromVector(face.normal),
+      normal: faceNormal,
+      faceNormal,
       tangent: tupleFromVector(face.tangent),
       bitangent: tupleFromVector(face.bitangent),
+      tangentKind: "face-frame",
       barycentric: barycentricForFace(hitPoint, face),
     };
   }
@@ -285,10 +329,9 @@ export function resolveGeometryPick(
     const vertexIndex = explicit ? Number(rawHit.vertexIndex) : nearest?.index;
     const vertexPoint = explicit ?? nearest?.point ?? null;
     if (vertexIndex == null || !vertexPoint) return makeBasePick("vertex", rawHit, object, `${objectLabel} vertex`);
-    const normal = readNormal(mesh, vertexIndex) ?? (face ? tupleFromVector(face.normal) : normalizeTuple(rawHit.normal));
-    const tangent = face?.tangent ?? new THREE.Vector3(1, 0, 0);
-    const bitangent = new THREE.Vector3().crossVectors(vectorFromTuple(normal), tangent);
-    if (bitangent.lengthSq() > 1e-12) bitangent.normalize();
+    const vertexNormal = readNormal(mesh, vertexIndex);
+    const faceNormal = face ? tupleFromVector(face.normal) : undefined;
+    const normal = vertexNormal ?? faceNormal ?? normalizeTuple(rawHit.normal);
     return {
       ...makeBasePick("vertex", rawHit, object, `${objectLabel} vertex #${vertexIndex}`),
       worldPoint: tupleFromVector(vertexPoint),
@@ -296,8 +339,8 @@ export function resolveGeometryPick(
       faceIndex: face?.faceIndex,
       sourceTriangle: face?.vertexIndices,
       normal,
-      tangent: tupleFromVector(tangent),
-      bitangent: tupleFromVector(bitangent),
+      faceNormal,
+      vertexNormal,
     };
   }
 
@@ -314,17 +357,27 @@ export function resolveGeometryPick(
     const radius = Math.max(0, context.selectionRadiusPx?.edge ?? 8);
     if (distance > radius) return null;
   }
-  const normal = face ? tupleFromVector(face.normal) : normalizeTuple(rawHit.normal);
-  const bitangent = new THREE.Vector3().crossVectors(vectorFromTuple(normal), edge.tangent);
+  const faceNormal = face ? tupleFromVector(face.normal) : undefined;
+  const normal = faceNormal ?? normalizeTuple(rawHit.normal);
+  const edgeStart = readVertex(mesh, edge.edgeVertices[0]);
+  const edgeEnd = readVertex(mesh, edge.edgeVertices[1]);
+  const edgeTangent =
+    edgeStart && edgeEnd && edgeEnd.distanceToSquared(edgeStart) > 1e-12
+      ? edgeEnd.clone().sub(edgeStart).normalize()
+      : edge.tangent;
+  const bitangent = new THREE.Vector3().crossVectors(vectorFromTuple(normal), edgeTangent);
   if (bitangent.lengthSq() > 1e-12) bitangent.normalize();
   return {
     ...makeBasePick("edge", rawHit, object, `${objectLabel} edge [${edge.edgeVertices[0]}, ${edge.edgeVertices[1]}]`),
     worldPoint: tupleFromVector(edge.point),
     faceIndex: face?.faceIndex,
     edgeVertices: edge.edgeVertices,
+    edgeKey: makeGeometryEdgeKey(edge.edgeVertices[0], edge.edgeVertices[1]),
     sourceTriangle: face?.vertexIndices,
     normal,
-    tangent: tupleFromVector(edge.tangent),
+    faceNormal,
+    tangent: tupleFromVector(edgeTangent),
     bitangent: tupleFromVector(bitangent),
+    tangentKind: "edge-direction",
   };
 }

@@ -52,6 +52,7 @@ export type GeometryViewerProps = {
   onCameraTourEvent?: (event: CameraTourEvent) => void;
   extraOverlayPolylineGroups?: OverlayPolylineGroup[] | null;
   extraOverlayMeshGroups?: OverlayMeshGroup[] | null;
+  extraOverlayPointSets?: OverlayPointSet[] | null;
   highlightPolygons?: Polygon3[] | null;
   highlightColor?: number;
   highlightOpacity?: number;
@@ -134,6 +135,7 @@ export type GeometryViewerProps = {
   meshInteractionHideSceneOverlays?: boolean;
   onMeshInteractionStateChange?: (active: boolean) => void;
   renderQuality?: RenderQuality;
+  showBoundingBox?: boolean;
 };
 
 export const GeometryViewer: React.FC<GeometryViewerProps> = ({
@@ -153,6 +155,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   onCameraTourEvent,
   extraOverlayPolylineGroups = null,
   extraOverlayMeshGroups = null,
+  extraOverlayPointSets = null,
   highlightPolygons,
   highlightColor = 0xf97316,
   highlightOpacity = 0.9,
@@ -195,6 +198,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   meshInteractionHideSceneOverlays = false,
   onMeshInteractionStateChange,
   renderQuality = "balanced",
+  showBoundingBox = true,
 }) => {
   const renderData = useMemo(
     () =>
@@ -315,8 +319,8 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   ]);
 
   const overlayPointSets = useMemo(
-    () => [...renderData.overlayPointSets, ...(highlightPointSets ?? [])],
-    [renderData.overlayPointSets, highlightPointSets]
+    () => [...renderData.overlayPointSets, ...(highlightPointSets ?? []), ...(extraOverlayPointSets ?? [])],
+    [renderData.overlayPointSets, highlightPointSets, extraOverlayPointSets]
   );
 
   return (
@@ -334,7 +338,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
       overlayMeshGroups={overlayMeshGroups}
       overlayLabelSets={overlayLabelSets}
       showContours={false}
-      showBoundingBox={true}
+      showBoundingBox={showBoundingBox}
       resetToken={resetToken}
       cameraOverride={cameraOverride}
       cameraOverrideToken={cameraOverrideToken}
