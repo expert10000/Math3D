@@ -9,6 +9,7 @@ import {
   type CameraSyncState,
   type ColorMode,
   type OverlayLabelSet,
+  type OverlayMeshGroup,
   type OverlayPointSet,
   type OverlayPolylineGroup,
 } from "./SurfaceViewer";
@@ -50,6 +51,7 @@ export type GeometryViewerProps = {
   cameraTourCommand?: CameraTourCommand | null;
   onCameraTourEvent?: (event: CameraTourEvent) => void;
   extraOverlayPolylineGroups?: OverlayPolylineGroup[] | null;
+  extraOverlayMeshGroups?: OverlayMeshGroup[] | null;
   highlightPolygons?: Polygon3[] | null;
   highlightColor?: number;
   highlightOpacity?: number;
@@ -89,14 +91,22 @@ export type GeometryViewerProps = {
     meshKey?: string;
     faceIndex?: number;
     vertexIndex?: number;
+    distance?: number;
+    screenPoint?: [number, number];
+    sourceTriangleScreen?: [[number, number], [number, number], [number, number]];
   }) => void;
+  onPickMiss?: () => void;
   onPickHover?: (info: {
     point: { x: number; y: number; z: number };
     normal: { x: number; y: number; z: number };
     meshKey?: string;
     faceIndex?: number;
     vertexIndex?: number;
+    distance?: number;
+    screenPoint?: [number, number];
+    sourceTriangleScreen?: [[number, number], [number, number], [number, number]];
   }) => void;
+  onPickHoverMiss?: () => void;
   inspectSelectionMeshKey?: string | null;
   gizmoEnabled?: boolean;
   gizmoMeshKey?: string | null;
@@ -142,6 +152,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   cameraTourCommand = null,
   onCameraTourEvent,
   extraOverlayPolylineGroups = null,
+  extraOverlayMeshGroups = null,
   highlightPolygons,
   highlightColor = 0xf97316,
   highlightOpacity = 0.9,
@@ -159,7 +170,9 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   onShiftWheelScale,
   pickEnabled = false,
   onPick,
+  onPickMiss,
   onPickHover,
+  onPickHoverMiss,
   inspectSelectionMeshKey = null,
   gizmoEnabled = false,
   gizmoMeshKey = null,
@@ -261,7 +274,8 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
     [renderData.overlayPolylineGroups, highlightGroups, extraOverlayPolylineGroups]
   );
   const overlayMeshGroups = useMemo(() => {
-    if (!highlightPolygons?.length) return [];
+    const extra = extraOverlayMeshGroups ?? [];
+    if (!highlightPolygons?.length) return extra;
     const positions: number[] = [];
     const indices: number[] = [];
     let baseIndex = 0;
@@ -280,7 +294,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
       }
       baseIndex += verts.length;
     }
-    if (positions.length < 9 || indices.length < 3) return [];
+    if (positions.length < 9 || indices.length < 3) return extra;
     return [
       {
         positions,
@@ -289,8 +303,16 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
         opacity: highlightFillOpacity,
         doubleSided: true,
       },
+      ...extra,
     ];
-  }, [highlightPolygons, highlightFillOffset, highlightFillOpacity, highlightFillColor, highlightColor]);
+  }, [
+    extraOverlayMeshGroups,
+    highlightPolygons,
+    highlightFillOffset,
+    highlightFillOpacity,
+    highlightFillColor,
+    highlightColor,
+  ]);
 
   const overlayPointSets = useMemo(
     () => [...renderData.overlayPointSets, ...(highlightPointSets ?? [])],
@@ -353,10 +375,14 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
                 meshKey: info.meshKey,
                 faceIndex: info.faceIndex,
                 vertexIndex: info.vertexIndex,
+                distance: info.distance,
+                screenPoint: info.screenPoint,
+                sourceTriangleScreen: info.sourceTriangleScreen,
               });
             }
           : undefined
       }
+      onInspectPickMiss={pickEnabled ? onPickMiss : undefined}
       onInspectHover={
         pickEnabled && onPickHover
           ? (info) => {
@@ -366,10 +392,14 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
                 meshKey: info.meshKey,
                 faceIndex: info.faceIndex,
                 vertexIndex: info.vertexIndex,
+                distance: info.distance,
+                screenPoint: info.screenPoint,
+                sourceTriangleScreen: info.sourceTriangleScreen,
               });
             }
           : undefined
       }
+      onInspectHoverMiss={pickEnabled ? onPickHoverMiss : undefined}
       inspectSelectionMeshKey={inspectSelectionMeshKey}
       surfaceMeshFallbackMode="none"
     />

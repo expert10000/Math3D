@@ -40,6 +40,7 @@ import {
   type ColorMode,
   type SurfacePerformanceSnapshot,
   type OverlayLabelSet,
+  type OverlayMeshGroup,
   type OverlayPointSet,
   type OverlayPolylineGroup,
   type ProbeInfo,
@@ -193,6 +194,13 @@ import {
   sanitizeGeometryComparePair,
   sanitizeGeometryPickRef,
 } from "./geometry/stabilityGuards";
+import {
+  resolveGeometryPick,
+  type GeometryPickContext,
+  type GeometryPickKind,
+  type GeometryPickResult,
+  type GeometryRawHit,
+} from "./geometry/picking";
 
 import type { GaussPoint, GaussColorMode } from "./components/gaussMapUtils";
 import type { SurfaceSampleSet } from "./math/sampling/surfaceSampling";
@@ -2157,7 +2165,7 @@ type GeometryTransformPatch = {
 type GeometryGizmoMode = "translate" | "rotate" | "scale";
 type GeometryGizmoSpace = "world" | "local" | "parent";
 type GeometryTransformPivotMode = "center" | "origin" | "bboxCenter" | "bottomCenter" | "custom";
-type GeometryProbeSelectionMode = "object" | "face" | "edge" | "vertex";
+type GeometryProbeSelectionMode = GeometryPickKind;
 type GeometryRepeatMode =
   | "duplicate"
   | "linear-array"
@@ -2187,12 +2195,26 @@ type GeometryProceduralPickInfo = {
   meshKey?: string;
   faceIndex?: number;
   vertexIndex?: number;
+  distance?: number;
+  screenPoint?: [number, number];
+  sourceTriangleScreen?: [[number, number], [number, number], [number, number]];
 };
 type GeometryProbeSelectionDetails = {
   mode: GeometryProbeSelectionMode;
+  pick: GeometryPickResult | null;
   meshKey: string | null;
+  objectId: string | null;
+  objectLabel: string;
+  objectType: string;
+  topologyVersion: number | null;
+  label: string;
+  stale: boolean;
   point: { x: number; y: number; z: number };
   normal: { x: number; y: number; z: number };
+  tangent: { x: number; y: number; z: number } | null;
+  bitangent: { x: number; y: number; z: number } | null;
+  barycentric: [number, number, number] | null;
+  sourceTriangle: [number, number, number] | null;
   edgeLength: number | null;
   faceArea: number | null;
   faceIndex: number | null;
@@ -3919,6 +3941,130 @@ const buildMeshEdgePolylines = (
     lines.push([a, b]);
   }
   return lines;
+};
+
+const limitPolylineSet = (lines: PolylineSet, maxLines: number): PolylineSet => {
+  if (lines.length <= maxLines) return lines;
+  const step = lines.length / maxLines;
+  const picked: PolylineSet = [];
+  for (let i = 0; i < maxLines; i += 1) {
+    const line = lines[Math.min(lines.length - 1, Math.floor(i * step))];
+    if (line) picked.push(line);
+  }
+  return picked;
+};
+
+const circlePolyline = (
+  radius: number,
+  plane: "xy" | "xz" | "yz",
+  center: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 },
+  segments = 96,
+  arc = Math.PI * 2
+): PolylineSet[number] => {
+  const count = Math.max(12, Math.round(segments));
+  const pts: PolylineSet[number] = [];
+  const steps = Math.max(2, Math.ceil((count * Math.min(Math.PI * 2, Math.max(0.01, arc))) / (Math.PI * 2)));
+  for (let i = 0; i <= steps; i += 1) {
+    const t = (i / steps) * arc;
+    const c = Math.cos(t) * radius;
+    const s = Math.sin(t) * radius;
+    if (plane === "xy") pts.push({ x: center.x + c, y: center.y + s, z: center.z });
+    else if (plane === "xz") pts.push({ x: center.x + c, y: center.y, z: center.z + s });
+    else pts.push({ x: center.x, y: center.y + c, z: center.z + s });
+  }
+  return pts;
+};
+
+const buildProceduralObjectSelectionGuides = (object: GeometryObject): PolylineSet | null => {
+  const params = object.params;
+  if (object.type === "sphere") {
+    const r = Math.max(1e-6, Number(params.radius ?? 1));
+    return [
+      circlePolyline(r, "xy"),
+      circlePolyline(r, "xz"),
+      circlePolyline(r, "yz"),
+    ];
+  }
+  if (object.type === "cylinder") {
+    const rt = Math.max(0, Number(params.radiusTop ?? 1));
+    const rb = Math.max(0, Number(params.radiusBottom ?? 1));
+    const h = Math.max(1e-6, Number(params.height ?? 2));
+    const top = h * 0.5;
+    const bottom = -h * 0.5;
+    const lines: PolylineSet = [];
+    if (rt > 1e-6) lines.push(circlePolyline(rt, "xz", { x: 0, y: top, z: 0 }, 72));
+    if (rb > 1e-6) lines.push(circlePolyline(rb, "xz", { x: 0, y: bottom, z: 0 }, 72));
+    for (const t of [0, Math.PI]) {
+      lines.push([
+        { x: Math.cos(t) * rb, y: bottom, z: Math.sin(t) * rb },
+        { x: Math.cos(t) * rt, y: top, z: Math.sin(t) * rt },
+      ]);
+    }
+    return lines;
+  }
+  if (object.type === "cone") {
+    const r = Math.max(1e-6, Number(params.radius ?? 1));
+    const h = Math.max(1e-6, Number(params.height ?? 2));
+    const bottom = -h * 0.5;
+    const top = h * 0.5;
+    const lines: PolylineSet = [circlePolyline(r, "xz", { x: 0, y: bottom, z: 0 }, 72)];
+    for (const t of [0, Math.PI]) {
+      lines.push([
+        { x: Math.cos(t) * r, y: bottom, z: Math.sin(t) * r },
+        { x: 0, y: top, z: 0 },
+      ]);
+    }
+    return lines;
+  }
+  if (object.type === "torus") {
+    const r = Math.max(1e-6, Number(params.radius ?? 1));
+    const tube = Math.max(1e-6, Number(params.tube ?? 0.35));
+    const arc = Math.max(0.01, Math.min(Math.PI * 2, Number(params.arc ?? Math.PI * 2)));
+    const lines: PolylineSet = [
+      circlePolyline(r + tube, "xy", { x: 0, y: 0, z: 0 }, 128, arc),
+      circlePolyline(r, "xy", { x: 0, y: 0, z: 0 }, 128, arc),
+      circlePolyline(Math.max(1e-6, r - tube), "xy", { x: 0, y: 0, z: 0 }, 128, arc),
+    ];
+    if (arc < Math.PI * 2 - 1e-4) {
+      const end = arc;
+      lines.push([
+        { x: Math.cos(0) * (r - tube), y: Math.sin(0) * (r - tube), z: 0 },
+        { x: Math.cos(0) * (r + tube), y: Math.sin(0) * (r + tube), z: 0 },
+      ]);
+      lines.push([
+        { x: Math.cos(end) * (r - tube), y: Math.sin(end) * (r - tube), z: 0 },
+        { x: Math.cos(end) * (r + tube), y: Math.sin(end) * (r + tube), z: 0 },
+      ]);
+    }
+    return lines;
+  }
+  return null;
+};
+
+const buildDatasetMeshObjectSelectionGuides = (
+  object: GeometryDatasetMeshObject,
+  mesh: SurfaceMeshData
+): PolylineSet | null => {
+  const key = `${object.id} ${object.name}`.toLowerCase();
+  if (!key.includes("torus")) return null;
+  const bounds = boundsFromPositions(mesh.positions);
+  if (!bounds) return null;
+  const center = {
+    x: (bounds.min[0] + bounds.max[0]) * 0.5,
+    y: (bounds.min[1] + bounds.max[1]) * 0.5,
+    z: (bounds.min[2] + bounds.max[2]) * 0.5,
+  };
+  const rx = Math.max(1e-6, (bounds.max[0] - bounds.min[0]) * 0.5);
+  const ry = Math.max(1e-6, (bounds.max[1] - bounds.min[1]) * 0.5);
+  const tube = Math.max(1e-6, (bounds.max[2] - bounds.min[2]) * 0.5);
+  const outer = Math.max(rx, ry);
+  const centerline = Math.max(1e-6, outer - tube);
+  const inner = Math.max(1e-6, outer - tube * 2);
+  return [
+    circlePolyline(outer, "xy", center, 128),
+    circlePolyline(centerline, "xy", center, 128),
+    circlePolyline(inner, "xy", center, 128),
+  ];
 };
 
 const buildGeometryTransformMatrix = (transform: GeometryObjectTransform) => {
@@ -6429,6 +6575,9 @@ function autoLabelParamDomain(p: ParamDomain) {
 
 const fmt = (x: number) => (Number.isFinite(x) ? x.toFixed(4) : String(x));
 const fmt3 = (v: { x: number; y: number; z: number }) => `(${fmt(v.x)}, ${fmt(v.y)}, ${fmt(v.z)})`;
+const fmtPickTuple3 = (v?: [number, number, number] | null) =>
+  v ? `(${fmt(v[0])}, ${fmt(v[1])}, ${fmt(v[2])})` : "none";
+const formatGeometryPickEntity = (pick: GeometryPickResult | null | undefined) => pick?.label ?? "none";
 const fmtCompareValue = (value: number | null, integer = false) => {
   if (value == null || !Number.isFinite(value)) return "n/a";
   return integer ? Math.round(value).toLocaleString() : fmt(value);
@@ -7793,7 +7942,13 @@ const App: React.FC = () => {
       meshKey: info.meshKey,
       faceIndex: info.faceIndex,
       vertexIndex: info.vertexIndex,
+      distance: info.distance,
+      screenPoint: info.screenPoint,
+      sourceTriangleScreen: info.sourceTriangleScreen,
     });
+  }, []);
+  const handleProceduralPickHoverMiss = useCallback(() => {
+    setGeometryProceduralHoverPick(null);
   }, []);
   const handleProblemPick = useCallback((info: {
     point: { x: number; y: number; z: number };
@@ -7926,6 +8081,9 @@ const App: React.FC = () => {
       meshKey: info.meshKey,
       faceIndex: info.faceIndex,
       vertexIndex: info.vertexIndex,
+      distance: info.distance,
+      screenPoint: info.screenPoint,
+      sourceTriangleScreen: info.sourceTriangleScreen,
     });
     if (geometryCreatePlacementModeActive && geometryPendingPlacementObjectId) return;
     if (info.meshKey) {
@@ -7952,6 +8110,10 @@ const App: React.FC = () => {
     geometryProbeSelectionMode,
     geometryProceduralPanelTab,
   ]);
+  const handleProceduralPickMiss = useCallback(() => {
+    setGeometryProceduralPick(null);
+    setGeometryProceduralHoverPick(null);
+  }, []);
   const geometryFocusAfterAddRef = useRef<(() => void) | null>(null);
   const [geometryProceduralScriptText, setGeometryProceduralScriptText] = useState(PROCEDURAL_SCENE_SCRIPT_STARTER);
   const [geometryProceduralScriptError, setGeometryProceduralScriptError] = useState<string | null>(null);
@@ -11273,16 +11435,63 @@ const App: React.FC = () => {
       if (!pick) return null;
       const pickedMeshKey = pick.meshKey ?? null;
       const selectedMeshKey = geometrySelectedObjectId ?? null;
+      const pickContextObjects: GeometryPickContext["objects"] = proceduralMeshSet.meshes.map((mesh) => {
+        const sceneObject = resolveGeometrySceneObjectById(mesh.id);
+        const transform = (mesh.transform as GeometryObjectTransform | undefined) ?? {
+          position: { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+        };
+        return {
+          objectId: mesh.id,
+          objectLabel: sceneObject?.name ?? mesh.label ?? mesh.id,
+          objectType: sceneObject && "type" in sceneObject ? sceneObject.type : "mesh",
+          meshKey: mesh.id,
+          topologyVersion: geometryObjectRevisionById[mesh.id] ?? 0,
+          worldMesh: transformSurfaceMeshByGeometryTransform(mesh, transform),
+        };
+      });
+      const rawHit: GeometryRawHit = {
+        renderObjectId: pickedMeshKey ?? selectedMeshKey ?? "",
+        point: [pick.point.x, pick.point.y, pick.point.z],
+        normal: [pick.normal.x, pick.normal.y, pick.normal.z],
+        faceIndex: pick.faceIndex,
+        vertexIndex: pick.vertexIndex,
+        distance: Number.isFinite(pick.distance ?? NaN) ? Number(pick.distance) : 0,
+        screenPoint: pick.screenPoint,
+        sourceTriangleScreen: pick.sourceTriangleScreen,
+      };
+      const canonicalPick = resolveGeometryPick(rawHit, geometryProbeSelectionMode, {
+        objects: pickContextObjects,
+        fallbackObjectId: selectedMeshKey,
+        selectionRadiusPx: { vertex: 10, edge: 8 },
+      });
+      if (!canonicalPick) return null;
+      const pickPoint = canonicalPick?.worldPoint;
+      const pickNormal = canonicalPick?.normal;
+      const pickTangent = canonicalPick?.tangent;
+      const pickBitangent = canonicalPick?.bitangent;
       const fallback: GeometryProbeSelectionDetails = {
         mode: geometryProbeSelectionMode,
-        meshKey: pickedMeshKey ?? selectedMeshKey ?? null,
-        point: pick.point,
-        normal: pick.normal,
+        pick: canonicalPick,
+        meshKey: canonicalPick?.meshKey ?? pickedMeshKey ?? selectedMeshKey ?? null,
+        objectId: canonicalPick?.objectId ?? pickedMeshKey ?? selectedMeshKey ?? null,
+        objectLabel: canonicalPick?.objectLabel ?? "n/a",
+        objectType: canonicalPick?.objectType ?? "n/a",
+        topologyVersion: canonicalPick?.topologyVersion ?? null,
+        label: canonicalPick?.label ?? "none",
+        stale: Boolean(canonicalPick?.stale),
+        point: pickPoint ? { x: pickPoint[0], y: pickPoint[1], z: pickPoint[2] } : pick.point,
+        normal: pickNormal ? { x: pickNormal[0], y: pickNormal[1], z: pickNormal[2] } : pick.normal,
+        tangent: pickTangent ? { x: pickTangent[0], y: pickTangent[1], z: pickTangent[2] } : null,
+        bitangent: pickBitangent ? { x: pickBitangent[0], y: pickBitangent[1], z: pickBitangent[2] } : null,
+        barycentric: canonicalPick?.barycentric ?? null,
+        sourceTriangle: canonicalPick?.sourceTriangle ?? null,
         edgeLength: null,
         faceArea: null,
-        faceIndex: null,
-        vertexIndex: null,
-        edgeVertexPair: null,
+        faceIndex: canonicalPick?.faceIndex ?? null,
+        vertexIndex: canonicalPick?.vertexIndex ?? null,
+        edgeVertexPair: canonicalPick?.edgeVertices ?? null,
         edgePoints: null,
         faceVertices: null,
       };
@@ -11382,18 +11591,7 @@ const App: React.FC = () => {
       };
 
       if (geometryProbeSelectionMode === "vertex") {
-        let bestIndex = Number.isInteger(pick.vertexIndex) ? Number(pick.vertexIndex) : -1;
-        if (bestIndex < 0 || bestIndex >= vertexCount) {
-          let bestDistSq = Number.POSITIVE_INFINITY;
-          for (let i = 0; i < vertexCount; i += 1) {
-            const p = getPoint(i);
-            const d2 = vecDistSq3(query, p);
-            if (d2 < bestDistSq) {
-              bestDistSq = d2;
-              bestIndex = i;
-            }
-          }
-        }
+        const bestIndex = Number.isInteger(canonicalPick.vertexIndex) ? Number(canonicalPick.vertexIndex) : -1;
         if (bestIndex < 0 || bestIndex >= vertexCount) return fallback;
         return {
           ...fallback,
@@ -11485,18 +11683,22 @@ const App: React.FC = () => {
         bestPair = [i0, i1];
         bestEdgePoints = [p0, p1];
       };
-      const exactFace = pick.faceIndex != null ? resolveFace(pick.faceIndex) : null;
-      if (exactFace) {
-        testEdge(exactFace.ia, exactFace.ib);
-        testEdge(exactFace.ib, exactFace.ic);
-        testEdge(exactFace.ic, exactFace.ia);
+      if (canonicalPick.edgeVertices) {
+        testEdge(canonicalPick.edgeVertices[0], canonicalPick.edgeVertices[1]);
       } else {
+        const exactFace = pick.faceIndex != null ? resolveFace(pick.faceIndex) : null;
+        if (exactFace) {
+          testEdge(exactFace.ia, exactFace.ib);
+          testEdge(exactFace.ib, exactFace.ic);
+          testEdge(exactFace.ic, exactFace.ia);
+        } else {
         for (let t = 0; t < triCount; t += 1) {
           const face = resolveFace(t);
           if (!face) continue;
           testEdge(face.ia, face.ib);
           testEdge(face.ib, face.ic);
           testEdge(face.ic, face.ia);
+        }
         }
       }
       return {
@@ -11508,7 +11710,13 @@ const App: React.FC = () => {
         edgePoints: bestEdgePoints,
       };
     },
-    [geometryProbeSelectionMode, geometrySelectedObjectId, proceduralMeshSet.meshes]
+    [
+      geometryObjectRevisionById,
+      geometryProbeSelectionMode,
+      geometrySelectedObjectId,
+      proceduralMeshSet.meshes,
+      resolveGeometrySceneObjectById,
+    ]
   );
   const geometryProbeSelectionDetails = useMemo(
     () => resolveGeometryProbeSelectionDetails(geometryProceduralPick),
@@ -11521,6 +11729,8 @@ const App: React.FC = () => {
     () => resolveGeometryProbeSelectionDetails(geometryProceduralHoverPick),
     [geometryProceduralHoverPick, resolveGeometryProbeSelectionDetails]
   );
+  const geometrySelectedPick = geometryProbeSelectionDetails?.pick ?? null;
+  const geometryHoverPick = geometryProbeHoverSelectionDetails?.pick ?? null;
   const geometryMeasuredEdgeCandidate = useMemo(() => {
     if (geometryProbeSelectionMode !== "edge") return null;
     if (!geometryProbeSelectionDetails?.meshKey) return null;
@@ -14521,8 +14731,19 @@ const App: React.FC = () => {
       const edgeDisplay = isPoly ? Boolean(proceduralObj.params.edgeDisplay ?? false) : false;
       if (!selectedEdgeHighlight && !edgeDisplay) continue;
       const triangulate = isPoly ? Boolean(proceduralObj.params.triangulate ?? true) : true;
+      const primitiveSelectionGuides =
+        selectedEdgeHighlight && proceduralObj && !isPoly
+          ? buildProceduralObjectSelectionGuides(proceduralObj)
+          : null;
+      const rawLines =
+        primitiveSelectionGuides ??
+        buildMeshEdgePolylines(
+          mesh,
+          selectedEdgeHighlight && !isPoly ? false : triangulate,
+          selectedEdgeHighlight && !isPoly ? 14 : 2
+        );
       const lines = applyGeometryTransformToPolylineSet(
-        buildMeshEdgePolylines(mesh, triangulate, 2),
+        selectedEdgeHighlight && !isPoly && !primitiveSelectionGuides ? limitPolylineSet(rawLines, 48) : rawLines,
         obj.transform
       );
       if (!lines.length) continue;
@@ -14536,15 +14757,37 @@ const App: React.FC = () => {
         lines: edgeLines,
         color: 0x334155,
         opacity: 0.8,
-        radiusScale: 1.1,
+        radiusWorld: 0.006,
       });
     }
     if (selectedLines.length) {
+      let selectedRadiusWorld = 0.01;
+      const selectedMesh = geometrySelectedObjectId
+        ? proceduralMeshSet.meshes.find((mesh) => mesh.id === geometrySelectedObjectId) ?? null
+        : null;
+      if (selectedMesh) {
+        const selectedObj =
+          proceduralById.get(selectedMesh.id) ??
+          datasetById.get(selectedMesh.id) ??
+          null;
+        const transformed = selectedObj
+          ? transformSurfaceMeshByGeometryTransform(selectedMesh, selectedObj.transform)
+          : selectedMesh;
+        const bounds = boundsFromPositions(transformed.positions);
+        if (bounds) {
+          const diag = Math.hypot(
+            bounds.max[0] - bounds.min[0],
+            bounds.max[1] - bounds.min[1],
+            bounds.max[2] - bounds.min[2]
+          );
+          selectedRadiusWorld = clampNumber(diag * 0.0045, 0.004, 0.012);
+        }
+      }
       groups.push({
         lines: selectedLines,
         color: 0xf97316,
-        opacity: 0.95,
-        radiusScale: 2.4,
+        opacity: 0.86,
+        radiusWorld: selectedRadiusWorld,
       });
     }
     return groups.length ? groups : null;
@@ -14663,16 +14906,81 @@ const App: React.FC = () => {
     }
     return polygons.length ? polygons : null;
   }, [geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails]);
+  const geometryProceduralSelectionFaceMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
+    if (geometryMode !== "procedural") return null;
+    const groups: OverlayMeshGroup[] = [];
+    const pushFace = (detail: GeometryProbeSelectionDetails | null, color: number, opacity: number, offset: number) => {
+      if (!detail || detail.mode !== "face" || !detail.faceVertices || detail.faceVertices.length < 3) return;
+      const normal = detail.normal;
+      const nLen = Math.hypot(normal.x, normal.y, normal.z);
+      const nx = nLen > 1e-9 ? normal.x / nLen : 0;
+      const ny = nLen > 1e-9 ? normal.y / nLen : 0;
+      const nz = nLen > 1e-9 ? normal.z / nLen : 1;
+      const positions: number[] = [];
+      for (const vertex of detail.faceVertices) {
+        positions.push(vertex.x + nx * offset, vertex.y + ny * offset, vertex.z + nz * offset);
+      }
+      groups.push({
+        positions,
+        indices: [0, 1, 2],
+        color,
+        opacity,
+        doubleSided: true,
+      });
+    };
+    pushFace(geometryProbeHoverSelectionDetails, 0xfacc15, 0.2, 0.012);
+    pushFace(geometryProbeSelectionDetails, 0x22c55e, 0.38, 0.016);
+    return groups.length ? groups : null;
+  }, [geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails]);
   const geometryProceduralSelectionOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     const groups: OverlayPolylineGroup[] = [];
+    const adaptiveProbeRadius = (points: Array<{ x: number; y: number; z: number }>) => {
+      if (points.length < 2) return 0.01;
+      let maxDistance = 0;
+      for (let i = 0; i < points.length; i += 1) {
+        for (let j = i + 1; j < points.length; j += 1) {
+          maxDistance = Math.max(maxDistance, geometryDistance(points[i], points[j]));
+        }
+      }
+      return clampNumber(maxDistance * 0.012, 0.004, 0.018);
+    };
     const markedEdges: PolylineSet = geometryMarkedEdges.map((entry) => [entry.edgePoints[0], entry.edgePoints[1]]);
     if (markedEdges.length) {
       groups.push({
         lines: markedEdges,
         color: 0x0ea5e9,
-        opacity: 0.9,
-        radiusScale: 2.2,
+        opacity: 0.82,
+        radiusWorld: 0.01,
+      });
+    }
+    const faceBorderFrom = (detail: GeometryProbeSelectionDetails | null) => {
+      if (!detail || detail.mode !== "face" || !detail.faceVertices || detail.faceVertices.length < 3) return null;
+      return [[
+        detail.faceVertices[0],
+        detail.faceVertices[1],
+        detail.faceVertices[2],
+        detail.faceVertices[0],
+      ]] as PolylineSet;
+    };
+    const hoverFaceBorder = faceBorderFrom(geometryProbeHoverSelectionDetails);
+    if (hoverFaceBorder?.length) {
+      const points = geometryProbeHoverSelectionDetails?.faceVertices ?? [];
+      groups.push({
+        lines: hoverFaceBorder,
+        color: 0xfacc15,
+        opacity: 0.85,
+        radiusWorld: adaptiveProbeRadius(points) * 0.8,
+      });
+    }
+    const selectedFaceBorder = faceBorderFrom(geometryProbeSelectionDetails);
+    if (selectedFaceBorder?.length) {
+      const points = geometryProbeSelectionDetails?.faceVertices ?? [];
+      groups.push({
+        lines: selectedFaceBorder,
+        color: 0x22c55e,
+        opacity: 0.95,
+        radiusWorld: adaptiveProbeRadius(points),
       });
     }
     const edgeFrom = (detail: GeometryProbeSelectionDetails | null) => {
@@ -14681,20 +14989,22 @@ const App: React.FC = () => {
     };
     const hoverEdges = edgeFrom(geometryProbeHoverSelectionDetails);
     if (hoverEdges?.length) {
+      const points = geometryProbeHoverSelectionDetails?.edgePoints ?? [];
       groups.push({
         lines: hoverEdges,
         color: 0xfbbf24,
-        opacity: 0.9,
-        radiusScale: 2.3,
+        opacity: 0.82,
+        radiusWorld: adaptiveProbeRadius(points) * 0.8,
       });
     }
     const selectedEdges = edgeFrom(geometryProbeSelectionDetails);
     if (selectedEdges?.length) {
+      const points = geometryProbeSelectionDetails?.edgePoints ?? [];
       groups.push({
         lines: selectedEdges,
         color: 0xf97316,
-        opacity: 0.96,
-        radiusScale: 2.9,
+        opacity: 0.9,
+        radiusWorld: adaptiveProbeRadius(points),
       });
     }
     return groups.length ? groups : null;
@@ -18489,10 +18799,9 @@ const App: React.FC = () => {
   const geometryProceduralViewerHighlightPolygons = useMemo<Polygon3[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     const polys: Polygon3[] = [];
-    if (geometryProceduralSelectionHighlightPolygons?.length) polys.push(...geometryProceduralSelectionHighlightPolygons);
     if (geometrySectionCapPolygons?.length) polys.push(...geometrySectionCapPolygons);
     return polys.length ? polys : null;
-  }, [geometryMode, geometryProceduralSelectionHighlightPolygons, geometrySectionCapPolygons]);
+  }, [geometryMode, geometrySectionCapPolygons]);
   const geometryConstructionViewportBadgeById = useMemo(
     () =>
       buildConstructionViewportBadgeById([
@@ -24479,6 +24788,8 @@ const App: React.FC = () => {
       } else if (event.key === "Escape") {
         handleStopGeometryCameraTour();
         handleStopSurfacesCameraTour();
+        setGeometryProceduralPick(null);
+        setGeometryProceduralHoverPick(null);
         clearInspect();
       }
     };
@@ -60410,6 +60721,7 @@ case "mobius":
                   edgeRadiusScale={geometryMode === "demo" ? geometryDemoEdgeRadiusScale : 1}
                   meshOverrides={geometryProceduralMeshOverridesForViewer}
                   extraOverlayPolylineGroups={geometryProceduralViewerOverlayPolylineGroups}
+                  extraOverlayMeshGroups={geometryProceduralSelectionFaceMeshGroups}
                   wireframe={geometryWireframe}
                   showPlanes={geometryShowPlanes}
                   planeGridSettings={planeGridSettings}
@@ -60430,7 +60742,9 @@ case "mobius":
                   meshInteractionRestoreDelayMs={geometryInteractionRestoreDelayMs}
                   meshInteractionPreviewTriangleTarget={geometryEffectiveInteractionPreviewTriangleTarget}
                   meshInteractionHideWireframe={geometryEffectiveHideWireframe}
-                  meshInteractionHideSceneOverlays={geometryEffectiveHideSceneOverlays}
+                  meshInteractionHideSceneOverlays={
+                    geometryEffectiveHideSceneOverlays && geometryProbeSelectionMode === "object"
+                  }
                   renderQuality={geometryEffectiveRenderQuality}
                   onMeshInteractionStateChange={handleGeometryViewerInteractionStateChange}
                   highlightPolygons={
@@ -60451,7 +60765,9 @@ case "mobius":
                   dragEnabled={
                     (geometryMode === "procedural" &&
                       geometryProceduralPanelTab !== "demonstrations" &&
-                      geometryGizmoMode === "translate") ||
+                      geometryInspectorPanelTab !== "probe" &&
+                      geometryGizmoMode === "translate" &&
+                      geometryProbeSelectionMode === "object") ||
                     ((geometryMode === "scratch" || geometryMode === "workbook") &&
                       !!geometrySelectedConstructionFreePoint &&
                       !geometryPointPlacementEnabled)
@@ -60459,7 +60775,9 @@ case "mobius":
                   onDragStart={
                     geometryMode === "procedural" &&
                     geometryProceduralPanelTab !== "demonstrations" &&
-                    geometryGizmoMode === "translate"
+                    geometryInspectorPanelTab !== "probe" &&
+                    geometryGizmoMode === "translate" &&
+                    geometryProbeSelectionMode === "object"
                       ? handleProceduralDragStart
                       : (geometryMode === "scratch" || geometryMode === "workbook") &&
                           geometrySelectedConstructionFreePoint &&
@@ -60470,7 +60788,9 @@ case "mobius":
                   onDrag={
                     geometryMode === "procedural" &&
                     geometryProceduralPanelTab !== "demonstrations" &&
-                    geometryGizmoMode === "translate"
+                    geometryInspectorPanelTab !== "probe" &&
+                    geometryGizmoMode === "translate" &&
+                    geometryProbeSelectionMode === "object"
                       ? handleProceduralDrag
                       : (geometryMode === "scratch" || geometryMode === "workbook") &&
                           geometrySelectedConstructionFreePoint &&
@@ -60481,7 +60801,9 @@ case "mobius":
                   onDragEnd={
                     geometryMode === "procedural" &&
                     geometryProceduralPanelTab !== "demonstrations" &&
-                    geometryGizmoMode === "translate"
+                    geometryInspectorPanelTab !== "probe" &&
+                    geometryGizmoMode === "translate" &&
+                    geometryProbeSelectionMode === "object"
                       ? handleProceduralDragEnd
                       : (geometryMode === "scratch" || geometryMode === "workbook") &&
                           geometrySelectedConstructionFreePoint &&
@@ -60515,7 +60837,9 @@ case "mobius":
                   gizmoEnabled={
                     geometryMode === "procedural" &&
                     geometryProceduralPanelTab !== "demonstrations" &&
-                    geometryGizmoEnabled
+                    geometryGizmoEnabled &&
+                    geometryInspectorPanelTab !== "probe" &&
+                    geometryProbeSelectionMode === "object"
                   }
                   gizmoMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
                   gizmoMode={geometryGizmoMode}
@@ -60525,12 +60849,13 @@ case "mobius":
                   gizmoScaleSnap={geometrySnapScaleEnabled ? geometrySnapScaleStep : null}
                   onGizmoTransform={geometryMode === "procedural" ? handleProceduralGizmoTransform : undefined}
                   pickEnabled={
-                    !geometryFastModeActive &&
-                    (
+                    (geometryInspectorPanelTab === "probe" && geometryMode === "procedural") ||
+                    (!geometryFastModeActive &&
+                      (
                       geometryMode === "demo" ||
                       (geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations") ||
                       ((geometryMode === "scratch" || geometryMode === "workbook") && geometryPointPlacementEnabled)
-                    )
+                      ))
                   }
                   onPick={
                     geometryMode === "demo"
@@ -60541,11 +60866,20 @@ case "mobius":
                           ? handleProblemPick
                           : undefined
                   }
+                  onPickMiss={
+                    geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations"
+                      ? handleProceduralPickMiss
+                      : undefined
+                  }
                   onPickHover={
-                    geometryGlobalQualityOverrideMode !== "fast-preview" &&
                     geometryMode === "procedural" &&
                     geometryProceduralPanelTab !== "demonstrations"
                       ? handleProceduralPickHover
+                      : undefined
+                  }
+                  onPickHoverMiss={
+                    geometryMode === "procedural" && geometryProceduralPanelTab !== "demonstrations"
+                      ? handleProceduralPickHoverMiss
                       : undefined
                   }
                   inspectSelectionMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
@@ -60627,7 +60961,10 @@ case "mobius":
                                   <button
                                     key={`geometry-right-probe-mode-${modeId}`}
                                     type="button"
-                                    onClick={() => setGeometryProbeSelectionMode(modeId)}
+                                    onClick={() => {
+                                      setGeometryProbeSelectionMode(modeId);
+                                      setGeometryProceduralHoverPick(null);
+                                    }}
                                     style={pill(geometryProbeSelectionMode === modeId)}
                                     aria-pressed={geometryProbeSelectionMode === modeId}
                                   >
@@ -60649,74 +60986,101 @@ case "mobius":
                                 Select an object with mesh data to enable detailed probe measurements.
                               </div>
                             )}
-                            <div style={{ display: "grid", gridTemplateColumns: "112px 1fr", gap: "4px 8px" }}>
-                              <div style={{ color: "#556" }}>Clicked entity</div>
-                              <div>
-                                {geometryProbeSelectionDetails
-                                  ? `${geometryProbeSelectionDetails.mode}${
-                                      geometryProbeSelectionDetails.faceIndex != null ? ` | face #${geometryProbeSelectionDetails.faceIndex}` : ""
-                                    }${
-                                      geometryProbeSelectionDetails.edgeVertexPair
-                                        ? ` | edge [${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]`
-                                        : ""
-                                    }${
-                                      geometryProbeSelectionDetails.vertexIndex != null
-                                        ? ` | vertex #${geometryProbeSelectionDetails.vertexIndex}`
-                                        : ""
-                                    }`
-                                  : "none"}
+                            <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
+                              <div style={{ fontWeight: 700 }}>Hover preview</div>
+                              <div style={{ display: "grid", gridTemplateColumns: "104px 1fr", gap: "4px 8px" }}>
+                                <div style={{ color: "#556" }}>Entity</div>
+                                <div>{formatGeometryPickEntity(geometryHoverPick)}</div>
+                                <div style={{ color: "#556" }}>Point</div>
+                                <div>{fmtPickTuple3(geometryHoverPick?.worldPoint)}</div>
                               </div>
+                            </div>
 
-                              <div style={{ color: "#556" }}>Hovered entity</div>
-                              <div>
-                                {geometryProbeHoverSelectionDetails
-                                  ? `${geometryProbeHoverSelectionDetails.mode}${
-                                      geometryProbeHoverSelectionDetails.faceIndex != null ? ` | face #${geometryProbeHoverSelectionDetails.faceIndex}` : ""
-                                    }${
-                                      geometryProbeHoverSelectionDetails.edgeVertexPair
-                                        ? ` | edge [${geometryProbeHoverSelectionDetails.edgeVertexPair[0]}, ${geometryProbeHoverSelectionDetails.edgeVertexPair[1]}]`
-                                        : ""
-                                    }${
-                                      geometryProbeHoverSelectionDetails.vertexIndex != null
-                                        ? ` | vertex #${geometryProbeHoverSelectionDetails.vertexIndex}`
-                                        : ""
-                                    }`
-                                  : "none"}
-                              </div>
-
-                              <div style={{ color: "#556" }}>Coordinate</div>
-                              <div>
-                                {geometryProbeSelectionDetails
-                                  ? `(${fmt(geometryProbeSelectionDetails.point.x)}, ${fmt(geometryProbeSelectionDetails.point.y)}, ${fmt(geometryProbeSelectionDetails.point.z)})`
-                                  : "none"}
-                              </div>
-
-                              <div style={{ color: "#556" }}>Normal</div>
-                              <div>
-                                {geometryProbeSelectionDetails
-                                  ? `(${fmt(geometryProbeSelectionDetails.normal.x)}, ${fmt(geometryProbeSelectionDetails.normal.y)}, ${fmt(geometryProbeSelectionDetails.normal.z)})`
-                                  : "none"}
-                              </div>
-
-                              <div style={{ color: "#556" }}>Face area</div>
-                              <div>
-                                {geometryProbeSelectionDetails?.faceArea != null && Number.isFinite(geometryProbeSelectionDetails.faceArea)
-                                  ? fmt(geometryProbeSelectionDetails.faceArea)
-                                  : "n/a"}
-                              </div>
-
-                              <div style={{ color: "#556" }}>Edge length</div>
-                              <div>
-                                {geometryProbeSelectionDetails?.edgeLength != null && Number.isFinite(geometryProbeSelectionDetails.edgeLength)
-                                  ? fmt(geometryProbeSelectionDetails.edgeLength)
-                                  : "n/a"}
-                              </div>
-
-                              <div style={{ color: "#556" }}>Vertex info</div>
-                              <div>
-                                {geometryProbeSelectionDetails?.vertexIndex != null
-                                  ? `vertex #${geometryProbeSelectionDetails.vertexIndex}`
-                                  : "n/a"}
+                            <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
+                              <div style={{ fontWeight: 700 }}>Committed selection</div>
+                              <div style={{ display: "grid", gridTemplateColumns: "104px 1fr", gap: "4px 8px" }}>
+                                <div style={{ color: "#556" }}>Entity</div>
+                                <div>{formatGeometryPickEntity(geometrySelectedPick)}</div>
+                                <div style={{ color: "#556" }}>Object</div>
+                                <div>{geometryProbeSelectionDetails?.objectLabel ?? geometrySelectedSceneObject?.name ?? "none"}</div>
+                                <div style={{ color: "#556" }}>Type</div>
+                                <div>{geometryProbeSelectionDetails?.objectType ?? geometrySelectedSceneObject?.type ?? "n/a"}</div>
+                                <div style={{ color: "#556" }}>Status</div>
+                                <div>{geometryProbeSelectionDetails?.stale ? "stale" : geometrySelectedPick ? "valid" : "none"}</div>
+                                {geometrySelectedPick?.kind === "object" ? (
+                                  <>
+                                    <div style={{ color: "#556" }}>Object id</div>
+                                    <div>{geometrySelectedPick.objectId}</div>
+                                    <div style={{ color: "#556" }}>Vertices/Faces</div>
+                                    <div>
+                                      {geometrySelectedSceneMeshInfo
+                                        ? `${geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} / ${geometrySelectedSceneMeshInfo.triCount.toLocaleString()}`
+                                        : "n/a"}
+                                    </div>
+                                    <div style={{ color: "#556" }}>Bounds</div>
+                                    <div>
+                                      {geometrySelectedSceneMeshInfo?.bounds
+                                        ? `min (${fmt(geometrySelectedSceneMeshInfo.bounds.min[0])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.min[1])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.min[2])}) | max (${fmt(geometrySelectedSceneMeshInfo.bounds.max[0])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.max[1])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.max[2])})`
+                                        : "n/a"}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div style={{ color: "#556" }}>World point</div>
+                                    <div>{fmtPickTuple3(geometrySelectedPick?.worldPoint)}</div>
+                                    <div style={{ color: "#556" }}>Normal</div>
+                                    <div>{fmtPickTuple3(geometrySelectedPick?.normal)}</div>
+                                    <div style={{ color: "#556" }}>Tangent</div>
+                                    <div>{fmtPickTuple3(geometrySelectedPick?.tangent)}</div>
+                                    <div style={{ color: "#556" }}>Bitangent</div>
+                                    <div>{fmtPickTuple3(geometrySelectedPick?.bitangent)}</div>
+                                    {geometrySelectedPick?.kind === "face" && (
+                                      <>
+                                        <div style={{ color: "#556" }}>Face</div>
+                                        <div>
+                                          #{geometryProbeSelectionDetails?.faceIndex ?? "n/a"}
+                                          {geometryProbeSelectionDetails?.sourceTriangle
+                                            ? ` | triangle [${geometryProbeSelectionDetails.sourceTriangle.join(", ")}]`
+                                            : ""}
+                                        </div>
+                                        <div style={{ color: "#556" }}>Barycentric</div>
+                                        <div>{fmtPickTuple3(geometryProbeSelectionDetails?.barycentric)}</div>
+                                        <div style={{ color: "#556" }}>Face area</div>
+                                        <div>
+                                          {geometryProbeSelectionDetails?.faceArea != null && Number.isFinite(geometryProbeSelectionDetails.faceArea)
+                                            ? fmt(geometryProbeSelectionDetails.faceArea)
+                                            : "n/a"}
+                                        </div>
+                                      </>
+                                    )}
+                                    {geometrySelectedPick?.kind === "edge" && (
+                                      <>
+                                        <div style={{ color: "#556" }}>Edge</div>
+                                        <div>
+                                          {geometryProbeSelectionDetails?.edgeVertexPair
+                                            ? `[${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]`
+                                            : "n/a"}
+                                        </div>
+                                        <div style={{ color: "#556" }}>Edge length</div>
+                                        <div>
+                                          {geometryProbeSelectionDetails?.edgeLength != null && Number.isFinite(geometryProbeSelectionDetails.edgeLength)
+                                            ? fmt(geometryProbeSelectionDetails.edgeLength)
+                                            : "n/a"}
+                                        </div>
+                                      </>
+                                    )}
+                                    {geometrySelectedPick?.kind === "vertex" && (
+                                      <>
+                                        <div style={{ color: "#556" }}>Vertex</div>
+                                        <div>
+                                          {geometryProbeSelectionDetails?.vertexIndex != null
+                                            ? `#${geometryProbeSelectionDetails.vertexIndex}`
+                                            : "n/a"}
+                                        </div>
+                                      </>
+                                    )}
+                                  </>
+                                )}
                               </div>
                             </div>
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

@@ -352,6 +352,7 @@ export type OverlayPolylineGroup = {
   color: number;
   opacity?: number;
   radiusScale?: number;
+  radiusWorld?: number;
 };
 export type OverlayLabel = {
   text: string;
@@ -1450,9 +1451,13 @@ type Props = {
     meshKey?: string;
     faceIndex?: number;
     vertexIndex?: number;
+    distance?: number;
+    screenPoint?: [number, number];
+    sourceTriangleScreen?: [[number, number], [number, number], [number, number]];
     uv?: { u: number; v: number };
     xy?: { x: number; y: number };
   }) => void;
+  onInspectPickMiss?: () => void;
   onInspectHover?: (info: {
     index: number;
     point: { x: number; y: number; z: number };
@@ -1460,9 +1465,13 @@ type Props = {
     meshKey?: string;
     faceIndex?: number;
     vertexIndex?: number;
+    distance?: number;
+    screenPoint?: [number, number];
+    sourceTriangleScreen?: [[number, number], [number, number], [number, number]];
     uv?: { u: number; v: number };
     xy?: { x: number; y: number };
   }) => void;
+  onInspectHoverMiss?: () => void;
   inspectSelectionMeshKey?: string | null;
   inspectPoint?: { x: number; y: number; z: number } | null;
   selectionOverlayVisible?: boolean;
@@ -1674,7 +1683,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     geodesicDiskShowBoundary = true,
     inspectEnabled = false,
     onInspectPick,
+    onInspectPickMiss,
     onInspectHover,
+    onInspectHoverMiss,
     inspectSelectionMeshKey = null,
     inspectPoint = null,
     selectionOverlayVisible = true,
@@ -1800,7 +1811,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const geodesicDiskPickEnabledRef = useRef(geodesicDiskPickEnabled);
   const showChartGridRef = useRef(showChartGrid);
   const onInspectPickRef = useRef(onInspectPick);
+  const onInspectPickMissRef = useRef(onInspectPickMiss);
   const onInspectHoverRef = useRef(onInspectHover);
+  const onInspectHoverMissRef = useRef(onInspectHoverMiss);
   const onDragStartRef = useRef(onDragStart);
   const onDragRef = useRef(onDrag);
   const onDragEndRef = useRef(onDragEnd);
@@ -1880,14 +1893,17 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     lastPoint: THREE.Vector3;
     normal: THREE.Vector3;
     moved: boolean;
-    clickPick?: {
-      point: THREE.Vector3;
-      normal: THREE.Vector3;
-      meshKey?: string;
-      faceIndex?: number;
-      uv?: { u: number; v: number };
-      xy?: { x: number; y: number };
-    };
+            clickPick?: {
+              point: THREE.Vector3;
+              normal: THREE.Vector3;
+              meshKey?: string;
+              faceIndex?: number;
+              distance?: number;
+              screenPoint?: [number, number];
+              sourceTriangleScreen?: [[number, number], [number, number], [number, number]];
+              uv?: { u: number; v: number };
+              xy?: { x: number; y: number };
+            };
   } | null>(null);
 
   type ViewMode = "free" | GizmoView;
@@ -2195,8 +2211,14 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     onInspectPickRef.current = onInspectPick;
   }, [onInspectPick]);
   useEffect(() => {
+    onInspectPickMissRef.current = onInspectPickMiss;
+  }, [onInspectPickMiss]);
+  useEffect(() => {
     onInspectHoverRef.current = onInspectHover;
   }, [onInspectHover]);
+  useEffect(() => {
+    onInspectHoverMissRef.current = onInspectHoverMiss;
+  }, [onInspectHoverMiss]);
   useEffect(() => {
     dragEnabledRef.current = dragEnabled;
   }, [dragEnabled]);
@@ -4697,6 +4719,45 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (bestIdx < 0) return null;
       return { index: bestIdx, sample: sampleSet.samples[bestIdx] };
     };
+    const buildInspectScreenInfo = (
+      hit: THREE.Intersection<THREE.Object3D>,
+      event: PointerEvent,
+      rect: DOMRect
+    ): {
+      distance?: number;
+      screenPoint: [number, number];
+      sourceTriangleScreen?: [[number, number], [number, number], [number, number]];
+    } => {
+      const screenPoint: [number, number] = [event.clientX - rect.left, event.clientY - rect.top];
+      const faceIndex = typeof (hit as any).faceIndex === "number" ? Number((hit as any).faceIndex) : undefined;
+      const mesh = hit.object instanceof THREE.Mesh ? hit.object : null;
+      const geom = mesh?.geometry instanceof THREE.BufferGeometry ? mesh.geometry : null;
+      const posAttr = geom?.getAttribute("position") as THREE.BufferAttribute | undefined;
+      if (!mesh || !geom || !posAttr || !Number.isInteger(faceIndex)) {
+        return { distance: hit.distance, screenPoint };
+      }
+      const idxAttr = geom.getIndex();
+      const triBase = Number(faceIndex) * 3;
+      const ids = [
+        idxAttr ? idxAttr.getX(triBase) : triBase,
+        idxAttr ? idxAttr.getX(triBase + 1) : triBase + 1,
+        idxAttr ? idxAttr.getX(triBase + 2) : triBase + 2,
+      ];
+      if (ids.some((id) => id < 0 || id >= posAttr.count)) {
+        return { distance: hit.distance, screenPoint };
+      }
+      const projectVertex = (id: number): [number, number] => {
+        const projected = new THREE.Vector3(posAttr.getX(id), posAttr.getY(id), posAttr.getZ(id));
+        mesh.localToWorld(projected);
+        projected.project(camera);
+        return [((projected.x + 1) * 0.5) * rect.width, ((1 - projected.y) * 0.5) * rect.height];
+      };
+      return {
+        distance: hit.distance,
+        screenPoint,
+        sourceTriangleScreen: [projectVertex(ids[0]), projectVertex(ids[1]), projectVertex(ids[2])],
+      };
+    };
 
       const handlePointerDown = (event: PointerEvent) => {
         interruptCameraTour();
@@ -4814,6 +4875,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           const controls = controlsRef.current;
           if (controls) controls.enabled = false;
         }
+        if (!dragStateRef.current && inspectEnabledRef.current && event.button === 0) {
+          onInspectPickMissRef.current?.();
+        }
         return;
       }
       const resolveHitMeshKey = (candidate: THREE.Intersection<THREE.Object3D>) => {
@@ -4848,6 +4912,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const point = hit.point.clone();
       const hitMeshKeyValue = (hit.object as any)?.userData?.__surfaceMeshOverrideId;
       const hitMeshKey = hitMeshKeyValue == null ? undefined : String(hitMeshKeyValue);
+      const inspectScreenInfo = buildInspectScreenInfo(hit, event, rect);
 
       let normalWorld = new THREE.Vector3(0, 1, 0);
 
@@ -5000,6 +5065,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
               normal: normalWorld.clone(),
               meshKey: dragMeshKey,
               faceIndex: typeof (hit as any).faceIndex === "number" ? Number((hit as any).faceIndex) : undefined,
+              distance: inspectScreenInfo.distance,
+              screenPoint: inspectScreenInfo.screenPoint,
+              sourceTriangleScreen: inspectScreenInfo.sourceTriangleScreen,
               uv: uvDomain,
               xy: xyDomain,
             },
@@ -5038,6 +5106,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
                 meshKey: hitMeshKey ?? nearest.sample.meshKey,
                 faceIndex,
                 vertexIndex: nearest.sample.vertexIndex,
+                distance: inspectScreenInfo.distance,
+                screenPoint: inspectScreenInfo.screenPoint,
+                sourceTriangleScreen: inspectScreenInfo.sourceTriangleScreen,
                 uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
                 xy: xyDomain,
               });
@@ -5049,6 +5120,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
                 meshKey: hitMeshKey ?? undefined,
                 faceIndex,
                 vertexIndex: undefined,
+                distance: inspectScreenInfo.distance,
+                screenPoint: inspectScreenInfo.screenPoint,
+                sourceTriangleScreen: inspectScreenInfo.sourceTriangleScreen,
                 uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
                 xy: xyDomain,
               });
@@ -5118,10 +5192,14 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const hoverPickStartAt = performance.now();
       const intersects = raycaster.intersectObjects([surfaceObj], true);
       recordRaycastDuration(hoverPickStartAt);
-      if (!intersects.length) return;
+      if (!intersects.length) {
+        onInspectHoverMissRef.current?.();
+        return;
+      }
       const hit = intersects[0];
       const point = hit.point.clone();
       const hitMeshKey = (hit.object as any)?.userData?.__surfaceMeshOverrideId;
+      const inspectScreenInfo = buildInspectScreenInfo(hit, event, rect);
       let normalWorld = new THREE.Vector3(0, 1, 0);
       if (hit.face) {
         normalWorld.copy(hit.face.normal);
@@ -5152,6 +5230,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           meshKey: hitMeshKey ?? nearest.sample.meshKey,
           faceIndex,
           vertexIndex: nearest.sample.vertexIndex,
+          distance: inspectScreenInfo.distance,
+          screenPoint: inspectScreenInfo.screenPoint,
+          sourceTriangleScreen: inspectScreenInfo.sourceTriangleScreen,
           uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
           xy: xyDomain,
         });
@@ -5163,6 +5244,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           meshKey: hitMeshKey ?? undefined,
           faceIndex,
           vertexIndex: undefined,
+          distance: inspectScreenInfo.distance,
+          screenPoint: inspectScreenInfo.screenPoint,
+          sourceTriangleScreen: inspectScreenInfo.sourceTriangleScreen,
           uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
           xy: xyDomain,
         });
@@ -5193,6 +5277,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
               meshKey: clickPick.meshKey ?? nearest.sample.meshKey,
               faceIndex: clickPick.faceIndex,
               vertexIndex: nearest.sample.vertexIndex,
+              distance: clickPick.distance,
+              screenPoint: clickPick.screenPoint,
+              sourceTriangleScreen: clickPick.sourceTriangleScreen,
               uv: clickPick.uv ?? (clickPick.xy ? { u: clickPick.xy.x, v: clickPick.xy.y } : undefined),
               xy: clickPick.xy,
             });
@@ -5204,6 +5291,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
               meshKey: clickPick.meshKey,
               faceIndex: clickPick.faceIndex,
               vertexIndex: undefined,
+              distance: clickPick.distance,
+              screenPoint: clickPick.screenPoint,
+              sourceTriangleScreen: clickPick.sourceTriangleScreen,
               uv: clickPick.uv ?? (clickPick.xy ? { u: clickPick.xy.x, v: clickPick.xy.y } : undefined),
               xy: clickPick.xy,
             });
@@ -7202,7 +7292,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     for (const entry of effectiveOverlayPolylineGroups) {
       if (!entry?.lines?.length) continue;
-      const tubeRadius = baseRadius * (entry.radiusScale ?? 1);
+      const tubeRadius =
+        typeof entry.radiusWorld === "number" && Number.isFinite(entry.radiusWorld)
+          ? Math.max(0.001, entry.radiusWorld)
+          : baseRadius * (entry.radiusScale ?? 1);
       const opacity = entry.opacity ?? 1;
       const mat = new THREE.MeshBasicMaterial({
         color: entry.color,
