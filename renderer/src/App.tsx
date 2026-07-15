@@ -2185,6 +2185,32 @@ type GeometryOperationInput = {
   expectedKinds: GeometryPickKind[];
   value: GeometryPickResult | null;
 };
+type GeometryOperationFaceTarget = {
+  pick: GeometryPickResult;
+  objectId: string;
+  faceIndex: number;
+  sourceTriangle: [number, number, number] | null;
+  point: GeometryProbePoint;
+  normal: GeometryProbePoint;
+  faceVertices: GeometryProbePoint[] | null;
+  faceArea: number | null;
+};
+type GeometryOperationEdgeTarget = {
+  pick: GeometryPickResult;
+  objectId: string;
+  edgeVertexPair: [number, number];
+  point: GeometryProbePoint;
+  normal: GeometryProbePoint;
+  edgePoints: [GeometryProbePoint, GeometryProbePoint] | null;
+  edgeLength: number | null;
+};
+type GeometryOperationVertexTarget = {
+  pick: GeometryPickResult;
+  objectId: string;
+  vertexIndex: number;
+  point: GeometryProbePoint;
+  normal: GeometryProbePoint;
+};
 type GeometryRepeatMode =
   | "duplicate"
   | "linear-array"
@@ -8612,6 +8638,17 @@ const App: React.FC = () => {
       ),
     [geometryMathConstructions]
   );
+  const geometryDerivedLineConstructionOptions = useMemo(
+    () =>
+      geometryDerivedConstructions.filter((entry) =>
+        entry.type.includes("line") ||
+        entry.type.includes("axis") ||
+        entry.type.includes("vector") ||
+        entry.type.includes("segment") ||
+        Boolean(entry.frozenSnapshot?.groups.some((group) => group.lines.length > 0))
+      ),
+    [geometryDerivedConstructions]
+  );
   const geometryMathConstructionCircleOptions = useMemo(
     () => geometryMathConstructions.filter((entry) => entry.type === "circle-center-through-object"),
     [geometryMathConstructions]
@@ -12071,9 +12108,193 @@ const App: React.FC = () => {
     () => getGeometryOperationInputValue("active-vertex", ["vertex"]),
     [getGeometryOperationInputValue]
   );
+  const geometryMirrorPlaneOperationPick = useMemo(
+    () => getGeometryOperationInputValue("mirror-plane", ["face"]),
+    [getGeometryOperationInputValue]
+  );
+  const geometryTargetFaceOperationPick = useMemo(
+    () => getGeometryOperationInputValue("target-face", ["face"]),
+    [getGeometryOperationInputValue]
+  );
   const geometryHasFaceOperationPick = geometryFaceOperationPick?.faceIndex != null;
   const geometryHasEdgeOperationPick = Boolean(geometryEdgeOperationPick?.edgeVertices);
   const geometryHasVertexOperationPick = geometryVertexOperationPick?.vertexIndex != null;
+  const tupleToGeometryPoint = useCallback((tuple: [number, number, number] | null | undefined): GeometryProbePoint | null => {
+    if (!tuple || !tuple.every(Number.isFinite)) return null;
+    return { x: tuple[0], y: tuple[1], z: tuple[2] };
+  }, []);
+  const resolvePickNormalPoint = useCallback(
+    (pick: GeometryPickResult): GeometryProbePoint =>
+      tupleToGeometryPoint(pick.faceNormal ?? pick.vertexNormal ?? pick.surfaceNormal ?? pick.normal) ?? { x: 0, y: 1, z: 0 },
+    [tupleToGeometryPoint]
+  );
+  const resolveGeometryOperationFaceTarget = useCallback(
+    (pick: GeometryPickResult | null | undefined): GeometryOperationFaceTarget | null => {
+      if (!pick || pick.stale || pick.kind !== "face" || pick.faceIndex == null) return null;
+      const objectId = pick.meshKey ?? pick.objectId;
+      if (!objectId) return null;
+      const fallbackPoint = tupleToGeometryPoint(pick.worldPoint) ?? { x: 0, y: 0, z: 0 };
+      const fallbackNormal = resolvePickNormalPoint(pick);
+      const resolved = resolveGeometrySceneMeshById(objectId);
+      if (!resolved) {
+        return {
+          pick,
+          objectId,
+          faceIndex: pick.faceIndex,
+          sourceTriangle: pick.sourceTriangle ?? null,
+          point: fallbackPoint,
+          normal: fallbackNormal,
+          faceVertices: null,
+          faceArea: null,
+        };
+      }
+      const positions = resolved.mesh.positions;
+      const vertexCount = Math.floor(positions.length / 3);
+      const indices = resolved.mesh.indices ?? null;
+      const triCount = indices && indices.length >= 3 ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
+      if (pick.faceIndex < 0 || pick.faceIndex >= triCount) {
+        return null;
+      }
+      const base = pick.faceIndex * 3;
+      const ia = indices ? Number(indices[base]) : base;
+      const ib = indices ? Number(indices[base + 1]) : base + 1;
+      const ic = indices ? Number(indices[base + 2]) : base + 2;
+      if (
+        !Number.isInteger(ia) ||
+        !Number.isInteger(ib) ||
+        !Number.isInteger(ic) ||
+        ia < 0 ||
+        ib < 0 ||
+        ic < 0 ||
+        ia >= vertexCount ||
+        ib >= vertexCount ||
+        ic >= vertexCount
+      ) {
+        return null;
+      }
+      const pointAt = (index: number): GeometryProbePoint => {
+        const offset = index * 3;
+        return {
+          x: Number(positions[offset] ?? 0),
+          y: Number(positions[offset + 1] ?? 0),
+          z: Number(positions[offset + 2] ?? 0),
+        };
+      };
+      const a = pointAt(ia);
+      const b = pointAt(ib);
+      const c = pointAt(ic);
+      const ab = geometrySub(b, a);
+      const ac = geometrySub(c, a);
+      const cross = {
+        x: ab.y * ac.z - ab.z * ac.y,
+        y: ab.z * ac.x - ab.x * ac.z,
+        z: ab.x * ac.y - ab.y * ac.x,
+      };
+      const crossLen = Math.hypot(cross.x, cross.y, cross.z);
+      const normal =
+        Number.isFinite(crossLen) && crossLen > 1e-12
+          ? { x: cross.x / crossLen, y: cross.y / crossLen, z: cross.z / crossLen }
+          : fallbackNormal;
+      return {
+        pick,
+        objectId,
+        faceIndex: pick.faceIndex,
+        sourceTriangle: pick.sourceTriangle ?? [ia, ib, ic],
+        point: fallbackPoint,
+        normal,
+        faceVertices: [a, b, c],
+        faceArea: Number.isFinite(crossLen) ? crossLen * 0.5 : null,
+      };
+    },
+    [resolveGeometrySceneMeshById, resolvePickNormalPoint, tupleToGeometryPoint]
+  );
+  const resolveGeometryOperationEdgeTarget = useCallback(
+    (pick: GeometryPickResult | null | undefined): GeometryOperationEdgeTarget | null => {
+      if (!pick || pick.stale || pick.kind !== "edge" || !pick.edgeVertices) return null;
+      const objectId = pick.meshKey ?? pick.objectId;
+      if (!objectId) return null;
+      const edgeVertexPair: [number, number] = [pick.edgeVertices[0], pick.edgeVertices[1]];
+      const fallbackPoint = tupleToGeometryPoint(pick.worldPoint) ?? { x: 0, y: 0, z: 0 };
+      const fallbackNormal = resolvePickNormalPoint(pick);
+      const resolved = resolveGeometrySceneMeshById(objectId);
+      if (!resolved) {
+        return { pick, objectId, edgeVertexPair, point: fallbackPoint, normal: fallbackNormal, edgePoints: null, edgeLength: null };
+      }
+      const positions = resolved.mesh.positions;
+      const vertexCount = Math.floor(positions.length / 3);
+      if (edgeVertexPair.some((index) => !Number.isInteger(index) || index < 0 || index >= vertexCount)) {
+        return null;
+      }
+      const pointAt = (index: number): GeometryProbePoint => {
+        const offset = index * 3;
+        return {
+          x: Number(positions[offset] ?? 0),
+          y: Number(positions[offset + 1] ?? 0),
+          z: Number(positions[offset + 2] ?? 0),
+        };
+      };
+      const a = pointAt(edgeVertexPair[0]);
+      const b = pointAt(edgeVertexPair[1]);
+      return {
+        pick,
+        objectId,
+        edgeVertexPair,
+        point: fallbackPoint,
+        normal: fallbackNormal,
+        edgePoints: [a, b],
+        edgeLength: geometryDistance(a, b),
+      };
+    },
+    [resolveGeometrySceneMeshById, resolvePickNormalPoint, tupleToGeometryPoint]
+  );
+  const resolveGeometryOperationVertexTarget = useCallback(
+    (pick: GeometryPickResult | null | undefined): GeometryOperationVertexTarget | null => {
+      if (!pick || pick.stale || pick.kind !== "vertex" || pick.vertexIndex == null) return null;
+      const objectId = pick.meshKey ?? pick.objectId;
+      if (!objectId) return null;
+      let point = tupleToGeometryPoint(pick.worldPoint) ?? { x: 0, y: 0, z: 0 };
+      const resolved = resolveGeometrySceneMeshById(objectId);
+      if (resolved) {
+        const positions = resolved.mesh.positions;
+        const vertexCount = Math.floor(positions.length / 3);
+        if (pick.vertexIndex < 0 || pick.vertexIndex >= vertexCount) return null;
+        const offset = pick.vertexIndex * 3;
+        point = {
+          x: Number(positions[offset] ?? point.x),
+          y: Number(positions[offset + 1] ?? point.y),
+          z: Number(positions[offset + 2] ?? point.z),
+        };
+      }
+      return {
+        pick,
+        objectId,
+        vertexIndex: pick.vertexIndex,
+        point,
+        normal: resolvePickNormalPoint(pick),
+      };
+    },
+    [resolveGeometrySceneMeshById, resolvePickNormalPoint, tupleToGeometryPoint]
+  );
+  const geometrySourceFaceOperationTarget = useMemo(
+    () => resolveGeometryOperationFaceTarget(geometryFaceOperationPick),
+    [geometryFaceOperationPick, resolveGeometryOperationFaceTarget]
+  );
+  const geometryTargetFaceOperationTarget = useMemo(
+    () => resolveGeometryOperationFaceTarget(geometryTargetFaceOperationPick),
+    [geometryTargetFaceOperationPick, resolveGeometryOperationFaceTarget]
+  );
+  const geometryMirrorPlaneOperationTarget = useMemo(
+    () => resolveGeometryOperationFaceTarget(geometryMirrorPlaneOperationPick),
+    [geometryMirrorPlaneOperationPick, resolveGeometryOperationFaceTarget]
+  );
+  const geometryEdgeOperationTarget = useMemo(
+    () => resolveGeometryOperationEdgeTarget(geometryEdgeOperationPick),
+    [geometryEdgeOperationPick, resolveGeometryOperationEdgeTarget]
+  );
+  const geometryVertexOperationTarget = useMemo(
+    () => resolveGeometryOperationVertexTarget(geometryVertexOperationPick),
+    [geometryVertexOperationPick, resolveGeometryOperationVertexTarget]
+  );
   const geometryMeasuredEdgeCandidate = useMemo(() => {
     if (geometryProbeSelectionMode !== "edge") return null;
     if (!geometryProbeSelectionDetails?.meshKey) return null;
@@ -12735,16 +12956,16 @@ const App: React.FC = () => {
         | "vertex-normal-endpoint"
         | "vertex-translated-copy-point"
     ) => {
-      const detail = geometryProbeSelectionDetails;
-      if (!detail || detail.mode !== "vertex" || !detail.meshKey) {
-        setGeometryCreateActionStatus("Select a vertex first (Pick mode: Vertex).");
+      const detail = geometryVertexOperationTarget;
+      if (!detail) {
+        setGeometryCreateActionStatus("Fill the Vertex operation input first.");
         return;
       }
-      const resolved = resolveGeometrySceneMeshById(detail.meshKey);
+      const resolved = resolveGeometrySceneMeshById(detail.objectId);
       appendDerivedConstruction({
         type,
         sourceKind: "vertex",
-        sourceObjectId: detail.meshKey,
+        sourceObjectId: detail.objectId,
         sourceTopologySignature: resolved ? geometryMeshTopologySignature(resolved.mesh) : null,
         sourceVertexIndex: detail.vertexIndex,
         sourcePoint: { ...detail.point },
@@ -12756,7 +12977,7 @@ const App: React.FC = () => {
             : undefined,
       });
     },
-    [appendDerivedConstruction, geometryConstructTranslateDistance, geometryProbeSelectionDetails, resolveGeometrySceneMeshById]
+    [appendDerivedConstruction, geometryConstructTranslateDistance, geometryVertexOperationTarget, resolveGeometrySceneMeshById]
   );
   const handleCreateDerivedFromEdge = useCallback(
     (
@@ -12770,12 +12991,12 @@ const App: React.FC = () => {
         | "edge-parallel-line-through-vertex"
         | "edge-equal-length-copied-segment"
     ) => {
-      const detail = geometryProbeSelectionDetails;
-      if (!detail || detail.mode !== "edge" || !detail.meshKey || !detail.edgeVertexPair) {
-        setGeometryCreateActionStatus("Select an edge first (Pick mode: Edge).");
+      const detail = geometryEdgeOperationTarget;
+      if (!detail) {
+        setGeometryCreateActionStatus("Fill the Edge operation input first.");
         return;
       }
-      const resolved = resolveGeometrySceneMeshById(detail.meshKey);
+      const resolved = resolveGeometrySceneMeshById(detail.objectId);
       const secondaryFromEdge = (() => {
         const pair = detail.edgeVertexPair;
         if (!detail.edgePoints || detail.edgePoints.length < 2 || !pair) return null;
@@ -12784,12 +13005,12 @@ const App: React.FC = () => {
         const useFirst = d0 <= d1;
         const index = useFirst ? pair[0] : pair[1];
         const point = useFirst ? detail.edgePoints[0] : detail.edgePoints[1];
-        return { objectId: detail.meshKey as string, vertexIndex: index, point: { ...point } };
+        return { objectId: detail.objectId, vertexIndex: index, point: { ...point } };
       })();
       appendDerivedConstruction({
         type,
         sourceKind: "edge",
-        sourceObjectId: detail.meshKey,
+        sourceObjectId: detail.objectId,
         sourceTopologySignature: resolved ? geometryMeshTopologySignature(resolved.mesh) : null,
         sourceEdgeVertexPair: detail.edgeVertexPair,
         secondaryVertexRef:
@@ -12816,7 +13037,7 @@ const App: React.FC = () => {
             : undefined,
       });
     },
-    [appendDerivedConstruction, geometryConstructCopiedLength, geometryProbeSelectionDetails, resolveGeometrySceneMeshById]
+    [appendDerivedConstruction, geometryConstructCopiedLength, geometryEdgeOperationTarget, resolveGeometrySceneMeshById]
   );
   const handleCreateDerivedFromFace = useCallback(
     (
@@ -12831,14 +13052,22 @@ const App: React.FC = () => {
         | "face-parallel-face-plane"
         | "face-plane-through-three-vertices"
     ) => {
-      const detail = geometryProbeSelectionDetails;
-      if (!detail || detail.mode !== "face" || !detail.meshKey || detail.faceIndex == null) {
-        setGeometryCreateActionStatus("Select a face first (Pick mode: Face).");
+      const detail = geometrySourceFaceOperationTarget;
+      if (!detail) {
+        setGeometryCreateActionStatus("Fill the Source face operation input first.");
         return;
       }
-      const resolved = resolveGeometrySceneMeshById(detail.meshKey);
+      const resolved = resolveGeometrySceneMeshById(detail.objectId);
       const selectedEdgeRef = (() => {
-        const marked = geometryMarkedEdges.find((entry) => entry.meshKey === detail.meshKey) ?? null;
+        if (geometryEdgeOperationTarget?.objectId === detail.objectId && geometryEdgeOperationTarget.edgePoints) {
+          return {
+            objectId: geometryEdgeOperationTarget.objectId,
+            edgeVertexPair: geometryEdgeOperationTarget.edgeVertexPair,
+            a: { ...geometryEdgeOperationTarget.edgePoints[0] },
+            b: { ...geometryEdgeOperationTarget.edgePoints[1] },
+          };
+        }
+        const marked = geometryMarkedEdges.find((entry) => entry.meshKey === detail.objectId) ?? null;
         if (marked?.edgePoints && marked.edgePoints.length >= 2) {
           return {
             objectId: marked.meshKey,
@@ -12849,7 +13078,7 @@ const App: React.FC = () => {
         }
         if (detail.faceVertices && detail.faceVertices.length >= 3) {
           return {
-            objectId: detail.meshKey as string,
+            objectId: detail.objectId,
             edgeVertexPair: [0, 1] as [number, number],
             a: { ...detail.faceVertices[0] },
             b: { ...detail.faceVertices[1] },
@@ -12860,7 +13089,7 @@ const App: React.FC = () => {
       appendDerivedConstruction({
         type,
         sourceKind: "face",
-        sourceObjectId: detail.meshKey,
+        sourceObjectId: detail.objectId,
         sourceTopologySignature: resolved ? geometryMeshTopologySignature(resolved.mesh) : null,
         sourceFaceIndex: detail.faceIndex,
         sourceFaceSignature:
@@ -12879,8 +13108,9 @@ const App: React.FC = () => {
     [
       appendDerivedConstruction,
       geometryConstructOffsetDistance,
+      geometryEdgeOperationTarget,
       geometryMarkedEdges,
-      geometryProbeSelectionDetails,
+      geometrySourceFaceOperationTarget,
       resolveGeometrySceneMeshById,
     ]
   );
@@ -13766,8 +13996,8 @@ const App: React.FC = () => {
   }, [geometrySelectedSceneObject, geometrySelectedWorldBounds, handleUpdateGeometryTransform]);
   const handleAlignSelectedToSelectedEdge = useCallback(() => {
     if (!geometrySelectedSceneObject) return;
-    if (geometryProbeSelectionDetails?.mode !== "edge" || !geometryProbeSelectionDetails.edgePoints) return;
-    const [a, b] = geometryProbeSelectionDetails.edgePoints;
+    if (!geometryEdgeOperationTarget?.edgePoints) return;
+    const [a, b] = geometryEdgeOperationTarget.edgePoints;
     const dir = new THREE.Vector3(b.x - a.x, b.y - a.y, b.z - a.z);
     if (dir.lengthSq() <= 1e-12) return;
     dir.normalize();
@@ -13777,7 +14007,7 @@ const App: React.FC = () => {
     handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
       rotation: { x: e.x, y: e.y, z: e.z },
     });
-  }, [geometryProbeSelectionDetails, geometrySelectedSceneObject, handleUpdateGeometryTransform]);
+  }, [geometryEdgeOperationTarget, geometrySelectedSceneObject, handleUpdateGeometryTransform]);
   const resolveGeometrySceneBoundsById = useCallback(
     (id: string): { object: GeometryObject | GeometryDatasetMeshObject; bounds: BBox3 } | null => {
       const resolved = resolveGeometrySceneMeshById(id);
@@ -13918,8 +14148,8 @@ const App: React.FC = () => {
   ]);
   const handleAlignSelectedToSelectedNormal = useCallback(() => {
     if (!geometrySelectedSceneObject) return;
-    if (geometryProbeSelectionDetails?.mode !== "face") return;
-    const n = geometryProbeSelectionDetails.normal;
+    const n = (geometryTargetFaceOperationTarget ?? geometrySourceFaceOperationTarget)?.normal;
+    if (!n) return;
     const len = Math.hypot(n.x, n.y, n.z);
     if (len < 1e-9) return;
     const unit = new THREE.Vector3(n.x / len, n.y / len, n.z / len);
@@ -13928,7 +14158,7 @@ const App: React.FC = () => {
     handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
       rotation: { x: e.x, y: e.y, z: e.z },
     });
-  }, [geometryProbeSelectionDetails, geometrySelectedSceneObject, handleUpdateGeometryTransform]);
+  }, [geometrySourceFaceOperationTarget, geometryTargetFaceOperationTarget, geometrySelectedSceneObject, handleUpdateGeometryTransform]);
   const handleDistributeVisibleObjectsEvenly = useCallback(() => {
     const axis = geometryDistributeAxis;
     const axisIndex = axis === "x" ? 0 : axis === "y" ? 1 : 2;
@@ -14108,11 +14338,11 @@ const App: React.FC = () => {
       if (geometryRepeatMirrorPlane === "xz") normal = { x: 0, y: 1, z: 0 };
       if (geometryRepeatMirrorPlane === "yz") normal = { x: 1, y: 0, z: 0 };
       if (geometryRepeatMirrorPlane === "selected-face") {
-        if (geometryProbeSelectionDetails?.mode !== "face") {
-          return { offsets: [], error: "Mirror across selected face requires Pick mode Face selection." };
+        if (!geometryMirrorPlaneOperationTarget) {
+          return { offsets: [], error: "Mirror across selected face requires the Mirror plane operation input." };
         }
-        normal = geometryProbeSelectionDetails.normal;
-        point = geometryProbeSelectionDetails.point;
+        normal = geometryMirrorPlaneOperationTarget.normal;
+        point = geometryMirrorPlaneOperationTarget.point;
       }
       const nLen = Math.hypot(normal.x, normal.y, normal.z);
       if (!Number.isFinite(nLen) || nLen < 1e-9) {
@@ -14149,7 +14379,7 @@ const App: React.FC = () => {
     }
     return { offsets: [], error: "Unknown repeat mode." };
   }, [
-    geometryProbeSelectionDetails,
+    geometryMirrorPlaneOperationTarget,
     geometryRepeatCircularAngleDeg,
     geometryRepeatCircularAxis,
     geometryRepeatCircularCopies,
@@ -18660,17 +18890,24 @@ const App: React.FC = () => {
         return;
       }
     }
+    if (geometrySourceFaceOperationTarget) {
+      handleCreateDerivedFromFace("face-plane-through-centroid");
+      setGeometryCreateActionStatus("Project target created from the Source face slot.");
+      return;
+    }
     if (geometrySelectedSceneObject) {
       setGeometryCreateActionStatus(
-        "Project needs a selected plane construction. Use Planes to create one, or use Analysis for object projection guides."
+        "Project needs a selected plane construction or Source face operation input."
       );
       return;
     }
-    setGeometryCreateActionStatus("Select a plane construction or object to project.");
+    setGeometryCreateActionStatus("Select a plane construction or fill the Source face operation input.");
   }, [
     geometryDerivedConstructions,
     geometrySelectedDerivedConstructionId,
     geometrySelectedSceneObject,
+    geometrySourceFaceOperationTarget,
+    handleCreateDerivedFromFace,
     handleUseDerivedPlaneForSectionSliceById,
   ]);
   const handleResizeSelectedConstructionLineOperation = useCallback(
@@ -18679,7 +18916,126 @@ const App: React.FC = () => {
         ? geometryDerivedConstructions.find((entry) => entry.id === geometrySelectedDerivedConstructionId) ?? null
         : null;
       if (!selectedDerived) {
-        setGeometryCreateActionStatus("Select a derived line, axis, vector, or segment construction to extend or trim.");
+        if (geometryEdgeOperationTarget?.edgePoints) {
+          const [originalA, originalB] = geometryEdgeOperationTarget.edgePoints;
+          const currentLength = Math.max(0.05, geometryEdgeOperationTarget.edgeLength ?? geometryDistance(originalA, originalB));
+          const directionRaw = {
+            x: originalB.x - originalA.x,
+            y: originalB.y - originalA.y,
+            z: originalB.z - originalA.z,
+          };
+          const dirLen = Math.hypot(directionRaw.x, directionRaw.y, directionRaw.z);
+          if (!Number.isFinite(dirLen) || dirLen < 1e-9) {
+            setGeometryCreateActionStatus("Selected edge direction is invalid.");
+            return;
+          }
+          const direction = {
+            x: directionRaw.x / dirLen,
+            y: directionRaw.y / dirLen,
+            z: directionRaw.z / dirLen,
+          };
+          const center = {
+            x: (originalA.x + originalB.x) * 0.5,
+            y: (originalA.y + originalB.y) * 0.5,
+            z: (originalA.z + originalB.z) * 0.5,
+          };
+          const resolved = resolveGeometrySceneMeshById(geometryEdgeOperationTarget.objectId);
+          const requestedLength = Math.max(0.05, Number(geometryConstructCopiedLength) || 0.5);
+          const objectRadius = resolved ? computeSurfaceMeshFocus(resolved.mesh)?.radius ?? currentLength : currentLength;
+          const fullLineLength = Math.max(currentLength * 4, requestedLength * 2, objectRadius * 1.75, 1.25);
+          const nextLength = mode === "extend" ? fullLineLength : Math.max(0.05, currentLength - requestedLength);
+          const half = nextLength * 0.5;
+          const a = {
+            x: center.x - direction.x * half,
+            y: center.y - direction.y * half,
+            z: center.z - direction.z * half,
+          };
+          const b = {
+            x: center.x + direction.x * half,
+            y: center.y + direction.y * half,
+            z: center.z + direction.z * half,
+          };
+          const operationColor = mode === "extend" ? 0x2563eb : 0xf97316;
+          appendDerivedConstruction({
+            type: "edge-line-through-two-vertices",
+            name: `${mode === "extend" ? "Extended" : "Trimmed"} edge line`,
+            sourceKind: "edge",
+            sourceObjectId: geometryEdgeOperationTarget.objectId,
+            sourceTopologySignature: resolved ? geometryMeshTopologySignature(resolved.mesh) : null,
+            sourceEdgeVertexPair: geometryEdgeOperationTarget.edgeVertexPair,
+            sourceEdgeSignature: geometryEdgeSignatureFromPoints(originalA, originalB),
+            sourcePoint: { ...center },
+            sourceNormal: { ...geometryEdgeOperationTarget.normal },
+            frozenAt: Date.now(),
+            frozenSnapshot: {
+              origin: center,
+              direction,
+              groups: [
+                ...(mode === "trim"
+                  ? [
+                      {
+                        lines: [[originalA, originalB]],
+                        color: 0x64748b,
+                        opacity: 0.28,
+                        radiusScale: 1.5,
+                      },
+                    ]
+                  : []),
+                {
+                  lines: mode === "extend" ? [[originalA, originalB]] : [[a, b]],
+                  color: operationColor,
+                  opacity: 1,
+                  radiusScale: mode === "extend" ? 2.2 : 3.4,
+                },
+                ...(mode === "extend"
+                  ? [
+                      {
+                        lines: [[a, b]],
+                        color: 0xfacc15,
+                        opacity: 1,
+                        radiusScale: 5.4,
+                      },
+                    ]
+                  : []),
+              ],
+              pointSets: [
+                {
+                  points: [a, b],
+                  color: mode === "extend" ? 0xfacc15 : operationColor,
+                  size: 0.14,
+                  opacity: 1,
+                },
+                ...(mode === "extend"
+                  ? [
+                      {
+                        points: [originalA, originalB],
+                        color: 0xfacc15,
+                        size: 0.11,
+                        opacity: 1,
+                      },
+                    ]
+                  : []),
+              ],
+              labelSets: [
+                {
+                  size: 0.95,
+                  labels: [
+                    {
+                      text: `${mode === "extend" ? "extended" : "trimmed"} edge`,
+                      position: { x: b.x + 0.04, y: b.y + 0.04, z: b.z + 0.04 },
+                      color: 0x0f172a,
+                    },
+                  ],
+                },
+              ],
+            },
+          });
+          setGeometryCreateActionStatus(
+            `${mode === "extend" ? "Extended" : "Trimmed"} construction created directly from the Edge slot.`
+          );
+          return;
+        }
+        setGeometryCreateActionStatus("Select a derived line, axis, vector, or segment construction, or fill the Edge operation input.");
         return;
       }
       const evalEntry = geometryDerivedConstructionOverlays.byId.get(selectedDerived.id) ?? null;
@@ -18709,8 +19065,30 @@ const App: React.FC = () => {
               )
             )
           : Math.max(0.5, Number(selectedDerived.params?.length ?? selectedDerived.params?.distance ?? geometryConstructCopiedLength) || 1);
-      const delta = Math.max(0.05, Number(geometryConstructCopiedLength) || 0.5);
-      const nextLength = mode === "extend" ? currentLength + delta : Math.max(0.25, currentLength - delta);
+      const originalHalf = currentLength * 0.5;
+      const originalA =
+        firstLine && firstLine.length >= 2
+          ? { ...firstLine[0] }
+          : {
+              x: evalEntry.origin.x - direction.x * originalHalf,
+              y: evalEntry.origin.y - direction.y * originalHalf,
+              z: evalEntry.origin.z - direction.z * originalHalf,
+            };
+      const originalB =
+        firstLine && firstLine.length >= 2
+          ? { ...firstLine[1] }
+          : {
+              x: evalEntry.origin.x + direction.x * originalHalf,
+              y: evalEntry.origin.y + direction.y * originalHalf,
+              z: evalEntry.origin.z + direction.z * originalHalf,
+            };
+      const requestedLength = Math.max(0.05, Number(geometryConstructCopiedLength) || 0.5);
+      const resolvedSource = selectedDerived.sourceObjectId
+        ? resolveGeometrySceneMeshById(selectedDerived.sourceObjectId)
+        : null;
+      const sourceRadius = resolvedSource ? computeSurfaceMeshFocus(resolvedSource.mesh)?.radius ?? currentLength : currentLength;
+      const fullLineLength = Math.max(currentLength * 4, requestedLength * 2, sourceRadius * 1.75, 1.25);
+      const nextLength = mode === "extend" ? fullLineLength : Math.max(0.25, currentLength - requestedLength);
       const half = nextLength * 0.5;
       const a = {
         x: evalEntry.origin.x - direction.x * half,
@@ -18722,6 +19100,22 @@ const App: React.FC = () => {
         y: evalEntry.origin.y + direction.y * half,
         z: evalEntry.origin.z + direction.z * half,
       };
+      const operationColor = mode === "extend" ? 0x2563eb : 0xf97316;
+      const extensionTailLines: PolylineSet =
+        mode === "extend"
+          ? [[a, b]]
+          : [];
+      const referenceGroups: OverlayPolylineGroup[] =
+        mode === "trim"
+          ? [
+              {
+                lines: [[originalA, originalB]],
+                color: 0x64748b,
+                opacity: 0.28,
+                radiusScale: 1.5,
+              },
+            ]
+          : [];
       cloneDerivedConstructionForOperation(selectedDerived, mode === "extend" ? "extended" : "trimmed", {
         dependent: false,
         frozenAt: Date.now(),
@@ -18729,14 +19123,42 @@ const App: React.FC = () => {
           origin: { ...evalEntry.origin },
           direction,
           groups: [
+            ...referenceGroups,
             {
-              lines: [[a, b]],
-              color: mode === "extend" ? 0x2563eb : 0xf97316,
-              opacity: 0.95,
-              radiusScale: 2,
+              lines: mode === "extend" ? [[originalA, originalB]] : [[a, b]],
+              color: operationColor,
+              opacity: 1,
+              radiusScale: mode === "extend" ? 2.1 : 3.2,
             },
+            ...(extensionTailLines.length
+              ? [
+                  {
+                    lines: extensionTailLines,
+                    color: 0xfacc15,
+                    opacity: 1,
+                    radiusScale: 4.8,
+                  },
+                ]
+              : []),
           ],
-          pointSets: [],
+          pointSets: [
+            {
+              points: [a, b],
+              color: mode === "extend" ? 0xfacc15 : operationColor,
+              size: 0.13,
+              opacity: 1,
+            },
+            ...(mode === "extend"
+              ? [
+                  {
+                    points: [originalA, originalB],
+                    color: 0xfacc15,
+                    size: 0.105,
+                    opacity: 1,
+                  },
+                ]
+              : []),
+          ],
           labelSets: [
             {
               size: 0.9,
@@ -18757,7 +19179,9 @@ const App: React.FC = () => {
       geometryConstructCopiedLength,
       geometryDerivedConstructionOverlays.byId,
       geometryDerivedConstructions,
+      geometryEdgeOperationTarget,
       geometrySelectedDerivedConstructionId,
+      resolveGeometrySceneMeshById,
     ]
   );
   const handleExtendSelectedConstructionOperation = useCallback(() => {
@@ -18779,16 +19203,16 @@ const App: React.FC = () => {
       });
       return;
     }
-    if (geometryProbeSelectionDetails?.mode === "face") {
+    if (geometrySourceFaceOperationTarget) {
       handleCreateDerivedFromFace("face-offset-plane");
       return;
     }
-    setGeometryCreateActionStatus("Select a face-derived construction or a face probe target to offset.");
+    setGeometryCreateActionStatus("Select a face-derived construction or fill the Source face operation input.");
   }, [
     cloneDerivedConstructionForOperation,
     geometryConstructOffsetDistance,
     geometryDerivedConstructions,
-    geometryProbeSelectionDetails?.mode,
+    geometrySourceFaceOperationTarget,
     geometrySelectedDerivedConstructionId,
     handleCreateDerivedFromFace,
   ]);
@@ -18809,20 +19233,22 @@ const App: React.FC = () => {
         return;
       }
     }
-    if (geometryProbeSelectionDetails?.mode === "edge") {
+    if (geometryEdgeOperationTarget) {
       handleAlignSelectedToSelectedEdge();
       return;
     }
-    if (geometryProbeSelectionDetails?.mode === "face") {
+    if (geometryTargetFaceOperationTarget || geometrySourceFaceOperationTarget) {
       handleAlignSelectedToSelectedNormal();
       return;
     }
     setGeometryCreateActionStatus("Select a derived point/line, edge, or face to align against.");
   }, [
     geometryDerivedConstructionOverlays.byId,
-    geometryProbeSelectionDetails?.mode,
+    geometryEdgeOperationTarget,
     geometrySelectedDerivedConstructionId,
     geometrySelectedSceneObject,
+    geometrySourceFaceOperationTarget,
+    geometryTargetFaceOperationTarget,
     handleAlignSelectedToSelectedEdge,
     handleAlignSelectedToSelectedNormal,
     handleCreateGeometryDerivedRelationConstraint,
@@ -18838,9 +19264,9 @@ const App: React.FC = () => {
     }
     let normal = { x: 0, y: 0, z: 1 };
     let point = { x: 0, y: 0, z: 0 };
-    if (geometryProbeSelectionDetails?.mode === "face") {
-      normal = geometryProbeSelectionDetails.normal;
-      point = geometryProbeSelectionDetails.point;
+    if (geometryMirrorPlaneOperationTarget) {
+      normal = geometryMirrorPlaneOperationTarget.normal;
+      point = geometryMirrorPlaneOperationTarget.point;
     }
     const len = Math.hypot(normal.x, normal.y, normal.z);
     if (!Number.isFinite(len) || len < 1e-9) {
@@ -18871,15 +19297,15 @@ const App: React.FC = () => {
     }
     setGeometrySelectedObjectId(copyId);
     setGeometryRepeatMode("mirror-plane");
-    setGeometryRepeatMirrorPlane(geometryProbeSelectionDetails?.mode === "face" ? "selected-face" : "xy");
+    setGeometryRepeatMirrorPlane(geometryMirrorPlaneOperationTarget ? "selected-face" : "xy");
     setGeometryCreateActionStatus(
-      geometryProbeSelectionDetails?.mode === "face"
-        ? "Mirror copy created across selected face plane."
+      geometryMirrorPlaneOperationTarget
+        ? "Mirror copy created across the Mirror plane slot."
         : "Mirror copy created across the XY plane."
     );
   }, [
     geometryLockedObjectIds,
-    geometryProbeSelectionDetails,
+    geometryMirrorPlaneOperationTarget,
     geometrySelectedSceneObject,
   ]);
   const geometryConstructionOperationTargetLabel = useMemo(() => {
@@ -19143,9 +19569,11 @@ const App: React.FC = () => {
         }))
       );
     };
+    if (geometryDerivedConstructionOverlays.pointSets?.length) {
+      sets.push(...geometryDerivedConstructionOverlays.pointSets);
+    }
     pushPointSets(geometryProceduralFeatureOverlays.pointSets);
     if (geometryTimelineShowAnnotations) pushPointSets(geometryProceduralAnnotationOverlays.pointSets);
-    pushPointSets(geometryDerivedConstructionOverlays.pointSets);
     pushPointSets(geometryMathConstructionOverlays.pointSets);
     if (geometryProceduralSnapPreviewPointSet?.length) {
       sets.push(...geometryProceduralSnapPreviewPointSet);
@@ -19177,6 +19605,9 @@ const App: React.FC = () => {
       groups.push(...(geometryPrecisionPickActive ? dimGroups(geometryProceduralOverlayGroups, 0.26) : geometryProceduralOverlayGroups));
     }
     if (geometryProceduralSelectionOverlayGroups?.length) groups.push(...geometryProceduralSelectionOverlayGroups);
+    if (geometryDerivedConstructionOverlays.groups?.length) {
+      groups.push(...geometryDerivedConstructionOverlays.groups);
+    }
     if (helperGroupsVisible) {
       const helperOpacity = geometryPrecisionPickActive ? 0.22 : 1;
       const pushHelperGroups = (source: OverlayPolylineGroup[] | null | undefined) => {
@@ -19186,7 +19617,6 @@ const App: React.FC = () => {
       pushHelperGroups(geometrySectionOverlayGroups);
       pushHelperGroups(geometryBooleanPreviewOverlayGroups);
       pushHelperGroups(geometryProceduralFeatureOverlays.groups);
-      pushHelperGroups(geometryDerivedConstructionOverlays.groups);
       pushHelperGroups(geometryMathConstructionOverlays.groups);
       if (geometryTimelineShowAnnotations && geometryProceduralAnnotationOverlays.groups?.length) {
         pushHelperGroups(geometryProceduralAnnotationOverlays.groups);
@@ -43003,7 +43433,7 @@ case "mobius":
     if (geometryMode === "workbook") return "export";
     if (geometryMode === "demo") return "analyze";
     if (geometryMode === "scratch") return "place";
-    if (geometryProceduralPanelTab === "create") return geometryAddEnterPlacementMode ? "place" : "create";
+    if (geometryProceduralPanelTab === "create") return "create";
     if (geometryProceduralPanelTab === "scene") return "place";
     if (
       geometryProceduralPanelTab === "construct" ||
@@ -43023,7 +43453,7 @@ case "mobius":
       return "analyze";
     }
     return "create";
-  }, [geometryAddEnterPlacementMode, geometryMode, geometryProceduralPanelTab]);
+  }, [geometryMode, geometryProceduralPanelTab]);
   const handleGeometryWorkflowStepClick = useCallback(
     (stepId: GeometryWorkflowStepId) => {
       if (stepId === "create") {
@@ -43094,6 +43524,7 @@ case "mobius":
           active: geometryProceduralPanelTab === "create" && !geometryAddEnterPlacementMode,
           onClick: openProceduralPanel("create"),
         },
+        { key: "construct", label: "Construct", panel: "construct", onClick: openProceduralPanel("construct") },
         { key: "curve", label: "Curve", panel: "construct", onClick: openProceduralPanel("construct") },
         { key: "surface", label: "Surface", panel: "create", onClick: openProceduralPanel("create") },
         { key: "mesh", label: "Mesh", panel: "object", onClick: openProceduralPanel("object") },
@@ -43104,6 +43535,7 @@ case "mobius":
     if (geometryWorkflowActiveStepId === "place") {
       return [
         { key: "scene-tree", label: "Scene tree", panel: "scene", onClick: openProceduralPanel("scene") },
+        { key: "construct", label: "Construct", panel: "construct", onClick: openProceduralPanel("construct") },
         {
           key: "click-viewer",
           label: "Click viewer",
@@ -52695,6 +53127,22 @@ case "mobius":
                               </select>
                             </label>
                           </div>
+                          <label style={{ display: "grid", gap: 3 }}>
+                            Derived line
+                            <select
+                              value={geometrySelectedDerivedConstructionId ?? ""}
+                              onChange={(e) => setGeometrySelectedDerivedConstructionId(e.target.value || null)}
+                              disabled={!geometryDerivedLineConstructionOptions.length}
+                              style={{ minWidth: 0 }}
+                            >
+                              <option value="">None</option>
+                              {geometryDerivedLineConstructionOptions.map((entry) => (
+                                <option key={`geometry-derived-line-option-${entry.id}`} value={entry.id}>
+                                  {geometryDerivedConstructionName(entry)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
                         </div>
                         {geometryCreateActionStatus && (
                           <div style={{ fontSize: 10.5, color: "#334155" }}>{geometryCreateActionStatus}</div>
@@ -52849,8 +53297,29 @@ case "mobius":
                           }}
                         >
                           <div style={{ fontWeight: 700, color: "#0f172a" }}>Recent construction objects</div>
-                          {geometryMathConstructions.length ? (
+                          {geometryMathConstructions.length || geometryDerivedConstructions.length ? (
                             <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                              {geometryDerivedConstructions.slice(0, 8).map((entry) => {
+                                const evalEntry = geometryDerivedConstructionOverlays.byId.get(entry.id) ?? null;
+                                const selected = geometrySelectedDerivedConstructionId === entry.id;
+                                return (
+                                  <button
+                                    key={`geometry-derived-added-chip-${entry.id}`}
+                                    type="button"
+                                    onClick={() => setGeometrySelectedDerivedConstructionId(entry.id)}
+                                    style={{
+                                      border: "1px solid #cbd5e1",
+                                      borderRadius: 999,
+                                      background: selected ? "#dbeafe" : "#fff7ed",
+                                      padding: "2px 7px",
+                                      fontSize: 10.5,
+                                    }}
+                                    title={`${GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[entry.type]} Â· ${evalEntry?.status ?? "frozen"}`}
+                                  >
+                                    {geometryDerivedConstructionName(entry)}
+                                  </button>
+                                );
+                              })}
                               {geometryMathConstructions.slice(0, 8).map((entry) => {
                                 const evalEntry = geometryMathConstructionOverlays.byId.get(entry.id);
                                 const status = evalEntry?.status ?? "invalid";
@@ -52872,8 +53341,10 @@ case "mobius":
                                   </button>
                                 );
                               })}
-                              {geometryMathConstructions.length > 8 && (
-                                <span style={{ color: "#64748b" }}>+{geometryMathConstructions.length - 8} more</span>
+                              {geometryMathConstructions.length + geometryDerivedConstructions.length > 16 && (
+                                <span style={{ color: "#64748b" }}>
+                                  +{geometryMathConstructions.length + geometryDerivedConstructions.length - 16} more
+                                </span>
                               )}
                             </div>
                           ) : (
@@ -53248,12 +53719,13 @@ case "mobius":
                           </button>
                         </div>
                         {geometryDerivedConstructions.length ? (
-                          <div style={{ display: "none" }}>
+                          <div style={{ display: "grid", gap: 6, maxHeight: 260, overflowY: "auto", paddingRight: 2 }}>
                             {geometryDerivedConstructions.slice(0, 40).map((entry) => {
                               const evalEntry = geometryDerivedConstructionOverlays.byId.get(entry.id) ?? null;
                               const selected = geometrySelectedDerivedConstructionId === entry.id;
                               const dependencyState = evalEntry?.dependencyState ?? (entry.frozenSnapshot ? "frozen" : "stale");
                               const dependencyMeta = GEOMETRY_DEPENDENCY_STATE_META[dependencyState];
+                              const isLatest = entry === geometryDerivedConstructions[0];
                               const canRelink =
                                 !!evalEntry &&
                                 (evalEntry.relinkCandidateFaceIndex != null || !!evalEntry.relinkCandidateEdgeVertexPair);
@@ -53264,7 +53736,7 @@ case "mobius":
                                     border: "1px solid " + (selected ? "#0a66c2" : "#dbe2ea"),
                                     borderRadius: 8,
                                     padding: "6px 8px",
-                                    background: selected ? "#eaf3ff" : "#fff",
+                                    background: selected ? "#eaf3ff" : isLatest ? "#fff7ed" : "#fff",
                                     display: "grid",
                                     gap: 4,
                                   }}
@@ -53277,6 +53749,9 @@ case "mobius":
                                     >
                                       {geometryDerivedConstructionName(entry)}
                                     </button>
+                                    {isLatest && (
+                                      <span style={{ fontSize: 9.5, fontWeight: 800, color: "#9a3412" }}>NEW</span>
+                                    )}
                                     <span
                                       style={{
                                         fontSize: 10,
