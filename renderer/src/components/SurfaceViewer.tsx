@@ -1914,6 +1914,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
               normal: THREE.Vector3;
               meshKey?: string;
               faceIndex?: number;
+              vertexIndex?: number;
               distance?: number;
               screenPoint?: [number, number];
               sourceTriangleScreen?: [[number, number], [number, number], [number, number]];
@@ -5069,6 +5070,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         const dragAnchorMeshKey = dragPlaneAnchorRef.current?.meshKey;
         const dragMeshKey = dragAnchorMeshKey ?? hitMeshKey;
         if (dragEnabledRef.current && event.button === 0 && dragMeshKey) {
+          const nearest = findNearestSample(point);
           beginMeshInteraction();
           const planeNormal = new THREE.Vector3();
           camera.getWorldDirection(planeNormal);
@@ -5087,6 +5089,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
               normal: normalWorld.clone(),
               meshKey: dragMeshKey,
               faceIndex: typeof (hit as any).faceIndex === "number" ? Number((hit as any).faceIndex) : undefined,
+              vertexIndex: nearest?.sample.vertexIndex,
               distance: inspectScreenInfo.distance,
               screenPoint: inspectScreenInfo.screenPoint,
               sourceTriangleScreen: inspectScreenInfo.sourceTriangleScreen,
@@ -5313,7 +5316,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
               normal: { x: clickPick.normal.x, y: clickPick.normal.y, z: clickPick.normal.z },
               meshKey: clickPick.meshKey,
               faceIndex: clickPick.faceIndex,
-              vertexIndex: undefined,
+              vertexIndex: clickPick.vertexIndex,
               distance: clickPick.distance,
               screenPoint: clickPick.screenPoint,
               sourceTriangleScreen: clickPick.sourceTriangleScreen,

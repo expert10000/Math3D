@@ -61457,6 +61457,7 @@ case "mobius":
                                   <button
                                     key={`geometry-right-probe-mode-${modeId}`}
                                     type="button"
+                                    data-testid={`geometry-pick-mode-${modeId}`}
                                     onClick={() => {
                                       setGeometryProbeSelectionMode(modeId);
                                       setGeometryProceduralHoverPick(null);
@@ -61526,7 +61527,7 @@ case "mobius":
                                 </div>
                               ))}
                             </div>
-                            <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
+                            <div data-testid="geometry-pick-hover" style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
                               <div style={{ fontWeight: 700 }}>Hover preview</div>
                               <div style={{ display: "grid", gridTemplateColumns: "104px 1fr", gap: "4px 8px" }}>
                                 <div style={{ color: "#556" }}>Entity</div>
@@ -61536,21 +61537,21 @@ case "mobius":
                               </div>
                             </div>
 
-                            <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
+                            <div data-testid="geometry-pick-committed" style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
                               <div style={{ fontWeight: 700 }}>Committed selection</div>
                               <div style={{ display: "grid", gridTemplateColumns: "104px 1fr", gap: "4px 8px" }}>
                                 <div style={{ color: "#556" }}>Entity</div>
-                                <div>{formatGeometryPickEntity(geometrySelectedPick)}</div>
+                                <div data-testid="geometry-pick-committed-entity">{formatGeometryPickEntity(geometrySelectedPick)}</div>
                                 <div style={{ color: "#556" }}>Object</div>
-                                <div>{geometryProbeSelectionDetails?.objectLabel ?? geometrySelectedSceneObject?.name ?? "none"}</div>
+                                <div data-testid="geometry-pick-committed-object">{geometryProbeSelectionDetails?.objectLabel ?? geometrySelectedSceneObject?.name ?? "none"}</div>
                                 <div style={{ color: "#556" }}>Type</div>
-                                <div>{geometryProbeSelectionDetails?.objectType ?? geometrySelectedSceneObject?.type ?? "n/a"}</div>
+                                <div data-testid="geometry-pick-committed-type">{geometryProbeSelectionDetails?.objectType ?? geometrySelectedSceneObject?.type ?? "n/a"}</div>
                                 <div style={{ color: "#556" }}>Status</div>
-                                <div>{geometryProbeSelectionDetails?.stale ? "stale" : geometrySelectedPick ? "valid" : "none"}</div>
+                                <div data-testid="geometry-pick-committed-status">{geometryProbeSelectionDetails?.stale ? "stale" : geometrySelectedPick ? "valid" : "none"}</div>
                                 {geometrySelectedPick?.kind === "object" ? (
                                   <>
                                     <div style={{ color: "#556" }}>Object id</div>
-                                    <div>{geometrySelectedPick.objectId}</div>
+                                    <div data-testid="geometry-pick-object-id">{geometrySelectedPick.objectId}</div>
                                     <div style={{ color: "#556" }}>Vertices/Faces</div>
                                     <div>
                                       {geometrySelectedSceneMeshInfo
@@ -61566,8 +61567,8 @@ case "mobius":
                                   </>
                                 ) : (
                                   <>
-                                    <div style={{ color: "#556" }}>World point</div>
-                                    <div>{fmtPickTuple3(geometrySelectedPick?.worldPoint)}</div>
+                                        <div style={{ color: "#556" }}>World point</div>
+                                    <div data-testid="geometry-pick-world-point">{fmtPickTuple3(geometrySelectedPick?.worldPoint)}</div>
                                     {geometrySelectedPick?.faceNormal && (
                                       <>
                                         <div style={{ color: "#556" }}>
@@ -61618,10 +61619,12 @@ case "mobius":
                                       <>
                                         <div style={{ color: "#556" }}>Face</div>
                                         <div>
+                                          <span data-testid="geometry-pick-face">
                                           #{geometryProbeSelectionDetails?.faceIndex ?? "n/a"}
                                           {geometryProbeSelectionDetails?.sourceTriangle
                                             ? ` | triangle [${geometryProbeSelectionDetails.sourceTriangle.join(", ")}]`
                                             : ""}
+                                          </span>
                                         </div>
                                         <div style={{ color: "#556" }}>Barycentric</div>
                                         <div>{fmtPickTuple3(geometryProbeSelectionDetails?.barycentric)}</div>
@@ -61637,9 +61640,11 @@ case "mobius":
                                       <>
                                         <div style={{ color: "#556" }}>Edge</div>
                                         <div>
+                                          <span data-testid="geometry-pick-edge">
                                           {geometryProbeSelectionDetails?.edgeVertexPair
                                             ? `[${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]`
                                             : "n/a"}
+                                          </span>
                                         </div>
                                         <div style={{ color: "#556" }}>Edge key</div>
                                         <div>{geometryProbeSelectionDetails?.edgeKey ?? "n/a"}</div>
@@ -61655,9 +61660,11 @@ case "mobius":
                                       <>
                                         <div style={{ color: "#556" }}>Vertex</div>
                                         <div>
+                                          <span data-testid="geometry-pick-vertex">
                                           {geometryProbeSelectionDetails?.vertexIndex != null
                                             ? `#${geometryProbeSelectionDetails.vertexIndex}`
                                             : "n/a"}
+                                          </span>
                                         </div>
                                       </>
                                     )}
