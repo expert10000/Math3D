@@ -2567,7 +2567,7 @@ const GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS: Record<GeometryDerivedConstruct
   "vertex-normal-endpoint": "Normal Endpoint",
   "vertex-translated-copy-point": "Translated Copy Point",
   "edge-midpoint": "Midpoint",
-  "edge-line-through-two-vertices": "Line Through Two Vertices",
+  "edge-line-through-two-vertices": "Supporting Line",
   "edge-line-through-midpoint-and-vertex": "Line Through Midpoint + Vertex",
   "edge-direction-vector": "Direction Vector",
   "edge-perpendicular-bisector-line": "Perpendicular Bisector Line",
@@ -2620,6 +2620,14 @@ const resolveGeometryLineExtensionMode = (value: unknown): GeometryLineExtension
   value === "ray" || value === "segment" || value === "infinite" ? value : "infinite";
 const geometryDerivedConstructionName = (entry: Pick<GeometryDerivedConstructionObject, "name" | "type">) =>
   entry.name?.trim() || GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[entry.type];
+const geometryDerivedLineConstructionName = (
+  entry: Pick<GeometryDerivedConstructionObject, "name" | "type" | "sourceKind" | "params">
+) => {
+  const customName = entry.name?.trim();
+  if (customName) return customName;
+  if (entry.type === "edge-line-through-two-vertices" && entry.sourceKind === "edge") return "Supporting Line";
+  return GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[entry.type];
+};
 const geometryDerivedConstructionResultLabel = (entry: Pick<GeometryDerivedConstructionObject, "name" | "type" | "params">) => {
   const name = geometryDerivedConstructionName(entry).toLowerCase();
   if (entry.type.includes("line")) {
@@ -2690,6 +2698,15 @@ const geometryDerivedConstructionLengthLabel = (evalEntry: GeometryDerivedConstr
   const sourceLength = evalEntry.object.sourceEdgeSignature?.length;
   if (sourceLength != null && Number.isFinite(sourceLength)) return fmt(sourceLength);
   return "n/a";
+};
+const geometryDerivedConstructionDefinition = (evalEntry: GeometryDerivedConstructionEvaluation | null | undefined) => {
+  if (!evalEntry?.origin || !evalEntry.direction) return null;
+  return {
+    formula: "L(t) = P + tD",
+    point: evalEntry.origin,
+    direction: evalEntry.direction,
+    source: geometryDerivedConstructionSourceLabel(evalEntry),
+  };
 };
 const geometryDerivedLineDirectionName = (entry: Pick<GeometryDerivedConstructionObject, "params">) =>
   entry.params?.extensionDirection === "backward" ? "Backward" : "Forward";
@@ -19301,7 +19318,7 @@ const App: React.FC = () => {
         ...entry,
         ...patch,
         id: makeId(),
-        name: `${label} ${suffix}`,
+        name: patch.name?.trim() || `${label} ${suffix}`,
         createdAt: Date.now(),
         params: patch.params ?? (entry.params ? { ...entry.params } : undefined),
         sourcePoint: entry.sourcePoint ? { ...entry.sourcePoint } : entry.sourcePoint,
@@ -19557,7 +19574,7 @@ const App: React.FC = () => {
           const extensionLines = mode === "extend" ? buildGeometryDashedLine(a, b, 16, 0.52) : [];
           appendDerivedConstruction({
             type: "edge-line-through-two-vertices",
-            name: `${mode === "extend" ? GEOMETRY_LINE_EXTENSION_MODE_LABELS[geometryLineExtensionMode] : "Trimmed segment"}`,
+            name: mode === "extend" ? "Extension of Edge" : "Trimmed Segment of Edge",
             sourceKind: "edge",
             sourceObjectId: edgeTarget.objectId,
             params: mode === "extend" ? { lineMode: geometryLineExtensionMode, length: lineGeometry.displayLength } : { lineMode: "segment", length: lineGeometry.displayLength },
@@ -19627,7 +19644,7 @@ const App: React.FC = () => {
                   size: 0.95,
                   labels: [
                     {
-                      text: `${mode === "extend" ? "extended" : "trimmed"} edge`,
+                      text: mode === "extend" ? "Extension of Edge" : "Trimmed Segment of Edge",
                       position: { x: b.x + 0.04, y: b.y + 0.04, z: b.z + 0.04 },
                       color: GEOMETRY_VISUAL_LANGUAGE.label,
                     },
@@ -19733,7 +19750,15 @@ const App: React.FC = () => {
               },
             ]
           : [];
-      cloneDerivedConstructionForOperation(selectedDerived, mode === "extend" ? GEOMETRY_LINE_EXTENSION_MODE_LABELS[geometryLineExtensionMode].toLowerCase() : "trimmed", {
+      cloneDerivedConstructionForOperation(selectedDerived, mode === "extend" ? "extension" : "trimmed", {
+        name:
+          mode === "extend"
+            ? selectedDerived.sourceKind === "edge"
+              ? "Extension of Edge"
+              : `Extension of ${geometryDerivedLineConstructionName(selectedDerived)}`
+            : selectedDerived.sourceKind === "edge"
+              ? "Trimmed Segment of Edge"
+              : `Trimmed ${geometryDerivedLineConstructionName(selectedDerived)}`,
         dependent: false,
         params: mode === "extend" ? { ...(selectedDerived.params ?? {}), lineMode: geometryLineExtensionMode, length: lineGeometry.displayLength } : { ...(selectedDerived.params ?? {}), lineMode: "segment", length: lineGeometry.displayLength },
         frozenAt: Date.now(),
@@ -19788,7 +19813,10 @@ const App: React.FC = () => {
               size: 0.9,
               labels: [
                 {
-                  text: `${mode === "extend" ? "extended" : "trimmed"} ${geometryDerivedConstructionName(selectedDerived)}`,
+                  text:
+                    mode === "extend"
+                      ? `Extension of ${geometryDerivedLineConstructionName(selectedDerived)}`
+                      : `Trimmed ${geometryDerivedLineConstructionName(selectedDerived)}`,
                   position: { x: b.x + 0.04, y: b.y + 0.04, z: b.z + 0.04 },
                   color: GEOMETRY_VISUAL_LANGUAGE.label,
                 },
@@ -53914,7 +53942,7 @@ case "mobius":
                                 <button type="button" onClick={() => handleCreateGeometryMathConstruction("normal-to-object-at-object")} disabled={!geometryEffectiveMathConstructionSourceAId || !geometryEffectiveMathConstructionSourcePId}>
                                   Normal(A,P)
                                 </button>
-                                <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-line-through-two-vertices")}>Line through edge</button>
+                                <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-line-through-two-vertices")}>Supporting line</button>
                                 <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-line-through-midpoint-and-vertex")}>Line midpoint + vertex</button>
                                 <button type="button" onClick={() => handleCreateDerivedFromFace("face-normal-line")}>Face normal</button>
                                 <button type="button" onClick={() => handleCreateDerivedFromFace("face-line-perpendicular-to-plane")}>Line perpendicular to plane</button>
@@ -62715,6 +62743,68 @@ case "mobius":
                                 Select an object with mesh data to enable detailed probe measurements.
                               </div>
                             )}
+                            {geometrySelectedSceneObject && (
+                              <div
+                                data-testid="geometry-context-action-ribbon"
+                                style={{
+                                  border: "1px solid #dbeafe",
+                                  borderRadius: 8,
+                                  background: "#f8fbff",
+                                  padding: "7px 8px",
+                                  display: "grid",
+                                  gap: 6,
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                  <strong>Action ribbon</strong>
+                                  <span style={{ color: "#64748b", fontSize: 10.5 }}>
+                                    {(geometrySelectedPick?.kind ?? "object").replace(/^\w/, (c) => c.toUpperCase())}
+                                  </span>
+                                </div>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setGeometryProbeSelectionMode("edge");
+                                      setGeometryActiveOperationInputSlotId("active-edge");
+                                      setGeometryProceduralHoverPick(null);
+                                      setGeometryCreateActionStatus("Edge pick mode active. Click an edge to fill the Edge slot.");
+                                    }}
+                                    style={{ ...pill(geometryProbeSelectionMode === "edge"), fontSize: 10.5, padding: "3px 8px" }}
+                                    aria-pressed={geometryProbeSelectionMode === "edge"}
+                                  >
+                                    Edge
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleExtendSelectedConstructionOperation}
+                                    style={{
+                                      fontSize: 10.5,
+                                      padding: "3px 8px",
+                                      borderColor: geometryArmedLineOperation === "extend" ? "#0ea5e9" : undefined,
+                                      background: geometryArmedLineOperation === "extend" ? "#cffafe" : undefined,
+                                    }}
+                                  >
+                                    Extend
+                                  </button>
+                                  <button type="button" onClick={handleOffsetSelectedConstructionOperation} style={{ fontSize: 10.5, padding: "3px 8px" }}>
+                                    Offset
+                                  </button>
+                                  <button type="button" onClick={handleProjectSelectedConstructionOperation} style={{ fontSize: 10.5, padding: "3px 8px" }}>
+                                    Project
+                                  </button>
+                                  <button type="button" onClick={handleMirrorSelectedConstructionOperation} style={{ fontSize: 10.5, padding: "3px 8px" }}>
+                                    Mirror
+                                  </button>
+                                  <button type="button" onClick={handleTrimSelectedConstructionOperation} style={{ fontSize: 10.5, padding: "3px 8px" }}>
+                                    Trim
+                                  </button>
+                                  <button type="button" onClick={handleSplitSelectedProbeEdge} style={{ fontSize: 10.5, padding: "3px 8px" }}>
+                                    Split
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                             <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
                               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
                                 <div style={{ fontWeight: 700 }}>Operation inputs</div>
@@ -62917,10 +63007,38 @@ case "mobius":
                                 }}
                               >
                                 <div style={{ fontSize: 12, fontWeight: 700 }}>Derived Object</div>
+                                <div><strong>Name:</strong> {geometryDerivedConstructionName(geometrySelectedDerivedConstructionEval.object)}</div>
                                 <div><strong>Type:</strong> {geometryDerivedConstructionResultLabel(geometrySelectedDerivedConstructionEval.object)}</div>
                                 <div><strong>Source:</strong> {geometryDerivedConstructionSourceLabel(geometrySelectedDerivedConstructionEval)}</div>
                                 <div><strong>Direction:</strong> {geometryDerivedConstructionDirectionLabel(geometrySelectedDerivedConstructionEval)}</div>
                                 <div><strong>Length:</strong> {geometryDerivedConstructionLengthLabel(geometrySelectedDerivedConstructionEval)}</div>
+                                {(() => {
+                                  const definition = geometryDerivedConstructionDefinition(geometrySelectedDerivedConstructionEval);
+                                  if (!definition) return null;
+                                  return (
+                                    <div
+                                      style={{
+                                        display: "grid",
+                                        gridTemplateColumns: "auto minmax(0, 1fr)",
+                                        gap: "3px 10px",
+                                        padding: "7px 8px",
+                                        border: "1px solid #e2e8f0",
+                                        borderRadius: 7,
+                                        background: "#ffffff",
+                                      }}
+                                    >
+                                      <div style={{ gridColumn: "1 / -1", fontWeight: 800 }}>Construction</div>
+                                      <div style={{ color: "#475569" }}>Formula</div>
+                                      <div style={{ fontFamily: "monospace", fontWeight: 700 }}>{definition.formula}</div>
+                                      <div style={{ color: "#475569" }}>P</div>
+                                      <div style={{ fontFamily: "monospace" }}>{fmt3(definition.point)}</div>
+                                      <div style={{ color: "#475569" }}>D</div>
+                                      <div style={{ fontFamily: "monospace" }}>{fmt3(definition.direction)}</div>
+                                      <div style={{ color: "#475569" }}>Source</div>
+                                      <div>{definition.source}</div>
+                                    </div>
+                                  );
+                                })()}
                                 {geometryDerivedConstructionIsExtendedLine(geometrySelectedDerivedConstructionEval.object) &&
                                   (() => {
                                     const object = geometrySelectedDerivedConstructionEval.object;
