@@ -427,6 +427,8 @@ import {
 /* ---------------- App modes ---------------- */
 
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces" | "curves" | "topology" | "geometry";
+const APP_MODE_VALUES: Mode[] = ["mobius", "chebyshev", "transform", "maps", "surfaces", "curves", "topology", "geometry"];
+const isAppMode = (value: string | null | undefined): value is Mode => !!value && APP_MODE_VALUES.includes(value as Mode);
 type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass" | "mesh" | "complex";
 type MeshBooleanOperation = "union" | "difference" | "intersection" | "split" | "imprint";
 type ChartMode = "auto" | "xy" | "uv" | "local";
@@ -523,6 +525,23 @@ type GallerySortPreset = "name" | "family" | "complexity" | "demoReady";
 type AppTheme = "light" | "dark" | "dot";
 type DisplayMode = "workspace" | "present" | "inspect";
 type ViewportPreset = "minimal" | "study" | "analysis" | "debug";
+type GeometryViewportQualityMode = "auto" | "fast-preview" | "full";
+type GeometryCameraViewPreset = "3d" | "planar";
+type GeometryViewportSettings = {
+  transformEnabled?: boolean;
+  transformMode?: GeometryGizmoMode;
+  uniformScaleLock?: boolean;
+  wireframe?: boolean;
+  coordinates?: boolean;
+  planeGridSettings?: Partial<ReferencePlaneGridSettings>;
+  badges?: boolean;
+  dependencies?: boolean;
+  createOverlay?: boolean;
+  opacity?: number;
+  qualityMode?: GeometryViewportQualityMode;
+  viewPreset?: GeometryCameraViewPreset;
+  includeHelpersInFit?: boolean;
+};
 type AccentPresetId = "blue" | "teal" | "amber" | "rose";
 type WorkspaceModule = "surfaces" | "mesh" | "volume" | "curves" | "topology" | "geometry" | "mobius";
 type WorkspaceViewMode = "threeD" | "planar" | "claim" | "stage";
@@ -1007,6 +1026,10 @@ const UI_DISPLAY_MODE_KEY = "math3d.ui.displayMode.v1";
 const UI_VIEWPORT_PRESET_KEY = "math3d.ui.viewportPreset.v1";
 const UI_VIEWPORT_OVERLAY_CONTROLS_KEY = "math3d.ui.viewportOverlayControls.v1";
 const UI_SURFACE_VIEW_GIZMO_KEY = "math3d.ui.surfaceViewGizmo.v1";
+const UI_WORKSPACE_MODE_KEY = "math3d.ui.workspaceMode.v1";
+const UI_GEOMETRY_MODE_KEY = "math3d.ui.geometryMode.v1";
+const UI_GEOMETRY_PROCEDURAL_PANEL_KEY = "math3d.ui.geometryProceduralPanel.v1";
+const UI_GEOMETRY_VIEWPORT_SETTINGS_KEY = "math3d.ui.geometryViewportSettings.v1";
 const WORKBOOK_AUTOSAVE_INTERVAL_SEC = 30;
 const WORKBOOK_AUTOSAVE_DEBOUNCE_MS = 1800;
 const WORKBOOK_AUTOSAVE_JOURNAL_LIMIT = 20;
@@ -2325,6 +2348,28 @@ type GeometryDerivedConstructionType =
   | "object-inscribed-reference-sphere";
 type GeometryDerivedConstructionSourceKind = "vertex" | "edge" | "face" | "object";
 type GeometryDerivedConstructionStatus = "valid" | "stale" | "invalid";
+type GeometryLineExtensionMode = "infinite" | "ray" | "segment";
+const GEOMETRY_LINE_EXTENSION_MODE_OPTIONS: Array<{ id: GeometryLineExtensionMode; label: string; symbol: string }> = [
+  { id: "infinite", label: "Infinite line", symbol: "<---->" },
+  { id: "ray", label: "Ray", symbol: "•---->" },
+  { id: "segment", label: "Segment", symbol: "-----" },
+];
+const GEOMETRY_LINE_EXTENSION_MODE_LABELS: Record<GeometryLineExtensionMode, string> = {
+  infinite: "Infinite line",
+  ray: "Ray",
+  segment: "Segment",
+};
+const GEOMETRY_VISUAL_LANGUAGE = {
+  original: 0x06b6d4,
+  originalGlow: 0x67e8f9,
+  derived: 0xfacc15,
+  helper: 0x64748b,
+  analysis: 0x22c55e,
+  measurement: 0xf97316,
+  hover: 0xfbbf24,
+  selection: 0x2563eb,
+  label: 0x0f172a,
+} as const;
 type GeometryDerivedConstructionObject = {
   id: string;
   type: GeometryDerivedConstructionType;
@@ -2339,6 +2384,8 @@ type GeometryDerivedConstructionObject = {
   params?: {
     distance?: number;
     length?: number;
+    lineMode?: GeometryLineExtensionMode;
+    extensionDirection?: "forward" | "backward";
   };
   sourceRevision?: number;
   sourceTopologySignature?: string | null;
@@ -2403,6 +2450,16 @@ type GeometryDerivedConstructionEvaluation = {
   groups: OverlayPolylineGroup[];
   pointSets: OverlayPointSet[];
   labelSets: OverlayLabelSet[];
+};
+type GeometryConstructionTreeEntity = {
+  key: string;
+  label: string;
+  entries: GeometryDerivedConstructionObject[];
+};
+type GeometryConstructionTreeObject = {
+  objectId: string;
+  label: string;
+  entities: GeometryConstructionTreeEntity[];
 };
 type GeometryDependencyNodeKind =
   | "scene-root"
@@ -2559,8 +2616,275 @@ const GEOMETRY_DERIVED_RELATION_TYPE_LABELS: Record<GeometryDerivedRelationType,
   "attach-face-to-derived-plane": "Attach Face To Derived Plane",
   "maintain-offset-from-derived-plane": "Maintain Fixed Offset From Plane",
 };
+const resolveGeometryLineExtensionMode = (value: unknown): GeometryLineExtensionMode =>
+  value === "ray" || value === "segment" || value === "infinite" ? value : "infinite";
 const geometryDerivedConstructionName = (entry: Pick<GeometryDerivedConstructionObject, "name" | "type">) =>
   entry.name?.trim() || GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[entry.type];
+const geometryDerivedConstructionResultLabel = (entry: Pick<GeometryDerivedConstructionObject, "name" | "type" | "params">) => {
+  const name = geometryDerivedConstructionName(entry).toLowerCase();
+  if (entry.type.includes("line")) {
+    const lineMode = resolveGeometryLineExtensionMode(entry.params?.lineMode);
+    if (entry.params?.lineMode) return GEOMETRY_LINE_EXTENSION_MODE_LABELS[lineMode];
+    if (name.includes("extended")) return GEOMETRY_LINE_EXTENSION_MODE_LABELS[lineMode];
+    if (name.includes("trimmed")) return "Trimmed Line";
+  }
+  return GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[entry.type];
+};
+const geometryDerivedConstructionSourceLabel = (evalEntry: GeometryDerivedConstructionEvaluation | null | undefined) => {
+  if (!evalEntry) return "Source unavailable";
+  const sourceName = evalEntry.sourceObjectName || evalEntry.object.sourceObjectId;
+  if (evalEntry.sourceEdgeVertexPair) {
+    return `✓ ${sourceName} edge [${evalEntry.sourceEdgeVertexPair[0]}, ${evalEntry.sourceEdgeVertexPair[1]}]`;
+  }
+  if (evalEntry.sourceFaceIndex != null) return `✓ ${sourceName} face #${evalEntry.sourceFaceIndex}`;
+  if (evalEntry.sourceVertexIndex != null) return `✓ ${sourceName} vertex #${evalEntry.sourceVertexIndex}`;
+  return `✓ ${sourceName}`;
+};
+const geometryDerivedConstructionSourceEntityLabel = (
+  entry: Pick<
+    GeometryDerivedConstructionObject,
+    "sourceKind" | "sourceFaceIndex" | "sourceVertexIndex" | "sourceEdgeVertexPair"
+  >
+) => {
+  if (entry.sourceKind === "edge" && entry.sourceEdgeVertexPair) {
+    return `Edge[${entry.sourceEdgeVertexPair[0]},${entry.sourceEdgeVertexPair[1]}]`;
+  }
+  if (entry.sourceKind === "face" && entry.sourceFaceIndex != null) return `Face #${entry.sourceFaceIndex}`;
+  if (entry.sourceKind === "vertex" && entry.sourceVertexIndex != null) return `Vertex #${entry.sourceVertexIndex}`;
+  return "Object";
+};
+const geometryDerivedConstructionSourceEntityKey = (
+  entry: Pick<
+    GeometryDerivedConstructionObject,
+    "sourceKind" | "sourceFaceIndex" | "sourceVertexIndex" | "sourceEdgeVertexPair"
+  >
+) => {
+  if (entry.sourceKind === "edge" && entry.sourceEdgeVertexPair) {
+    return `edge:${entry.sourceEdgeVertexPair[0]}:${entry.sourceEdgeVertexPair[1]}`;
+  }
+  if (entry.sourceKind === "face" && entry.sourceFaceIndex != null) return `face:${entry.sourceFaceIndex}`;
+  if (entry.sourceKind === "vertex" && entry.sourceVertexIndex != null) return `vertex:${entry.sourceVertexIndex}`;
+  return "object";
+};
+const geometryDerivedConstructionDirectionLabel = (evalEntry: GeometryDerivedConstructionEvaluation | null | undefined) => {
+  if (!evalEntry) return "n/a";
+  const vector = evalEntry.direction ? ` ${fmt3(evalEntry.direction)}` : "";
+  if (evalEntry.sourceEdgeVertexPair) return `Edge tangent${vector}`;
+  if (evalEntry.sourceFaceIndex != null) return `Face normal${vector}`;
+  if (evalEntry.sourceVertexIndex != null) return `Vertex normal${vector}`;
+  return evalEntry.direction ? `Object direction${vector}` : "n/a";
+};
+const geometryDerivedConstructionLengthLabel = (evalEntry: GeometryDerivedConstructionEvaluation | null | undefined) => {
+  if (!evalEntry) return "n/a";
+  const resultLabel = geometryDerivedConstructionResultLabel(evalEntry.object).toLowerCase();
+  const lineMode = resolveGeometryLineExtensionMode(evalEntry.object.params?.lineMode);
+  if (resultLabel.includes("infinite")) return "∞";
+  if (resultLabel.includes("ray")) {
+    const rayLength = evalEntry.object.params?.length;
+    return rayLength != null && Number.isFinite(rayLength) ? fmt(rayLength) : "Auto";
+  }
+  if (lineMode === "segment") {
+    const segmentLength = evalEntry.object.params?.length;
+    if (segmentLength != null && Number.isFinite(segmentLength)) return fmt(segmentLength);
+  }
+  const sourceLength = evalEntry.object.sourceEdgeSignature?.length;
+  if (sourceLength != null && Number.isFinite(sourceLength)) return fmt(sourceLength);
+  return "n/a";
+};
+const geometryDerivedLineDirectionName = (entry: Pick<GeometryDerivedConstructionObject, "params">) =>
+  entry.params?.extensionDirection === "backward" ? "Backward" : "Forward";
+const geometryDerivedConstructionIsExtendedLine = (
+  entry: Pick<GeometryDerivedConstructionObject, "type" | "params" | "sourceEdgeSignature">
+) => entry.type === "edge-line-through-two-vertices" && !!entry.sourceEdgeSignature && !!entry.params?.lineMode;
+const buildGeometryDashedLine = (
+  start: GeometryProbePoint,
+  end: GeometryProbePoint,
+  dashCount = 14,
+  duty = 0.58
+): PolylineSet => {
+  const count = Math.max(3, Math.round(dashCount));
+  const dashFraction = Math.max(0.2, Math.min(0.9, duty));
+  const lines: PolylineSet = [];
+  for (let i = 0; i < count; i += 1) {
+    const t0 = i / count;
+    const t1 = Math.min(1, t0 + dashFraction / count);
+    lines.push([
+      {
+        x: start.x + (end.x - start.x) * t0,
+        y: start.y + (end.y - start.y) * t0,
+        z: start.z + (end.z - start.z) * t0,
+      },
+      {
+        x: start.x + (end.x - start.x) * t1,
+        y: start.y + (end.y - start.y) * t1,
+        z: start.z + (end.z - start.z) * t1,
+      },
+    ]);
+  }
+  return lines;
+};
+const buildGeometryLineExtensionGeometry = (
+  originalA: GeometryProbePoint,
+  originalB: GeometryProbePoint,
+  direction: GeometryProbePoint,
+  origin: GeometryProbePoint,
+  lineMode: GeometryLineExtensionMode,
+  currentLength: number,
+  requestedLength: number,
+  objectRadius: number
+) => {
+  const fullLength = Math.max(currentLength * 4, requestedLength * 2, objectRadius * 1.75, 1.25);
+  const segmentLength = Math.max(currentLength + requestedLength, currentLength * 1.2, 0.1);
+  if (lineMode === "ray") {
+    return {
+      a: { ...origin },
+      b: {
+        x: origin.x + direction.x * fullLength,
+        y: origin.y + direction.y * fullLength,
+        z: origin.z + direction.z * fullLength,
+      },
+      label: "ray",
+      displayLength: fullLength,
+      referencePoints: [origin, originalB] as [GeometryProbePoint, GeometryProbePoint],
+    };
+  }
+  if (lineMode === "segment") {
+    const half = segmentLength * 0.5;
+    return {
+      a: {
+        x: origin.x - direction.x * half,
+        y: origin.y - direction.y * half,
+        z: origin.z - direction.z * half,
+      },
+      b: {
+        x: origin.x + direction.x * half,
+        y: origin.y + direction.y * half,
+        z: origin.z + direction.z * half,
+      },
+      label: "segment",
+      displayLength: segmentLength,
+      referencePoints: [originalA, originalB] as [GeometryProbePoint, GeometryProbePoint],
+    };
+  }
+  const half = fullLength * 0.5;
+  return {
+    a: {
+      x: origin.x - direction.x * half,
+      y: origin.y - direction.y * half,
+      z: origin.z - direction.z * half,
+    },
+    b: {
+      x: origin.x + direction.x * half,
+      y: origin.y + direction.y * half,
+      z: origin.z + direction.z * half,
+    },
+    label: "infinite line",
+    displayLength: fullLength,
+    referencePoints: [originalA, originalB] as [GeometryProbePoint, GeometryProbePoint],
+  };
+};
+const buildGeometryLineExtensionFrozenSnapshot = (
+  entry: GeometryDerivedConstructionObject,
+  params: NonNullable<GeometryDerivedConstructionObject["params"]>
+): NonNullable<GeometryDerivedConstructionObject["frozenSnapshot"]> | null => {
+  const signature = entry.sourceEdgeSignature;
+  if (!signature) return null;
+  const baseDirection = geometryNormalizeVec(signature.direction);
+  if (!baseDirection) return null;
+  const sourceLength = Math.max(0.05, signature.length);
+  const halfSource = sourceLength * 0.5;
+  const originalA = {
+    x: signature.midpoint.x - baseDirection.x * halfSource,
+    y: signature.midpoint.y - baseDirection.y * halfSource,
+    z: signature.midpoint.z - baseDirection.z * halfSource,
+  };
+  const originalB = {
+    x: signature.midpoint.x + baseDirection.x * halfSource,
+    y: signature.midpoint.y + baseDirection.y * halfSource,
+    z: signature.midpoint.z + baseDirection.z * halfSource,
+  };
+  const direction =
+    params.extensionDirection === "backward"
+      ? { x: -baseDirection.x, y: -baseDirection.y, z: -baseDirection.z }
+      : baseDirection;
+  const lineMode = resolveGeometryLineExtensionMode(params.lineMode);
+  const requestedLength =
+    params.length != null && Number.isFinite(params.length) ? Math.max(0.05, Number(params.length)) : sourceLength * 4;
+  const autoLength = Math.max(sourceLength * 4, 1.25);
+  const drawLength = params.length != null && Number.isFinite(params.length) ? requestedLength : autoLength;
+  const center = { ...signature.midpoint };
+  const rayStart = params.extensionDirection === "backward" ? originalA : originalB;
+  const a =
+    lineMode === "ray"
+      ? rayStart
+      : {
+          x: center.x - baseDirection.x * drawLength * 0.5,
+          y: center.y - baseDirection.y * drawLength * 0.5,
+          z: center.z - baseDirection.z * drawLength * 0.5,
+        };
+  const b =
+    lineMode === "ray"
+      ? {
+          x: rayStart.x + direction.x * drawLength,
+          y: rayStart.y + direction.y * drawLength,
+          z: rayStart.z + direction.z * drawLength,
+        }
+      : {
+          x: center.x + baseDirection.x * drawLength * 0.5,
+          y: center.y + baseDirection.y * drawLength * 0.5,
+          z: center.z + baseDirection.z * drawLength * 0.5,
+        };
+  return {
+    origin: lineMode === "ray" ? rayStart : center,
+    direction,
+    groups: [
+      {
+        lines: buildGeometryDashedLine(a, b, lineMode === "segment" ? 10 : 18, lineMode === "segment" ? 0.68 : 0.52),
+        color: GEOMETRY_VISUAL_LANGUAGE.derived,
+        opacity: 0.64,
+        radiusScale: 3,
+      },
+      {
+        lines: [[originalA, originalB]],
+        color: GEOMETRY_VISUAL_LANGUAGE.originalGlow,
+        opacity: 0.42,
+        radiusScale: 8.4,
+      },
+      {
+        lines: [[originalA, originalB]],
+        color: GEOMETRY_VISUAL_LANGUAGE.original,
+        opacity: 1,
+        radiusScale: 5,
+      },
+    ],
+    pointSets: [
+      {
+        points: [a, b],
+        color: GEOMETRY_VISUAL_LANGUAGE.derived,
+        size: 0.13,
+        opacity: 1,
+      },
+      {
+        points: [originalA, originalB],
+        color: GEOMETRY_VISUAL_LANGUAGE.originalGlow,
+        size: 0.11,
+        opacity: 1,
+      },
+    ],
+    labelSets: [
+      {
+        size: 0.9,
+        labels: [
+          {
+            text: `${GEOMETRY_LINE_EXTENSION_MODE_LABELS[lineMode]} ${params.length != null && Number.isFinite(params.length) ? fmt(params.length) : "auto"}`,
+            position: { x: b.x + 0.04, y: b.y + 0.04, z: b.z + 0.04 },
+            color: GEOMETRY_VISUAL_LANGUAGE.label,
+          },
+        ],
+      },
+    ],
+  };
+};
 const geometryDependencyNodeKindFromConstructionType = (
   type: GeometryDerivedConstructionType
 ): GeometryDependencyNodeKind => {
@@ -5682,6 +6006,68 @@ function safeParseObject<T>(raw: string | null): T | null {
   }
 }
 
+function isGeometryViewportQualityMode(value: unknown): value is GeometryViewportQualityMode {
+  return value === "auto" || value === "fast-preview" || value === "full";
+}
+
+function isGeometryCameraViewPreset(value: unknown): value is GeometryCameraViewPreset {
+  return value === "3d" || value === "planar";
+}
+
+function isGeometryGizmoMode(value: unknown): value is GeometryGizmoMode {
+  return value === "translate" || value === "rotate" || value === "scale";
+}
+
+function clampGeometryViewportOpacity(value: unknown, fallback = 0.8): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0.2, Math.min(1, value)) : fallback;
+}
+
+function readGeometryViewportSettings(): GeometryViewportSettings {
+  return safeParseObject<GeometryViewportSettings>(localStorage.getItem(UI_GEOMETRY_VIEWPORT_SETTINGS_KEY)) ?? {};
+}
+
+function readGeometryViewportBoolean(key: keyof GeometryViewportSettings, fallback: boolean): boolean {
+  const value = readGeometryViewportSettings()[key];
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function readGeometryPlaneGridSettings(): ReferencePlaneGridSettings {
+  const stored = readGeometryViewportSettings().planeGridSettings;
+  const next = {
+    ...DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
+    ...(stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {}),
+  };
+  return {
+    showGrid: typeof next.showGrid === "boolean" ? next.showGrid : DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showGrid,
+    showMinorGrid:
+      typeof next.showMinorGrid === "boolean"
+        ? next.showMinorGrid
+        : DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showMinorGrid,
+    showLabels: typeof next.showLabels === "boolean" ? next.showLabels : DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showLabels,
+    showAxisLabels:
+      typeof next.showAxisLabels === "boolean"
+        ? next.showAxisLabels
+        : DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showAxisLabels,
+    labelSkin:
+      next.labelSkin === "slate" || next.labelSkin === "glass" || next.labelSkin === "neon" || next.labelSkin === "paper"
+        ? next.labelSkin
+        : DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.labelSkin,
+    showXY: typeof next.showXY === "boolean" ? next.showXY : DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showXY,
+    showXZ: typeof next.showXZ === "boolean" ? next.showXZ : DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showXZ,
+    showYZ: typeof next.showYZ === "boolean" ? next.showYZ : DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showYZ,
+    autoGridScale:
+      typeof next.autoGridScale === "boolean" ? next.autoGridScale : DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.autoGridScale,
+    gridDensity:
+      typeof next.gridDensity === "number" && Number.isFinite(next.gridDensity)
+        ? Math.max(4, Math.min(20, Math.round(next.gridDensity)))
+        : DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.gridDensity,
+    planeOpacity:
+      typeof next.planeOpacity === "number" && Number.isFinite(next.planeOpacity)
+        ? Math.max(0, Math.min(0.45, next.planeOpacity))
+        : DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.planeOpacity,
+  };
+}
+
 function normalizeConstructionLabSeed(raw: unknown): ConstructionLabSeed | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const seed = raw as ConstructionLabSeed;
@@ -7450,7 +7836,11 @@ const resolveBlockPorts = (block: WorkbookBlock): { inputs: WorkbookPort[]; outp
 /* ---------------- App ---------------- */
 
 const App: React.FC = () => {
-  const [mode, setMode] = useState<Mode>("surfaces");
+  const [mode, setMode] = useState<Mode>(() => {
+    if (typeof window === "undefined") return "surfaces";
+    const saved = window.localStorage.getItem(UI_WORKSPACE_MODE_KEY);
+    return isAppMode(saved) ? saved : "surfaces";
+  });
   const [curvePresetCategoryFilter, setCurvePresetCategoryFilter] = useState<CurvePresetCategory | "all">("all");
   const [curvePresetId, setCurvePresetId] = useState<string>("circle2d");
   const [curveCustomXExpr, setCurveCustomXExpr] = useState("cos(t)");
@@ -7668,13 +8058,30 @@ const App: React.FC = () => {
   const curveActiveIsImported = !!curveImportedSection;
   const curveActiveDimension = curveActiveIsImported ? 3 : (activeCurvePreset?.dimension ?? 2);
   const curveActiveClosed = curveActiveIsImported ? curveImportedSection.closed : Boolean(activeCurveDomain.closed);
-  const [geometryMode, setGeometryMode] = useState<GeometryMode>("procedural");
+  const [geometryMode, setGeometryMode] = useState<GeometryMode>(() => {
+    if (typeof window === "undefined") return "procedural";
+    const saved = window.localStorage.getItem(UI_GEOMETRY_MODE_KEY) ?? undefined;
+    return isGeometryModeValue(saved) ? saved : "procedural";
+  });
   const [geometryWorkbookUiMode, setGeometryWorkbookUiMode] = useState<GeometryWorkbookUiMode>("compact");
   const [geometryViewerControlsOpen, setGeometryViewerControlsOpen] = useState(true);
   const [geometryWorkspaceTab, setGeometryWorkspaceTab] = useState<ConstructionWorkspaceTab>("build");
   const [geometryDemoTab, setGeometryDemoTab] = useState<GeometryDemoTab>("task");
   const [geometryProceduralPanelTab, setGeometryProceduralPanelTab] =
-    useState<GeometryProceduralPanelTab>("create");
+    useState<GeometryProceduralPanelTab>(() => {
+      if (typeof window === "undefined") return "create";
+      const saved = window.localStorage.getItem(UI_GEOMETRY_PROCEDURAL_PANEL_KEY) ?? undefined;
+      return isGeometryProceduralPanelTabValue(saved) ? saved : "create";
+    });
+  useEffect(() => {
+    window.localStorage.setItem(UI_WORKSPACE_MODE_KEY, mode);
+  }, [mode]);
+  useEffect(() => {
+    window.localStorage.setItem(UI_GEOMETRY_MODE_KEY, geometryMode);
+  }, [geometryMode]);
+  useEffect(() => {
+    window.localStorage.setItem(UI_GEOMETRY_PROCEDURAL_PANEL_KEY, geometryProceduralPanelTab);
+  }, [geometryProceduralPanelTab]);
   const [geometryEulerScope, setGeometryEulerScope] = useState<GeometryEulerScope>("selected");
   const [geometryEulerPolygonTemplateId, setGeometryEulerPolygonTemplateId] =
     useState<GeometryEulerPolygonTemplateId>("torus_abab_inv");
@@ -7949,8 +8356,12 @@ const App: React.FC = () => {
   const [geometryMathConstructionRelationshipTargetCircleId, setGeometryMathConstructionRelationshipTargetCircleId] = useState<string | null>(null);
   const [geometryMathConstructionRelationshipTargetPointId, setGeometryMathConstructionRelationshipTargetPointId] = useState<string | null>(null);
   const [geometryMathConstructionRelationships, setGeometryMathConstructionRelationships] = useState<GeometryMathConstructionRelationship[]>([]);
-  const [geometryShowViewportBadges, setGeometryShowViewportBadges] = useState(true);
-  const [showGeometryDependencyOverlay, setShowGeometryDependencyOverlay] = useState(false);
+  const [geometryShowViewportBadges, setGeometryShowViewportBadges] = useState(() =>
+    readGeometryViewportBoolean("badges", true)
+  );
+  const [showGeometryDependencyOverlay, setShowGeometryDependencyOverlay] = useState(() =>
+    readGeometryViewportBoolean("dependencies", false)
+  );
   const [geometryDependencyOverlayView, setGeometryDependencyOverlayView] = useState<"list" | "graph">("list");
   const [geometryDependencyOverlayDirection, setGeometryDependencyOverlayDirection] =
     useState<"affected-by" | "affects">("affects");
@@ -7990,6 +8401,7 @@ const App: React.FC = () => {
   const [geometryConstructOffsetDistance, setGeometryConstructOffsetDistance] = useState(0.5);
   const [geometryConstructTranslateDistance, setGeometryConstructTranslateDistance] = useState(0.5);
   const [geometryConstructCopiedLength, setGeometryConstructCopiedLength] = useState(0.5);
+  const [geometryLineExtensionMode, setGeometryLineExtensionMode] = useState<GeometryLineExtensionMode>("infinite");
   const [geometryFaceExtrudeDistance, setGeometryFaceExtrudeDistance] = useState(0.15);
   const [geometryFaceInsetRatio, setGeometryFaceInsetRatio] = useState(0.2);
   const [geometryEdgeBevelAmount, setGeometryEdgeBevelAmount] = useState(0.06);
@@ -8153,8 +8565,12 @@ const App: React.FC = () => {
   const [geometrySceneGalleryStatus, setGeometrySceneGalleryStatus] = useState<string | null>(null);
   const [geometrySceneGalleryExpanded, setGeometrySceneGalleryExpanded] = useState(false);
   const [geometryCreateActionStatus, setGeometryCreateActionStatus] = useState<string | null>(null);
+  const [geometryArmedLineOperation, setGeometryArmedLineOperation] = useState<"extend" | "trim" | null>(null);
+  const [geometryLineOperationCommitRequestId, setGeometryLineOperationCommitRequestId] = useState(0);
   const [geometryCreateSelectedCardExpanded, setGeometryCreateSelectedCardExpanded] = useState(false);
-  const [geometryCreateActionsOverlayOpen, setGeometryCreateActionsOverlayOpen] = useState(true);
+  const [geometryCreateActionsOverlayOpen, setGeometryCreateActionsOverlayOpen] = useState(() =>
+    readGeometryViewportBoolean("createOverlay", true)
+  );
   const [geometryAddSelectNewObject, setGeometryAddSelectNewObject] = useState(true);
   const [geometryAddFocusCamera, setGeometryAddFocusCamera] = useState(true);
   const [geometryAddOpenObjectTab, setGeometryAddOpenObjectTab] = useState(false);
@@ -8179,6 +8595,9 @@ const App: React.FC = () => {
       sourceTriangleScreen: info.sourceTriangleScreen,
       topologyVersion: info.meshKey ? geometryObjectRevisionById[info.meshKey] ?? 0 : undefined,
     });
+    if (geometryArmedLineOperation && info.meshKey) {
+      setGeometryLineOperationCommitRequestId((prev) => prev + 1);
+    }
     if (geometryCreatePlacementModeActive && geometryPendingPlacementObjectId) return;
     if (info.meshKey) {
       setGeometrySelectedObjectId(info.meshKey);
@@ -8199,6 +8618,7 @@ const App: React.FC = () => {
     }
   }, [
     geometryCreatePlacementModeActive,
+    geometryArmedLineOperation,
     geometryMathPickTargetSlot,
     geometryPendingPlacementObjectId,
     geometryProbeSelectionMode,
@@ -8208,15 +8628,24 @@ const App: React.FC = () => {
   const handleProceduralPickMiss = useCallback(() => {
     setGeometryProceduralPick(null);
     setGeometryProceduralHoverPick(null);
-  }, []);
+    if (geometryArmedLineOperation) {
+      setGeometryArmedLineOperation(null);
+      setGeometryCreateActionStatus("Extend preview cancelled.");
+    }
+  }, [geometryArmedLineOperation]);
   const geometryFocusAfterAddRef = useRef<(() => void) | null>(null);
   const [geometryProceduralScriptText, setGeometryProceduralScriptText] = useState(PROCEDURAL_SCENE_SCRIPT_STARTER);
   const [geometryProceduralScriptError, setGeometryProceduralScriptError] = useState<string | null>(null);
   const [geometryProceduralScriptStatus, setGeometryProceduralScriptStatus] = useState<string | null>(null);
   const [geometryBakeError, setGeometryBakeError] = useState<string | null>(null);
   const geometryHistoryIntentQueueRef = useRef<Map<string, GeometryQueuedHistoryIntent[]>>(new Map());
-  const [geometryGizmoEnabled, setGeometryGizmoEnabled] = useState(true);
-  const [geometryGizmoMode, setGeometryGizmoMode] = useState<GeometryGizmoMode>("translate");
+  const [geometryGizmoEnabled, setGeometryGizmoEnabled] = useState(() =>
+    readGeometryViewportBoolean("transformEnabled", true)
+  );
+  const [geometryGizmoMode, setGeometryGizmoMode] = useState<GeometryGizmoMode>(() => {
+    const value = readGeometryViewportSettings().transformMode;
+    return isGeometryGizmoMode(value) ? value : "translate";
+  });
   const handleToggleGeometryGizmoMode = useCallback((nextMode: GeometryGizmoMode) => {
     setGeometryCreatePlacementModeActive(false);
     setGeometryPendingPlacementObjectId(null);
@@ -8231,7 +8660,9 @@ const App: React.FC = () => {
   const [geometryGizmoSpace, setGeometryGizmoSpace] = useState<GeometryGizmoSpace>("world");
   const [geometryTransformPivotMode, setGeometryTransformPivotMode] = useState<GeometryTransformPivotMode>("center");
   const [geometryTransformPivotCustom, setGeometryTransformPivotCustom] = useState<Vec3>({ x: 0, y: 0, z: 0 });
-  const [geometryUniformScaleLock, setGeometryUniformScaleLock] = useState(false);
+  const [geometryUniformScaleLock, setGeometryUniformScaleLock] = useState(() =>
+    readGeometryViewportBoolean("uniformScaleLock", false)
+  );
   const [geometryLockXEnabled, setGeometryLockXEnabled] = useState(false);
   const [geometryLockYEnabled, setGeometryLockYEnabled] = useState(false);
   const [geometryLockZEnabled, setGeometryLockZEnabled] = useState(false);
@@ -13366,6 +13797,45 @@ const App: React.FC = () => {
       prev.map((entry) => (entry.id === id ? { ...entry, visible: !entry.visible } : entry))
     );
   }, []);
+  const handleSetDerivedConstructionVisibility = useCallback((id: string, visible: boolean) => {
+    setGeometryDerivedConstructions((prev) => prev.map((entry) => (entry.id === id ? { ...entry, visible } : entry)));
+  }, []);
+  const handleUpdateDerivedLineExtensionParameters = useCallback(
+    (
+      id: string,
+      patch: {
+        lineMode?: GeometryLineExtensionMode;
+        length?: number | null;
+        extensionDirection?: "forward" | "backward";
+      }
+    ) => {
+      setGeometryDerivedConstructions((prev) =>
+        prev.map((entry) => {
+          if (entry.id !== id) return entry;
+          if (!geometryDerivedConstructionIsExtendedLine(entry)) return entry;
+          const params: NonNullable<GeometryDerivedConstructionObject["params"]> = {
+            ...(entry.params ?? {}),
+            ...(patch.lineMode ? { lineMode: patch.lineMode } : {}),
+            ...(patch.extensionDirection ? { extensionDirection: patch.extensionDirection } : {}),
+          };
+          if (patch.length === null) {
+            delete params.length;
+          } else if (patch.length != null && Number.isFinite(patch.length)) {
+            params.length = Math.max(0.05, Number(patch.length));
+          }
+          const frozenSnapshot = buildGeometryLineExtensionFrozenSnapshot(entry, params) ?? entry.frozenSnapshot;
+          return {
+            ...entry,
+            params,
+            frozenSnapshot,
+            frozenAt: frozenSnapshot ? Date.now() : entry.frozenAt,
+          };
+        })
+      );
+      setGeometryCreateActionStatus("Extended line parameters updated.");
+    },
+    []
+  );
   const handleFreezeDerivedConstruction = useCallback(
     (id: string) => {
       const snapshot = geometryDerivedLastValidSnapshotRef.current.get(id) ?? null;
@@ -15350,7 +15820,7 @@ const App: React.FC = () => {
     if (hoverLines.length) {
       groups.push({
         lines: hoverLines,
-        color: 0xfbbf24,
+        color: GEOMETRY_VISUAL_LANGUAGE.hover,
         opacity: 0.54,
         radiusWorld: 0.005,
       });
@@ -15380,7 +15850,7 @@ const App: React.FC = () => {
       }
       groups.push({
         lines: selectedLines,
-        color: 0xf97316,
+        color: GEOMETRY_VISUAL_LANGUAGE.measurement,
         opacity: 0.86,
         radiusWorld: selectedRadiusWorld,
       });
@@ -15530,8 +16000,8 @@ const App: React.FC = () => {
         doubleSided: true,
       });
     };
-    pushFace(geometryProbeHoverSelectionDetails, 0xfacc15, 0.18, 0.012);
-    pushFace(geometryProbeSelectionDetails, 0x2563eb, 0.5, 0.016);
+    pushFace(geometryProbeHoverSelectionDetails, GEOMETRY_VISUAL_LANGUAGE.hover, 0.18, 0.012);
+    pushFace(geometryProbeSelectionDetails, GEOMETRY_VISUAL_LANGUAGE.selection, 0.5, 0.016);
     return groups.length ? groups : null;
   }, [geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails]);
   const geometryProceduralSelectionOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
@@ -15569,7 +16039,7 @@ const App: React.FC = () => {
       const points = geometryProbeHoverSelectionDetails?.faceVertices ?? [];
       groups.push({
         lines: hoverFaceBorder,
-        color: 0xfacc15,
+        color: GEOMETRY_VISUAL_LANGUAGE.hover,
         opacity: 0.78,
         radiusWorld: adaptiveProbeRadius(points) * 0.62,
       });
@@ -15579,7 +16049,7 @@ const App: React.FC = () => {
       const points = geometryProbeSelectionDetails?.faceVertices ?? [];
       groups.push({
         lines: selectedFaceBorder,
-        color: 0x2563eb,
+        color: GEOMETRY_VISUAL_LANGUAGE.selection,
         opacity: 0.98,
         radiusWorld: adaptiveProbeRadius(points) * 1.08,
       });
@@ -15593,7 +16063,7 @@ const App: React.FC = () => {
       const points = geometryProbeHoverSelectionDetails?.edgePoints ?? [];
       groups.push({
         lines: hoverEdges,
-        color: 0xfbbf24,
+        color: GEOMETRY_VISUAL_LANGUAGE.hover,
         opacity: 0.76,
         radiusWorld: adaptiveProbeRadius(points) * 0.62,
       });
@@ -15603,9 +16073,15 @@ const App: React.FC = () => {
       const points = geometryProbeSelectionDetails?.edgePoints ?? [];
       groups.push({
         lines: selectedEdges,
-        color: 0x2563eb,
+        color: GEOMETRY_VISUAL_LANGUAGE.originalGlow,
+        opacity: 0.38,
+        radiusWorld: adaptiveProbeRadius(points) * 2.35,
+      });
+      groups.push({
+        lines: selectedEdges,
+        color: GEOMETRY_VISUAL_LANGUAGE.original,
         opacity: 0.98,
-        radiusWorld: adaptiveProbeRadius(points) * 1.14,
+        radiusWorld: adaptiveProbeRadius(points) * 1.45,
       });
     }
     return groups.length ? groups : null;
@@ -15616,14 +16092,79 @@ const App: React.FC = () => {
     geometryProbeHoverSelectionDetails,
     geometryProbeSelectionDetails,
   ]);
+  const geometryArmedLineOperationPreviewGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (geometryMode !== "procedural" || geometryArmedLineOperation !== "extend") return null;
+    const detail = geometryProbeHoverSelectionDetails;
+    if (!detail || detail.mode !== "edge" || !detail.edgePoints) return null;
+    const [originalA, originalB] = detail.edgePoints;
+    const currentLength = Math.max(0.05, detail.edgeLength ?? geometryDistance(originalA, originalB));
+    const directionRaw = {
+      x: originalB.x - originalA.x,
+      y: originalB.y - originalA.y,
+      z: originalB.z - originalA.z,
+    };
+    const dirLen = Math.hypot(directionRaw.x, directionRaw.y, directionRaw.z);
+    if (!Number.isFinite(dirLen) || dirLen < 1e-9) return null;
+    const direction = {
+      x: directionRaw.x / dirLen,
+      y: directionRaw.y / dirLen,
+      z: directionRaw.z / dirLen,
+    };
+    const center = {
+      x: (originalA.x + originalB.x) * 0.5,
+      y: (originalA.y + originalB.y) * 0.5,
+      z: (originalA.z + originalB.z) * 0.5,
+    };
+    const resolved = detail.meshKey ? resolveGeometrySceneMeshById(detail.meshKey) : null;
+    const objectRadius = resolved ? computeSurfaceMeshFocus(resolved.mesh)?.radius ?? currentLength : currentLength;
+    const requestedLength = Math.max(0.05, Number(geometryConstructCopiedLength) || 0.5);
+    const lineGeometry = buildGeometryLineExtensionGeometry(
+      originalA,
+      originalB,
+      direction,
+      center,
+      geometryLineExtensionMode,
+      currentLength,
+      requestedLength,
+      objectRadius
+    );
+    const { a, b } = lineGeometry;
+    return [
+      {
+        lines: buildGeometryDashedLine(a, b, 16, 0.52),
+        color: GEOMETRY_VISUAL_LANGUAGE.derived,
+        opacity: 0.38,
+        radiusScale: 2.4,
+      },
+      {
+        lines: [[originalA, originalB]],
+        color: GEOMETRY_VISUAL_LANGUAGE.originalGlow,
+        opacity: 0.32,
+        radiusScale: 7.5,
+      },
+      {
+        lines: [[originalA, originalB]],
+        color: GEOMETRY_VISUAL_LANGUAGE.original,
+        opacity: 0.95,
+        radiusScale: 4.6,
+      },
+    ];
+  }, [
+    geometryArmedLineOperation,
+    geometryConstructCopiedLength,
+    geometryLineExtensionMode,
+    geometryMode,
+    geometryProbeHoverSelectionDetails,
+    resolveGeometrySceneMeshById,
+  ]);
   const geometrySectionOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     if (!geometrySectionPreview) return null;
     const groups: OverlayPolylineGroup[] = [];
     groups.push({
       lines: geometrySectionPreview.planeFrameLines,
-      color: 0x7c3aed,
-      opacity: 0.5,
+        color: GEOMETRY_VISUAL_LANGUAGE.helper,
+        opacity: 0.46,
       radiusScale: 1.05,
     });
     if (geometrySectionShowCurve && geometrySectionPreview.section.polylines.length) {
@@ -15639,7 +16180,7 @@ const App: React.FC = () => {
       if (curveLines.length) {
         groups.push({
           lines: curveLines,
-          color: 0x0ea5e9,
+          color: GEOMETRY_VISUAL_LANGUAGE.analysis,
           opacity: 0.98,
           radiusScale: 2.25,
         });
@@ -15907,14 +16448,14 @@ const App: React.FC = () => {
       const addPoint = (point: { x: number; y: number; z: number }, color = 0x0f766e, size = 0.095) => {
         evalPointSets.push({ points: [point], color, size, opacity: 0.98 });
       };
-      const addLine = (lines: PolylineSet, color = 0x2563eb, opacity = 0.9, radiusScale = 1.8) => {
+      const addLine = (lines: PolylineSet, color = GEOMETRY_VISUAL_LANGUAGE.selection, opacity = 0.9, radiusScale = 1.8) => {
         if (lines.length) evalGroups.push({ lines, color, opacity, radiusScale });
       };
       const addLabel = (point: { x: number; y: number; z: number }) => {
         evalLabels.push({
           text: object.name,
           position: { x: point.x + 0.05, y: point.y + 0.05, z: point.z + 0.05 },
-          color: 0x0f172a,
+        color: GEOMETRY_VISUAL_LANGUAGE.label,
           size: 0.88,
           opacity: 0.96,
         });
@@ -15968,7 +16509,7 @@ const App: React.FC = () => {
           publish(object, "invalid", "Line needs two distinct source objects.", null, null, null, null, [], [], []);
           continue;
         }
-        addLine(lineSegments(origin, direction, Math.max(defaultHalfLength, geometryDistance(a, b) * 1.2)), 0x2563eb);
+        addLine(lineSegments(origin, direction, Math.max(defaultHalfLength, geometryDistance(a, b) * 1.2)), GEOMETRY_VISUAL_LANGUAGE.selection);
         addLabel(origin);
         publish(object, "valid", `Line through ${sourceNames(object.sourceObjectIds)}.`, origin, direction, null, null, evalGroups, evalPointSets, evalLabels);
         continue;
@@ -16991,7 +17532,7 @@ const App: React.FC = () => {
           continue;
         }
         if (object.type === "vertex-point-marker") {
-          addEvalPoint(vertex, 0x06b6d4, 0.095);
+          addEvalPoint(vertex, GEOMETRY_VISUAL_LANGUAGE.original, 0.095);
           finish("valid", vertex, null);
           continue;
         }
@@ -17000,7 +17541,7 @@ const App: React.FC = () => {
           addEvalLabel(
             `(${fmt(vertex.x)}, ${fmt(vertex.y)}, ${fmt(vertex.z)})`,
             { x: vertex.x + 0.05, y: vertex.y + 0.05, z: vertex.z + 0.05 },
-            0x0f172a
+            GEOMETRY_VISUAL_LANGUAGE.label
           );
           finish("valid", vertex, null);
           continue;
@@ -17014,7 +17555,7 @@ const App: React.FC = () => {
           y: vertex.y + direction.y * distance,
           z: vertex.z + direction.z * distance,
         };
-        addEvalPoint(endpoint, object.type === "vertex-normal-endpoint" ? 0x22c55e : 0x7c3aed, 0.088);
+        addEvalPoint(endpoint, object.type === "vertex-normal-endpoint" ? GEOMETRY_VISUAL_LANGUAGE.analysis : 0x7c3aed, 0.088);
         addEvalGroup([[vertex, endpoint]], object.type === "vertex-normal-endpoint" ? 0x16a34a : 0x7c3aed, 0.94, 1.9);
         finish("valid", endpoint, direction);
         continue;
@@ -17075,7 +17616,7 @@ const App: React.FC = () => {
             y: edge.midpoint.y + edge.dir.y * edge.length * 0.5,
             z: edge.midpoint.z + edge.dir.z * edge.length * 0.5,
           };
-          addEvalGroup([[p0, p1]], 0x22c55e, 0.95, 2.1);
+          addEvalGroup([[p0, p1]], GEOMETRY_VISUAL_LANGUAGE.analysis, 0.95, 2.1);
           addEvalPoint(p1, 0x16a34a, 0.08);
           finish("valid", edge.midpoint, edge.dir);
           continue;
@@ -17178,7 +17719,7 @@ const App: React.FC = () => {
             z: face.centroid.z + face.normal.z * d,
           };
           addEvalGroup([[face.centroid, end]], 0x16a34a, 0.95, 2.1);
-          addEvalPoint(end, 0x22c55e, 0.08);
+          addEvalPoint(end, GEOMETRY_VISUAL_LANGUAGE.analysis, 0.08);
           finish("valid", face.centroid, face.normal);
           continue;
         }
@@ -17296,7 +17837,7 @@ const App: React.FC = () => {
           object.type === "face-offset-plane"
             ? 0x8b5cf6
             : object.type === "face-plane-through-three-vertices"
-              ? 0x2563eb
+              ? GEOMETRY_VISUAL_LANGUAGE.selection
               : object.type === "face-plane-through-centroid"
                 ? 0x1d4ed8
                 : 0x6366f1;
@@ -17319,7 +17860,7 @@ const App: React.FC = () => {
       const maxDim = Math.max(dims.x, dims.y, dims.z, 0.25);
 
       if (object.type === "object-centroid") {
-        addEvalPoint(objectCenter, 0x06b6d4, 0.1);
+        addEvalPoint(objectCenter, GEOMETRY_VISUAL_LANGUAGE.original, 0.1);
         finish("valid", objectCenter, null);
         continue;
       }
@@ -17589,13 +18130,14 @@ const App: React.FC = () => {
         const b = getVertex(mesh, entry.edgeVertexPair[1]);
         if (!a || !b) continue;
         const len = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
-        addLine(a, b, color, 0.95, 2.1);
+        const measurementColor = entry.color ?? GEOMETRY_VISUAL_LANGUAGE.measurement;
+        addLine(a, b, measurementColor, 0.95, 2.1);
         addLabel(
           entry.kind === "distance-dimension"
             ? `Distance = ${formatHistoryNumber(len)}`
             : `Edge = ${formatHistoryNumber(len)}`,
           { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5, z: (a.z + b.z) * 0.5 },
-          color
+          measurementColor
         );
         continue;
       }
@@ -17732,6 +18274,46 @@ const App: React.FC = () => {
     if (!geometrySelectedDerivedConstructionId) return null;
     return geometryDerivedConstructionOverlays.byId.get(geometrySelectedDerivedConstructionId) ?? null;
   }, [geometryDerivedConstructionOverlays.byId, geometrySelectedDerivedConstructionId]);
+  const geometryConstructionTreeObjects = useMemo<GeometryConstructionTreeObject[]>(() => {
+    const objectOrder: GeometryConstructionTreeObject[] = [];
+    const objectById = new Map<string, GeometryConstructionTreeObject & { entityByKey: Map<string, GeometryConstructionTreeEntity> }>();
+    const knownObjectNames = new Map<string, string>();
+    for (const obj of geometryObjects) knownObjectNames.set(obj.id, obj.name);
+    for (const obj of geometryDatasetMeshObjects) knownObjectNames.set(obj.id, obj.name);
+    for (const entry of geometryDerivedConstructions.slice(0, 40)) {
+      const evalEntry = geometryDerivedConstructionOverlays.byId.get(entry.id) ?? null;
+      const objectId = entry.sourceObjectId;
+      let objectNode = objectById.get(objectId);
+      if (!objectNode) {
+        objectNode = {
+          objectId,
+          label: evalEntry?.sourceObjectName ?? knownObjectNames.get(objectId) ?? objectId,
+          entities: [],
+          entityByKey: new Map(),
+        };
+        objectById.set(objectId, objectNode);
+        objectOrder.push(objectNode);
+      }
+      const entityKey = geometryDerivedConstructionSourceEntityKey(entry);
+      let entityNode = objectNode.entityByKey.get(entityKey);
+      if (!entityNode) {
+        entityNode = {
+          key: entityKey,
+          label: geometryDerivedConstructionSourceEntityLabel(entry),
+          entries: [],
+        };
+        objectNode.entityByKey.set(entityKey, entityNode);
+        objectNode.entities.push(entityNode);
+      }
+      entityNode.entries.push(entry);
+    }
+    return objectOrder.map(({ entityByKey: _entityByKey, ...objectNode }) => objectNode);
+  }, [
+    geometryDatasetMeshObjects,
+    geometryDerivedConstructionOverlays.byId,
+    geometryDerivedConstructions,
+    geometryObjects,
+  ]);
   useEffect(() => {
     const byId = geometryDerivedConstructionOverlays.byId;
     if (!byId.size) return;
@@ -18911,14 +19493,19 @@ const App: React.FC = () => {
     handleUseDerivedPlaneForSectionSliceById,
   ]);
   const handleResizeSelectedConstructionLineOperation = useCallback(
-    (mode: "extend" | "trim") => {
-      const selectedDerived = geometrySelectedDerivedConstructionId
+    (
+      mode: "extend" | "trim",
+      edgeTargetOverride: GeometryOperationEdgeTarget | null = null,
+      options: { ignoreSelectedDerived?: boolean } = {}
+    ) => {
+      const selectedDerived = !options.ignoreSelectedDerived && geometrySelectedDerivedConstructionId
         ? geometryDerivedConstructions.find((entry) => entry.id === geometrySelectedDerivedConstructionId) ?? null
         : null;
       if (!selectedDerived) {
-        if (geometryEdgeOperationTarget?.edgePoints) {
-          const [originalA, originalB] = geometryEdgeOperationTarget.edgePoints;
-          const currentLength = Math.max(0.05, geometryEdgeOperationTarget.edgeLength ?? geometryDistance(originalA, originalB));
+        const edgeTarget = edgeTargetOverride ?? geometryEdgeOperationTarget;
+        if (edgeTarget?.edgePoints) {
+          const [originalA, originalB] = edgeTarget.edgePoints;
+          const currentLength = Math.max(0.05, edgeTarget.edgeLength ?? geometryDistance(originalA, originalB));
           const directionRaw = {
             x: originalB.x - originalA.x,
             y: originalB.y - originalA.y,
@@ -18939,33 +19526,46 @@ const App: React.FC = () => {
             y: (originalA.y + originalB.y) * 0.5,
             z: (originalA.z + originalB.z) * 0.5,
           };
-          const resolved = resolveGeometrySceneMeshById(geometryEdgeOperationTarget.objectId);
+          const resolved = resolveGeometrySceneMeshById(edgeTarget.objectId);
           const requestedLength = Math.max(0.05, Number(geometryConstructCopiedLength) || 0.5);
           const objectRadius = resolved ? computeSurfaceMeshFocus(resolved.mesh)?.radius ?? currentLength : currentLength;
-          const fullLineLength = Math.max(currentLength * 4, requestedLength * 2, objectRadius * 1.75, 1.25);
-          const nextLength = mode === "extend" ? fullLineLength : Math.max(0.05, currentLength - requestedLength);
-          const half = nextLength * 0.5;
-          const a = {
-            x: center.x - direction.x * half,
-            y: center.y - direction.y * half,
-            z: center.z - direction.z * half,
-          };
-          const b = {
-            x: center.x + direction.x * half,
-            y: center.y + direction.y * half,
-            z: center.z + direction.z * half,
-          };
-          const operationColor = mode === "extend" ? 0x2563eb : 0xf97316;
+          const lineGeometry =
+            mode === "extend"
+              ? buildGeometryLineExtensionGeometry(
+                  originalA,
+                  originalB,
+                  direction,
+                  center,
+                  geometryLineExtensionMode,
+                  currentLength,
+                  requestedLength,
+                  objectRadius
+                )
+              : buildGeometryLineExtensionGeometry(
+                  originalA,
+                  originalB,
+                  direction,
+                  center,
+                  "segment",
+                  Math.max(0.05, currentLength - requestedLength),
+                  0,
+                  objectRadius
+                );
+          const { a, b } = lineGeometry;
+          const operationColor =
+            mode === "extend" ? GEOMETRY_VISUAL_LANGUAGE.original : GEOMETRY_VISUAL_LANGUAGE.measurement;
+          const extensionLines = mode === "extend" ? buildGeometryDashedLine(a, b, 16, 0.52) : [];
           appendDerivedConstruction({
             type: "edge-line-through-two-vertices",
-            name: `${mode === "extend" ? "Extended" : "Trimmed"} edge line`,
+            name: `${mode === "extend" ? GEOMETRY_LINE_EXTENSION_MODE_LABELS[geometryLineExtensionMode] : "Trimmed segment"}`,
             sourceKind: "edge",
-            sourceObjectId: geometryEdgeOperationTarget.objectId,
+            sourceObjectId: edgeTarget.objectId,
+            params: mode === "extend" ? { lineMode: geometryLineExtensionMode, length: lineGeometry.displayLength } : { lineMode: "segment", length: lineGeometry.displayLength },
             sourceTopologySignature: resolved ? geometryMeshTopologySignature(resolved.mesh) : null,
-            sourceEdgeVertexPair: geometryEdgeOperationTarget.edgeVertexPair,
+            sourceEdgeVertexPair: edgeTarget.edgeVertexPair,
             sourceEdgeSignature: geometryEdgeSignatureFromPoints(originalA, originalB),
             sourcePoint: { ...center },
-            sourceNormal: { ...geometryEdgeOperationTarget.normal },
+            sourceNormal: { ...edgeTarget.normal },
             frozenAt: Date.now(),
             frozenSnapshot: {
               origin: center,
@@ -18974,10 +19574,26 @@ const App: React.FC = () => {
                 ...(mode === "trim"
                   ? [
                       {
-                        lines: [[originalA, originalB]],
-                        color: 0x64748b,
+                        lines: buildGeometryDashedLine(originalA, originalB, 12, 0.22),
+                        color: GEOMETRY_VISUAL_LANGUAGE.helper,
                         opacity: 0.28,
                         radiusScale: 1.5,
+                      },
+                    ]
+                  : []),
+                ...(mode === "extend"
+                  ? [
+                      {
+                        lines: extensionLines,
+                        color: GEOMETRY_VISUAL_LANGUAGE.derived,
+                        opacity: 0.66,
+                        radiusScale: 3.1,
+                      },
+                      {
+                        lines: [[originalA, originalB]],
+                        color: GEOMETRY_VISUAL_LANGUAGE.originalGlow,
+                        opacity: 0.38,
+                        radiusScale: 8.2,
                       },
                     ]
                   : []),
@@ -18985,23 +19601,13 @@ const App: React.FC = () => {
                   lines: mode === "extend" ? [[originalA, originalB]] : [[a, b]],
                   color: operationColor,
                   opacity: 1,
-                  radiusScale: mode === "extend" ? 2.2 : 3.4,
+                  radiusScale: mode === "extend" ? 4.8 : 3.4,
                 },
-                ...(mode === "extend"
-                  ? [
-                      {
-                        lines: [[a, b]],
-                        color: 0xfacc15,
-                        opacity: 1,
-                        radiusScale: 5.4,
-                      },
-                    ]
-                  : []),
               ],
               pointSets: [
                 {
                   points: [a, b],
-                  color: mode === "extend" ? 0xfacc15 : operationColor,
+                  color: mode === "extend" ? GEOMETRY_VISUAL_LANGUAGE.derived : operationColor,
                   size: 0.14,
                   opacity: 1,
                 },
@@ -19009,7 +19615,7 @@ const App: React.FC = () => {
                   ? [
                       {
                         points: [originalA, originalB],
-                        color: 0xfacc15,
+                        color: GEOMETRY_VISUAL_LANGUAGE.derived,
                         size: 0.11,
                         opacity: 1,
                       },
@@ -19023,7 +19629,7 @@ const App: React.FC = () => {
                     {
                       text: `${mode === "extend" ? "extended" : "trimmed"} edge`,
                       position: { x: b.x + 0.04, y: b.y + 0.04, z: b.z + 0.04 },
-                      color: 0x0f172a,
+                      color: GEOMETRY_VISUAL_LANGUAGE.label,
                     },
                   ],
                 },
@@ -19087,64 +19693,82 @@ const App: React.FC = () => {
         ? resolveGeometrySceneMeshById(selectedDerived.sourceObjectId)
         : null;
       const sourceRadius = resolvedSource ? computeSurfaceMeshFocus(resolvedSource.mesh)?.radius ?? currentLength : currentLength;
-      const fullLineLength = Math.max(currentLength * 4, requestedLength * 2, sourceRadius * 1.75, 1.25);
-      const nextLength = mode === "extend" ? fullLineLength : Math.max(0.25, currentLength - requestedLength);
-      const half = nextLength * 0.5;
-      const a = {
-        x: evalEntry.origin.x - direction.x * half,
-        y: evalEntry.origin.y - direction.y * half,
-        z: evalEntry.origin.z - direction.z * half,
-      };
-      const b = {
-        x: evalEntry.origin.x + direction.x * half,
-        y: evalEntry.origin.y + direction.y * half,
-        z: evalEntry.origin.z + direction.z * half,
-      };
-      const operationColor = mode === "extend" ? 0x2563eb : 0xf97316;
+      const lineGeometry =
+        mode === "extend"
+          ? buildGeometryLineExtensionGeometry(
+              originalA,
+              originalB,
+              direction,
+              evalEntry.origin,
+              geometryLineExtensionMode,
+              currentLength,
+              requestedLength,
+              sourceRadius
+            )
+          : buildGeometryLineExtensionGeometry(
+              originalA,
+              originalB,
+              direction,
+              evalEntry.origin,
+              "segment",
+              Math.max(0.25, currentLength - requestedLength),
+              0,
+              sourceRadius
+            );
+      const { a, b } = lineGeometry;
+      const operationColor =
+        mode === "extend" ? GEOMETRY_VISUAL_LANGUAGE.original : GEOMETRY_VISUAL_LANGUAGE.measurement;
       const extensionTailLines: PolylineSet =
         mode === "extend"
-          ? [[a, b]]
+          ? buildGeometryDashedLine(a, b, 16, 0.52)
           : [];
       const referenceGroups: OverlayPolylineGroup[] =
         mode === "trim"
           ? [
               {
-                lines: [[originalA, originalB]],
-                color: 0x64748b,
+                lines: buildGeometryDashedLine(originalA, originalB, 12, 0.22),
+                color: GEOMETRY_VISUAL_LANGUAGE.helper,
                 opacity: 0.28,
                 radiusScale: 1.5,
               },
             ]
           : [];
-      cloneDerivedConstructionForOperation(selectedDerived, mode === "extend" ? "extended" : "trimmed", {
+      cloneDerivedConstructionForOperation(selectedDerived, mode === "extend" ? GEOMETRY_LINE_EXTENSION_MODE_LABELS[geometryLineExtensionMode].toLowerCase() : "trimmed", {
         dependent: false,
+        params: mode === "extend" ? { ...(selectedDerived.params ?? {}), lineMode: geometryLineExtensionMode, length: lineGeometry.displayLength } : { ...(selectedDerived.params ?? {}), lineMode: "segment", length: lineGeometry.displayLength },
         frozenAt: Date.now(),
         frozenSnapshot: {
           origin: { ...evalEntry.origin },
           direction,
           groups: [
             ...referenceGroups,
-            {
-              lines: mode === "extend" ? [[originalA, originalB]] : [[a, b]],
-              color: operationColor,
-              opacity: 1,
-              radiusScale: mode === "extend" ? 2.1 : 3.2,
-            },
             ...(extensionTailLines.length
               ? [
                   {
                     lines: extensionTailLines,
-                    color: 0xfacc15,
-                    opacity: 1,
-                    radiusScale: 4.8,
+                    color: GEOMETRY_VISUAL_LANGUAGE.derived,
+                    opacity: 0.66,
+                    radiusScale: 3,
+                  },
+                  {
+                    lines: [[originalA, originalB]],
+                    color: GEOMETRY_VISUAL_LANGUAGE.originalGlow,
+                    opacity: 0.38,
+                    radiusScale: 8,
                   },
                 ]
               : []),
+            {
+              lines: mode === "extend" ? [[originalA, originalB]] : [[a, b]],
+              color: operationColor,
+              opacity: 1,
+              radiusScale: mode === "extend" ? 4.6 : 3.2,
+            },
           ],
           pointSets: [
             {
               points: [a, b],
-              color: mode === "extend" ? 0xfacc15 : operationColor,
+              color: mode === "extend" ? GEOMETRY_VISUAL_LANGUAGE.derived : operationColor,
               size: 0.13,
               opacity: 1,
             },
@@ -19152,7 +19776,7 @@ const App: React.FC = () => {
               ? [
                   {
                     points: [originalA, originalB],
-                    color: 0xfacc15,
+                    color: GEOMETRY_VISUAL_LANGUAGE.derived,
                     size: 0.105,
                     opacity: 1,
                   },
@@ -19166,7 +19790,7 @@ const App: React.FC = () => {
                 {
                   text: `${mode === "extend" ? "extended" : "trimmed"} ${geometryDerivedConstructionName(selectedDerived)}`,
                   position: { x: b.x + 0.04, y: b.y + 0.04, z: b.z + 0.04 },
-                  color: 0x0f172a,
+                  color: GEOMETRY_VISUAL_LANGUAGE.label,
                 },
               ],
             },
@@ -19180,16 +19804,49 @@ const App: React.FC = () => {
       geometryDerivedConstructionOverlays.byId,
       geometryDerivedConstructions,
       geometryEdgeOperationTarget,
+      geometryLineExtensionMode,
       geometrySelectedDerivedConstructionId,
       resolveGeometrySceneMeshById,
     ]
   );
   const handleExtendSelectedConstructionOperation = useCallback(() => {
-    handleResizeSelectedConstructionLineOperation("extend");
-  }, [handleResizeSelectedConstructionLineOperation]);
+    const next = geometryArmedLineOperation === "extend" ? null : "extend";
+    setGeometryArmedLineOperation(next);
+    setGeometrySelectedDerivedConstructionId(null);
+    setGeometrySelectedMathConstructionId(null);
+    setGeometryCreateActionStatus(
+      next
+        ? "Extend armed: hover an edge to preview, then click the edge to create the construction line."
+        : "Extend preview cancelled."
+    );
+    setGeometryProbeSelectionMode("edge");
+    setGeometryActiveOperationInputSlotId("active-edge");
+  }, [
+    geometryArmedLineOperation,
+  ]);
   const handleTrimSelectedConstructionOperation = useCallback(() => {
     handleResizeSelectedConstructionLineOperation("trim");
   }, [handleResizeSelectedConstructionLineOperation]);
+  const geometryLineOperationCommitHandledRef = useRef(0);
+  useEffect(() => {
+    if (!geometryArmedLineOperation) return;
+    if (!geometryLineOperationCommitRequestId) return;
+    if (geometryLineOperationCommitHandledRef.current === geometryLineOperationCommitRequestId) return;
+    geometryLineOperationCommitHandledRef.current = geometryLineOperationCommitRequestId;
+    const clickedEdgeTarget = resolveGeometryOperationEdgeTarget(geometrySelectedPick);
+    if (!clickedEdgeTarget) {
+      setGeometryCreateActionStatus("Extend needs an edge pick. Hover a mesh edge until the ghost line appears, then click.");
+      return;
+    }
+    handleResizeSelectedConstructionLineOperation(geometryArmedLineOperation, clickedEdgeTarget, { ignoreSelectedDerived: true });
+    setGeometryArmedLineOperation(null);
+  }, [
+    geometryArmedLineOperation,
+    geometryLineOperationCommitRequestId,
+    geometrySelectedPick,
+    handleResizeSelectedConstructionLineOperation,
+    resolveGeometryOperationEdgeTarget,
+  ]);
   const handleOffsetSelectedConstructionOperation = useCallback(() => {
     const selectedDerived = geometrySelectedDerivedConstructionId
       ? geometryDerivedConstructions.find((entry) => entry.id === geometrySelectedDerivedConstructionId) ?? null
@@ -19604,10 +20261,13 @@ const App: React.FC = () => {
     if (geometryProceduralOverlayGroups?.length) {
       groups.push(...(geometryPrecisionPickActive ? dimGroups(geometryProceduralOverlayGroups, 0.26) : geometryProceduralOverlayGroups));
     }
-    if (geometryProceduralSelectionOverlayGroups?.length) groups.push(...geometryProceduralSelectionOverlayGroups);
     if (geometryDerivedConstructionOverlays.groups?.length) {
       groups.push(...geometryDerivedConstructionOverlays.groups);
     }
+    if (geometryArmedLineOperationPreviewGroups?.length) {
+      groups.push(...geometryArmedLineOperationPreviewGroups);
+    }
+    if (geometryProceduralSelectionOverlayGroups?.length) groups.push(...geometryProceduralSelectionOverlayGroups);
     if (helperGroupsVisible) {
       const helperOpacity = geometryPrecisionPickActive ? 0.22 : 1;
       const pushHelperGroups = (source: OverlayPolylineGroup[] | null | undefined) => {
@@ -19632,6 +20292,7 @@ const App: React.FC = () => {
     geometrySectionOverlayGroups,
     geometryBooleanPreviewOverlayGroups,
     geometryProceduralFeatureOverlays.groups,
+    geometryArmedLineOperationPreviewGroups,
     geometryDerivedConstructionOverlays.groups,
     geometryMathConstructionOverlays.groups,
     geometryProceduralAnnotationOverlays.groups,
@@ -19922,9 +20583,11 @@ const App: React.FC = () => {
       : geometryMode === "demo"
         ? geometryDemoScene
         : geometryProblemScene;
-  const [geometryWireframe, setGeometryWireframe] = useState(false);
-  const [geometryShowPlanes, setGeometryShowPlanes] = useState(true);
-  const [geometryOpacity, setGeometryOpacity] = useState(0.8);
+  const [geometryWireframe, setGeometryWireframe] = useState(() => readGeometryViewportBoolean("wireframe", false));
+  const [geometryShowPlanes, setGeometryShowPlanes] = useState(() => readGeometryViewportBoolean("coordinates", true));
+  const [geometryOpacity, setGeometryOpacity] = useState(() =>
+    clampGeometryViewportOpacity(readGeometryViewportSettings().opacity)
+  );
   const [geometryResetToken, setGeometryResetToken] = useState(0);
   const [geometryCameraFitCommand, setGeometryCameraFitCommand] = useState<{
     token: number;
@@ -19932,8 +20595,13 @@ const App: React.FC = () => {
     radius: number;
     padding?: number;
   } | null>(null);
-  const [geometryIncludeHelpersInFit, setGeometryIncludeHelpersInFit] = useState(false);
-  const [geometryViewPreset, setGeometryViewPreset] = useState<"3d" | "planar">("3d");
+  const [geometryIncludeHelpersInFit, setGeometryIncludeHelpersInFit] = useState(() =>
+    readGeometryViewportBoolean("includeHelpersInFit", false)
+  );
+  const [geometryViewPreset, setGeometryViewPreset] = useState<GeometryCameraViewPreset>(() => {
+    const value = readGeometryViewportSettings().viewPreset;
+    return isGeometryCameraViewPreset(value) ? value : "3d";
+  });
   const [workspaceCameraPreset, setWorkspaceCameraPreset] = useState<WorkspaceCameraPreset | null>(null);
 
   const finitePoint3 = useCallback(
@@ -25223,9 +25891,9 @@ const App: React.FC = () => {
   const [principalProjectionXY, setPrincipalProjectionXY] = useState(true);
   const [principalProjectionXZ, setPrincipalProjectionXZ] = useState(true);
   const [principalProjectionYZ, setPrincipalProjectionYZ] = useState(true);
-  const [planeGridSettings, setPlaneGridSettings] = useState<ReferencePlaneGridSettings>(() => ({
-    ...DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
-  }));
+  const [planeGridSettings, setPlaneGridSettings] = useState<ReferencePlaneGridSettings>(() =>
+    readGeometryPlaneGridSettings()
+  );
   const geometryEffectivePlaneGridSettings = useMemo<ReferencePlaneGridSettings>(() => {
     if (!geometryPrecisionPickActive) return planeGridSettings;
     return {
@@ -25700,13 +26368,47 @@ const App: React.FC = () => {
   const [meshInteractionHideWireframe, setMeshInteractionHideWireframe] = useState(false);
   const [geometryInteractionQualityMode, setGeometryInteractionQualityMode] =
     useState<MeshInteractionQualityMode>("adaptive");
-  const [geometryGlobalQualityOverrideMode, setGeometryGlobalQualityOverrideMode] = useState<
-    "auto" | "fast-preview" | "full"
-  >("fast-preview");
+  const [geometryGlobalQualityOverrideMode, setGeometryGlobalQualityOverrideMode] =
+    useState<GeometryViewportQualityMode>(() => {
+      const value = readGeometryViewportSettings().qualityMode;
+      return isGeometryViewportQualityMode(value) ? value : "fast-preview";
+    });
   const [geometryInteractionRestoreDelayMs, setGeometryInteractionRestoreDelayMs] = useState(150);
   const [geometryInteractionPreviewTriangleTarget, setGeometryInteractionPreviewTriangleTarget] = useState(100_000);
   const [geometryInteractionHideWireframe, setGeometryInteractionHideWireframe] = useState(false);
   const [geometryInteractionHideSceneOverlays, setGeometryInteractionHideSceneOverlays] = useState(false);
+  useEffect(() => {
+    const settings: GeometryViewportSettings = {
+      transformEnabled: geometryGizmoEnabled,
+      transformMode: geometryGizmoMode,
+      uniformScaleLock: geometryUniformScaleLock,
+      wireframe: geometryWireframe,
+      coordinates: geometryShowPlanes,
+      planeGridSettings,
+      badges: geometryShowViewportBadges,
+      dependencies: showGeometryDependencyOverlay,
+      createOverlay: geometryCreateActionsOverlayOpen,
+      opacity: geometryOpacity,
+      qualityMode: geometryGlobalQualityOverrideMode,
+      viewPreset: geometryViewPreset,
+      includeHelpersInFit: geometryIncludeHelpersInFit,
+    };
+    localStorage.setItem(UI_GEOMETRY_VIEWPORT_SETTINGS_KEY, JSON.stringify(settings));
+  }, [
+    geometryCreateActionsOverlayOpen,
+    geometryGizmoEnabled,
+    geometryGizmoMode,
+    geometryGlobalQualityOverrideMode,
+    geometryIncludeHelpersInFit,
+    geometryOpacity,
+    geometryShowPlanes,
+    geometryShowViewportBadges,
+    geometryUniformScaleLock,
+    geometryViewPreset,
+    geometryWireframe,
+    planeGridSettings,
+    showGeometryDependencyOverlay,
+  ]);
   const [geometryDemoInteractionActive, setGeometryDemoInteractionActive] = useState(false);
   const geometryDemoInteractionRestoreTimerRef = useRef<number | null>(null);
   const handleGeometryViewerInteractionStateChange = useCallback(
@@ -43680,6 +44382,10 @@ case "mobius":
     if (geometryViewerSourceLabel) setGeometryViewerSourceLabel(null);
   }, [geometryMode, fullWorkbookSelectedBlockRef, geometryViewerSourceLabel]);
   useEffect(() => {
+    if (geometryMode !== "workbook") {
+      if (fullWorkbookSelectedBlockRef) setFullWorkbookSelectedBlockRef(null);
+      return;
+    }
     if (!activeWorkbook?.stages?.length) {
       if (fullWorkbookSelectedBlockRef) setFullWorkbookSelectedBlockRef(null);
       return;
@@ -43701,7 +44407,7 @@ case "mobius":
       return;
     }
     setFullWorkbookSelectedBlockRef({ stageId: fallbackStage.id, blockId: firstBlock.id });
-  }, [activeStageId, activeWorkbook, fullWorkbookSelectedBlockRef]);
+  }, [activeStageId, activeWorkbook, fullWorkbookSelectedBlockRef, geometryMode]);
   const fullWorkbookSelectedBlockMeta = useMemo(() => {
     if (!activeWorkbook || !fullWorkbookSelectedBlockRef) return null;
     const stage = activeWorkbook.stages.find((item) => item.id === fullWorkbookSelectedBlockRef.stageId);
@@ -46366,7 +47072,7 @@ case "mobius":
                                     <strong>{label}</strong>
                                     <span style={{ opacity: 0.78 }}>{entry}</span>
                                   </div>
-                                );
+                              );
                               })}
                             </div>
                           )}
@@ -53007,7 +53713,7 @@ case "mobius":
                     </>
                     )}
 
-                    {geometryProceduralPanelTab === "construct" && (
+                    {geometryProceduralPanelTab === "construct" ? (
                     <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
                       <div
                         style={{
@@ -53278,8 +53984,8 @@ case "mobius":
                                 <button type="button" onClick={() => handleCreateDerivedFromObject("object-inscribed-reference-sphere")}>Inscribed sphere</button>
                               </div>
                             </div>
-                          </div>
                         </div>
+                      </div>
                         {!geometryCanCreateMathFromAB && (
                           <div style={{ fontSize: 10.5, color: "#92400e" }}>
                             Select two different objects for A and B before creating a midpoint, line, or circle.
@@ -53296,7 +54002,7 @@ case "mobius":
                             fontSize: 10.5,
                           }}
                         >
-                          <div style={{ fontWeight: 700, color: "#0f172a" }}>Recent construction objects</div>
+                          <div style={{ fontWeight: 700, color: "#0f172a" }}>Recent construction tree</div>
                           {geometryMathConstructions.length || geometryDerivedConstructions.length ? (
                             <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                               {geometryDerivedConstructions.slice(0, 8).map((entry) => {
@@ -53398,13 +54104,38 @@ case "mobius":
                             </div>
                             <div style={{ display: "grid", gap: 4 }}>
                               <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Shape edits</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+                                <span style={{ fontSize: 10.5, fontWeight: 700, color: "#334155" }}>Extend mode</span>
+                                {GEOMETRY_LINE_EXTENSION_MODE_OPTIONS.map((option) => (
+                                  <button
+                                    key={`geometry-shape-edit-line-extension-mode-${option.id}`}
+                                    type="button"
+                                    aria-pressed={geometryLineExtensionMode === option.id}
+                                    onClick={() => setGeometryLineExtensionMode(option.id)}
+                                    title={`${option.label}: ${option.symbol}`}
+                                    style={{
+                                      borderColor: geometryLineExtensionMode === option.id ? "#0ea5e9" : undefined,
+                                      background: geometryLineExtensionMode === option.id ? "#e0f2fe" : undefined,
+                                      fontSize: 10.5,
+                                      padding: "3px 7px",
+                                    }}
+                                  >
+                                    {option.symbol} {option.label}
+                                  </button>
+                                ))}
+                              </div>
                               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                                 <button
                                   type="button"
                                   onClick={handleExtendSelectedConstructionOperation}
-                                  title="Creates a frozen extended copy of the selected derived line, axis, vector, or segment."
+                                  title={
+                                    geometryArmedLineOperation === "extend"
+                                      ? "Extend is armed: hover an edge for a ghost preview, then click to create. Click again to cancel."
+                                      : "Arm Extend preview for edge picking, or extend the selected derived line."
+                                  }
+                                  style={geometryArmedLineOperation === "extend" ? { borderColor: "#0ea5e9", background: "#cffafe" } : undefined}
                                 >
-                                  Extend
+                                  {geometryArmedLineOperation === "extend" ? "Extend: pick edge" : "Extend"}
                                 </button>
                                 <button
                                   type="button"
@@ -53650,8 +54381,8 @@ case "mobius":
                                   </div>
                                 </div>
                               );
-                            })}
-                          </div>
+                              })}
+                            </div>
                         ) : (
                           <div style={{ fontSize: 10.5, color: "#667085" }}>
                             No point, line, circle, or relationship constructions yet.
@@ -53719,17 +54450,27 @@ case "mobius":
                           </button>
                         </div>
                         {geometryDerivedConstructions.length ? (
-                          <div style={{ display: "grid", gap: 6, maxHeight: 260, overflowY: "auto", paddingRight: 2 }}>
-                            {geometryDerivedConstructions.slice(0, 40).map((entry) => {
-                              const evalEntry = geometryDerivedConstructionOverlays.byId.get(entry.id) ?? null;
-                              const selected = geometrySelectedDerivedConstructionId === entry.id;
-                              const dependencyState = evalEntry?.dependencyState ?? (entry.frozenSnapshot ? "frozen" : "stale");
-                              const dependencyMeta = GEOMETRY_DEPENDENCY_STATE_META[dependencyState];
-                              const isLatest = entry === geometryDerivedConstructions[0];
-                              const canRelink =
-                                !!evalEntry &&
-                                (evalEntry.relinkCandidateFaceIndex != null || !!evalEntry.relinkCandidateEdgeVertexPair);
-                              return (
+                          <div style={{ display: "grid", gap: 8, maxHeight: 260, overflowY: "auto", paddingRight: 2 }}>
+                            {geometryConstructionTreeObjects.map((objectNode) => (
+                              <div key={`geometry-construction-tree-object-${objectNode.objectId}`} style={{ display: "grid", gap: 5 }}>
+                                <div style={{ fontSize: 11.5, fontWeight: 800, color: "#0f172a" }}>{objectNode.label}</div>
+                                {objectNode.entities.map((entityNode) => (
+                                  <div
+                                    key={`geometry-construction-tree-entity-${objectNode.objectId}-${entityNode.key}`}
+                                    style={{ display: "grid", gap: 5, paddingLeft: 12, borderLeft: "1px solid #cbd5e1" }}
+                                  >
+                                    <div style={{ fontSize: 11, fontWeight: 700, color: "#475569" }}>└── {entityNode.label}</div>
+                                    <div style={{ display: "grid", gap: 6, paddingLeft: 14 }}>
+                                      {entityNode.entries.map((entry) => {
+                                        const evalEntry = geometryDerivedConstructionOverlays.byId.get(entry.id) ?? null;
+                                        const selected = geometrySelectedDerivedConstructionId === entry.id;
+                                        const dependencyState = evalEntry?.dependencyState ?? (entry.frozenSnapshot ? "frozen" : "stale");
+                                        const dependencyMeta = GEOMETRY_DEPENDENCY_STATE_META[dependencyState];
+                                        const isLatest = entry === geometryDerivedConstructions[0];
+                                        const canRelink =
+                                          !!evalEntry &&
+                                          (evalEntry.relinkCandidateFaceIndex != null || !!evalEntry.relinkCandidateEdgeVertexPair);
+                                        return (
                                 <div
                                   key={`geometry-derived-construction-${entry.id}`}
                                   style={{
@@ -53767,7 +54508,10 @@ case "mobius":
                                     </span>
                                   </div>
                                   <div style={{ fontSize: 10.5, color: "#64748b" }}>
-                                    Type: {GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[entry.type]} · Source: {evalEntry?.sourceObjectName ?? entry.sourceObjectId}
+                                    Type: {geometryDerivedConstructionResultLabel(entry)}
+                                  </div>
+                                  <div style={{ fontSize: 10.5, color: "#0f766e", fontWeight: 700 }}>
+                                    {geometryDerivedConstructionSourceLabel(evalEntry)} -&gt; {geometryDerivedConstructionResultLabel(entry)}
                                   </div>
                                   {evalEntry?.statusMessage && (
                                     <div style={{ fontSize: 10.5, color: "#7a271a" }}>{evalEntry.statusMessage}</div>
@@ -53844,14 +54588,19 @@ case "mobius":
                                   </div>
                                 </div>
                               );
-                            })}
+                                      })}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ))}
                           </div>
                         ) : (
                           <div style={{ fontSize: 10.5, color: "#667085" }}>No mesh-derived construction objects yet.</div>
                         )}
                       </div>
                     </div>
-                    )}
+                    ) : null}
 
                     {geometryProceduralPanelTab === "view" && (
                     <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
@@ -62168,7 +62917,133 @@ case "mobius":
                                 }}
                               >
                                 <div style={{ fontSize: 12, fontWeight: 700 }}>Derived Object</div>
-                                <div><strong>Type:</strong> {geometrySelectedDerivedConstructionEval.typeLabel}</div>
+                                <div><strong>Type:</strong> {geometryDerivedConstructionResultLabel(geometrySelectedDerivedConstructionEval.object)}</div>
+                                <div><strong>Source:</strong> {geometryDerivedConstructionSourceLabel(geometrySelectedDerivedConstructionEval)}</div>
+                                <div><strong>Direction:</strong> {geometryDerivedConstructionDirectionLabel(geometrySelectedDerivedConstructionEval)}</div>
+                                <div><strong>Length:</strong> {geometryDerivedConstructionLengthLabel(geometrySelectedDerivedConstructionEval)}</div>
+                                {geometryDerivedConstructionIsExtendedLine(geometrySelectedDerivedConstructionEval.object) &&
+                                  (() => {
+                                    const object = geometrySelectedDerivedConstructionEval.object;
+                                    const activeLineMode = resolveGeometryLineExtensionMode(object.params?.lineMode);
+                                    const activeLength = object.params?.length;
+                                    const setLengthPreset = (length: number) =>
+                                      handleUpdateDerivedLineExtensionParameters(object.id, {
+                                        lineMode: activeLineMode === "infinite" ? "segment" : activeLineMode,
+                                        length,
+                                      });
+                                    return (
+                                      <div
+                                        style={{
+                                          display: "grid",
+                                          gap: 5,
+                                          padding: "7px 8px",
+                                          border: "1px solid #dbeafe",
+                                          borderRadius: 7,
+                                          background: "#eff6ff",
+                                        }}
+                                      >
+                                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                          <strong>Extension parameters</strong>
+                                          <label style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                            <input
+                                              type="checkbox"
+                                              checked={object.visible}
+                                              onChange={(event) =>
+                                                handleSetDerivedConstructionVisibility(object.id, event.target.checked)
+                                              }
+                                            />
+                                            Visibility
+                                          </label>
+                                        </div>
+                                        <div><strong>Source edge:</strong> {geometryDerivedConstructionSourceLabel(geometrySelectedDerivedConstructionEval)}</div>
+                                        <div><strong>Direction:</strong> {geometryDerivedLineDirectionName(object)}</div>
+                                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                                          <span style={{ fontWeight: 700 }}>Mode</span>
+                                          {GEOMETRY_LINE_EXTENSION_MODE_OPTIONS.map((option) => (
+                                            <button
+                                              key={`derived-extension-mode-${object.id}-${option.id}`}
+                                              type="button"
+                                              aria-pressed={activeLineMode === option.id}
+                                              onClick={() =>
+                                                handleUpdateDerivedLineExtensionParameters(object.id, { lineMode: option.id })
+                                              }
+                                              style={{
+                                                fontSize: 10.5,
+                                                padding: "3px 7px",
+                                                borderColor: activeLineMode === option.id ? "#0ea5e9" : undefined,
+                                                background: activeLineMode === option.id ? "#e0f2fe" : "#fff",
+                                              }}
+                                            >
+                                              {option.symbol} {option.label}
+                                            </button>
+                                          ))}
+                                        </div>
+                                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                                          <span style={{ fontWeight: 700 }}>Length</span>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              handleUpdateDerivedLineExtensionParameters(object.id, {
+                                                lineMode: "infinite",
+                                                length: null,
+                                              })
+                                            }
+                                            style={{
+                                              fontSize: 10.5,
+                                              padding: "3px 8px",
+                                              borderColor: activeLineMode === "infinite" ? "#0ea5e9" : undefined,
+                                              background: activeLineMode === "infinite" ? "#e0f2fe" : "#fff",
+                                            }}
+                                          >
+                                            ∞
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              handleUpdateDerivedLineExtensionParameters(object.id, { length: null })
+                                            }
+                                            style={{
+                                              fontSize: 10.5,
+                                              padding: "3px 8px",
+                                              borderColor: activeLength == null && activeLineMode !== "infinite" ? "#0ea5e9" : undefined,
+                                              background: activeLength == null && activeLineMode !== "infinite" ? "#e0f2fe" : "#fff",
+                                            }}
+                                          >
+                                            Auto
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setLengthPreset(100)}
+                                            style={{
+                                              fontSize: 10.5,
+                                              padding: "3px 8px",
+                                              borderColor: activeLength === 100 ? "#0ea5e9" : undefined,
+                                              background: activeLength === 100 ? "#e0f2fe" : "#fff",
+                                            }}
+                                          >
+                                            100
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setLengthPreset(500)}
+                                            style={{
+                                              fontSize: 10.5,
+                                              padding: "3px 8px",
+                                              borderColor: activeLength === 500 ? "#0ea5e9" : undefined,
+                                              background: activeLength === 500 ? "#e0f2fe" : "#fff",
+                                            }}
+                                          >
+                                            500
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#0f766e", fontWeight: 700 }}>
+                                  <span>{geometryDerivedConstructionSourceLabel(geometrySelectedDerivedConstructionEval)}</span>
+                                  <span>-&gt;</span>
+                                  <span>{geometryDerivedConstructionResultLabel(geometrySelectedDerivedConstructionEval.object)}</span>
+                                </div>
                                 <div><strong>Source object:</strong> {geometrySelectedDerivedConstructionEval.sourceObjectName}</div>
                                 <div>
                                   <strong>Source face:</strong>{" "}
