@@ -1200,6 +1200,7 @@ type WorkbookWorkspaceState = {
     selectedObjectId: string | null;
     scratchScene?: ConstructionLabSeed | null;
     workbookScenes?: Record<string, ConstructionLabSeed>;
+    derivedConstructions?: GeometryDerivedConstructionObject[];
   };
   datasets: {
     currentDatasetRef: string;
@@ -2267,7 +2268,7 @@ type GeometryBooleanPreviewMesh = SurfaceMeshData & {
 type GeometryRepeatAxis = "x" | "y" | "z" | "custom";
 type GeometryRepeatGridPlane = "xy" | "xz" | "yz";
 type GeometryRepeatMirrorPlane = "xy" | "xz" | "yz" | "selected-face";
-type GeometryRightPanelTab = "inspector" | "scene";
+type GeometryRightPanelTab = "selection" | "scene" | "dependencies";
 type GeometryInspectorPanelTab = "probe" | "dependencies";
 type GeometryDependencyState = "valid" | "updating" | "stale" | "broken-source" | "ambiguous-target" | "frozen";
 type GeometryProceduralPickInfo = {
@@ -2362,6 +2363,35 @@ type GeometryDerivedConstructionType =
   | "object-symmetry-plane-preview"
   | "object-circumscribed-sphere-preview"
   | "object-inscribed-reference-sphere";
+type GeometryPlaneConstructionMethod =
+  | "through-3-points"
+  | "through-line-point"
+  | "through-2-lines"
+  | "parallel"
+  | "perpendicular"
+  | "offset"
+  | "mid-plane"
+  | "tangent-plane"
+  | "symmetry-plane"
+  | "principal-plane"
+  | "best-fit-plane";
+type GeometryPlanePointSlot = "a" | "b" | "c";
+type GeometryPlanePointRef = {
+  objectId: string;
+  vertexIndex: number;
+  point: { x: number; y: number; z: number };
+};
+type GeometryPlaneLinePointInput = "line" | "point";
+type GeometryPlaneLineRef = {
+  id: string;
+  name: string;
+  origin: GeometryProbePoint;
+  direction: GeometryProbePoint;
+  sourceKind: "derived" | "edge";
+  sourceObjectId: string | null;
+  sourceEdgeVertexPair?: [number, number] | null;
+  object?: GeometryDerivedConstructionObject;
+};
 type GeometryDerivedConstructionSourceKind = "vertex" | "edge" | "face" | "object";
 type GeometryDerivedConstructionStatus = "valid" | "stale" | "invalid";
 type GeometryLineExtensionMode = "infinite" | "ray" | "segment";
@@ -2623,6 +2653,47 @@ const GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS: Record<GeometryDerivedConstruct
   "object-circumscribed-sphere-preview": "Circumscribed Sphere",
   "object-inscribed-reference-sphere": "Inscribed Reference Sphere",
 };
+const GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS: Record<GeometryPlaneConstructionMethod, string> = {
+  "through-3-points": "Through 3 Points",
+  "through-line-point": "Through Line + Point",
+  "through-2-lines": "Through 2 Lines",
+  parallel: "Parallel",
+  perpendicular: "Perpendicular",
+  offset: "Offset",
+  "mid-plane": "Mid Plane",
+  "tangent-plane": "Tangent Plane",
+  "symmetry-plane": "Symmetry Plane",
+  "principal-plane": "Principal Plane",
+  "best-fit-plane": "Best Fit Plane",
+};
+const GEOMETRY_PLANE_CONSTRUCTION_METHOD_GROUPS: Array<{
+  title: string;
+  methods: GeometryPlaneConstructionMethod[];
+}> = [
+  { title: "Basic", methods: ["through-3-points", "through-line-point", "through-2-lines"] },
+  { title: "Relations", methods: ["parallel", "perpendicular", "offset"] },
+  { title: "Derived", methods: ["mid-plane", "tangent-plane", "symmetry-plane", "principal-plane", "best-fit-plane"] },
+];
+const GEOMETRY_PLANE_CONSTRUCTION_PICK_MODE: Record<GeometryPlaneConstructionMethod, GeometryProbeSelectionMode> = {
+  "through-3-points": "vertex",
+  "through-line-point": "edge",
+  "through-2-lines": "edge",
+  parallel: "face",
+  perpendicular: "edge",
+  offset: "face",
+  "mid-plane": "edge",
+  "tangent-plane": "face",
+  "symmetry-plane": "object",
+  "principal-plane": "object",
+  "best-fit-plane": "vertex",
+};
+const GEOMETRY_PLANE_POINT_SLOT_LABELS: Record<GeometryPlanePointSlot, string> = {
+  a: "Point A",
+  b: "Point B",
+  c: "Point C",
+};
+const GEOMETRY_PLANE_POINT_SLOT_ORDER: GeometryPlanePointSlot[] = ["a", "b", "c"];
+const GEOMETRY_PLANE_LINE_POINT_PICKED_EDGE_ID = "__picked-edge__";
 const GEOMETRY_MATH_CONSTRUCTION_TYPE_LABELS: Record<GeometryMathConstructionType, string> = {
   midpoint: "Midpoint",
   "line-through-objects": "Line",
@@ -2648,12 +2719,13 @@ const GEOMETRY_DERIVED_RELATION_TYPE_LABELS: Record<GeometryDerivedRelationType,
   "attach-face-to-derived-plane": "Attach Face To Derived Plane",
   "maintain-offset-from-derived-plane": "Maintain Fixed Offset From Plane",
 };
-const readStoredGeometryDerivedConstructions = (): GeometryDerivedConstructionObject[] => {
-  if (typeof window === "undefined") return [];
-  const raw = safeParseArray<GeometryDerivedConstructionObject>(
-    window.localStorage.getItem(GEOMETRY_DERIVED_CONSTRUCTIONS_STORAGE_KEY)
-  );
-  return raw
+const normalizeGeometryDerivedConstructionsForRestore = (raw: unknown): GeometryDerivedConstructionObject[] => {
+  const arr = Array.isArray(raw)
+    ? (raw as GeometryDerivedConstructionObject[])
+    : typeof raw === "string"
+      ? safeParseArray<GeometryDerivedConstructionObject>(raw)
+      : [];
+  return arr
     .filter(
       (entry) =>
         !!entry &&
@@ -2841,6 +2913,13 @@ const geometryDerivedLineDirectionName = (entry: Pick<GeometryDerivedConstructio
 const geometryDerivedConstructionIsExtendedLine = (
   entry: Pick<GeometryDerivedConstructionObject, "type" | "params" | "sourceEdgeSignature">
 ) => entry.type === "edge-line-through-two-vertices" && !!entry.sourceEdgeSignature && !!entry.params?.lineMode;
+const geometryDerivedConstructionCanActAsLinePairSource = (
+  entry: Pick<GeometryDerivedConstructionObject, "type">
+) =>
+  entry.type.includes("line") ||
+  entry.type.includes("axis") ||
+  entry.type.includes("vector") ||
+  entry.type.includes("segment");
 const buildGeometryDashedLine = (
   start: GeometryProbePoint,
   end: GeometryProbePoint,
@@ -8484,20 +8563,15 @@ const App: React.FC = () => {
   const [geometryAnnotations, setGeometryAnnotations] = useState<GeometryAnnotationEntry[]>([]);
   const [geometryAnnotationCustomText, setGeometryAnnotationCustomText] = useState("Label");
   const [geometryAnnotationStatus, setGeometryAnnotationStatus] = useState<string | null>(null);
-  const [geometryDerivedConstructions, setGeometryDerivedConstructions] = useState<GeometryDerivedConstructionObject[]>(
-    readStoredGeometryDerivedConstructions
-  );
+  const [geometryDerivedConstructions, setGeometryDerivedConstructions] = useState<GeometryDerivedConstructionObject[]>([]);
   const [geometryConstructionHistory, setGeometryConstructionHistory] = useState<GeometryConstructionHistoryEntry[]>([]);
   useEffect(() => {
     try {
-      window.localStorage.setItem(
-        GEOMETRY_DERIVED_CONSTRUCTIONS_STORAGE_KEY,
-        JSON.stringify(geometryDerivedConstructions.slice(0, 80))
-      );
+      window.localStorage.removeItem(GEOMETRY_DERIVED_CONSTRUCTIONS_STORAGE_KEY);
     } catch {
-      // Ignore restore-cache write failures.
+      // Ignore cleanup failures.
     }
-  }, [geometryDerivedConstructions]);
+  }, []);
   const [geometrySelectedDerivedConstructionId, setGeometrySelectedDerivedConstructionId] = useState<string | null>(null);
   const [geometryDerivedRelationConstraints, setGeometryDerivedRelationConstraints] = useState<
     GeometryDerivedRelationConstraint[]
@@ -8561,6 +8635,18 @@ const App: React.FC = () => {
   const [geometryConstructOffsetDistance, setGeometryConstructOffsetDistance] = useState(0.5);
   const [geometryConstructTranslateDistance, setGeometryConstructTranslateDistance] = useState(0.5);
   const [geometryConstructCopiedLength, setGeometryConstructCopiedLength] = useState(0.5);
+  const [geometryPlaneConstructionMethod, setGeometryPlaneConstructionMethod] =
+    useState<GeometryPlaneConstructionMethod>("through-3-points");
+  const [geometryPlanePointSlots, setGeometryPlanePointSlots] = useState<Record<GeometryPlanePointSlot, GeometryPlanePointRef | null>>({
+    a: null,
+    b: null,
+    c: null,
+  });
+  const [geometryPlanePointActiveSlot, setGeometryPlanePointActiveSlot] = useState<GeometryPlanePointSlot>("a");
+  const [geometryPlaneLinePointSourceId, setGeometryPlaneLinePointSourceId] = useState<string | null>(null);
+  const [geometryPlaneLinePointPoint, setGeometryPlaneLinePointPoint] = useState<GeometryPlanePointRef | null>(null);
+  const [geometryPlaneLinePointActiveInput, setGeometryPlaneLinePointActiveInput] =
+    useState<GeometryPlaneLinePointInput>("line");
   const [geometryLineExtensionMode, setGeometryLineExtensionMode] = useState<GeometryLineExtensionMode>("infinite");
   const [geometryFaceExtrudeDistance, setGeometryFaceExtrudeDistance] = useState(0.15);
   const [geometryFaceInsetRatio, setGeometryFaceInsetRatio] = useState(0.2);
@@ -12972,6 +13058,72 @@ const App: React.FC = () => {
     () => resolveGeometryOperationVertexTarget(geometryVertexOperationPick),
     [geometryVertexOperationPick, resolveGeometryOperationVertexTarget]
   );
+  useEffect(() => {
+    if (geometryPlaneConstructionMethod !== "through-3-points") return;
+    if (geometryProbeSelectionMode !== "vertex") return;
+    const detail = resolveGeometryOperationVertexTarget(geometrySelectedPick);
+    if (!detail) return;
+    const nextRef: GeometryPlanePointRef = {
+      objectId: detail.objectId,
+      vertexIndex: detail.vertexIndex,
+      point: { ...detail.point },
+    };
+    const duplicateSlot = GEOMETRY_PLANE_POINT_SLOT_ORDER.find((slot) => {
+      const ref = geometryPlanePointSlots[slot];
+      return ref?.objectId === nextRef.objectId && ref.vertexIndex === nextRef.vertexIndex;
+    });
+    if (duplicateSlot && duplicateSlot !== geometryPlanePointActiveSlot) {
+      setGeometryCreateActionStatus(
+        `${GEOMETRY_PLANE_POINT_SLOT_LABELS[duplicateSlot]} already uses vertex ${nextRef.vertexIndex}.`
+      );
+      return;
+    }
+    const current = geometryPlanePointSlots[geometryPlanePointActiveSlot];
+    if (current?.objectId === nextRef.objectId && current.vertexIndex === nextRef.vertexIndex) return;
+    const updated = { ...geometryPlanePointSlots, [geometryPlanePointActiveSlot]: nextRef };
+    setGeometryPlanePointSlots(updated);
+    setGeometryPlanePointActiveSlot(
+      GEOMETRY_PLANE_POINT_SLOT_ORDER.find((slot) => !updated[slot]) ?? geometryPlanePointActiveSlot
+    );
+    setGeometryCreateActionStatus(
+      `${GEOMETRY_PLANE_POINT_SLOT_LABELS[geometryPlanePointActiveSlot]} set to vertex ${nextRef.vertexIndex}.`
+    );
+  }, [
+    geometryPlaneConstructionMethod,
+    geometryPlanePointActiveSlot,
+    geometryPlanePointSlots,
+    geometryProbeSelectionMode,
+    geometrySelectedPick,
+    resolveGeometryOperationVertexTarget,
+    setGeometryCreateActionStatus,
+  ]);
+  useEffect(() => {
+    if (geometryPlaneConstructionMethod !== "through-line-point") return;
+    if (geometryProbeSelectionMode !== "vertex") return;
+    const detail = resolveGeometryOperationVertexTarget(geometrySelectedPick);
+    if (!detail) return;
+    const nextRef: GeometryPlanePointRef = {
+      objectId: detail.objectId,
+      vertexIndex: detail.vertexIndex,
+      point: { ...detail.point },
+    };
+    if (
+      geometryPlaneLinePointPoint?.objectId === nextRef.objectId &&
+      geometryPlaneLinePointPoint.vertexIndex === nextRef.vertexIndex
+    ) {
+      return;
+    }
+    setGeometryPlaneLinePointPoint(nextRef);
+    setGeometryPlaneLinePointActiveInput("point");
+    setGeometryCreateActionStatus(`Point set to vertex ${nextRef.vertexIndex}.`);
+  }, [
+    geometryPlaneConstructionMethod,
+    geometryPlaneLinePointPoint,
+    geometryProbeSelectionMode,
+    geometrySelectedPick,
+    resolveGeometryOperationVertexTarget,
+    setGeometryCreateActionStatus,
+  ]);
   const geometryMeasuredEdgeCandidate = useMemo(() => {
     if (geometryProbeSelectionMode !== "edge") return null;
     if (!geometryProbeSelectionDetails?.meshKey) return null;
@@ -13603,6 +13755,19 @@ const App: React.FC = () => {
     geometryVertexWeldDistance,
     setGeometryCreateActionStatus,
   ]);
+  const rememberGeometryLinePairCandidate = useCallback(
+    (entry: Pick<GeometryDerivedConstructionObject, "id" | "type">) => {
+      if (!geometryDerivedConstructionCanActAsLinePairSource(entry)) return;
+      if (!geometryLinePairSourceAId || geometryLinePairSourceAId === entry.id) {
+        setGeometryLinePairSourceAId(entry.id);
+        return;
+      }
+      if (!geometryLinePairSourceBId || geometryLinePairSourceBId === geometryLinePairSourceAId) {
+        setGeometryLinePairSourceBId(entry.id);
+      }
+    },
+    [geometryLinePairSourceAId, geometryLinePairSourceBId]
+  );
   const appendDerivedConstruction = useCallback(
     (
       draft: Omit<GeometryDerivedConstructionObject, "id" | "dependent" | "visible" | "createdAt">
@@ -13618,6 +13783,7 @@ const App: React.FC = () => {
       };
       setGeometryDerivedConstructions((prev) => [next, ...prev]);
       setGeometrySelectedDerivedConstructionId(next.id);
+      rememberGeometryLinePairCandidate(next);
       setGeometryProceduralPanelTab("construct");
       const sourceName = resolveGeometrySceneObjectById(draft.sourceObjectId)?.name ?? draft.sourceObjectId;
       const source = geometryDerivedConstructionSourceReference(next, sourceName);
@@ -13639,7 +13805,7 @@ const App: React.FC = () => {
         `Derived object created: ${GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[next.type]}.`
       );
     },
-    [geometryObjectRevisionById, resolveGeometrySceneObjectById]
+    [geometryObjectRevisionById, rememberGeometryLinePairCandidate, resolveGeometrySceneObjectById]
   );
   const handleCreateDerivedFromVertex = useCallback(
     (
@@ -14282,6 +14448,153 @@ const App: React.FC = () => {
       v: { x: v.x, y: v.y, z: v.z },
     };
   }, []);
+  const buildGeometryPlaneFromPointsFrozenSnapshot = useCallback(
+    (
+      a: GeometryPlanePointRef,
+      b: GeometryPlanePointRef,
+      c: GeometryPlanePointRef,
+      label: string
+    ): NonNullable<GeometryDerivedConstructionObject["frozenSnapshot"]> | null => {
+      const ab = geometrySub(b.point, a.point);
+      const ac = geometrySub(c.point, a.point);
+      const normal = geometryNormalizeVec(geometryCross(ab, ac));
+      if (!normal) return null;
+      const center = {
+        x: (a.point.x + b.point.x + c.point.x) / 3,
+        y: (a.point.y + b.point.y + c.point.y) / 3,
+        z: (a.point.z + b.point.z + c.point.z) / 3,
+      };
+      const basis = resolveHelperTangentBasis(normal);
+      const span = Math.max(
+        0.35,
+        geometryDistance(a.point, b.point),
+        geometryDistance(b.point, c.point),
+        geometryDistance(c.point, a.point)
+      );
+      const half = span * 0.72;
+      const corners = [
+        geometryAdd(center, geometryAdd(geometryScale(basis.u, half), geometryScale(basis.v, half))),
+        geometryAdd(center, geometryAdd(geometryScale(basis.u, -half), geometryScale(basis.v, half))),
+        geometryAdd(center, geometryAdd(geometryScale(basis.u, -half), geometryScale(basis.v, -half))),
+        geometryAdd(center, geometryAdd(geometryScale(basis.u, half), geometryScale(basis.v, -half))),
+      ];
+      return {
+        origin: center,
+        direction: normal,
+        groups: [
+          {
+            lines: [
+              [corners[0], corners[1]],
+              [corners[1], corners[2]],
+              [corners[2], corners[3]],
+              [corners[3], corners[0]],
+              [corners[0], corners[2]],
+              [corners[1], corners[3]],
+              [a.point, b.point],
+              [b.point, c.point],
+              [c.point, a.point],
+            ],
+            color: GEOMETRY_VISUAL_LANGUAGE.selection,
+            opacity: 0.82,
+            radiusScale: 1.8,
+          },
+        ],
+        pointSets: [
+          { points: [a.point, b.point, c.point], color: GEOMETRY_VISUAL_LANGUAGE.measurement, size: 0.085, opacity: 0.96 },
+          { points: [center], color: GEOMETRY_VISUAL_LANGUAGE.selection, size: 0.075, opacity: 0.92 },
+        ],
+        labelSets: [
+          {
+            size: 0.9,
+            labels: [
+              {
+                text: label,
+                position: { x: center.x + 0.05, y: center.y + 0.05, z: center.z + 0.05 },
+                color: GEOMETRY_VISUAL_LANGUAGE.label,
+                opacity: 0.95,
+              },
+            ],
+          },
+        ],
+      };
+    },
+    [resolveHelperTangentBasis]
+  );
+  const buildGeometryPlaneFromLinePointFrozenSnapshot = useCallback(
+    (
+      line: GeometryPlaneLineRef,
+      point: GeometryPlanePointRef,
+      label: string
+    ): NonNullable<GeometryDerivedConstructionObject["frozenSnapshot"]> | null => {
+      const direction = geometryNormalizeVec(line.direction);
+      if (!direction) return null;
+      const fromLine = geometrySub(point.point, line.origin);
+      const normal = geometryNormalizeVec(geometryCross(direction, fromLine));
+      if (!normal) return null;
+      const along = geometryDot(fromLine, direction);
+      const closest = geometryAdd(line.origin, geometryScale(direction, along));
+      const distance = geometryDistance(closest, point.point);
+      if (!Number.isFinite(distance) || distance < 1e-6) return null;
+      const side = geometryNormalizeVec(geometrySub(point.point, closest)) ?? resolveHelperTangentBasis(normal).v;
+      const span = Math.max(0.45, distance * 1.7, 0.6);
+      const halfLine = span;
+      const halfSide = Math.max(distance * 0.75, span * 0.38);
+      const center = geometryAdd(closest, geometryScale(side, distance * 0.5));
+      const corners = [
+        geometryAdd(center, geometryAdd(geometryScale(direction, halfLine), geometryScale(side, halfSide))),
+        geometryAdd(center, geometryAdd(geometryScale(direction, -halfLine), geometryScale(side, halfSide))),
+        geometryAdd(center, geometryAdd(geometryScale(direction, -halfLine), geometryScale(side, -halfSide))),
+        geometryAdd(center, geometryAdd(geometryScale(direction, halfLine), geometryScale(side, -halfSide))),
+      ];
+      const lineSegment: [GeometryProbePoint, GeometryProbePoint] = [
+        geometryAdd(closest, geometryScale(direction, -halfLine * 1.05)),
+        geometryAdd(closest, geometryScale(direction, halfLine * 1.05)),
+      ];
+      return {
+        origin: center,
+        direction: normal,
+        groups: [
+          {
+            lines: [
+              [corners[0], corners[1]],
+              [corners[1], corners[2]],
+              [corners[2], corners[3]],
+              [corners[3], corners[0]],
+              [corners[0], corners[2]],
+              [corners[1], corners[3]],
+            ],
+            color: GEOMETRY_VISUAL_LANGUAGE.selection,
+            opacity: 0.82,
+            radiusScale: 1.8,
+          },
+          {
+            lines: [lineSegment, [closest, point.point]],
+            color: GEOMETRY_VISUAL_LANGUAGE.measurement,
+            opacity: 0.94,
+            radiusScale: 2.3,
+          },
+        ],
+        pointSets: [
+          { points: [point.point], color: GEOMETRY_VISUAL_LANGUAGE.measurement, size: 0.09, opacity: 0.96 },
+          { points: [closest, center], color: GEOMETRY_VISUAL_LANGUAGE.selection, size: 0.07, opacity: 0.92 },
+        ],
+        labelSets: [
+          {
+            size: 0.9,
+            labels: [
+              {
+                text: label,
+                position: { x: center.x + 0.05, y: center.y + 0.05, z: center.z + 0.05 },
+                color: GEOMETRY_VISUAL_LANGUAGE.label,
+                opacity: 0.95,
+              },
+            ],
+          },
+        ],
+      };
+    },
+    [resolveHelperTangentBasis]
+  );
   const handleCreateHelperFromFaceSelection = useCallback(
     (kind: "face-plane" | "face-normal" | "face-centroid" | "face-frame") => {
       if (kind === "face-plane") {
@@ -18570,6 +18883,46 @@ const App: React.FC = () => {
         .filter((entry): entry is NonNullable<typeof entry> => !!entry),
     [geometryDerivedConstructionOverlays.byId, geometryDerivedLineConstructionOptions]
   );
+  const geometryPlaneLinePointPickedEdgeLine = useMemo<GeometryPlaneLineRef | null>(() => {
+    const target = geometryEdgeOperationTarget;
+    if (!target?.edgePoints?.[0] || !target.edgePoints[1]) return null;
+    const direction = geometryNormalizeVec(geometrySub(target.edgePoints[1], target.edgePoints[0]));
+    if (!direction) return null;
+    return {
+      id: GEOMETRY_PLANE_LINE_POINT_PICKED_EDGE_ID,
+      name: `Picked edge on ${target.objectId}`,
+      origin: { ...target.edgePoints[0] },
+      direction,
+      sourceKind: "edge",
+      sourceObjectId: target.objectId,
+      sourceEdgeVertexPair: target.edgeVertexPair ? [target.edgeVertexPair[0], target.edgeVertexPair[1]] : null,
+    };
+  }, [geometryEdgeOperationTarget]);
+  const geometryPlaneLinePointLineOptions = useMemo<GeometryPlaneLineRef[]>(
+    () => [
+      ...(geometryPlaneLinePointPickedEdgeLine ? [geometryPlaneLinePointPickedEdgeLine] : []),
+      ...geometryLinePairLineOptions.map((entry) => ({
+        id: entry.id,
+        name: entry.name,
+        origin: entry.origin,
+        direction: entry.direction,
+        sourceKind: "derived" as const,
+        sourceObjectId: entry.object.sourceObjectId,
+        sourceEdgeVertexPair: entry.object.sourceEdgeVertexPair ?? null,
+        object: entry.object,
+      })),
+    ],
+    [geometryLinePairLineOptions, geometryPlaneLinePointPickedEdgeLine]
+  );
+  const geometryEffectivePlaneLinePointSourceId = useMemo(() => {
+    const ids = new Set(geometryPlaneLinePointLineOptions.map((entry) => entry.id));
+    if (geometryPlaneLinePointSourceId && ids.has(geometryPlaneLinePointSourceId)) return geometryPlaneLinePointSourceId;
+    return geometryPlaneLinePointLineOptions[0]?.id ?? null;
+  }, [geometryPlaneLinePointLineOptions, geometryPlaneLinePointSourceId]);
+  const geometryPlaneLinePointLine = useMemo(
+    () => geometryPlaneLinePointLineOptions.find((entry) => entry.id === geometryEffectivePlaneLinePointSourceId) ?? null,
+    [geometryEffectivePlaneLinePointSourceId, geometryPlaneLinePointLineOptions]
+  );
   const geometryEffectiveLinePairSourceAId = useMemo(() => {
     const ids = new Set(geometryLinePairLineOptions.map((entry) => entry.id));
     if (geometryLinePairSourceAId && ids.has(geometryLinePairSourceAId)) return geometryLinePairSourceAId;
@@ -19755,6 +20108,7 @@ const App: React.FC = () => {
       setGeometrySelectedMathConstructionId(null);
       setGeometrySelectedDerivedConstructionId(null);
     }
+    setGeometryRightPanelTab("dependencies");
     setGeometryInspectorPanelTab("dependencies");
   }, []);
   const handleUseDerivedPlaneForSectionSliceById = useCallback((derivedId: string) => {
@@ -19997,6 +20351,7 @@ const App: React.FC = () => {
       };
       setGeometryDerivedConstructions((prev) => [next, ...prev]);
       setGeometrySelectedDerivedConstructionId(next.id);
+      rememberGeometryLinePairCandidate(next);
       setGeometrySelectedMathConstructionId(null);
       const sourceObjectName = resolveGeometrySceneObjectById(next.sourceObjectId)?.name ?? next.sourceObjectId;
       const source = geometryDerivedConstructionSourceReference(next, sourceObjectName);
@@ -20017,7 +20372,7 @@ const App: React.FC = () => {
       setGeometryCreateActionStatus(`Construction ${suffix.toLowerCase()}: ${next.name}.`);
       return next;
     },
-    [resolveGeometrySceneObjectById]
+    [rememberGeometryLinePairCandidate, resolveGeometrySceneObjectById]
   );
   const handleCreateLinePairDerivedConstruction = useCallback(
     (
@@ -20273,6 +20628,473 @@ const App: React.FC = () => {
     },
     [geometryLinePairAnalysis, resolveHelperTangentBasis]
   );
+  const selectGeometryPlaneConstructionMethod = useCallback(
+    (method: GeometryPlaneConstructionMethod) => {
+      setGeometryPlaneConstructionMethod(method);
+      if (method === "through-3-points") {
+        setGeometryPlanePointActiveSlot(
+          GEOMETRY_PLANE_POINT_SLOT_ORDER.find((slot) => !geometryPlanePointSlots[slot]) ?? "a"
+        );
+      }
+      if (method === "through-line-point") {
+        const needsLine = !geometryPlaneLinePointLine;
+        setGeometryPlaneLinePointActiveInput(needsLine ? "line" : "point");
+        setGeometryActiveOperationInputSlotId(needsLine ? "active-edge" : "active-vertex");
+      }
+      const pickMode =
+        method === "perpendicular" && !geometrySourceFaceOperationTarget
+          ? "face"
+          : method === "through-line-point" && geometryPlaneLinePointLine
+            ? "vertex"
+          : GEOMETRY_PLANE_CONSTRUCTION_PICK_MODE[method];
+      if (method === "perpendicular") {
+        setGeometryActiveOperationInputSlotId(geometrySourceFaceOperationTarget ? "active-edge" : "source-face");
+      }
+      setGeometryProbeSelectionMode(pickMode);
+      setGeometryCreateActionStatus(
+        `Plane method set to ${GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS[method]}; pick mode set to ${pickMode}.`
+      );
+    },
+    [geometryPlaneLinePointLine, geometryPlanePointSlots, geometrySourceFaceOperationTarget]
+  );
+  useEffect(() => {
+    if (geometryPlaneConstructionMethod !== "through-line-point") return;
+    if (!geometryPlaneLinePointLine) {
+      setGeometryPlaneLinePointActiveInput("line");
+      setGeometryActiveOperationInputSlotId("active-edge");
+      setGeometryProbeSelectionMode("edge");
+      return;
+    }
+    if (!geometryPlaneLinePointPoint) {
+      setGeometryPlaneLinePointActiveInput("point");
+      setGeometryActiveOperationInputSlotId("active-vertex");
+      setGeometryProbeSelectionMode("vertex");
+    }
+  }, [geometryPlaneConstructionMethod, geometryPlaneLinePointLine, geometryPlaneLinePointPoint]);
+  useEffect(() => {
+    if (geometryPlaneConstructionMethod !== "perpendicular") return;
+    if (!geometrySourceFaceOperationTarget) {
+      setGeometryActiveOperationInputSlotId("source-face");
+      setGeometryProbeSelectionMode("face");
+      return;
+    }
+    if (!geometryEdgeOperationTarget) {
+      setGeometryActiveOperationInputSlotId("active-edge");
+      setGeometryProbeSelectionMode("edge");
+    }
+  }, [geometryEdgeOperationTarget, geometryPlaneConstructionMethod, geometrySourceFaceOperationTarget]);
+  const geometryPlaneThreePointAnalysis = useMemo(() => {
+    const a = geometryPlanePointSlots.a;
+    const b = geometryPlanePointSlots.b;
+    const c = geometryPlanePointSlots.c;
+    const points = [a, b, c].filter((point): point is GeometryPlanePointRef => !!point);
+    const duplicate = points.some((point, index) =>
+      points.some(
+        (other, otherIndex) =>
+          otherIndex > index && other.objectId === point.objectId && other.vertexIndex === point.vertexIndex
+      )
+    );
+    if (!a || !b || !c) {
+      return { ready: false, duplicate, collinear: false, normal: null as GeometryProbePoint | null, center: null as GeometryProbePoint | null };
+    }
+    const normalRaw = geometryCross(geometrySub(b.point, a.point), geometrySub(c.point, a.point));
+    const normalLength = geometryVecLen(normalRaw);
+    const scale = Math.max(geometryDistance(a.point, b.point), geometryDistance(b.point, c.point), geometryDistance(c.point, a.point), 1e-9);
+    const collinear = !Number.isFinite(normalLength) || normalLength <= scale * scale * 1e-6;
+    const normal = collinear ? null : geometryNormalizeVec(normalRaw);
+    return {
+      ready: !duplicate && !collinear && !!normal,
+      duplicate,
+      collinear,
+      normal,
+      center: {
+        x: (a.point.x + b.point.x + c.point.x) / 3,
+        y: (a.point.y + b.point.y + c.point.y) / 3,
+        z: (a.point.z + b.point.z + c.point.z) / 3,
+      },
+    };
+  }, [geometryPlanePointSlots]);
+  const geometryPlaneLinePointAnalysis = useMemo(() => {
+    const line = geometryPlaneLinePointLine;
+    const point = geometryPlaneLinePointPoint;
+    if (!line || !point) {
+      return {
+        ready: false,
+        line,
+        point,
+        pointOnLine: false,
+        distance: null as number | null,
+        closestPoint: null as GeometryProbePoint | null,
+        normal: null as GeometryProbePoint | null,
+      };
+    }
+    const direction = geometryNormalizeVec(line.direction);
+    if (!direction) {
+      return { ready: false, line, point, pointOnLine: false, distance: null, closestPoint: null, normal: null };
+    }
+    const fromLine = geometrySub(point.point, line.origin);
+    const along = geometryDot(fromLine, direction);
+    const closestPoint = geometryAdd(line.origin, geometryScale(direction, along));
+    const distance = geometryDistance(closestPoint, point.point);
+    const normal = geometryNormalizeVec(geometryCross(direction, fromLine));
+    const pointOnLine = !Number.isFinite(distance) || distance <= 1e-5 || !normal;
+    return {
+      ready: !pointOnLine && !!normal,
+      line,
+      point,
+      pointOnLine,
+      distance,
+      closestPoint,
+      normal,
+    };
+  }, [geometryPlaneLinePointLine, geometryPlaneLinePointPoint]);
+  const geometryPlaneMethodStatus = useMemo((): {
+    ready: boolean;
+    planned: boolean;
+    message: string;
+    createLabel: string;
+    inputs: Array<{ label: string; value: string; ok: boolean }>;
+  } => {
+    const faceTarget = geometrySourceFaceOperationTarget;
+    const linePair = geometryLinePairAnalysis;
+    const edgeTarget = geometryEdgeOperationTarget;
+    const planePointInput = (slot: GeometryPlanePointSlot) => {
+      const ref = geometryPlanePointSlots[slot];
+      return {
+        label: GEOMETRY_PLANE_POINT_SLOT_LABELS[slot],
+        value: ref ? `${ref.objectId} vertex ${ref.vertexIndex}` : "Pick vertex",
+        ok: !!ref,
+      };
+    };
+    switch (geometryPlaneConstructionMethod) {
+      case "through-3-points":
+        return {
+          ready: geometryPlaneThreePointAnalysis.ready,
+          planned: false,
+          createLabel: "Create Plane",
+          message: geometryPlaneThreePointAnalysis.ready
+            ? "Ready: three distinct non-collinear vertices define one plane."
+            : geometryPlaneThreePointAnalysis.duplicate
+              ? "Choose three distinct vertices."
+              : geometryPlaneThreePointAnalysis.collinear
+                ? "Selected points are collinear; choose another point."
+                : `Next pick: ${GEOMETRY_PLANE_POINT_SLOT_LABELS[geometryPlanePointActiveSlot]}.`,
+          inputs: GEOMETRY_PLANE_POINT_SLOT_ORDER.map(planePointInput),
+        };
+      case "through-line-point":
+        return {
+          ready: geometryPlaneLinePointAnalysis.ready,
+          planned: false,
+          createLabel: "Create Plane",
+          message: !geometryPlaneLinePointAnalysis.line
+            ? "Pick an edge or choose a derived line."
+            : !geometryPlaneLinePointAnalysis.point
+              ? "Line set. Pick a point."
+              : geometryPlaneLinePointAnalysis.pointOnLine
+                ? "Point lies on the line; choose a point away from it."
+                : "Ready: the line and point define one plane.",
+          inputs: [
+            {
+              label: "Line",
+              value: geometryPlaneLinePointAnalysis.line?.name ?? "Need edge or derived line",
+              ok: !!geometryPlaneLinePointAnalysis.line,
+            },
+            {
+              label: "Point",
+              value: geometryPlaneLinePointAnalysis.point
+                ? `${geometryPlaneLinePointAnalysis.point.objectId} vertex ${geometryPlaneLinePointAnalysis.point.vertexIndex}`
+                : "Pick vertex",
+              ok: !!geometryPlaneLinePointAnalysis.point,
+            },
+            {
+              label: "Distance",
+              value: geometryPlaneLinePointAnalysis.distance == null ? "-" : fmt(geometryPlaneLinePointAnalysis.distance),
+              ok: geometryPlaneLinePointAnalysis.ready,
+            },
+          ],
+        };
+      case "through-2-lines":
+        return {
+          ready: !!linePair?.canCreatePlane,
+          planned: false,
+          createLabel: "Create Plane",
+          message: linePair
+            ? linePair.canCreatePlane
+              ? `${linePair.relation} lines define one plane.`
+              : linePair.skew
+                ? "Skew lines are not coplanar; use Common Perpendicular instead."
+                : linePair.coincident
+                  ? "Coincident lines require another constraint."
+                  : "Choose intersecting or parallel non-coincident lines."
+            : "Choose two derived lines.",
+          inputs: [
+            { label: "Line A", value: linePair?.lineA.name ?? "Need derived line", ok: !!linePair?.lineA },
+            { label: "Line B", value: linePair?.lineB.name ?? "Need derived line", ok: !!linePair?.lineB },
+            { label: "Detected relation", value: linePair?.relation ?? "-", ok: !!linePair?.canCreatePlane },
+          ],
+        };
+      case "parallel":
+        return {
+          ready: !!faceTarget,
+          planned: false,
+          createLabel: "Create Parallel Plane",
+          message: faceTarget ? "Ready: selected face plane will be copied as a parallel plane." : "Pick a reference face.",
+          inputs: [
+            { label: "Reference plane", value: faceTarget ? `Face ${faceTarget.faceIndex ?? "-"}` : "Need face pick", ok: !!faceTarget },
+            { label: "Placement", value: "Parallel face plane", ok: !!faceTarget },
+          ],
+        };
+      case "perpendicular":
+        return {
+          ready: !!faceTarget && !!edgeTarget,
+          planned: false,
+          createLabel: "Create Perpendicular Plane",
+          message: faceTarget && edgeTarget
+            ? "Ready: selected face and edge define the perpendicular plane."
+            : faceTarget
+              ? "Reference plane set. Pick an edge for the perpendicular plane."
+              : "Pick a source face first.",
+          inputs: [
+            { label: "Reference plane", value: faceTarget ? `Face ${faceTarget.faceIndex ?? "-"}` : "Need face pick", ok: !!faceTarget },
+            { label: "Reference line", value: edgeTarget ? `Edge on ${edgeTarget.objectId}` : "Need edge pick", ok: !!edgeTarget },
+          ],
+        };
+      case "offset":
+        return {
+          ready: !!faceTarget,
+          planned: false,
+          createLabel: "Create Offset Plane",
+          message: faceTarget ? "Ready: selected face will be offset by the distance below." : "Pick a reference face.",
+          inputs: [
+            { label: "Reference plane", value: faceTarget ? `Face ${faceTarget.faceIndex ?? "-"}` : "Need face pick", ok: !!faceTarget },
+            { label: "Offset", value: fmt(geometryConstructOffsetDistance), ok: Number.isFinite(geometryConstructOffsetDistance) },
+          ],
+        };
+      case "mid-plane":
+        return {
+          ready: !!linePair?.canCreateMidPlane,
+          planned: false,
+          createLabel: "Create Mid Plane",
+          message: linePair
+            ? linePair.canCreateMidPlane
+              ? `Ready: parallel lines are ${fmt(linePair.distance)} apart.`
+              : "Mid plane requires parallel non-coincident lines."
+            : "Choose two derived lines.",
+          inputs: [
+            { label: "Line A", value: linePair?.lineA.name ?? "Need derived line", ok: !!linePair?.lineA },
+            { label: "Line B", value: linePair?.lineB.name ?? "Need derived line", ok: !!linePair?.lineB },
+            { label: "Result offset", value: linePair ? fmt(linePair.distance * 0.5) : "-", ok: !!linePair?.canCreateMidPlane },
+          ],
+        };
+      case "tangent-plane":
+        return {
+          ready: !!faceTarget,
+          planned: false,
+          createLabel: "Create Tangent Plane",
+          message: faceTarget ? "Ready: face pick supplies the point and normal." : "Pick a face or surface point.",
+          inputs: [
+            { label: "Surface", value: faceTarget ? faceTarget.objectId : "Need face pick", ok: !!faceTarget },
+            { label: "Point source", value: faceTarget ? `Face ${faceTarget.faceIndex ?? "-"} pick` : "Surface pick", ok: !!faceTarget },
+          ],
+        };
+      case "symmetry-plane":
+        return {
+          ready: !!geometrySelectedObjectId,
+          planned: false,
+          createLabel: "Create Symmetry Plane",
+          message: geometrySelectedObjectId ? "Ready: selected object can generate a symmetry-plane preview." : "Select an object.",
+          inputs: [
+            { label: "Object", value: geometrySelectedObjectId ?? "Need object selection", ok: !!geometrySelectedObjectId },
+            { label: "Method", value: "Automatic", ok: !!geometrySelectedObjectId },
+          ],
+        };
+      case "principal-plane":
+        return {
+          ready: false,
+          planned: true,
+          createLabel: "Create Principal Plane",
+          message: "Planned: principal axes exist, but PCA plane output is not wired yet.",
+          inputs: [
+            { label: "Object", value: geometrySelectedObjectId ?? "Need object selection", ok: !!geometrySelectedObjectId },
+            { label: "Output", value: "XY / YZ / XZ / PCA plane", ok: false },
+          ],
+        };
+      case "best-fit-plane":
+        return {
+          ready: false,
+          planned: true,
+          createLabel: "Create Best Fit Plane",
+          message: "Planned: best-fit plane needs a vertex/object selection set and residual reporting.",
+          inputs: [
+            { label: "Points", value: "Pending selection set", ok: false },
+            { label: "Algorithm", value: "Least squares / PCA", ok: false },
+          ],
+        };
+      default:
+        return { ready: false, planned: true, createLabel: "Create Plane", message: "Method unavailable.", inputs: [] };
+    }
+  }, [
+    geometryConstructOffsetDistance,
+    geometryEdgeOperationTarget,
+    geometryLinePairAnalysis,
+    geometryPlaneConstructionMethod,
+    geometryPlaneLinePointAnalysis,
+    geometryPlanePointActiveSlot,
+    geometryPlanePointSlots,
+    geometryPlaneThreePointAnalysis,
+    geometrySelectedObjectId,
+    geometrySourceFaceOperationTarget,
+  ]);
+  const clearGeometryPlanePointSlots = useCallback(() => {
+    setGeometryPlanePointSlots({ a: null, b: null, c: null });
+    setGeometryPlanePointActiveSlot("a");
+    setGeometryProbeSelectionMode("vertex");
+    setGeometryCreateActionStatus("Plane point inputs cleared. Next pick: Point A.");
+  }, []);
+  const clearGeometryPlaneLinePointInputs = useCallback(() => {
+    setGeometryPlaneLinePointSourceId(null);
+    setGeometryPlaneLinePointPoint(null);
+    setGeometryPlaneLinePointActiveInput("line");
+    setGeometryActiveOperationInputSlotId("active-edge");
+    setGeometryProbeSelectionMode("edge");
+    setGeometryCreateActionStatus("Line + point inputs cleared. Pick an edge or choose a line.");
+  }, []);
+  const handleCreatePlaneThroughThreePickedPoints = useCallback(() => {
+    const a = geometryPlanePointSlots.a;
+    const b = geometryPlanePointSlots.b;
+    const c = geometryPlanePointSlots.c;
+    if (!a || !b || !c) {
+      setGeometryCreateActionStatus(`Pick ${GEOMETRY_PLANE_POINT_SLOT_LABELS[geometryPlanePointActiveSlot]} before creating the plane.`);
+      return;
+    }
+    if (!geometryPlaneThreePointAnalysis.ready || !geometryPlaneThreePointAnalysis.normal) {
+      setGeometryCreateActionStatus(geometryPlaneMethodStatus.message);
+      return;
+    }
+    const frozenSnapshot = buildGeometryPlaneFromPointsFrozenSnapshot(a, b, c, "Plane Through 3 Points");
+    if (!frozenSnapshot) {
+      setGeometryCreateActionStatus("Selected points are collinear; choose another point.");
+      return;
+    }
+    const resolved = resolveGeometrySceneMeshById(a.objectId);
+    appendDerivedConstruction({
+      type: "face-plane-through-three-vertices",
+      name: "Plane Through 3 Points",
+      sourceKind: "vertex",
+      sourceObjectId: a.objectId,
+      sourceTopologySignature: resolved ? geometryMeshTopologySignature(resolved.mesh) : null,
+      sourceVertexIndex: a.vertexIndex,
+      sourcePoint: { ...a.point },
+      sourceVertexSignature: { point: { ...a.point } },
+      secondaryVertexRef: { objectId: b.objectId, vertexIndex: b.vertexIndex, point: { ...b.point } },
+      tertiaryVertexRef: { objectId: c.objectId, vertexIndex: c.vertexIndex, point: { ...c.point } },
+      sourceNormal: { ...geometryPlaneThreePointAnalysis.normal },
+      frozenSnapshot,
+    });
+    setGeometryPlanePointSlots({ a: null, b: null, c: null });
+    setGeometryPlanePointActiveSlot("a");
+    setGeometryProbeSelectionMode("vertex");
+    setGeometryCreateActionStatus("Plane through 3 points created. Next pick: Point A.");
+  }, [
+    appendDerivedConstruction,
+    buildGeometryPlaneFromPointsFrozenSnapshot,
+    geometryPlaneMethodStatus.message,
+    geometryPlanePointActiveSlot,
+    geometryPlanePointSlots,
+    geometryPlaneThreePointAnalysis.normal,
+    geometryPlaneThreePointAnalysis.ready,
+    resolveGeometrySceneMeshById,
+  ]);
+  const handleCreatePlaneThroughLinePoint = useCallback(() => {
+    const line = geometryPlaneLinePointAnalysis.line;
+    const point = geometryPlaneLinePointAnalysis.point;
+    if (!line) {
+      setGeometryCreateActionStatus("Pick an edge or choose a derived line before creating the plane.");
+      return;
+    }
+    if (!point) {
+      setGeometryCreateActionStatus("Pick a point before creating the plane.");
+      return;
+    }
+    if (!geometryPlaneLinePointAnalysis.ready || !geometryPlaneLinePointAnalysis.normal) {
+      setGeometryCreateActionStatus(geometryPlaneMethodStatus.message);
+      return;
+    }
+    const frozenSnapshot = buildGeometryPlaneFromLinePointFrozenSnapshot(line, point, "Plane Through Line + Point");
+    if (!frozenSnapshot) {
+      setGeometryCreateActionStatus("The selected point lies on the line; choose a point away from it.");
+      return;
+    }
+    const sourceObjectId = line.sourceObjectId ?? point.objectId;
+    const sourceKind: GeometryDerivedConstructionSourceKind = line.sourceKind === "edge" ? "edge" : "object";
+    appendDerivedConstruction({
+      type: "line-pair-plane-through-lines",
+      name: "Plane Through Line + Point",
+      sourceKind,
+      sourceObjectId,
+      sourceTopologySignature: null,
+      sourceEdgeVertexPair: line.sourceEdgeVertexPair ?? null,
+      sourcePoint: { ...point.point },
+      secondaryVertexRef: { objectId: point.objectId, vertexIndex: point.vertexIndex, point: { ...point.point } },
+      sourceNormal: { ...geometryPlaneLinePointAnalysis.normal },
+      frozenSnapshot,
+    });
+    setGeometryPlaneLinePointPoint(null);
+    setGeometryPlaneLinePointActiveInput("point");
+    setGeometryActiveOperationInputSlotId("active-vertex");
+    setGeometryProbeSelectionMode("vertex");
+    setGeometryCreateActionStatus("Plane through line + point created. Pick another point to reuse the line.");
+  }, [
+    appendDerivedConstruction,
+    buildGeometryPlaneFromLinePointFrozenSnapshot,
+    geometryPlaneLinePointAnalysis,
+    geometryPlaneMethodStatus.message,
+  ]);
+  const handleCreateGeometryPlaneConstruction = useCallback(() => {
+    if (!geometryPlaneMethodStatus.ready) {
+      setGeometryCreateActionStatus(geometryPlaneMethodStatus.message);
+      return;
+    }
+    switch (geometryPlaneConstructionMethod) {
+      case "through-3-points":
+        handleCreatePlaneThroughThreePickedPoints();
+        return;
+      case "through-line-point":
+        handleCreatePlaneThroughLinePoint();
+        return;
+      case "through-2-lines":
+        handleCreateLinePairDerivedConstruction("line-pair-plane-through-lines");
+        return;
+      case "parallel":
+        handleCreateDerivedFromFace("face-parallel-face-plane");
+        return;
+      case "perpendicular":
+        handleCreateDerivedFromFace("face-plane-normal-to-selected-edge");
+        return;
+      case "offset":
+        handleCreateDerivedFromFace("face-offset-plane");
+        return;
+      case "mid-plane":
+        handleCreateLinePairDerivedConstruction("line-pair-mid-plane");
+        return;
+      case "tangent-plane":
+        handleCreateDerivedFromFace("face-tangent-plane-preview");
+        return;
+      case "symmetry-plane":
+        handleCreateDerivedFromObject("object-symmetry-plane-preview");
+        return;
+      default:
+        setGeometryCreateActionStatus(geometryPlaneMethodStatus.message);
+    }
+  }, [
+    geometryPlaneConstructionMethod,
+    geometryPlaneMethodStatus,
+    handleCreatePlaneThroughLinePoint,
+    handleCreatePlaneThroughThreePickedPoints,
+    handleCreateDerivedFromFace,
+    handleCreateDerivedFromObject,
+    handleCreateLinePairDerivedConstruction,
+  ]);
   const handleRenameSelectedConstructionOperation = useCallback(() => {
     const selectedMath = geometrySelectedMathConstructionId
       ? geometryMathConstructions.find((entry) => entry.id === geometrySelectedMathConstructionId) ?? null
@@ -22147,13 +22969,13 @@ const App: React.FC = () => {
     const saved = localStorage.getItem(WORKBOOK_PANEL_KEY);
     return saved === "workbook" ? "workbook" : "inspector";
   });
-  const [geometryRightPanelTab, setGeometryRightPanelTab] = useState<GeometryRightPanelTab>("inspector");
+  const [geometryRightPanelTab, setGeometryRightPanelTab] = useState<GeometryRightPanelTab>("selection");
   const [geometryInspectorPanelTab, setGeometryInspectorPanelTab] = useState<GeometryInspectorPanelTab>("probe");
   const geometryTransformGizmoActive =
     geometryMode === "procedural" &&
     geometryProceduralPanelTab !== "demonstrations" &&
     geometryGizmoEnabled &&
-    (!(geometryRightPanelTab === "inspector" && geometryInspectorPanelTab === "probe") ||
+    (geometryRightPanelTab !== "selection" ||
       geometryProbeSelectionMode === "object");
   const [analysisFocusedSection, setAnalysisFocusedSection] = useState<AnalysisFocusedSection>("vector-calculus");
   const [showRightPanel, setShowRightPanel] = useState(true);
@@ -29190,7 +30012,7 @@ const App: React.FC = () => {
     if (mode !== "geometry" || geometryMode !== "procedural") return;
     if (displayMode !== "inspect") return;
     if (!showRightPanel) setShowRightPanel(true);
-    if (geometryRightPanelTab !== "inspector") setGeometryRightPanelTab("inspector");
+    if (geometryRightPanelTab !== "selection") setGeometryRightPanelTab("selection");
     if (geometryInspectorPanelTab !== "probe" && geometryInspectorPanelTab !== "dependencies") {
       setGeometryInspectorPanelTab("probe");
     }
@@ -35587,6 +36409,54 @@ case "mobius":
         selectedObjectId: geometrySelectedObjectId,
         scratchScene: geometryScratchSceneSeed,
         workbookScenes: geometryWorkbookSceneSeeds,
+        derivedConstructions: geometryDerivedConstructions.slice(0, 80).map((entry) => ({
+          ...entry,
+          sourcePoint: entry.sourcePoint ? { ...entry.sourcePoint } : entry.sourcePoint,
+          sourceNormal: entry.sourceNormal ? { ...entry.sourceNormal } : entry.sourceNormal,
+          sourceVertexSignature: entry.sourceVertexSignature
+            ? { point: { ...entry.sourceVertexSignature.point } }
+            : entry.sourceVertexSignature,
+          secondaryVertexRef: entry.secondaryVertexRef
+            ? {
+                objectId: entry.secondaryVertexRef.objectId,
+                vertexIndex: entry.secondaryVertexRef.vertexIndex,
+                point: { ...entry.secondaryVertexRef.point },
+              }
+            : entry.secondaryVertexRef,
+          tertiaryVertexRef: entry.tertiaryVertexRef
+            ? {
+                objectId: entry.tertiaryVertexRef.objectId,
+                vertexIndex: entry.tertiaryVertexRef.vertexIndex,
+                point: { ...entry.tertiaryVertexRef.point },
+              }
+            : entry.tertiaryVertexRef,
+          selectedEdgeRef: entry.selectedEdgeRef
+            ? {
+                objectId: entry.selectedEdgeRef.objectId,
+                edgeVertexPair: [...entry.selectedEdgeRef.edgeVertexPair] as [number, number],
+                a: { ...entry.selectedEdgeRef.a },
+                b: { ...entry.selectedEdgeRef.b },
+              }
+            : entry.selectedEdgeRef,
+          frozenSnapshot: entry.frozenSnapshot
+            ? {
+                origin: entry.frozenSnapshot.origin ? { ...entry.frozenSnapshot.origin } : null,
+                direction: entry.frozenSnapshot.direction ? { ...entry.frozenSnapshot.direction } : null,
+                groups: entry.frozenSnapshot.groups.map((group) => ({
+                  ...group,
+                  lines: group.lines.map((line) => line.map((point) => ({ ...point }))),
+                })),
+                pointSets: entry.frozenSnapshot.pointSets.map((set) => ({
+                  ...set,
+                  points: set.points.map((point) => ({ ...point })),
+                })),
+                labelSets: entry.frozenSnapshot.labelSets.map((set) => ({
+                  ...set,
+                  labels: set.labels.map((label) => ({ ...label, position: { ...label.position } })),
+                })),
+              }
+            : entry.frozenSnapshot,
+        })),
       },
       datasets: {
         currentDatasetRef,
@@ -35695,6 +36565,7 @@ case "mobius":
       geometrySelectedObjectId,
       geometryScratchSceneSeed,
       geometryWorkbookSceneSeeds,
+      geometryDerivedConstructions,
       currentDatasetRef,
       showChartGrid,
       chartGridDensity,
@@ -35900,6 +36771,11 @@ case "mobius":
       }
       setGeometryScratchSceneSeed(normalizeConstructionLabSeed((geometry as any).scratchScene));
       setGeometryWorkbookSceneSeeds(normalizeConstructionLabSeedRecord((geometry as any).workbookScenes));
+      setGeometryDerivedConstructions(
+        normalizeGeometryDerivedConstructionsForRestore((geometry as any).derivedConstructions)
+      );
+      setGeometrySelectedDerivedConstructionId(null);
+      setGeometryConstructionHistory([]);
     }
 
     const datasetItems = workspace.datasets?.items ?? [];
@@ -49980,7 +50856,7 @@ case "mobius":
                     <div>K = (eg - f²)/(EG - F²), H = (Eg - 2Ff + Ge)/(2(EG - F²))</div>
                   </div>
                   <div style={{ fontSize: 11, color: "#334155" }}>
-                    Live picking is in right panel: <strong>Inspector &gt; Pick selection</strong>.
+                    Live picking is in right panel: <strong>Inspector &gt; Selection</strong>.
                   </div>
                 </div>
               )}
@@ -52789,7 +53665,7 @@ case "mobius":
                       }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 6 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700 }}>Pick selection</div>
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Selection</div>
                         <div style={{ fontSize: 11, color: "#475569" }}>u = {fmt(clamp(curveProbeU, 0, 1))}</div>
                       </div>
                       <input
@@ -55013,7 +55889,7 @@ case "mobius":
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                             <div style={{ fontSize: 11, fontWeight: 800 }}>Create by type</div>
                             <span style={{ fontSize: 10, color: "#64748b" }}>
-                              A/B/P use object picks; face/edge/vertex/object items use Pick selection or Scene selection.
+                              A/B/P use object picks; face/edge/vertex/object items use Selection or Scene.
                             </span>
                           </div>
                           <div style={{ display: "grid", gap: 8 }}>
@@ -55084,25 +55960,175 @@ case "mobius":
                             </div>
                             <div style={{ display: "grid", gap: 5 }}>
                               <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Planes</div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" onClick={() => handleCreateDerivedFromFace("face-tangent-plane-preview")}>Tangent plane</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromFace("face-plane-through-centroid")}>Plane through centroid</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromFace("face-plane-through-three-vertices")}>Plane through 3 vertices</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromFace("face-plane-normal-to-selected-edge")}>Plane normal to edge</button>
-                                <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                  Offset
-                                  <input
-                                    type="number"
-                                    min={0.01}
-                                    step={0.05}
-                                    value={geometryConstructOffsetDistance}
-                                    onChange={(e) => setGeometryConstructOffsetDistance(Math.max(0.01, Number(e.target.value) || 0.5))}
-                                    style={{ width: 66 }}
-                                  />
-                                </label>
-                                <button type="button" onClick={() => handleCreateDerivedFromFace("face-offset-plane")}>Offset plane</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromFace("face-parallel-face-plane")}>Parallel face plane</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromObject("object-symmetry-plane-preview")}>Symmetry plane</button>
+                              <div
+                                style={{
+                                  border: "1px solid #dbeafe",
+                                  borderRadius: 8,
+                                  background: "#f8fbff",
+                                  padding: "8px 9px",
+                                  display: "grid",
+                                  gap: 8,
+                                  fontSize: 10.5,
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                                  <strong>Plane method</strong>
+                                  <span style={{ color: "#64748b" }}>
+                                    Pick mode: {geometryProbeSelectionMode}
+                                  </span>
+                                </div>
+                                {GEOMETRY_PLANE_CONSTRUCTION_METHOD_GROUPS.map((group) => (
+                                  <div key={`geometry-plane-method-group-${group.title}`} style={{ display: "grid", gap: 4 }}>
+                                    <div style={{ fontSize: 10, fontWeight: 700, color: "#475569" }}>{group.title}</div>
+                                    <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                      {group.methods.map((method) => {
+                                        const selected = geometryPlaneConstructionMethod === method;
+                                        return (
+                                          <button
+                                            key={`geometry-plane-method-${method}`}
+                                            type="button"
+                                            onClick={() => selectGeometryPlaneConstructionMethod(method)}
+                                            aria-pressed={selected}
+                                            style={{
+                                              ...pill(selected),
+                                              fontSize: 10.5,
+                                              padding: "3px 8px",
+                                              borderColor: selected ? "#0ea5e9" : undefined,
+                                              background: selected ? "#e0f2fe" : undefined,
+                                            }}
+                                          >
+                                            {GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS[method]}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ))}
+                                <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 7, display: "grid", gap: 6 }}>
+                                  {geometryPlaneConstructionMethod === "through-3-points" && (
+                                    <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                                      <span style={{ color: "#475569" }}>Next pick</span>
+                                      {GEOMETRY_PLANE_POINT_SLOT_ORDER.map((slot) => {
+                                        const active = geometryPlanePointActiveSlot === slot;
+                                        return (
+                                          <button
+                                            key={`geometry-plane-point-slot-${slot}`}
+                                            type="button"
+                                            onClick={() => {
+                                              setGeometryPlanePointActiveSlot(slot);
+                                              setGeometryProbeSelectionMode("vertex");
+                                              setGeometryCreateActionStatus(`Next plane pick: ${GEOMETRY_PLANE_POINT_SLOT_LABELS[slot]}.`);
+                                            }}
+                                            aria-pressed={active}
+                                            style={{ ...pill(active), fontSize: 10.5, padding: "2px 8px" }}
+                                          >
+                                            {GEOMETRY_PLANE_POINT_SLOT_LABELS[slot]}
+                                          </button>
+                                        );
+                                      })}
+                                      <button type="button" onClick={clearGeometryPlanePointSlots} style={{ fontSize: 10.5, padding: "2px 8px" }}>
+                                        Clear points
+                                      </button>
+                                    </div>
+                                  )}
+                                  {geometryPlaneConstructionMethod === "through-line-point" && (
+                                    <div style={{ display: "grid", gap: 6 }}>
+                                      <label style={{ display: "grid", gap: 3 }}>
+                                        Line source
+                                        <select
+                                          value={geometryEffectivePlaneLinePointSourceId ?? ""}
+                                          onChange={(e) => {
+                                            setGeometryPlaneLinePointSourceId(e.target.value || null);
+                                            setGeometryPlaneLinePointActiveInput("point");
+                                            setGeometryActiveOperationInputSlotId("active-vertex");
+                                            setGeometryProbeSelectionMode("vertex");
+                                            setGeometryCreateActionStatus("Line set. Pick a point.");
+                                          }}
+                                          disabled={!geometryPlaneLinePointLineOptions.length}
+                                          style={{ minWidth: 0 }}
+                                        >
+                                          <option value="">Pick edge or create a line</option>
+                                          {geometryPlaneLinePointLineOptions.map((entry) => (
+                                            <option key={`geometry-plane-line-point-source-${entry.id}`} value={entry.id}>
+                                              {entry.name}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                                        <span style={{ color: "#475569" }}>Input</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setGeometryPlaneLinePointActiveInput("line");
+                                            setGeometryActiveOperationInputSlotId("active-edge");
+                                            setGeometryProbeSelectionMode("edge");
+                                            setGeometryCreateActionStatus("Pick an edge for the plane line.");
+                                          }}
+                                          aria-pressed={geometryPlaneLinePointActiveInput === "line"}
+                                          style={{ ...pill(geometryPlaneLinePointActiveInput === "line"), fontSize: 10.5, padding: "2px 8px" }}
+                                        >
+                                          Pick edge
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setGeometryPlaneLinePointActiveInput("point");
+                                            setGeometryActiveOperationInputSlotId("active-vertex");
+                                            setGeometryProbeSelectionMode("vertex");
+                                            setGeometryCreateActionStatus("Pick a point for the plane.");
+                                          }}
+                                          disabled={!geometryPlaneLinePointLine}
+                                          aria-pressed={geometryPlaneLinePointActiveInput === "point"}
+                                          style={{ ...pill(geometryPlaneLinePointActiveInput === "point"), fontSize: 10.5, padding: "2px 8px" }}
+                                        >
+                                          Pick point
+                                        </button>
+                                        <button type="button" onClick={clearGeometryPlaneLinePointInputs} style={{ fontSize: 10.5, padding: "2px 8px" }}>
+                                          Clear input
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                  <div style={{ display: "grid", gridTemplateColumns: "96px 1fr auto", gap: "4px 8px", alignItems: "center" }}>
+                                    {geometryPlaneMethodStatus.inputs.map((input) => (
+                                      <React.Fragment key={`geometry-plane-input-${geometryPlaneConstructionMethod}-${input.label}`}>
+                                        <span style={{ color: "#475569" }}>{input.label}</span>
+                                        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                          {input.value}
+                                        </span>
+                                        <span style={{ color: input.ok ? "#15803d" : "#b45309", fontWeight: 700 }}>
+                                          {input.ok ? "OK" : "Need"}
+                                        </span>
+                                      </React.Fragment>
+                                    ))}
+                                  </div>
+                                  {geometryPlaneConstructionMethod === "offset" && (
+                                    <label style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                      Offset
+                                      <input
+                                        type="number"
+                                        min={0.01}
+                                        step={0.05}
+                                        value={geometryConstructOffsetDistance}
+                                        onChange={(e) => setGeometryConstructOffsetDistance(Math.max(0.01, Number(e.target.value) || 0.5))}
+                                        style={{ width: 76 }}
+                                      />
+                                    </label>
+                                  )}
+                                  <div style={{ color: geometryPlaneMethodStatus.ready ? "#166534" : geometryPlaneMethodStatus.planned ? "#64748b" : "#92400e" }}>
+                                    {geometryPlaneMethodStatus.message}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={handleCreateGeometryPlaneConstruction}
+                                    disabled={!geometryPlaneMethodStatus.ready}
+                                    title={geometryPlaneMethodStatus.message}
+                                    style={{ justifySelf: "start" }}
+                                  >
+                                    {geometryPlaneMethodStatus.createLabel}
+                                  </button>
+                                </div>
                               </div>
                             </div>
                             <div style={{ display: "grid", gap: 5 }}>
@@ -55439,22 +56465,6 @@ case "mobius":
                                 <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                                   <button
                                     type="button"
-                                    onClick={() => handleCreateLinePairDerivedConstruction("line-pair-plane-through-lines")}
-                                    disabled={!geometryLinePairAnalysis.canCreatePlane}
-                                    title="Create the unique plane containing both lines when they intersect or are parallel."
-                                  >
-                                    Plane through lines
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleCreateLinePairDerivedConstruction("line-pair-mid-plane")}
-                                    disabled={!geometryLinePairAnalysis.canCreateMidPlane}
-                                    title="Create the plane halfway between parallel lines."
-                                  >
-                                    Mid-plane
-                                  </button>
-                                  <button
-                                    type="button"
                                     onClick={() => handleCreateLinePairDerivedConstruction("line-pair-common-perpendicular")}
                                     disabled={!geometryLinePairAnalysis.canCreateCommonPerpendicular}
                                     title="Create the shortest connector between skew lines."
@@ -55475,6 +56485,9 @@ case "mobius":
                                   >
                                     Angle marker
                                   </button>
+                                  <span style={{ color: "#64748b", alignSelf: "center" }}>
+                                    Plane actions are in Create by type {"->"} Planes.
+                                  </span>
                                 </div>
                               </>
                             ) : (
@@ -59624,7 +60637,7 @@ case "mobius":
                                 }}
                               >
                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                                  <strong>Operation inputs</strong>
+                                  <strong>Construction Inputs</strong>
                                   <span style={{ color: "#64748b" }}>
                                     Active: {geometryActiveOperationInput?.label ?? "none"}
                                   </span>
@@ -60061,10 +61074,10 @@ case "mobius":
                         >
                           <div style={{ fontSize: 12, fontWeight: 700 }}>Analysis tools / mesh quality</div>
                           <div style={{ color: "#475467" }}>
-                            Measurement and computation actions live here. See Inspector &gt; Pick selection for live picked entity details.
+                            Measurement and computation actions live here. See Inspector &gt; Selection for live picked entity details.
                           </div>
                           <div style={{ marginTop: 4 }}>
-                            <strong>Selection mode:</strong>
+                            <strong>Pick Mode</strong>
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
                               {([
                                 ["object", "Object"],
@@ -64046,41 +65059,30 @@ case "mobius":
                       borderLeft: isPhoneLandscapeLayout ? "1px solid #d9e2ef" : undefined,
                     }}
                   >
-                    <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-                      {([
-                        ["inspector", "Inspector"],
-                        ["scene", "Scene"],
-                      ] as const).map(([tabId, label]) => (
-                        <button
-                          key={`geometry-right-panel-tab-${tabId}`}
-                          type="button"
-                          onClick={() => setGeometryRightPanelTab(tabId)}
-                          style={pill(geometryRightPanelTab === tabId)}
-                          aria-pressed={geometryRightPanelTab === tabId}
-                        >
-                          {label}
-                        </button>
-                      ))}
+                    <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>Inspector</div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {([
+                          ["selection", "Selection"],
+                          ["scene", "Scene"],
+                          ["dependencies", "Dependencies"],
+                        ] as const).map(([tabId, label]) => (
+                          <button
+                            key={`geometry-right-panel-tab-${tabId}`}
+                            type="button"
+                            onClick={() => {
+                              setGeometryRightPanelTab(tabId);
+                              setGeometryInspectorPanelTab(tabId === "dependencies" ? "dependencies" : "probe");
+                            }}
+                            style={pill(geometryRightPanelTab === tabId)}
+                            aria-pressed={geometryRightPanelTab === tabId}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    {geometryRightPanelTab === "inspector" ? (
-                      <>
-                        <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-                          {([
-                            ["probe", "Pick selection"],
-                            ["dependencies", "Dependencies"],
-                          ] as const).map(([tabId, label]) => (
-                            <button
-                              key={`geometry-inspector-tab-${tabId}`}
-                              type="button"
-                              onClick={() => setGeometryInspectorPanelTab(tabId)}
-                              style={pill(geometryInspectorPanelTab === tabId)}
-                              aria-pressed={geometryInspectorPanelTab === tabId}
-                            >
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                        {geometryInspectorPanelTab === "probe" && (
+                    {geometryRightPanelTab === "selection" ? (
                           <div
                             style={{
                               border: "1px solid #dbe2ea",
@@ -64092,13 +65094,8 @@ case "mobius":
                               fontSize: 11,
                             }}
                           >
-                            <div style={{ fontSize: 12, fontWeight: 700 }}>Pick selection</div>
-                            <div style={{ color: "#475467" }}>
-                              Canonical pick details for the viewport. Set selection mode, then click mesh to inspect
-                              object/face/edge/vertex data.
-                            </div>
                             <div>
-                              <strong>Selection mode:</strong>
+                              <strong>Pick Mode</strong>
                               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
                                 {([
                                   ["object", "Object"],
@@ -64132,7 +65129,9 @@ case "mobius":
                             </div>
                             {geometrySelectedSceneMeshInfo ? (
                               <div style={{ display: "grid", gap: 4 }}>
-                                <div><strong>Selected:</strong> {geometrySelectedSceneObject?.name ?? "n/a"}</div>
+                                <div style={{ fontWeight: 700 }}>Current Selection</div>
+                                <div><strong>Object:</strong> {geometrySelectedSceneObject?.name ?? "n/a"}</div>
+                                <div><strong>Entity:</strong> {formatGeometryPickEntity(geometrySelectedPick)}</div>
                                 <div>
                                   <strong>Vertices/Faces:</strong> {geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} /{" "}
                                   {geometrySelectedSceneMeshInfo.triCount.toLocaleString()}
@@ -64156,7 +65155,7 @@ case "mobius":
                                 }}
                               >
                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                                  <strong>Action ribbon</strong>
+                                  <strong>Actions</strong>
                                   <span style={{ color: "#64748b", fontSize: 10.5 }}>
                                     {(geometrySelectedPick?.kind ?? "object").replace(/^\w/, (c) => c.toUpperCase())}
                                   </span>
@@ -64207,7 +65206,7 @@ case "mobius":
                             )}
                             <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
                               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                                <div style={{ fontWeight: 700 }}>Operation inputs</div>
+                                <div style={{ fontWeight: 700 }}>Construction Inputs</div>
                                 <div style={{ color: "#64748b" }}>{geometryActiveOperationInput?.label ?? "none"} active</div>
                               </div>
                               {geometryOperationInputs.map((slot) => (
@@ -64242,7 +65241,7 @@ case "mobius":
                               ))}
                             </div>
                             <div data-testid="geometry-pick-hover" style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
-                              <div style={{ fontWeight: 700 }}>Hover preview</div>
+                              <div style={{ fontWeight: 700 }}>Hover</div>
                               <div style={{ display: "grid", gridTemplateColumns: "104px 1fr", gap: "4px 8px" }}>
                                 <div style={{ color: "#556" }}>Entity</div>
                                 <div>{formatGeometryPickEntity(geometryHoverPick)}</div>
@@ -64252,7 +65251,7 @@ case "mobius":
                             </div>
 
                             <div data-testid="geometry-pick-committed" style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
-                              <div style={{ fontWeight: 700 }}>Committed selection</div>
+                              <div style={{ fontWeight: 700 }}>Properties</div>
                               <div style={{ display: "grid", gridTemplateColumns: "104px 1fr", gap: "4px 8px" }}>
                                 <div style={{ color: "#556" }}>Entity</div>
                                 <div data-testid="geometry-pick-committed-entity">{formatGeometryPickEntity(geometrySelectedPick)}</div>
@@ -64381,7 +65380,7 @@ case "mobius":
                                                   gap: 5,
                                                 }}
                                               >
-                                                <strong>Selected Edge</strong>
+                                                <strong>Geometry</strong>
                                                 <div style={{ display: "grid", gridTemplateColumns: "112px 1fr", gap: "3px 8px" }}>
                                                   <span style={{ color: "#556" }}>Type</span>
                                                   <span>{geometrySelectedEdgeMeaning.type}</span>
@@ -64681,8 +65680,7 @@ case "mobius":
                               </div>
                             )}
                           </div>
-                        )}
-                        {geometryInspectorPanelTab === "dependencies" && (
+                    ) : geometryRightPanelTab === "dependencies" ? (
                           <div
                             style={{
                               border: "1px solid #dbe2ea",
@@ -64694,7 +65692,7 @@ case "mobius":
                               fontSize: 11,
                             }}
                           >
-                            <div style={{ fontSize: 12, fontWeight: 700 }}>Dependencies</div>
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Dependency Graph</div>
                             <ConstructionDependencyTreePanel
                               tree={geometryConstructionDependencyTree}
                               selectedId={geometryInspectorSelectedDependencyNodeId}
@@ -64779,8 +65777,6 @@ case "mobius":
                               )}
                             </div>
                           </div>
-                        )}
-                      </>
                     ) : (
                       <div
                         style={{
