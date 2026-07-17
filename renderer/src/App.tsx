@@ -1013,6 +1013,7 @@ const WORKBOOK_SNAPSHOT_KEY = "math3d.workbook.snapshot.v1";
 const WORKBOOK_SNAPSHOT_HISTORY_KEY = "math3d.workbook.snapshotHistory.v1";
 const GEOMETRY_OBJECT_PRESETS_KEY = "math3d.geometry.objectPresets.v1";
 const GEOMETRY_OPERATION_PRESETS_KEY = "math3d.geometry.operationPresets.v1";
+const GEOMETRY_DERIVED_CONSTRUCTIONS_STORAGE_KEY = "math3d.geometry.derivedConstructions.v1";
 const WORKBOOK_AUTOSAVE_JOURNAL_KEY = "math3d.workbook.autosaveJournal.v1";
 const WORKBOOK_AUTOSAVE_RECOVERY_DISMISSED_AT_KEY = "math3d.workbook.autosaveRecoveryDismissedAt.v1";
 const WORKBOOK_BUNDLE_ASSET_MODE_KEY = "math3d.workbook.bundleAssetMode.v1";
@@ -1616,6 +1617,16 @@ const geometrySub = (a: { x: number; y: number; z: number }, b: { x: number; y: 
   x: a.x - b.x,
   y: a.y - b.y,
   z: a.z - b.z,
+});
+const geometryAdd = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => ({
+  x: a.x + b.x,
+  y: a.y + b.y,
+  z: a.z + b.z,
+});
+const geometryScale = (v: { x: number; y: number; z: number }, scale: number) => ({
+  x: v.x * scale,
+  y: v.y * scale,
+  z: v.z * scale,
 });
 const geometryDistance = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) =>
   Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
@@ -2340,6 +2351,11 @@ type GeometryDerivedConstructionType =
   | "face-offset-plane"
   | "face-parallel-face-plane"
   | "face-plane-through-three-vertices"
+  | "line-pair-intersection-point"
+  | "line-pair-common-perpendicular"
+  | "line-pair-plane-through-lines"
+  | "line-pair-mid-plane"
+  | "line-pair-angle-marker"
   | "object-centroid"
   | "object-bounding-box"
   | "object-principal-axes-preview"
@@ -2595,6 +2611,11 @@ const GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS: Record<GeometryDerivedConstruct
   "face-offset-plane": "Offset Plane",
   "face-parallel-face-plane": "Parallel Face Plane",
   "face-plane-through-three-vertices": "Plane Through Three Vertices",
+  "line-pair-intersection-point": "Intersection Point",
+  "line-pair-common-perpendicular": "Common Perpendicular",
+  "line-pair-plane-through-lines": "Plane Through Lines",
+  "line-pair-mid-plane": "Mid-plane",
+  "line-pair-angle-marker": "Angle Marker",
   "object-centroid": "Centroid",
   "object-bounding-box": "Bounding Box",
   "object-principal-axes-preview": "Principal Axes",
@@ -2626,6 +2647,29 @@ const GEOMETRY_DERIVED_RELATION_TYPE_LABELS: Record<GeometryDerivedRelationType,
   "align-local-axis-to-derived-line": "Align Local Axis To Derived Line",
   "attach-face-to-derived-plane": "Attach Face To Derived Plane",
   "maintain-offset-from-derived-plane": "Maintain Fixed Offset From Plane",
+};
+const readStoredGeometryDerivedConstructions = (): GeometryDerivedConstructionObject[] => {
+  if (typeof window === "undefined") return [];
+  const raw = safeParseArray<GeometryDerivedConstructionObject>(
+    window.localStorage.getItem(GEOMETRY_DERIVED_CONSTRUCTIONS_STORAGE_KEY)
+  );
+  return raw
+    .filter(
+      (entry) =>
+        !!entry &&
+        typeof entry.id === "string" &&
+        typeof entry.type === "string" &&
+        Object.prototype.hasOwnProperty.call(GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS, entry.type) &&
+        typeof entry.sourceKind === "string" &&
+        typeof entry.sourceObjectId === "string"
+    )
+    .slice(0, 80)
+    .map((entry) => ({
+      ...entry,
+      dependent: Boolean(entry.dependent),
+      visible: entry.visible !== false,
+      createdAt: Number.isFinite(entry.createdAt) ? Number(entry.createdAt) : Date.now(),
+    }));
 };
 const resolveGeometryLineExtensionMode = (value: unknown): GeometryLineExtensionMode =>
   value === "ray" || value === "segment" || value === "infinite" ? value : "infinite";
@@ -8440,8 +8484,20 @@ const App: React.FC = () => {
   const [geometryAnnotations, setGeometryAnnotations] = useState<GeometryAnnotationEntry[]>([]);
   const [geometryAnnotationCustomText, setGeometryAnnotationCustomText] = useState("Label");
   const [geometryAnnotationStatus, setGeometryAnnotationStatus] = useState<string | null>(null);
-  const [geometryDerivedConstructions, setGeometryDerivedConstructions] = useState<GeometryDerivedConstructionObject[]>([]);
+  const [geometryDerivedConstructions, setGeometryDerivedConstructions] = useState<GeometryDerivedConstructionObject[]>(
+    readStoredGeometryDerivedConstructions
+  );
   const [geometryConstructionHistory, setGeometryConstructionHistory] = useState<GeometryConstructionHistoryEntry[]>([]);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        GEOMETRY_DERIVED_CONSTRUCTIONS_STORAGE_KEY,
+        JSON.stringify(geometryDerivedConstructions.slice(0, 80))
+      );
+    } catch {
+      // Ignore restore-cache write failures.
+    }
+  }, [geometryDerivedConstructions]);
   const [geometrySelectedDerivedConstructionId, setGeometrySelectedDerivedConstructionId] = useState<string | null>(null);
   const [geometryDerivedRelationConstraints, setGeometryDerivedRelationConstraints] = useState<
     GeometryDerivedRelationConstraint[]
@@ -8485,6 +8541,8 @@ const App: React.FC = () => {
   const [geometryDependencyOverlayUpdateCount, setGeometryDependencyOverlayUpdateCount] = useState(0);
   const [geometryFocusedDependencyNodeId, setGeometryFocusedDependencyNodeId] = useState<string | null>(null);
   const [geometryRelationTargetDerivedId, setGeometryRelationTargetDerivedId] = useState<string | null>(null);
+  const [geometryLinePairSourceAId, setGeometryLinePairSourceAId] = useState<string | null>(null);
+  const [geometryLinePairSourceBId, setGeometryLinePairSourceBId] = useState<string | null>(null);
   const [geometryRelationLocalAxis, setGeometryRelationLocalAxis] = useState<"x" | "y" | "z">("y");
   const [geometryRelationFaceSide, setGeometryRelationFaceSide] = useState<"min" | "max">("max");
   const [geometryRelationPlaneOffset, setGeometryRelationPlaneOffset] = useState(0);
@@ -18494,6 +18552,124 @@ const App: React.FC = () => {
     if (!geometrySelectedDerivedConstructionId) return null;
     return geometryDerivedConstructionOverlays.byId.get(geometrySelectedDerivedConstructionId) ?? null;
   }, [geometryDerivedConstructionOverlays.byId, geometrySelectedDerivedConstructionId]);
+  const geometryLinePairLineOptions = useMemo(
+    () =>
+      geometryDerivedLineConstructionOptions
+        .map((entry) => {
+          const evalEntry = geometryDerivedConstructionOverlays.byId.get(entry.id) ?? null;
+          const direction = evalEntry?.direction ? geometryNormalizeVec(evalEntry.direction) : null;
+          if (!evalEntry || evalEntry.status !== "valid" || !evalEntry.origin || !direction) return null;
+          return {
+            id: entry.id,
+            name: geometryDerivedConstructionName(entry),
+            object: entry,
+            origin: evalEntry.origin,
+            direction,
+          };
+        })
+        .filter((entry): entry is NonNullable<typeof entry> => !!entry),
+    [geometryDerivedConstructionOverlays.byId, geometryDerivedLineConstructionOptions]
+  );
+  const geometryEffectiveLinePairSourceAId = useMemo(() => {
+    const ids = new Set(geometryLinePairLineOptions.map((entry) => entry.id));
+    if (geometryLinePairSourceAId && ids.has(geometryLinePairSourceAId)) return geometryLinePairSourceAId;
+    if (geometrySelectedDerivedConstructionId && ids.has(geometrySelectedDerivedConstructionId)) return geometrySelectedDerivedConstructionId;
+    return geometryLinePairLineOptions[0]?.id ?? null;
+  }, [geometryLinePairLineOptions, geometryLinePairSourceAId, geometrySelectedDerivedConstructionId]);
+  const geometryEffectiveLinePairSourceBId = useMemo(() => {
+    const ids = new Set(geometryLinePairLineOptions.map((entry) => entry.id));
+    if (
+      geometryLinePairSourceBId &&
+      ids.has(geometryLinePairSourceBId) &&
+      geometryLinePairSourceBId !== geometryEffectiveLinePairSourceAId
+    ) {
+      return geometryLinePairSourceBId;
+    }
+    return geometryLinePairLineOptions.find((entry) => entry.id !== geometryEffectiveLinePairSourceAId)?.id ?? null;
+  }, [geometryEffectiveLinePairSourceAId, geometryLinePairLineOptions, geometryLinePairSourceBId]);
+  const geometryLinePairAnalysis = useMemo(() => {
+    const lineA = geometryLinePairLineOptions.find((entry) => entry.id === geometryEffectiveLinePairSourceAId) ?? null;
+    const lineB = geometryLinePairLineOptions.find((entry) => entry.id === geometryEffectiveLinePairSourceBId) ?? null;
+    if (!lineA || !lineB) return null;
+    const p1 = lineA.origin;
+    const d1 = lineA.direction;
+    const p2 = lineB.origin;
+    const d2 = lineB.direction;
+    const w0 = geometrySub(p1, p2);
+    const dot = Math.max(-1, Math.min(1, geometryDot(d1, d2)));
+    const absDot = Math.abs(dot);
+    const denom = Math.max(0, 1 - dot * dot);
+    let t1 = 0;
+    let t2 = 0;
+    let closestA = p1;
+    let closestB = p2;
+    if (denom > 1e-10) {
+      t1 = (dot * geometryDot(d2, w0) - geometryDot(d1, w0)) / denom;
+      t2 = (geometryDot(d2, w0) - dot * geometryDot(d1, w0)) / denom;
+      closestA = geometryAdd(p1, geometryScale(d1, t1));
+      closestB = geometryAdd(p2, geometryScale(d2, t2));
+    } else {
+      t2 = geometryDot(d1, geometrySub(p1, p2));
+      closestA = p1;
+      closestB = geometryAdd(p2, geometryScale(d1, t2));
+    }
+    const connector = geometrySub(closestB, closestA);
+    const distance = geometryDistance(closestA, closestB);
+    const angleDeg = (Math.acos(absDot) * 180) / Math.PI;
+    const parallel = absDot > 0.999;
+    const perpendicular = absDot < 1e-3;
+    const coincident = parallel && distance < 1e-5;
+    const intersects = !parallel && distance < 1e-5;
+    const skew = !parallel && !intersects;
+    const relation = coincident
+      ? "Same supporting line"
+      : parallel
+        ? "Parallel"
+        : intersects && perpendicular
+          ? "Perpendicular"
+          : intersects
+            ? "Intersecting"
+            : skew
+              ? "Skew"
+              : "Unknown";
+    const connectorDirection = geometryNormalizeVec(connector);
+    const containingPlaneNormal = (() => {
+      if (coincident) return null;
+      if (parallel) {
+        return connectorDirection ? geometryNormalizeVec(geometryCross(d1, connectorDirection)) : null;
+      }
+      return geometryNormalizeVec(geometryCross(d1, d2));
+    })();
+    const midPlaneNormal = parallel && !coincident ? connectorDirection : null;
+    const midPoint = {
+      x: (closestA.x + closestB.x) * 0.5,
+      y: (closestA.y + closestB.y) * 0.5,
+      z: (closestA.z + closestB.z) * 0.5,
+    };
+    return {
+      lineA,
+      lineB,
+      relation,
+      parallel,
+      perpendicular,
+      coincident,
+      intersects,
+      skew,
+      distance,
+      angleDeg,
+      closestA,
+      closestB,
+      midPoint,
+      connectorDirection,
+      containingPlaneNormal,
+      midPlaneNormal,
+      canCreatePlane: !coincident && !!containingPlaneNormal && (parallel || intersects),
+      canCreateMidPlane: parallel && !coincident && !!midPlaneNormal,
+      canCreateCommonPerpendicular: skew && !!connectorDirection,
+      canCreateIntersection: intersects,
+      canCreateAngleMarker: !parallel,
+    };
+  }, [geometryEffectiveLinePairSourceAId, geometryEffectiveLinePairSourceBId, geometryLinePairLineOptions]);
   const geometrySelectedDerivedLineGizmoOverlays = useMemo<{
     groups: OverlayPolylineGroup[] | null;
     pointSets: OverlayPointSet[] | null;
@@ -19842,6 +20018,260 @@ const App: React.FC = () => {
       return next;
     },
     [resolveGeometrySceneObjectById]
+  );
+  const handleCreateLinePairDerivedConstruction = useCallback(
+    (
+      type:
+        | "line-pair-intersection-point"
+        | "line-pair-common-perpendicular"
+        | "line-pair-plane-through-lines"
+        | "line-pair-mid-plane"
+        | "line-pair-angle-marker"
+    ) => {
+      const analysis = geometryLinePairAnalysis;
+      if (!analysis) {
+        setGeometryCreateActionStatus("Choose two derived lines first.");
+        return;
+      }
+      if (type === "line-pair-plane-through-lines" && !analysis.canCreatePlane) {
+        setGeometryCreateActionStatus("A unique plane through both lines needs intersecting or parallel non-coincident lines.");
+        return;
+      }
+      if (type === "line-pair-mid-plane" && !analysis.canCreateMidPlane) {
+        setGeometryCreateActionStatus("Mid-plane is available for parallel non-coincident lines.");
+        return;
+      }
+      if (type === "line-pair-common-perpendicular" && !analysis.canCreateCommonPerpendicular) {
+        setGeometryCreateActionStatus("Common perpendicular is available for skew lines.");
+        return;
+      }
+      if (type === "line-pair-intersection-point" && !analysis.canCreateIntersection) {
+        setGeometryCreateActionStatus("Intersection point is available when the lines meet.");
+        return;
+      }
+      if (type === "line-pair-angle-marker" && !analysis.canCreateAngleMarker) {
+        setGeometryCreateActionStatus("Angle marker needs two non-parallel lines.");
+        return;
+      }
+
+      const lineA = analysis.lineA;
+      const lineB = analysis.lineB;
+      const span = Math.max(0.65, analysis.distance * 1.6, 1.1);
+      const supportSegment = (origin: GeometryProbePoint, direction: GeometryProbePoint, length = span * 1.35) =>
+        [
+          geometryAdd(origin, geometryScale(direction, -length)),
+          geometryAdd(origin, geometryScale(direction, length)),
+        ] as [GeometryProbePoint, GeometryProbePoint];
+      const makePlaneLines = (
+        center: GeometryProbePoint,
+        normal: GeometryProbePoint,
+        color: number,
+        preferredU?: GeometryProbePoint | null,
+        preferredV?: GeometryProbePoint | null
+      ) => {
+        const basis = resolveHelperTangentBasis(normal);
+        const u = geometryNormalizeVec(preferredU ?? basis.u) ?? basis.u;
+        const v =
+          geometryNormalizeVec(preferredV ?? geometryCross(normal, u)) ??
+          geometryNormalizeVec(geometryCross(normal, u)) ??
+          basis.v;
+        const corners = [
+          geometryAdd(center, geometryAdd(geometryScale(u, span), geometryScale(v, span))),
+          geometryAdd(center, geometryAdd(geometryScale(u, -span), geometryScale(v, span))),
+          geometryAdd(center, geometryAdd(geometryScale(u, -span), geometryScale(v, -span))),
+          geometryAdd(center, geometryAdd(geometryScale(u, span), geometryScale(v, -span))),
+        ];
+        const guideLines: PolylineSet = [
+          [corners[0], corners[1]],
+          [corners[1], corners[2]],
+          [corners[2], corners[3]],
+          [corners[3], corners[0]],
+          [corners[0], corners[2]],
+          [corners[1], corners[3]],
+          [geometryAdd(center, geometryScale(u, -span)), geometryAdd(center, geometryScale(u, span))],
+          [geometryAdd(center, geometryScale(v, -span)), geometryAdd(center, geometryScale(v, span))],
+        ];
+        for (const offset of [-0.5, 0.5]) {
+          guideLines.push([
+            geometryAdd(geometryScale(u, -span), geometryAdd(center, geometryScale(v, span * offset))),
+            geometryAdd(geometryScale(u, span), geometryAdd(center, geometryScale(v, span * offset))),
+          ]);
+          guideLines.push([
+            geometryAdd(geometryScale(v, -span), geometryAdd(center, geometryScale(u, span * offset))),
+            geometryAdd(geometryScale(v, span), geometryAdd(center, geometryScale(u, span * offset))),
+          ]);
+        }
+        return {
+          origin: center,
+          direction: normal,
+          groups: [
+            {
+              lines: guideLines,
+              color,
+              opacity: 0.82,
+              radiusScale: 1.85,
+            },
+          ],
+          pointSets: [{ points: [center], color, size: 0.08, opacity: 0.92 }],
+        };
+      };
+      const labelPosition = (point: GeometryProbePoint) => ({ x: point.x + 0.05, y: point.y + 0.05, z: point.z + 0.05 });
+      const labelText = GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[type];
+      let frozenSnapshot: NonNullable<GeometryDerivedConstructionObject["frozenSnapshot"]> | null = null;
+      let sourcePoint = analysis.midPoint;
+      let sourceNormal =
+        analysis.containingPlaneNormal ?? analysis.midPlaneNormal ?? analysis.connectorDirection ?? lineA.direction;
+
+      if (type === "line-pair-intersection-point") {
+        sourcePoint = analysis.closestA;
+        frozenSnapshot = {
+          origin: analysis.closestA,
+          direction: null,
+          groups: [],
+          pointSets: [{ points: [analysis.closestA], color: GEOMETRY_VISUAL_LANGUAGE.measurement, size: 0.13, opacity: 1 }],
+          labelSets: [{ size: 0.9, labels: [{ text: "Intersection", position: labelPosition(analysis.closestA), color: GEOMETRY_VISUAL_LANGUAGE.label, opacity: 0.95 }] }],
+        };
+      } else if (type === "line-pair-common-perpendicular" && analysis.connectorDirection) {
+        sourcePoint = analysis.midPoint;
+        sourceNormal = analysis.connectorDirection;
+        frozenSnapshot = {
+          origin: analysis.midPoint,
+          direction: analysis.connectorDirection,
+          groups: [
+            {
+              lines: [[analysis.closestA, analysis.closestB]],
+              color: GEOMETRY_VISUAL_LANGUAGE.measurement,
+              opacity: 0.96,
+              radiusScale: 3.2,
+            },
+          ],
+          pointSets: [{ points: [analysis.closestA, analysis.closestB], color: GEOMETRY_VISUAL_LANGUAGE.measurement, size: 0.09, opacity: 0.96 }],
+          labelSets: [{ size: 0.9, labels: [{ text: "common perpendicular", position: labelPosition(analysis.midPoint), color: GEOMETRY_VISUAL_LANGUAGE.label, opacity: 0.95 }] }],
+        };
+      } else if (
+        type === "line-pair-plane-through-lines" &&
+        analysis.containingPlaneNormal
+      ) {
+        sourcePoint = analysis.parallel ? analysis.midPoint : analysis.closestA;
+        sourceNormal = analysis.containingPlaneNormal;
+        const preferredV =
+          analysis.parallel && analysis.connectorDirection
+            ? analysis.connectorDirection
+            : geometryNormalizeVec(geometrySub(analysis.closestB, analysis.closestA));
+        const plane = makePlaneLines(
+          sourcePoint,
+          analysis.containingPlaneNormal,
+          GEOMETRY_VISUAL_LANGUAGE.selection,
+          lineA.direction,
+          preferredV
+        );
+        frozenSnapshot = {
+          origin: plane.origin,
+          direction: plane.direction,
+          groups: [
+            ...plane.groups,
+            {
+              lines: [supportSegment(analysis.closestA, lineA.direction), supportSegment(analysis.closestB, lineB.direction)],
+              color: GEOMETRY_VISUAL_LANGUAGE.original,
+              opacity: 0.95,
+              radiusScale: 3.2,
+            },
+          ],
+          pointSets: plane.pointSets,
+          labelSets: [{ size: 0.9, labels: [{ text: labelText, position: labelPosition(sourcePoint), color: GEOMETRY_VISUAL_LANGUAGE.label, opacity: 0.95 }] }],
+        };
+      } else if (type === "line-pair-mid-plane" && analysis.midPlaneNormal) {
+        sourcePoint = type === "line-pair-mid-plane" ? analysis.midPoint : analysis.closestA;
+        sourceNormal = analysis.midPlaneNormal;
+        const plane = makePlaneLines(
+          sourcePoint,
+          analysis.midPlaneNormal,
+          GEOMETRY_VISUAL_LANGUAGE.analysis,
+          lineA.direction,
+          geometryNormalizeVec(geometryCross(analysis.midPlaneNormal, lineA.direction))
+        );
+        frozenSnapshot = {
+          origin: plane.origin,
+          direction: plane.direction,
+          groups: [
+            ...plane.groups,
+            {
+              lines: [supportSegment(analysis.closestA, lineA.direction), supportSegment(analysis.closestB, lineB.direction)],
+              color: GEOMETRY_VISUAL_LANGUAGE.original,
+              opacity: 0.72,
+              radiusScale: 2.4,
+            },
+          ],
+          pointSets: plane.pointSets,
+          labelSets: [{ size: 0.9, labels: [{ text: labelText, position: labelPosition(sourcePoint), color: GEOMETRY_VISUAL_LANGUAGE.label, opacity: 0.95 }] }],
+        };
+      } else if (type === "line-pair-angle-marker") {
+        const center = analysis.closestA;
+        const d1 = lineA.direction;
+        const d2 = geometryDot(lineA.direction, lineB.direction) < 0 ? geometryScale(lineB.direction, -1) : lineB.direction;
+        const normal = geometryNormalizeVec(geometryCross(d1, d2));
+        if (!normal) {
+          setGeometryCreateActionStatus("Angle marker needs two non-parallel line directions.");
+          return;
+        }
+        const angleRad = Math.acos(Math.max(-1, Math.min(1, geometryDot(d1, d2))));
+        const steps = 24;
+        const radius = Math.max(0.18, Math.min(0.48, span * 0.28));
+        const arc: PolylineSet = [];
+        for (let i = 0; i < steps; i += 1) {
+          const t0 = (i / steps) * angleRad;
+          const t1 = ((i + 1) / steps) * angleRad;
+          const p0 = geometryAdd(center, geometryScale(geometryNormalizeVec(geometryAdd(geometryScale(d1, Math.cos(t0)), geometryScale(geometryCross(normal, d1), Math.sin(t0)))) ?? d1, radius));
+          const p1 = geometryAdd(center, geometryScale(geometryNormalizeVec(geometryAdd(geometryScale(d1, Math.cos(t1)), geometryScale(geometryCross(normal, d1), Math.sin(t1)))) ?? d2, radius));
+          arc.push([p0, p1]);
+        }
+        sourcePoint = center;
+        sourceNormal = normal;
+        frozenSnapshot = {
+          origin: center,
+          direction: normal,
+          groups: [{ lines: arc, color: GEOMETRY_VISUAL_LANGUAGE.measurement, opacity: 0.96, radiusScale: 2.6 }],
+          pointSets: [{ points: [center], color: GEOMETRY_VISUAL_LANGUAGE.measurement, size: 0.075, opacity: 0.92 }],
+          labelSets: [{ size: 0.9, labels: [{ text: `${fmt(analysis.angleDeg)}deg`, position: labelPosition(geometryAdd(center, geometryScale(d1, radius))), color: GEOMETRY_VISUAL_LANGUAGE.label, opacity: 0.95 }] }],
+        };
+      }
+
+      if (!frozenSnapshot) {
+        setGeometryCreateActionStatus("That line-pair construction could not be created.");
+        return;
+      }
+      const next: GeometryDerivedConstructionObject = {
+        id: makeId(),
+        type,
+        name: labelText,
+        sourceKind: "object",
+        sourceObjectId: lineA.object.sourceObjectId || lineB.object.sourceObjectId,
+        sourcePoint: { ...sourcePoint },
+        sourceNormal: sourceNormal ? { ...sourceNormal } : null,
+        frozenSnapshot,
+        frozenAt: Date.now(),
+        dependent: false,
+        visible: true,
+        createdAt: Date.now(),
+      };
+      setGeometryDerivedConstructions((prev) => [next, ...prev]);
+      setGeometrySelectedDerivedConstructionId(next.id);
+      setGeometrySelectedMathConstructionId(null);
+      setGeometryConstructionHistory((prev) => [
+        {
+          id: makeId(),
+          at: Date.now(),
+          action: labelText,
+          source: `${lineA.name} + ${lineB.name}`,
+          result: labelText,
+          resultId: next.id,
+          steps: [`Select ${lineA.name}`, `Select ${lineB.name}`, `Created ${labelText}`],
+        },
+        ...prev,
+      ].slice(0, 40));
+      setGeometryCreateActionStatus(`${labelText} created from ${lineA.name} and ${lineB.name}.`);
+    },
+    [geometryLinePairAnalysis, resolveHelperTangentBasis]
   );
   const handleRenameSelectedConstructionOperation = useCallback(() => {
     const selectedMath = geometrySelectedMathConstructionId
@@ -54931,6 +55361,126 @@ case "mobius":
                         </div>
                         <div style={{ borderTop: "1px dashed #d6dce7", paddingTop: 8, display: "grid", gap: 6 }}>
                           <div style={{ fontSize: 11, fontWeight: 700 }}>Relationships</div>
+                          <div
+                            style={{
+                              border: "1px solid #dbeafe",
+                              borderRadius: 8,
+                              background: "#f8fbff",
+                              padding: "7px 8px",
+                              display: "grid",
+                              gap: 7,
+                              fontSize: 10.5,
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                              <strong>Line pair analysis</strong>
+                              <span style={{ color: "#64748b" }}>{geometryLinePairLineOptions.length} line(s)</span>
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                              <label style={{ display: "grid", gap: 3 }}>
+                                Line A
+                                <select
+                                  value={geometryEffectiveLinePairSourceAId ?? ""}
+                                  onChange={(e) => setGeometryLinePairSourceAId(e.target.value || null)}
+                                  disabled={geometryLinePairLineOptions.length < 1}
+                                  style={{ minWidth: 0 }}
+                                >
+                                  <option value="">None</option>
+                                  {geometryLinePairLineOptions.map((entry) => (
+                                    <option key={`geometry-line-pair-a-${entry.id}`} value={entry.id}>
+                                      {entry.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label style={{ display: "grid", gap: 3 }}>
+                                Line B
+                                <select
+                                  value={geometryEffectiveLinePairSourceBId ?? ""}
+                                  onChange={(e) => setGeometryLinePairSourceBId(e.target.value || null)}
+                                  disabled={geometryLinePairLineOptions.length < 2}
+                                  style={{ minWidth: 0 }}
+                                >
+                                  <option value="">None</option>
+                                  {geometryLinePairLineOptions.map((entry) => (
+                                    <option key={`geometry-line-pair-b-${entry.id}`} value={entry.id} disabled={entry.id === geometryEffectiveLinePairSourceAId}>
+                                      {entry.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            </div>
+                            {geometryLinePairAnalysis ? (
+                              <>
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "92px 1fr",
+                                    gap: "3px 8px",
+                                    borderTop: "1px solid #e2e8f0",
+                                    paddingTop: 6,
+                                  }}
+                                >
+                                  <span style={{ color: "#556" }}>Relation</span>
+                                  <strong>{geometryLinePairAnalysis.relation}</strong>
+                                  <span style={{ color: "#556" }}>Parallel?</span>
+                                  <span>{geometryLinePairAnalysis.parallel ? "yes" : "no"}</span>
+                                  <span style={{ color: "#556" }}>Perpendicular?</span>
+                                  <span>{geometryLinePairAnalysis.perpendicular ? "yes" : "no"}</span>
+                                  <span style={{ color: "#556" }}>Skew?</span>
+                                  <span>{geometryLinePairAnalysis.skew ? "yes" : "no"}</span>
+                                  <span style={{ color: "#556" }}>Coincident?</span>
+                                  <span>{geometryLinePairAnalysis.coincident ? "yes" : "no"}</span>
+                                  <span style={{ color: "#556" }}>Distance</span>
+                                  <span>{fmt(geometryLinePairAnalysis.distance)}</span>
+                                  <span style={{ color: "#556" }}>Angle</span>
+                                  <span>{fmt(geometryLinePairAnalysis.angleDeg)}deg</span>
+                                </div>
+                                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCreateLinePairDerivedConstruction("line-pair-plane-through-lines")}
+                                    disabled={!geometryLinePairAnalysis.canCreatePlane}
+                                    title="Create the unique plane containing both lines when they intersect or are parallel."
+                                  >
+                                    Plane through lines
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCreateLinePairDerivedConstruction("line-pair-mid-plane")}
+                                    disabled={!geometryLinePairAnalysis.canCreateMidPlane}
+                                    title="Create the plane halfway between parallel lines."
+                                  >
+                                    Mid-plane
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCreateLinePairDerivedConstruction("line-pair-common-perpendicular")}
+                                    disabled={!geometryLinePairAnalysis.canCreateCommonPerpendicular}
+                                    title="Create the shortest connector between skew lines."
+                                  >
+                                    Common perpendicular
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCreateLinePairDerivedConstruction("line-pair-intersection-point")}
+                                    disabled={!geometryLinePairAnalysis.canCreateIntersection}
+                                  >
+                                    Intersection point
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCreateLinePairDerivedConstruction("line-pair-angle-marker")}
+                                    disabled={!geometryLinePairAnalysis.canCreateAngleMarker}
+                                  >
+                                    Angle marker
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <div style={{ color: "#92400e" }}>Create or select two derived lines first.</div>
+                            )}
+                          </div>
                           {!geometryMathConstructionLineOptions.length &&
                             !geometryMathConstructionCircleOptions.length &&
                             !geometryMathConstructionPointOptions.length && (
@@ -55315,6 +55865,8 @@ case "mobius":
                                           entry.type === "face-plane-normal-to-selected-edge" ||
                                           entry.type === "face-offset-plane" ||
                                           entry.type === "face-parallel-face-plane" ||
+                                          entry.type === "line-pair-plane-through-lines" ||
+                                          entry.type === "line-pair-mid-plane" ||
                                           entry.type === "object-symmetry-plane-preview"
                                         )
                                       }
@@ -64081,6 +64633,8 @@ case "mobius":
                                           geometrySelectedDerivedConstructionEval.object.type === "face-plane-normal-to-selected-edge" ||
                                           geometrySelectedDerivedConstructionEval.object.type === "face-offset-plane" ||
                                           geometrySelectedDerivedConstructionEval.object.type === "face-parallel-face-plane" ||
+                                          geometrySelectedDerivedConstructionEval.object.type === "line-pair-plane-through-lines" ||
+                                          geometrySelectedDerivedConstructionEval.object.type === "line-pair-mid-plane" ||
                                           geometrySelectedDerivedConstructionEval.object.type === "object-symmetry-plane-preview"
                                         )
                                       }
