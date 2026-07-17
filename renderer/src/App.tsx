@@ -2461,6 +2461,15 @@ type GeometryConstructionTreeObject = {
   label: string;
   entities: GeometryConstructionTreeEntity[];
 };
+type GeometryConstructionHistoryEntry = {
+  id: string;
+  at: number;
+  action: string;
+  source: string;
+  result: string;
+  resultId?: string;
+  steps: string[];
+};
 type GeometryDependencyNodeKind =
   | "scene-root"
   | "geometry-object"
@@ -2468,6 +2477,8 @@ type GeometryDependencyNodeKind =
   | "analysis"
   | "claim"
   | "face-reference"
+  | "edge-reference"
+  | "vertex-reference"
   | "derived-point"
   | "derived-line"
   | "derived-plane"
@@ -2674,6 +2685,33 @@ const geometryDerivedConstructionSourceEntityKey = (
   if (entry.sourceKind === "vertex" && entry.sourceVertexIndex != null) return `vertex:${entry.sourceVertexIndex}`;
   return "object";
 };
+const geometryDerivedConstructionSourceReference = (
+  entry: Pick<
+    GeometryDerivedConstructionObject,
+    "sourceKind" | "sourceFaceIndex" | "sourceVertexIndex" | "sourceEdgeVertexPair" | "sourceObjectId"
+  >,
+  sourceName: string
+) => {
+  if (entry.sourceKind === "edge" && entry.sourceEdgeVertexPair) {
+    return `${sourceName}.Edge(${entry.sourceEdgeVertexPair[0]},${entry.sourceEdgeVertexPair[1]})`;
+  }
+  if (entry.sourceKind === "face" && entry.sourceFaceIndex != null) return `${sourceName}.Face(${entry.sourceFaceIndex})`;
+  if (entry.sourceKind === "vertex" && entry.sourceVertexIndex != null) return `${sourceName}.Vertex(${entry.sourceVertexIndex})`;
+  return sourceName || entry.sourceObjectId;
+};
+const geometryDerivedConstructionActionLabel = (entry: Pick<GeometryDerivedConstructionObject, "type" | "name">) => {
+  const name = geometryDerivedConstructionName(entry);
+  if (name.toLowerCase().includes("extension")) return "Extend";
+  if (name.toLowerCase().includes("trim")) return "Trim";
+  if (name.toLowerCase().includes("offset")) return "Offset";
+  if (name.toLowerCase().includes("parallel")) return "Parallel";
+  if (name.toLowerCase().includes("perpendicular")) return "Perpendicular";
+  if (name.toLowerCase().includes("converted")) return "Convert";
+  if (entry.type.includes("line")) return "Create line";
+  if (entry.type.includes("plane")) return "Create plane";
+  if (entry.type.includes("circle")) return "Create circle";
+  return "Create";
+};
 const geometryDerivedConstructionDirectionLabel = (evalEntry: GeometryDerivedConstructionEvaluation | null | undefined) => {
   if (!evalEntry) return "n/a";
   const vector = evalEntry.direction ? ` ${fmt3(evalEntry.direction)}` : "";
@@ -2681,6 +2719,52 @@ const geometryDerivedConstructionDirectionLabel = (evalEntry: GeometryDerivedCon
   if (evalEntry.sourceFaceIndex != null) return `Face normal${vector}`;
   if (evalEntry.sourceVertexIndex != null) return `Vertex normal${vector}`;
   return evalEntry.direction ? `Object direction${vector}` : "n/a";
+};
+const geometryEdgeTooltipCurveLabel = (
+  objectType: string,
+  edgePoints: [GeometryProbePoint, GeometryProbePoint] | null
+) => {
+  const type = objectType.toLowerCase();
+  if (type === "box" || type === "plane" || type === "polyhedron") return "Line segment";
+  if (type === "cylinder" || type === "cone") {
+    if (edgePoints) {
+      const dy = Math.abs(edgePoints[0].y - edgePoints[1].y);
+      const span = Math.max(geometryDistance(edgePoints[0], edgePoints[1]), 1e-6);
+      if (dy <= span * 0.12) return "Circle";
+    }
+    return "Generator line";
+  }
+  if (type === "torus" || type === "sphere") return "Circle arc";
+  return "Mesh edge";
+};
+const geometryDirectionMeaningLabel = (direction: GeometryProbePoint | null | undefined) => {
+  if (!direction) return "n/a";
+  const axes = [
+    { label: "+X", value: direction.x },
+    { label: "-X", value: -direction.x },
+    { label: "+Y", value: direction.y },
+    { label: "-Y", value: -direction.y },
+    { label: "+Z", value: direction.z },
+    { label: "-Z", value: -direction.z },
+  ].sort((a, b) => b.value - a.value);
+  const best = axes[0];
+  return best && best.value >= 0.92 ? best.label : fmt3(direction);
+};
+const geometryEdgeMeaningTypeLabel = (
+  objectType: string,
+  edgePoints: [GeometryProbePoint, GeometryProbePoint] | null,
+  direction: GeometryProbePoint | null | undefined
+) => {
+  const type = objectType.toLowerCase();
+  if (type === "cylinder") {
+    const axis = geometryDirectionMeaningLabel(direction);
+    return axis === "+Y" || axis === "-Y" ? "Cylinder generator" : "Cylinder circular seam";
+  }
+  if (type === "cone") return "Cone generator";
+  if (type === "torus") return "Torus circular mesh curve";
+  if (type === "sphere") return "Spherical mesh curve";
+  if (type === "box" || type === "polyhedron") return "Polyhedral straight edge";
+  return geometryEdgeTooltipCurveLabel(objectType, edgePoints);
 };
 const geometryDerivedConstructionLengthLabel = (evalEntry: GeometryDerivedConstructionEvaluation | null | undefined) => {
   if (!evalEntry) return "n/a";
@@ -8357,6 +8441,7 @@ const App: React.FC = () => {
   const [geometryAnnotationCustomText, setGeometryAnnotationCustomText] = useState("Label");
   const [geometryAnnotationStatus, setGeometryAnnotationStatus] = useState<string | null>(null);
   const [geometryDerivedConstructions, setGeometryDerivedConstructions] = useState<GeometryDerivedConstructionObject[]>([]);
+  const [geometryConstructionHistory, setGeometryConstructionHistory] = useState<GeometryConstructionHistoryEntry[]>([]);
   const [geometrySelectedDerivedConstructionId, setGeometrySelectedDerivedConstructionId] = useState<string | null>(null);
   const [geometryDerivedRelationConstraints, setGeometryDerivedRelationConstraints] = useState<
     GeometryDerivedRelationConstraint[]
@@ -8538,6 +8623,11 @@ const App: React.FC = () => {
   const [geometrySelectedObjectId, setGeometrySelectedObjectId] = useState<string | null>(null);
   const [geometryCompareObjectAId, setGeometryCompareObjectAId] = useState<string | null>(null);
   const [geometryCompareObjectBId, setGeometryCompareObjectBId] = useState<string | null>(null);
+  const [geometryLineQuickMenu, setGeometryLineQuickMenu] = useState<{
+    x: number;
+    y: number;
+    derivedId: string;
+  } | null>(null);
   const [geometryDemonstrationCategory, setGeometryDemonstrationCategory] =
     useState<GeometryDemonstrationCategory>("cross_sections");
   const [geometryDemoSectionAnimationEnabled, setGeometryDemoSectionAnimationEnabled] = useState(false);
@@ -12486,6 +12576,87 @@ const App: React.FC = () => {
   );
   const geometrySelectedPick = geometryProbeSelectionDetails?.pick ?? null;
   const geometryHoverPick = geometryProbeHoverSelectionDetails?.pick ?? null;
+  const geometryEdgeViewportTooltip = useMemo(() => {
+    const hoverIsEdge = geometryProbeHoverSelectionDetails?.mode === "edge" && geometryProbeHoverSelectionDetails.edgeVertexPair;
+    const detail = hoverIsEdge ? geometryProbeHoverSelectionDetails : null;
+    const rawPick = hoverIsEdge ? geometryProceduralHoverPick : null;
+    const screenPoint = rawPick?.screenPoint ?? null;
+    if (!detail || !screenPoint || !detail.edgeVertexPair) return null;
+
+    const [edgeA, edgeB] = detail.edgeVertexPair;
+    const sortedKey = edgeA < edgeB ? `${edgeA}:${edgeB}` : `${edgeB}:${edgeA}`;
+    const sourceMesh = detail.meshKey ? proceduralMeshSet.meshes.find((mesh) => mesh.id === detail.meshKey) ?? null : null;
+    let edgeNumber: number | null = null;
+    if (sourceMesh?.positions?.length) {
+      const vertexCount = Math.floor(sourceMesh.positions.length / 3);
+      const indices = sourceMesh.indices ?? null;
+      const triCount = indices?.length ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
+      const seen = new Set<string>();
+      for (let face = 0; face < triCount; face += 1) {
+        const base = face * 3;
+        const ia = indices ? Number(indices[base]) : base;
+        const ib = indices ? Number(indices[base + 1]) : base + 1;
+        const ic = indices ? Number(indices[base + 2]) : base + 2;
+        for (const [a, b] of [[ia, ib], [ib, ic], [ic, ia]] as const) {
+          if (a < 0 || b < 0 || a >= vertexCount || b >= vertexCount || a === b) continue;
+          const key = a < b ? `${a}:${b}` : `${b}:${a}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          if (key === sortedKey) {
+            edgeNumber = seen.size;
+            break;
+          }
+        }
+        if (edgeNumber != null) break;
+      }
+    }
+
+    let direction = detail.tangent;
+    if (!direction && detail.edgePoints) {
+      const [a, b] = detail.edgePoints;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dz = b.z - a.z;
+      const len = Math.hypot(dx, dy, dz);
+      if (len > 1e-9) direction = { x: dx / len, y: dy / len, z: dz / len };
+    }
+
+    return {
+      screenPoint,
+      title: edgeNumber != null ? `Edge #${edgeNumber}` : "Edge",
+      pair: `[${edgeA}, ${edgeB}]`,
+      objectLabel: detail.objectLabel,
+      length: detail.edgeLength != null && Number.isFinite(detail.edgeLength) ? fmt(detail.edgeLength) : "n/a",
+      direction: direction ? fmt3(direction) : "n/a",
+      curve: geometryEdgeTooltipCurveLabel(detail.objectType, detail.edgePoints),
+    };
+  }, [
+    geometryProbeHoverSelectionDetails,
+    geometryProceduralHoverPick,
+    proceduralMeshSet.meshes,
+  ]);
+  const geometrySelectedEdgeMeaning = useMemo(() => {
+    const detail = geometryProbeSelectionDetails;
+    if (!detail || detail.mode !== "edge" || !detail.edgeVertexPair) return null;
+    let direction = detail.tangent;
+    if (!direction && detail.edgePoints) {
+      const [a, b] = detail.edgePoints;
+      const raw = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
+      const len = Math.hypot(raw.x, raw.y, raw.z);
+      if (len > 1e-9) direction = { x: raw.x / len, y: raw.y / len, z: raw.z / len };
+    }
+    const curve = geometryEdgeTooltipCurveLabel(detail.objectType, detail.edgePoints);
+    const type = geometryEdgeMeaningTypeLabel(detail.objectType, detail.edgePoints, direction);
+    return {
+      type,
+      directionLabel: geometryDirectionMeaningLabel(direction),
+      direction,
+      curve,
+      supportingLine: curve === "Circle" || curve === "Circle arc" ? "available as tangent/supporting approximation" : "available",
+      normal: detail.faceNormal ?? detail.surfaceNormal ?? detail.normal,
+      tangent: direction,
+    };
+  }, [geometryProbeSelectionDetails]);
   const geometryOperationInputBySlot = useMemo(
     () => new Map(geometryOperationInputs.map((entry) => [entry.slotId, entry] as const)),
     [geometryOperationInputs]
@@ -13390,11 +13561,27 @@ const App: React.FC = () => {
       setGeometryDerivedConstructions((prev) => [next, ...prev]);
       setGeometrySelectedDerivedConstructionId(next.id);
       setGeometryProceduralPanelTab("construct");
+      const sourceName = resolveGeometrySceneObjectById(draft.sourceObjectId)?.name ?? draft.sourceObjectId;
+      const source = geometryDerivedConstructionSourceReference(next, sourceName);
+      const action = geometryDerivedConstructionActionLabel(next);
+      const result = geometryDerivedConstructionName(next);
+      setGeometryConstructionHistory((prev) => [
+        {
+          id: makeId(),
+          at: Date.now(),
+          action,
+          source,
+          result,
+          resultId: next.id,
+          steps: [`Select ${geometryDerivedConstructionSourceEntityLabel(next)}`, action, `Created ${result}`],
+        },
+        ...prev,
+      ].slice(0, 40));
       setGeometryCreateActionStatus(
         `Derived object created: ${GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[next.type]}.`
       );
     },
-    []
+    [geometryObjectRevisionById, resolveGeometrySceneObjectById]
   );
   const handleCreateDerivedFromVertex = useCallback(
     (
@@ -13793,13 +13980,28 @@ const App: React.FC = () => {
     );
   }, []);
   const handleDeleteDerivedConstruction = useCallback((id: string) => {
+    const existing = geometryDerivedConstructions.find((entry) => entry.id === id) ?? null;
     setGeometryDerivedConstructions((prev) => prev.filter((entry) => entry.id !== id));
     setGeometryDerivedRelationConstraints((prev) => prev.filter((entry) => entry.derivedId !== id));
     setGeometrySelectedDerivedConstructionId((prev) => (prev === id ? null : prev));
     setGeometryRelationTargetDerivedId((prev) => (prev === id ? null : prev));
     geometryDerivedLastValidSnapshotRef.current.delete(id);
     setGeometrySectionSourceDerivedId((prev) => (prev === id ? null : prev));
-  }, []);
+    if (existing) {
+      const sourceObjectName = resolveGeometrySceneObjectById(existing.sourceObjectId)?.name ?? existing.sourceObjectId;
+      setGeometryConstructionHistory((prev) => [
+        {
+          id: makeId(),
+          at: Date.now(),
+          action: "Delete",
+          source: geometryDerivedConstructionSourceReference(existing, sourceObjectName),
+          result: geometryDerivedConstructionName(existing),
+          steps: [`Select ${geometryDerivedConstructionName(existing)}`, "Delete", "Removed construction"],
+        },
+        ...prev.map((entry) => (entry.resultId === id ? { ...entry, resultId: undefined } : entry)),
+      ].slice(0, 40));
+    }
+  }, [geometryDerivedConstructions, resolveGeometrySceneObjectById]);
   const handleClearDerivedConstructions = useCallback(() => {
     setGeometryDerivedConstructions([]);
     setGeometryDerivedRelationConstraints([]);
@@ -13807,6 +14009,7 @@ const App: React.FC = () => {
     setGeometrySelectedDerivedConstructionId(null);
     geometryDerivedLastValidSnapshotRef.current.clear();
     setGeometrySectionSourceDerivedId(null);
+    setGeometryConstructionHistory([]);
     setGeometryCreateActionStatus("Cleared mesh-derived construction objects.");
   }, []);
   const handleToggleDerivedConstructionVisibility = useCallback((id: string) => {
@@ -18291,6 +18494,144 @@ const App: React.FC = () => {
     if (!geometrySelectedDerivedConstructionId) return null;
     return geometryDerivedConstructionOverlays.byId.get(geometrySelectedDerivedConstructionId) ?? null;
   }, [geometryDerivedConstructionOverlays.byId, geometrySelectedDerivedConstructionId]);
+  const geometrySelectedDerivedLineGizmoOverlays = useMemo<{
+    groups: OverlayPolylineGroup[] | null;
+    pointSets: OverlayPointSet[] | null;
+    labelSets: OverlayLabelSet[] | null;
+  }>(() => {
+    const selected = geometrySelectedDerivedConstructionEval;
+    if (geometryMode !== "procedural" || !selected || selected.status !== "valid") {
+      return { groups: null, pointSets: null, labelSets: null };
+    }
+    if (!selected.origin || !selected.direction || !selected.object.type.includes("line")) {
+      return { groups: null, pointSets: null, labelSets: null };
+    }
+    const dirLen = Math.hypot(selected.direction.x, selected.direction.y, selected.direction.z);
+    if (!Number.isFinite(dirLen) || dirLen < 1e-9) return { groups: null, pointSets: null, labelSets: null };
+    const dir = {
+      x: selected.direction.x / dirLen,
+      y: selected.direction.y / dirLen,
+      z: selected.direction.z / dirLen,
+    };
+    const dot = (a: GeometryProbePoint, b: GeometryProbePoint) => a.x * b.x + a.y * b.y + a.z * b.z;
+    const add = (a: GeometryProbePoint, b: GeometryProbePoint) => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z });
+    const sub = (a: GeometryProbePoint, b: GeometryProbePoint) => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
+    const scale = (a: GeometryProbePoint, s: number) => ({ x: a.x * s, y: a.y * s, z: a.z * s });
+    const cross = (a: GeometryProbePoint, b: GeometryProbePoint) => ({
+      x: a.y * b.z - a.z * b.y,
+      y: a.z * b.x - a.x * b.z,
+      z: a.x * b.y - a.y * b.x,
+    });
+    const normalize = (v: GeometryProbePoint) => {
+      const len = Math.hypot(v.x, v.y, v.z);
+      return Number.isFinite(len) && len > 1e-9 ? scale(v, 1 / len) : null;
+    };
+
+    let minT = Number.POSITIVE_INFINITY;
+    let maxT = Number.NEGATIVE_INFINITY;
+    for (const group of selected.groups) {
+      for (const line of group.lines) {
+        for (const point of line) {
+          const t = dot(sub(point, selected.origin), dir);
+          if (Number.isFinite(t)) {
+            minT = Math.min(minT, t);
+            maxT = Math.max(maxT, t);
+          }
+        }
+      }
+    }
+    if (!Number.isFinite(minT) || !Number.isFinite(maxT) || Math.abs(maxT - minT) < 1e-6) {
+      const fallbackLength = Math.max(0.5, Number(selected.object.params?.length ?? selected.object.params?.distance ?? 1) || 1);
+      minT = -fallbackLength * 0.5;
+      maxT = fallbackLength * 0.5;
+    }
+    const span = Math.max(0.25, maxT - minT);
+    const origin = selected.origin;
+    const start = add(origin, scale(dir, minT));
+    const end = add(origin, scale(dir, maxT));
+    const worldUp = Math.abs(dir.y) < 0.85 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 };
+    const side = normalize(cross(dir, worldUp)) ?? { x: 1, y: 0, z: 0 };
+    const normal = normalize(cross(dir, side)) ?? { x: 0, y: 1, z: 0 };
+    const handleSize = clampNumber(span * 0.12, 0.08, 0.35);
+    const endHandleBase = add(end, scale(side, handleSize * 0.78));
+    const lengthHandle = [
+      add(endHandleBase, scale(dir, -handleSize * 0.42)),
+      add(endHandleBase, scale(dir, handleSize * 0.42)),
+    ];
+    const rotationCenter = add(origin, scale(side, handleSize * 1.45));
+    const rotationRadius = handleSize * 0.7;
+    const rotationLines: PolylineSet = [];
+    const arcSegments = 22;
+    for (let i = 0; i < arcSegments; i += 1) {
+      const t0 = (i / arcSegments) * Math.PI * 1.55 + Math.PI * 0.1;
+      const t1 = ((i + 1) / arcSegments) * Math.PI * 1.55 + Math.PI * 0.1;
+      rotationLines.push([
+        add(rotationCenter, add(scale(side, Math.cos(t0) * rotationRadius), scale(normal, Math.sin(t0) * rotationRadius))),
+        add(rotationCenter, add(scale(side, Math.cos(t1) * rotationRadius), scale(normal, Math.sin(t1) * rotationRadius))),
+      ]);
+    }
+
+    const groups: OverlayPolylineGroup[] = [
+      {
+        lines: [[start, end]],
+        color: GEOMETRY_VISUAL_LANGUAGE.originalGlow,
+        opacity: 0.3,
+        radiusScale: 7.2,
+      },
+      {
+        lines: [lengthHandle],
+        color: GEOMETRY_VISUAL_LANGUAGE.derived,
+        opacity: 0.96,
+        radiusScale: 3.2,
+      },
+      {
+        lines: rotationLines,
+        color: GEOMETRY_VISUAL_LANGUAGE.measurement,
+        opacity: 0.9,
+        radiusScale: 2.4,
+      },
+    ];
+    const pointSets: OverlayPointSet[] = [
+      {
+        points: [origin],
+        color: GEOMETRY_VISUAL_LANGUAGE.original,
+        size: 0.12,
+        opacity: 1,
+      },
+      {
+        points: [end],
+        color: GEOMETRY_VISUAL_LANGUAGE.derived,
+        size: 0.095,
+        opacity: 0.96,
+      },
+    ];
+    const labelSets: OverlayLabelSet[] = [
+      {
+        size: 0.82,
+        labels: [
+          {
+            text: "origin",
+            position: add(origin, add(scale(side, handleSize * 0.45), scale(normal, handleSize * 0.32))),
+            color: GEOMETRY_VISUAL_LANGUAGE.original,
+            opacity: 0.94,
+          },
+          {
+            text: "length",
+            position: add(endHandleBase, scale(normal, handleSize * 0.42)),
+            color: GEOMETRY_VISUAL_LANGUAGE.derived,
+            opacity: 0.94,
+          },
+          {
+            text: "rotate",
+            position: add(rotationCenter, scale(normal, rotationRadius * 1.1)),
+            color: GEOMETRY_VISUAL_LANGUAGE.measurement,
+            opacity: 0.9,
+          },
+        ],
+      },
+    ];
+    return { groups, pointSets, labelSets };
+  }, [geometryMode, geometrySelectedDerivedConstructionEval]);
   const geometryConstructionTreeObjects = useMemo<GeometryConstructionTreeObject[]>(() => {
     const objectOrder: GeometryConstructionTreeObject[] = [];
     const objectById = new Map<string, GeometryConstructionTreeObject & { entityByKey: Map<string, GeometryConstructionTreeEntity> }>();
@@ -18522,6 +18863,54 @@ const App: React.FC = () => {
       });
       return id;
     };
+    const normalizedEdgePair = (pair: [number, number]): [number, number] =>
+      pair[0] <= pair[1] ? pair : [pair[1], pair[0]];
+    const edgeNodeId = (objectId: string, pair: [number, number]) => {
+      const [a, b] = normalizedEdgePair(pair);
+      return `edge:${objectId}:${a}:${b}`;
+    };
+    const addEdgeReferenceNode = (
+      objectId: string,
+      pair: [number, number],
+      status: GeometryDependencyState = "valid"
+    ) => {
+      const [a, b] = normalizedEdgePair(pair);
+      const id = edgeNodeId(objectId, [a, b]);
+      addNode({
+        id,
+        kind: "edge-reference",
+        label: `Edge[${a},${b}]`,
+        objectId,
+        status,
+      });
+      addEdge({
+        sourceId: `object:${objectId}`,
+        targetId: id,
+        relation: "contains",
+      });
+      return id;
+    };
+    const vertexNodeId = (objectId: string, vertexIndex: number) => `vertex:${objectId}:${vertexIndex}`;
+    const addVertexReferenceNode = (
+      objectId: string,
+      vertexIndex: number,
+      status: GeometryDependencyState = "valid"
+    ) => {
+      const id = vertexNodeId(objectId, vertexIndex);
+      addNode({
+        id,
+        kind: "vertex-reference",
+        label: `Vertex #${vertexIndex}`,
+        objectId,
+        status,
+      });
+      addEdge({
+        sourceId: `object:${objectId}`,
+        targetId: id,
+        relation: "contains",
+      });
+      return id;
+    };
     const faceNormalBySource = new Map<string, GeometryDerivedConstructionObject>();
     for (const entry of geometryDerivedConstructions) {
       if (entry.type !== "face-normal-line" || entry.sourceFaceIndex == null) continue;
@@ -18551,6 +18940,32 @@ const App: React.FC = () => {
           sourceId: matchingNormal ? `derived:${matchingNormal.id}` : faceId,
           targetId: `derived:${entry.id}`,
           relation: matchingNormal ? "depends-on" : "derived-from",
+        });
+        continue;
+      }
+      if (entry.sourceKind === "edge" && entry.sourceEdgeVertexPair) {
+        const edgeId = addEdgeReferenceNode(
+          entry.sourceObjectId,
+          entry.sourceEdgeVertexPair,
+          evalEntry?.dependencyState ?? "valid"
+        );
+        addEdge({
+          sourceId: edgeId,
+          targetId: `derived:${entry.id}`,
+          relation: "derived-from",
+        });
+        continue;
+      }
+      if (entry.sourceKind === "vertex" && entry.sourceVertexIndex != null) {
+        const vertexId = addVertexReferenceNode(
+          entry.sourceObjectId,
+          entry.sourceVertexIndex,
+          evalEntry?.dependencyState ?? "valid"
+        );
+        addEdge({
+          sourceId: vertexId,
+          targetId: `derived:${entry.id}`,
+          relation: "derived-from",
         });
         continue;
       }
@@ -18608,6 +19023,11 @@ const App: React.FC = () => {
     for (const edgeMeasurement of geometryMeasuredEdges) {
       const source = resolveGeometrySceneMeshById(edgeMeasurement.meshKey);
       const validSource = !!source?.mesh?.positions?.length;
+      const edgeId = addEdgeReferenceNode(
+        edgeMeasurement.meshKey,
+        edgeMeasurement.edgeVertexPair,
+        validSource ? "valid" : "broken-source"
+      );
       addNode({
         id: `measurement:${edgeMeasurement.id}`,
         kind: "measurement",
@@ -18616,7 +19036,7 @@ const App: React.FC = () => {
         status: validSource ? "valid" : "broken-source",
       });
       addEdge({
-        sourceId: `object:${edgeMeasurement.meshKey}`,
+        sourceId: edgeId,
         targetId: `measurement:${edgeMeasurement.id}`,
         relation: "measured-from",
       });
@@ -18847,7 +19267,7 @@ const App: React.FC = () => {
     if (kind === "derived-point" || kind === "derived-line" || kind === "derived-plane" || kind === "derived-circle") {
       return { label: "Derived", icon: "d", color: "#0f766e", background: "#f0fdfa", border: "#5eead4" };
     }
-    if (kind === "face-reference" || kind === "scene-root") {
+    if (kind === "face-reference" || kind === "edge-reference" || kind === "vertex-reference" || kind === "scene-root") {
       return { label: "Input", icon: "i", color: "#2563eb", background: "#eff6ff", border: "#bfdbfe" };
     }
     return { label: "Object", icon: "o", color: "#334155", background: "#f8fafc", border: "#cbd5e1" };
@@ -19029,6 +19449,8 @@ const App: React.FC = () => {
       "analysis",
       "claim",
       "face-reference",
+      "edge-reference",
+      "vertex-reference",
       "derived-point",
       "derived-line",
       "derived-plane",
@@ -19059,6 +19481,8 @@ const App: React.FC = () => {
       "analysis",
       "claim",
       "face-reference",
+      "edge-reference",
+      "vertex-reference",
       "derived-point",
       "derived-line",
       "derived-plane",
@@ -19088,6 +19512,8 @@ const App: React.FC = () => {
       "analysis",
       "claim",
       "face-reference",
+      "edge-reference",
+      "vertex-reference",
       "derived-point",
       "derived-line",
       "derived-plane",
@@ -19131,6 +19557,18 @@ const App: React.FC = () => {
       setGeometrySelectedMathConstructionId(null);
       setGeometrySelectedDerivedConstructionId(null);
       setGeometryProbeSelectionMode("face");
+    } else if (nodeId.startsWith("edge:")) {
+      const [, objectId] = nodeId.split(":");
+      if (objectId) setGeometrySelectedObjectId(objectId);
+      setGeometrySelectedMathConstructionId(null);
+      setGeometrySelectedDerivedConstructionId(null);
+      setGeometryProbeSelectionMode("edge");
+    } else if (nodeId.startsWith("vertex:")) {
+      const [, objectId] = nodeId.split(":");
+      if (objectId) setGeometrySelectedObjectId(objectId);
+      setGeometrySelectedMathConstructionId(null);
+      setGeometrySelectedDerivedConstructionId(null);
+      setGeometryProbeSelectionMode("vertex");
     } else if (
       nodeId.startsWith("parameter:") ||
       nodeId.startsWith("analysis:") ||
@@ -19384,10 +19822,26 @@ const App: React.FC = () => {
       setGeometryDerivedConstructions((prev) => [next, ...prev]);
       setGeometrySelectedDerivedConstructionId(next.id);
       setGeometrySelectedMathConstructionId(null);
+      const sourceObjectName = resolveGeometrySceneObjectById(next.sourceObjectId)?.name ?? next.sourceObjectId;
+      const source = geometryDerivedConstructionSourceReference(next, sourceObjectName);
+      const action = geometryDerivedConstructionActionLabel(next);
+      const result = geometryDerivedConstructionName(next);
+      setGeometryConstructionHistory((prev) => [
+        {
+          id: makeId(),
+          at: Date.now(),
+          action,
+          source,
+          result,
+          resultId: next.id,
+          steps: [`Select ${geometryDerivedConstructionSourceEntityLabel(next)}`, action, `Created ${result}`],
+        },
+        ...prev,
+      ].slice(0, 40));
       setGeometryCreateActionStatus(`Construction ${suffix.toLowerCase()}: ${next.name}.`);
       return next;
     },
-    []
+    [resolveGeometrySceneObjectById]
   );
   const handleRenameSelectedConstructionOperation = useCallback(() => {
     const selectedMath = geometrySelectedMathConstructionId
@@ -19901,6 +20355,231 @@ const App: React.FC = () => {
     geometrySelectedDerivedConstructionId,
     handleCreateDerivedFromFace,
   ]);
+  const handleOpenGeometryLineQuickMenu = useCallback(
+    (event: React.MouseEvent) => {
+      if (!geometrySelectedDerivedConstructionEval?.object.type.includes("line")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setGeometryLineQuickMenu({
+        x: event.clientX,
+        y: event.clientY,
+        derivedId: geometrySelectedDerivedConstructionEval.object.id,
+      });
+    },
+    [geometrySelectedDerivedConstructionEval]
+  );
+  const handleRunGeometryLineQuickOperation = useCallback(
+    (
+      action:
+        | "extend"
+        | "trim"
+        | "offset"
+        | "parallel"
+        | "perpendicular"
+        | "project"
+        | "convert"
+        | "delete"
+    ) => {
+      const derivedId = geometryLineQuickMenu?.derivedId ?? geometrySelectedDerivedConstructionId;
+      setGeometryLineQuickMenu(null);
+      if (!derivedId) {
+        setGeometryCreateActionStatus("Select a derived line first.");
+        return;
+      }
+      setGeometrySelectedDerivedConstructionId(derivedId);
+      const selectedDerived = geometryDerivedConstructions.find((entry) => entry.id === derivedId) ?? null;
+      const evalEntry = geometryDerivedConstructionOverlays.byId.get(derivedId) ?? null;
+      if (action === "delete") {
+        handleDeleteDerivedConstruction(derivedId);
+        setGeometryCreateActionStatus("Deleted selected construction line.");
+        return;
+      }
+      if (!selectedDerived || !selectedDerived.type.includes("line")) {
+        setGeometryCreateActionStatus("Quick operations need a selected derived line.");
+        return;
+      }
+      if (action === "extend") {
+        handleResizeSelectedConstructionLineOperation("extend");
+        return;
+      }
+      if (action === "trim") {
+        handleResizeSelectedConstructionLineOperation("trim");
+        return;
+      }
+      if (action === "project") {
+        handleProjectSelectedConstructionOperation();
+        return;
+      }
+      if (!evalEntry || evalEntry.status !== "valid" || !evalEntry.origin || !evalEntry.direction) {
+        setGeometryCreateActionStatus("Selected line is not a valid editable construction.");
+        return;
+      }
+
+      const dot = (a: GeometryProbePoint, b: GeometryProbePoint) => a.x * b.x + a.y * b.y + a.z * b.z;
+      const add = (a: GeometryProbePoint, b: GeometryProbePoint) => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z });
+      const sub = (a: GeometryProbePoint, b: GeometryProbePoint) => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
+      const scale = (a: GeometryProbePoint, s: number) => ({ x: a.x * s, y: a.y * s, z: a.z * s });
+      const cross = (a: GeometryProbePoint, b: GeometryProbePoint) => ({
+        x: a.y * b.z - a.z * b.y,
+        y: a.z * b.x - a.x * b.z,
+        z: a.x * b.y - a.y * b.x,
+      });
+      const normalize = (v: GeometryProbePoint) => {
+        const len = Math.hypot(v.x, v.y, v.z);
+        return Number.isFinite(len) && len > 1e-9 ? scale(v, 1 / len) : null;
+      };
+      const direction = normalize(evalEntry.direction);
+      if (!direction) {
+        setGeometryCreateActionStatus("Selected line direction is invalid.");
+        return;
+      }
+      let minT = Number.POSITIVE_INFINITY;
+      let maxT = Number.NEGATIVE_INFINITY;
+      for (const group of evalEntry.groups) {
+        for (const line of group.lines) {
+          for (const point of line) {
+            const t = dot(sub(point, evalEntry.origin), direction);
+            if (Number.isFinite(t)) {
+              minT = Math.min(minT, t);
+              maxT = Math.max(maxT, t);
+            }
+          }
+        }
+      }
+      if (!Number.isFinite(minT) || !Number.isFinite(maxT) || Math.abs(maxT - minT) < 1e-6) {
+        const fallbackLength = Math.max(0.5, Number(selectedDerived.params?.length ?? selectedDerived.params?.distance ?? 1) || 1);
+        minT = -fallbackLength * 0.5;
+        maxT = fallbackLength * 0.5;
+      }
+      const span = Math.max(0.25, maxT - minT);
+      const worldUp = Math.abs(direction.y) < 0.85 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 };
+      const side = normalize(cross(direction, worldUp)) ?? { x: 1, y: 0, z: 0 };
+      const offsetDistance = Math.max(0.01, Number(geometryConstructOffsetDistance) || 0.5);
+      const makeSnapshot = (
+        name: string,
+        origin: GeometryProbePoint,
+        lineDirection: GeometryProbePoint,
+        color: number,
+        dashed = false
+      ) => {
+        const a = add(origin, scale(lineDirection, minT));
+        const b = add(origin, scale(lineDirection, maxT));
+        const lines = dashed ? buildGeometryDashedLine(a, b, 16, 0.48) : [[a, b]] as PolylineSet;
+        return {
+          name,
+          dependent: false,
+          frozenAt: Date.now(),
+          sourcePoint: { ...origin },
+          sourceNormal: { ...lineDirection },
+          params: { ...(selectedDerived.params ?? {}), lineMode: "infinite" as GeometryLineExtensionMode, length: span },
+          frozenSnapshot: {
+            origin,
+            direction: lineDirection,
+            groups: [
+              {
+                lines,
+                color,
+                opacity: 0.94,
+                radiusScale: 3.0,
+              },
+            ],
+            pointSets: [
+              {
+                points: [a, b],
+                color,
+                size: 0.1,
+                opacity: 0.96,
+              },
+            ],
+            labelSets: [
+              {
+                size: 0.88,
+                labels: [
+                  {
+                    text: name,
+                    position: { x: b.x + 0.04, y: b.y + 0.04, z: b.z + 0.04 },
+                    color: GEOMETRY_VISUAL_LANGUAGE.label,
+                    opacity: 0.94,
+                  },
+                ],
+              },
+            ],
+          },
+        } satisfies Partial<GeometryDerivedConstructionObject>;
+      };
+
+      if (action === "convert") {
+        cloneDerivedConstructionForOperation(selectedDerived, "converted", {
+          name: `Converted ${geometryDerivedLineConstructionName(selectedDerived)}`,
+          dependent: false,
+          frozenAt: Date.now(),
+          frozenSnapshot: {
+            origin: { ...evalEntry.origin },
+            direction,
+            groups: evalEntry.groups.map((group) => ({
+              ...group,
+              lines: group.lines.map((line) => line.map((point) => ({ ...point }))),
+            })),
+            pointSets: evalEntry.pointSets.map((set) => ({
+              ...set,
+              points: set.points.map((point) => ({ ...point })),
+            })),
+            labelSets: evalEntry.labelSets.map((set) => ({
+              ...set,
+              labels: set.labels.map((label) => ({ ...label, position: { ...label.position } })),
+            })),
+          },
+        });
+        setGeometryCreateActionStatus("Converted line to an independent frozen construction.");
+        return;
+      }
+
+      if (action === "offset" || action === "parallel") {
+        const shiftedOrigin = add(evalEntry.origin, scale(side, offsetDistance));
+        cloneDerivedConstructionForOperation(
+          selectedDerived,
+          action,
+          makeSnapshot(
+            action === "offset" ? "Offset Line" : "Parallel Line",
+            shiftedOrigin,
+            direction,
+            action === "offset" ? GEOMETRY_VISUAL_LANGUAGE.measurement : GEOMETRY_VISUAL_LANGUAGE.analysis,
+            action === "parallel"
+          )
+        );
+        setGeometryCreateActionStatus(`${action === "offset" ? "Offset" : "Parallel"} line created from selected line.`);
+        return;
+      }
+
+      if (action === "perpendicular") {
+        cloneDerivedConstructionForOperation(
+          selectedDerived,
+          "perpendicular",
+          makeSnapshot("Perpendicular Line", { ...evalEntry.origin }, side, GEOMETRY_VISUAL_LANGUAGE.measurement)
+        );
+        setGeometryCreateActionStatus("Perpendicular line created from selected line.");
+      }
+    },
+    [
+      cloneDerivedConstructionForOperation,
+      geometryConstructOffsetDistance,
+      geometryDerivedConstructionOverlays.byId,
+      geometryDerivedConstructions,
+      geometryLineQuickMenu?.derivedId,
+      geometrySelectedDerivedConstructionId,
+      handleDeleteDerivedConstruction,
+      handleProjectSelectedConstructionOperation,
+      handleResizeSelectedConstructionLineOperation,
+    ]
+  );
+  useEffect(() => {
+    if (!geometryLineQuickMenu) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setGeometryLineQuickMenu(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [geometryLineQuickMenu]);
   const handleAlignSelectedConstructionOperation = useCallback(() => {
     if (!geometrySelectedSceneObject) {
       setGeometryCreateActionStatus("Select a scene object to align to the selected construction.");
@@ -20257,6 +20936,9 @@ const App: React.FC = () => {
     if (geometryDerivedConstructionOverlays.pointSets?.length) {
       sets.push(...geometryDerivedConstructionOverlays.pointSets);
     }
+    if (geometrySelectedDerivedLineGizmoOverlays.pointSets?.length) {
+      sets.push(...geometrySelectedDerivedLineGizmoOverlays.pointSets);
+    }
     pushPointSets(geometryProceduralFeatureOverlays.pointSets);
     if (geometryTimelineShowAnnotations) pushPointSets(geometryProceduralAnnotationOverlays.pointSets);
     pushPointSets(geometryMathConstructionOverlays.pointSets);
@@ -20272,6 +20954,7 @@ const App: React.FC = () => {
     geometryProceduralAnnotationOverlays.pointSets,
     geometryTimelineShowAnnotations,
     geometryDerivedConstructionOverlays.pointSets,
+    geometrySelectedDerivedLineGizmoOverlays.pointSets,
     geometryMathConstructionOverlays.pointSets,
     geometryProceduralSnapPreviewPointSet,
   ]);
@@ -20291,6 +20974,9 @@ const App: React.FC = () => {
     }
     if (geometryDerivedConstructionOverlays.groups?.length) {
       groups.push(...geometryDerivedConstructionOverlays.groups);
+    }
+    if (geometrySelectedDerivedLineGizmoOverlays.groups?.length) {
+      groups.push(...geometrySelectedDerivedLineGizmoOverlays.groups);
     }
     if (geometryArmedLineOperationPreviewGroups?.length) {
       groups.push(...geometryArmedLineOperationPreviewGroups);
@@ -20322,6 +21008,7 @@ const App: React.FC = () => {
     geometryProceduralFeatureOverlays.groups,
     geometryArmedLineOperationPreviewGroups,
     geometryDerivedConstructionOverlays.groups,
+    geometrySelectedDerivedLineGizmoOverlays.groups,
     geometryMathConstructionOverlays.groups,
     geometryProceduralAnnotationOverlays.groups,
     geometryTimelineShowAnnotations,
@@ -20430,6 +21117,7 @@ const App: React.FC = () => {
     };
     pushLabelSets(geometryProceduralFeatureOverlays.labelSets);
     pushLabelSets(geometryDerivedConstructionOverlays.labelSets);
+    pushLabelSets(geometrySelectedDerivedLineGizmoOverlays.labelSets);
     pushLabelSets(geometryMathConstructionOverlays.labelSets);
     pushLabelSets(geometryConstructionViewportBadgeLabelSets);
     if (geometryTimelineShowAnnotations && geometryProceduralAnnotationOverlays.labelSets?.length) {
@@ -20444,6 +21132,7 @@ const App: React.FC = () => {
     geometryConstructionState?.labels,
     geometryProceduralFeatureOverlays.labelSets,
     geometryDerivedConstructionOverlays.labelSets,
+    geometrySelectedDerivedLineGizmoOverlays.labelSets,
     geometryMathConstructionOverlays.labelSets,
     geometryConstructionViewportBadgeLabelSets,
     geometryProceduralAnnotationOverlays.labelSets,
@@ -54089,6 +54778,56 @@ case "mobius":
                         </div>
                         <div
                           style={{
+                            border: "1px solid #e2e8f0",
+                            borderRadius: 6,
+                            padding: "6px 8px",
+                            background: "#ffffff",
+                            display: "grid",
+                            gap: 6,
+                            fontSize: 10.5,
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                            <div style={{ fontWeight: 700, color: "#0f172a" }}>Construction history</div>
+                            <span style={{ color: "#64748b" }}>{geometryConstructionHistory.length} step(s)</span>
+                          </div>
+                          {geometryConstructionHistory.length ? (
+                            <div style={{ display: "grid", gap: 6 }}>
+                              {geometryConstructionHistory.slice(0, 5).map((entry, index) => (
+                                <button
+                                  key={`geometry-construction-history-${entry.id}`}
+                                  type="button"
+                                  onClick={() => {
+                                    if (entry.resultId) {
+                                      setGeometrySelectedDerivedConstructionId(entry.resultId);
+                                      setGeometrySelectedMathConstructionId(null);
+                                    }
+                                  }}
+                                  disabled={!entry.resultId}
+                                  style={{
+                                    border: "1px solid #dbe2ea",
+                                    borderRadius: 7,
+                                    background: entry.resultId ? "#f8fbff" : "#f8fafc",
+                                    padding: "6px 7px",
+                                    textAlign: "left",
+                                    display: "grid",
+                                    gap: 3,
+                                    cursor: entry.resultId ? "pointer" : "default",
+                                  }}
+                                  title={entry.steps.join(" -> ")}
+                                >
+                                  <strong>{index + 1}. {entry.action}</strong>
+                                  <span style={{ color: "#334155" }}>{entry.steps.join(" -> ")}</span>
+                                  <span style={{ color: "#64748b" }}>Source: {entry.source}</span>
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <div style={{ color: "#667085" }}>No construction history yet.</div>
+                          )}
+                        </div>
+                        <div
+                          style={{
                             borderTop: "1px dashed #d6dce7",
                             paddingTop: 8,
                             display: "grid",
@@ -61720,6 +62459,7 @@ case "mobius":
                 <div
                   data-testid="main-viewer"
                   ref={geometrySceneCaptureRef}
+                  onContextMenu={handleOpenGeometryLineQuickMenu}
                   style={{
                     flex: 1,
                     minHeight: 0,
@@ -62632,6 +63372,114 @@ case "mobius":
                   }
                   inspectSelectionMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
                 />
+                {geometryEdgeViewportTooltip && (
+                  <div
+                    data-testid="geometry-edge-hover-tooltip"
+                    style={{
+                      position: "absolute",
+                      left: `clamp(8px, ${geometryEdgeViewportTooltip.screenPoint[0] + 14}px, calc(100% - 232px))`,
+                      top: `clamp(8px, ${geometryEdgeViewportTooltip.screenPoint[1] + 14}px, calc(100% - 138px))`,
+                      zIndex: 9,
+                      width: 224,
+                      pointerEvents: "none",
+                      border: "1px solid rgba(15,23,42,0.18)",
+                      borderRadius: 8,
+                      background: "rgba(15,23,42,0.86)",
+                      color: "#f8fafc",
+                      boxShadow: "0 10px 24px rgba(15,23,42,0.18)",
+                      padding: "7px 9px",
+                      fontSize: 10.5,
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                      <strong style={{ fontSize: 11.5 }}>{geometryEdgeViewportTooltip.title}</strong>
+                      <span style={{ color: "#fde68a", fontWeight: 800 }}>hover</span>
+                    </div>
+                    <div style={{ color: "#cbd5e1", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {geometryEdgeViewportTooltip.objectLabel} / {geometryEdgeViewportTooltip.pair}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "62px 1fr", gap: "2px 7px", marginTop: 5 }}>
+                      <span style={{ color: "#94a3b8" }}>Length</span>
+                      <span>{geometryEdgeViewportTooltip.length}</span>
+                      <span style={{ color: "#94a3b8" }}>Direction</span>
+                      <span style={{ fontFamily: "monospace" }}>{geometryEdgeViewportTooltip.direction}</span>
+                      <span style={{ color: "#94a3b8" }}>Curve</span>
+                      <span>{geometryEdgeViewportTooltip.curve}</span>
+                    </div>
+                  </div>
+                )}
+                {geometryLineQuickMenu && (
+                  <div
+                    data-testid="geometry-line-quick-menu-layer"
+                    onMouseDown={() => setGeometryLineQuickMenu(null)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setGeometryLineQuickMenu(null);
+                    }}
+                    style={{
+                      position: "fixed",
+                      inset: 0,
+                      zIndex: 40,
+                      background: "transparent",
+                    }}
+                  >
+                    <div
+                      data-testid="geometry-line-quick-menu"
+                      onMouseDown={(event) => event.stopPropagation()}
+                      onContextMenu={(event) => event.preventDefault()}
+                      style={{
+                        position: "fixed",
+                        left: `clamp(8px, ${geometryLineQuickMenu.x}px, calc(100vw - 190px))`,
+                        top: `clamp(8px, ${geometryLineQuickMenu.y}px, calc(100vh - 300px))`,
+                        width: 182,
+                        border: "1px solid #cbd5e1",
+                        borderRadius: 9,
+                        background: "rgba(255,255,255,0.98)",
+                        boxShadow: "0 18px 38px rgba(15,23,42,0.2)",
+                        padding: 6,
+                        display: "grid",
+                        gap: 3,
+                        fontSize: 11,
+                      }}
+                    >
+                      <div style={{ padding: "5px 7px", color: "#475569", fontWeight: 800 }}>
+                        Line operations
+                      </div>
+                      {([
+                        ["extend", "Extend"],
+                        ["trim", "Trim"],
+                        ["offset", "Offset"],
+                        ["parallel", "Parallel"],
+                        ["perpendicular", "Perpendicular"],
+                        ["project", "Project"],
+                        ["convert", "Convert"],
+                        ["delete", "Delete"],
+                      ] as const).map(([action, label]) => {
+                        const danger = action === "delete";
+                        return (
+                          <button
+                            key={`geometry-line-quick-menu-${action}`}
+                            type="button"
+                            onClick={() => handleRunGeometryLineQuickOperation(action)}
+                            style={{
+                              border: "1px solid transparent",
+                              borderRadius: 6,
+                              background: danger ? "#fff1f2" : "transparent",
+                              color: danger ? "#be123c" : "#0f172a",
+                              textAlign: "left",
+                              padding: "5px 8px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 </div>
                 {showGeometryRightPanel && !isPhoneLandscapeLayout && <div onMouseDown={startDragRight} style={splitterStyle} />}
                 {showGeometryRightPanel && (
@@ -62968,6 +63816,38 @@ case "mobius":
                                             ? fmt(geometryProbeSelectionDetails.edgeLength)
                                             : "n/a"}
                                         </div>
+                                        {geometrySelectedEdgeMeaning && (
+                                          <>
+                                            <div style={{ gridColumn: "1 / -1", marginTop: 4 }}>
+                                              <div
+                                                style={{
+                                                  border: "1px solid #dbeafe",
+                                                  borderRadius: 8,
+                                                  background: "#f8fbff",
+                                                  padding: "7px 8px",
+                                                  display: "grid",
+                                                  gap: 5,
+                                                }}
+                                              >
+                                                <strong>Selected Edge</strong>
+                                                <div style={{ display: "grid", gridTemplateColumns: "112px 1fr", gap: "3px 8px" }}>
+                                                  <span style={{ color: "#556" }}>Type</span>
+                                                  <span>{geometrySelectedEdgeMeaning.type}</span>
+                                                  <span style={{ color: "#556" }}>Direction</span>
+                                                  <span>{geometrySelectedEdgeMeaning.directionLabel}</span>
+                                                  <span style={{ color: "#556" }}>Underlying curve</span>
+                                                  <span>{geometrySelectedEdgeMeaning.curve}</span>
+                                                  <span style={{ color: "#556" }}>Supporting line</span>
+                                                  <span>{geometrySelectedEdgeMeaning.supportingLine}</span>
+                                                  <span style={{ color: "#556" }}>Normal</span>
+                                                  <span>{fmt3(geometrySelectedEdgeMeaning.normal)}</span>
+                                                  <span style={{ color: "#556" }}>Tangent</span>
+                                                  <span>{geometrySelectedEdgeMeaning.tangent ? fmt3(geometrySelectedEdgeMeaning.tangent) : "n/a"}</span>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </>
+                                        )}
                                       </>
                                     )}
                                     {geometrySelectedPick?.kind === "vertex" && (
@@ -70058,6 +70938,8 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
     if (kind === "analysis") return "Analysis";
     if (kind === "claim") return "Claim";
     if (kind === "face-reference") return "Face";
+    if (kind === "edge-reference") return "Edge";
+    if (kind === "vertex-reference") return "Vertex";
     if (kind === "derived-point") return "Point";
     if (kind === "derived-line") return "Line";
     if (kind === "derived-plane") return "Plane";
@@ -70069,6 +70951,9 @@ const ConstructionDependencyTreePanel: React.FC<ConstructionDependencyTreePanelP
     if (kind === "parameter") return "#b45309";
     if (kind === "analysis") return "#be123c";
     if (kind === "claim") return "#166534";
+    if (kind === "face-reference") return "#2563eb";
+    if (kind === "edge-reference") return "#0891b2";
+    if (kind === "vertex-reference") return "#7c3aed";
     if (kind === "derived-point") return "#2563eb";
     if (kind === "derived-line") return "#16a34a";
     if (kind === "derived-plane") return "#7c3aed";
