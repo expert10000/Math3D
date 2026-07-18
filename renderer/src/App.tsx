@@ -2916,10 +2916,11 @@ const geometryDerivedConstructionIsExtendedLine = (
 const geometryDerivedConstructionCanActAsLinePairSource = (
   entry: Pick<GeometryDerivedConstructionObject, "type">
 ) =>
-  entry.type.includes("line") ||
-  entry.type.includes("axis") ||
-  entry.type.includes("vector") ||
-  entry.type.includes("segment");
+  !entry.type.includes("plane") &&
+  (entry.type.includes("line") ||
+    entry.type.includes("axis") ||
+    entry.type.includes("vector") ||
+    entry.type.includes("segment"));
 const buildGeometryDashedLine = (
   start: GeometryProbePoint,
   end: GeometryProbePoint,
@@ -10457,6 +10458,8 @@ const App: React.FC = () => {
       setGeometrySceneGalleryReplayStepIndex(0);
       setGeometrySceneGallerySelectedId(entry.id);
       setGeometrySceneGalleryActiveId(entry.id);
+      setGeometryGizmoEnabled(false);
+      setGeometryGlobalQualityOverrideMode("full");
       const rawObjects = entry.initialScene.objects ?? [];
       if (rawObjects.length) {
         const nextObjects = rawObjects.map((sceneObject, index) => {
@@ -10493,6 +10496,16 @@ const App: React.FC = () => {
           })
         );
       }
+      const sceneExtensions = entry.initialScene.extensions ?? {};
+      const restoredDerivedConstructions = normalizeGeometryDerivedConstructionsForRestore(
+        sceneExtensions[GEOMETRY_DERIVED_CONSTRUCTIONS_STORAGE_KEY] ?? (sceneExtensions as { derivedConstructions?: unknown }).derivedConstructions
+      );
+      setGeometryDerivedConstructions(restoredDerivedConstructions);
+      setGeometrySelectedDerivedConstructionId(restoredDerivedConstructions[0]?.id ?? null);
+      const linePairSources = restoredDerivedConstructions.filter(geometryDerivedConstructionCanActAsLinePairSource);
+      setGeometryLinePairSourceAId(linePairSources[0]?.id ?? null);
+      setGeometryLinePairSourceBId(linePairSources[1]?.id ?? null);
+      setGeometryConstructionHistory([]);
       const preferredPanel = entry.recommendedPanels?.[0] ?? "demonstrations";
       if (GEOMETRY_PROCEDURAL_PANEL_VALUES.includes(preferredPanel as GeometryProceduralPanelTab)) {
         setGeometryProceduralPanelTab(preferredPanel as GeometryProceduralPanelTab);
@@ -21544,6 +21557,13 @@ const App: React.FC = () => {
     ]
   );
   const handleExtendSelectedConstructionOperation = useCallback(() => {
+    const selectedEdgeTarget = resolveGeometryOperationEdgeTarget(geometrySelectedPick);
+    const edgeTarget = selectedEdgeTarget ?? geometryEdgeOperationTarget;
+    if (edgeTarget?.edgePoints) {
+      handleResizeSelectedConstructionLineOperation("extend", edgeTarget, { ignoreSelectedDerived: true });
+      setGeometryArmedLineOperation(null);
+      return;
+    }
     const next = geometryArmedLineOperation === "extend" ? null : "extend";
     setGeometryArmedLineOperation(next);
     setGeometrySelectedDerivedConstructionId(null);
@@ -21557,6 +21577,10 @@ const App: React.FC = () => {
     setGeometryActiveOperationInputSlotId("active-edge");
   }, [
     geometryArmedLineOperation,
+    geometryEdgeOperationTarget,
+    geometrySelectedPick,
+    handleResizeSelectedConstructionLineOperation,
+    resolveGeometryOperationEdgeTarget,
   ]);
   const handleTrimSelectedConstructionOperation = useCallback(() => {
     handleResizeSelectedConstructionLineOperation("trim");
@@ -55961,6 +55985,7 @@ case "mobius":
                             <div style={{ display: "grid", gap: 5 }}>
                               <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Planes</div>
                               <div
+                                data-testid="geometry-plane-method-panel"
                                 style={{
                                   border: "1px solid #dbeafe",
                                   borderRadius: 8,
@@ -55987,6 +56012,7 @@ case "mobius":
                                           <button
                                             key={`geometry-plane-method-${method}`}
                                             type="button"
+                                            data-testid={`geometry-plane-method-${method}`}
                                             onClick={() => selectGeometryPlaneConstructionMethod(method)}
                                             aria-pressed={selected}
                                             style={{
@@ -56121,6 +56147,7 @@ case "mobius":
                                   </div>
                                   <button
                                     type="button"
+                                    data-testid="geometry-plane-create-button"
                                     onClick={handleCreateGeometryPlaneConstruction}
                                     disabled={!geometryPlaneMethodStatus.ready}
                                     title={geometryPlaneMethodStatus.message}
@@ -56388,6 +56415,7 @@ case "mobius":
                         <div style={{ borderTop: "1px dashed #d6dce7", paddingTop: 8, display: "grid", gap: 6 }}>
                           <div style={{ fontSize: 11, fontWeight: 700 }}>Relationships</div>
                           <div
+                            data-testid="geometry-line-pair-panel"
                             style={{
                               border: "1px solid #dbeafe",
                               borderRadius: 8,
@@ -56406,6 +56434,7 @@ case "mobius":
                               <label style={{ display: "grid", gap: 3 }}>
                                 Line A
                                 <select
+                                  data-testid="geometry-line-pair-source-a"
                                   value={geometryEffectiveLinePairSourceAId ?? ""}
                                   onChange={(e) => setGeometryLinePairSourceAId(e.target.value || null)}
                                   disabled={geometryLinePairLineOptions.length < 1}
@@ -56422,6 +56451,7 @@ case "mobius":
                               <label style={{ display: "grid", gap: 3 }}>
                                 Line B
                                 <select
+                                  data-testid="geometry-line-pair-source-b"
                                   value={geometryEffectiveLinePairSourceBId ?? ""}
                                   onChange={(e) => setGeometryLinePairSourceBId(e.target.value || null)}
                                   disabled={geometryLinePairLineOptions.length < 2}
@@ -56803,6 +56833,8 @@ case "mobius":
                                         return (
                                 <div
                                   key={`geometry-derived-construction-${entry.id}`}
+                                  data-testid={`geometry-derived-construction-${entry.id}`}
+                                  data-construction-type={entry.type}
                                   style={{
                                     border: "1px solid " + (selected ? "#0a66c2" : "#dbe2ea"),
                                     borderRadius: 8,
@@ -62025,8 +62057,8 @@ case "mobius":
                     )}
                     {geometryProceduralPanelTab === "debug" && (
                       <GeometryScenePresetsPanel
-                        scenes={geometryDebugScenes}
-                        selectedScene={geometryDebugSceneSelected}
+                        scenes={GEOMETRY_SCENE_GALLERY}
+                        selectedScene={geometrySceneGallerySelected}
                         activeSceneId={geometrySceneGalleryActiveId}
                         status={geometrySceneGalleryStatus}
                         replayEnabled={geometrySceneGalleryReplaySteps.length > 0}
@@ -62141,6 +62173,7 @@ case "mobius":
                                           <button
                                             key={`geometry-scene-gallery-entry-${entry.id}`}
                                             type="button"
+                                            data-testid={`geometry-scene-gallery-entry-${entry.id}`}
                                             onClick={() => setGeometrySceneGallerySelectedId(entry.id)}
                                             style={{
                                               display: "grid",
@@ -62208,6 +62241,7 @@ case "mobius":
                                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                                     <button
                                       type="button"
+                                      data-testid="geometry-scene-gallery-open-selected"
                                       onClick={() => openGeometrySceneGalleryEntry(geometrySceneGallerySelected)}
                                       style={{ fontSize: 11 }}
                                     >
@@ -65256,7 +65290,12 @@ case "mobius":
                                 <div style={{ color: "#556" }}>Entity</div>
                                 <div data-testid="geometry-pick-committed-entity">{formatGeometryPickEntity(geometrySelectedPick)}</div>
                                 <div style={{ color: "#556" }}>Object</div>
-                                <div data-testid="geometry-pick-committed-object">{geometryProbeSelectionDetails?.objectLabel ?? geometrySelectedSceneObject?.name ?? "none"}</div>
+                                <div
+                                  data-testid="geometry-pick-committed-object"
+                                  data-object-id={geometrySelectedPick?.objectId ?? ""}
+                                >
+                                  {geometryProbeSelectionDetails?.objectLabel ?? geometrySelectedSceneObject?.name ?? "none"}
+                                </div>
                                 <div style={{ color: "#556" }}>Type</div>
                                 <div data-testid="geometry-pick-committed-type">{geometryProbeSelectionDetails?.objectType ?? geometrySelectedSceneObject?.type ?? "n/a"}</div>
                                 <div style={{ color: "#556" }}>Status</div>

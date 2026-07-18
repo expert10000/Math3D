@@ -10,6 +10,13 @@ const COMPUTE_ENGINE_FIRST_LAUNCH_KEY = "math3d.computeEngines.firstLaunchSeen";
 
 type PickMode = "object" | "face" | "edge" | "vertex";
 type Bounds = { x: number; y: number; width: number; height: number };
+type ViewerPoint = { x: number; y: number };
+type EdgePickCandidate = {
+  edgeLabel: string;
+  objectId: string;
+  vertices: [number, number];
+  point: ViewerPoint;
+};
 
 const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication; page: Page }> => {
   const launchEnv: Record<string, string | undefined> = {
@@ -52,6 +59,51 @@ const clickFirstVisibleButton = async (page: Page, name: string | RegExp) => {
     return;
   }
   throw new Error(`Visible button not found: ${String(name)}`);
+};
+
+const findFirstVisibleButton = async (page: Page, name: string | RegExp) => {
+  const buttons = page.getByRole("button", typeof name === "string" ? { name, exact: true } : { name });
+  const count = await buttons.count();
+  for (let i = 0; i < count; i += 1) {
+    const button = buttons.nth(i);
+    if (await button.isVisible().catch(() => false)) return button;
+  }
+  return null;
+};
+
+const configureGeometryViewerForConstructionPicking = async (page: Page) => {
+  const moveButtons = page.getByRole("button", { name: "Move", exact: true });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const moveCount = await moveButtons.count();
+    let clicked = false;
+    for (let i = 0; i < moveCount; i += 1) {
+      const button = moveButtons.nth(i);
+      if (!(await button.isVisible().catch(() => false))) continue;
+      if ((await button.getAttribute("aria-pressed").catch(() => null)) === "true") {
+        await button.click();
+        clicked = true;
+        break;
+      }
+    }
+    if (!clicked) break;
+    await page.waitForTimeout(100);
+  }
+  await expect.poll(async () => {
+    const moveCount = await moveButtons.count();
+    for (let i = 0; i < moveCount; i += 1) {
+      const button = moveButtons.nth(i);
+      if (!(await button.isVisible().catch(() => false))) continue;
+      if ((await button.getAttribute("aria-pressed").catch(() => null)) === "true") return false;
+    }
+    return true;
+  }).toBe(true);
+
+  const fullButton = await findFirstVisibleButton(page, "Full");
+  if (!fullButton) throw new Error("Visible Full quality button not found.");
+  if ((await fullButton.getAttribute("aria-pressed").catch(() => null)) !== "true") {
+    await fullButton.click();
+  }
+  await expect(fullButton).toHaveAttribute("aria-pressed", "true");
 };
 
 const openProceduralGeometry = async (page: Page) => {
@@ -141,6 +193,73 @@ const clickUntilCommitted = async (page: Page, mode: PickMode) => {
   throw new Error(`Unable to commit ${mode} pick after ${points.length} viewer clicks`);
 };
 
+const parseEdgeVertices = (edgeLabel: string): [number, number] | null => {
+  const match = edgeLabel.match(/\[(\d+),\s*(\d+)\]/);
+  if (!match) return null;
+  return [Number(match[1]), Number(match[2])];
+};
+
+const sharedVertexCount = (a: EdgePickCandidate, b: EdgePickCandidate) =>
+  a.vertices.filter((vertex) => b.vertices.includes(vertex)).length;
+
+const edgePickKey = (candidate: EdgePickCandidate) => `${candidate.objectId}:${candidate.edgeLabel}`;
+
+const shareExactlyOneVertex = (a: EdgePickCandidate, b: EdgePickCandidate) =>
+  a.objectId === b.objectId && sharedVertexCount(a, b) === 1;
+
+const readCommittedEdgeCandidate = async (page: Page, point: ViewerPoint): Promise<EdgePickCandidate | null> => {
+  const entity = (await page.getByTestId("geometry-pick-committed-entity").innerText()).toLowerCase();
+  const status = (await page.getByTestId("geometry-pick-committed-status").innerText()).trim();
+  if (!entity.includes("edge") || status !== "valid") return null;
+
+  const edgeLabel = (await page.getByTestId("geometry-pick-edge").innerText()).trim();
+  const vertices = parseEdgeVertices(edgeLabel);
+  if (!vertices) return null;
+
+  const objectId = (await page.getByTestId("geometry-pick-committed-object").getAttribute("data-object-id"))?.trim() ?? "";
+  if (!objectId) return null;
+
+  return { edgeLabel, objectId, vertices, point };
+};
+
+const findEdgePickCandidate = async (
+  page: Page,
+  predicate: (candidate: EdgePickCandidate) => boolean = () => true
+): Promise<EdgePickCandidate> => {
+  await selectPickMode(page, "edge");
+  const viewer = page.getByTestId("main-viewer");
+  await expect(viewer).toBeVisible();
+  const box = await viewer.boundingBox();
+  if (!box) throw new Error("Viewer bounds unavailable");
+
+  const seen = new Set<string>();
+  for (const point of pointGrid(box)) {
+    await page.mouse.click(point.x, point.y);
+    const candidate = await readCommittedEdgeCandidate(page, point);
+    if (!candidate) continue;
+
+    const key = edgePickKey(candidate);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (predicate(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(`Unable to find a matching edge pick; collected ${seen.size} edge(s).`);
+};
+
+const extendCommittedEdge = async (page: Page, candidate: EdgePickCandidate) => {
+  await expect(page.getByTestId("geometry-pick-committed-entity")).toContainText("edge");
+  await expect(page.getByTestId("geometry-pick-committed-status")).toHaveText("valid");
+  await expect(page.getByTestId("geometry-pick-edge")).toHaveText(candidate.edgeLabel);
+  await expect(page.getByTestId("geometry-pick-committed-object")).toHaveAttribute("data-object-id", candidate.objectId);
+  await clickFirstVisibleButton(page, /^Extend$/);
+};
+
+const selectValue = async (page: Page, testId: string) =>
+  page.getByTestId(testId).evaluate((element) => (element as HTMLSelectElement).value);
+
 test("Geometry pick readout commits object, face, edge, and vertex modes", async () => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-pick-"));
   let app: ElectronApplication | null = null;
@@ -170,6 +289,75 @@ test("Geometry pick readout commits object, face, edge, and vertex modes", async
     await clickUntilCommitted(page, "vertex");
     await expect(page.getByTestId("geometry-pick-committed-entity")).toContainText("vertex");
     await expect(page.getByTestId("geometry-pick-vertex")).not.toContainText("n/a");
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
+test("Geometry construct: edge extensions auto-fill line pair and create a plane", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-edge-plane-"));
+  let app: ElectronApplication | null = null;
+
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+
+    await resetStorage(page);
+    await openProceduralGeometry(page);
+    await clickFirstVisibleButton(page, "Construct");
+    await expect(page.getByTestId("geometry-line-pair-panel")).toHaveCount(1);
+    await configureGeometryViewerForConstructionPicking(page);
+    const edgeA = await findEdgePickCandidate(page);
+
+    await extendCommittedEdge(page, edgeA);
+    await expect.poll(() => selectValue(page, "geometry-line-pair-source-a")).not.toBe("");
+    const lineAId = await selectValue(page, "geometry-line-pair-source-a");
+
+    const edgeB = await findEdgePickCandidate(
+      page,
+      (candidate) => edgePickKey(candidate) !== edgePickKey(edgeA) && shareExactlyOneVertex(edgeA, candidate)
+    );
+    await extendCommittedEdge(page, edgeB);
+    await expect.poll(() => selectValue(page, "geometry-line-pair-source-b")).not.toBe("");
+    const lineBId = await selectValue(page, "geometry-line-pair-source-b");
+    expect(lineBId).not.toBe(lineAId);
+
+    await page.getByTestId("geometry-plane-method-through-2-lines").click();
+    await expect(page.getByTestId("geometry-plane-method-through-2-lines")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
+    await page.getByTestId("geometry-plane-create-button").click();
+    await expect(page.getByText(/Plane Through Lines created from/i)).toBeVisible();
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
+test("Geometry preset: torus line-plane construction restores lines and plane", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-torus-plane-preset-"));
+  let app: ElectronApplication | null = null;
+
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+
+    await resetStorage(page);
+    await clickFirstVisibleButton(page, "Geometry");
+    await clickFirstVisibleButton(page, "Presets");
+    await page.getByTestId("geometry-debug-scene-open-scene:torus-line-plane-construction").click();
+    await configureGeometryViewerForConstructionPicking(page);
+    await clickFirstVisibleButton(page, /^1 Create$/);
+    await clickFirstVisibleButton(page, "Construct");
+
+    await expect(page.locator('[data-construction-type="edge-line-through-two-vertices"]')).toHaveCount(2);
+    await expect(page.locator('[data-construction-type="line-pair-plane-through-lines"]')).toHaveCount(1);
+    await expect.poll(() => selectValue(page, "geometry-line-pair-source-a")).not.toBe("");
+    await expect.poll(() => selectValue(page, "geometry-line-pair-source-b")).not.toBe("");
+    await expect(page.getByTestId("geometry-derived-construction-torus-plane-through-lines")).toBeVisible();
+    await expect(page.getByTestId("geometry-left-panel").getByText("Construction torus", { exact: true })).toBeVisible();
   } finally {
     if (app) await app.close().catch(() => undefined);
     rmSync(profileDir, { recursive: true, force: true });

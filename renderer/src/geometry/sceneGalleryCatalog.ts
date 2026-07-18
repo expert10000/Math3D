@@ -65,7 +65,13 @@ const baseObject = (obj: Partial<GeometryObject> & Pick<GeometryObject, "id" | "
   group: obj.group,
 });
 
-const sceneDoc = (id: string, title: string, objects: GeometryObject[], metadata?: Record<string, string | number | boolean | null>): SceneDocument => {
+const sceneDoc = (
+  id: string,
+  title: string,
+  objects: GeometryObject[],
+  metadata?: Record<string, string | number | boolean | null>,
+  extensions?: Record<string, unknown>
+): SceneDocument => {
   const now = 1_717_000_000_000;
   return {
     id,
@@ -74,7 +80,153 @@ const sceneDoc = (id: string, title: string, objects: GeometryObject[], metadata
     updatedAt: now,
     objects,
     metadata,
+    extensions,
   };
+};
+
+const derivedConstructionExtension = (entries: unknown[]) => ({
+  "math3d.geometry.derivedConstructions.v1": entries,
+});
+
+const dashedLine = (
+  a: { x: number; y: number; z: number },
+  b: { x: number; y: number; z: number },
+  count = 18
+) =>
+  Array.from({ length: count }, (_, index) => {
+    const t0 = index / count;
+    const t1 = Math.min(1, t0 + 0.52 / count);
+    return [
+      {
+        x: a.x + (b.x - a.x) * t0,
+        y: a.y + (b.y - a.y) * t0,
+        z: a.z + (b.z - a.z) * t0,
+      },
+      {
+        x: a.x + (b.x - a.x) * t1,
+        y: a.y + (b.y - a.y) * t1,
+        z: a.z + (b.z - a.z) * t1,
+      },
+    ];
+  });
+
+const torusLinePlaneConstructions = () => {
+  const sourceObjectId = "torus-line-plane-source";
+  const createdAt = 1_717_000_100_000;
+  const lineAStart = { x: -2.25, y: 0, z: 0 };
+  const lineAEnd = { x: 2.25, y: 0, z: 0 };
+  const lineBStart = { x: 0, y: -2.25, z: 0 };
+  const lineBEnd = { x: 0, y: 2.25, z: 0 };
+  const edgeA0 = { x: 0.76, y: 0, z: 0 };
+  const edgeA1 = { x: 1.44, y: 0, z: 0 };
+  const edgeB0 = { x: 0, y: 0.76, z: 0 };
+  const edgeB1 = { x: 0, y: 1.44, z: 0 };
+  const planeLines = [
+    [{ x: -2, y: -2, z: 0 }, { x: 2, y: -2, z: 0 }],
+    [{ x: 2, y: -2, z: 0 }, { x: 2, y: 2, z: 0 }],
+    [{ x: 2, y: 2, z: 0 }, { x: -2, y: 2, z: 0 }],
+    [{ x: -2, y: 2, z: 0 }, { x: -2, y: -2, z: 0 }],
+    [{ x: -2, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }],
+    [{ x: 0, y: -2, z: 0 }, { x: 0, y: 2, z: 0 }],
+  ];
+  return [
+    {
+      id: "torus-plane-line-a",
+      type: "edge-line-through-two-vertices",
+      name: "Line A - extended torus edge",
+      sourceKind: "edge",
+      sourceObjectId,
+      sourceEdgeVertexPair: [0, 1],
+      sourcePoint: { x: 1.1, y: 0, z: 0 },
+      params: { lineMode: "infinite", length: 4.5 },
+      sourceRevision: 0,
+      sourceTopologySignature: null,
+      sourceEdgeSignature: {
+        midpoint: { x: 1.1, y: 0, z: 0 },
+        direction: { x: 1, y: 0, z: 0 },
+        length: 0.68,
+      },
+      selectedEdgeRef: { objectId: sourceObjectId, edgeVertexPair: [0, 1], a: edgeA0, b: edgeA1 },
+      frozenSnapshot: {
+        origin: { x: 0, y: 0, z: 0 },
+        direction: { x: 1, y: 0, z: 0 },
+        groups: [
+          { lines: dashedLine(lineAStart, lineAEnd), color: 0xfacc15, opacity: 0.68, radiusScale: 3 },
+          { lines: [[edgeA0, edgeA1]], color: 0x67e8f9, opacity: 0.42, radiusScale: 8.4 },
+          { lines: [[edgeA0, edgeA1]], color: 0x06b6d4, opacity: 1, radiusScale: 5 },
+        ],
+        pointSets: [{ points: [lineAStart, lineAEnd], color: 0xfacc15, size: 0.13, opacity: 1 }],
+        labelSets: [{ size: 0.9, labels: [{ text: "Line A", position: { x: 2.32, y: 0.06, z: 0.06 }, color: 0x0f172a }] }],
+      },
+      frozenAt: createdAt,
+      dependent: true,
+      visible: true,
+      createdAt,
+    },
+    {
+      id: "torus-plane-line-b",
+      type: "edge-line-through-two-vertices",
+      name: "Line B - extended torus edge",
+      sourceKind: "edge",
+      sourceObjectId,
+      sourceEdgeVertexPair: [120, 121],
+      sourcePoint: { x: 0, y: 1.1, z: 0 },
+      params: { lineMode: "infinite", length: 4.5 },
+      sourceRevision: 0,
+      sourceTopologySignature: null,
+      sourceEdgeSignature: {
+        midpoint: { x: 0, y: 1.1, z: 0 },
+        direction: { x: 0, y: 1, z: 0 },
+        length: 0.68,
+      },
+      selectedEdgeRef: { objectId: sourceObjectId, edgeVertexPair: [120, 121], a: edgeB0, b: edgeB1 },
+      frozenSnapshot: {
+        origin: { x: 0, y: 0, z: 0 },
+        direction: { x: 0, y: 1, z: 0 },
+        groups: [
+          { lines: dashedLine(lineBStart, lineBEnd), color: 0xfacc15, opacity: 0.68, radiusScale: 3 },
+          { lines: [[edgeB0, edgeB1]], color: 0x67e8f9, opacity: 0.42, radiusScale: 8.4 },
+          { lines: [[edgeB0, edgeB1]], color: 0x06b6d4, opacity: 1, radiusScale: 5 },
+        ],
+        pointSets: [{ points: [lineBStart, lineBEnd], color: 0xfacc15, size: 0.13, opacity: 1 }],
+        labelSets: [{ size: 0.9, labels: [{ text: "Line B", position: { x: 0.06, y: 2.32, z: 0.06 }, color: 0x0f172a }] }],
+      },
+      frozenAt: createdAt + 1,
+      dependent: true,
+      visible: true,
+      createdAt: createdAt + 1,
+    },
+    {
+      id: "torus-plane-through-lines",
+      type: "line-pair-plane-through-lines",
+      name: "Plane Through Lines",
+      sourceKind: "edge",
+      sourceObjectId,
+      sourcePoint: { x: 0, y: 0, z: 0 },
+      sourceNormal: { x: 0, y: 0, z: 1 },
+      sourceRevision: 0,
+      sourceTopologySignature: null,
+      frozenSnapshot: {
+        origin: { x: 0, y: 0, z: 0 },
+        direction: { x: 0, y: 0, z: 1 },
+        groups: [
+          { lines: planeLines, color: 0x2563eb, opacity: 0.82, radiusScale: 1.85 },
+          { lines: [[lineAStart, lineAEnd], [lineBStart, lineBEnd]], color: 0x06b6d4, opacity: 0.95, radiusScale: 3.2 },
+        ],
+        pointSets: [{ points: [{ x: 0, y: 0, z: 0 }], color: 0x2563eb, size: 0.08, opacity: 0.92 }],
+        labelSets: [
+          {
+            size: 0.9,
+            labels: [{ text: "Plane Through Lines", position: { x: 0.12, y: 0.12, z: 0.12 }, color: 0x0f172a }],
+          },
+        ],
+      },
+      frozenAt: createdAt + 2,
+      dependent: true,
+      visible: true,
+      createdAt: createdAt + 2,
+    },
+  ];
 };
 
 export const GEOMETRY_SCENE_GALLERY: GeometryGallerySceneEntry[] = [
@@ -130,6 +282,36 @@ export const GEOMETRY_SCENE_GALLERY: GeometryGallerySceneEntry[] = [
       ],
     },
     recommendedPanels: ["object", "analysis"],
+  },
+  {
+    id: "scene:torus-line-plane-construction",
+    title: "Torus line-plane construction",
+    category: "Construction Basics",
+    description: "Torus with two extended construction lines and the plane through them.",
+    thumbnail: thumb("Torus lines", "Two lines -> plane", "#2563eb"),
+    learningGoals: ["Inspect extended edge lines", "Verify a plane through two intersecting lines"],
+    initialScene: sceneDoc(
+      "torus-line-plane-construction",
+      "Torus line-plane construction",
+      [
+        baseObject({
+          id: "torus-line-plane-source",
+          name: "Construction torus",
+          type: "torus",
+          params: { radius: 1.1, tube: 0.35, radialSegments: 48, tubularSegments: 120 },
+          material: { color: 0x4f46e5, opacity: 0.88 },
+        }),
+      ],
+      { scenario: "torus-line-plane-construction" },
+      derivedConstructionExtension(torusLinePlaneConstructions())
+    ),
+    timeline: {
+      steps: [
+        { id: "open-construct", label: "Open construct", note: "Show the two extended line constructions.", action: { kind: "setPanel", panel: "construct" } },
+        { id: "open-analysis", label: "Inspect relation", note: "Use analysis tools to inspect the restored plane.", action: { kind: "setPanel", panel: "analysis" } },
+      ],
+    },
+    recommendedPanels: ["construct", "analysis", "scene"],
   },
   {
     id: "scene:section-plane",
