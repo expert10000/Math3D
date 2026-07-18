@@ -2270,6 +2270,15 @@ type GeometryRepeatGridPlane = "xy" | "xz" | "yz";
 type GeometryRepeatMirrorPlane = "xy" | "xz" | "yz" | "selected-face";
 type GeometryRightPanelTab = "selection" | "scene" | "dependencies";
 type GeometryInspectorPanelTab = "probe" | "dependencies";
+type GeometryConstructPanelTab = "create" | "edit" | "relations" | "measure" | "tree" | "inspect";
+const GEOMETRY_CONSTRUCT_PANEL_TABS: Array<{ id: GeometryConstructPanelTab; label: string }> = [
+  { id: "create", label: "Create" },
+  { id: "edit", label: "Edit" },
+  { id: "relations", label: "Relations" },
+  { id: "measure", label: "Measure" },
+  { id: "tree", label: "Tree" },
+  { id: "inspect", label: "Inspect" },
+];
 type GeometryDependencyState = "valid" | "updating" | "stale" | "broken-source" | "ambiguous-target" | "frozen";
 type GeometryProceduralPickInfo = {
   point: { x: number; y: number; z: number };
@@ -2590,6 +2599,29 @@ type GeometryMathConstructionType =
   | "angle-bisector"
   | "tangent-to-circle-at-object"
   | "normal-to-object-at-object";
+type GeometryLineConstructionTool =
+  | "line-through-objects"
+  | "angle-bisector"
+  | "parallel-line-through-object"
+  | "perpendicular-line-through-object"
+  | "normal-to-object-at-object"
+  | "edge-line-through-two-vertices"
+  | "edge-line-through-midpoint-and-vertex"
+  | "face-normal-line"
+  | "face-line-perpendicular-to-plane"
+  | "edge-direction-vector"
+  | "edge-perpendicular-bisector-line"
+  | "edge-parallel-line-through-vertex"
+  | "edge-equal-length-copied-segment";
+type GeometryPointConstructionTool =
+  | "midpoint"
+  | "face-centroid"
+  | "vertex-point-marker"
+  | "vertex-coordinate-label"
+  | "vertex-normal-endpoint"
+  | "edge-midpoint"
+  | "object-centroid"
+  | "vertex-translated-copy-point";
 type GeometryMathConstructionStatus = "valid" | "broken-source" | "invalid";
 type GeometryMathConstructionRelationshipType =
   | "parallel"
@@ -2684,6 +2716,9 @@ const GEOMETRY_PLANE_CONSTRUCTION_METHOD_GROUPS: Array<{
   { title: "Relations", methods: ["parallel", "perpendicular", "offset"] },
   { title: "Derived", methods: ["mid-plane", "tangent-plane", "symmetry-plane", "principal-plane", "best-fit-plane"] },
 ];
+const GEOMETRY_PLANE_CONSTRUCTION_METHOD_ORDER = GEOMETRY_PLANE_CONSTRUCTION_METHOD_GROUPS.flatMap((group) =>
+  group.methods.map((method) => ({ method, groupTitle: group.title }))
+);
 const GEOMETRY_PLANE_CONSTRUCTION_PICK_MODE: Record<GeometryPlaneConstructionMethod, GeometryProbeSelectionMode> = {
   "through-3-points": "vertex",
   "through-line-point": "edge",
@@ -2714,6 +2749,68 @@ const GEOMETRY_MATH_CONSTRUCTION_TYPE_LABELS: Record<GeometryMathConstructionTyp
   "tangent-to-circle-at-object": "Tangent",
   "normal-to-object-at-object": "Normal",
 };
+const GEOMETRY_LINE_CONSTRUCTION_TOOL_LABELS: Record<GeometryLineConstructionTool, string> = {
+  "line-through-objects": "Line",
+  "angle-bisector": "Angle Bisector",
+  "parallel-line-through-object": "Parallel",
+  "perpendicular-line-through-object": "Perpendicular",
+  "normal-to-object-at-object": "Normal",
+  "edge-line-through-two-vertices": "Supporting Line",
+  "edge-line-through-midpoint-and-vertex": "Midpoint + Vertex",
+  "face-normal-line": "Face Normal",
+  "face-line-perpendicular-to-plane": "Perpendicular To Plane",
+  "edge-direction-vector": "Direction Vector",
+  "edge-perpendicular-bisector-line": "Perpendicular Bisector",
+  "edge-parallel-line-through-vertex": "Parallel Through Vertex",
+  "edge-equal-length-copied-segment": "Equal-Length Copy",
+};
+const GEOMETRY_LINE_CONSTRUCTION_TOOL_GROUPS: Array<{
+  title: string;
+  tools: GeometryLineConstructionTool[];
+}> = [
+  {
+    title: "Basic",
+    tools: ["line-through-objects", "angle-bisector", "parallel-line-through-object", "perpendicular-line-through-object", "normal-to-object-at-object"],
+  },
+  {
+    title: "From Edge",
+    tools: [
+      "edge-line-through-two-vertices",
+      "edge-line-through-midpoint-and-vertex",
+      "edge-direction-vector",
+      "edge-perpendicular-bisector-line",
+      "edge-parallel-line-through-vertex",
+      "edge-equal-length-copied-segment",
+    ],
+  },
+  { title: "From Face", tools: ["face-normal-line", "face-line-perpendicular-to-plane"] },
+];
+const GEOMETRY_LINE_CONSTRUCTION_TOOL_ORDER = GEOMETRY_LINE_CONSTRUCTION_TOOL_GROUPS.flatMap((group) =>
+  group.tools.map((tool) => ({ tool, groupTitle: group.title }))
+);
+const GEOMETRY_POINT_CONSTRUCTION_TOOL_LABELS: Record<GeometryPointConstructionTool, string> = {
+  midpoint: "Midpoint",
+  "face-centroid": "Centroid",
+  "vertex-point-marker": "Marker",
+  "vertex-coordinate-label": "Coordinate",
+  "vertex-normal-endpoint": "Normal End",
+  "edge-midpoint": "Edge Mid",
+  "object-centroid": "Object Center",
+  "vertex-translated-copy-point": "Translated",
+};
+const GEOMETRY_POINT_CONSTRUCTION_TOOL_GROUPS: Array<{
+  title: string;
+  tools: GeometryPointConstructionTool[];
+}> = [
+  { title: "Basic", tools: ["midpoint"] },
+  { title: "From Vertex", tools: ["vertex-point-marker", "vertex-coordinate-label", "vertex-normal-endpoint", "vertex-translated-copy-point"] },
+  { title: "From Edge", tools: ["edge-midpoint"] },
+  { title: "From Face", tools: ["face-centroid"] },
+  { title: "From Object", tools: ["object-centroid"] },
+];
+const GEOMETRY_POINT_CONSTRUCTION_TOOL_ORDER = GEOMETRY_POINT_CONSTRUCTION_TOOL_GROUPS.flatMap((group) =>
+  group.tools.map((tool) => ({ tool, groupTitle: group.title }))
+);
 const GEOMETRY_MATH_RELATIONSHIP_TYPE_LABELS: Record<GeometryMathConstructionRelationshipType, string> = {
   parallel: "Parallel",
   perpendicular: "Perpendicular",
@@ -8723,6 +8820,11 @@ const App: React.FC = () => {
   const [geometryConstructOffsetDistance, setGeometryConstructOffsetDistance] = useState(0.5);
   const [geometryConstructTranslateDistance, setGeometryConstructTranslateDistance] = useState(0.5);
   const [geometryConstructCopiedLength, setGeometryConstructCopiedLength] = useState(0.5);
+  const [geometryConstructPanelTab, setGeometryConstructPanelTab] = useState<GeometryConstructPanelTab>("create");
+  const [geometryPointConstructionTool, setGeometryPointConstructionTool] =
+    useState<GeometryPointConstructionTool>("midpoint");
+  const [geometryLineConstructionTool, setGeometryLineConstructionTool] =
+    useState<GeometryLineConstructionTool>("line-through-objects");
   const [geometryPlaneConstructionMethod, setGeometryPlaneConstructionMethod] =
     useState<GeometryPlaneConstructionMethod>("through-3-points");
   const [geometryPlanePointSlots, setGeometryPlanePointSlots] = useState<Record<GeometryPlanePointSlot, GeometryPlanePointRef | null>>({
@@ -14192,6 +14294,260 @@ const App: React.FC = () => {
       geometryEffectiveMathConstructionSourcePId,
     ]
   );
+  const geometryPointConstructionStatus = useMemo((): {
+    ready: boolean;
+    message: string;
+    createLabel: string;
+    inputs: Array<{ label: string; value: string; ok: boolean }>;
+  } => {
+    const objectLabel = (id: string | null | undefined) =>
+      id
+        ? geometryMathConstructionObjectOptions.find((entry) => entry.id === id)?.name ?? id
+        : "None";
+    const faceLabel =
+      geometrySourceFaceOperationTarget?.faceIndex != null
+        ? `${geometrySourceFaceOperationTarget.objectId} face ${geometrySourceFaceOperationTarget.faceIndex}`
+        : "Pick face";
+    const edgeLabel = geometryEdgeOperationTarget?.edgeVertexPair
+      ? `${geometryEdgeOperationTarget.objectId} edge [${geometryEdgeOperationTarget.edgeVertexPair[0]}, ${geometryEdgeOperationTarget.edgeVertexPair[1]}]`
+      : "Pick edge";
+    const vertexLabel =
+      geometryVertexOperationTarget?.vertexIndex != null
+        ? `${geometryVertexOperationTarget.objectId} vertex ${geometryVertexOperationTarget.vertexIndex}`
+        : "Pick vertex";
+    const sourceA = { label: "A", value: objectLabel(geometryEffectiveMathConstructionSourceAId), ok: !!geometryEffectiveMathConstructionSourceAId };
+    const sourceB = { label: "B", value: objectLabel(geometryEffectiveMathConstructionSourceBId), ok: !!geometryEffectiveMathConstructionSourceBId };
+    switch (geometryPointConstructionTool) {
+      case "midpoint":
+        return {
+          ready: geometryCanCreateMathFromAB,
+          createLabel: "Create Midpoint",
+          message: geometryCanCreateMathFromAB ? "Ready: A and B define the midpoint." : "Choose two different objects for A and B.",
+          inputs: [sourceA, sourceB],
+        };
+      case "face-centroid":
+        return {
+          ready: !!geometrySourceFaceOperationTarget,
+          createLabel: "Create Centroid",
+          message: geometrySourceFaceOperationTarget ? "Ready: source face is set." : "Pick a face or fill the Source face input.",
+          inputs: [{ label: "Face", value: faceLabel, ok: !!geometrySourceFaceOperationTarget }],
+        };
+      case "edge-midpoint":
+        return {
+          ready: !!geometryEdgeOperationTarget,
+          createLabel: "Create Edge Mid",
+          message: geometryEdgeOperationTarget ? "Ready: source edge is set." : "Pick an edge or fill the Edge input.",
+          inputs: [{ label: "Edge", value: edgeLabel, ok: !!geometryEdgeOperationTarget }],
+        };
+      case "object-centroid":
+        return {
+          ready: !!geometrySelectedObjectId,
+          createLabel: "Create Object Center",
+          message: geometrySelectedObjectId ? "Ready: selected object is set." : "Select an object.",
+          inputs: [{ label: "Object", value: geometrySelectedSceneObject?.name ?? geometrySelectedObjectId ?? "Select object", ok: !!geometrySelectedObjectId }],
+        };
+      case "vertex-translated-copy-point":
+        return {
+          ready: !!geometryVertexOperationTarget,
+          createLabel: "Create Copy",
+          message: geometryVertexOperationTarget ? "Ready: source vertex and distance are set." : "Pick a vertex or fill the Vertex input.",
+          inputs: [
+            { label: "Vertex", value: vertexLabel, ok: !!geometryVertexOperationTarget },
+            {
+              label: "Distance",
+              value: fmt(Math.max(0.01, Number(geometryConstructTranslateDistance) || 0.5)),
+              ok: Number.isFinite(Number(geometryConstructTranslateDistance)) && Number(geometryConstructTranslateDistance) > 0,
+            },
+          ],
+        };
+      case "vertex-coordinate-label":
+        return {
+          ready: !!geometryVertexOperationTarget,
+          createLabel: "Create Label",
+          message: geometryVertexOperationTarget ? "Ready: source vertex is set." : "Pick a vertex or fill the Vertex input.",
+          inputs: [{ label: "Vertex", value: vertexLabel, ok: !!geometryVertexOperationTarget }],
+        };
+      case "vertex-normal-endpoint":
+        return {
+          ready: !!geometryVertexOperationTarget,
+          createLabel: "Create Normal End",
+          message: geometryVertexOperationTarget ? "Ready: source vertex is set." : "Pick a vertex or fill the Vertex input.",
+          inputs: [{ label: "Vertex", value: vertexLabel, ok: !!geometryVertexOperationTarget }],
+        };
+      default:
+        return {
+          ready: !!geometryVertexOperationTarget,
+          createLabel: "Create Marker",
+          message: geometryVertexOperationTarget ? "Ready: source vertex is set." : "Pick a vertex or fill the Vertex input.",
+          inputs: [{ label: "Vertex", value: vertexLabel, ok: !!geometryVertexOperationTarget }],
+        };
+    }
+  }, [
+    geometryCanCreateMathFromAB,
+    geometryConstructTranslateDistance,
+    geometryEffectiveMathConstructionSourceAId,
+    geometryEffectiveMathConstructionSourceBId,
+    geometryEdgeOperationTarget,
+    geometryMathConstructionObjectOptions,
+    geometryPointConstructionTool,
+    geometrySelectedObjectId,
+    geometrySelectedSceneObject?.name,
+    geometrySourceFaceOperationTarget,
+    geometryVertexOperationTarget,
+  ]);
+  const handleCreateActiveGeometryPointConstruction = useCallback(() => {
+    switch (geometryPointConstructionTool) {
+      case "midpoint":
+        handleCreateGeometryMathConstruction("midpoint");
+        return;
+      case "face-centroid":
+        handleCreateDerivedFromFace("face-centroid");
+        return;
+      case "edge-midpoint":
+        handleCreateDerivedFromEdge("edge-midpoint");
+        return;
+      case "object-centroid":
+        handleCreateDerivedFromObject("object-centroid");
+        return;
+      default:
+        handleCreateDerivedFromVertex(geometryPointConstructionTool);
+    }
+  }, [
+    geometryPointConstructionTool,
+    handleCreateDerivedFromEdge,
+    handleCreateDerivedFromFace,
+    handleCreateDerivedFromObject,
+    handleCreateDerivedFromVertex,
+    handleCreateGeometryMathConstruction,
+  ]);
+  const geometryLineConstructionStatus = useMemo((): {
+    ready: boolean;
+    message: string;
+    createLabel: string;
+    inputs: Array<{ label: string; value: string; ok: boolean }>;
+  } => {
+    const objectLabel = (id: string | null | undefined) =>
+      id
+        ? geometryMathConstructionObjectOptions.find((entry) => entry.id === id)?.name ?? id
+        : "None";
+    const lineLabel = geometryMathConstructionLineOptions.find((entry) => entry.id === geometryEffectiveMathConstructionLineSourceId)?.name ?? "Need line";
+    const edgeLabel = geometryEdgeOperationTarget?.edgeVertexPair
+      ? `${geometryEdgeOperationTarget.objectId} edge [${geometryEdgeOperationTarget.edgeVertexPair[0]}, ${geometryEdgeOperationTarget.edgeVertexPair[1]}]`
+      : "Pick edge";
+    const faceLabel =
+      geometrySourceFaceOperationTarget?.faceIndex != null
+        ? `${geometrySourceFaceOperationTarget.objectId} face ${geometrySourceFaceOperationTarget.faceIndex}`
+        : "Pick face";
+    const sourceA = { label: "A", value: objectLabel(geometryEffectiveMathConstructionSourceAId), ok: !!geometryEffectiveMathConstructionSourceAId };
+    const sourceB = { label: "B", value: objectLabel(geometryEffectiveMathConstructionSourceBId), ok: !!geometryEffectiveMathConstructionSourceBId };
+    const sourceP = { label: "P", value: objectLabel(geometryEffectiveMathConstructionSourcePId), ok: !!geometryEffectiveMathConstructionSourcePId };
+    switch (geometryLineConstructionTool) {
+      case "line-through-objects":
+        return {
+          ready: geometryCanCreateMathFromAB,
+          createLabel: "Create Line",
+          message: geometryCanCreateMathFromAB ? "Ready: A and B define one line." : "Choose two different objects for A and B.",
+          inputs: [sourceA, sourceB],
+        };
+      case "angle-bisector":
+        return {
+          ready: geometryCanCreateMathFromABP,
+          createLabel: "Create Bisector",
+          message: geometryCanCreateMathFromABP ? "Ready: A, B, and P define the angle." : "Choose three different objects for A, B, and P.",
+          inputs: [sourceA, sourceB, sourceP],
+        };
+      case "parallel-line-through-object":
+      case "perpendicular-line-through-object":
+        return {
+          ready: !!geometryEffectiveMathConstructionLineSourceId && !!geometryEffectiveMathConstructionSourcePId,
+          createLabel: geometryLineConstructionTool === "parallel-line-through-object" ? "Create Parallel" : "Create Perpendicular",
+          message: geometryEffectiveMathConstructionLineSourceId
+            ? geometryEffectiveMathConstructionSourcePId
+              ? "Ready: source line and point are set."
+              : "Choose point P."
+            : "Create or choose a source line.",
+          inputs: [
+            { label: "Line", value: lineLabel, ok: !!geometryEffectiveMathConstructionLineSourceId },
+            sourceP,
+          ],
+        };
+      case "normal-to-object-at-object":
+        return {
+          ready: !!geometryEffectiveMathConstructionSourceAId && !!geometryEffectiveMathConstructionSourcePId,
+          createLabel: "Create Normal",
+          message:
+            geometryEffectiveMathConstructionSourceAId && geometryEffectiveMathConstructionSourcePId
+              ? "Ready: source object and point are set."
+              : "Choose source A and point P.",
+          inputs: [sourceA, sourceP],
+        };
+      case "face-normal-line":
+      case "face-line-perpendicular-to-plane":
+        return {
+          ready: !!geometrySourceFaceOperationTarget,
+          createLabel:
+            geometryLineConstructionTool === "face-normal-line" ? "Create Face Normal" : "Create Perpendicular",
+          message: geometrySourceFaceOperationTarget ? "Ready: source face is set." : "Pick a face or fill the Source face input.",
+          inputs: [{ label: "Face", value: faceLabel, ok: !!geometrySourceFaceOperationTarget }],
+        };
+      case "edge-equal-length-copied-segment":
+        return {
+          ready: !!geometryEdgeOperationTarget,
+          createLabel: "Create Copy",
+          message: geometryEdgeOperationTarget ? "Ready: source edge and length are set." : "Pick an edge or fill the Edge input.",
+          inputs: [
+            { label: "Edge", value: edgeLabel, ok: !!geometryEdgeOperationTarget },
+            {
+              label: "Length",
+              value: fmt(Math.max(0.01, Number(geometryConstructCopiedLength) || 0.5)),
+              ok: Number.isFinite(Number(geometryConstructCopiedLength)) && Number(geometryConstructCopiedLength) > 0,
+            },
+          ],
+        };
+      default:
+        return {
+          ready: !!geometryEdgeOperationTarget,
+          createLabel: "Create Line",
+          message: geometryEdgeOperationTarget ? "Ready: source edge is set." : "Pick an edge or fill the Edge input.",
+          inputs: [{ label: "Edge", value: edgeLabel, ok: !!geometryEdgeOperationTarget }],
+        };
+    }
+  }, [
+    geometryCanCreateMathFromAB,
+    geometryCanCreateMathFromABP,
+    geometryConstructCopiedLength,
+    geometryEffectiveMathConstructionLineSourceId,
+    geometryEffectiveMathConstructionSourceAId,
+    geometryEffectiveMathConstructionSourceBId,
+    geometryEffectiveMathConstructionSourcePId,
+    geometryEdgeOperationTarget,
+    geometryLineConstructionTool,
+    geometryMathConstructionLineOptions,
+    geometryMathConstructionObjectOptions,
+    geometrySourceFaceOperationTarget,
+  ]);
+  const handleCreateActiveGeometryLineConstruction = useCallback(() => {
+    switch (geometryLineConstructionTool) {
+      case "line-through-objects":
+      case "angle-bisector":
+      case "parallel-line-through-object":
+      case "perpendicular-line-through-object":
+      case "normal-to-object-at-object":
+        handleCreateGeometryMathConstruction(geometryLineConstructionTool);
+        return;
+      case "face-normal-line":
+      case "face-line-perpendicular-to-plane":
+        handleCreateDerivedFromFace(geometryLineConstructionTool);
+        return;
+      default:
+        handleCreateDerivedFromEdge(geometryLineConstructionTool);
+    }
+  }, [
+    geometryLineConstructionTool,
+    handleCreateDerivedFromEdge,
+    handleCreateDerivedFromFace,
+    handleCreateGeometryMathConstruction,
+  ]);
   const appendGeometryMathConstructionRelationship = useCallback(
     (type: GeometryMathConstructionRelationshipType, sourceId: string | null, targetId: string | null) => {
       if (!sourceId || !targetId) {
@@ -50473,6 +50829,71 @@ case "mobius":
                     background: "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
                   }}
                 >
+                  {geometryProceduralPanelTab === "construct" ? (
+                    <>
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 800,
+                          color: "#1f2937",
+                          marginRight: 4,
+                          flex: "0 0 auto",
+                        }}
+                      >
+                        Construct
+                      </span>
+                      {GEOMETRY_CONSTRUCT_PANEL_TABS.map((tab) => {
+                        const selected = geometryConstructPanelTab === tab.id;
+                        return (
+                          <button
+                            key={`geometry-construct-panel-tab-${tab.id}`}
+                            type="button"
+                            data-testid={`geometry-construct-panel-tab-${tab.id}`}
+                            onClick={() => setGeometryConstructPanelTab(tab.id)}
+                            aria-pressed={selected}
+                            style={{
+                              ...pill(selected),
+                              fontSize: 11,
+                              padding: "4px 9px",
+                              fontWeight: selected ? 800 : 700,
+                              border: "1px solid " + (selected ? "#0a66c2" : "#99a1ac"),
+                              background: selected ? "linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%)" : "#f8fafc",
+                              color: selected ? "#1e3a8a" : "#334155",
+                              boxShadow: selected ? "0 4px 10px rgba(37, 99, 235, 0.2)" : "none",
+                            }}
+                          >
+                            {tab.label}
+                          </button>
+                        );
+                      })}
+                      <span style={{ flex: "1 1 auto", minWidth: 18 }} />
+                      <span style={{ fontSize: 11, fontWeight: 800, color: "#475569", flex: "0 0 auto" }}>
+                        Transform
+                      </span>
+                      {geometryWorkflowCommandEntries.map((entry) => {
+                        const active = geometryProceduralPanelTab === "transform" && entry.key === geometryWorkflowActiveCommandKey;
+                        return (
+                          <button
+                            key={`geometry-workflow-command-${geometryWorkflowActiveStepId}-${entry.key}`}
+                            type="button"
+                            onClick={entry.onClick}
+                            aria-pressed={active}
+                            style={{
+                              ...pill(active),
+                              fontSize: 11,
+                              border: "1px solid " + (active ? "#0a66c2" : "#99a1ac"),
+                              background: active ? "linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%)" : "#f8fafc",
+                              color: active ? "#1e3a8a" : "#334155",
+                              boxShadow: active ? "0 4px 10px rgba(37, 99, 235, 0.2)" : "none",
+                            }}
+                          >
+                            {entry.label}
+                          </button>
+                        );
+                      })}
+                    </>
+                  ) : (
+                    <>
                   <span
                     style={{
                       fontSize: 12,
@@ -50501,11 +50922,13 @@ case "mobius":
                           color: active ? "#1e3a8a" : "#334155",
                           boxShadow: active ? "0 4px 10px rgba(37, 99, 235, 0.2)" : "none",
                         }}
-                      >
-                        {entry.label}
-                      </button>
-                    );
+                    >
+                      {entry.label}
+                    </button>
+                  );
                   })}
+                    </>
+                  )}
                 </div>
               )}
               {(geometryMode === "scratch" || geometryMode === "workbook") && (
@@ -56114,10 +56537,7 @@ case "mobius":
                           GEOMETRY CONSTRUCT
                         </div>
                         <div style={{ fontSize: 11, color: "#475569" }}>
-                          Build dependent mathematical helpers from selected geometry without modifying source meshes.
-                        </div>
-                        <div style={{ fontSize: 10.5, color: "#64748b" }}>
-                          Left panel: Object / Edit / Construct / Measure / History / Compare.
+                          Create, edit, relate, measure, trace, and inspect construction helpers.
                         </div>
                       </div>
 
@@ -56127,7 +56547,13 @@ case "mobius":
                           borderRadius: 8,
                           padding: "8px 10px",
                           background: "#ffffff",
-                          display: "grid",
+                          display:
+                            geometryConstructPanelTab === "create" ||
+                            geometryConstructPanelTab === "edit" ||
+                            geometryConstructPanelTab === "relations" ||
+                            geometryConstructPanelTab === "tree"
+                              ? "grid"
+                              : "none",
                           gap: 8,
                         }}
                       >
@@ -56238,6 +56664,8 @@ case "mobius":
                         {geometryCreateActionStatus && (
                           <div style={{ fontSize: 10.5, color: "#334155" }}>{geometryCreateActionStatus}</div>
                         )}
+                        {geometryConstructPanelTab === "create" && (
+                          <>
                         <div
                           style={{
                             border: "1px solid #dbe4f0",
@@ -56255,73 +56683,272 @@ case "mobius":
                             </span>
                           </div>
                           <div style={{ display: "grid", gap: 8 }}>
-                            <div style={{ display: "grid", gap: 5 }}>
-                              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Points</div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" onClick={() => handleCreateGeometryMathConstruction("midpoint")} disabled={!geometryCanCreateMathFromAB}>
-                                  Midpoint(A,B)
-                                </button>
-                                <button type="button" onClick={() => handleCreateDerivedFromFace("face-centroid")}>Face centroid</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromVertex("vertex-point-marker")}>Vertex marker</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromVertex("vertex-coordinate-label")}>Coordinate label</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromVertex("vertex-normal-endpoint")}>Normal endpoint</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-midpoint")}>Edge midpoint</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromObject("object-centroid")}>Object centroid</button>
-                                <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                  Translate
-                                  <input
-                                    type="number"
-                                    min={0.01}
-                                    step={0.05}
-                                    value={geometryConstructTranslateDistance}
-                                    onChange={(e) => setGeometryConstructTranslateDistance(Math.max(0.01, Number(e.target.value) || 0.5))}
-                                    style={{ width: 66 }}
-                                  />
-                                </label>
-                                <button type="button" onClick={() => handleCreateDerivedFromVertex("vertex-translated-copy-point")}>Translated copy</button>
+                            <details open style={{ display: "grid", gap: 5 }}>
+                              <summary style={{ fontSize: 10.5, fontWeight: 800, color: "#0f172a", cursor: "pointer" }}>
+                                Points
+                              </summary>
+                              <div
+                                style={{
+                                  border: "1px solid #dbeafe",
+                                  borderRadius: 8,
+                                  background: "#f8fbff",
+                                  padding: "8px 9px",
+                                  display: "grid",
+                                  gap: 8,
+                                  fontSize: 10.5,
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                                    gap: 5,
+                                  }}
+                                >
+                                  {GEOMETRY_POINT_CONSTRUCTION_TOOL_ORDER.map(({ tool, groupTitle }) => {
+                                    const selected = geometryPointConstructionTool === tool;
+                                    return (
+                                      <button
+                                        key={`geometry-point-tool-${tool}`}
+                                        type="button"
+                                        data-testid={`geometry-point-tool-${tool}`}
+                                        onClick={() => setGeometryPointConstructionTool(tool)}
+                                        aria-pressed={selected}
+                                        title={groupTitle}
+                                        style={{
+                                          ...pill(selected),
+                                          borderRadius: 7,
+                                          minHeight: 40,
+                                          padding: "5px 6px",
+                                          display: "grid",
+                                          gap: 1,
+                                          alignContent: "center",
+                                          justifyItems: "start",
+                                          textAlign: "left",
+                                          fontSize: 10.5,
+                                          borderColor: selected ? "#0ea5e9" : "#cbd5e1",
+                                          background: selected ? "#e0f2fe" : "#ffffff",
+                                        }}
+                                      >
+                                        <span style={{ fontWeight: 800, lineHeight: 1.1 }}>
+                                          {GEOMETRY_POINT_CONSTRUCTION_TOOL_LABELS[tool]}
+                                        </span>
+                                        <span style={{ color: selected ? "#0369a1" : "#64748b", fontSize: 9.5, lineHeight: 1.1 }}>
+                                          {groupTitle}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                <div
+                                  style={{
+                                    border: "1px solid #dbeafe",
+                                    borderRadius: 8,
+                                    background: "#ffffff",
+                                    padding: "7px 8px",
+                                    display: "grid",
+                                    gap: 7,
+                                  }}
+                                >
+                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                    <div style={{ display: "grid", gap: 2 }}>
+                                      <span style={{ fontSize: 9.5, fontWeight: 800, color: "#64748b", textTransform: "uppercase" }}>
+                                        Current Tool
+                                      </span>
+                                      <strong style={{ fontSize: 12, color: "#0f172a" }}>
+                                        {GEOMETRY_POINT_CONSTRUCTION_TOOL_LABELS[geometryPointConstructionTool]}
+                                      </strong>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      data-testid="geometry-point-create-button"
+                                      onClick={handleCreateActiveGeometryPointConstruction}
+                                      disabled={!geometryPointConstructionStatus.ready}
+                                      title={geometryPointConstructionStatus.message}
+                                      style={{ flex: "0 0 auto" }}
+                                    >
+                                      {geometryPointConstructionStatus.createLabel}
+                                    </button>
+                                  </div>
+                                  <div style={{ display: "grid", gap: 4 }}>
+                                    {geometryPointConstructionStatus.inputs.map((input) => (
+                                      <div
+                                        key={`geometry-point-input-${geometryPointConstructionTool}-${input.label}`}
+                                        style={{
+                                          display: "grid",
+                                          gridTemplateColumns: "76px minmax(0, 1fr) auto",
+                                          gap: "4px 8px",
+                                          alignItems: "center",
+                                          border: "1px solid #e2e8f0",
+                                          borderRadius: 7,
+                                          background: input.ok ? "#f0fdf4" : "#fffbeb",
+                                          padding: "4px 6px",
+                                        }}
+                                      >
+                                        <span style={{ color: "#475569", fontWeight: 800 }}>{input.label}</span>
+                                        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                          {input.value}
+                                        </span>
+                                        <span style={{ color: input.ok ? "#15803d" : "#b45309", fontWeight: 800 }}>
+                                          {input.ok ? "OK" : "Waiting"}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {geometryPointConstructionTool === "vertex-translated-copy-point" && (
+                                    <label style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                      Translate
+                                      <input
+                                        type="number"
+                                        min={0.01}
+                                        step={0.05}
+                                        value={geometryConstructTranslateDistance}
+                                        onChange={(e) => setGeometryConstructTranslateDistance(Math.max(0.01, Number(e.target.value) || 0.5))}
+                                        style={{ width: 76 }}
+                                      />
+                                    </label>
+                                  )}
+                                  <div style={{ color: geometryPointConstructionStatus.ready ? "#166534" : "#92400e" }}>
+                                    {geometryPointConstructionStatus.message}
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                            <div style={{ display: "grid", gap: 5 }}>
-                              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Lines</div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" onClick={() => handleCreateGeometryMathConstruction("line-through-objects")} disabled={!geometryCanCreateMathFromAB}>
-                                  Line(A,B)
-                                </button>
-                                <button type="button" onClick={() => handleCreateGeometryMathConstruction("angle-bisector")} disabled={!geometryCanCreateMathFromABP}>
-                                  Angle bisector(A,B,P)
-                                </button>
-                                <button type="button" onClick={() => handleCreateGeometryMathConstruction("parallel-line-through-object")} disabled={!geometryMathConstructionLineOptions.length || !geometryEffectiveMathConstructionSourcePId}>
-                                  Parallel(line,P)
-                                </button>
-                                <button type="button" onClick={() => handleCreateGeometryMathConstruction("perpendicular-line-through-object")} disabled={!geometryMathConstructionLineOptions.length || !geometryEffectiveMathConstructionSourcePId}>
-                                  Perpendicular(line,P)
-                                </button>
-                                <button type="button" onClick={() => handleCreateGeometryMathConstruction("normal-to-object-at-object")} disabled={!geometryEffectiveMathConstructionSourceAId || !geometryEffectiveMathConstructionSourcePId}>
-                                  Normal(A,P)
-                                </button>
-                                <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-line-through-two-vertices")}>Supporting line</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-line-through-midpoint-and-vertex")}>Line midpoint + vertex</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromFace("face-normal-line")}>Face normal</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromFace("face-line-perpendicular-to-plane")}>Line perpendicular to plane</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-direction-vector")}>Direction vector</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-perpendicular-bisector-line")}>Perpendicular bisector</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-parallel-line-through-vertex")}>Parallel through vertex</button>
-                                <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                  Length
-                                  <input
-                                    type="number"
-                                    min={0.01}
-                                    step={0.05}
-                                    value={geometryConstructCopiedLength}
-                                    onChange={(e) => setGeometryConstructCopiedLength(Math.max(0.01, Number(e.target.value) || 0.5))}
-                                    style={{ width: 66 }}
-                                  />
-                                </label>
-                                <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-equal-length-copied-segment")}>Equal-length copy</button>
+                            </details>
+                            <details open style={{ display: "grid", gap: 5 }}>
+                              <summary style={{ fontSize: 10.5, fontWeight: 800, color: "#0f172a", cursor: "pointer" }}>
+                                Lines
+                              </summary>
+                              <div
+                                style={{
+                                  border: "1px solid #dbeafe",
+                                  borderRadius: 8,
+                                  background: "#f8fbff",
+                                  padding: "8px 9px",
+                                  display: "grid",
+                                  gap: 8,
+                                  fontSize: 10.5,
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                                    gap: 5,
+                                  }}
+                                >
+                                  {GEOMETRY_LINE_CONSTRUCTION_TOOL_ORDER.map(({ tool, groupTitle }) => {
+                                    const selected = geometryLineConstructionTool === tool;
+                                    return (
+                                      <button
+                                        key={`geometry-line-tool-${tool}`}
+                                        type="button"
+                                        data-testid={`geometry-line-tool-${tool}`}
+                                        onClick={() => setGeometryLineConstructionTool(tool)}
+                                        aria-pressed={selected}
+                                        title={groupTitle}
+                                        style={{
+                                          ...pill(selected),
+                                          borderRadius: 7,
+                                          minHeight: 40,
+                                          padding: "5px 6px",
+                                          display: "grid",
+                                          gap: 1,
+                                          alignContent: "center",
+                                          justifyItems: "start",
+                                          textAlign: "left",
+                                          fontSize: 10.5,
+                                          borderColor: selected ? "#0ea5e9" : "#cbd5e1",
+                                          background: selected ? "#e0f2fe" : "#ffffff",
+                                        }}
+                                      >
+                                        <span style={{ fontWeight: 800, lineHeight: 1.1 }}>
+                                          {GEOMETRY_LINE_CONSTRUCTION_TOOL_LABELS[tool]}
+                                        </span>
+                                        <span style={{ color: selected ? "#0369a1" : "#64748b", fontSize: 9.5, lineHeight: 1.1 }}>
+                                          {groupTitle}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                <div
+                                  style={{
+                                    border: "1px solid #dbeafe",
+                                    borderRadius: 8,
+                                    background: "#ffffff",
+                                    padding: "7px 8px",
+                                    display: "grid",
+                                    gap: 7,
+                                  }}
+                                >
+                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                    <div style={{ display: "grid", gap: 2 }}>
+                                      <span style={{ fontSize: 9.5, fontWeight: 800, color: "#64748b", textTransform: "uppercase" }}>
+                                        Current Tool
+                                      </span>
+                                      <strong style={{ fontSize: 12, color: "#0f172a" }}>
+                                        {GEOMETRY_LINE_CONSTRUCTION_TOOL_LABELS[geometryLineConstructionTool]}
+                                      </strong>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      data-testid="geometry-line-create-button"
+                                      onClick={handleCreateActiveGeometryLineConstruction}
+                                      disabled={!geometryLineConstructionStatus.ready}
+                                      title={geometryLineConstructionStatus.message}
+                                      style={{ flex: "0 0 auto" }}
+                                    >
+                                      {geometryLineConstructionStatus.createLabel}
+                                    </button>
+                                  </div>
+                                  <div style={{ display: "grid", gap: 4 }}>
+                                    {geometryLineConstructionStatus.inputs.map((input) => (
+                                      <div
+                                        key={`geometry-line-input-${geometryLineConstructionTool}-${input.label}`}
+                                        style={{
+                                          display: "grid",
+                                          gridTemplateColumns: "76px minmax(0, 1fr) auto",
+                                          gap: "4px 8px",
+                                          alignItems: "center",
+                                          border: "1px solid #e2e8f0",
+                                          borderRadius: 7,
+                                          background: input.ok ? "#f0fdf4" : "#fffbeb",
+                                          padding: "4px 6px",
+                                        }}
+                                      >
+                                        <span style={{ color: "#475569", fontWeight: 800 }}>{input.label}</span>
+                                        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                          {input.value}
+                                        </span>
+                                        <span style={{ color: input.ok ? "#15803d" : "#b45309", fontWeight: 800 }}>
+                                          {input.ok ? "OK" : "Waiting"}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {geometryLineConstructionTool === "edge-equal-length-copied-segment" && (
+                                    <label style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                      Length
+                                      <input
+                                        type="number"
+                                        min={0.01}
+                                        step={0.05}
+                                        value={geometryConstructCopiedLength}
+                                        onChange={(e) => setGeometryConstructCopiedLength(Math.max(0.01, Number(e.target.value) || 0.5))}
+                                        style={{ width: 76 }}
+                                      />
+                                    </label>
+                                  )}
+                                  <div style={{ color: geometryLineConstructionStatus.ready ? "#166534" : "#92400e" }}>
+                                    {geometryLineConstructionStatus.message}
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                            <div style={{ display: "grid", gap: 5 }}>
-                              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Planes</div>
+                            </details>
+                            <details open style={{ display: "grid", gap: 5 }}>
+                              <summary style={{ fontSize: 10.5, fontWeight: 800, color: "#0f172a", cursor: "pointer" }}>
+                                Planes
+                              </summary>
                               <div
                                 data-testid="geometry-plane-method-panel"
                                 style={{
@@ -56335,40 +56962,109 @@ case "mobius":
                                 }}
                               >
                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
-                                  <strong>Plane method</strong>
-                                  <span style={{ color: "#64748b" }}>
-                                    Pick mode: {geometryProbeSelectionMode}
-                                  </span>
+                                  <strong>Plane tools</strong>
+                                  <span style={{ color: "#64748b" }}>Pick: {geometryProbeSelectionMode}</span>
                                 </div>
-                                {GEOMETRY_PLANE_CONSTRUCTION_METHOD_GROUPS.map((group) => (
-                                  <div key={`geometry-plane-method-group-${group.title}`} style={{ display: "grid", gap: 4 }}>
-                                    <div style={{ fontSize: 10, fontWeight: 700, color: "#475569" }}>{group.title}</div>
-                                    <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                                      {group.methods.map((method) => {
-                                        const selected = geometryPlaneConstructionMethod === method;
-                                        return (
-                                          <button
-                                            key={`geometry-plane-method-${method}`}
-                                            type="button"
-                                            data-testid={`geometry-plane-method-${method}`}
-                                            onClick={() => selectGeometryPlaneConstructionMethod(method)}
-                                            aria-pressed={selected}
-                                            style={{
-                                              ...pill(selected),
-                                              fontSize: 10.5,
-                                              padding: "3px 8px",
-                                              borderColor: selected ? "#0ea5e9" : undefined,
-                                              background: selected ? "#e0f2fe" : undefined,
-                                            }}
-                                          >
-                                            {GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS[method]}
-                                          </button>
-                                        );
-                                      })}
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                                    gap: 5,
+                                  }}
+                                >
+                                  {GEOMETRY_PLANE_CONSTRUCTION_METHOD_ORDER.map(({ method, groupTitle }) => {
+                                    const selected = geometryPlaneConstructionMethod === method;
+                                    return (
+                                      <button
+                                        key={`geometry-plane-method-${method}`}
+                                        type="button"
+                                        data-testid={`geometry-plane-method-${method}`}
+                                        onClick={() => selectGeometryPlaneConstructionMethod(method)}
+                                        aria-pressed={selected}
+                                        title={groupTitle}
+                                        style={{
+                                          ...pill(selected),
+                                          borderRadius: 7,
+                                          minHeight: 40,
+                                          padding: "5px 6px",
+                                          display: "grid",
+                                          gap: 1,
+                                          alignContent: "center",
+                                          justifyItems: "start",
+                                          textAlign: "left",
+                                          fontSize: 10.5,
+                                          borderColor: selected ? "#0ea5e9" : "#cbd5e1",
+                                          background: selected ? "#e0f2fe" : "#ffffff",
+                                        }}
+                                      >
+                                        <span style={{ fontWeight: 800, lineHeight: 1.1 }}>
+                                          {GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS[method]}
+                                        </span>
+                                        <span style={{ color: selected ? "#0369a1" : "#64748b", fontSize: 9.5, lineHeight: 1.1 }}>
+                                          {groupTitle}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                <div
+                                  style={{
+                                    border: "1px solid #dbeafe",
+                                    borderRadius: 8,
+                                    background: "#ffffff",
+                                    padding: "7px 8px",
+                                    display: "grid",
+                                    gap: 7,
+                                  }}
+                                >
+                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                    <div style={{ display: "grid", gap: 2 }}>
+                                      <span style={{ fontSize: 9.5, fontWeight: 800, color: "#64748b", textTransform: "uppercase" }}>
+                                        Current Tool
+                                      </span>
+                                      <strong style={{ fontSize: 12, color: "#0f172a" }}>
+                                        {GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS[geometryPlaneConstructionMethod]}
+                                      </strong>
                                     </div>
+                                    <button
+                                      type="button"
+                                      data-testid="geometry-plane-create-button"
+                                      onClick={handleCreateGeometryPlaneConstruction}
+                                      disabled={!geometryPlaneMethodStatus.ready}
+                                      title={geometryPlaneMethodStatus.message}
+                                      style={{ flex: "0 0 auto" }}
+                                    >
+                                      {geometryPlaneMethodStatus.createLabel}
+                                    </button>
                                   </div>
-                                ))}
-                                <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 7, display: "grid", gap: 6 }}>
+                                  <div style={{ display: "grid", gap: 4 }}>
+                                    {geometryPlaneMethodStatus.inputs.map((input) => (
+                                      <div
+                                        key={`geometry-plane-input-${geometryPlaneConstructionMethod}-${input.label}`}
+                                        style={{
+                                          display: "grid",
+                                          gridTemplateColumns: "76px minmax(0, 1fr) auto",
+                                          gap: "4px 8px",
+                                          alignItems: "center",
+                                          border: "1px solid #e2e8f0",
+                                          borderRadius: 7,
+                                          background: input.ok ? "#f0fdf4" : "#fffbeb",
+                                          padding: "4px 6px",
+                                        }}
+                                      >
+                                        <span style={{ color: "#475569", fontWeight: 800 }}>{input.label}</span>
+                                        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                          {input.value}
+                                        </span>
+                                        <span style={{ color: input.ok ? "#15803d" : "#b45309", fontWeight: 800 }}>
+                                          {input.ok ? "OK" : "Waiting"}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div style={{ color: geometryPlaneMethodStatus.ready ? "#166534" : geometryPlaneMethodStatus.planned ? "#64748b" : "#92400e" }}>
+                                    {geometryPlaneMethodStatus.message}
+                                  </div>
                                   {geometryPlaneConstructionMethod === "through-3-points" && (
                                     <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
                                       <span style={{ color: "#475569" }}>Next pick</span>
@@ -56454,19 +57150,6 @@ case "mobius":
                                       </div>
                                     </div>
                                   )}
-                                  <div style={{ display: "grid", gridTemplateColumns: "96px 1fr auto", gap: "4px 8px", alignItems: "center" }}>
-                                    {geometryPlaneMethodStatus.inputs.map((input) => (
-                                      <React.Fragment key={`geometry-plane-input-${geometryPlaneConstructionMethod}-${input.label}`}>
-                                        <span style={{ color: "#475569" }}>{input.label}</span>
-                                        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                          {input.value}
-                                        </span>
-                                        <span style={{ color: input.ok ? "#15803d" : "#b45309", fontWeight: 700 }}>
-                                          {input.ok ? "OK" : "Need"}
-                                        </span>
-                                      </React.Fragment>
-                                    ))}
-                                  </div>
                                   {geometryPlaneConstructionMethod === "offset" && (
                                     <label style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                                       Offset
@@ -56480,9 +57163,6 @@ case "mobius":
                                       />
                                     </label>
                                   )}
-                                  <div style={{ color: geometryPlaneMethodStatus.ready ? "#166534" : geometryPlaneMethodStatus.planned ? "#64748b" : "#92400e" }}>
-                                    {geometryPlaneMethodStatus.message}
-                                  </div>
                                   {geometryPlaneLivePreviewStatus && (
                                     <div
                                       data-testid={geometryPlaneLivePreviewStatus.testId}
@@ -56500,45 +57180,158 @@ case "mobius":
                                       <span>{geometryPlaneLivePreviewStatus.message}</span>
                                     </div>
                                   )}
-                                  <button
-                                    type="button"
-                                    data-testid="geometry-plane-create-button"
-                                    onClick={handleCreateGeometryPlaneConstruction}
-                                    disabled={!geometryPlaneMethodStatus.ready}
-                                    title={geometryPlaneMethodStatus.message}
-                                    style={{ justifySelf: "start" }}
-                                  >
-                                    {geometryPlaneMethodStatus.createLabel}
-                                  </button>
                                 </div>
                               </div>
-                            </div>
-                            <div style={{ display: "grid", gap: 5 }}>
-                              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Circles</div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" onClick={() => handleCreateGeometryMathConstruction("circle-center-through-object")} disabled={!geometryCanCreateMathFromAB}>
-                                  Circle(A,B)
+                            </details>
+                            <details open style={{ display: "grid", gap: 5 }}>
+                              <summary style={{ fontSize: 10.5, fontWeight: 800, color: "#0f172a", cursor: "pointer" }}>
+                                Circles
+                              </summary>
+                              <div
+                                style={{
+                                  border: "1px solid #dbeafe",
+                                  borderRadius: 8,
+                                  background: "#f8fbff",
+                                  padding: "8px 9px",
+                                  display: "grid",
+                                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                                  gap: 5,
+                                  fontSize: 10.5,
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => handleCreateGeometryMathConstruction("circle-center-through-object")}
+                                  disabled={!geometryCanCreateMathFromAB}
+                                  title="Circle from A and B."
+                                  style={{
+                                    borderRadius: 7,
+                                    minHeight: 38,
+                                    padding: "5px 6px",
+                                    textAlign: "left",
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  Circle
                                 </button>
-                                <button type="button" onClick={() => handleCreateGeometryMathConstruction("tangent-to-circle-at-object")} disabled={!geometryMathConstructionCircleOptions.length || !geometryEffectiveMathConstructionSourcePId}>
-                                  Tangent(circle,P)
+                                <button
+                                  type="button"
+                                  onClick={() => handleCreateGeometryMathConstruction("tangent-to-circle-at-object")}
+                                  disabled={!geometryMathConstructionCircleOptions.length || !geometryEffectiveMathConstructionSourcePId}
+                                  title="Tangent from selected circle and P."
+                                  style={{
+                                    borderRadius: 7,
+                                    minHeight: 38,
+                                    padding: "5px 6px",
+                                    textAlign: "left",
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  Tangent
                                 </button>
                               </div>
-                            </div>
-                            <div style={{ display: "grid", gap: 5 }}>
-                              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Axes</div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" onClick={() => handleCreateDerivedFromObject("object-principal-axes-preview")}>Principal axes</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-aligned-axis")}>Edge axis</button>
+                            </details>
+                            <details open style={{ display: "grid", gap: 5 }}>
+                              <summary style={{ fontSize: 10.5, fontWeight: 800, color: "#0f172a", cursor: "pointer" }}>
+                                Axes
+                              </summary>
+                              <div
+                                style={{
+                                  border: "1px solid #dbeafe",
+                                  borderRadius: 8,
+                                  background: "#f8fbff",
+                                  padding: "8px 9px",
+                                  display: "grid",
+                                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                                  gap: 5,
+                                  fontSize: 10.5,
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => handleCreateDerivedFromObject("object-principal-axes-preview")}
+                                  style={{
+                                    borderRadius: 7,
+                                    minHeight: 38,
+                                    padding: "5px 6px",
+                                    textAlign: "left",
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  Principal
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCreateDerivedFromEdge("edge-aligned-axis")}
+                                  style={{
+                                    borderRadius: 7,
+                                    minHeight: 38,
+                                    padding: "5px 6px",
+                                    textAlign: "left",
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  Edge Axis
+                                </button>
                               </div>
-                            </div>
-                            <div style={{ display: "grid", gap: 5 }}>
-                              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Bounding</div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" onClick={() => handleCreateDerivedFromObject("object-bounding-box")}>Bounding box</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromObject("object-circumscribed-sphere-preview")}>Circumscribed sphere</button>
-                                <button type="button" onClick={() => handleCreateDerivedFromObject("object-inscribed-reference-sphere")}>Inscribed sphere</button>
+                            </details>
+                            <details open style={{ display: "grid", gap: 5 }}>
+                              <summary style={{ fontSize: 10.5, fontWeight: 800, color: "#0f172a", cursor: "pointer" }}>
+                                Bounding
+                              </summary>
+                              <div
+                                style={{
+                                  border: "1px solid #dbeafe",
+                                  borderRadius: 8,
+                                  background: "#f8fbff",
+                                  padding: "8px 9px",
+                                  display: "grid",
+                                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                                  gap: 5,
+                                  fontSize: 10.5,
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => handleCreateDerivedFromObject("object-bounding-box")}
+                                  style={{
+                                    borderRadius: 7,
+                                    minHeight: 38,
+                                    padding: "5px 6px",
+                                    textAlign: "left",
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  Box
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCreateDerivedFromObject("object-circumscribed-sphere-preview")}
+                                  style={{
+                                    borderRadius: 7,
+                                    minHeight: 38,
+                                    padding: "5px 6px",
+                                    textAlign: "left",
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  Circumscribed
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCreateDerivedFromObject("object-inscribed-reference-sphere")}
+                                  style={{
+                                    borderRadius: 7,
+                                    minHeight: 38,
+                                    padding: "5px 6px",
+                                    textAlign: "left",
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  Inscribed
+                                </button>
                               </div>
-                            </div>
+                            </details>
                         </div>
                       </div>
                         {!geometryCanCreateMathFromAB && (
@@ -56546,6 +57339,10 @@ case "mobius":
                             Select two different objects for A and B before creating a midpoint, line, or circle.
                           </div>
                         )}
+                          </>
+                        )}
+                        {geometryConstructPanelTab === "tree" && (
+                          <>
                         <div
                           style={{
                             border: "1px solid #e2e8f0",
@@ -56700,6 +57497,9 @@ case "mobius":
                             <div style={{ color: "#667085" }}>No construction history yet.</div>
                           )}
                         </div>
+                          </>
+                        )}
+                        {geometryConstructPanelTab === "edit" && (
                         <div
                           style={{
                             borderTop: "1px dashed #d6dce7",
@@ -56803,6 +57603,8 @@ case "mobius":
                             </div>
                           </div>
                         </div>
+                        )}
+                        {geometryConstructPanelTab === "relations" && (
                         <div style={{ borderTop: "1px dashed #d6dce7", paddingTop: 8, display: "grid", gap: 6 }}>
                           <div style={{ fontSize: 11, fontWeight: 700 }}>Relationships</div>
                           <div
@@ -57079,6 +57881,9 @@ case "mobius":
                             <div style={{ fontSize: 10.5, color: "#667085" }}>No mathematical relationships yet.</div>
                           )}
                         </div>
+                        )}
+                        {geometryConstructPanelTab === "tree" && (
+                          <>
                         {geometryMathConstructions.length ? (
                           <div style={{ display: "none" }}>
                             {geometryMathConstructions.map((entry) => {
@@ -57139,8 +57944,89 @@ case "mobius":
                             No point, line, circle, or relationship constructions yet.
                           </div>
                         )}
+                          </>
+                        )}
                       </div>
 
+                      {geometryConstructPanelTab === "measure" && (
+                        <div
+                          style={{
+                            border: "1px solid #dbe4f0",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            background: "#ffffff",
+                            display: "grid",
+                            gap: 8,
+                            fontSize: 10.5,
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Measure</div>
+                            <button
+                              type="button"
+                              onClick={() => setGeometryProbeSelectionMode("edge")}
+                              style={pill(geometryProbeSelectionMode === "edge")}
+                              aria-pressed={geometryProbeSelectionMode === "edge"}
+                            >
+                              Edge
+                            </button>
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "74px 1fr", gap: "4px 8px" }}>
+                            <span style={{ color: "#64748b", fontWeight: 700 }}>Pick</span>
+                            <span>
+                              {geometryMeasuredEdgeCandidate?.edgeVertexPair
+                                ? `edge [${geometryMeasuredEdgeCandidate.edgeVertexPair[0]}, ${geometryMeasuredEdgeCandidate.edgeVertexPair[1]}]`
+                                : "none"}
+                            </span>
+                            <span style={{ color: "#64748b", fontWeight: 700 }}>Length</span>
+                            <strong>
+                              {geometryMeasuredEdgeCandidate?.edgeLength != null && Number.isFinite(geometryMeasuredEdgeCandidate.edgeLength)
+                                ? fmt(geometryMeasuredEdgeCandidate.edgeLength)
+                                : "n/a"}
+                            </strong>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={handleMeasureSelectedProbeEdge}
+                              disabled={!geometryMeasuredEdgeCandidate}
+                            >
+                              Measure edge
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleAddDistanceDimensionAnnotation}
+                              disabled={!geometryMeasuredEdgeCandidate}
+                            >
+                              Distance label
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleAddEdgeLengthAnnotation}
+                              disabled={!geometryMeasuredEdgeCandidate}
+                            >
+                              Length label
+                            </button>
+                            <button type="button" onClick={handleAddAngleAnnotation} disabled={!geometryProbeSelectionDetails}>
+                              Angle label
+                            </button>
+                          </div>
+                          {geometryMeasuredEdges.length > 0 ? (
+                            <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 7, display: "grid", gap: 4 }}>
+                              <div style={{ fontWeight: 700 }}>Recent edge measurements</div>
+                              {geometryMeasuredEdges.slice(0, 6).map((entry) => (
+                                <div key={`geometry-construct-measure-edge-${entry.id}`}>
+                                  {entry.objectName} - edge [{entry.edgeVertexPair[0]}, {entry.edgeVertexPair[1]}] - L={fmt(entry.length)}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div style={{ color: "#667085" }}>No edge measurements yet.</div>
+                          )}
+                        </div>
+                      )}
+
+                      {geometryConstructPanelTab === "inspect" && (
                       <div
                         style={{
                           border: "1px solid #dbe4f0",
@@ -57180,10 +58066,12 @@ case "mobius":
                             ? `${geometryProbeSelectionDetails.mode}${geometryProbeSelectionDetails.faceIndex != null ? ` · face #${geometryProbeSelectionDetails.faceIndex}` : ""}${geometryProbeSelectionDetails.edgeVertexPair ? ` · edge [${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]` : ""}${geometryProbeSelectionDetails.vertexIndex != null ? ` · vertex #${geometryProbeSelectionDetails.vertexIndex}` : ""}`
                             : geometrySelectedSceneObject
                               ? `object · ${geometrySelectedSceneObject.name}`
-                              : "none"}
+                            : "none"}
                         </div>
                       </div>
+                      )}
 
+                      {geometryConstructPanelTab === "tree" && (
                       <div
                         style={{
                           border: "1px solid #dbe4f0",
@@ -57395,6 +58283,7 @@ case "mobius":
                           <div style={{ fontSize: 10.5, color: "#667085" }}>No mesh-derived construction objects yet.</div>
                         )}
                       </div>
+                      )}
                     </div>
                     ) : null}
 

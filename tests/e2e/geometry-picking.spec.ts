@@ -71,6 +71,16 @@ const findFirstVisibleButton = async (page: Page, name: string | RegExp) => {
   return null;
 };
 
+const selectConstructPanelTab = async (
+  page: Page,
+  tabId: "create" | "edit" | "relations" | "measure" | "tree" | "inspect"
+) => {
+  const tab = page.getByTestId(`geometry-construct-panel-tab-${tabId}`);
+  await expect(tab).toBeVisible();
+  await tab.click();
+  await expect(tab).toHaveAttribute("aria-pressed", "true");
+};
+
 const configureGeometryViewerForConstructionPicking = async (page: Page) => {
   const moveButtons = page.getByRole("button", { name: "Move", exact: true });
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -307,16 +317,19 @@ test("Geometry construct: edge extensions auto-fill line pair", async () => {
     await resetStorage(page);
     await openProceduralGeometry(page, "box");
     await clickFirstVisibleButton(page, "Construct");
+    await selectConstructPanelTab(page, "relations");
     await expect(page.getByTestId("geometry-line-pair-panel")).toHaveCount(1);
     await configureGeometryViewerForConstructionPicking(page);
     const edgeA = await findEdgePickCandidate(page);
 
     await extendCommittedEdge(page, edgeA);
+    await selectConstructPanelTab(page, "relations");
     await expect.poll(() => selectValue(page, "geometry-line-pair-source-a")).not.toBe("");
     const lineAId = await selectValue(page, "geometry-line-pair-source-a");
 
     const edgeB = await findEdgePickCandidate(page, (candidate) => edgePickKey(candidate) !== edgePickKey(edgeA));
     await extendCommittedEdge(page, edgeB);
+    await selectConstructPanelTab(page, "relations");
     await expect.poll(() => selectValue(page, "geometry-line-pair-source-b")).not.toBe("");
     const lineBId = await selectValue(page, "geometry-line-pair-source-b");
     expect(lineBId).not.toBe(lineAId);
@@ -343,20 +356,23 @@ test("Geometry preset: torus line-plane construction restores lines and plane", 
     await clickFirstVisibleButton(page, /^1 Create$/);
     await clickFirstVisibleButton(page, "Construct");
 
+    await selectConstructPanelTab(page, "tree");
     await expect(page.locator('[data-construction-type="edge-line-through-two-vertices"]')).toHaveCount(2);
     await expect(page.locator('[data-construction-type="line-pair-plane-through-lines"]')).toHaveCount(1);
-    await expect.poll(() => selectValue(page, "geometry-line-pair-source-a")).not.toBe("");
-    await expect.poll(() => selectValue(page, "geometry-line-pair-source-b")).not.toBe("");
     await expect(page.getByTestId("geometry-derived-construction-torus-plane-through-lines")).toBeVisible();
     await expect(page.getByTestId("geometry-plane-construction-method-torus-plane-through-lines")).toHaveText("Through 2 Lines");
     await expect(page.getByTestId("geometry-plane-construction-input-torus-plane-through-lines-0")).toHaveText("Line A: Line A - extended torus edge");
     await expect(page.getByTestId("geometry-plane-construction-input-torus-plane-through-lines-1")).toHaveText("Line B: Line B - extended torus edge");
     await expect(page.getByTestId("geometry-plane-construction-input-torus-plane-through-lines-2")).toHaveText("Relation: Intersecting");
     await expect(page.getByTestId("geometry-plane-construction-result-torus-plane-through-lines")).toHaveText("Plane");
+    await selectConstructPanelTab(page, "relations");
+    await expect.poll(() => selectValue(page, "geometry-line-pair-source-a")).not.toBe("");
+    await expect.poll(() => selectValue(page, "geometry-line-pair-source-b")).not.toBe("");
+    await selectConstructPanelTab(page, "create");
     await page.getByTestId("geometry-plane-method-through-2-lines").click();
     await expect(page.getByTestId("geometry-plane-through-lines-preview-status")).toContainText("Preview plane is shown");
     await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
-    await expect(page.getByTestId("geometry-left-panel").getByText("Construction torus", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("geometry-plane-method-panel")).toBeVisible();
   } finally {
     if (app) await app.close().catch(() => undefined);
     rmSync(profileDir, { recursive: true, force: true });
