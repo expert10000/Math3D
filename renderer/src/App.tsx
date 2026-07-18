@@ -2433,6 +2433,11 @@ type GeometryDerivedConstructionObject = {
     lineMode?: GeometryLineExtensionMode;
     extensionDirection?: "forward" | "backward";
   };
+  constructionSummary?: {
+    method?: string;
+    inputs?: Array<{ label: string; value: string }>;
+    result?: string;
+  };
   sourceRevision?: number;
   sourceTopologySignature?: string | null;
   sourceFaceSignature?: {
@@ -2515,6 +2520,11 @@ type GeometryConstructionHistoryEntry = {
   result: string;
   resultId?: string;
   steps: string[];
+  planeSummary?: {
+    method: string;
+    inputs: string[];
+    result: string;
+  };
 };
 type GeometryDependencyNodeKind =
   | "scene-root"
@@ -2774,6 +2784,83 @@ const geometryDerivedConstructionSourceLabel = (evalEntry: GeometryDerivedConstr
   if (evalEntry.sourceFaceIndex != null) return `✓ ${sourceName} face #${evalEntry.sourceFaceIndex}`;
   if (evalEntry.sourceVertexIndex != null) return `✓ ${sourceName} vertex #${evalEntry.sourceVertexIndex}`;
   return `✓ ${sourceName}`;
+};
+const geometryDerivedConstructionPlaneMethodLabel = (entry: Pick<GeometryDerivedConstructionObject, "type" | "name">) => {
+  if (entry.type === "face-plane-through-three-vertices") return GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS["through-3-points"];
+  if (entry.type === "line-pair-plane-through-lines") {
+    return geometryDerivedConstructionName(entry).toLowerCase().includes("line + point")
+      ? GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS["through-line-point"]
+      : GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS["through-2-lines"];
+  }
+  if (entry.type === "line-pair-mid-plane") return GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS["mid-plane"];
+  if (entry.type === "face-tangent-plane-preview") return GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS["tangent-plane"];
+  if (entry.type === "face-offset-plane") return GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS.offset;
+  if (entry.type === "face-parallel-face-plane") return GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS.parallel;
+  if (entry.type === "face-plane-normal-to-selected-edge") return GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS.perpendicular;
+  if (entry.type === "object-symmetry-plane-preview") return GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS["symmetry-plane"];
+  if (entry.type === "face-plane-through-centroid") return "Through Face Centroid";
+  return null;
+};
+const geometryDerivedConstructionIsPlaneResult = (entry: Pick<GeometryDerivedConstructionObject, "type" | "name">) =>
+  geometryDerivedConstructionPlaneMethodLabel(entry) != null;
+const geometryPlaneConstructionTreeSummary = (
+  entry: GeometryDerivedConstructionObject,
+  evalEntry: GeometryDerivedConstructionEvaluation | null | undefined
+) => {
+  if (!geometryDerivedConstructionIsPlaneResult(entry)) return null;
+  const sourceName = evalEntry?.sourceObjectName || entry.sourceObjectId;
+  const inputLabel = (kind: string, value: string | number | null | undefined) =>
+    value == null || value === "" ? `${kind}: not recorded` : `${kind}: ${value}`;
+  const pointLabel = (label: string, ref: { vertexIndex?: number | null; objectId?: string | null } | null | undefined) =>
+    inputLabel(label, ref?.vertexIndex != null ? `vertex #${ref.vertexIndex}` : ref?.objectId ?? null);
+  const edgeLabel = (label: string, pair: [number, number] | null | undefined) =>
+    inputLabel(label, pair ? `edge [${pair[0]}, ${pair[1]}]` : null);
+  const method = entry.constructionSummary?.method ?? geometryDerivedConstructionPlaneMethodLabel(entry) ?? "Plane";
+  const fallbackInputs = (() => {
+    if (entry.type === "face-plane-through-three-vertices") {
+      return [
+        pointLabel("Point A", { vertexIndex: entry.sourceVertexIndex, objectId: entry.sourceObjectId }),
+        pointLabel("Point B", entry.secondaryVertexRef),
+        pointLabel("Point C", entry.tertiaryVertexRef),
+      ];
+    }
+    if (entry.type === "line-pair-plane-through-lines" && geometryDerivedConstructionName(entry).toLowerCase().includes("line + point")) {
+      return [
+        edgeLabel("Line", entry.sourceEdgeVertexPair),
+        pointLabel("Point", entry.secondaryVertexRef),
+      ];
+    }
+    if (entry.type === "line-pair-plane-through-lines") {
+      return [
+        "Line A: derived line",
+        "Line B: derived line",
+      ];
+    }
+    if (entry.type === "line-pair-mid-plane") {
+      return ["Plane A: derived line support", "Plane B: derived line support"];
+    }
+    if (entry.sourceFaceIndex != null) return [inputLabel("Face", `face #${entry.sourceFaceIndex}`)];
+    if (entry.sourceKind === "object") return [inputLabel("Object", sourceName)];
+    return [geometryDerivedConstructionSourceLabel(evalEntry)];
+  })();
+  const inputs = entry.constructionSummary?.inputs?.length
+    ? entry.constructionSummary.inputs.map((item) => `${item.label}: ${item.value}`)
+    : fallbackInputs;
+  return {
+    method,
+    inputs,
+    result: entry.constructionSummary?.result ?? geometryDerivedConstructionResultLabel(entry),
+  };
+};
+const geometryPlaneConstructionHistorySummary = (entry: GeometryDerivedConstructionObject) => {
+  const summary = geometryPlaneConstructionTreeSummary(entry, null);
+  return summary
+    ? {
+        method: summary.method,
+        inputs: summary.inputs,
+        result: summary.result,
+      }
+    : undefined;
 };
 const geometryDerivedConstructionSourceEntityLabel = (
   entry: Pick<
@@ -13811,6 +13898,7 @@ const App: React.FC = () => {
           result,
           resultId: next.id,
           steps: [`Select ${geometryDerivedConstructionSourceEntityLabel(next)}`, action, `Created ${result}`],
+          planeSummary: geometryPlaneConstructionHistorySummary(next),
         },
         ...prev,
       ].slice(0, 40));
@@ -19036,6 +19124,78 @@ const App: React.FC = () => {
       canCreateAngleMarker: !parallel,
     };
   }, [geometryEffectiveLinePairSourceAId, geometryEffectiveLinePairSourceBId, geometryLinePairLineOptions]);
+  const geometryPlaneThroughLinesPreviewGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (geometryMode !== "procedural" || geometryPlaneConstructionMethod !== "through-2-lines") return null;
+    const analysis = geometryLinePairAnalysis;
+    if (!analysis?.canCreatePlane || !analysis.containingPlaneNormal) return null;
+    const normal = geometryNormalizeVec(analysis.containingPlaneNormal);
+    if (!normal) return null;
+
+    const basis = resolveHelperTangentBasis(normal);
+    const u = geometryNormalizeVec(analysis.lineA.direction) ?? basis.u;
+    const preferredV =
+      analysis.parallel && analysis.connectorDirection
+        ? analysis.connectorDirection
+        : geometryNormalizeVec(geometrySub(analysis.closestB, analysis.closestA));
+    const v =
+      geometryNormalizeVec(preferredV ?? geometryCross(normal, u)) ??
+      geometryNormalizeVec(geometryCross(normal, u)) ??
+      basis.v;
+    const center = analysis.parallel ? analysis.midPoint : analysis.closestA;
+    const span = Math.max(
+      0.9,
+      analysis.distance * 1.6,
+      Number(analysis.lineA.object.params?.length ?? 0) * 0.35,
+      Number(analysis.lineB.object.params?.length ?? 0) * 0.35,
+      1.2
+    );
+    const corners = [
+      geometryAdd(center, geometryAdd(geometryScale(u, span), geometryScale(v, span))),
+      geometryAdd(center, geometryAdd(geometryScale(u, -span), geometryScale(v, span))),
+      geometryAdd(center, geometryAdd(geometryScale(u, -span), geometryScale(v, -span))),
+      geometryAdd(center, geometryAdd(geometryScale(u, span), geometryScale(v, -span))),
+    ];
+    const planeLines: PolylineSet = [
+      [corners[0], corners[1]],
+      [corners[1], corners[2]],
+      [corners[2], corners[3]],
+      [corners[3], corners[0]],
+      [geometryAdd(center, geometryScale(u, -span)), geometryAdd(center, geometryScale(u, span))],
+      [geometryAdd(center, geometryScale(v, -span)), geometryAdd(center, geometryScale(v, span))],
+    ];
+    for (const offset of [-0.5, 0.5]) {
+      planeLines.push([
+        geometryAdd(geometryScale(u, -span), geometryAdd(center, geometryScale(v, span * offset))),
+        geometryAdd(geometryScale(u, span), geometryAdd(center, geometryScale(v, span * offset))),
+      ]);
+      planeLines.push([
+        geometryAdd(geometryScale(v, -span), geometryAdd(center, geometryScale(u, span * offset))),
+        geometryAdd(geometryScale(v, span), geometryAdd(center, geometryScale(u, span * offset))),
+      ]);
+    }
+    const supportSegment = (origin: GeometryProbePoint, direction: GeometryProbePoint, length = span * 1.35) =>
+      [
+        geometryAdd(origin, geometryScale(direction, -length)),
+        geometryAdd(origin, geometryScale(direction, length)),
+      ] as [GeometryProbePoint, GeometryProbePoint];
+    return [
+      {
+        lines: planeLines,
+        color: GEOMETRY_VISUAL_LANGUAGE.selection,
+        opacity: 0.24,
+        radiusScale: 1.05,
+      },
+      {
+        lines: [
+          supportSegment(analysis.closestA, analysis.lineA.direction),
+          supportSegment(analysis.closestB, analysis.lineB.direction),
+        ],
+        color: GEOMETRY_VISUAL_LANGUAGE.derived,
+        opacity: 0.82,
+        radiusScale: 2.35,
+      },
+    ];
+  }, [geometryLinePairAnalysis, geometryMode, geometryPlaneConstructionMethod, resolveHelperTangentBasis]);
   const geometrySelectedDerivedLineGizmoOverlays = useMemo<{
     groups: OverlayPolylineGroup[] | null;
     pointSets: OverlayPointSet[] | null;
@@ -20379,6 +20539,7 @@ const App: React.FC = () => {
           result,
           resultId: next.id,
           steps: [`Select ${geometryDerivedConstructionSourceEntityLabel(next)}`, action, `Created ${result}`],
+          planeSummary: geometryPlaneConstructionHistorySummary(next),
         },
         ...prev,
       ].slice(0, 40));
@@ -20616,6 +20777,21 @@ const App: React.FC = () => {
         sourceObjectId: lineA.object.sourceObjectId || lineB.object.sourceObjectId,
         sourcePoint: { ...sourcePoint },
         sourceNormal: sourceNormal ? { ...sourceNormal } : null,
+        constructionSummary:
+          type === "line-pair-plane-through-lines" || type === "line-pair-mid-plane"
+            ? {
+                method:
+                  type === "line-pair-mid-plane"
+                    ? GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS["mid-plane"]
+                    : GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS["through-2-lines"],
+                inputs: [
+                  { label: "Line A", value: lineA.name },
+                  { label: "Line B", value: lineB.name },
+                  { label: "Relation", value: analysis.relation },
+                ],
+                result: type === "line-pair-mid-plane" ? "Mid Plane" : "Plane",
+              }
+            : undefined,
         frozenSnapshot,
         frozenAt: Date.now(),
         dependent: false,
@@ -20634,6 +20810,7 @@ const App: React.FC = () => {
           result: labelText,
           resultId: next.id,
           steps: [`Select ${lineA.name}`, `Select ${lineB.name}`, `Created ${labelText}`],
+          planeSummary: geometryPlaneConstructionHistorySummary(next),
         },
         ...prev,
       ].slice(0, 40));
@@ -20761,6 +20938,105 @@ const App: React.FC = () => {
       normal,
     };
   }, [geometryPlaneLinePointLine, geometryPlaneLinePointPoint]);
+  const geometryPlaneBasicInputPreviewOverlays = useMemo<{
+    groups: OverlayPolylineGroup[] | null;
+    pointSets: OverlayPointSet[] | null;
+  }>(() => {
+    if (geometryMode !== "procedural") return { groups: null, pointSets: null };
+    const hoveredVertex =
+      geometryProbeHoverSelectionDetails?.mode === "vertex" && geometryProbeHoverSelectionDetails.objectId != null
+        ? {
+            objectId: geometryProbeHoverSelectionDetails.objectId,
+            vertexIndex: geometryProbeHoverSelectionDetails.vertexIndex,
+          }
+        : null;
+    const inputPointRefs =
+      geometryPlaneConstructionMethod === "through-3-points"
+        ? GEOMETRY_PLANE_POINT_SLOT_ORDER.map((slot) => geometryPlanePointSlots[slot]).filter(
+            (point): point is GeometryPlanePointRef => !!point
+          )
+        : geometryPlaneConstructionMethod === "through-line-point" && geometryPlaneLinePointAnalysis.point
+          ? [geometryPlaneLinePointAnalysis.point]
+          : [];
+    const snapshot =
+      geometryPlaneConstructionMethod === "through-3-points" &&
+      geometryPlaneThreePointAnalysis.ready &&
+      geometryPlanePointSlots.a &&
+      geometryPlanePointSlots.b &&
+      geometryPlanePointSlots.c
+        ? buildGeometryPlaneFromPointsFrozenSnapshot(
+            geometryPlanePointSlots.a,
+            geometryPlanePointSlots.b,
+            geometryPlanePointSlots.c,
+            "Plane Through 3 Points"
+          )
+        : geometryPlaneConstructionMethod === "through-line-point" &&
+            geometryPlaneLinePointAnalysis.ready &&
+            geometryPlaneLinePointAnalysis.line &&
+            geometryPlaneLinePointAnalysis.point
+          ? buildGeometryPlaneFromLinePointFrozenSnapshot(
+              geometryPlaneLinePointAnalysis.line,
+              geometryPlaneLinePointAnalysis.point,
+              "Plane Through Line + Point"
+            )
+          : null;
+    if (!snapshot) return { groups: null, pointSets: null };
+    const calmGroups = snapshot.groups
+      .map((group, groupIndex) => {
+        const isPlaneFrame = group.color === GEOMETRY_VISUAL_LANGUAGE.selection && group.lines.length >= 6;
+        const lines = isPlaneFrame ? group.lines.filter((_, lineIndex) => lineIndex < 4 || lineIndex > 5) : group.lines;
+        if (!lines.length) return null;
+        return {
+          ...group,
+          lines,
+          opacity: isPlaneFrame ? 0.24 : Math.min(0.76, (group.opacity ?? 1) * 0.72),
+          radiusScale: isPlaneFrame
+            ? 1.05
+            : group.radiusScale != null
+              ? group.radiusScale * (groupIndex === 0 ? 0.85 : 0.92)
+              : group.radiusScale,
+        };
+      })
+      .filter((group): group is OverlayPolylineGroup => !!group);
+    const inputPointSets = inputPointRefs.map((ref) => {
+      const hovered = hoveredVertex?.objectId === ref.objectId && hoveredVertex.vertexIndex === ref.vertexIndex;
+      return {
+        points: [ref.point],
+        color: hovered ? GEOMETRY_VISUAL_LANGUAGE.hover : GEOMETRY_VISUAL_LANGUAGE.measurement,
+        size: hovered ? 0.21 : 0.145,
+        opacity: hovered ? 1 : 0.98,
+      };
+    });
+    const centerPointSet =
+      snapshot.origin && geometryPlaneConstructionMethod === "through-3-points"
+        ? [{ points: [snapshot.origin], color: GEOMETRY_VISUAL_LANGUAGE.selection, size: 0.065, opacity: 0.72 }]
+        : [];
+    const closestPointSet =
+      geometryPlaneConstructionMethod === "through-line-point" && geometryPlaneLinePointAnalysis.closestPoint
+        ? [
+            {
+              points: [geometryPlaneLinePointAnalysis.closestPoint],
+              color: GEOMETRY_VISUAL_LANGUAGE.selection,
+              size: 0.065,
+              opacity: 0.72,
+            },
+          ]
+        : [];
+    return {
+      groups: calmGroups.length ? calmGroups : null,
+      pointSets: [...centerPointSet, ...closestPointSet, ...inputPointSets],
+    };
+  }, [
+    buildGeometryPlaneFromLinePointFrozenSnapshot,
+    buildGeometryPlaneFromPointsFrozenSnapshot,
+    geometryMode,
+    geometryPlaneConstructionMethod,
+    geometryPlaneLinePointAnalysis.closestPoint,
+    geometryPlaneLinePointAnalysis,
+    geometryPlanePointSlots,
+    geometryPlaneThreePointAnalysis.ready,
+    geometryProbeHoverSelectionDetails,
+  ]);
   const geometryPlaneMethodStatus = useMemo((): {
     ready: boolean;
     planned: boolean;
@@ -20833,7 +21109,9 @@ const App: React.FC = () => {
           createLabel: "Create Plane",
           message: linePair
             ? linePair.canCreatePlane
-              ? `${linePair.relation} lines define one plane.`
+              ? linePair.parallel
+                ? "Parallel lines define one plane."
+                : "Intersecting lines define one plane."
               : linePair.skew
                 ? "Skew lines are not coplanar; use Common Perpendicular instead."
                 : linePair.coincident
@@ -20958,6 +21236,37 @@ const App: React.FC = () => {
     geometrySelectedObjectId,
     geometrySourceFaceOperationTarget,
   ]);
+  const geometryPlaneLivePreviewStatus = useMemo(() => {
+    switch (geometryPlaneConstructionMethod) {
+      case "through-3-points":
+        return {
+          testId: "geometry-plane-through-3-points-preview-status",
+          tone: geometryPlaneMethodStatus.ready ? "ready" : "waiting",
+          message: geometryPlaneMethodStatus.ready
+            ? "Preview plane is shown in the viewer."
+            : "Preview appears after three distinct non-collinear points.",
+        };
+      case "through-line-point":
+        return {
+          testId: "geometry-plane-through-line-point-preview-status",
+          tone: geometryPlaneMethodStatus.ready ? "ready" : "waiting",
+          message: geometryPlaneMethodStatus.ready
+            ? "Preview plane is shown in the viewer."
+            : "Preview appears after a line and an off-line point.",
+        };
+      case "through-2-lines":
+        if (!geometryLinePairAnalysis) return null;
+        return {
+          testId: "geometry-plane-through-lines-preview-status",
+          tone: geometryLinePairAnalysis.canCreatePlane ? "ready" : "waiting",
+          message: geometryLinePairAnalysis.canCreatePlane
+            ? "Preview plane is shown in the viewer."
+            : "Preview unavailable until the lines are intersecting or parallel.",
+        };
+      default:
+        return null;
+    }
+  }, [geometryLinePairAnalysis, geometryPlaneConstructionMethod, geometryPlaneMethodStatus.ready]);
   const clearGeometryPlanePointSlots = useCallback(() => {
     setGeometryPlanePointSlots({ a: null, b: null, c: null });
     setGeometryPlanePointActiveSlot("a");
@@ -21002,6 +21311,15 @@ const App: React.FC = () => {
       secondaryVertexRef: { objectId: b.objectId, vertexIndex: b.vertexIndex, point: { ...b.point } },
       tertiaryVertexRef: { objectId: c.objectId, vertexIndex: c.vertexIndex, point: { ...c.point } },
       sourceNormal: { ...geometryPlaneThreePointAnalysis.normal },
+      constructionSummary: {
+        method: GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS["through-3-points"],
+        inputs: [
+          { label: "Point A", value: `vertex #${a.vertexIndex}` },
+          { label: "Point B", value: `vertex #${b.vertexIndex}` },
+          { label: "Point C", value: `vertex #${c.vertexIndex}` },
+        ],
+        result: "Plane",
+      },
       frozenSnapshot,
     });
     setGeometryPlanePointSlots({ a: null, b: null, c: null });
@@ -21050,6 +21368,14 @@ const App: React.FC = () => {
       sourcePoint: { ...point.point },
       secondaryVertexRef: { objectId: point.objectId, vertexIndex: point.vertexIndex, point: { ...point.point } },
       sourceNormal: { ...geometryPlaneLinePointAnalysis.normal },
+      constructionSummary: {
+        method: GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS["through-line-point"],
+        inputs: [
+          { label: "Line", value: line.name },
+          { label: "Point", value: `vertex #${point.vertexIndex}` },
+        ],
+        result: "Plane",
+      },
       frozenSnapshot,
     });
     setGeometryPlaneLinePointPoint(null);
@@ -22215,6 +22541,9 @@ const App: React.FC = () => {
     if (geometrySelectedDerivedLineGizmoOverlays.pointSets?.length) {
       sets.push(...geometrySelectedDerivedLineGizmoOverlays.pointSets);
     }
+    if (geometryPlaneBasicInputPreviewOverlays.pointSets?.length) {
+      sets.push(...geometryPlaneBasicInputPreviewOverlays.pointSets);
+    }
     pushPointSets(geometryProceduralFeatureOverlays.pointSets);
     if (geometryTimelineShowAnnotations) pushPointSets(geometryProceduralAnnotationOverlays.pointSets);
     pushPointSets(geometryMathConstructionOverlays.pointSets);
@@ -22231,6 +22560,7 @@ const App: React.FC = () => {
     geometryTimelineShowAnnotations,
     geometryDerivedConstructionOverlays.pointSets,
     geometrySelectedDerivedLineGizmoOverlays.pointSets,
+    geometryPlaneBasicInputPreviewOverlays.pointSets,
     geometryMathConstructionOverlays.pointSets,
     geometryProceduralSnapPreviewPointSet,
   ]);
@@ -22253,6 +22583,12 @@ const App: React.FC = () => {
     }
     if (geometrySelectedDerivedLineGizmoOverlays.groups?.length) {
       groups.push(...geometrySelectedDerivedLineGizmoOverlays.groups);
+    }
+    if (geometryPlaneBasicInputPreviewOverlays.groups?.length) {
+      groups.push(...geometryPlaneBasicInputPreviewOverlays.groups);
+    }
+    if (geometryPlaneThroughLinesPreviewGroups?.length) {
+      groups.push(...geometryPlaneThroughLinesPreviewGroups);
     }
     if (geometryArmedLineOperationPreviewGroups?.length) {
       groups.push(...geometryArmedLineOperationPreviewGroups);
@@ -22284,6 +22620,8 @@ const App: React.FC = () => {
     geometryProceduralFeatureOverlays.groups,
     geometryArmedLineOperationPreviewGroups,
     geometryDerivedConstructionOverlays.groups,
+    geometryPlaneBasicInputPreviewOverlays.groups,
+    geometryPlaneThroughLinesPreviewGroups,
     geometrySelectedDerivedLineGizmoOverlays.groups,
     geometryMathConstructionOverlays.groups,
     geometryProceduralAnnotationOverlays.groups,
@@ -56145,6 +56483,23 @@ case "mobius":
                                   <div style={{ color: geometryPlaneMethodStatus.ready ? "#166534" : geometryPlaneMethodStatus.planned ? "#64748b" : "#92400e" }}>
                                     {geometryPlaneMethodStatus.message}
                                   </div>
+                                  {geometryPlaneLivePreviewStatus && (
+                                    <div
+                                      data-testid={geometryPlaneLivePreviewStatus.testId}
+                                      style={{
+                                        border: "1px solid #bfdbfe",
+                                        borderRadius: 7,
+                                        background: "#eff6ff",
+                                        color: geometryPlaneLivePreviewStatus.tone === "ready" ? "#1d4ed8" : "#92400e",
+                                        display: "grid",
+                                        gap: 2,
+                                        padding: "6px 7px",
+                                      }}
+                                    >
+                                      <strong>Live preview</strong>
+                                      <span>{geometryPlaneLivePreviewStatus.message}</span>
+                                    </div>
+                                  )}
                                   <button
                                     type="button"
                                     data-testid="geometry-plane-create-button"
@@ -56299,9 +56654,45 @@ case "mobius":
                                   }}
                                   title={entry.steps.join(" -> ")}
                                 >
-                                  <strong>{index + 1}. {entry.action}</strong>
-                                  <span style={{ color: "#334155" }}>{entry.steps.join(" -> ")}</span>
-                                  <span style={{ color: "#64748b" }}>Source: {entry.source}</span>
+                                  <strong>{index + 1}. {entry.planeSummary ? "Plane" : entry.action}</strong>
+                                  {entry.planeSummary ? (
+                                    <span
+                                      data-testid={`geometry-construction-history-plane-summary-${entry.id}`}
+                                      style={{
+                                        display: "grid",
+                                        gap: 3,
+                                        color: "#334155",
+                                      }}
+                                    >
+                                      <span style={{ display: "grid", gridTemplateColumns: "52px 1fr", gap: 6 }}>
+                                        <span style={{ color: "#64748b", fontWeight: 700 }}>Method</span>
+                                        <span data-testid={`geometry-construction-history-plane-method-${entry.id}`} style={{ fontWeight: 800 }}>
+                                          {entry.planeSummary.method}
+                                        </span>
+                                      </span>
+                                      <span style={{ display: "grid", gridTemplateColumns: "52px 1fr", gap: 6 }}>
+                                        <span style={{ color: "#64748b", fontWeight: 700 }}>Inputs</span>
+                                        <span style={{ display: "grid", gap: 2 }}>
+                                          {entry.planeSummary.inputs.map((input, inputIndex) => (
+                                            <span key={`geometry-history-plane-input-${entry.id}-${inputIndex}`} data-testid={`geometry-construction-history-plane-input-${entry.id}-${inputIndex}`}>
+                                              {input}
+                                            </span>
+                                          ))}
+                                        </span>
+                                      </span>
+                                      <span style={{ display: "grid", gridTemplateColumns: "52px 1fr", gap: 6 }}>
+                                        <span style={{ color: "#64748b", fontWeight: 700 }}>Result</span>
+                                        <span data-testid={`geometry-construction-history-plane-result-${entry.id}`} style={{ color: "#0f766e", fontWeight: 800 }}>
+                                          {entry.planeSummary.result}
+                                        </span>
+                                      </span>
+                                    </span>
+                                  ) : (
+                                    <>
+                                      <span style={{ color: "#334155" }}>{entry.steps.join(" -> ")}</span>
+                                      <span style={{ color: "#64748b" }}>Source: {entry.source}</span>
+                                    </>
+                                  )}
                                 </button>
                               ))}
                             </div>
@@ -56830,6 +57221,7 @@ case "mobius":
                                         const canRelink =
                                           !!evalEntry &&
                                           (evalEntry.relinkCandidateFaceIndex != null || !!evalEntry.relinkCandidateEdgeVertexPair);
+                                        const planeSummary = geometryPlaneConstructionTreeSummary(entry, evalEntry);
                                         return (
                                 <div
                                   key={`geometry-derived-construction-${entry.id}`}
@@ -56869,12 +57261,52 @@ case "mobius":
                                       {dependencyMeta.label}
                                     </span>
                                   </div>
-                                  <div style={{ fontSize: 10.5, color: "#64748b" }}>
-                                    Type: {geometryDerivedConstructionResultLabel(entry)}
-                                  </div>
-                                  <div style={{ fontSize: 10.5, color: "#0f766e", fontWeight: 700 }}>
-                                    {geometryDerivedConstructionSourceLabel(evalEntry)} -&gt; {geometryDerivedConstructionResultLabel(entry)}
-                                  </div>
+                                  {planeSummary ? (
+                                    <div
+                                      data-testid={`geometry-plane-construction-summary-${entry.id}`}
+                                      style={{
+                                        border: "1px solid #dbeafe",
+                                        borderRadius: 7,
+                                        background: "#f8fbff",
+                                        padding: "6px 7px",
+                                        display: "grid",
+                                        gap: 4,
+                                        fontSize: 10.5,
+                                      }}
+                                    >
+                                      <div style={{ display: "grid", gridTemplateColumns: "52px 1fr", gap: 6 }}>
+                                        <span style={{ color: "#64748b", fontWeight: 700 }}>Method</span>
+                                        <span data-testid={`geometry-plane-construction-method-${entry.id}`} style={{ color: "#0f172a", fontWeight: 800 }}>
+                                          {planeSummary.method}
+                                        </span>
+                                      </div>
+                                      <div style={{ display: "grid", gridTemplateColumns: "52px 1fr", gap: 6 }}>
+                                        <span style={{ color: "#64748b", fontWeight: 700 }}>Inputs</span>
+                                        <div style={{ display: "grid", gap: 2 }}>
+                                          {planeSummary.inputs.map((input, inputIndex) => (
+                                            <span key={`geometry-plane-summary-input-${entry.id}-${inputIndex}`} data-testid={`geometry-plane-construction-input-${entry.id}-${inputIndex}`}>
+                                              {input}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      <div style={{ display: "grid", gridTemplateColumns: "52px 1fr", gap: 6 }}>
+                                        <span style={{ color: "#64748b", fontWeight: 700 }}>Result</span>
+                                        <span data-testid={`geometry-plane-construction-result-${entry.id}`} style={{ color: "#0f766e", fontWeight: 800 }}>
+                                          {planeSummary.result}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <div style={{ fontSize: 10.5, color: "#64748b" }}>
+                                        Type: {geometryDerivedConstructionResultLabel(entry)}
+                                      </div>
+                                      <div style={{ fontSize: 10.5, color: "#0f766e", fontWeight: 700 }}>
+                                        {geometryDerivedConstructionSourceLabel(evalEntry)} -&gt; {geometryDerivedConstructionResultLabel(entry)}
+                                      </div>
+                                    </>
+                                  )}
                                   {evalEntry?.statusMessage && (
                                     <div style={{ fontSize: 10.5, color: "#7a271a" }}>{evalEntry.statusMessage}</div>
                                   )}

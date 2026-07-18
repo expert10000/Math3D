@@ -206,6 +206,15 @@ const torusLinePlaneConstructions = () => {
       sourceNormal: { x: 0, y: 0, z: 1 },
       sourceRevision: 0,
       sourceTopologySignature: null,
+      constructionSummary: {
+        method: "Through 2 Lines",
+        inputs: [
+          { label: "Line A", value: "Line A - extended torus edge" },
+          { label: "Line B", value: "Line B - extended torus edge" },
+          { label: "Relation", value: "Intersecting" },
+        ],
+        result: "Plane",
+      },
       frozenSnapshot: {
         origin: { x: 0, y: 0, z: 0 },
         direction: { x: 0, y: 0, z: 1 },
