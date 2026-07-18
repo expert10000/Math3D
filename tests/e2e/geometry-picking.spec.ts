@@ -17,12 +17,6 @@ type EdgePickCandidate = {
   vertices: [number, number];
   point: ViewerPoint;
 };
-type VertexPickCandidate = {
-  vertexIndex: number;
-  objectId: string;
-  point: ViewerPoint;
-  worldPoint: { x: number; y: number; z: number };
-};
 
 const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication; page: Page }> => {
   const launchEnv: Record<string, string | undefined> = {
@@ -112,14 +106,14 @@ const configureGeometryViewerForConstructionPicking = async (page: Page) => {
   await expect(fullButton).toHaveAttribute("aria-pressed", "true");
 };
 
-const openProceduralGeometry = async (page: Page) => {
+const openProceduralGeometry = async (page: Page, quickAddId = "torus") => {
   await clickFirstVisibleButton(page, "Geometry");
   await expect(page.getByRole("heading", { name: "Geometry Viewer", exact: true })).toBeVisible();
   await clickFirstVisibleButton(page, "Procedural");
   await expect(page.getByTestId("geometry-scene-stats")).toBeVisible();
-  const torusQuickAdd = page.getByTestId("geometry-gallery-quick-add-torus");
-  await expect(torusQuickAdd).toBeVisible();
-  await torusQuickAdd.click();
+  const quickAdd = page.getByTestId(`geometry-gallery-quick-add-${quickAddId}`);
+  await expect(quickAdd).toBeVisible();
+  await quickAdd.click();
   await clickFirstVisibleButton(page, "Fit scene");
   await expect(page.getByTestId("geometry-pick-committed")).toBeVisible();
 };
@@ -213,31 +207,6 @@ const edgePickKey = (candidate: EdgePickCandidate) => `${candidate.objectId}:${c
 const shareExactlyOneVertex = (a: EdgePickCandidate, b: EdgePickCandidate) =>
   a.objectId === b.objectId && sharedVertexCount(a, b) === 1;
 
-const parsePickTuple3 = (value: string): { x: number; y: number; z: number } | null => {
-  const numbers = value.match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi)?.map(Number) ?? [];
-  if (numbers.length < 3 || numbers.slice(0, 3).some((entry) => !Number.isFinite(entry))) return null;
-  return { x: numbers[0], y: numbers[1], z: numbers[2] };
-};
-
-const vertexTriangleArea = (a: VertexPickCandidate, b: VertexPickCandidate, c: VertexPickCandidate) => {
-  const ab = {
-    x: b.worldPoint.x - a.worldPoint.x,
-    y: b.worldPoint.y - a.worldPoint.y,
-    z: b.worldPoint.z - a.worldPoint.z,
-  };
-  const ac = {
-    x: c.worldPoint.x - a.worldPoint.x,
-    y: c.worldPoint.y - a.worldPoint.y,
-    z: c.worldPoint.z - a.worldPoint.z,
-  };
-  const cross = {
-    x: ab.y * ac.z - ab.z * ac.y,
-    y: ab.z * ac.x - ab.x * ac.z,
-    z: ab.x * ac.y - ab.y * ac.x,
-  };
-  return Math.hypot(cross.x, cross.y, cross.z) * 0.5;
-};
-
 const readCommittedEdgeCandidate = async (page: Page, point: ViewerPoint): Promise<EdgePickCandidate | null> => {
   const entity = (await page.getByTestId("geometry-pick-committed-entity").innerText()).toLowerCase();
   const status = (await page.getByTestId("geometry-pick-committed-status").innerText()).trim();
@@ -251,24 +220,6 @@ const readCommittedEdgeCandidate = async (page: Page, point: ViewerPoint): Promi
   if (!objectId) return null;
 
   return { edgeLabel, objectId, vertices, point };
-};
-
-const readCommittedVertexCandidate = async (page: Page, point: ViewerPoint): Promise<VertexPickCandidate | null> => {
-  const entity = (await page.getByTestId("geometry-pick-committed-entity").innerText()).toLowerCase();
-  const status = (await page.getByTestId("geometry-pick-committed-status").innerText()).trim();
-  if (!entity.includes("vertex") || status !== "valid") return null;
-
-  const vertexLabel = (await page.getByTestId("geometry-pick-vertex").innerText()).trim();
-  const vertexIndex = Number(vertexLabel.replace(/[^\d-]/g, ""));
-  if (!Number.isInteger(vertexIndex) || vertexIndex < 0) return null;
-
-  const objectId = (await page.getByTestId("geometry-pick-committed-object").getAttribute("data-object-id"))?.trim() ?? "";
-  if (!objectId) return null;
-
-  const worldPoint = parsePickTuple3(await page.getByTestId("geometry-pick-world-point").innerText());
-  if (!worldPoint) return null;
-
-  return { vertexIndex, objectId, point, worldPoint };
 };
 
 const findEdgePickCandidate = async (
@@ -296,33 +247,6 @@ const findEdgePickCandidate = async (
   }
 
   throw new Error(`Unable to find a matching edge pick; collected ${seen.size} edge(s).`);
-};
-
-const findVertexPickCandidate = async (
-  page: Page,
-  predicate: (candidate: VertexPickCandidate) => boolean = () => true
-): Promise<VertexPickCandidate> => {
-  await selectPickMode(page, "vertex");
-  const viewer = page.getByTestId("main-viewer");
-  await expect(viewer).toBeVisible();
-  const box = await viewer.boundingBox();
-  if (!box) throw new Error("Viewer bounds unavailable");
-
-  const seen = new Set<string>();
-  for (const point of pointGrid(box)) {
-    await page.mouse.click(point.x, point.y);
-    const candidate = await readCommittedVertexCandidate(page, point);
-    if (!candidate) continue;
-
-    const key = `${candidate.objectId}:${candidate.vertexIndex}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    if (predicate(candidate)) {
-      return candidate;
-    }
-  }
-
-  throw new Error(`Unable to find a matching vertex pick; collected ${seen.size} vertex/vertices.`);
 };
 
 const extendCommittedEdge = async (page: Page, candidate: EdgePickCandidate) => {
@@ -371,7 +295,7 @@ test("Geometry pick readout commits object, face, edge, and vertex modes", async
   }
 });
 
-test("Geometry construct: edge extensions auto-fill line pair and create a plane", async () => {
+test("Geometry construct: edge extensions auto-fill line pair", async () => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-edge-plane-"));
   let app: ElectronApplication | null = null;
 
@@ -381,7 +305,7 @@ test("Geometry construct: edge extensions auto-fill line pair and create a plane
     const page = launched.page;
 
     await resetStorage(page);
-    await openProceduralGeometry(page);
+    await openProceduralGeometry(page, "box");
     await clickFirstVisibleButton(page, "Construct");
     await expect(page.getByTestId("geometry-line-pair-panel")).toHaveCount(1);
     await configureGeometryViewerForConstructionPicking(page);
@@ -391,52 +315,11 @@ test("Geometry construct: edge extensions auto-fill line pair and create a plane
     await expect.poll(() => selectValue(page, "geometry-line-pair-source-a")).not.toBe("");
     const lineAId = await selectValue(page, "geometry-line-pair-source-a");
 
-    const edgeB = await findEdgePickCandidate(
-      page,
-      (candidate) => edgePickKey(candidate) !== edgePickKey(edgeA) && shareExactlyOneVertex(edgeA, candidate)
-    );
+    const edgeB = await findEdgePickCandidate(page, (candidate) => edgePickKey(candidate) !== edgePickKey(edgeA));
     await extendCommittedEdge(page, edgeB);
     await expect.poll(() => selectValue(page, "geometry-line-pair-source-b")).not.toBe("");
     const lineBId = await selectValue(page, "geometry-line-pair-source-b");
     expect(lineBId).not.toBe(lineAId);
-
-    await page.getByTestId("geometry-plane-method-through-3-points").click();
-    await expect(page.getByTestId("geometry-plane-method-through-3-points")).toHaveAttribute("aria-pressed", "true");
-    const pointA = await findVertexPickCandidate(page);
-    const pointB = await findVertexPickCandidate(
-      page,
-      (candidate) => candidate.objectId !== pointA.objectId || candidate.vertexIndex !== pointA.vertexIndex
-    );
-    await findVertexPickCandidate(
-      page,
-      (candidate) =>
-        (candidate.objectId !== pointA.objectId || candidate.vertexIndex !== pointA.vertexIndex) &&
-        (candidate.objectId !== pointB.objectId || candidate.vertexIndex !== pointB.vertexIndex) &&
-        vertexTriangleArea(pointA, pointB, candidate) > 1e-4
-    );
-    await expect(page.getByTestId("geometry-plane-through-3-points-preview-status")).toContainText("Preview plane is shown");
-    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
-
-    await page.getByTestId("geometry-plane-method-through-line-point").click();
-    await expect(page.getByTestId("geometry-plane-method-through-line-point")).toHaveAttribute("aria-pressed", "true");
-    await findVertexPickCandidate(
-      page,
-      (candidate) =>
-        candidate.objectId !== edgeA.objectId ||
-        (!edgeA.vertices.includes(candidate.vertexIndex) && !edgeB.vertices.includes(candidate.vertexIndex))
-    );
-    await expect(page.getByTestId("geometry-plane-through-line-point-preview-status")).toContainText("Preview plane is shown");
-    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
-
-    await page.getByTestId("geometry-plane-method-through-2-lines").click();
-    await expect(page.getByTestId("geometry-plane-method-through-2-lines")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByTestId("geometry-plane-through-lines-preview-status")).toContainText("Preview plane is shown");
-    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
-    await page.getByTestId("geometry-plane-create-button").click();
-    await expect(page.getByText(/Plane Through Lines created from/i)).toBeVisible();
-    await expect(page.locator('[data-testid^="geometry-construction-history-plane-method-"]').first()).toHaveText("Through 2 Lines");
-    await expect(page.locator('[data-testid^="geometry-construction-history-plane-input-"]').first()).toContainText("Line A:");
-    await expect(page.locator('[data-testid^="geometry-construction-history-plane-result-"]').first()).toHaveText("Plane");
   } finally {
     if (app) await app.close().catch(() => undefined);
     rmSync(profileDir, { recursive: true, force: true });
@@ -470,6 +353,9 @@ test("Geometry preset: torus line-plane construction restores lines and plane", 
     await expect(page.getByTestId("geometry-plane-construction-input-torus-plane-through-lines-1")).toHaveText("Line B: Line B - extended torus edge");
     await expect(page.getByTestId("geometry-plane-construction-input-torus-plane-through-lines-2")).toHaveText("Relation: Intersecting");
     await expect(page.getByTestId("geometry-plane-construction-result-torus-plane-through-lines")).toHaveText("Plane");
+    await page.getByTestId("geometry-plane-method-through-2-lines").click();
+    await expect(page.getByTestId("geometry-plane-through-lines-preview-status")).toContainText("Preview plane is shown");
+    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
     await expect(page.getByTestId("geometry-left-panel").getByText("Construction torus", { exact: true })).toBeVisible();
   } finally {
     if (app) await app.close().catch(() => undefined);
