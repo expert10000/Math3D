@@ -22,7 +22,7 @@ describe("sceneGalleryCatalog", () => {
         "Release smoke: extension subset",
         "Release smoke: deletion and recompute",
       ]],
-      ["Construction Basics", ["Cube transform workflow", "Face extrusion", "Section plane"]],
+      ["Construction Basics", ["Cube transform workflow", "Face extrusion", "Torus line-plane construction", "Section plane"]],
       ["Measurement", ["Equal-volume objects", "Surface-area comparison", "Bounding dimensions"]],
       ["Mathematical Demonstrations", ["Cavalieri principle", "Sphere section", "Scaling laws", "Euler polyhedron relation"]],
       ["Geometry to Mesh", ["Validity warning example", "Promotion example", "Analysis result"]],

@@ -21003,7 +21003,7 @@ const App: React.FC = () => {
       return {
         points: [ref.point],
         color: hovered ? GEOMETRY_VISUAL_LANGUAGE.hover : GEOMETRY_VISUAL_LANGUAGE.measurement,
-        size: hovered ? 0.21 : 0.145,
+        size: hovered ? 0.32 : 0.22,
         opacity: hovered ? 1 : 0.98,
       };
     });
