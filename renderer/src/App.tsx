@@ -2269,7 +2269,7 @@ type GeometryBooleanPreviewMesh = SurfaceMeshData & {
 type GeometryRepeatAxis = "x" | "y" | "z" | "custom";
 type GeometryRepeatGridPlane = "xy" | "xz" | "yz";
 type GeometryRepeatMirrorPlane = "xy" | "xz" | "yz" | "selected-face";
-type GeometryRightPanelTab = "selection" | "scene" | "dependencies";
+type GeometryRightPanelTab = "selection" | "properties" | "actions" | "dependencies";
 type GeometryInspectorPanelTab = "probe" | "dependencies";
 type GeometryConstructPanelTab = "create" | "edit" | "relations" | "measure" | "tree" | "inspect";
 type GeometryConstructCreateFamily = "points" | "lines" | "planes";
@@ -2281,6 +2281,8 @@ type GeometryConstructRecentTool = {
   classification: string;
 };
 type GeometryConstructPanelPreferences = {
+  activeTab: GeometryConstructPanelTab;
+  activeCreateFamily: GeometryConstructCreateFamily;
   openCategories: Record<GeometryConstructCategory, boolean>;
   recentTools: GeometryConstructRecentTool[];
 };
@@ -2307,6 +2309,64 @@ const DEFAULT_GEOMETRY_CONSTRUCT_CATEGORY_OPEN: Record<GeometryConstructCategory
   circles: true,
   axes: true,
   bounding: true,
+};
+const GEOMETRY_CONSTRUCT_CREATE_FAMILY_IDS: GeometryConstructCreateFamily[] = ["points", "lines", "planes"];
+const GEOMETRY_CONSTRUCT_CATEGORY_META: Record<
+  GeometryConstructCategory,
+  { icon: string; label: string; color: string; background: string; border: string }
+> = {
+  points: { icon: "Pt", label: "Points", color: "#0369a1", background: "#e0f2fe", border: "#7dd3fc" },
+  lines: { icon: "Ln", label: "Lines", color: "#047857", background: "#dcfce7", border: "#86efac" },
+  planes: { icon: "Pl", label: "Planes", color: "#6d28d9", background: "#ede9fe", border: "#c4b5fd" },
+  circles: { icon: "Ci", label: "Circles", color: "#b45309", background: "#fef3c7", border: "#fcd34d" },
+  axes: { icon: "Ax", label: "Axes", color: "#4338ca", background: "#e0e7ff", border: "#a5b4fc" },
+  bounding: { icon: "Bx", label: "Bounding", color: "#be123c", background: "#ffe4e6", border: "#fda4af" },
+};
+const GEOMETRY_CONSTRUCT_CLASSIFICATION_META: Record<string, { label: string; color: string; background: string; border: string }> = {
+  Basic: { label: "BASIC", color: "#0369a1", background: "#e0f2fe", border: "#7dd3fc" },
+  Relations: { label: "RELATION", color: "#7c2d12", background: "#ffedd5", border: "#fdba74" },
+  Derived: { label: "DERIVED", color: "#15803d", background: "#dcfce7", border: "#86efac" },
+  "From Vertex": { label: "VERTEX", color: "#4338ca", background: "#e0e7ff", border: "#a5b4fc" },
+  "From Edge": { label: "EDGE", color: "#047857", background: "#dcfce7", border: "#86efac" },
+  "From Face": { label: "FACE", color: "#6d28d9", background: "#ede9fe", border: "#c4b5fd" },
+  "From Object": { label: "OBJECT", color: "#be123c", background: "#ffe4e6", border: "#fda4af" },
+};
+const geometryConstructGlyphStyle = (category: GeometryConstructCategory, selected: boolean): React.CSSProperties => {
+  const meta = GEOMETRY_CONSTRUCT_CATEGORY_META[category];
+  return {
+    width: 24,
+    height: 24,
+    borderRadius: 7,
+    display: "grid",
+    placeItems: "center",
+    flex: "0 0 auto",
+    border: `1px solid ${selected ? meta.color : meta.border}`,
+    background: selected ? meta.color : meta.background,
+    color: selected ? "#ffffff" : meta.color,
+    fontSize: 9.5,
+    fontWeight: 900,
+    lineHeight: 1,
+  };
+};
+const geometryConstructClassificationBadgeStyle = (classification: string, selected: boolean): React.CSSProperties => {
+  const meta = GEOMETRY_CONSTRUCT_CLASSIFICATION_META[classification] ?? {
+    label: classification.toUpperCase(),
+    color: "#475569",
+    background: "#f1f5f9",
+    border: "#cbd5e1",
+  };
+  return {
+    border: `1px solid ${selected ? meta.color : meta.border}`,
+    background: selected ? "#ffffff" : meta.background,
+    color: meta.color,
+    borderRadius: 999,
+    padding: "1px 5px",
+    fontSize: 8.5,
+    fontWeight: 900,
+    lineHeight: 1.1,
+    letterSpacing: "0.03em",
+    width: "fit-content",
+  };
 };
 type GeometryDependencyState = "valid" | "updating" | "stale" | "broken-source" | "ambiguous-target" | "frozen";
 type GeometryProceduralPickInfo = {
@@ -2888,6 +2948,10 @@ const GEOMETRY_POINT_CONSTRUCTION_TOOL_ORDER = GEOMETRY_POINT_CONSTRUCTION_TOOL_
 );
 const isGeometryConstructCategory = (value: unknown): value is GeometryConstructCategory =>
   typeof value === "string" && (GEOMETRY_CONSTRUCT_CATEGORY_IDS as string[]).includes(value);
+const isGeometryConstructPanelTab = (value: unknown): value is GeometryConstructPanelTab =>
+  typeof value === "string" && GEOMETRY_CONSTRUCT_PANEL_TABS.some((tab) => tab.id === value);
+const isGeometryConstructCreateFamily = (value: unknown): value is GeometryConstructCreateFamily =>
+  typeof value === "string" && (GEOMETRY_CONSTRUCT_CREATE_FAMILY_IDS as string[]).includes(value);
 const isGeometryPointConstructionTool = (value: unknown): value is GeometryPointConstructionTool =>
   typeof value === "string" && value in GEOMETRY_POINT_CONSTRUCTION_TOOL_LABELS;
 const isGeometryLineConstructionTool = (value: unknown): value is GeometryLineConstructionTool =>
@@ -2925,6 +2989,8 @@ const normalizeGeometryConstructRecentTool = (entry: unknown): GeometryConstruct
 };
 const readGeometryConstructPanelPreferences = (): GeometryConstructPanelPreferences => {
   const fallback: GeometryConstructPanelPreferences = {
+    activeTab: "create",
+    activeCreateFamily: "planes",
     openCategories: { ...DEFAULT_GEOMETRY_CONSTRUCT_CATEGORY_OPEN },
     recentTools: [],
   };
@@ -2949,7 +3015,14 @@ const readGeometryConstructPanelPreferences = (): GeometryConstructPanelPreferen
         .filter((entry, index, entries) => entries.findIndex((item) => item.family === entry.family && item.id === entry.id) === index)
         .slice(0, 6)
     : [];
-  return { openCategories, recentTools };
+  return {
+    activeTab: isGeometryConstructPanelTab(stored.activeTab) ? stored.activeTab : fallback.activeTab,
+    activeCreateFamily: isGeometryConstructCreateFamily(stored.activeCreateFamily)
+      ? stored.activeCreateFamily
+      : fallback.activeCreateFamily,
+    openCategories,
+    recentTools,
+  };
 };
 const GEOMETRY_MATH_RELATIONSHIP_TYPE_LABELS: Record<GeometryMathConstructionRelationshipType, string> = {
   parallel: "Parallel",
@@ -8963,9 +9036,11 @@ const App: React.FC = () => {
   const [geometryConstructOffsetDistance, setGeometryConstructOffsetDistance] = useState(0.5);
   const [geometryConstructTranslateDistance, setGeometryConstructTranslateDistance] = useState(0.5);
   const [geometryConstructCopiedLength, setGeometryConstructCopiedLength] = useState(0.5);
-  const [geometryConstructPanelTab, setGeometryConstructPanelTab] = useState<GeometryConstructPanelTab>("create");
+  const [geometryConstructPanelTab, setGeometryConstructPanelTab] = useState<GeometryConstructPanelTab>(
+    () => readGeometryConstructPanelPreferences().activeTab
+  );
   const [geometryConstructCreateFamily, setGeometryConstructCreateFamily] =
-    useState<GeometryConstructCreateFamily>("planes");
+    useState<GeometryConstructCreateFamily>(() => readGeometryConstructPanelPreferences().activeCreateFamily);
   const [geometryConstructToolSearch, setGeometryConstructToolSearch] = useState("");
   const [geometryConstructCategoryOpen, setGeometryConstructCategoryOpen] = useState<Record<GeometryConstructCategory, boolean>>(
     () => readGeometryConstructPanelPreferences().openCategories
@@ -9006,6 +9081,8 @@ const App: React.FC = () => {
     setGeometryConstructCategoryOpen((prev) => (prev[category] === open ? prev : { ...prev, [category]: open }));
   }, []);
   const handleResetGeometryConstructPanelPreferences = useCallback(() => {
+    setGeometryConstructPanelTab("create");
+    setGeometryConstructCreateFamily("planes");
     setGeometryConstructCategoryOpen({ ...DEFAULT_GEOMETRY_CONSTRUCT_CATEGORY_OPEN });
     setGeometryRecentConstructionTools([]);
     setGeometryConstructToolSearch("");
@@ -9213,13 +9290,15 @@ const App: React.FC = () => {
         UI_GEOMETRY_CONSTRUCT_PANEL_KEY,
         JSON.stringify({
           openCategories: geometryConstructCategoryOpen,
+          activeTab: geometryConstructPanelTab,
+          activeCreateFamily: geometryConstructCreateFamily,
           recentTools: geometryRecentConstructionTools,
         } satisfies GeometryConstructPanelPreferences)
       );
     } catch {
       // Ignore storage write failures.
     }
-  }, [geometryConstructCategoryOpen, geometryRecentConstructionTools]);
+  }, [geometryConstructCategoryOpen, geometryConstructCreateFamily, geometryConstructPanelTab, geometryRecentConstructionTools]);
   const [geometryAddSelectNewObject, setGeometryAddSelectNewObject] = useState(true);
   const [geometryAddFocusCamera, setGeometryAddFocusCamera] = useState(true);
   const [geometryAddOpenObjectTab, setGeometryAddOpenObjectTab] = useState(false);
@@ -22510,6 +22589,26 @@ const App: React.FC = () => {
   const showGeometryCircleConstructionTools = geometryConstructToolMatches(["circle", "tangent", "center", "radius"]);
   const showGeometryAxisConstructionTools = geometryConstructToolMatches(["axis", "axes", "principal", "edge axis"]);
   const showGeometryBoundingConstructionTools = geometryConstructToolMatches(["bounding", "box", "sphere", "circumscribed", "inscribed"]);
+  const geometryConstructSectionOpen = useMemo(
+    () => ({
+      points: geometryConstructToolSearchNeedle ? visibleGeometryPointConstructionTools.length > 0 : geometryConstructCategoryOpen.points,
+      lines: geometryConstructToolSearchNeedle ? visibleGeometryLineConstructionTools.length > 0 : geometryConstructCategoryOpen.lines,
+      planes: geometryConstructToolSearchNeedle ? visibleGeometryPlaneConstructionMethods.length > 0 : geometryConstructCategoryOpen.planes,
+      circles: geometryConstructToolSearchNeedle ? showGeometryCircleConstructionTools : geometryConstructCategoryOpen.circles,
+      axes: geometryConstructToolSearchNeedle ? showGeometryAxisConstructionTools : geometryConstructCategoryOpen.axes,
+      bounding: geometryConstructToolSearchNeedle ? showGeometryBoundingConstructionTools : geometryConstructCategoryOpen.bounding,
+    }),
+    [
+      geometryConstructCategoryOpen,
+      geometryConstructToolSearchNeedle,
+      showGeometryAxisConstructionTools,
+      showGeometryBoundingConstructionTools,
+      showGeometryCircleConstructionTools,
+      visibleGeometryLineConstructionTools.length,
+      visibleGeometryPlaneConstructionMethods.length,
+      visibleGeometryPointConstructionTools.length,
+    ]
+  );
   const clearGeometryPlanePointSlots = useCallback(() => {
     setGeometryPlanePointSlots({ a: null, b: null, c: null });
     setGeometryPlanePointActiveSlot("a");
@@ -51885,30 +51984,14 @@ case "mobius":
                         );
                       })}
                       <span style={{ flex: "1 1 auto", minWidth: 18 }} />
-                      <span style={{ fontSize: 11, fontWeight: 800, color: "#475569", flex: "0 0 auto" }}>
-                        Transform
-                      </span>
-                      {geometryWorkflowCommandEntries.map((entry) => {
-                        const active = geometryProceduralPanelTab === "transform" && entry.key === geometryWorkflowActiveCommandKey;
-                        return (
-                          <button
-                            key={`geometry-workflow-command-${geometryWorkflowActiveStepId}-${entry.key}`}
-                            type="button"
-                            onClick={entry.onClick}
-                            aria-pressed={active}
-                            style={{
-                              ...pill(active),
-                              fontSize: 11,
-                              border: "1px solid " + (active ? "#0a66c2" : "#99a1ac"),
-                              background: active ? "linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%)" : "#f8fafc",
-                              color: active ? "#1e3a8a" : "#334155",
-                              boxShadow: active ? "0 4px 10px rgba(37, 99, 235, 0.2)" : "none",
-                            }}
-                          >
-                            {entry.label}
-                          </button>
-                        );
-                      })}
+                      <button
+                        type="button"
+                        onClick={() => handleGeometryWorkflowStepClick("transform")}
+                        title="Switch to Transform tools."
+                        style={{ ...pill(false), fontSize: 11, padding: "4px 9px", flex: "0 0 auto" }}
+                      >
+                        Transform tools
+                      </button>
                     </>
                   ) : (
                     <>
@@ -57809,20 +57892,51 @@ case "mobius":
                           </span>
                           <label style={{ display: "grid", gap: 4, fontSize: 10.5, color: "#475569", fontWeight: 800 }}>
                             Search tools
-                            <input
-                              type="search"
-                              value={geometryConstructToolSearch}
-                              onChange={(e) => setGeometryConstructToolSearch(e.target.value)}
-                              placeholder="Search construction tools..."
-                              style={{
-                                width: "100%",
-                                minWidth: 0,
-                                border: "1px solid #cbd5e1",
-                                borderRadius: 7,
-                                padding: "6px 8px",
-                                fontSize: 11,
-                              }}
-                            />
+                            <span style={{ position: "relative", display: "block" }}>
+                              <input
+                                type="search"
+                                data-testid="geometry-construct-tool-search"
+                                value={geometryConstructToolSearch}
+                                onChange={(e) => setGeometryConstructToolSearch(e.target.value)}
+                                placeholder="Search construction tools..."
+                                style={{
+                                  width: "100%",
+                                  minWidth: 0,
+                                  border: "1px solid #cbd5e1",
+                                  borderRadius: 7,
+                                  padding: "6px 28px 6px 8px",
+                                  fontSize: 11,
+                                }}
+                              />
+                              {geometryConstructToolSearch && (
+                                <button
+                                  type="button"
+                                  data-testid="geometry-construct-tool-search-clear"
+                                  onClick={() => setGeometryConstructToolSearch("")}
+                                  aria-label="Clear construction tool search"
+                                  title="Clear search"
+                                  style={{
+                                    position: "absolute",
+                                    right: 4,
+                                    top: "50%",
+                                    transform: "translateY(-50%)",
+                                    width: 20,
+                                    height: 20,
+                                    borderRadius: 999,
+                                    border: "1px solid #cbd5e1",
+                                    background: "#ffffff",
+                                    color: "#475569",
+                                    display: "grid",
+                                    placeItems: "center",
+                                    fontSize: 12,
+                                    lineHeight: 1,
+                                    padding: 0,
+                                  }}
+                                >
+                                  x
+                                </button>
+                              )}
+                            </span>
                           </label>
                           {!geometryCreateToolSearchHasResults && (
                             <div style={{ border: "1px solid #fde68a", borderRadius: 7, background: "#fffbeb", color: "#92400e", padding: "6px 7px", fontSize: 10.5 }}>
@@ -57875,8 +57989,11 @@ case "mobius":
                           )}
                           <div style={{ display: "grid", gap: 8 }}>
                             <details
-                              open={geometryConstructCategoryOpen.points}
-                              onToggle={(event) => setGeometryConstructCategoryExpanded("points", event.currentTarget.open)}
+                              data-testid="geometry-construct-category-points"
+                              open={geometryConstructSectionOpen.points}
+                              onToggle={(event) => {
+                                if (!geometryConstructToolSearchNeedle) setGeometryConstructCategoryExpanded("points", event.currentTarget.open);
+                              }}
                               style={{ display: visibleGeometryPointConstructionTools.length ? "grid" : "none", gap: 7, marginTop: 2 }}
                             >
                               <summary
@@ -57923,12 +58040,13 @@ case "mobius":
                                         style={{
                                           ...pill(selected),
                                           borderRadius: 7,
-                                          minHeight: 40,
+                                          minHeight: 46,
                                           padding: "5px 6px",
                                           display: "grid",
-                                          gap: 1,
+                                          gridTemplateColumns: "24px minmax(0, 1fr)",
+                                          gap: "3px 6px",
                                           alignContent: "center",
-                                          justifyItems: "start",
+                                          alignItems: "center",
                                           textAlign: "left",
                                           fontSize: 10.5,
                                           scrollMarginTop: 190,
@@ -57936,11 +58054,16 @@ case "mobius":
                                           background: selected ? "#e0f2fe" : "#ffffff",
                                         }}
                                       >
-                                        <span style={{ fontWeight: 800, lineHeight: 1.1 }}>
-                                          {GEOMETRY_POINT_CONSTRUCTION_TOOL_LABELS[tool]}
+                                        <span style={geometryConstructGlyphStyle("points", selected)}>
+                                          {GEOMETRY_CONSTRUCT_CATEGORY_META.points.icon}
                                         </span>
-                                        <span style={{ color: selected ? "#0369a1" : "#64748b", fontSize: 9.5, lineHeight: 1.1 }}>
-                                          {groupTitle}
+                                        <span style={{ minWidth: 0, display: "grid", gap: 3 }}>
+                                          <span style={{ fontWeight: 900, lineHeight: 1.1, overflowWrap: "anywhere" }}>
+                                            {GEOMETRY_POINT_CONSTRUCTION_TOOL_LABELS[tool]}
+                                          </span>
+                                          <span style={geometryConstructClassificationBadgeStyle(groupTitle, selected)}>
+                                            {GEOMETRY_CONSTRUCT_CLASSIFICATION_META[groupTitle]?.label ?? groupTitle.toUpperCase()}
+                                          </span>
                                         </span>
                                       </button>
                                     );
@@ -58021,8 +58144,11 @@ case "mobius":
                               </div>
                             </details>
                             <details
-                              open={geometryConstructCategoryOpen.lines}
-                              onToggle={(event) => setGeometryConstructCategoryExpanded("lines", event.currentTarget.open)}
+                              data-testid="geometry-construct-category-lines"
+                              open={geometryConstructSectionOpen.lines}
+                              onToggle={(event) => {
+                                if (!geometryConstructToolSearchNeedle) setGeometryConstructCategoryExpanded("lines", event.currentTarget.open);
+                              }}
                               style={{ display: visibleGeometryLineConstructionTools.length ? "grid" : "none", gap: 7, marginTop: 4 }}
                             >
                               <summary
@@ -58069,12 +58195,13 @@ case "mobius":
                                         style={{
                                           ...pill(selected),
                                           borderRadius: 7,
-                                          minHeight: 40,
+                                          minHeight: 46,
                                           padding: "5px 6px",
                                           display: "grid",
-                                          gap: 1,
+                                          gridTemplateColumns: "24px minmax(0, 1fr)",
+                                          gap: "3px 6px",
                                           alignContent: "center",
-                                          justifyItems: "start",
+                                          alignItems: "center",
                                           textAlign: "left",
                                           fontSize: 10.5,
                                           scrollMarginTop: 190,
@@ -58082,11 +58209,16 @@ case "mobius":
                                           background: selected ? "#e0f2fe" : "#ffffff",
                                         }}
                                       >
-                                        <span style={{ fontWeight: 800, lineHeight: 1.1 }}>
-                                          {GEOMETRY_LINE_CONSTRUCTION_TOOL_LABELS[tool]}
+                                        <span style={geometryConstructGlyphStyle("lines", selected)}>
+                                          {GEOMETRY_CONSTRUCT_CATEGORY_META.lines.icon}
                                         </span>
-                                        <span style={{ color: selected ? "#0369a1" : "#64748b", fontSize: 9.5, lineHeight: 1.1 }}>
-                                          {groupTitle}
+                                        <span style={{ minWidth: 0, display: "grid", gap: 3 }}>
+                                          <span style={{ fontWeight: 900, lineHeight: 1.1, overflowWrap: "anywhere" }}>
+                                            {GEOMETRY_LINE_CONSTRUCTION_TOOL_LABELS[tool]}
+                                          </span>
+                                          <span style={geometryConstructClassificationBadgeStyle(groupTitle, selected)}>
+                                            {GEOMETRY_CONSTRUCT_CLASSIFICATION_META[groupTitle]?.label ?? groupTitle.toUpperCase()}
+                                          </span>
                                         </span>
                                       </button>
                                     );
@@ -58167,8 +58299,11 @@ case "mobius":
                               </div>
                             </details>
                             <details
-                              open={geometryConstructCategoryOpen.planes}
-                              onToggle={(event) => setGeometryConstructCategoryExpanded("planes", event.currentTarget.open)}
+                              data-testid="geometry-construct-category-planes"
+                              open={geometryConstructSectionOpen.planes}
+                              onToggle={(event) => {
+                                if (!geometryConstructToolSearchNeedle) setGeometryConstructCategoryExpanded("planes", event.currentTarget.open);
+                              }}
                               style={{ display: visibleGeometryPlaneConstructionMethods.length ? "grid" : "none", gap: 7, marginTop: 4 }}
                             >
                               <summary
@@ -58220,12 +58355,13 @@ case "mobius":
                                         style={{
                                           ...pill(selected),
                                           borderRadius: 7,
-                                          minHeight: 40,
+                                          minHeight: 48,
                                           padding: "5px 6px",
                                           display: "grid",
-                                          gap: 1,
+                                          gridTemplateColumns: "24px minmax(0, 1fr)",
+                                          gap: "3px 6px",
                                           alignContent: "center",
-                                          justifyItems: "start",
+                                          alignItems: "center",
                                           textAlign: "left",
                                           fontSize: 10.5,
                                           scrollMarginTop: 190,
@@ -58233,11 +58369,16 @@ case "mobius":
                                           background: selected ? "#e0f2fe" : "#ffffff",
                                         }}
                                       >
-                                        <span style={{ fontWeight: 800, lineHeight: 1.1 }}>
-                                          {GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS[method]}
+                                        <span style={geometryConstructGlyphStyle("planes", selected)}>
+                                          {GEOMETRY_CONSTRUCT_CATEGORY_META.planes.icon}
                                         </span>
-                                        <span style={{ color: selected ? "#0369a1" : "#64748b", fontSize: 9.5, lineHeight: 1.1 }}>
-                                          {groupTitle}
+                                        <span style={{ minWidth: 0, display: "grid", gap: 3 }}>
+                                          <span style={{ fontWeight: 900, lineHeight: 1.1, overflowWrap: "anywhere" }}>
+                                            {GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS[method]}
+                                          </span>
+                                          <span style={geometryConstructClassificationBadgeStyle(groupTitle, selected)}>
+                                            {GEOMETRY_CONSTRUCT_CLASSIFICATION_META[groupTitle]?.label ?? groupTitle.toUpperCase()}
+                                          </span>
                                         </span>
                                       </button>
                                     );
@@ -58450,8 +58591,11 @@ case "mobius":
                               </div>
                             </details>
                             <details
-                              open={geometryConstructCategoryOpen.circles}
-                              onToggle={(event) => setGeometryConstructCategoryExpanded("circles", event.currentTarget.open)}
+                              data-testid="geometry-construct-category-circles"
+                              open={geometryConstructSectionOpen.circles}
+                              onToggle={(event) => {
+                                if (!geometryConstructToolSearchNeedle) setGeometryConstructCategoryExpanded("circles", event.currentTarget.open);
+                              }}
                               style={{ display: showGeometryCircleConstructionTools ? "grid" : "none", gap: 7, marginTop: 4 }}
                             >
                               <summary
@@ -58512,8 +58656,11 @@ case "mobius":
                               </div>
                             </details>
                             <details
-                              open={geometryConstructCategoryOpen.axes}
-                              onToggle={(event) => setGeometryConstructCategoryExpanded("axes", event.currentTarget.open)}
+                              data-testid="geometry-construct-category-axes"
+                              open={geometryConstructSectionOpen.axes}
+                              onToggle={(event) => {
+                                if (!geometryConstructToolSearchNeedle) setGeometryConstructCategoryExpanded("axes", event.currentTarget.open);
+                              }}
                               style={{ display: showGeometryAxisConstructionTools ? "grid" : "none", gap: 7, marginTop: 4 }}
                             >
                               <summary
@@ -58570,8 +58717,11 @@ case "mobius":
                               </div>
                             </details>
                             <details
-                              open={geometryConstructCategoryOpen.bounding}
-                              onToggle={(event) => setGeometryConstructCategoryExpanded("bounding", event.currentTarget.open)}
+                              data-testid="geometry-construct-category-bounding"
+                              open={geometryConstructSectionOpen.bounding}
+                              onToggle={(event) => {
+                                if (!geometryConstructToolSearchNeedle) setGeometryConstructCategoryExpanded("bounding", event.currentTarget.open);
+                              }}
                               style={{ display: showGeometryBoundingConstructionTools ? "grid" : "none", gap: 7, marginTop: 4 }}
                             >
                               <summary
@@ -67737,7 +67887,8 @@ case "mobius":
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         {([
                           ["selection", "Selection"],
-                          ["scene", "Scene"],
+                          ["properties", "Properties"],
+                          ["actions", "Actions"],
                           ["dependencies", "Dependencies"],
                         ] as const).map(([tabId, label]) => (
                           <button
@@ -68358,6 +68509,119 @@ case "mobius":
                               </div>
                             )}
                           </div>
+                    ) : geometryRightPanelTab === "actions" ? (
+                          <div
+                            style={{
+                              border: "1px solid #dbe2ea",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#ffffff",
+                              display: "grid",
+                              gap: 8,
+                              fontSize: 11,
+                            }}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Actions</div>
+                            <div style={{ color: "#64748b" }}>
+                              Context actions follow the selected object, face, edge, or vertex.
+                            </div>
+                            <div
+                              data-testid="geometry-context-actions-panel"
+                              style={{
+                                border: "1px solid #dbeafe",
+                                borderRadius: 8,
+                                background: "#f8fbff",
+                                padding: "7px 8px",
+                                display: "grid",
+                                gap: 6,
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                <strong>Selected action set</strong>
+                                <span style={{ color: "#64748b", fontSize: 10.5 }}>
+                                  {(geometrySelectedPick?.kind ?? "object").replace(/^\w/, (c) => c.toUpperCase())}
+                                </span>
+                              </div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setGeometryProbeSelectionMode("edge");
+                                    setGeometryActiveOperationInputSlotId("active-edge");
+                                    setGeometryProceduralHoverPick(null);
+                                    setGeometryCreateActionStatus("Edge pick mode active. Click an edge to fill the Edge slot.");
+                                  }}
+                                  style={{ ...pill(geometryProbeSelectionMode === "edge"), fontSize: 10.5, padding: "3px 8px" }}
+                                  aria-pressed={geometryProbeSelectionMode === "edge"}
+                                >
+                                  Edge
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleExtendSelectedConstructionOperation}
+                                  style={{
+                                    fontSize: 10.5,
+                                    padding: "3px 8px",
+                                    borderColor: geometryArmedLineOperation === "extend" ? "#0ea5e9" : undefined,
+                                    background: geometryArmedLineOperation === "extend" ? "#cffafe" : undefined,
+                                  }}
+                                >
+                                  Extend
+                                </button>
+                                <button type="button" onClick={handleOffsetSelectedConstructionOperation} style={{ fontSize: 10.5, padding: "3px 8px" }}>
+                                  Offset
+                                </button>
+                                <button type="button" onClick={handleProjectSelectedConstructionOperation} style={{ fontSize: 10.5, padding: "3px 8px" }}>
+                                  Project
+                                </button>
+                                <button type="button" onClick={handleMirrorSelectedConstructionOperation} style={{ fontSize: 10.5, padding: "3px 8px" }}>
+                                  Mirror
+                                </button>
+                                <button type="button" onClick={handleTrimSelectedConstructionOperation} style={{ fontSize: 10.5, padding: "3px 8px" }}>
+                                  Trim
+                                </button>
+                                <button type="button" onClick={handleSplitSelectedProbeEdge} style={{ fontSize: 10.5, padding: "3px 8px" }}>
+                                  Split
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                <div style={{ fontWeight: 700 }}>Construction Inputs</div>
+                                <div style={{ color: "#64748b" }}>{geometryActiveOperationInput?.label ?? "none"} active</div>
+                              </div>
+                              {geometryOperationInputs.map((slot) => (
+                                <div
+                                  key={`geometry-action-operation-input-${slot.slotId}`}
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "88px minmax(0, 1fr)",
+                                    gap: "4px 8px",
+                                    alignItems: "center",
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => setGeometryActiveOperationInputSlot(slot.slotId)}
+                                    style={pill(geometryActiveOperationInputSlotId === slot.slotId)}
+                                  >
+                                    {slot.label}
+                                  </button>
+                                  <div
+                                    style={{
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                      color: slot.value?.stale ? "#9a3412" : "#334155",
+                                    }}
+                                    title={formatGeometryOperationInputValue(slot.value)}
+                                  >
+                                    {formatGeometryOperationInputValue(slot.value)}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
                     ) : geometryRightPanelTab === "dependencies" ? (
                           <div
                             style={{
@@ -68467,7 +68731,7 @@ case "mobius":
                           fontSize: 11,
                         }}
                       >
-                        <div style={{ fontSize: 12, fontWeight: 700 }}>Scene summary</div>
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Properties</div>
                         <div style={{ color: "#475467" }}>
                           {geometryStats.mode === "procedural"
                             ? `${geometryStats.objectCount} objects (${geometryStats.visibleCount} visible)`

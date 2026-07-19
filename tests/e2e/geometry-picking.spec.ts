@@ -7,6 +7,7 @@ import { launchRepoElectron } from "./helpers/electronLauncher";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const COMPUTE_ENGINE_FIRST_LAUNCH_KEY = "math3d.computeEngines.firstLaunchSeen";
+const GEOMETRY_CONSTRUCT_PANEL_KEY = "math3d.ui.geometryConstructPanel.v1";
 
 type PickMode = "object" | "face" | "edge" | "vertex";
 type Bounds = { x: number; y: number; width: number; height: number };
@@ -270,6 +271,9 @@ const extendCommittedEdge = async (page: Page, candidate: EdgePickCandidate) => 
 const selectValue = async (page: Page, testId: string) =>
   page.getByTestId(testId).evaluate((element) => (element as HTMLSelectElement).value);
 
+const isDetailsOpen = async (page: Page, testId: string) =>
+  page.getByTestId(testId).evaluate((element) => (element as HTMLDetailsElement).open);
+
 const selectLinePairSources = async (page: Page, sourceAId: string, sourceBId: string) => {
   await page.getByTestId("geometry-line-pair-source-a").selectOption(sourceAId);
   await page.getByTestId("geometry-line-pair-source-b").selectOption(sourceBId);
@@ -304,6 +308,63 @@ test("Geometry pick readout commits object, face, edge, and vertex modes", async
     await clickUntilCommitted(page, "vertex");
     await expect(page.getByTestId("geometry-pick-committed-entity")).toContainText("vertex");
     await expect(page.getByTestId("geometry-pick-vertex")).not.toContainText("n/a");
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
+test("Geometry construct panel remembers workflow and search opens matching sections", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-construct-prefs-"));
+  let app: ElectronApplication | null = null;
+
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+    await clickFirstVisibleButton(page, "Construct");
+    await selectConstructPanelTab(page, "create");
+
+    await page.getByTestId("geometry-point-tool-face-centroid").click();
+    await expect(page.getByTestId("geometry-current-tool-sticky")).toContainText("POINTS");
+
+    const pointSection = page.getByTestId("geometry-construct-category-points");
+    await pointSection.evaluate((element) => {
+      const details = element as HTMLDetailsElement;
+      details.open = false;
+      details.dispatchEvent(new Event("toggle", { bubbles: true }));
+    });
+    await expect.poll(() => isDetailsOpen(page, "geometry-construct-category-points")).toBe(false);
+
+    await page.getByTestId("geometry-construct-tool-search").fill("coordinate");
+    await expect.poll(() => isDetailsOpen(page, "geometry-construct-category-points")).toBe(true);
+    await expect(page.getByTestId("geometry-point-tool-vertex-coordinate-label")).toBeVisible();
+
+    await page.getByTestId("geometry-construct-tool-search-clear").click();
+    await expect.poll(() => isDetailsOpen(page, "geometry-construct-category-points")).toBe(false);
+
+    await selectConstructPanelTab(page, "relations");
+    await expect
+      .poll(() =>
+        page.evaluate((key) => {
+          const raw = localStorage.getItem(key);
+          return raw ? JSON.parse(raw) : null;
+        }, GEOMETRY_CONSTRUCT_PANEL_KEY)
+      )
+      .toEqual(expect.objectContaining({
+        activeTab: "relations",
+        activeCreateFamily: "points",
+      }));
+
+    await page.reload();
+    await page.waitForLoadState("domcontentloaded");
+    await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
+    await expect(page.getByTestId("geometry-construct-panel-tab-relations")).toHaveAttribute("aria-pressed", "true");
+    await selectConstructPanelTab(page, "create");
+    await expect(page.getByTestId("geometry-current-tool-sticky")).toContainText("POINTS");
   } finally {
     if (app) await app.close().catch(() => undefined);
     rmSync(profileDir, { recursive: true, force: true });
