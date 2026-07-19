@@ -89,7 +89,7 @@ import {
 } from "./geometry/demoScene";
 import { buildGeometryRenderData } from "./geometry/render";
 import type { GeometryScene, Point3, Polygon3, Segment3 } from "./geometry/types";
-import { evaluateConstraints, formatConstraintValue } from "./geometry/analysis";
+import { bestFitPlane, evaluateConstraints, formatConstraintValue } from "./geometry/analysis";
 import {
   computeGeometryAnalysisBasicMetrics,
   computeGeometryAnalysisTopologySummary,
@@ -2369,6 +2369,8 @@ type GeometryDerivedConstructionType =
   | "object-centroid"
   | "object-bounding-box"
   | "object-principal-axes-preview"
+  | "object-principal-plane"
+  | "object-best-fit-plane"
   | "object-symmetry-plane-preview"
   | "object-circumscribed-sphere-preview"
   | "object-inscribed-reference-sphere";
@@ -2400,6 +2402,29 @@ type GeometryPlaneLineRef = {
   sourceObjectId: string | null;
   sourceEdgeVertexPair?: [number, number] | null;
   object?: GeometryDerivedConstructionObject;
+};
+type GeometryPrincipalPlaneOutput = "xy" | "yz" | "xz" | "principal-1" | "principal-2" | "principal-3";
+type GeometryComputedPlaneOverlay = {
+  origin: GeometryProbePoint;
+  direction: GeometryProbePoint;
+  groups: OverlayPolylineGroup[];
+  pointSets: OverlayPointSet[];
+};
+type GeometryObjectPlaneAnalysis = {
+  pts: GeometryProbePoint[];
+  pca: {
+    center: GeometryProbePoint;
+    axes: [GeometryProbePoint, GeometryProbePoint, GeometryProbePoint];
+  } | null;
+  principalOverlays: Map<GeometryPrincipalPlaneOutput, GeometryComputedPlaneOverlay | null>;
+  symmetryNormal?: GeometryProbePoint | null;
+  symmetryOverlay?: GeometryComputedPlaneOverlay | null;
+  bestFit?: {
+    overlay: GeometryComputedPlaneOverlay;
+    rms: number;
+    max: number;
+    count: number;
+  } | null;
 };
 type GeometryDerivedConstructionSourceKind = "vertex" | "edge" | "face" | "object";
 type GeometryDerivedConstructionStatus = "valid" | "stale" | "invalid";
@@ -2441,6 +2466,9 @@ type GeometryDerivedConstructionObject = {
     length?: number;
     lineMode?: GeometryLineExtensionMode;
     extensionDirection?: "forward" | "backward";
+    principalPlaneOutput?: GeometryPrincipalPlaneOutput;
+    bestFitRms?: number;
+    bestFitMax?: number;
   };
   constructionSummary?: {
     method?: string;
@@ -2691,6 +2719,8 @@ const GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS: Record<GeometryDerivedConstruct
   "object-centroid": "Centroid",
   "object-bounding-box": "Bounding Box",
   "object-principal-axes-preview": "Principal Axes",
+  "object-principal-plane": "Principal Plane",
+  "object-best-fit-plane": "Best Fit Plane",
   "object-symmetry-plane-preview": "Symmetry Plane",
   "object-circumscribed-sphere-preview": "Circumscribed Sphere",
   "object-inscribed-reference-sphere": "Inscribed Reference Sphere",
@@ -2732,6 +2762,22 @@ const GEOMETRY_PLANE_CONSTRUCTION_PICK_MODE: Record<GeometryPlaneConstructionMet
   "principal-plane": "object",
   "best-fit-plane": "vertex",
 };
+const GEOMETRY_PRINCIPAL_PLANE_OUTPUT_LABELS: Record<GeometryPrincipalPlaneOutput, string> = {
+  xy: "XY",
+  yz: "YZ",
+  xz: "XZ",
+  "principal-1": "Principal 1",
+  "principal-2": "Principal 2",
+  "principal-3": "Principal 3",
+};
+const GEOMETRY_PRINCIPAL_PLANE_OUTPUTS: GeometryPrincipalPlaneOutput[] = [
+  "xy",
+  "yz",
+  "xz",
+  "principal-1",
+  "principal-2",
+  "principal-3",
+];
 const GEOMETRY_PLANE_POINT_SLOT_LABELS: Record<GeometryPlanePointSlot, string> = {
   a: "Point A",
   b: "Point B",
@@ -2895,6 +2941,8 @@ const geometryDerivedConstructionPlaneMethodLabel = (entry: Pick<GeometryDerived
   if (entry.type === "face-parallel-face-plane") return GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS.parallel;
   if (entry.type === "face-plane-normal-to-selected-edge") return GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS.perpendicular;
   if (entry.type === "object-symmetry-plane-preview") return GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS["symmetry-plane"];
+  if (entry.type === "object-principal-plane") return GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS["principal-plane"];
+  if (entry.type === "object-best-fit-plane") return GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS["best-fit-plane"];
   if (entry.type === "face-plane-through-centroid") return "Through Face Centroid";
   return null;
 };
@@ -8817,6 +8865,7 @@ const App: React.FC = () => {
       }
     >
   >(new Map());
+  const geometryObjectPlaneAnalysisCacheRef = useRef<Map<string, GeometryObjectPlaneAnalysis>>(new Map());
   const [geometryConstructOffsetDistance, setGeometryConstructOffsetDistance] = useState(0.5);
   const [geometryConstructTranslateDistance, setGeometryConstructTranslateDistance] = useState(0.5);
   const [geometryConstructCopiedLength, setGeometryConstructCopiedLength] = useState(0.5);
@@ -8827,6 +8876,7 @@ const App: React.FC = () => {
     useState<GeometryLineConstructionTool>("line-through-objects");
   const [geometryPlaneConstructionMethod, setGeometryPlaneConstructionMethod] =
     useState<GeometryPlaneConstructionMethod>("through-3-points");
+  const [geometryPrincipalPlaneOutput, setGeometryPrincipalPlaneOutput] = useState<GeometryPrincipalPlaneOutput>("principal-3");
   const [geometryPlanePointSlots, setGeometryPlanePointSlots] = useState<Record<GeometryPlanePointSlot, GeometryPlanePointRef | null>>({
     a: null,
     b: null,
@@ -14182,6 +14232,8 @@ const App: React.FC = () => {
         | "object-centroid"
         | "object-bounding-box"
         | "object-principal-axes-preview"
+        | "object-principal-plane"
+        | "object-best-fit-plane"
         | "object-symmetry-plane-preview"
         | "object-circumscribed-sphere-preview"
         | "object-inscribed-reference-sphere"
@@ -18345,16 +18397,103 @@ const App: React.FC = () => {
       if (!Number.isFinite(bestRadius) || bestRadius <= 1e-6) return null;
       return { center: bestCenter, radius: bestRadius };
     };
-    const buildObjectSymmetryPlaneOverlay = (mesh: SurfaceMeshData): {
-      origin: GeometryProbePoint;
-      direction: GeometryProbePoint;
-      groups: OverlayPolylineGroup[];
-      pointSets: OverlayPointSet[];
-    } | null => {
+    const getObjectPlaneAnalysis = (objectId: string, mesh: SurfaceMeshData): GeometryObjectPlaneAnalysis => {
+      const key = [
+        objectId,
+        geometryObjectRevisionById[objectId] ?? 0,
+        mesh.positions.length,
+        mesh.indices?.length ?? 0,
+      ].join(":");
+      const cache = geometryObjectPlaneAnalysisCacheRef.current;
+      const cached = cache.get(key);
+      if (cached) return cached;
       const pts = dedupePoints(meshPoints(mesh.positions));
       const pca = pcaEigenSystem(pts);
+      const analysis: GeometryObjectPlaneAnalysis = {
+        pts,
+        pca,
+        principalOverlays: new Map(),
+      };
+      cache.set(key, analysis);
+      if (cache.size > 32) {
+        const firstKey = cache.keys().next().value;
+        if (firstKey) cache.delete(firstKey);
+      }
+      return analysis;
+    };
+    const buildObjectPrincipalPlaneOverlay = (
+      objectId: string,
+      mesh: SurfaceMeshData,
+      output: GeometryPrincipalPlaneOutput
+    ): GeometryComputedPlaneOverlay | null => {
+      const analysis = getObjectPlaneAnalysis(objectId, mesh);
+      if (analysis.principalOverlays.has(output)) return analysis.principalOverlays.get(output) ?? null;
+      const { pts, pca } = analysis;
       if (!pca) return null;
-      const planeNormal = bestSymmetryPlane(pts, pca);
+      const worldFrames: Partial<Record<GeometryPrincipalPlaneOutput, { normal: GeometryProbePoint; u: GeometryProbePoint; v: GeometryProbePoint }>> = {
+        xy: { normal: { x: 0, y: 0, z: 1 }, u: { x: 1, y: 0, z: 0 }, v: { x: 0, y: 1, z: 0 } },
+        yz: { normal: { x: 1, y: 0, z: 0 }, u: { x: 0, y: 1, z: 0 }, v: { x: 0, y: 0, z: 1 } },
+        xz: { normal: { x: 0, y: 1, z: 0 }, u: { x: 1, y: 0, z: 0 }, v: { x: 0, y: 0, z: 1 } },
+      };
+      const worldFrame = worldFrames[output] ?? null;
+      const principalAxisIndex = output === "principal-1" ? 0 : output === "principal-2" ? 1 : output === "principal-3" ? 2 : null;
+      const normal = worldFrame?.normal ?? (principalAxisIndex != null ? pca.axes[principalAxisIndex] : null);
+      if (!normal) return null;
+      const basis = worldFrame ?? resolveHelperTangentBasis(normal);
+      let maxU = 0;
+      let maxV = 0;
+      for (const p of pts) {
+        const rel = sub(p, pca.center);
+        maxU = Math.max(maxU, Math.abs(dot(rel, basis.u)));
+        maxV = Math.max(maxV, Math.abs(dot(rel, basis.v)));
+      }
+      const halfU = Math.max(0.22, maxU * 1.08);
+      const halfV = Math.max(0.22, maxV * 1.08);
+      const corners = [
+        add(add(pca.center, scale(basis.u, halfU)), scale(basis.v, halfV)),
+        add(add(pca.center, scale(basis.u, -halfU)), scale(basis.v, halfV)),
+        add(add(pca.center, scale(basis.u, -halfU)), scale(basis.v, -halfV)),
+        add(add(pca.center, scale(basis.u, halfU)), scale(basis.v, -halfV)),
+      ];
+      const normalLength = Math.max(0.16, Math.min(Math.max(halfU, halfV) * 0.42, Math.max(halfU, halfV)));
+      const overlay = {
+        origin: pca.center,
+        direction: normal,
+        groups: [
+          {
+            lines: [
+              [corners[0], corners[1]],
+              [corners[1], corners[2]],
+              [corners[2], corners[3]],
+              [corners[3], corners[0]],
+              [add(pca.center, scale(basis.u, -halfU)), add(pca.center, scale(basis.u, halfU))],
+              [add(pca.center, scale(basis.v, -halfV)), add(pca.center, scale(basis.v, halfV))],
+            ],
+            color: GEOMETRY_VISUAL_LANGUAGE.selection,
+            opacity: 0.42,
+            radiusScale: 1.14,
+          },
+          {
+            lines: [[pca.center, add(pca.center, scale(normal, normalLength))]],
+            color: GEOMETRY_VISUAL_LANGUAGE.measurement,
+            opacity: 0.82,
+            radiusScale: 1.55,
+          },
+        ],
+        pointSets: [{ points: [pca.center], color: GEOMETRY_VISUAL_LANGUAGE.selection, size: 0.085, opacity: 0.96 }],
+      };
+      analysis.principalOverlays.set(output, overlay);
+      return overlay;
+    };
+    const buildObjectSymmetryPlaneOverlay = (objectId: string, mesh: SurfaceMeshData): GeometryComputedPlaneOverlay | null => {
+      const analysis = getObjectPlaneAnalysis(objectId, mesh);
+      if (analysis.symmetryOverlay !== undefined) return analysis.symmetryOverlay;
+      const { pts, pca } = analysis;
+      if (!pca) return null;
+      const planeNormal =
+        analysis.symmetryNormal !== undefined
+          ? analysis.symmetryNormal
+          : (analysis.symmetryNormal = bestSymmetryPlane(pts, pca));
       if (!planeNormal) return null;
       const basis = resolveHelperTangentBasis(planeNormal);
       let maxU = 0;
@@ -18373,7 +18512,7 @@ const App: React.FC = () => {
         add(add(pca.center, scale(basis.u, halfU)), scale(basis.v, -halfV)),
       ];
       const normalLength = Math.max(0.16, Math.min(Math.max(halfU, halfV) * 0.42, Math.max(halfU, halfV)));
-      return {
+      const overlay = {
         origin: pca.center,
         direction: planeNormal,
         groups: [
@@ -18397,15 +18536,102 @@ const App: React.FC = () => {
         ],
         pointSets: [{ points: [pca.center], color: 0x8b5cf6, size: 0.085, opacity: 0.96 }],
       };
+      analysis.symmetryOverlay = overlay;
+      return overlay;
+    };
+    const buildObjectBestFitPlaneOverlay = (objectId: string, mesh: SurfaceMeshData): GeometryObjectPlaneAnalysis["bestFit"] => {
+      const analysis = getObjectPlaneAnalysis(objectId, mesh);
+      if (analysis.bestFit !== undefined) return analysis.bestFit;
+      const { pts, pca } = analysis;
+      if (!pca || pts.length < 3) {
+        analysis.bestFit = null;
+        return null;
+      }
+      const normal = pca.axes[2];
+      const basis = { u: pca.axes[0], v: pca.axes[1] };
+      let maxU = 0;
+      let maxV = 0;
+      let sumSq = 0;
+      let maxResidual = 0;
+      for (const p of pts) {
+        const rel = sub(p, pca.center);
+        maxU = Math.max(maxU, Math.abs(dot(rel, basis.u)));
+        maxV = Math.max(maxV, Math.abs(dot(rel, basis.v)));
+        const residual = Math.abs(dot(rel, normal));
+        sumSq += residual * residual;
+        maxResidual = Math.max(maxResidual, residual);
+      }
+      const halfU = Math.max(0.22, maxU * 1.08);
+      const halfV = Math.max(0.22, maxV * 1.08);
+      const corners = [
+        add(add(pca.center, scale(basis.u, halfU)), scale(basis.v, halfV)),
+        add(add(pca.center, scale(basis.u, -halfU)), scale(basis.v, halfV)),
+        add(add(pca.center, scale(basis.u, -halfU)), scale(basis.v, -halfV)),
+        add(add(pca.center, scale(basis.u, halfU)), scale(basis.v, -halfV)),
+      ];
+      const normalLength = Math.max(0.16, Math.min(Math.max(halfU, halfV) * 0.42, Math.max(halfU, halfV)));
+      const overlay = {
+        origin: pca.center,
+        direction: normal,
+        groups: [
+          {
+            lines: [
+              [corners[0], corners[1]],
+              [corners[1], corners[2]],
+              [corners[2], corners[3]],
+              [corners[3], corners[0]],
+              [add(pca.center, scale(basis.u, -halfU)), add(pca.center, scale(basis.u, halfU))],
+              [add(pca.center, scale(basis.v, -halfV)), add(pca.center, scale(basis.v, halfV))],
+            ],
+            color: GEOMETRY_VISUAL_LANGUAGE.analysis,
+            opacity: 0.44,
+            radiusScale: 1.16,
+          },
+          {
+            lines: [[pca.center, add(pca.center, scale(normal, normalLength))]],
+            color: GEOMETRY_VISUAL_LANGUAGE.measurement,
+            opacity: 0.84,
+            radiusScale: 1.55,
+          },
+        ],
+        pointSets: [{ points: [pca.center], color: GEOMETRY_VISUAL_LANGUAGE.analysis, size: 0.085, opacity: 0.96 }],
+      };
+      analysis.bestFit = {
+        overlay,
+        rms: Math.sqrt(sumSq / Math.max(1, pts.length)),
+        max: maxResidual,
+        count: pts.length,
+      };
+      return analysis.bestFit;
     };
 
     if (geometryPlaneConstructionMethod === "symmetry-plane" && geometrySelectedObjectId) {
       const selected = resolveGeometrySceneMeshById(geometrySelectedObjectId);
       if (selected) {
-        const preview = buildObjectSymmetryPlaneOverlay(selected.mesh);
+        const preview = buildObjectSymmetryPlaneOverlay(geometrySelectedObjectId, selected.mesh);
         if (preview) {
           groups.push(...preview.groups);
           pointSets.push(...preview.pointSets);
+        }
+      }
+    }
+    if (geometryPlaneConstructionMethod === "principal-plane" && geometrySelectedObjectId) {
+      const selected = resolveGeometrySceneMeshById(geometrySelectedObjectId);
+      if (selected) {
+        const preview = buildObjectPrincipalPlaneOverlay(geometrySelectedObjectId, selected.mesh, geometryPrincipalPlaneOutput);
+        if (preview) {
+          groups.push(...preview.groups);
+          pointSets.push(...preview.pointSets);
+        }
+      }
+    }
+    if (geometryPlaneConstructionMethod === "best-fit-plane" && geometrySelectedObjectId) {
+      const selected = resolveGeometrySceneMeshById(geometrySelectedObjectId);
+      if (selected) {
+        const preview = buildObjectBestFitPlaneOverlay(geometrySelectedObjectId, selected.mesh);
+        if (preview) {
+          groups.push(...preview.overlay.groups);
+          pointSets.push(...preview.overlay.pointSets);
         }
       }
     }
@@ -19162,8 +19388,39 @@ const App: React.FC = () => {
         finish("valid", pca.center, pca.axes[0]);
         continue;
       }
+      if (object.type === "object-principal-plane") {
+        const output = object.params?.principalPlaneOutput ?? "principal-3";
+        const plane = buildObjectPrincipalPlaneOverlay(object.sourceObjectId, mesh, output);
+        if (!plane) {
+          finish("invalid", objectCenter, null);
+          continue;
+        }
+        for (const group of plane.groups) {
+          addEvalGroup(group.lines, group.color ?? GEOMETRY_VISUAL_LANGUAGE.selection, group.opacity ?? 0.76, group.radiusScale ?? 1.5);
+        }
+        for (const set of plane.pointSets) {
+          for (const point of set.points) addEvalPoint(point, set.color ?? GEOMETRY_VISUAL_LANGUAGE.selection, set.size ?? 0.085, set.opacity ?? 0.96);
+        }
+        finish("valid", plane.origin, plane.direction);
+        continue;
+      }
+      if (object.type === "object-best-fit-plane") {
+        const fit = buildObjectBestFitPlaneOverlay(object.sourceObjectId, mesh);
+        if (!fit) {
+          finish("invalid", objectCenter, null);
+          continue;
+        }
+        for (const group of fit.overlay.groups) {
+          addEvalGroup(group.lines, group.color ?? GEOMETRY_VISUAL_LANGUAGE.analysis, group.opacity ?? 0.76, group.radiusScale ?? 1.5);
+        }
+        for (const set of fit.overlay.pointSets) {
+          for (const point of set.points) addEvalPoint(point, set.color ?? GEOMETRY_VISUAL_LANGUAGE.analysis, set.size ?? 0.085, set.opacity ?? 0.96);
+        }
+        finish("valid", fit.overlay.origin, fit.overlay.direction);
+        continue;
+      }
       if (object.type === "object-symmetry-plane-preview") {
-        const plane = buildObjectSymmetryPlaneOverlay(mesh);
+        const plane = buildObjectSymmetryPlaneOverlay(object.sourceObjectId, mesh);
         if (!plane) {
           finish("invalid", objectCenter, null);
           continue;
@@ -19226,6 +19483,7 @@ const App: React.FC = () => {
     geometryMode,
     geometryObjectRevisionById,
     geometryPlaneConstructionMethod,
+    geometryPrincipalPlaneOutput,
     geometrySelectedObjectId,
     resolveGeometrySceneMeshById,
     resolveGeometrySceneObjectById,
@@ -20894,6 +21152,8 @@ const App: React.FC = () => {
       "face-plane-normal-to-selected-edge",
       "face-offset-plane",
       "face-parallel-face-plane",
+      "object-principal-plane",
+      "object-best-fit-plane",
       "object-symmetry-plane-preview",
     ];
     if (!allowedPlaneTypes.includes(selected.object.type)) {
@@ -21670,6 +21930,36 @@ const App: React.FC = () => {
     geometryProbeHoverSelectionDetails,
     geometrySourceFaceOperationTarget,
   ]);
+  const geometryBestFitPlaneObjectAnalysis = useMemo(() => {
+    if (geometryMode !== "procedural" || geometryPlaneConstructionMethod !== "best-fit-plane" || !geometrySelectedObjectId) {
+      return null;
+    }
+    const resolved = resolveGeometrySceneMeshById(geometrySelectedObjectId);
+    if (!resolved) return null;
+    const points: Point3[] = [];
+    const positions = resolved.mesh.positions;
+    for (let i = 0; i + 2 < positions.length; i += 3) {
+      points.push({ x: Number(positions[i]), y: Number(positions[i + 1]), z: Number(positions[i + 2]) });
+    }
+    const fit = bestFitPlane(points);
+    if (!fit) return null;
+    return {
+      objectId: geometrySelectedObjectId,
+      objectName: resolveGeometrySceneObjectById(geometrySelectedObjectId)?.name ?? geometrySelectedObjectId,
+      count: fit.residuals.length,
+      centroid: fit.centroid,
+      normal: fit.normal,
+      rms: fit.rms,
+      max: fit.max,
+    };
+  }, [
+    geometryMode,
+    geometryObjectRevisionById,
+    geometryPlaneConstructionMethod,
+    geometrySelectedObjectId,
+    resolveGeometrySceneMeshById,
+    resolveGeometrySceneObjectById,
+  ]);
   const geometryPlaneMethodStatus = useMemo((): {
     ready: boolean;
     planned: boolean;
@@ -21834,24 +22124,33 @@ const App: React.FC = () => {
         };
       case "principal-plane":
         return {
-          ready: false,
-          planned: true,
+          ready: !!geometrySelectedObjectId,
+          planned: false,
           createLabel: "Create Principal Plane",
-          message: "Planned: principal axes exist, but PCA plane output is not wired yet.",
+          message: geometrySelectedObjectId
+            ? `Ready: ${GEOMETRY_PRINCIPAL_PLANE_OUTPUT_LABELS[geometryPrincipalPlaneOutput]} plane will be created from the selected object.`
+            : "Select an object.",
           inputs: [
             { label: "Object", value: geometrySelectedObjectId ?? "Need object selection", ok: !!geometrySelectedObjectId },
-            { label: "Output", value: "XY / YZ / XZ / PCA plane", ok: false },
+            { label: "Output", value: GEOMETRY_PRINCIPAL_PLANE_OUTPUT_LABELS[geometryPrincipalPlaneOutput], ok: !!geometrySelectedObjectId },
           ],
         };
       case "best-fit-plane":
         return {
-          ready: false,
-          planned: true,
+          ready: !!geometryBestFitPlaneObjectAnalysis,
+          planned: false,
           createLabel: "Create Best Fit Plane",
-          message: "Planned: best-fit plane needs a vertex/object selection set and residual reporting.",
+          message: geometryBestFitPlaneObjectAnalysis
+            ? `Ready: least-squares plane from ${geometryBestFitPlaneObjectAnalysis.count} vertices; RMS ${fmt(geometryBestFitPlaneObjectAnalysis.rms)}.`
+            : geometrySelectedObjectId
+              ? "Selected object does not have enough valid vertices for a best-fit plane."
+              : "Select an object.",
           inputs: [
-            { label: "Points", value: "Pending selection set", ok: false },
-            { label: "Algorithm", value: "Least squares / PCA", ok: false },
+            { label: "Object", value: geometryBestFitPlaneObjectAnalysis?.objectName ?? geometrySelectedObjectId ?? "Need object selection", ok: !!geometryBestFitPlaneObjectAnalysis },
+            { label: "Algorithm", value: "Least squares / PCA", ok: !!geometryBestFitPlaneObjectAnalysis },
+            { label: "Vertices", value: geometryBestFitPlaneObjectAnalysis ? String(geometryBestFitPlaneObjectAnalysis.count) : "-", ok: !!geometryBestFitPlaneObjectAnalysis },
+            { label: "RMS", value: geometryBestFitPlaneObjectAnalysis ? fmt(geometryBestFitPlaneObjectAnalysis.rms) : "-", ok: !!geometryBestFitPlaneObjectAnalysis },
+            { label: "Max", value: geometryBestFitPlaneObjectAnalysis ? fmt(geometryBestFitPlaneObjectAnalysis.max) : "-", ok: !!geometryBestFitPlaneObjectAnalysis },
           ],
         };
       default:
@@ -21860,12 +22159,14 @@ const App: React.FC = () => {
   }, [
     geometryConstructOffsetDistance,
     geometryEdgeOperationTarget,
+    geometryBestFitPlaneObjectAnalysis,
     geometryLinePairAnalysis,
     geometryPlaneConstructionMethod,
     geometryPlaneLinePointAnalysis,
     geometryPlanePointActiveSlot,
     geometryPlanePointSlots,
     geometryPlaneThreePointAnalysis,
+    geometryPrincipalPlaneOutput,
     geometrySelectedObjectId,
     geometrySourceFaceOperationTarget,
   ]);
@@ -21943,6 +22244,22 @@ const App: React.FC = () => {
           message: geometryPlaneMethodStatus.ready
             ? "Preview plane is shown in the viewer."
             : "Preview appears after an object is selected.",
+        };
+      case "principal-plane":
+        return {
+          testId: "geometry-plane-principal-plane-preview-status",
+          tone: geometryPlaneMethodStatus.ready ? "ready" : "waiting",
+          message: geometryPlaneMethodStatus.ready
+            ? "Preview plane is shown in the viewer."
+            : "Preview appears after an object is selected.",
+        };
+      case "best-fit-plane":
+        return {
+          testId: "geometry-plane-best-fit-plane-preview-status",
+          tone: geometryPlaneMethodStatus.ready ? "ready" : "waiting",
+          message: geometryPlaneMethodStatus.ready
+            ? "Preview plane is shown in the viewer."
+            : "Preview appears after an object with at least three vertices is selected.",
         };
       default:
         return null;
@@ -22070,6 +22387,69 @@ const App: React.FC = () => {
     geometryPlaneLinePointAnalysis,
     geometryPlaneMethodStatus.message,
   ]);
+  const handleCreatePrincipalPlaneConstruction = useCallback(() => {
+    const sourceObjectId = geometrySelectedObjectId;
+    if (!sourceObjectId) {
+      setGeometryCreateActionStatus("Select an object before creating the principal plane.");
+      return;
+    }
+    const resolved = resolveGeometrySceneMeshById(sourceObjectId);
+    const sourceName = resolveGeometrySceneObjectById(sourceObjectId)?.name ?? sourceObjectId;
+    const outputLabel = GEOMETRY_PRINCIPAL_PLANE_OUTPUT_LABELS[geometryPrincipalPlaneOutput];
+    appendDerivedConstruction({
+      type: "object-principal-plane",
+      name: `Principal Plane ${outputLabel}`,
+      sourceKind: "object",
+      sourceObjectId,
+      sourceTopologySignature: resolved ? geometryMeshTopologySignature(resolved.mesh) : null,
+      params: { principalPlaneOutput: geometryPrincipalPlaneOutput },
+      constructionSummary: {
+        method: GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS["principal-plane"],
+        inputs: [
+          { label: "Object", value: sourceName },
+          { label: "Output", value: outputLabel },
+        ],
+        result: "Principal Plane",
+      },
+    });
+    setGeometryCreateActionStatus(`Principal Plane ${outputLabel} created from ${sourceName}.`);
+  }, [
+    appendDerivedConstruction,
+    geometryPrincipalPlaneOutput,
+    geometrySelectedObjectId,
+    resolveGeometrySceneMeshById,
+    resolveGeometrySceneObjectById,
+  ]);
+  const handleCreateBestFitPlaneConstruction = useCallback(() => {
+    const fit = geometryBestFitPlaneObjectAnalysis;
+    if (!fit) {
+      setGeometryCreateActionStatus("Select an object with at least three valid vertices before creating the best-fit plane.");
+      return;
+    }
+    const resolved = resolveGeometrySceneMeshById(fit.objectId);
+    appendDerivedConstruction({
+      type: "object-best-fit-plane",
+      name: "Best Fit Plane",
+      sourceKind: "object",
+      sourceObjectId: fit.objectId,
+      sourceTopologySignature: resolved ? geometryMeshTopologySignature(resolved.mesh) : null,
+      sourcePoint: { ...fit.centroid },
+      sourceNormal: { ...fit.normal },
+      params: { bestFitRms: fit.rms, bestFitMax: fit.max },
+      constructionSummary: {
+        method: GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS["best-fit-plane"],
+        inputs: [
+          { label: "Object", value: fit.objectName },
+          { label: "Algorithm", value: "Least squares / PCA" },
+          { label: "Vertices", value: String(fit.count) },
+          { label: "RMS", value: fmt(fit.rms) },
+          { label: "Max", value: fmt(fit.max) },
+        ],
+        result: "Best Fit Plane",
+      },
+    });
+    setGeometryCreateActionStatus(`Best Fit Plane created from ${fit.objectName}; RMS ${fmt(fit.rms)}.`);
+  }, [appendDerivedConstruction, fmt, geometryBestFitPlaneObjectAnalysis, resolveGeometrySceneMeshById]);
   const handleCreateGeometryPlaneConstruction = useCallback(() => {
     if (!geometryPlaneMethodStatus.ready) {
       setGeometryCreateActionStatus(geometryPlaneMethodStatus.message);
@@ -22103,6 +22483,12 @@ const App: React.FC = () => {
       case "symmetry-plane":
         handleCreateDerivedFromObject("object-symmetry-plane-preview");
         return;
+      case "principal-plane":
+        handleCreatePrincipalPlaneConstruction();
+        return;
+      case "best-fit-plane":
+        handleCreateBestFitPlaneConstruction();
+        return;
       default:
         setGeometryCreateActionStatus(geometryPlaneMethodStatus.message);
     }
@@ -22111,6 +22497,8 @@ const App: React.FC = () => {
     geometryPlaneMethodStatus,
     handleCreatePlaneThroughLinePoint,
     handleCreatePlaneThroughThreePickedPoints,
+    handleCreateBestFitPlaneConstruction,
+    handleCreatePrincipalPlaneConstruction,
     handleCreateDerivedFromFace,
     handleCreateDerivedFromObject,
     handleCreateLinePairDerivedConstruction,
@@ -57495,6 +57883,36 @@ case "mobius":
                                         style={{ width: 76 }}
                                       />
                                     </label>
+                                  )}
+                                  {geometryPlaneConstructionMethod === "principal-plane" && (
+                                    <div style={{ display: "grid", gap: 5 }}>
+                                      <span style={{ color: "#475569", fontWeight: 800 }}>Output</span>
+                                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 5 }}>
+                                        {GEOMETRY_PRINCIPAL_PLANE_OUTPUTS.map((output) => {
+                                          const selected = geometryPrincipalPlaneOutput === output;
+                                          return (
+                                            <button
+                                              key={`geometry-principal-plane-output-${output}`}
+                                              type="button"
+                                              data-testid={`geometry-principal-plane-output-${output}`}
+                                              onClick={() => setGeometryPrincipalPlaneOutput(output)}
+                                              aria-pressed={selected}
+                                              style={{
+                                                ...pill(selected),
+                                                borderRadius: 7,
+                                                minHeight: 30,
+                                                padding: "4px 6px",
+                                                textAlign: "center",
+                                                fontSize: 10.5,
+                                                fontWeight: 800,
+                                              }}
+                                            >
+                                              {GEOMETRY_PRINCIPAL_PLANE_OUTPUT_LABELS[output]}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
                                   )}
                                   {geometryPlaneLivePreviewStatus && (
                                     <div

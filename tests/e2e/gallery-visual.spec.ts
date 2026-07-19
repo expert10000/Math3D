@@ -9,6 +9,16 @@ import { launchRepoElectron } from "./helpers/electronLauncher";
 const repoRoot = path.resolve(__dirname, "..", "..");
 const E2E_VIEWPORT = { width: 1024, height: 720 };
 const COMPUTE_ENGINE_FIRST_LAUNCH_KEY = "math3d.computeEngines.firstLaunchSeen";
+const RUNNING_IN_CI = (process.env.CI ?? "").toLowerCase() === "true" || process.env.GITHUB_ACTIONS === "true";
+const VISUAL_ELECTRON_ARGS = [
+  "--force-device-scale-factor=1",
+  "--disable-gpu",
+  "--disable-gpu-compositing",
+  "--disable-background-timer-throttling",
+  "--disable-renderer-backgrounding",
+  "--disable-features=CalculateNativeWinOcclusion",
+  ".",
+];
 
 const normalizeWindowScale = async (app: ElectronApplication): Promise<void> => {
   await app.evaluate(({ BrowserWindow }) => {
@@ -27,7 +37,7 @@ const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication
   delete env.ELECTRON_RUN_AS_NODE;
 
   const app = await launchRepoElectron({
-    args: [".", "--force-device-scale-factor=1"],
+    args: VISUAL_ELECTRON_ARGS,
     cwd: repoRoot,
     env,
   });
@@ -237,6 +247,7 @@ const waitForImagesLoaded = async (scope: Locator): Promise<void> => {
 };
 
 test.setTimeout(10 * 60 * 1000);
+test.describe.configure({ retries: RUNNING_IN_CI ? 1 : 0 });
 
 test("Gallery cards visual baseline", async () => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-visual-"));
