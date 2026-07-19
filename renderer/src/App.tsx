@@ -15052,6 +15052,130 @@ const App: React.FC = () => {
     },
     [resolveHelperTangentBasis]
   );
+  const buildGeometryPlaneFromFaceFrozenSnapshot = useCallback(
+    (
+      face: GeometryOperationFaceTarget,
+      method: Extract<GeometryPlaneConstructionMethod, "parallel" | "perpendicular" | "offset" | "tangent-plane">,
+      label: string,
+      edge: GeometryOperationEdgeTarget | null = null,
+      distance = 0
+    ): NonNullable<GeometryDerivedConstructionObject["frozenSnapshot"]> | null => {
+      const faceNormal = geometryNormalizeVec(face.normal);
+      if (!faceNormal) return null;
+      const edgeDirection =
+        method === "perpendicular" && edge?.edgePoints
+          ? geometryNormalizeVec(geometrySub(edge.edgePoints[1], edge.edgePoints[0]))
+          : null;
+      const planeNormal = edgeDirection ?? faceNormal;
+      const faceCenter =
+        face.faceVertices && face.faceVertices.length >= 3
+          ? {
+              x: (face.faceVertices[0].x + face.faceVertices[1].x + face.faceVertices[2].x) / 3,
+              y: (face.faceVertices[0].y + face.faceVertices[1].y + face.faceVertices[2].y) / 3,
+              z: (face.faceVertices[0].z + face.faceVertices[1].z + face.faceVertices[2].z) / 3,
+            }
+          : face.point;
+      const center =
+        method === "offset"
+          ? geometryAdd(faceCenter, geometryScale(faceNormal, Math.max(0.01, Number(distance) || 0.5)))
+          : faceCenter;
+      const basis = resolveHelperTangentBasis(planeNormal);
+      const faceSpan =
+        face.faceVertices && face.faceVertices.length >= 3
+          ? Math.max(
+              geometryDistance(face.faceVertices[0], face.faceVertices[1]),
+              geometryDistance(face.faceVertices[1], face.faceVertices[2]),
+              geometryDistance(face.faceVertices[2], face.faceVertices[0])
+            )
+          : 0.8;
+      const half = Math.max(0.25, faceSpan * 0.58);
+      const corners = [
+        geometryAdd(center, geometryAdd(geometryScale(basis.u, half), geometryScale(basis.v, half))),
+        geometryAdd(center, geometryAdd(geometryScale(basis.u, -half), geometryScale(basis.v, half))),
+        geometryAdd(center, geometryAdd(geometryScale(basis.u, -half), geometryScale(basis.v, -half))),
+        geometryAdd(center, geometryAdd(geometryScale(basis.u, half), geometryScale(basis.v, -half))),
+      ];
+      const groups: OverlayPolylineGroup[] = [
+        {
+          lines: [
+            [corners[0], corners[1]],
+            [corners[1], corners[2]],
+            [corners[2], corners[3]],
+            [corners[3], corners[0]],
+          ],
+          color:
+            method === "offset"
+              ? 0x8b5cf6
+              : method === "perpendicular"
+                ? 0x4f46e5
+                : method === "tangent-plane"
+                  ? GEOMETRY_VISUAL_LANGUAGE.analysis
+                  : GEOMETRY_VISUAL_LANGUAGE.selection,
+          opacity: 0.58,
+          radiusScale: 1.22,
+        },
+      ];
+      if (method === "offset") {
+        groups.push({
+          lines: [[faceCenter, center]],
+          color: GEOMETRY_VISUAL_LANGUAGE.measurement,
+          opacity: 0.78,
+          radiusScale: 1.6,
+        });
+      }
+      if (method === "perpendicular" && edge?.edgePoints) {
+        groups.push({
+          lines: [[edge.edgePoints[0], edge.edgePoints[1]]],
+          color: GEOMETRY_VISUAL_LANGUAGE.measurement,
+          opacity: 0.86,
+          radiusScale: 1.8,
+        });
+      }
+      if (method === "tangent-plane") {
+        const axisLength = Math.max(0.18, half * 0.72);
+        groups.push(
+          {
+            lines: [[center, geometryAdd(center, geometryScale(faceNormal, axisLength))]],
+            color: GEOMETRY_VISUAL_LANGUAGE.analysis,
+            opacity: 0.9,
+            radiusScale: 1.75,
+          },
+          {
+            lines: [
+              [center, geometryAdd(center, geometryScale(basis.u, axisLength))],
+              [center, geometryAdd(center, geometryScale(basis.v, axisLength))],
+            ],
+            color: GEOMETRY_VISUAL_LANGUAGE.measurement,
+            opacity: 0.84,
+            radiusScale: 1.45,
+          }
+        );
+      }
+      return {
+        origin: center,
+        direction: planeNormal,
+        groups,
+        pointSets: [
+          { points: [faceCenter], color: GEOMETRY_VISUAL_LANGUAGE.helper, size: 0.07, opacity: 0.86 },
+          { points: [center], color: GEOMETRY_VISUAL_LANGUAGE.selection, size: 0.08, opacity: 0.94 },
+        ],
+        labelSets: [
+          {
+            size: 0.86,
+            labels: [
+              {
+                text: label,
+                position: { x: center.x + 0.05, y: center.y + 0.05, z: center.z + 0.05 },
+                color: GEOMETRY_VISUAL_LANGUAGE.label,
+                opacity: 0.9,
+              },
+            ],
+          },
+        ],
+      };
+    },
+    [resolveHelperTangentBasis]
+  );
   const handleCreateHelperFromFaceSelection = useCallback(
     (kind: "face-plane" | "face-normal" | "face-centroid" | "face-frame") => {
       if (kind === "face-plane") {
@@ -17694,7 +17818,7 @@ const App: React.FC = () => {
     byId: Map<string, GeometryDerivedConstructionEvaluation>;
   }>(() => {
     const byId = new Map<string, GeometryDerivedConstructionEvaluation>();
-    if (geometryMode !== "procedural" || !geometryDerivedConstructions.length) {
+    if (geometryMode !== "procedural") {
       return { groups: null, pointSets: null, labelSets: null, byId };
     }
 
@@ -18221,6 +18345,70 @@ const App: React.FC = () => {
       if (!Number.isFinite(bestRadius) || bestRadius <= 1e-6) return null;
       return { center: bestCenter, radius: bestRadius };
     };
+    const buildObjectSymmetryPlaneOverlay = (mesh: SurfaceMeshData): {
+      origin: GeometryProbePoint;
+      direction: GeometryProbePoint;
+      groups: OverlayPolylineGroup[];
+      pointSets: OverlayPointSet[];
+    } | null => {
+      const pts = dedupePoints(meshPoints(mesh.positions));
+      const pca = pcaEigenSystem(pts);
+      if (!pca) return null;
+      const planeNormal = bestSymmetryPlane(pts, pca);
+      if (!planeNormal) return null;
+      const basis = resolveHelperTangentBasis(planeNormal);
+      let maxU = 0;
+      let maxV = 0;
+      for (const p of pts) {
+        const rel = sub(p, pca.center);
+        maxU = Math.max(maxU, Math.abs(dot(rel, basis.u)));
+        maxV = Math.max(maxV, Math.abs(dot(rel, basis.v)));
+      }
+      const halfU = Math.max(0.18, maxU * 1.05);
+      const halfV = Math.max(0.18, maxV * 1.05);
+      const corners = [
+        add(add(pca.center, scale(basis.u, halfU)), scale(basis.v, halfV)),
+        add(add(pca.center, scale(basis.u, -halfU)), scale(basis.v, halfV)),
+        add(add(pca.center, scale(basis.u, -halfU)), scale(basis.v, -halfV)),
+        add(add(pca.center, scale(basis.u, halfU)), scale(basis.v, -halfV)),
+      ];
+      const normalLength = Math.max(0.16, Math.min(Math.max(halfU, halfV) * 0.42, Math.max(halfU, halfV)));
+      return {
+        origin: pca.center,
+        direction: planeNormal,
+        groups: [
+          {
+            lines: [
+              [corners[0], corners[1]],
+              [corners[1], corners[2]],
+              [corners[2], corners[3]],
+              [corners[3], corners[0]],
+            ],
+            color: 0x8b5cf6,
+            opacity: 0.48,
+            radiusScale: 1.15,
+          },
+          {
+            lines: [[pca.center, add(pca.center, scale(planeNormal, normalLength))]],
+            color: GEOMETRY_VISUAL_LANGUAGE.measurement,
+            opacity: 0.82,
+            radiusScale: 1.55,
+          },
+        ],
+        pointSets: [{ points: [pca.center], color: 0x8b5cf6, size: 0.085, opacity: 0.96 }],
+      };
+    };
+
+    if (geometryPlaneConstructionMethod === "symmetry-plane" && geometrySelectedObjectId) {
+      const selected = resolveGeometrySceneMeshById(geometrySelectedObjectId);
+      if (selected) {
+        const preview = buildObjectSymmetryPlaneOverlay(selected.mesh);
+        if (preview) {
+          groups.push(...preview.groups);
+          pointSets.push(...preview.pointSets);
+        }
+      }
+    }
 
     for (const object of geometryDerivedConstructions) {
       const source = resolveGeometrySceneObjectById(object.sourceObjectId);
@@ -18975,41 +19163,18 @@ const App: React.FC = () => {
         continue;
       }
       if (object.type === "object-symmetry-plane-preview") {
-        const pts = dedupePoints(meshPoints(mesh.positions));
-        const pca = pcaEigenSystem(pts);
-        if (!pca) {
+        const plane = buildObjectSymmetryPlaneOverlay(mesh);
+        if (!plane) {
           finish("invalid", objectCenter, null);
           continue;
         }
-        const planeNormal = bestSymmetryPlane(pts, pca);
-        if (!planeNormal) {
-          finish("invalid", pca.center, null);
-          continue;
+        for (const group of plane.groups) {
+          addEvalGroup(group.lines, group.color ?? 0x8b5cf6, group.opacity ?? 0.76, group.radiusScale ?? 1.5);
         }
-        const basis = resolveHelperTangentBasis(planeNormal);
-        let maxU = 0;
-        let maxV = 0;
-        for (const p of pts) {
-          const rel = sub(p, pca.center);
-          maxU = Math.max(maxU, Math.abs(dot(rel, basis.u)));
-          maxV = Math.max(maxV, Math.abs(dot(rel, basis.v)));
+        for (const set of plane.pointSets) {
+          for (const point of set.points) addEvalPoint(point, set.color ?? 0x8b5cf6, set.size ?? 0.085, set.opacity ?? 0.96);
         }
-        const halfU = Math.max(0.18, maxU * 1.05);
-        const halfV = Math.max(0.18, maxV * 1.05);
-        const corners = [
-          add(add(pca.center, scale(basis.u, halfU)), scale(basis.v, halfV)),
-          add(add(pca.center, scale(basis.u, -halfU)), scale(basis.v, halfV)),
-          add(add(pca.center, scale(basis.u, -halfU)), scale(basis.v, -halfV)),
-          add(add(pca.center, scale(basis.u, halfU)), scale(basis.v, -halfV)),
-        ];
-        const lines: PolylineSet = [
-          [corners[0], corners[1]],
-          [corners[1], corners[2]],
-          [corners[2], corners[3]],
-          [corners[3], corners[0]],
-        ];
-        addEvalGroup(lines, 0x8b5cf6, 0.76, 1.5);
-        finish("valid", pca.center, planeNormal);
+        finish("valid", plane.origin, plane.direction);
         continue;
       }
       if (object.type === "object-circumscribed-sphere-preview") {
@@ -19060,6 +19225,8 @@ const App: React.FC = () => {
     geometryDerivedConstructions,
     geometryMode,
     geometryObjectRevisionById,
+    geometryPlaneConstructionMethod,
+    geometrySelectedObjectId,
     resolveGeometrySceneMeshById,
     resolveGeometrySceneObjectById,
     resolveHelperTangentBasis,
@@ -19551,6 +19718,76 @@ const App: React.FC = () => {
         radiusScale: 2.35,
       },
     ];
+  }, [geometryLinePairAnalysis, geometryMode, geometryPlaneConstructionMethod, resolveHelperTangentBasis]);
+  const geometryPlaneMidPlanePreviewOverlays = useMemo<{
+    groups: OverlayPolylineGroup[] | null;
+    pointSets: OverlayPointSet[] | null;
+  }>(() => {
+    if (geometryMode !== "procedural" || geometryPlaneConstructionMethod !== "mid-plane") {
+      return { groups: null, pointSets: null };
+    }
+    const analysis = geometryLinePairAnalysis;
+    if (!analysis?.canCreateMidPlane || !analysis.midPlaneNormal) return { groups: null, pointSets: null };
+    const normal = geometryNormalizeVec(analysis.midPlaneNormal);
+    const u = geometryNormalizeVec(analysis.lineA.direction);
+    if (!normal || !u) return { groups: null, pointSets: null };
+    const basis = resolveHelperTangentBasis(normal);
+    const v = geometryNormalizeVec(geometryCross(normal, u)) ?? basis.v;
+    const center = analysis.midPoint;
+    const span = Math.max(
+      0.9,
+      analysis.distance * 1.35,
+      Number(analysis.lineA.object.params?.length ?? 0) * 0.3,
+      Number(analysis.lineB.object.params?.length ?? 0) * 0.3,
+      1.15
+    );
+    const corners = [
+      geometryAdd(center, geometryAdd(geometryScale(u, span), geometryScale(v, span))),
+      geometryAdd(center, geometryAdd(geometryScale(u, -span), geometryScale(v, span))),
+      geometryAdd(center, geometryAdd(geometryScale(u, -span), geometryScale(v, -span))),
+      geometryAdd(center, geometryAdd(geometryScale(u, span), geometryScale(v, -span))),
+    ];
+    const supportSegment = (origin: GeometryProbePoint, direction: GeometryProbePoint, length = span * 1.25) =>
+      [
+        geometryAdd(origin, geometryScale(direction, -length)),
+        geometryAdd(origin, geometryScale(direction, length)),
+      ] as [GeometryProbePoint, GeometryProbePoint];
+    return {
+      groups: [
+        {
+          lines: [
+            [corners[0], corners[1]],
+            [corners[1], corners[2]],
+            [corners[2], corners[3]],
+            [corners[3], corners[0]],
+            [geometryAdd(center, geometryScale(u, -span)), geometryAdd(center, geometryScale(u, span))],
+            [geometryAdd(center, geometryScale(v, -span)), geometryAdd(center, geometryScale(v, span))],
+          ],
+          color: GEOMETRY_VISUAL_LANGUAGE.analysis,
+          opacity: 0.38,
+          radiusScale: 1.18,
+        },
+        {
+          lines: [
+            supportSegment(analysis.closestA, analysis.lineA.direction),
+            supportSegment(analysis.closestB, analysis.lineB.direction),
+          ],
+          color: GEOMETRY_VISUAL_LANGUAGE.derived,
+          opacity: 0.74,
+          radiusScale: 2.05,
+        },
+        {
+          lines: [[analysis.closestA, analysis.closestB]],
+          color: GEOMETRY_VISUAL_LANGUAGE.measurement,
+          opacity: 0.84,
+          radiusScale: 1.72,
+        },
+      ],
+      pointSets: [
+        { points: [analysis.closestA, analysis.closestB], color: GEOMETRY_VISUAL_LANGUAGE.measurement, size: 0.075, opacity: 0.96 },
+        { points: [center], color: GEOMETRY_VISUAL_LANGUAGE.analysis, size: 0.085, opacity: 0.96 },
+      ],
+    };
   }, [geometryLinePairAnalysis, geometryMode, geometryPlaneConstructionMethod, resolveHelperTangentBasis]);
   const geometrySelectedDerivedLineGizmoOverlays = useMemo<{
     groups: OverlayPolylineGroup[] | null;
@@ -21335,6 +21572,35 @@ const App: React.FC = () => {
               geometryPlaneLinePointAnalysis.point,
               "Plane Through Line + Point"
             )
+          : geometryPlaneConstructionMethod === "parallel" && geometrySourceFaceOperationTarget
+            ? buildGeometryPlaneFromFaceFrozenSnapshot(
+                geometrySourceFaceOperationTarget,
+                "parallel",
+                "Parallel Plane"
+              )
+            : geometryPlaneConstructionMethod === "offset" && geometrySourceFaceOperationTarget
+              ? buildGeometryPlaneFromFaceFrozenSnapshot(
+                  geometrySourceFaceOperationTarget,
+                  "offset",
+                  "Offset Plane",
+                  null,
+                  geometryConstructOffsetDistance
+                )
+              : geometryPlaneConstructionMethod === "perpendicular" &&
+                  geometrySourceFaceOperationTarget &&
+                  geometryEdgeOperationTarget
+                ? buildGeometryPlaneFromFaceFrozenSnapshot(
+                    geometrySourceFaceOperationTarget,
+                    "perpendicular",
+                    "Perpendicular Plane",
+                    geometryEdgeOperationTarget
+                  )
+                : geometryPlaneConstructionMethod === "tangent-plane" && geometrySourceFaceOperationTarget
+                  ? buildGeometryPlaneFromFaceFrozenSnapshot(
+                      geometrySourceFaceOperationTarget,
+                      "tangent-plane",
+                      "Tangent Plane"
+                    )
           : null;
     if (!snapshot) return { groups: null, pointSets: null };
     const calmGroups = snapshot.groups
@@ -21378,13 +21644,23 @@ const App: React.FC = () => {
             },
           ]
         : [];
+    const facePlanePointSets =
+      geometryPlaneConstructionMethod === "parallel" ||
+      geometryPlaneConstructionMethod === "perpendicular" ||
+      geometryPlaneConstructionMethod === "offset" ||
+      geometryPlaneConstructionMethod === "tangent-plane"
+        ? snapshot.pointSets
+        : [];
     return {
       groups: calmGroups.length ? calmGroups : null,
-      pointSets: [...centerPointSet, ...closestPointSet, ...inputPointSets],
+      pointSets: [...centerPointSet, ...closestPointSet, ...inputPointSets, ...facePlanePointSets],
     };
   }, [
+    buildGeometryPlaneFromFaceFrozenSnapshot,
     buildGeometryPlaneFromLinePointFrozenSnapshot,
     buildGeometryPlaneFromPointsFrozenSnapshot,
+    geometryConstructOffsetDistance,
+    geometryEdgeOperationTarget,
     geometryMode,
     geometryPlaneConstructionMethod,
     geometryPlaneLinePointAnalysis.closestPoint,
@@ -21392,6 +21668,7 @@ const App: React.FC = () => {
     geometryPlanePointSlots,
     geometryPlaneThreePointAnalysis.ready,
     geometryProbeHoverSelectionDetails,
+    geometrySourceFaceOperationTarget,
   ]);
   const geometryPlaneMethodStatus = useMemo((): {
     ready: boolean;
@@ -21618,6 +21895,54 @@ const App: React.FC = () => {
           message: geometryLinePairAnalysis.canCreatePlane
             ? "Preview plane is shown in the viewer."
             : "Preview unavailable until the lines are intersecting or parallel.",
+        };
+      case "parallel":
+        return {
+          testId: "geometry-plane-parallel-preview-status",
+          tone: geometryPlaneMethodStatus.ready ? "ready" : "waiting",
+          message: geometryPlaneMethodStatus.ready
+            ? "Preview plane is shown in the viewer."
+            : "Preview appears after a reference face is picked.",
+        };
+      case "perpendicular":
+        return {
+          testId: "geometry-plane-perpendicular-preview-status",
+          tone: geometryPlaneMethodStatus.ready ? "ready" : "waiting",
+          message: geometryPlaneMethodStatus.ready
+            ? "Preview plane is shown in the viewer."
+            : "Preview appears after a reference face and edge are picked.",
+        };
+      case "offset":
+        return {
+          testId: "geometry-plane-offset-preview-status",
+          tone: geometryPlaneMethodStatus.ready ? "ready" : "waiting",
+          message: geometryPlaneMethodStatus.ready
+            ? "Preview plane is shown in the viewer."
+            : "Preview appears after a reference face is picked.",
+        };
+      case "mid-plane":
+        return {
+          testId: "geometry-plane-mid-plane-preview-status",
+          tone: geometryPlaneMethodStatus.ready ? "ready" : "waiting",
+          message: geometryPlaneMethodStatus.ready
+            ? "Preview plane is shown in the viewer."
+            : "Preview appears after two parallel non-coincident lines are selected.",
+        };
+      case "tangent-plane":
+        return {
+          testId: "geometry-plane-tangent-plane-preview-status",
+          tone: geometryPlaneMethodStatus.ready ? "ready" : "waiting",
+          message: geometryPlaneMethodStatus.ready
+            ? "Preview plane is shown in the viewer."
+            : "Preview appears after a face or surface point is picked.",
+        };
+      case "symmetry-plane":
+        return {
+          testId: "geometry-plane-symmetry-plane-preview-status",
+          tone: geometryPlaneMethodStatus.ready ? "ready" : "waiting",
+          message: geometryPlaneMethodStatus.ready
+            ? "Preview plane is shown in the viewer."
+            : "Preview appears after an object is selected.",
         };
       default:
         return null;
@@ -22900,6 +23225,9 @@ const App: React.FC = () => {
     if (geometryPlaneBasicInputPreviewOverlays.pointSets?.length) {
       sets.push(...geometryPlaneBasicInputPreviewOverlays.pointSets);
     }
+    if (geometryPlaneMidPlanePreviewOverlays.pointSets?.length) {
+      sets.push(...geometryPlaneMidPlanePreviewOverlays.pointSets);
+    }
     pushPointSets(geometryProceduralFeatureOverlays.pointSets);
     if (geometryTimelineShowAnnotations) pushPointSets(geometryProceduralAnnotationOverlays.pointSets);
     pushPointSets(geometryMathConstructionOverlays.pointSets);
@@ -22917,6 +23245,7 @@ const App: React.FC = () => {
     geometryDerivedConstructionOverlays.pointSets,
     geometrySelectedDerivedLineGizmoOverlays.pointSets,
     geometryPlaneBasicInputPreviewOverlays.pointSets,
+    geometryPlaneMidPlanePreviewOverlays.pointSets,
     geometryMathConstructionOverlays.pointSets,
     geometryProceduralSnapPreviewPointSet,
   ]);
@@ -22945,6 +23274,9 @@ const App: React.FC = () => {
     }
     if (geometryPlaneThroughLinesPreviewGroups?.length) {
       groups.push(...geometryPlaneThroughLinesPreviewGroups);
+    }
+    if (geometryPlaneMidPlanePreviewOverlays.groups?.length) {
+      groups.push(...geometryPlaneMidPlanePreviewOverlays.groups);
     }
     if (geometryArmedLineOperationPreviewGroups?.length) {
       groups.push(...geometryArmedLineOperationPreviewGroups);
@@ -22977,6 +23309,7 @@ const App: React.FC = () => {
     geometryArmedLineOperationPreviewGroups,
     geometryDerivedConstructionOverlays.groups,
     geometryPlaneBasicInputPreviewOverlays.groups,
+    geometryPlaneMidPlanePreviewOverlays.groups,
     geometryPlaneThroughLinesPreviewGroups,
     geometrySelectedDerivedLineGizmoOverlays.groups,
     geometryMathConstructionOverlays.groups,

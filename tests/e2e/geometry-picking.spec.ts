@@ -270,6 +270,11 @@ const extendCommittedEdge = async (page: Page, candidate: EdgePickCandidate) => 
 const selectValue = async (page: Page, testId: string) =>
   page.getByTestId(testId).evaluate((element) => (element as HTMLSelectElement).value);
 
+const selectLinePairSources = async (page: Page, sourceAId: string, sourceBId: string) => {
+  await page.getByTestId("geometry-line-pair-source-a").selectOption(sourceAId);
+  await page.getByTestId("geometry-line-pair-source-b").selectOption(sourceBId);
+};
+
 test("Geometry pick readout commits object, face, edge, and vertex modes", async () => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-pick-"));
   let app: ElectronApplication | null = null;
@@ -333,6 +338,88 @@ test("Geometry construct: edge extensions auto-fill line pair", async () => {
     await expect.poll(() => selectValue(page, "geometry-line-pair-source-b")).not.toBe("");
     const lineBId = await selectValue(page, "geometry-line-pair-source-b");
     expect(lineBId).not.toBe(lineAId);
+
+    const createdEdges = [edgeA, edgeB];
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const candidate = await findEdgePickCandidate(
+        page,
+        (edge) => !createdEdges.some((created) => edgePickKey(created) === edgePickKey(edge))
+      );
+      createdEdges.push(candidate);
+      await extendCommittedEdge(page, candidate);
+    }
+
+    await selectConstructPanelTab(page, "relations");
+    const lineSourceIds = await page
+      .getByTestId("geometry-line-pair-source-a")
+      .locator("option")
+      .evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value).filter(Boolean));
+    let foundMidPlanePreview = false;
+    for (const sourceAId of lineSourceIds) {
+      for (const sourceBId of lineSourceIds) {
+        if (sourceAId === sourceBId) continue;
+        await selectLinePairSources(page, sourceAId, sourceBId);
+        await selectConstructPanelTab(page, "create");
+        await page.getByTestId("geometry-plane-method-mid-plane").click();
+        if ((await page.getByTestId("geometry-plane-mid-plane-preview-status").innerText()).includes("Preview plane is shown")) {
+          foundMidPlanePreview = true;
+          break;
+        }
+        await selectConstructPanelTab(page, "relations");
+      }
+      if (foundMidPlanePreview) break;
+    }
+    expect(foundMidPlanePreview).toBe(true);
+    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
+test("Geometry construct: relation plane methods show live previews before create", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-relation-plane-preview-"));
+  let app: ElectronApplication | null = null;
+
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+    await clickFirstVisibleButton(page, "Construct");
+    await selectConstructPanelTab(page, "create");
+    await configureGeometryViewerForConstructionPicking(page);
+
+    await page.getByTestId("geometry-plane-method-parallel").click();
+    await clickUntilCommitted(page, "face");
+    await expect(page.getByTestId("geometry-plane-parallel-preview-status")).toContainText("Preview plane is shown");
+    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
+
+    await page.getByTestId("geometry-plane-method-offset").click();
+    await expect(page.getByTestId("geometry-plane-offset-preview-status")).toContainText("Preview plane is shown");
+    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
+
+    await page.getByTestId("geometry-plane-method-tangent-plane").click();
+    await expect(page.getByTestId("geometry-plane-tangent-plane-preview-status")).toContainText("Preview plane is shown");
+    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
+
+    await page.getByTestId("geometry-plane-method-symmetry-plane").click();
+    const symmetryPreviewStatus = page.getByTestId("geometry-plane-symmetry-plane-preview-status");
+    if (!(await symmetryPreviewStatus.innerText()).includes("Preview plane is shown")) {
+      await clickUntilCommitted(page, "object");
+    }
+    await expect(page.getByTestId("geometry-plane-symmetry-plane-preview-status")).toContainText("Preview plane is shown");
+    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
+
+    await page.getByTestId("geometry-plane-method-perpendicular").click();
+    const perpendicularPreviewStatus = page.getByTestId("geometry-plane-perpendicular-preview-status");
+    if (!(await perpendicularPreviewStatus.innerText()).includes("Preview plane is shown")) {
+      await findEdgePickCandidate(page);
+    }
+    await expect(page.getByTestId("geometry-plane-perpendicular-preview-status")).toContainText("Preview plane is shown");
+    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
   } finally {
     if (app) await app.close().catch(() => undefined);
     rmSync(profileDir, { recursive: true, force: true });
