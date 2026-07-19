@@ -1031,6 +1031,7 @@ const UI_WORKSPACE_MODE_KEY = "math3d.ui.workspaceMode.v1";
 const UI_GEOMETRY_MODE_KEY = "math3d.ui.geometryMode.v1";
 const UI_GEOMETRY_PROCEDURAL_PANEL_KEY = "math3d.ui.geometryProceduralPanel.v1";
 const UI_GEOMETRY_VIEWPORT_SETTINGS_KEY = "math3d.ui.geometryViewportSettings.v1";
+const UI_GEOMETRY_CONSTRUCT_PANEL_KEY = "math3d.ui.geometryConstructPanel.v1";
 const WORKBOOK_AUTOSAVE_INTERVAL_SEC = 30;
 const WORKBOOK_AUTOSAVE_DEBOUNCE_MS = 1800;
 const WORKBOOK_AUTOSAVE_JOURNAL_LIMIT = 20;
@@ -2272,11 +2273,16 @@ type GeometryRightPanelTab = "selection" | "scene" | "dependencies";
 type GeometryInspectorPanelTab = "probe" | "dependencies";
 type GeometryConstructPanelTab = "create" | "edit" | "relations" | "measure" | "tree" | "inspect";
 type GeometryConstructCreateFamily = "points" | "lines" | "planes";
+type GeometryConstructCategory = "points" | "lines" | "planes" | "circles" | "axes" | "bounding";
 type GeometryConstructRecentTool = {
   family: GeometryConstructCreateFamily;
   id: GeometryPointConstructionTool | GeometryLineConstructionTool | GeometryPlaneConstructionMethod;
   label: string;
   classification: string;
+};
+type GeometryConstructPanelPreferences = {
+  openCategories: Record<GeometryConstructCategory, boolean>;
+  recentTools: GeometryConstructRecentTool[];
 };
 const GEOMETRY_CONSTRUCT_PANEL_TABS: Array<{ id: GeometryConstructPanelTab; label: string }> = [
   { id: "create", label: "Create" },
@@ -2286,6 +2292,22 @@ const GEOMETRY_CONSTRUCT_PANEL_TABS: Array<{ id: GeometryConstructPanelTab; labe
   { id: "tree", label: "Tree" },
   { id: "inspect", label: "Inspect" },
 ];
+const GEOMETRY_CONSTRUCT_CATEGORY_IDS: GeometryConstructCategory[] = [
+  "points",
+  "lines",
+  "planes",
+  "circles",
+  "axes",
+  "bounding",
+];
+const DEFAULT_GEOMETRY_CONSTRUCT_CATEGORY_OPEN: Record<GeometryConstructCategory, boolean> = {
+  points: true,
+  lines: true,
+  planes: true,
+  circles: true,
+  axes: true,
+  bounding: true,
+};
 type GeometryDependencyState = "valid" | "updating" | "stale" | "broken-source" | "ambiguous-target" | "frozen";
 type GeometryProceduralPickInfo = {
   point: { x: number; y: number; z: number };
@@ -2864,6 +2886,71 @@ const GEOMETRY_POINT_CONSTRUCTION_TOOL_GROUPS: Array<{
 const GEOMETRY_POINT_CONSTRUCTION_TOOL_ORDER = GEOMETRY_POINT_CONSTRUCTION_TOOL_GROUPS.flatMap((group) =>
   group.tools.map((tool) => ({ tool, groupTitle: group.title }))
 );
+const isGeometryConstructCategory = (value: unknown): value is GeometryConstructCategory =>
+  typeof value === "string" && (GEOMETRY_CONSTRUCT_CATEGORY_IDS as string[]).includes(value);
+const isGeometryPointConstructionTool = (value: unknown): value is GeometryPointConstructionTool =>
+  typeof value === "string" && value in GEOMETRY_POINT_CONSTRUCTION_TOOL_LABELS;
+const isGeometryLineConstructionTool = (value: unknown): value is GeometryLineConstructionTool =>
+  typeof value === "string" && value in GEOMETRY_LINE_CONSTRUCTION_TOOL_LABELS;
+const isGeometryPlaneConstructionMethod = (value: unknown): value is GeometryPlaneConstructionMethod =>
+  typeof value === "string" && value in GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS;
+const normalizeGeometryConstructRecentTool = (entry: unknown): GeometryConstructRecentTool | null => {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+  const candidate = entry as Partial<GeometryConstructRecentTool>;
+  if (candidate.family === "points" && isGeometryPointConstructionTool(candidate.id)) {
+    return {
+      family: "points",
+      id: candidate.id,
+      label: GEOMETRY_POINT_CONSTRUCTION_TOOL_LABELS[candidate.id],
+      classification: GEOMETRY_POINT_CONSTRUCTION_TOOL_ORDER.find((item) => item.tool === candidate.id)?.groupTitle ?? "Basic",
+    };
+  }
+  if (candidate.family === "lines" && isGeometryLineConstructionTool(candidate.id)) {
+    return {
+      family: "lines",
+      id: candidate.id,
+      label: GEOMETRY_LINE_CONSTRUCTION_TOOL_LABELS[candidate.id],
+      classification: GEOMETRY_LINE_CONSTRUCTION_TOOL_ORDER.find((item) => item.tool === candidate.id)?.groupTitle ?? "Basic",
+    };
+  }
+  if (candidate.family === "planes" && isGeometryPlaneConstructionMethod(candidate.id)) {
+    return {
+      family: "planes",
+      id: candidate.id,
+      label: GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS[candidate.id],
+      classification: GEOMETRY_PLANE_CONSTRUCTION_METHOD_ORDER.find((item) => item.method === candidate.id)?.groupTitle ?? "Basic",
+    };
+  }
+  return null;
+};
+const readGeometryConstructPanelPreferences = (): GeometryConstructPanelPreferences => {
+  const fallback: GeometryConstructPanelPreferences = {
+    openCategories: { ...DEFAULT_GEOMETRY_CONSTRUCT_CATEGORY_OPEN },
+    recentTools: [],
+  };
+  if (typeof window === "undefined") return fallback;
+  const stored = safeParseObject<Partial<GeometryConstructPanelPreferences>>(
+    window.localStorage.getItem(UI_GEOMETRY_CONSTRUCT_PANEL_KEY)
+  );
+  if (!stored) return fallback;
+  const openCategories = { ...DEFAULT_GEOMETRY_CONSTRUCT_CATEGORY_OPEN };
+  const rawOpen = stored.openCategories;
+  if (rawOpen && typeof rawOpen === "object" && !Array.isArray(rawOpen)) {
+    for (const [category, open] of Object.entries(rawOpen)) {
+      if (isGeometryConstructCategory(category) && typeof open === "boolean") {
+        openCategories[category] = open;
+      }
+    }
+  }
+  const recentTools = Array.isArray(stored.recentTools)
+    ? stored.recentTools
+        .map(normalizeGeometryConstructRecentTool)
+        .filter((entry): entry is GeometryConstructRecentTool => !!entry)
+        .filter((entry, index, entries) => entries.findIndex((item) => item.family === entry.family && item.id === entry.id) === index)
+        .slice(0, 6)
+    : [];
+  return { openCategories, recentTools };
+};
 const GEOMETRY_MATH_RELATIONSHIP_TYPE_LABELS: Record<GeometryMathConstructionRelationshipType, string> = {
   parallel: "Parallel",
   perpendicular: "Perpendicular",
@@ -8880,7 +8967,12 @@ const App: React.FC = () => {
   const [geometryConstructCreateFamily, setGeometryConstructCreateFamily] =
     useState<GeometryConstructCreateFamily>("planes");
   const [geometryConstructToolSearch, setGeometryConstructToolSearch] = useState("");
-  const [geometryRecentConstructionTools, setGeometryRecentConstructionTools] = useState<GeometryConstructRecentTool[]>([]);
+  const [geometryConstructCategoryOpen, setGeometryConstructCategoryOpen] = useState<Record<GeometryConstructCategory, boolean>>(
+    () => readGeometryConstructPanelPreferences().openCategories
+  );
+  const [geometryRecentConstructionTools, setGeometryRecentConstructionTools] = useState<GeometryConstructRecentTool[]>(
+    () => readGeometryConstructPanelPreferences().recentTools
+  );
   const [geometryPointConstructionTool, setGeometryPointConstructionTool] =
     useState<GeometryPointConstructionTool>("midpoint");
   const [geometryLineConstructionTool, setGeometryLineConstructionTool] =
@@ -8909,6 +9001,15 @@ const App: React.FC = () => {
       tool,
       ...prev.filter((entry) => entry.family !== tool.family || entry.id !== tool.id),
     ].slice(0, 6));
+  }, []);
+  const setGeometryConstructCategoryExpanded = useCallback((category: GeometryConstructCategory, open: boolean) => {
+    setGeometryConstructCategoryOpen((prev) => (prev[category] === open ? prev : { ...prev, [category]: open }));
+  }, []);
+  const handleResetGeometryConstructPanelPreferences = useCallback(() => {
+    setGeometryConstructCategoryOpen({ ...DEFAULT_GEOMETRY_CONSTRUCT_CATEGORY_OPEN });
+    setGeometryRecentConstructionTools([]);
+    setGeometryConstructToolSearch("");
+    setGeometryCreateActionStatus("Construct panel preferences reset.");
   }, []);
   const selectGeometryPointConstructionTool = useCallback(
     (tool: GeometryPointConstructionTool) => {
@@ -9105,6 +9206,20 @@ const App: React.FC = () => {
   const [geometryCreateActionsOverlayOpen, setGeometryCreateActionsOverlayOpen] = useState(() =>
     readGeometryViewportBoolean("createOverlay", true)
   );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        UI_GEOMETRY_CONSTRUCT_PANEL_KEY,
+        JSON.stringify({
+          openCategories: geometryConstructCategoryOpen,
+          recentTools: geometryRecentConstructionTools,
+        } satisfies GeometryConstructPanelPreferences)
+      );
+    } catch {
+      // Ignore storage write failures.
+    }
+  }, [geometryConstructCategoryOpen, geometryRecentConstructionTools]);
   const [geometryAddSelectNewObject, setGeometryAddSelectNewObject] = useState(true);
   const [geometryAddFocusCamera, setGeometryAddFocusCamera] = useState(true);
   const [geometryAddOpenObjectTab, setGeometryAddOpenObjectTab] = useState(false);
@@ -57680,10 +57795,18 @@ case "mobius":
                         >
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                             <div style={{ fontSize: 11, fontWeight: 800 }}>Create by type</div>
-                            <span style={{ fontSize: 10, color: "#64748b" }}>
-                              A/B/P use object picks; face/edge/vertex/object items use Selection or Scene.
-                            </span>
+                            <button
+                              type="button"
+                              onClick={handleResetGeometryConstructPanelPreferences}
+                              title="Reopen categories, clear recent tools, and clear search."
+                              style={{ fontSize: 10.5, padding: "2px 8px", flex: "0 0 auto" }}
+                            >
+                              Reset panel
+                            </button>
                           </div>
+                          <span style={{ fontSize: 10, color: "#64748b" }}>
+                            A/B/P use object picks; face/edge/vertex/object items use Selection or Scene.
+                          </span>
                           <label style={{ display: "grid", gap: 4, fontSize: 10.5, color: "#475569", fontWeight: 800 }}>
                             Search tools
                             <input
@@ -57751,7 +57874,11 @@ case "mobius":
                             </div>
                           )}
                           <div style={{ display: "grid", gap: 8 }}>
-                            <details open style={{ display: visibleGeometryPointConstructionTools.length ? "grid" : "none", gap: 7, marginTop: 2 }}>
+                            <details
+                              open={geometryConstructCategoryOpen.points}
+                              onToggle={(event) => setGeometryConstructCategoryExpanded("points", event.currentTarget.open)}
+                              style={{ display: visibleGeometryPointConstructionTools.length ? "grid" : "none", gap: 7, marginTop: 2 }}
+                            >
                               <summary
                                 style={{
                                   borderTop: "1px solid #cbd5e1",
@@ -57893,7 +58020,11 @@ case "mobius":
                                 </div>
                               </div>
                             </details>
-                            <details open style={{ display: visibleGeometryLineConstructionTools.length ? "grid" : "none", gap: 7, marginTop: 4 }}>
+                            <details
+                              open={geometryConstructCategoryOpen.lines}
+                              onToggle={(event) => setGeometryConstructCategoryExpanded("lines", event.currentTarget.open)}
+                              style={{ display: visibleGeometryLineConstructionTools.length ? "grid" : "none", gap: 7, marginTop: 4 }}
+                            >
                               <summary
                                 style={{
                                   borderTop: "1px solid #cbd5e1",
@@ -58035,7 +58166,11 @@ case "mobius":
                                 </div>
                               </div>
                             </details>
-                            <details open style={{ display: visibleGeometryPlaneConstructionMethods.length ? "grid" : "none", gap: 7, marginTop: 4 }}>
+                            <details
+                              open={geometryConstructCategoryOpen.planes}
+                              onToggle={(event) => setGeometryConstructCategoryExpanded("planes", event.currentTarget.open)}
+                              style={{ display: visibleGeometryPlaneConstructionMethods.length ? "grid" : "none", gap: 7, marginTop: 4 }}
+                            >
                               <summary
                                 style={{
                                   borderTop: "1px solid #cbd5e1",
@@ -58314,7 +58449,11 @@ case "mobius":
                                 </div>
                               </div>
                             </details>
-                            <details open style={{ display: showGeometryCircleConstructionTools ? "grid" : "none", gap: 7, marginTop: 4 }}>
+                            <details
+                              open={geometryConstructCategoryOpen.circles}
+                              onToggle={(event) => setGeometryConstructCategoryExpanded("circles", event.currentTarget.open)}
+                              style={{ display: showGeometryCircleConstructionTools ? "grid" : "none", gap: 7, marginTop: 4 }}
+                            >
                               <summary
                                 style={{
                                   borderTop: "1px solid #cbd5e1",
@@ -58372,7 +58511,11 @@ case "mobius":
                                 </button>
                               </div>
                             </details>
-                            <details open style={{ display: showGeometryAxisConstructionTools ? "grid" : "none", gap: 7, marginTop: 4 }}>
+                            <details
+                              open={geometryConstructCategoryOpen.axes}
+                              onToggle={(event) => setGeometryConstructCategoryExpanded("axes", event.currentTarget.open)}
+                              style={{ display: showGeometryAxisConstructionTools ? "grid" : "none", gap: 7, marginTop: 4 }}
+                            >
                               <summary
                                 style={{
                                   borderTop: "1px solid #cbd5e1",
@@ -58426,7 +58569,11 @@ case "mobius":
                                 </button>
                               </div>
                             </details>
-                            <details open style={{ display: showGeometryBoundingConstructionTools ? "grid" : "none", gap: 7, marginTop: 4 }}>
+                            <details
+                              open={geometryConstructCategoryOpen.bounding}
+                              onToggle={(event) => setGeometryConstructCategoryExpanded("bounding", event.currentTarget.open)}
+                              style={{ display: showGeometryBoundingConstructionTools ? "grid" : "none", gap: 7, marginTop: 4 }}
+                            >
                               <summary
                                 style={{
                                   borderTop: "1px solid #cbd5e1",
