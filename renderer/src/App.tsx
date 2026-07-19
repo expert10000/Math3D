@@ -67894,6 +67894,7 @@ case "mobius":
                           <button
                             key={`geometry-right-panel-tab-${tabId}`}
                             type="button"
+                            data-testid={`geometry-right-panel-tab-${tabId}`}
                             onClick={() => {
                               setGeometryRightPanelTab(tabId);
                               setGeometryInspectorPanelTab(tabId === "dependencies" ? "dependencies" : "probe");
@@ -67966,104 +67967,6 @@ case "mobius":
                                 Select an object with mesh data to enable detailed probe measurements.
                               </div>
                             )}
-                            {geometrySelectedSceneObject && (
-                              <div
-                                data-testid="geometry-context-action-ribbon"
-                                style={{
-                                  border: "1px solid #dbeafe",
-                                  borderRadius: 8,
-                                  background: "#f8fbff",
-                                  padding: "7px 8px",
-                                  display: "grid",
-                                  gap: 6,
-                                }}
-                              >
-                                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                                  <strong>Actions</strong>
-                                  <span style={{ color: "#64748b", fontSize: 10.5 }}>
-                                    {(geometrySelectedPick?.kind ?? "object").replace(/^\w/, (c) => c.toUpperCase())}
-                                  </span>
-                                </div>
-                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setGeometryProbeSelectionMode("edge");
-                                      setGeometryActiveOperationInputSlotId("active-edge");
-                                      setGeometryProceduralHoverPick(null);
-                                      setGeometryCreateActionStatus("Edge pick mode active. Click an edge to fill the Edge slot.");
-                                    }}
-                                    style={{ ...pill(geometryProbeSelectionMode === "edge"), fontSize: 10.5, padding: "3px 8px" }}
-                                    aria-pressed={geometryProbeSelectionMode === "edge"}
-                                  >
-                                    Edge
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={handleExtendSelectedConstructionOperation}
-                                    style={{
-                                      fontSize: 10.5,
-                                      padding: "3px 8px",
-                                      borderColor: geometryArmedLineOperation === "extend" ? "#0ea5e9" : undefined,
-                                      background: geometryArmedLineOperation === "extend" ? "#cffafe" : undefined,
-                                    }}
-                                  >
-                                    Extend
-                                  </button>
-                                  <button type="button" onClick={handleOffsetSelectedConstructionOperation} style={{ fontSize: 10.5, padding: "3px 8px" }}>
-                                    Offset
-                                  </button>
-                                  <button type="button" onClick={handleProjectSelectedConstructionOperation} style={{ fontSize: 10.5, padding: "3px 8px" }}>
-                                    Project
-                                  </button>
-                                  <button type="button" onClick={handleMirrorSelectedConstructionOperation} style={{ fontSize: 10.5, padding: "3px 8px" }}>
-                                    Mirror
-                                  </button>
-                                  <button type="button" onClick={handleTrimSelectedConstructionOperation} style={{ fontSize: 10.5, padding: "3px 8px" }}>
-                                    Trim
-                                  </button>
-                                  <button type="button" onClick={handleSplitSelectedProbeEdge} style={{ fontSize: 10.5, padding: "3px 8px" }}>
-                                    Split
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                            <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                                <div style={{ fontWeight: 700 }}>Construction Inputs</div>
-                                <div style={{ color: "#64748b" }}>{geometryActiveOperationInput?.label ?? "none"} active</div>
-                              </div>
-                              {geometryOperationInputs.map((slot) => (
-                                <div
-                                  key={`geometry-probe-operation-input-${slot.slotId}`}
-                                  style={{
-                                    display: "grid",
-                                    gridTemplateColumns: "88px minmax(0, 1fr)",
-                                    gap: "4px 8px",
-                                    alignItems: "center",
-                                  }}
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={() => setGeometryActiveOperationInputSlot(slot.slotId)}
-                                    style={pill(geometryActiveOperationInputSlotId === slot.slotId)}
-                                  >
-                                    {slot.label}
-                                  </button>
-                                  <div
-                                    style={{
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      whiteSpace: "nowrap",
-                                      color: slot.value?.stale ? "#9a3412" : "#334155",
-                                    }}
-                                    title={formatGeometryOperationInputValue(slot.value)}
-                                  >
-                                    {formatGeometryOperationInputValue(slot.value)}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
                             <div data-testid="geometry-pick-hover" style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
                               <div style={{ fontWeight: 700 }}>Hover</div>
                               <div style={{ display: "grid", gridTemplateColumns: "104px 1fr", gap: "4px 8px" }}>
@@ -68075,7 +67978,7 @@ case "mobius":
                             </div>
 
                             <div data-testid="geometry-pick-committed" style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
-                              <div style={{ fontWeight: 700 }}>Properties</div>
+                              <div style={{ fontWeight: 700 }}>Committed Entity</div>
                               <div style={{ display: "grid", gridTemplateColumns: "104px 1fr", gap: "4px 8px" }}>
                                 <div style={{ color: "#556" }}>Entity</div>
                                 <div data-testid="geometry-pick-committed-entity">{formatGeometryPickEntity(geometrySelectedPick)}</div>
@@ -68246,6 +68149,7 @@ case "mobius":
                                 )}
                               </div>
                             </div>
+                            {false && (
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                               <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
                                 Open Gaussian analysis
@@ -68254,7 +68158,8 @@ case "mobius":
                                 Open Gauss map workflow
                               </button>
                             </div>
-                            {geometrySelectedDerivedConstructionEval && (
+                            )}
+                            {false && geometrySelectedDerivedConstructionEval && (
                               <div
                                 style={{
                                   border: "1px solid #cbd5e1",
@@ -68732,6 +68637,87 @@ case "mobius":
                         }}
                       >
                         <div style={{ fontSize: 12, fontWeight: 700 }}>Properties</div>
+                        {geometrySelectedSceneObject ? (
+                          <div
+                            data-testid="geometry-properties-selected-object"
+                            style={{
+                              border: "1px solid #e2e8f0",
+                              borderRadius: 8,
+                              padding: "7px 8px",
+                              background: "#f8fafc",
+                              display: "grid",
+                              gridTemplateColumns: "96px minmax(0, 1fr)",
+                              gap: "4px 8px",
+                            }}
+                          >
+                            <div style={{ gridColumn: "1 / -1", fontWeight: 800 }}>Selected Object</div>
+                            <div style={{ color: "#556" }}>Name</div>
+                            <div>{geometrySelectedSceneObject.name}</div>
+                            <div style={{ color: "#556" }}>Type</div>
+                            <div>{"type" in geometrySelectedSceneObject ? geometrySelectedSceneObject.type : "mesh object"}</div>
+                            <div style={{ color: "#556" }}>Visible</div>
+                            <div>{geometrySelectedSceneObject.visible ? "yes" : "no"}</div>
+                            <div style={{ color: "#556" }}>Position</div>
+                            <div>{fmt3(geometrySelectedSceneObject.transform.position)}</div>
+                            <div style={{ color: "#556" }}>Scale</div>
+                            <div>{fmt3(geometrySelectedSceneObject.transform.scale)}</div>
+                          </div>
+                        ) : (
+                          <div style={{ color: "#64748b" }}>Select a scene object to inspect object properties.</div>
+                        )}
+                        {geometrySelectedSceneMeshInfo && (
+                          <div
+                            data-testid="geometry-properties-mesh"
+                            style={{
+                              border: "1px solid #dbeafe",
+                              borderRadius: 8,
+                              padding: "7px 8px",
+                              background: "#f8fbff",
+                              display: "grid",
+                              gridTemplateColumns: "96px minmax(0, 1fr)",
+                              gap: "4px 8px",
+                            }}
+                          >
+                            <div style={{ gridColumn: "1 / -1", fontWeight: 800 }}>Mesh</div>
+                            <div style={{ color: "#556" }}>Vertices/Faces</div>
+                            <div>
+                              {geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} / {geometrySelectedSceneMeshInfo.triCount.toLocaleString()}
+                            </div>
+                            <div style={{ color: "#556" }}>Bounds</div>
+                            <div>
+                              {geometrySelectedSceneMeshInfo.bounds
+                                ? `min (${fmt(geometrySelectedSceneMeshInfo.bounds.min[0])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.min[1])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.min[2])}) | max (${fmt(geometrySelectedSceneMeshInfo.bounds.max[0])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.max[1])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.max[2])})`
+                                : "n/a"}
+                            </div>
+                          </div>
+                        )}
+                        {geometrySelectedDerivedConstructionEval && (
+                          <div
+                            style={{
+                              border: "1px solid #cbd5e1",
+                              borderRadius: 8,
+                              padding: "7px 8px",
+                              background: "#f8fafc",
+                              display: "grid",
+                              gridTemplateColumns: "96px minmax(0, 1fr)",
+                              gap: "4px 8px",
+                            }}
+                          >
+                            <div style={{ gridColumn: "1 / -1", fontWeight: 800 }}>Derived Object</div>
+                            <div style={{ color: "#556" }}>Name</div>
+                            <div>{geometryDerivedConstructionName(geometrySelectedDerivedConstructionEval.object)}</div>
+                            <div style={{ color: "#556" }}>Type</div>
+                            <div>{geometryDerivedConstructionResultLabel(geometrySelectedDerivedConstructionEval.object)}</div>
+                            <div style={{ color: "#556" }}>Source</div>
+                            <div>{geometryDerivedConstructionSourceLabel(geometrySelectedDerivedConstructionEval)}</div>
+                            <div style={{ color: "#556" }}>Origin</div>
+                            <div>{geometrySelectedDerivedConstructionEval.origin ? fmt3(geometrySelectedDerivedConstructionEval.origin) : "n/a"}</div>
+                            <div style={{ color: "#556" }}>Direction</div>
+                            <div>{geometrySelectedDerivedConstructionEval.direction ? fmt3(geometrySelectedDerivedConstructionEval.direction) : "n/a"}</div>
+                            <div style={{ color: "#556" }}>Status</div>
+                            <div>{GEOMETRY_DEPENDENCY_STATE_META[geometrySelectedDerivedConstructionEval.dependencyState].label}</div>
+                          </div>
+                        )}
                         <div style={{ color: "#475467" }}>
                           {geometryStats.mode === "procedural"
                             ? `${geometryStats.objectCount} objects (${geometryStats.visibleCount} visible)`

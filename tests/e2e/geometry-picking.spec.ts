@@ -179,6 +179,10 @@ const pointGrid = (box: Bounds) => {
 };
 
 const selectPickMode = async (page: Page, mode: PickMode) => {
+  const selectionTab = page.getByTestId("geometry-right-panel-tab-selection");
+  if (await selectionTab.isVisible().catch(() => false)) {
+    await selectionTab.click();
+  }
   await page.getByTestId(`geometry-pick-mode-${mode}`).click();
   await expect(page.getByTestId(`geometry-pick-mode-${mode}`)).toHaveAttribute("aria-pressed", "true");
 };
@@ -265,7 +269,9 @@ const extendCommittedEdge = async (page: Page, candidate: EdgePickCandidate) => 
   await expect(page.getByTestId("geometry-pick-committed-status")).toHaveText("valid");
   await expect(page.getByTestId("geometry-pick-edge")).toHaveText(candidate.edgeLabel);
   await expect(page.getByTestId("geometry-pick-committed-object")).toHaveAttribute("data-object-id", candidate.objectId);
+  await page.getByTestId("geometry-right-panel-tab-actions").click();
   await clickFirstVisibleButton(page, /^Extend$/);
+  await page.getByTestId("geometry-right-panel-tab-selection").click();
 };
 
 const selectValue = async (page: Page, testId: string) =>
@@ -295,6 +301,12 @@ test("Geometry pick readout commits object, face, edge, and vertex modes", async
     await expect(page.getByTestId("geometry-pick-committed-entity")).toContainText("object");
     await expect(page.getByTestId("geometry-pick-object-id")).not.toHaveText("");
     await expect(page.getByTestId("geometry-pick-committed-type")).not.toHaveText("n/a");
+    await page.getByTestId("geometry-right-panel-tab-properties").click();
+    await expect(page.getByTestId("geometry-properties-selected-object")).toBeVisible();
+    await expect(page.getByTestId("geometry-properties-mesh")).toBeVisible();
+    await page.getByTestId("geometry-right-panel-tab-actions").click();
+    await expect(page.getByTestId("geometry-context-actions-panel")).toBeVisible();
+    await page.getByTestId("geometry-right-panel-tab-selection").click();
 
     await clickUntilCommitted(page, "face");
     await expect(page.getByTestId("geometry-pick-committed-entity")).toContainText("face");
