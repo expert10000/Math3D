@@ -44632,7 +44632,11 @@ case "mobius":
           errorCategory: "worker-missing",
         });
         setVtkPreviewError("Python worker unavailable.");
-        await sleep(40);
+        await waitFor(
+          () => /python worker unavailable|worker request failed|request failed|worker.*failed/i.test(geometrySmokeSnapshotRef.current.vtkPreviewError ?? ""),
+          "worker unavailable error",
+          1200
+        );
         const unavailableError = geometrySmokeSnapshotRef.current.vtkPreviewError ?? "";
         if (!/(python worker unavailable|worker request failed|request failed|worker.*failed)/i.test(unavailableError)) {
           throw new Error(`Worker unavailable error not readable: ${unavailableError}`);
@@ -44651,7 +44655,11 @@ case "mobius":
         setImplicitSurfaceId("implicit_custom");
         setImplicitExpr("1");
         setVtkPreviewError("Operation timeout: bad response from worker.");
-        await sleep(40);
+        await waitFor(
+          () => /timeout|bad response|worker|failed|empty/i.test(geometrySmokeSnapshotRef.current.vtkPreviewError ?? ""),
+          "timeout/bad response error",
+          1200
+        );
         const timeoutError = geometrySmokeSnapshotRef.current.vtkPreviewError ?? "";
         if (!/(timeout|bad response|worker|failed|empty)/i.test(timeoutError)) {
           throw new Error(`Timeout/bad response error not readable: ${timeoutError}`);
