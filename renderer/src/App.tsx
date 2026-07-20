@@ -31974,6 +31974,8 @@ const App: React.FC = () => {
   const [surfacePreviewFocusMode, setSurfacePreviewFocusMode] = useState(false);
   const [surfaceDrawerPanel, setSurfaceDrawerPanel] = useState<"left" | "right" | null>(null);
   const [geometryDrawerPanel, setGeometryDrawerPanel] = useState<"left" | "right" | null>(null);
+  const [surfaceFloatingToolbarOpen, setSurfaceFloatingToolbarOpen] = useState(false);
+  const [geometryFloatingToolbarOpen, setGeometryFloatingToolbarOpen] = useState(false);
   const surfacePreviewFocusPrevRightPanelRef = useRef(true);
   const surfacePreviewFocusPrevLeftTabRef = useRef<"scene" | "object" | "view" | "analysis" | "theory">("scene");
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<
@@ -49703,6 +49705,43 @@ case "mobius":
     padding: "4px 9px",
     cursor: "pointer",
   };
+  const floatingToolbarStyle: React.CSSProperties = {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    zIndex: 18,
+    display: "grid",
+    gap: 6,
+    justifyItems: "end",
+    maxWidth: "calc(100% - 20px)",
+    pointerEvents: "auto",
+  };
+  const floatingToolbarRowStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 5,
+    flexWrap: "wrap",
+    padding: 5,
+    border: "1px solid rgba(148, 163, 184, 0.6)",
+    borderRadius: 10,
+    background: "rgba(255, 255, 255, 0.92)",
+    boxShadow: "0 8px 18px rgba(15, 23, 42, 0.16)",
+    backdropFilter: "blur(10px)",
+  };
+  const floatingToolButtonStyle = (active = false): React.CSSProperties => ({
+    minWidth: 42,
+    minHeight: 34,
+    borderRadius: 8,
+    border: "1px solid " + (active ? "#0a66c2" : "#cbd5e1"),
+    background: active ? "#dbeafe" : "#fff",
+    color: active ? "#0f2a4a" : "#334155",
+    fontSize: 10,
+    fontWeight: active ? 800 : 700,
+    padding: "5px 7px",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  });
   const surfaceLeftDrawerStyle: React.CSSProperties = surfacePanelsAsDrawers
     ? {
         ...responsiveDrawerChromeStyle,
@@ -49746,6 +49785,14 @@ case "mobius":
   useEffect(() => {
     if (geometryPanelsAsDrawers) return;
     setGeometryDrawerPanel(null);
+  }, [geometryPanelsAsDrawers]);
+  useEffect(() => {
+    if (surfacePanelsAsDrawers) return;
+    setSurfaceFloatingToolbarOpen(false);
+  }, [surfacePanelsAsDrawers]);
+  useEffect(() => {
+    if (geometryPanelsAsDrawers) return;
+    setGeometryFloatingToolbarOpen(false);
   }, [geometryPanelsAsDrawers]);
   const statusCameraLabel = useMemo(() => {
     if (mode === "surfaces" && compareLayoutEnabled) {
@@ -53707,7 +53754,7 @@ case "mobius":
                       minHeight: 0,
                     }}
                   >
-                    {showSurfaceLocalToolStrip && (
+                    {showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && (
                       <div
                         style={{
                           display: "flex",
@@ -53902,7 +53949,7 @@ case "mobius":
                         height: "100%",
                         minHeight: 0,
                         flex: 1,
-                        padding: showSurfaceLocalToolStrip ? 8 : 0,
+                        padding: showSurfaceLocalToolStrip && !surfacePanelsAsDrawers ? 8 : 0,
                         boxSizing: "border-box",
                       }}
                     >
@@ -53927,6 +53974,112 @@ case "mobius":
                           height: "100%",
                         }}
                       >
+                        {surfacePanelsAsDrawers && !cleanScreenshotSurfaceActive && (
+                          <div data-testid="surface-floating-toolbar" style={floatingToolbarStyle}>
+                            <div style={floatingToolbarRowStyle}>
+                              <button
+                                type="button"
+                                onClick={() => setCameraResetToken((token) => token + 1)}
+                                style={floatingToolButtonStyle(false)}
+                                title="Reset camera"
+                              >
+                                Reset
+                              </button>
+                              {showSurfaceFormulaEditorLauncher && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (surfaceFormulaEditorOpen) {
+                                      setSurfaceFormulaEditorOpen(false);
+                                      return;
+                                    }
+                                    openSurfaceFormulaEditor();
+                                  }}
+                                  disabled={!canOpenSurfaceFormulaEditor}
+                                  aria-pressed={surfaceFormulaEditorOpen}
+                                  style={{
+                                    ...floatingToolButtonStyle(surfaceFormulaEditorOpen),
+                                    opacity: canOpenSurfaceFormulaEditor ? 1 : 0.48,
+                                    cursor: canOpenSurfaceFormulaEditor ? "pointer" : "not-allowed",
+                                  }}
+                                  title={
+                                    canOpenSurfaceFormulaEditor
+                                      ? `${surfaceFormulaEditorOpen ? "Close" : "Open"} ${surfaceFormulaEditorTitle.toLowerCase()}`
+                                      : "Choose an editable preset first."
+                                  }
+                                >
+                                  Edit
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setSurfaceFloatingToolbarOpen((open) => !open)}
+                                aria-expanded={surfaceFloatingToolbarOpen}
+                                style={floatingToolButtonStyle(surfaceFloatingToolbarOpen)}
+                                title="More viewer tools"
+                              >
+                                More
+                              </button>
+                            </div>
+                            {surfaceFloatingToolbarOpen && (
+                              <div data-testid="surface-floating-toolbar-more" style={floatingToolbarRowStyle}>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowWireframe((value) => !value)}
+                                  aria-pressed={showWireframe}
+                                  style={floatingToolButtonStyle(showWireframe)}
+                                  title="Toggle wireframe"
+                                >
+                                  Wire
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowPlanes((value) => !value);
+                                    if (!showPlanes) setShowChartGrid(false);
+                                  }}
+                                  aria-pressed={showPlanes}
+                                  style={floatingToolButtonStyle(showPlanes)}
+                                  title="Toggle coordinate planes"
+                                >
+                                  Planes
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowChartGrid((value) => !value);
+                                    if (!showChartGrid) setShowPlanes(false);
+                                  }}
+                                  aria-pressed={showChartGrid}
+                                  style={floatingToolButtonStyle(showChartGrid)}
+                                  title="Toggle surface chart grid"
+                                >
+                                  Grid
+                                </button>
+                                {showParamSurfaceOverlayLauncher && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setParamSurfaceOverlayOpen(true)}
+                                    aria-pressed={paramSurfaceOverlayOpen}
+                                    style={floatingToolButtonStyle(paramSurfaceOverlayOpen)}
+                                    title="Open surface parameters"
+                                  >
+                                    Params
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setShowInViewportOverlayControls((value) => !value)}
+                                  aria-pressed={showInViewportOverlayControls}
+                                  style={floatingToolButtonStyle(showInViewportOverlayControls)}
+                                  title="Toggle in-viewport overlay controls"
+                                >
+                                  Overlay
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                         {surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? (
                         <ParamSurfaceViewer
                             surfaceId={primaryParamId}
@@ -67137,7 +67290,7 @@ case "mobius":
                 order: isGeometryStackedLayout ? 1 : 0,
               }}
             >
-              {geometryViewerControlsOpen && (
+              {geometryViewerControlsOpen && !geometryPanelsAsDrawers && (
               <div
                 style={{
                   borderBottom: "1px solid #9fb0c7",
@@ -67634,6 +67787,96 @@ case "mobius":
                     position: "relative",
                   }}
                 >
+                  {geometryPanelsAsDrawers && (
+                    <div data-testid="geometry-floating-toolbar" style={floatingToolbarStyle}>
+                      <div style={floatingToolbarRowStyle}>
+                        <button
+                          type="button"
+                          onClick={() => handleGeometryFit("scene")}
+                          style={floatingToolButtonStyle(false)}
+                          title="Fit scene"
+                        >
+                          Fit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setWorkspaceCameraPreset("reset_camera");
+                            setGeometryResetToken((token) => token + 1);
+                          }}
+                          style={floatingToolButtonStyle(false)}
+                          title="Reset camera"
+                        >
+                          Reset
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setGeometryFloatingToolbarOpen((open) => !open)}
+                          aria-expanded={geometryFloatingToolbarOpen}
+                          style={floatingToolButtonStyle(geometryFloatingToolbarOpen)}
+                          title="More viewer tools"
+                        >
+                          More
+                        </button>
+                      </div>
+                      {geometryFloatingToolbarOpen && (
+                        <div data-testid="geometry-floating-toolbar-more" style={floatingToolbarRowStyle}>
+                          <button
+                            type="button"
+                            onClick={() => setGeometryWireframe((value) => !value)}
+                            aria-pressed={geometryWireframe}
+                            style={floatingToolButtonStyle(geometryWireframe)}
+                            title="Toggle wireframe"
+                          >
+                            Wire
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setGeometryShowPlanes((value) => !value)}
+                            aria-pressed={geometryShowPlanes}
+                            style={floatingToolButtonStyle(geometryShowPlanes)}
+                            title="Toggle coordinates"
+                          >
+                            Coords
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleGeometryApplyViewPreset("3d")}
+                            aria-pressed={geometryViewPreset === "3d"}
+                            style={floatingToolButtonStyle(geometryViewPreset === "3d")}
+                            title="3D view"
+                          >
+                            3D
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleGeometryApplyViewPreset("planar")}
+                            aria-pressed={geometryViewPreset === "planar"}
+                            style={floatingToolButtonStyle(geometryViewPreset === "planar")}
+                            title="Planar view"
+                          >
+                            Planar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleGeometryFit("stage")}
+                            style={floatingToolButtonStyle(false)}
+                            title="Fit active stage"
+                          >
+                            Stage
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleGeometryFit("claim")}
+                            style={floatingToolButtonStyle(false)}
+                            title="Fit claim"
+                          >
+                            Claim
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {geometryMode === "procedural" && showGeometryDependencyOverlay && (
                     <div
                       data-testid="geometry-viewport-dependency-overlay"
