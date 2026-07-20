@@ -2280,6 +2280,7 @@ type GeometryConstructRecentTool = {
   label: string;
   classification: string;
 };
+type GeometryConstructInputSlot = { label: string; value: string; ok: boolean };
 type GeometryConstructPanelPreferences = {
   activeTab: GeometryConstructPanelTab;
   activeCreateFamily: GeometryConstructCreateFamily;
@@ -2367,6 +2368,141 @@ const geometryConstructClassificationBadgeStyle = (classification: string, selec
     letterSpacing: "0.03em",
     width: "fit-content",
   };
+};
+const GeometryConstructInputSlotRow: React.FC<{
+  input: GeometryConstructInputSlot;
+  index: number;
+  testId?: string;
+  compact?: boolean;
+  active?: boolean;
+  onActivate?: () => void;
+  onClear?: () => void;
+}> = ({ input, index, testId, compact = false, active = false, onActivate, onClear }) => {
+  const ready = input.ok;
+  const interactive = !!onActivate;
+  return (
+    <div
+      data-testid={testId}
+      title={`${input.label}: ${input.value}`}
+      style={{
+        display: "grid",
+        gridTemplateColumns: compact
+          ? `20px minmax(0, 1fr) auto${onClear ? " 22px" : ""}`
+          : `22px minmax(64px, 0.42fr) minmax(0, 1fr) auto${onClear ? " 22px" : ""}`,
+        gap: compact ? "3px 6px" : "4px 8px",
+        alignItems: "center",
+        border: `1px solid ${active ? "#2563eb" : ready ? "#86efac" : "#fcd34d"}`,
+        borderRadius: 8,
+        background: ready ? "linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%)" : "linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%)",
+        boxShadow: active
+          ? "inset 3px 0 0 #2563eb, 0 0 0 2px rgba(37, 99, 235, 0.14)"
+          : ready
+            ? "inset 3px 0 0 #22c55e"
+            : "inset 3px 0 0 #f59e0b",
+        padding: compact ? "4px 6px" : "5px 7px",
+        fontSize: compact ? 10.5 : 11,
+        minWidth: 0,
+        cursor: interactive ? "pointer" : "default",
+      }}
+      onClick={onActivate}
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onKeyDown={
+        interactive
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onActivate?.();
+              }
+            }
+          : undefined
+      }
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: 18,
+          height: 18,
+          borderRadius: 999,
+          display: "grid",
+          placeItems: "center",
+          border: `1px solid ${active ? "#2563eb" : ready ? "#22c55e" : "#f59e0b"}`,
+          background: active ? "#2563eb" : ready ? "#16a34a" : "#ffffff",
+          color: ready || active ? "#ffffff" : "#b45309",
+          fontSize: 9.5,
+          fontWeight: 900,
+          lineHeight: 1,
+        }}
+      >
+        {ready ? "OK" : index + 1}
+      </span>
+      <span style={{ color: "#334155", fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {input.label}
+      </span>
+      {!compact && (
+        <span style={{ minWidth: 0, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {input.value}
+        </span>
+      )}
+      <span
+        style={{
+          border: `1px solid ${active ? "#2563eb" : ready ? "#22c55e" : "#f59e0b"}`,
+          borderRadius: 999,
+          background: active ? "#eff6ff" : ready ? "#ffffff" : "#fff7ed",
+          color: active ? "#1d4ed8" : ready ? "#15803d" : "#b45309",
+          padding: "1px 6px",
+          fontSize: 9.5,
+          fontWeight: 900,
+          lineHeight: 1.2,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {active ? "Next" : ready ? "Selected" : "Waiting"}
+      </span>
+      {onClear && (
+        <button
+          type="button"
+          aria-label={`Clear ${input.label}`}
+          title={`Clear ${input.label}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onClear();
+          }}
+          style={{
+            width: 20,
+            height: 20,
+            borderRadius: 999,
+            border: "1px solid #cbd5e1",
+            background: "#ffffff",
+            color: "#475569",
+            fontSize: 12,
+            fontWeight: 900,
+            lineHeight: 1,
+            padding: 0,
+            display: "grid",
+            placeItems: "center",
+            cursor: "pointer",
+          }}
+        >
+          x
+        </button>
+      )}
+      {compact && (
+        <span
+          style={{
+            gridColumn: onClear ? "2 / -2" : "2 / -1",
+            minWidth: 0,
+            color: "#0f172a",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {input.value}
+        </span>
+      )}
+    </div>
+  );
 };
 type GeometryDependencyState = "valid" | "updating" | "stale" | "broken-source" | "ambiguous-target" | "frozen";
 type GeometryProceduralPickInfo = {
@@ -22891,6 +23027,92 @@ const App: React.FC = () => {
     handleCreateActiveGeometryPointConstruction,
     handleCreateGeometryPlaneConstruction,
   ]);
+  const getGeometryConstructInputSlotControls = useCallback(
+    (input: GeometryConstructInputSlot, family: string) => {
+      const setObjectSlot = (slot: "A" | "B" | "P") => {
+        setGeometryMathPickTargetSlot(slot);
+        setGeometryProbeSelectionMode("object");
+        setGeometryCreateActionStatus(`Next object pick fills ${slot}.`);
+      };
+      const clearObjectSlot = (slot: "A" | "B" | "P") => {
+        if (slot === "A") setGeometryMathConstructionSourceAId(null);
+        if (slot === "B") setGeometryMathConstructionSourceBId(null);
+        if (slot === "P") setGeometryMathConstructionSourcePId(null);
+        setGeometryMathPickTargetSlot(slot);
+      };
+      if (input.label === "A" || input.label === "B" || input.label === "P") {
+        const slot = input.label;
+        return {
+          active: geometryMathPickTargetSlot === slot,
+          onActivate: () => setObjectSlot(slot),
+          onClear: input.ok ? () => clearObjectSlot(slot) : undefined,
+        };
+      }
+      const planeSlot = GEOMETRY_PLANE_POINT_SLOT_ORDER.find(
+        (slot) => family === "PLANES" && input.label === GEOMETRY_PLANE_POINT_SLOT_LABELS[slot]
+      );
+      if (planeSlot) {
+        return {
+          active: geometryPlaneConstructionMethod === "through-3-points" && geometryPlanePointActiveSlot === planeSlot,
+          onActivate: () => {
+            setGeometryPlanePointActiveSlot(planeSlot);
+            setGeometryProbeSelectionMode("vertex");
+            setGeometryCreateActionStatus(`Next plane pick fills ${GEOMETRY_PLANE_POINT_SLOT_LABELS[planeSlot]}.`);
+          },
+          onClear: geometryPlanePointSlots[planeSlot]
+            ? () => {
+                setGeometryPlanePointSlots((prev) => ({ ...prev, [planeSlot]: null }));
+                setGeometryPlanePointActiveSlot(planeSlot);
+              }
+            : undefined,
+        };
+      }
+      const operationInput =
+        input.label === "Face" || input.label === "Reference plane" || input.label === "Surface"
+          ? { slot: "source-face" as const, mode: "face" as const, label: "face" }
+          : input.label === "Edge" || input.label === "Reference line" || (family === "PLANES" && input.label === "Line")
+            ? { slot: "active-edge" as const, mode: "edge" as const, label: "edge" }
+            : input.label === "Vertex" || input.label === "Point"
+              ? { slot: "active-vertex" as const, mode: "vertex" as const, label: "vertex" }
+              : null;
+      if (operationInput) {
+        return {
+          active: geometryActiveOperationInputSlotId === operationInput.slot,
+          onActivate: () => {
+            setGeometryActiveOperationInputSlot(operationInput.slot);
+            setGeometryProbeSelectionMode(operationInput.mode);
+            if (geometryPlaneConstructionMethod === "through-line-point") {
+              setGeometryPlaneLinePointActiveInput(operationInput.slot === "active-edge" ? "line" : "point");
+            }
+            setGeometryCreateActionStatus(`Next pick fills the ${operationInput.label} input.`);
+          },
+          onClear: input.ok ? () => handleClearGeometryOperationInput(operationInput.slot) : undefined,
+        };
+      }
+      if (input.label === "Object") {
+        return {
+          active: geometryProbeSelectionMode === "object",
+          onActivate: () => {
+            setGeometryProbeSelectionMode("object");
+            setGeometryCreateActionStatus("Pick an object to replace the object input.");
+          },
+          onClear: geometrySelectedObjectId ? () => setGeometrySelectedObjectId(null) : undefined,
+        };
+      }
+      return {};
+    },
+    [
+      geometryActiveOperationInputSlotId,
+      geometryMathPickTargetSlot,
+      geometryPlaneConstructionMethod,
+      geometryPlanePointActiveSlot,
+      geometryPlanePointSlots,
+      geometryProbeSelectionMode,
+      geometrySelectedObjectId,
+      handleClearGeometryOperationInput,
+      setGeometryActiveOperationInputSlot,
+    ]
+  );
   const handleRenameSelectedConstructionOperation = useCallback(() => {
     const selectedMath = geometrySelectedMathConstructionId
       ? geometryMathConstructions.find((entry) => entry.id === geometrySelectedMathConstructionId) ?? null
@@ -57682,31 +57904,19 @@ case "mobius":
                             </button>
                           </div>
                           <div style={{ display: "grid", gap: 3 }}>
-                            {geometryConstructCurrentTool.status.inputs.map((input, index) => (
-                              <div
-                                key={`geometry-current-tool-input-${geometryConstructCurrentTool.family}-${input.label}`}
-                                style={{
-                                  display: "grid",
-                                  gridTemplateColumns: "18px minmax(58px, 0.45fr) minmax(0, 1fr) auto",
-                                  gap: "4px 6px",
-                                  alignItems: "center",
-                                  border: "1px solid " + (input.ok ? "#bbf7d0" : "#fde68a"),
-                                  borderRadius: 7,
-                                  background: input.ok ? "#f0fdf4" : "#fffbeb",
-                                  padding: "3px 6px",
-                                  fontSize: 10.5,
-                                }}
-                              >
-                                <span style={{ color: "#64748b", fontWeight: 900 }}>{index + 1}</span>
-                                <span style={{ color: "#475569", fontWeight: 800 }}>{input.label}</span>
-                                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                  {input.value}
-                                </span>
-                                <span style={{ color: input.ok ? "#15803d" : "#b45309", fontWeight: 900 }}>
-                                  {input.ok ? "OK" : "Waiting"}
-                                </span>
-                              </div>
-                            ))}
+                            {geometryConstructCurrentTool.status.inputs.map((input, index) => {
+                              const controls = getGeometryConstructInputSlotControls(input, geometryConstructCurrentTool.family);
+                              return (
+                                <GeometryConstructInputSlotRow
+                                  key={`geometry-current-tool-input-${geometryConstructCurrentTool.family}-${input.label}`}
+                                  testId={`geometry-current-tool-input-${geometryConstructCurrentTool.family}-${input.label}`}
+                                  input={input}
+                                  index={index}
+                                  compact
+                                  {...controls}
+                                />
+                              );
+                            })}
                           </div>
                           {geometryConstructCurrentTool.preview && (
                             <div
@@ -58100,29 +58310,18 @@ case "mobius":
                                     </button>
                                   </div>
                                   <div style={{ display: "grid", gap: 4 }}>
-                                    {geometryPointConstructionStatus.inputs.map((input) => (
-                                      <div
-                                        key={`geometry-point-input-${geometryPointConstructionTool}-${input.label}`}
-                                        style={{
-                                          display: "grid",
-                                          gridTemplateColumns: "76px minmax(0, 1fr) auto",
-                                          gap: "4px 8px",
-                                          alignItems: "center",
-                                          border: "1px solid #e2e8f0",
-                                          borderRadius: 7,
-                                          background: input.ok ? "#f0fdf4" : "#fffbeb",
-                                          padding: "4px 6px",
-                                        }}
-                                      >
-                                        <span style={{ color: "#475569", fontWeight: 800 }}>{input.label}</span>
-                                        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                          {input.value}
-                                        </span>
-                                        <span style={{ color: input.ok ? "#15803d" : "#b45309", fontWeight: 800 }}>
-                                          {input.ok ? "OK" : "Waiting"}
-                                        </span>
-                                      </div>
-                                    ))}
+                                    {geometryPointConstructionStatus.inputs.map((input, index) => {
+                                      const controls = getGeometryConstructInputSlotControls(input, "POINTS");
+                                      return (
+                                        <GeometryConstructInputSlotRow
+                                          key={`geometry-point-input-${geometryPointConstructionTool}-${input.label}`}
+                                          testId={`geometry-point-input-${geometryPointConstructionTool}-${input.label}`}
+                                          input={input}
+                                          index={index}
+                                          {...controls}
+                                        />
+                                      );
+                                    })}
                                   </div>
                                   {geometryPointConstructionTool === "vertex-translated-copy-point" && (
                                     <label style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -58255,29 +58454,18 @@ case "mobius":
                                     </button>
                                   </div>
                                   <div style={{ display: "grid", gap: 4 }}>
-                                    {geometryLineConstructionStatus.inputs.map((input) => (
-                                      <div
-                                        key={`geometry-line-input-${geometryLineConstructionTool}-${input.label}`}
-                                        style={{
-                                          display: "grid",
-                                          gridTemplateColumns: "76px minmax(0, 1fr) auto",
-                                          gap: "4px 8px",
-                                          alignItems: "center",
-                                          border: "1px solid #e2e8f0",
-                                          borderRadius: 7,
-                                          background: input.ok ? "#f0fdf4" : "#fffbeb",
-                                          padding: "4px 6px",
-                                        }}
-                                      >
-                                        <span style={{ color: "#475569", fontWeight: 800 }}>{input.label}</span>
-                                        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                          {input.value}
-                                        </span>
-                                        <span style={{ color: input.ok ? "#15803d" : "#b45309", fontWeight: 800 }}>
-                                          {input.ok ? "OK" : "Waiting"}
-                                        </span>
-                                      </div>
-                                    ))}
+                                    {geometryLineConstructionStatus.inputs.map((input, index) => {
+                                      const controls = getGeometryConstructInputSlotControls(input, "LINES");
+                                      return (
+                                        <GeometryConstructInputSlotRow
+                                          key={`geometry-line-input-${geometryLineConstructionTool}-${input.label}`}
+                                          testId={`geometry-line-input-${geometryLineConstructionTool}-${input.label}`}
+                                          input={input}
+                                          index={index}
+                                          {...controls}
+                                        />
+                                      );
+                                    })}
                                   </div>
                                   {geometryLineConstructionTool === "edge-equal-length-copied-segment" && (
                                     <label style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -58415,29 +58603,18 @@ case "mobius":
                                     </button>
                                   </div>
                                   <div style={{ display: "grid", gap: 4 }}>
-                                    {geometryPlaneMethodStatus.inputs.map((input) => (
-                                      <div
-                                        key={`geometry-plane-input-${geometryPlaneConstructionMethod}-${input.label}`}
-                                        style={{
-                                          display: "grid",
-                                          gridTemplateColumns: "76px minmax(0, 1fr) auto",
-                                          gap: "4px 8px",
-                                          alignItems: "center",
-                                          border: "1px solid #e2e8f0",
-                                          borderRadius: 7,
-                                          background: input.ok ? "#f0fdf4" : "#fffbeb",
-                                          padding: "4px 6px",
-                                        }}
-                                      >
-                                        <span style={{ color: "#475569", fontWeight: 800 }}>{input.label}</span>
-                                        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                          {input.value}
-                                        </span>
-                                        <span style={{ color: input.ok ? "#15803d" : "#b45309", fontWeight: 800 }}>
-                                          {input.ok ? "OK" : "Waiting"}
-                                        </span>
-                                      </div>
-                                    ))}
+                                    {geometryPlaneMethodStatus.inputs.map((input, index) => {
+                                      const controls = getGeometryConstructInputSlotControls(input, "PLANES");
+                                      return (
+                                        <GeometryConstructInputSlotRow
+                                          key={`geometry-plane-input-${geometryPlaneConstructionMethod}-${input.label}`}
+                                          testId={`geometry-plane-input-${geometryPlaneConstructionMethod}-${input.label}`}
+                                          input={input}
+                                          index={index}
+                                          {...controls}
+                                        />
+                                      );
+                                    })}
                                   </div>
                                   <div style={{ color: geometryPlaneMethodStatus.ready ? "#166534" : geometryPlaneMethodStatus.planned ? "#64748b" : "#92400e" }}>
                                     {geometryPlaneMethodStatus.message}
@@ -68148,271 +68325,7 @@ case "mobius":
                                   </>
                                 )}
                               </div>
-                            </div>
-                            {false && (
-                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                              <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
-                                Open Gaussian analysis
-                              </button>
-                              <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(true)} style={{ fontSize: 11 }}>
-                                Open Gauss map workflow
-                              </button>
-                            </div>
-                            )}
-                            {false && geometrySelectedDerivedConstructionEval && (
-                              <div
-                                style={{
-                                  border: "1px solid #cbd5e1",
-                                  borderRadius: 8,
-                                  padding: "8px 10px",
-                                  background: "#f8fafc",
-                                  display: "grid",
-                                  gap: 4,
-                                  fontSize: 11,
-                                }}
-                              >
-                                <div style={{ fontSize: 12, fontWeight: 700 }}>Derived Object</div>
-                                <div><strong>Name:</strong> {geometryDerivedConstructionName(geometrySelectedDerivedConstructionEval.object)}</div>
-                                <div><strong>Type:</strong> {geometryDerivedConstructionResultLabel(geometrySelectedDerivedConstructionEval.object)}</div>
-                                <div><strong>Source:</strong> {geometryDerivedConstructionSourceLabel(geometrySelectedDerivedConstructionEval)}</div>
-                                <div><strong>Direction:</strong> {geometryDerivedConstructionDirectionLabel(geometrySelectedDerivedConstructionEval)}</div>
-                                <div><strong>Length:</strong> {geometryDerivedConstructionLengthLabel(geometrySelectedDerivedConstructionEval)}</div>
-                                {(() => {
-                                  const definition = geometryDerivedConstructionDefinition(geometrySelectedDerivedConstructionEval);
-                                  if (!definition) return null;
-                                  return (
-                                    <div
-                                      style={{
-                                        display: "grid",
-                                        gridTemplateColumns: "auto minmax(0, 1fr)",
-                                        gap: "3px 10px",
-                                        padding: "7px 8px",
-                                        border: "1px solid #e2e8f0",
-                                        borderRadius: 7,
-                                        background: "#ffffff",
-                                      }}
-                                    >
-                                      <div style={{ gridColumn: "1 / -1", fontWeight: 800 }}>Construction</div>
-                                      <div style={{ color: "#475569" }}>Formula</div>
-                                      <div style={{ fontFamily: "monospace", fontWeight: 700 }}>{definition.formula}</div>
-                                      <div style={{ color: "#475569" }}>P</div>
-                                      <div style={{ fontFamily: "monospace" }}>{fmt3(definition.point)}</div>
-                                      <div style={{ color: "#475569" }}>D</div>
-                                      <div style={{ fontFamily: "monospace" }}>{fmt3(definition.direction)}</div>
-                                      <div style={{ color: "#475569" }}>Source</div>
-                                      <div>{definition.source}</div>
-                                    </div>
-                                  );
-                                })()}
-                                {geometryDerivedConstructionIsExtendedLine(geometrySelectedDerivedConstructionEval.object) &&
-                                  (() => {
-                                    const object = geometrySelectedDerivedConstructionEval.object;
-                                    const activeLineMode = resolveGeometryLineExtensionMode(object.params?.lineMode);
-                                    const activeLength = object.params?.length;
-                                    const setLengthPreset = (length: number) =>
-                                      handleUpdateDerivedLineExtensionParameters(object.id, {
-                                        lineMode: activeLineMode === "infinite" ? "segment" : activeLineMode,
-                                        length,
-                                      });
-                                    return (
-                                      <div
-                                        style={{
-                                          display: "grid",
-                                          gap: 5,
-                                          padding: "7px 8px",
-                                          border: "1px solid #dbeafe",
-                                          borderRadius: 7,
-                                          background: "#eff6ff",
-                                        }}
-                                      >
-                                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                                          <strong>Extension parameters</strong>
-                                          <label style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                                            <input
-                                              type="checkbox"
-                                              checked={object.visible}
-                                              onChange={(event) =>
-                                                handleSetDerivedConstructionVisibility(object.id, event.target.checked)
-                                              }
-                                            />
-                                            Visibility
-                                          </label>
-                                        </div>
-                                        <div><strong>Source edge:</strong> {geometryDerivedConstructionSourceLabel(geometrySelectedDerivedConstructionEval)}</div>
-                                        <div><strong>Direction:</strong> {geometryDerivedLineDirectionName(object)}</div>
-                                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-                                          <span style={{ fontWeight: 700 }}>Mode</span>
-                                          {GEOMETRY_LINE_EXTENSION_MODE_OPTIONS.map((option) => (
-                                            <button
-                                              key={`derived-extension-mode-${object.id}-${option.id}`}
-                                              type="button"
-                                              aria-pressed={activeLineMode === option.id}
-                                              onClick={() =>
-                                                handleUpdateDerivedLineExtensionParameters(object.id, { lineMode: option.id })
-                                              }
-                                              style={{
-                                                fontSize: 10.5,
-                                                padding: "3px 7px",
-                                                borderColor: activeLineMode === option.id ? "#0ea5e9" : undefined,
-                                                background: activeLineMode === option.id ? "#e0f2fe" : "#fff",
-                                              }}
-                                            >
-                                              {option.symbol} {option.label}
-                                            </button>
-                                          ))}
-                                        </div>
-                                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-                                          <span style={{ fontWeight: 700 }}>Length</span>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              handleUpdateDerivedLineExtensionParameters(object.id, {
-                                                lineMode: "infinite",
-                                                length: null,
-                                              })
-                                            }
-                                            style={{
-                                              fontSize: 10.5,
-                                              padding: "3px 8px",
-                                              borderColor: activeLineMode === "infinite" ? "#0ea5e9" : undefined,
-                                              background: activeLineMode === "infinite" ? "#e0f2fe" : "#fff",
-                                            }}
-                                          >
-                                            ∞
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              handleUpdateDerivedLineExtensionParameters(object.id, { length: null })
-                                            }
-                                            style={{
-                                              fontSize: 10.5,
-                                              padding: "3px 8px",
-                                              borderColor: activeLength == null && activeLineMode !== "infinite" ? "#0ea5e9" : undefined,
-                                              background: activeLength == null && activeLineMode !== "infinite" ? "#e0f2fe" : "#fff",
-                                            }}
-                                          >
-                                            Auto
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => setLengthPreset(100)}
-                                            style={{
-                                              fontSize: 10.5,
-                                              padding: "3px 8px",
-                                              borderColor: activeLength === 100 ? "#0ea5e9" : undefined,
-                                              background: activeLength === 100 ? "#e0f2fe" : "#fff",
-                                            }}
-                                          >
-                                            100
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => setLengthPreset(500)}
-                                            style={{
-                                              fontSize: 10.5,
-                                              padding: "3px 8px",
-                                              borderColor: activeLength === 500 ? "#0ea5e9" : undefined,
-                                              background: activeLength === 500 ? "#e0f2fe" : "#fff",
-                                            }}
-                                          >
-                                            500
-                                          </button>
-                                        </div>
-                                      </div>
-                                    );
-                                  })()}
-                                <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#0f766e", fontWeight: 700 }}>
-                                  <span>{geometryDerivedConstructionSourceLabel(geometrySelectedDerivedConstructionEval)}</span>
-                                  <span>-&gt;</span>
-                                  <span>{geometryDerivedConstructionResultLabel(geometrySelectedDerivedConstructionEval.object)}</span>
-                                </div>
-                                <div><strong>Source object:</strong> {geometrySelectedDerivedConstructionEval.sourceObjectName}</div>
-                                <div>
-                                  <strong>Source face:</strong>{" "}
-                                  {geometrySelectedDerivedConstructionEval.sourceFaceIndex != null
-                                    ? `#${geometrySelectedDerivedConstructionEval.sourceFaceIndex}`
-                                    : "n/a"}
-                                </div>
-                                <div>
-                                  <strong>Origin:</strong>{" "}
-                                  {geometrySelectedDerivedConstructionEval.origin
-                                    ? fmt3(geometrySelectedDerivedConstructionEval.origin)
-                                    : "n/a"}
-                                </div>
-                                <div>
-                                  <strong>Direction:</strong>{" "}
-                                  {geometrySelectedDerivedConstructionEval.direction
-                                    ? fmt3(geometrySelectedDerivedConstructionEval.direction)
-                                    : "n/a"}
-                                </div>
-                                <div><strong>Dependent:</strong> {geometrySelectedDerivedConstructionEval.object.dependent ? "yes" : "no"}</div>
-                                <div>
-                                  <strong>Status:</strong>{" "}
-                                  {GEOMETRY_DEPENDENCY_STATE_META[geometrySelectedDerivedConstructionEval.dependencyState].label}
-                                </div>
-                                {geometrySelectedDerivedConstructionEval.statusMessage && (
-                                  <div style={{ color: "#7a271a" }}>{geometrySelectedDerivedConstructionEval.statusMessage}</div>
-                                )}
-                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-                                  <button
-                                    type="button"
-                                    onClick={handleUseSelectedDerivedPlaneForSectionSlice}
-                                      disabled={
-                                        !(
-                                          geometrySelectedDerivedConstructionEval.object.type === "face-tangent-plane-preview" ||
-                                          geometrySelectedDerivedConstructionEval.object.type === "face-plane-through-centroid" ||
-                                          geometrySelectedDerivedConstructionEval.object.type === "face-plane-through-three-vertices" ||
-                                          geometrySelectedDerivedConstructionEval.object.type === "face-plane-normal-to-selected-edge" ||
-                                          geometrySelectedDerivedConstructionEval.object.type === "face-offset-plane" ||
-                                          geometrySelectedDerivedConstructionEval.object.type === "face-parallel-face-plane" ||
-                                          geometrySelectedDerivedConstructionEval.object.type === "line-pair-plane-through-lines" ||
-                                          geometrySelectedDerivedConstructionEval.object.type === "line-pair-mid-plane" ||
-                                          geometrySelectedDerivedConstructionEval.object.type === "object-symmetry-plane-preview"
-                                        )
-                                      }
-                                    style={{ fontSize: 11 }}
-                                  >
-                                    Use selected derived plane for section slice
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRelinkDerivedConstructionTarget(geometrySelectedDerivedConstructionEval.object.id)}
-                                    disabled={
-                                      geometrySelectedDerivedConstructionEval.relinkCandidateFaceIndex == null &&
-                                      !geometrySelectedDerivedConstructionEval.relinkCandidateEdgeVertexPair
-                                    }
-                                    style={{ fontSize: 11 }}
-                                  >
-                                    Relink target
-                                  </button>
-                                  {geometrySelectedDerivedConstructionEval.object.frozenSnapshot ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleUnfreezeDerivedConstruction(geometrySelectedDerivedConstructionEval.object.id)}
-                                      style={{ fontSize: 11 }}
-                                    >
-                                      Unfreeze
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleFreezeDerivedConstruction(geometrySelectedDerivedConstructionEval.object.id)}
-                                      style={{ fontSize: 11 }}
-                                    >
-                                      Freeze current result
-                                    </button>
-                                  )}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteDerivedConstruction(geometrySelectedDerivedConstructionEval.object.id)}
-                                    style={{ fontSize: 11 }}
-                                  >
-                                    Delete derived object
-                                  </button>
-                                </div>
-                              </div>
-                            )}
+                          </div>
                           </div>
                     ) : geometryRightPanelTab === "actions" ? (
                           <div
