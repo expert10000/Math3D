@@ -393,6 +393,38 @@ test("Geometry construct panel remembers workflow and search opens matching sect
   }
 });
 
+test("Geometry scene gallery filters and opens construct operations playground", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-construct-playground-"));
+  let app: ElectronApplication | null = null;
+
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+    await page.getByTestId("geometry-workflow-command-create-presets").click();
+    await expect(page.getByText("Scene presets", { exact: true })).toBeVisible();
+
+    await expect(page.getByTestId("geometry-scene-preset-filter-chips")).toBeVisible();
+    await page.getByTestId("geometry-scene-preset-filter-playgrounds").click();
+    await expect(page.getByTestId("geometry-scene-preset-filter-playgrounds")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByText("1 /", { exact: false })).toBeVisible();
+    await expect(page.getByTestId("geometry-debug-scene-card-scene:construct-operations-playground")).toBeVisible();
+
+    await page.getByTestId("geometry-debug-scene-open-scene:construct-operations-playground").click();
+    await expect(page.getByTestId("geometry-workflow-step-create")).toHaveAttribute("aria-current", "step");
+    await selectConstructPanelTab(page, "tree");
+    await expect(page.getByTestId("geometry-derived-construction-construct-playground-principal-plane")).toBeVisible();
+    await expect(page.getByTestId("geometry-plane-construction-method-construct-playground-principal-plane")).toContainText("Principal Plane");
+    await expect(page.getByTestId("geometry-plane-construction-result-construct-playground-principal-plane")).toContainText("Plane");
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
 test("Geometry construct panel stays readable in narrow landscape layout", async () => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-construct-responsive-"));
   let app: ElectronApplication | null = null;

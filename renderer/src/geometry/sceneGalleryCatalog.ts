@@ -88,6 +88,21 @@ const derivedConstructionExtension = (entries: unknown[]) => ({
   "math3d.geometry.derivedConstructions.v1": entries,
 });
 
+type GalleryPoint3 = { x: number; y: number; z: number };
+type GalleryLineSegment = [GalleryPoint3, GalleryPoint3];
+type GalleryFrozenSnapshot = {
+  origin: GalleryPoint3 | null;
+  direction: GalleryPoint3 | null;
+  groups: Array<{ lines: GalleryLineSegment[]; color: number; opacity: number; radiusScale: number }>;
+  pointSets: Array<{ points: GalleryPoint3[]; color: number; size: number; opacity: number }>;
+  labelSets: Array<{ size: number; labels: Array<{ text: string; position: GalleryPoint3; color: number }> }>;
+};
+
+const p3 = (x: number, y: number, z: number): GalleryPoint3 => ({ x, y, z });
+const add3 = (a: GalleryPoint3, b: GalleryPoint3): GalleryPoint3 => p3(a.x + b.x, a.y + b.y, a.z + b.z);
+const scale3 = (a: GalleryPoint3, scale: number): GalleryPoint3 => p3(a.x * scale, a.y * scale, a.z * scale);
+const segment3 = (a: GalleryPoint3, b: GalleryPoint3): GalleryLineSegment => [a, b];
+
 const dashedLine = (
   a: { x: number; y: number; z: number },
   b: { x: number; y: number; z: number },
@@ -238,6 +253,298 @@ const torusLinePlaneConstructions = () => {
   ];
 };
 
+const planeFrame = (center: GalleryPoint3, u: GalleryPoint3, v: GalleryPoint3, half = 1.05): GalleryLineSegment[] => {
+  const a = add3(add3(center, scale3(u, -half)), scale3(v, -half));
+  const b = add3(add3(center, scale3(u, half)), scale3(v, -half));
+  const c = add3(add3(center, scale3(u, half)), scale3(v, half));
+  const d = add3(add3(center, scale3(u, -half)), scale3(v, half));
+  return [
+    segment3(a, b),
+    segment3(b, c),
+    segment3(c, d),
+    segment3(d, a),
+    segment3(add3(center, scale3(u, -half)), add3(center, scale3(u, half))),
+    segment3(add3(center, scale3(v, -half)), add3(center, scale3(v, half))),
+  ];
+};
+
+const boxFrame = (center: GalleryPoint3, size: GalleryPoint3): GalleryLineSegment[] => {
+  const hx = size.x / 2;
+  const hy = size.y / 2;
+  const hz = size.z / 2;
+  const vertices = [
+    p3(center.x - hx, center.y - hy, center.z - hz),
+    p3(center.x + hx, center.y - hy, center.z - hz),
+    p3(center.x + hx, center.y + hy, center.z - hz),
+    p3(center.x - hx, center.y + hy, center.z - hz),
+    p3(center.x - hx, center.y - hy, center.z + hz),
+    p3(center.x + hx, center.y - hy, center.z + hz),
+    p3(center.x + hx, center.y + hy, center.z + hz),
+    p3(center.x - hx, center.y + hy, center.z + hz),
+  ];
+  const edges: Array<[number, number]> = [
+    [0, 1], [1, 2], [2, 3], [3, 0],
+    [4, 5], [5, 6], [6, 7], [7, 4],
+    [0, 4], [1, 5], [2, 6], [3, 7],
+  ];
+  return edges.map(([a, b]) => segment3(vertices[a], vertices[b]));
+};
+
+const ringFrame = (center: GalleryPoint3, radius: number, plane: "xy" | "yz" | "xz", count = 40): GalleryLineSegment[] =>
+  Array.from({ length: count }, (_, index) => {
+    const a = (index / count) * Math.PI * 2;
+    const b = ((index + 1) / count) * Math.PI * 2;
+    const point = (angle: number) => {
+      if (plane === "yz") return p3(center.x, center.y + Math.cos(angle) * radius, center.z + Math.sin(angle) * radius);
+      if (plane === "xz") return p3(center.x + Math.cos(angle) * radius, center.y, center.z + Math.sin(angle) * radius);
+      return p3(center.x + Math.cos(angle) * radius, center.y + Math.sin(angle) * radius, center.z);
+    };
+    return segment3(point(a), point(b));
+  });
+
+const constructionSnapshot = (
+  origin: GalleryPoint3 | null,
+  direction: GalleryPoint3 | null,
+  groups: GalleryFrozenSnapshot["groups"],
+  pointSets: GalleryFrozenSnapshot["pointSets"] = [],
+  labelSets: GalleryFrozenSnapshot["labelSets"] = []
+): GalleryFrozenSnapshot => ({ origin, direction, groups, pointSets, labelSets });
+
+const constructOperationsPlaygroundConstructions = () => {
+  const sourceObjectId = "construct-playground-block";
+  const cylinderObjectId = "construct-playground-cylinder";
+  const torusObjectId = "construct-playground-torus";
+  const createdAt = 1_717_000_200_000;
+  const make = (
+    index: number,
+    entry: {
+      id: string;
+      type: string;
+      name: string;
+      sourceKind: "vertex" | "edge" | "face" | "object";
+      sourceObjectId?: string;
+      sourceFaceIndex?: number;
+      sourceVertexIndex?: number;
+      sourceEdgeVertexPair?: [number, number];
+      sourcePoint?: GalleryPoint3;
+      sourceNormal?: GalleryPoint3;
+      params?: Record<string, string | number | boolean>;
+      constructionSummary?: { method: string; inputs: Array<{ label: string; value: string }>; result: string };
+      frozenSnapshot: GalleryFrozenSnapshot;
+    }
+  ) => ({
+    sourceRevision: 0,
+    sourceTopologySignature: null,
+    dependent: true,
+    visible: true,
+    createdAt: createdAt + index,
+    frozenAt: createdAt + index,
+    sourceObjectId,
+    ...entry,
+  });
+  const point = (index: number, id: string, type: string, name: string, position: GalleryPoint3, color: number, result: string) =>
+    make(index, {
+      id,
+      type,
+      name,
+      sourceKind: "vertex",
+      sourceVertexIndex: index,
+      sourcePoint: position,
+      frozenSnapshot: constructionSnapshot(
+        position,
+        null,
+        [],
+        [{ points: [position], color, size: 0.16, opacity: 0.95 }],
+        [{ size: 0.82, labels: [{ text: name, position: add3(position, p3(0.08, 0.08, 0.1)), color: 0x0f172a }] }]
+      ),
+      constructionSummary: { method: name, inputs: [{ label: "Source", value: "Block vertex" }], result },
+    });
+  const line = (
+    index: number,
+    id: string,
+    type: string,
+    name: string,
+    a: GalleryPoint3,
+    b: GalleryPoint3,
+    color: number,
+    method: string,
+    input: string,
+    sourceKind: "edge" | "face" = "edge"
+  ) =>
+    make(index, {
+      id,
+      type,
+      name,
+      sourceKind,
+      sourceEdgeVertexPair: [index, index + 1],
+      sourcePoint: a,
+      sourceNormal: p3(b.x - a.x, b.y - a.y, b.z - a.z),
+      params: { lineMode: "infinite", length: 2.4 },
+      frozenSnapshot: constructionSnapshot(
+        a,
+        p3(b.x - a.x, b.y - a.y, b.z - a.z),
+        [{ lines: [segment3(a, b)], color, opacity: 0.88, radiusScale: 3.2 }],
+        [{ points: [a, b], color, size: 0.1, opacity: 1 }],
+        [{ size: 0.82, labels: [{ text: name, position: add3(b, p3(0.08, 0.04, 0.06)), color: 0x0f172a }] }]
+      ),
+      constructionSummary: { method, inputs: [{ label: "Input", value: input }], result: "Line" },
+    });
+  const plane = (
+    index: number,
+    id: string,
+    type: string,
+    name: string,
+    center: GalleryPoint3,
+    normal: GalleryPoint3,
+    color: number,
+    method: string,
+    inputs: Array<{ label: string; value: string }>,
+    u = p3(1, 0, 0),
+    v = p3(0, 1, 0)
+  ) =>
+    make(index, {
+      id,
+      type,
+      name,
+      sourceKind: type.startsWith("object-") ? "object" : "face",
+      sourceFaceIndex: index,
+      sourcePoint: center,
+      sourceNormal: normal,
+      params: type === "object-principal-plane" ? { principalPlaneOutput: "xy" } : undefined,
+      frozenSnapshot: constructionSnapshot(
+        center,
+        normal,
+        [{ lines: planeFrame(center, u, v), color, opacity: 0.58, radiusScale: 2.2 }],
+        [{ points: [center], color, size: 0.08, opacity: 0.95 }],
+        [{ size: 0.82, labels: [{ text: name, position: add3(center, p3(0.1, 0.1, 0.12)), color: 0x0f172a }] }]
+      ),
+      constructionSummary: { method, inputs, result: "Plane" },
+    });
+
+  return [
+    point(1, "construct-playground-vertex-marker", "vertex-point-marker", "Vertex Marker", p3(-2.15, -0.78, 0.45), 0x2563eb, "Point"),
+    point(2, "construct-playground-coordinate-label", "vertex-coordinate-label", "Coordinate Label", p3(-0.92, 0.7, 0.5), 0x0f766e, "Label"),
+    point(3, "construct-playground-edge-midpoint", "edge-midpoint", "Midpoint", p3(-1.5, -0.74, -0.45), 0xf59e0b, "Point"),
+    point(4, "construct-playground-face-centroid", "face-centroid", "Face Centroid", p3(-1.5, 0, 0.52), 0x0891b2, "Point"),
+    line(5, "construct-playground-supporting-line", "edge-line-through-two-vertices", "Supporting Line", p3(-2.65, -1.1, -0.5), p3(-0.35, -1.1, -0.5), 0x2563eb, "Line", "Block edge"),
+    line(6, "construct-playground-parallel-line", "edge-parallel-line-through-vertex", "Parallel", p3(-2.55, 1.0, 0.12), p3(-0.4, 1.0, 0.12), 0x06b6d4, "Parallel", "Line + vertex"),
+    line(7, "construct-playground-perp-bisector", "edge-perpendicular-bisector-line", "Perpendicular Bisector", p3(-1.5, -1.34, -0.25), p3(-1.5, 1.14, -0.25), 0x7c3aed, "Perpendicular", "Edge midpoint"),
+    line(8, "construct-playground-face-normal", "face-normal-line", "Face Normal", p3(-1.5, 0, 0.52), p3(-1.5, 0, 1.75), 0x22c55e, "Normal", "Face"),
+    line(9, "construct-playground-plane-normal-line", "plane-normal-line-through-vertex", "Normal Through Vertex", p3(-2.15, -0.78, 0.45), p3(-2.15, -0.78, 1.55), 0xea580c, "Normal(A,P)", "Plane + vertex", "face"),
+    line(10, "construct-playground-direction-vector", "edge-direction-vector", "Direction Vector", p3(0.0, -1.2, 0.05), p3(1.2, -0.65, 0.05), 0xfacc15, "Direction Vector", "Cylinder edge"),
+    plane(11, "construct-playground-plane-3-points", "face-plane-through-three-vertices", "Through 3 Points", p3(-1.5, 0, 0.82), p3(0, 0, 1), 0x2563eb, "Through 3 Points", [
+      { label: "A", value: "block vertex" },
+      { label: "B", value: "block vertex" },
+      { label: "C", value: "block vertex" },
+    ]),
+    plane(12, "construct-playground-line-point-plane", "line-pair-plane-through-lines", "Line + Point Plane", p3(0.2, -0.45, 0.62), p3(0, 0, 1), 0x14b8a6, "Through Line + Point", [
+      { label: "Line", value: "Supporting Line" },
+      { label: "Point", value: "Cylinder vertex" },
+    ]),
+    plane(13, "construct-playground-two-line-plane", "line-pair-plane-through-lines", "Through 2 Lines", p3(0.2, 0.45, 0.72), p3(0, 0, 1), 0x6366f1, "Through 2 Lines", [
+      { label: "Line A", value: "Supporting Line" },
+      { label: "Line B", value: "Parallel" },
+    ]),
+    plane(14, "construct-playground-offset-plane", "face-offset-plane", "Offset Plane", p3(-1.5, 0, 1.18), p3(0, 0, 1), 0xf97316, "Offset", [
+      { label: "Face", value: "block top" },
+      { label: "Distance", value: "0.42" },
+    ]),
+    plane(15, "construct-playground-parallel-plane", "face-parallel-face-plane", "Parallel Plane", p3(0.55, 0.0, 0.95), p3(0, 0, 1), 0x0ea5e9, "Parallel", [
+      { label: "Face", value: "cylinder cap" },
+      { label: "Point", value: "torus center" },
+    ]),
+    plane(16, "construct-playground-mid-plane", "line-pair-mid-plane", "Mid Plane", p3(0.55, 0.0, -0.6), p3(0, 1, 0), 0xa855f7, "Mid Plane", [
+      { label: "Plane A", value: "offset plane" },
+      { label: "Plane B", value: "parallel plane" },
+    ], p3(1, 0, 0), p3(0, 0, 1)),
+    plane(17, "construct-playground-tangent-plane", "face-tangent-plane-preview", "Tangent Plane", p3(1.75, 0.25, 0.55), p3(0.35, 0.65, 0.67), 0x22c55e, "Tangent Plane", [
+      { label: "Object", value: "torus" },
+      { label: "Point", value: "surface pick" },
+    ], p3(1, 0, -0.1), p3(0.1, 1, 0.1)),
+    plane(18, "construct-playground-principal-plane", "object-principal-plane", "Principal Plane XY", p3(1.75, -0.7, 0.05), p3(0, 0, 1), 0x4f46e5, "Principal Plane", [
+      { label: "Object", value: "torus" },
+      { label: "Output", value: "XY" },
+    ]),
+    plane(19, "construct-playground-best-fit-plane", "object-best-fit-plane", "Best Fit Plane", p3(0.2, 1.15, 0.08), p3(0.1, 0.18, 0.98), 0xec4899, "Best Fit Plane", [
+      { label: "Object", value: "all playground sources" },
+      { label: "RMS", value: "0.03" },
+    ], p3(1, 0, -0.08), p3(0.05, 1, 0.08)),
+    make(20, {
+      id: "construct-playground-bounding-box",
+      type: "object-bounding-box",
+      name: "Bounding Box",
+      sourceKind: "object",
+      sourceObjectId,
+      sourcePoint: p3(0.15, 0, 0.1),
+      frozenSnapshot: constructionSnapshot(
+        p3(0.15, 0, 0.1),
+        null,
+        [{ lines: boxFrame(p3(0.15, 0, 0.1), p3(5.0, 2.8, 2.4)), color: 0x64748b, opacity: 0.58, radiusScale: 1.5 }],
+        [],
+        [{ size: 0.82, labels: [{ text: "Bounding Box", position: p3(2.72, 1.4, 1.35), color: 0x0f172a }] }]
+      ),
+      constructionSummary: { method: "Bounding Box", inputs: [{ label: "Objects", value: "block, cylinder, torus" }], result: "Box" },
+    }),
+    make(21, {
+      id: "construct-playground-principal-axes",
+      type: "object-principal-axes-preview",
+      name: "Principal Axes",
+      sourceKind: "object",
+      sourceObjectId: cylinderObjectId,
+      sourcePoint: p3(0.2, 0, 0),
+      frozenSnapshot: constructionSnapshot(
+        p3(0.2, 0, 0),
+        null,
+        [
+          { lines: [segment3(p3(-1.15, 0, 0), p3(1.55, 0, 0))], color: 0xef4444, opacity: 0.86, radiusScale: 3 },
+          { lines: [segment3(p3(0.2, -1.35, 0), p3(0.2, 1.35, 0))], color: 0x22c55e, opacity: 0.86, radiusScale: 3 },
+          { lines: [segment3(p3(0.2, 0, -1.25), p3(0.2, 0, 1.35))], color: 0x3b82f6, opacity: 0.86, radiusScale: 3 },
+        ],
+        [{ points: [p3(0.2, 0, 0)], color: 0x0f172a, size: 0.08, opacity: 1 }],
+        [{ size: 0.82, labels: [{ text: "Principal Axes", position: p3(1.62, 0.08, 0.08), color: 0x0f172a }] }]
+      ),
+      constructionSummary: { method: "Principal Axes", inputs: [{ label: "Object", value: "cylinder" }], result: "Axes" },
+    }),
+    make(22, {
+      id: "construct-playground-circumsphere",
+      type: "object-circumscribed-sphere-preview",
+      name: "Circumscribed Sphere",
+      sourceKind: "object",
+      sourceObjectId: torusObjectId,
+      sourcePoint: p3(1.75, 0, 0),
+      frozenSnapshot: constructionSnapshot(
+        p3(1.75, 0, 0),
+        null,
+        [
+          { lines: ringFrame(p3(1.75, 0, 0), 1.25, "xy"), color: 0x14b8a6, opacity: 0.74, radiusScale: 2 },
+          { lines: ringFrame(p3(1.75, 0, 0), 1.25, "yz"), color: 0x14b8a6, opacity: 0.44, radiusScale: 1.6 },
+          { lines: ringFrame(p3(1.75, 0, 0), 1.25, "xz"), color: 0x14b8a6, opacity: 0.44, radiusScale: 1.6 },
+        ],
+        [],
+        [{ size: 0.82, labels: [{ text: "Circumscribed Sphere", position: p3(2.9, 0.18, 0.12), color: 0x0f172a }] }]
+      ),
+      constructionSummary: { method: "Circumscribed Sphere", inputs: [{ label: "Object", value: "torus" }], result: "Sphere" },
+    }),
+    make(23, {
+      id: "construct-playground-angle-marker",
+      type: "line-pair-angle-marker",
+      name: "Angle Marker",
+      sourceKind: "edge",
+      sourceObjectId: sourceObjectId,
+      sourceEdgeVertexPair: [5, 6],
+      sourcePoint: p3(-1.5, -1.1, -0.5),
+      frozenSnapshot: constructionSnapshot(
+        p3(-1.5, -1.1, -0.5),
+        null,
+        [{ lines: ringFrame(p3(-1.5, -1.1, -0.5), 0.42, "xy", 18).slice(0, 5), color: 0xf59e0b, opacity: 0.95, radiusScale: 3 }],
+        [],
+        [{ size: 0.82, labels: [{ text: "Angle", position: p3(-1.08, -0.76, -0.45), color: 0x0f172a }] }]
+      ),
+      constructionSummary: { method: "Line Pair Analysis", inputs: [{ label: "Lines", value: "supporting + perpendicular" }], result: "Angle Marker" },
+    }),
+  ];
+};
+
 export const GEOMETRY_SCENE_GALLERY: GeometryGallerySceneEntry[] = [
   ...GEOMETRY_DEBUG_SCENE_DOCUMENTS.map((scene, index) => ({
     id: `scene:${scene.id}`,
@@ -318,6 +625,63 @@ export const GEOMETRY_SCENE_GALLERY: GeometryGallerySceneEntry[] = [
       steps: [
         { id: "open-construct", label: "Open construct", note: "Show the two extended line constructions.", action: { kind: "setPanel", panel: "construct" } },
         { id: "open-analysis", label: "Inspect relation", note: "Use analysis tools to inspect the restored plane.", action: { kind: "setPanel", panel: "analysis" } },
+      ],
+    },
+    recommendedPanels: ["construct", "analysis", "scene"],
+  },
+  {
+    id: "scene:construct-operations-playground",
+    title: "Construct operations playground",
+    category: "Construction Basics",
+    description: "Visual playground with points, lines, planes, axes, bounds, and relation helpers already created.",
+    thumbnail: thumb("Construct tools", "20+ helper operations", "#4f46e5"),
+    learningGoals: ["Scan the major Construct actions", "Inspect method/input/result details in the Construction Tree"],
+    initialScene: sceneDoc(
+      "construct-operations-playground",
+      "Construct operations playground",
+      [
+        baseObject({
+          id: "construct-playground-block",
+          name: "Playground block",
+          type: "box",
+          params: { width: 1.4, height: 1.2, depth: 0.95 },
+          transform: { position: { x: -1.5, y: 0, z: 0 }, rotation: { x: 0.12, y: 0.18, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+          material: { color: 0x60a5fa, opacity: 0.82 },
+        }),
+        baseObject({
+          id: "construct-playground-cylinder",
+          name: "Playground cylinder",
+          type: "cylinder",
+          params: { radiusTop: 0.72, radiusBottom: 0.72, height: 1.75, radialSegments: 36 },
+          transform: { position: { x: 0.2, y: 0, z: 0 }, rotation: { x: 0, y: 0.18, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+          material: { color: 0x0f766e, opacity: 0.72 },
+        }),
+        baseObject({
+          id: "construct-playground-torus",
+          name: "Playground torus",
+          type: "torus",
+          params: { radius: 0.78, tube: 0.22, radialSegments: 36, tubularSegments: 72 },
+          transform: { position: { x: 1.75, y: 0, z: 0 }, rotation: { x: 0.95, y: 0.2, z: 0.28 }, scale: { x: 1, y: 1, z: 1 } },
+          material: { color: 0x7c3aed, opacity: 0.8 },
+        }),
+        baseObject({
+          id: "construct-playground-cone",
+          name: "Playground cone",
+          type: "cone",
+          params: { radius: 0.55, height: 1.35, radialSegments: 32 },
+          transform: { position: { x: 0.2, y: 1.35, z: -0.05 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+          material: { color: 0xf59e0b, opacity: 0.68 },
+        }),
+      ],
+      { scenario: "construct-operations-playground", playground: true },
+      derivedConstructionExtension(constructOperationsPlaygroundConstructions())
+    ),
+    timeline: {
+      autoplayIntervalMs: 1500,
+      steps: [
+        { id: "open-construct", label: "Open construct", note: "Show all restored construction helpers.", action: { kind: "setPanel", panel: "construct" } },
+        { id: "open-tree", label: "Read tree", note: "Switch to Construction Tree for method/input/result details.", action: { kind: "setPanel", panel: "construct" } },
+        { id: "open-analysis", label: "Inspect relations", note: "Use analysis after scanning line and plane helpers.", action: { kind: "setPanel", panel: "analysis" } },
       ],
     },
     recommendedPanels: ["construct", "analysis", "scene"],

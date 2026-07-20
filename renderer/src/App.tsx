@@ -9500,6 +9500,7 @@ const App: React.FC = () => {
   const [geometrySceneGalleryReplayPlaying, setGeometrySceneGalleryReplayPlaying] = useState(false);
   const [geometrySceneGalleryStatus, setGeometrySceneGalleryStatus] = useState<string | null>(null);
   const [geometrySceneGalleryExpanded, setGeometrySceneGalleryExpanded] = useState(false);
+  const [geometrySceneGalleryFilter, setGeometrySceneGalleryFilter] = useState<"all" | "construct" | "playgrounds" | "measure" | "smoke" | "debug">("all");
   const [geometryCreateActionStatus, setGeometryCreateActionStatus] = useState<string | null>(null);
   const [geometryArmedLineOperation, setGeometryArmedLineOperation] = useState<"extend" | "trim" | null>(null);
   const [geometryLineOperationCommitRequestId, setGeometryLineOperationCommitRequestId] = useState(0);
@@ -10868,14 +10869,44 @@ const App: React.FC = () => {
     () => GEOMETRY_SCENE_GALLERY_BY_ID.get(geometrySceneGallerySelectedId) ?? GEOMETRY_SCENE_GALLERY[0] ?? null,
     [geometrySceneGallerySelectedId]
   );
+  const geometrySceneGalleryFilterOptions = useMemo(
+    () => [
+      { id: "all" as const, label: "All" },
+      { id: "construct" as const, label: "Construct" },
+      { id: "playgrounds" as const, label: "Playgrounds" },
+      { id: "measure" as const, label: "Measure" },
+      { id: "smoke" as const, label: "Smoke" },
+      { id: "debug" as const, label: "Debug" },
+    ],
+    []
+  );
+  const geometrySceneGalleryFilteredEntries = useMemo(
+    () =>
+      GEOMETRY_SCENE_GALLERY.filter((entry) => {
+        if (geometrySceneGalleryFilter === "all") return true;
+        if (geometrySceneGalleryFilter === "construct") return entry.category === "Construction Basics";
+        if (geometrySceneGalleryFilter === "playgrounds") {
+          return entry.title.toLowerCase().includes("playground") || Boolean(entry.initialScene.metadata?.playground);
+        }
+        if (geometrySceneGalleryFilter === "measure") return entry.category === "Measurement";
+        if (geometrySceneGalleryFilter === "smoke") return entry.category === "Release Smoke";
+        return entry.category === "Debug Scenes";
+      }),
+    [geometrySceneGalleryFilter]
+  );
   const geometrySceneGallerySections = useMemo(
     () =>
       GEOMETRY_SCENE_GALLERY_CATEGORY_ORDER.map((category) => ({
         category,
-        scenes: GEOMETRY_SCENE_GALLERY.filter((entry) => entry.category === category),
+        scenes: geometrySceneGalleryFilteredEntries.filter((entry) => entry.category === category),
       })).filter((section) => section.scenes.length > 0),
-    []
+    [geometrySceneGalleryFilteredEntries]
   );
+  useEffect(() => {
+    if (!geometrySceneGalleryFilteredEntries.length) return;
+    if (geometrySceneGalleryFilteredEntries.some((entry) => entry.id === geometrySceneGallerySelectedId)) return;
+    setGeometrySceneGallerySelectedId(geometrySceneGalleryFilteredEntries[0].id);
+  }, [geometrySceneGalleryFilteredEntries, geometrySceneGallerySelectedId]);
   const geometryDebugScenes = useMemo(
     () => GEOMETRY_SCENE_GALLERY.filter((entry) => entry.category === "Debug Scenes"),
     []
@@ -52434,6 +52465,7 @@ case "mobius":
                       <button
                         key={`geometry-workflow-command-${geometryWorkflowActiveStepId}-${entry.key}`}
                         type="button"
+                        data-testid={`geometry-workflow-command-${geometryWorkflowActiveStepId}-${entry.key}`}
                         onClick={entry.onClick}
                         aria-pressed={active}
                         style={{
@@ -58231,7 +58263,28 @@ case "mobius":
                             Clear
                           </button>
                         </div>
-                        <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
+                        <details
+                          data-testid="geometry-manual-sources"
+                          style={{
+                            border: "1px solid #e2e8f0",
+                            borderRadius: 8,
+                            background: "#f8fafc",
+                            padding: "6px 8px",
+                            fontSize: 11,
+                          }}
+                        >
+                          <summary
+                            style={{
+                              cursor: "pointer",
+                              fontSize: 10.5,
+                              fontWeight: 900,
+                              color: "#334155",
+                              letterSpacing: "0.04em",
+                            }}
+                          >
+                            Manual sources
+                          </summary>
+                        <div style={{ display: "grid", gap: 6, fontSize: 11, marginTop: 7 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                             <span style={{ fontSize: 10.5, color: "#475569" }}>Next viewport click</span>
                             {(["A", "B", "P"] as const).map((slot) => (
@@ -58322,6 +58375,7 @@ case "mobius":
                             </select>
                           </label>
                         </div>
+                        </details>
                         {geometryCreateActionStatus && (
                           <div style={{ fontSize: 10.5, color: "#334155" }}>{geometryCreateActionStatus}</div>
                         )}
@@ -65335,6 +65389,37 @@ case "mobius":
                             </div>
                           ) : (
                             <>
+                              <div
+                                data-testid="geometry-scene-gallery-filter-chips"
+                                style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}
+                              >
+                                {geometrySceneGalleryFilterOptions.map((option) => {
+                                  const active = geometrySceneGalleryFilter === option.id;
+                                  return (
+                                    <button
+                                      key={`geometry-scene-gallery-filter-${option.id}`}
+                                      type="button"
+                                      data-testid={`geometry-scene-gallery-filter-${option.id}`}
+                                      aria-pressed={active}
+                                      onClick={() => setGeometrySceneGalleryFilter(option.id)}
+                                      style={{
+                                        fontSize: 10.5,
+                                        padding: "3px 8px",
+                                        borderRadius: 999,
+                                        border: `1px solid ${active ? "#0a66c2" : "#cbd5e1"}`,
+                                        background: active ? "#dbeafe" : "#fff",
+                                        color: active ? "#073763" : "#334155",
+                                        fontWeight: active ? 800 : 600,
+                                      }}
+                                    >
+                                      {option.label}
+                                    </button>
+                                  );
+                                })}
+                                <span style={{ marginLeft: "auto", fontSize: 10, color: "#64748b" }}>
+                                  {geometrySceneGalleryFilteredEntries.length} shown
+                                </span>
+                              </div>
                               <div style={{ display: "grid", gap: 8, maxHeight: 260, overflowY: "auto", paddingRight: 2 }}>
                                 {geometrySceneGallerySections.map((section) => (
                                   <div key={`geometry-scene-gallery-section-${section.category}`} style={{ display: "grid", gap: 4 }}>
