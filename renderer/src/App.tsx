@@ -2379,7 +2379,68 @@ const geometryConstructClassificationBadgeStyle = (classification: string, selec
 const geometryConstructToolGridStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(92px, 1fr))",
-  gap: 5,
+  gap: 6,
+};
+const geometryConstructToolGroupStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 7,
+  paddingTop: 3,
+};
+const geometryConstructToolGroupHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  borderTop: "1px solid #dbeafe",
+  paddingTop: 7,
+  fontSize: 10,
+  fontWeight: 900,
+  color: "#334155",
+  letterSpacing: "0.06em",
+};
+const geometryConstructToolCardStyle = (selected: boolean, minHeight = 58): React.CSSProperties => ({
+  ...pill(selected),
+  borderRadius: 7,
+  minHeight,
+  padding: "6px 7px",
+  display: "grid",
+  gridTemplateColumns: selected ? "24px minmax(0, 1fr) 18px" : "24px minmax(0, 1fr)",
+  gap: "3px 6px",
+  alignContent: "center",
+  alignItems: "center",
+  textAlign: "left",
+  fontSize: 10.5,
+  scrollMarginTop: 190,
+  border: "2px solid " + (selected ? "#0a66c2" : "#cbd5e1"),
+  background: selected ? "linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%)" : "#ffffff",
+  boxShadow: selected ? "0 5px 12px rgba(37, 99, 235, 0.2)" : "none",
+});
+const geometryOperationButtonStackStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: 6,
+};
+const geometryOperationButtonStyle: React.CSSProperties = {
+  width: "100%",
+  minHeight: 34,
+  textAlign: "left",
+  padding: "6px 8px",
+  fontSize: 10.5,
+  fontWeight: 800,
+};
+const groupGeometryConstructEntries = <T extends { groupTitle: string }>(
+  entries: T[]
+): Array<{ title: string; entries: T[] }> => {
+  const groups: Array<{ title: string; entries: T[] }> = [];
+  for (const entry of entries) {
+    const existing = groups.find((group) => group.title === entry.groupTitle);
+    if (existing) {
+      existing.entries.push(entry);
+      continue;
+    }
+    groups.push({ title: entry.groupTitle, entries: [entry] });
+  }
+  return groups;
 };
 const GeometryConstructInputSlotRow: React.FC<{
   input: GeometryConstructInputSlot;
@@ -22817,6 +22878,18 @@ const App: React.FC = () => {
       ),
     [geometryConstructToolMatches]
   );
+  const groupedVisibleGeometryPointConstructionTools = useMemo(
+    () => groupGeometryConstructEntries(visibleGeometryPointConstructionTools),
+    [visibleGeometryPointConstructionTools]
+  );
+  const groupedVisibleGeometryLineConstructionTools = useMemo(
+    () => groupGeometryConstructEntries(visibleGeometryLineConstructionTools),
+    [visibleGeometryLineConstructionTools]
+  );
+  const groupedVisibleGeometryPlaneConstructionMethods = useMemo(
+    () => groupGeometryConstructEntries(visibleGeometryPlaneConstructionMethods),
+    [visibleGeometryPlaneConstructionMethods]
+  );
   const geometryCreateToolSearchHasResults =
     !geometryConstructToolSearchNeedle ||
     visibleGeometryPointConstructionTools.length > 0 ||
@@ -23128,6 +23201,16 @@ const App: React.FC = () => {
     handleCreateActiveGeometryPointConstruction,
     handleCreateGeometryPlaneConstruction,
   ]);
+  const geometryConstructCurrentToolProgress = useMemo(() => {
+    if (!geometryConstructCurrentTool) return null;
+    const total = geometryConstructCurrentTool.status.inputs.length;
+    const complete = geometryConstructCurrentTool.status.inputs.filter((input) => input.ok).length;
+    return {
+      complete,
+      total,
+      readyLabel: geometryConstructCurrentTool.status.ready ? "Ready" : total ? `${complete} / ${total} complete` : "Waiting",
+    };
+  }, [geometryConstructCurrentTool]);
   const getGeometryConstructInputSlotControls = useCallback(
     (input: GeometryConstructInputSlot, family: string) => {
       const setObjectSlot = (slot: "A" | "B" | "P") => {
@@ -57987,13 +58070,13 @@ case "mobius":
                             position: compactGeometryPanel ? "relative" : "sticky",
                             top: compactGeometryPanel ? undefined : 0,
                             zIndex: 12,
-                            border: "1px solid #93c5fd",
+                            border: "2px solid #60a5fa",
                             borderRadius: 8,
-                            padding: "7px 9px",
-                            background: "linear-gradient(180deg, #ffffff 0%, #eff6ff 100%)",
-                            boxShadow: "0 6px 14px rgba(15, 23, 42, 0.1)",
+                            padding: "10px 11px",
+                            background: "linear-gradient(180deg, #ffffff 0%, #dbeafe 100%)",
+                            boxShadow: "0 8px 18px rgba(37, 99, 235, 0.16)",
                             display: "grid",
-                            gap: 6,
+                            gap: 8,
                             pointerEvents: "none",
                             maxHeight: geometryCurrentToolMaxHeight,
                             overflowY: geometryCurrentToolMaxHeight ? "auto" : undefined,
@@ -58001,15 +58084,38 @@ case "mobius":
                           }}
                         >
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "start" }}>
-                            <div style={{ display: "grid", gap: 3, minWidth: 0 }}>
+                            <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
                               <span style={{ fontSize: 9.5, fontWeight: 900, color: "#2563eb", letterSpacing: "0.08em" }}>
                                 CURRENT TOOL
                               </span>
-                              <strong style={{ fontSize: 13, color: "#0f172a", lineHeight: 1.15 }}>
-                                {geometryConstructCurrentTool.title}
-                              </strong>
-                              <span style={{ fontSize: 10, color: "#64748b", fontWeight: 800 }}>
-                                {geometryConstructCurrentTool.family} / {geometryConstructCurrentTool.classification}
+                              <div style={{ display: "flex", gap: 6, alignItems: "center", minWidth: 0 }}>
+                                <strong style={{ fontSize: 16, color: "#0f172a", lineHeight: 1.12, overflowWrap: "anywhere" }}>
+                                  {geometryConstructCurrentTool.title}
+                                </strong>
+                                {geometryConstructCurrentTool.status.ready && (
+                                  <span
+                                    aria-hidden="true"
+                                    style={{
+                                      flex: "0 0 auto",
+                                      width: 18,
+                                      height: 18,
+                                      borderRadius: 999,
+                                      display: "grid",
+                                      placeItems: "center",
+                                      background: "#2563eb",
+                                      color: "#ffffff",
+                                      fontSize: 9,
+                                      fontWeight: 900,
+                                    }}
+                                  >
+                                    OK
+                                  </span>
+                                )}
+                              </div>
+                              <span style={geometryConstructClassificationBadgeStyle(geometryConstructCurrentTool.classification, true)}>
+                                {geometryConstructCurrentTool.family} /{" "}
+                                {GEOMETRY_CONSTRUCT_CLASSIFICATION_META[geometryConstructCurrentTool.classification]?.label ??
+                                  geometryConstructCurrentTool.classification.toUpperCase()}
                               </span>
                             </div>
                             <button
@@ -58017,12 +58123,35 @@ case "mobius":
                               onClick={geometryConstructCurrentTool.create}
                               disabled={!geometryConstructCurrentTool.status.ready}
                               title={geometryConstructCurrentTool.status.message}
-                              style={{ flex: "0 0 auto", fontSize: 11, fontWeight: 800, pointerEvents: "auto" }}
+                              style={{
+                                flex: "0 0 auto",
+                                fontSize: 12,
+                                fontWeight: 900,
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                pointerEvents: "auto",
+                              }}
                             >
                               {geometryConstructCurrentTool.status.createLabel}
                             </button>
                           </div>
-                          <div style={{ display: "grid", gap: 3 }}>
+                          {geometryConstructCurrentToolProgress && (
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                gap: 8,
+                                alignItems: "center",
+                                fontSize: 10.5,
+                                fontWeight: 800,
+                                color: "#1e3a8a",
+                              }}
+                            >
+                              <span>Inputs</span>
+                              <span>{geometryConstructCurrentToolProgress.readyLabel}</span>
+                            </div>
+                          )}
+                          <div style={{ display: "grid", gap: 4 }}>
                             {geometryConstructCurrentTool.status.inputs.map((input, index) => {
                               const controls = getGeometryConstructInputSlotControls(input, geometryConstructCurrentTool.family);
                               return (
@@ -58065,6 +58194,9 @@ case "mobius":
                               fontWeight: 700,
                             }}
                           >
+                            <span style={{ display: "block", color: "#475569", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em" }}>
+                              STATUS
+                            </span>
                             {geometryConstructCurrentTool.status.message}
                           </div>
                         </div>
@@ -58349,51 +58481,43 @@ case "mobius":
                                   fontSize: 10.5,
                                 }}
                               >
-                                <div
-                                  style={geometryConstructToolGridStyle}
-                                >
-                                  {visibleGeometryPointConstructionTools.map(({ tool, groupTitle }) => {
-                                    const selected = geometryPointConstructionTool === tool;
-                                    return (
-                                      <button
-                                        key={`geometry-point-tool-${tool}`}
-                                        type="button"
-                                        data-testid={`geometry-point-tool-${tool}`}
-                                        onClick={() => selectGeometryPointConstructionTool(tool)}
-                                        aria-pressed={selected}
-                                        title={groupTitle}
-                                        style={{
-                                          ...pill(selected),
-                                          borderRadius: 7,
-                                          minHeight: 46,
-                                          padding: "5px 6px",
-                                          display: "grid",
-                                          gridTemplateColumns: "24px minmax(0, 1fr)",
-                                          gap: "3px 6px",
-                                          alignContent: "center",
-                                          alignItems: "center",
-                                          textAlign: "left",
-                                          fontSize: 10.5,
-                                          scrollMarginTop: 190,
-                                          borderColor: selected ? "#0ea5e9" : "#cbd5e1",
-                                          background: selected ? "#e0f2fe" : "#ffffff",
-                                        }}
-                                      >
-                                        <span style={geometryConstructGlyphStyle("points", selected)}>
-                                          {GEOMETRY_CONSTRUCT_CATEGORY_META.points.icon}
-                                        </span>
-                                        <span style={{ minWidth: 0, display: "grid", gap: 3 }}>
-                                          <span style={{ fontWeight: 900, lineHeight: 1.1, overflowWrap: "anywhere" }}>
-                                            {GEOMETRY_POINT_CONSTRUCTION_TOOL_LABELS[tool]}
-                                          </span>
-                                          <span style={geometryConstructClassificationBadgeStyle(groupTitle, selected)}>
-                                            {GEOMETRY_CONSTRUCT_CLASSIFICATION_META[groupTitle]?.label ?? groupTitle.toUpperCase()}
-                                          </span>
-                                        </span>
-                                      </button>
-                                    );
-                                  })}
-                                </div>
+                                {groupedVisibleGeometryPointConstructionTools.map((group) => (
+                                  <div key={`geometry-point-tool-group-${group.title}`} style={geometryConstructToolGroupStyle}>
+                                    <div style={geometryConstructToolGroupHeaderStyle}>
+                                      <span>{group.title.toUpperCase()}</span>
+                                      <span>{group.entries.length}</span>
+                                    </div>
+                                    <div style={geometryConstructToolGridStyle}>
+                                      {group.entries.map(({ tool, groupTitle }) => {
+                                        const selected = geometryPointConstructionTool === tool;
+                                        return (
+                                          <button
+                                            key={`geometry-point-tool-${tool}`}
+                                            type="button"
+                                            data-testid={`geometry-point-tool-${tool}`}
+                                            onClick={() => selectGeometryPointConstructionTool(tool)}
+                                            aria-pressed={selected}
+                                            title={groupTitle}
+                                            style={geometryConstructToolCardStyle(selected)}
+                                          >
+                                            <span style={geometryConstructGlyphStyle("points", selected)}>
+                                              {GEOMETRY_CONSTRUCT_CATEGORY_META.points.icon}
+                                            </span>
+                                            <span style={{ minWidth: 0, display: "grid", gap: 3 }}>
+                                              <span style={{ fontWeight: 900, lineHeight: 1.1, overflowWrap: "anywhere" }}>
+                                                {GEOMETRY_POINT_CONSTRUCTION_TOOL_LABELS[tool]}
+                                              </span>
+                                              <span style={geometryConstructClassificationBadgeStyle(groupTitle, selected)}>
+                                                {GEOMETRY_CONSTRUCT_CLASSIFICATION_META[groupTitle]?.label ?? groupTitle.toUpperCase()}
+                                              </span>
+                                            </span>
+                                            {selected && <span style={{ color: "#0a66c2", fontSize: 10, fontWeight: 900 }}>OK</span>}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ))}
                                 <div
                                   style={{
                                     border: "1px solid #dbeafe",
@@ -58489,51 +58613,43 @@ case "mobius":
                                   fontSize: 10.5,
                                 }}
                               >
-                                <div
-                                  style={geometryConstructToolGridStyle}
-                                >
-                                  {visibleGeometryLineConstructionTools.map(({ tool, groupTitle }) => {
-                                    const selected = geometryLineConstructionTool === tool;
-                                    return (
-                                      <button
-                                        key={`geometry-line-tool-${tool}`}
-                                        type="button"
-                                        data-testid={`geometry-line-tool-${tool}`}
-                                        onClick={() => selectGeometryLineConstructionTool(tool)}
-                                        aria-pressed={selected}
-                                        title={groupTitle}
-                                        style={{
-                                          ...pill(selected),
-                                          borderRadius: 7,
-                                          minHeight: 46,
-                                          padding: "5px 6px",
-                                          display: "grid",
-                                          gridTemplateColumns: "24px minmax(0, 1fr)",
-                                          gap: "3px 6px",
-                                          alignContent: "center",
-                                          alignItems: "center",
-                                          textAlign: "left",
-                                          fontSize: 10.5,
-                                          scrollMarginTop: 190,
-                                          borderColor: selected ? "#0ea5e9" : "#cbd5e1",
-                                          background: selected ? "#e0f2fe" : "#ffffff",
-                                        }}
-                                      >
-                                        <span style={geometryConstructGlyphStyle("lines", selected)}>
-                                          {GEOMETRY_CONSTRUCT_CATEGORY_META.lines.icon}
-                                        </span>
-                                        <span style={{ minWidth: 0, display: "grid", gap: 3 }}>
-                                          <span style={{ fontWeight: 900, lineHeight: 1.1, overflowWrap: "anywhere" }}>
-                                            {GEOMETRY_LINE_CONSTRUCTION_TOOL_LABELS[tool]}
-                                          </span>
-                                          <span style={geometryConstructClassificationBadgeStyle(groupTitle, selected)}>
-                                            {GEOMETRY_CONSTRUCT_CLASSIFICATION_META[groupTitle]?.label ?? groupTitle.toUpperCase()}
-                                          </span>
-                                        </span>
-                                      </button>
-                                    );
-                                  })}
-                                </div>
+                                {groupedVisibleGeometryLineConstructionTools.map((group) => (
+                                  <div key={`geometry-line-tool-group-${group.title}`} style={geometryConstructToolGroupStyle}>
+                                    <div style={geometryConstructToolGroupHeaderStyle}>
+                                      <span>{group.title.toUpperCase()}</span>
+                                      <span>{group.entries.length}</span>
+                                    </div>
+                                    <div style={geometryConstructToolGridStyle}>
+                                      {group.entries.map(({ tool, groupTitle }) => {
+                                        const selected = geometryLineConstructionTool === tool;
+                                        return (
+                                          <button
+                                            key={`geometry-line-tool-${tool}`}
+                                            type="button"
+                                            data-testid={`geometry-line-tool-${tool}`}
+                                            onClick={() => selectGeometryLineConstructionTool(tool)}
+                                            aria-pressed={selected}
+                                            title={groupTitle}
+                                            style={geometryConstructToolCardStyle(selected)}
+                                          >
+                                            <span style={geometryConstructGlyphStyle("lines", selected)}>
+                                              {GEOMETRY_CONSTRUCT_CATEGORY_META.lines.icon}
+                                            </span>
+                                            <span style={{ minWidth: 0, display: "grid", gap: 3 }}>
+                                              <span style={{ fontWeight: 900, lineHeight: 1.1, overflowWrap: "anywhere" }}>
+                                                {GEOMETRY_LINE_CONSTRUCTION_TOOL_LABELS[tool]}
+                                              </span>
+                                              <span style={geometryConstructClassificationBadgeStyle(groupTitle, selected)}>
+                                                {GEOMETRY_CONSTRUCT_CLASSIFICATION_META[groupTitle]?.label ?? groupTitle.toUpperCase()}
+                                              </span>
+                                            </span>
+                                            {selected && <span style={{ color: "#0a66c2", fontSize: 10, fontWeight: 900 }}>OK</span>}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ))}
                                 <div
                                   style={{
                                     border: "1px solid #dbeafe",
@@ -58634,51 +58750,43 @@ case "mobius":
                                   <strong>Plane tools</strong>
                                   <span style={{ color: "#64748b" }}>Pick: {geometryProbeSelectionMode}</span>
                                 </div>
-                                <div
-                                  style={geometryConstructToolGridStyle}
-                                >
-                                  {visibleGeometryPlaneConstructionMethods.map(({ method, groupTitle }) => {
-                                    const selected = geometryPlaneConstructionMethod === method;
-                                    return (
-                                      <button
-                                        key={`geometry-plane-method-${method}`}
-                                        type="button"
-                                        data-testid={`geometry-plane-method-${method}`}
-                                        onClick={() => selectGeometryPlaneConstructionMethod(method)}
-                                        aria-pressed={selected}
-                                        title={groupTitle}
-                                        style={{
-                                          ...pill(selected),
-                                          borderRadius: 7,
-                                          minHeight: 48,
-                                          padding: "5px 6px",
-                                          display: "grid",
-                                          gridTemplateColumns: "24px minmax(0, 1fr)",
-                                          gap: "3px 6px",
-                                          alignContent: "center",
-                                          alignItems: "center",
-                                          textAlign: "left",
-                                          fontSize: 10.5,
-                                          scrollMarginTop: 190,
-                                          borderColor: selected ? "#0ea5e9" : "#cbd5e1",
-                                          background: selected ? "#e0f2fe" : "#ffffff",
-                                        }}
-                                      >
-                                        <span style={geometryConstructGlyphStyle("planes", selected)}>
-                                          {GEOMETRY_CONSTRUCT_CATEGORY_META.planes.icon}
-                                        </span>
-                                        <span style={{ minWidth: 0, display: "grid", gap: 3 }}>
-                                          <span style={{ fontWeight: 900, lineHeight: 1.1, overflowWrap: "anywhere" }}>
-                                            {GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS[method]}
-                                          </span>
-                                          <span style={geometryConstructClassificationBadgeStyle(groupTitle, selected)}>
-                                            {GEOMETRY_CONSTRUCT_CLASSIFICATION_META[groupTitle]?.label ?? groupTitle.toUpperCase()}
-                                          </span>
-                                        </span>
-                                      </button>
-                                    );
-                                  })}
-                                </div>
+                                {groupedVisibleGeometryPlaneConstructionMethods.map((group) => (
+                                  <div key={`geometry-plane-tool-group-${group.title}`} style={geometryConstructToolGroupStyle}>
+                                    <div style={geometryConstructToolGroupHeaderStyle}>
+                                      <span>{group.title.toUpperCase()}</span>
+                                      <span>{group.entries.length}</span>
+                                    </div>
+                                    <div style={geometryConstructToolGridStyle}>
+                                      {group.entries.map(({ method, groupTitle }) => {
+                                        const selected = geometryPlaneConstructionMethod === method;
+                                        return (
+                                          <button
+                                            key={`geometry-plane-method-${method}`}
+                                            type="button"
+                                            data-testid={`geometry-plane-method-${method}`}
+                                            onClick={() => selectGeometryPlaneConstructionMethod(method)}
+                                            aria-pressed={selected}
+                                            title={groupTitle}
+                                            style={geometryConstructToolCardStyle(selected, 60)}
+                                          >
+                                            <span style={geometryConstructGlyphStyle("planes", selected)}>
+                                              {GEOMETRY_CONSTRUCT_CATEGORY_META.planes.icon}
+                                            </span>
+                                            <span style={{ minWidth: 0, display: "grid", gap: 3 }}>
+                                              <span style={{ fontWeight: 900, lineHeight: 1.1, overflowWrap: "anywhere" }}>
+                                                {GEOMETRY_PLANE_CONSTRUCTION_METHOD_LABELS[method]}
+                                              </span>
+                                              <span style={geometryConstructClassificationBadgeStyle(groupTitle, selected)}>
+                                                {GEOMETRY_CONSTRUCT_CLASSIFICATION_META[groupTitle]?.label ?? groupTitle.toUpperCase()}
+                                              </span>
+                                            </span>
+                                            {selected && <span style={{ color: "#0a66c2", fontSize: 10, fontWeight: 900 }}>OK</span>}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ))}
                                 <div
                                   style={{
                                     border: "1px solid #dbeafe",
@@ -59262,25 +59370,25 @@ case "mobius":
                           <div style={{ display: "grid", gap: 7 }}>
                             <div style={{ display: "grid", gap: 4 }}>
                               <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Identity</div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" onClick={handleRenameSelectedConstructionOperation}>
+                              <div style={geometryOperationButtonStackStyle}>
+                                <button type="button" onClick={handleRenameSelectedConstructionOperation} style={geometryOperationButtonStyle}>
                                   Rename
                                 </button>
-                                <button type="button" onClick={() => handleDuplicateSelectedConstructionOperation("Duplicate")}>
+                                <button type="button" onClick={() => handleDuplicateSelectedConstructionOperation("Duplicate")} style={geometryOperationButtonStyle}>
                                   Duplicate
                                 </button>
-                                <button type="button" onClick={() => handleDuplicateSelectedConstructionOperation("Copy")}>
+                                <button type="button" onClick={() => handleDuplicateSelectedConstructionOperation("Copy")} style={geometryOperationButtonStyle}>
                                   Copy
                                 </button>
                               </div>
                             </div>
                             <div style={{ display: "grid", gap: 4 }}>
                               <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Conversion</div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" onClick={handleConvertSelectedConstructionOperation}>
+                              <div style={geometryOperationButtonStackStyle}>
+                                <button type="button" onClick={handleConvertSelectedConstructionOperation} style={geometryOperationButtonStyle}>
                                   Convert
                                 </button>
-                                <button type="button" onClick={handleProjectSelectedConstructionOperation}>
+                                <button type="button" onClick={handleProjectSelectedConstructionOperation} style={geometryOperationButtonStyle}>
                                   Project
                                 </button>
                               </div>
@@ -59307,7 +59415,7 @@ case "mobius":
                                   </button>
                                 ))}
                               </div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <div style={geometryOperationButtonStackStyle}>
                                 <button
                                   type="button"
                                   onClick={handleExtendSelectedConstructionOperation}
@@ -59316,7 +59424,10 @@ case "mobius":
                                       ? "Extend is armed: hover an edge for a ghost preview, then click to create. Click again to cancel."
                                       : "Arm Extend preview for edge picking, or extend the selected derived line."
                                   }
-                                  style={geometryArmedLineOperation === "extend" ? { borderColor: "#0ea5e9", background: "#cffafe" } : undefined}
+                                  style={{
+                                    ...geometryOperationButtonStyle,
+                                    ...(geometryArmedLineOperation === "extend" ? { borderColor: "#0ea5e9", background: "#cffafe" } : {}),
+                                  }}
                                 >
                                   {geometryArmedLineOperation === "extend" ? "Extend: pick edge" : "Extend"}
                                 </button>
@@ -59324,21 +59435,22 @@ case "mobius":
                                   type="button"
                                   onClick={handleTrimSelectedConstructionOperation}
                                   title="Creates a frozen trimmed copy of the selected derived line, axis, vector, or segment."
+                                  style={geometryOperationButtonStyle}
                                 >
                                   Trim
                                 </button>
-                                <button type="button" onClick={handleOffsetSelectedConstructionOperation}>
+                                <button type="button" onClick={handleOffsetSelectedConstructionOperation} style={geometryOperationButtonStyle}>
                                   Offset
                                 </button>
                               </div>
                             </div>
                             <div style={{ display: "grid", gap: 4 }}>
                               <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a" }}>Placement</div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" onClick={handleAlignSelectedConstructionOperation}>
+                              <div style={geometryOperationButtonStackStyle}>
+                                <button type="button" onClick={handleAlignSelectedConstructionOperation} style={geometryOperationButtonStyle}>
                                   Align
                                 </button>
-                                <button type="button" onClick={handleMirrorSelectedConstructionOperation}>
+                                <button type="button" onClick={handleMirrorSelectedConstructionOperation} style={geometryOperationButtonStyle}>
                                   Mirror
                                 </button>
                               </div>
@@ -59365,7 +59477,7 @@ case "mobius":
                               <strong>Line pair analysis</strong>
                               <span style={{ color: "#64748b" }}>{geometryLinePairLineOptions.length} line(s)</span>
                             </div>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 6 }}>
                               <label style={{ display: "grid", gap: 3 }}>
                                 Line A
                                 <select
@@ -59466,7 +59578,7 @@ case "mobius":
                                 Add a line, circle, or midpoint construction first.
                               </div>
                             )}
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 6 }}>
                             <label style={{ display: "grid", gap: 3 }}>
                               Target line
                               <select
@@ -68470,7 +68582,7 @@ case "mobius":
                                   {(geometrySelectedPick?.kind ?? "object").replace(/^\w/, (c) => c.toUpperCase())}
                                 </span>
                               </div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <div style={geometryOperationButtonStackStyle}>
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -68479,7 +68591,7 @@ case "mobius":
                                     setGeometryProceduralHoverPick(null);
                                     setGeometryCreateActionStatus("Edge pick mode active. Click an edge to fill the Edge slot.");
                                   }}
-                                  style={{ ...pill(geometryProbeSelectionMode === "edge"), fontSize: 10.5, padding: "3px 8px" }}
+                                  style={{ ...geometryOperationButtonStyle, ...pill(geometryProbeSelectionMode === "edge") }}
                                   aria-pressed={geometryProbeSelectionMode === "edge"}
                                 >
                                   Edge
@@ -68488,27 +68600,26 @@ case "mobius":
                                   type="button"
                                   onClick={handleExtendSelectedConstructionOperation}
                                   style={{
-                                    fontSize: 10.5,
-                                    padding: "3px 8px",
+                                    ...geometryOperationButtonStyle,
                                     borderColor: geometryArmedLineOperation === "extend" ? "#0ea5e9" : undefined,
                                     background: geometryArmedLineOperation === "extend" ? "#cffafe" : undefined,
                                   }}
                                 >
                                   Extend
                                 </button>
-                                <button type="button" onClick={handleOffsetSelectedConstructionOperation} style={{ fontSize: 10.5, padding: "3px 8px" }}>
+                                <button type="button" onClick={handleOffsetSelectedConstructionOperation} style={geometryOperationButtonStyle}>
                                   Offset
                                 </button>
-                                <button type="button" onClick={handleProjectSelectedConstructionOperation} style={{ fontSize: 10.5, padding: "3px 8px" }}>
+                                <button type="button" onClick={handleProjectSelectedConstructionOperation} style={geometryOperationButtonStyle}>
                                   Project
                                 </button>
-                                <button type="button" onClick={handleMirrorSelectedConstructionOperation} style={{ fontSize: 10.5, padding: "3px 8px" }}>
+                                <button type="button" onClick={handleMirrorSelectedConstructionOperation} style={geometryOperationButtonStyle}>
                                   Mirror
                                 </button>
-                                <button type="button" onClick={handleTrimSelectedConstructionOperation} style={{ fontSize: 10.5, padding: "3px 8px" }}>
+                                <button type="button" onClick={handleTrimSelectedConstructionOperation} style={geometryOperationButtonStyle}>
                                   Trim
                                 </button>
-                                <button type="button" onClick={handleSplitSelectedProbeEdge} style={{ fontSize: 10.5, padding: "3px 8px" }}>
+                                <button type="button" onClick={handleSplitSelectedProbeEdge} style={geometryOperationButtonStyle}>
                                   Split
                                 </button>
                               </div>
