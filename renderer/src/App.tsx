@@ -31972,6 +31972,8 @@ const App: React.FC = () => {
   const [surfacesWorkGalleryOpen, setSurfacesWorkGalleryOpen] = useState(false);
   const [surfacesTopActionsMoreOpen, setSurfacesTopActionsMoreOpen] = useState(false);
   const [surfacePreviewFocusMode, setSurfacePreviewFocusMode] = useState(false);
+  const [surfaceDrawerPanel, setSurfaceDrawerPanel] = useState<"left" | "right" | null>(null);
+  const [geometryDrawerPanel, setGeometryDrawerPanel] = useState<"left" | "right" | null>(null);
   const surfacePreviewFocusPrevRightPanelRef = useRef(true);
   const surfacePreviewFocusPrevLeftTabRef = useRef<"scene" | "object" | "view" | "analysis" | "theory">("scene");
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<
@@ -49610,6 +49612,12 @@ case "mobius":
     : undefined;
   const showGeometryFullWorkbookWorkspace =
     mode === "geometry" && geometryMode === "workbook" && geometryWorkbookUiMode === "full";
+  const surfacePanelsAsDrawers =
+    mode === "surfaces" && isSurfaceStackedLayout && !surfacePreviewFocusMode && !cleanScreenshotSurfaceActive;
+  const geometryPanelsAsDrawers =
+    mode === "geometry" && isGeometryStackedLayout && !showGeometryFullWorkbookWorkspace;
+  const surfaceDrawerOpen = surfacePanelsAsDrawers ? surfaceDrawerPanel : null;
+  const geometryDrawerOpen = geometryPanelsAsDrawers ? geometryDrawerPanel : null;
   const showSurfacesRightPanel =
     !surfacePreviewFocusMode &&
     (mode === "surfaces" ? (isPresentDisplayMode ? true : showRightPanel) : showRightPanel) &&
@@ -49619,11 +49627,117 @@ case "mobius":
   const surfaceLeftPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(leftWidth, 280) : leftWidth;
   const surfaceRightPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(rightWidth, 280) : rightWidth;
   const geometryRightPanelWidth = Math.min(rightWidth, geometrySidePanelWidth);
+  const drawerBackdropStyle: React.CSSProperties = {
+    position: "fixed",
+    inset: 0,
+    zIndex: 2300,
+    border: 0,
+    padding: 0,
+    background: "rgba(15, 23, 42, 0.24)",
+    cursor: "default",
+  };
+  const responsiveDrawerChromeStyle: React.CSSProperties = {
+    position: "fixed",
+    top: 8,
+    bottom: 8,
+    zIndex: 2400,
+    width: "min(380px, calc(100vw - 24px))",
+    maxWidth: "calc(100vw - 24px)",
+    maxHeight: "none",
+    boxSizing: "border-box",
+    transition: "transform 180ms ease, visibility 180ms ease",
+  };
+  const responsiveDrawerHeaderStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginBottom: 10,
+    paddingBottom: 8,
+    borderBottom: "1px solid #dbe4f0",
+  };
+  const responsiveDrawerBarStyle: React.CSSProperties = {
+    order: 4,
+    position: "sticky",
+    bottom: 0,
+    zIndex: 8,
+    display: "flex",
+    justifyContent: "center",
+    gap: 8,
+    padding: "8px 6px",
+    background: "linear-gradient(180deg, rgba(248, 251, 255, 0.68), #f8fbff 42%)",
+  };
   const showSurfaceSideCompanions =
     (showGaussMap || (surfaceViewerKind === "complex" && complexMapShowSphere)) &&
     !(mode === "surfaces" && isPresentDisplayMode) &&
     !isSurfaceStackedLayout &&
     !cleanScreenshotSurfaceActive;
+  const drawerButtonStyle = (active: boolean): React.CSSProperties => ({
+    borderRadius: 999,
+    border: "1px solid " + (active ? "#0a66c2" : "#cbd5e1"),
+    background: active ? "#dbeafe" : "#fff",
+    color: active ? "#0f2a4a" : "#334155",
+    fontSize: 12,
+    fontWeight: active ? 800 : 700,
+    padding: "7px 12px",
+    minWidth: 88,
+    cursor: "pointer",
+    boxShadow: active ? "0 5px 14px rgba(10,102,194,0.18)" : "0 2px 8px rgba(15,23,42,0.08)",
+  });
+  const closeDrawerButtonStyle: React.CSSProperties = {
+    borderRadius: 999,
+    border: "1px solid #cbd5e1",
+    background: "#fff",
+    color: "#334155",
+    fontSize: 11,
+    fontWeight: 700,
+    padding: "4px 9px",
+    cursor: "pointer",
+  };
+  const surfaceLeftDrawerStyle: React.CSSProperties = surfacePanelsAsDrawers
+    ? {
+        ...responsiveDrawerChromeStyle,
+        left: 8,
+        transform: surfaceDrawerOpen === "left" ? "translateX(0)" : "translateX(calc(-100% - 16px))",
+        visibility: surfaceDrawerOpen === "left" ? "visible" : "hidden",
+        pointerEvents: surfaceDrawerOpen === "left" ? "auto" : "none",
+      }
+    : {};
+  const surfaceRightDrawerStyle: React.CSSProperties = surfacePanelsAsDrawers
+    ? {
+        ...responsiveDrawerChromeStyle,
+        right: 8,
+        transform: surfaceDrawerOpen === "right" ? "translateX(0)" : "translateX(calc(100% + 16px))",
+        visibility: surfaceDrawerOpen === "right" ? "visible" : "hidden",
+        pointerEvents: surfaceDrawerOpen === "right" ? "auto" : "none",
+      }
+    : {};
+  const geometryLeftDrawerStyle: React.CSSProperties = geometryPanelsAsDrawers
+    ? {
+        ...responsiveDrawerChromeStyle,
+        left: 8,
+        transform: geometryDrawerOpen === "left" ? "translateX(0)" : "translateX(calc(-100% - 16px))",
+        visibility: geometryDrawerOpen === "left" ? "visible" : "hidden",
+        pointerEvents: geometryDrawerOpen === "left" ? "auto" : "none",
+      }
+    : {};
+  const geometryRightDrawerStyle: React.CSSProperties = geometryPanelsAsDrawers
+    ? {
+        ...responsiveDrawerChromeStyle,
+        right: 8,
+        transform: geometryDrawerOpen === "right" ? "translateX(0)" : "translateX(calc(100% + 16px))",
+        visibility: geometryDrawerOpen === "right" ? "visible" : "hidden",
+        pointerEvents: geometryDrawerOpen === "right" ? "auto" : "none",
+      }
+    : {};
+  useEffect(() => {
+    if (surfacePanelsAsDrawers) return;
+    setSurfaceDrawerPanel(null);
+  }, [surfacePanelsAsDrawers]);
+  useEffect(() => {
+    if (geometryPanelsAsDrawers) return;
+    setGeometryDrawerPanel(null);
+  }, [geometryPanelsAsDrawers]);
   const statusCameraLabel = useMemo(() => {
     if (mode === "surfaces" && compareLayoutEnabled) {
       return compareCameraSync ? "camera sync on" : "camera sync off";
@@ -52839,8 +52953,39 @@ case "mobius":
               overflowY: isSurfaceStackedLayout ? "auto" : undefined,
             }}
           >
+            {surfacePanelsAsDrawers && surfaceDrawerOpen && (
+              <button
+                type="button"
+                aria-label="Close surface panel"
+                onClick={() => setSurfaceDrawerPanel(null)}
+                style={drawerBackdropStyle}
+              />
+            )}
+            {surfacePanelsAsDrawers && (
+              <div style={responsiveDrawerBarStyle}>
+                <button
+                  type="button"
+                  onClick={() => setSurfaceDrawerPanel((panel) => (panel === "left" ? null : "left"))}
+                  aria-pressed={surfaceDrawerOpen === "left"}
+                  style={drawerButtonStyle(surfaceDrawerOpen === "left")}
+                >
+                  Scene
+                </button>
+                {showSurfacesRightPanel && (
+                  <button
+                    type="button"
+                    onClick={() => setSurfaceDrawerPanel((panel) => (panel === "right" ? null : "right"))}
+                    aria-pressed={surfaceDrawerOpen === "right"}
+                    style={drawerButtonStyle(surfaceDrawerOpen === "right")}
+                  >
+                    Inspector
+                  </button>
+                )}
+              </div>
+            )}
             {/* LEFT */}
             <div
+              data-testid="surface-left-panel"
               style={{
                 ...styles.panelLeft,
                 width: isSurfaceStackedLayout ? "100%" : surfaceLeftPanelWidth,
@@ -52851,8 +52996,17 @@ case "mobius":
                 maxHeight: isSurfaceStackedLayout ? Math.max(180, Math.floor(viewportSize.height * 0.42)) : undefined,
                 overflowY: "auto",
                 order: isSurfaceStackedLayout ? 2 : 0,
+                ...surfaceLeftDrawerStyle,
               }}
             >
+              {surfacePanelsAsDrawers && (
+                <div style={responsiveDrawerHeaderStyle}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>Scene</div>
+                  <button type="button" onClick={() => setSurfaceDrawerPanel(null)} style={closeDrawerButtonStyle}>
+                    Close
+                  </button>
+                </div>
+              )}
               {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && (
                 <div
                   style={{
@@ -55305,6 +55459,7 @@ case "mobius":
             {/* RIGHT */}
             {showSurfacesRightPanel && (
             <div
+              data-testid="surface-right-panel"
               style={{
                 ...styles.panelLeft,
                 width: isSurfaceStackedLayout ? "100%" : surfaceRightPanelWidth,
@@ -55312,8 +55467,17 @@ case "mobius":
                 maxHeight: isSurfaceStackedLayout ? Math.max(180, Math.floor(viewportSize.height * 0.42)) : undefined,
                 overflowY: "auto",
                 order: isSurfaceStackedLayout ? 3 : 0,
+                ...surfaceRightDrawerStyle,
               }}
             >
+              {surfacePanelsAsDrawers && (
+                <div style={responsiveDrawerHeaderStyle}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>Inspector</div>
+                  <button type="button" onClick={() => setSurfaceDrawerPanel(null)} style={closeDrawerButtonStyle}>
+                    Close
+                  </button>
+                </div>
+              )}
               {isPresentDisplayMode ? (
                 <div style={{ display: "grid", gap: 8 }}>
                   <div style={{ fontSize: 12, fontWeight: 700 }}>Inspector (compact)</div>
@@ -56777,6 +56941,36 @@ case "mobius":
               overflowY: isGeometryStackedLayout ? "auto" : undefined,
             }}
           >
+            {geometryPanelsAsDrawers && geometryDrawerOpen && (
+              <button
+                type="button"
+                aria-label="Close geometry panel"
+                onClick={() => setGeometryDrawerPanel(null)}
+                style={drawerBackdropStyle}
+              />
+            )}
+            {geometryPanelsAsDrawers && (
+              <div style={responsiveDrawerBarStyle}>
+                <button
+                  type="button"
+                  onClick={() => setGeometryDrawerPanel((panel) => (panel === "left" ? null : "left"))}
+                  aria-pressed={geometryDrawerOpen === "left"}
+                  style={drawerButtonStyle(geometryDrawerOpen === "left")}
+                >
+                  Tools
+                </button>
+                {showGeometryRightPanel && (
+                  <button
+                    type="button"
+                    onClick={() => setGeometryDrawerPanel((panel) => (panel === "right" ? null : "right"))}
+                    aria-pressed={geometryDrawerOpen === "right"}
+                    style={drawerButtonStyle(geometryDrawerOpen === "right")}
+                  >
+                    Inspector
+                  </button>
+                )}
+              </div>
+            )}
             {/* LEFT */}
             <div
               data-testid="geometry-left-panel"
@@ -56788,8 +56982,17 @@ case "mobius":
                 maxHeight: isGeometryStackedLayout ? geometryStackedLeftPanelMaxHeight : undefined,
                 overflowY: compactGeometryCreatePanel ? "hidden" : undefined,
                 order: isGeometryStackedLayout ? 2 : 0,
+                ...geometryLeftDrawerStyle,
               }}
             >
+              {geometryPanelsAsDrawers && (
+                <div style={responsiveDrawerHeaderStyle}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>Tools</div>
+                  <button type="button" onClick={() => setGeometryDrawerPanel(null)} style={closeDrawerButtonStyle}>
+                    Close
+                  </button>
+                </div>
+              )}
               <section
                 style={
                   compactGeometryCreatePanel
@@ -66815,20 +67018,20 @@ case "mobius":
               </section>
             </div>
 
-            {!isPhoneLandscapeLayout && <div onMouseDown={startDragLeft} style={splitterStyle} />}
+            {!isGeometryStackedLayout && <div onMouseDown={startDragLeft} style={splitterStyle} />}
 
             {/* RIGHT */}
             <div
               data-testid="geometry-viewer-panel"
               style={{
                 ...styles.stack,
-                minHeight: isPhoneLandscapeLayout ? 220 : 0,
+                minHeight: isGeometryStackedLayout ? responsiveLayout.viewerMinHeight : 0,
                 border: "1px solid #9fb0c7",
                 borderRadius: 10,
                 overflow: "visible",
                 background: "#f8fbff",
                 boxShadow: "inset 0 0 0 1px #b8c5d8",
-                order: isPhoneLandscapeLayout ? 1 : 0,
+                order: isGeometryStackedLayout ? 1 : 0,
               }}
             >
               {geometryViewerControlsOpen && (
@@ -68351,8 +68554,17 @@ case "mobius":
                       overflowY: "auto",
                       order: isGeometryStackedLayout ? 3 : 0,
                       borderLeft: isGeometryStackedLayout ? "1px solid #d9e2ef" : undefined,
+                      ...geometryRightDrawerStyle,
                     }}
                   >
+                    {geometryPanelsAsDrawers && (
+                      <div style={responsiveDrawerHeaderStyle}>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>Inspector</div>
+                        <button type="button" onClick={() => setGeometryDrawerPanel(null)} style={closeDrawerButtonStyle}>
+                          Close
+                        </button>
+                      </div>
+                    )}
                     <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
                       <div style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>Inspector</div>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
