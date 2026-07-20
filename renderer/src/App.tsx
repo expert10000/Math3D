@@ -24983,6 +24983,23 @@ const App: React.FC = () => {
       polyhedronFaces,
     };
   }, [geometryMode, geometryObjects, geometryDatasetMeshObjects, geometryScene, geometryConstructionState, proceduralMeshSet]);
+  const geometryStatsSummary = useMemo(() => {
+    if (geometryStats.mode === "procedural") {
+      return [
+        `${geometryStats.objectCount} objects`,
+        `${geometryStats.visibleCount} visible`,
+        `${geometryStats.vertCount.toLocaleString()} verts`,
+        `${geometryStats.triCount.toLocaleString()} tris`,
+      ].join(" \u00b7 ");
+    }
+    return [
+      `${geometryStats.pointCount} points`,
+      `${geometryStats.segmentCount} segments`,
+      `${geometryStats.triangleCount} triangles`,
+      `${geometryStats.polygonCount} polygons`,
+      `${geometryStats.polyhedronFaces} faces`,
+    ].join(" \u00b7 ");
+  }, [geometryStats]);
   const [windowReframeToken, setWindowReframeToken] = useState(0);
   const lastWindowStateRef = useRef<{ maximized: boolean; fullscreen: boolean } | null>(null);
 
@@ -66509,15 +66526,17 @@ case "mobius":
                   style={{
                     marginTop: 10,
                     borderTop: "1px solid #e2e8f0",
-                    paddingTop: 7,
-                    fontSize: 10.5,
+                    paddingTop: 6,
+                    fontSize: 10,
                     color: "#64748b",
-                    lineHeight: 1.35,
+                    lineHeight: 1.25,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
                   }}
+                  title={geometryStatsSummary}
                 >
-                  {geometryStats.mode === "procedural"
-                    ? `${geometryStats.objectCount} objects | ${geometryStats.visibleCount} visible | ${geometryStats.vertCount.toLocaleString()} verts | ${geometryStats.triCount.toLocaleString()} tris`
-                    : `${geometryStats.pointCount} points | ${geometryStats.segmentCount} segments | ${geometryStats.triangleCount} triangles | ${geometryStats.polygonCount} polygons | ${geometryStats.polyhedronFaces} faces`}
+                  {geometryStatsSummary}
                 </div>
               </section>
             </div>
@@ -68631,17 +68650,19 @@ case "mobius":
                             <div>{GEOMETRY_DEPENDENCY_STATE_META[geometrySelectedDerivedConstructionEval.dependencyState].label}</div>
                           </div>
                         )}
-                        <div style={{ color: "#475467" }}>
-                          {geometryStats.mode === "procedural"
-                            ? `${geometryStats.objectCount} objects (${geometryStats.visibleCount} visible)`
-                            : `${geometryStats.pointCount} points · ${geometryStats.segmentCount} segments`}
+                        <div
+                          style={{
+                            color: "#64748b",
+                            fontSize: 10.5,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                          title={geometryViewerSourceLabel ? `${geometryStatsSummary} \u00b7 Source: ${geometryViewerSourceLabel}` : geometryStatsSummary}
+                        >
+                          {geometryStatsSummary}
+                          {geometryViewerSourceLabel ? ` \u00b7 Source: ${geometryViewerSourceLabel}` : ""}
                         </div>
-                        <div style={{ color: "#475467" }}>
-                          {geometryStats.mode === "procedural"
-                            ? `${geometryStats.vertCount.toLocaleString()} verts · ${geometryStats.triCount.toLocaleString()} tris`
-                            : `${geometryStats.triangleCount} triangles · ${geometryStats.polygonCount} polygons · ${geometryStats.polyhedronFaces} polyhedron faces`}
-                        </div>
-                        {geometryViewerSourceLabel && <div style={{ color: "#475467" }}>Source: {geometryViewerSourceLabel}</div>}
                       </div>
                     )}
                   </div>

@@ -15,6 +15,7 @@ type GeometryStats = {
 
 const parseGeometryStats = (raw: string): GeometryStats => {
   const match =
+    raw.match(/(\d+)\s+objects\s+(?:\||\u00b7)\s+(\d+)\s+visible/i) ??
     raw.match(/(\d+)\s+objects\s+\|\s+(\d+)\s+visible/i) ??
     raw.match(/(\d+)\s+objects\s+\((\d+)\s+visible\)/i);
   if (!match) {
