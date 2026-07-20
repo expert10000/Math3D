@@ -2376,6 +2376,11 @@ const geometryConstructClassificationBadgeStyle = (classification: string, selec
     width: "fit-content",
   };
 };
+const geometryConstructToolGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(92px, 1fr))",
+  gap: 5,
+};
 const GeometryConstructInputSlotRow: React.FC<{
   input: GeometryConstructInputSlot;
   index: number;
@@ -2407,8 +2412,8 @@ const GeometryConstructInputSlotRow: React.FC<{
       style={{
         display: "grid",
         gridTemplateColumns: compact
-          ? `20px minmax(0, 1fr) auto${onClear ? " 22px" : ""}`
-          : `22px minmax(64px, 0.42fr) minmax(0, 1fr) auto${onClear ? " 22px" : ""}`,
+          ? `20px minmax(0, 1fr) minmax(48px, auto)${onClear ? " 22px" : ""}`
+          : `22px minmax(48px, 0.7fr) minmax(0, 1fr) minmax(48px, auto)${onClear ? " 22px" : ""}`,
         gap: compact ? "3px 6px" : "4px 8px",
         alignItems: "center",
         border: `1px solid ${statusMeta.border}`,
@@ -2474,6 +2479,9 @@ const GeometryConstructInputSlotRow: React.FC<{
           fontWeight: 900,
           lineHeight: 1.2,
           whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          minWidth: 0,
         }}
       >
         {statusMeta.label}
@@ -48327,8 +48335,8 @@ case "mobius":
     if (geometryMode === "scratch") return "place";
     if (geometryProceduralPanelTab === "create") return "create";
     if (geometryProceduralPanelTab === "scene") return "place";
+    if (geometryProceduralPanelTab === "construct") return "create";
     if (
-      geometryProceduralPanelTab === "construct" ||
       geometryProceduralPanelTab === "object" ||
       geometryProceduralPanelTab === "transform" ||
       geometryProceduralPanelTab === "view" ||
@@ -49493,8 +49501,14 @@ case "mobius":
     isGeometryStackedLayout;
   const compactGeometryCreatePanel =
     geometryMode === "procedural" && geometryProceduralPanelTab === "create" && compactGeometryPanel;
-  const geometrySidePanelWidth = Math.max(240, Math.min(360, Math.round(viewportSize.width * 0.18)));
+  const geometrySidePanelWidth = Math.max(260, Math.min(360, Math.round(viewportSize.width * 0.2)));
   const geometryCreateLeftPanelWidth = Math.min(leftWidth, geometrySidePanelWidth);
+  const geometryStackedLeftPanelMaxHeight = isPhoneLandscapeLayout
+    ? Math.max(170, Math.floor(viewportSize.height * 0.38))
+    : Math.max(220, Math.floor(viewportSize.height * 0.42));
+  const geometryCurrentToolMaxHeight = compactGeometryPanel
+    ? Math.max(130, Math.min(220, Math.floor(viewportSize.height * 0.28)))
+    : undefined;
   const showGeometryFullWorkbookWorkspace =
     mode === "geometry" && geometryMode === "workbook" && geometryWorkbookUiMode === "full";
   const showSurfacesRightPanel =
@@ -52246,6 +52260,7 @@ case "mobius":
                           type="button"
                           onClick={() => handleGeometryWorkflowStepClick(step.id)}
                           aria-current={active ? "step" : undefined}
+                          data-testid={`geometry-workflow-step-${step.id}`}
                           style={{
                             ...pill(active),
                             fontSize: 11,
@@ -52315,15 +52330,6 @@ case "mobius":
                           </button>
                         );
                       })}
-                      <span style={{ flex: "1 1 auto", minWidth: 18 }} />
-                      <button
-                        type="button"
-                        onClick={() => handleGeometryWorkflowStepClick("transform")}
-                        title="Switch to Transform tools."
-                        style={{ ...pill(false), fontSize: 11, padding: "4px 9px", flex: "0 0 auto" }}
-                      >
-                        Transform tools
-                      </button>
                     </>
                   ) : (
                     <>
@@ -56677,7 +56683,7 @@ case "mobius":
                 ...styles.panelLeft,
                 width: isGeometryStackedLayout ? "100%" : geometryCreateLeftPanelWidth,
                 maxWidth: isGeometryStackedLayout ? "100%" : undefined,
-                maxHeight: isGeometryStackedLayout ? Math.max(180, Math.floor(viewportSize.height * 0.46)) : undefined,
+                maxHeight: isGeometryStackedLayout ? geometryStackedLeftPanelMaxHeight : undefined,
                 overflowY: compactGeometryCreatePanel ? "hidden" : undefined,
                 order: isGeometryStackedLayout ? 2 : 0,
               }}
@@ -57978,8 +57984,8 @@ case "mobius":
                         <div
                           data-testid="geometry-current-tool-sticky"
                           style={{
-                            position: "sticky",
-                            top: 0,
+                            position: compactGeometryPanel ? "relative" : "sticky",
+                            top: compactGeometryPanel ? undefined : 0,
                             zIndex: 12,
                             border: "1px solid #93c5fd",
                             borderRadius: 8,
@@ -57989,6 +57995,9 @@ case "mobius":
                             display: "grid",
                             gap: 6,
                             pointerEvents: "none",
+                            maxHeight: geometryCurrentToolMaxHeight,
+                            overflowY: geometryCurrentToolMaxHeight ? "auto" : undefined,
+                            overscrollBehavior: "contain",
                           }}
                         >
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "start" }}>
@@ -58108,7 +58117,7 @@ case "mobius":
                               </button>
                             ))}
                           </div>
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(72px, 1fr))", gap: 6 }}>
                             {([
                               ["A", geometryEffectiveMathConstructionSourceAId, setGeometryMathConstructionSourceAId],
                               ["B", geometryEffectiveMathConstructionSourceBId, setGeometryMathConstructionSourceBId],
@@ -58341,11 +58350,7 @@ case "mobius":
                                 }}
                               >
                                 <div
-                                  style={{
-                                    display: "grid",
-                                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                                    gap: 5,
-                                  }}
+                                  style={geometryConstructToolGridStyle}
                                 >
                                   {visibleGeometryPointConstructionTools.map(({ tool, groupTitle }) => {
                                     const selected = geometryPointConstructionTool === tool;
@@ -58485,11 +58490,7 @@ case "mobius":
                                 }}
                               >
                                 <div
-                                  style={{
-                                    display: "grid",
-                                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                                    gap: 5,
-                                  }}
+                                  style={geometryConstructToolGridStyle}
                                 >
                                   {visibleGeometryLineConstructionTools.map(({ tool, groupTitle }) => {
                                     const selected = geometryLineConstructionTool === tool;
@@ -58634,11 +58635,7 @@ case "mobius":
                                   <span style={{ color: "#64748b" }}>Pick: {geometryProbeSelectionMode}</span>
                                 </div>
                                 <div
-                                  style={{
-                                    display: "grid",
-                                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                                    gap: 5,
-                                  }}
+                                  style={geometryConstructToolGridStyle}
                                 >
                                   {visibleGeometryPlaneConstructionMethods.map(({ method, groupTitle }) => {
                                     const selected = geometryPlaneConstructionMethod === method;
@@ -58830,7 +58827,7 @@ case "mobius":
                                   {geometryPlaneConstructionMethod === "principal-plane" && (
                                     <div style={{ display: "grid", gap: 5 }}>
                                       <span style={{ color: "#475569", fontWeight: 800 }}>Output</span>
-                                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 5 }}>
+                                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(58px, 1fr))", gap: 5 }}>
                                         {GEOMETRY_PRINCIPAL_PLANE_OUTPUTS.map((output) => {
                                           const selected = geometryPrincipalPlaneOutput === output;
                                           return (
@@ -58905,7 +58902,7 @@ case "mobius":
                                   background: "#f8fbff",
                                   padding: "8px 9px",
                                   display: "grid",
-                                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                                  gridTemplateColumns: "repeat(auto-fit, minmax(92px, 1fr))",
                                   gap: 5,
                                   fontSize: 10.5,
                                 }}
@@ -58970,7 +58967,7 @@ case "mobius":
                                   background: "#f8fbff",
                                   padding: "8px 9px",
                                   display: "grid",
-                                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                                  gridTemplateColumns: "repeat(auto-fit, minmax(92px, 1fr))",
                                   gap: 5,
                                   fontSize: 10.5,
                                 }}
@@ -59031,7 +59028,7 @@ case "mobius":
                                   background: "#f8fbff",
                                   padding: "8px 9px",
                                   display: "grid",
-                                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                                  gridTemplateColumns: "repeat(auto-fit, minmax(92px, 1fr))",
                                   gap: 5,
                                   fontSize: 10.5,
                                 }}
@@ -66638,6 +66635,7 @@ case "mobius":
 
             {/* RIGHT */}
             <div
+              data-testid="geometry-viewer-panel"
               style={{
                 ...styles.stack,
                 minHeight: isPhoneLandscapeLayout ? 220 : 0,
@@ -71820,11 +71818,13 @@ case "mobius":
             boxShadow: "var(--shadow-soft)",
             display: "flex",
             alignItems: "center",
-            flexWrap: "wrap",
+            flexWrap: isPhoneLandscapeLayout ? "nowrap" : "wrap",
             rowGap: 4,
             gap: 8,
             fontSize: 11,
             overflow: "hidden",
+            maxHeight: isPhoneLandscapeLayout ? 34 : undefined,
+            pointerEvents: showOtherComplexBottomActions ? "auto" : "none",
             zIndex: 2000,
           }}
           title={statusItems.join(" | ")}
@@ -71832,7 +71832,7 @@ case "mobius":
           {statusItems.map((item, index) => (
             <React.Fragment key={`${item}-${index}`}>
               {index > 0 && <span style={{ opacity: 0.5 }}>|</span>}
-              <span style={{ maxWidth: 340, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span style={{ maxWidth: 340, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {item}
               </span>
             </React.Fragment>

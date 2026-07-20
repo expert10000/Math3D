@@ -338,6 +338,16 @@ test("Geometry construct panel remembers workflow and search opens matching sect
     await resetStorage(page);
     await openProceduralGeometry(page, "box");
     await clickFirstVisibleButton(page, "Construct");
+    await expect(page.getByTestId("geometry-workflow-step-create")).toHaveAttribute("aria-current", "step");
+    await expect(page.getByRole("button", { name: "Transform tools", exact: true })).toHaveCount(0);
+
+    await page.getByTestId("geometry-workflow-step-transform").click();
+    await expect(page.getByTestId("geometry-workflow-step-transform")).toHaveAttribute("aria-current", "step");
+    await expect(page.getByText("GEOMETRY TRANSFORM", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("geometry-construct-panel-tab-create")).toHaveCount(0);
+
+    await page.getByTestId("geometry-workflow-step-create").click();
+    await clickFirstVisibleButton(page, "Construct");
     await selectConstructPanelTab(page, "create");
 
     await page.getByTestId("geometry-point-tool-face-centroid").click();
@@ -377,6 +387,165 @@ test("Geometry construct panel remembers workflow and search opens matching sect
     await expect(page.getByTestId("geometry-construct-panel-tab-relations")).toHaveAttribute("aria-pressed", "true");
     await selectConstructPanelTab(page, "create");
     await expect(page.getByTestId("geometry-current-tool-sticky")).toContainText("POINTS");
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
+test("Geometry construct panel stays readable in narrow landscape layout", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-construct-responsive-"));
+  let app: ElectronApplication | null = null;
+
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+    await page.setViewportSize({ width: 900, height: 520 });
+    await clickFirstVisibleButton(page, "Construct");
+    await selectConstructPanelTab(page, "create");
+
+    const layout = await page.evaluate(() => {
+      const rectOf = (selector: string) => {
+        const element = document.querySelector(selector);
+        if (!element) return null;
+        const rect = element.getBoundingClientRect();
+        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
+      };
+      const left = rectOf("[data-testid='geometry-left-panel']");
+      const right = rectOf("[data-testid='geometry-scene-stats']");
+      const sticky = rectOf("[data-testid='geometry-current-tool-sticky']");
+      const stickyElement = document.querySelector("[data-testid='geometry-current-tool-sticky']") as HTMLElement | null;
+      const slots = Array.from(document.querySelectorAll("[data-testid^='geometry-current-tool-input-']")).map((element) => {
+        const rect = element.getBoundingClientRect();
+        return { left: rect.left, right: rect.right, width: rect.width, scrollWidth: (element as HTMLElement).scrollWidth };
+      });
+      const cards = Array.from(document.querySelectorAll("[data-testid^='geometry-plane-method-']")).map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          width: rect.width,
+          height: rect.height,
+          text: (element.textContent ?? "").trim(),
+          scrollWidth: (element as HTMLElement).scrollWidth,
+        };
+      });
+      const stats = document.querySelector("[data-testid='geometry-scene-stats']") as HTMLElement | null;
+      return {
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        bodyScrollWidth: document.documentElement.scrollWidth,
+        left,
+        right,
+        sticky,
+        stickyStyle: stickyElement
+          ? {
+              position: getComputedStyle(stickyElement).position,
+              overflowY: getComputedStyle(stickyElement).overflowY,
+              maxHeight: getComputedStyle(stickyElement).maxHeight,
+            }
+          : null,
+        slots,
+        cards,
+        stats: stats
+          ? {
+              width: stats.getBoundingClientRect().width,
+              scrollWidth: stats.scrollWidth,
+              whiteSpace: getComputedStyle(stats).whiteSpace,
+              overflow: getComputedStyle(stats).overflow,
+              textOverflow: getComputedStyle(stats).textOverflow,
+            }
+          : null,
+      };
+    });
+
+    expect(layout.viewport).toEqual({ width: 900, height: 520 });
+    expect(layout.bodyScrollWidth).toBeLessThanOrEqual(900);
+    expect(layout.left).not.toBeNull();
+    expect(layout.right).not.toBeNull();
+    expect(layout.sticky).not.toBeNull();
+    expect(layout.stickyStyle).toEqual(expect.objectContaining({
+      position: "relative",
+      overflowY: "auto",
+    }));
+    expect(layout.left!.width).toBeLessThanOrEqual(900);
+    expect(layout.slots.length).toBeGreaterThan(0);
+    for (const slot of layout.slots) {
+      expect(slot.left).toBeGreaterThanOrEqual(layout.left!.left - 1);
+      expect(slot.right).toBeLessThanOrEqual(layout.left!.right + 1);
+      expect(slot.scrollWidth).toBeLessThanOrEqual(Math.ceil(slot.width) + 1);
+    }
+    expect(layout.cards.length).toBeGreaterThan(0);
+    for (const card of layout.cards) {
+      expect(card.width).toBeGreaterThanOrEqual(58);
+      expect(card.height).toBeGreaterThanOrEqual(30);
+      expect(card.scrollWidth).toBeLessThanOrEqual(Math.ceil(card.width) + 4);
+      expect(card.text.length).toBeGreaterThan(0);
+    }
+    expect(layout.stats).toEqual(expect.objectContaining({
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+    }));
+    expect(layout.stats!.scrollWidth).toBeGreaterThanOrEqual(Math.floor(layout.stats!.width));
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
+test("Geometry construct panel stacks without panel collision on phone landscape", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-construct-phone-"));
+  let app: ElectronApplication | null = null;
+
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+    await page.setViewportSize({ width: 760, height: 430 });
+    await clickFirstVisibleButton(page, "Construct");
+    await selectConstructPanelTab(page, "create");
+
+    const layout = await page.evaluate(() => {
+      const rectOf = (selector: string) => {
+        const element = document.querySelector(selector);
+        if (!element) return null;
+        const rect = element.getBoundingClientRect();
+        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
+      };
+      return {
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        left: rectOf("[data-testid='geometry-left-panel']"),
+        viewer: rectOf("[data-testid='geometry-viewer-panel']"),
+        sticky: rectOf("[data-testid='geometry-current-tool-sticky']"),
+        stickyStyle: (() => {
+          const element = document.querySelector("[data-testid='geometry-current-tool-sticky']") as HTMLElement | null;
+          return element
+            ? {
+                position: getComputedStyle(element).position,
+                overflowY: getComputedStyle(element).overflowY,
+              }
+            : null;
+        })(),
+        bodyScrollWidth: document.documentElement.scrollWidth,
+      };
+    });
+
+    expect(layout.viewport).toEqual({ width: 760, height: 430 });
+    expect(layout.bodyScrollWidth).toBeLessThanOrEqual(760);
+    expect(layout.left).not.toBeNull();
+    expect(layout.viewer).not.toBeNull();
+    expect(layout.sticky).not.toBeNull();
+    expect(layout.stickyStyle).toEqual(expect.objectContaining({
+      position: "relative",
+      overflowY: "auto",
+    }));
+    expect(layout.left!.top).toBeGreaterThanOrEqual(layout.viewer!.bottom - 1);
+    expect(layout.left!.height).toBeLessThanOrEqual(Math.ceil(430 * 0.38) + 2);
   } finally {
     if (app) await app.close().catch(() => undefined);
     rmSync(profileDir, { recursive: true, force: true });
