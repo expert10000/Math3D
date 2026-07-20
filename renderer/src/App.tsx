@@ -49657,15 +49657,20 @@ case "mobius":
     borderBottom: "1px solid #dbe4f0",
   };
   const responsiveDrawerBarStyle: React.CSSProperties = {
-    order: 4,
-    position: "sticky",
-    bottom: 0,
-    zIndex: 8,
-    display: "flex",
-    justifyContent: "center",
-    gap: 8,
-    padding: "8px 6px",
-    background: "linear-gradient(180deg, rgba(248, 251, 255, 0.68), #f8fbff 42%)",
+    position: "fixed",
+    left: 12,
+    right: 12,
+    bottom: showStatusBar ? 54 : 10,
+    zIndex: 2500,
+    display: "grid",
+    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+    gap: 4,
+    padding: "7px 6px",
+    border: "1px solid #dbe4f0",
+    borderRadius: 12,
+    background: "rgba(248, 251, 255, 0.96)",
+    boxShadow: "0 -8px 18px rgba(15, 23, 42, 0.08)",
+    backdropFilter: "blur(10px)",
   };
   const showSurfaceSideCompanions =
     (showGaussMap || (surfaceViewerKind === "complex" && complexMapShowSphere)) &&
@@ -49673,16 +49678,20 @@ case "mobius":
     !isSurfaceStackedLayout &&
     !cleanScreenshotSurfaceActive;
   const drawerButtonStyle = (active: boolean): React.CSSProperties => ({
-    borderRadius: 999,
+    borderRadius: 8,
     border: "1px solid " + (active ? "#0a66c2" : "#cbd5e1"),
     background: active ? "#dbeafe" : "#fff",
     color: active ? "#0f2a4a" : "#334155",
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: active ? 800 : 700,
-    padding: "7px 12px",
-    minWidth: 88,
+    padding: "6px 4px",
+    minWidth: 0,
+    minHeight: 34,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
     cursor: "pointer",
-    boxShadow: active ? "0 5px 14px rgba(10,102,194,0.18)" : "0 2px 8px rgba(15,23,42,0.08)",
+    boxShadow: active ? "0 5px 14px rgba(10,102,194,0.18)" : "none",
   });
   const closeDrawerButtonStyle: React.CSSProperties = {
     borderRadius: 999,
@@ -52962,7 +52971,15 @@ case "mobius":
               />
             )}
             {surfacePanelsAsDrawers && (
-              <div style={responsiveDrawerBarStyle}>
+              <nav aria-label="Surface mobile panels" data-testid="surface-bottom-nav" style={responsiveDrawerBarStyle}>
+                <button
+                  type="button"
+                  onClick={() => setSurfaceDrawerPanel(null)}
+                  aria-pressed={!surfaceDrawerOpen && !commandPaletteOpen && !preferencesOpen}
+                  style={drawerButtonStyle(!surfaceDrawerOpen && !commandPaletteOpen && !preferencesOpen)}
+                >
+                  Viewer
+                </button>
                 <button
                   type="button"
                   onClick={() => setSurfaceDrawerPanel((panel) => (panel === "left" ? null : "left"))}
@@ -52971,17 +52988,40 @@ case "mobius":
                 >
                   Scene
                 </button>
-                {showSurfacesRightPanel && (
-                  <button
-                    type="button"
-                    onClick={() => setSurfaceDrawerPanel((panel) => (panel === "right" ? null : "right"))}
-                    aria-pressed={surfaceDrawerOpen === "right"}
-                    style={drawerButtonStyle(surfaceDrawerOpen === "right")}
-                  >
-                    Inspector
-                  </button>
-                )}
-              </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!showRightPanel) setShowRightPanel(true);
+                    setSurfaceDrawerPanel((panel) => (panel === "right" ? null : "right"));
+                  }}
+                  aria-pressed={surfaceDrawerOpen === "right"}
+                  style={drawerButtonStyle(surfaceDrawerOpen === "right")}
+                >
+                  Inspector
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSurfaceDrawerPanel(null);
+                    setCommandPaletteOpen(true);
+                  }}
+                  aria-pressed={commandPaletteOpen}
+                  style={drawerButtonStyle(commandPaletteOpen)}
+                >
+                  Console
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSurfaceDrawerPanel(null);
+                    setPreferencesOpen(true);
+                  }}
+                  aria-pressed={preferencesOpen}
+                  style={drawerButtonStyle(preferencesOpen)}
+                >
+                  Settings
+                </button>
+              </nav>
             )}
             {/* LEFT */}
             <div
@@ -56950,26 +56990,63 @@ case "mobius":
               />
             )}
             {geometryPanelsAsDrawers && (
-              <div style={responsiveDrawerBarStyle}>
+              <nav aria-label="Geometry mobile panels" data-testid="geometry-bottom-nav" style={responsiveDrawerBarStyle}>
+                <button
+                  type="button"
+                  onClick={() => setGeometryDrawerPanel(null)}
+                  aria-pressed={!geometryDrawerOpen && !commandPaletteOpen && !preferencesOpen}
+                  style={drawerButtonStyle(!geometryDrawerOpen && !commandPaletteOpen && !preferencesOpen)}
+                >
+                  Viewer
+                </button>
                 <button
                   type="button"
                   onClick={() => setGeometryDrawerPanel((panel) => (panel === "left" ? null : "left"))}
                   aria-pressed={geometryDrawerOpen === "left"}
                   style={drawerButtonStyle(geometryDrawerOpen === "left")}
                 >
-                  Tools
+                  Geometry
                 </button>
-                {showGeometryRightPanel && (
-                  <button
-                    type="button"
-                    onClick={() => setGeometryDrawerPanel((panel) => (panel === "right" ? null : "right"))}
-                    aria-pressed={geometryDrawerOpen === "right"}
-                    style={drawerButtonStyle(geometryDrawerOpen === "right")}
-                  >
-                    Inspector
-                  </button>
-                )}
-              </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (geometryMode !== "procedural") return;
+                    if (!showRightPanel) setShowRightPanel(true);
+                    setGeometryDrawerPanel((panel) => (panel === "right" ? null : "right"));
+                  }}
+                  disabled={geometryMode !== "procedural"}
+                  aria-pressed={geometryDrawerOpen === "right"}
+                  style={{
+                    ...drawerButtonStyle(geometryDrawerOpen === "right"),
+                    opacity: geometryMode === "procedural" ? 1 : 0.45,
+                    cursor: geometryMode === "procedural" ? "pointer" : "not-allowed",
+                  }}
+                >
+                  Inspector
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGeometryDrawerPanel(null);
+                    setCommandPaletteOpen(true);
+                  }}
+                  aria-pressed={commandPaletteOpen}
+                  style={drawerButtonStyle(commandPaletteOpen)}
+                >
+                  Console
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGeometryDrawerPanel(null);
+                    setPreferencesOpen(true);
+                  }}
+                  aria-pressed={preferencesOpen}
+                  style={drawerButtonStyle(preferencesOpen)}
+                >
+                  Settings
+                </button>
+              </nav>
             )}
             {/* LEFT */}
             <div
