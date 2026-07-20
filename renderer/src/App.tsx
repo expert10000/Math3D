@@ -2280,7 +2280,14 @@ type GeometryConstructRecentTool = {
   label: string;
   classification: string;
 };
-type GeometryConstructInputSlot = { label: string; value: string; ok: boolean };
+type GeometryConstructInputSlotStatus = "waiting" | "selected" | "duplicate" | "invalid" | "incompatible";
+type GeometryConstructInputSlot = {
+  label: string;
+  value: string;
+  ok: boolean;
+  status?: GeometryConstructInputSlotStatus;
+  detail?: string;
+};
 type GeometryConstructPanelPreferences = {
   activeTab: GeometryConstructPanelTab;
   activeCreateFamily: GeometryConstructCreateFamily;
@@ -2316,12 +2323,12 @@ const GEOMETRY_CONSTRUCT_CATEGORY_META: Record<
   GeometryConstructCategory,
   { icon: string; label: string; color: string; background: string; border: string }
 > = {
-  points: { icon: "Pt", label: "Points", color: "#0369a1", background: "#e0f2fe", border: "#7dd3fc" },
-  lines: { icon: "Ln", label: "Lines", color: "#047857", background: "#dcfce7", border: "#86efac" },
-  planes: { icon: "Pl", label: "Planes", color: "#6d28d9", background: "#ede9fe", border: "#c4b5fd" },
-  circles: { icon: "Ci", label: "Circles", color: "#b45309", background: "#fef3c7", border: "#fcd34d" },
-  axes: { icon: "Ax", label: "Axes", color: "#4338ca", background: "#e0e7ff", border: "#a5b4fc" },
-  bounding: { icon: "Bx", label: "Bounding", color: "#be123c", background: "#ffe4e6", border: "#fda4af" },
+  points: { icon: "P.", label: "Points", color: "#0369a1", background: "#e0f2fe", border: "#7dd3fc" },
+  lines: { icon: "L/", label: "Lines", color: "#047857", background: "#dcfce7", border: "#86efac" },
+  planes: { icon: "[]", label: "Planes", color: "#6d28d9", background: "#ede9fe", border: "#c4b5fd" },
+  circles: { icon: "O", label: "Circles", color: "#b45309", background: "#fef3c7", border: "#fcd34d" },
+  axes: { icon: "+", label: "Axes", color: "#4338ca", background: "#e0e7ff", border: "#a5b4fc" },
+  bounding: { icon: "B[]", label: "Bounding", color: "#be123c", background: "#ffe4e6", border: "#fda4af" },
 };
 const GEOMETRY_CONSTRUCT_CLASSIFICATION_META: Record<string, { label: string; color: string; background: string; border: string }> = {
   Basic: { label: "BASIC", color: "#0369a1", background: "#e0f2fe", border: "#7dd3fc" },
@@ -2380,10 +2387,23 @@ const GeometryConstructInputSlotRow: React.FC<{
 }> = ({ input, index, testId, compact = false, active = false, onActivate, onClear }) => {
   const ready = input.ok;
   const interactive = !!onActivate;
+  const status = active ? "next" : input.status ?? (ready ? "selected" : "waiting");
+  const statusMeta =
+    status === "duplicate"
+      ? { label: "Duplicate", border: "#f97316", fill: "#fff7ed", bar: "#f97316", chip: "#9a3412", badgeBg: "#ffedd5" }
+      : status === "invalid"
+        ? { label: "Invalid", border: "#ef4444", fill: "#fef2f2", bar: "#ef4444", chip: "#b42318", badgeBg: "#fee2e2" }
+        : status === "incompatible"
+          ? { label: "Blocked", border: "#dc2626", fill: "#fef2f2", bar: "#dc2626", chip: "#991b1b", badgeBg: "#fee2e2" }
+          : status === "next"
+            ? { label: "Next", border: "#2563eb", fill: "#eff6ff", bar: "#2563eb", chip: "#1d4ed8", badgeBg: "#dbeafe" }
+            : ready
+              ? { label: "Selected", border: "#22c55e", fill: "#f0fdf4", bar: "#22c55e", chip: "#15803d", badgeBg: "#ffffff" }
+              : { label: "Waiting", border: "#f59e0b", fill: "#fffbeb", bar: "#f59e0b", chip: "#b45309", badgeBg: "#fff7ed" };
   return (
     <div
       data-testid={testId}
-      title={`${input.label}: ${input.value}`}
+      title={`${input.label}: ${input.value}${input.detail ? ` (${input.detail})` : ""}`}
       style={{
         display: "grid",
         gridTemplateColumns: compact
@@ -2391,14 +2411,13 @@ const GeometryConstructInputSlotRow: React.FC<{
           : `22px minmax(64px, 0.42fr) minmax(0, 1fr) auto${onClear ? " 22px" : ""}`,
         gap: compact ? "3px 6px" : "4px 8px",
         alignItems: "center",
-        border: `1px solid ${active ? "#2563eb" : ready ? "#86efac" : "#fcd34d"}`,
+        border: `1px solid ${statusMeta.border}`,
         borderRadius: 8,
-        background: ready ? "linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%)" : "linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%)",
-        boxShadow: active
-          ? "inset 3px 0 0 #2563eb, 0 0 0 2px rgba(37, 99, 235, 0.14)"
-          : ready
-            ? "inset 3px 0 0 #22c55e"
-            : "inset 3px 0 0 #f59e0b",
+        background: status === "selected" ? "linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%)" : statusMeta.fill,
+        boxShadow:
+          status === "next"
+            ? "inset 3px 0 0 #2563eb, 0 0 0 2px rgba(37, 99, 235, 0.14)"
+            : `inset 3px 0 0 ${statusMeta.bar}`,
         padding: compact ? "4px 6px" : "5px 7px",
         fontSize: compact ? 10.5 : 11,
         minWidth: 0,
@@ -2426,15 +2445,15 @@ const GeometryConstructInputSlotRow: React.FC<{
           borderRadius: 999,
           display: "grid",
           placeItems: "center",
-          border: `1px solid ${active ? "#2563eb" : ready ? "#22c55e" : "#f59e0b"}`,
-          background: active ? "#2563eb" : ready ? "#16a34a" : "#ffffff",
-          color: ready || active ? "#ffffff" : "#b45309",
+          border: `1px solid ${statusMeta.border}`,
+          background: status === "waiting" ? "#ffffff" : statusMeta.bar,
+          color: status === "waiting" ? statusMeta.chip : "#ffffff",
           fontSize: 9.5,
           fontWeight: 900,
           lineHeight: 1,
         }}
       >
-        {ready ? "OK" : index + 1}
+        {ready && status === "selected" ? "OK" : status === "duplicate" ? "D" : status === "invalid" || status === "incompatible" ? "!" : index + 1}
       </span>
       <span style={{ color: "#334155", fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {input.label}
@@ -2446,10 +2465,10 @@ const GeometryConstructInputSlotRow: React.FC<{
       )}
       <span
         style={{
-          border: `1px solid ${active ? "#2563eb" : ready ? "#22c55e" : "#f59e0b"}`,
+          border: `1px solid ${statusMeta.border}`,
           borderRadius: 999,
-          background: active ? "#eff6ff" : ready ? "#ffffff" : "#fff7ed",
-          color: active ? "#1d4ed8" : ready ? "#15803d" : "#b45309",
+          background: statusMeta.badgeBg,
+          color: statusMeta.chip,
           padding: "1px 6px",
           fontSize: 9.5,
           fontWeight: 900,
@@ -2457,7 +2476,7 @@ const GeometryConstructInputSlotRow: React.FC<{
           whiteSpace: "nowrap",
         }}
       >
-        {active ? "Next" : ready ? "Selected" : "Waiting"}
+        {statusMeta.label}
       </span>
       {onClear && (
         <button
@@ -14740,8 +14759,24 @@ const App: React.FC = () => {
       geometryVertexOperationTarget?.vertexIndex != null
         ? `${geometryVertexOperationTarget.objectId} vertex ${geometryVertexOperationTarget.vertexIndex}`
         : "Pick vertex";
-    const sourceA = { label: "A", value: objectLabel(geometryEffectiveMathConstructionSourceAId), ok: !!geometryEffectiveMathConstructionSourceAId };
-    const sourceB = { label: "B", value: objectLabel(geometryEffectiveMathConstructionSourceBId), ok: !!geometryEffectiveMathConstructionSourceBId };
+    const abDuplicate =
+      !!geometryEffectiveMathConstructionSourceAId &&
+      !!geometryEffectiveMathConstructionSourceBId &&
+      geometryEffectiveMathConstructionSourceAId === geometryEffectiveMathConstructionSourceBId;
+    const sourceA = {
+      label: "A",
+      value: objectLabel(geometryEffectiveMathConstructionSourceAId),
+      ok: !!geometryEffectiveMathConstructionSourceAId && !abDuplicate,
+      status: abDuplicate ? "duplicate" as const : undefined,
+      detail: abDuplicate ? "A and B must be different objects." : undefined,
+    };
+    const sourceB = {
+      label: "B",
+      value: objectLabel(geometryEffectiveMathConstructionSourceBId),
+      ok: !!geometryEffectiveMathConstructionSourceBId && !abDuplicate,
+      status: abDuplicate ? "duplicate" as const : undefined,
+      detail: abDuplicate ? "A and B must be different objects." : undefined,
+    };
     switch (geometryPointConstructionTool) {
       case "midpoint":
         return {
@@ -14863,9 +14898,33 @@ const App: React.FC = () => {
       geometrySourceFaceOperationTarget?.faceIndex != null
         ? `${geometrySourceFaceOperationTarget.objectId} face ${geometrySourceFaceOperationTarget.faceIndex}`
         : "Pick face";
-    const sourceA = { label: "A", value: objectLabel(geometryEffectiveMathConstructionSourceAId), ok: !!geometryEffectiveMathConstructionSourceAId };
-    const sourceB = { label: "B", value: objectLabel(geometryEffectiveMathConstructionSourceBId), ok: !!geometryEffectiveMathConstructionSourceBId };
-    const sourceP = { label: "P", value: objectLabel(geometryEffectiveMathConstructionSourcePId), ok: !!geometryEffectiveMathConstructionSourcePId };
+    const selectedObjectSlots = [
+      geometryEffectiveMathConstructionSourceAId,
+      geometryEffectiveMathConstructionSourceBId,
+      geometryEffectiveMathConstructionSourcePId,
+    ].filter((id): id is string => !!id);
+    const objectSlotDuplicate = (id: string | null | undefined) => !!id && selectedObjectSlots.filter((entry) => entry === id).length > 1;
+    const sourceA = {
+      label: "A",
+      value: objectLabel(geometryEffectiveMathConstructionSourceAId),
+      ok: !!geometryEffectiveMathConstructionSourceAId && !objectSlotDuplicate(geometryEffectiveMathConstructionSourceAId),
+      status: objectSlotDuplicate(geometryEffectiveMathConstructionSourceAId) ? "duplicate" as const : undefined,
+      detail: objectSlotDuplicate(geometryEffectiveMathConstructionSourceAId) ? "Object slots must be distinct." : undefined,
+    };
+    const sourceB = {
+      label: "B",
+      value: objectLabel(geometryEffectiveMathConstructionSourceBId),
+      ok: !!geometryEffectiveMathConstructionSourceBId && !objectSlotDuplicate(geometryEffectiveMathConstructionSourceBId),
+      status: objectSlotDuplicate(geometryEffectiveMathConstructionSourceBId) ? "duplicate" as const : undefined,
+      detail: objectSlotDuplicate(geometryEffectiveMathConstructionSourceBId) ? "Object slots must be distinct." : undefined,
+    };
+    const sourceP = {
+      label: "P",
+      value: objectLabel(geometryEffectiveMathConstructionSourcePId),
+      ok: !!geometryEffectiveMathConstructionSourcePId && !objectSlotDuplicate(geometryEffectiveMathConstructionSourcePId),
+      status: objectSlotDuplicate(geometryEffectiveMathConstructionSourcePId) ? "duplicate" as const : undefined,
+      detail: objectSlotDuplicate(geometryEffectiveMathConstructionSourcePId) ? "Object slots must be distinct." : undefined,
+    };
     switch (geometryLineConstructionTool) {
       case "line-through-objects":
         return {
@@ -22366,10 +22425,25 @@ const App: React.FC = () => {
     const edgeTarget = geometryEdgeOperationTarget;
     const planePointInput = (slot: GeometryPlanePointSlot) => {
       const ref = geometryPlanePointSlots[slot];
+      const duplicate =
+        !!ref &&
+        GEOMETRY_PLANE_POINT_SLOT_ORDER.some(
+          (otherSlot) =>
+            otherSlot !== slot &&
+            geometryPlanePointSlots[otherSlot]?.objectId === ref.objectId &&
+            geometryPlanePointSlots[otherSlot]?.vertexIndex === ref.vertexIndex
+        );
+      const invalid = !!ref && !duplicate && geometryPlaneThreePointAnalysis.collinear;
       return {
         label: GEOMETRY_PLANE_POINT_SLOT_LABELS[slot],
         value: ref ? `${ref.objectId} vertex ${ref.vertexIndex}` : "Pick vertex",
-        ok: !!ref,
+        ok: !!ref && !duplicate && !invalid,
+        status: duplicate ? "duplicate" as const : invalid ? "invalid" as const : undefined,
+        detail: duplicate
+          ? "This vertex is already used by another point slot."
+          : invalid
+            ? "The three selected points are collinear."
+            : undefined,
       };
     };
     switch (geometryPlaneConstructionMethod) {
@@ -22410,12 +22484,19 @@ const App: React.FC = () => {
               value: geometryPlaneLinePointAnalysis.point
                 ? `${geometryPlaneLinePointAnalysis.point.objectId} vertex ${geometryPlaneLinePointAnalysis.point.vertexIndex}`
                 : "Pick vertex",
-              ok: !!geometryPlaneLinePointAnalysis.point,
+              ok: !!geometryPlaneLinePointAnalysis.point && !geometryPlaneLinePointAnalysis.pointOnLine,
+              status: geometryPlaneLinePointAnalysis.pointOnLine ? "invalid" as const : undefined,
+              detail: geometryPlaneLinePointAnalysis.pointOnLine ? "Point lies on the selected line." : undefined,
             },
             {
               label: "Distance",
               value: geometryPlaneLinePointAnalysis.distance == null ? "-" : fmt(geometryPlaneLinePointAnalysis.distance),
               ok: geometryPlaneLinePointAnalysis.ready,
+              status:
+                geometryPlaneLinePointAnalysis.point && geometryPlaneLinePointAnalysis.pointOnLine
+                  ? "invalid" as const
+                  : undefined,
+              detail: geometryPlaneLinePointAnalysis.pointOnLine ? "Distance must be non-zero." : undefined,
             },
           ],
         };
@@ -22438,7 +22519,13 @@ const App: React.FC = () => {
           inputs: [
             { label: "Line A", value: linePair?.lineA.name ?? "Need derived line", ok: !!linePair?.lineA },
             { label: "Line B", value: linePair?.lineB.name ?? "Need derived line", ok: !!linePair?.lineB },
-            { label: "Detected relation", value: linePair?.relation ?? "-", ok: !!linePair?.canCreatePlane },
+            {
+              label: "Detected relation",
+              value: linePair?.relation ?? "-",
+              ok: !!linePair?.canCreatePlane,
+              status: linePair && !linePair.canCreatePlane ? "incompatible" as const : undefined,
+              detail: linePair && !linePair.canCreatePlane ? "Choose intersecting or parallel non-coincident lines." : undefined,
+            },
           ],
         };
       case "parallel":
@@ -22491,7 +22578,13 @@ const App: React.FC = () => {
           inputs: [
             { label: "Line A", value: linePair?.lineA.name ?? "Need derived line", ok: !!linePair?.lineA },
             { label: "Line B", value: linePair?.lineB.name ?? "Need derived line", ok: !!linePair?.lineB },
-            { label: "Result offset", value: linePair ? fmt(linePair.distance * 0.5) : "-", ok: !!linePair?.canCreateMidPlane },
+            {
+              label: "Result offset",
+              value: linePair ? fmt(linePair.distance * 0.5) : "-",
+              ok: !!linePair?.canCreateMidPlane,
+              status: linePair && !linePair.canCreateMidPlane ? "incompatible" as const : undefined,
+              detail: linePair && !linePair.canCreateMidPlane ? "Mid plane requires parallel non-coincident lines." : undefined,
+            },
           ],
         };
       case "tangent-plane":
