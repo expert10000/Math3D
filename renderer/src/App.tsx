@@ -53598,7 +53598,7 @@ case "mobius":
                         >
                           <div
                             style={{
-                              position: "absolute",
+                              position: surfacePanelsAsDrawers ? "fixed" : "absolute",
                               top: 8,
                               left: 8,
                               padding: "2px 6px",
@@ -54433,28 +54433,54 @@ case "mobius":
                             onChangeNurbsKnotUText={setNurbsKnotUText}
                             onChangeNurbsKnotVText={setNurbsKnotVText}
                             onChangeNurbsWeightsText={setNurbsWeightsText}
+                            bottomSheet={surfacePanelsAsDrawers}
                           />
                         )}
                         {showSurfaceFormulaEditorLauncher && surfaceFormulaEditorOpen && (
                           <div
+                            data-testid="surface-formula-editor-sheet"
                             ref={surfaceFormulaEditorPanelRef}
                             style={{
                               position: "absolute",
-                              top: 0,
-                              right: 0,
-                              bottom: 0,
-                              zIndex: 2500,
+                              top: surfacePanelsAsDrawers ? "auto" : 0,
+                              right: surfacePanelsAsDrawers ? 8 : 0,
+                              bottom: surfacePanelsAsDrawers ? 8 : 0,
+                              left: surfacePanelsAsDrawers ? 8 : undefined,
+                              zIndex: surfacePanelsAsDrawers ? 2550 : 2500,
                               isolation: "isolate",
-                              width: surfaceFormulaEditorCollapsed ? 56 : "min(420px, calc(100% - 12px))",
+                              width: surfacePanelsAsDrawers
+                                ? "auto"
+                                : surfaceFormulaEditorCollapsed
+                                  ? 56
+                                  : "min(420px, calc(100% - 12px))",
+                              height: surfacePanelsAsDrawers
+                                ? surfaceFormulaEditorCollapsed
+                                  ? "auto"
+                                  : "min(72%, calc(100% - 18px))"
+                                : undefined,
+                              maxHeight: surfacePanelsAsDrawers ? "calc(100% - 18px)" : undefined,
                               borderLeft:
-                                surfaceWorkflowFlashStepId === "equation" || surfaceWorkflowFlashStepId === "parse"
+                                surfacePanelsAsDrawers
+                                  ? undefined
+                                  : surfaceWorkflowFlashStepId === "equation" || surfaceWorkflowFlashStepId === "parse"
+                                    ? "2px solid #60a5fa"
+                                    : "1px solid #d3dce8",
+                              borderTop:
+                                surfacePanelsAsDrawers && (surfaceWorkflowFlashStepId === "equation" || surfaceWorkflowFlashStepId === "parse")
                                   ? "2px solid #60a5fa"
-                                  : "1px solid #d3dce8",
+                                  : surfacePanelsAsDrawers
+                                    ? "1px solid #d3dce8"
+                                    : undefined,
+                              borderRight: surfacePanelsAsDrawers ? "1px solid #d3dce8" : undefined,
+                              borderBottom: surfacePanelsAsDrawers ? "1px solid #d3dce8" : undefined,
+                              borderRadius: surfacePanelsAsDrawers ? "14px 14px 10px 10px" : undefined,
                               background:
                                 surfaceWorkflowFlashStepId === "equation" || surfaceWorkflowFlashStepId === "parse"
                                   ? "linear-gradient(180deg, rgba(236,246,255,0.98) 0%, rgba(248,252,255,0.96) 100%)"
                                   : "rgba(255,255,255,0.97)",
-                              boxShadow: "-8px 0 22px rgba(15,23,42,0.14)",
+                              boxShadow: surfacePanelsAsDrawers
+                                ? "0 -12px 28px rgba(15,23,42,0.2)"
+                                : "-8px 0 22px rgba(15,23,42,0.14)",
                               padding: 10,
                               boxSizing: "border-box",
                               display: "grid",
@@ -75095,7 +75121,7 @@ const RotationalSplineOverlay: React.FC<RotationalSplineOverlayProps> = ({
   return (
     <div
       style={{
-        position: "absolute",
+        position: bottomSheet ? "fixed" : "absolute",
         top: 12,
         right: 12,
         width: "min(360px, calc(100% - 24px))",
@@ -75201,6 +75227,7 @@ type ParamSurfaceOverlayDialogProps = {
   onChangeNurbsKnotUText: (value: string) => void;
   onChangeNurbsKnotVText: (value: string) => void;
   onChangeNurbsWeightsText: (value: string) => void;
+  bottomSheet?: boolean;
 };
 
 const ParamSurfaceOverlayDialog: React.FC<ParamSurfaceOverlayDialogProps> = ({
@@ -75247,6 +75274,7 @@ const ParamSurfaceOverlayDialog: React.FC<ParamSurfaceOverlayDialogProps> = ({
   onChangeNurbsKnotUText,
   onChangeNurbsKnotVText,
   onChangeNurbsWeightsText,
+  bottomSheet = false,
 }) => {
   if (!open) return null;
   const rotationalDefaults = getDefaultRotationalProfileExpressions(paramId);
@@ -75263,14 +75291,14 @@ const ParamSurfaceOverlayDialog: React.FC<ParamSurfaceOverlayDialogProps> = ({
   return (
     <div
       style={{
-        position: "absolute",
+        position: bottomSheet ? "fixed" : "absolute",
         inset: 0,
-        zIndex: 7,
+        zIndex: bottomSheet ? 2560 : 7,
         display: "flex",
-        alignItems: "center",
+        alignItems: bottomSheet ? "flex-end" : "center",
         justifyContent: "center",
         background: "rgba(15, 23, 42, 0.28)",
-        padding: 12,
+        padding: bottomSheet ? "12px 8px 8px" : 12,
         boxSizing: "border-box",
       }}
       onClick={onClose}
@@ -75279,15 +75307,16 @@ const ParamSurfaceOverlayDialog: React.FC<ParamSurfaceOverlayDialogProps> = ({
         role="dialog"
         aria-modal="true"
         aria-label="Surface parameter overlay"
+        data-testid={bottomSheet ? "surface-params-bottom-sheet" : "surface-params-dialog"}
         style={{
-          width: "min(80%, 1120px)",
-          height: "80%",
-          maxWidth: "calc(100% - 24px)",
-          maxHeight: "calc(100% - 24px)",
-          borderRadius: 12,
+          width: bottomSheet ? "100%" : "min(80%, 1120px)",
+          height: bottomSheet ? "min(74%, calc(100% - 18px))" : "80%",
+          maxWidth: bottomSheet ? "720px" : "calc(100% - 24px)",
+          maxHeight: bottomSheet ? "calc(100% - 18px)" : "calc(100% - 24px)",
+          borderRadius: bottomSheet ? "16px 16px 10px 10px" : 12,
           border: "1px solid #dbe4f0",
           background: "rgba(255, 255, 255, 0.98)",
-          boxShadow: "0 18px 40px rgba(15, 23, 42, 0.28)",
+          boxShadow: bottomSheet ? "0 -14px 34px rgba(15, 23, 42, 0.28)" : "0 18px 40px rgba(15, 23, 42, 0.28)",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -75306,6 +75335,21 @@ const ParamSurfaceOverlayDialog: React.FC<ParamSurfaceOverlayDialogProps> = ({
           }}
         >
           <div style={{ fontSize: 13, fontWeight: 700 }}>Surface parameter overlay</div>
+          {bottomSheet && (
+            <div
+              aria-hidden
+              style={{
+                position: "absolute",
+                top: 6,
+                left: "50%",
+                width: 42,
+                height: 4,
+                borderRadius: 999,
+                background: "#cbd5e1",
+                transform: "translateX(-50%)",
+              }}
+            />
+          )}
           <button type="button" onClick={onClose} style={{ padding: "4px 10px" }}>
             Close
           </button>
