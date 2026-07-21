@@ -50426,18 +50426,19 @@ case "mobius":
           : undefined;
   const topNavBarStyle: React.CSSProperties = {
     border: "1px solid #dbe4f0",
-    borderRadius: 10,
+    borderRadius: isPhoneLandscapeLayout ? 8 : 10,
     background: "#f8fbff",
-    paddingTop: 5,
-    paddingRight: 8,
-    paddingBottom: 5,
-    paddingLeft: 8,
+    paddingTop: isPhoneLandscapeLayout ? 3 : 5,
+    paddingRight: isPhoneLandscapeLayout ? 6 : 8,
+    paddingBottom: isPhoneLandscapeLayout ? 3 : 5,
+    paddingLeft: isPhoneLandscapeLayout ? 6 : 8,
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    columnGap: 16,
-    rowGap: 6,
-    flexWrap: "wrap",
+    columnGap: isPhoneLandscapeLayout ? 8 : 16,
+    rowGap: isPhoneLandscapeLayout ? 3 : 6,
+    flexWrap: isPhoneLandscapeLayout ? "nowrap" : "wrap",
+    overflow: isPhoneLandscapeLayout ? "hidden" : undefined,
   };
   const topNavContextBarStyle: React.CSSProperties = {
     border: "1px solid #dbe4f0",
@@ -50452,20 +50453,22 @@ case "mobius":
   const topNavSegmentStyle: React.CSSProperties = {
     display: "inline-flex",
     alignItems: "center",
-    gap: 3,
-    padding: 2,
+    gap: isPhoneLandscapeLayout ? 2 : 3,
+    padding: isPhoneLandscapeLayout ? 1 : 2,
     borderRadius: 999,
     border: "1px solid #d1d9e5",
     background: "#fff",
-    flexWrap: "wrap",
+    flexWrap: isPhoneLandscapeLayout ? "nowrap" : "wrap",
+    minWidth: 0,
+    overflow: isPhoneLandscapeLayout ? "hidden" : undefined,
   };
   const topNavButtonStyle = (active: boolean): React.CSSProperties => ({
-    padding: "4px 9px",
+    padding: isPhoneLandscapeLayout ? "3px 7px" : "4px 9px",
     borderRadius: 999,
     border: "1px solid " + (active ? "#0a66c2" : "#d1d5db"),
     background: active ? "#dbeafe" : "#fff",
     color: active ? "#0f2a4a" : "var(--text)",
-    fontSize: 10,
+    fontSize: isPhoneLandscapeLayout ? 9.5 : 10,
     fontWeight: active ? 700 : 600,
     cursor: "pointer",
     boxShadow: active ? "0 2px 6px rgba(10,102,194,0.16)" : "none",
@@ -50473,8 +50476,8 @@ case "mobius":
   });
   const workspaceNavButtonStyle = (enabled: boolean): React.CSSProperties => ({
     ...topNavButtonStyle(false),
-    minWidth: 30,
-    padding: "4px 8px",
+    minWidth: isPhoneLandscapeLayout ? 24 : 30,
+    padding: isPhoneLandscapeLayout ? "3px 6px" : "4px 8px",
     fontWeight: 700,
     opacity: enabled ? 1 : 0.45,
     cursor: enabled ? "pointer" : "not-allowed",
@@ -50554,7 +50557,8 @@ case "mobius":
     margin: 0,
     fontWeight: 820,
     letterSpacing: "0.06em",
-    paddingRight: 8,
+    paddingRight: isPhoneLandscapeLayout ? 3 : 8,
+    fontSize: isPhoneLandscapeLayout ? 16 : styles.h1.fontSize,
   };
   const topNavContextLabelStyle: React.CSSProperties = {
     fontSize: 10,
@@ -51301,10 +51305,18 @@ case "mobius":
         style={
           isSurfacePreviewMode
             ? { ...styles.header, padding: "4px 8px", margin: "4px 8px 0" }
+            : isPhoneLandscapeLayout
+              ? { ...styles.header, padding: "4px 8px", margin: "4px 8px 0" }
             : styles.header
         }
       >
-        <div style={{ display: "grid", gap: isSurfacePreviewMode ? 6 : 7, marginBottom: isSurfacePreviewMode ? 2 : 10 }}>
+        <div
+          style={{
+            display: "grid",
+            gap: isSurfacePreviewMode ? 6 : isPhoneLandscapeLayout ? 2 : 7,
+            marginBottom: isSurfacePreviewMode ? 2 : isPhoneLandscapeLayout ? 2 : 10,
+          }}
+        >
           {isSurfacePreviewMode ? (
             <div style={{ display: "grid", gap: 2 }}>
               <h1 style={{ ...styles.h1, margin: 0 }}>MATH3D</h1>
@@ -51315,7 +51327,16 @@ case "mobius":
           ) : (
             <>
               <div style={topNavBarStyle}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0, paddingRight: 16 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: isPhoneLandscapeLayout ? 5 : 10,
+                    flexWrap: isPhoneLandscapeLayout ? "nowrap" : "wrap",
+                    minWidth: 0,
+                    paddingRight: isPhoneLandscapeLayout ? 0 : 16,
+                  }}
+                >
                   <h1 style={topNavBrandStyle}>MATH3D</h1>
                   <div style={topNavSegmentStyle}>
                     <button
@@ -51365,7 +51386,7 @@ case "mobius":
                 </div>
                 <div
                   style={{
-                    display: "flex",
+                    display: isPhoneLandscapeLayout ? "none" : "flex",
                     alignItems: "center",
                     justifyContent: "flex-end",
                     gap: 6,
@@ -51976,14 +51997,14 @@ case "mobius":
                   </div>
                 </div>
               )}
-              <div style={topNavContextLabelStyle}>
+              <div style={{ ...topNavContextLabelStyle, display: isPhoneLandscapeLayout ? "none" : undefined }}>
                 {headerContextLabel}
               </div>
             </>
           )}
         </div>
 
-        {!isSurfacePreviewMode && <div style={styles.controls}>
+        {!isSurfacePreviewMode && !isPhoneViewerPriorityLayout && <div style={styles.controls}>
           {(mode === "mobius" || (mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "complex")) && (
             <div
               style={{
@@ -67809,6 +67830,55 @@ case "mobius":
                     ...viewerTouchContainmentStyle,
                   }}
                 >
+                  {isPhoneLandscapeLayout && geometryMode === "procedural" && !geometryPanelsAsDrawers && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 10,
+                        right: 10,
+                        zIndex: 18,
+                        display: "grid",
+                        gap: 6,
+                        justifyItems: "end",
+                        maxWidth: "calc(100% - 20px)",
+                        pointerEvents: "none",
+                      }}
+                    >
+                      <div style={floatingToolbarRowStyle}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGeometryMode("procedural");
+                            setGeometryProceduralPanelTab("construct");
+                          }}
+                          aria-pressed={geometryProceduralPanelTab === "construct"}
+                          style={floatingToolButtonStyle(geometryProceduralPanelTab === "construct")}
+                          title="Open construct tools"
+                        >
+                          Construct
+                        </button>
+                      </div>
+                      {geometryProceduralPanelTab === "construct" && (
+                        <div style={floatingToolbarRowStyle}>
+                          {GEOMETRY_CONSTRUCT_PANEL_TABS.map((tab) => {
+                            const selected = geometryConstructPanelTab === tab.id;
+                            return (
+                              <button
+                                key={`geometry-landscape-construct-panel-tab-${tab.id}`}
+                                type="button"
+                                data-testid={`geometry-construct-panel-tab-${tab.id}`}
+                                onClick={() => setGeometryConstructPanelTab(tab.id)}
+                                aria-pressed={selected}
+                                style={floatingToolButtonStyle(selected)}
+                              >
+                                {tab.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {geometryPanelsAsDrawers && (
                     <div data-testid="geometry-floating-toolbar" style={floatingToolbarStyle}>
                       <div style={floatingToolbarRowStyle}>
