@@ -49617,7 +49617,7 @@ case "mobius":
   const surfacePanelsAsDrawers =
     mode === "surfaces" && isSurfaceStackedLayout && !surfacePreviewFocusMode && !cleanScreenshotSurfaceActive;
   const geometryPanelsAsDrawers =
-    mode === "geometry" && isGeometryStackedLayout && !showGeometryFullWorkbookWorkspace;
+    mode === "geometry" && isGeometryStackedLayout && !isPhoneLandscapeLayout && !showGeometryFullWorkbookWorkspace;
   const surfaceDrawerOpen = surfacePanelsAsDrawers ? surfaceDrawerPanel : null;
   const geometryDrawerOpen = geometryPanelsAsDrawers ? geometryDrawerPanel : null;
   const showSurfacesRightPanel =
@@ -49625,7 +49625,7 @@ case "mobius":
     (mode === "surfaces" ? (isPresentDisplayMode ? true : showRightPanel) : showRightPanel) &&
     !cleanScreenshotSurfaceActive;
   const showGeometryRightPanel =
-    mode === "geometry" && geometryMode === "procedural" && showRightPanel && !isPresentDisplayMode;
+    mode === "geometry" && geometryMode === "procedural" && showRightPanel && !isPresentDisplayMode && !isPhoneLandscapeLayout;
   const surfaceLeftPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(leftWidth, 280) : leftWidth;
   const surfaceRightPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(rightWidth, 280) : rightWidth;
   const geometryRightPanelWidth = Math.min(rightWidth, geometrySidePanelWidth);
@@ -52558,18 +52558,18 @@ case "mobius":
                   })}
                 </div>
               )}
-              {showGeometryWorkflowStrip && !isPhoneLandscapeLayout && (
+              {showGeometryWorkflowStrip && (
                 <div
                   style={{
                     ...styles.group,
                     ...styles.groupWide,
                     display: "flex",
                     alignItems: "center",
-                    gap: 8,
+                    gap: isPhoneLandscapeLayout ? 5 : 8,
                     flexWrap: "wrap",
                     border: "1px solid #cbd5e1",
                     borderRadius: 10,
-                    padding: "6px 8px",
+                    padding: isPhoneLandscapeLayout ? "4px 6px" : "6px 8px",
                     background: "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
                   }}
                 >
@@ -52581,6 +52581,7 @@ case "mobius":
                           fontWeight: 800,
                           color: "#1f2937",
                           marginRight: 4,
+                          display: isPhoneLandscapeLayout ? "none" : undefined,
                           flex: "0 0 auto",
                         }}
                       >
@@ -52619,7 +52620,8 @@ case "mobius":
                       fontWeight: 800,
                       color: "#1f2937",
                       marginRight: 4,
-                      minWidth: 96,
+                      minWidth: isPhoneLandscapeLayout ? undefined : 96,
+                      display: isPhoneLandscapeLayout ? "none" : undefined,
                       flex: "0 0 auto",
                     }}
                   >
@@ -52636,7 +52638,8 @@ case "mobius":
                         aria-pressed={active}
                         style={{
                           ...pill(active),
-                          fontSize: 11,
+                          fontSize: isPhoneLandscapeLayout ? 10 : 11,
+                          padding: isPhoneLandscapeLayout ? "3px 8px" : undefined,
                           border: "1px solid " + (active ? "#0a66c2" : "#99a1ac"),
                           background: active ? "linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%)" : "#f8fafc",
                           color: active ? "#1e3a8a" : "#334155",

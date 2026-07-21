@@ -175,6 +175,21 @@ async function checkGeometryLayout(page, viewport) {
     return;
   }
 
+  if (viewport.name === "phone-landscape") {
+    await expectHidden(page.locator('[data-testid="geometry-bottom-nav"]'), "geometry bottom nav");
+    await expectHidden(page.locator('[data-testid="geometry-floating-toolbar"]'), "geometry floating toolbar");
+    await page.getByRole("button", { name: /^Construct$/ }).click();
+    await expectBoxInViewport(page.locator('[data-testid="geometry-left-panel"]'), "geometry stacked tools panel", viewport, {
+      insideViewport: false,
+      minHeight: 24,
+    });
+    await expectBoxInViewport(page.locator('[data-testid="geometry-viewer-panel"]'), "geometry stacked viewer panel", viewport, {
+      insideViewport: false,
+      minHeight: 120,
+    });
+    return;
+  }
+
   await expectBoxInViewport(page.locator('[data-testid="geometry-bottom-nav"]'), "geometry bottom nav", viewport, { minHeight: 34 });
   await expectBoxInViewport(page.locator('[data-testid="geometry-floating-toolbar"]'), "geometry floating toolbar", viewport, {
     minHeight: 34,
