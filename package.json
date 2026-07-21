@@ -45,6 +45,7 @@
     "ensure:electron": "node scripts/ensure-electron-install.mjs",
     "test:app:startup:smoke": "node scripts/startup-functional-smoke.mjs",
     "test:app:geometry:smoke": "node scripts/geometry-functional-smoke.mjs",
+    "test:app:responsive:smoke": "node -e \"process.argv.splice(1,0,'responsive-layout-smoke'); import('./scripts/responsive-layout-smoke.mjs')\"",
     "test:app:e2e": "playwright test",
     "test:app:e2e:thumbnails": "set MATH3D_RUN_THUMBNAIL_CAPTURE_E2E=1&& playwright test tests/e2e/gallery-thumbnail-capture.spec.ts",
     "test:app:e2e:visual": "playwright test tests/e2e/gallery-visual.spec.ts",

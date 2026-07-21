@@ -49617,7 +49617,7 @@ case "mobius":
   const surfacePanelsAsDrawers =
     mode === "surfaces" && isSurfaceStackedLayout && !surfacePreviewFocusMode && !cleanScreenshotSurfaceActive;
   const geometryPanelsAsDrawers =
-    mode === "geometry" && isGeometryStackedLayout && !isPhoneLandscapeLayout && !showGeometryFullWorkbookWorkspace;
+    mode === "geometry" && isGeometryStackedLayout && !showGeometryFullWorkbookWorkspace;
   const surfaceDrawerOpen = surfacePanelsAsDrawers ? surfaceDrawerPanel : null;
   const geometryDrawerOpen = geometryPanelsAsDrawers ? geometryDrawerPanel : null;
   const showSurfacesRightPanel =
@@ -49660,13 +49660,16 @@ case "mobius":
   };
   const responsiveDrawerBarStyle: React.CSSProperties = {
     position: "fixed",
-    left: 12,
-    right: 12,
+    left: isPhoneLandscapeLayout ? "auto" : 12,
+    right: isPhoneLandscapeLayout ? 10 : 12,
+    top: isPhoneLandscapeLayout ? 96 : undefined,
     bottom: showStatusBar ? 54 : 10,
     zIndex: 2500,
     display: "grid",
-    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+    gridTemplateColumns: isPhoneLandscapeLayout ? "1fr" : "repeat(5, minmax(0, 1fr))",
+    gridTemplateRows: isPhoneLandscapeLayout ? "repeat(5, minmax(0, 1fr))" : undefined,
     gap: 4,
+    width: isPhoneLandscapeLayout ? 94 : undefined,
     padding: "7px 6px",
     border: "1px solid #dbe4f0",
     borderRadius: 12,
@@ -49674,6 +49677,7 @@ case "mobius":
     boxShadow: "0 -8px 18px rgba(15, 23, 42, 0.08)",
     backdropFilter: "blur(10px)",
   };
+  const responsiveBottomSheetOffset = showStatusBar ? 112 : 68;
   const showSurfaceSideCompanions =
     (showGaussMap || (surfaceViewerKind === "complex" && complexMapShowSphere)) &&
     !(mode === "surfaces" && isPresentDisplayMode) &&
@@ -49705,16 +49709,21 @@ case "mobius":
     padding: "4px 9px",
     cursor: "pointer",
   };
+  const viewerTouchContainmentStyle: React.CSSProperties = {
+    touchAction: "none",
+    overscrollBehavior: "contain",
+    userSelect: "none",
+  };
   const floatingToolbarStyle: React.CSSProperties = {
     position: "absolute",
     top: 10,
-    right: 10,
+    right: isPhoneLandscapeLayout ? 112 : 10,
     zIndex: 18,
     display: "grid",
     gap: 6,
     justifyItems: "end",
     maxWidth: "calc(100% - 20px)",
-    pointerEvents: "auto",
+    pointerEvents: "none",
   };
   const floatingToolbarRowStyle: React.CSSProperties = {
     display: "flex",
@@ -49728,6 +49737,7 @@ case "mobius":
     background: "rgba(255, 255, 255, 0.92)",
     boxShadow: "0 8px 18px rgba(15, 23, 42, 0.16)",
     backdropFilter: "blur(10px)",
+    pointerEvents: "auto",
   };
   const floatingToolButtonStyle = (active = false): React.CSSProperties => ({
     minWidth: 42,
@@ -51334,6 +51344,7 @@ case "mobius":
                         <button
                           key={`mode-${entry.id}`}
                           type="button"
+                          data-testid={`workspace-nav-${entry.id}`}
                           onClick={entry.onSelect}
                           disabled={disabled}
                           aria-pressed={active}
@@ -52436,7 +52447,7 @@ case "mobius":
                 style={{
                   ...styles.group,
                   ...styles.groupWide,
-                  display: "flex",
+                  display: isPhoneLandscapeLayout ? "none" : "flex",
                   alignItems: "center",
                   gap: 8,
                   flexWrap: "wrap",
@@ -52501,7 +52512,7 @@ case "mobius":
                   {geometryViewerControlsOpen ? "Hide viewer bar" : "Show viewer bar"}
                 </button>
               </div>
-              {showGeometryWorkflowStrip && (
+              {showGeometryWorkflowStrip && !isPhoneLandscapeLayout && (
                 <div
                   style={{
                     ...styles.group,
@@ -52547,7 +52558,7 @@ case "mobius":
                   })}
                 </div>
               )}
-              {showGeometryWorkflowStrip && (
+              {showGeometryWorkflowStrip && !isPhoneLandscapeLayout && (
                 <div
                   style={{
                     ...styles.group,
@@ -53611,6 +53622,7 @@ case "mobius":
                   background: cleanScreenshotSceneContainerBackground,
                   padding: compareLayoutEnabled ? 10 : 0,
                   boxSizing: "border-box",
+                  ...viewerTouchContainmentStyle,
                 }}
               >
                 {datasetKind === "volume" ? (
@@ -54594,10 +54606,10 @@ case "mobius":
                             data-testid="surface-formula-editor-sheet"
                             ref={surfaceFormulaEditorPanelRef}
                             style={{
-                              position: "absolute",
+                              position: surfacePanelsAsDrawers ? "fixed" : "absolute",
                               top: surfacePanelsAsDrawers ? "auto" : 0,
                               right: surfacePanelsAsDrawers ? 8 : 0,
-                              bottom: surfacePanelsAsDrawers ? 8 : 0,
+                              bottom: surfacePanelsAsDrawers ? responsiveBottomSheetOffset : 0,
                               left: surfacePanelsAsDrawers ? 8 : undefined,
                               zIndex: surfacePanelsAsDrawers ? 2550 : 2500,
                               isolation: "isolate",
@@ -54609,9 +54621,11 @@ case "mobius":
                               height: surfacePanelsAsDrawers
                                 ? surfaceFormulaEditorCollapsed
                                   ? "auto"
-                                  : "min(72%, calc(100% - 18px))"
+                                  : `min(72dvh, calc(100dvh - ${responsiveBottomSheetOffset + 18}px))`
                                 : undefined,
-                              maxHeight: surfacePanelsAsDrawers ? "calc(100% - 18px)" : undefined,
+                              maxHeight: surfacePanelsAsDrawers
+                                ? `calc(100dvh - ${responsiveBottomSheetOffset + 18}px)`
+                                : undefined,
                               borderLeft:
                                 surfacePanelsAsDrawers
                                   ? undefined
@@ -56137,6 +56151,7 @@ case "mobius":
                   background: "#f8f9fb",
                   padding: 10,
                   boxSizing: "border-box",
+                  ...viewerTouchContainmentStyle,
                 }}
               >
                 <div
@@ -56463,7 +56478,7 @@ case "mobius":
             <div
               data-testid="main-viewer"
               ref={topologySceneCaptureRef}
-              style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}
+              style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", ...viewerTouchContainmentStyle }}
             >
               <TopologyScreen />
             </div>
@@ -56892,7 +56907,7 @@ case "mobius":
                       {geometryViewerControlsOpen ? "Hide controls" : "Show controls"}
                     </button>
                   </div>
-                  {geometryViewerControlsOpen ? (
+                  {geometryViewerControlsOpen && !isPhoneLandscapeLayout ? (
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <details open style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: "4px 6px", background: "#f8fbff" }}>
                         <summary style={{ fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Render</summary>
@@ -67290,7 +67305,7 @@ case "mobius":
                 order: isGeometryStackedLayout ? 1 : 0,
               }}
             >
-              {geometryViewerControlsOpen && !geometryPanelsAsDrawers && (
+              {geometryViewerControlsOpen && !geometryPanelsAsDrawers && !isPhoneLandscapeLayout && (
               <div
                 style={{
                   borderBottom: "1px solid #9fb0c7",
@@ -67785,6 +67800,7 @@ case "mobius":
                     overflow: "hidden",
                     background: "#f8fbff",
                     position: "relative",
+                    ...viewerTouchContainmentStyle,
                   }}
                 >
                   {geometryPanelsAsDrawers && (
@@ -68892,6 +68908,7 @@ case "mobius":
                 {showGeometryRightPanel && !isGeometryStackedLayout && <div onMouseDown={startDragRight} style={splitterStyle} />}
                 {showGeometryRightPanel && (
                   <div
+                    data-testid="geometry-right-panel"
                     style={{
                       ...styles.panelLeft,
                       width: isGeometryStackedLayout ? "100%" : geometryRightPanelWidth,
