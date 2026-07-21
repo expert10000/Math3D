@@ -49617,7 +49617,7 @@ case "mobius":
   const surfacePanelsAsDrawers =
     mode === "surfaces" && isSurfaceStackedLayout && !surfacePreviewFocusMode && !cleanScreenshotSurfaceActive;
   const geometryPanelsAsDrawers =
-    mode === "geometry" && isGeometryStackedLayout && !showGeometryFullWorkbookWorkspace;
+    mode === "geometry" && isGeometryStackedLayout && !isPhoneLandscapeLayout && !showGeometryFullWorkbookWorkspace;
   const surfaceDrawerOpen = surfacePanelsAsDrawers ? surfaceDrawerPanel : null;
   const geometryDrawerOpen = geometryPanelsAsDrawers ? geometryDrawerPanel : null;
   const showSurfacesRightPanel =
