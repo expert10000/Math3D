@@ -111,10 +111,14 @@ async function clickDrawerButton(page, navTestId, label) {
 
 async function checkSurfaceLayout(page, viewport) {
   writeLog(process.stdout, `[responsive-smoke] ${viewport.name} surfaces`);
-  await expectBoxInViewport(page.locator('[data-testid="main-viewer"]'), "surface viewer", viewport, {
+  const viewerBox = await expectBoxInViewport(page.locator('[data-testid="main-viewer"]'), "surface viewer", viewport, {
     insideViewport: false,
     minHeight: 160,
   });
+  if (viewport.name.startsWith("phone")) {
+    const maxViewerTop = viewport.name === "phone-landscape" ? viewport.height * 0.55 : viewport.height * 0.5;
+    assert(viewerBox.y <= maxViewerTop, `surface viewer starts too low: ${viewerBox.y}`);
+  }
   await expectTouchContained(page, "surface viewer");
 
   if (!viewport.narrow) {
@@ -149,13 +153,16 @@ async function checkSurfaceLayout(page, viewport) {
   await expectBoxInViewport(page.locator('[data-testid="surface-right-panel"]'), "surface inspector drawer", viewport, { minHeight: 180 });
 
   await clickDrawerButton(page, "surface-bottom-nav", "Viewer");
-  await page.locator('[data-testid="surface-family-parametric"]').click();
-  await page.waitForTimeout(350);
-  await page.getByRole("button", { name: /^Open surface params$/ }).click();
-  await expectBoxInViewport(page.locator('[data-testid="surface-params-bottom-sheet"]'), "surface params bottom sheet", viewport, {
-    minHeight: 160,
-  });
-  await page.locator('[data-testid="surface-params-bottom-sheet"]').getByRole("button", { name: /^Close$/ }).first().click();
+  const parametricFamilyButton = page.locator('[data-testid="surface-family-parametric"]');
+  if (await isVisible(parametricFamilyButton)) {
+    await parametricFamilyButton.click();
+    await page.waitForTimeout(350);
+    await page.getByRole("button", { name: /^Open surface params$/ }).click();
+    await expectBoxInViewport(page.locator('[data-testid="surface-params-bottom-sheet"]'), "surface params bottom sheet", viewport, {
+      minHeight: 160,
+    });
+    await page.locator('[data-testid="surface-params-bottom-sheet"]').getByRole("button", { name: /^Close$/ }).first().click();
+  }
 }
 
 async function checkGeometryLayout(page, viewport) {
@@ -163,10 +170,14 @@ async function checkGeometryLayout(page, viewport) {
   await page.locator('[data-testid="workspace-nav-geometry"]').evaluate((element) => element.click());
   await waitForStableLayout(page);
 
-  await expectBoxInViewport(page.locator('[data-testid="main-viewer"]'), "geometry viewer", viewport, {
+  const viewerBox = await expectBoxInViewport(page.locator('[data-testid="main-viewer"]'), "geometry viewer", viewport, {
     insideViewport: false,
     minHeight: 160,
   });
+  if (viewport.name.startsWith("phone")) {
+    const maxViewerTop = viewport.name === "phone-landscape" ? viewport.height * 0.55 : viewport.height * 0.5;
+    assert(viewerBox.y <= maxViewerTop, `geometry viewer starts too low: ${viewerBox.y}`);
+  }
   await expectTouchContained(page, "geometry viewer");
 
   if (!viewport.narrow) {

@@ -48379,6 +48379,8 @@ case "mobius":
   const cleanScreenshotSceneContainerBackground =
     cleanScreenshotSurfaceActive && cleanScreenshotBackground === "transparent" ? "transparent" : "#f8f9fb";
   const isSurfacePreviewMode = mode === "surfaces" && surfacePreviewFocusMode;
+  const isPhoneViewerPriorityLayout = responsiveLayout.mobile || responsiveLayout.phoneLandscape;
+  const isPhonePortraitViewerPriorityLayout = responsiveLayout.mobile && !responsiveLayout.phoneLandscape;
   const surfacesBrowseModeActive =
     (surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3" || surfacesLayoutVariant === "layout4") &&
     surfacesPanelState === "browse";
@@ -48387,6 +48389,7 @@ case "mobius":
     isSurfaceDatasetKind(datasetKind) &&
     !isPresentDisplayMode &&
     !cleanScreenshotSurfaceActive &&
+    !isPhoneViewerPriorityLayout &&
     !surfacesBrowseModeActive;
   const showSurfaceLocalToolStrip = showSurfaceWorkflowStrip && !isSurfacePreviewMode;
   const showGeometryWorkflowStrip = mode === "geometry" && !isPresentDisplayMode;
@@ -51647,7 +51650,7 @@ case "mobius":
                   )}
                 </div>
               </div>
-              {mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind !== "complex" && (
+              {mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind !== "complex" && !isPhoneViewerPriorityLayout && (
                 <div style={topNavContextBarStyle}>
                   {headerIsSurface && surfaceViewerKind === "mesh" ? (
                     <>
@@ -51813,7 +51816,7 @@ case "mobius":
                   )}
                 </div>
               )}
-              {mode === "surfaces" && surfaceViewerKind !== "complex" && (
+              {mode === "surfaces" && surfaceViewerKind !== "complex" && !isPhoneViewerPriorityLayout && (
                 <div style={topNavContextBarStyle}>
                   <div style={surfacesModeStripWrapStyle}>
                     <div style={surfacesModeGroupStyle("panel")}>
@@ -52447,7 +52450,7 @@ case "mobius":
                 style={{
                   ...styles.group,
                   ...styles.groupWide,
-                  display: isPhoneLandscapeLayout ? "none" : "flex",
+                  display: isPhoneViewerPriorityLayout ? "none" : "flex",
                   alignItems: "center",
                   gap: 8,
                   flexWrap: "wrap",
@@ -52512,7 +52515,7 @@ case "mobius":
                   {geometryViewerControlsOpen ? "Hide viewer bar" : "Show viewer bar"}
                 </button>
               </div>
-              {showGeometryWorkflowStrip && !isPhoneLandscapeLayout && (
+              {showGeometryWorkflowStrip && !isPhoneViewerPriorityLayout && (
                 <div
                   style={{
                     ...styles.group,
@@ -52558,7 +52561,7 @@ case "mobius":
                   })}
                 </div>
               )}
-              {showGeometryWorkflowStrip && (
+              {showGeometryWorkflowStrip && !isPhonePortraitViewerPriorityLayout && (
                 <div
                   style={{
                     ...styles.group,
