@@ -3858,6 +3858,23 @@ type GeometryObjectHistoryStep = {
   changeSummary: string;
   snapshot: GeometryObject | GeometryDatasetMeshObject;
 };
+type GeometryRecentActionHistoryEntry =
+  | {
+      kind: "object";
+      id: string;
+      at: number;
+      label: string;
+      detail: string;
+      step: GeometryObjectHistoryStep;
+    }
+  | {
+      kind: "construction";
+      id: string;
+      at: number;
+      label: string;
+      detail: string;
+      step: GeometryConstructionHistoryEntry;
+    };
 type GeometryTimelineSource = "history" | "variants" | "workbook" | "theorem";
 type GeometryTimelineSpeed = 0.25 | 0.5 | 1 | 2;
 
@@ -10581,6 +10598,26 @@ const App: React.FC = () => {
         .slice(0, 12),
     [geometryObjectHistoryById]
   );
+  const geometryRecentActionHistory = useMemo<GeometryRecentActionHistoryEntry[]>(() => {
+    const objectEntries: GeometryRecentActionHistoryEntry[] = geometryRecentSceneHistory.map((entry) => ({
+      kind: "object",
+      id: `object:${entry.id}`,
+      at: entry.at,
+      label: entry.label,
+      detail: `${entry.objectName} - ${entry.operationType}${entry.operationTarget ? ` - ${entry.operationTarget}` : ""}`,
+      step: entry,
+    }));
+    const constructionEntries: GeometryRecentActionHistoryEntry[] = geometryConstructionHistory.map((entry) => ({
+      kind: "construction",
+      id: `construction:${entry.id}`,
+      at: entry.at,
+      label: entry.planeSummary ? `${entry.action} plane` : entry.action,
+      detail: entry.planeSummary ? `${entry.source} - ${entry.planeSummary.method}` : `${entry.source} - ${entry.result}`,
+      step: entry,
+    }));
+    return [...objectEntries, ...constructionEntries].sort((a, b) => b.at - a.at).slice(0, 12);
+  }, [geometryConstructionHistory, geometryRecentSceneHistory]);
+  const geometryLatestRecentAction = geometryRecentActionHistory[0] ?? null;
   const geometryHistoryStepById = useMemo(() => {
     const byId = new Map<string, GeometryObjectHistoryStep>();
     for (const history of Object.values(geometryObjectHistoryById)) {
@@ -10627,7 +10664,12 @@ const App: React.FC = () => {
         : null,
     [geometrySelectedHistoryStepIndex, geometrySelectedObjectHistory]
   );
-  const geometryLatestUndoCandidate = geometryRecentSceneHistory[0] ?? null;
+  const geometryLatestUndoCandidate = geometryLatestRecentAction?.kind === "object" ? geometryLatestRecentAction.step : null;
+  const geometryCanUndoLatestAction =
+    geometryLatestRecentAction?.kind === "construction"
+      ? !!geometryLatestRecentAction.step.resultId &&
+        geometryDerivedConstructions.some((entry) => entry.id === geometryLatestRecentAction.step.resultId)
+      : !!geometryLatestUndoCandidate && !geometryLockedObjectIds.has(geometryLatestUndoCandidate.objectId);
   useEffect(() => {
     setGeometryHistoryCompareWithPreviousEnabled(false);
   }, [geometrySelectedObjectId, geometrySelectedHistoryStepId]);
@@ -10745,7 +10787,28 @@ const App: React.FC = () => {
     restoreGeometryObjectFromHistoryStep(geometrySelectedObjectId, geometrySelectedHistoryStep);
   }, [geometrySelectedHistoryStep, geometrySelectedObjectId, restoreGeometryObjectFromHistoryStep]);
   const handleUndoLatestGeometryHistoryStep = useCallback(() => {
-    const latest = geometryRecentSceneHistory[0] ?? null;
+    if (geometryLatestRecentAction?.kind === "construction") {
+      const latestConstruction = geometryLatestRecentAction.step;
+      const resultId = latestConstruction.resultId ?? null;
+      if (!resultId) {
+        setGeometryCreateActionStatus("That construction history item no longer has an active helper to undo.");
+        return;
+      }
+      setGeometryDerivedConstructions((prev) => prev.filter((entry) => entry.id !== resultId));
+      setGeometryDerivedRelationConstraints((prev) => prev.filter((entry) => entry.derivedId !== resultId));
+      setGeometrySelectedDerivedConstructionId((prev) => (prev === resultId ? null : prev));
+      setGeometryRelationTargetDerivedId((prev) => (prev === resultId ? null : prev));
+      geometryDerivedLastValidSnapshotRef.current.delete(resultId);
+      setGeometrySectionSourceDerivedId((prev) => (prev === resultId ? null : prev));
+      setGeometryConstructionHistory((prev) =>
+        prev
+          .filter((entry) => entry.id !== latestConstruction.id)
+          .map((entry) => (entry.resultId === resultId ? { ...entry, resultId: undefined } : entry))
+      );
+      setGeometryCreateActionStatus(`Undid construction: removed ${latestConstruction.result}.`);
+      return;
+    }
+    const latest = geometryLatestUndoCandidate;
     if (!latest) {
       setGeometryCreateActionStatus("No history step to undo.");
       return;
@@ -10788,8 +10851,9 @@ const App: React.FC = () => {
     setGeometryCreateActionStatus("No earlier history step is available for undo.");
   }, [
     geometryLockedObjectIds,
+    geometryLatestRecentAction,
+    geometryLatestUndoCandidate,
     geometryObjectHistoryById,
-    geometryRecentSceneHistory,
     geometrySelectedObjectId,
     restoreGeometryObjectFromHistoryStep,
     setGeometryCreateActionStatus,
@@ -69966,14 +70030,26 @@ case "mobius":
                                     type="button"
                                     data-testid="geometry-actions-history-undo-last"
                                     onClick={handleUndoLatestGeometryHistoryStep}
-                                    disabled={!geometryLatestUndoCandidate || geometryLockedObjectIds.has(geometryLatestUndoCandidate.objectId)}
+                                    disabled={!geometryCanUndoLatestAction}
                                     style={{ ...geometryOperationButtonStyle, width: "auto", padding: "3px 8px", fontSize: 10.5 }}
                                   >
                                     Undo Last
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => setGeometryProceduralPanelTab("history")}
+                                    onClick={() => {
+                                      if (geometryLatestRecentAction?.kind === "construction") {
+                                        const resultId = geometryLatestRecentAction.step.resultId ?? null;
+                                        if (resultId) {
+                                          setGeometrySelectedDerivedConstructionId(resultId);
+                                          setGeometrySelectedMathConstructionId(null);
+                                        }
+                                        setGeometryProceduralPanelTab("construct");
+                                        setGeometryConstructPanelTab("tree");
+                                        return;
+                                      }
+                                      setGeometryProceduralPanelTab("history");
+                                    }}
                                     style={{ ...geometryOperationButtonStyle, width: "auto", padding: "3px 8px", fontSize: 10.5 }}
                                   >
                                     Open
@@ -69995,71 +70071,122 @@ case "mobius":
                                   Previewing {geometryHistoryPreviewStep.objectName}: {geometryHistoryPreviewStep.label}
                                 </div>
                               )}
-                              {geometryRecentSceneHistory.length ? (
+                              {geometryRecentActionHistory.length ? (
                                   <div style={{ display: "grid", gap: 5 }}>
-                                    {geometryRecentSceneHistory.slice(0, 5).map((entry) => (
-                                      <div
-                                        key={`geometry-actions-history-${entry.id}`}
-                                        data-testid="geometry-actions-history-step"
-                                        tabIndex={0}
-                                        onMouseEnter={() => setGeometryHistoryPreviewStepId(entry.id)}
-                                        onMouseLeave={() => setGeometryHistoryPreviewStepId((current) => (current === entry.id ? null : current))}
-                                        onFocus={() => setGeometryHistoryPreviewStepId(entry.id)}
-                                        onBlur={() => setGeometryHistoryPreviewStepId((current) => (current === entry.id ? null : current))}
-                                        title={`${entry.operationType}: ${entry.label}${entry.operationParameters ? `\n${entry.operationParameters}` : ""}`}
-                                        style={{
-                                          textAlign: "left",
-                                          border: "1px solid " + (geometrySelectedHistoryStepId === entry.id ? "#0a66c2" : "#dbe2ea"),
-                                          borderRadius: 7,
-                                          background: geometrySelectedHistoryStepId === entry.id ? "#eaf3ff" : "#f8fafc",
-                                          padding: "5px 7px",
-                                          display: "grid",
-                                          gap: 5,
-                                        }}
-                                      >
-                                        <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                                          <strong>{entry.label}</strong>
-                                          <span style={{ color: "#64748b" }}>{new Date(entry.at).toLocaleTimeString()}</span>
-                                        </span>
-                                        <span style={{ color: "#475569" }}>
-                                          {entry.objectName} - {entry.operationType}
-                                          {entry.operationTarget ? ` - ${entry.operationTarget}` : ""}
-                                        </span>
-                                        <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap" }}>
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setGeometrySelectedObjectId(entry.objectId);
-                                              setGeometrySelectedHistoryStepId(entry.id);
-                                              setGeometryProceduralPanelTab("history");
+                                    {geometryRecentActionHistory.slice(0, 5).map((entry) => {
+                                      if (entry.kind === "object") {
+                                        const historyStep = entry.step;
+                                        return (
+                                          <div
+                                            key={`geometry-actions-history-${entry.id}`}
+                                            data-testid="geometry-actions-history-step"
+                                            tabIndex={0}
+                                            onMouseEnter={() => setGeometryHistoryPreviewStepId(historyStep.id)}
+                                            onMouseLeave={() => setGeometryHistoryPreviewStepId((current) => (current === historyStep.id ? null : current))}
+                                            onFocus={() => setGeometryHistoryPreviewStepId(historyStep.id)}
+                                            onBlur={() => setGeometryHistoryPreviewStepId((current) => (current === historyStep.id ? null : current))}
+                                            title={`${historyStep.operationType}: ${historyStep.label}${historyStep.operationParameters ? `\n${historyStep.operationParameters}` : ""}`}
+                                            style={{
+                                              textAlign: "left",
+                                              border: "1px solid " + (geometrySelectedHistoryStepId === historyStep.id ? "#0a66c2" : "#dbe2ea"),
+                                              borderRadius: 7,
+                                              background: geometrySelectedHistoryStepId === historyStep.id ? "#eaf3ff" : "#f8fafc",
+                                              padding: "5px 7px",
+                                              display: "grid",
+                                              gap: 5,
                                             }}
-                                            style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
                                           >
-                                            Open
-                                          </button>
-                                          <button
-                                            type="button"
-                                            data-testid="geometry-actions-history-restore-step"
-                                            onClick={() => restoreGeometryObjectFromHistoryStep(entry.objectId, entry)}
-                                            disabled={geometryLockedObjectIds.has(entry.objectId)}
-                                            style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
-                                          >
-                                            Restore
-                                          </button>
-                                          <button
-                                            type="button"
-                                            data-testid="geometry-actions-history-copy-step"
-                                            onClick={() => duplicateGeometryObjectFromHistoryStep(entry)}
-                                            style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
-                                          >
-                                            Copy
-                                          </button>
-                                        </span>
-                                      </div>
-                                    ))}
+                                            <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                              <strong>{historyStep.label}</strong>
+                                              <span style={{ color: "#64748b" }}>{new Date(historyStep.at).toLocaleTimeString()}</span>
+                                            </span>
+                                            <span style={{ color: "#475569" }}>{entry.detail}</span>
+                                            <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap" }}>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setGeometrySelectedObjectId(historyStep.objectId);
+                                                  setGeometrySelectedHistoryStepId(historyStep.id);
+                                                  setGeometryProceduralPanelTab("history");
+                                                }}
+                                                style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                              >
+                                                Open
+                                              </button>
+                                              <button
+                                                type="button"
+                                                data-testid="geometry-actions-history-restore-step"
+                                                onClick={() => restoreGeometryObjectFromHistoryStep(historyStep.objectId, historyStep)}
+                                                disabled={geometryLockedObjectIds.has(historyStep.objectId)}
+                                                style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                              >
+                                                Restore
+                                              </button>
+                                              <button
+                                                type="button"
+                                                data-testid="geometry-actions-history-copy-step"
+                                                onClick={() => duplicateGeometryObjectFromHistoryStep(historyStep)}
+                                                style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                              >
+                                                Copy
+                                              </button>
+                                            </span>
+                                          </div>
+                                        );
+                                      }
+                                      const constructionStep = entry.step;
+                                      const canOpenConstruction = !!constructionStep.resultId && geometryDerivedConstructions.some((derived) => derived.id === constructionStep.resultId);
+                                      return (
+                                        <div
+                                          key={`geometry-actions-history-${entry.id}`}
+                                          data-testid="geometry-actions-history-construction-step"
+                                          tabIndex={0}
+                                          title={constructionStep.steps.join(" -> ")}
+                                          style={{
+                                            textAlign: "left",
+                                            border: "1px solid " + (geometrySelectedDerivedConstructionId === constructionStep.resultId ? "#0a66c2" : "#dbe2ea"),
+                                            borderRadius: 7,
+                                            background: geometrySelectedDerivedConstructionId === constructionStep.resultId ? "#eef6ff" : "#f8fafc",
+                                            padding: "5px 7px",
+                                            display: "grid",
+                                            gap: 5,
+                                          }}
+                                        >
+                                          <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                            <strong>{entry.label}</strong>
+                                            <span style={{ color: "#64748b" }}>{new Date(entry.at).toLocaleTimeString()}</span>
+                                          </span>
+                                          <span style={{ color: "#475569" }}>{entry.detail}</span>
+                                          {constructionStep.planeSummary && (
+                                            <span style={{ color: "#0f766e", fontWeight: 700 }}>
+                                              Result: {constructionStep.planeSummary.result}
+                                            </span>
+                                          )}
+                                          <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                                            <button
+                                              type="button"
+                                              data-testid="geometry-actions-history-open-construction"
+                                              onClick={() => {
+                                                if (!constructionStep.resultId) return;
+                                                setGeometrySelectedDerivedConstructionId(constructionStep.resultId);
+                                                setGeometrySelectedMathConstructionId(null);
+                                                setGeometryProceduralPanelTab("construct");
+                                                setGeometryConstructPanelTab("tree");
+                                                setGeometryCreateActionStatus(`Opened construction history: ${constructionStep.result}.`);
+                                              }}
+                                              disabled={!canOpenConstruction}
+                                              style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                            >
+                                              Open
+                                            </button>
+                                            <span style={{ color: "#64748b", fontWeight: 700 }}>Construction</span>
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                               ) : (
-                                <div style={{ color: "#64748b" }}>No scene history yet.</div>
+                                <div style={{ color: "#64748b" }}>No recent history yet.</div>
                               )}
                             </div>
                             <div
