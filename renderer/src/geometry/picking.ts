@@ -54,6 +54,10 @@ export interface GeometryPickResult {
   topologyReference?: GeometryTopologyReference;
   stale?: boolean;
   label: string;
+
+  vertexTopology?: GeometryVertexTopologySummary;
+  edgeTopology?: GeometryEdgeTopologySummary;
+  faceTopology?: GeometryFaceTopologySummary;
 }
 
 export interface GeometryRawHit {
@@ -88,6 +92,34 @@ export type GeometryPickContext = {
 };
 
 type Vec3Tuple = [number, number, number];
+
+export type GeometryVertexTopologySummary = {
+  incidentEdges: number;
+  incidentFaces: number;
+  valence: number;
+  boundaryEdges: number;
+  neighborVertices: number[];
+  faceIndices: number[];
+};
+
+export type GeometryEdgeTopologySummary = {
+  incidentFaces: number;
+  adjacentFaces: number[];
+  boundary: boolean;
+  nonManifold: boolean;
+};
+
+export type GeometryFaceTopologySummary = {
+  vertices: number;
+  edges: number;
+  adjacentFaces: number;
+  adjacentFaceIndices: number[];
+};
+
+type TriangleRecord = {
+  faceIndex: number;
+  vertices: [number, number, number];
+};
 
 const fallbackNormal: Vec3Tuple = [0, 1, 0];
 
@@ -219,6 +251,128 @@ const readFace = (mesh: SurfaceMeshData, faceIndex: number) => {
   const tangent = frame.tangent;
   const bitangent = frame.bitangent;
   return { faceIndex, vertexIndices: [ia, ib, ic] as [number, number, number], vertices: [a, b, c] as const, normal, tangent, bitangent, area };
+};
+
+const enumerateValidTriangles = (mesh: SurfaceMeshData): TriangleRecord[] => {
+  const positions = mesh.positions;
+  const vertexCount = Math.floor((positions?.length ?? 0) / 3);
+  if (!vertexCount) return [];
+  const indices = mesh.indices ?? null;
+  const faceCount = indices && indices.length >= 3 ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
+  const triangles: TriangleRecord[] = [];
+  for (let faceIndex = 0; faceIndex < faceCount; faceIndex += 1) {
+    const base = faceIndex * 3;
+    const a = indices ? Number(indices[base]) : base;
+    const b = indices ? Number(indices[base + 1]) : base + 1;
+    const c = indices ? Number(indices[base + 2]) : base + 2;
+    if (
+      !Number.isInteger(a) ||
+      !Number.isInteger(b) ||
+      !Number.isInteger(c) ||
+      a < 0 ||
+      b < 0 ||
+      c < 0 ||
+      a >= vertexCount ||
+      b >= vertexCount ||
+      c >= vertexCount ||
+      a === b ||
+      b === c ||
+      c === a
+    ) {
+      continue;
+    }
+    triangles.push({ faceIndex, vertices: [a, b, c] });
+  }
+  return triangles;
+};
+
+const collectEdgeIncidence = (triangles: TriangleRecord[]) => {
+  const edges = new Map<string, { vertices: [number, number]; faces: number[] }>();
+  const addEdge = (a: number, b: number, faceIndex: number) => {
+    const key = makeGeometryEdgeKey(a, b);
+    const sorted = (a < b ? [a, b] : [b, a]) as [number, number];
+    const existing = edges.get(key);
+    if (existing) {
+      existing.faces.push(faceIndex);
+      return;
+    }
+    edges.set(key, { vertices: sorted, faces: [faceIndex] });
+  };
+  for (const triangle of triangles) {
+    const [a, b, c] = triangle.vertices;
+    addEdge(a, b, triangle.faceIndex);
+    addEdge(b, c, triangle.faceIndex);
+    addEdge(c, a, triangle.faceIndex);
+  }
+  return edges;
+};
+
+export const summarizeGeometryVertexTopology = (
+  mesh: SurfaceMeshData,
+  vertexIndex: number
+): GeometryVertexTopologySummary | undefined => {
+  const vertexCount = Math.floor((mesh.positions?.length ?? 0) / 3);
+  if (!Number.isInteger(vertexIndex) || vertexIndex < 0 || vertexIndex >= vertexCount) return undefined;
+  const triangles = enumerateValidTriangles(mesh);
+  const faces = new Set<number>();
+  const neighbors = new Set<number>();
+  let boundaryEdges = 0;
+  for (const edge of collectEdgeIncidence(triangles).values()) {
+    const [a, b] = edge.vertices;
+    if (a !== vertexIndex && b !== vertexIndex) continue;
+    neighbors.add(a === vertexIndex ? b : a);
+    if (edge.faces.length === 1) boundaryEdges += 1;
+    for (const face of edge.faces) faces.add(face);
+  }
+  return {
+    incidentEdges: neighbors.size,
+    incidentFaces: faces.size,
+    valence: neighbors.size,
+    boundaryEdges,
+    neighborVertices: Array.from(neighbors).sort((a, b) => a - b),
+    faceIndices: Array.from(faces).sort((a, b) => a - b),
+  };
+};
+
+export const summarizeGeometryEdgeTopology = (
+  mesh: SurfaceMeshData,
+  edgeVertices: [number, number]
+): GeometryEdgeTopologySummary | undefined => {
+  const [a, b] = edgeVertices;
+  const vertexCount = Math.floor((mesh.positions?.length ?? 0) / 3);
+  if (a < 0 || b < 0 || a >= vertexCount || b >= vertexCount || a === b) return undefined;
+  const edge = collectEdgeIncidence(enumerateValidTriangles(mesh)).get(makeGeometryEdgeKey(a, b));
+  if (!edge) return undefined;
+  const adjacentFaces = edge.faces.slice().sort((x, y) => x - y);
+  return {
+    incidentFaces: adjacentFaces.length,
+    adjacentFaces,
+    boundary: adjacentFaces.length === 1,
+    nonManifold: adjacentFaces.length > 2,
+  };
+};
+
+export const summarizeGeometryFaceTopology = (
+  mesh: SurfaceMeshData,
+  faceIndex: number
+): GeometryFaceTopologySummary | undefined => {
+  const triangles = enumerateValidTriangles(mesh);
+  const face = triangles.find((entry) => entry.faceIndex === faceIndex);
+  if (!face) return undefined;
+  const edgeIncidence = collectEdgeIncidence(triangles);
+  const adjacent = new Set<number>();
+  const [a, b, c] = face.vertices;
+  for (const [u, v] of [[a, b], [b, c], [c, a]] as const) {
+    for (const incidentFace of edgeIncidence.get(makeGeometryEdgeKey(u, v))?.faces ?? []) {
+      if (incidentFace !== faceIndex) adjacent.add(incidentFace);
+    }
+  }
+  return {
+    vertices: new Set(face.vertices).size,
+    edges: 3,
+    adjacentFaces: adjacent.size,
+    adjacentFaceIndices: Array.from(adjacent).sort((x, y) => x - y),
+  };
 };
 
 const barycentricForFace = (
@@ -357,6 +511,7 @@ export function resolveGeometryPick(
       bitangent: tupleFromVector(face.bitangent),
       tangentKind: "face-frame",
       barycentric: barycentricForFace(hitPoint, face),
+      faceTopology: summarizeGeometryFaceTopology(mesh, face.faceIndex),
     };
     return { ...pick, topologyReference: makeGeometryTopologyReference(pick) };
   }
@@ -401,6 +556,7 @@ export function resolveGeometryPick(
       normal,
       faceNormal,
       vertexNormal,
+      vertexTopology: summarizeGeometryVertexTopology(mesh, vertexIndex),
     };
     return { ...pick, topologyReference: makeGeometryTopologyReference(pick) };
   }
@@ -440,6 +596,7 @@ export function resolveGeometryPick(
     tangent: tupleFromVector(edgeTangent),
     bitangent: tupleFromVector(bitangent),
     tangentKind: "edge-direction",
+    edgeTopology: summarizeGeometryEdgeTopology(mesh, edge.edgeVertices),
   };
   return { ...pick, topologyReference: makeGeometryTopologyReference(pick) };
 }

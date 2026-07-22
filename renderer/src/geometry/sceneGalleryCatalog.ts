@@ -600,6 +600,54 @@ export const GEOMETRY_SCENE_GALLERY: GeometryGallerySceneEntry[] = [
     recommendedPanels: ["object", "analysis"],
   },
   {
+    id: "scene:direct-edit-playground",
+    title: "Direct edit playground",
+    category: "Construction Basics",
+    description: "Low-poly solids prepared for face, edge, and vertex selection plus direct edit checks.",
+    thumbnail: thumb("Direct edit", "Face / edge / vertex", "#0f766e"),
+    learningGoals: ["Validate object/face/edge/vertex picking", "Exercise extrude, split, bevel, move, and weld actions"],
+    initialScene: sceneDoc(
+      "direct-edit-playground",
+      "Direct edit playground",
+      [
+        baseObject({
+          id: "direct-edit-box",
+          name: "Editable box",
+          type: "box",
+          params: { width: 1.6, height: 1.2, depth: 1.1, widthSegments: 1, heightSegments: 1, depthSegments: 1 },
+          transform: { position: { x: -1.5, y: 0, z: 0 }, rotation: { x: 0.18, y: 0.35, z: 0.04 }, scale: { x: 1, y: 1, z: 1 } },
+          material: { color: 0x38bdf8, opacity: 0.92 },
+        }),
+        baseObject({
+          id: "direct-edit-prism",
+          name: "Editable prism",
+          type: "polyhedron",
+          params: { family: "prism", n: 5, radius: 0.78, height: 1.35, cap: true },
+          transform: { position: { x: 0.35, y: 0, z: 0 }, rotation: { x: 0.08, y: -0.25, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+          material: { color: 0x14b8a6, opacity: 0.9 },
+        }),
+        baseObject({
+          id: "direct-edit-plane",
+          name: "Editable grid plane",
+          type: "plane",
+          params: { width: 1.8, height: 1.4, widthSegments: 2, heightSegments: 2, axis: "xz" },
+          transform: { position: { x: 2.05, y: -0.25, z: 0 }, rotation: { x: 0, y: 0.2, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+          material: { color: 0xf59e0b, opacity: 0.84 },
+        }),
+      ],
+      { scenario: "direct-edit-playground", playground: true, directEdit: true }
+    ),
+    timeline: {
+      autoplayIntervalMs: 1700,
+      steps: [
+        { id: "select-box", label: "Select box", note: "Use the Selection inspector to confirm object identity.", action: { kind: "selectObject", objectName: "Editable box" } },
+        { id: "open-analysis", label: "Open probe tools", note: "Use Face, Edge, and Vertex pick modes from the right inspector.", action: { kind: "setPanel", panel: "analysis" } },
+        { id: "edit-actions", label: "Run edit actions", note: "Open Actions and try Extrude Face, Split Edge, or Move Vertex.", action: { kind: "setStatus", message: "Direct edit playground ready: pick face, edge, or vertex, then use Actions." } },
+      ],
+    },
+    recommendedPanels: ["analysis", "object", "scene"],
+  },
+  {
     id: "scene:torus-line-plane-construction",
     title: "Torus line-plane construction",
     category: "Construction Basics",

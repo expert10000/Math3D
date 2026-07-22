@@ -2628,6 +2628,9 @@ type GeometryProbeSelectionDetails = {
   sourceTriangle: [number, number, number] | null;
   edgeLength: number | null;
   faceArea: number | null;
+  vertexTopology: GeometryPickResult["vertexTopology"] | null;
+  edgeTopology: GeometryPickResult["edgeTopology"] | null;
+  faceTopology: GeometryPickResult["faceTopology"] | null;
   faceIndex: number | null;
   vertexIndex: number | null;
   edgeVertexPair: [number, number] | null;
@@ -13059,6 +13062,9 @@ const App: React.FC = () => {
         sourceTriangle: canonicalPick?.sourceTriangle ?? null,
         edgeLength: null,
         faceArea: null,
+        vertexTopology: canonicalPick?.vertexTopology ?? null,
+        edgeTopology: canonicalPick?.edgeTopology ?? null,
+        faceTopology: canonicalPick?.faceTopology ?? null,
         faceIndex: canonicalPick?.faceIndex ?? null,
         vertexIndex: canonicalPick?.vertexIndex ?? null,
         edgeVertexPair: canonicalPick?.edgeVertices ?? null,
@@ -13092,6 +13098,9 @@ const App: React.FC = () => {
           label: stalePick.label,
           faceArea: null,
           edgeLength: null,
+          vertexTopology: null,
+          edgeTopology: null,
+          faceTopology: null,
           faceIndex: null,
           vertexIndex: null,
           edgeVertexPair: null,
@@ -13329,6 +13338,7 @@ const App: React.FC = () => {
           meshKey,
           point: getPoint(bestIndex),
           vertexIndex: bestIndex,
+          vertexTopology: canonicalPick.vertexTopology ?? fallback.vertexTopology,
         };
       }
 
@@ -13344,6 +13354,7 @@ const App: React.FC = () => {
             point: pick.point,
             normal: exact.normal,
             faceArea: region.area,
+            faceTopology: canonicalPick.faceTopology ?? fallback.faceTopology,
             faceIndex: exact.faceIndex,
             faceVertices: region.vertices,
           };
@@ -13375,6 +13386,7 @@ const App: React.FC = () => {
           point: pick.point,
           normal: bestFace.normal,
           faceArea: region.area,
+          faceTopology: canonicalPick.faceTopology ?? fallback.faceTopology,
           faceIndex: bestFace.faceIndex,
           faceVertices: region.vertices,
         };
@@ -13440,6 +13452,7 @@ const App: React.FC = () => {
         point: bestPoint,
         edgeLength: bestEdgeLength,
         edgeVertexPair: bestPair,
+        edgeTopology: canonicalPick.edgeTopology ?? fallback.edgeTopology,
         edgePoints: bestEdgePoints,
       };
     },
@@ -69205,6 +69218,12 @@ case "mobius":
                                             ? fmt(geometryProbeSelectionDetails.faceArea)
                                             : "n/a"}
                                         </div>
+                                        <div style={{ color: "#556" }}>Adjacent faces</div>
+                                        <div data-testid="geometry-pick-face-adjacent-count">
+                                          {geometryProbeSelectionDetails?.faceTopology
+                                            ? geometryProbeSelectionDetails.faceTopology.adjacentFaces.toLocaleString()
+                                            : "n/a"}
+                                        </div>
                                       </>
                                     )}
                                     {geometrySelectedPick?.kind === "edge" && (
@@ -69223,6 +69242,20 @@ case "mobius":
                                         <div>
                                           {geometryProbeSelectionDetails?.edgeLength != null && Number.isFinite(geometryProbeSelectionDetails.edgeLength)
                                             ? fmt(geometryProbeSelectionDetails.edgeLength)
+                                            : "n/a"}
+                                        </div>
+                                        <div style={{ color: "#556" }}>Adjacent faces</div>
+                                        <div data-testid="geometry-pick-edge-incident-count">
+                                          {geometryProbeSelectionDetails?.edgeTopology
+                                            ? geometryProbeSelectionDetails.edgeTopology.incidentFaces.toLocaleString()
+                                            : "n/a"}
+                                        </div>
+                                        <div style={{ color: "#556" }}>Boundary</div>
+                                        <div>
+                                          {geometryProbeSelectionDetails?.edgeTopology
+                                            ? geometryProbeSelectionDetails.edgeTopology.boundary
+                                              ? "yes"
+                                              : "no"
                                             : "n/a"}
                                         </div>
                                         {geometrySelectedEdgeMeaning && (
@@ -69268,6 +69301,18 @@ case "mobius":
                                             ? `#${geometryProbeSelectionDetails.vertexIndex}`
                                             : "n/a"}
                                           </span>
+                                        </div>
+                                        <div style={{ color: "#556" }}>Connected edges</div>
+                                        <div data-testid="geometry-pick-vertex-edge-count">
+                                          {geometryProbeSelectionDetails?.vertexTopology
+                                            ? geometryProbeSelectionDetails.vertexTopology.incidentEdges.toLocaleString()
+                                            : "n/a"}
+                                        </div>
+                                        <div style={{ color: "#556" }}>Connected faces</div>
+                                        <div data-testid="geometry-pick-vertex-face-count">
+                                          {geometryProbeSelectionDetails?.vertexTopology
+                                            ? geometryProbeSelectionDetails.vertexTopology.incidentFaces.toLocaleString()
+                                            : "n/a"}
                                         </div>
                                       </>
                                     )}
@@ -69350,6 +69395,173 @@ case "mobius":
                                   Split
                                 </button>
                               </div>
+                            </div>
+                            <div
+                              data-testid="geometry-direct-edit-actions"
+                              style={{
+                                border: "1px solid #e2e8f0",
+                                borderRadius: 8,
+                                background: "#ffffff",
+                                padding: "7px 8px",
+                                display: "grid",
+                                gap: 8,
+                              }}
+                            >
+                              <div style={{ fontWeight: 700 }}>Direct Editing</div>
+                              {(geometrySelectedPick?.kind === "face" || !geometrySelectedPick) && (
+                                <div style={{ display: "grid", gap: 6 }}>
+                                  <div style={{ color: "#475569", fontWeight: 700 }}>Face</div>
+                                  <label style={{ display: "grid", gridTemplateColumns: "84px minmax(0, 1fr)", gap: 6, alignItems: "center" }}>
+                                    <span>Extrude</span>
+                                    <input
+                                      aria-label="Face extrude distance"
+                                      type="number"
+                                      value={geometryFaceExtrudeDistance}
+                                      min={-2}
+                                      max={2}
+                                      step={0.01}
+                                      onChange={(event) => setGeometryFaceExtrudeDistance(Number(event.target.value))}
+                                      style={{ minWidth: 0 }}
+                                    />
+                                  </label>
+                                  <button
+                                    type="button"
+                                    data-testid="geometry-direct-edit-face-extrude"
+                                    onClick={handleExtrudeSelectedFace}
+                                    style={geometryOperationButtonStyle}
+                                  >
+                                    Extrude Face
+                                  </button>
+                                  <label style={{ display: "grid", gridTemplateColumns: "84px minmax(0, 1fr)", gap: 6, alignItems: "center" }}>
+                                    <span>Inset</span>
+                                    <input
+                                      aria-label="Face inset ratio"
+                                      type="number"
+                                      value={geometryFaceInsetRatio}
+                                      min={0.02}
+                                      max={0.92}
+                                      step={0.01}
+                                      onChange={(event) => setGeometryFaceInsetRatio(Number(event.target.value))}
+                                      style={{ minWidth: 0 }}
+                                    />
+                                  </label>
+                                  <div style={geometryOperationButtonStackStyle}>
+                                    <button
+                                      type="button"
+                                      data-testid="geometry-direct-edit-face-inset"
+                                      onClick={handleInsetSelectedFace}
+                                      style={geometryOperationButtonStyle}
+                                    >
+                                      Inset Face
+                                    </button>
+                                    <button
+                                      type="button"
+                                      data-testid="geometry-direct-edit-face-delete"
+                                      onClick={handleDeleteSelectedFace}
+                                      style={geometryOperationButtonStyle}
+                                    >
+                                      Delete Face
+                                    </button>
+                                  </div>
+                                  {!geometryHasFaceOperationPick && (
+                                    <div style={{ color: "#64748b" }}>Fill the Source face slot or select a face.</div>
+                                  )}
+                                </div>
+                              )}
+                              {(geometrySelectedPick?.kind === "edge" || !geometrySelectedPick) && (
+                                <div style={{ display: "grid", gap: 6 }}>
+                                  <div style={{ color: "#475569", fontWeight: 700 }}>Edge</div>
+                                  <label style={{ display: "grid", gridTemplateColumns: "84px minmax(0, 1fr)", gap: 6, alignItems: "center" }}>
+                                    <span>Bevel</span>
+                                    <input
+                                      aria-label="Edge bevel amount"
+                                      type="number"
+                                      value={geometryEdgeBevelAmount}
+                                      min={-1}
+                                      max={1}
+                                      step={0.01}
+                                      onChange={(event) => setGeometryEdgeBevelAmount(Number(event.target.value))}
+                                      style={{ minWidth: 0 }}
+                                    />
+                                  </label>
+                                  <div style={geometryOperationButtonStackStyle}>
+                                    <button
+                                      type="button"
+                                      data-testid="geometry-direct-edit-edge-split"
+                                      onClick={handleSplitSelectedProbeEdge}
+                                      style={geometryOperationButtonStyle}
+                                    >
+                                      Split Edge
+                                    </button>
+                                    <button
+                                      type="button"
+                                      data-testid="geometry-direct-edit-edge-bevel"
+                                      onClick={handleBevelSelectedProbeEdge}
+                                      style={geometryOperationButtonStyle}
+                                    >
+                                      Bevel Edge
+                                    </button>
+                                  </div>
+                                  {!geometryHasEdgeOperationPick && (
+                                    <div style={{ color: "#64748b" }}>Fill the Edge slot or select an edge.</div>
+                                  )}
+                                </div>
+                              )}
+                              {(geometrySelectedPick?.kind === "vertex" || !geometrySelectedPick) && (
+                                <div style={{ display: "grid", gap: 6 }}>
+                                  <div style={{ color: "#475569", fontWeight: 700 }}>Vertex</div>
+                                  <label style={{ display: "grid", gridTemplateColumns: "84px minmax(0, 1fr)", gap: 6, alignItems: "center" }}>
+                                    <span>Move</span>
+                                    <input
+                                      aria-label="Vertex move amount"
+                                      type="number"
+                                      value={geometryVertexMoveAmount}
+                                      min={-1}
+                                      max={1}
+                                      step={0.01}
+                                      onChange={(event) => setGeometryVertexMoveAmount(Number(event.target.value))}
+                                      style={{ minWidth: 0 }}
+                                    />
+                                  </label>
+                                  <label style={{ display: "grid", gridTemplateColumns: "84px minmax(0, 1fr)", gap: 6, alignItems: "center" }}>
+                                    <span>Weld radius</span>
+                                    <input
+                                      aria-label="Vertex weld radius"
+                                      type="number"
+                                      value={geometryVertexWeldDistance}
+                                      min={0.001}
+                                      max={2}
+                                      step={0.001}
+                                      onChange={(event) => setGeometryVertexWeldDistance(Number(event.target.value))}
+                                      style={{ minWidth: 0 }}
+                                    />
+                                  </label>
+                                  <div style={geometryOperationButtonStackStyle}>
+                                    <button
+                                      type="button"
+                                      data-testid="geometry-direct-edit-vertex-move"
+                                      onClick={handleMoveSelectedVertex}
+                                      style={geometryOperationButtonStyle}
+                                    >
+                                      Move Vertex
+                                    </button>
+                                    <button
+                                      type="button"
+                                      data-testid="geometry-direct-edit-vertex-weld"
+                                      onClick={handleWeldVertices}
+                                      style={geometryOperationButtonStyle}
+                                    >
+                                      Weld Vertices
+                                    </button>
+                                  </div>
+                                  {!geometryHasVertexOperationPick && (
+                                    <div style={{ color: "#64748b" }}>Fill the Vertex slot or select a vertex.</div>
+                                  )}
+                                </div>
+                              )}
+                              {geometrySelectedPick?.kind === "object" && (
+                                <div style={{ color: "#64748b" }}>Pick a face, edge, or vertex to show direct edit tools.</div>
+                              )}
                             </div>
                             <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
                               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>

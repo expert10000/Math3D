@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   isGeometryTopologyReferenceStale,
   resolveGeometryPick,
+  summarizeGeometryEdgeTopology,
+  summarizeGeometryFaceTopology,
+  summarizeGeometryVertexTopology,
   type GeometryPickContext,
   type GeometryRawHit,
 } from "./picking";
@@ -38,6 +41,18 @@ const rawHit: GeometryRawHit = {
   normal: [0, 1, 0],
   faceIndex: 0,
   distance: 2,
+};
+
+const squareMesh: SurfaceMeshData = {
+  label: "Square",
+  positions: Float32Array.from([0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0]),
+  indices: Uint32Array.from([0, 1, 2, 0, 2, 3]),
+  normals: null,
+  uvs: null,
+  source: { kind: "proceduralObjects" },
+  adjacency: null,
+  meanEdgeLength: null,
+  validation: null,
 };
 
 describe("resolveGeometryPick", () => {
@@ -133,6 +148,37 @@ describe("resolveGeometryPick", () => {
     expect(pick?.tangent).toBeUndefined();
     expect(pick?.bitangent).toBeUndefined();
     expect(pick?.tangentKind).toBeUndefined();
+    expect(pick?.vertexTopology).toEqual({
+      incidentEdges: 2,
+      incidentFaces: 1,
+      valence: 2,
+      boundaryEdges: 2,
+      neighborVertices: [0, 1],
+      faceIndices: [0],
+    });
+  });
+
+  it("summarizes topology around selected vertices, edges, and faces", () => {
+    expect(summarizeGeometryVertexTopology(squareMesh, 0)).toEqual({
+      incidentEdges: 3,
+      incidentFaces: 2,
+      valence: 3,
+      boundaryEdges: 2,
+      neighborVertices: [1, 2, 3],
+      faceIndices: [0, 1],
+    });
+    expect(summarizeGeometryEdgeTopology(squareMesh, [0, 2])).toEqual({
+      incidentFaces: 2,
+      adjacentFaces: [0, 1],
+      boundary: false,
+      nonManifold: false,
+    });
+    expect(summarizeGeometryFaceTopology(squareMesh, 0)).toEqual({
+      vertices: 3,
+      edges: 3,
+      adjacentFaces: 1,
+      adjacentFaceIndices: [1],
+    });
   });
 
   it("honors explicit renderable pick policies", () => {

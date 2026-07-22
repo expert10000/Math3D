@@ -25,6 +25,7 @@ describe("sceneGalleryCatalog", () => {
       ["Construction Basics", [
         "Cube transform workflow",
         "Face extrusion",
+        "Direct edit playground",
         "Torus line-plane construction",
         "Construct operations playground",
         "Section plane",
@@ -101,5 +102,17 @@ describe("sceneGalleryCatalog", () => {
     const constructions = playground?.initialScene.extensions?.["math3d.geometry.derivedConstructions.v1"];
     expect(Array.isArray(constructions)).toBe(true);
     expect(constructions).toHaveLength(23);
+  });
+
+  it("keeps the direct edit playground ready for face, edge, and vertex workflows", () => {
+    const playground = GEOMETRY_SCENE_GALLERY_BY_ID.get("scene:direct-edit-playground");
+    expect(playground?.category).toBe("Construction Basics");
+    expect(playground?.initialScene.metadata?.directEdit).toBe(true);
+    expect(playground?.recommendedPanels?.[0]).toBe("analysis");
+    expect(playground?.initialScene.objects.map((object) => object.name)).toEqual([
+      "Editable box",
+      "Editable prism",
+      "Editable grid plane",
+    ]);
   });
 });
