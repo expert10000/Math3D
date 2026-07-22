@@ -2258,6 +2258,14 @@ type GeometryDirectEditStatus = {
   afterFaceCount: number;
   promoted: boolean;
 };
+type GeometryActionContinuityStatus = {
+  label: string;
+  targetObjectId: string;
+  targetObjectName: string;
+  targetEntity: string | null;
+  resultKind: "created-copy" | "edited-mesh" | "converted-mesh";
+  detail: string;
+};
 type GeometryRepeatMode =
   | "duplicate"
   | "linear-array"
@@ -9310,6 +9318,7 @@ const App: React.FC = () => {
   const [geometryVertexMoveAmount, setGeometryVertexMoveAmount] = useState(0.06);
   const [geometryVertexWeldDistance, setGeometryVertexWeldDistance] = useState(0.05);
   const [geometryLastDirectEdit, setGeometryLastDirectEdit] = useState<GeometryDirectEditStatus | null>(null);
+  const [geometryLastActionContinuity, setGeometryLastActionContinuity] = useState<GeometryActionContinuityStatus | null>(null);
   const rememberGeometryRecentConstructionTool = useCallback((tool: GeometryConstructRecentTool) => {
     setGeometryRecentConstructionTools((prev) => [
       tool,
@@ -14373,6 +14382,16 @@ const App: React.FC = () => {
           afterFaceCount: afterCounts.faceCount,
           promoted: promotedFromProcedural,
         });
+        setGeometryLastActionContinuity({
+          label: intent?.label ?? actionLabel,
+          targetObjectId: objectId,
+          targetObjectName: target.name,
+          targetEntity: intent?.target ?? null,
+          resultKind: promotedFromProcedural ? "converted-mesh" : "edited-mesh",
+          detail: promotedFromProcedural
+            ? "Converted this object to an editable mesh and selected the result."
+            : "Edited the selected mesh and kept it selected.",
+        });
         setGeometryBakeError(null);
         setGeometryCreateActionStatus(
           promotedFromProcedural
@@ -14396,6 +14415,7 @@ const App: React.FC = () => {
       queueGeometryHistoryIntent,
       setGeometryCreateActionStatus,
       setGeometryLastDirectEdit,
+      setGeometryLastActionContinuity,
     ]
   );
   const handleExtrudeSelectedFace = useCallback(() => {
@@ -24418,6 +24438,17 @@ const App: React.FC = () => {
       [copyId]: [historyStep, ...(prev[copyId] ?? [])].slice(0, 24),
     }));
     setGeometrySelectedObjectId(copyId);
+    setGeometryProceduralPick(null);
+    setGeometryProceduralHoverPick(null);
+    setGeometryActiveOperationInputSlotId("primary-object");
+    setGeometryLastActionContinuity({
+      label: "Mirror copy",
+      targetObjectId: copyId,
+      targetObjectName: copyForHistory.name,
+      targetEntity: geometryMirrorPlaneOperationTarget ? "Mirror plane slot" : "XY plane",
+      resultKind: "created-copy",
+      detail: `Created a new selected copy from ${geometrySelectedSceneObject.name}.`,
+    });
     setGeometryRepeatMode("mirror-plane");
     setGeometryRepeatMirrorPlane(geometryMirrorPlaneOperationTarget ? "selected-face" : "xy");
     setGeometryCreateActionStatus(
@@ -69589,6 +69620,89 @@ case "mobius":
                             <div style={{ fontSize: 12, fontWeight: 700 }}>Actions</div>
                             <div style={{ color: "#64748b" }}>
                               Context actions follow the selected object, face, edge, or vertex.
+                            </div>
+                            <div
+                              data-testid="geometry-actions-current-target"
+                              style={{
+                                border: "1px solid #bfdbfe",
+                                borderRadius: 8,
+                                background: "#eff6ff",
+                                padding: "7px 8px",
+                                display: "grid",
+                                gap: 5,
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                <strong>Current Target</strong>
+                                <span
+                                  style={{
+                                    border: "1px solid #93c5fd",
+                                    borderRadius: 999,
+                                    background: "#dbeafe",
+                                    color: "#1e3a8a",
+                                    padding: "1px 7px",
+                                    fontSize: 10,
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  {geometrySelectedSceneObject ? "Object selected" : "No object"}
+                                </span>
+                              </div>
+                              <div data-testid="geometry-actions-current-target-object" style={{ fontWeight: 700, color: "#0f172a" }}>
+                                {geometrySelectedSceneObject?.name ?? "Select an object"}
+                              </div>
+                              <div data-testid="geometry-actions-current-target-entity" style={{ color: "#475569" }}>
+                                {geometryProbeSelectionDetails && geometryProbeSelectionDetails.objectId === geometrySelectedObjectId
+                                  ? geometryProbeSelectionDetails.label
+                                  : "Object-level target"}
+                              </div>
+                              {geometryLastActionContinuity && (
+                                <div
+                                  data-testid="geometry-actions-last-result"
+                                  style={{
+                                    borderTop: "1px solid #bfdbfe",
+                                    paddingTop: 5,
+                                    display: "grid",
+                                    gap: 2,
+                                    color: "#334155",
+                                  }}
+                                >
+                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                    <span>
+                                      <strong>Last result:</strong> {geometryLastActionContinuity.label}
+                                    </span>
+                                    <span
+                                      style={{
+                                        border: "1px solid #bae6fd",
+                                        borderRadius: 999,
+                                        background:
+                                          geometryLastActionContinuity.resultKind === "created-copy"
+                                            ? "#ecfeff"
+                                            : geometryLastActionContinuity.resultKind === "converted-mesh"
+                                              ? "#f0fdfa"
+                                              : "#f8fafc",
+                                        color:
+                                          geometryLastActionContinuity.resultKind === "created-copy"
+                                            ? "#155e75"
+                                            : geometryLastActionContinuity.resultKind === "converted-mesh"
+                                              ? "#0f766e"
+                                              : "#475569",
+                                        padding: "1px 7px",
+                                        fontSize: 10,
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      {geometryLastActionContinuity.resultKind === "created-copy"
+                                        ? "Created copy"
+                                        : geometryLastActionContinuity.resultKind === "converted-mesh"
+                                          ? "Converted mesh"
+                                          : "Edited mesh"}
+                                    </span>
+                                  </div>
+                                  <div>{geometryLastActionContinuity.targetObjectName}</div>
+                                  <div style={{ color: "#64748b" }}>{geometryLastActionContinuity.detail}</div>
+                                </div>
+                              )}
                             </div>
                             <div
                               data-testid="geometry-context-actions-panel"
