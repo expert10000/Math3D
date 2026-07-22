@@ -9183,6 +9183,7 @@ const App: React.FC = () => {
   const [geometryProceduralHoverPick, setGeometryProceduralHoverPick] = useState<GeometryProceduralPickInfo | null>(null);
   const [geometryObjectHistoryById, setGeometryObjectHistoryById] = useState<Record<string, GeometryObjectHistoryStep[]>>({});
   const [geometrySelectedHistoryStepId, setGeometrySelectedHistoryStepId] = useState<string | null>(null);
+  const [geometryHistoryPreviewStepId, setGeometryHistoryPreviewStepId] = useState<string | null>(null);
   const [geometryHistoryCompareWithPreviousEnabled, setGeometryHistoryCompareWithPreviousEnabled] = useState(false);
   const [geometryTimelineSource, setGeometryTimelineSource] = useState<GeometryTimelineSource>("history");
   const [geometryTimelineStepIndex, setGeometryTimelineStepIndex] = useState(0);
@@ -10580,6 +10581,19 @@ const App: React.FC = () => {
         .slice(0, 12),
     [geometryObjectHistoryById]
   );
+  const geometryHistoryStepById = useMemo(() => {
+    const byId = new Map<string, GeometryObjectHistoryStep>();
+    for (const history of Object.values(geometryObjectHistoryById)) {
+      for (const step of history) byId.set(step.id, step);
+    }
+    return byId;
+  }, [geometryObjectHistoryById]);
+  const geometryHistoryPreviewStep = useMemo(
+    () =>
+      (geometryHistoryPreviewStepId ? geometryHistoryStepById.get(geometryHistoryPreviewStepId) ?? null : null) ??
+      (geometrySelectedHistoryStepId ? geometryHistoryStepById.get(geometrySelectedHistoryStepId) ?? null : null),
+    [geometryHistoryPreviewStepId, geometryHistoryStepById, geometrySelectedHistoryStepId]
+  );
   const geometrySelectedHistoryStep = useMemo(
     () =>
       geometrySelectedHistoryStepId
@@ -10613,6 +10627,7 @@ const App: React.FC = () => {
         : null,
     [geometrySelectedHistoryStepIndex, geometrySelectedObjectHistory]
   );
+  const geometryLatestUndoCandidate = geometryRecentSceneHistory[0] ?? null;
   useEffect(() => {
     setGeometryHistoryCompareWithPreviousEnabled(false);
   }, [geometrySelectedObjectId, geometrySelectedHistoryStepId]);
@@ -10680,66 +10695,177 @@ const App: React.FC = () => {
       [{ id: makeId(), name: name.trim(), createdAt: Date.now(), snapshot }, ...prev].slice(0, 40)
     );
   }, [geometrySelectedHistoryStep]);
+  const restoreGeometryObjectFromHistoryStep = useCallback(
+    (objectId: string, step: GeometryObjectHistoryStep) => {
+      if (!objectId || geometryLockedObjectIds.has(objectId)) return false;
+      queueGeometryHistoryIntent(objectId, {
+        action: "history-rollback",
+        label: "Rollback to selected step",
+        operationType: "History",
+        target: step.label,
+        parameters: new Date(step.at).toLocaleTimeString(),
+        destructive: true,
+      });
+      const snapshot = step.snapshot;
+      if ("mesh" in snapshot) {
+        const restored = cloneGeometryDatasetMeshObject(snapshot);
+        restored.id = objectId;
+        setGeometryDatasetMeshObjects((prev) => prev.map((obj) => (obj.id === objectId ? restored : obj)));
+        setGeometryObjects((prev) => prev.filter((obj) => obj.id !== objectId));
+      } else {
+        const restored = cloneGeometryObject(snapshot);
+        restored.id = objectId;
+        setGeometryObjects((prev) => prev.map((obj) => (obj.id === objectId ? restored : obj)));
+        setGeometryDatasetMeshObjects((prev) => prev.filter((obj) => obj.id !== objectId));
+      }
+      setGeometrySelectedObjectId(objectId);
+      setGeometrySelectedHistoryStepId(step.id);
+      setGeometryProceduralPick(null);
+      setGeometryProceduralHoverPick(null);
+      setGeometryLastActionContinuity({
+        label: "Rollback",
+        targetObjectId: objectId,
+        targetObjectName: step.objectName,
+        targetEntity: step.label,
+        resultKind: "edited-mesh",
+        detail: `Restored ${step.objectName} to ${step.label}.`,
+      });
+      setGeometryCreateActionStatus(`Restored ${step.objectName} to ${step.label}.`);
+      return true;
+    },
+    [
+      geometryLockedObjectIds,
+      queueGeometryHistoryIntent,
+      setGeometryLastActionContinuity,
+      setGeometryCreateActionStatus,
+    ]
+  );
   const handleRestoreGeometryObjectFromHistoryStep = useCallback(() => {
     if (!geometrySelectedObjectId || !geometrySelectedHistoryStep) return;
-    if (geometryLockedObjectIds.has(geometrySelectedObjectId)) return;
-    queueGeometryHistoryIntent(geometrySelectedObjectId, {
-      action: "history-rollback",
-      label: "Rollback to selected step",
-      operationType: "History",
-      target: geometrySelectedHistoryStep.label,
-      parameters: new Date(geometrySelectedHistoryStep.at).toLocaleTimeString(),
-      destructive: true,
-    });
-    const snapshot = geometrySelectedHistoryStep.snapshot;
-    if ("mesh" in snapshot) {
-      const restored = cloneGeometryDatasetMeshObject(snapshot);
-      restored.id = geometrySelectedObjectId;
-      setGeometryDatasetMeshObjects((prev) => prev.map((obj) => (obj.id === geometrySelectedObjectId ? restored : obj)));
-      setGeometryObjects((prev) => prev.filter((obj) => obj.id !== geometrySelectedObjectId));
+    restoreGeometryObjectFromHistoryStep(geometrySelectedObjectId, geometrySelectedHistoryStep);
+  }, [geometrySelectedHistoryStep, geometrySelectedObjectId, restoreGeometryObjectFromHistoryStep]);
+  const handleUndoLatestGeometryHistoryStep = useCallback(() => {
+    const latest = geometryRecentSceneHistory[0] ?? null;
+    if (!latest) {
+      setGeometryCreateActionStatus("No history step to undo.");
       return;
     }
-    const restored = cloneGeometryObject(snapshot);
-    restored.id = geometrySelectedObjectId;
-    setGeometryObjects((prev) => prev.map((obj) => (obj.id === geometrySelectedObjectId ? restored : obj)));
-    setGeometryDatasetMeshObjects((prev) => prev.filter((obj) => obj.id !== geometrySelectedObjectId));
-  }, [geometryLockedObjectIds, geometrySelectedHistoryStep, geometrySelectedObjectId, queueGeometryHistoryIntent]);
-  const handleDuplicateGeometryObjectFromHistoryStep = useCallback(() => {
-    if (!geometrySelectedHistoryStep) return;
-    const snapshot = geometrySelectedHistoryStep.snapshot;
+    if (geometryLockedObjectIds.has(latest.objectId)) {
+      setGeometryCreateActionStatus("Selected history object is locked.");
+      return;
+    }
+    const history = geometryObjectHistoryById[latest.objectId] ?? [];
+    const index = history.findIndex((entry) => entry.id === latest.id);
+    const previousStep = index >= 0 ? history[index + 1] ?? null : null;
+    if (previousStep) {
+      restoreGeometryObjectFromHistoryStep(latest.objectId, previousStep);
+      return;
+    }
+    if (latest.beforeSummary == null) {
+      suppressGeometryHistoryCapture();
+      setGeometryObjects((prev) => prev.filter((entry) => entry.id !== latest.objectId));
+      setGeometryDatasetMeshObjects((prev) => prev.filter((entry) => entry.id !== latest.objectId));
+      setGeometryObjectHistoryById((prev) => {
+        const next = { ...prev };
+        delete next[latest.objectId];
+        return next;
+      });
+      if (geometrySelectedObjectId === latest.objectId) setGeometrySelectedObjectId(null);
+      setGeometrySelectedHistoryStepId(null);
+      setGeometryProceduralPick(null);
+      setGeometryProceduralHoverPick(null);
+      setGeometryLastActionContinuity({
+        label: "Undo",
+        targetObjectId: latest.objectId,
+        targetObjectName: latest.objectName,
+        targetEntity: latest.label,
+        resultKind: "created-copy",
+        detail: `Removed ${latest.objectName}.`,
+      });
+      setGeometryCreateActionStatus(`Undid ${latest.label}; removed ${latest.objectName}.`);
+      return;
+    }
+    setGeometryCreateActionStatus("No earlier history step is available for undo.");
+  }, [
+    geometryLockedObjectIds,
+    geometryObjectHistoryById,
+    geometryRecentSceneHistory,
+    geometrySelectedObjectId,
+    restoreGeometryObjectFromHistoryStep,
+    setGeometryCreateActionStatus,
+    setGeometryLastActionContinuity,
+    suppressGeometryHistoryCapture,
+  ]);
+  const duplicateGeometryObjectFromHistoryStep = useCallback((step: GeometryObjectHistoryStep) => {
+    const snapshot = step.snapshot;
     const copyId = allocateUniqueGeometryObjectId();
+    let copyForHistory: GeometryObject | GeometryDatasetMeshObject;
+    suppressGeometryHistoryCapture();
     if ("mesh" in snapshot) {
       const copy = cloneGeometryDatasetMeshObject(snapshot);
       copy.id = copyId;
       copy.name = `${snapshot.name} history copy`;
       copy.transform.position.x += 0.25;
-      queueGeometryHistoryIntent(copyId, {
-        action: "history-duplicate",
-        label: "Duplicate object from selected step",
-        operationType: "History",
-        target: snapshot.name,
-        parameters: `source step ${geometrySelectedHistoryStep.label}`,
-        destructive: false,
-      });
+      copyForHistory = copy;
       setGeometryDatasetMeshObjects((prev) => [copy, ...prev]);
-      setGeometrySelectedObjectId(copyId);
-      return;
+    } else {
+      const copy = cloneGeometryObject(snapshot);
+      copy.id = copyId;
+      copy.name = `${snapshot.name} history copy`;
+      copy.transform.position.x += 0.25;
+      copyForHistory = copy;
+      setGeometryObjects((prev) => [copy, ...prev]);
     }
-    const copy = cloneGeometryObject(snapshot);
-    copy.id = copyId;
-    copy.name = `${snapshot.name} history copy`;
-    copy.transform.position.x += 0.25;
-    queueGeometryHistoryIntent(copyId, {
+    const afterSnapshot = cloneGeometrySceneObjectSnapshot(copyForHistory);
+    const afterTopology = countGeometrySnapshotTopology(afterSnapshot);
+    const historyStep: GeometryObjectHistoryStep = {
+      id: makeId(),
+      at: Date.now(),
       action: "history-duplicate",
       label: "Duplicate object from selected step",
       operationType: "History",
-      target: snapshot.name,
-      parameters: `source step ${geometrySelectedHistoryStep.label}`,
+      operationTarget: snapshot.name,
+      operationParameters: `source step ${step.label}`,
       destructive: false,
-    });
-    setGeometryObjects((prev) => [copy, ...prev]);
+      warning: "Source object unchanged.",
+      objectId: copyId,
+      objectName: copyForHistory.name,
+      beforeVertexCount: null,
+      afterVertexCount: afterTopology?.vertexCount ?? null,
+      beforeFaceCount: null,
+      afterFaceCount: afterTopology?.faceCount ?? null,
+      beforeSummary: null,
+      afterSummary: summarizeGeometryHistorySnapshot(afterSnapshot),
+      changeSummary: `Created history copy from ${snapshot.name}.`,
+      snapshot: afterSnapshot,
+    };
+    setGeometryObjectHistoryById((prev) => ({
+      ...prev,
+      [copyId]: [historyStep, ...(prev[copyId] ?? [])].slice(0, 24),
+    }));
     setGeometrySelectedObjectId(copyId);
-  }, [allocateUniqueGeometryObjectId, geometrySelectedHistoryStep, geometrySelectedObjectId, geometryLockedObjectIds, queueGeometryHistoryIntent]);
+    setGeometrySelectedHistoryStepId(historyStep.id);
+    setGeometryProceduralPick(null);
+    setGeometryProceduralHoverPick(null);
+    setGeometryLastActionContinuity({
+      label: "Duplicate object from selected step",
+      targetObjectId: copyId,
+      targetObjectName: copyForHistory.name,
+      targetEntity: step.label,
+      resultKind: "created-copy",
+      detail: `Created a selected copy from history step ${step.label}.`,
+    });
+    setGeometryCreateActionStatus(`Duplicated ${snapshot.name} from history.`);
+  }, [
+    allocateUniqueGeometryObjectId,
+    setGeometryCreateActionStatus,
+    setGeometryLastActionContinuity,
+    suppressGeometryHistoryCapture,
+  ]);
+  const handleDuplicateGeometryObjectFromHistoryStep = useCallback(() => {
+    if (!geometrySelectedHistoryStep) return;
+    duplicateGeometryObjectFromHistoryStep(geometrySelectedHistoryStep);
+  }, [duplicateGeometryObjectFromHistoryStep, geometrySelectedHistoryStep]);
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -17906,9 +18032,61 @@ const App: React.FC = () => {
     geometryProbeSelectionDetails,
     geometrySourceFaceOperationTarget,
   ]);
+  const geometryHistoryPreviewOverlays = useMemo<{
+    meshGroups: OverlayMeshGroup[] | null;
+    labelSets: OverlayLabelSet[] | null;
+  }>(() => {
+    if (geometryMode !== "procedural" || !geometryHistoryPreviewStep) {
+      return { meshGroups: null, labelSets: null };
+    }
+    const resolved = resolveVariantSnapshotMesh(
+      geometryHistoryPreviewStep.snapshot,
+      `${geometryHistoryPreviewStep.objectName} history preview`
+    );
+    if (!resolved) return { meshGroups: null, labelSets: null };
+    const transformed = transformSurfaceMeshByGeometryTransform(resolved.mesh, resolved.transform);
+    const bounds = boundsFromPositions(transformed.positions);
+    const labelPosition = bounds
+      ? {
+          x: (bounds.min[0] + bounds.max[0]) * 0.5,
+          y: bounds.max[1] + Math.max(0.08, (bounds.max[1] - bounds.min[1]) * 0.08),
+          z: (bounds.min[2] + bounds.max[2]) * 0.5,
+        }
+      : null;
+    return {
+      meshGroups: [
+        {
+          positions: transformed.positions,
+          indices: transformed.indices,
+          color: 0x06b6d4,
+          opacity: 0.26,
+          doubleSided: true,
+        },
+      ],
+      labelSets: labelPosition
+        ? [
+            {
+              labels: [
+                {
+                  text: `History preview: ${geometryHistoryPreviewStep.label}`,
+                  position: labelPosition,
+                  color: 0x0e7490,
+                  size: 0.86,
+                  opacity: 0.96,
+                },
+              ],
+              size: 0.86,
+            },
+          ]
+        : null,
+    };
+  }, [geometryHistoryPreviewStep, geometryMode]);
   const geometryProceduralViewerOverlayMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     const groups: OverlayMeshGroup[] = [];
+    if (geometryHistoryPreviewOverlays.meshGroups?.length) {
+      groups.push(...geometryHistoryPreviewOverlays.meshGroups);
+    }
     if (geometryProceduralSelectionFaceMeshGroups?.length) {
       groups.push(...geometryProceduralSelectionFaceMeshGroups);
     }
@@ -17916,7 +18094,12 @@ const App: React.FC = () => {
       groups.push(...geometryDirectEditPreviewFaceMeshGroups);
     }
     return groups.length ? groups : null;
-  }, [geometryDirectEditPreviewFaceMeshGroups, geometryMode, geometryProceduralSelectionFaceMeshGroups]);
+  }, [
+    geometryDirectEditPreviewFaceMeshGroups,
+    geometryHistoryPreviewOverlays.meshGroups,
+    geometryMode,
+    geometryProceduralSelectionFaceMeshGroups,
+  ]);
   const geometryProceduralSelectionOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     const groups: OverlayPolylineGroup[] = [];
@@ -24934,6 +25117,7 @@ const App: React.FC = () => {
     pushLabelSets(geometrySelectedDerivedLineGizmoOverlays.labelSets);
     pushLabelSets(geometryMathConstructionOverlays.labelSets);
     pushLabelSets(geometryConstructionViewportBadgeLabelSets);
+    pushLabelSets(geometryHistoryPreviewOverlays.labelSets);
     if (geometryTimelineShowAnnotations && geometryProceduralAnnotationOverlays.labelSets?.length) {
       pushLabelSets(geometryProceduralAnnotationOverlays.labelSets);
     }
@@ -24949,6 +25133,7 @@ const App: React.FC = () => {
     geometrySelectedDerivedLineGizmoOverlays.labelSets,
     geometryMathConstructionOverlays.labelSets,
     geometryConstructionViewportBadgeLabelSets,
+    geometryHistoryPreviewOverlays.labelSets,
     geometryProceduralAnnotationOverlays.labelSets,
     geometryTimelineShowAnnotations,
   ]);
@@ -69776,26 +69961,51 @@ case "mobius":
                             >
                               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
                                 <strong>Recent History</strong>
-                                <button
-                                  type="button"
-                                  onClick={() => setGeometryProceduralPanelTab("history")}
-                                  style={{ ...geometryOperationButtonStyle, width: "auto", padding: "3px 8px", fontSize: 10.5 }}
-                                >
-                                  Open
-                                </button>
+                                <span style={{ display: "inline-flex", gap: 5, alignItems: "center" }}>
+                                  <button
+                                    type="button"
+                                    data-testid="geometry-actions-history-undo-last"
+                                    onClick={handleUndoLatestGeometryHistoryStep}
+                                    disabled={!geometryLatestUndoCandidate || geometryLockedObjectIds.has(geometryLatestUndoCandidate.objectId)}
+                                    style={{ ...geometryOperationButtonStyle, width: "auto", padding: "3px 8px", fontSize: 10.5 }}
+                                  >
+                                    Undo Last
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setGeometryProceduralPanelTab("history")}
+                                    style={{ ...geometryOperationButtonStyle, width: "auto", padding: "3px 8px", fontSize: 10.5 }}
+                                  >
+                                    Open
+                                  </button>
+                                </span>
                               </div>
+                              {geometryHistoryPreviewStep && (
+                                <div
+                                  data-testid="geometry-actions-history-preview-status"
+                                  style={{
+                                    border: "1px solid #a5f3fc",
+                                    borderRadius: 7,
+                                    background: "#ecfeff",
+                                    color: "#155e75",
+                                    padding: "4px 7px",
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  Previewing {geometryHistoryPreviewStep.objectName}: {geometryHistoryPreviewStep.label}
+                                </div>
+                              )}
                               {geometryRecentSceneHistory.length ? (
                                   <div style={{ display: "grid", gap: 5 }}>
                                     {geometryRecentSceneHistory.slice(0, 5).map((entry) => (
-                                      <button
+                                      <div
                                         key={`geometry-actions-history-${entry.id}`}
-                                        type="button"
                                         data-testid="geometry-actions-history-step"
-                                        onClick={() => {
-                                          setGeometrySelectedObjectId(entry.objectId);
-                                          setGeometrySelectedHistoryStepId(entry.id);
-                                          setGeometryProceduralPanelTab("history");
-                                        }}
+                                        tabIndex={0}
+                                        onMouseEnter={() => setGeometryHistoryPreviewStepId(entry.id)}
+                                        onMouseLeave={() => setGeometryHistoryPreviewStepId((current) => (current === entry.id ? null : current))}
+                                        onFocus={() => setGeometryHistoryPreviewStepId(entry.id)}
+                                        onBlur={() => setGeometryHistoryPreviewStepId((current) => (current === entry.id ? null : current))}
                                         title={`${entry.operationType}: ${entry.label}${entry.operationParameters ? `\n${entry.operationParameters}` : ""}`}
                                         style={{
                                           textAlign: "left",
@@ -69804,7 +70014,7 @@ case "mobius":
                                           background: geometrySelectedHistoryStepId === entry.id ? "#eaf3ff" : "#f8fafc",
                                           padding: "5px 7px",
                                           display: "grid",
-                                          gap: 2,
+                                          gap: 5,
                                         }}
                                       >
                                         <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
@@ -69815,7 +70025,37 @@ case "mobius":
                                           {entry.objectName} - {entry.operationType}
                                           {entry.operationTarget ? ` - ${entry.operationTarget}` : ""}
                                         </span>
-                                      </button>
+                                        <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap" }}>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setGeometrySelectedObjectId(entry.objectId);
+                                              setGeometrySelectedHistoryStepId(entry.id);
+                                              setGeometryProceduralPanelTab("history");
+                                            }}
+                                            style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                          >
+                                            Open
+                                          </button>
+                                          <button
+                                            type="button"
+                                            data-testid="geometry-actions-history-restore-step"
+                                            onClick={() => restoreGeometryObjectFromHistoryStep(entry.objectId, entry)}
+                                            disabled={geometryLockedObjectIds.has(entry.objectId)}
+                                            style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                          >
+                                            Restore
+                                          </button>
+                                          <button
+                                            type="button"
+                                            data-testid="geometry-actions-history-copy-step"
+                                            onClick={() => duplicateGeometryObjectFromHistoryStep(entry)}
+                                            style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                          >
+                                            Copy
+                                          </button>
+                                        </span>
+                                      </div>
                                     ))}
                                   </div>
                               ) : (
