@@ -14236,10 +14236,41 @@ const App: React.FC = () => {
         setGeometryCreateActionStatus("Selected object is locked.");
         return false;
       }
-      const target = geometryDatasetMeshObjects.find((entry) => entry.id === objectId) ?? null;
+      let target = geometryDatasetMeshObjects.find((entry) => entry.id === objectId) ?? null;
+      let promotedFromProcedural = false;
       if (!target) {
-        setGeometryCreateActionStatus("Convert selected procedural object to a Mesh object first.");
-        return false;
+        const sourceObject = geometryObjects.find((entry) => entry.id === objectId) ?? null;
+        const sourceMesh = proceduralMeshSet.meshes.find((entry) => entry.id === objectId) ?? null;
+        if (!sourceObject || !sourceMesh) {
+          setGeometryCreateActionStatus("Select an object with editable mesh data first.");
+          return false;
+        }
+        const identityTransform: GeometryObjectTransform = {
+          position: { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+        };
+        const bakedMesh = toDetachedMeshData(
+          transformSurfaceMeshByGeometryTransform(sourceMesh, sourceObject.transform),
+          `${sourceObject.name} (editable mesh)`
+        );
+        const promoted = promoteGeometryToMesh({
+          mesh: bakedMesh,
+          sourceGeometryId: sourceObject.id,
+          sourceOperationHistory: ["Auto-promoted for direct geometry edit"],
+          promotionMode: "editable_mesh_object",
+          labelOverride: bakedMesh.label,
+        });
+        target = {
+          id: sourceObject.id,
+          name: sourceObject.name,
+          mesh: toDetachedMeshData(promoted.mesh, bakedMesh.label),
+          transform: identityTransform,
+          visible: sourceObject.visible,
+          material: normalizeGeometryMaterial((sourceObject as { material?: unknown })?.material),
+          promotion: promoted.metadata,
+        };
+        promotedFromProcedural = true;
       }
       try {
         queueGeometryHistoryIntent(objectId, {
@@ -14285,26 +14316,32 @@ const App: React.FC = () => {
         const sourceOperationHistory = [...(target.promotion?.sourceOperationHistory ?? []), `Manual edit: ${actionLabel}`].slice(
           -20
         );
-        setGeometryDatasetMeshObjects((prev) =>
-          prev.map((entry) =>
-            entry.id === objectId
-              ? {
-                  ...entry,
-                  mesh: edited,
-                  promotion: entry.promotion
-                    ? {
-                        ...entry.promotion,
-                        sourceOperationHistory,
-                        traceMap: mutationTraceMap.toSnapshot(),
-                      }
-                    : entry.promotion,
-                }
-              : entry
-          )
-        );
+        const updatedTarget: GeometryDatasetMeshObject = {
+          ...target,
+          mesh: edited,
+          promotion: target.promotion
+            ? {
+                ...target.promotion,
+                sourceOperationHistory,
+                traceMap: mutationTraceMap.toSnapshot(),
+              }
+            : target.promotion,
+        };
+        if (promotedFromProcedural) {
+          setGeometryObjects((prev) => prev.filter((entry) => entry.id !== objectId));
+          setGeometryDatasetMeshObjects((prev) => [updatedTarget, ...prev.filter((entry) => entry.id !== objectId)]);
+        } else {
+          setGeometryDatasetMeshObjects((prev) =>
+            prev.map((entry) => (entry.id === objectId ? updatedTarget : entry))
+          );
+        }
         if (geometrySelectedObjectId !== objectId) setGeometrySelectedObjectId(objectId);
         setGeometryBakeError(null);
-        setGeometryCreateActionStatus(`${actionLabel} on ${target.name}.`);
+        setGeometryCreateActionStatus(
+          promotedFromProcedural
+            ? `${actionLabel} on ${target.name}; converted to editable mesh.`
+            : `${actionLabel} on ${target.name}.`
+        );
         return true;
       } catch (err: any) {
         const message = err?.message ?? `${actionLabel} failed.`;
@@ -14315,8 +14352,10 @@ const App: React.FC = () => {
     },
     [
       geometryDatasetMeshObjects,
+      geometryObjects,
       geometryLockedObjectIds,
       geometrySelectedObjectId,
+      proceduralMeshSet.meshes,
       queueGeometryHistoryIntent,
       setGeometryCreateActionStatus,
     ]
