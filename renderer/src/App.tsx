@@ -2248,6 +2248,16 @@ type GeometryOperationVertexTarget = {
   point: GeometryProbePoint;
   normal: GeometryProbePoint;
 };
+type GeometryDirectEditStatus = {
+  label: string;
+  target: string | null;
+  parameters: string | null;
+  beforeVertexCount: number;
+  afterVertexCount: number;
+  beforeFaceCount: number;
+  afterFaceCount: number;
+  promoted: boolean;
+};
 type GeometryRepeatMode =
   | "duplicate"
   | "linear-array"
@@ -9299,6 +9309,7 @@ const App: React.FC = () => {
   const [geometryEdgeBevelAmount, setGeometryEdgeBevelAmount] = useState(0.06);
   const [geometryVertexMoveAmount, setGeometryVertexMoveAmount] = useState(0.06);
   const [geometryVertexWeldDistance, setGeometryVertexWeldDistance] = useState(0.05);
+  const [geometryLastDirectEdit, setGeometryLastDirectEdit] = useState<GeometryDirectEditStatus | null>(null);
   const rememberGeometryRecentConstructionTool = useCallback((tool: GeometryConstructRecentTool) => {
     setGeometryRecentConstructionTools((prev) => [
       tool,
@@ -10551,6 +10562,14 @@ const App: React.FC = () => {
   const geometrySelectedObjectHistory = useMemo(
     () => (geometrySelectedObjectId ? geometryObjectHistoryById[geometrySelectedObjectId] ?? [] : []),
     [geometryObjectHistoryById, geometrySelectedObjectId]
+  );
+  const geometryRecentSceneHistory = useMemo(
+    () =>
+      Object.values(geometryObjectHistoryById)
+        .flat()
+        .sort((a, b) => b.at - a.at)
+        .slice(0, 12),
+    [geometryObjectHistoryById]
   );
   const geometrySelectedHistoryStep = useMemo(
     () =>
@@ -14273,6 +14292,13 @@ const App: React.FC = () => {
         promotedFromProcedural = true;
       }
       try {
+        const countMeshTopology = (mesh: SurfaceMeshData) => {
+          const vertexCount = Math.floor(mesh.positions.length / 3);
+          const faceCount =
+            mesh.indices && mesh.indices.length >= 3 ? Math.floor(mesh.indices.length / 3) : Math.floor(vertexCount / 3);
+          return { vertexCount, faceCount };
+        };
+        const beforeCounts = countMeshTopology(target.mesh);
         queueGeometryHistoryIntent(objectId, {
           action: intent?.action ?? "mesh-edit",
           label: intent?.label ?? actionLabel,
@@ -14283,6 +14309,7 @@ const App: React.FC = () => {
           warning: intent?.warning ?? null,
         });
         const edited = applySurfaceMeshOps(edit(cloneSurfaceMeshData(target.mesh, target.mesh.label)));
+        const afterCounts = countMeshTopology(edited);
         const sourceGeometryId =
           target.promotion?.sourceGeometryId ??
           (target.mesh.source.kind === "geometryObject" && target.mesh.source.objectId ? target.mesh.source.objectId : null);
@@ -14336,6 +14363,16 @@ const App: React.FC = () => {
           );
         }
         if (geometrySelectedObjectId !== objectId) setGeometrySelectedObjectId(objectId);
+        setGeometryLastDirectEdit({
+          label: intent?.label ?? actionLabel,
+          target: intent?.target ?? null,
+          parameters: intent?.parameters ?? null,
+          beforeVertexCount: beforeCounts.vertexCount,
+          afterVertexCount: afterCounts.vertexCount,
+          beforeFaceCount: beforeCounts.faceCount,
+          afterFaceCount: afterCounts.faceCount,
+          promoted: promotedFromProcedural,
+        });
         setGeometryBakeError(null);
         setGeometryCreateActionStatus(
           promotedFromProcedural
@@ -14358,6 +14395,7 @@ const App: React.FC = () => {
       proceduralMeshSet.meshes,
       queueGeometryHistoryIntent,
       setGeometryCreateActionStatus,
+      setGeometryLastDirectEdit,
     ]
   );
   const handleExtrudeSelectedFace = useCallback(() => {
@@ -17813,6 +17851,52 @@ const App: React.FC = () => {
     pushFace(geometryProbeSelectionDetails, GEOMETRY_VISUAL_LANGUAGE.selection, 0.5, 0.016);
     return groups.length ? groups : null;
   }, [geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails]);
+  const geometryDirectEditPreviewFaceMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
+    if (geometryMode !== "procedural") return null;
+    const selectedFace =
+      geometryProbeSelectionDetails?.mode === "face" && geometryProbeSelectionDetails.faceVertices
+        ? geometryProbeSelectionDetails
+        : null;
+    const faceVertices = selectedFace?.faceVertices ?? geometrySourceFaceOperationTarget?.faceVertices ?? null;
+    const faceNormal = selectedFace?.normal ?? geometrySourceFaceOperationTarget?.normal ?? null;
+    if (!faceVertices || faceVertices.length < 3 || !faceNormal) return null;
+    const normal = geometryNormalizeVec(faceNormal) ?? { x: 0, y: 1, z: 0 };
+    const requestedDistance = Number.isFinite(geometryFaceExtrudeDistance) ? geometryFaceExtrudeDistance : 0.15;
+    const previewDistance = Math.abs(requestedDistance) > 1e-6 ? requestedDistance : 0.12;
+    const positions: number[] = [];
+    for (const vertex of faceVertices) {
+      positions.push(vertex.x + normal.x * previewDistance, vertex.y + normal.y * previewDistance, vertex.z + normal.z * previewDistance);
+    }
+    const indices: number[] = [];
+    for (let i = 1; i + 1 < faceVertices.length; i += 1) {
+      indices.push(0, i, i + 1);
+    }
+    return [
+      {
+        positions,
+        indices,
+        color: 0x14b8a6,
+        opacity: 0.28,
+        doubleSided: true,
+      },
+    ];
+  }, [
+    geometryFaceExtrudeDistance,
+    geometryMode,
+    geometryProbeSelectionDetails,
+    geometrySourceFaceOperationTarget,
+  ]);
+  const geometryProceduralViewerOverlayMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
+    if (geometryMode !== "procedural") return null;
+    const groups: OverlayMeshGroup[] = [];
+    if (geometryProceduralSelectionFaceMeshGroups?.length) {
+      groups.push(...geometryProceduralSelectionFaceMeshGroups);
+    }
+    if (geometryDirectEditPreviewFaceMeshGroups?.length) {
+      groups.push(...geometryDirectEditPreviewFaceMeshGroups);
+    }
+    return groups.length ? groups : null;
+  }, [geometryDirectEditPreviewFaceMeshGroups, geometryMode, geometryProceduralSelectionFaceMeshGroups]);
   const geometryProceduralSelectionOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     const groups: OverlayPolylineGroup[] = [];
@@ -17900,6 +17984,100 @@ const App: React.FC = () => {
     geometryPrecisionPickActive,
     geometryProbeHoverSelectionDetails,
     geometryProbeSelectionDetails,
+  ]);
+  const geometryDirectEditPreviewOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (geometryMode !== "procedural") return null;
+    const groups: OverlayPolylineGroup[] = [];
+    const previewColor = 0x0f766e;
+    const selectedFace =
+      geometryProbeSelectionDetails?.mode === "face" && geometryProbeSelectionDetails.faceVertices
+        ? geometryProbeSelectionDetails
+        : null;
+    const faceVertices = selectedFace?.faceVertices ?? geometrySourceFaceOperationTarget?.faceVertices ?? null;
+    const faceNormal = selectedFace?.normal ?? geometrySourceFaceOperationTarget?.normal ?? null;
+    if (faceVertices && faceVertices.length >= 3 && faceNormal) {
+      const normal = geometryNormalizeVec(faceNormal) ?? { x: 0, y: 1, z: 0 };
+      const requestedDistance = Number.isFinite(geometryFaceExtrudeDistance) ? geometryFaceExtrudeDistance : 0.15;
+      const previewDistance = Math.abs(requestedDistance) > 1e-6 ? requestedDistance : 0.12;
+      const capVertices = faceVertices.map((vertex) =>
+        geometryAdd(vertex, geometryScale(normal, previewDistance))
+      );
+      const lines: PolylineSet = [];
+      for (let i = 0; i < capVertices.length; i += 1) {
+        lines.push([capVertices[i], capVertices[(i + 1) % capVertices.length]]);
+        lines.push([faceVertices[i], capVertices[i]]);
+      }
+      let maxSpan = 0;
+      for (let i = 0; i < faceVertices.length; i += 1) {
+        for (let j = i + 1; j < faceVertices.length; j += 1) {
+          maxSpan = Math.max(maxSpan, geometryDistance(faceVertices[i], faceVertices[j]));
+        }
+      }
+      groups.push({
+        lines,
+        color: previewColor,
+        opacity: 0.62,
+        radiusWorld: clampNumber(maxSpan * 0.007, 0.005, 0.016),
+      });
+    }
+    const selectedEdge =
+      geometryProbeSelectionDetails?.mode === "edge" && geometryProbeSelectionDetails.edgePoints
+        ? geometryProbeSelectionDetails
+        : null;
+    const edgePoints = selectedEdge?.edgePoints ?? geometryEdgeOperationTarget?.edgePoints ?? null;
+    if (edgePoints) {
+      const [a, b] = edgePoints;
+      const direction = geometryNormalizeVec(geometrySub(b, a));
+      if (direction) {
+        const edgeLength = Math.max(geometryDistance(a, b), 1e-4);
+        const ref = Math.abs(direction.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 };
+        const side = geometryNormalizeVec(geometryCross(direction, ref)) ?? { x: 0, y: 0, z: 1 };
+        const bevelPreview = Math.min(
+          Math.max(Math.abs(Number.isFinite(geometryEdgeBevelAmount) ? geometryEdgeBevelAmount : 0), edgeLength * 0.06),
+          edgeLength * 0.22
+        );
+        const tickSize = clampNumber(edgeLength * 0.16, 0.035, 0.18);
+        const center = geometryScale(geometryAdd(a, b), 0.5);
+        groups.push({
+          lines: [
+            [geometryAdd(a, geometryScale(side, bevelPreview)), geometryAdd(b, geometryScale(side, bevelPreview))],
+            [geometryAdd(a, geometryScale(side, -bevelPreview)), geometryAdd(b, geometryScale(side, -bevelPreview))],
+            [geometryAdd(center, geometryScale(side, -tickSize)), geometryAdd(center, geometryScale(side, tickSize))],
+          ],
+          color: previewColor,
+          opacity: 0.58,
+          radiusWorld: clampNumber(edgeLength * 0.01, 0.005, 0.014),
+        });
+      }
+    }
+    const selectedVertex =
+      geometryProbeSelectionDetails?.mode === "vertex" && geometryProbeSelectionDetails.vertexIndex != null
+        ? geometryProbeSelectionDetails
+        : null;
+    const vertexPoint = selectedVertex?.point ?? geometryVertexOperationTarget?.point ?? null;
+    const vertexNormal = selectedVertex?.normal ?? geometryVertexOperationTarget?.normal ?? null;
+    if (vertexPoint && vertexNormal) {
+      const normal = geometryNormalizeVec(vertexNormal) ?? { x: 0, y: 1, z: 0 };
+      const requestedDistance = Number.isFinite(geometryVertexMoveAmount) ? geometryVertexMoveAmount : 0.06;
+      const previewDistance = Math.abs(requestedDistance) > 1e-6 ? requestedDistance : 0.08;
+      const end = geometryAdd(vertexPoint, geometryScale(normal, previewDistance));
+      groups.push({
+        lines: [[vertexPoint, end]],
+        color: previewColor,
+        opacity: 0.86,
+        radiusWorld: clampNumber(Math.abs(previewDistance) * 0.09, 0.006, 0.018),
+      });
+    }
+    return groups.length ? groups : null;
+  }, [
+    geometryEdgeBevelAmount,
+    geometryEdgeOperationTarget,
+    geometryFaceExtrudeDistance,
+    geometryMode,
+    geometryProbeSelectionDetails,
+    geometrySourceFaceOperationTarget,
+    geometryVertexMoveAmount,
+    geometryVertexOperationTarget,
   ]);
   const geometryArmedLineOperationPreviewGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural" || geometryArmedLineOperation !== "extend") return null;
@@ -24195,19 +24373,50 @@ const App: React.FC = () => {
       z: base.z - 2 * signed * n.z,
     };
     const copyId = makeId();
+    let copyForHistory: GeometryObject | GeometryDatasetMeshObject;
+    suppressGeometryHistoryCapture();
     if ("mesh" in geometrySelectedSceneObject) {
       const copy = cloneGeometryDatasetMeshObject(geometrySelectedSceneObject);
       copy.id = copyId;
       copy.name = `${geometrySelectedSceneObject.name} mirror copy`;
       copy.transform.position = reflected;
+      copyForHistory = copy;
       setGeometryDatasetMeshObjects((prev) => [copy, ...prev]);
     } else {
       const copy = cloneGeometryObject(geometrySelectedSceneObject);
       copy.id = copyId;
       copy.name = `${geometrySelectedSceneObject.name} mirror copy`;
       copy.transform.position = reflected;
+      copyForHistory = copy;
       setGeometryObjects((prev) => [copy, ...prev]);
     }
+    const afterSnapshot = cloneGeometrySceneObjectSnapshot(copyForHistory);
+    const afterTopology = countGeometrySnapshotTopology(afterSnapshot);
+    const historyStep: GeometryObjectHistoryStep = {
+      id: makeId(),
+      at: Date.now(),
+      action: "mirror-copy",
+      label: "Mirror copy",
+      operationType: "Mirror",
+      operationTarget: geometryMirrorPlaneOperationTarget ? "Mirror plane slot" : "XY plane",
+      operationParameters: `normal=${formatHistoryVec3(n)}, point=${formatHistoryVec3(point)}`,
+      destructive: false,
+      warning: "Source object unchanged.",
+      objectId: copyId,
+      objectName: copyForHistory.name,
+      beforeVertexCount: null,
+      afterVertexCount: afterTopology?.vertexCount ?? null,
+      beforeFaceCount: null,
+      afterFaceCount: afterTopology?.faceCount ?? null,
+      beforeSummary: null,
+      afterSummary: summarizeGeometryHistorySnapshot(afterSnapshot),
+      changeSummary: `Created mirror copy from ${geometrySelectedSceneObject.name}.`,
+      snapshot: afterSnapshot,
+    };
+    setGeometryObjectHistoryById((prev) => ({
+      ...prev,
+      [copyId]: [historyStep, ...(prev[copyId] ?? [])].slice(0, 24),
+    }));
     setGeometrySelectedObjectId(copyId);
     setGeometryRepeatMode("mirror-plane");
     setGeometryRepeatMirrorPlane(geometryMirrorPlaneOperationTarget ? "selected-face" : "xy");
@@ -24220,6 +24429,7 @@ const App: React.FC = () => {
     geometryLockedObjectIds,
     geometryMirrorPlaneOperationTarget,
     geometrySelectedSceneObject,
+    suppressGeometryHistoryCapture,
   ]);
   const geometryConstructionOperationTargetLabel = useMemo(() => {
     if (geometrySelectedMathConstructionId) {
@@ -24547,6 +24757,9 @@ const App: React.FC = () => {
     if (geometryArmedLineOperationPreviewGroups?.length) {
       groups.push(...geometryArmedLineOperationPreviewGroups);
     }
+    if (geometryDirectEditPreviewOverlayGroups?.length) {
+      groups.push(...geometryDirectEditPreviewOverlayGroups);
+    }
     if (geometryProceduralSelectionOverlayGroups?.length) groups.push(...geometryProceduralSelectionOverlayGroups);
     if (helperGroupsVisible) {
       const helperOpacity = geometryPrecisionPickActive ? 0.22 : 1;
@@ -24573,6 +24786,7 @@ const App: React.FC = () => {
     geometryBooleanPreviewOverlayGroups,
     geometryProceduralFeatureOverlays.groups,
     geometryArmedLineOperationPreviewGroups,
+    geometryDirectEditPreviewOverlayGroups,
     geometryDerivedConstructionOverlays.groups,
     geometryPlaneBasicInputPreviewOverlays.groups,
     geometryPlaneMidPlanePreviewOverlays.groups,
@@ -51265,7 +51479,7 @@ case "mobius":
 
   const geometryRenderTraceLastRef = useRef<Record<string, unknown> | null>(null);
   useEffect(() => {
-    if (!import.meta.env.DEV && localStorage.getItem("MATH3D_GEOMETRY_RENDER_TRACE") !== "1") return;
+    if (localStorage.getItem("MATH3D_GEOMETRY_RENDER_TRACE") !== "1") return;
     if (mode !== "geometry") return;
     const hover = geometryProceduralHoverPick
       ? [
@@ -68783,7 +68997,7 @@ case "mobius":
                   edgeRadiusScale={geometryMode === "demo" ? geometryDemoEdgeRadiusScale : 1}
                   meshOverrides={geometryProceduralMeshOverridesForViewer}
                   extraOverlayPolylineGroups={geometryProceduralViewerOverlayPolylineGroups}
-                  extraOverlayMeshGroups={geometryProceduralSelectionFaceMeshGroups}
+                  extraOverlayMeshGroups={geometryProceduralViewerOverlayMeshGroups}
                   extraOverlayPointSets={geometryProceduralSelectionPointSets}
                   wireframe={geometryWireframe}
                   showPlanes={geometryShowPlanes}
@@ -69436,6 +69650,65 @@ case "mobius":
                               </div>
                             </div>
                             <div
+                              data-testid="geometry-actions-history-summary"
+                              style={{
+                                border: "1px solid #e2e8f0",
+                                borderRadius: 8,
+                                background: "#ffffff",
+                                padding: "7px 8px",
+                                display: "grid",
+                                gap: 6,
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                <strong>Recent History</strong>
+                                <button
+                                  type="button"
+                                  onClick={() => setGeometryProceduralPanelTab("history")}
+                                  style={{ ...geometryOperationButtonStyle, width: "auto", padding: "3px 8px", fontSize: 10.5 }}
+                                >
+                                  Open
+                                </button>
+                              </div>
+                              {geometryRecentSceneHistory.length ? (
+                                  <div style={{ display: "grid", gap: 5 }}>
+                                    {geometryRecentSceneHistory.slice(0, 5).map((entry) => (
+                                      <button
+                                        key={`geometry-actions-history-${entry.id}`}
+                                        type="button"
+                                        data-testid="geometry-actions-history-step"
+                                        onClick={() => {
+                                          setGeometrySelectedObjectId(entry.objectId);
+                                          setGeometrySelectedHistoryStepId(entry.id);
+                                          setGeometryProceduralPanelTab("history");
+                                        }}
+                                        title={`${entry.operationType}: ${entry.label}${entry.operationParameters ? `\n${entry.operationParameters}` : ""}`}
+                                        style={{
+                                          textAlign: "left",
+                                          border: "1px solid " + (geometrySelectedHistoryStepId === entry.id ? "#0a66c2" : "#dbe2ea"),
+                                          borderRadius: 7,
+                                          background: geometrySelectedHistoryStepId === entry.id ? "#eaf3ff" : "#f8fafc",
+                                          padding: "5px 7px",
+                                          display: "grid",
+                                          gap: 2,
+                                        }}
+                                      >
+                                        <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                          <strong>{entry.label}</strong>
+                                          <span style={{ color: "#64748b" }}>{new Date(entry.at).toLocaleTimeString()}</span>
+                                        </span>
+                                        <span style={{ color: "#475569" }}>
+                                          {entry.objectName} - {entry.operationType}
+                                          {entry.operationTarget ? ` - ${entry.operationTarget}` : ""}
+                                        </span>
+                                      </button>
+                                    ))}
+                                  </div>
+                              ) : (
+                                <div style={{ color: "#64748b" }}>No scene history yet.</div>
+                              )}
+                            </div>
+                            <div
                               data-testid="geometry-direct-edit-actions"
                               style={{
                                 border: "1px solid #e2e8f0",
@@ -69447,6 +69720,34 @@ case "mobius":
                               }}
                             >
                               <div style={{ fontWeight: 700 }}>Direct Editing</div>
+                              {geometryLastDirectEdit && (
+                                <div
+                                  data-testid="geometry-direct-edit-last"
+                                  style={{
+                                    border: "1px solid #ccfbf1",
+                                    borderRadius: 8,
+                                    background: "#f0fdfa",
+                                    color: "#134e4a",
+                                    padding: "6px 7px",
+                                    display: "grid",
+                                    gap: 3,
+                                  }}
+                                >
+                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                    <strong>Last edit</strong>
+                                    <span style={{ color: "#0f766e" }}>{geometryLastDirectEdit.label}</span>
+                                  </div>
+                                  <div>
+                                    {geometryLastDirectEdit.target ?? "Selected geometry"}
+                                    {geometryLastDirectEdit.parameters ? ` - ${geometryLastDirectEdit.parameters}` : ""}
+                                  </div>
+                                  <div style={{ color: "#475569" }}>
+                                    Vertices {geometryLastDirectEdit.beforeVertexCount}-&gt;{geometryLastDirectEdit.afterVertexCount}; faces{" "}
+                                    {geometryLastDirectEdit.beforeFaceCount}-&gt;{geometryLastDirectEdit.afterFaceCount}
+                                    {geometryLastDirectEdit.promoted ? "; converted to editable mesh" : ""}
+                                  </div>
+                                </div>
+                              )}
                               {(geometrySelectedPick?.kind === "face" || !geometrySelectedPick) && (
                                 <div style={{ display: "grid", gap: 6 }}>
                                   <div style={{ color: "#475569", fontWeight: 700 }}>Face</div>
