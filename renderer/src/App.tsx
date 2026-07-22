@@ -49759,6 +49759,7 @@ case "mobius":
     ? {
         ...responsiveDrawerChromeStyle,
         left: 8,
+        display: surfaceDrawerOpen === "left" ? undefined : "none",
         transform: surfaceDrawerOpen === "left" ? "translateX(0)" : "translateX(calc(-100% - 16px))",
         visibility: surfaceDrawerOpen === "left" ? "visible" : "hidden",
         pointerEvents: surfaceDrawerOpen === "left" ? "auto" : "none",
@@ -49768,6 +49769,7 @@ case "mobius":
     ? {
         ...responsiveDrawerChromeStyle,
         right: 8,
+        display: surfaceDrawerOpen === "right" ? undefined : "none",
         transform: surfaceDrawerOpen === "right" ? "translateX(0)" : "translateX(calc(100% + 16px))",
         visibility: surfaceDrawerOpen === "right" ? "visible" : "hidden",
         pointerEvents: surfaceDrawerOpen === "right" ? "auto" : "none",
@@ -49777,6 +49779,7 @@ case "mobius":
     ? {
         ...responsiveDrawerChromeStyle,
         left: 8,
+        display: geometryDrawerOpen === "left" ? undefined : "none",
         transform: geometryDrawerOpen === "left" ? "translateX(0)" : "translateX(calc(-100% - 16px))",
         visibility: geometryDrawerOpen === "left" ? "visible" : "hidden",
         pointerEvents: geometryDrawerOpen === "left" ? "auto" : "none",
@@ -49786,6 +49789,7 @@ case "mobius":
     ? {
         ...responsiveDrawerChromeStyle,
         right: 8,
+        display: geometryDrawerOpen === "right" ? undefined : "none",
         transform: geometryDrawerOpen === "right" ? "translateX(0)" : "translateX(calc(100% + 16px))",
         visibility: geometryDrawerOpen === "right" ? "visible" : "hidden",
         pointerEvents: geometryDrawerOpen === "right" ? "auto" : "none",

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { configureOrbitControlsForTouch, installViewerTouchGestures } from "../utils/viewerTouchGestures";
 
 export type CurveViewerVec3 = { x: number; y: number; z: number };
 
@@ -91,6 +92,7 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
+    configureOrbitControlsForTouch(controls);
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.75));
     const keyLight = new THREE.DirectionalLight(0xffffff, 0.75);
@@ -215,17 +217,27 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
     }
     visualGroup.add(grid);
 
-    if (dimension === 2) {
-      camera.position.set(fitCenter.x, fitCenter.y, fitCenter.z + fitRadius * 2.6);
-    } else {
-      camera.position.set(fitCenter.x + fitRadius * 1.65, fitCenter.y + fitRadius * 1.15, fitCenter.z + fitRadius * 1.45);
-    }
-    controls.target.copy(fitCenter);
-    controls.update();
-
     camera.near = Math.max(0.001, fitRadius / 150);
     camera.far = Math.max(100, fitRadius * 80);
     camera.updateProjectionMatrix();
+
+    const refitCamera = () => {
+      if (dimension === 2) {
+        camera.position.set(fitCenter.x, fitCenter.y, fitCenter.z + fitRadius * 2.6);
+        camera.up.set(0, 1, 0);
+      } else {
+        camera.position.set(fitCenter.x + fitRadius * 1.65, fitCenter.y + fitRadius * 1.15, fitCenter.z + fitRadius * 1.45);
+        camera.up.set(0, 1, 0);
+      }
+      controls.target.copy(fitCenter);
+      camera.lookAt(fitCenter);
+      controls.update();
+    };
+    refitCamera();
+
+    const disposeTouchGestures = installViewerTouchGestures(renderer.domElement, {
+      onDoubleTap: refitCamera,
+    });
 
     let animationFrame = 0;
     const renderLoop = () => {
@@ -247,6 +259,7 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
     return () => {
       window.cancelAnimationFrame(animationFrame);
       resizeObserver.disconnect();
+      disposeTouchGestures();
       controls.dispose();
       disposeSceneObjects(scene);
       renderer.dispose();

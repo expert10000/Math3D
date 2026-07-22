@@ -36,6 +36,7 @@ import {
   type ReferencePlaneGridSettings,
 } from "@math3d/renderer-web";
 import { debugLog } from "../utils/debugLog";
+import { configureOrbitControlsForTouch, installViewerTouchGestures } from "../utils/viewerTouchGestures";
 
 export type ColorMode = CoreColorMode;
 
@@ -3576,7 +3577,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.target.set(0, 0, 0);
-    controls.screenSpacePanning = true;
+    configureOrbitControlsForTouch(controls);
 
     const transformControls = new TransformControls(camera, renderer.domElement);
     transformControls.enabled = false;
@@ -5348,6 +5349,20 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       cb({ delta: event.deltaY });
     };
 
+    const disposeTouchGestures = installViewerTouchGestures(renderer.domElement, {
+      onDoubleTap: () => {
+        interruptCameraTour();
+        setViewMode("free");
+        setLockToAxisPlane(false);
+        setViewGizmoMenuOpen(false);
+        forceReframeRef.current?.();
+      },
+      onLongPress: (event) => {
+        if (!inspectEnabledRef.current || dragStateRef.current) return;
+        handlePointerMove(event as PointerEvent);
+      },
+    });
+
     renderer.domElement.addEventListener("pointerdown", handlePointerDown);
     renderer.domElement.addEventListener("pointermove", handlePointerMove);
     renderer.domElement.addEventListener("wheel", handleWheel, { passive: false });
@@ -5472,6 +5487,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
       ro.disconnect();
       window.removeEventListener("resize", handleResize);
+      disposeTouchGestures();
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
       renderer.domElement.removeEventListener("pointermove", handlePointerMove);
       renderer.domElement.removeEventListener("wheel", handleWheel);

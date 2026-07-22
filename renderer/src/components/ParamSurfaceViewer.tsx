@@ -68,6 +68,7 @@ import {
   type ReferencePlaneGridSettings,
 } from "@math3d/renderer-web";
 import { debugLog } from "../utils/debugLog";
+import { configureOrbitControlsForTouch, installViewerTouchGestures } from "../utils/viewerTouchGestures";
 import type { ParamSurfaceId as CoreParamSurfaceId } from "@math3d/core";
 
 type ParamPreset = {
@@ -2572,6 +2573,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.target.set(0, 0, 0);
+    configureOrbitControlsForTouch(controls);
 
     sceneRef.current = scene;
     cameraRef.current = camera;
@@ -3776,6 +3778,17 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       }
     };
 
+    const disposeTouchGestures = installViewerTouchGestures(renderer.domElement, {
+      onDoubleTap: () => {
+        setViewMode("free");
+        forceReframeRef.current?.();
+      },
+      onLongPress: (event) => {
+        if (!inspectEnabledRef.current) return;
+        handlePointerDown(event as PointerEvent);
+      },
+    });
+
     renderer.domElement.addEventListener("pointerdown", handlePointerDown);
 
     const animate = () => {
@@ -3912,6 +3925,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         ro.disconnect();
         window.removeEventListener("resize", onResize);
         controls.removeEventListener("change", handleControlsChangeDebug);
+        disposeTouchGestures();
         renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
         if (isCameraLeader && onCameraSync) {
           controls.removeEventListener("change", emitCameraSync);

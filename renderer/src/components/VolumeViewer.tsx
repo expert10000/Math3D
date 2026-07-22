@@ -25,6 +25,7 @@ import {
   vtkVolumeStreamlines,
 } from "../services/vtkVolumeClient";
 import { vtkSmooth } from "../services/vtkMeshClient";
+import { configureOrbitControlsForTouch, installViewerTouchGestures } from "../utils/viewerTouchGestures";
 
 export type VolumeViewerProps = {
   dataset: VolumeDataset | null;
@@ -245,6 +246,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   const onSlicePickRef = useRef(onSlicePick);
   const hoverPendingRef = useRef<{ x: number; y: number } | null>(null);
   const hoverRafRef = useRef<number | null>(null);
+  const viewPresetRef = useRef(viewPreset);
   const [isoMeshToken, setIsoMeshToken] = useState(0);
   const [sceneReady, setSceneReady] = useState(false);
 
@@ -255,6 +257,10 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   useEffect(() => {
     datasetRef.current = dataset;
   }, [dataset]);
+
+  useEffect(() => {
+    viewPresetRef.current = viewPreset;
+  }, [viewPreset]);
 
   useEffect(() => {
     sliceDataRef.current = sliceData;
@@ -373,6 +379,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.target.set(0, 0, 0);
+    configureOrbitControlsForTouch(controls);
     controls.update();
 
     const axes = new THREE.AxesHelper(1.25);
@@ -459,6 +466,40 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     ro.observe(mount);
     window.addEventListener("resize", handleResize);
 
+    const refitCamera = () => {
+      const preset = viewPresetRef.current;
+      const grid = datasetRef.current?.grid;
+      const bounds = grid
+        ? getGridBounds(grid)
+        : { center: [0, 0, 0] as [number, number, number], diag: 2 };
+      const center = new THREE.Vector3(...bounds.center);
+      const dist = Math.max(1, bounds.diag * 1.4);
+      const pos = center.clone();
+
+      if (preset === "xy") {
+        pos.set(center.x, center.y, center.z + dist);
+        camera.up.set(0, 1, 0);
+      } else if (preset === "xz") {
+        pos.set(center.x, center.y - dist, center.z);
+        camera.up.set(0, 0, 1);
+      } else if (preset === "yz") {
+        pos.set(center.x + dist, center.y, center.z);
+        camera.up.set(0, 0, 1);
+      } else {
+        pos.set(center.x + dist * 0.9, center.y + dist * 0.82, center.z + dist);
+        camera.up.set(0, 1, 0);
+      }
+
+      camera.position.copy(pos);
+      camera.lookAt(center);
+      controls.target.copy(center);
+      controls.update();
+    };
+
+    const disposeTouchGestures = installViewerTouchGestures(renderer.domElement, {
+      onDoubleTap: refitCamera,
+    });
+
     let frameId = 0;
     const animate = () => {
       frameId = requestAnimationFrame(animate);
@@ -471,6 +512,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       cancelAnimationFrame(frameId);
       ro.disconnect();
       window.removeEventListener("resize", handleResize);
+      disposeTouchGestures();
       controls.dispose();
       renderer.dispose();
       renderer.domElement.remove();
