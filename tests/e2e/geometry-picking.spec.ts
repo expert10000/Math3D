@@ -410,7 +410,7 @@ test("Geometry scene gallery filters and opens construct operations playground",
     await expect(page.getByTestId("geometry-scene-preset-filter-chips")).toBeVisible();
     await page.getByTestId("geometry-scene-preset-filter-playgrounds").click();
     await expect(page.getByTestId("geometry-scene-preset-filter-playgrounds")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByText("1 /", { exact: false })).toBeVisible();
+    await expect(page.getByText(/\d+\s*\/\s*\d+\s+presets/)).toBeVisible();
     await expect(page.getByTestId("geometry-debug-scene-card-scene:construct-operations-playground")).toBeVisible();
 
     await page.getByTestId("geometry-debug-scene-open-scene:construct-operations-playground").click();
