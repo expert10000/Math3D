@@ -123,7 +123,7 @@ import {
   type ConstructionDependencyTreeNode,
 } from "./geometry/constructionDependencyTree";
 import { buildConstructionViewportBadgeById } from "./geometry/constructionViewportBadges";
-import { pointInPolygonOnPlane } from "./geometry/polyhedra";
+import { pointInPolygonOnPlane, polygonNormalFromVertices } from "./geometry/polyhedra";
 import {
   GEOMETRY_OBJECT_REGISTRY,
   POLYHEDRON_FAMILY_OPTIONS,
@@ -2252,11 +2252,20 @@ type GeometryDirectEditStatus = {
   label: string;
   target: string | null;
   parameters: string | null;
+  topologySummary?: string | null;
   beforeVertexCount: number;
   afterVertexCount: number;
   beforeFaceCount: number;
   afterFaceCount: number;
   promoted: boolean;
+};
+type GeometryTopologyEditFeedback = {
+  id: string;
+  objectId: string;
+  summary: string;
+  points: GeometryProbePoint[];
+  edgeLines: PolylineSet;
+  facePolygons: Polygon3[];
 };
 type GeometryActionContinuityStatus = {
   label: string;
@@ -3863,6 +3872,7 @@ type GeometryObjectHistoryStep = {
   beforeSummary: string | null;
   afterSummary: string;
   changeSummary: string;
+  topologySummary?: string | null;
   snapshot: GeometryObject | GeometryDatasetMeshObject;
 };
 type GeometryRecentActionHistoryEntry =
@@ -4999,6 +5009,144 @@ const countTriangleMeshTopology = (mesh: {
       ? Math.floor(mesh.indices.length / 3)
       : Math.floor((mesh.positions?.length ?? 0) / 9);
   return { vertexCount, faceCount };
+};
+
+const readMeshPoint = (
+  mesh: { positions: ArrayLike<number> },
+  index: number
+): GeometryProbePoint | null => {
+  const vertexCount = Math.floor((mesh.positions?.length ?? 0) / 3);
+  if (!Number.isInteger(index) || index < 0 || index >= vertexCount) return null;
+  const base = index * 3;
+  const x = Number(mesh.positions[base]);
+  const y = Number(mesh.positions[base + 1]);
+  const z = Number(mesh.positions[base + 2]);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
+  return { x, y, z };
+};
+
+const readMeshFaceVertexIndices = (
+  mesh: { positions: ArrayLike<number>; indices?: ArrayLike<number> | null },
+  faceIndex: number
+): [number, number, number] | null => {
+  const topology = countTriangleMeshTopology(mesh);
+  if (!Number.isInteger(faceIndex) || faceIndex < 0 || faceIndex >= topology.faceCount) return null;
+  if (mesh.indices && mesh.indices.length >= (faceIndex + 1) * 3) {
+    const base = faceIndex * 3;
+    const a = Number(mesh.indices[base]);
+    const b = Number(mesh.indices[base + 1]);
+    const c = Number(mesh.indices[base + 2]);
+    if ([a, b, c].every((value) => Number.isInteger(value) && value >= 0 && value < topology.vertexCount)) {
+      return [a, b, c];
+    }
+    return null;
+  }
+  const base = faceIndex * 3;
+  if (base + 2 >= topology.vertexCount) return null;
+  return [base, base + 1, base + 2];
+};
+
+const readMeshFacePolygon = (
+  mesh: { positions: ArrayLike<number>; indices?: ArrayLike<number> | null },
+  faceIndex: number
+): Polygon3 | null => {
+  const tri = readMeshFaceVertexIndices(mesh, faceIndex);
+  if (!tri) return null;
+  const vertices = tri.map((idx) => readMeshPoint(mesh, idx)).filter((point): point is GeometryProbePoint => !!point);
+  return vertices.length === 3 ? { vertices } : null;
+};
+
+const findChangedMeshFaceIndices = (
+  before: SurfaceMeshData,
+  after: SurfaceMeshData,
+  maxFaces = 12
+): number[] => {
+  const beforeTopology = countTriangleMeshTopology(before);
+  const afterTopology = countTriangleMeshTopology(after);
+  const changed: number[] = [];
+  const sameTri = (faceIndex: number) => {
+    const a = readMeshFaceVertexIndices(before, faceIndex);
+    const b = readMeshFaceVertexIndices(after, faceIndex);
+    return !!a && !!b && a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+  };
+  for (let i = 0; i < afterTopology.faceCount && changed.length < maxFaces; i += 1) {
+    if (i >= beforeTopology.faceCount || !sameTri(i)) changed.push(i);
+  }
+  return changed;
+};
+
+const buildTopologyEditSummary = (
+  action: string,
+  target: string | null | undefined,
+  beforeCounts: { vertexCount: number; faceCount: number },
+  afterCounts: { vertexCount: number; faceCount: number }
+): string => {
+  const subject = target ?? "Selected topology";
+  const vertexDelta = afterCounts.vertexCount - beforeCounts.vertexCount;
+  const faceDelta = afterCounts.faceCount - beforeCounts.faceCount;
+  const countTail = `V ${beforeCounts.vertexCount}->${afterCounts.vertexCount}, F ${beforeCounts.faceCount}->${afterCounts.faceCount}`;
+  const deltaTail = `${vertexDelta >= 0 ? "+" : ""}${vertexDelta}V, ${faceDelta >= 0 ? "+" : ""}${faceDelta}F`;
+  if (action === "face-subdivide") return `${subject} -> 4 triangles (${deltaTail})`;
+  if (action === "edge-split") return `${subject} -> midpoint vertex (${deltaTail})`;
+  if (action === "edge-collapse") return `${subject} -> midpoint vertex (${countTail})`;
+  if (action === "face-extrude") return `${subject} -> cap + side faces (${deltaTail})`;
+  if (action === "face-inset") return `${subject} -> inset face + rim (${deltaTail})`;
+  if (action === "face-delete") return `${subject} -> removed (${deltaTail})`;
+  if (action === "edge-bevel") return `${subject} -> offset edge endpoints (${countTail})`;
+  if (action === "vertex-move") return `${subject} -> moved vertex (${countTail})`;
+  if (action === "vertex-weld") return `${subject} -> merged vertices (${countTail})`;
+  return `${subject} -> topology updated (${countTail})`;
+};
+
+const buildTopologyEditFeedback = (
+  objectId: string,
+  action: string,
+  target: string | null | undefined,
+  beforeMesh: SurfaceMeshData,
+  afterMesh: SurfaceMeshData,
+  transformedAfterMesh: SurfaceMeshData
+): GeometryTopologyEditFeedback => {
+  const beforeCounts = countTriangleMeshTopology(beforeMesh);
+  const afterCounts = countTriangleMeshTopology(afterMesh);
+  const points: GeometryProbePoint[] = [];
+  const beforeVertexCount = beforeCounts.vertexCount;
+  const afterVertexCount = afterCounts.vertexCount;
+  const movedLimit = Math.min(beforeVertexCount, afterVertexCount);
+  for (let i = 0; i < movedLimit && points.length < 18; i += 1) {
+    const beforeBase = i * 3;
+    const afterBase = i * 3;
+    const dx = Number(beforeMesh.positions[beforeBase]) - Number(afterMesh.positions[afterBase]);
+    const dy = Number(beforeMesh.positions[beforeBase + 1]) - Number(afterMesh.positions[afterBase + 1]);
+    const dz = Number(beforeMesh.positions[beforeBase + 2]) - Number(afterMesh.positions[afterBase + 2]);
+    if (dx * dx + dy * dy + dz * dz > 1e-10) {
+      const point = readMeshPoint(transformedAfterMesh, i);
+      if (point) points.push(point);
+    }
+  }
+  for (let i = beforeVertexCount; i < afterVertexCount && points.length < 18; i += 1) {
+    const point = readMeshPoint(transformedAfterMesh, i);
+    if (point) points.push(point);
+  }
+
+  const changedFaceIndices = findChangedMeshFaceIndices(beforeMesh, afterMesh, 14);
+  const facePolygons = changedFaceIndices
+    .map((faceIndex) => readMeshFacePolygon(transformedAfterMesh, faceIndex))
+    .filter((polygon): polygon is Polygon3 => !!polygon);
+  const edgeLines: PolylineSet = [];
+  for (const polygon of facePolygons.slice(0, 8)) {
+    const verts = polygon.vertices;
+    for (let i = 0; i < verts.length; i += 1) {
+      edgeLines.push([verts[i], verts[(i + 1) % verts.length]]);
+    }
+  }
+  return {
+    id: makeId(),
+    objectId,
+    summary: buildTopologyEditSummary(action, target, beforeCounts, afterCounts),
+    points,
+    edgeLines,
+    facePolygons,
+  };
 };
 
 const countGeometrySnapshotTopology = (
@@ -9351,7 +9499,16 @@ const App: React.FC = () => {
   const [geometryVertexMoveAmount, setGeometryVertexMoveAmount] = useState(0.06);
   const [geometryVertexWeldDistance, setGeometryVertexWeldDistance] = useState(0.05);
   const [geometryLastDirectEdit, setGeometryLastDirectEdit] = useState<GeometryDirectEditStatus | null>(null);
+  const [geometryTopologyEditFeedback, setGeometryTopologyEditFeedback] = useState<GeometryTopologyEditFeedback | null>(null);
   const [geometryLastActionContinuity, setGeometryLastActionContinuity] = useState<GeometryActionContinuityStatus | null>(null);
+  const geometryTopologyEditFeedbackTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (geometryTopologyEditFeedbackTimerRef.current != null) {
+        window.clearTimeout(geometryTopologyEditFeedbackTimerRef.current);
+      }
+    };
+  }, []);
   const rememberGeometryRecentConstructionTool = useCallback((tool: GeometryConstructRecentTool) => {
     setGeometryRecentConstructionTools((prev) => [
       tool,
@@ -10627,7 +10784,7 @@ const App: React.FC = () => {
         detail: `${entry.objectName} - ${entry.operationType}${entry.operationTarget ? ` - ${entry.operationTarget}` : ""}`,
         sourceLabel: mirrorSource ?? entry.objectName,
         actionLabel: entry.operationType,
-        resultLabel: entry.objectName,
+        resultLabel: entry.topologySummary ?? entry.objectName,
         parametersLabel: entry.operationParameters,
         step: entry,
       };
@@ -14583,6 +14740,15 @@ const App: React.FC = () => {
               }
             : target.promotion,
         };
+        const transformedEdited = transformSurfaceMeshByGeometryTransform(edited, updatedTarget.transform);
+        const topologyFeedback = buildTopologyEditFeedback(
+          objectId,
+          resolvedIntent.action,
+          resolvedIntent.target,
+          target.mesh,
+          edited,
+          transformedEdited
+        );
         const afterSnapshot = cloneGeometrySceneObjectSnapshot(updatedTarget);
         const historyStep: GeometryObjectHistoryStep = {
           id: makeId(),
@@ -14602,7 +14768,8 @@ const App: React.FC = () => {
           afterFaceCount: afterCounts.faceCount,
           beforeSummary: summarizeGeometryHistorySnapshot(beforeSnapshot),
           afterSummary: summarizeGeometryHistorySnapshot(afterSnapshot),
-          changeSummary: summarizeGeometryHistoryChange(beforeSnapshot, afterSnapshot),
+          changeSummary: topologyFeedback.summary || summarizeGeometryHistoryChange(beforeSnapshot, afterSnapshot),
+          topologySummary: topologyFeedback.summary,
           snapshot: afterSnapshot,
         };
         suppressGeometryHistoryCapture();
@@ -14627,12 +14794,21 @@ const App: React.FC = () => {
           label: intent?.label ?? actionLabel,
           target: intent?.target ?? null,
           parameters: intent?.parameters ?? null,
+          topologySummary: topologyFeedback.summary,
           beforeVertexCount: beforeCounts.vertexCount,
           afterVertexCount: afterCounts.vertexCount,
           beforeFaceCount: beforeCounts.faceCount,
           afterFaceCount: afterCounts.faceCount,
           promoted: promotedFromProcedural,
         });
+        setGeometryTopologyEditFeedback(topologyFeedback);
+        if (geometryTopologyEditFeedbackTimerRef.current != null) {
+          window.clearTimeout(geometryTopologyEditFeedbackTimerRef.current);
+        }
+        geometryTopologyEditFeedbackTimerRef.current = window.setTimeout(() => {
+          setGeometryTopologyEditFeedback((current) => (current?.id === topologyFeedback.id ? null : current));
+          geometryTopologyEditFeedbackTimerRef.current = null;
+        }, 2400);
         setGeometryLastActionContinuity({
           label: intent?.label ?? actionLabel,
           targetObjectId: objectId,
@@ -18211,6 +18387,33 @@ const App: React.FC = () => {
     geometryProbeSelectionDetails,
     geometrySourceFaceOperationTarget,
   ]);
+  const geometryTopologyEditFeedbackMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
+    if (geometryMode !== "procedural" || !geometryTopologyEditFeedback?.facePolygons.length) return null;
+    const groups: OverlayMeshGroup[] = [];
+    for (const polygon of geometryTopologyEditFeedback.facePolygons.slice(0, 12)) {
+      const vertices = polygon.vertices ?? [];
+      if (vertices.length < 3) continue;
+      const normal = polygonNormalFromVertices(vertices);
+      const n = normal ? geometryNormalizeVec(normal) ?? { x: 0, y: 1, z: 0 } : { x: 0, y: 1, z: 0 };
+      const offset = 0.018;
+      const positions: number[] = [];
+      for (const vertex of vertices) {
+        positions.push(vertex.x + n.x * offset, vertex.y + n.y * offset, vertex.z + n.z * offset);
+      }
+      const indices: number[] = [];
+      for (let i = 1; i + 1 < vertices.length; i += 1) {
+        indices.push(0, i, i + 1);
+      }
+      groups.push({
+        positions,
+        indices,
+        color: 0x22d3ee,
+        opacity: 0.36,
+        doubleSided: true,
+      });
+    }
+    return groups.length ? groups : null;
+  }, [geometryMode, geometryTopologyEditFeedback]);
   const geometryHistoryPreviewOverlays = useMemo<{
     meshGroups: OverlayMeshGroup[] | null;
     labelSets: OverlayLabelSet[] | null;
@@ -18272,12 +18475,16 @@ const App: React.FC = () => {
     if (geometryDirectEditPreviewFaceMeshGroups?.length) {
       groups.push(...geometryDirectEditPreviewFaceMeshGroups);
     }
+    if (geometryTopologyEditFeedbackMeshGroups?.length) {
+      groups.push(...geometryTopologyEditFeedbackMeshGroups);
+    }
     return groups.length ? groups : null;
   }, [
     geometryDirectEditPreviewFaceMeshGroups,
     geometryHistoryPreviewOverlays.meshGroups,
     geometryMode,
     geometryProceduralSelectionFaceMeshGroups,
+    geometryTopologyEditFeedbackMeshGroups,
   ]);
   const geometryProceduralSelectionOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural") return null;
@@ -25084,6 +25291,17 @@ const App: React.FC = () => {
       },
     ];
   }, [geometryMode, geometrySnapPreview]);
+  const geometryTopologyEditFeedbackPointSets = useMemo<OverlayPointSet[] | null>(() => {
+    if (geometryMode !== "procedural" || !geometryTopologyEditFeedback?.points.length) return null;
+    return [
+      {
+        points: geometryTopologyEditFeedback.points,
+        color: 0xfacc15,
+        size: 0.11,
+        opacity: 0.98,
+      },
+    ];
+  }, [geometryMode, geometryTopologyEditFeedback]);
   const geometryProceduralHighlightPointSets = useMemo<OverlayPointSet[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     const sets: OverlayPointSet[] = [];
@@ -25120,6 +25338,9 @@ const App: React.FC = () => {
     if (geometryProceduralSnapPreviewPointSet?.length) {
       sets.push(...geometryProceduralSnapPreviewPointSet);
     }
+    if (geometryTopologyEditFeedbackPointSets?.length) {
+      sets.push(...geometryTopologyEditFeedbackPointSets);
+    }
     return sets.length ? sets : null;
   }, [
     geometryMode,
@@ -25134,7 +25355,19 @@ const App: React.FC = () => {
     geometryPlaneMidPlanePreviewOverlays.pointSets,
     geometryMathConstructionOverlays.pointSets,
     geometryProceduralSnapPreviewPointSet,
+    geometryTopologyEditFeedbackPointSets,
   ]);
+  const geometryTopologyEditFeedbackPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (geometryMode !== "procedural" || !geometryTopologyEditFeedback?.edgeLines.length) return null;
+    return [
+      {
+        lines: geometryTopologyEditFeedback.edgeLines,
+        color: 0x2563eb,
+        opacity: 0.95,
+        radiusWorld: 0.012,
+      },
+    ];
+  }, [geometryMode, geometryTopologyEditFeedback]);
   const geometryProceduralViewerOverlayPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     const groups: OverlayPolylineGroup[] = [];
@@ -25170,6 +25403,9 @@ const App: React.FC = () => {
     if (geometryDirectEditPreviewOverlayGroups?.length) {
       groups.push(...geometryDirectEditPreviewOverlayGroups);
     }
+    if (geometryTopologyEditFeedbackPolylineGroups?.length) {
+      groups.push(...geometryTopologyEditFeedbackPolylineGroups);
+    }
     if (geometryProceduralSelectionOverlayGroups?.length) groups.push(...geometryProceduralSelectionOverlayGroups);
     if (helperGroupsVisible) {
       const helperOpacity = geometryPrecisionPickActive ? 0.22 : 1;
@@ -25197,6 +25433,7 @@ const App: React.FC = () => {
     geometryProceduralFeatureOverlays.groups,
     geometryArmedLineOperationPreviewGroups,
     geometryDirectEditPreviewOverlayGroups,
+    geometryTopologyEditFeedbackPolylineGroups,
     geometryDerivedConstructionOverlays.groups,
     geometryPlaneBasicInputPreviewOverlays.groups,
     geometryPlaneMidPlanePreviewOverlays.groups,
@@ -70422,6 +70659,21 @@ case "mobius":
                                     {geometryLastDirectEdit.target ?? "Selected geometry"}
                                     {geometryLastDirectEdit.parameters ? ` - ${geometryLastDirectEdit.parameters}` : ""}
                                   </div>
+                                  {geometryLastDirectEdit.topologySummary && (
+                                    <div
+                                      data-testid="geometry-direct-edit-topology-summary"
+                                      style={{
+                                        border: "1px solid #99f6e4",
+                                        borderRadius: 6,
+                                        background: "#ffffff",
+                                        color: "#0f766e",
+                                        padding: "3px 5px",
+                                        fontWeight: 800,
+                                      }}
+                                    >
+                                      {geometryLastDirectEdit.topologySummary}
+                                    </div>
+                                  )}
                                   <div style={{ color: "#475569" }}>
                                     Vertices {geometryLastDirectEdit.beforeVertexCount}-&gt;{geometryLastDirectEdit.afterVertexCount}; faces{" "}
                                     {geometryLastDirectEdit.beforeFaceCount}-&gt;{geometryLastDirectEdit.afterFaceCount}
