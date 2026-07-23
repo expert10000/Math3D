@@ -2263,9 +2263,41 @@ type GeometryTopologyEditFeedback = {
   id: string;
   objectId: string;
   summary: string;
+  retainedSelectionLabel?: string | null;
   points: GeometryProbePoint[];
   edgeLines: PolylineSet;
   facePolygons: Polygon3[];
+};
+type GeometryTopologyRetainedSelectionTarget =
+  | {
+      kind: "face";
+      faceIndex: number;
+      slotId?: GeometryOperationInputSlotId;
+      message?: string;
+    }
+  | {
+      kind: "edge";
+      edgeVertices: [number, number];
+      slotId?: GeometryOperationInputSlotId;
+      message?: string;
+    }
+  | {
+      kind: "vertex";
+      vertexIndex: number;
+      slotId?: GeometryOperationInputSlotId;
+      message?: string;
+    };
+type GeometryTopologyRetainSelectionResolver = (context: {
+  beforeMesh: SurfaceMeshData;
+  afterMesh: SurfaceMeshData;
+  transformedAfterMesh: SurfaceMeshData;
+  beforeCounts: { vertexCount: number; faceCount: number };
+  afterCounts: { vertexCount: number; faceCount: number };
+  objectId: string;
+  objectName: string;
+}) => GeometryTopologyRetainedSelectionTarget | null;
+type GeometryMeshEditIntent = Partial<GeometryHistoryIntent> & {
+  retainSelection?: GeometryTopologyRetainSelectionResolver;
 };
 type GeometryActionContinuityStatus = {
   label: string;
@@ -5025,6 +5057,27 @@ const readMeshPoint = (
   return { x, y, z };
 };
 
+const findNearestMeshVertexIndex = (
+  mesh: { positions: ArrayLike<number> },
+  point: GeometryProbePoint
+): number | null => {
+  const vertexCount = Math.floor((mesh.positions?.length ?? 0) / 3);
+  let bestIndex: number | null = null;
+  let bestDistanceSq = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < vertexCount; i += 1) {
+    const candidate = readMeshPoint(mesh, i);
+    if (!candidate) continue;
+    const dx = candidate.x - point.x;
+    const dy = candidate.y - point.y;
+    const dz = candidate.z - point.z;
+    const d2 = dx * dx + dy * dy + dz * dz;
+    if (d2 >= bestDistanceSq) continue;
+    bestDistanceSq = d2;
+    bestIndex = i;
+  }
+  return bestIndex;
+};
+
 const readMeshFaceVertexIndices = (
   mesh: { positions: ArrayLike<number>; indices?: ArrayLike<number> | null },
   faceIndex: number
@@ -5147,6 +5200,109 @@ const buildTopologyEditFeedback = (
     edgeLines,
     facePolygons,
   };
+};
+
+const pointToTuple3 = (point: GeometryProbePoint): [number, number, number] => [point.x, point.y, point.z];
+
+const makeEdgeKeyFromVertices = (a: number, b: number): string => (a < b ? `${a}:${b}` : `${b}:${a}`);
+
+const buildRetainedTopologySelectionPick = (
+  objectId: string,
+  objectName: string,
+  objectType: string,
+  mesh: SurfaceMeshData,
+  target: GeometryTopologyRetainedSelectionTarget
+): GeometryPickResult | null => {
+  const fallbackNormal: [number, number, number] = [0, 1, 0];
+  const basePick = {
+    objectId,
+    objectLabel: objectName,
+    objectType,
+    meshKey: objectId,
+    stale: false,
+  };
+  if (target.kind === "face") {
+    const tri = readMeshFaceVertexIndices(mesh, target.faceIndex);
+    if (!tri) return null;
+    const points = tri.map((index) => readMeshPoint(mesh, index));
+    if (points.some((point) => !point)) return null;
+    const [a, b, c] = points as [GeometryProbePoint, GeometryProbePoint, GeometryProbePoint];
+    const ab = geometrySub(b, a);
+    const ac = geometrySub(c, a);
+    const normalRaw = geometryCross(ab, ac);
+    const normalPoint = geometryNormalizeVec(normalRaw) ?? { x: 0, y: 1, z: 0 };
+    const normal = pointToTuple3(normalPoint);
+    const centroid: GeometryProbePoint = {
+      x: (a.x + b.x + c.x) / 3,
+      y: (a.y + b.y + c.y) / 3,
+      z: (a.z + b.z + c.z) / 3,
+    };
+    return {
+      ...basePick,
+      kind: "face",
+      worldPoint: pointToTuple3(centroid),
+      normal,
+      faceNormal: normal,
+      faceIndex: target.faceIndex,
+      sourceTriangle: tri,
+      label: `${objectName} face #${target.faceIndex}`,
+    };
+  }
+  if (target.kind === "edge") {
+    const [aIndex, bIndex] = target.edgeVertices;
+    const a = readMeshPoint(mesh, aIndex);
+    const b = readMeshPoint(mesh, bIndex);
+    if (!a || !b) return null;
+    const midpoint: GeometryProbePoint = {
+      x: (a.x + b.x) * 0.5,
+      y: (a.y + b.y) * 0.5,
+      z: (a.z + b.z) * 0.5,
+    };
+    const tangentPoint = geometryNormalizeVec(geometrySub(b, a)) ?? { x: 1, y: 0, z: 0 };
+    const tangent = pointToTuple3(tangentPoint);
+    return {
+      ...basePick,
+      kind: "edge",
+      worldPoint: pointToTuple3(midpoint),
+      normal: fallbackNormal,
+      tangent,
+      tangentKind: "edge-direction",
+      edgeVertices: [aIndex, bIndex],
+      edgeKey: makeEdgeKeyFromVertices(aIndex, bIndex),
+      label: `${objectName} edge [${aIndex}, ${bIndex}]`,
+    };
+  }
+  const point = readMeshPoint(mesh, target.vertexIndex);
+  if (!point) return null;
+  return {
+    ...basePick,
+    kind: "vertex",
+    worldPoint: pointToTuple3(point),
+    normal: fallbackNormal,
+    vertexNormal: fallbackNormal,
+    vertexIndex: target.vertexIndex,
+    label: `${objectName} vertex #${target.vertexIndex}`,
+  };
+};
+
+const buildProceduralPickFromRetainedSelection = (
+  pick: GeometryPickResult
+): GeometryProceduralPickInfo => {
+  const normalTuple = pick.faceNormal ?? pick.vertexNormal ?? pick.surfaceNormal ?? pick.normal ?? [0, 1, 0];
+  return {
+    point: { x: pick.worldPoint[0], y: pick.worldPoint[1], z: pick.worldPoint[2] },
+    normal: { x: normalTuple[0], y: normalTuple[1], z: normalTuple[2] },
+    meshKey: pick.meshKey ?? pick.objectId,
+    faceIndex: pick.faceIndex,
+    vertexIndex: pick.vertexIndex,
+    distance: 0,
+  };
+};
+
+const formatRetainedTopologySelectionLabel = (target: GeometryTopologyRetainedSelectionTarget): string => {
+  if (target.kind === "face") return `Selected face #${target.faceIndex}`;
+  if (target.kind === "edge") return `Selected edge [${target.edgeVertices[0]}, ${target.edgeVertices[1]}]`;
+  return `Midpoint vertex #${target.vertexIndex}`;
 };
 
 const countGeometrySnapshotTopology = (
@@ -14630,7 +14786,7 @@ const App: React.FC = () => {
       objectId: string,
       actionLabel: string,
       edit: (mesh: SurfaceMeshData) => SurfaceMeshData,
-      intent?: Partial<GeometryHistoryIntent>
+      intent?: GeometryMeshEditIntent
     ): boolean => {
       if (!objectId) {
         setGeometryCreateActionStatus("Select an object first.");
@@ -14741,14 +14897,39 @@ const App: React.FC = () => {
             : target.promotion,
         };
         const transformedEdited = transformSurfaceMeshByGeometryTransform(edited, updatedTarget.transform);
-        const topologyFeedback = buildTopologyEditFeedback(
-          objectId,
-          resolvedIntent.action,
-          resolvedIntent.target,
-          target.mesh,
-          edited,
-          transformedEdited
-        );
+        const retainedSelectionTarget =
+          intent?.retainSelection?.({
+            beforeMesh: target.mesh,
+            afterMesh: edited,
+            transformedAfterMesh: transformedEdited,
+            beforeCounts,
+            afterCounts,
+            objectId,
+            objectName: updatedTarget.name,
+          }) ?? null;
+        const retainedSelectionLabel = retainedSelectionTarget
+          ? formatRetainedTopologySelectionLabel(retainedSelectionTarget)
+          : null;
+        const topologyFeedback = {
+          ...buildTopologyEditFeedback(
+            objectId,
+            resolvedIntent.action,
+            resolvedIntent.target,
+            target.mesh,
+            edited,
+            transformedEdited
+          ),
+          retainedSelectionLabel,
+        };
+        const retainedSelectionPick = retainedSelectionTarget
+          ? buildRetainedTopologySelectionPick(
+              objectId,
+              updatedTarget.name,
+              "mesh",
+              transformedEdited,
+              retainedSelectionTarget
+            )
+          : null;
         const afterSnapshot = cloneGeometrySceneObjectSnapshot(updatedTarget);
         const historyStep: GeometryObjectHistoryStep = {
           id: makeId(),
@@ -14809,6 +14990,31 @@ const App: React.FC = () => {
           setGeometryTopologyEditFeedback((current) => (current?.id === topologyFeedback.id ? null : current));
           geometryTopologyEditFeedbackTimerRef.current = null;
         }, 2400);
+        if (retainedSelectionPick && retainedSelectionTarget) {
+          const slotId =
+            retainedSelectionTarget.slotId ??
+            (retainedSelectionPick.kind === "face"
+              ? "source-face"
+              : retainedSelectionPick.kind === "edge"
+                ? "active-edge"
+                : "active-vertex");
+          const clearSlots: GeometryOperationInputSlotId[] =
+            retainedSelectionPick.kind === "vertex"
+              ? ["active-edge"]
+              : retainedSelectionPick.kind === "edge"
+                ? ["active-vertex"]
+                : [];
+          setGeometryProbeSelectionMode(retainedSelectionPick.kind);
+          setGeometryProceduralPick(buildProceduralPickFromRetainedSelection(retainedSelectionPick));
+          setGeometryActiveOperationInputSlotId(slotId);
+          setGeometryOperationInputs((prev) =>
+            prev.map((entry) => {
+              if (entry.slotId === slotId) return { ...entry, value: retainedSelectionPick };
+              if (clearSlots.includes(entry.slotId)) return { ...entry, value: null };
+              return entry;
+            })
+          );
+        }
         setGeometryLastActionContinuity({
           label: intent?.label ?? actionLabel,
           targetObjectId: objectId,
@@ -14822,8 +15028,16 @@ const App: React.FC = () => {
         setGeometryBakeError(null);
         setGeometryCreateActionStatus(
           promotedFromProcedural
-            ? `${actionLabel} on ${target.name}; converted to editable mesh.`
-            : `${actionLabel} on ${target.name}.`
+            ? `${actionLabel} on ${target.name}; converted to editable mesh.${
+                retainedSelectionTarget?.message
+                  ? ` ${retainedSelectionTarget.message}${retainedSelectionLabel ? ` (${retainedSelectionLabel})` : ""}`
+                  : ""
+              }`
+            : `${actionLabel} on ${target.name}.${
+                retainedSelectionTarget?.message
+                  ? ` ${retainedSelectionTarget.message}${retainedSelectionLabel ? ` (${retainedSelectionLabel})` : ""}`
+                  : ""
+              }`
         );
         return true;
       } catch (err: any) {
@@ -14861,6 +15075,12 @@ const App: React.FC = () => {
       target: `Face ${faceIndex}`,
       parameters: `distance=${formatHistoryNumber(geometryFaceExtrudeDistance)}`,
       destructive: true,
+      retainSelection: ({ beforeCounts }) => ({
+        kind: "face",
+        faceIndex: beforeCounts.faceCount,
+        slotId: "source-face",
+        message: "Selected the new extrude cap face.",
+      }),
     });
   }, [
     applyMeshEditToObject,
@@ -14885,6 +15105,12 @@ const App: React.FC = () => {
       target: `Face ${faceIndex}`,
       parameters: `ratio=${formatHistoryNumber(geometryFaceInsetRatio)}`,
       destructive: true,
+      retainSelection: ({ beforeCounts }) => ({
+        kind: "face",
+        faceIndex: Math.max(0, beforeCounts.faceCount - 1),
+        slotId: "source-face",
+        message: "Selected the new inset face.",
+      }),
     });
   }, [
     applyMeshEditToObject,
@@ -14909,6 +15135,15 @@ const App: React.FC = () => {
       target: `Face ${faceIndex}`,
       parameters: "delete selected face",
       destructive: true,
+      retainSelection: ({ afterCounts }) =>
+        afterCounts.faceCount > 0
+          ? {
+              kind: "face",
+              faceIndex: Math.min(faceIndex, afterCounts.faceCount - 1),
+              slotId: "source-face",
+              message: "Selected the nearest remaining face.",
+            }
+          : null,
     });
   }, [
     applyMeshEditToObject,
@@ -14930,6 +15165,12 @@ const App: React.FC = () => {
       target: `Face ${faceIndex}`,
       parameters: "triangle -> 4 triangles",
       destructive: true,
+      retainSelection: ({ afterCounts }) => ({
+        kind: "face",
+        faceIndex: Math.max(0, afterCounts.faceCount - 1),
+        slotId: "source-face",
+        message: "Selected the new center triangle.",
+      }),
     });
   }, [
     applyMeshEditToObject,
@@ -14951,6 +15192,12 @@ const App: React.FC = () => {
       target: `Edge ${Math.min(a, b)}-${Math.max(a, b)}`,
       parameters: "split midpoint",
       destructive: true,
+      retainSelection: ({ beforeCounts }) => ({
+        kind: "vertex",
+        vertexIndex: beforeCounts.vertexCount,
+        slotId: "active-vertex",
+        message: "Selected the new midpoint vertex.",
+      }),
     });
   }, [
     applyMeshEditToObject,
@@ -14971,6 +15218,21 @@ const App: React.FC = () => {
       target: `Edge ${Math.min(a, b)}-${Math.max(a, b)}`,
       parameters: "merge to midpoint",
       destructive: true,
+      retainSelection: ({ beforeMesh, afterMesh }) => {
+        const pa = readMeshPoint(beforeMesh, a);
+        const pb = readMeshPoint(beforeMesh, b);
+        if (!pa || !pb) return null;
+        const midpoint = { x: (pa.x + pb.x) * 0.5, y: (pa.y + pb.y) * 0.5, z: (pa.z + pb.z) * 0.5 };
+        const vertexIndex = findNearestMeshVertexIndex(afterMesh, midpoint);
+        return vertexIndex == null
+          ? null
+          : {
+              kind: "vertex",
+              vertexIndex,
+              slotId: "active-vertex",
+              message: "Selected the merged midpoint vertex.",
+            };
+      },
     });
   }, [
     applyMeshEditToObject,
@@ -14993,6 +15255,12 @@ const App: React.FC = () => {
       target: `Edge ${Math.min(a, b)}-${Math.max(a, b)}`,
       parameters: `amount=${formatHistoryNumber(geometryEdgeBevelAmount)}`,
       destructive: true,
+      retainSelection: () => ({
+        kind: "edge",
+        edgeVertices: [a, b],
+        slotId: "active-edge",
+        message: "Kept the edited edge selected.",
+      }),
     });
   }, [
     applyMeshEditToObject,
@@ -15026,6 +15294,12 @@ const App: React.FC = () => {
       target: `Vertex ${vertexIndex}`,
       parameters: `distance=${formatHistoryNumber(geometryVertexMoveAmount)}`,
       destructive: true,
+      retainSelection: () => ({
+        kind: "vertex",
+        vertexIndex,
+        slotId: "active-vertex",
+        message: "Kept the moved vertex selected.",
+      }),
     });
   }, [
     applyMeshEditToObject,
@@ -15045,6 +15319,19 @@ const App: React.FC = () => {
         target: `Vertices ${a}, ${b}`,
         parameters: "direct pair weld",
         destructive: true,
+        retainSelection: ({ beforeMesh, afterMesh }) => {
+          const keepPoint = readMeshPoint(beforeMesh, a);
+          if (!keepPoint) return null;
+          const vertexIndex = findNearestMeshVertexIndex(afterMesh, keepPoint);
+          return vertexIndex == null
+            ? null
+            : {
+                kind: "vertex",
+                vertexIndex,
+                slotId: "active-vertex",
+                message: "Selected the welded vertex.",
+              };
+        },
       });
       return;
     }
@@ -15068,6 +15355,19 @@ const App: React.FC = () => {
       parameters: `maxDistance=${formatHistoryNumber(geometryVertexWeldDistance)}`,
       destructive: true,
       warning: "Nearest neighbor depends on current topology.",
+      retainSelection: ({ beforeMesh, afterMesh }) => {
+        const sourcePoint = readMeshPoint(beforeMesh, sourceIndex);
+        if (!sourcePoint) return null;
+        const vertexIndex = findNearestMeshVertexIndex(afterMesh, sourcePoint);
+        return vertexIndex == null
+          ? null
+          : {
+              kind: "vertex",
+              vertexIndex,
+              slotId: "active-vertex",
+              message: "Selected the welded vertex.",
+            };
+      },
     });
   }, [
     applyMeshEditToObject,
@@ -25296,9 +25596,33 @@ const App: React.FC = () => {
     return [
       {
         points: geometryTopologyEditFeedback.points,
+        color: 0xfff7ed,
+        size: 0.26,
+        opacity: 0.62,
+      },
+      {
+        points: geometryTopologyEditFeedback.points,
         color: 0xfacc15,
-        size: 0.11,
+        size: 0.2,
         opacity: 0.98,
+      },
+    ];
+  }, [geometryMode, geometryTopologyEditFeedback]);
+  const geometryTopologyEditFeedbackLabelSets = useMemo<OverlayLabelSet[] | null>(() => {
+    if (geometryMode !== "procedural" || !geometryTopologyEditFeedback?.points.length) return null;
+    const anchor = geometryTopologyEditFeedback.points[0];
+    const text = geometryTopologyEditFeedback.retainedSelectionLabel ?? geometryTopologyEditFeedback.summary;
+    return [
+      {
+        size: 0.9,
+        labels: [
+          {
+            text,
+            position: { x: anchor.x + 0.06, y: anchor.y + 0.08, z: anchor.z + 0.06 },
+            color: 0x92400e,
+            opacity: 0.98,
+          },
+        ],
       },
     ];
   }, [geometryMode, geometryTopologyEditFeedback]);
@@ -25550,6 +25874,7 @@ const App: React.FC = () => {
     pushLabelSets(geometrySelectedDerivedLineGizmoOverlays.labelSets);
     pushLabelSets(geometryMathConstructionOverlays.labelSets);
     pushLabelSets(geometryConstructionViewportBadgeLabelSets);
+    pushLabelSets(geometryTopologyEditFeedbackLabelSets);
     pushLabelSets(geometryHistoryPreviewOverlays.labelSets);
     if (geometryTimelineShowAnnotations && geometryProceduralAnnotationOverlays.labelSets?.length) {
       pushLabelSets(geometryProceduralAnnotationOverlays.labelSets);
@@ -25566,6 +25891,7 @@ const App: React.FC = () => {
     geometrySelectedDerivedLineGizmoOverlays.labelSets,
     geometryMathConstructionOverlays.labelSets,
     geometryConstructionViewportBadgeLabelSets,
+    geometryTopologyEditFeedbackLabelSets,
     geometryHistoryPreviewOverlays.labelSets,
     geometryProceduralAnnotationOverlays.labelSets,
     geometryTimelineShowAnnotations,
