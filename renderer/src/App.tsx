@@ -2892,6 +2892,12 @@ type GeometryConstructionHistoryEntry = {
   result: string;
   resultId?: string;
   steps: string[];
+  operationSummary?: {
+    source: string;
+    action: string;
+    result: string;
+    parameters?: string | null;
+  };
   planeSummary?: {
     method: string;
     inputs: string[];
@@ -3465,6 +3471,7 @@ const geometryDerivedConstructionActionLabel = (entry: Pick<GeometryDerivedConst
   if (name.toLowerCase().includes("extension")) return "Extend";
   if (name.toLowerCase().includes("trim")) return "Trim";
   if (name.toLowerCase().includes("offset")) return "Offset";
+  if (name.toLowerCase().includes("project")) return "Project";
   if (name.toLowerCase().includes("parallel")) return "Parallel";
   if (name.toLowerCase().includes("perpendicular")) return "Perpendicular";
   if (name.toLowerCase().includes("converted")) return "Convert";
@@ -3865,6 +3872,10 @@ type GeometryRecentActionHistoryEntry =
       at: number;
       label: string;
       detail: string;
+      sourceLabel: string;
+      actionLabel: string;
+      resultLabel: string;
+      parametersLabel?: string | null;
       step: GeometryObjectHistoryStep;
     }
   | {
@@ -3873,6 +3884,10 @@ type GeometryRecentActionHistoryEntry =
       at: number;
       label: string;
       detail: string;
+      sourceLabel: string;
+      actionLabel: string;
+      resultLabel: string;
+      parametersLabel?: string | null;
       step: GeometryConstructionHistoryEntry;
     };
 type GeometryTimelineSource = "history" | "variants" | "workbook" | "theorem";
@@ -10599,20 +10614,34 @@ const App: React.FC = () => {
     [geometryObjectHistoryById]
   );
   const geometryRecentActionHistory = useMemo<GeometryRecentActionHistoryEntry[]>(() => {
-    const objectEntries: GeometryRecentActionHistoryEntry[] = geometryRecentSceneHistory.map((entry) => ({
-      kind: "object",
-      id: `object:${entry.id}`,
-      at: entry.at,
-      label: entry.label,
-      detail: `${entry.objectName} - ${entry.operationType}${entry.operationTarget ? ` - ${entry.operationTarget}` : ""}`,
-      step: entry,
-    }));
+    const objectEntries: GeometryRecentActionHistoryEntry[] = geometryRecentSceneHistory.map((entry) => {
+      const mirrorSource =
+        entry.operationType === "Mirror"
+          ? entry.changeSummary.match(/^Created mirror copy from (.+)\.$/)?.[1] ?? entry.operationTarget ?? entry.objectName
+          : null;
+      return {
+        kind: "object",
+        id: `object:${entry.id}`,
+        at: entry.at,
+        label: entry.label,
+        detail: `${entry.objectName} - ${entry.operationType}${entry.operationTarget ? ` - ${entry.operationTarget}` : ""}`,
+        sourceLabel: mirrorSource ?? entry.objectName,
+        actionLabel: entry.operationType,
+        resultLabel: entry.objectName,
+        parametersLabel: entry.operationParameters,
+        step: entry,
+      };
+    });
     const constructionEntries: GeometryRecentActionHistoryEntry[] = geometryConstructionHistory.map((entry) => ({
       kind: "construction",
       id: `construction:${entry.id}`,
       at: entry.at,
       label: entry.planeSummary ? `${entry.action} plane` : entry.action,
       detail: entry.planeSummary ? `${entry.source} - ${entry.planeSummary.method}` : `${entry.source} - ${entry.result}`,
+      sourceLabel: entry.operationSummary?.source ?? entry.source,
+      actionLabel: entry.operationSummary?.action ?? entry.action,
+      resultLabel: entry.operationSummary?.result ?? entry.result,
+      parametersLabel: entry.operationSummary?.parameters,
       step: entry,
     }));
     return [...objectEntries, ...constructionEntries].sort((a, b) => b.at - a.at).slice(0, 12);
@@ -14843,6 +14872,16 @@ const App: React.FC = () => {
           result,
           resultId: next.id,
           steps: [`Select ${geometryDerivedConstructionSourceEntityLabel(next)}`, action, `Created ${result}`],
+          operationSummary: {
+            source,
+            action,
+            result,
+            parameters: next.params?.distance != null
+              ? `distance=${formatHistoryNumber(next.params.distance)}`
+              : next.params?.length != null
+                ? `length=${formatHistoryNumber(next.params.length)}`
+                : null,
+          },
           planeSummary: geometryPlaneConstructionHistorySummary(next),
         },
         ...prev,
@@ -14956,6 +14995,8 @@ const App: React.FC = () => {
         | "face-offset-plane"
         | "face-parallel-face-plane"
         | "face-plane-through-three-vertices"
+      ,
+      options: { name?: string } = {}
     ) => {
       const detail = geometrySourceFaceOperationTarget;
       if (!detail) {
@@ -14993,6 +15034,7 @@ const App: React.FC = () => {
       })();
       appendDerivedConstruction({
         type,
+        name: options.name,
         sourceKind: "face",
         sourceObjectId: detail.objectId,
         sourceTopologySignature: resolved ? geometryMeshTopologySignature(resolved.mesh) : null,
@@ -22413,6 +22455,7 @@ const App: React.FC = () => {
       const source = geometryDerivedConstructionSourceReference(next, sourceObjectName);
       const action = geometryDerivedConstructionActionLabel(next);
       const result = geometryDerivedConstructionName(next);
+      const operationSource = geometryDerivedConstructionName(entry);
       setGeometryConstructionHistory((prev) => [
         {
           id: makeId(),
@@ -22421,7 +22464,17 @@ const App: React.FC = () => {
           source,
           result,
           resultId: next.id,
-          steps: [`Select ${geometryDerivedConstructionSourceEntityLabel(next)}`, action, `Created ${result}`],
+          steps: [`Select ${operationSource}`, action, `Created ${result}`],
+          operationSummary: {
+            source: operationSource,
+            action,
+            result,
+            parameters: next.params?.distance != null
+              ? `distance=${formatHistoryNumber(next.params.distance)}`
+              : next.params?.length != null
+                ? `length=${formatHistoryNumber(next.params.length)}`
+                : null,
+          },
           planeSummary: geometryPlaneConstructionHistorySummary(next),
         },
         ...prev,
@@ -22693,6 +22746,12 @@ const App: React.FC = () => {
           result: labelText,
           resultId: next.id,
           steps: [`Select ${lineA.name}`, `Select ${lineB.name}`, `Created ${labelText}`],
+          operationSummary: {
+            source: `${lineA.name} + ${lineB.name}`,
+            action: geometryDerivedConstructionActionLabel(next),
+            result: labelText,
+            parameters: analysis.relation,
+          },
           planeSummary: geometryPlaneConstructionHistorySummary(next),
         },
         ...prev,
@@ -23927,7 +23986,7 @@ const App: React.FC = () => {
       }
     }
     if (geometrySourceFaceOperationTarget) {
-      handleCreateDerivedFromFace("face-plane-through-centroid");
+      handleCreateDerivedFromFace("face-plane-through-centroid", { name: "Projected Face Plane" });
       setGeometryCreateActionStatus("Project target created from the Source face slot.");
       return;
     }
@@ -70101,6 +70160,33 @@ case "mobius":
                                               <span style={{ color: "#64748b" }}>{new Date(historyStep.at).toLocaleTimeString()}</span>
                                             </span>
                                             <span style={{ color: "#475569" }}>{entry.detail}</span>
+                                            <span
+                                              data-testid="geometry-actions-history-operation-trail"
+                                              style={{
+                                                display: "grid",
+                                                gridTemplateColumns: "48px minmax(0, 1fr)",
+                                                gap: "2px 6px",
+                                                border: "1px solid #e2e8f0",
+                                                borderRadius: 6,
+                                                background: "#ffffff",
+                                                padding: "4px 6px",
+                                                fontSize: 10,
+                                                color: "#334155",
+                                              }}
+                                            >
+                                              <span style={{ color: "#64748b", fontWeight: 800 }}>Source</span>
+                                              <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.sourceLabel}</span>
+                                              <span style={{ color: "#64748b", fontWeight: 800 }}>Action</span>
+                                              <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.actionLabel}</span>
+                                              <span style={{ color: "#64748b", fontWeight: 800 }}>Result</span>
+                                              <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.resultLabel}</span>
+                                              {entry.parametersLabel && (
+                                                <>
+                                                  <span style={{ color: "#64748b", fontWeight: 800 }}>Params</span>
+                                                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.parametersLabel}</span>
+                                                </>
+                                              )}
+                                            </span>
                                             <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap" }}>
                                               <button
                                                 type="button"
@@ -70156,10 +70242,36 @@ case "mobius":
                                             <strong>{entry.label}</strong>
                                             <span style={{ color: "#64748b" }}>{new Date(entry.at).toLocaleTimeString()}</span>
                                           </span>
-                                          <span style={{ color: "#475569" }}>{entry.detail}</span>
+                                          <span
+                                            data-testid="geometry-actions-history-construction-trail"
+                                            style={{
+                                              display: "grid",
+                                              gridTemplateColumns: "48px minmax(0, 1fr)",
+                                              gap: "2px 6px",
+                                              border: "1px solid #ccfbf1",
+                                              borderRadius: 6,
+                                              background: "#f0fdfa",
+                                              padding: "4px 6px",
+                                              fontSize: 10,
+                                              color: "#134e4a",
+                                            }}
+                                          >
+                                            <span style={{ color: "#0f766e", fontWeight: 800 }}>Source</span>
+                                            <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.sourceLabel}</span>
+                                            <span style={{ color: "#0f766e", fontWeight: 800 }}>Action</span>
+                                            <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.actionLabel}</span>
+                                            <span style={{ color: "#0f766e", fontWeight: 800 }}>Result</span>
+                                            <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.resultLabel}</span>
+                                            {entry.parametersLabel && (
+                                              <>
+                                                <span style={{ color: "#0f766e", fontWeight: 800 }}>Params</span>
+                                                <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.parametersLabel}</span>
+                                              </>
+                                            )}
+                                          </span>
                                           {constructionStep.planeSummary && (
-                                            <span style={{ color: "#0f766e", fontWeight: 700 }}>
-                                              Result: {constructionStep.planeSummary.result}
+                                            <span style={{ color: "#475569" }}>
+                                              Method: {constructionStep.planeSummary.method}; output {constructionStep.planeSummary.result}
                                             </span>
                                           )}
                                           <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>

@@ -1811,6 +1811,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const chartGridCellFaceFactorRef = useRef(1);
   const viewGizmoRef = useRef<THREE.Group | null>(null);
   const bboxHelperRef = useRef<THREE.Box3Helper | null>(null);
+  const preservedCameraViewRef = useRef<CameraSyncState | null>(null);
+  const preservedCameraSignatureRef = useRef<string | null>(null);
   const geodesicHeatMarkersRef = useRef<{ start: THREE.Mesh | null; end: THREE.Mesh | null }>({
     start: null,
     end: null,
@@ -2429,6 +2431,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     setViewMode("free");
     setLockToAxisPlane(false);
     setViewGizmoMenuOpen(false);
+    forceReframeRef.current?.();
   }, [resetToken]);
 
   useEffect(() => {
@@ -3531,6 +3534,14 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
+    const cameraSignature = [
+      surfaceId,
+      graphExpr ?? "",
+      implicitExpr ?? "",
+      implicitMeshToken ?? 0,
+      graphDomain?.xSpan ?? "",
+      graphDomain?.ySpan ?? "",
+    ].join("|");
 
     const getSize = () => {
       const rect = mount.getBoundingClientRect();
@@ -3578,6 +3589,23 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     controls.enableDamping = true;
     controls.target.set(0, 0, 0);
     configureOrbitControlsForTouch(controls);
+    const preservedCameraView =
+      preservedCameraSignatureRef.current === cameraSignature ? preservedCameraViewRef.current : null;
+    if (preservedCameraView) {
+      camera.position.set(
+        preservedCameraView.position.x,
+        preservedCameraView.position.y,
+        preservedCameraView.position.z
+      );
+      camera.up.set(preservedCameraView.up.x, preservedCameraView.up.y, preservedCameraView.up.z);
+      controls.target.set(
+        preservedCameraView.target.x,
+        preservedCameraView.target.y,
+        preservedCameraView.target.z
+      );
+      camera.lookAt(controls.target);
+      controls.update();
+    }
 
     const transformControls = new TransformControls(camera, renderer.domElement);
     transformControls.enabled = false;
@@ -5423,6 +5451,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     let resizeFrameId = 0;
     let resizeTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    let initialAutoReframeDone = !!preservedCameraView;
     const handleResize = () => {
       syncRendererSize(false);
       emitViewportDebug("resize");
@@ -5435,8 +5464,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
       resizeTimeoutId = setTimeout(() => {
         resizeTimeoutId = null;
-        syncRendererSize(true);
-        emitViewportDebug("resize-final");
+        const shouldAutoReframe = !initialAutoReframeDone;
+        syncRendererSize(shouldAutoReframe);
+        initialAutoReframeDone = true;
+        emitViewportDebug(shouldAutoReframe ? "resize-final" : "resize-final-preserve-camera");
       }, 120);
     };
 
@@ -5480,6 +5511,26 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     animate();
 
     return () => {
+      if (cameraRef.current && controlsRef.current) {
+        preservedCameraViewRef.current = {
+          position: {
+            x: cameraRef.current.position.x,
+            y: cameraRef.current.position.y,
+            z: cameraRef.current.position.z,
+          },
+          target: {
+            x: controlsRef.current.target.x,
+            y: controlsRef.current.target.y,
+            z: controlsRef.current.target.z,
+          },
+          up: {
+            x: cameraRef.current.up.x,
+            y: cameraRef.current.up.y,
+            z: cameraRef.current.up.z,
+          },
+        };
+        preservedCameraSignatureRef.current = cameraSignature;
+      }
       forceReframeRef.current = null;
       stopCameraTour("stopped", false);
       cancelAnimationFrame(frameId);
@@ -5672,7 +5723,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     planeGridOpacity,
     renderQuality,
     reframePaddingFactor,
-    resetToken,
     probeEnabled,
     graphResolution,
     implicitResolution,
