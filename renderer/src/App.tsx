@@ -311,7 +311,19 @@ import {
   subdivideSurfaceMesh,
   validateMesh,
 } from "./mesh/meshOps";
-import { bevelEdge, collapseEdge, deleteFace, extrudeFace, insetFace, moveVertex, splitEdge, subdivideFace, weldVertices } from "./mesh/meshEditOps";
+import {
+  bevelEdge,
+  collapseEdge,
+  deleteFace,
+  extrudeFace,
+  insetFace,
+  moveVertex,
+  splitEdge,
+  subdivideFace,
+  weldVertices,
+  type EdgeCollapseMode,
+  type FaceSubdivideMode,
+} from "./mesh/meshEditOps";
 import type { MeshQualityReport, MeshQualityReportPhase } from "./mesh/meshQualityReport";
 import type {
   DatasetKind,
@@ -2259,6 +2271,12 @@ type GeometryDirectEditStatus = {
   afterFaceCount: number;
   promoted: boolean;
 };
+type GeometryTopologyActionPreview = {
+  ready: boolean;
+  title: string;
+  detail: string;
+  tone: "ready" | "warning" | "blocked";
+};
 type GeometryTopologyEditFeedback = {
   id: string;
   objectId: string;
@@ -2273,18 +2291,21 @@ type GeometryTopologyRetainedSelectionTarget =
       kind: "face";
       faceIndex: number;
       slotId?: GeometryOperationInputSlotId;
+      label?: string;
       message?: string;
     }
   | {
       kind: "edge";
       edgeVertices: [number, number];
       slotId?: GeometryOperationInputSlotId;
+      label?: string;
       message?: string;
     }
   | {
       kind: "vertex";
       vertexIndex: number;
       slotId?: GeometryOperationInputSlotId;
+      label?: string;
       message?: string;
     };
 type GeometryTopologyRetainSelectionResolver = (context: {
@@ -2298,6 +2319,7 @@ type GeometryTopologyRetainSelectionResolver = (context: {
 }) => GeometryTopologyRetainedSelectionTarget | null;
 type GeometryMeshEditIntent = Partial<GeometryHistoryIntent> & {
   retainSelection?: GeometryTopologyRetainSelectionResolver;
+  topologySummaryOverride?: string;
 };
 type GeometryActionContinuityStatus = {
   label: string;
@@ -2488,6 +2510,30 @@ const geometryOperationButtonStyle: React.CSSProperties = {
   fontSize: 10.5,
   fontWeight: 800,
 };
+const geometryTopologyPreviewStyle = (tone: GeometryTopologyActionPreview["tone"]): React.CSSProperties => ({
+  border:
+    tone === "blocked"
+      ? "1px solid #fecaca"
+      : tone === "warning"
+        ? "1px solid #fed7aa"
+        : "1px solid #bfdbfe",
+  borderRadius: 6,
+  background:
+    tone === "blocked"
+      ? "#fef2f2"
+      : tone === "warning"
+        ? "#fff7ed"
+        : "#eff6ff",
+  color:
+    tone === "blocked"
+      ? "#991b1b"
+      : tone === "warning"
+        ? "#9a3412"
+        : "#1e3a8a",
+  padding: "4px 6px",
+  display: "grid",
+  gap: 2,
+});
 const groupGeometryConstructEntries = <T extends { groupTitle: string }>(
   entries: T[]
 ): Array<{ title: string; entries: T[] }> => {
@@ -3905,6 +3951,7 @@ type GeometryObjectHistoryStep = {
   afterSummary: string;
   changeSummary: string;
   topologySummary?: string | null;
+  retainedSelection?: GeometryTopologyRetainedSelectionTarget | null;
   snapshot: GeometryObject | GeometryDatasetMeshObject;
 };
 type GeometryRecentActionHistoryEntry =
@@ -5139,9 +5186,9 @@ const buildTopologyEditSummary = (
   const faceDelta = afterCounts.faceCount - beforeCounts.faceCount;
   const countTail = `V ${beforeCounts.vertexCount}->${afterCounts.vertexCount}, F ${beforeCounts.faceCount}->${afterCounts.faceCount}`;
   const deltaTail = `${vertexDelta >= 0 ? "+" : ""}${vertexDelta}V, ${faceDelta >= 0 ? "+" : ""}${faceDelta}F`;
-  if (action === "face-subdivide") return `${subject} -> 4 triangles (${deltaTail})`;
-  if (action === "edge-split") return `${subject} -> midpoint vertex (${deltaTail})`;
-  if (action === "edge-collapse") return `${subject} -> midpoint vertex (${countTail})`;
+  if (action === "face-subdivide") return `${subject} -> subdivided triangles (${deltaTail})`;
+  if (action === "edge-split") return `${subject} -> split vertex (${deltaTail})`;
+  if (action === "edge-collapse") return `${subject} -> merged vertex (${countTail})`;
   if (action === "face-extrude") return `${subject} -> cap + side faces (${deltaTail})`;
   if (action === "face-inset") return `${subject} -> inset face + rim (${deltaTail})`;
   if (action === "face-delete") return `${subject} -> removed (${deltaTail})`;
@@ -5185,18 +5232,27 @@ const buildTopologyEditFeedback = (
   const facePolygons = changedFaceIndices
     .map((faceIndex) => readMeshFacePolygon(transformedAfterMesh, faceIndex))
     .filter((polygon): polygon is Polygon3 => !!polygon);
+  const feedbackNormal =
+    facePolygons.length > 0
+      ? geometryNormalizeVec(polygonNormalFromVertices(facePolygons[0].vertices) ?? { x: 0, y: 1, z: 0 })
+      : null;
+  const liftPoint = (point: GeometryProbePoint, amount = 0.026): GeometryProbePoint =>
+    feedbackNormal ? geometryAdd(point, geometryScale(feedbackNormal, amount)) : point;
+  const liftedPoints = points.map((point) => liftPoint(point, 0.04));
   const edgeLines: PolylineSet = [];
   for (const polygon of facePolygons.slice(0, 8)) {
     const verts = polygon.vertices;
+    const normal = geometryNormalizeVec(polygonNormalFromVertices(verts) ?? feedbackNormal ?? { x: 0, y: 1, z: 0 });
+    const liftedVerts = normal ? verts.map((vertex) => geometryAdd(vertex, geometryScale(normal, 0.032))) : verts;
     for (let i = 0; i < verts.length; i += 1) {
-      edgeLines.push([verts[i], verts[(i + 1) % verts.length]]);
+      edgeLines.push([liftedVerts[i], liftedVerts[(i + 1) % liftedVerts.length]]);
     }
   }
   return {
     id: makeId(),
     objectId,
     summary: buildTopologyEditSummary(action, target, beforeCounts, afterCounts),
-    points,
+    points: liftedPoints,
     edgeLines,
     facePolygons,
   };
@@ -5300,9 +5356,47 @@ const buildProceduralPickFromRetainedSelection = (
 };
 
 const formatRetainedTopologySelectionLabel = (target: GeometryTopologyRetainedSelectionTarget): string => {
+  if (target.label) return target.label;
   if (target.kind === "face") return `Selected face #${target.faceIndex}`;
   if (target.kind === "edge") return `Selected edge [${target.edgeVertices[0]}, ${target.edgeVertices[1]}]`;
-  return `Midpoint vertex #${target.vertexIndex}`;
+  return `Selected vertex #${target.vertexIndex}`;
+};
+
+const formatTopologyCountDelta = (
+  beforeCounts: { vertexCount: number; faceCount: number },
+  afterCounts: { vertexCount: number; faceCount: number }
+): string => {
+  const vertexDelta = afterCounts.vertexCount - beforeCounts.vertexCount;
+  const faceDelta = afterCounts.faceCount - beforeCounts.faceCount;
+  return `${vertexDelta >= 0 ? "+" : ""}${vertexDelta}V, ${faceDelta >= 0 ? "+" : ""}${faceDelta}F`;
+};
+
+const formatHistoryStepTopologyCounts = (step: GeometryObjectHistoryStep): string | null => {
+  if (
+    step.beforeVertexCount == null ||
+    step.afterVertexCount == null ||
+    step.beforeFaceCount == null ||
+    step.afterFaceCount == null
+  ) {
+    return null;
+  }
+  return `V ${step.beforeVertexCount}->${step.afterVertexCount}; F ${step.beforeFaceCount}->${step.afterFaceCount}`;
+};
+
+const formatMeshEditFailureMessage = (actionLabel: string, message: string): string => {
+  if (/Invalid edge selection/i.test(message)) {
+    return `${actionLabel} needs a valid edge. Switch to Edge mode and click one mesh edge.`;
+  }
+  if (/Selected edge is not part of any face/i.test(message)) {
+    return `${actionLabel} needs an edge that belongs to a face. Pick a visible mesh edge.`;
+  }
+  if (/Invalid face selection/i.test(message)) {
+    return `${actionLabel} needs a valid face. Switch to Face mode and click one mesh face.`;
+  }
+  if (/Invalid vertex selection/i.test(message)) {
+    return `${actionLabel} needs a valid vertex. Switch to Vertex mode and click one mesh vertex.`;
+  }
+  return message || `${actionLabel} failed.`;
 };
 
 const countGeometrySnapshotTopology = (
@@ -9651,7 +9745,10 @@ const App: React.FC = () => {
   const [geometryLineExtensionMode, setGeometryLineExtensionMode] = useState<GeometryLineExtensionMode>("infinite");
   const [geometryFaceExtrudeDistance, setGeometryFaceExtrudeDistance] = useState(0.15);
   const [geometryFaceInsetRatio, setGeometryFaceInsetRatio] = useState(0.2);
+  const [geometryFaceSubdivideMode, setGeometryFaceSubdivideMode] = useState<FaceSubdivideMode>("four-triangles");
+  const [geometryEdgeSplitRatio, setGeometryEdgeSplitRatio] = useState(0.5);
   const [geometryEdgeBevelAmount, setGeometryEdgeBevelAmount] = useState(0.06);
+  const [geometryEdgeCollapseMode, setGeometryEdgeCollapseMode] = useState<EdgeCollapseMode>("midpoint");
   const [geometryVertexMoveAmount, setGeometryVertexMoveAmount] = useState(0.06);
   const [geometryVertexWeldDistance, setGeometryVertexWeldDistance] = useState(0.05);
   const [geometryLastDirectEdit, setGeometryLastDirectEdit] = useState<GeometryDirectEditStatus | null>(null);
@@ -11096,25 +11193,54 @@ const App: React.FC = () => {
         restored.id = objectId;
         setGeometryDatasetMeshObjects((prev) => prev.map((obj) => (obj.id === objectId ? restored : obj)));
         setGeometryObjects((prev) => prev.filter((obj) => obj.id !== objectId));
+        const retainedSelectionPick = step.retainedSelection
+          ? buildRetainedTopologySelectionPick(
+              objectId,
+              restored.name,
+              "mesh",
+              transformSurfaceMeshByGeometryTransform(restored.mesh, restored.transform),
+              step.retainedSelection
+            )
+          : null;
+        if (retainedSelectionPick && step.retainedSelection) {
+          const slotId =
+            step.retainedSelection.slotId ??
+            (retainedSelectionPick.kind === "face"
+              ? "source-face"
+              : retainedSelectionPick.kind === "edge"
+                ? "active-edge"
+                : "active-vertex");
+          setGeometryProbeSelectionMode(retainedSelectionPick.kind);
+          setGeometryProceduralPick(buildProceduralPickFromRetainedSelection(retainedSelectionPick));
+          setGeometryActiveOperationInputSlotId(slotId);
+          setGeometryOperationInputs((prev) =>
+            prev.map((entry) => (entry.slotId === slotId ? { ...entry, value: retainedSelectionPick } : entry))
+          );
+        } else {
+          setGeometryProceduralPick(null);
+        }
       } else {
         const restored = cloneGeometryObject(snapshot);
         restored.id = objectId;
         setGeometryObjects((prev) => prev.map((obj) => (obj.id === objectId ? restored : obj)));
         setGeometryDatasetMeshObjects((prev) => prev.filter((obj) => obj.id !== objectId));
+        setGeometryProceduralPick(null);
       }
       setGeometrySelectedObjectId(objectId);
       setGeometrySelectedHistoryStepId(step.id);
-      setGeometryProceduralPick(null);
       setGeometryProceduralHoverPick(null);
+      const retainedSelectionLabel = step.retainedSelection ? formatRetainedTopologySelectionLabel(step.retainedSelection) : null;
       setGeometryLastActionContinuity({
         label: "Rollback",
         targetObjectId: objectId,
         targetObjectName: step.objectName,
         targetEntity: step.label,
         resultKind: "edited-mesh",
-        detail: `Restored ${step.objectName} to ${step.label}.`,
+        detail: `Restored ${step.objectName} to ${step.label}.${retainedSelectionLabel ? ` Selection: ${retainedSelectionLabel}.` : ""}`,
       });
-      setGeometryCreateActionStatus(`Restored ${step.objectName} to ${step.label}.`);
+      setGeometryCreateActionStatus(
+        `Restored ${step.objectName} to ${step.label}.${retainedSelectionLabel ? ` Selection restored: ${retainedSelectionLabel}.` : ""}`
+      );
       return true;
     },
     [
@@ -14376,6 +14502,108 @@ const App: React.FC = () => {
     () => resolveGeometryOperationVertexTarget(geometryVertexOperationPick),
     [geometryVertexOperationPick, resolveGeometryOperationVertexTarget]
   );
+  const previewGeometryMeshEdit = useCallback(
+    (
+      objectId: string | null | undefined,
+      actionLabel: string,
+      edit: (mesh: SurfaceMeshData) => SurfaceMeshData
+    ): { ready: true; beforeCounts: { vertexCount: number; faceCount: number }; afterCounts: { vertexCount: number; faceCount: number } } | { ready: false; message: string } => {
+      if (!objectId) return { ready: false, message: "Pick an object first." };
+      const resolved = resolveGeometrySceneMeshById(objectId);
+      if (!resolved) return { ready: false, message: "Pick an object with mesh faces first." };
+      try {
+        const beforeCounts = countTriangleMeshTopology(resolved.mesh);
+        const edited = applySurfaceMeshOps(edit(cloneSurfaceMeshData(resolved.mesh, resolved.mesh.label)));
+        const afterCounts = countTriangleMeshTopology(edited);
+        return { ready: true, beforeCounts, afterCounts };
+      } catch (err: any) {
+        return { ready: false, message: formatMeshEditFailureMessage(actionLabel, err?.message ?? "") };
+      }
+    },
+    [resolveGeometrySceneMeshById]
+  );
+  const geometryFaceTopologyActionPreview = useMemo<GeometryTopologyActionPreview>(() => {
+    if (!geometrySourceFaceOperationTarget) {
+      return { ready: false, title: "Subdivide", detail: "Pick a face to preview subdivision.", tone: "blocked" };
+    }
+    const faceIndex = geometrySourceFaceOperationTarget.faceIndex;
+    const modeLabel = geometryFaceSubdivideMode === "center-fan" ? "center fan" : "4 triangles";
+    const result = previewGeometryMeshEdit(geometrySourceFaceOperationTarget.objectId, "Subdivide face", (mesh) =>
+      subdivideFace(mesh, faceIndex, geometryFaceSubdivideMode)
+    );
+    if (!result.ready) {
+      return { ready: false, title: "Subdivide", detail: result.message, tone: "blocked" };
+    }
+    return {
+      ready: true,
+      title: "Subdivide",
+      detail: `${modeLabel}: ${formatTopologyCountDelta(result.beforeCounts, result.afterCounts)}`,
+      tone: "ready",
+    };
+  }, [geometryFaceSubdivideMode, geometrySourceFaceOperationTarget, previewGeometryMeshEdit]);
+  const geometryEdgeTopologyActionPreview = useMemo<{
+    split: GeometryTopologyActionPreview;
+    bevel: GeometryTopologyActionPreview;
+    collapse: GeometryTopologyActionPreview;
+  }>(() => {
+    const blocked = (title: string): GeometryTopologyActionPreview => ({
+      ready: false,
+      title,
+      detail: "Pick an edge to preview this edit.",
+      tone: "blocked",
+    });
+    if (!geometryEdgeOperationTarget?.edgeVertexPair) {
+      return { split: blocked("Split"), bevel: blocked("Bevel"), collapse: blocked("Collapse") };
+    }
+    const [a, b] = geometryEdgeOperationTarget.edgeVertexPair;
+    const splitRatio = clampNumber(Number.isFinite(geometryEdgeSplitRatio) ? geometryEdgeSplitRatio : 0.5, 0.02, 0.98);
+    const splitPercent = Math.round(splitRatio * 100);
+    const splitResult = previewGeometryMeshEdit(geometryEdgeOperationTarget.objectId, "Split edge", (mesh) =>
+      splitEdge(mesh, a, b, splitRatio)
+    );
+    const bevelResult = previewGeometryMeshEdit(geometryEdgeOperationTarget.objectId, "Bevel edge", (mesh) =>
+      bevelEdge(mesh, a, b, geometryEdgeBevelAmount)
+    );
+    const collapseResult = previewGeometryMeshEdit(geometryEdgeOperationTarget.objectId, "Collapse edge", (mesh) =>
+      collapseEdge(mesh, a, b, geometryEdgeCollapseMode)
+    );
+    const split: GeometryTopologyActionPreview = splitResult.ready
+      ? {
+          ready: true,
+          title: "Split",
+          detail: `${splitPercent}% point: ${formatTopologyCountDelta(splitResult.beforeCounts, splitResult.afterCounts)}`,
+          tone: "ready",
+        }
+      : { ready: false, title: "Split", detail: splitResult.message, tone: "blocked" };
+    const bevel: GeometryTopologyActionPreview = bevelResult.ready
+      ? {
+          ready: true,
+          title: "Bevel",
+          detail: `Preview offset: ${formatTopologyCountDelta(bevelResult.beforeCounts, bevelResult.afterCounts)}`,
+          tone: "ready",
+        }
+      : { ready: false, title: "Bevel", detail: bevelResult.message, tone: "blocked" };
+    const collapseModeLabel =
+      geometryEdgeCollapseMode === "keep-a" ? "Keep A" : geometryEdgeCollapseMode === "keep-b" ? "Keep B" : "Midpoint";
+    const collapse: GeometryTopologyActionPreview = collapseResult.ready
+      ? {
+          ready: collapseResult.afterCounts.faceCount > 0,
+          title: "Collapse",
+          detail:
+            collapseResult.afterCounts.faceCount > 0
+              ? `${collapseModeLabel}: ${formatTopologyCountDelta(collapseResult.beforeCounts, collapseResult.afterCounts)}`
+              : `${collapseModeLabel}: would remove all faces`,
+          tone: collapseResult.afterCounts.faceCount > 0 ? "ready" : "warning",
+        }
+      : { ready: false, title: "Collapse", detail: collapseResult.message, tone: "blocked" };
+    return { split, bevel, collapse };
+  }, [
+    geometryEdgeBevelAmount,
+    geometryEdgeCollapseMode,
+    geometryEdgeOperationTarget,
+    geometryEdgeSplitRatio,
+    previewGeometryMeshEdit,
+  ]);
   useEffect(() => {
     if (geometryPlaneConstructionMethod !== "through-3-points") return;
     if (geometryProbeSelectionMode !== "vertex") return;
@@ -14910,15 +15138,17 @@ const App: React.FC = () => {
         const retainedSelectionLabel = retainedSelectionTarget
           ? formatRetainedTopologySelectionLabel(retainedSelectionTarget)
           : null;
+        const baseTopologyFeedback = buildTopologyEditFeedback(
+          objectId,
+          resolvedIntent.action,
+          resolvedIntent.target,
+          target.mesh,
+          edited,
+          transformedEdited
+        );
         const topologyFeedback = {
-          ...buildTopologyEditFeedback(
-            objectId,
-            resolvedIntent.action,
-            resolvedIntent.target,
-            target.mesh,
-            edited,
-            transformedEdited
-          ),
+          ...baseTopologyFeedback,
+          summary: intent?.topologySummaryOverride ?? baseTopologyFeedback.summary,
           retainedSelectionLabel,
         };
         const retainedSelectionPick = retainedSelectionTarget
@@ -14951,6 +15181,7 @@ const App: React.FC = () => {
           afterSummary: summarizeGeometryHistorySnapshot(afterSnapshot),
           changeSummary: topologyFeedback.summary || summarizeGeometryHistoryChange(beforeSnapshot, afterSnapshot),
           topologySummary: topologyFeedback.summary,
+          retainedSelection: retainedSelectionTarget,
           snapshot: afterSnapshot,
         };
         suppressGeometryHistoryCapture();
@@ -15041,7 +15272,7 @@ const App: React.FC = () => {
         );
         return true;
       } catch (err: any) {
-        const message = err?.message ?? `${actionLabel} failed.`;
+        const message = formatMeshEditFailureMessage(actionLabel, err?.message ?? `${actionLabel} failed.`);
         setGeometryBakeError(message);
         setGeometryCreateActionStatus(message);
         return false;
@@ -15062,6 +15293,10 @@ const App: React.FC = () => {
   const handleExtrudeSelectedFace = useCallback(() => {
     if (!geometryFaceOperationPick || geometryFaceOperationPick.faceIndex == null) {
       setGeometryCreateActionStatus("Select a source face slot first.");
+      return;
+    }
+    if (!geometryFaceTopologyActionPreview.ready) {
+      setGeometryCreateActionStatus(geometryFaceTopologyActionPreview.detail);
       return;
     }
     const objectId = geometryFaceOperationPick.meshKey ?? geometryFaceOperationPick.objectId ?? geometrySelectedObjectId ?? "";
@@ -15158,22 +15393,35 @@ const App: React.FC = () => {
     }
     const objectId = geometryFaceOperationPick.meshKey ?? geometryFaceOperationPick.objectId ?? geometrySelectedObjectId ?? "";
     const faceIndex = geometryFaceOperationPick.faceIndex;
-    applyMeshEditToObject(objectId, "Subdivided face", (mesh) => subdivideFace(mesh, faceIndex), {
+    const subdivideLabel = geometryFaceSubdivideMode === "center-fan" ? "center fan" : "4 triangles";
+    applyMeshEditToObject(objectId, "Subdivided face", (mesh) => subdivideFace(mesh, faceIndex, geometryFaceSubdivideMode), {
       action: "face-subdivide",
       label: "Face subdivide",
       operationType: "Face edit",
       target: `Face ${faceIndex}`,
-      parameters: "triangle -> 4 triangles",
+      parameters: `mode=${subdivideLabel}`,
       destructive: true,
-      retainSelection: ({ afterCounts }) => ({
-        kind: "face",
-        faceIndex: Math.max(0, afterCounts.faceCount - 1),
-        slotId: "source-face",
-        message: "Selected the new center triangle.",
-      }),
+      retainSelection: ({ afterCounts }) => {
+        const retainedFaceIndex = Math.max(0, afterCounts.faceCount - 1);
+        return {
+          kind: "face",
+          faceIndex: retainedFaceIndex,
+          slotId: "source-face",
+          label:
+            geometryFaceSubdivideMode === "center-fan"
+              ? `Fan triangle #${retainedFaceIndex}`
+              : `Center triangle #${retainedFaceIndex}`,
+          message:
+            geometryFaceSubdivideMode === "center-fan"
+              ? "Selected the new fan triangle."
+              : "Selected the new center triangle.",
+        };
+      },
     });
   }, [
     applyMeshEditToObject,
+    geometryFaceSubdivideMode,
+    geometryFaceTopologyActionPreview,
     geometryFaceOperationPick,
     geometrySelectedObjectId,
     setGeometryCreateActionStatus,
@@ -15183,24 +15431,36 @@ const App: React.FC = () => {
       setGeometryCreateActionStatus("Select an edge slot first.");
       return;
     }
+    if (!geometryEdgeTopologyActionPreview.split.ready) {
+      setGeometryCreateActionStatus(geometryEdgeTopologyActionPreview.split.detail);
+      return;
+    }
     const [a, b] = geometryEdgeOperationPick.edgeVertices;
     const objectId = geometryEdgeOperationPick.meshKey ?? geometryEdgeOperationPick.objectId;
-    applyMeshEditToObject(objectId, "Split edge applied", (mesh) => splitEdge(mesh, a, b), {
+    const splitRatio = clampNumber(Number.isFinite(geometryEdgeSplitRatio) ? geometryEdgeSplitRatio : 0.5, 0.02, 0.98);
+    const splitPercent = Math.round(splitRatio * 100);
+    const isMidpointSplit = Math.abs(splitRatio - 0.5) < 0.001;
+    applyMeshEditToObject(objectId, "Split edge applied", (mesh) => splitEdge(mesh, a, b, splitRatio), {
       action: "edge-split",
       label: "Split edge",
       operationType: "Edge edit",
       target: `Edge ${Math.min(a, b)}-${Math.max(a, b)}`,
-      parameters: "split midpoint",
+      parameters: `ratio=${formatHistoryNumber(splitRatio)} (${splitPercent}%)`,
       destructive: true,
       retainSelection: ({ beforeCounts }) => ({
         kind: "vertex",
         vertexIndex: beforeCounts.vertexCount,
         slotId: "active-vertex",
-        message: "Selected the new midpoint vertex.",
+        label: isMidpointSplit
+          ? `Midpoint vertex #${beforeCounts.vertexCount}`
+          : `${splitPercent}% split vertex #${beforeCounts.vertexCount}`,
+        message: isMidpointSplit ? "Selected the new midpoint vertex." : "Selected the new split vertex.",
       }),
     });
   }, [
     applyMeshEditToObject,
+    geometryEdgeTopologyActionPreview,
+    geometryEdgeSplitRatio,
     geometryEdgeOperationPick,
     setGeometryCreateActionStatus,
   ]);
@@ -15209,39 +15469,63 @@ const App: React.FC = () => {
       setGeometryCreateActionStatus("Select an edge slot first.");
       return;
     }
+    if (!geometryEdgeTopologyActionPreview.collapse.ready) {
+      setGeometryCreateActionStatus(geometryEdgeTopologyActionPreview.collapse.detail);
+      return;
+    }
     const [a, b] = geometryEdgeOperationPick.edgeVertices;
     const objectId = geometryEdgeOperationPick.meshKey ?? geometryEdgeOperationPick.objectId;
-    applyMeshEditToObject(objectId, "Collapsed edge", (mesh) => collapseEdge(mesh, a, b), {
+    const collapseModeLabel =
+      geometryEdgeCollapseMode === "keep-a" ? "keep A" : geometryEdgeCollapseMode === "keep-b" ? "keep B" : "midpoint";
+    applyMeshEditToObject(objectId, "Collapsed edge", (mesh) => collapseEdge(mesh, a, b, geometryEdgeCollapseMode), {
       action: "edge-collapse",
       label: "Collapse edge",
       operationType: "Edge edit",
       target: `Edge ${Math.min(a, b)}-${Math.max(a, b)}`,
-      parameters: "merge to midpoint",
+      parameters: `mode=${collapseModeLabel}`,
       destructive: true,
       retainSelection: ({ beforeMesh, afterMesh }) => {
         const pa = readMeshPoint(beforeMesh, a);
         const pb = readMeshPoint(beforeMesh, b);
         if (!pa || !pb) return null;
-        const midpoint = { x: (pa.x + pb.x) * 0.5, y: (pa.y + pb.y) * 0.5, z: (pa.z + pb.z) * 0.5 };
-        const vertexIndex = findNearestMeshVertexIndex(afterMesh, midpoint);
+        const collapsePoint =
+          geometryEdgeCollapseMode === "keep-a"
+            ? pa
+            : geometryEdgeCollapseMode === "keep-b"
+              ? pb
+              : { x: (pa.x + pb.x) * 0.5, y: (pa.y + pb.y) * 0.5, z: (pa.z + pb.z) * 0.5 };
+        const vertexIndex = findNearestMeshVertexIndex(afterMesh, collapsePoint);
         return vertexIndex == null
           ? null
           : {
               kind: "vertex",
               vertexIndex,
               slotId: "active-vertex",
-              message: "Selected the merged midpoint vertex.",
+              label:
+                geometryEdgeCollapseMode === "midpoint"
+                  ? `Merged midpoint vertex #${vertexIndex}`
+                  : `Kept merge vertex #${vertexIndex}`,
+              message:
+                geometryEdgeCollapseMode === "midpoint"
+                  ? "Selected the merged midpoint vertex."
+                  : "Selected the kept merge vertex.",
             };
       },
     });
   }, [
     applyMeshEditToObject,
+    geometryEdgeCollapseMode,
+    geometryEdgeTopologyActionPreview,
     geometryEdgeOperationPick,
     setGeometryCreateActionStatus,
   ]);
   const handleBevelSelectedProbeEdge = useCallback(() => {
     if (!geometryEdgeOperationPick?.edgeVertices) {
       setGeometryCreateActionStatus("Select an edge slot first.");
+      return;
+    }
+    if (!geometryEdgeTopologyActionPreview.bevel.ready) {
+      setGeometryCreateActionStatus(geometryEdgeTopologyActionPreview.bevel.detail);
       return;
     }
     const [a, b] = geometryEdgeOperationPick.edgeVertices;
@@ -15265,6 +15549,7 @@ const App: React.FC = () => {
   }, [
     applyMeshEditToObject,
     geometryEdgeBevelAmount,
+    geometryEdgeTopologyActionPreview,
     geometryEdgeOperationPick,
     setGeometryCreateActionStatus,
   ]);
@@ -18740,8 +19025,8 @@ const App: React.FC = () => {
         {
           positions: transformed.positions,
           indices: transformed.indices,
-          color: 0x06b6d4,
-          opacity: 0.26,
+          color: geometryHistoryPreviewStep.topologySummary ? 0xf59e0b : 0x06b6d4,
+          opacity: geometryHistoryPreviewStep.topologySummary ? 0.34 : 0.26,
           doubleSided: true,
         },
       ],
@@ -18750,9 +19035,11 @@ const App: React.FC = () => {
             {
               labels: [
                 {
-                  text: `History preview: ${geometryHistoryPreviewStep.label}`,
+                  text: `History preview: ${
+                    geometryHistoryPreviewStep.topologySummary ?? geometryHistoryPreviewStep.label
+                  }`,
                   position: labelPosition,
-                  color: 0x0e7490,
+                  color: geometryHistoryPreviewStep.topologySummary ? 0x92400e : 0x0e7490,
                   size: 0.86,
                   opacity: 0.96,
                 },
@@ -18908,6 +19195,37 @@ const App: React.FC = () => {
         opacity: 0.62,
         radiusWorld: clampNumber(maxSpan * 0.007, 0.005, 0.016),
       });
+      const liftedFaceVertices = faceVertices.map((vertex) => geometryAdd(vertex, geometryScale(normal, 0.034)));
+      const subdivisionLines: PolylineSet = [];
+      if (geometryFaceSubdivideMode === "center-fan") {
+        const center = liftedFaceVertices.reduce(
+          (acc, vertex) => ({
+            x: acc.x + vertex.x / liftedFaceVertices.length,
+            y: acc.y + vertex.y / liftedFaceVertices.length,
+            z: acc.z + vertex.z / liftedFaceVertices.length,
+          }),
+          { x: 0, y: 0, z: 0 }
+        );
+        for (const vertex of liftedFaceVertices) {
+          subdivisionLines.push([center, vertex]);
+        }
+      } else if (liftedFaceVertices.length === 3) {
+        const midpoints = liftedFaceVertices.map((vertex, index) => {
+          const next = liftedFaceVertices[(index + 1) % liftedFaceVertices.length];
+          return { x: (vertex.x + next.x) * 0.5, y: (vertex.y + next.y) * 0.5, z: (vertex.z + next.z) * 0.5 };
+        });
+        for (let i = 0; i < midpoints.length; i += 1) {
+          subdivisionLines.push([midpoints[i], midpoints[(i + 1) % midpoints.length]]);
+        }
+      }
+      if (subdivisionLines.length) {
+        groups.push({
+          lines: subdivisionLines,
+          color: 0xf59e0b,
+          opacity: 0.92,
+          radiusWorld: clampNumber(maxSpan * 0.01, 0.01, 0.028),
+        });
+      }
     }
     const selectedEdge =
       geometryProbeSelectionDetails?.mode === "edge" && geometryProbeSelectionDetails.edgePoints
@@ -18927,6 +19245,10 @@ const App: React.FC = () => {
         );
         const tickSize = clampNumber(edgeLength * 0.16, 0.035, 0.18);
         const center = geometryScale(geometryAdd(a, b), 0.5);
+        const splitRatio = clampNumber(Number.isFinite(geometryEdgeSplitRatio) ? geometryEdgeSplitRatio : 0.5, 0.02, 0.98);
+        const splitPoint = geometryAdd(a, geometryScale(geometrySub(b, a), splitRatio));
+        const collapseTarget =
+          geometryEdgeCollapseMode === "keep-a" ? a : geometryEdgeCollapseMode === "keep-b" ? b : center;
         groups.push({
           lines: [
             [geometryAdd(a, geometryScale(side, bevelPreview)), geometryAdd(b, geometryScale(side, bevelPreview))],
@@ -18934,8 +19256,23 @@ const App: React.FC = () => {
             [geometryAdd(center, geometryScale(side, -tickSize)), geometryAdd(center, geometryScale(side, tickSize))],
           ],
           color: previewColor,
-          opacity: 0.58,
-          radiusWorld: clampNumber(edgeLength * 0.01, 0.005, 0.014),
+          opacity: 0.74,
+          radiusWorld: clampNumber(edgeLength * 0.012, 0.007, 0.02),
+        });
+        groups.push({
+          lines: [[geometryAdd(splitPoint, geometryScale(side, -tickSize * 0.68)), geometryAdd(splitPoint, geometryScale(side, tickSize * 0.68))]],
+          color: 0xf59e0b,
+          opacity: 0.96,
+          radiusWorld: clampNumber(edgeLength * 0.014, 0.01, 0.024),
+        });
+        groups.push({
+          lines: [
+            [geometryAdd(collapseTarget, geometryScale(side, -tickSize * 0.5)), geometryAdd(collapseTarget, geometryScale(side, tickSize * 0.5))],
+            [geometryAdd(collapseTarget, geometryScale(direction, -tickSize * 0.5)), geometryAdd(collapseTarget, geometryScale(direction, tickSize * 0.5))],
+          ],
+          color: 0x8b5cf6,
+          opacity: 0.9,
+          radiusWorld: clampNumber(edgeLength * 0.011, 0.008, 0.02),
         });
       }
     }
@@ -18960,13 +19297,66 @@ const App: React.FC = () => {
     return groups.length ? groups : null;
   }, [
     geometryEdgeBevelAmount,
+    geometryEdgeCollapseMode,
     geometryEdgeOperationTarget,
+    geometryEdgeSplitRatio,
     geometryFaceExtrudeDistance,
+    geometryFaceSubdivideMode,
     geometryMode,
     geometryProbeSelectionDetails,
     geometrySourceFaceOperationTarget,
     geometryVertexMoveAmount,
     geometryVertexOperationTarget,
+  ]);
+  const geometryDirectEditPreviewPointSets = useMemo<OverlayPointSet[] | null>(() => {
+    if (geometryMode !== "procedural") return null;
+    const selectedEdge =
+      geometryProbeSelectionDetails?.mode === "edge" && geometryProbeSelectionDetails.edgePoints
+        ? geometryProbeSelectionDetails
+        : null;
+    const edgePoints = selectedEdge?.edgePoints ?? geometryEdgeOperationTarget?.edgePoints ?? null;
+    if (!edgePoints) return null;
+    const [a, b] = edgePoints;
+    const splitRatio = clampNumber(Number.isFinite(geometryEdgeSplitRatio) ? geometryEdgeSplitRatio : 0.5, 0.02, 0.98);
+    const splitPoint = geometryAdd(a, geometryScale(geometrySub(b, a), splitRatio));
+    const collapsePoint =
+      geometryEdgeCollapseMode === "keep-a"
+        ? a
+        : geometryEdgeCollapseMode === "keep-b"
+          ? b
+          : geometryScale(geometryAdd(a, b), 0.5);
+    return [
+      {
+        points: [splitPoint],
+        color: 0xfffbeb,
+        size: 0.18,
+        opacity: 0.78,
+      },
+      {
+        points: [splitPoint],
+        color: 0xf59e0b,
+        size: 0.12,
+        opacity: 0.98,
+      },
+      {
+        points: [collapsePoint],
+        color: 0xf5f3ff,
+        size: 0.16,
+        opacity: 0.72,
+      },
+      {
+        points: [collapsePoint],
+        color: 0x8b5cf6,
+        size: 0.105,
+        opacity: 0.96,
+      },
+    ];
+  }, [
+    geometryEdgeCollapseMode,
+    geometryEdgeOperationTarget,
+    geometryEdgeSplitRatio,
+    geometryMode,
+    geometryProbeSelectionDetails,
   ]);
   const geometryArmedLineOperationPreviewGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural" || geometryArmedLineOperation !== "extend") return null;
@@ -25597,13 +25987,13 @@ const App: React.FC = () => {
       {
         points: geometryTopologyEditFeedback.points,
         color: 0xfff7ed,
-        size: 0.26,
+        size: 0.36,
         opacity: 0.62,
       },
       {
         points: geometryTopologyEditFeedback.points,
         color: 0xfacc15,
-        size: 0.2,
+        size: 0.26,
         opacity: 0.98,
       },
     ];
@@ -25662,6 +26052,9 @@ const App: React.FC = () => {
     if (geometryProceduralSnapPreviewPointSet?.length) {
       sets.push(...geometryProceduralSnapPreviewPointSet);
     }
+    if (geometryDirectEditPreviewPointSets?.length) {
+      sets.push(...geometryDirectEditPreviewPointSets);
+    }
     if (geometryTopologyEditFeedbackPointSets?.length) {
       sets.push(...geometryTopologyEditFeedbackPointSets);
     }
@@ -25679,6 +26072,7 @@ const App: React.FC = () => {
     geometryPlaneMidPlanePreviewOverlays.pointSets,
     geometryMathConstructionOverlays.pointSets,
     geometryProceduralSnapPreviewPointSet,
+    geometryDirectEditPreviewPointSets,
     geometryTopologyEditFeedbackPointSets,
   ]);
   const geometryTopologyEditFeedbackPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
@@ -25686,9 +26080,9 @@ const App: React.FC = () => {
     return [
       {
         lines: geometryTopologyEditFeedback.edgeLines,
-        color: 0x2563eb,
+        color: 0xf59e0b,
         opacity: 0.95,
-        radiusWorld: 0.012,
+        radiusWorld: 0.024,
       },
     ];
   }, [geometryMode, geometryTopologyEditFeedback]);
@@ -65712,14 +66106,52 @@ case "mobius":
                                     />
                                   </label>
                                   <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                                    Subdivide
+                                    <select
+                                      value={geometryFaceSubdivideMode}
+                                      onChange={(e) => setGeometryFaceSubdivideMode(e.target.value as FaceSubdivideMode)}
+                                      style={{ width: 92 }}
+                                    >
+                                      <option value="four-triangles">4 tris</option>
+                                      <option value="center-fan">Fan</option>
+                                    </select>
+                                  </label>
+                                  <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                                    Split
+                                    <input
+                                      type="range"
+                                      min={0.02}
+                                      max={0.98}
+                                      step={0.01}
+                                      value={geometryEdgeSplitRatio}
+                                      onChange={(e) => setGeometryEdgeSplitRatio(clampNumber(Number(e.target.value), 0.02, 0.98))}
+                                      style={{ width: 76 }}
+                                    />
+                                    <span style={{ color: "#475569", minWidth: 28, textAlign: "right" }}>{Math.round(geometryEdgeSplitRatio * 100)}%</span>
+                                  </label>
+                                  <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
                                     Bevel
                                     <input
-                                      type="number"
-                                      step={0.01}
+                                      type="range"
+                                      min={-0.4}
+                                      max={0.4}
+                                      step={0.005}
                                       value={geometryEdgeBevelAmount}
-                                      onChange={(e) => setGeometryEdgeBevelAmount(Number(e.target.value) || 0)}
-                                      style={{ width: 68 }}
+                                      onChange={(e) => setGeometryEdgeBevelAmount(Number(e.target.value))}
+                                      style={{ width: 78 }}
                                     />
+                                  </label>
+                                  <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                                    Collapse
+                                    <select
+                                      value={geometryEdgeCollapseMode}
+                                      onChange={(e) => setGeometryEdgeCollapseMode(e.target.value as EdgeCollapseMode)}
+                                      style={{ width: 92 }}
+                                    >
+                                      <option value="midpoint">Midpoint</option>
+                                      <option value="keep-a">Keep A</option>
+                                      <option value="keep-b">Keep B</option>
+                                    </select>
                                   </label>
                                   <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
                                     Move
@@ -65769,7 +66201,7 @@ case "mobius":
                                 <button
                                   type="button"
                                   onClick={handleSubdivideSelectedFace}
-                                  disabled={!geometryHasFaceOperationPick}
+                                  disabled={!geometryHasFaceOperationPick || !geometryFaceTopologyActionPreview.ready}
                                 >
                                   Subdivide face
                                 </button>
@@ -65812,7 +66244,7 @@ case "mobius":
                                 <button
                                   type="button"
                                   onClick={handleBevelSelectedProbeEdge}
-                                  disabled={!geometryHasEdgeOperationPick}
+                                  disabled={!geometryHasEdgeOperationPick || !geometryEdgeTopologyActionPreview.bevel.ready}
                                   title={geometryProbeSelectionMode !== "edge" ? "Set selection mode to Edge." : "Bevel selected edge"}
                                 >
                                   Bevel edge
@@ -65820,7 +66252,7 @@ case "mobius":
                                 <button
                                   type="button"
                                   onClick={handleSplitSelectedProbeEdge}
-                                  disabled={!geometryHasEdgeOperationPick}
+                                  disabled={!geometryHasEdgeOperationPick || !geometryEdgeTopologyActionPreview.split.ready}
                                   title={geometryProbeSelectionMode !== "edge" ? "Set selection mode to Edge." : "Split selected edge"}
                                 >
                                   Split edge
@@ -65828,7 +66260,7 @@ case "mobius":
                                 <button
                                   type="button"
                                   onClick={handleCollapseSelectedProbeEdge}
-                                  disabled={!geometryHasEdgeOperationPick}
+                                  disabled={!geometryHasEdgeOperationPick || !geometryEdgeTopologyActionPreview.collapse.ready}
                                   title={geometryProbeSelectionMode !== "edge" ? "Set selection mode to Edge." : "Collapse selected edge"}
                                 >
                                   Collapse edge
@@ -70779,6 +71211,7 @@ case "mobius":
                                   }}
                                 >
                                   Previewing {geometryHistoryPreviewStep.objectName}: {geometryHistoryPreviewStep.label}
+                                  {geometryHistoryPreviewStep.topologySummary ? ` - ${geometryHistoryPreviewStep.topologySummary}` : ""}
                                 </div>
                               )}
                               {geometryRecentActionHistory.length ? (
@@ -70786,6 +71219,7 @@ case "mobius":
                                     {geometryRecentActionHistory.slice(0, 5).map((entry) => {
                                       if (entry.kind === "object") {
                                         const historyStep = entry.step;
+                                        const topologyCountLabel = formatHistoryStepTopologyCounts(historyStep);
                                         return (
                                           <div
                                             key={`geometry-actions-history-${entry.id}`}
@@ -70811,6 +71245,22 @@ case "mobius":
                                               <span style={{ color: "#64748b" }}>{new Date(historyStep.at).toLocaleTimeString()}</span>
                                             </span>
                                             <span style={{ color: "#475569" }}>{entry.detail}</span>
+                                            {topologyCountLabel && (
+                                              <span
+                                                data-testid="geometry-actions-history-count-row"
+                                                style={{
+                                                  border: "1px solid #dbeafe",
+                                                  borderRadius: 6,
+                                                  background: "#eff6ff",
+                                                  color: "#1e3a8a",
+                                                  padding: "3px 6px",
+                                                  fontSize: 10,
+                                                  fontWeight: 800,
+                                                }}
+                                              >
+                                                {topologyCountLabel}
+                                              </span>
+                                            )}
                                             <span
                                               data-testid="geometry-actions-history-operation-trail"
                                               style={{
@@ -70949,7 +71399,9 @@ case "mobius":
                                     })}
                                   </div>
                               ) : (
-                                <div style={{ color: "#64748b" }}>No recent history yet.</div>
+                                <div style={{ color: "#64748b" }}>
+                                  {geometrySelectedSceneObject ? "No edits on this selected object yet." : "Select an object to inspect edit history."}
+                                </div>
                               )}
                             </div>
                             <div
@@ -70998,6 +71450,14 @@ case "mobius":
                                       }}
                                     >
                                       {geometryLastDirectEdit.topologySummary}
+                                    </div>
+                                  )}
+                                  {geometryTopologyEditFeedback?.retainedSelectionLabel && (
+                                    <div
+                                      data-testid="geometry-direct-edit-retained-selection"
+                                      style={{ color: "#0f766e", fontWeight: 800 }}
+                                    >
+                                      Selection retained: {geometryTopologyEditFeedback.retainedSelectionLabel}
                                     </div>
                                   )}
                                   <div style={{ color: "#475569" }}>
@@ -71061,11 +71521,28 @@ case "mobius":
                                     >
                                       Delete Face
                                     </button>
+                                    <label style={{ display: "grid", gridTemplateColumns: "84px minmax(0, 1fr)", gap: 6, alignItems: "center" }}>
+                                      <span>Subdivide</span>
+                                      <select
+                                        aria-label="Face subdivide mode"
+                                        value={geometryFaceSubdivideMode}
+                                        onChange={(event) => setGeometryFaceSubdivideMode(event.target.value as FaceSubdivideMode)}
+                                        style={{ minWidth: 0 }}
+                                      >
+                                        <option value="four-triangles">4 triangles</option>
+                                        <option value="center-fan">Center fan</option>
+                                      </select>
+                                    </label>
+                                    <div data-testid="geometry-direct-edit-face-preview" style={geometryTopologyPreviewStyle(geometryFaceTopologyActionPreview.tone)}>
+                                      <strong>{geometryFaceTopologyActionPreview.title}</strong>
+                                      <span>{geometryFaceTopologyActionPreview.detail}</span>
+                                    </div>
                                     <button
                                       type="button"
                                       data-testid="geometry-direct-edit-face-subdivide"
                                       onClick={handleSubdivideSelectedFace}
-                                      style={geometryOperationButtonStyle}
+                                      disabled={!geometryFaceTopologyActionPreview.ready}
+                                      style={{ ...geometryOperationButtonStyle, opacity: geometryFaceTopologyActionPreview.ready ? 1 : 0.58 }}
                                     >
                                       Subdivide Face
                                     </button>
@@ -71079,24 +71556,81 @@ case "mobius":
                                 <div style={{ display: "grid", gap: 6 }}>
                                   <div style={{ color: "#475569", fontWeight: 700 }}>Edge</div>
                                   <label style={{ display: "grid", gridTemplateColumns: "84px minmax(0, 1fr)", gap: 6, alignItems: "center" }}>
-                                    <span>Bevel</span>
-                                    <input
-                                      aria-label="Edge bevel amount"
-                                      type="number"
-                                      value={geometryEdgeBevelAmount}
-                                      min={-1}
-                                      max={1}
-                                      step={0.01}
-                                      onChange={(event) => setGeometryEdgeBevelAmount(Number(event.target.value))}
-                                      style={{ minWidth: 0 }}
-                                    />
+                                    <span>Split</span>
+                                    <span style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 42px", gap: 6, alignItems: "center" }}>
+                                      <input
+                                        aria-label="Edge split ratio"
+                                        type="range"
+                                        value={geometryEdgeSplitRatio}
+                                        min={0.02}
+                                        max={0.98}
+                                        step={0.01}
+                                        onChange={(event) =>
+                                          setGeometryEdgeSplitRatio(clampNumber(Number(event.target.value), 0.02, 0.98))
+                                        }
+                                        style={{ minWidth: 0 }}
+                                      />
+                                      <span style={{ color: "#475569", fontVariantNumeric: "tabular-nums", textAlign: "right" }}>
+                                        {Math.round(geometryEdgeSplitRatio * 100)}%
+                                      </span>
+                                    </span>
                                   </label>
+                                  <label style={{ display: "grid", gridTemplateColumns: "84px minmax(0, 1fr)", gap: 6, alignItems: "center" }}>
+                                    <span>Bevel</span>
+                                    <span style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 72px", gap: 6, alignItems: "center" }}>
+                                      <input
+                                        aria-label="Edge bevel width preview"
+                                        type="range"
+                                        value={geometryEdgeBevelAmount}
+                                        min={-0.4}
+                                        max={0.4}
+                                        step={0.005}
+                                        onChange={(event) => setGeometryEdgeBevelAmount(Number(event.target.value))}
+                                        style={{ minWidth: 0 }}
+                                      />
+                                      <input
+                                        aria-label="Edge bevel amount"
+                                        type="number"
+                                        value={geometryEdgeBevelAmount}
+                                        min={-1}
+                                        max={1}
+                                        step={0.01}
+                                        onChange={(event) => setGeometryEdgeBevelAmount(Number(event.target.value))}
+                                        style={{ minWidth: 0 }}
+                                      />
+                                    </span>
+                                  </label>
+                                  <label style={{ display: "grid", gridTemplateColumns: "84px minmax(0, 1fr)", gap: 6, alignItems: "center" }}>
+                                    <span>Collapse</span>
+                                    <select
+                                      aria-label="Edge collapse mode"
+                                      value={geometryEdgeCollapseMode}
+                                      onChange={(event) => setGeometryEdgeCollapseMode(event.target.value as EdgeCollapseMode)}
+                                      style={{ minWidth: 0 }}
+                                    >
+                                      <option value="midpoint">Midpoint</option>
+                                      <option value="keep-a">Keep A</option>
+                                      <option value="keep-b">Keep B</option>
+                                    </select>
+                                  </label>
+                                  <div style={{ display: "grid", gap: 4 }}>
+                                    {[geometryEdgeTopologyActionPreview.split, geometryEdgeTopologyActionPreview.bevel, geometryEdgeTopologyActionPreview.collapse].map((preview) => (
+                                      <div key={`geometry-edge-preview-${preview.title}`} style={geometryTopologyPreviewStyle(preview.tone)}>
+                                        <strong>{preview.title}</strong>
+                                        <span>{preview.detail}</span>
+                                      </div>
+                                    ))}
+                                  </div>
                                   <div style={geometryOperationButtonStackStyle}>
                                     <button
                                       type="button"
                                       data-testid="geometry-direct-edit-edge-split"
                                       onClick={handleSplitSelectedProbeEdge}
-                                      style={geometryOperationButtonStyle}
+                                      disabled={!geometryEdgeTopologyActionPreview.split.ready}
+                                      style={{
+                                        ...geometryOperationButtonStyle,
+                                        opacity: geometryEdgeTopologyActionPreview.split.ready ? 1 : 0.58,
+                                      }}
                                     >
                                       Split Edge
                                     </button>
@@ -71104,7 +71638,11 @@ case "mobius":
                                       type="button"
                                       data-testid="geometry-direct-edit-edge-bevel"
                                       onClick={handleBevelSelectedProbeEdge}
-                                      style={geometryOperationButtonStyle}
+                                      disabled={!geometryEdgeTopologyActionPreview.bevel.ready}
+                                      style={{
+                                        ...geometryOperationButtonStyle,
+                                        opacity: geometryEdgeTopologyActionPreview.bevel.ready ? 1 : 0.58,
+                                      }}
                                     >
                                       Bevel Edge
                                     </button>
@@ -71112,7 +71650,11 @@ case "mobius":
                                       type="button"
                                       data-testid="geometry-direct-edit-edge-collapse"
                                       onClick={handleCollapseSelectedProbeEdge}
-                                      style={geometryOperationButtonStyle}
+                                      disabled={!geometryEdgeTopologyActionPreview.collapse.ready}
+                                      style={{
+                                        ...geometryOperationButtonStyle,
+                                        opacity: geometryEdgeTopologyActionPreview.collapse.ready ? 1 : 0.58,
+                                      }}
                                     >
                                       Collapse Edge
                                     </button>

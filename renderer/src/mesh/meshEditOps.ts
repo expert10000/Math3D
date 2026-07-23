@@ -1,6 +1,8 @@
 import type { SurfaceMeshData } from "./surfaceMesh";
 
 type Tri = [number, number, number];
+export type FaceSubdivideMode = "four-triangles" | "center-fan";
+export type EdgeCollapseMode = "midpoint" | "keep-a" | "keep-b";
 
 const EPS = 1e-9;
 
@@ -227,7 +229,11 @@ export const deleteFace = (mesh: SurfaceMeshData, faceIndex: number): SurfaceMes
   return buildMesh(mesh, Array.from(mesh.positions), nextTriangles, true);
 };
 
-export const subdivideFace = (mesh: SurfaceMeshData, faceIndex: number): SurfaceMeshData => {
+export const subdivideFace = (
+  mesh: SurfaceMeshData,
+  faceIndex: number,
+  mode: FaceSubdivideMode = "four-triangles"
+): SurfaceMeshData => {
   const vertexCount = assertMeshVertices(mesh);
   const triangles = readTriangles(mesh, vertexCount);
   const tri = faceFromIndex(triangles, faceIndex);
@@ -236,6 +242,16 @@ export const subdivideFace = (mesh: SurfaceMeshData, faceIndex: number): Surface
   const pa = vec3At(positions, a);
   const pb = vec3At(positions, b);
   const pc = vec3At(positions, c);
+  const nextTriangles = triangles.filter((_, idx) => idx !== faceIndex);
+  if (mode === "center-fan") {
+    const center = pushVec3(positions, [
+      (pa[0] + pb[0] + pc[0]) / 3,
+      (pa[1] + pb[1] + pc[1]) / 3,
+      (pa[2] + pb[2] + pc[2]) / 3,
+    ]);
+    nextTriangles.push([a, b, center], [b, c, center], [c, a, center]);
+    return buildMesh(mesh, positions, nextTriangles);
+  }
   const midpoint = (p: [number, number, number], q: [number, number, number]): [number, number, number] => [
     (p[0] + q[0]) * 0.5,
     (p[1] + q[1]) * 0.5,
@@ -244,12 +260,11 @@ export const subdivideFace = (mesh: SurfaceMeshData, faceIndex: number): Surface
   const ab = pushVec3(positions, midpoint(pa, pb));
   const bc = pushVec3(positions, midpoint(pb, pc));
   const ca = pushVec3(positions, midpoint(pc, pa));
-  const nextTriangles = triangles.filter((_, idx) => idx !== faceIndex);
   nextTriangles.push([a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca]);
   return buildMesh(mesh, positions, nextTriangles);
 };
 
-export const splitEdge = (mesh: SurfaceMeshData, edgeA: number, edgeB: number): SurfaceMeshData => {
+export const splitEdge = (mesh: SurfaceMeshData, edgeA: number, edgeB: number, ratio = 0.5): SurfaceMeshData => {
   const vertexCount = assertMeshVertices(mesh);
   if (edgeA < 0 || edgeB < 0 || edgeA >= vertexCount || edgeB >= vertexCount || edgeA === edgeB) {
     throw new Error("Invalid edge selection.");
@@ -258,10 +273,11 @@ export const splitEdge = (mesh: SurfaceMeshData, edgeA: number, edgeB: number): 
   const positions = Array.from(mesh.positions);
   const aPos = vec3At(positions, edgeA);
   const bPos = vec3At(positions, edgeB);
+  const t = Math.max(0.02, Math.min(0.98, Number.isFinite(ratio) ? ratio : 0.5));
   const mid = pushVec3(positions, [
-    (aPos[0] + bPos[0]) * 0.5,
-    (aPos[1] + bPos[1]) * 0.5,
-    (aPos[2] + bPos[2]) * 0.5,
+    aPos[0] + (bPos[0] - aPos[0]) * t,
+    aPos[1] + (bPos[1] - aPos[1]) * t,
+    aPos[2] + (bPos[2] - aPos[2]) * t,
   ]);
   const nextTriangles: Tri[] = [];
   let splitCount = 0;
@@ -280,7 +296,12 @@ export const splitEdge = (mesh: SurfaceMeshData, edgeA: number, edgeB: number): 
   return buildMesh(mesh, positions, nextTriangles);
 };
 
-export const collapseEdge = (mesh: SurfaceMeshData, edgeA: number, edgeB: number): SurfaceMeshData => {
+export const collapseEdge = (
+  mesh: SurfaceMeshData,
+  edgeA: number,
+  edgeB: number,
+  mode: EdgeCollapseMode = "midpoint"
+): SurfaceMeshData => {
   const vertexCount = assertMeshVertices(mesh);
   if (
     edgeA < 0 ||
@@ -310,10 +331,20 @@ export const collapseEdge = (mesh: SurfaceMeshData, edgeA: number, edgeB: number
   const bPos = vec3At(positions, edgeB);
   const keep = Math.min(edgeA, edgeB);
   const merge = Math.max(edgeA, edgeB);
+  const target =
+    mode === "keep-a"
+      ? aPos
+      : mode === "keep-b"
+        ? bPos
+        : ([
+            (aPos[0] + bPos[0]) * 0.5,
+            (aPos[1] + bPos[1]) * 0.5,
+            (aPos[2] + bPos[2]) * 0.5,
+          ] as [number, number, number]);
   const keepBase = keep * 3;
-  positions[keepBase] = (aPos[0] + bPos[0]) * 0.5;
-  positions[keepBase + 1] = (aPos[1] + bPos[1]) * 0.5;
-  positions[keepBase + 2] = (aPos[2] + bPos[2]) * 0.5;
+  positions[keepBase] = target[0];
+  positions[keepBase + 1] = target[1];
+  positions[keepBase + 2] = target[2];
 
   const nextTriangles: Tri[] = [];
   for (const tri of triangles) {

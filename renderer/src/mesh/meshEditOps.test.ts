@@ -57,12 +57,30 @@ describe("mesh edit operations", () => {
     expect(positionAt(edited, 6)).toEqual([0.5, 0.5, 0]);
   });
 
+  it("subdivides one selected triangular face into a center fan", () => {
+    const edited = subdivideFace(makeSquareMesh(), 0, "center-fan");
+
+    expect(vertexCount(edited)).toBe(5);
+    expect(faceCount(edited)).toBe(4);
+    expect(positionAt(edited, 4)[0]).toBeCloseTo(2 / 3);
+    expect(positionAt(edited, 4)[1]).toBeCloseTo(1 / 3);
+    expect(positionAt(edited, 4)[2]).toBeCloseTo(0);
+  });
+
   it("splits every incident triangle on a selected edge", () => {
     const edited = splitEdge(makeSquareMesh(), 0, 2);
 
     expect(vertexCount(edited)).toBe(5);
     expect(faceCount(edited)).toBe(4);
     expect(positionAt(edited, 4)).toEqual([0.5, 0.5, 0]);
+  });
+
+  it("splits a selected edge at a requested ratio", () => {
+    const edited = splitEdge(makeSquareMesh(), 0, 2, 0.25);
+
+    expect(vertexCount(edited)).toBe(5);
+    expect(faceCount(edited)).toBe(4);
+    expect(positionAt(edited, 4)).toEqual([0.25, 0.25, 0]);
   });
 
   it("bevels an edge along the averaged incident face normal", () => {
@@ -80,6 +98,16 @@ describe("mesh edit operations", () => {
     expect(vertexCount(edited)).toBe(3);
     expect(faceCount(edited)).toBe(1);
     expect(positionAt(edited, 0)).toEqual([0.5, 0, 0]);
+  });
+
+  it("collapses an edge while keeping either endpoint position", () => {
+    const keepA = collapseEdge(makeSquareMesh(), 0, 1, "keep-a");
+    const keepB = collapseEdge(makeSquareMesh(), 0, 1, "keep-b");
+
+    expect(positionAt(keepA, 0)).toEqual([0, 0, 0]);
+    expect(positionAt(keepB, 0)).toEqual([1, 0, 0]);
+    expect(vertexCount(keepA)).toBe(3);
+    expect(vertexCount(keepB)).toBe(3);
   });
 
   it("moves a vertex along an explicit direction", () => {
