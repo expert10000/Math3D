@@ -1027,6 +1027,7 @@ const WORKBOOK_SNAPSHOT_HISTORY_KEY = "math3d.workbook.snapshotHistory.v1";
 const GEOMETRY_OBJECT_PRESETS_KEY = "math3d.geometry.objectPresets.v1";
 const GEOMETRY_OPERATION_PRESETS_KEY = "math3d.geometry.operationPresets.v1";
 const GEOMETRY_DERIVED_CONSTRUCTIONS_STORAGE_KEY = "math3d.geometry.derivedConstructions.v1";
+const GEOMETRY_EDIT_SESSION_KEY = "math3d.geometry.editSession.v1";
 const WORKBOOK_AUTOSAVE_JOURNAL_KEY = "math3d.workbook.autosaveJournal.v1";
 const WORKBOOK_AUTOSAVE_RECOVERY_DISMISSED_AT_KEY = "math3d.workbook.autosaveRecoveryDismissedAt.v1";
 const WORKBOOK_BUNDLE_ASSET_MODE_KEY = "math3d.workbook.bundleAssetMode.v1";
@@ -2234,6 +2235,14 @@ type GeometryOperationInput = {
   expectedKinds: GeometryPickKind[];
   value: GeometryPickResult | null;
 };
+type GeometryEditSessionSnapshot = {
+  savedAt: number;
+  selectedObjectId: string | null;
+  probeSelectionMode: GeometryProbeSelectionMode;
+  proceduralPick: GeometryProceduralPickInfo | null;
+  operationInputs: Array<{ slotId: GeometryOperationInputSlotId; value: GeometryPickResult | null }>;
+  activeOperationInputSlotId: GeometryOperationInputSlotId | null;
+};
 type GeometryOperationFaceTarget = {
   pick: GeometryPickResult;
   objectId: string;
@@ -2753,6 +2762,38 @@ const GEOMETRY_OPERATION_INPUT_DEFS: Array<Omit<GeometryOperationInput, "value">
   { slotId: "active-edge", label: "Edge", expectedKinds: ["edge"] },
   { slotId: "active-vertex", label: "Vertex", expectedKinds: ["vertex"] },
 ];
+
+const isGeometryOperationInputSlotId = (value: unknown): value is GeometryOperationInputSlotId =>
+  typeof value === "string" && GEOMETRY_OPERATION_INPUT_DEFS.some((entry) => entry.slotId === value);
+const isGeometryProbeSelectionModeLocal = (value: unknown): value is GeometryProbeSelectionMode =>
+  value === "object" || value === "face" || value === "edge" || value === "vertex";
+const readGeometryEditSessionSnapshot = (): Partial<GeometryEditSessionSnapshot> | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    return safeParseObject<Partial<GeometryEditSessionSnapshot>>(
+      window.localStorage.getItem(GEOMETRY_EDIT_SESSION_KEY)
+    );
+  } catch {
+    return null;
+  }
+};
+const readPersistedGeometryOperationInputs = (): GeometryOperationInput[] => {
+  const snapshot = readGeometryEditSessionSnapshot();
+  const saved = new Map(
+    Array.isArray(snapshot?.operationInputs)
+      ? snapshot.operationInputs
+          .filter((entry) => entry && isGeometryOperationInputSlotId(entry.slotId))
+          .map((entry) => [entry.slotId, entry.value ?? null] as const)
+      : []
+  );
+  return GEOMETRY_OPERATION_INPUT_DEFS.map((entry) => {
+    const value = saved.get(entry.slotId) ?? null;
+    return {
+      ...entry,
+      value: value && entry.expectedKinds.includes(value.kind) ? value : null,
+    };
+  });
+};
 
 const GEOMETRY_GIZMO_MODE_OPTIONS: Array<{ id: GeometryGizmoMode; label: string; title: string }> = [
   { id: "translate", label: "Move", title: "Move / Translate (W)" },
@@ -3927,6 +3968,8 @@ type GeometryHistoryIntent = {
   parameters?: string | null;
   destructive?: boolean;
   warning?: string | null;
+  sourceObjectId?: string | null;
+  sourceObjectName?: string | null;
 };
 type GeometryQueuedHistoryIntent = GeometryHistoryIntent & {
   queuedAt: number;
@@ -3943,6 +3986,8 @@ type GeometryObjectHistoryStep = {
   warning: string | null;
   objectId: string;
   objectName: string;
+  sourceObjectId?: string | null;
+  sourceObjectName?: string | null;
   beforeVertexCount: number | null;
   afterVertexCount: number | null;
   beforeFaceCount: number | null;
@@ -9609,7 +9654,9 @@ const App: React.FC = () => {
     },
     []
   );
-  const [geometryProceduralPick, setGeometryProceduralPick] = useState<GeometryProceduralPickInfo | null>(null);
+  const [geometryProceduralPick, setGeometryProceduralPick] = useState<GeometryProceduralPickInfo | null>(
+    () => readGeometryEditSessionSnapshot()?.proceduralPick ?? null
+  );
   const [geometryProceduralHoverPick, setGeometryProceduralHoverPick] = useState<GeometryProceduralPickInfo | null>(null);
   const [geometryObjectHistoryById, setGeometryObjectHistoryById] = useState<Record<string, GeometryObjectHistoryStep[]>>({});
   const [geometrySelectedHistoryStepId, setGeometrySelectedHistoryStepId] = useState<string | null>(null);
@@ -9624,14 +9671,19 @@ const App: React.FC = () => {
   const [geometryTimelineGhostPreviousEnabled, setGeometryTimelineGhostPreviousEnabled] = useState(false);
   const [geometryObjectPresets, setGeometryObjectPresets] = useState<GeometryObjectPreset[]>([]);
   const [geometryOperationPresets, setGeometryOperationPresets] = useState<GeometryOperationPreset[]>([]);
-  const [geometryProbeSelectionMode, setGeometryProbeSelectionMode] =
-    useState<GeometryProbeSelectionMode>("object");
+  const [geometryProbeSelectionMode, setGeometryProbeSelectionMode] = useState<GeometryProbeSelectionMode>(() => {
+    const saved = readGeometryEditSessionSnapshot()?.probeSelectionMode;
+    return isGeometryProbeSelectionModeLocal(saved) ? saved : "object";
+  });
   const [geometryPickThroughHelpersEnabled, setGeometryPickThroughHelpersEnabled] = useState(false);
   const [geometryOperationInputs, setGeometryOperationInputs] = useState<GeometryOperationInput[]>(() =>
-    GEOMETRY_OPERATION_INPUT_DEFS.map((entry) => ({ ...entry, value: null }))
+    readPersistedGeometryOperationInputs()
   );
   const [geometryActiveOperationInputSlotId, setGeometryActiveOperationInputSlotId] =
-    useState<GeometryOperationInputSlotId | null>("primary-object");
+    useState<GeometryOperationInputSlotId | null>(() => {
+      const saved = readGeometryEditSessionSnapshot()?.activeOperationInputSlotId;
+      return isGeometryOperationInputSlotId(saved) ? saved : "primary-object";
+    });
   const [geometryObjectRevisionById, setGeometryObjectRevisionById] = useState<Record<string, number>>({});
   const geometryPrecisionPickActive =
     geometryMode === "procedural" && geometryProbeSelectionMode !== "object";
@@ -9743,6 +9795,9 @@ const App: React.FC = () => {
   const [geometryPlaneLinePointActiveInput, setGeometryPlaneLinePointActiveInput] =
     useState<GeometryPlaneLinePointInput>("line");
   const [geometryLineExtensionMode, setGeometryLineExtensionMode] = useState<GeometryLineExtensionMode>("infinite");
+  const geometryInitialEditSessionRef = useRef<Partial<GeometryEditSessionSnapshot> | null>(
+    readGeometryEditSessionSnapshot()
+  );
   const [geometryFaceExtrudeDistance, setGeometryFaceExtrudeDistance] = useState(0.15);
   const [geometryFaceInsetRatio, setGeometryFaceInsetRatio] = useState(0.2);
   const [geometryFaceSubdivideMode, setGeometryFaceSubdivideMode] = useState<FaceSubdivideMode>("four-triangles");
@@ -9916,7 +9971,10 @@ const App: React.FC = () => {
   });
   const [geometryDatasetMeshObjects, setGeometryDatasetMeshObjects] = useState<GeometryDatasetMeshObject[]>([]);
   const [geometryLockedObjectIds, setGeometryLockedObjectIds] = useState<Set<string>>(() => new Set());
-  const [geometrySelectedObjectId, setGeometrySelectedObjectId] = useState<string | null>(null);
+  const [geometrySelectedObjectId, setGeometrySelectedObjectId] = useState<string | null>(() => {
+    const saved = readGeometryEditSessionSnapshot()?.selectedObjectId;
+    return typeof saved === "string" && saved.length > 0 ? saved : null;
+  });
   const [geometryCompareObjectAId, setGeometryCompareObjectAId] = useState<string | null>(null);
   const [geometryCompareObjectBId, setGeometryCompareObjectBId] = useState<string | null>(null);
   const [geometryLineQuickMenu, setGeometryLineQuickMenu] = useState<{
@@ -10850,6 +10908,18 @@ const App: React.FC = () => {
     if (sanitizedPick !== geometryProceduralPick) setGeometryProceduralPick(null);
     const sanitizedHoverPick = sanitizeGeometryPickRef(geometryProceduralHoverPick, geometryObjectIdSet);
     if (sanitizedHoverPick !== geometryProceduralHoverPick) setGeometryProceduralHoverPick(null);
+    setGeometryOperationInputs((prev) => {
+      let changed = false;
+      const next = prev.map((entry) => {
+        const value = entry.value;
+        if (!value) return entry;
+        const objectId = value.meshKey ?? value.objectId ?? null;
+        if (objectId && geometryObjectIdSet.has(objectId)) return entry;
+        changed = true;
+        return { ...entry, value: null };
+      });
+      return changed ? next : prev;
+    });
 
     if (
       geometryPendingPlacementObjectId &&
@@ -10902,6 +10972,47 @@ const App: React.FC = () => {
     geometryProceduralPick,
     geometrySelectedObjectId,
   ]);
+  const geometryEditSessionRestoreNoticeShownRef = useRef(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const snapshot: GeometryEditSessionSnapshot = {
+        savedAt: Date.now(),
+        selectedObjectId: geometrySelectedObjectId,
+        probeSelectionMode: geometryProbeSelectionMode,
+        proceduralPick: sanitizeGeometryPickRef(geometryProceduralPick, geometryObjectIdSet),
+        operationInputs: geometryOperationInputs.map((entry) => ({
+          slotId: entry.slotId,
+          value: sanitizeGeometryPickRef(entry.value, geometryObjectIdSet),
+        })),
+        activeOperationInputSlotId: geometryActiveOperationInputSlotId,
+      };
+      window.localStorage.setItem(GEOMETRY_EDIT_SESSION_KEY, JSON.stringify(snapshot));
+    } catch {
+      // Ignore storage write failures.
+    }
+  }, [
+    geometryActiveOperationInputSlotId,
+    geometryObjectIdSet,
+    geometryOperationInputs,
+    geometryProbeSelectionMode,
+    geometryProceduralPick,
+    geometrySelectedObjectId,
+  ]);
+  useEffect(() => {
+    if (geometryEditSessionRestoreNoticeShownRef.current) return;
+    if (!geometrySelectedObjectId || !geometryObjectIdSet.has(geometrySelectedObjectId)) return;
+    const initialSession = geometryInitialEditSessionRef.current;
+    const savedAt = initialSession?.savedAt ?? null;
+    if (!savedAt || Date.now() - savedAt > 1000 * 60 * 60 * 24 * 14) return;
+    if (initialSession?.selectedObjectId !== geometrySelectedObjectId) return;
+    geometryEditSessionRestoreNoticeShownRef.current = true;
+    const detail =
+      geometryProceduralPick && (geometryProceduralPick.meshKey ?? null) === geometrySelectedObjectId
+        ? "Retained topology selection restored."
+        : "Active edited object restored.";
+    setGeometryCreateActionStatus(detail);
+  }, [geometryObjectIdSet, geometryProceduralPick, geometrySelectedObjectId, setGeometryCreateActionStatus]);
   const geometryHistoryFingerprintRef = useRef<Map<string, string>>(new Map());
   const geometryHistoryCaptureSuppressUntilRef = useRef(0);
   const suppressGeometryHistoryCapture = useCallback((durationMs = 1200) => {
@@ -10981,6 +11092,8 @@ const App: React.FC = () => {
           warning: intent.warning ?? null,
           objectId: obj.id,
           objectName: obj.name,
+          sourceObjectId: intent.sourceObjectId ?? null,
+          sourceObjectName: intent.sourceObjectName ?? null,
           beforeVertexCount: beforeTopology?.vertexCount ?? null,
           afterVertexCount: afterTopology?.vertexCount ?? null,
           beforeFaceCount: beforeTopology?.faceCount ?? null,
@@ -11029,15 +11142,21 @@ const App: React.FC = () => {
         entry.operationType === "Mirror"
           ? entry.changeSummary.match(/^Created mirror copy from (.+)\.$/)?.[1] ?? entry.operationTarget ?? entry.objectName
           : null;
+      const lineageSource = entry.sourceObjectName ?? mirrorSource ?? null;
+      const isCopyLike =
+        !!lineageSource ||
+        entry.action === "duplicate" ||
+        entry.action === "history-duplicate" ||
+        entry.action === "mirror-copy";
       return {
         kind: "object",
         id: `object:${entry.id}`,
         at: entry.at,
         label: entry.label,
         detail: `${entry.objectName} - ${entry.operationType}${entry.operationTarget ? ` - ${entry.operationTarget}` : ""}`,
-        sourceLabel: mirrorSource ?? entry.objectName,
+        sourceLabel: lineageSource ?? entry.objectName,
         actionLabel: entry.operationType,
-        resultLabel: entry.topologySummary ?? entry.objectName,
+        resultLabel: isCopyLike ? `${lineageSource ?? entry.objectName} -> ${entry.objectName}` : entry.topologySummary ?? entry.objectName,
         parametersLabel: entry.operationParameters,
         step: entry,
       };
@@ -11362,6 +11481,8 @@ const App: React.FC = () => {
       warning: "Source object unchanged.",
       objectId: copyId,
       objectName: copyForHistory.name,
+      sourceObjectId: step.objectId,
+      sourceObjectName: step.objectName,
       beforeVertexCount: null,
       afterVertexCount: afterTopology?.vertexCount ?? null,
       beforeFaceCount: null,
@@ -12251,6 +12372,8 @@ const App: React.FC = () => {
         target: procedural.name,
         parameters: "scene duplicate",
         destructive: false,
+        sourceObjectId: procedural.id,
+        sourceObjectName: procedural.name,
       });
       setGeometryObjects((prev) => [copy, ...prev]);
       setGeometrySelectedObjectId(copyId);
@@ -12278,6 +12401,8 @@ const App: React.FC = () => {
       target: datasetObj.name,
       parameters: "scene duplicate",
       destructive: false,
+      sourceObjectId: datasetObj.id,
+      sourceObjectName: datasetObj.name,
     });
     setGeometryDatasetMeshObjects((prev) => [copy, ...prev]);
     setGeometrySelectedObjectId(copyId);
@@ -14164,6 +14289,24 @@ const App: React.FC = () => {
   );
   const geometrySelectedPick = geometryProbeSelectionDetails?.pick ?? null;
   const geometryHoverPick = geometryProbeHoverSelectionDetails?.pick ?? null;
+  const geometryActiveEditedObjectBreadcrumb = useMemo(() => {
+    if (!geometrySelectedSceneObject) return null;
+    const latestStep = geometrySelectedObjectHistory[0] ?? null;
+    const entity =
+      geometryProbeSelectionDetails && geometryProbeSelectionDetails.objectId === geometrySelectedSceneObject.id
+        ? geometryProbeSelectionDetails.label
+        : "Object";
+    const lineage =
+      latestStep?.sourceObjectName && latestStep.sourceObjectName !== geometrySelectedSceneObject.name
+        ? `${latestStep.sourceObjectName} -> ${geometrySelectedSceneObject.name}`
+        : geometrySelectedSceneObject.name;
+    return {
+      lineage,
+      entity,
+      latest: latestStep?.label ?? null,
+      sourceObjectName: latestStep?.sourceObjectName ?? null,
+    };
+  }, [geometryProbeSelectionDetails, geometrySelectedObjectHistory, geometrySelectedSceneObject]);
   const geometryEdgeViewportTooltip = useMemo(() => {
     const hoverIsEdge = geometryProbeHoverSelectionDetails?.mode === "edge" && geometryProbeHoverSelectionDetails.edgeVertexPair;
     const detail = hoverIsEdge ? geometryProbeHoverSelectionDetails : null;
@@ -25700,6 +25843,8 @@ const App: React.FC = () => {
       warning: "Source object unchanged.",
       objectId: copyId,
       objectName: copyForHistory.name,
+      sourceObjectId: geometrySelectedSceneObject.id,
+      sourceObjectName: geometrySelectedSceneObject.name,
       beforeVertexCount: null,
       afterVertexCount: afterTopology?.vertexCount ?? null,
       beforeFaceCount: null,
@@ -71047,6 +71192,28 @@ case "mobius":
                                   ? geometryProbeSelectionDetails.label
                                   : "Object-level target"}
                               </div>
+                              {geometryActiveEditedObjectBreadcrumb && (
+                                <div
+                                  data-testid="geometry-actions-active-edit-breadcrumb"
+                                  style={{
+                                    border: "1px solid #bfdbfe",
+                                    borderRadius: 7,
+                                    background: "#ffffff",
+                                    padding: "4px 6px",
+                                    display: "grid",
+                                    gap: 2,
+                                    color: "#1e3a8a",
+                                  }}
+                                >
+                                  <strong>Editing {geometryActiveEditedObjectBreadcrumb.lineage}</strong>
+                                  <span style={{ color: "#475569" }}>
+                                    {geometryActiveEditedObjectBreadcrumb.entity}
+                                    {geometryActiveEditedObjectBreadcrumb.latest
+                                      ? ` - latest: ${geometryActiveEditedObjectBreadcrumb.latest}`
+                                      : ""}
+                                  </span>
+                                </div>
+                              )}
                               {geometryLastActionContinuity && (
                                 <div
                                   data-testid="geometry-actions-last-result"
