@@ -311,7 +311,7 @@ import {
   subdivideSurfaceMesh,
   validateMesh,
 } from "./mesh/meshOps";
-import { bevelEdge, deleteFace, extrudeFace, insetFace, moveVertex, splitEdge, weldVertices } from "./mesh/meshEditOps";
+import { bevelEdge, collapseEdge, deleteFace, extrudeFace, insetFace, moveVertex, splitEdge, subdivideFace, weldVertices } from "./mesh/meshEditOps";
 import type { MeshQualityReport, MeshQualityReportPhase } from "./mesh/meshQualityReport";
 import type {
   DatasetKind,
@@ -14527,7 +14527,7 @@ const App: React.FC = () => {
           return { vertexCount, faceCount };
         };
         const beforeCounts = countMeshTopology(target.mesh);
-        queueGeometryHistoryIntent(objectId, {
+        const resolvedIntent: GeometryHistoryIntent = {
           action: intent?.action ?? "mesh-edit",
           label: intent?.label ?? actionLabel,
           operationType: intent?.operationType ?? "Mesh edit",
@@ -14535,7 +14535,8 @@ const App: React.FC = () => {
           parameters: intent?.parameters ?? null,
           destructive: intent?.destructive ?? true,
           warning: intent?.warning ?? null,
-        });
+        };
+        const beforeSnapshot = cloneGeometrySceneObjectSnapshot(target);
         const edited = applySurfaceMeshOps(edit(cloneSurfaceMeshData(target.mesh, target.mesh.label)));
         const afterCounts = countMeshTopology(edited);
         const sourceGeometryId =
@@ -14582,6 +14583,37 @@ const App: React.FC = () => {
               }
             : target.promotion,
         };
+        const afterSnapshot = cloneGeometrySceneObjectSnapshot(updatedTarget);
+        const historyStep: GeometryObjectHistoryStep = {
+          id: makeId(),
+          at: Date.now(),
+          action: resolvedIntent.action,
+          label: resolvedIntent.label,
+          operationType: resolvedIntent.operationType,
+          operationTarget: resolvedIntent.target ?? null,
+          operationParameters: resolvedIntent.parameters ?? null,
+          destructive: !!resolvedIntent.destructive,
+          warning: resolvedIntent.warning ?? null,
+          objectId,
+          objectName: updatedTarget.name,
+          beforeVertexCount: beforeCounts.vertexCount,
+          afterVertexCount: afterCounts.vertexCount,
+          beforeFaceCount: beforeCounts.faceCount,
+          afterFaceCount: afterCounts.faceCount,
+          beforeSummary: summarizeGeometryHistorySnapshot(beforeSnapshot),
+          afterSummary: summarizeGeometryHistorySnapshot(afterSnapshot),
+          changeSummary: summarizeGeometryHistoryChange(beforeSnapshot, afterSnapshot),
+          snapshot: afterSnapshot,
+        };
+        suppressGeometryHistoryCapture();
+        setGeometryObjectHistoryById((prev) => ({
+          ...prev,
+          [objectId]: [historyStep, ...(prev[objectId] ?? [])].slice(0, 24),
+        }));
+        setGeometryObjectRevisionById((prev) => ({
+          ...prev,
+          [objectId]: (prev[objectId] ?? 0) + 1,
+        }));
         if (promotedFromProcedural) {
           setGeometryObjects((prev) => prev.filter((entry) => entry.id !== objectId));
           setGeometryDatasetMeshObjects((prev) => [updatedTarget, ...prev.filter((entry) => entry.id !== objectId)]);
@@ -14631,10 +14663,10 @@ const App: React.FC = () => {
       geometryLockedObjectIds,
       geometrySelectedObjectId,
       proceduralMeshSet.meshes,
-      queueGeometryHistoryIntent,
       setGeometryCreateActionStatus,
       setGeometryLastDirectEdit,
       setGeometryLastActionContinuity,
+      suppressGeometryHistoryCapture,
     ]
   );
   const handleExtrudeSelectedFace = useCallback(() => {
@@ -14708,6 +14740,27 @@ const App: React.FC = () => {
     geometrySelectedObjectId,
     setGeometryCreateActionStatus,
   ]);
+  const handleSubdivideSelectedFace = useCallback(() => {
+    if (!geometryFaceOperationPick || geometryFaceOperationPick.faceIndex == null) {
+      setGeometryCreateActionStatus("Select a source face slot first.");
+      return;
+    }
+    const objectId = geometryFaceOperationPick.meshKey ?? geometryFaceOperationPick.objectId ?? geometrySelectedObjectId ?? "";
+    const faceIndex = geometryFaceOperationPick.faceIndex;
+    applyMeshEditToObject(objectId, "Subdivided face", (mesh) => subdivideFace(mesh, faceIndex), {
+      action: "face-subdivide",
+      label: "Face subdivide",
+      operationType: "Face edit",
+      target: `Face ${faceIndex}`,
+      parameters: "triangle -> 4 triangles",
+      destructive: true,
+    });
+  }, [
+    applyMeshEditToObject,
+    geometryFaceOperationPick,
+    geometrySelectedObjectId,
+    setGeometryCreateActionStatus,
+  ]);
   const handleSplitSelectedProbeEdge = useCallback(() => {
     if (!geometryEdgeOperationPick?.edgeVertices) {
       setGeometryCreateActionStatus("Select an edge slot first.");
@@ -14721,6 +14774,26 @@ const App: React.FC = () => {
       operationType: "Edge edit",
       target: `Edge ${Math.min(a, b)}-${Math.max(a, b)}`,
       parameters: "split midpoint",
+      destructive: true,
+    });
+  }, [
+    applyMeshEditToObject,
+    geometryEdgeOperationPick,
+    setGeometryCreateActionStatus,
+  ]);
+  const handleCollapseSelectedProbeEdge = useCallback(() => {
+    if (!geometryEdgeOperationPick?.edgeVertices) {
+      setGeometryCreateActionStatus("Select an edge slot first.");
+      return;
+    }
+    const [a, b] = geometryEdgeOperationPick.edgeVertices;
+    const objectId = geometryEdgeOperationPick.meshKey ?? geometryEdgeOperationPick.objectId;
+    applyMeshEditToObject(objectId, "Collapsed edge", (mesh) => collapseEdge(mesh, a, b), {
+      action: "edge-collapse",
+      label: "Collapse edge",
+      operationType: "Edge edit",
+      target: `Edge ${Math.min(a, b)}-${Math.max(a, b)}`,
+      parameters: "merge to midpoint",
       destructive: true,
     });
   }, [
@@ -65132,6 +65205,13 @@ case "mobius":
                                 </button>
                                 <button
                                   type="button"
+                                  onClick={handleSubdivideSelectedFace}
+                                  disabled={!geometryHasFaceOperationPick}
+                                >
+                                  Subdivide face
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => handleCreateHelperFromFaceSelection("face-normal")}
                                   disabled={geometryProbeSelectionMode !== "face" || !geometryProbeSelectionDetails?.faceVertices}
                                   title={
@@ -65181,6 +65261,14 @@ case "mobius":
                                   title={geometryProbeSelectionMode !== "edge" ? "Set selection mode to Edge." : "Split selected edge"}
                                 >
                                   Split edge
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleCollapseSelectedProbeEdge}
+                                  disabled={!geometryHasEdgeOperationPick}
+                                  title={geometryProbeSelectionMode !== "edge" ? "Set selection mode to Edge." : "Collapse selected edge"}
+                                >
+                                  Collapse edge
                                 </button>
                                 <button
                                   type="button"
@@ -70341,7 +70429,7 @@ case "mobius":
                                   </div>
                                 </div>
                               )}
-                              {(geometrySelectedPick?.kind === "face" || !geometrySelectedPick) && (
+                              {(geometrySelectedPick?.kind === "face" || !geometrySelectedPick || geometryHasFaceOperationPick) && (
                                 <div style={{ display: "grid", gap: 6 }}>
                                   <div style={{ color: "#475569", fontWeight: 700 }}>Face</div>
                                   <label style={{ display: "grid", gridTemplateColumns: "84px minmax(0, 1fr)", gap: 6, alignItems: "center" }}>
@@ -70395,13 +70483,21 @@ case "mobius":
                                     >
                                       Delete Face
                                     </button>
+                                    <button
+                                      type="button"
+                                      data-testid="geometry-direct-edit-face-subdivide"
+                                      onClick={handleSubdivideSelectedFace}
+                                      style={geometryOperationButtonStyle}
+                                    >
+                                      Subdivide Face
+                                    </button>
                                   </div>
                                   {!geometryHasFaceOperationPick && (
                                     <div style={{ color: "#64748b" }}>Fill the Source face slot or select a face.</div>
                                   )}
                                 </div>
                               )}
-                              {(geometrySelectedPick?.kind === "edge" || !geometrySelectedPick) && (
+                              {(geometrySelectedPick?.kind === "edge" || !geometrySelectedPick || geometryHasEdgeOperationPick) && (
                                 <div style={{ display: "grid", gap: 6 }}>
                                   <div style={{ color: "#475569", fontWeight: 700 }}>Edge</div>
                                   <label style={{ display: "grid", gridTemplateColumns: "84px minmax(0, 1fr)", gap: 6, alignItems: "center" }}>
@@ -70434,13 +70530,21 @@ case "mobius":
                                     >
                                       Bevel Edge
                                     </button>
+                                    <button
+                                      type="button"
+                                      data-testid="geometry-direct-edit-edge-collapse"
+                                      onClick={handleCollapseSelectedProbeEdge}
+                                      style={geometryOperationButtonStyle}
+                                    >
+                                      Collapse Edge
+                                    </button>
                                   </div>
                                   {!geometryHasEdgeOperationPick && (
                                     <div style={{ color: "#64748b" }}>Fill the Edge slot or select an edge.</div>
                                   )}
                                 </div>
                               )}
-                              {(geometrySelectedPick?.kind === "vertex" || !geometrySelectedPick) && (
+                              {(geometrySelectedPick?.kind === "vertex" || !geometrySelectedPick || geometryHasVertexOperationPick) && (
                                 <div style={{ display: "grid", gap: 6 }}>
                                   <div style={{ color: "#475569", fontWeight: 700 }}>Vertex</div>
                                   <label style={{ display: "grid", gridTemplateColumns: "84px minmax(0, 1fr)", gap: 6, alignItems: "center" }}>

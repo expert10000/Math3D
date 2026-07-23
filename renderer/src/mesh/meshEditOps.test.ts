@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SurfaceMeshData } from "./surfaceMesh";
-import { bevelEdge, deleteFace, extrudeFace, insetFace, moveVertex, splitEdge, weldVertices } from "./meshEditOps";
+import { bevelEdge, collapseEdge, deleteFace, extrudeFace, insetFace, moveVertex, splitEdge, subdivideFace, weldVertices } from "./meshEditOps";
 
 const makeSquareMesh = (): SurfaceMeshData => ({
   label: "Editable square",
@@ -47,6 +47,16 @@ describe("mesh edit operations", () => {
     expect(faceCount(edited)).toBe(1);
   });
 
+  it("subdivides one selected triangular face into four triangles", () => {
+    const edited = subdivideFace(makeSquareMesh(), 0);
+
+    expect(vertexCount(edited)).toBe(7);
+    expect(faceCount(edited)).toBe(5);
+    expect(positionAt(edited, 4)).toEqual([0.5, 0, 0]);
+    expect(positionAt(edited, 5)).toEqual([1, 0.5, 0]);
+    expect(positionAt(edited, 6)).toEqual([0.5, 0.5, 0]);
+  });
+
   it("splits every incident triangle on a selected edge", () => {
     const edited = splitEdge(makeSquareMesh(), 0, 2);
 
@@ -62,6 +72,14 @@ describe("mesh edit operations", () => {
     expect(faceCount(edited)).toBe(2);
     expect(positionAt(edited, 0)[2]).toBeCloseTo(0.1);
     expect(positionAt(edited, 2)[2]).toBeCloseTo(0.1);
+  });
+
+  it("collapses an edge to its midpoint and removes degenerate faces", () => {
+    const edited = collapseEdge(makeSquareMesh(), 0, 1);
+
+    expect(vertexCount(edited)).toBe(3);
+    expect(faceCount(edited)).toBe(1);
+    expect(positionAt(edited, 0)).toEqual([0.5, 0, 0]);
   });
 
   it("moves a vertex along an explicit direction", () => {

@@ -5420,6 +5420,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       renderer.setSize(w, h, false);
       renderResizeFrame();
 
+      if (!reframe) return;
+
       const radius = radiusRef.current;
       if (!Number.isFinite(radius) || radius <= 0) return;
 
@@ -5432,8 +5434,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (!Number.isFinite(requiredDist) || requiredDist <= 0) return;
 
       const currentDist = camera.position.distanceTo(center);
-      if (!reframe && currentDist >= requiredDist) return;
-
       const viewDir = camera.position.clone().sub(controls.target);
       if (viewDir.lengthSq() < 1e-8) viewDir.set(0, 0, 1);
       viewDir.normalize();

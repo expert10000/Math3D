@@ -227,6 +227,28 @@ export const deleteFace = (mesh: SurfaceMeshData, faceIndex: number): SurfaceMes
   return buildMesh(mesh, Array.from(mesh.positions), nextTriangles, true);
 };
 
+export const subdivideFace = (mesh: SurfaceMeshData, faceIndex: number): SurfaceMeshData => {
+  const vertexCount = assertMeshVertices(mesh);
+  const triangles = readTriangles(mesh, vertexCount);
+  const tri = faceFromIndex(triangles, faceIndex);
+  const positions = Array.from(mesh.positions);
+  const [a, b, c] = tri;
+  const pa = vec3At(positions, a);
+  const pb = vec3At(positions, b);
+  const pc = vec3At(positions, c);
+  const midpoint = (p: [number, number, number], q: [number, number, number]): [number, number, number] => [
+    (p[0] + q[0]) * 0.5,
+    (p[1] + q[1]) * 0.5,
+    (p[2] + q[2]) * 0.5,
+  ];
+  const ab = pushVec3(positions, midpoint(pa, pb));
+  const bc = pushVec3(positions, midpoint(pb, pc));
+  const ca = pushVec3(positions, midpoint(pc, pa));
+  const nextTriangles = triangles.filter((_, idx) => idx !== faceIndex);
+  nextTriangles.push([a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca]);
+  return buildMesh(mesh, positions, nextTriangles);
+};
+
 export const splitEdge = (mesh: SurfaceMeshData, edgeA: number, edgeB: number): SurfaceMeshData => {
   const vertexCount = assertMeshVertices(mesh);
   if (edgeA < 0 || edgeB < 0 || edgeA >= vertexCount || edgeB >= vertexCount || edgeA === edgeB) {
@@ -256,6 +278,52 @@ export const splitEdge = (mesh: SurfaceMeshData, edgeA: number, edgeB: number): 
     throw new Error("Selected edge is not part of any face.");
   }
   return buildMesh(mesh, positions, nextTriangles);
+};
+
+export const collapseEdge = (mesh: SurfaceMeshData, edgeA: number, edgeB: number): SurfaceMeshData => {
+  const vertexCount = assertMeshVertices(mesh);
+  if (
+    edgeA < 0 ||
+    edgeB < 0 ||
+    edgeA >= vertexCount ||
+    edgeB >= vertexCount ||
+    edgeA === edgeB ||
+    !Number.isInteger(edgeA) ||
+    !Number.isInteger(edgeB)
+  ) {
+    throw new Error("Invalid edge selection.");
+  }
+  const triangles = readTriangles(mesh, vertexCount);
+  const hasEdge = triangles.some((tri) => {
+    const [v0, v1, v2] = tri;
+    return (
+      ((v0 === edgeA && v1 === edgeB) || (v0 === edgeB && v1 === edgeA)) ||
+      ((v1 === edgeA && v2 === edgeB) || (v1 === edgeB && v2 === edgeA)) ||
+      ((v2 === edgeA && v0 === edgeB) || (v2 === edgeB && v0 === edgeA))
+    );
+  });
+  if (!hasEdge) {
+    throw new Error("Selected edge is not part of any face.");
+  }
+  const positions = Array.from(mesh.positions);
+  const aPos = vec3At(positions, edgeA);
+  const bPos = vec3At(positions, edgeB);
+  const keep = Math.min(edgeA, edgeB);
+  const merge = Math.max(edgeA, edgeB);
+  const keepBase = keep * 3;
+  positions[keepBase] = (aPos[0] + bPos[0]) * 0.5;
+  positions[keepBase + 1] = (aPos[1] + bPos[1]) * 0.5;
+  positions[keepBase + 2] = (aPos[2] + bPos[2]) * 0.5;
+
+  const nextTriangles: Tri[] = [];
+  for (const tri of triangles) {
+    const ta = tri[0] === merge ? keep : tri[0];
+    const tb = tri[1] === merge ? keep : tri[1];
+    const tc = tri[2] === merge ? keep : tri[2];
+    if (ta === tb || tb === tc || tc === ta) continue;
+    nextTriangles.push([ta, tb, tc]);
+  }
+  return buildMesh(mesh, positions, nextTriangles, true);
 };
 
 export const bevelEdge = (mesh: SurfaceMeshData, edgeA: number, edgeB: number, amount: number): SurfaceMeshData => {
@@ -360,4 +428,3 @@ export const weldVertices = (mesh: SurfaceMeshData, keep: number, merge: number)
   }
   return buildMesh(mesh, positions, nextTriangles, true);
 };
-
