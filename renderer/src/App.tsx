@@ -457,6 +457,8 @@ type SurfaceMeshTopologyDemoPreset = {
   label: string;
   operation: "Face Subdivide" | "Split Edge" | "Collapse Edge" | "Bevel Edge";
   summary: string;
+  tryHint: string;
+  expectedResult: string;
   build: () => SurfaceMeshData;
   faceIndex: number;
   edge: [number, number];
@@ -6830,9 +6832,11 @@ const buildTopologyDemoPrismMesh = (label = "Topology demo prism cap"): SurfaceM
 const SURFACE_MESH_TOPOLOGY_DEMO_PRESETS: SurfaceMeshTopologyDemoPreset[] = [
   {
     id: "topology_demo_face_fan",
-    label: "Pyramid face fan",
+    label: "Face fan demo",
     operation: "Face Subdivide",
     summary: "Triangular face -> center fan triangles.",
+    tryHint: "Load a pyramid, then press Subdivide Face.",
+    expectedResult: "Face 2 becomes a center fan with one new vertex and two extra faces.",
     build: () => buildTopologyDemoPyramidMesh("Demo: face subdivide fan"),
     faceIndex: 2,
     edge: [0, 4],
@@ -6840,9 +6844,11 @@ const SURFACE_MESH_TOPOLOGY_DEMO_PRESETS: SurfaceMeshTopologyDemoPreset[] = [
   },
   {
     id: "topology_demo_split_edge",
-    label: "Cube split edge",
+    label: "Split edge demo",
     operation: "Split Edge",
     summary: "Shared cube edge -> midpoint vertex.",
+    tryHint: "Load a cube with Edge 4-5 selected, then press Split Edge.",
+    expectedResult: "Edge 4-5 gains a midpoint vertex and the adjacent faces are split.",
     build: () => buildTopologyDemoCubeMesh("Demo: split edge"),
     faceIndex: 2,
     edge: [4, 5],
@@ -6850,9 +6856,11 @@ const SURFACE_MESH_TOPOLOGY_DEMO_PRESETS: SurfaceMeshTopologyDemoPreset[] = [
   },
   {
     id: "topology_demo_collapse_edge",
-    label: "Prism collapse",
+    label: "Collapse cleanup",
     operation: "Collapse Edge",
     summary: "Cap edge -> merged midpoint vertex.",
+    tryHint: "Load a prism cap edge, then press Collapse Edge.",
+    expectedResult: "Edge 1-2 merges to a midpoint vertex and removes the adjacent cap triangles.",
     build: () => buildTopologyDemoPrismMesh("Demo: collapse edge"),
     faceIndex: 0,
     edge: [1, 2],
@@ -6860,15 +6868,22 @@ const SURFACE_MESH_TOPOLOGY_DEMO_PRESETS: SurfaceMeshTopologyDemoPreset[] = [
   },
   {
     id: "topology_demo_bevel_edge",
-    label: "Cube bevel edge",
+    label: "Bevel rim",
     operation: "Bevel Edge",
     summary: "Cube edge -> narrow bevel band.",
+    tryHint: "Load a cube rim edge, then press Bevel Edge.",
+    expectedResult: "Edge 1-2 opens into a narrow bevel band with new support faces.",
     build: () => buildTopologyDemoCubeMesh("Demo: bevel edge"),
     faceIndex: 8,
     edge: [1, 2],
     bevelAmount: 0.12,
   },
 ];
+
+const findSurfaceMeshTopologyDemoPresetByOperation = (
+  operation: SurfaceMeshTopologyDemoPreset["operation"]
+): SurfaceMeshTopologyDemoPreset | null =>
+  SURFACE_MESH_TOPOLOGY_DEMO_PRESETS.find((preset) => preset.operation === operation) ?? null;
 
 /* ---------------- Surfaces meta ---------------- */
 
@@ -42753,16 +42768,20 @@ case "mobius":
         if (preset.splitRatio != null) setSurfaceMeshTopologySplitRatio(preset.splitRatio);
         if (preset.collapseMode) setSurfaceMeshTopologyCollapseMode(preset.collapseMode);
         if (preset.bevelAmount != null) setSurfaceMeshTopologyBevelAmount(preset.bevelAmount);
+        setSurfaceMeshTopologyHistory([]);
+        setSelectedSurfaceMeshTopologyHistoryId(null);
+        setSurfaceMeshTopologyHistoryPreviewId(null);
+        setSurfaceMeshTopologyFeedback(null);
         setDatasetKind("mesh");
         setSurfaceViewerKind("mesh");
         setSurfacesPanelState("work");
         setSurfacesLeftTab("analysis");
         setSurfacesWorkGalleryOpen(false);
-        setSurfaceMeshTopologyStatus(
-          `${preset.operation} demo loaded: Face ${preset.faceIndex}, Edge ${preset.edge[0]}-${preset.edge[1]}.`
-        );
         appendMeshPromotionOperation(`loaded topology demo (${preset.operation})`);
         focusSurfaceMeshViewport(meshReady);
+        setSurfaceMeshTopologyStatus(
+          `Ready: ${preset.label}. Face ${preset.faceIndex}, Edge ${preset.edge[0]}-${preset.edge[1]}. ${preset.tryHint} Expected: ${preset.expectedResult}`
+        );
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to load topology demo.";
         setSurfaceMeshTopologyStatus(msg);
@@ -43036,18 +43055,20 @@ case "mobius":
       targetLabel: string,
       paramsLabel: string,
       selectedResultLabel: string,
-      edit: (mesh: SurfaceMeshData) => SurfaceMeshData
+      edit: (mesh: SurfaceMeshData) => SurfaceMeshData,
+      sourceMeshOverride?: SurfaceMeshData | null
     ) => {
       setSurfaceMeshOpsError(null);
       setSurfaceMeshTopologyStatus(null);
-      if (!surfaceMeshData?.positions?.length) {
+      const sourceMesh = sourceMeshOverride ?? surfaceMeshData;
+      if (!sourceMesh?.positions?.length) {
         setSurfaceMeshTopologyStatus("Surface mesh not ready yet.");
         return;
       }
       try {
-        const beforeCounts = countTriangleMeshTopology(surfaceMeshData);
-        const baseLabel = surfaceMeshData.label ?? "Surface mesh";
-        const base = cloneSurfaceMeshData(surfaceMeshData, `${baseLabel} (${labelSuffix})`);
+        const beforeCounts = countTriangleMeshTopology(sourceMesh);
+        const baseLabel = sourceMesh.label ?? "Surface mesh";
+        const base = cloneSurfaceMeshData(sourceMesh, `${baseLabel} (${labelSuffix})`);
         const edited = applySurfaceMeshOps(edit(base));
         const afterCounts = countTriangleMeshTopology(edited);
         const topologyAction =
@@ -43065,7 +43086,7 @@ case "mobius":
             "mesh-workspace",
             topologyAction,
             operationHistoryLabel,
-            surfaceMeshData,
+            sourceMesh,
             edited,
             edited
           )
@@ -43081,7 +43102,7 @@ case "mobius":
           beforeCounts,
           afterCounts,
           selectedResultLabel,
-          beforeSnapshot: cloneSurfaceMeshData(surfaceMeshData, surfaceMeshData.label),
+          beforeSnapshot: cloneSurfaceMeshData(sourceMesh, sourceMesh.label),
           snapshot: cloneSurfaceMeshData(edited, edited.label),
         };
         setSurfaceMeshTopologyHistory((prev) => [historyEntry, ...prev].slice(0, 24));
@@ -43193,6 +43214,102 @@ case "mobius":
     surfaceMeshTopologyFieldValidation.edgeLabel,
     surfaceMeshTopologyFieldValidation.edgeValid,
   ]);
+
+  const handleRunSurfaceMeshTopologyDemoPreset = useCallback(
+    (presetId: string) => {
+      const preset = SURFACE_MESH_TOPOLOGY_DEMO_PRESETS.find((entry) => entry.id === presetId);
+      if (!preset) return;
+      try {
+        const meshReady = preset.build();
+        setMeshDataset(meshReady, `mesh-topology-demo:${preset.id}`);
+        setSurfaceMeshImportError(null);
+        setSurfaceMeshOpsError(null);
+        setSurfaceMeshTopologyFaceIndex(preset.faceIndex);
+        setSurfaceMeshTopologyEdgeA(preset.edge[0]);
+        setSurfaceMeshTopologyEdgeB(preset.edge[1]);
+        if (preset.subdivideMode) setSurfaceMeshTopologySubdivideMode(preset.subdivideMode);
+        if (preset.splitRatio != null) setSurfaceMeshTopologySplitRatio(preset.splitRatio);
+        if (preset.collapseMode) setSurfaceMeshTopologyCollapseMode(preset.collapseMode);
+        if (preset.bevelAmount != null) setSurfaceMeshTopologyBevelAmount(preset.bevelAmount);
+        setSurfaceMeshTopologyHistory([]);
+        setSelectedSurfaceMeshTopologyHistoryId(null);
+        setSurfaceMeshTopologyHistoryPreviewId(null);
+        setSurfaceMeshTopologyFeedback(null);
+        setDatasetKind("mesh");
+        setSurfaceViewerKind("mesh");
+        setSurfacesPanelState("work");
+        setSurfacesLeftTab("analysis");
+        setSurfacesWorkGalleryOpen(false);
+        appendMeshPromotionOperation(`loaded topology demo (${preset.operation})`);
+        focusSurfaceMeshViewport(meshReady);
+        if (preset.operation === "Face Subdivide") {
+          applySurfaceMeshTopologyEdit(
+            "Face subdivide",
+            "mesh-topology:face-subdivide-demo",
+            `topology demo face ${preset.faceIndex} subdivided (${preset.subdivideMode ?? "center-fan"})`,
+            "face subdivide",
+            `Face ${preset.faceIndex}`,
+            `mode=${preset.subdivideMode ?? "center-fan"}`,
+            preset.subdivideMode === "four-triangles" ? "four-triangle split" : "center fan triangles",
+            (mesh) => subdivideFace(mesh, preset.faceIndex, preset.subdivideMode ?? "center-fan"),
+            meshReady
+          );
+        } else if (preset.operation === "Split Edge") {
+          const ratio = clampNumber(preset.splitRatio ?? 0.5, 0.01, 0.99);
+          applySurfaceMeshTopologyEdit(
+            "Split edge",
+            "mesh-topology:split-edge-demo",
+            `topology demo edge ${preset.edge[0]}-${preset.edge[1]} split (${Math.round(ratio * 100)}%)`,
+            "split edge",
+            `Edge ${preset.edge[0]}-${preset.edge[1]}`,
+            `ratio=${fmt(ratio)}`,
+            `midpoint vertex on Edge ${preset.edge[0]}-${preset.edge[1]}`,
+            (mesh) => splitEdge(mesh, preset.edge[0], preset.edge[1], ratio),
+            meshReady
+          );
+        } else if (preset.operation === "Collapse Edge") {
+          const collapseMode = preset.collapseMode ?? "midpoint";
+          applySurfaceMeshTopologyEdit(
+            "Collapse edge",
+            "mesh-topology:collapse-edge-demo",
+            `topology demo edge ${preset.edge[0]}-${preset.edge[1]} collapsed (${collapseMode})`,
+            "collapse edge",
+            `Edge ${preset.edge[0]}-${preset.edge[1]}`,
+            `mode=${collapseMode}`,
+            collapseMode === "keep-a"
+              ? `merged vertex ${preset.edge[0]}`
+              : collapseMode === "keep-b"
+              ? `merged vertex ${preset.edge[1]}`
+              : "midpoint vertex",
+            (mesh) => collapseEdge(mesh, preset.edge[0], preset.edge[1], collapseMode),
+            meshReady
+          );
+        } else {
+          const amount = Math.max(0.001, preset.bevelAmount ?? 0.06);
+          applySurfaceMeshTopologyEdit(
+            "Bevel edge",
+            "mesh-topology:bevel-edge-demo",
+            `topology demo edge ${preset.edge[0]}-${preset.edge[1]} beveled (${fmt(amount)})`,
+            "bevel edge",
+            `Edge ${preset.edge[0]}-${preset.edge[1]}`,
+            `amount=${fmt(amount)}`,
+            `bevel band from Edge ${preset.edge[0]}-${preset.edge[1]}`,
+            (mesh) => bevelEdge(mesh, preset.edge[0], preset.edge[1], amount),
+            meshReady
+          );
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to run topology demo.";
+        setSurfaceMeshTopologyStatus(msg);
+      }
+    },
+    [appendMeshPromotionOperation, applySurfaceMeshTopologyEdit, focusSurfaceMeshViewport, setMeshDataset]
+  );
+
+  const surfaceMeshTopologyFaceGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Face Subdivide");
+  const surfaceMeshTopologySplitGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Split Edge");
+  const surfaceMeshTopologyCollapseGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Collapse Edge");
+  const surfaceMeshTopologyBevelGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Bevel Edge");
 
   const surfaceMeshTopologyBreadcrumb = useMemo(() => {
     const preview = surfaceMeshTopologyHistoryPreviewId
@@ -53470,6 +53587,7 @@ case "mobius":
                   onGenerateSurfaceMeshPreset={handleGenerateSurfaceMeshPreset}
                   onGenerateSurfaceMeshAssetPreset={handleGenerateSurfaceMeshAssetPreset}
                   onApplySurfaceMeshTopologyDemoPreset={handleApplySurfaceMeshTopologyDemoPreset}
+                  onRunSurfaceMeshTopologyDemoPreset={handleRunSurfaceMeshTopologyDemoPreset}
                   onLoadSurfaceMeshFile={handleLoadSurfaceMeshFile}
                   onConvertToMesh={handleConvertToMesh}
                   onOpenMeshPromotionSourceGeometryObject={handleOpenMeshPromotionSourceGeometryObject}
@@ -56387,17 +56505,42 @@ case "mobius":
                           ))}
                         </div>
                       </div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        {SURFACE_MESH_TOPOLOGY_DEMO_PRESETS.map((preset) => (
-                          <button
-                            key={`mesh-tools-topology-demo-${preset.id}`}
-                            type="button"
-                            onClick={() => handleApplySurfaceMeshTopologyDemoPreset(preset.id)}
-                            title={`${preset.operation}: ${preset.summary}`}
-                          >
-                            {preset.label}
-                          </button>
-                        ))}
+                      <div
+                        style={{
+                          border: "1px solid #e2e8f0",
+                          borderRadius: 8,
+                          background: "#ffffff",
+                          padding: "7px 8px",
+                          display: "grid",
+                          gap: 6,
+                        }}
+                      >
+                        <div style={{ fontSize: 11, fontWeight: 700 }}>Guided examples</div>
+                        <div style={{ display: "grid", gap: 5 }}>
+                          {SURFACE_MESH_TOPOLOGY_DEMO_PRESETS.map((preset) => (
+                            <button
+                              key={`mesh-tools-topology-demo-${preset.id}`}
+                              type="button"
+                              onClick={() => handleApplySurfaceMeshTopologyDemoPreset(preset.id)}
+                              title={`${preset.operation}: ${preset.summary}\n${preset.expectedResult}`}
+                              style={{
+                                textAlign: "left",
+                                borderRadius: 7,
+                                border: "1px solid #dbe2ea",
+                                background: "#f8fafc",
+                                padding: "5px 7px",
+                              }}
+                            >
+                              <span style={{ display: "block", fontWeight: 700 }}>{preset.label}</span>
+                              <span style={{ display: "block", fontSize: 10, color: "#475467", marginTop: 2 }}>
+                                {preset.tryHint}
+                              </span>
+                              <span style={{ display: "block", fontSize: 10, color: "#1e3a8a", marginTop: 2 }}>
+                                Run demo applies it immediately.
+                              </span>
+                            </button>
+                          ))}
+                        </div>
                       </div>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
                         <span style={{ color: "#475467" }}>Pick target</span>
@@ -56462,6 +56605,26 @@ case "mobius":
                           <button type="button" onClick={handleSurfaceMeshFaceSubdivide} disabled={!surfaceMeshStats}>
                             Subdivide Face
                           </button>
+                          {surfaceMeshTopologyFaceGuidedPreset && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleApplySurfaceMeshTopologyDemoPreset(surfaceMeshTopologyFaceGuidedPreset.id)}
+                                title={surfaceMeshTopologyFaceGuidedPreset.expectedResult}
+                                style={{ fontSize: 10, padding: "3px 7px" }}
+                              >
+                                Try this
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRunSurfaceMeshTopologyDemoPreset(surfaceMeshTopologyFaceGuidedPreset.id)}
+                                title={`Run demo: ${surfaceMeshTopologyFaceGuidedPreset.expectedResult}`}
+                                style={{ fontSize: 10, padding: "3px 7px" }}
+                              >
+                                Run demo
+                              </button>
+                            </>
+                          )}
                         </div>
                         {surfaceMeshTopologyPreview.faceSubdivide && (
                           <div style={{ fontSize: 11, color: "#475467" }}>{surfaceMeshTopologyPreview.faceSubdivide}</div>
@@ -56574,6 +56737,26 @@ case "mobius":
                           >
                             Split Edge
                           </button>
+                          {surfaceMeshTopologySplitGuidedPreset && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleApplySurfaceMeshTopologyDemoPreset(surfaceMeshTopologySplitGuidedPreset.id)}
+                                title={surfaceMeshTopologySplitGuidedPreset.expectedResult}
+                                style={{ fontSize: 10, padding: "3px 7px" }}
+                              >
+                                Try this
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRunSurfaceMeshTopologyDemoPreset(surfaceMeshTopologySplitGuidedPreset.id)}
+                                title={`Run demo: ${surfaceMeshTopologySplitGuidedPreset.expectedResult}`}
+                                style={{ fontSize: 10, padding: "3px 7px" }}
+                              >
+                                Run demo
+                              </button>
+                            </>
+                          )}
                           {surfaceMeshTopologyPreview.splitEdge && (
                             <span style={{ fontSize: 11, color: "#475467" }}>{surfaceMeshTopologyPreview.splitEdge}</span>
                           )}
@@ -56595,6 +56778,26 @@ case "mobius":
                           >
                             Collapse Edge
                           </button>
+                          {surfaceMeshTopologyCollapseGuidedPreset && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleApplySurfaceMeshTopologyDemoPreset(surfaceMeshTopologyCollapseGuidedPreset.id)}
+                                title={surfaceMeshTopologyCollapseGuidedPreset.expectedResult}
+                                style={{ fontSize: 10, padding: "3px 7px" }}
+                              >
+                                Try this
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRunSurfaceMeshTopologyDemoPreset(surfaceMeshTopologyCollapseGuidedPreset.id)}
+                                title={`Run demo: ${surfaceMeshTopologyCollapseGuidedPreset.expectedResult}`}
+                                style={{ fontSize: 10, padding: "3px 7px" }}
+                              >
+                                Run demo
+                              </button>
+                            </>
+                          )}
                           {surfaceMeshTopologyPreview.collapseEdge && (
                             <span style={{ fontSize: 11, color: "#475467" }}>{surfaceMeshTopologyPreview.collapseEdge}</span>
                           )}
@@ -56621,6 +56824,26 @@ case "mobius":
                           >
                             Bevel Edge
                           </button>
+                          {surfaceMeshTopologyBevelGuidedPreset && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleApplySurfaceMeshTopologyDemoPreset(surfaceMeshTopologyBevelGuidedPreset.id)}
+                                title={surfaceMeshTopologyBevelGuidedPreset.expectedResult}
+                                style={{ fontSize: 10, padding: "3px 7px" }}
+                              >
+                                Try this
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRunSurfaceMeshTopologyDemoPreset(surfaceMeshTopologyBevelGuidedPreset.id)}
+                                title={`Run demo: ${surfaceMeshTopologyBevelGuidedPreset.expectedResult}`}
+                                style={{ fontSize: 10, padding: "3px 7px" }}
+                              >
+                                Run demo
+                              </button>
+                            </>
+                          )}
                           {surfaceMeshTopologyPreview.bevelEdge && (
                             <span style={{ fontSize: 11, color: "#475467" }}>{surfaceMeshTopologyPreview.bevelEdge}</span>
                           )}
@@ -82879,6 +83102,7 @@ type SurfacesLeftPanelProps = {
   onGenerateSurfaceMeshPreset: (id: string) => void;
   onGenerateSurfaceMeshAssetPreset: (id: string) => void;
   onApplySurfaceMeshTopologyDemoPreset: (id: string) => void;
+  onRunSurfaceMeshTopologyDemoPreset: (id: string) => void;
   onLoadSurfaceMeshFile: (files: FileList | File[] | null) => void;
   onConvertToMesh: () => void;
   onOpenMeshPromotionSourceGeometryObject: () => void;
@@ -83557,6 +83781,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onGenerateSurfaceMeshPreset,
   onGenerateSurfaceMeshAssetPreset,
   onApplySurfaceMeshTopologyDemoPreset,
+  onRunSurfaceMeshTopologyDemoPreset,
   onLoadSurfaceMeshFile,
   onConvertToMesh,
   onOpenMeshPromotionSourceGeometryObject,
@@ -84031,6 +84256,10 @@ onChangeImplicitExpr,
   const meshReady = !!surfaceMeshStats;
   const maxSurfaceMeshTopologyFaceIndex = Math.max(0, (surfaceMeshStats?.triCount ?? 1) - 1);
   const maxSurfaceMeshTopologyVertexIndex = Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1);
+  const surfaceMeshTopologyFaceGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Face Subdivide");
+  const surfaceMeshTopologySplitGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Split Edge");
+  const surfaceMeshTopologyCollapseGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Collapse Edge");
+  const surfaceMeshTopologyBevelGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Bevel Edge");
   const implicitBakePercent = Math.max(0, Math.min(100, Math.round(implicitBakeProgress * 100)));
   const meshQualityPercent = Math.max(0, Math.min(100, Math.round(meshQualityProgress * 100)));
   const meshQualityPhaseLabel =
@@ -87186,16 +87415,25 @@ onChangeImplicitExpr,
                     ))}
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 7 }}>
+                <div style={{ display: "grid", gap: 5, marginTop: 7 }}>
                   {SURFACE_MESH_TOPOLOGY_DEMO_PRESETS.map((preset) => (
                     <button
                       key={`mesh-topology-demo-${preset.id}`}
                       type="button"
                       onClick={() => onApplySurfaceMeshTopologyDemoPreset(preset.id)}
-                      title={`${preset.operation}: ${preset.summary}`}
-                      style={{ padding: "4px 8px" }}
+                      title={`${preset.operation}: ${preset.summary}\n${preset.expectedResult}`}
+                      style={{
+                        textAlign: "left",
+                        borderRadius: 7,
+                        border: "1px solid #dbe2ea",
+                        background: "#f8fafc",
+                        padding: "5px 7px",
+                      }}
                     >
-                      {preset.label}
+                      <span style={{ display: "block", fontWeight: 700 }}>{preset.label}</span>
+                      <span style={{ display: "block", fontSize: 10, color: "#475467", marginTop: 2 }}>
+                        {preset.tryHint}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -87235,6 +87473,26 @@ onChangeImplicitExpr,
                     <button type="button" onClick={onSurfaceMeshFaceSubdivide} disabled={!meshReady}>
                       Subdivide Face
                     </button>
+                    {surfaceMeshTopologyFaceGuidedPreset && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => onApplySurfaceMeshTopologyDemoPreset(surfaceMeshTopologyFaceGuidedPreset.id)}
+                          title={surfaceMeshTopologyFaceGuidedPreset.expectedResult}
+                          style={{ fontSize: 10, padding: "3px 7px" }}
+                        >
+                          Try this
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onRunSurfaceMeshTopologyDemoPreset(surfaceMeshTopologyFaceGuidedPreset.id)}
+                          title={`Run demo: ${surfaceMeshTopologyFaceGuidedPreset.expectedResult}`}
+                          style={{ fontSize: 10, padding: "3px 7px" }}
+                        >
+                          Run demo
+                        </button>
+                      </>
+                    )}
                   </div>
                   {surfaceMeshTopologyPreview.faceSubdivide && (
                     <div style={{ fontSize: 11, color: "#475467" }}>{surfaceMeshTopologyPreview.faceSubdivide}</div>
@@ -87355,6 +87613,26 @@ onChangeImplicitExpr,
                       >
                         Split Edge
                       </button>
+                      {surfaceMeshTopologySplitGuidedPreset && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => onApplySurfaceMeshTopologyDemoPreset(surfaceMeshTopologySplitGuidedPreset.id)}
+                            title={surfaceMeshTopologySplitGuidedPreset.expectedResult}
+                            style={{ fontSize: 10, padding: "3px 7px" }}
+                          >
+                            Try this
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onRunSurfaceMeshTopologyDemoPreset(surfaceMeshTopologySplitGuidedPreset.id)}
+                            title={`Run demo: ${surfaceMeshTopologySplitGuidedPreset.expectedResult}`}
+                            style={{ fontSize: 10, padding: "3px 7px" }}
+                          >
+                            Run demo
+                          </button>
+                        </>
+                      )}
                       {surfaceMeshTopologyPreview.splitEdge && (
                         <span style={{ fontSize: 11, color: "#475467" }}>{surfaceMeshTopologyPreview.splitEdge}</span>
                       )}
@@ -87376,6 +87654,26 @@ onChangeImplicitExpr,
                       >
                         Collapse Edge
                       </button>
+                      {surfaceMeshTopologyCollapseGuidedPreset && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => onApplySurfaceMeshTopologyDemoPreset(surfaceMeshTopologyCollapseGuidedPreset.id)}
+                            title={surfaceMeshTopologyCollapseGuidedPreset.expectedResult}
+                            style={{ fontSize: 10, padding: "3px 7px" }}
+                          >
+                            Try this
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onRunSurfaceMeshTopologyDemoPreset(surfaceMeshTopologyCollapseGuidedPreset.id)}
+                            title={`Run demo: ${surfaceMeshTopologyCollapseGuidedPreset.expectedResult}`}
+                            style={{ fontSize: 10, padding: "3px 7px" }}
+                          >
+                            Run demo
+                          </button>
+                        </>
+                      )}
                       {surfaceMeshTopologyPreview.collapseEdge && (
                         <span style={{ fontSize: 11, color: "#475467" }}>
                           {surfaceMeshTopologyPreview.collapseEdge}
@@ -87404,6 +87702,26 @@ onChangeImplicitExpr,
                       >
                         Bevel Edge
                       </button>
+                      {surfaceMeshTopologyBevelGuidedPreset && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => onApplySurfaceMeshTopologyDemoPreset(surfaceMeshTopologyBevelGuidedPreset.id)}
+                            title={surfaceMeshTopologyBevelGuidedPreset.expectedResult}
+                            style={{ fontSize: 10, padding: "3px 7px" }}
+                          >
+                            Try this
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onRunSurfaceMeshTopologyDemoPreset(surfaceMeshTopologyBevelGuidedPreset.id)}
+                            title={`Run demo: ${surfaceMeshTopologyBevelGuidedPreset.expectedResult}`}
+                            style={{ fontSize: 10, padding: "3px 7px" }}
+                          >
+                            Run demo
+                          </button>
+                        </>
+                      )}
                       {surfaceMeshTopologyPreview.bevelEdge && (
                         <span style={{ fontSize: 11, color: "#475467" }}>{surfaceMeshTopologyPreview.bevelEdge}</span>
                       )}
