@@ -28784,6 +28784,8 @@ const App: React.FC = () => {
   const [surfaceMeshTopologyHistory, setSurfaceMeshTopologyHistory] = useState<SurfaceMeshTopologyHistoryEntry[]>([]);
   const [selectedSurfaceMeshTopologyHistoryId, setSelectedSurfaceMeshTopologyHistoryId] = useState<string | null>(null);
   const [surfaceMeshTopologyHistoryPreviewId, setSurfaceMeshTopologyHistoryPreviewId] = useState<string | null>(null);
+  const [surfaceMeshTopologyHistoryPreviewMode, setSurfaceMeshTopologyHistoryPreviewMode] =
+    useState<"before" | "after">("after");
   const surfaceMeshTopologyAutoPickStampRef = useRef(0);
   const [vtkBusy, setVtkBusy] = useState(false);
   const [vtkError, setVtkError] = useState<string | null>(null);
@@ -32069,17 +32071,21 @@ const App: React.FC = () => {
     [surfaceMeshTopologyHistory, surfaceMeshTopologyHistoryPreviewId]
   );
   const surfaceMeshTopologyHistoryPreviewMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
-    if (!isMeshLikeViewer || !surfaceMeshTopologyHistoryPreviewEntry?.snapshot?.positions?.length) return null;
+    const previewMesh =
+      surfaceMeshTopologyHistoryPreviewMode === "before"
+        ? surfaceMeshTopologyHistoryPreviewEntry?.beforeSnapshot
+        : surfaceMeshTopologyHistoryPreviewEntry?.snapshot;
+    if (!isMeshLikeViewer || !previewMesh?.positions?.length) return null;
     return [
       {
-        positions: surfaceMeshTopologyHistoryPreviewEntry.snapshot.positions,
-        indices: surfaceMeshTopologyHistoryPreviewEntry.snapshot.indices,
-        color: 0x06b6d4,
-        opacity: 0.24,
+        positions: previewMesh.positions,
+        indices: previewMesh.indices,
+        color: surfaceMeshTopologyHistoryPreviewMode === "before" ? 0xf59e0b : 0x06b6d4,
+        opacity: surfaceMeshTopologyHistoryPreviewMode === "before" ? 0.2 : 0.24,
         doubleSided: true,
       },
     ];
-  }, [isMeshLikeViewer, surfaceMeshTopologyHistoryPreviewEntry]);
+  }, [isMeshLikeViewer, surfaceMeshTopologyHistoryPreviewEntry, surfaceMeshTopologyHistoryPreviewMode]);
   const combinedOverlayMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
     const groups: OverlayMeshGroup[] = [];
     if (surfaceMeshTopologyHistoryPreviewMeshGroups?.length) groups.push(...surfaceMeshTopologyHistoryPreviewMeshGroups);
@@ -43466,11 +43472,19 @@ case "mobius":
     const preview = surfaceMeshTopologyHistoryPreviewId
       ? surfaceMeshTopologyHistory.find((entry) => entry.id === surfaceMeshTopologyHistoryPreviewId) ?? null
       : null;
-    if (preview) return `Previewing: ${preview.actionLabel} > ${preview.targetLabel}`;
+    if (preview) {
+      const side = surfaceMeshTopologyHistoryPreviewMode === "before" ? "Before" : "After";
+      return `Previewing ${side}: ${preview.actionLabel} > ${preview.targetLabel}`;
+    }
     const latest = surfaceMeshTopologyHistory[0];
     if (!latest) return surfaceMeshData?.label ? `Mesh > ${surfaceMeshData.label}` : "Mesh";
     return `Mesh > ${latest.sourceLabel} > ${latest.targetLabel} > ${latest.selectedResultLabel}`;
-  }, [surfaceMeshData?.label, surfaceMeshTopologyHistory, surfaceMeshTopologyHistoryPreviewId]);
+  }, [
+    surfaceMeshData?.label,
+    surfaceMeshTopologyHistory,
+    surfaceMeshTopologyHistoryPreviewId,
+    surfaceMeshTopologyHistoryPreviewMode,
+  ]);
 
   const undoLatestSurfaceMeshTopologyEdit = useCallback(() => {
     const latest = surfaceMeshTopologyHistory[0];
@@ -57061,13 +57075,19 @@ case "mobius":
                               <div
                                 key={`mesh-topology-history-${entry.id}`}
                                 tabIndex={0}
-                                onMouseEnter={() => setSurfaceMeshTopologyHistoryPreviewId(entry.id)}
+                                onMouseEnter={() => {
+                                  setSurfaceMeshTopologyHistoryPreviewMode("after");
+                                  setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                }}
                                 onMouseLeave={() =>
                                   setSurfaceMeshTopologyHistoryPreviewId((current) =>
                                     current === entry.id ? null : current
                                   )
                                 }
-                                onFocus={() => setSurfaceMeshTopologyHistoryPreviewId(entry.id)}
+                                onFocus={() => {
+                                  setSurfaceMeshTopologyHistoryPreviewMode("after");
+                                  setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                }}
                                 onBlur={() =>
                                   setSurfaceMeshTopologyHistoryPreviewId((current) =>
                                     current === entry.id ? null : current
@@ -57127,16 +57147,60 @@ case "mobius":
                                 >
                                   <span style={{ color: "#64748b", fontWeight: 800 }}>Source</span>
                                   <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.sourceLabel}</span>
+                                  <span style={{ color: "#64748b", fontWeight: 800 }}>Before</span>
+                                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                                    V {entry.beforeCounts.vertexCount} / F {entry.beforeCounts.faceCount}
+                                  </span>
                                   <span style={{ color: "#64748b", fontWeight: 800 }}>Action</span>
                                   <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
                                     {entry.actionLabel} - {entry.targetLabel}
                                   </span>
+                                  <span style={{ color: "#64748b", fontWeight: 800 }}>After</span>
+                                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                                    V {entry.afterCounts.vertexCount} / F {entry.afterCounts.faceCount}
+                                  </span>
                                   <span style={{ color: "#64748b", fontWeight: 800 }}>Result</span>
-                                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.selectedResultLabel}</span>
+                                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.resultLabel}</span>
                                   <span style={{ color: "#64748b", fontWeight: 800 }}>Params</span>
                                   <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.paramsLabel}</span>
                                 </span>
                                 <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap" }}>
+                                  <button
+                                    type="button"
+                                    onMouseEnter={() => {
+                                      setSurfaceMeshTopologyHistoryPreviewMode("before");
+                                      setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                    }}
+                                    onFocus={() => {
+                                      setSurfaceMeshTopologyHistoryPreviewMode("before");
+                                      setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                    }}
+                                    onClick={() => {
+                                      setSurfaceMeshTopologyHistoryPreviewMode("before");
+                                      setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                    }}
+                                    style={{ padding: "2px 7px", fontSize: 10 }}
+                                  >
+                                    Preview Before
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onMouseEnter={() => {
+                                      setSurfaceMeshTopologyHistoryPreviewMode("after");
+                                      setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                    }}
+                                    onFocus={() => {
+                                      setSurfaceMeshTopologyHistoryPreviewMode("after");
+                                      setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                    }}
+                                    onClick={() => {
+                                      setSurfaceMeshTopologyHistoryPreviewMode("after");
+                                      setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                    }}
+                                    style={{ padding: "2px 7px", fontSize: 10 }}
+                                  >
+                                    Preview After
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={() => setSelectedSurfaceMeshTopologyHistoryId(entry.id)}
