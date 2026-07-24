@@ -452,6 +452,19 @@ type SurfaceMeshAssetPreset = {
   assetUrl: string;
   fileName: string;
 };
+type SurfaceMeshTopologyDemoPreset = {
+  id: string;
+  label: string;
+  operation: "Face Subdivide" | "Split Edge" | "Collapse Edge" | "Bevel Edge";
+  summary: string;
+  build: () => SurfaceMeshData;
+  faceIndex: number;
+  edge: [number, number];
+  subdivideMode?: FaceSubdivideMode;
+  splitRatio?: number;
+  collapseMode?: EdgeCollapseMode;
+  bevelAmount?: number;
+};
 type GeometrySavedSectionCurve = {
   id: string;
   name: string;
@@ -5201,6 +5214,127 @@ const readMeshFacePolygon = (
   return vertices.length === 3 ? { vertices } : null;
 };
 
+const findMeshEdgeIncidentFaceIndices = (
+  mesh: { positions: ArrayLike<number>; indices?: ArrayLike<number> | null },
+  edgeA: number,
+  edgeB: number,
+  maxFaces = 8
+): number[] => {
+  if (!Number.isInteger(edgeA) || !Number.isInteger(edgeB) || edgeA === edgeB) return [];
+  const topology = countTriangleMeshTopology(mesh);
+  if (edgeA < 0 || edgeB < 0 || edgeA >= topology.vertexCount || edgeB >= topology.vertexCount) return [];
+  const result: number[] = [];
+  for (let faceIndex = 0; faceIndex < topology.faceCount && result.length < maxFaces; faceIndex += 1) {
+    const tri = readMeshFaceVertexIndices(mesh, faceIndex);
+    if (!tri) continue;
+    const hasA = tri[0] === edgeA || tri[1] === edgeA || tri[2] === edgeA;
+    const hasB = tri[0] === edgeB || tri[1] === edgeB || tri[2] === edgeB;
+    if (hasA && hasB) result.push(faceIndex);
+  }
+  return result;
+};
+
+type SurfaceMeshTopologyPick = {
+  faceIndex: number;
+  edgeA: number;
+  edgeB: number;
+  vertexIndex: number;
+};
+type SurfaceMeshTopologyPickMode = "auto" | "face" | "edge" | "vertex";
+type SurfaceMeshTopologyHistoryEntry = {
+  id: string;
+  at: number;
+  actionLabel: string;
+  sourceLabel: string;
+  targetLabel: string;
+  paramsLabel: string;
+  resultLabel: string;
+  beforeCounts: { vertexCount: number; faceCount: number };
+  afterCounts: { vertexCount: number; faceCount: number };
+  selectedResultLabel: string;
+  beforeSnapshot: SurfaceMeshData;
+  snapshot: SurfaceMeshData;
+};
+
+const distancePointToSegmentSq = (point: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3): number => {
+  const ab = new THREE.Vector3().subVectors(b, a);
+  const abLenSq = ab.lengthSq();
+  if (abLenSq <= 1e-16) return point.distanceToSquared(a);
+  const t = clampNumber(new THREE.Vector3().subVectors(point, a).dot(ab) / abLenSq, 0, 1);
+  const closest = new THREE.Vector3().copy(a).addScaledVector(ab, t);
+  return point.distanceToSquared(closest);
+};
+
+const resolveSurfaceMeshTopologyPick = (
+  mesh: SurfaceMeshData | null,
+  point: GeometryProbePoint | null | undefined
+): SurfaceMeshTopologyPick | null => {
+  if (!mesh?.positions?.length || !point) return null;
+  const topology = countTriangleMeshTopology(mesh);
+  if (topology.vertexCount <= 0 || topology.faceCount <= 0) return null;
+  const pickPoint = new THREE.Vector3(point.x, point.y, point.z);
+
+  let vertexIndex = 0;
+  let bestVertexDistSq = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < topology.vertexCount; i += 1) {
+    const vertex = readMeshPoint(mesh, i);
+    if (!vertex) continue;
+    const distSq = pickPoint.distanceToSquared(new THREE.Vector3(vertex.x, vertex.y, vertex.z));
+    if (distSq < bestVertexDistSq) {
+      bestVertexDistSq = distSq;
+      vertexIndex = i;
+    }
+  }
+
+  let faceIndex = 0;
+  let bestFaceDistSq = Number.POSITIVE_INFINITY;
+  const tmpClosest = new THREE.Vector3();
+  for (let i = 0; i < topology.faceCount; i += 1) {
+    const polygon = readMeshFacePolygon(mesh, i);
+    if (!polygon || polygon.vertices.length !== 3) continue;
+    const [a, b, c] = polygon.vertices;
+    const triangle = new THREE.Triangle(
+      new THREE.Vector3(a.x, a.y, a.z),
+      new THREE.Vector3(b.x, b.y, b.z),
+      new THREE.Vector3(c.x, c.y, c.z)
+    );
+    triangle.closestPointToPoint(pickPoint, tmpClosest);
+    const distSq = tmpClosest.distanceToSquared(pickPoint);
+    if (distSq < bestFaceDistSq) {
+      bestFaceDistSq = distSq;
+      faceIndex = i;
+    }
+  }
+
+  const tri = readMeshFaceVertexIndices(mesh, faceIndex);
+  if (!tri) return null;
+  const edgeCandidates: Array<[number, number]> = [
+    [tri[0], tri[1]],
+    [tri[1], tri[2]],
+    [tri[2], tri[0]],
+  ];
+  let edgeA = edgeCandidates[0][0];
+  let edgeB = edgeCandidates[0][1];
+  let bestEdgeDistSq = Number.POSITIVE_INFINITY;
+  for (const [aIndex, bIndex] of edgeCandidates) {
+    const a = readMeshPoint(mesh, aIndex);
+    const b = readMeshPoint(mesh, bIndex);
+    if (!a || !b) continue;
+    const distSq = distancePointToSegmentSq(
+      pickPoint,
+      new THREE.Vector3(a.x, a.y, a.z),
+      new THREE.Vector3(b.x, b.y, b.z)
+    );
+    if (distSq < bestEdgeDistSq) {
+      bestEdgeDistSq = distSq;
+      edgeA = aIndex;
+      edgeB = bIndex;
+    }
+  }
+
+  return { faceIndex, edgeA, edgeB, vertexIndex };
+};
+
 const findChangedMeshFaceIndices = (
   before: SurfaceMeshData,
   after: SurfaceMeshData,
@@ -6588,6 +6722,151 @@ const SURFACE_MESH_ASSET_PRESETS: SurfaceMeshAssetPreset[] = [
     label: "Stanford bunny (OBJ)",
     assetUrl: "mesh-presets/stanford-bunny.obj",
     fileName: "stanford-bunny.obj",
+  },
+];
+
+const createSurfaceMeshTopologyDemoMesh = (
+  label: string,
+  positions: number[],
+  indices: number[],
+  id: string
+): SurfaceMeshData =>
+  applySurfaceMeshOps({
+    label,
+    positions: Float32Array.from(positions),
+    indices: Uint32Array.from(indices),
+    normals: null,
+    uvs: null,
+    source: { kind: "polyhedronPreset", id, label },
+  });
+
+const buildTopologyDemoCubeMesh = (label = "Topology demo cube"): SurfaceMeshData =>
+  createSurfaceMeshTopologyDemoMesh(
+    label,
+    [
+      -1, -1, -1,
+      1, -1, -1,
+      1, 1, -1,
+      -1, 1, -1,
+      -1, -1, 1,
+      1, -1, 1,
+      1, 1, 1,
+      -1, 1, 1,
+    ],
+    [
+      0, 2, 1,
+      0, 3, 2,
+      4, 5, 6,
+      4, 6, 7,
+      0, 1, 5,
+      0, 5, 4,
+      3, 6, 2,
+      3, 7, 6,
+      1, 2, 6,
+      1, 6, 5,
+      0, 4, 7,
+      0, 7, 3,
+    ],
+    "mesh-topology-demo-cube"
+  );
+
+const buildTopologyDemoPyramidMesh = (label = "Topology demo pyramid"): SurfaceMeshData =>
+  createSurfaceMeshTopologyDemoMesh(
+    label,
+    [
+      -1.1, -0.8, -1.1,
+      1.1, -0.8, -1.1,
+      1.1, -0.8, 1.1,
+      -1.1, -0.8, 1.1,
+      0, 1.2, 0,
+    ],
+    [
+      0, 1, 2,
+      0, 2, 3,
+      0, 4, 1,
+      1, 4, 2,
+      2, 4, 3,
+      3, 4, 0,
+    ],
+    "mesh-topology-demo-pyramid"
+  );
+
+const buildTopologyDemoPrismMesh = (label = "Topology demo prism cap"): SurfaceMeshData =>
+  createSurfaceMeshTopologyDemoMesh(
+    label,
+    [
+      -1, -0.9, -0.7,
+      1, -0.9, -0.7,
+      1.25, -0.9, 0.7,
+      0, -0.9, 1.35,
+      -1.25, -0.9, 0.7,
+      -1, 0.9, -0.7,
+      1, 0.9, -0.7,
+      1.25, 0.9, 0.7,
+      0, 0.9, 1.35,
+      -1.25, 0.9, 0.7,
+    ],
+    [
+      0, 1, 2,
+      0, 2, 3,
+      0, 3, 4,
+      5, 7, 6,
+      5, 8, 7,
+      5, 9, 8,
+      0, 5, 6,
+      0, 6, 1,
+      1, 6, 7,
+      1, 7, 2,
+      2, 7, 8,
+      2, 8, 3,
+      3, 8, 9,
+      3, 9, 4,
+      4, 9, 5,
+      4, 5, 0,
+    ],
+    "mesh-topology-demo-prism"
+  );
+
+const SURFACE_MESH_TOPOLOGY_DEMO_PRESETS: SurfaceMeshTopologyDemoPreset[] = [
+  {
+    id: "topology_demo_face_fan",
+    label: "Pyramid face fan",
+    operation: "Face Subdivide",
+    summary: "Triangular face -> center fan triangles.",
+    build: () => buildTopologyDemoPyramidMesh("Demo: face subdivide fan"),
+    faceIndex: 2,
+    edge: [0, 4],
+    subdivideMode: "center-fan",
+  },
+  {
+    id: "topology_demo_split_edge",
+    label: "Cube split edge",
+    operation: "Split Edge",
+    summary: "Shared cube edge -> midpoint vertex.",
+    build: () => buildTopologyDemoCubeMesh("Demo: split edge"),
+    faceIndex: 2,
+    edge: [4, 5],
+    splitRatio: 0.5,
+  },
+  {
+    id: "topology_demo_collapse_edge",
+    label: "Prism collapse",
+    operation: "Collapse Edge",
+    summary: "Cap edge -> merged midpoint vertex.",
+    build: () => buildTopologyDemoPrismMesh("Demo: collapse edge"),
+    faceIndex: 0,
+    edge: [1, 2],
+    collapseMode: "midpoint",
+  },
+  {
+    id: "topology_demo_bevel_edge",
+    label: "Cube bevel edge",
+    operation: "Bevel Edge",
+    summary: "Cube edge -> narrow bevel band.",
+    build: () => buildTopologyDemoCubeMesh("Demo: bevel edge"),
+    faceIndex: 8,
+    edge: [1, 2],
+    bevelAmount: 0.12,
   },
 ];
 
@@ -28469,6 +28748,25 @@ const App: React.FC = () => {
   const [surfaceMeshSubdivideIterations, setSurfaceMeshSubdivideIterations] = useState(1);
   const [surfaceMeshNormalizeDiag, setSurfaceMeshNormalizeDiag] = useState(2);
   const [surfaceMeshOpsError, setSurfaceMeshOpsError] = useState<string | null>(null);
+  const [surfaceMeshTopologyFaceIndex, setSurfaceMeshTopologyFaceIndex] = useState(0);
+  const [surfaceMeshTopologyEdgeA, setSurfaceMeshTopologyEdgeA] = useState(0);
+  const [surfaceMeshTopologyEdgeB, setSurfaceMeshTopologyEdgeB] = useState(1);
+  const [surfaceMeshTopologyVertexIndex, setSurfaceMeshTopologyVertexIndex] = useState(0);
+  const [surfaceMeshTopologyPickMode, setSurfaceMeshTopologyPickMode] =
+    useState<SurfaceMeshTopologyPickMode>("auto");
+  const [surfaceMeshTopologySubdivideMode, setSurfaceMeshTopologySubdivideMode] =
+    useState<FaceSubdivideMode>("center-fan");
+  const [surfaceMeshTopologySplitRatio, setSurfaceMeshTopologySplitRatio] = useState(0.5);
+  const [surfaceMeshTopologyCollapseMode, setSurfaceMeshTopologyCollapseMode] =
+    useState<EdgeCollapseMode>("midpoint");
+  const [surfaceMeshTopologyBevelAmount, setSurfaceMeshTopologyBevelAmount] = useState(0.06);
+  const [surfaceMeshTopologyStatus, setSurfaceMeshTopologyStatus] = useState<string | null>(null);
+  const [surfaceMeshTopologyFeedback, setSurfaceMeshTopologyFeedback] =
+    useState<GeometryTopologyEditFeedback | null>(null);
+  const [surfaceMeshTopologyHistory, setSurfaceMeshTopologyHistory] = useState<SurfaceMeshTopologyHistoryEntry[]>([]);
+  const [selectedSurfaceMeshTopologyHistoryId, setSelectedSurfaceMeshTopologyHistoryId] = useState<string | null>(null);
+  const [surfaceMeshTopologyHistoryPreviewId, setSurfaceMeshTopologyHistoryPreviewId] = useState<string | null>(null);
+  const surfaceMeshTopologyAutoPickStampRef = useRef(0);
   const [vtkBusy, setVtkBusy] = useState(false);
   const [vtkError, setVtkError] = useState<string | null>(null);
   const [vtkDecimateReduction, setVtkDecimateReduction] = useState(0.5);
@@ -31444,12 +31742,221 @@ const App: React.FC = () => {
       },
     ];
   }, [isMeshLikeViewer, meshQualityReport, meshQualityShowNonManifoldEdges]);
+  useEffect(() => {
+    if (!surfaceMeshTopologyFeedback) return;
+    const timeout = window.setTimeout(() => setSurfaceMeshTopologyFeedback(null), 1800);
+    return () => window.clearTimeout(timeout);
+  }, [surfaceMeshTopologyFeedback]);
+  const surfaceMeshTopologySelectionFaceMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
+    if (!isMeshLikeViewer || !surfaceMeshData?.positions?.length) return null;
+    const polygon = readMeshFacePolygon(surfaceMeshData, Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0)));
+    if (!polygon?.vertices?.length) return null;
+    const normal = geometryNormalizeVec(polygonNormalFromVertices(polygon.vertices) ?? { x: 0, y: 1, z: 0 }) ?? {
+      x: 0,
+      y: 1,
+      z: 0,
+    };
+    const positions: number[] = [];
+    for (const vertex of polygon.vertices) {
+      positions.push(
+        vertex.x + normal.x * 0.022,
+        vertex.y + normal.y * 0.022,
+        vertex.z + normal.z * 0.022
+      );
+    }
+    const indices: number[] = [];
+    for (let i = 1; i + 1 < polygon.vertices.length; i += 1) indices.push(0, i, i + 1);
+    return [
+      {
+        positions,
+        indices,
+        color: 0x38bdf8,
+        opacity: 0.24,
+        doubleSided: true,
+      },
+    ];
+  }, [isMeshLikeViewer, surfaceMeshData, surfaceMeshTopologyFaceIndex]);
+  const surfaceMeshTopologyFeedbackMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
+    if (!isMeshLikeViewer || !surfaceMeshTopologyFeedback?.facePolygons.length) return null;
+    const groups: OverlayMeshGroup[] = [];
+    for (const polygon of surfaceMeshTopologyFeedback.facePolygons.slice(0, 12)) {
+      const vertices = polygon.vertices ?? [];
+      if (vertices.length < 3) continue;
+      const normal = geometryNormalizeVec(polygonNormalFromVertices(vertices) ?? { x: 0, y: 1, z: 0 }) ?? {
+        x: 0,
+        y: 1,
+        z: 0,
+      };
+      const positions: number[] = [];
+      for (const vertex of vertices) {
+        positions.push(vertex.x + normal.x * 0.032, vertex.y + normal.y * 0.032, vertex.z + normal.z * 0.032);
+      }
+      const indices: number[] = [];
+      for (let i = 1; i + 1 < vertices.length; i += 1) indices.push(0, i, i + 1);
+      groups.push({
+        positions,
+        indices,
+        color: 0x22d3ee,
+        opacity: 0.36,
+        doubleSided: true,
+      });
+    }
+    return groups.length ? groups : null;
+  }, [isMeshLikeViewer, surfaceMeshTopologyFeedback]);
+  const surfaceMeshTopologyOverlayPointSets = useMemo<OverlayPointSet[] | null>(() => {
+    if (!isMeshLikeViewer || !surfaceMeshData?.positions?.length) return null;
+    const points: GeometryProbePoint[] = [];
+    const edgeA = readMeshPoint(surfaceMeshData, Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0)));
+    const edgeB = readMeshPoint(surfaceMeshData, Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0)));
+    if (edgeA) points.push(edgeA);
+    if (edgeB) points.push(edgeB);
+    if (edgeA && edgeB) {
+      points.push({
+        x: (edgeA.x + edgeB.x) * 0.5,
+        y: (edgeA.y + edgeB.y) * 0.5,
+        z: (edgeA.z + edgeB.z) * 0.5,
+      });
+    }
+    const polygon = readMeshFacePolygon(surfaceMeshData, Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0)));
+    if (polygon?.vertices?.length) {
+      points.push({
+        x: polygon.vertices.reduce((sum, point) => sum + point.x, 0) / polygon.vertices.length,
+        y: polygon.vertices.reduce((sum, point) => sum + point.y, 0) / polygon.vertices.length,
+        z: polygon.vertices.reduce((sum, point) => sum + point.z, 0) / polygon.vertices.length,
+      });
+    }
+    const vertex = readMeshPoint(surfaceMeshData, Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0)));
+    if (vertex) points.push(vertex);
+    if (!points.length) return null;
+    return [
+      {
+        points,
+        color: 0xfff7ed,
+        size: 0.22,
+        opacity: 0.7,
+      },
+      {
+        points,
+        color: 0xf97316,
+        size: 0.14,
+        opacity: 0.98,
+      },
+    ];
+  }, [
+    isMeshLikeViewer,
+    surfaceMeshData,
+    surfaceMeshTopologyEdgeA,
+    surfaceMeshTopologyEdgeB,
+    surfaceMeshTopologyFaceIndex,
+    surfaceMeshTopologyVertexIndex,
+  ]);
+  const surfaceMeshTopologyFeedbackPointSets = useMemo<OverlayPointSet[] | null>(() => {
+    if (!isMeshLikeViewer || !surfaceMeshTopologyFeedback?.points.length) return null;
+    return [
+      {
+        points: surfaceMeshTopologyFeedback.points,
+        color: 0xfff7ed,
+        size: 0.34,
+        opacity: 0.62,
+      },
+      {
+        points: surfaceMeshTopologyFeedback.points,
+        color: 0xfacc15,
+        size: 0.24,
+        opacity: 0.98,
+      },
+    ];
+  }, [isMeshLikeViewer, surfaceMeshTopologyFeedback]);
+  const surfaceMeshTopologyOverlayPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (!isMeshLikeViewer || !surfaceMeshData?.positions?.length) return null;
+    const lines: PolylineSet = [];
+    const edgeA = readMeshPoint(surfaceMeshData, Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0)));
+    const edgeB = readMeshPoint(surfaceMeshData, Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0)));
+    if (edgeA && edgeB) lines.push([edgeA, edgeB]);
+    const polygon = readMeshFacePolygon(surfaceMeshData, Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0)));
+    if (polygon?.vertices?.length) {
+      const normal = geometryNormalizeVec(polygonNormalFromVertices(polygon.vertices) ?? { x: 0, y: 1, z: 0 }) ?? {
+        x: 0,
+        y: 1,
+        z: 0,
+      };
+      const lifted = polygon.vertices.map((vertex) => ({
+        x: vertex.x + normal.x * 0.03,
+        y: vertex.y + normal.y * 0.03,
+        z: vertex.z + normal.z * 0.03,
+      }));
+      for (let i = 0; i < lifted.length; i += 1) lines.push([lifted[i], lifted[(i + 1) % lifted.length]]);
+    }
+    if (!lines.length) return null;
+    return [
+      {
+        lines,
+        color: 0xf97316,
+        opacity: 0.95,
+        radiusWorld: 0.024,
+      },
+    ];
+  }, [
+    isMeshLikeViewer,
+    surfaceMeshData,
+    surfaceMeshTopologyEdgeA,
+    surfaceMeshTopologyEdgeB,
+    surfaceMeshTopologyFaceIndex,
+  ]);
+  const surfaceMeshTopologyFeedbackPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (!isMeshLikeViewer || !surfaceMeshTopologyFeedback?.edgeLines.length) return null;
+    return [
+      {
+        lines: surfaceMeshTopologyFeedback.edgeLines,
+        color: 0x22d3ee,
+        opacity: 0.96,
+        radiusWorld: 0.028,
+      },
+    ];
+  }, [isMeshLikeViewer, surfaceMeshTopologyFeedback]);
+  const surfaceMeshTopologyHistoryPreviewEntry = useMemo(
+    () =>
+      surfaceMeshTopologyHistoryPreviewId
+        ? surfaceMeshTopologyHistory.find((entry) => entry.id === surfaceMeshTopologyHistoryPreviewId) ?? null
+        : null,
+    [surfaceMeshTopologyHistory, surfaceMeshTopologyHistoryPreviewId]
+  );
+  const surfaceMeshTopologyHistoryPreviewMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
+    if (!isMeshLikeViewer || !surfaceMeshTopologyHistoryPreviewEntry?.snapshot?.positions?.length) return null;
+    return [
+      {
+        positions: surfaceMeshTopologyHistoryPreviewEntry.snapshot.positions,
+        indices: surfaceMeshTopologyHistoryPreviewEntry.snapshot.indices,
+        color: 0x06b6d4,
+        opacity: 0.24,
+        doubleSided: true,
+      },
+    ];
+  }, [isMeshLikeViewer, surfaceMeshTopologyHistoryPreviewEntry]);
+  const combinedOverlayMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
+    const groups: OverlayMeshGroup[] = [];
+    if (surfaceMeshTopologyHistoryPreviewMeshGroups?.length) groups.push(...surfaceMeshTopologyHistoryPreviewMeshGroups);
+    if (surfaceMeshTopologySelectionFaceMeshGroups?.length) groups.push(...surfaceMeshTopologySelectionFaceMeshGroups);
+    if (surfaceMeshTopologyFeedbackMeshGroups?.length) groups.push(...surfaceMeshTopologyFeedbackMeshGroups);
+    return groups.length ? groups : null;
+  }, [
+    surfaceMeshTopologyFeedbackMeshGroups,
+    surfaceMeshTopologyHistoryPreviewMeshGroups,
+    surfaceMeshTopologySelectionFaceMeshGroups,
+  ]);
   const combinedOverlayPointSets = useMemo<OverlayPointSet[] | null>(() => {
     const sets: OverlayPointSet[] = [];
     if (complexMapOverlayPointsActive?.length) sets.push(...complexMapOverlayPointsActive);
     if (meshQualityOverlayPointSets?.length) sets.push(...meshQualityOverlayPointSets);
+    if (surfaceMeshTopologyOverlayPointSets?.length) sets.push(...surfaceMeshTopologyOverlayPointSets);
+    if (surfaceMeshTopologyFeedbackPointSets?.length) sets.push(...surfaceMeshTopologyFeedbackPointSets);
     return sets.length ? sets : null;
-  }, [complexMapOverlayPointsActive, meshQualityOverlayPointSets]);
+  }, [
+    complexMapOverlayPointsActive,
+    meshQualityOverlayPointSets,
+    surfaceMeshTopologyFeedbackPointSets,
+    surfaceMeshTopologyOverlayPointSets,
+  ]);
 
   const [probeInfo, setProbeInfo] = useState<ProbeInfo | null>(null);
   const [probeCurv, setProbeCurv] = useState<CurvatureData | null>(null);
@@ -32838,6 +33345,104 @@ const App: React.FC = () => {
     return { vertCount, triCount };
   }, [surfaceMeshData]);
   const surfaceMeshBounds = useMemo(() => boundsFromPositions(surfaceMeshData?.positions), [surfaceMeshData]);
+  const surfaceMeshTopologyPick = useMemo(
+    () =>
+      surfaceViewerKind === "mesh"
+        ? resolveSurfaceMeshTopologyPick(surfaceMeshData, probeInfo?.point ?? null)
+        : null,
+    [
+      probeInfo?.point?.x,
+      probeInfo?.point?.y,
+      probeInfo?.point?.z,
+      surfaceMeshData,
+      surfaceViewerKind,
+    ]
+  );
+  const surfaceMeshTopologyPickSummary = useMemo(() => {
+    if (!surfaceMeshTopologyPick) return null;
+    return `Face ${surfaceMeshTopologyPick.faceIndex}; Edge ${surfaceMeshTopologyPick.edgeA}-${surfaceMeshTopologyPick.edgeB}; Vertex ${surfaceMeshTopologyPick.vertexIndex}`;
+  }, [surfaceMeshTopologyPick]);
+  const surfaceMeshTopologyPickModeLabel = useMemo(() => {
+    if (surfaceMeshTopologyPickMode === "face") return "Face";
+    if (surfaceMeshTopologyPickMode === "edge") return "Edge";
+    if (surfaceMeshTopologyPickMode === "vertex") return "Vertex";
+    return "Auto";
+  }, [surfaceMeshTopologyPickMode]);
+  const surfaceMeshTopologyFieldValidation = useMemo(() => {
+    const faceIndex = Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
+    const edgeA = Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0));
+    const edgeB = Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0));
+    const vertexIndex = Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0));
+    const topology = surfaceMeshData?.positions?.length
+      ? countTriangleMeshTopology(surfaceMeshData)
+      : { vertexCount: 0, faceCount: 0 };
+    const faceTri = surfaceMeshData ? readMeshFaceVertexIndices(surfaceMeshData, faceIndex) : null;
+    const vertex = surfaceMeshData ? readMeshPoint(surfaceMeshData, vertexIndex) : null;
+    const incidentFaces = surfaceMeshData ? findMeshEdgeIncidentFaceIndices(surfaceMeshData, edgeA, edgeB, 12) : [];
+    const edgeInRange =
+      edgeA !== edgeB &&
+      edgeA >= 0 &&
+      edgeB >= 0 &&
+      edgeA < topology.vertexCount &&
+      edgeB < topology.vertexCount;
+    return {
+      faceValid: !!faceTri,
+      faceLabel: faceTri ? `valid face; vertices ${faceTri.join(", ")}` : "not a valid face",
+      edgeValid: edgeInRange && incidentFaces.length > 0,
+      edgeLabel:
+        edgeA === edgeB
+          ? "not an edge; A and B match"
+          : !edgeInRange
+          ? "not an edge; vertex out of range"
+          : incidentFaces.length
+          ? `valid edge; faces ${incidentFaces.slice(0, 4).join(", ")}${incidentFaces.length > 4 ? "..." : ""}`
+          : "not an edge in this mesh",
+      vertexValid: !!vertex,
+      vertexLabel: vertex
+        ? `valid vertex; ${formatHistoryVec3(vertex)}`
+        : "not a valid vertex",
+    };
+  }, [
+    surfaceMeshData,
+    surfaceMeshTopologyEdgeA,
+    surfaceMeshTopologyEdgeB,
+    surfaceMeshTopologyFaceIndex,
+    surfaceMeshTopologyVertexIndex,
+  ]);
+  const applySurfaceMeshTopologyPickToFields = useCallback(
+    (pick: SurfaceMeshTopologyPick | null = surfaceMeshTopologyPick) => {
+      if (!pick) {
+        setSurfaceMeshTopologyStatus("Enable Probe and click the current SurfaceMesh first.");
+        return;
+      }
+      if (surfaceMeshTopologyPickMode === "auto" || surfaceMeshTopologyPickMode === "face") {
+        setSurfaceMeshTopologyFaceIndex(pick.faceIndex);
+      }
+      if (surfaceMeshTopologyPickMode === "auto" || surfaceMeshTopologyPickMode === "edge") {
+        setSurfaceMeshTopologyEdgeA(pick.edgeA);
+        setSurfaceMeshTopologyEdgeB(pick.edgeB);
+      }
+      if (surfaceMeshTopologyPickMode === "auto" || surfaceMeshTopologyPickMode === "vertex") {
+        setSurfaceMeshTopologyVertexIndex(pick.vertexIndex);
+      }
+      const detail =
+        surfaceMeshTopologyPickMode === "face"
+          ? `Face ${pick.faceIndex}`
+          : surfaceMeshTopologyPickMode === "edge"
+          ? `Edge ${pick.edgeA}-${pick.edgeB}`
+          : surfaceMeshTopologyPickMode === "vertex"
+          ? `Vertex ${pick.vertexIndex}`
+          : `Face ${pick.faceIndex}, Edge ${pick.edgeA}-${pick.edgeB}, Vertex ${pick.vertexIndex}`;
+      setSurfaceMeshTopologyStatus(`${surfaceMeshTopologyPickModeLabel} pick loaded: ${detail}.`);
+    },
+    [surfaceMeshTopologyPick, surfaceMeshTopologyPickMode, surfaceMeshTopologyPickModeLabel]
+  );
+  useEffect(() => {
+    if (surfaceViewerKind !== "mesh" || !probeEnabled || !surfaceMeshTopologyPick) return;
+    if (surfaceMeshTopologyAutoPickStampRef.current === probeStamp) return;
+    surfaceMeshTopologyAutoPickStampRef.current = probeStamp;
+    applySurfaceMeshTopologyPickToFields(surfaceMeshTopologyPick);
+  }, [applySurfaceMeshTopologyPickToFields, probeEnabled, probeStamp, surfaceMeshTopologyPick, surfaceViewerKind]);
   const surfaceMeshConnectedComponentCount = useMemo(
     () => countMeshConnectedComponents(surfaceMeshData),
     [surfaceMeshData]
@@ -41738,6 +42343,8 @@ case "mobius":
     const groups: { lines: PolylineSet; color: number; opacity?: number; radiusScale?: number }[] = [];
     if (complexMapOverlayPolylineGroups?.length) groups.push(...complexMapOverlayPolylineGroups);
     if (meshQualityOverlayPolylineGroups?.length) groups.push(...meshQualityOverlayPolylineGroups);
+    if (surfaceMeshTopologyOverlayPolylineGroups?.length) groups.push(...surfaceMeshTopologyOverlayPolylineGroups);
+    if (surfaceMeshTopologyFeedbackPolylineGroups?.length) groups.push(...surfaceMeshTopologyFeedbackPolylineGroups);
     if (workbookCurveOverlayGhostGroups?.length) groups.push(...workbookCurveOverlayGhostGroups);
     if (workbookDirectionOverlayGhostGroups?.length) groups.push(...workbookDirectionOverlayGhostGroups);
     if (workbookVectorFieldOverlayGhostGroups?.length) groups.push(...workbookVectorFieldOverlayGhostGroups);
@@ -41751,6 +42358,8 @@ case "mobius":
     calculusVectorOverlayGroups,
     complexMapOverlayPolylineGroups,
     meshQualityOverlayPolylineGroups,
+    surfaceMeshTopologyFeedbackPolylineGroups,
+    surfaceMeshTopologyOverlayPolylineGroups,
     workbookCurveOverlayGhostGroups,
     workbookDirectionOverlayGhostGroups,
     workbookVectorFieldOverlayGhostGroups,
@@ -41765,6 +42374,8 @@ case "mobius":
     const groups: { lines: PolylineSet; color: number; opacity?: number; radiusScale?: number }[] = [];
     if (complexMapOverlayPolylineGroups?.length) groups.push(...complexMapOverlayPolylineGroups);
     if (meshQualityOverlayPolylineGroups?.length) groups.push(...meshQualityOverlayPolylineGroups);
+    if (surfaceMeshTopologyOverlayPolylineGroups?.length) groups.push(...surfaceMeshTopologyOverlayPolylineGroups);
+    if (surfaceMeshTopologyFeedbackPolylineGroups?.length) groups.push(...surfaceMeshTopologyFeedbackPolylineGroups);
     if (calculusVectorOverlayGroups?.length) groups.push(...calculusVectorOverlayGroups);
     return groups.length ? groups : null;
   }, [
@@ -41773,6 +42384,8 @@ case "mobius":
     combinedOverlayPolylineGroups,
     complexMapOverlayPolylineGroups,
     meshQualityOverlayPolylineGroups,
+    surfaceMeshTopologyFeedbackPolylineGroups,
+    surfaceMeshTopologyOverlayPolylineGroups,
   ]);
 
   const handleBuildComplexMapSweep = useCallback(() => {
@@ -42124,6 +42737,40 @@ case "mobius":
     }
   }, [focusSurfaceMeshViewport]);
 
+  const handleApplySurfaceMeshTopologyDemoPreset = useCallback(
+    (presetId: string) => {
+      const preset = SURFACE_MESH_TOPOLOGY_DEMO_PRESETS.find((entry) => entry.id === presetId);
+      if (!preset) return;
+      try {
+        const meshReady = preset.build();
+        setMeshDataset(meshReady, `mesh-topology-demo:${preset.id}`);
+        setSurfaceMeshImportError(null);
+        setSurfaceMeshOpsError(null);
+        setSurfaceMeshTopologyFaceIndex(preset.faceIndex);
+        setSurfaceMeshTopologyEdgeA(preset.edge[0]);
+        setSurfaceMeshTopologyEdgeB(preset.edge[1]);
+        if (preset.subdivideMode) setSurfaceMeshTopologySubdivideMode(preset.subdivideMode);
+        if (preset.splitRatio != null) setSurfaceMeshTopologySplitRatio(preset.splitRatio);
+        if (preset.collapseMode) setSurfaceMeshTopologyCollapseMode(preset.collapseMode);
+        if (preset.bevelAmount != null) setSurfaceMeshTopologyBevelAmount(preset.bevelAmount);
+        setDatasetKind("mesh");
+        setSurfaceViewerKind("mesh");
+        setSurfacesPanelState("work");
+        setSurfacesLeftTab("analysis");
+        setSurfacesWorkGalleryOpen(false);
+        setSurfaceMeshTopologyStatus(
+          `${preset.operation} demo loaded: Face ${preset.faceIndex}, Edge ${preset.edge[0]}-${preset.edge[1]}.`
+        );
+        appendMeshPromotionOperation(`loaded topology demo (${preset.operation})`);
+        focusSurfaceMeshViewport(meshReady);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to load topology demo.";
+        setSurfaceMeshTopologyStatus(msg);
+      }
+    },
+    [appendMeshPromotionOperation, focusSurfaceMeshViewport, setMeshDataset]
+  );
+
   const handleGenerateSurfaceMeshAssetPreset = useCallback(
     async (presetId: string) => {
       const preset = SURFACE_MESH_ASSET_PRESETS.find((entry) => entry.id === presetId);
@@ -42318,6 +42965,298 @@ case "mobius":
     downloadTextFile(csv, fileName, "text/csv;charset=utf-8");
     setMeshQualityExportStatus(`Exported ${fileName}`);
   }, [meshQualityReport, surfaceMeshLabel]);
+
+  const buildSurfaceMeshTopologyPreview = useCallback(
+    (actionLabel: string, edit: (mesh: SurfaceMeshData) => SurfaceMeshData): string | null => {
+      if (!surfaceMeshData?.positions?.length) return null;
+      try {
+        const beforeCounts = countTriangleMeshTopology(surfaceMeshData);
+        const edited = applySurfaceMeshOps(edit(cloneSurfaceMeshData(surfaceMeshData, surfaceMeshData.label)));
+        const afterCounts = countTriangleMeshTopology(edited);
+        return `${formatTopologyCountDelta(beforeCounts, afterCounts)} preview`;
+      } catch (err: any) {
+        return formatMeshEditFailureMessage(actionLabel, err?.message ?? "Preview failed.");
+      }
+    },
+    [surfaceMeshData]
+  );
+
+  const surfaceMeshTopologyPreview = useMemo(
+    () => ({
+      faceSubdivide: buildSurfaceMeshTopologyPreview("Face subdivide", (mesh) =>
+        subdivideFace(
+          mesh,
+          Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0)),
+          surfaceMeshTopologySubdivideMode
+        )
+      ),
+      splitEdge: buildSurfaceMeshTopologyPreview("Split edge", (mesh) =>
+        splitEdge(
+          mesh,
+          Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0)),
+          Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0)),
+          clampNumber(surfaceMeshTopologySplitRatio, 0.01, 0.99)
+        )
+      ),
+      collapseEdge: buildSurfaceMeshTopologyPreview("Collapse edge", (mesh) =>
+        collapseEdge(
+          mesh,
+          Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0)),
+          Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0)),
+          surfaceMeshTopologyCollapseMode
+        )
+      ),
+      bevelEdge: buildSurfaceMeshTopologyPreview("Bevel edge", (mesh) =>
+        bevelEdge(
+          mesh,
+          Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0)),
+          Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0)),
+          Math.max(0.001, surfaceMeshTopologyBevelAmount || 0.001)
+        )
+      ),
+    }),
+    [
+      buildSurfaceMeshTopologyPreview,
+      surfaceMeshTopologyBevelAmount,
+      surfaceMeshTopologyCollapseMode,
+      surfaceMeshTopologyEdgeA,
+      surfaceMeshTopologyEdgeB,
+      surfaceMeshTopologyFaceIndex,
+      surfaceMeshTopologySplitRatio,
+      surfaceMeshTopologySubdivideMode,
+    ]
+  );
+
+  const applySurfaceMeshTopologyEdit = useCallback(
+    (
+      actionLabel: string,
+      traceOperation: string,
+      operationHistoryLabel: string,
+      labelSuffix: string,
+      targetLabel: string,
+      paramsLabel: string,
+      selectedResultLabel: string,
+      edit: (mesh: SurfaceMeshData) => SurfaceMeshData
+    ) => {
+      setSurfaceMeshOpsError(null);
+      setSurfaceMeshTopologyStatus(null);
+      if (!surfaceMeshData?.positions?.length) {
+        setSurfaceMeshTopologyStatus("Surface mesh not ready yet.");
+        return;
+      }
+      try {
+        const beforeCounts = countTriangleMeshTopology(surfaceMeshData);
+        const baseLabel = surfaceMeshData.label ?? "Surface mesh";
+        const base = cloneSurfaceMeshData(surfaceMeshData, `${baseLabel} (${labelSuffix})`);
+        const edited = applySurfaceMeshOps(edit(base));
+        const afterCounts = countTriangleMeshTopology(edited);
+        const topologyAction =
+          traceOperation.includes("face-subdivide")
+            ? "face-subdivide"
+            : traceOperation.includes("split-edge")
+            ? "edge-split"
+            : traceOperation.includes("collapse-edge")
+            ? "edge-collapse"
+            : traceOperation.includes("bevel-edge")
+            ? "edge-bevel"
+            : "mesh-topology";
+        setSurfaceMeshTopologyFeedback(
+          buildTopologyEditFeedback(
+            "mesh-workspace",
+            topologyAction,
+            operationHistoryLabel,
+            surfaceMeshData,
+            edited,
+            edited
+          )
+        );
+        const historyEntry: SurfaceMeshTopologyHistoryEntry = {
+          id: makeId(),
+          at: Date.now(),
+          actionLabel,
+          sourceLabel: baseLabel,
+          targetLabel,
+          paramsLabel,
+          resultLabel: buildTopologyEditSummary(topologyAction, targetLabel, beforeCounts, afterCounts),
+          beforeCounts,
+          afterCounts,
+          selectedResultLabel,
+          beforeSnapshot: cloneSurfaceMeshData(surfaceMeshData, surfaceMeshData.label),
+          snapshot: cloneSurfaceMeshData(edited, edited.label),
+        };
+        setSurfaceMeshTopologyHistory((prev) => [historyEntry, ...prev].slice(0, 24));
+        setSelectedSurfaceMeshTopologyHistoryId(historyEntry.id);
+        setMeshDataset(edited, traceOperation);
+        appendMeshPromotionOperation(operationHistoryLabel);
+        setSurfaceMeshTopologyStatus(`${actionLabel}: ${historyEntry.resultLabel}. Selected ${selectedResultLabel}.`);
+        handleChangeViewerKind("mesh");
+      } catch (err: any) {
+        setSurfaceMeshTopologyFeedback(null);
+        setSurfaceMeshTopologyStatus(formatMeshEditFailureMessage(actionLabel, err?.message ?? `${actionLabel} failed.`));
+      }
+    },
+    [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshData]
+  );
+
+  const handleSurfaceMeshFaceSubdivide = useCallback(() => {
+    const faceIndex = Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
+    const mode = surfaceMeshTopologySubdivideMode;
+    applySurfaceMeshTopologyEdit(
+      "Face subdivide",
+      "mesh-topology:face-subdivide",
+      `topology face ${faceIndex} subdivided (${mode})`,
+      "face subdivide",
+      `Face ${faceIndex}`,
+      `mode=${mode}`,
+      mode === "center-fan" ? "center fan triangles" : "four-triangle split",
+      (mesh) => subdivideFace(mesh, faceIndex, mode)
+    );
+  }, [applySurfaceMeshTopologyEdit, surfaceMeshTopologyFaceIndex, surfaceMeshTopologySubdivideMode]);
+
+  const handleSurfaceMeshSplitEdge = useCallback(() => {
+    const edgeA = Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0));
+    const edgeB = Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0));
+    if (!surfaceMeshTopologyFieldValidation.edgeValid) {
+      setSurfaceMeshTopologyStatus(`Split Edge blocked: ${surfaceMeshTopologyFieldValidation.edgeLabel}.`);
+      return;
+    }
+    const ratio = clampNumber(surfaceMeshTopologySplitRatio, 0.01, 0.99);
+    applySurfaceMeshTopologyEdit(
+      "Split edge",
+      "mesh-topology:split-edge",
+      `topology edge ${edgeA}-${edgeB} split (${Math.round(ratio * 100)}%)`,
+      "split edge",
+      `Edge ${edgeA}-${edgeB}`,
+      `ratio=${fmt(ratio)}`,
+      `midpoint vertex on Edge ${edgeA}-${edgeB}`,
+      (mesh) => splitEdge(mesh, edgeA, edgeB, ratio)
+    );
+  }, [
+    applySurfaceMeshTopologyEdit,
+    surfaceMeshTopologyEdgeA,
+    surfaceMeshTopologyEdgeB,
+    surfaceMeshTopologyFieldValidation.edgeLabel,
+    surfaceMeshTopologyFieldValidation.edgeValid,
+    surfaceMeshTopologySplitRatio,
+  ]);
+
+  const handleSurfaceMeshCollapseEdge = useCallback(() => {
+    const edgeA = Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0));
+    const edgeB = Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0));
+    if (!surfaceMeshTopologyFieldValidation.edgeValid) {
+      setSurfaceMeshTopologyStatus(`Collapse Edge blocked: ${surfaceMeshTopologyFieldValidation.edgeLabel}.`);
+      return;
+    }
+    const mode = surfaceMeshTopologyCollapseMode;
+    applySurfaceMeshTopologyEdit(
+      "Collapse edge",
+      "mesh-topology:collapse-edge",
+      `topology edge ${edgeA}-${edgeB} collapsed (${mode})`,
+      "collapse edge",
+      `Edge ${edgeA}-${edgeB}`,
+      `mode=${mode}`,
+      mode === "keep-a" ? `merged vertex ${edgeA}` : mode === "keep-b" ? `merged vertex ${edgeB}` : `midpoint vertex`,
+      (mesh) => collapseEdge(mesh, edgeA, edgeB, mode)
+    );
+  }, [
+    applySurfaceMeshTopologyEdit,
+    surfaceMeshTopologyCollapseMode,
+    surfaceMeshTopologyEdgeA,
+    surfaceMeshTopologyEdgeB,
+    surfaceMeshTopologyFieldValidation.edgeLabel,
+    surfaceMeshTopologyFieldValidation.edgeValid,
+  ]);
+
+  const handleSurfaceMeshBevelEdge = useCallback(() => {
+    const edgeA = Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0));
+    const edgeB = Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0));
+    if (!surfaceMeshTopologyFieldValidation.edgeValid) {
+      setSurfaceMeshTopologyStatus(`Bevel Edge blocked: ${surfaceMeshTopologyFieldValidation.edgeLabel}.`);
+      return;
+    }
+    const amount = Math.max(0.001, surfaceMeshTopologyBevelAmount || 0.001);
+    applySurfaceMeshTopologyEdit(
+      "Bevel edge",
+      "mesh-topology:bevel-edge",
+      `topology edge ${edgeA}-${edgeB} beveled (${fmt(amount)})`,
+      "bevel edge",
+      `Edge ${edgeA}-${edgeB}`,
+      `amount=${fmt(amount)}`,
+      `bevel band from Edge ${edgeA}-${edgeB}`,
+      (mesh) => bevelEdge(mesh, edgeA, edgeB, amount)
+    );
+  }, [
+    applySurfaceMeshTopologyEdit,
+    surfaceMeshTopologyBevelAmount,
+    surfaceMeshTopologyEdgeA,
+    surfaceMeshTopologyEdgeB,
+    surfaceMeshTopologyFieldValidation.edgeLabel,
+    surfaceMeshTopologyFieldValidation.edgeValid,
+  ]);
+
+  const surfaceMeshTopologyBreadcrumb = useMemo(() => {
+    const preview = surfaceMeshTopologyHistoryPreviewId
+      ? surfaceMeshTopologyHistory.find((entry) => entry.id === surfaceMeshTopologyHistoryPreviewId) ?? null
+      : null;
+    if (preview) return `Previewing: ${preview.actionLabel} > ${preview.targetLabel}`;
+    const latest = surfaceMeshTopologyHistory[0];
+    if (!latest) return surfaceMeshData?.label ? `Mesh > ${surfaceMeshData.label}` : "Mesh";
+    return `Mesh > ${latest.sourceLabel} > ${latest.targetLabel} > ${latest.selectedResultLabel}`;
+  }, [surfaceMeshData?.label, surfaceMeshTopologyHistory, surfaceMeshTopologyHistoryPreviewId]);
+
+  const undoLatestSurfaceMeshTopologyEdit = useCallback(() => {
+    const latest = surfaceMeshTopologyHistory[0];
+    if (!latest) {
+      setSurfaceMeshTopologyStatus("No Mesh topology edit to undo.");
+      return;
+    }
+    const restored = cloneSurfaceMeshData(
+      latest.beforeSnapshot,
+      latest.beforeSnapshot.label ?? `${latest.sourceLabel} (undo)`
+    );
+    setMeshDataset(restored, "mesh-topology:undo-last");
+    appendMeshPromotionOperation(`undo topology edit (${latest.actionLabel})`);
+    setSurfaceMeshTopologyHistory((prev) => prev.slice(1));
+    setSelectedSurfaceMeshTopologyHistoryId(null);
+    setSurfaceMeshTopologyHistoryPreviewId(null);
+    setSurfaceMeshTopologyFeedback(null);
+    setSurfaceMeshTopologyStatus(`Undo Last: reverted ${latest.actionLabel} on ${latest.targetLabel}.`);
+    handleChangeViewerKind("mesh");
+  }, [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshTopologyHistory]);
+
+  const restoreSurfaceMeshTopologyHistoryEntry = useCallback(
+    (entryId: string) => {
+      const entry = surfaceMeshTopologyHistory.find((candidate) => candidate.id === entryId);
+      if (!entry) {
+        setSurfaceMeshTopologyStatus("History snapshot not found.");
+        return;
+      }
+      const restored = cloneSurfaceMeshData(entry.snapshot, `${entry.snapshot.label ?? "Surface mesh"} (restored)`);
+      setMeshDataset(restored, "mesh-topology:history-restore");
+      appendMeshPromotionOperation(`restored topology history (${entry.actionLabel})`);
+      setSelectedSurfaceMeshTopologyHistoryId(entry.id);
+      setSurfaceMeshTopologyStatus(`Restored ${entry.actionLabel}: ${entry.targetLabel}.`);
+      handleChangeViewerKind("mesh");
+    },
+    [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshTopologyHistory]
+  );
+
+  const copySurfaceMeshTopologyHistoryEntry = useCallback(
+    (entryId: string) => {
+      const entry = surfaceMeshTopologyHistory.find((candidate) => candidate.id === entryId);
+      if (!entry) {
+        setSurfaceMeshTopologyStatus("History snapshot not found.");
+        return;
+      }
+      const copied = cloneSurfaceMeshData(entry.snapshot, `${entry.snapshot.label ?? "Surface mesh"} history copy`);
+      setMeshDataset(copied, "mesh-topology:history-copy");
+      appendMeshPromotionOperation(`copied topology history (${entry.actionLabel})`);
+      setSelectedSurfaceMeshTopologyHistoryId(entry.id);
+      setSurfaceMeshTopologyStatus(`Copied ${entry.actionLabel}: ${entry.targetLabel}.`);
+      handleChangeViewerKind("mesh");
+    },
+    [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshTopologyHistory]
+  );
 
   const handleWeldSurfaceMesh = useCallback(() => {
     if (surfaceMeshWeldBusy) return;
@@ -49822,6 +50761,9 @@ case "mobius":
     (unifiedSelectedNode?.category === "sceneObject" && !!unifiedSelectedNode.objectRefId) ||
     (unifiedSelectedNode?.category === "surfaceDefinition" && isSurfaceDatasetKind(datasetKind));
   const unifiedCanConvertToMeshObject = isSurfaceDatasetKind(datasetKind) && !!surfaceMeshData?.positions?.length;
+  const unifiedMeshObjectActionIsReadyState = surfaceViewerKind === "mesh" && unifiedCanConvertToMeshObject;
+  const unifiedMeshObjectActionLabel = unifiedMeshObjectActionIsReadyState ? "Mesh ready" : "Bake to Mesh";
+  const unifiedMeshObjectActionEnabled = unifiedCanConvertToMeshObject && !unifiedMeshObjectActionIsReadyState;
   const unifiedCanSurfaceOps = isSurfaceDatasetKind(datasetKind);
   const unifiedMeshReady = !!surfaceMeshData?.positions?.length;
   const unifiedCanPointCloud = unifiedMeshReady;
@@ -52470,6 +53412,19 @@ case "mobius":
                   surfaceMeshSubdivideIterations={surfaceMeshSubdivideIterations}
                   surfaceMeshNormalizeDiag={surfaceMeshNormalizeDiag}
                   surfaceMeshOpsError={surfaceMeshOpsError}
+                  surfaceMeshTopologyFaceIndex={surfaceMeshTopologyFaceIndex}
+                  surfaceMeshTopologyEdgeA={surfaceMeshTopologyEdgeA}
+                  surfaceMeshTopologyEdgeB={surfaceMeshTopologyEdgeB}
+                  surfaceMeshTopologyVertexIndex={surfaceMeshTopologyVertexIndex}
+                  surfaceMeshTopologyPickMode={surfaceMeshTopologyPickMode}
+                  surfaceMeshTopologySubdivideMode={surfaceMeshTopologySubdivideMode}
+                  surfaceMeshTopologySplitRatio={surfaceMeshTopologySplitRatio}
+                  surfaceMeshTopologyCollapseMode={surfaceMeshTopologyCollapseMode}
+                  surfaceMeshTopologyBevelAmount={surfaceMeshTopologyBevelAmount}
+                  surfaceMeshTopologyFieldValidation={surfaceMeshTopologyFieldValidation}
+                  surfaceMeshTopologyPreview={surfaceMeshTopologyPreview}
+                  surfaceMeshTopologyPickSummary={surfaceMeshTopologyPickSummary}
+                  surfaceMeshTopologyStatus={surfaceMeshTopologyStatus}
                   onExportSurfaceMeshObj={handleExportSurfaceMeshObj}
                   onExportSurfaceMeshPly={handleExportSurfaceMeshPly}
                   onExportSurfaceMeshGlb={handleExportSurfaceMeshGlb}
@@ -52482,6 +53437,23 @@ case "mobius":
                   onCenterSurfaceMesh={handleCenterSurfaceMesh}
                   onChangeSurfaceMeshNormalizeDiag={setSurfaceMeshNormalizeDiag}
                   onNormalizeSurfaceMeshScale={handleNormalizeSurfaceMeshScale}
+                  onChangeSurfaceMeshTopologyFaceIndex={setSurfaceMeshTopologyFaceIndex}
+                  onChangeSurfaceMeshTopologyEdgeA={setSurfaceMeshTopologyEdgeA}
+                  onChangeSurfaceMeshTopologyEdgeB={setSurfaceMeshTopologyEdgeB}
+                  onChangeSurfaceMeshTopologyVertexIndex={setSurfaceMeshTopologyVertexIndex}
+                  onChangeSurfaceMeshTopologyPickMode={(pickMode) => {
+                    setSurfaceMeshTopologyPickMode(pickMode);
+                    if (!probeEnabled) setProbeEnabled(true);
+                  }}
+                  onChangeSurfaceMeshTopologySubdivideMode={setSurfaceMeshTopologySubdivideMode}
+                  onChangeSurfaceMeshTopologySplitRatio={setSurfaceMeshTopologySplitRatio}
+                  onChangeSurfaceMeshTopologyCollapseMode={setSurfaceMeshTopologyCollapseMode}
+                  onChangeSurfaceMeshTopologyBevelAmount={setSurfaceMeshTopologyBevelAmount}
+                  onUseSurfaceMeshTopologyPick={applySurfaceMeshTopologyPickToFields}
+                  onSurfaceMeshFaceSubdivide={handleSurfaceMeshFaceSubdivide}
+                  onSurfaceMeshSplitEdge={handleSurfaceMeshSplitEdge}
+                  onSurfaceMeshCollapseEdge={handleSurfaceMeshCollapseEdge}
+                  onSurfaceMeshBevelEdge={handleSurfaceMeshBevelEdge}
                   implicitBakeResolution={implicitBakeResolution}
                   implicitBakeBounds={safeImplicitBakeBounds}
                   implicitBakeBusy={implicitBakeBusy}
@@ -52497,6 +53469,7 @@ case "mobius":
                   onToggleSurfaceMeshMergeVertices={setSurfaceMeshMergeVertices}
                   onGenerateSurfaceMeshPreset={handleGenerateSurfaceMeshPreset}
                   onGenerateSurfaceMeshAssetPreset={handleGenerateSurfaceMeshAssetPreset}
+                  onApplySurfaceMeshTopologyDemoPreset={handleApplySurfaceMeshTopologyDemoPreset}
                   onLoadSurfaceMeshFile={handleLoadSurfaceMeshFile}
                   onConvertToMesh={handleConvertToMesh}
                   onOpenMeshPromotionSourceGeometryObject={handleOpenMeshPromotionSourceGeometryObject}
@@ -54071,8 +55044,15 @@ case "mobius":
                   showWorkGallery={surfacesWorkGalleryOpen}
                   surfaceMeshPresets={SURFACE_MESH_PRESETS}
                   surfaceMeshAssetPresets={SURFACE_MESH_ASSET_PRESETS}
+                  surfaceMeshTopologyDemoPresets={SURFACE_MESH_TOPOLOGY_DEMO_PRESETS}
+                  onOpenMeshTools={() => {
+                    setSurfacesPanelState("work");
+                    setSurfacesLeftTab("analysis");
+                    setSurfacesWorkGalleryOpen(false);
+                  }}
                   onGenerateSurfaceMeshPreset={handleGenerateSurfaceMeshPreset}
                   onGenerateSurfaceMeshAssetPreset={handleGenerateSurfaceMeshAssetPreset}
+                  onApplySurfaceMeshTopologyDemoPreset={handleApplySurfaceMeshTopologyDemoPreset}
                   volumePresetId={volumePresetId}
                   onChangeVolumePresetId={setVolumePresetId}
                 />
@@ -54999,8 +55979,15 @@ case "mobius":
                   showWorkGallery={surfacesWorkGalleryOpen}
                   surfaceMeshPresets={SURFACE_MESH_PRESETS}
                   surfaceMeshAssetPresets={SURFACE_MESH_ASSET_PRESETS}
+                  surfaceMeshTopologyDemoPresets={SURFACE_MESH_TOPOLOGY_DEMO_PRESETS}
+                  onOpenMeshTools={() => {
+                    setSurfacesPanelState("work");
+                    setSurfacesLeftTab("analysis");
+                    setSurfacesWorkGalleryOpen(false);
+                  }}
                   onGenerateSurfaceMeshPreset={handleGenerateSurfaceMeshPreset}
                   onGenerateSurfaceMeshAssetPreset={handleGenerateSurfaceMeshAssetPreset}
+                  onApplySurfaceMeshTopologyDemoPreset={handleApplySurfaceMeshTopologyDemoPreset}
                   volumePresetId={volumePresetId}
                   onChangeVolumePresetId={setVolumePresetId}
                 />
@@ -55345,6 +56332,457 @@ case "mobius":
               {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "analysis" && (
                 <div style={{ marginTop: 10 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Display & analysis</div>
+                  {isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "mesh" && (
+                    <div
+                      style={{
+                        border: "1px solid #dbe2ea",
+                        borderRadius: 10,
+                        padding: "10px 12px",
+                        background: "#f8fbff",
+                        display: "grid",
+                        gap: 8,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Mesh topology editing</div>
+                        <div style={{ fontSize: 10, color: "#475467" }}>
+                          {surfaceMeshStats
+                            ? `${surfaceMeshStats.vertCount.toLocaleString()}V / ${surfaceMeshStats.triCount.toLocaleString()}F`
+                            : "No mesh"}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 11, color: "#475467" }}>
+                        Face Subdivide, Split Edge, Collapse Edge, Bevel Edge
+                      </div>
+                      <div
+                        style={{
+                          border: "1px solid #bfdbfe",
+                          borderRadius: 8,
+                          background: "#eff6ff",
+                          padding: "7px 8px",
+                          display: "grid",
+                          gap: 6,
+                        }}
+                      >
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Pick target</div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {(["auto", "face", "edge", "vertex"] as SurfaceMeshTopologyPickMode[]).map((pickMode) => (
+                            <button
+                              key={`mesh-tools-topology-primary-pick-mode-${pickMode}`}
+                              type="button"
+                              onClick={() => {
+                                setSurfaceMeshTopologyPickMode(pickMode);
+                                if (!probeEnabled) setProbeEnabled(true);
+                              }}
+                              disabled={!surfaceMeshStats}
+                              style={{
+                                background: surfaceMeshTopologyPickMode === pickMode ? "#bfdbfe" : "#fff",
+                                borderColor: surfaceMeshTopologyPickMode === pickMode ? "#0a66c2" : "#d0d5dd",
+                                fontWeight: surfaceMeshTopologyPickMode === pickMode ? 700 : 600,
+                              }}
+                            >
+                              {pickMode === "auto" ? "Auto" : pickMode[0].toUpperCase() + pickMode.slice(1)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {SURFACE_MESH_TOPOLOGY_DEMO_PRESETS.map((preset) => (
+                          <button
+                            key={`mesh-tools-topology-demo-${preset.id}`}
+                            type="button"
+                            onClick={() => handleApplySurfaceMeshTopologyDemoPreset(preset.id)}
+                            title={`${preset.operation}: ${preset.summary}`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
+                        <span style={{ color: "#475467" }}>Pick target</span>
+                        {(["auto", "face", "edge", "vertex"] as SurfaceMeshTopologyPickMode[]).map((pickMode) => (
+                          <button
+                            key={`mesh-tools-topology-pick-mode-${pickMode}`}
+                            type="button"
+                            onClick={() => {
+                              setSurfaceMeshTopologyPickMode(pickMode);
+                              if (!probeEnabled) setProbeEnabled(true);
+                            }}
+                            disabled={!surfaceMeshStats}
+                            style={{
+                              background: surfaceMeshTopologyPickMode === pickMode ? "#dbeafe" : undefined,
+                              borderColor: surfaceMeshTopologyPickMode === pickMode ? "#0a66c2" : undefined,
+                            }}
+                          >
+                            {pickMode === "auto" ? "Auto" : pickMode[0].toUpperCase() + pickMode.slice(1)}
+                          </button>
+                        ))}
+                        <span style={{ color: "#475467" }}>
+                          Pick source: {surfaceMeshTopologyPickSummary ?? (probeEnabled ? "click mesh" : "probe off")}
+                        </span>
+                        <button type="button" onClick={() => applySurfaceMeshTopologyPickToFields()} disabled={!surfaceMeshTopologyPickSummary}>
+                          Use Last Pick
+                        </button>
+                        {!probeEnabled && (
+                          <button type="button" onClick={() => setProbeEnabled(true)} disabled={!surfaceMeshStats}>
+                            Enable Probe
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ display: "grid", gap: 7 }}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <label style={{ fontSize: 11 }}>
+                            Face
+                            <input
+                              type="number"
+                              min={0}
+                              max={Math.max(0, (surfaceMeshStats?.triCount ?? 1) - 1)}
+                              step={1}
+                              value={surfaceMeshTopologyFaceIndex}
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                if (Number.isFinite(v)) {
+                                  setSurfaceMeshTopologyFaceIndex(
+                                    clampNumber(Math.round(v), 0, Math.max(0, (surfaceMeshStats?.triCount ?? 1) - 1))
+                                  );
+                                }
+                              }}
+                              style={{ width: 76, marginLeft: 6 }}
+                            />
+                          </label>
+                          <select
+                            value={surfaceMeshTopologySubdivideMode}
+                            onChange={(e) => setSurfaceMeshTopologySubdivideMode(e.target.value as FaceSubdivideMode)}
+                            disabled={!surfaceMeshStats}
+                          >
+                            <option value="center-fan">Center fan</option>
+                            <option value="four-triangles">Four triangles</option>
+                          </select>
+                          <button type="button" onClick={handleSurfaceMeshFaceSubdivide} disabled={!surfaceMeshStats}>
+                            Subdivide Face
+                          </button>
+                        </div>
+                        {surfaceMeshTopologyPreview.faceSubdivide && (
+                          <div style={{ fontSize: 11, color: "#475467" }}>{surfaceMeshTopologyPreview.faceSubdivide}</div>
+                        )}
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: surfaceMeshTopologyFieldValidation.faceValid ? "#047857" : "#b42318",
+                          }}
+                        >
+                          {surfaceMeshTopologyFieldValidation.faceLabel}
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <label style={{ fontSize: 11 }}>
+                            Vertex
+                            <input
+                              type="number"
+                              min={0}
+                              max={Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1)}
+                              step={1}
+                              value={surfaceMeshTopologyVertexIndex}
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                if (Number.isFinite(v)) {
+                                  setSurfaceMeshTopologyVertexIndex(
+                                    clampNumber(Math.round(v), 0, Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1))
+                                  );
+                                }
+                              }}
+                              style={{ width: 76, marginLeft: 6 }}
+                            />
+                          </label>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color: surfaceMeshTopologyFieldValidation.vertexValid ? "#047857" : "#b42318",
+                            }}
+                          >
+                            {surfaceMeshTopologyFieldValidation.vertexLabel}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <label style={{ fontSize: 11 }}>
+                            Edge A
+                            <input
+                              type="number"
+                              min={0}
+                              max={Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1)}
+                              step={1}
+                              value={surfaceMeshTopologyEdgeA}
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                if (Number.isFinite(v)) {
+                                  setSurfaceMeshTopologyEdgeA(
+                                    clampNumber(Math.round(v), 0, Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1))
+                                  );
+                                }
+                              }}
+                              style={{ width: 76, marginLeft: 6 }}
+                            />
+                          </label>
+                          <label style={{ fontSize: 11 }}>
+                            B
+                            <input
+                              type="number"
+                              min={0}
+                              max={Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1)}
+                              step={1}
+                              value={surfaceMeshTopologyEdgeB}
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                if (Number.isFinite(v)) {
+                                  setSurfaceMeshTopologyEdgeB(
+                                    clampNumber(Math.round(v), 0, Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1))
+                                  );
+                                }
+                              }}
+                              style={{ width: 76, marginLeft: 6 }}
+                            />
+                          </label>
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: surfaceMeshTopologyFieldValidation.edgeValid ? "#047857" : "#b42318",
+                          }}
+                        >
+                          {surfaceMeshTopologyFieldValidation.edgeLabel}
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <label style={{ fontSize: 11 }}>
+                            Split
+                            <input
+                              type="number"
+                              min={0.01}
+                              max={0.99}
+                              step={0.05}
+                              value={surfaceMeshTopologySplitRatio}
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                if (Number.isFinite(v)) setSurfaceMeshTopologySplitRatio(clampNumber(v, 0.01, 0.99));
+                              }}
+                              style={{ width: 76, marginLeft: 6 }}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={handleSurfaceMeshSplitEdge}
+                            disabled={!surfaceMeshStats || !surfaceMeshTopologyFieldValidation.edgeValid}
+                          >
+                            Split Edge
+                          </button>
+                          {surfaceMeshTopologyPreview.splitEdge && (
+                            <span style={{ fontSize: 11, color: "#475467" }}>{surfaceMeshTopologyPreview.splitEdge}</span>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <select
+                            value={surfaceMeshTopologyCollapseMode}
+                            onChange={(e) => setSurfaceMeshTopologyCollapseMode(e.target.value as EdgeCollapseMode)}
+                            disabled={!surfaceMeshStats}
+                          >
+                            <option value="midpoint">Midpoint</option>
+                            <option value="keep-a">Keep A</option>
+                            <option value="keep-b">Keep B</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={handleSurfaceMeshCollapseEdge}
+                            disabled={!surfaceMeshStats || !surfaceMeshTopologyFieldValidation.edgeValid}
+                          >
+                            Collapse Edge
+                          </button>
+                          {surfaceMeshTopologyPreview.collapseEdge && (
+                            <span style={{ fontSize: 11, color: "#475467" }}>{surfaceMeshTopologyPreview.collapseEdge}</span>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <label style={{ fontSize: 11 }}>
+                            Bevel
+                            <input
+                              type="number"
+                              min={0.001}
+                              step={0.01}
+                              value={surfaceMeshTopologyBevelAmount}
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                if (Number.isFinite(v)) setSurfaceMeshTopologyBevelAmount(Math.max(0.001, v));
+                              }}
+                              style={{ width: 76, marginLeft: 6 }}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={handleSurfaceMeshBevelEdge}
+                            disabled={!surfaceMeshStats || !surfaceMeshTopologyFieldValidation.edgeValid}
+                          >
+                            Bevel Edge
+                          </button>
+                          {surfaceMeshTopologyPreview.bevelEdge && (
+                            <span style={{ fontSize: 11, color: "#475467" }}>{surfaceMeshTopologyPreview.bevelEdge}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          border: "1px solid #dbe2ea",
+                          borderRadius: 8,
+                          background: "#ffffff",
+                          padding: "7px 8px",
+                          display: "grid",
+                          gap: 6,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                          <strong>Topology history</strong>
+                          <span style={{ display: "inline-flex", gap: 5, alignItems: "center" }}>
+                            <button
+                              type="button"
+                              onClick={undoLatestSurfaceMeshTopologyEdit}
+                              disabled={!surfaceMeshTopologyHistory.length}
+                              style={{ padding: "2px 7px", fontSize: 10 }}
+                            >
+                              Undo Last
+                            </button>
+                            <span style={{ fontSize: 10, color: "#475467" }}>{surfaceMeshTopologyHistory.length} steps</span>
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            border: "1px solid #dbeafe",
+                            borderRadius: 6,
+                            background: "#eff6ff",
+                            color: "#1e3a8a",
+                            padding: "3px 6px",
+                            fontSize: 10,
+                            fontWeight: 800,
+                            overflowWrap: "anywhere",
+                          }}
+                        >
+                          {surfaceMeshTopologyBreadcrumb}
+                        </div>
+                        <div style={{ fontSize: 10, color: "#475467" }}>
+                          Last result: {surfaceMeshTopologyHistory[0]?.selectedResultLabel ?? "none"}
+                        </div>
+                        {surfaceMeshTopologyHistory.length ? (
+                          <div style={{ display: "grid", gap: 5 }}>
+                            {surfaceMeshTopologyHistory.slice(0, 5).map((entry) => (
+                              <div
+                                key={`mesh-topology-history-${entry.id}`}
+                                tabIndex={0}
+                                onMouseEnter={() => setSurfaceMeshTopologyHistoryPreviewId(entry.id)}
+                                onMouseLeave={() =>
+                                  setSurfaceMeshTopologyHistoryPreviewId((current) =>
+                                    current === entry.id ? null : current
+                                  )
+                                }
+                                onFocus={() => setSurfaceMeshTopologyHistoryPreviewId(entry.id)}
+                                onBlur={() =>
+                                  setSurfaceMeshTopologyHistoryPreviewId((current) =>
+                                    current === entry.id ? null : current
+                                  )
+                                }
+                                title={`Preview ${entry.actionLabel}: ${entry.targetLabel}`}
+                                style={{
+                                  border:
+                                    "1px solid " +
+                                    (surfaceMeshTopologyHistoryPreviewId === entry.id ||
+                                    selectedSurfaceMeshTopologyHistoryId === entry.id
+                                      ? "#0a66c2"
+                                      : "#dbe2ea"),
+                                  borderRadius: 7,
+                                  background:
+                                    surfaceMeshTopologyHistoryPreviewId === entry.id
+                                      ? "#ecfeff"
+                                      : selectedSurfaceMeshTopologyHistoryId === entry.id
+                                      ? "#eaf3ff"
+                                      : "#f8fafc",
+                                  padding: "5px 7px",
+                                  display: "grid",
+                                  gap: 5,
+                                }}
+                              >
+                                <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                  <strong>{entry.actionLabel}</strong>
+                                  <span style={{ color: "#64748b" }}>
+                                    {new Date(entry.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                  </span>
+                                </span>
+                                <span
+                                  style={{
+                                    border: "1px solid #dbeafe",
+                                    borderRadius: 6,
+                                    background: "#eff6ff",
+                                    color: "#1e3a8a",
+                                    padding: "3px 6px",
+                                    fontSize: 10,
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  {`V ${entry.beforeCounts.vertexCount}->${entry.afterCounts.vertexCount}, F ${entry.beforeCounts.faceCount}->${entry.afterCounts.faceCount}`}
+                                </span>
+                                <span
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "48px minmax(0, 1fr)",
+                                    gap: "2px 6px",
+                                    border: "1px solid #e2e8f0",
+                                    borderRadius: 6,
+                                    background: "#ffffff",
+                                    padding: "4px 6px",
+                                    fontSize: 10,
+                                    color: "#334155",
+                                  }}
+                                >
+                                  <span style={{ color: "#64748b", fontWeight: 800 }}>Source</span>
+                                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.sourceLabel}</span>
+                                  <span style={{ color: "#64748b", fontWeight: 800 }}>Action</span>
+                                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                                    {entry.actionLabel} - {entry.targetLabel}
+                                  </span>
+                                  <span style={{ color: "#64748b", fontWeight: 800 }}>Result</span>
+                                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.selectedResultLabel}</span>
+                                  <span style={{ color: "#64748b", fontWeight: 800 }}>Params</span>
+                                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.paramsLabel}</span>
+                                </span>
+                                <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap" }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedSurfaceMeshTopologyHistoryId(entry.id)}
+                                    style={{ padding: "2px 7px", fontSize: 10 }}
+                                  >
+                                    Open
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => restoreSurfaceMeshTopologyHistoryEntry(entry.id)}
+                                    style={{ padding: "2px 7px", fontSize: 10 }}
+                                  >
+                                    Restore
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => copySurfaceMeshTopologyHistoryEntry(entry.id)}
+                                    style={{ padding: "2px 7px", fontSize: 10 }}
+                                  >
+                                    Copy
+                                  </button>
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 11, color: "#475467" }}>No Mesh topology edits yet.</div>
+                        )}
+                      </div>
+                      {surfaceMeshTopologyStatus && (
+                        <div style={{ fontSize: 11, color: "#05603a" }}>{surfaceMeshTopologyStatus}</div>
+                      )}
+                    </div>
+                  )}
                   <div style={{ marginBottom: 10 }}>
                     <SageSymbolicPanel compact />
                   </div>
@@ -55638,24 +57076,39 @@ case "mobius":
                           <button
                             type="button"
                             onClick={handleDatasetToGeometryScene}
-                            disabled={!unifiedCanConvertToMeshObject}
+                            disabled={!unifiedMeshObjectActionEnabled}
                             style={{
                               borderRadius: 8,
-                              border: "1px solid " + (unifiedCanConvertToMeshObject ? "#0f766e" : "#d1d5db"),
-                              background: unifiedCanConvertToMeshObject ? "#ecfdf5" : "#f8fafc",
-                              color: unifiedCanConvertToMeshObject ? "#0f766e" : "#94a3b8",
+                              border:
+                                "1px solid " +
+                                (unifiedMeshObjectActionIsReadyState
+                                  ? "#0f766e"
+                                  : unifiedMeshObjectActionEnabled
+                                  ? "#0f766e"
+                                  : "#d1d5db"),
+                              background: unifiedMeshObjectActionIsReadyState
+                                ? "#f0fdf4"
+                                : unifiedMeshObjectActionEnabled
+                                ? "#ecfdf5"
+                                : "#f8fafc",
+                              color:
+                                unifiedMeshObjectActionIsReadyState || unifiedMeshObjectActionEnabled
+                                  ? "#0f766e"
+                                  : "#94a3b8",
                               fontWeight: 650,
                               fontSize: 11,
                               padding: "5px 10px",
-                              cursor: unifiedCanConvertToMeshObject ? "pointer" : "not-allowed",
+                              cursor: unifiedMeshObjectActionEnabled ? "pointer" : "default",
                             }}
                             title={
-                              unifiedCanConvertToMeshObject
+                              unifiedMeshObjectActionIsReadyState
+                                ? "Current workspace is already an editable Mesh dataset."
+                                : unifiedMeshObjectActionEnabled
                                 ? "Bake current SurfaceMesh into a detached Mesh object (Geometry module)."
                                 : "SurfaceMesh dataset is required before baking to Mesh."
                             }
                           >
-                            Bake to Mesh
+                            {unifiedMeshObjectActionLabel}
                           </button>
                           <button
                             type="button"
@@ -56037,6 +57490,7 @@ case "mobius":
                             geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
                             overlayPolylineGroups={combinedOverlayPolylineGroups}
                             overlayPointSets={combinedOverlayPointSets}
+                            overlayMeshGroups={combinedOverlayMeshGroups}
                             geodesicDiskEnabled={geodesicDiskEnabled}
                             geodesicDiskPickEnabled={geodesicDiskEnabled && geodesicDiskPickMode}
                             onGeodesicDiskPick={handleGeodesicDiskPick}
@@ -56185,6 +57639,7 @@ case "mobius":
                         overlayPolylinesColor={0xffd400}
                         overlayPolylineGroups={combinedOverlayPolylineGroups}
                         overlayPointSets={combinedOverlayPointSets}
+                        overlayMeshGroups={combinedOverlayMeshGroups}
                         geodesicDiskEnabled={geodesicDiskEnabled}
                         geodesicDiskPickEnabled={geodesicDiskEnabled && geodesicDiskPickMode}
                         onGeodesicDiskPick={handleGeodesicDiskPick}
@@ -76207,8 +77662,11 @@ type SurfacesControlsProps = {
   showWorkGallery: boolean;
   surfaceMeshPresets: SurfaceMeshPreset[];
   surfaceMeshAssetPresets: SurfaceMeshAssetPreset[];
+  surfaceMeshTopologyDemoPresets: SurfaceMeshTopologyDemoPreset[];
+  onOpenMeshTools: () => void;
   onGenerateSurfaceMeshPreset: (id: string) => void;
   onGenerateSurfaceMeshAssetPreset: (id: string) => void;
+  onApplySurfaceMeshTopologyDemoPreset: (id: string) => void;
   volumePresetId: VolumePresetId;
   onChangeVolumePresetId: (id: VolumePresetId) => void;
 };
@@ -76262,8 +77720,11 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   showWorkGallery,
   surfaceMeshPresets,
   surfaceMeshAssetPresets,
+  surfaceMeshTopologyDemoPresets,
+  onOpenMeshTools,
   onGenerateSurfaceMeshPreset,
   onGenerateSurfaceMeshAssetPreset,
+  onApplySurfaceMeshTopologyDemoPreset,
   volumePresetId,
   onChangeVolumePresetId,
 }) => {
@@ -76678,7 +78139,85 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
               <div style={{ fontSize: 11, color: "#475569" }}>
                 Mesh presets are available directly in Mesh mode.
               </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={onOpenMeshTools}
+                  title="Open Mesh tools, then scroll to Topology editing."
+                >
+                  Open topology tools
+                </button>
+              </div>
               <div className="surface-card-grid" data-testid="mesh-preset-grid" data-gallery-grid="true">
+                {surfaceMeshTopologyDemoPresets.map((preset) => {
+                  const diagramThumb = makePresetThumb(
+                    preset.id,
+                    preset.label,
+                    preset.operation,
+                    "mesh",
+                    "diagram"
+                  );
+                  const renderedThumb = makePresetThumb(preset.id, preset.label, preset.operation, "mesh", "rendered");
+                  const thumb = thumbByViewMode(renderedThumb, diagramThumb, cardViewMode);
+                  const summary = compactSummary(preset.summary);
+                  return (
+                    <button
+                      key={`mesh-topology-gallery-card-${preset.id}`}
+                      type="button"
+                      data-testid={`mesh-topology-preset-card-${preset.id}`}
+                      onClick={() => onApplySurfaceMeshTopologyDemoPreset(preset.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "ArrowLeft") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "left");
+                        } else if (e.key === "ArrowRight") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "right");
+                        } else if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "up");
+                        } else if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "down");
+                        }
+                      }}
+                      className="gallery-scan-card surface-preset-card"
+                      title={`${preset.label}\n${preset.operation}\n${preset.summary}`}
+                    >
+                      <div className="gallery-scan-card-preview">
+                        <div className="gallery-scan-card-preview-frame">
+                          <img
+                            src={thumb}
+                            alt={`${preset.label} topology demo`}
+                            className="gallery-scan-card-preview-image"
+                            loading="lazy"
+                            decoding="async"
+                            onError={(event) => handleGalleryImageLoadError(event, diagramThumb)}
+                          />
+                        </div>
+                      </div>
+                      <div className="gallery-scan-card-meta">
+                        <div className="gallery-scan-card-title-row">
+                          <div className="gallery-scan-card-title">{preset.label}</div>
+                        </div>
+                        <div className="gallery-scan-card-summary" title={preset.summary}>
+                          {summary}
+                        </div>
+                        <div className="gallery-scan-card-formula">{preset.operation}</div>
+                        <div className="gallery-scan-card-chips">
+                          {["Mesh", "Topology"].map((chip) => (
+                            <span key={`${preset.id}-${chip}`} className="gallery-scan-card-chip">
+                              {chip}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="gallery-scan-card-footer">
+                          <span className="gallery-scan-card-cta">Open demo</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
                 {surfaceMeshPresets.map((preset) => {
                   const diagramThumb = makePresetThumb(
                     preset.id,
@@ -76825,7 +78364,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                 })}
               </div>
               <div style={{ fontSize: 11, color: "#64748b" }}>
-                Use Scene/Object tabs for import/export and advanced mesh operations.
+                Topology demo cards open Mesh tools automatically. Use Scene/Object tabs for import/export and advanced mesh operations.
               </div>
             </div>
           ) : (
@@ -77141,6 +78680,16 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                 Use mesh presets directly here, or open Scene/Object tabs for full mesh tools.
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {surfaceMeshTopologyDemoPresets.map((preset) => (
+                  <button
+                    key={`browse-mesh-topology-preset-${preset.id}`}
+                    type="button"
+                    onClick={() => onApplySurfaceMeshTopologyDemoPreset(preset.id)}
+                    title={`${preset.operation}: ${preset.summary}`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
                 {surfaceMeshPresets.map((preset) => (
                   <button key={`browse-mesh-preset-${preset.id}`} type="button" onClick={() => onGenerateSurfaceMeshPreset(preset.id)}>
                     {preset.label}
@@ -81263,6 +82812,31 @@ type SurfacesLeftPanelProps = {
   surfaceMeshSubdivideIterations: number;
   surfaceMeshNormalizeDiag: number;
   surfaceMeshOpsError: string | null;
+  surfaceMeshTopologyFaceIndex: number;
+  surfaceMeshTopologyEdgeA: number;
+  surfaceMeshTopologyEdgeB: number;
+  surfaceMeshTopologyVertexIndex: number;
+  surfaceMeshTopologyPickMode: SurfaceMeshTopologyPickMode;
+  surfaceMeshTopologySubdivideMode: FaceSubdivideMode;
+  surfaceMeshTopologySplitRatio: number;
+  surfaceMeshTopologyCollapseMode: EdgeCollapseMode;
+  surfaceMeshTopologyBevelAmount: number;
+  surfaceMeshTopologyFieldValidation: {
+    faceValid: boolean;
+    faceLabel: string;
+    edgeValid: boolean;
+    edgeLabel: string;
+    vertexValid: boolean;
+    vertexLabel: string;
+  };
+  surfaceMeshTopologyPreview: {
+    faceSubdivide: string | null;
+    splitEdge: string | null;
+    collapseEdge: string | null;
+    bevelEdge: string | null;
+  };
+  surfaceMeshTopologyPickSummary: string | null;
+  surfaceMeshTopologyStatus: string | null;
   onExportSurfaceMeshObj: () => void;
   onExportSurfaceMeshPly: () => void;
   onExportSurfaceMeshGlb: () => void;
@@ -81275,6 +82849,20 @@ type SurfacesLeftPanelProps = {
   onCenterSurfaceMesh: () => void;
   onChangeSurfaceMeshNormalizeDiag: (v: number) => void;
   onNormalizeSurfaceMeshScale: () => void;
+  onChangeSurfaceMeshTopologyFaceIndex: (v: number) => void;
+  onChangeSurfaceMeshTopologyEdgeA: (v: number) => void;
+  onChangeSurfaceMeshTopologyEdgeB: (v: number) => void;
+  onChangeSurfaceMeshTopologyVertexIndex: (v: number) => void;
+  onChangeSurfaceMeshTopologyPickMode: (mode: SurfaceMeshTopologyPickMode) => void;
+  onChangeSurfaceMeshTopologySubdivideMode: (mode: FaceSubdivideMode) => void;
+  onChangeSurfaceMeshTopologySplitRatio: (v: number) => void;
+  onChangeSurfaceMeshTopologyCollapseMode: (mode: EdgeCollapseMode) => void;
+  onChangeSurfaceMeshTopologyBevelAmount: (v: number) => void;
+  onUseSurfaceMeshTopologyPick: () => void;
+  onSurfaceMeshFaceSubdivide: () => void;
+  onSurfaceMeshSplitEdge: () => void;
+  onSurfaceMeshCollapseEdge: () => void;
+  onSurfaceMeshBevelEdge: () => void;
   implicitBakeResolution: number;
   implicitBakeBounds: ImplicitBakeBounds;
   implicitBakeBusy: boolean;
@@ -81290,6 +82878,7 @@ type SurfacesLeftPanelProps = {
   onToggleSurfaceMeshMergeVertices: (v: boolean) => void;
   onGenerateSurfaceMeshPreset: (id: string) => void;
   onGenerateSurfaceMeshAssetPreset: (id: string) => void;
+  onApplySurfaceMeshTopologyDemoPreset: (id: string) => void;
   onLoadSurfaceMeshFile: (files: FileList | File[] | null) => void;
   onConvertToMesh: () => void;
   onOpenMeshPromotionSourceGeometryObject: () => void;
@@ -81913,6 +83502,19 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   surfaceMeshSubdivideIterations,
   surfaceMeshNormalizeDiag,
   surfaceMeshOpsError,
+  surfaceMeshTopologyFaceIndex,
+  surfaceMeshTopologyEdgeA,
+  surfaceMeshTopologyEdgeB,
+  surfaceMeshTopologyVertexIndex,
+  surfaceMeshTopologyPickMode,
+  surfaceMeshTopologySubdivideMode,
+  surfaceMeshTopologySplitRatio,
+  surfaceMeshTopologyCollapseMode,
+  surfaceMeshTopologyBevelAmount,
+  surfaceMeshTopologyFieldValidation,
+  surfaceMeshTopologyPreview,
+  surfaceMeshTopologyPickSummary,
+  surfaceMeshTopologyStatus,
   onExportSurfaceMeshObj,
   onExportSurfaceMeshPly,
   onExportSurfaceMeshGlb,
@@ -81925,6 +83527,20 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onCenterSurfaceMesh,
   onChangeSurfaceMeshNormalizeDiag,
   onNormalizeSurfaceMeshScale,
+  onChangeSurfaceMeshTopologyFaceIndex,
+  onChangeSurfaceMeshTopologyEdgeA,
+  onChangeSurfaceMeshTopologyEdgeB,
+  onChangeSurfaceMeshTopologyVertexIndex,
+  onChangeSurfaceMeshTopologyPickMode,
+  onChangeSurfaceMeshTopologySubdivideMode,
+  onChangeSurfaceMeshTopologySplitRatio,
+  onChangeSurfaceMeshTopologyCollapseMode,
+  onChangeSurfaceMeshTopologyBevelAmount,
+  onUseSurfaceMeshTopologyPick,
+  onSurfaceMeshFaceSubdivide,
+  onSurfaceMeshSplitEdge,
+  onSurfaceMeshCollapseEdge,
+  onSurfaceMeshBevelEdge,
   implicitBakeResolution,
   implicitBakeBounds,
   implicitBakeBusy,
@@ -81940,6 +83556,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleSurfaceMeshMergeVertices,
   onGenerateSurfaceMeshPreset,
   onGenerateSurfaceMeshAssetPreset,
+  onApplySurfaceMeshTopologyDemoPreset,
   onLoadSurfaceMeshFile,
   onConvertToMesh,
   onOpenMeshPromotionSourceGeometryObject,
@@ -82412,6 +84029,8 @@ onChangeImplicitExpr,
   onRecomputeDiagnostics,
 }) => {
   const meshReady = !!surfaceMeshStats;
+  const maxSurfaceMeshTopologyFaceIndex = Math.max(0, (surfaceMeshStats?.triCount ?? 1) - 1);
+  const maxSurfaceMeshTopologyVertexIndex = Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1);
   const implicitBakePercent = Math.max(0, Math.min(100, Math.round(implicitBakeProgress * 100)));
   const meshQualityPercent = Math.max(0, Math.min(100, Math.round(meshQualityProgress * 100)));
   const meshQualityPhaseLabel =
@@ -85469,6 +87088,332 @@ onChangeImplicitExpr,
               <button type="button" onClick={onNormalizeSurfaceMeshScale} disabled={!meshReady}>
                 Normalize scale
               </button>
+            </div>
+            <div
+              style={{
+                marginTop: 12,
+                border: "1px solid #dbe2ea",
+                borderRadius: 8,
+                padding: "8px 10px",
+                background: "#f8fbff",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                <div style={{ fontSize: 12, fontWeight: 700 }}>Topology editing</div>
+                <div style={{ fontSize: 11, color: "#475467" }}>{meshReady ? "Current SurfaceMesh" : "No mesh"}</div>
+              </div>
+              <div style={{ fontSize: 11, color: "#475467", marginTop: 4 }}>
+                Face 0-{maxSurfaceMeshTopologyFaceIndex.toLocaleString()} - Vertex 0-
+                {maxSurfaceMeshTopologyVertexIndex.toLocaleString()}
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  marginTop: 8,
+                  fontSize: 11,
+                }}
+              >
+                <span style={{ color: "#475467" }}>Pick target</span>
+                {(["auto", "face", "edge", "vertex"] as SurfaceMeshTopologyPickMode[]).map((pickMode) => (
+                  <button
+                    key={`surface-mesh-topology-pick-mode-${pickMode}`}
+                    type="button"
+                    onClick={() => onChangeSurfaceMeshTopologyPickMode(pickMode)}
+                    disabled={!meshReady}
+                    style={{
+                      background: surfaceMeshTopologyPickMode === pickMode ? "#dbeafe" : undefined,
+                      borderColor: surfaceMeshTopologyPickMode === pickMode ? "#0a66c2" : undefined,
+                    }}
+                  >
+                    {pickMode === "auto" ? "Auto" : pickMode[0].toUpperCase() + pickMode.slice(1)}
+                  </button>
+                ))}
+                <span style={{ color: "#475467" }}>
+                  Pick source: {surfaceMeshTopologyPickSummary ?? (probeEnabled ? "click mesh" : "probe off")}
+                </span>
+                <button type="button" onClick={onUseSurfaceMeshTopologyPick} disabled={!meshReady || !surfaceMeshTopologyPickSummary}>
+                  Use Last Pick
+                </button>
+                {!probeEnabled && (
+                  <button type="button" onClick={onToggleProbe} disabled={!meshReady}>
+                    Enable Probe
+                  </button>
+                )}
+              </div>
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: "7px 8px",
+                  border: "1px solid #e4e7ec",
+                  borderRadius: 8,
+                  background: "#fff",
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 700 }}>Current implementations</div>
+                <div style={{ fontSize: 11, color: "#475467", marginTop: 3 }}>
+                  Face Subdivide, Split Edge, Collapse Edge, Bevel Edge
+                </div>
+                <div
+                  style={{
+                    marginTop: 7,
+                    border: "1px solid #bfdbfe",
+                    borderRadius: 8,
+                    background: "#eff6ff",
+                    padding: "7px 8px",
+                    display: "grid",
+                    gap: 6,
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Pick target</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {(["auto", "face", "edge", "vertex"] as SurfaceMeshTopologyPickMode[]).map((pickMode) => (
+                      <button
+                        key={`surface-mesh-topology-primary-pick-mode-${pickMode}`}
+                        type="button"
+                        onClick={() => onChangeSurfaceMeshTopologyPickMode(pickMode)}
+                        disabled={!meshReady}
+                        style={{
+                          background: surfaceMeshTopologyPickMode === pickMode ? "#bfdbfe" : "#fff",
+                          borderColor: surfaceMeshTopologyPickMode === pickMode ? "#0a66c2" : "#d0d5dd",
+                          fontWeight: surfaceMeshTopologyPickMode === pickMode ? 700 : 600,
+                        }}
+                      >
+                        {pickMode === "auto" ? "Auto" : pickMode[0].toUpperCase() + pickMode.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 7 }}>
+                  {SURFACE_MESH_TOPOLOGY_DEMO_PRESETS.map((preset) => (
+                    <button
+                      key={`mesh-topology-demo-${preset.id}`}
+                      type="button"
+                      onClick={() => onApplySurfaceMeshTopologyDemoPreset(preset.id)}
+                      title={`${preset.operation}: ${preset.summary}`}
+                      style={{ padding: "4px 8px" }}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700 }}>Face</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <label style={{ fontSize: 11 }}>
+                      Face
+                      <input
+                        type="number"
+                        min={0}
+                        max={maxSurfaceMeshTopologyFaceIndex}
+                        step={1}
+                        value={surfaceMeshTopologyFaceIndex}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          if (Number.isFinite(v)) {
+                            onChangeSurfaceMeshTopologyFaceIndex(
+                              clampNumber(Math.round(v), 0, maxSurfaceMeshTopologyFaceIndex)
+                            );
+                          }
+                        }}
+                        style={{ width: 72, marginLeft: 6 }}
+                      />
+                    </label>
+                    <select
+                      value={surfaceMeshTopologySubdivideMode}
+                      onChange={(e) => onChangeSurfaceMeshTopologySubdivideMode(e.target.value as FaceSubdivideMode)}
+                      disabled={!meshReady}
+                    >
+                      <option value="center-fan">Center fan</option>
+                      <option value="four-triangles">Four triangles</option>
+                    </select>
+                    <button type="button" onClick={onSurfaceMeshFaceSubdivide} disabled={!meshReady}>
+                      Subdivide Face
+                    </button>
+                  </div>
+                  {surfaceMeshTopologyPreview.faceSubdivide && (
+                    <div style={{ fontSize: 11, color: "#475467" }}>{surfaceMeshTopologyPreview.faceSubdivide}</div>
+                  )}
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: surfaceMeshTopologyFieldValidation.faceValid ? "#047857" : "#b42318",
+                    }}
+                  >
+                    {surfaceMeshTopologyFieldValidation.faceLabel}
+                  </div>
+                </div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700 }}>Vertex</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <label style={{ fontSize: 11 }}>
+                      Vertex
+                      <input
+                        type="number"
+                        min={0}
+                        max={maxSurfaceMeshTopologyVertexIndex}
+                        step={1}
+                        value={surfaceMeshTopologyVertexIndex}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          if (Number.isFinite(v)) {
+                            onChangeSurfaceMeshTopologyVertexIndex(
+                              clampNumber(Math.round(v), 0, maxSurfaceMeshTopologyVertexIndex)
+                            );
+                          }
+                        }}
+                        style={{ width: 72, marginLeft: 6 }}
+                      />
+                    </label>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: surfaceMeshTopologyFieldValidation.vertexValid ? "#047857" : "#b42318",
+                      }}
+                    >
+                      {surfaceMeshTopologyFieldValidation.vertexLabel}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700 }}>Edge</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <label style={{ fontSize: 11 }}>
+                      A
+                      <input
+                        type="number"
+                        min={0}
+                        max={maxSurfaceMeshTopologyVertexIndex}
+                        step={1}
+                        value={surfaceMeshTopologyEdgeA}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          if (Number.isFinite(v)) {
+                            onChangeSurfaceMeshTopologyEdgeA(
+                              clampNumber(Math.round(v), 0, maxSurfaceMeshTopologyVertexIndex)
+                            );
+                          }
+                        }}
+                        style={{ width: 72, marginLeft: 6 }}
+                      />
+                    </label>
+                    <label style={{ fontSize: 11 }}>
+                      B
+                      <input
+                        type="number"
+                        min={0}
+                        max={maxSurfaceMeshTopologyVertexIndex}
+                        step={1}
+                        value={surfaceMeshTopologyEdgeB}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          if (Number.isFinite(v)) {
+                            onChangeSurfaceMeshTopologyEdgeB(
+                              clampNumber(Math.round(v), 0, maxSurfaceMeshTopologyVertexIndex)
+                            );
+                          }
+                        }}
+                        style={{ width: 72, marginLeft: 6 }}
+                      />
+                    </label>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: surfaceMeshTopologyFieldValidation.edgeValid ? "#047857" : "#b42318",
+                    }}
+                  >
+                    {surfaceMeshTopologyFieldValidation.edgeLabel}
+                  </div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <label style={{ fontSize: 11 }}>
+                        Split
+                        <input
+                          type="number"
+                          min={0.01}
+                          max={0.99}
+                          step={0.05}
+                          value={surfaceMeshTopologySplitRatio}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (Number.isFinite(v)) onChangeSurfaceMeshTopologySplitRatio(clampNumber(v, 0.01, 0.99));
+                          }}
+                          style={{ width: 72, marginLeft: 6 }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={onSurfaceMeshSplitEdge}
+                        disabled={!meshReady || !surfaceMeshTopologyFieldValidation.edgeValid}
+                      >
+                        Split Edge
+                      </button>
+                      {surfaceMeshTopologyPreview.splitEdge && (
+                        <span style={{ fontSize: 11, color: "#475467" }}>{surfaceMeshTopologyPreview.splitEdge}</span>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <select
+                        value={surfaceMeshTopologyCollapseMode}
+                        onChange={(e) => onChangeSurfaceMeshTopologyCollapseMode(e.target.value as EdgeCollapseMode)}
+                        disabled={!meshReady}
+                      >
+                        <option value="midpoint">Midpoint</option>
+                        <option value="keep-a">Keep A</option>
+                        <option value="keep-b">Keep B</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={onSurfaceMeshCollapseEdge}
+                        disabled={!meshReady || !surfaceMeshTopologyFieldValidation.edgeValid}
+                      >
+                        Collapse Edge
+                      </button>
+                      {surfaceMeshTopologyPreview.collapseEdge && (
+                        <span style={{ fontSize: 11, color: "#475467" }}>
+                          {surfaceMeshTopologyPreview.collapseEdge}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <label style={{ fontSize: 11 }}>
+                        Bevel
+                        <input
+                          type="number"
+                          min={0.001}
+                          step={0.01}
+                          value={surfaceMeshTopologyBevelAmount}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (Number.isFinite(v)) onChangeSurfaceMeshTopologyBevelAmount(Math.max(0.001, v));
+                          }}
+                          style={{ width: 72, marginLeft: 6 }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={onSurfaceMeshBevelEdge}
+                        disabled={!meshReady || !surfaceMeshTopologyFieldValidation.edgeValid}
+                      >
+                        Bevel Edge
+                      </button>
+                      {surfaceMeshTopologyPreview.bevelEdge && (
+                        <span style={{ fontSize: 11, color: "#475467" }}>{surfaceMeshTopologyPreview.bevelEdge}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {surfaceMeshTopologyStatus && (
+                <div style={{ fontSize: 11, color: "#05603a", marginTop: 8 }}>{surfaceMeshTopologyStatus}</div>
+              )}
             </div>
             {surfaceMeshOpsError && (
               <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{surfaceMeshOpsError}</div>

@@ -1608,7 +1608,9 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
               key={block.id}
               id={`wb-block-${block.id}`}
               style={{
-                border: selected ? "1px solid #93c5fd" : "1px solid #e0e0e0",
+                borderTop: selected ? "1px solid #93c5fd" : "1px solid #e0e0e0",
+                borderRight: selected ? "1px solid #93c5fd" : "1px solid #e0e0e0",
+                borderBottom: selected ? "1px solid #93c5fd" : "1px solid #e0e0e0",
                 borderRadius: 10,
                 padding: 10,
                 background: enabled ? (selected ? "#f8fbff" : "#fff") : "#f8fafc",
