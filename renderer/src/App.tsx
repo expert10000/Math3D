@@ -455,7 +455,7 @@ type SurfaceMeshAssetPreset = {
 type SurfaceMeshTopologyDemoPreset = {
   id: string;
   label: string;
-  operation: "Face Subdivide" | "Split Edge" | "Collapse Edge" | "Bevel Edge";
+  operation: SurfaceMeshTopologyOperation;
   summary: string;
   tryHint: string;
   expectedResult: string;
@@ -467,6 +467,7 @@ type SurfaceMeshTopologyDemoPreset = {
   collapseMode?: EdgeCollapseMode;
   bevelAmount?: number;
 };
+type SurfaceMeshTopologyOperation = "Face Subdivide" | "Split Edge" | "Collapse Edge" | "Bevel Edge";
 type GeometrySavedSectionCurve = {
   id: string;
   name: string;
@@ -28775,6 +28776,8 @@ const App: React.FC = () => {
   const [surfaceMeshTopologyCollapseMode, setSurfaceMeshTopologyCollapseMode] =
     useState<EdgeCollapseMode>("midpoint");
   const [surfaceMeshTopologyBevelAmount, setSurfaceMeshTopologyBevelAmount] = useState(0.06);
+  const [surfaceMeshTopologyPreviewOperation, setSurfaceMeshTopologyPreviewOperation] =
+    useState<SurfaceMeshTopologyOperation>("Split Edge");
   const [surfaceMeshTopologyStatus, setSurfaceMeshTopologyStatus] = useState<string | null>(null);
   const [surfaceMeshTopologyFeedback, setSurfaceMeshTopologyFeedback] =
     useState<GeometryTopologyEditFeedback | null>(null);
@@ -31762,6 +31765,107 @@ const App: React.FC = () => {
     const timeout = window.setTimeout(() => setSurfaceMeshTopologyFeedback(null), 1800);
     return () => window.clearTimeout(timeout);
   }, [surfaceMeshTopologyFeedback]);
+  const surfaceMeshTopologyGhostFeedback = useMemo<GeometryTopologyEditFeedback | null>(() => {
+    if (
+      !isMeshLikeViewer ||
+      surfaceMeshTopologyFeedback ||
+      surfaceMeshTopologyHistoryPreviewId ||
+      !surfaceMeshData?.positions?.length
+    ) {
+      return null;
+    }
+    try {
+      const faceIndex = Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
+      const edgeA = Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0));
+      const edgeB = Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0));
+      let action = "edge-split";
+      let targetLabel = `Edge ${edgeA}-${edgeB}`;
+      let edited: SurfaceMeshData;
+      if (surfaceMeshTopologyPreviewOperation === "Face Subdivide") {
+        action = "face-subdivide";
+        targetLabel = `Face ${faceIndex}`;
+        edited = subdivideFace(
+          cloneSurfaceMeshData(surfaceMeshData, surfaceMeshData.label),
+          faceIndex,
+          surfaceMeshTopologySubdivideMode
+        );
+      } else if (surfaceMeshTopologyPreviewOperation === "Collapse Edge") {
+        action = "edge-collapse";
+        edited = collapseEdge(
+          cloneSurfaceMeshData(surfaceMeshData, surfaceMeshData.label),
+          edgeA,
+          edgeB,
+          surfaceMeshTopologyCollapseMode
+        );
+      } else if (surfaceMeshTopologyPreviewOperation === "Bevel Edge") {
+        action = "edge-bevel";
+        edited = bevelEdge(
+          cloneSurfaceMeshData(surfaceMeshData, surfaceMeshData.label),
+          edgeA,
+          edgeB,
+          Math.max(0.001, surfaceMeshTopologyBevelAmount || 0.001)
+        );
+      } else {
+        edited = splitEdge(
+          cloneSurfaceMeshData(surfaceMeshData, surfaceMeshData.label),
+          edgeA,
+          edgeB,
+          clampNumber(surfaceMeshTopologySplitRatio, 0.01, 0.99)
+        );
+      }
+      const previewMesh = applySurfaceMeshOps(edited);
+      return buildTopologyEditFeedback(
+        "mesh-workspace-preview",
+        action,
+        targetLabel,
+        surfaceMeshData,
+        previewMesh,
+        previewMesh
+      );
+    } catch {
+      return null;
+    }
+  }, [
+    isMeshLikeViewer,
+    surfaceMeshData,
+    surfaceMeshTopologyBevelAmount,
+    surfaceMeshTopologyCollapseMode,
+    surfaceMeshTopologyEdgeA,
+    surfaceMeshTopologyEdgeB,
+    surfaceMeshTopologyFaceIndex,
+    surfaceMeshTopologyFeedback,
+    surfaceMeshTopologyHistoryPreviewId,
+    surfaceMeshTopologyPreviewOperation,
+    surfaceMeshTopologySplitRatio,
+    surfaceMeshTopologySubdivideMode,
+  ]);
+  const surfaceMeshTopologyGhostMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
+    if (!isMeshLikeViewer || !surfaceMeshTopologyGhostFeedback?.facePolygons.length) return null;
+    const groups: OverlayMeshGroup[] = [];
+    for (const polygon of surfaceMeshTopologyGhostFeedback.facePolygons.slice(0, 16)) {
+      const vertices = polygon.vertices ?? [];
+      if (vertices.length < 3) continue;
+      const normal = geometryNormalizeVec(polygonNormalFromVertices(vertices) ?? { x: 0, y: 1, z: 0 }) ?? {
+        x: 0,
+        y: 1,
+        z: 0,
+      };
+      const positions: number[] = [];
+      for (const vertex of vertices) {
+        positions.push(vertex.x + normal.x * 0.018, vertex.y + normal.y * 0.018, vertex.z + normal.z * 0.018);
+      }
+      const indices: number[] = [];
+      for (let i = 1; i + 1 < vertices.length; i += 1) indices.push(0, i, i + 1);
+      groups.push({
+        positions,
+        indices,
+        color: 0x60a5fa,
+        opacity: 0.2,
+        doubleSided: true,
+      });
+    }
+    return groups.length ? groups : null;
+  }, [isMeshLikeViewer, surfaceMeshTopologyGhostFeedback]);
   const surfaceMeshTopologySelectionFaceMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
     if (!isMeshLikeViewer || !surfaceMeshData?.positions?.length) return null;
     const polygon = readMeshFacePolygon(surfaceMeshData, Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0)));
@@ -31865,6 +31969,23 @@ const App: React.FC = () => {
     surfaceMeshTopologyFaceIndex,
     surfaceMeshTopologyVertexIndex,
   ]);
+  const surfaceMeshTopologyGhostPointSets = useMemo<OverlayPointSet[] | null>(() => {
+    if (!isMeshLikeViewer || !surfaceMeshTopologyGhostFeedback?.points.length) return null;
+    return [
+      {
+        points: surfaceMeshTopologyGhostFeedback.points,
+        color: 0xe0f2fe,
+        size: 0.3,
+        opacity: 0.58,
+      },
+      {
+        points: surfaceMeshTopologyGhostFeedback.points,
+        color: 0x38bdf8,
+        size: 0.2,
+        opacity: 0.94,
+      },
+    ];
+  }, [isMeshLikeViewer, surfaceMeshTopologyGhostFeedback]);
   const surfaceMeshTopologyFeedbackPointSets = useMemo<OverlayPointSet[] | null>(() => {
     if (!isMeshLikeViewer || !surfaceMeshTopologyFeedback?.points.length) return null;
     return [
@@ -31918,6 +32039,17 @@ const App: React.FC = () => {
     surfaceMeshTopologyEdgeB,
     surfaceMeshTopologyFaceIndex,
   ]);
+  const surfaceMeshTopologyGhostPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (!isMeshLikeViewer || !surfaceMeshTopologyGhostFeedback?.edgeLines.length) return null;
+    return [
+      {
+        lines: surfaceMeshTopologyGhostFeedback.edgeLines,
+        color: 0x60a5fa,
+        opacity: 0.78,
+        radiusWorld: 0.018,
+      },
+    ];
+  }, [isMeshLikeViewer, surfaceMeshTopologyGhostFeedback]);
   const surfaceMeshTopologyFeedbackPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (!isMeshLikeViewer || !surfaceMeshTopologyFeedback?.edgeLines.length) return null;
     return [
@@ -31951,11 +32083,13 @@ const App: React.FC = () => {
   const combinedOverlayMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
     const groups: OverlayMeshGroup[] = [];
     if (surfaceMeshTopologyHistoryPreviewMeshGroups?.length) groups.push(...surfaceMeshTopologyHistoryPreviewMeshGroups);
+    if (surfaceMeshTopologyGhostMeshGroups?.length) groups.push(...surfaceMeshTopologyGhostMeshGroups);
     if (surfaceMeshTopologySelectionFaceMeshGroups?.length) groups.push(...surfaceMeshTopologySelectionFaceMeshGroups);
     if (surfaceMeshTopologyFeedbackMeshGroups?.length) groups.push(...surfaceMeshTopologyFeedbackMeshGroups);
     return groups.length ? groups : null;
   }, [
     surfaceMeshTopologyFeedbackMeshGroups,
+    surfaceMeshTopologyGhostMeshGroups,
     surfaceMeshTopologyHistoryPreviewMeshGroups,
     surfaceMeshTopologySelectionFaceMeshGroups,
   ]);
@@ -31964,12 +32098,14 @@ const App: React.FC = () => {
     if (complexMapOverlayPointsActive?.length) sets.push(...complexMapOverlayPointsActive);
     if (meshQualityOverlayPointSets?.length) sets.push(...meshQualityOverlayPointSets);
     if (surfaceMeshTopologyOverlayPointSets?.length) sets.push(...surfaceMeshTopologyOverlayPointSets);
+    if (surfaceMeshTopologyGhostPointSets?.length) sets.push(...surfaceMeshTopologyGhostPointSets);
     if (surfaceMeshTopologyFeedbackPointSets?.length) sets.push(...surfaceMeshTopologyFeedbackPointSets);
     return sets.length ? sets : null;
   }, [
     complexMapOverlayPointsActive,
     meshQualityOverlayPointSets,
     surfaceMeshTopologyFeedbackPointSets,
+    surfaceMeshTopologyGhostPointSets,
     surfaceMeshTopologyOverlayPointSets,
   ]);
 
@@ -42359,6 +42495,7 @@ case "mobius":
     if (complexMapOverlayPolylineGroups?.length) groups.push(...complexMapOverlayPolylineGroups);
     if (meshQualityOverlayPolylineGroups?.length) groups.push(...meshQualityOverlayPolylineGroups);
     if (surfaceMeshTopologyOverlayPolylineGroups?.length) groups.push(...surfaceMeshTopologyOverlayPolylineGroups);
+    if (surfaceMeshTopologyGhostPolylineGroups?.length) groups.push(...surfaceMeshTopologyGhostPolylineGroups);
     if (surfaceMeshTopologyFeedbackPolylineGroups?.length) groups.push(...surfaceMeshTopologyFeedbackPolylineGroups);
     if (workbookCurveOverlayGhostGroups?.length) groups.push(...workbookCurveOverlayGhostGroups);
     if (workbookDirectionOverlayGhostGroups?.length) groups.push(...workbookDirectionOverlayGhostGroups);
@@ -42372,6 +42509,7 @@ case "mobius":
   }, [
     calculusVectorOverlayGroups,
     complexMapOverlayPolylineGroups,
+    surfaceMeshTopologyGhostPolylineGroups,
     meshQualityOverlayPolylineGroups,
     surfaceMeshTopologyFeedbackPolylineGroups,
     surfaceMeshTopologyOverlayPolylineGroups,
@@ -42390,6 +42528,7 @@ case "mobius":
     if (complexMapOverlayPolylineGroups?.length) groups.push(...complexMapOverlayPolylineGroups);
     if (meshQualityOverlayPolylineGroups?.length) groups.push(...meshQualityOverlayPolylineGroups);
     if (surfaceMeshTopologyOverlayPolylineGroups?.length) groups.push(...surfaceMeshTopologyOverlayPolylineGroups);
+    if (surfaceMeshTopologyGhostPolylineGroups?.length) groups.push(...surfaceMeshTopologyGhostPolylineGroups);
     if (surfaceMeshTopologyFeedbackPolylineGroups?.length) groups.push(...surfaceMeshTopologyFeedbackPolylineGroups);
     if (calculusVectorOverlayGroups?.length) groups.push(...calculusVectorOverlayGroups);
     return groups.length ? groups : null;
@@ -42400,6 +42539,7 @@ case "mobius":
     complexMapOverlayPolylineGroups,
     meshQualityOverlayPolylineGroups,
     surfaceMeshTopologyFeedbackPolylineGroups,
+    surfaceMeshTopologyGhostPolylineGroups,
     surfaceMeshTopologyOverlayPolylineGroups,
   ]);
 
@@ -42768,6 +42908,7 @@ case "mobius":
         if (preset.splitRatio != null) setSurfaceMeshTopologySplitRatio(preset.splitRatio);
         if (preset.collapseMode) setSurfaceMeshTopologyCollapseMode(preset.collapseMode);
         if (preset.bevelAmount != null) setSurfaceMeshTopologyBevelAmount(preset.bevelAmount);
+        setSurfaceMeshTopologyPreviewOperation(preset.operation);
         setSurfaceMeshTopologyHistory([]);
         setSelectedSurfaceMeshTopologyHistoryId(null);
         setSurfaceMeshTopologyHistoryPreviewId(null);
@@ -43002,6 +43143,9 @@ case "mobius":
 
   const surfaceMeshTopologyPreview = useMemo(
     () => ({
+      ghost: surfaceMeshTopologyGhostFeedback
+        ? `${surfaceMeshTopologyPreviewOperation}: ${surfaceMeshTopologyGhostFeedback.summary}`
+        : null,
       faceSubdivide: buildSurfaceMeshTopologyPreview("Face subdivide", (mesh) =>
         subdivideFace(
           mesh,
@@ -43036,11 +43180,13 @@ case "mobius":
     }),
     [
       buildSurfaceMeshTopologyPreview,
+      surfaceMeshTopologyGhostFeedback,
       surfaceMeshTopologyBevelAmount,
       surfaceMeshTopologyCollapseMode,
       surfaceMeshTopologyEdgeA,
       surfaceMeshTopologyEdgeB,
       surfaceMeshTopologyFaceIndex,
+      surfaceMeshTopologyPreviewOperation,
       surfaceMeshTopologySplitRatio,
       surfaceMeshTopologySubdivideMode,
     ]
@@ -43120,6 +43266,7 @@ case "mobius":
   );
 
   const handleSurfaceMeshFaceSubdivide = useCallback(() => {
+    setSurfaceMeshTopologyPreviewOperation("Face Subdivide");
     const faceIndex = Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
     const mode = surfaceMeshTopologySubdivideMode;
     applySurfaceMeshTopologyEdit(
@@ -43135,6 +43282,7 @@ case "mobius":
   }, [applySurfaceMeshTopologyEdit, surfaceMeshTopologyFaceIndex, surfaceMeshTopologySubdivideMode]);
 
   const handleSurfaceMeshSplitEdge = useCallback(() => {
+    setSurfaceMeshTopologyPreviewOperation("Split Edge");
     const edgeA = Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0));
     const edgeB = Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0));
     if (!surfaceMeshTopologyFieldValidation.edgeValid) {
@@ -43162,6 +43310,7 @@ case "mobius":
   ]);
 
   const handleSurfaceMeshCollapseEdge = useCallback(() => {
+    setSurfaceMeshTopologyPreviewOperation("Collapse Edge");
     const edgeA = Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0));
     const edgeB = Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0));
     if (!surfaceMeshTopologyFieldValidation.edgeValid) {
@@ -43189,6 +43338,7 @@ case "mobius":
   ]);
 
   const handleSurfaceMeshBevelEdge = useCallback(() => {
+    setSurfaceMeshTopologyPreviewOperation("Bevel Edge");
     const edgeA = Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0));
     const edgeB = Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0));
     if (!surfaceMeshTopologyFieldValidation.edgeValid) {
@@ -43231,6 +43381,7 @@ case "mobius":
         if (preset.splitRatio != null) setSurfaceMeshTopologySplitRatio(preset.splitRatio);
         if (preset.collapseMode) setSurfaceMeshTopologyCollapseMode(preset.collapseMode);
         if (preset.bevelAmount != null) setSurfaceMeshTopologyBevelAmount(preset.bevelAmount);
+        setSurfaceMeshTopologyPreviewOperation(preset.operation);
         setSurfaceMeshTopologyHistory([]);
         setSelectedSurfaceMeshTopologyHistoryId(null);
         setSurfaceMeshTopologyHistoryPreviewId(null);
@@ -56542,6 +56693,20 @@ case "mobius":
                           ))}
                         </div>
                       </div>
+                      {surfaceMeshTopologyPreview.ghost && (
+                        <div
+                          style={{
+                            border: "1px solid #bfdbfe",
+                            borderRadius: 7,
+                            background: "#eff6ff",
+                            color: "#1e3a8a",
+                            fontSize: 11,
+                            padding: "5px 7px",
+                          }}
+                        >
+                          Ghost preview: {surfaceMeshTopologyPreview.ghost}
+                        </div>
+                      )}
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
                         <span style={{ color: "#475467" }}>Pick target</span>
                         {(["auto", "face", "edge", "vertex"] as SurfaceMeshTopologyPickMode[]).map((pickMode) => (
@@ -83053,6 +83218,7 @@ type SurfacesLeftPanelProps = {
     vertexLabel: string;
   };
   surfaceMeshTopologyPreview: {
+    ghost: string | null;
     faceSubdivide: string | null;
     splitEdge: string | null;
     collapseEdge: string | null;
@@ -87437,6 +87603,21 @@ onChangeImplicitExpr,
                     </button>
                   ))}
                 </div>
+                {surfaceMeshTopologyPreview.ghost && (
+                  <div
+                    style={{
+                      border: "1px solid #bfdbfe",
+                      borderRadius: 7,
+                      background: "#eff6ff",
+                      color: "#1e3a8a",
+                      fontSize: 11,
+                      marginTop: 7,
+                      padding: "5px 7px",
+                    }}
+                  >
+                    Ghost preview: {surfaceMeshTopologyPreview.ghost}
+                  </div>
+                )}
               </div>
 
               <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
