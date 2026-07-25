@@ -10737,6 +10737,37 @@ const App: React.FC = () => {
     () => geometryDatasetMeshObjects.find((obj) => obj.id === geometrySelectedObjectId) ?? null,
     [geometryDatasetMeshObjects, geometrySelectedObjectId]
   );
+  const geometrySelectedMeshTopologyHandoff = useMemo(() => {
+    const history = geometrySelectedDatasetMeshObject?.promotion?.sourceOperationHistory ?? [];
+    const topologySteps = history
+      .filter((entry) => entry.startsWith("Mesh topology:"))
+      .map((entry) => {
+        const text = entry.replace(/^Mesh topology:\s*/, "").trim();
+        const [beforeResult, ...resultParts] = text.split(/\s*->\s*/);
+        const result = resultParts.join(" -> ").trim();
+        const [actionRaw, ...targetParts] = beforeResult.split(" - ");
+        return {
+          action: actionRaw?.trim() || "Topology edit",
+          target: targetParts.join(" - ").trim() || "selected entity",
+          result: result || "edited mesh",
+          raw: text,
+        };
+      });
+    if (!topologySteps.length) return null;
+    const sourceViewer =
+      history.find((entry) => entry.startsWith("surface-viewer:"))?.replace(/^surface-viewer:/, "").trim() || "mesh";
+    const sourceMesh =
+      history.find((entry) => !entry.startsWith("surface-viewer:") && !entry.startsWith("Mesh topology:"))?.trim() ||
+      geometrySelectedDatasetMeshObject?.mesh.label ||
+      geometrySelectedDatasetMeshObject?.name ||
+      "SurfaceMesh";
+    return {
+      sourceViewer,
+      sourceMesh,
+      steps: topologySteps,
+      latest: topologySteps[topologySteps.length - 1],
+    };
+  }, [geometrySelectedDatasetMeshObject]);
   const geometrySelectedVariantSet = useMemo(() => {
     if (!geometrySelectedSceneObject) return null;
     return geometryVariantSets[geometrySelectedSceneObject.id] ?? null;
@@ -68052,6 +68083,69 @@ case "mobius":
                         ) : (
                           <div style={{ marginTop: 6, fontSize: 10.5, color: "#64748b" }}>
                             No variants saved for this object yet.
+                          </div>
+                        )}
+                        {geometrySelectedMeshTopologyHandoff && (
+                          <div
+                            data-testid="geometry-mesh-topology-source-history"
+                            style={{
+                              marginTop: 8,
+                              border: "1px solid #bae6fd",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#f0f9ff",
+                              color: "#0f3557",
+                              display: "grid",
+                              gap: 6,
+                              fontSize: 10.5,
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                              <div style={{ fontWeight: 800 }}>Mesh topology source history</div>
+                              <span
+                                style={{
+                                  border: "1px solid #7dd3fc",
+                                  borderRadius: 999,
+                                  padding: "1px 6px",
+                                  background: "#e0f2fe",
+                                  color: "#075985",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {geometrySelectedMeshTopologyHandoff.steps.length} step
+                                {geometrySelectedMeshTopologyHandoff.steps.length === 1 ? "" : "s"}
+                              </span>
+                            </div>
+                            <div>
+                              Source: {geometrySelectedMeshTopologyHandoff.sourceMesh} ({geometrySelectedMeshTopologyHandoff.sourceViewer})
+                            </div>
+                            <div>
+                              Latest: {geometrySelectedMeshTopologyHandoff.latest.action} on{" "}
+                              {geometrySelectedMeshTopologyHandoff.latest.target} {"->"}{" "}
+                              {geometrySelectedMeshTopologyHandoff.latest.result}
+                            </div>
+                            <div style={{ display: "grid", gap: 4 }}>
+                              {geometrySelectedMeshTopologyHandoff.steps.slice(-4).map((step, index) => (
+                                <div
+                                  key={`geometry-mesh-topology-source-${step.raw}-${index}`}
+                                  style={{
+                                    border: "1px solid #dbeafe",
+                                    borderRadius: 6,
+                                    padding: "4px 6px",
+                                    background: "#ffffff",
+                                    display: "grid",
+                                    gap: 2,
+                                  }}
+                                >
+                                  <div style={{ fontWeight: 700 }}>
+                                    {index + 1}. {step.action}
+                                  </div>
+                                  <div style={{ color: "#475569" }}>
+                                    {step.target} {"->"} {step.result}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
                         {geometrySelectedDatasetMeshObject.promotion && (

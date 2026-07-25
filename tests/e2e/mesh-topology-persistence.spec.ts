@@ -140,6 +140,12 @@ test.describe("Mesh topology persistence and handoff", () => {
       await firstVisible(page.getByRole("button", { name: "Promote", exact: true })).then((button) => button.click());
       await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText(/Demo: bevel edge \(bevel edge\)/i).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/Converted to detached Mesh object/i).first()).toBeVisible({ timeout: 15_000 });
+      await firstVisible(page.getByRole("button", { name: "Close", exact: true })).then((button) => button.click());
+      await firstVisible(page.getByRole("button", { name: "Object", exact: true })).then((button) => button.click());
+      await expect(page.getByTestId("geometry-mesh-topology-source-history")).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/Mesh topology source history/i).first()).toBeVisible();
+      await expect(page.getByText(/Latest: Bevel edge/i).first()).toBeVisible();
     } finally {
       await closeApp(ctx);
     }
