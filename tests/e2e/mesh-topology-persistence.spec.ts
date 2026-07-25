@@ -1,0 +1,147 @@
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import type { ElectronApplication } from "playwright";
+import { mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { launchRepoElectron } from "./helpers/electronLauncher";
+
+const repoRoot = path.resolve(__dirname, "..", "..");
+const firstLaunchKey = "math3d.computeEngines.firstLaunchSeen";
+const sectionLabels = ["Surfaces", "Mesh", "Volume", "Curves", "Topology", "Geometry", "Complex Analysis"] as const;
+
+async function firstVisible(locator: Locator): Promise<Locator> {
+  const count = await locator.count();
+  for (let i = 0; i < count; i += 1) {
+    const candidate = locator.nth(i);
+    if (await candidate.isVisible().catch(() => false)) return candidate;
+  }
+  throw new Error("No visible locator match found.");
+}
+
+async function findSectionButton(page: Page, label: string): Promise<Locator> {
+  const buttons = page.getByRole("button", { name: label, exact: true });
+  const count = await buttons.count();
+  for (let i = 0; i < count; i += 1) {
+    const button = buttons.nth(i);
+    if (!(await button.isVisible().catch(() => false))) continue;
+    if ((await button.getAttribute("aria-pressed")) == null) continue;
+    return button;
+  }
+  throw new Error(`Section button not found: ${label}`);
+}
+
+async function selectSection(page: Page, label: (typeof sectionLabels)[number]): Promise<void> {
+  const button = await findSectionButton(page, label);
+  await button.click();
+  await page.waitForFunction(
+    ({ expectedLabels, expectedLabel }) => {
+      const buttons = Array.from(document.querySelectorAll("button"));
+      for (const candidate of expectedLabels) {
+        const active = buttons.find((button) => {
+          const text = (button.textContent ?? "").trim();
+          return text === candidate && button.getAttribute("aria-pressed") === "true";
+        });
+        if (active) return candidate === expectedLabel;
+      }
+      return false;
+    },
+    { expectedLabels: [...sectionLabels], expectedLabel: label },
+    { timeout: 15_000, polling: 25 }
+  );
+}
+
+async function launchApp(): Promise<{ app: ElectronApplication; page: Page; profileDir: string }> {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-mesh-topology-"));
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    APPDATA: profileDir,
+    LOCALAPPDATA: profileDir,
+    ELECTRON_ENABLE_LOGGING: "1",
+    MATH3D_E2E: "1",
+  };
+  delete env.ELECTRON_RUN_AS_NODE;
+
+  const app = await launchRepoElectron({ args: ["."], cwd: repoRoot, env });
+  const page = await app.firstWindow();
+  await page.waitForLoadState("domcontentloaded");
+  await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
+  await page.evaluate((key) => {
+    localStorage.clear();
+    localStorage.setItem(key, "1");
+  }, firstLaunchKey);
+  await page.reload();
+  await page.waitForLoadState("domcontentloaded");
+  await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
+  return { app, page, profileDir };
+}
+
+async function closeApp(ctx: { app: ElectronApplication; profileDir: string } | null): Promise<void> {
+  if (!ctx) return;
+  await ctx.app.close().catch(() => undefined);
+  rmSync(ctx.profileDir, { recursive: true, force: true });
+}
+
+async function openMeshGallery(page: Page): Promise<void> {
+  await selectSection(page, "Mesh");
+  const meshPresets = await firstVisible(page.getByRole("button", { name: "Mesh presets", exact: true }));
+  await meshPresets.click();
+  await expect(page.getByTestId("mesh-preset-grid")).toBeVisible({ timeout: 15_000 });
+}
+
+async function runTopologyDemo(
+  page: Page,
+  demoId: string,
+  operationButtonName: string,
+  expectedHistoryName: RegExp
+): Promise<void> {
+  await openMeshGallery(page);
+  await page.getByTestId(`mesh-topology-preset-card-${demoId}`).click();
+  const meshTools = await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true }));
+  await meshTools.click();
+  const operation = await firstVisible(page.getByRole("button", { name: operationButtonName, exact: true }));
+  await operation.click();
+  await expect(page.getByText(expectedHistoryName).first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/Topology history/i).first()).toBeVisible();
+}
+
+test.describe("Mesh topology persistence and handoff", () => {
+  test("keeps topology history, saved examples, preview modes, and Geometry handoff", async () => {
+    test.setTimeout(180_000);
+    let ctx: { app: ElectronApplication; page: Page; profileDir: string } | null = null;
+
+    try {
+      ctx = await launchApp();
+      const { page } = ctx;
+
+      await runTopologyDemo(page, "topology_demo_split_edge", "Split Edge", /Split edge/i);
+      await firstVisible(page.getByRole("button", { name: "Preview Before", exact: true })).then((button) => button.click());
+      await expect(page.getByText(/Previewing Before mesh: Split edge/i).first()).toBeVisible();
+      await firstVisible(page.getByRole("button", { name: "Preview After", exact: true })).then((button) => button.click());
+      await expect(page.getByText(/Previewing After mesh: Split edge/i).first()).toBeVisible();
+
+      await firstVisible(page.getByLabel("Mesh topology example name")).then((field) => field.fill("Saved Split Demo"));
+      await firstVisible(page.getByRole("button", { name: "Save edited", exact: true })).then((button) => button.click());
+      await expect(page.getByText(/Saved edited Mesh example: Saved Split Demo/i).first()).toBeVisible();
+
+      await page.reload();
+      await page.waitForLoadState("domcontentloaded");
+      await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true })).then((button) => button.click());
+      await expect(page.getByText(/Topology history/i).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/Split edge/i).first()).toBeVisible();
+
+      await openMeshGallery(page);
+      await expect(page.getByRole("button", { name: /Saved Split Demo/i }).first()).toBeVisible({ timeout: 15_000 });
+      await page.getByRole("button", { name: /Saved Split Demo/i }).first().click();
+      await expect(page.getByText(/Opened saved Mesh example: Saved Split Demo/i).first()).toBeVisible();
+
+      await runTopologyDemo(page, "topology_demo_collapse_edge", "Collapse Edge", /Collapse edge/i);
+      await runTopologyDemo(page, "topology_demo_bevel_edge", "Bevel Edge", /Bevel edge/i);
+
+      await firstVisible(page.getByRole("button", { name: "Promote", exact: true })).then((button) => button.click());
+      await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/Demo: bevel edge \(bevel edge\)/i).first()).toBeVisible({ timeout: 15_000 });
+    } finally {
+      await closeApp(ctx);
+    }
+  });
+});

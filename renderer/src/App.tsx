@@ -1056,6 +1056,11 @@ const WORKBOOK_BUNDLE_ASSET_MODE_KEY = "math3d.workbook.bundleAssetMode.v1";
 const WORKBOOK_MANUAL_SAVE_HASH_KEY = "math3d.workbook.manualSaveHash.v1";
 const WORKBOOK_MANUAL_SAVE_AT_KEY = "math3d.workbook.manualSaveAt.v1";
 const WORKBOOK_MANUAL_SAVE_NAME_KEY = "math3d.workbook.manualSaveName.v1";
+const SURFACE_MESH_TOPOLOGY_SESSION_KEY = "math3d.mesh.topologySession.v1";
+const SURFACE_MESH_TOPOLOGY_SAVED_PRESETS_KEY = "math3d.mesh.topologySavedPresets.v1";
+const SURFACE_MESH_TOPOLOGY_SESSION_MAX_CHARS = 3_400_000;
+const SURFACE_MESH_TOPOLOGY_PERSIST_HISTORY_LIMIT = 4;
+const SURFACE_MESH_TOPOLOGY_SAVED_PRESET_LIMIT = 8;
 const SURFACE_RENDER_QUALITY_KEY = "math3d.surface.renderQuality.v1";
 const UI_THEME_KEY = "math3d.ui.theme.v1";
 const UI_ACCENT_KEY = "math3d.ui.accent.v1";
@@ -5263,6 +5268,170 @@ type SurfaceMeshTopologyHistoryEntry = {
   selectedResultLabel: string;
   beforeSnapshot: SurfaceMeshData;
   snapshot: SurfaceMeshData;
+};
+type TopologySerializedSurfaceMeshData = {
+  label: string;
+  positions: number[];
+  indices: number[] | null;
+  normals?: number[] | null;
+  uvs?: number[] | null;
+  source: SurfaceMeshData["source"];
+  adjacency?: number[][] | null;
+  meanEdgeLength?: number | null;
+  validation?: SurfaceMeshData["validation"] | null;
+};
+type StoredSurfaceMeshTopologyHistoryEntry = Omit<
+  SurfaceMeshTopologyHistoryEntry,
+  "beforeSnapshot" | "snapshot"
+> & {
+  beforeSnapshot: TopologySerializedSurfaceMeshData;
+  snapshot: TopologySerializedSurfaceMeshData;
+};
+type StoredSurfaceMeshTopologySession = {
+  version: 1;
+  savedAt: number;
+  activeMesh: TopologySerializedSurfaceMeshData;
+  history: StoredSurfaceMeshTopologyHistoryEntry[];
+  selectedHistoryId: string | null;
+  fields: {
+    faceIndex: number;
+    edgeA: number;
+    edgeB: number;
+    vertexIndex: number;
+    previewOperation: SurfaceMeshTopologyOperation;
+    subdivideMode: FaceSubdivideMode;
+    splitRatio: number;
+    collapseMode: EdgeCollapseMode;
+    bevelAmount: number;
+  };
+};
+type RestoredSurfaceMeshTopologySession = Omit<
+  StoredSurfaceMeshTopologySession,
+  "activeMesh" | "history"
+> & {
+  activeMesh: SurfaceMeshData;
+  history: SurfaceMeshTopologyHistoryEntry[];
+};
+type SurfaceMeshTopologySavedPreset = {
+  id: string;
+  name: string;
+  createdAt: number;
+  summary: string;
+  mesh: TopologySerializedSurfaceMeshData;
+  history: StoredSurfaceMeshTopologyHistoryEntry[];
+};
+
+const serializeTopologySurfaceMeshData = (mesh: SurfaceMeshData): TopologySerializedSurfaceMeshData => ({
+  label: mesh.label,
+  positions: Array.from(mesh.positions),
+  indices: mesh.indices ? Array.from(mesh.indices) : null,
+  normals: mesh.normals ? Array.from(mesh.normals) : null,
+  uvs: mesh.uvs ? Array.from(mesh.uvs) : null,
+  source: mesh.source,
+  adjacency: mesh.adjacency ? mesh.adjacency.map((row) => row.slice()) : null,
+  meanEdgeLength: mesh.meanEdgeLength ?? null,
+  validation: mesh.validation
+    ? {
+        ...mesh.validation,
+        errors: [...mesh.validation.errors],
+        warnings: [...mesh.validation.warnings],
+        stats: { ...mesh.validation.stats },
+      }
+    : null,
+});
+
+const deserializeTopologySurfaceMeshData = (
+  mesh: TopologySerializedSurfaceMeshData | null | undefined
+): SurfaceMeshData | null => {
+  if (!mesh || !Array.isArray(mesh.positions) || mesh.positions.length < 9 || mesh.positions.length % 3 !== 0) {
+    return null;
+  }
+  const indices = Array.isArray(mesh.indices) && mesh.indices.length >= 3 ? Uint32Array.from(mesh.indices) : null;
+  return {
+    label: typeof mesh.label === "string" && mesh.label.trim() ? mesh.label : "Surface mesh",
+    positions: Float32Array.from(mesh.positions),
+    indices,
+    normals: Array.isArray(mesh.normals) && mesh.normals.length ? Float32Array.from(mesh.normals) : null,
+    uvs: Array.isArray(mesh.uvs) && mesh.uvs.length ? Float32Array.from(mesh.uvs) : null,
+    source: mesh.source ?? { kind: "detachedMesh" },
+    adjacency: Array.isArray(mesh.adjacency) ? mesh.adjacency.map((row) => (Array.isArray(row) ? row.slice() : [])) : null,
+    meanEdgeLength: typeof mesh.meanEdgeLength === "number" ? mesh.meanEdgeLength : null,
+    validation: mesh.validation ?? null,
+  };
+};
+
+const serializeSurfaceMeshTopologyHistoryEntry = (
+  entry: SurfaceMeshTopologyHistoryEntry
+): StoredSurfaceMeshTopologyHistoryEntry => ({
+  ...entry,
+  beforeSnapshot: serializeTopologySurfaceMeshData(entry.beforeSnapshot),
+  snapshot: serializeTopologySurfaceMeshData(entry.snapshot),
+});
+
+const deserializeSurfaceMeshTopologyHistoryEntry = (
+  entry: StoredSurfaceMeshTopologyHistoryEntry | null | undefined
+): SurfaceMeshTopologyHistoryEntry | null => {
+  if (!entry || typeof entry.id !== "string") return null;
+  const beforeSnapshot = deserializeTopologySurfaceMeshData(entry.beforeSnapshot);
+  const snapshot = deserializeTopologySurfaceMeshData(entry.snapshot);
+  if (!beforeSnapshot || !snapshot) return null;
+  return {
+    id: entry.id,
+    at: Number.isFinite(entry.at) ? entry.at : Date.now(),
+    actionLabel: typeof entry.actionLabel === "string" ? entry.actionLabel : "Topology edit",
+    sourceLabel: typeof entry.sourceLabel === "string" ? entry.sourceLabel : "Surface mesh",
+    targetLabel: typeof entry.targetLabel === "string" ? entry.targetLabel : "target",
+    paramsLabel: typeof entry.paramsLabel === "string" ? entry.paramsLabel : "params",
+    resultLabel: typeof entry.resultLabel === "string" ? entry.resultLabel : "edited mesh",
+    beforeCounts: entry.beforeCounts,
+    afterCounts: entry.afterCounts,
+    selectedResultLabel: typeof entry.selectedResultLabel === "string" ? entry.selectedResultLabel : "edited result",
+    beforeSnapshot,
+    snapshot,
+  };
+};
+
+const readStoredSurfaceMeshTopologySession = (): RestoredSurfaceMeshTopologySession | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(SURFACE_MESH_TOPOLOGY_SESSION_KEY);
+    if (!raw || raw.length > SURFACE_MESH_TOPOLOGY_SESSION_MAX_CHARS) return null;
+    const stored = safeParseObject<StoredSurfaceMeshTopologySession>(raw);
+    if (!stored || stored.version !== 1 || !Number.isFinite(stored.savedAt)) return null;
+    if (Date.now() - stored.savedAt > 1000 * 60 * 60 * 24 * 14) return null;
+    const activeMesh = deserializeTopologySurfaceMeshData(stored.activeMesh);
+    if (!activeMesh) return null;
+    const history = (Array.isArray(stored.history) ? stored.history : [])
+      .map(deserializeSurfaceMeshTopologyHistoryEntry)
+      .filter((entry): entry is SurfaceMeshTopologyHistoryEntry => !!entry)
+      .slice(0, SURFACE_MESH_TOPOLOGY_PERSIST_HISTORY_LIMIT);
+    return {
+      ...stored,
+      activeMesh,
+      history,
+      selectedHistoryId:
+        typeof stored.selectedHistoryId === "string" &&
+        history.some((entry) => entry.id === stored.selectedHistoryId)
+          ? stored.selectedHistoryId
+          : history[0]?.id ?? null,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const readStoredSurfaceMeshTopologySavedPresets = (): SurfaceMeshTopologySavedPreset[] => {
+  if (typeof window === "undefined") return [];
+  try {
+    return safeParseArray<SurfaceMeshTopologySavedPreset>(
+      window.localStorage.getItem(SURFACE_MESH_TOPOLOGY_SAVED_PRESETS_KEY)
+    )
+      .filter((entry) => typeof entry.id === "string" && typeof entry.name === "string")
+      .filter((entry) => !!deserializeTopologySurfaceMeshData(entry.mesh))
+      .slice(0, SURFACE_MESH_TOPOLOGY_SAVED_PRESET_LIMIT);
+  } catch {
+    return [];
+  }
 };
 
 const distancePointToSegmentSq = (point: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3): number => {
@@ -28120,7 +28289,13 @@ const App: React.FC = () => {
   // Surfaces viewer kind
   const [surfaceViewerKind, setSurfaceViewerKind] = useState<SurfaceViewerKind>("implicit");
   const [datasetKind, setDatasetKind] = useState<DatasetKind>("surface");
+  const [initialSurfaceMeshTopologySession] = useState<RestoredSurfaceMeshTopologySession | null>(() =>
+    readStoredSurfaceMeshTopologySession()
+  );
   const [meshDataset, setMeshDatasetState] = useState<MeshDataset | null>(() => {
+    if (initialSurfaceMeshTopologySession?.activeMesh) {
+      return toMeshDataset(applySurfaceMeshOps(initialSurfaceMeshTopologySession.activeMesh));
+    }
     const preset = SURFACE_MESH_PRESETS[0];
     try {
       const base = buildSurfaceMeshFromGeometry(
@@ -28770,28 +28945,119 @@ const App: React.FC = () => {
   const [surfaceMeshSubdivideIterations, setSurfaceMeshSubdivideIterations] = useState(1);
   const [surfaceMeshNormalizeDiag, setSurfaceMeshNormalizeDiag] = useState(2);
   const [surfaceMeshOpsError, setSurfaceMeshOpsError] = useState<string | null>(null);
-  const [surfaceMeshTopologyFaceIndex, setSurfaceMeshTopologyFaceIndex] = useState(0);
-  const [surfaceMeshTopologyEdgeA, setSurfaceMeshTopologyEdgeA] = useState(0);
-  const [surfaceMeshTopologyEdgeB, setSurfaceMeshTopologyEdgeB] = useState(1);
-  const [surfaceMeshTopologyVertexIndex, setSurfaceMeshTopologyVertexIndex] = useState(0);
+  const [surfaceMeshTopologyFaceIndex, setSurfaceMeshTopologyFaceIndex] = useState(
+    initialSurfaceMeshTopologySession?.fields.faceIndex ?? 0
+  );
+  const [surfaceMeshTopologyEdgeA, setSurfaceMeshTopologyEdgeA] = useState(
+    initialSurfaceMeshTopologySession?.fields.edgeA ?? 0
+  );
+  const [surfaceMeshTopologyEdgeB, setSurfaceMeshTopologyEdgeB] = useState(
+    initialSurfaceMeshTopologySession?.fields.edgeB ?? 1
+  );
+  const [surfaceMeshTopologyVertexIndex, setSurfaceMeshTopologyVertexIndex] = useState(
+    initialSurfaceMeshTopologySession?.fields.vertexIndex ?? 0
+  );
   const [surfaceMeshTopologyPickMode, setSurfaceMeshTopologyPickMode] =
     useState<SurfaceMeshTopologyPickMode>("auto");
-  const [surfaceMeshTopologySubdivideMode, setSurfaceMeshTopologySubdivideMode] =
-    useState<FaceSubdivideMode>("center-fan");
-  const [surfaceMeshTopologySplitRatio, setSurfaceMeshTopologySplitRatio] = useState(0.5);
-  const [surfaceMeshTopologyCollapseMode, setSurfaceMeshTopologyCollapseMode] =
-    useState<EdgeCollapseMode>("midpoint");
-  const [surfaceMeshTopologyBevelAmount, setSurfaceMeshTopologyBevelAmount] = useState(0.06);
+  const [surfaceMeshTopologySubdivideMode, setSurfaceMeshTopologySubdivideMode] = useState<FaceSubdivideMode>(
+    initialSurfaceMeshTopologySession?.fields.subdivideMode ?? "center-fan"
+  );
+  const [surfaceMeshTopologySplitRatio, setSurfaceMeshTopologySplitRatio] = useState(
+    initialSurfaceMeshTopologySession?.fields.splitRatio ?? 0.5
+  );
+  const [surfaceMeshTopologyCollapseMode, setSurfaceMeshTopologyCollapseMode] = useState<EdgeCollapseMode>(
+    initialSurfaceMeshTopologySession?.fields.collapseMode ?? "midpoint"
+  );
+  const [surfaceMeshTopologyBevelAmount, setSurfaceMeshTopologyBevelAmount] = useState(
+    initialSurfaceMeshTopologySession?.fields.bevelAmount ?? 0.06
+  );
   const [surfaceMeshTopologyPreviewOperation, setSurfaceMeshTopologyPreviewOperation] =
-    useState<SurfaceMeshTopologyOperation>("Split Edge");
+    useState<SurfaceMeshTopologyOperation>(
+      initialSurfaceMeshTopologySession?.fields.previewOperation ?? "Split Edge"
+    );
   const [surfaceMeshTopologyStatus, setSurfaceMeshTopologyStatus] = useState<string | null>(null);
   const [surfaceMeshTopologyFeedback, setSurfaceMeshTopologyFeedback] =
     useState<GeometryTopologyEditFeedback | null>(null);
-  const [surfaceMeshTopologyHistory, setSurfaceMeshTopologyHistory] = useState<SurfaceMeshTopologyHistoryEntry[]>([]);
-  const [selectedSurfaceMeshTopologyHistoryId, setSelectedSurfaceMeshTopologyHistoryId] = useState<string | null>(null);
+  const [surfaceMeshTopologyHistory, setSurfaceMeshTopologyHistory] = useState<SurfaceMeshTopologyHistoryEntry[]>(
+    initialSurfaceMeshTopologySession?.history ?? []
+  );
+  const [selectedSurfaceMeshTopologyHistoryId, setSelectedSurfaceMeshTopologyHistoryId] = useState<string | null>(
+    initialSurfaceMeshTopologySession?.selectedHistoryId ?? null
+  );
   const [surfaceMeshTopologyHistoryPreviewId, setSurfaceMeshTopologyHistoryPreviewId] = useState<string | null>(null);
   const [surfaceMeshTopologyHistoryPreviewMode, setSurfaceMeshTopologyHistoryPreviewMode] =
     useState<"before" | "after">("after");
+  const [surfaceMeshTopologySaveName, setSurfaceMeshTopologySaveName] = useState("");
+  const [surfaceMeshTopologySavedPresets, setSurfaceMeshTopologySavedPresets] = useState<
+    SurfaceMeshTopologySavedPreset[]
+  >(() => readStoredSurfaceMeshTopologySavedPresets());
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!surfaceMeshData?.positions?.length || surfaceMeshTopologyHistory.length === 0) {
+      window.localStorage.removeItem(SURFACE_MESH_TOPOLOGY_SESSION_KEY);
+      return;
+    }
+    const session: StoredSurfaceMeshTopologySession = {
+      version: 1,
+      savedAt: Date.now(),
+      activeMesh: serializeTopologySurfaceMeshData(surfaceMeshData),
+      history: surfaceMeshTopologyHistory
+        .slice(0, SURFACE_MESH_TOPOLOGY_PERSIST_HISTORY_LIMIT)
+        .map(serializeSurfaceMeshTopologyHistoryEntry),
+      selectedHistoryId: selectedSurfaceMeshTopologyHistoryId,
+      fields: {
+        faceIndex: surfaceMeshTopologyFaceIndex,
+        edgeA: surfaceMeshTopologyEdgeA,
+        edgeB: surfaceMeshTopologyEdgeB,
+        vertexIndex: surfaceMeshTopologyVertexIndex,
+        previewOperation: surfaceMeshTopologyPreviewOperation,
+        subdivideMode: surfaceMeshTopologySubdivideMode,
+        splitRatio: surfaceMeshTopologySplitRatio,
+        collapseMode: surfaceMeshTopologyCollapseMode,
+        bevelAmount: surfaceMeshTopologyBevelAmount,
+      },
+    };
+    try {
+      const raw = JSON.stringify(session);
+      if (raw.length <= SURFACE_MESH_TOPOLOGY_SESSION_MAX_CHARS) {
+        window.localStorage.setItem(SURFACE_MESH_TOPOLOGY_SESSION_KEY, raw);
+      }
+    } catch {
+      // Persistence is best-effort; the live edit state remains authoritative.
+    }
+  }, [
+    selectedSurfaceMeshTopologyHistoryId,
+    surfaceMeshData,
+    surfaceMeshTopologyBevelAmount,
+    surfaceMeshTopologyCollapseMode,
+    surfaceMeshTopologyEdgeA,
+    surfaceMeshTopologyEdgeB,
+    surfaceMeshTopologyFaceIndex,
+    surfaceMeshTopologyHistory,
+    surfaceMeshTopologyPreviewOperation,
+    surfaceMeshTopologySplitRatio,
+    surfaceMeshTopologySubdivideMode,
+    surfaceMeshTopologyVertexIndex,
+  ]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        SURFACE_MESH_TOPOLOGY_SAVED_PRESETS_KEY,
+        JSON.stringify(surfaceMeshTopologySavedPresets.slice(0, SURFACE_MESH_TOPOLOGY_SAVED_PRESET_LIMIT))
+      );
+    } catch {
+      // Saved examples are optional local conveniences.
+    }
+  }, [surfaceMeshTopologySavedPresets]);
+  useEffect(() => {
+    if (!initialSurfaceMeshTopologySession) return;
+    setDatasetKind("mesh");
+    setSurfaceViewerKind("mesh");
+    setSurfaceMeshTopologyStatus(
+      `Restored Mesh topology session: ${initialSurfaceMeshTopologySession.history.length} history step(s).`
+    );
+  }, [initialSurfaceMeshTopologySession]);
   const surfaceMeshTopologyAutoPickStampRef = useRef(0);
   const [vtkBusy, setVtkBusy] = useState(false);
   const [vtkError, setVtkError] = useState<string | null>(null);
@@ -29621,17 +29887,28 @@ const App: React.FC = () => {
       return;
     }
     setMeshDataset(meshForConversion);
+    const latestTopologyEdit = surfaceViewerKind === "mesh" ? surfaceMeshTopologyHistory[0] ?? null : null;
+    const topologyHistoryLabels =
+      surfaceViewerKind === "mesh" && surfaceMeshTopologyHistory.length
+        ? surfaceMeshTopologyHistory
+            .slice()
+            .reverse()
+            .map((entry) => `Mesh topology: ${entry.actionLabel} - ${entry.targetLabel} -> ${entry.resultLabel}`)
+        : [];
+    const convertedName = latestTopologyEdit
+      ? `${meshForConversion.label ?? "Surface mesh"} (${latestTopologyEdit.actionLabel})`
+      : meshForConversion.label ?? "Surface mesh";
     const promoted = promoteGeometryToMesh({
       mesh: meshForConversion,
       sourceGeometryId: null,
-      sourceOperationHistory: [`surface-viewer:${surfaceViewerKind}`, buildActiveMeshLabel()],
+      sourceOperationHistory: [`surface-viewer:${surfaceViewerKind}`, buildActiveMeshLabel(), ...topologyHistoryLabels],
       promotionMode: geometryPromotionMode,
-      labelOverride: meshForConversion.label ?? "Surface mesh",
+      labelOverride: convertedName,
     });
     const id = makeId();
     const obj: GeometryDatasetMeshObject = {
       id,
-      name: `${meshForConversion.label ?? "Surface mesh"} (mesh object)`,
+      name: `${convertedName} mesh object`,
       mesh: toDetachedMeshData(promoted.mesh),
       transform: {
         position: { x: 0, y: 0, z: 0 },
@@ -29655,6 +29932,19 @@ const App: React.FC = () => {
     setGeometryProceduralPanelTab("object");
     setGeometryMode("procedural");
     setMode("geometry");
+    queueGeometryHistoryIntent(id, {
+      action: "pipeline-mesh-handoff",
+      label: latestTopologyEdit ? `Mesh handoff after ${latestTopologyEdit.actionLabel}` : "Mesh handoff",
+      operationType: "Pipeline",
+      target: convertedName,
+      parameters: topologyHistoryLabels.length ? topologyHistoryLabels.join(" | ") : "SurfaceMesh conversion",
+      destructive: false,
+    });
+    setGeometryCreateActionStatus(
+      latestTopologyEdit
+        ? `Mesh sent to Geometry with topology history: ${latestTopologyEdit.selectedResultLabel}.`
+        : "Mesh sent to Geometry."
+    );
     accentGeometryMeshInfo(id);
   }
 
@@ -43670,6 +43960,75 @@ case "mobius":
     },
     [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshTopologyHistory]
   );
+  const handleSaveSurfaceMeshTopologyEditedPreset = useCallback(() => {
+    if (!surfaceMeshData?.positions?.length) {
+      setSurfaceMeshTopologyStatus("No Mesh result to save yet.");
+      return;
+    }
+    const latest = surfaceMeshTopologyHistory[0] ?? null;
+    const fallbackName = latest
+      ? `${surfaceMeshData.label ?? "Mesh"} - ${latest.actionLabel}`
+      : `${surfaceMeshData.label ?? "Mesh"} edited`;
+    const providedName = surfaceMeshTopologySaveName.trim();
+    const promptedName = providedName ? providedName : window.prompt("Saved mesh example name", fallbackName);
+    const name = promptedName?.trim();
+    if (!name?.trim()) return;
+    const history = surfaceMeshTopologyHistory
+      .slice(0, SURFACE_MESH_TOPOLOGY_PERSIST_HISTORY_LIMIT)
+      .map(serializeSurfaceMeshTopologyHistoryEntry);
+    const preset: SurfaceMeshTopologySavedPreset = {
+      id: makeId(),
+      name,
+      createdAt: Date.now(),
+      summary: latest
+        ? `${latest.actionLabel}: ${latest.resultLabel}`
+        : `${surfaceMeshStats?.vertCount ?? 0} vertices / ${surfaceMeshStats?.triCount ?? 0} faces`,
+      mesh: serializeTopologySurfaceMeshData(surfaceMeshData),
+      history,
+    };
+    setSurfaceMeshTopologySavedPresets((prev) => [preset, ...prev].slice(0, SURFACE_MESH_TOPOLOGY_SAVED_PRESET_LIMIT));
+    setSurfaceMeshTopologySaveName("");
+    setSurfaceMeshTopologyStatus(`Saved edited Mesh example: ${preset.name}.`);
+    appendMeshPromotionOperation(`saved edited mesh example (${preset.name})`);
+  }, [
+    appendMeshPromotionOperation,
+    surfaceMeshData,
+    surfaceMeshStats,
+    surfaceMeshTopologyHistory,
+    surfaceMeshTopologySaveName,
+  ]);
+
+  const handleApplySurfaceMeshTopologySavedPreset = useCallback(
+    (presetId: string) => {
+      const preset = surfaceMeshTopologySavedPresets.find((entry) => entry.id === presetId);
+      if (!preset) {
+        setSurfaceMeshTopologyStatus("Saved Mesh example not found.");
+        return;
+      }
+      const mesh = deserializeTopologySurfaceMeshData(preset.mesh);
+      if (!mesh) {
+        setSurfaceMeshTopologyStatus("Saved Mesh example could not be restored.");
+        return;
+      }
+      const history = preset.history
+        .map(deserializeSurfaceMeshTopologyHistoryEntry)
+        .filter((entry): entry is SurfaceMeshTopologyHistoryEntry => !!entry);
+      const restored = applySurfaceMeshOps(cloneSurfaceMeshData(mesh, preset.name));
+      setMeshDataset(restored, `mesh-topology-saved-preset:${preset.id}`);
+      setSurfaceMeshTopologyHistory(history);
+      setSelectedSurfaceMeshTopologyHistoryId(history[0]?.id ?? null);
+      setSurfaceMeshTopologyHistoryPreviewId(null);
+      setSurfaceMeshTopologyFeedback(null);
+      setDatasetKind("mesh");
+      setSurfaceViewerKind("mesh");
+      setSurfacesPanelState("work");
+      setSurfacesLeftTab("analysis");
+      focusSurfaceMeshViewport(restored);
+      setSurfaceMeshTopologyStatus(`Opened saved Mesh example: ${preset.name}.`);
+      appendMeshPromotionOperation(`opened saved mesh example (${preset.name})`);
+    },
+    [appendMeshPromotionOperation, focusSurfaceMeshViewport, setMeshDataset, surfaceMeshTopologySavedPresets]
+  );
 
   const handleWeldSurfaceMesh = useCallback(() => {
     if (surfaceMeshWeldBusy) return;
@@ -53867,10 +54226,13 @@ case "mobius":
                   onUseSurfaceMeshTopologyPick={applySurfaceMeshTopologyPickToFields}
                   onSurfaceMeshFaceSubdivide={handleSurfaceMeshFaceSubdivide}
                   onSurfaceMeshSplitEdge={handleSurfaceMeshSplitEdge}
-                  onSurfaceMeshCollapseEdge={handleSurfaceMeshCollapseEdge}
-                  onSurfaceMeshBevelEdge={handleSurfaceMeshBevelEdge}
-                  onApplySurfaceMeshTopologySelectedPreview={handleApplySurfaceMeshTopologySelectedPreview}
-                  implicitBakeResolution={implicitBakeResolution}
+  onSurfaceMeshCollapseEdge={handleSurfaceMeshCollapseEdge}
+  onSurfaceMeshBevelEdge={handleSurfaceMeshBevelEdge}
+  onApplySurfaceMeshTopologySelectedPreview={handleApplySurfaceMeshTopologySelectedPreview}
+  surfaceMeshTopologySaveName={surfaceMeshTopologySaveName}
+  onChangeSurfaceMeshTopologySaveName={setSurfaceMeshTopologySaveName}
+  onSaveSurfaceMeshTopologyEditedPreset={handleSaveSurfaceMeshTopologyEditedPreset}
+  implicitBakeResolution={implicitBakeResolution}
                   implicitBakeBounds={safeImplicitBakeBounds}
                   implicitBakeBusy={implicitBakeBusy}
                   implicitBakePhase={implicitBakePhase}
@@ -53886,6 +54248,8 @@ case "mobius":
                   onGenerateSurfaceMeshPreset={handleGenerateSurfaceMeshPreset}
                   onGenerateSurfaceMeshAssetPreset={handleGenerateSurfaceMeshAssetPreset}
                   onApplySurfaceMeshTopologyDemoPreset={handleApplySurfaceMeshTopologyDemoPreset}
+                  surfaceMeshTopologySavedPresets={surfaceMeshTopologySavedPresets}
+                  onApplySurfaceMeshTopologySavedPreset={handleApplySurfaceMeshTopologySavedPreset}
                   onRunSurfaceMeshTopologyDemoPreset={handleRunSurfaceMeshTopologyDemoPreset}
                   onLoadSurfaceMeshFile={handleLoadSurfaceMeshFile}
                   onConvertToMesh={handleConvertToMesh}
@@ -55462,6 +55826,7 @@ case "mobius":
                   surfaceMeshPresets={SURFACE_MESH_PRESETS}
                   surfaceMeshAssetPresets={SURFACE_MESH_ASSET_PRESETS}
                   surfaceMeshTopologyDemoPresets={SURFACE_MESH_TOPOLOGY_DEMO_PRESETS}
+                  surfaceMeshTopologySavedPresets={surfaceMeshTopologySavedPresets}
                   onOpenMeshTools={() => {
                     setSurfacesPanelState("work");
                     setSurfacesLeftTab("analysis");
@@ -55470,6 +55835,7 @@ case "mobius":
                   onGenerateSurfaceMeshPreset={handleGenerateSurfaceMeshPreset}
                   onGenerateSurfaceMeshAssetPreset={handleGenerateSurfaceMeshAssetPreset}
                   onApplySurfaceMeshTopologyDemoPreset={handleApplySurfaceMeshTopologyDemoPreset}
+                  onApplySurfaceMeshTopologySavedPreset={handleApplySurfaceMeshTopologySavedPreset}
                   volumePresetId={volumePresetId}
                   onChangeVolumePresetId={setVolumePresetId}
                 />
@@ -56397,6 +56763,7 @@ case "mobius":
                   surfaceMeshPresets={SURFACE_MESH_PRESETS}
                   surfaceMeshAssetPresets={SURFACE_MESH_ASSET_PRESETS}
                   surfaceMeshTopologyDemoPresets={SURFACE_MESH_TOPOLOGY_DEMO_PRESETS}
+                  surfaceMeshTopologySavedPresets={surfaceMeshTopologySavedPresets}
                   onOpenMeshTools={() => {
                     setSurfacesPanelState("work");
                     setSurfacesLeftTab("analysis");
@@ -56405,6 +56772,7 @@ case "mobius":
                   onGenerateSurfaceMeshPreset={handleGenerateSurfaceMeshPreset}
                   onGenerateSurfaceMeshAssetPreset={handleGenerateSurfaceMeshAssetPreset}
                   onApplySurfaceMeshTopologyDemoPreset={handleApplySurfaceMeshTopologyDemoPreset}
+                  onApplySurfaceMeshTopologySavedPreset={handleApplySurfaceMeshTopologySavedPreset}
                   volumePresetId={volumePresetId}
                   onChangeVolumePresetId={setVolumePresetId}
                 />
@@ -57227,6 +57595,14 @@ case "mobius":
                             >
                               Undo Last
                             </button>
+                            <button
+                              type="button"
+                              onClick={handleSaveSurfaceMeshTopologyEditedPreset}
+                              disabled={!surfaceMeshData?.positions?.length || !surfaceMeshTopologyHistory.length}
+                              style={{ padding: "2px 7px", fontSize: 10 }}
+                            >
+                              Save edited
+                            </button>
                             <span style={{ fontSize: 10, color: "#475467" }}>{surfaceMeshTopologyHistory.length} steps</span>
                           </span>
                         </div>
@@ -57247,6 +57623,24 @@ case "mobius":
                         <div style={{ fontSize: 10, color: "#475467" }}>
                           Last result: {surfaceMeshTopologyHistory[0]?.selectedResultLabel ?? "none"}
                         </div>
+                        <label
+                          style={{
+                            display: "grid",
+                            gap: 3,
+                            fontSize: 10,
+                            color: "#475467",
+                          }}
+                        >
+                          Example name
+                          <input
+                            aria-label="Mesh topology example name"
+                            value={surfaceMeshTopologySaveName}
+                            onChange={(event) => setSurfaceMeshTopologySaveName(event.currentTarget.value)}
+                            placeholder={surfaceMeshTopologyHistory[0]?.actionLabel ?? "Edited mesh"}
+                            disabled={!surfaceMeshData?.positions?.length || !surfaceMeshTopologyHistory.length}
+                            style={{ minWidth: 0, width: "100%" }}
+                          />
+                        </label>
                         {surfaceMeshTopologyHistory.length ? (
                           <div style={{ display: "grid", gap: 5 }}>
                             {surfaceMeshTopologyHistory.slice(0, 5).map((entry) => (
@@ -78289,10 +78683,12 @@ type SurfacesControlsProps = {
   surfaceMeshPresets: SurfaceMeshPreset[];
   surfaceMeshAssetPresets: SurfaceMeshAssetPreset[];
   surfaceMeshTopologyDemoPresets: SurfaceMeshTopologyDemoPreset[];
+  surfaceMeshTopologySavedPresets: SurfaceMeshTopologySavedPreset[];
   onOpenMeshTools: () => void;
   onGenerateSurfaceMeshPreset: (id: string) => void;
   onGenerateSurfaceMeshAssetPreset: (id: string) => void;
   onApplySurfaceMeshTopologyDemoPreset: (id: string) => void;
+  onApplySurfaceMeshTopologySavedPreset: (id: string) => void;
   volumePresetId: VolumePresetId;
   onChangeVolumePresetId: (id: VolumePresetId) => void;
 };
@@ -78347,10 +78743,12 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   surfaceMeshPresets,
   surfaceMeshAssetPresets,
   surfaceMeshTopologyDemoPresets,
+  surfaceMeshTopologySavedPresets,
   onOpenMeshTools,
   onGenerateSurfaceMeshPreset,
   onGenerateSurfaceMeshAssetPreset,
   onApplySurfaceMeshTopologyDemoPreset,
+  onApplySurfaceMeshTopologySavedPreset,
   volumePresetId,
   onChangeVolumePresetId,
 }) => {
@@ -78844,6 +79242,75 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                     </button>
                   );
                 })}
+                {surfaceMeshTopologySavedPresets.map((preset) => {
+                  const diagramThumb = makePresetThumb(
+                    preset.id,
+                    preset.name,
+                    "Saved edit",
+                    "mesh",
+                    "diagram"
+                  );
+                  const renderedThumb = makePresetThumb(preset.id, preset.name, "Saved edit", "mesh", "rendered");
+                  const thumb = thumbByViewMode(renderedThumb, diagramThumb, cardViewMode);
+                  const summary = compactSummary(preset.summary);
+                  return (
+                    <button
+                      key={`mesh-saved-topology-gallery-card-${preset.id}`}
+                      type="button"
+                      data-testid={`mesh-topology-saved-card-${preset.id}`}
+                      onClick={() => onApplySurfaceMeshTopologySavedPreset(preset.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "ArrowLeft") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "left");
+                        } else if (e.key === "ArrowRight") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "right");
+                        } else if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "up");
+                        } else if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "down");
+                        }
+                      }}
+                      className="gallery-scan-card surface-preset-card"
+                      title={`${preset.name}\nSaved edited mesh\n${preset.summary}`}
+                    >
+                      <div className="gallery-scan-card-preview">
+                        <div className="gallery-scan-card-preview-frame">
+                          <img
+                            src={thumb}
+                            alt={`${preset.name} saved edited mesh`}
+                            className="gallery-scan-card-preview-image"
+                            loading="lazy"
+                            decoding="async"
+                            onError={(event) => handleGalleryImageLoadError(event, diagramThumb)}
+                          />
+                        </div>
+                      </div>
+                      <div className="gallery-scan-card-meta">
+                        <div className="gallery-scan-card-title-row">
+                          <div className="gallery-scan-card-title">{preset.name}</div>
+                        </div>
+                        <div className="gallery-scan-card-summary" title={preset.summary}>
+                          {summary}
+                        </div>
+                        <div className="gallery-scan-card-formula">saved topology edit</div>
+                        <div className="gallery-scan-card-chips">
+                          {["Mesh", "Saved"].map((chip) => (
+                            <span key={`${preset.id}-${chip}`} className="gallery-scan-card-chip">
+                              {chip}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="gallery-scan-card-footer">
+                          <span className="gallery-scan-card-cta">Open saved</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
                 {surfaceMeshPresets.map((preset) => {
                   const diagramThumb = makePresetThumb(
                     preset.id,
@@ -79314,6 +79781,16 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                     title={`${preset.operation}: ${preset.summary}`}
                   >
                     {preset.label}
+                  </button>
+                ))}
+                {surfaceMeshTopologySavedPresets.map((preset) => (
+                  <button
+                    key={`browse-mesh-saved-topology-${preset.id}`}
+                    type="button"
+                    onClick={() => onApplySurfaceMeshTopologySavedPreset(preset.id)}
+                    title={`Saved edited mesh: ${preset.summary}`}
+                  >
+                    {preset.name}
                   </button>
                 ))}
                 {surfaceMeshPresets.map((preset) => (
@@ -83429,6 +83906,7 @@ type SurfacesLeftPanelProps = {
   surfaceMeshMergeVertices: boolean;
   surfaceMeshPresets: SurfaceMeshPreset[];
   surfaceMeshAssetPresets: SurfaceMeshAssetPreset[];
+  surfaceMeshTopologySavedPresets: SurfaceMeshTopologySavedPreset[];
   surfaceMeshExportable: boolean;
   surfaceMeshExportBusy: boolean;
   surfaceMeshExportError: string | null;
@@ -83493,6 +83971,9 @@ type SurfacesLeftPanelProps = {
   onSurfaceMeshCollapseEdge: () => void;
   onSurfaceMeshBevelEdge: () => void;
   onApplySurfaceMeshTopologySelectedPreview: () => void;
+  surfaceMeshTopologySaveName: string;
+  onChangeSurfaceMeshTopologySaveName: (value: string) => void;
+  onSaveSurfaceMeshTopologyEditedPreset: () => void;
   implicitBakeResolution: number;
   implicitBakeBounds: ImplicitBakeBounds;
   implicitBakeBusy: boolean;
@@ -83509,6 +83990,7 @@ type SurfacesLeftPanelProps = {
   onGenerateSurfaceMeshPreset: (id: string) => void;
   onGenerateSurfaceMeshAssetPreset: (id: string) => void;
   onApplySurfaceMeshTopologyDemoPreset: (id: string) => void;
+  onApplySurfaceMeshTopologySavedPreset: (id: string) => void;
   onRunSurfaceMeshTopologyDemoPreset: (id: string) => void;
   onLoadSurfaceMeshFile: (files: FileList | File[] | null) => void;
   onConvertToMesh: () => void;
@@ -84124,6 +84606,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   surfaceMeshMergeVertices,
   surfaceMeshPresets,
   surfaceMeshAssetPresets,
+  surfaceMeshTopologySavedPresets,
   surfaceMeshExportable,
   surfaceMeshExportBusy,
   surfaceMeshExportError,
@@ -84175,6 +84658,9 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onSurfaceMeshCollapseEdge,
   onSurfaceMeshBevelEdge,
   onApplySurfaceMeshTopologySelectedPreview,
+  surfaceMeshTopologySaveName,
+  onChangeSurfaceMeshTopologySaveName,
+  onSaveSurfaceMeshTopologyEditedPreset,
   implicitBakeResolution,
   implicitBakeBounds,
   implicitBakeBusy,
@@ -84191,6 +84677,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onGenerateSurfaceMeshPreset,
   onGenerateSurfaceMeshAssetPreset,
   onApplySurfaceMeshTopologyDemoPreset,
+  onApplySurfaceMeshTopologySavedPreset,
   onRunSurfaceMeshTopologyDemoPreset,
   onLoadSurfaceMeshFile,
   onConvertToMesh,
@@ -87592,6 +88079,23 @@ onChangeImplicitExpr,
                 </div>
               </>
             )}
+            {surfaceMeshTopologySavedPresets.length > 0 && (
+              <>
+                <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Saved edited meshes</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                  {surfaceMeshTopologySavedPresets.slice(0, 5).map((preset) => (
+                    <button
+                      key={`surface-mesh-saved-topology-${preset.id}`}
+                      type="button"
+                      onClick={() => onApplySurfaceMeshTopologySavedPreset(preset.id)}
+                      title={`${preset.name}\n${preset.summary}`}
+                    >
+                      {preset.name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
             <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Load file</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
@@ -87739,12 +88243,41 @@ onChangeImplicitExpr,
             >
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
                 <div style={{ fontSize: 12, fontWeight: 700 }}>Topology editing</div>
-                <div style={{ fontSize: 11, color: "#475467" }}>{meshReady ? "Current SurfaceMesh" : "No mesh"}</div>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    onClick={onSaveSurfaceMeshTopologyEditedPreset}
+                    disabled={!meshReady}
+                    style={{ fontSize: 10, padding: "2px 7px" }}
+                  >
+                    Save edited
+                  </button>
+                  <div style={{ fontSize: 11, color: "#475467" }}>{meshReady ? "Current SurfaceMesh" : "No mesh"}</div>
+                </div>
               </div>
               <div style={{ fontSize: 11, color: "#475467", marginTop: 4 }}>
                 Face 0-{maxSurfaceMeshTopologyFaceIndex.toLocaleString()} - Vertex 0-
                 {maxSurfaceMeshTopologyVertexIndex.toLocaleString()}
               </div>
+              <label
+                style={{
+                  display: "grid",
+                  gap: 3,
+                  marginTop: 8,
+                  fontSize: 11,
+                  color: "#475467",
+                }}
+              >
+                Example name
+                <input
+                  aria-label="Mesh topology example name"
+                  value={surfaceMeshTopologySaveName}
+                  onChange={(event) => onChangeSurfaceMeshTopologySaveName(event.currentTarget.value)}
+                  placeholder="Edited mesh example"
+                  disabled={!meshReady}
+                  style={{ minWidth: 0, width: "100%" }}
+                />
+              </label>
               <div
                 style={{
                   display: "flex",
