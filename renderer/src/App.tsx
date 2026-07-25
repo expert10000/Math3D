@@ -10738,7 +10738,8 @@ const App: React.FC = () => {
     [geometryDatasetMeshObjects, geometrySelectedObjectId]
   );
   const geometrySelectedMeshTopologyHandoff = useMemo(() => {
-    const history = geometrySelectedDatasetMeshObject?.promotion?.sourceOperationHistory ?? [];
+    if (!geometrySelectedDatasetMeshObject?.promotion) return null;
+    const history = geometrySelectedDatasetMeshObject.promotion.sourceOperationHistory ?? [];
     const topologySteps = history
       .filter((entry) => entry.startsWith("Mesh topology:"))
       .map((entry) => {
@@ -10753,19 +10754,31 @@ const App: React.FC = () => {
           raw: text,
         };
       });
-    if (!topologySteps.length) return null;
     const sourceViewer =
       history.find((entry) => entry.startsWith("surface-viewer:"))?.replace(/^surface-viewer:/, "").trim() || "mesh";
     const sourceMesh =
-      history.find((entry) => !entry.startsWith("surface-viewer:") && !entry.startsWith("Mesh topology:"))?.trim() ||
+      history
+        .find(
+          (entry) =>
+            !entry.startsWith("surface-viewer:") &&
+            !entry.startsWith("Mesh topology:") &&
+            !entry.startsWith("Pipeline:")
+        )
+        ?.trim() ||
       geometrySelectedDatasetMeshObject?.mesh.label ||
       geometrySelectedDatasetMeshObject?.name ||
       "SurfaceMesh";
+    const sourceKind = sourceMesh.toLowerCase().includes("demo")
+      ? "demo"
+      : sourceMesh.toLowerCase().includes("preset")
+        ? "preset"
+        : sourceViewer;
     return {
       sourceViewer,
       sourceMesh,
+      sourceKind,
       steps: topologySteps,
-      latest: topologySteps[topologySteps.length - 1],
+      latest: topologySteps[topologySteps.length - 1] ?? null,
     };
   }, [geometrySelectedDatasetMeshObject]);
   const geometrySelectedVariantSet = useMemo(() => {
@@ -13938,6 +13951,17 @@ const App: React.FC = () => {
       sourceLabel: formatSurfaceMeshSource(mesh.source),
     };
   }, [geometrySelectedSceneObject, proceduralMeshSet.meshes]);
+  const geometrySelectedPlainMeshHandoff = useMemo(() => {
+    if (geometrySelectedDatasetMeshObject || !geometrySelectedObject || !geometrySelectedSceneMeshInfo) return null;
+    const sourceLabel = geometrySelectedSceneMeshInfo.sourceLabel || "";
+    if (!/detached|preset|demo|mesh/i.test(sourceLabel)) return null;
+    return {
+      sourceViewer: "geometry",
+      sourceMesh: geometrySelectedObject.name,
+      sourceKind: /demo/i.test(sourceLabel) ? "demo" : /preset/i.test(sourceLabel) ? "preset" : "mesh",
+      sourceLabel,
+    };
+  }, [geometrySelectedDatasetMeshObject, geometrySelectedObject, geometrySelectedSceneMeshInfo]);
   const geometrySelectedSceneMetrics = useMemo(() => {
     if (!geometrySelectedSceneObject) return null;
     const resolved = resolveGeometrySceneMeshById(geometrySelectedSceneObject.id);
@@ -66438,6 +66462,69 @@ case "mobius":
                               )}
                             </div>
                           )}
+                          {geometrySelectedPlainMeshHandoff && (
+                            <div
+                              data-testid="geometry-mesh-topology-source-history"
+                              style={{
+                                border: "1px solid #bae6fd",
+                                borderRadius: 8,
+                                padding: "8px 10px",
+                                background: "#f0f9ff",
+                                color: "#0f3557",
+                                display: "grid",
+                                gap: 6,
+                                fontSize: 10.5,
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                <div style={{ fontWeight: 800 }}>Mesh topology source history</div>
+                                <span
+                                  style={{
+                                    border: "1px solid #7dd3fc",
+                                    borderRadius: 999,
+                                    padding: "1px 6px",
+                                    background: "#e0f2fe",
+                                    color: "#075985",
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  0 steps
+                                </span>
+                              </div>
+                              <div>
+                                Source: {geometrySelectedPlainMeshHandoff.sourceMesh} ({geometrySelectedPlainMeshHandoff.sourceViewer})
+                              </div>
+                              <div style={{ color: "#475569" }}>{geometrySelectedPlainMeshHandoff.sourceLabel}</div>
+                              <div
+                                style={{
+                                  border: "1px solid #dbeafe",
+                                  borderRadius: 6,
+                                  padding: "6px 7px",
+                                  background: "#ffffff",
+                                  color: "#475569",
+                                }}
+                              >
+                                No Mesh topology edits were recorded before promotion. This object came from a{" "}
+                                {geometrySelectedPlainMeshHandoff.sourceKind} mesh source.
+                              </div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setGeometryProceduralPanelTab("history")}
+                                  style={{ fontSize: 10, padding: "2px 7px" }}
+                                >
+                                  Open History
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setGeometryProceduralPanelTab("object")}
+                                  style={{ fontSize: 10, padding: "2px 7px" }}
+                                >
+                                  Object details
+                                </button>
+                              </div>
+                            </div>
+                          )}
                           <GeometryDerivedProductsPanel
                             products={geometrySelectedDerivedProducts}
                             onPlanConvexHull={handlePlanGeometryConvexHull}
@@ -68119,32 +68206,65 @@ case "mobius":
                             <div>
                               Source: {geometrySelectedMeshTopologyHandoff.sourceMesh} ({geometrySelectedMeshTopologyHandoff.sourceViewer})
                             </div>
-                            <div>
-                              Latest: {geometrySelectedMeshTopologyHandoff.latest.action} on{" "}
-                              {geometrySelectedMeshTopologyHandoff.latest.target} {"->"}{" "}
-                              {geometrySelectedMeshTopologyHandoff.latest.result}
-                            </div>
-                            <div style={{ display: "grid", gap: 4 }}>
-                              {geometrySelectedMeshTopologyHandoff.steps.slice(-4).map((step, index) => (
-                                <div
-                                  key={`geometry-mesh-topology-source-${step.raw}-${index}`}
-                                  style={{
-                                    border: "1px solid #dbeafe",
-                                    borderRadius: 6,
-                                    padding: "4px 6px",
-                                    background: "#ffffff",
-                                    display: "grid",
-                                    gap: 2,
-                                  }}
-                                >
-                                  <div style={{ fontWeight: 700 }}>
-                                    {index + 1}. {step.action}
-                                  </div>
-                                  <div style={{ color: "#475569" }}>
-                                    {step.target} {"->"} {step.result}
-                                  </div>
+                            {geometrySelectedMeshTopologyHandoff.latest ? (
+                              <>
+                                <div>
+                                  Latest: {geometrySelectedMeshTopologyHandoff.latest.action} on{" "}
+                                  {geometrySelectedMeshTopologyHandoff.latest.target} {"->"}{" "}
+                                  {geometrySelectedMeshTopologyHandoff.latest.result}
                                 </div>
-                              ))}
+                                <div style={{ display: "grid", gap: 4 }}>
+                                  {geometrySelectedMeshTopologyHandoff.steps.slice(-4).map((step, index) => (
+                                    <div
+                                      key={`geometry-mesh-topology-source-${step.raw}-${index}`}
+                                      style={{
+                                        border: "1px solid #dbeafe",
+                                        borderRadius: 6,
+                                        padding: "4px 6px",
+                                        background: "#ffffff",
+                                        display: "grid",
+                                        gap: 2,
+                                      }}
+                                    >
+                                      <div style={{ fontWeight: 700 }}>
+                                        {index + 1}. {step.action}
+                                      </div>
+                                      <div style={{ color: "#475569" }}>
+                                        {step.target} {"->"} {step.result}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </>
+                            ) : (
+                              <div
+                                style={{
+                                  border: "1px solid #dbeafe",
+                                  borderRadius: 6,
+                                  padding: "6px 7px",
+                                  background: "#ffffff",
+                                  color: "#475569",
+                                }}
+                              >
+                                No Mesh topology edits were recorded before promotion. This object came from a{" "}
+                                {geometrySelectedMeshTopologyHandoff.sourceKind} mesh source.
+                              </div>
+                            )}
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                onClick={() => setGeometryProceduralPanelTab("history")}
+                                style={{ fontSize: 10, padding: "2px 7px" }}
+                              >
+                                Open History
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setGeometryProceduralPanelTab("object")}
+                                style={{ fontSize: 10, padding: "2px 7px" }}
+                              >
+                                Object details
+                              </button>
                             </div>
                           </div>
                         )}
@@ -73434,6 +73554,30 @@ case "mobius":
                           </button>
                         ))}
                       </div>
+                      {geometrySelectedSceneObject && (
+                        <button
+                          type="button"
+                          data-testid="geometry-right-open-object"
+                          onClick={() => {
+                            setGeometrySelectedObjectId(geometrySelectedSceneObject.id);
+                            setGeometryMode("procedural");
+                            setGeometryProceduralPanelTab("object");
+                            setGeometryRightPanelTab("selection");
+                          }}
+                          style={{
+                            justifySelf: "start",
+                            fontSize: 11,
+                            padding: "4px 8px",
+                            borderColor: "#0a66c2",
+                            background: "#eff6ff",
+                            color: "#1d4ed8",
+                            fontWeight: 700,
+                          }}
+                          title="Open the selected object details panel."
+                        >
+                          Open Object
+                        </button>
+                      )}
                     </div>
                     {geometryRightPanelTab === "selection" ? (
                           <div
@@ -73489,6 +73633,24 @@ case "mobius":
                                   <strong>Vertices/Faces:</strong> {geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} /{" "}
                                   {geometrySelectedSceneMeshInfo.triCount.toLocaleString()}
                                 </div>
+                                {geometrySelectedSceneObject && (
+                                  <div style={{ marginTop: 4 }}>
+                                    <button
+                                      type="button"
+                                      data-testid="geometry-right-open-object-inline"
+                                      onClick={() => {
+                                        setGeometrySelectedObjectId(geometrySelectedSceneObject.id);
+                                        setGeometryMode("procedural");
+                                        setGeometryProceduralPanelTab("object");
+                                        setGeometryRightPanelTab("selection");
+                                      }}
+                                      style={{ fontSize: 11, padding: "4px 8px" }}
+                                      title="Open the selected object details panel."
+                                    >
+                                      Open Object
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             ) : (
                               <div style={{ color: "#475467" }}>

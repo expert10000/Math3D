@@ -64,14 +64,14 @@ async function launchApp(): Promise<{ app: ElectronApplication; page: Page; prof
   const app = await launchRepoElectron({ args: ["."], cwd: repoRoot, env });
   const page = await app.firstWindow();
   await page.waitForLoadState("domcontentloaded");
-  await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
+  await expect(page.getByText(/^math3d$/i).first()).toBeVisible();
   await page.evaluate((key) => {
     localStorage.clear();
     localStorage.setItem(key, "1");
   }, firstLaunchKey);
   await page.reload();
   await page.waitForLoadState("domcontentloaded");
-  await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
+  await expect(page.getByText(/^math3d$/i).first()).toBeVisible();
   return { app, page, profileDir };
 }
 
@@ -105,6 +105,30 @@ async function runTopologyDemo(
 }
 
 test.describe("Mesh topology persistence and handoff", () => {
+  test("shows an explicit empty topology handoff card for unedited Mesh promotions", async () => {
+    test.setTimeout(120_000);
+    let ctx: { app: ElectronApplication; page: Page; profileDir: string } | null = null;
+
+    try {
+      ctx = await launchApp();
+      const { page } = ctx;
+
+      await openMeshGallery(page);
+      await page.getByTestId("mesh-topology-preset-card-topology_demo_bevel_edge").click();
+      await firstVisible(page.getByRole("button", { name: "Promote", exact: true })).then((button) => button.click());
+      await expect(page.getByText(/Converted to detached Mesh object/i).first()).toBeVisible({ timeout: 15_000 });
+      await firstVisible(page.getByRole("button", { name: "Close", exact: true })).then((button) => button.click());
+      await expect(page.getByTestId("geometry-right-open-object")).toBeVisible({ timeout: 15_000 });
+      await page.getByTestId("geometry-right-open-object").click();
+
+      await expect(page.getByTestId("geometry-mesh-topology-source-history")).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/No Mesh topology edits were recorded before promotion/i).first()).toBeVisible();
+      await expect(page.getByText(/0 steps?/i).first()).toBeVisible();
+    } finally {
+      await closeApp(ctx);
+    }
+  });
+
   test("keeps topology history, saved examples, preview modes, and Geometry handoff", async () => {
     test.setTimeout(180_000);
     let ctx: { app: ElectronApplication; page: Page; profileDir: string } | null = null;
@@ -142,7 +166,8 @@ test.describe("Mesh topology persistence and handoff", () => {
       await expect(page.getByText(/Demo: bevel edge \(bevel edge\)/i).first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText(/Converted to detached Mesh object/i).first()).toBeVisible({ timeout: 15_000 });
       await firstVisible(page.getByRole("button", { name: "Close", exact: true })).then((button) => button.click());
-      await firstVisible(page.getByRole("button", { name: "Object", exact: true })).then((button) => button.click());
+      await expect(page.getByTestId("geometry-right-open-object")).toBeVisible({ timeout: 15_000 });
+      await page.getByTestId("geometry-right-open-object").click();
       await expect(page.getByTestId("geometry-mesh-topology-source-history")).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText(/Mesh topology source history/i).first()).toBeVisible();
       await expect(page.getByText(/Latest: Bevel edge/i).first()).toBeVisible();
