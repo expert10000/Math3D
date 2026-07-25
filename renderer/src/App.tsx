@@ -44085,6 +44085,106 @@ case "mobius":
     [appendMeshPromotionOperation, focusSurfaceMeshViewport, setMeshDataset, surfaceMeshTopologySavedPresets]
   );
 
+  const geometrySelectedMeshTopologyHandoffHistoryEntry = useMemo(() => {
+    const latest = geometrySelectedMeshTopologyHandoff?.latest;
+    if (!latest) return null;
+    const normalize = (value: string | null | undefined) => (value ?? "").trim().toLowerCase();
+    return (
+      surfaceMeshTopologyHistory.find(
+        (entry) =>
+          normalize(entry.actionLabel) === normalize(latest.action) &&
+          normalize(entry.targetLabel) === normalize(latest.target) &&
+          normalize(entry.resultLabel) === normalize(latest.result)
+      ) ??
+      surfaceMeshTopologyHistory.find(
+        (entry) =>
+          normalize(entry.actionLabel) === normalize(latest.action) &&
+          normalize(entry.targetLabel) === normalize(latest.target)
+      ) ??
+      null
+    );
+  }, [geometrySelectedMeshTopologyHandoff, surfaceMeshTopologyHistory]);
+
+  const handleOpenGeometryMeshTopologySource = useCallback(
+    (snapshotMode: "current" | "before" | "after" = "current") => {
+      if (!geometrySelectedSceneObject) {
+        setGeometryCreateActionStatus("Select a Geometry mesh object first.");
+        return;
+      }
+      const resolved = resolveGeometrySceneMeshById(geometrySelectedSceneObject.id);
+      const matchedEntry = geometrySelectedMeshTopologyHandoffHistoryEntry;
+      let sourceMesh: SurfaceMeshData | null = null;
+      let status = "";
+      if (snapshotMode === "before") {
+        if (!matchedEntry) {
+          setGeometryCreateActionStatus("Mesh topology source session is unavailable; before snapshot cannot be restored.");
+          return;
+        }
+        sourceMesh = matchedEntry.beforeSnapshot;
+        status = `Restored Mesh handoff before: ${matchedEntry.actionLabel} on ${matchedEntry.targetLabel}.`;
+      } else if (snapshotMode === "after") {
+        if (!matchedEntry) {
+          setGeometryCreateActionStatus("Mesh topology source session is unavailable; after snapshot cannot be restored.");
+          return;
+        }
+        sourceMesh = matchedEntry.snapshot;
+        status = `Restored Mesh handoff after: ${matchedEntry.actionLabel} on ${matchedEntry.targetLabel}.`;
+      } else if (matchedEntry) {
+        sourceMesh = matchedEntry.snapshot;
+        status = `Opened Mesh source with topology history: ${matchedEntry.actionLabel} on ${matchedEntry.targetLabel}.`;
+      } else {
+        sourceMesh = resolved?.mesh ?? null;
+        status = geometrySelectedMeshTopologyHandoff?.latest
+          ? "Opened promoted mesh copy; original topology session unavailable."
+          : "Opened promoted mesh copy; no Mesh topology edits were recorded.";
+      }
+
+      if (!sourceMesh?.positions?.length) {
+        setGeometryCreateActionStatus("Mesh source is unavailable for this Geometry object.");
+        return;
+      }
+
+      const label =
+        snapshotMode === "before"
+          ? `${geometrySelectedSceneObject.name} (Mesh source before)`
+          : snapshotMode === "after"
+            ? `${geometrySelectedSceneObject.name} (Mesh source after)`
+            : `${geometrySelectedSceneObject.name} (Mesh source)`;
+      const restored = applySurfaceMeshOps(cloneSurfaceMeshData(sourceMesh, label));
+      setMeshDataset(restored, `geometry-handoff:mesh-topology-source:${snapshotMode}`);
+      if (matchedEntry) {
+        setSelectedSurfaceMeshTopologyHistoryId(matchedEntry.id);
+        setSurfaceMeshTopologyHistoryPreviewId(snapshotMode === "current" ? null : matchedEntry.id);
+        setSurfaceMeshTopologyHistoryPreviewMode(snapshotMode === "before" ? "before" : "after");
+      } else {
+        setSurfaceMeshTopologyHistory([]);
+        setSelectedSurfaceMeshTopologyHistoryId(null);
+        setSurfaceMeshTopologyHistoryPreviewId(null);
+        setSurfaceMeshTopologyHistoryPreviewMode("after");
+      }
+      setSurfaceMeshTopologyFeedback(null);
+      setDatasetKind("mesh");
+      setSurfaceViewerKind("mesh");
+      setMode("surfaces");
+      setSurfacesPanelState("work");
+      setSurfacesLeftTab("analysis");
+      setSurfacesWorkGalleryOpen(false);
+      focusSurfaceMeshViewport(restored);
+      setSurfaceMeshTopologyStatus(status);
+      setGeometryCreateActionStatus(status);
+      appendMeshPromotionOperation(`opened geometry mesh handoff source (${snapshotMode})`);
+    },
+    [
+      appendMeshPromotionOperation,
+      focusSurfaceMeshViewport,
+      geometrySelectedMeshTopologyHandoff,
+      geometrySelectedMeshTopologyHandoffHistoryEntry,
+      geometrySelectedSceneObject,
+      resolveGeometrySceneMeshById,
+      setMeshDataset,
+    ]
+  );
+
   const handleWeldSurfaceMesh = useCallback(() => {
     if (surfaceMeshWeldBusy) return;
     if (!surfaceMeshData?.positions?.length) {
@@ -66510,6 +66610,14 @@ case "mobius":
                               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                                 <button
                                   type="button"
+                                  data-testid="geometry-open-mesh-source"
+                                  onClick={() => handleOpenGeometryMeshTopologySource("current")}
+                                  style={{ fontSize: 10, padding: "2px 7px" }}
+                                >
+                                  Open Mesh Source
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => setGeometryProceduralPanelTab("history")}
                                   style={{ fontSize: 10, padding: "2px 7px" }}
                                 >
@@ -68251,6 +68359,46 @@ case "mobius":
                               </div>
                             )}
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                data-testid="geometry-open-mesh-source"
+                                onClick={() => handleOpenGeometryMeshTopologySource("current")}
+                                style={{ fontSize: 10, padding: "2px 7px" }}
+                              >
+                                Open Mesh Source
+                              </button>
+                              {geometrySelectedMeshTopologyHandoff.latest && (
+                                <>
+                                  <button
+                                    type="button"
+                                    data-testid="geometry-restore-mesh-before"
+                                    onClick={() => handleOpenGeometryMeshTopologySource("before")}
+                                    disabled={!geometrySelectedMeshTopologyHandoffHistoryEntry}
+                                    title={
+                                      geometrySelectedMeshTopologyHandoffHistoryEntry
+                                        ? "Open the Mesh workspace at the state before this topology edit."
+                                        : "Original topology session snapshot is unavailable."
+                                    }
+                                    style={{ fontSize: 10, padding: "2px 7px" }}
+                                  >
+                                    Restore Before
+                                  </button>
+                                  <button
+                                    type="button"
+                                    data-testid="geometry-restore-mesh-after"
+                                    onClick={() => handleOpenGeometryMeshTopologySource("after")}
+                                    disabled={!geometrySelectedMeshTopologyHandoffHistoryEntry}
+                                    title={
+                                      geometrySelectedMeshTopologyHandoffHistoryEntry
+                                        ? "Open the Mesh workspace at the state after this topology edit."
+                                        : "Original topology session snapshot is unavailable."
+                                    }
+                                    style={{ fontSize: 10, padding: "2px 7px" }}
+                                  >
+                                    Restore After
+                                  </button>
+                                </>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => setGeometryProceduralPanelTab("history")}

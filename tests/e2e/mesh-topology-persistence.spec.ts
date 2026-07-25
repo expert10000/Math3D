@@ -124,6 +124,11 @@ test.describe("Mesh topology persistence and handoff", () => {
       await expect(page.getByTestId("geometry-mesh-topology-source-history")).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText(/No Mesh topology edits were recorded before promotion/i).first()).toBeVisible();
       await expect(page.getByText(/0 steps?/i).first()).toBeVisible();
+      await page.getByTestId("geometry-open-mesh-source").click();
+      await expect(page.getByText(/Mesh \/ Workspace/i).first()).toBeVisible();
+      await expect(page.getByText(/Selected: Demo: bevel edge mesh object \(Mesh source\)/i).first()).toBeVisible({
+        timeout: 15_000,
+      });
     } finally {
       await closeApp(ctx);
     }
@@ -171,6 +176,12 @@ test.describe("Mesh topology persistence and handoff", () => {
       await expect(page.getByTestId("geometry-mesh-topology-source-history")).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText(/Mesh topology source history/i).first()).toBeVisible();
       await expect(page.getByText(/Latest: Bevel edge/i).first()).toBeVisible();
+      await expect(page.getByTestId("geometry-restore-mesh-before")).toBeEnabled();
+      await page.getByTestId("geometry-restore-mesh-before").click();
+      await expect(page.getByText(/Mesh \/ Workspace/i).first()).toBeVisible();
+      await expect(page.getByText(/Mesh source before/i).first()).toBeVisible({
+        timeout: 15_000,
+      });
     } finally {
       await closeApp(ctx);
     }
