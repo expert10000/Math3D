@@ -176,12 +176,18 @@ test.describe("Mesh topology persistence and handoff", () => {
       await expect(page.getByTestId("geometry-mesh-topology-source-history")).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText(/Mesh topology source history/i).first()).toBeVisible();
       await expect(page.getByText(/Latest: Bevel edge/i).first()).toBeVisible();
+      await expect(await firstVisible(page.getByRole("checkbox", { name: "Wireframe", exact: true }))).toBeChecked();
       await expect(page.getByTestId("geometry-restore-mesh-before")).toBeEnabled();
       await page.getByTestId("geometry-restore-mesh-before").click();
       await expect(page.getByText(/Mesh \/ Workspace/i).first()).toBeVisible();
       await expect(page.getByText(/Mesh source before/i).first()).toBeVisible({
         timeout: 15_000,
       });
+      await expect(page.getByTestId("mesh-geometry-roundtrip-card")).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId("mesh-roundtrip-update-original")).toBeEnabled();
+      await page.getByTestId("mesh-roundtrip-back-to-geometry").click();
+      await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId("geometry-right-open-object")).toBeVisible({ timeout: 15_000 });
     } finally {
       await closeApp(ctx);
     }

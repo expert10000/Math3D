@@ -5269,6 +5269,14 @@ type SurfaceMeshTopologyHistoryEntry = {
   beforeSnapshot: SurfaceMeshData;
   snapshot: SurfaceMeshData;
 };
+type MeshGeometryRoundTripSource = {
+  objectId: string;
+  objectName: string;
+  snapshotMode: "current" | "before" | "after";
+  openedAt: number;
+  latestTopologyLabel: string | null;
+  historyStepCount: number;
+};
 type TopologySerializedSurfaceMeshData = {
   label: string;
   positions: number[];
@@ -29036,6 +29044,7 @@ const App: React.FC = () => {
   const [surfaceMeshTopologyHistory, setSurfaceMeshTopologyHistory] = useState<SurfaceMeshTopologyHistoryEntry[]>(
     initialSurfaceMeshTopologySession?.history ?? []
   );
+  const [meshGeometryRoundTripSource, setMeshGeometryRoundTripSource] = useState<MeshGeometryRoundTripSource | null>(null);
   const [selectedSurfaceMeshTopologyHistoryId, setSelectedSurfaceMeshTopologyHistoryId] = useState<string | null>(
     initialSurfaceMeshTopologySession?.selectedHistoryId ?? null
   );
@@ -29987,6 +29996,9 @@ const App: React.FC = () => {
     setGeometryProceduralPanelTab("object");
     setGeometryMode("procedural");
     setMode("geometry");
+    if (latestTopologyEdit) {
+      setGeometryWireframe(true);
+    }
     queueGeometryHistoryIntent(id, {
       action: "pipeline-mesh-handoff",
       label: latestTopologyEdit ? `Mesh handoff after ${latestTopologyEdit.actionLabel}` : "Mesh handoff",
@@ -29997,7 +30009,7 @@ const App: React.FC = () => {
     });
     setGeometryCreateActionStatus(
       latestTopologyEdit
-        ? `Mesh sent to Geometry with topology history: ${latestTopologyEdit.selectedResultLabel}.`
+        ? `Mesh sent to Geometry with topology history: ${latestTopologyEdit.selectedResultLabel}. Topology lines are visible.`
         : "Mesh sent to Geometry."
     );
     accentGeometryMeshInfo(id);
@@ -43328,6 +43340,7 @@ case "mobius":
       );
       const meshReady = applySurfaceMeshOps(base);
       setMeshDataset(meshReady);
+      setMeshGeometryRoundTripSource(null);
       setSurfaceMeshImportError(null);
       setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
@@ -43345,6 +43358,7 @@ case "mobius":
       try {
         const meshReady = preset.build();
         setMeshDataset(meshReady, `mesh-topology-demo:${preset.id}`);
+        setMeshGeometryRoundTripSource(null);
         setSurfaceMeshImportError(null);
         setSurfaceMeshOpsError(null);
         setSurfaceMeshTopologyFaceIndex(preset.faceIndex);
@@ -43849,6 +43863,7 @@ case "mobius":
       try {
         const meshReady = preset.build();
         setMeshDataset(meshReady, `mesh-topology-demo:${preset.id}`);
+        setMeshGeometryRoundTripSource(null);
         setSurfaceMeshImportError(null);
         setSurfaceMeshOpsError(null);
         setSurfaceMeshTopologyFaceIndex(preset.faceIndex);
@@ -44070,6 +44085,7 @@ case "mobius":
         .filter((entry): entry is SurfaceMeshTopologyHistoryEntry => !!entry);
       const restored = applySurfaceMeshOps(cloneSurfaceMeshData(mesh, preset.name));
       setMeshDataset(restored, `mesh-topology-saved-preset:${preset.id}`);
+      setMeshGeometryRoundTripSource(null);
       setSurfaceMeshTopologyHistory(history);
       setSelectedSurfaceMeshTopologyHistoryId(history[0]?.id ?? null);
       setSurfaceMeshTopologyHistoryPreviewId(null);
@@ -44169,6 +44185,14 @@ case "mobius":
       setSurfacesPanelState("work");
       setSurfacesLeftTab("analysis");
       setSurfacesWorkGalleryOpen(false);
+      setMeshGeometryRoundTripSource({
+        objectId: geometrySelectedSceneObject.id,
+        objectName: geometrySelectedSceneObject.name,
+        snapshotMode,
+        openedAt: Date.now(),
+        latestTopologyLabel: matchedEntry ? `${matchedEntry.actionLabel} on ${matchedEntry.targetLabel}` : null,
+        historyStepCount: geometrySelectedMeshTopologyHandoff?.steps.length ?? 0,
+      });
       focusSurfaceMeshViewport(restored);
       setSurfaceMeshTopologyStatus(status);
       setGeometryCreateActionStatus(status);
@@ -44184,6 +44208,120 @@ case "mobius":
       setMeshDataset,
     ]
   );
+
+  const meshGeometryRoundTripTarget = useMemo(
+    () =>
+      meshGeometryRoundTripSource
+        ? geometryDatasetMeshObjects.find((entry) => entry.id === meshGeometryRoundTripSource.objectId) ?? null
+        : null,
+    [geometryDatasetMeshObjects, meshGeometryRoundTripSource]
+  );
+  const meshGeometryRoundTripCanUpdateOriginal =
+    !!meshGeometryRoundTripTarget && !geometryLockedObjectIds.has(meshGeometryRoundTripTarget.id);
+
+  const handleOpenMeshRoundTripGeometryObject = useCallback(() => {
+    if (!meshGeometryRoundTripSource) {
+      setSurfaceMeshTopologyStatus("No Geometry source is attached to this Mesh session.");
+      return;
+    }
+    const target = resolveGeometrySceneObjectById(meshGeometryRoundTripSource.objectId);
+    if (!target) {
+      setSurfaceMeshTopologyStatus("Geometry source is unavailable; it may have been deleted.");
+      return;
+    }
+    setGeometrySelectedObjectId(target.id);
+    setGeometryProceduralPanelTab("object");
+    setGeometryMode("procedural");
+    setMode("geometry");
+    accentGeometryMeshInfo(target.id);
+    setGeometryCreateActionStatus(`Returned to promoted Geometry object: ${target.name}.`);
+  }, [accentGeometryMeshInfo, meshGeometryRoundTripSource, resolveGeometrySceneObjectById]);
+
+  const handleUpdateOriginalGeometryFromMeshRoundTrip = useCallback(() => {
+    if (!meshGeometryRoundTripSource) {
+      setSurfaceMeshTopologyStatus("No Geometry source is attached to this Mesh session.");
+      return;
+    }
+    if (!surfaceMeshData?.positions?.length) {
+      setSurfaceMeshTopologyStatus("Mesh result is not ready to update the Geometry object.");
+      return;
+    }
+    const target = geometryDatasetMeshObjects.find((entry) => entry.id === meshGeometryRoundTripSource.objectId) ?? null;
+    if (!target) {
+      setSurfaceMeshTopologyStatus("Original Geometry mesh object is unavailable; promote as a new object instead.");
+      return;
+    }
+    if (geometryLockedObjectIds.has(target.id)) {
+      setSurfaceMeshTopologyStatus("Original Geometry mesh object is locked; promote as a new object instead.");
+      return;
+    }
+    const latestTopologyEdit = surfaceMeshTopologyHistory[0] ?? null;
+    const topologyHistoryLabels = surfaceMeshTopologyHistory
+      .slice()
+      .reverse()
+      .map((entry) => `Mesh topology: ${entry.actionLabel} - ${entry.targetLabel} -> ${entry.resultLabel}`);
+    const updateLabel = latestTopologyEdit
+      ? `Round-trip update after ${latestTopologyEdit.actionLabel}`
+      : "Round-trip update from Mesh";
+    const sourceOperationHistory = [
+      ...(target.promotion?.sourceOperationHistory ?? []),
+      ...topologyHistoryLabels,
+      `Pipeline: ${updateLabel}`,
+    ].slice(-20);
+    const promoted = promoteGeometryToMesh({
+      mesh: surfaceMeshData,
+      sourceGeometryId: target.promotion?.sourceGeometryId ?? target.id,
+      sourceOperationHistory,
+      promotionMode: target.promotion?.promotionMode ?? geometryPromotionMode,
+      createdAt: target.promotion?.createdAt,
+      labelOverride: target.name,
+    });
+    queueGeometryHistoryIntent(target.id, {
+      action: "pipeline-mesh-roundtrip-update",
+      label: updateLabel,
+      operationType: "Pipeline",
+      target: target.name,
+      parameters: latestTopologyEdit ? latestTopologyEdit.selectedResultLabel : "current Mesh source",
+      destructive: true,
+    });
+    setGeometryDatasetMeshObjects((prev) =>
+      prev.map((entry) =>
+        entry.id === target.id
+          ? {
+              ...entry,
+              mesh: toDetachedMeshData(promoted.mesh, target.name),
+              promotion: promoted.metadata,
+            }
+          : entry
+      )
+    );
+    if (promoted.frozen) {
+      setGeometryLockedObjectIds((prev) => {
+        const next = new Set(prev);
+        next.add(target.id);
+        return next;
+      });
+    }
+    setGeometrySelectedObjectId(target.id);
+    setGeometryProceduralPanelTab("object");
+    setGeometryMode("procedural");
+    setMode("geometry");
+    accentGeometryMeshInfo(target.id);
+    const status = latestTopologyEdit
+      ? `Updated original Geometry object from Mesh: ${latestTopologyEdit.selectedResultLabel}.`
+      : "Updated original Geometry object from Mesh.";
+    setSurfaceMeshTopologyStatus(status);
+    setGeometryCreateActionStatus(status);
+  }, [
+    accentGeometryMeshInfo,
+    geometryDatasetMeshObjects,
+    geometryLockedObjectIds,
+    geometryPromotionMode,
+    meshGeometryRoundTripSource,
+    queueGeometryHistoryIntent,
+    surfaceMeshData,
+    surfaceMeshTopologyHistory,
+  ]);
 
   const handleWeldSurfaceMesh = useCallback(() => {
     if (surfaceMeshWeldBusy) return;
@@ -57295,6 +57433,74 @@ case "mobius":
                       <div style={{ fontSize: 11, color: "#475467" }}>
                         Face Subdivide, Split Edge, Collapse Edge, Bevel Edge
                       </div>
+                      {meshGeometryRoundTripSource && (
+                        <div
+                          data-testid="mesh-geometry-roundtrip-panel-card"
+                          style={{
+                            border: "1px solid #bae6fd",
+                            borderRadius: 8,
+                            background: "#f0f9ff",
+                            color: "#0f3557",
+                            padding: "7px 8px",
+                            display: "grid",
+                            gap: 6,
+                            fontSize: 10.5,
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                            <strong>Editing source for: {meshGeometryRoundTripSource.objectName}</strong>
+                            <span style={{ color: "#075985", fontWeight: 700 }}>
+                              {meshGeometryRoundTripSource.snapshotMode === "before"
+                                ? "Before"
+                                : meshGeometryRoundTripSource.snapshotMode === "after"
+                                  ? "After"
+                                  : "Current"}
+                            </span>
+                          </div>
+                          <div style={{ color: "#475569" }}>
+                            {meshGeometryRoundTripSource.latestTopologyLabel
+                              ? `Source step: ${meshGeometryRoundTripSource.latestTopologyLabel}`
+                              : meshGeometryRoundTripSource.historyStepCount
+                                ? `${meshGeometryRoundTripSource.historyStepCount} topology step${
+                                    meshGeometryRoundTripSource.historyStepCount === 1 ? "" : "s"
+                                  } attached`
+                                : "No topology history was attached to this source."}
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              data-testid="mesh-roundtrip-panel-back-to-geometry"
+                              onClick={handleOpenMeshRoundTripGeometryObject}
+                              style={{ fontSize: 10, padding: "2px 7px" }}
+                            >
+                              Back to Geometry object
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="mesh-roundtrip-panel-promote-new"
+                              onClick={handleDatasetToGeometryScene}
+                              disabled={!surfaceMeshData?.positions?.length}
+                              style={{ fontSize: 10, padding: "2px 7px" }}
+                            >
+                              Promote as New
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="mesh-roundtrip-panel-update-original"
+                              onClick={handleUpdateOriginalGeometryFromMeshRoundTrip}
+                              disabled={!surfaceMeshData?.positions?.length || !meshGeometryRoundTripCanUpdateOriginal}
+                              title={
+                                meshGeometryRoundTripCanUpdateOriginal
+                                  ? "Replace the original promoted Geometry mesh with the current Mesh result."
+                                  : "Original promoted mesh object is unavailable or locked."
+                              }
+                              style={{ fontSize: 10, padding: "2px 7px" }}
+                            >
+                              Update Original
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       <div
                         style={{
                           border: "1px solid #bfdbfe",
@@ -58380,6 +58586,66 @@ case "mobius":
                             );
                           })}
                         </div>
+                      </div>
+                    )}
+                    {isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "mesh" && meshGeometryRoundTripSource && (
+                      <div
+                        data-testid="mesh-geometry-roundtrip-card"
+                        style={{
+                          margin: showSurfaceLocalToolStrip && !surfacePanelsAsDrawers ? "0 8px 6px" : "6px 0",
+                          border: "1px solid #bae6fd",
+                          borderRadius: 8,
+                          background: "#f0f9ff",
+                          color: "#0f3557",
+                          padding: "6px 8px",
+                          display: "flex",
+                          gap: 8,
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                          fontSize: 11,
+                        }}
+                      >
+                        <strong>Editing source for: {meshGeometryRoundTripSource.objectName}</strong>
+                        <span style={{ color: "#475569" }}>
+                          {meshGeometryRoundTripSource.latestTopologyLabel
+                            ? `Source step: ${meshGeometryRoundTripSource.latestTopologyLabel}`
+                            : meshGeometryRoundTripSource.historyStepCount
+                              ? `${meshGeometryRoundTripSource.historyStepCount} topology step${
+                                  meshGeometryRoundTripSource.historyStepCount === 1 ? "" : "s"
+                                } attached`
+                              : "No topology history attached"}
+                        </span>
+                        <button
+                          type="button"
+                          data-testid="mesh-roundtrip-back-to-geometry"
+                          onClick={handleOpenMeshRoundTripGeometryObject}
+                          style={{ fontSize: 10, padding: "2px 7px" }}
+                        >
+                          Back to Geometry object
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="mesh-roundtrip-promote-new"
+                          onClick={handleDatasetToGeometryScene}
+                          disabled={!surfaceMeshData?.positions?.length}
+                          style={{ fontSize: 10, padding: "2px 7px" }}
+                        >
+                          Promote as New
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="mesh-roundtrip-update-original"
+                          onClick={handleUpdateOriginalGeometryFromMeshRoundTrip}
+                          disabled={!surfaceMeshData?.positions?.length || !meshGeometryRoundTripCanUpdateOriginal}
+                          title={
+                            meshGeometryRoundTripCanUpdateOriginal
+                              ? "Replace the original promoted Geometry mesh with the current Mesh result."
+                              : "Original promoted mesh object is unavailable or locked."
+                          }
+                          style={{ fontSize: 10, padding: "2px 7px" }}
+                        >
+                          Update Original
+                        </button>
                       </div>
                     )}
                     <div
@@ -68367,6 +68633,25 @@ case "mobius":
                               >
                                 Open Mesh Source
                               </button>
+                              {geometrySelectedMeshTopologyHandoff.latest && (
+                                <button
+                                  type="button"
+                                  data-testid="geometry-show-topology-lines"
+                                  onClick={() => {
+                                    setGeometryWireframe(true);
+                                    setGeometryCreateActionStatus("Topology lines shown for promoted Mesh edit.");
+                                  }}
+                                  disabled={geometryWireframe}
+                                  title={
+                                    geometryWireframe
+                                      ? "Topology lines are already visible."
+                                      : "Turn on Geometry wireframe so coplanar topology edits are visible."
+                                  }
+                                  style={{ fontSize: 10, padding: "2px 7px" }}
+                                >
+                                  Show topology lines
+                                </button>
+                              )}
                               {geometrySelectedMeshTopologyHandoff.latest && (
                                 <>
                                   <button
