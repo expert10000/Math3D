@@ -172,6 +172,12 @@ test.describe("Mesh topology persistence and handoff", () => {
       await expect(page.getByText(/Converted to detached Mesh object/i).first()).toBeVisible({ timeout: 15_000 });
       await firstVisible(page.getByRole("button", { name: "Close", exact: true })).then((button) => button.click());
       await expect(page.getByTestId("geometry-right-open-object")).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId("geometry-right-linked-mesh-source")).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId("geometry-right-linked-mesh-source")).toContainText(/Linked Mesh edit source/i);
+      await expect(page.getByTestId("geometry-right-linked-mesh-source")).toContainText(/Latest: Bevel edge/i);
+      await expect(page.getByTestId("geometry-right-linked-mesh-source")).toContainText(/Source snapshot available/i);
+      await expect(page.getByTestId("geometry-right-restore-mesh-before")).toBeEnabled();
+      await expect(page.getByTestId("geometry-right-restore-mesh-after")).toBeEnabled();
       await page.getByTestId("geometry-right-open-object").click();
       await expect(page.getByTestId("geometry-mesh-topology-source-history")).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText(/Mesh topology source history/i).first()).toBeVisible();
@@ -190,7 +196,7 @@ test.describe("Mesh topology persistence and handoff", () => {
       await expect(page.getByTestId("geometry-right-open-object")).toBeVisible({ timeout: 15_000 });
       await page.getByTestId("geometry-right-open-object").click();
       await expect(page.getByTestId("geometry-roundtrip-update-feedback")).toContainText(
-        /Updated original from Mesh: V \d+ -> \d+, F \d+ -> \d+/,
+        /Mesh edits applied to Geometry: V \d+ -> \d+, F \d+ -> \d+/,
         { timeout: 15_000 }
       );
       await expect(page.getByText(/Latest Mesh topology step:/i).first()).toBeVisible();

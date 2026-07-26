@@ -8053,7 +8053,7 @@ const buildGeometryMeshRoundTripUpdateFeedback = (
     id: makeId(),
     objectId,
     summary,
-    retainedSelectionLabel: "Updated original from Mesh",
+    retainedSelectionLabel: "Mesh edits applied to Geometry",
     points: center ? [center] : [],
     edgeLines: limitPolylineSet(buildMeshEdgePolylines(transformed, true), 120),
     facePolygons: [],
@@ -44325,10 +44325,10 @@ case "mobius":
     };
     const beforeSnapshot = cloneGeometrySceneObjectSnapshot(target);
     const afterSnapshot = cloneGeometrySceneObjectSnapshot(updatedTarget);
-    const summary = `Updated original from Mesh: ${countsLabel}`;
+    const summary = `Mesh edits applied to Geometry: ${countsLabel}`;
     const operationParameters = latestTopologyEdit
-      ? `${summary}; source: ${latestTopologyLabel}; result: ${latestTopologyResult}`
-      : `${summary}; source: current Mesh source`;
+        ? `${summary}; source: ${latestTopologyLabel}; result: ${latestTopologyResult}`
+        : `${summary}; source: current Mesh source`;
     const historyStep: GeometryObjectHistoryStep = {
       id: makeId(),
       at: Date.now(),
@@ -57559,6 +57559,9 @@ case "mobius":
                                   } attached`
                                 : "No topology history was attached to this source."}
                           </div>
+                          <div style={{ color: "#334155" }}>
+                            Apply edits back to the promoted Geometry object, or promote as a new copy.
+                          </div>
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                             <button
                               type="button"
@@ -57584,12 +57587,12 @@ case "mobius":
                               disabled={!surfaceMeshData?.positions?.length || !meshGeometryRoundTripCanUpdateOriginal}
                               title={
                                 meshGeometryRoundTripCanUpdateOriginal
-                                  ? "Replace the original promoted Geometry mesh with the current Mesh result."
+                                  ? "Apply the current Mesh edits back to the promoted Geometry object."
                                   : "Original promoted mesh object is unavailable or locked."
                               }
                               style={{ fontSize: 10, padding: "2px 7px" }}
                             >
-                              Update Original
+                              Apply to Geometry Object
                             </button>
                           </div>
                         </div>
@@ -58708,6 +58711,9 @@ case "mobius":
                                 } attached`
                               : "No topology history attached"}
                         </span>
+                        <span style={{ color: "#334155" }}>
+                          Apply edits back to the promoted Geometry object, or promote as a new copy.
+                        </span>
                         <button
                           type="button"
                           data-testid="mesh-roundtrip-back-to-geometry"
@@ -58732,12 +58738,12 @@ case "mobius":
                           disabled={!surfaceMeshData?.positions?.length || !meshGeometryRoundTripCanUpdateOriginal}
                           title={
                             meshGeometryRoundTripCanUpdateOriginal
-                              ? "Replace the original promoted Geometry mesh with the current Mesh result."
+                              ? "Apply the current Mesh edits back to the promoted Geometry object."
                               : "Original promoted mesh object is unavailable or locked."
                           }
                           style={{ fontSize: 10, padding: "2px 7px" }}
                         >
-                          Update Original
+                          Apply to Geometry Object
                         </button>
                       </div>
                     )}
@@ -68655,7 +68661,7 @@ case "mobius":
                             }}
                           >
                             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                              <div style={{ fontWeight: 800 }}>Updated original from Mesh</div>
+                              <div style={{ fontWeight: 800 }}>Mesh edits applied to Geometry</div>
                               <span
                                 style={{
                                   border: "1px solid #86efac",
@@ -74130,6 +74136,8 @@ case "mobius":
                             setGeometryMode("procedural");
                             setGeometryProceduralPanelTab("object");
                             setGeometryRightPanelTab("selection");
+                            accentGeometryMeshInfo(geometrySelectedSceneObject.id);
+                            setGeometryCreateActionStatus(`Object details open for ${geometrySelectedSceneObject.name}.`);
                           }}
                           style={{
                             justifySelf: "start",
@@ -74140,9 +74148,9 @@ case "mobius":
                             color: "#1d4ed8",
                             fontWeight: 700,
                           }}
-                          title="Open the selected object details panel."
+                          title="Show the selected object's full details in the left panel."
                         >
-                          Open Object
+                          Object Details
                         </button>
                       )}
                     </div>
@@ -74210,12 +74218,132 @@ case "mobius":
                                         setGeometryMode("procedural");
                                         setGeometryProceduralPanelTab("object");
                                         setGeometryRightPanelTab("selection");
+                                        accentGeometryMeshInfo(geometrySelectedSceneObject.id);
+                                        setGeometryCreateActionStatus(`Object details open for ${geometrySelectedSceneObject.name}.`);
                                       }}
                                       style={{ fontSize: 11, padding: "4px 8px" }}
-                                      title="Open the selected object details panel."
+                                      title="Show the selected object's full details in the left panel."
                                     >
-                                      Open Object
+                                      Object Details
                                     </button>
+                                  </div>
+                                )}
+                                {(geometrySelectedMeshTopologyHandoff || geometrySelectedPlainMeshHandoff) && (
+                                  <div
+                                    data-testid="geometry-right-linked-mesh-source"
+                                    style={{
+                                      marginTop: 6,
+                                      border: "1px solid #bae6fd",
+                                      borderRadius: 8,
+                                      padding: "7px 8px",
+                                      background: "#f0f9ff",
+                                      color: "#0f3557",
+                                      display: "grid",
+                                      gap: 5,
+                                      fontSize: 10.5,
+                                    }}
+                                  >
+                                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                      <strong>Linked Mesh edit source</strong>
+                                      <span
+                                        style={{
+                                          border: "1px solid #7dd3fc",
+                                          borderRadius: 999,
+                                          padding: "1px 6px",
+                                          background: "#e0f2fe",
+                                          color: "#075985",
+                                          fontWeight: 700,
+                                        }}
+                                      >
+                                        {geometrySelectedMeshTopologyHandoff
+                                          ? `${geometrySelectedMeshTopologyHandoff.steps.length} step${
+                                              geometrySelectedMeshTopologyHandoff.steps.length === 1 ? "" : "s"
+                                            }`
+                                          : "0 steps"}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      Source:{" "}
+                                      {geometrySelectedMeshTopologyHandoff
+                                        ? `${geometrySelectedMeshTopologyHandoff.sourceMesh} (${geometrySelectedMeshTopologyHandoff.sourceViewer})`
+                                        : `${geometrySelectedPlainMeshHandoff?.sourceMesh ?? "Mesh"} (${
+                                            geometrySelectedPlainMeshHandoff?.sourceViewer ?? "mesh"
+                                          })`}
+                                    </div>
+                                    <div>
+                                      Latest:{" "}
+                                      {geometrySelectedMeshTopologyHandoff?.latest
+                                        ? `${geometrySelectedMeshTopologyHandoff.latest.action} on ${geometrySelectedMeshTopologyHandoff.latest.target} -> ${geometrySelectedMeshTopologyHandoff.latest.result}`
+                                        : geometrySelectedPlainMeshHandoff?.sourceLabel ?? "No Mesh topology edits recorded"}
+                                    </div>
+                                    <div>
+                                      Counts:{" "}
+                                      {geometryMeshRoundTripUpdateFeedback?.objectId === geometrySelectedSceneObject?.id
+                                        ? geometryMeshRoundTripUpdateFeedback.countsLabel
+                                        : geometrySelectedSceneMeshInfo
+                                          ? `${geometrySelectedSceneMeshInfo.vertCount.toLocaleString()}V / ${geometrySelectedSceneMeshInfo.triCount.toLocaleString()}F`
+                                          : "n/a"}
+                                    </div>
+                                    <div style={{ color: "#075985", fontWeight: 700 }}>
+                                      {geometrySelectedMeshTopologyHandoff
+                                        ? geometrySelectedMeshTopologyHandoffHistoryEntry
+                                          ? "Round-trip linked · source snapshot available · history available"
+                                          : "Round-trip linked · history available · source snapshots unavailable"
+                                        : "Round-trip linked · current source available · no topology history"}
+                                    </div>
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                      <button
+                                        type="button"
+                                        data-testid="geometry-right-open-mesh-source"
+                                        onClick={() => handleOpenGeometryMeshTopologySource("current")}
+                                        style={{ fontSize: 10, padding: "2px 7px" }}
+                                      >
+                                        Open Mesh Source
+                                      </button>
+                                      {geometrySelectedMeshTopologyHandoff && (
+                                        <>
+                                          <button
+                                            type="button"
+                                            data-testid="geometry-right-restore-mesh-before"
+                                            onClick={() => handleOpenGeometryMeshTopologySource("before")}
+                                            disabled={!geometrySelectedMeshTopologyHandoffHistoryEntry}
+                                            title={
+                                              geometrySelectedMeshTopologyHandoffHistoryEntry
+                                                ? "Open the Mesh workspace at the state before this topology edit."
+                                                : "Before snapshot is unavailable for this linked Mesh edit."
+                                            }
+                                            style={{ fontSize: 10, padding: "2px 7px" }}
+                                          >
+                                            Restore Before
+                                          </button>
+                                          <button
+                                            type="button"
+                                            data-testid="geometry-right-restore-mesh-after"
+                                            onClick={() => handleOpenGeometryMeshTopologySource("after")}
+                                            disabled={!geometrySelectedMeshTopologyHandoffHistoryEntry}
+                                            title={
+                                              geometrySelectedMeshTopologyHandoffHistoryEntry
+                                                ? "Open the Mesh workspace at the state after this topology edit."
+                                                : "After snapshot is unavailable for this linked Mesh edit."
+                                            }
+                                            style={{ fontSize: 10, padding: "2px 7px" }}
+                                          >
+                                            Restore After
+                                          </button>
+                                        </>
+                                      )}
+                                      <button
+                                        type="button"
+                                        data-testid="geometry-right-open-history"
+                                        onClick={() => {
+                                          setGeometryProceduralPanelTab("history");
+                                          setGeometryRightPanelTab("selection");
+                                        }}
+                                        style={{ fontSize: 10, padding: "2px 7px" }}
+                                      >
+                                        Open History
+                                      </button>
+                                    </div>
                                   </div>
                                 )}
                               </div>
