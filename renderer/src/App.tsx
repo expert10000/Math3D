@@ -44053,6 +44053,201 @@ case "mobius":
     [appendMeshPromotionOperation, applySurfaceMeshTopologyEdit, clearSurfaceMeshTopologySessionState, focusSurfaceMeshViewport, setMeshDataset]
   );
 
+  const buildSurfaceMeshTopologyDemoEdit = useCallback((preset: SurfaceMeshTopologyDemoPreset, meshReady: SurfaceMeshData) => {
+    const beforeCounts = countTriangleMeshTopology(meshReady);
+    const baseLabel = meshReady.label ?? preset.label;
+    let actionLabel = "Face subdivide";
+    let traceOperation = "mesh-topology:face-subdivide-demo";
+    let operationHistoryLabel = `topology demo face ${preset.faceIndex} subdivided (${preset.subdivideMode ?? "center-fan"})`;
+    let labelSuffix = "face subdivide";
+    let targetLabel = `Face ${preset.faceIndex}`;
+    let paramsLabel = `mode=${preset.subdivideMode ?? "center-fan"}`;
+    let selectedResultLabel =
+      preset.subdivideMode === "four-triangles" ? "four-triangle split" : "center fan triangles";
+    let topologyAction = "face-subdivide";
+    let edit = (mesh: SurfaceMeshData) => subdivideFace(mesh, preset.faceIndex, preset.subdivideMode ?? "center-fan");
+
+    if (preset.operation === "Split Edge") {
+      const ratio = clampNumber(preset.splitRatio ?? 0.5, 0.01, 0.99);
+      actionLabel = "Split edge";
+      traceOperation = "mesh-topology:split-edge-demo";
+      operationHistoryLabel = `topology demo edge ${preset.edge[0]}-${preset.edge[1]} split (${Math.round(ratio * 100)}%)`;
+      labelSuffix = "split edge";
+      targetLabel = `Edge ${preset.edge[0]}-${preset.edge[1]}`;
+      paramsLabel = `ratio=${fmt(ratio)}`;
+      selectedResultLabel = `midpoint vertex on Edge ${preset.edge[0]}-${preset.edge[1]}`;
+      topologyAction = "edge-split";
+      edit = (mesh: SurfaceMeshData) => splitEdge(mesh, preset.edge[0], preset.edge[1], ratio);
+    } else if (preset.operation === "Collapse Edge") {
+      const collapseMode = preset.collapseMode ?? "midpoint";
+      actionLabel = "Collapse edge";
+      traceOperation = "mesh-topology:collapse-edge-demo";
+      operationHistoryLabel = `topology demo edge ${preset.edge[0]}-${preset.edge[1]} collapsed (${collapseMode})`;
+      labelSuffix = "collapse edge";
+      targetLabel = `Edge ${preset.edge[0]}-${preset.edge[1]}`;
+      paramsLabel = `mode=${collapseMode}`;
+      selectedResultLabel =
+        collapseMode === "keep-a"
+          ? `merged vertex ${preset.edge[0]}`
+          : collapseMode === "keep-b"
+            ? `merged vertex ${preset.edge[1]}`
+            : "midpoint vertex";
+      topologyAction = "edge-collapse";
+      edit = (mesh: SurfaceMeshData) => collapseEdge(mesh, preset.edge[0], preset.edge[1], collapseMode);
+    } else if (preset.operation === "Bevel Edge") {
+      const amount = Math.max(0.001, preset.bevelAmount ?? 0.06);
+      actionLabel = "Bevel edge";
+      traceOperation = "mesh-topology:bevel-edge-demo";
+      operationHistoryLabel = `topology demo edge ${preset.edge[0]}-${preset.edge[1]} beveled (${fmt(amount)})`;
+      labelSuffix = "bevel edge";
+      targetLabel = `Edge ${preset.edge[0]}-${preset.edge[1]}`;
+      paramsLabel = `amount=${fmt(amount)}`;
+      selectedResultLabel = `bevel band from Edge ${preset.edge[0]}-${preset.edge[1]}`;
+      topologyAction = "edge-bevel";
+      edit = (mesh: SurfaceMeshData) => bevelEdge(mesh, preset.edge[0], preset.edge[1], amount);
+    }
+
+    const base = cloneSurfaceMeshData(meshReady, `${baseLabel} (${labelSuffix})`);
+    const edited = applySurfaceMeshOps(edit(base));
+    const afterCounts = countTriangleMeshTopology(edited);
+    const historyEntry: SurfaceMeshTopologyHistoryEntry = {
+      id: makeId(),
+      at: Date.now(),
+      actionLabel,
+      sourceLabel: baseLabel,
+      targetLabel,
+      paramsLabel,
+      resultLabel: buildTopologyEditSummary(topologyAction, targetLabel, beforeCounts, afterCounts),
+      beforeCounts,
+      afterCounts,
+      selectedResultLabel,
+      beforeSnapshot: cloneSurfaceMeshData(meshReady, meshReady.label),
+      snapshot: cloneSurfaceMeshData(edited, edited.label),
+    };
+
+    return {
+      edited,
+      historyEntry,
+      traceOperation,
+      operationHistoryLabel,
+      topologyAction,
+    };
+  }, []);
+
+  const handleRunSurfaceMeshTopologyFullRoundTripDemoPreset = useCallback(
+    (presetId: string) => {
+      const preset = SURFACE_MESH_TOPOLOGY_DEMO_PRESETS.find((entry) => entry.id === presetId);
+      if (!preset) return;
+      if (preset.workflowKind !== "round-trip") {
+        setSurfaceMeshTopologyStatus("Full round-trip demo is available for the Round-trip presets.");
+        return;
+      }
+      try {
+        const meshReady = preset.build();
+        const { edited, historyEntry, traceOperation, operationHistoryLabel, topologyAction } =
+          buildSurfaceMeshTopologyDemoEdit(preset, meshReady);
+        setMeshDataset(edited, traceOperation);
+        clearSurfaceMeshTopologySessionState();
+        setSurfaceMeshImportError(null);
+        setSurfaceMeshOpsError(null);
+        setSurfaceMeshTopologyFaceIndex(preset.faceIndex);
+        setSurfaceMeshTopologyEdgeA(preset.edge[0]);
+        setSurfaceMeshTopologyEdgeB(preset.edge[1]);
+        if (preset.subdivideMode) setSurfaceMeshTopologySubdivideMode(preset.subdivideMode);
+        if (preset.splitRatio != null) setSurfaceMeshTopologySplitRatio(preset.splitRatio);
+        if (preset.collapseMode) setSurfaceMeshTopologyCollapseMode(preset.collapseMode);
+        if (preset.bevelAmount != null) setSurfaceMeshTopologyBevelAmount(preset.bevelAmount);
+        if (historyEntry.afterCounts.vertexCount > historyEntry.beforeCounts.vertexCount) {
+          setSurfaceMeshTopologyVertexIndex(historyEntry.beforeCounts.vertexCount);
+        }
+        setSurfaceMeshTopologyPreviewOperation(preset.operation);
+        setSurfaceMeshTopologyHistory([historyEntry]);
+        setSelectedSurfaceMeshTopologyHistoryId(historyEntry.id);
+        setSurfaceMeshTopologyHistoryPreviewId(null);
+        setSurfaceMeshTopologyHistoryPreviewMode("after");
+        setSurfaceMeshTopologyFeedback(
+          buildTopologyEditFeedback("mesh-workspace", topologyAction, historyEntry.targetLabel, meshReady, edited, edited)
+        );
+        setMeshGeometryRoundTripSource(null);
+        setDatasetKind("mesh");
+        setSurfaceViewerKind("mesh");
+        setSurfacesPanelState("work");
+        setSurfacesLeftTab("analysis");
+        setSurfacesWorkGalleryOpen(false);
+        appendMeshPromotionOperation(`loaded full round-trip demo (${preset.operation})`);
+        appendMeshPromotionOperation(operationHistoryLabel);
+        focusSurfaceMeshViewport(edited);
+
+        const topologyHistoryLabels = [
+          `Mesh topology: ${historyEntry.actionLabel} - ${historyEntry.targetLabel} -> ${historyEntry.resultLabel}`,
+        ];
+        const convertedName = `${edited.label ?? "Surface mesh"} (${historyEntry.actionLabel})`;
+        const promoted = promoteGeometryToMesh({
+          mesh: edited,
+          sourceGeometryId: null,
+          sourceOperationHistory: [`surface-viewer:mesh`, meshReady.label ?? preset.label, ...topologyHistoryLabels],
+          promotionMode: geometryPromotionMode,
+          labelOverride: convertedName,
+        });
+        const id = makeId();
+        const obj: GeometryDatasetMeshObject = {
+          id,
+          name: `${convertedName} mesh object`,
+          mesh: toDetachedMeshData(promoted.mesh),
+          transform: {
+            position: { x: 0, y: 0, z: 0 },
+            rotation: { x: 0, y: 0, z: 0 },
+            scale: { x: 1, y: 1, z: 1 },
+          },
+          visible: true,
+          material: { color: 0x8aa4ff, opacity: 1 },
+          promotion: promoted.metadata,
+        };
+        setGeometryObjects((prev) => (prev.length === 1 && isSeedGeometryBoxObject(prev[0]) ? [] : prev));
+        setGeometryDatasetMeshObjects((prev) => [obj, ...prev]);
+        if (promoted.frozen) {
+          setGeometryLockedObjectIds((prev) => {
+            const next = new Set(prev);
+            next.add(id);
+            return next;
+          });
+        }
+        setGeometrySelectedObjectId(id);
+        setGeometryProceduralPanelTab("object");
+        setGeometryRightPanelTab("selection");
+        setGeometryMode("procedural");
+        setMode("geometry");
+        setGeometryWireframe(true);
+        queueGeometryHistoryIntent(id, {
+          action: "pipeline-mesh-roundtrip-demo",
+          label: `Full round-trip demo: ${preset.label}`,
+          operationType: "Pipeline",
+          target: convertedName,
+          parameters: topologyHistoryLabels.join(" | "),
+          destructive: false,
+        });
+        const status = `Full round-trip demo ready: ${preset.label}. ${historyEntry.resultLabel}. Linked Mesh edit source card is visible.`;
+        setSurfaceMeshTopologyStatus(status);
+        setGeometryCreateActionStatus(status);
+        accentGeometryMeshInfo(id);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to run full round-trip demo.";
+        setSurfaceMeshTopologyStatus(msg);
+        setGeometryCreateActionStatus(msg);
+      }
+    },
+    [
+      accentGeometryMeshInfo,
+      appendMeshPromotionOperation,
+      buildSurfaceMeshTopologyDemoEdit,
+      clearSurfaceMeshTopologySessionState,
+      focusSurfaceMeshViewport,
+      geometryPromotionMode,
+      queueGeometryHistoryIntent,
+      setMeshDataset,
+    ]
+  );
+
   const surfaceMeshTopologyFaceGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Face Subdivide");
   const surfaceMeshTopologySplitGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Split Edge");
   const surfaceMeshTopologyCollapseGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Collapse Edge");
@@ -54716,6 +54911,7 @@ case "mobius":
                   surfaceMeshTopologySavedPresets={surfaceMeshTopologySavedPresets}
                   onApplySurfaceMeshTopologySavedPreset={handleApplySurfaceMeshTopologySavedPreset}
                   onRunSurfaceMeshTopologyDemoPreset={handleRunSurfaceMeshTopologyDemoPreset}
+                  onRunSurfaceMeshTopologyFullRoundTripDemoPreset={handleRunSurfaceMeshTopologyFullRoundTripDemoPreset}
                   onLoadSurfaceMeshFile={handleLoadSurfaceMeshFile}
                   onConvertToMesh={handleConvertToMesh}
                   onOpenMeshPromotionSourceGeometryObject={handleOpenMeshPromotionSourceGeometryObject}
@@ -56301,6 +56497,7 @@ case "mobius":
                   onGenerateSurfaceMeshAssetPreset={handleGenerateSurfaceMeshAssetPreset}
                   onApplySurfaceMeshTopologyDemoPreset={handleApplySurfaceMeshTopologyDemoPreset}
                   onApplySurfaceMeshTopologySavedPreset={handleApplySurfaceMeshTopologySavedPreset}
+                  onRunSurfaceMeshTopologyFullRoundTripDemoPreset={handleRunSurfaceMeshTopologyFullRoundTripDemoPreset}
                   volumePresetId={volumePresetId}
                   onChangeVolumePresetId={setVolumePresetId}
                 />
@@ -57238,6 +57435,7 @@ case "mobius":
                   onGenerateSurfaceMeshAssetPreset={handleGenerateSurfaceMeshAssetPreset}
                   onApplySurfaceMeshTopologyDemoPreset={handleApplySurfaceMeshTopologyDemoPreset}
                   onApplySurfaceMeshTopologySavedPreset={handleApplySurfaceMeshTopologySavedPreset}
+                  onRunSurfaceMeshTopologyFullRoundTripDemoPreset={handleRunSurfaceMeshTopologyFullRoundTripDemoPreset}
                   volumePresetId={volumePresetId}
                   onChangeVolumePresetId={setVolumePresetId}
                 />
@@ -57737,37 +57935,57 @@ case "mobius":
                         <div style={{ fontSize: 11, fontWeight: 700 }}>Guided examples</div>
                         <div style={{ display: "grid", gap: 5 }}>
                           {SURFACE_MESH_TOPOLOGY_DEMO_PRESETS.map((preset) => (
-                            <button
-                              key={`mesh-tools-topology-demo-${preset.id}`}
-                              type="button"
-                              onClick={() => handleApplySurfaceMeshTopologyDemoPreset(preset.id)}
-                              title={`${preset.operation}: ${preset.summary}\n${preset.expectedResult}`}
-                              style={{
-                                textAlign: "left",
-                                borderRadius: 7,
-                                border: "1px solid " + (preset.workflowKind === "round-trip" ? "#7dd3fc" : "#dbe2ea"),
-                                background: preset.workflowKind === "round-trip" ? "#f0f9ff" : "#f8fafc",
-                                padding: "5px 7px",
-                              }}
-                            >
-                              <span style={{ display: "flex", justifyContent: "space-between", gap: 8, fontWeight: 700 }}>
-                                <span>{preset.label}</span>
-                                {preset.workflowKind === "round-trip" && (
-                                  <span style={{ color: "#075985", fontSize: 10 }}>Round-trip</span>
-                                )}
-                              </span>
-                              <span style={{ display: "block", fontSize: 10, color: "#475467", marginTop: 2 }}>
-                                {preset.tryHint}
-                              </span>
-                              {preset.workflowHint && (
-                                <span style={{ display: "block", fontSize: 10, color: "#075985", marginTop: 2 }}>
-                                  {preset.workflowHint}
+                            <div key={`mesh-tools-topology-demo-${preset.id}`} style={{ display: "grid", gap: 4 }}>
+                              <button
+                                type="button"
+                                onClick={() => handleApplySurfaceMeshTopologyDemoPreset(preset.id)}
+                                title={`${preset.operation}: ${preset.summary}\n${preset.expectedResult}`}
+                                style={{
+                                  textAlign: "left",
+                                  borderRadius: 7,
+                                  border: "1px solid " + (preset.workflowKind === "round-trip" ? "#7dd3fc" : "#dbe2ea"),
+                                  background: preset.workflowKind === "round-trip" ? "#f0f9ff" : "#f8fafc",
+                                  padding: "5px 7px",
+                                }}
+                              >
+                                <span style={{ display: "flex", justifyContent: "space-between", gap: 8, fontWeight: 700 }}>
+                                  <span>{preset.label}</span>
+                                  {preset.workflowKind === "round-trip" && (
+                                    <span style={{ color: "#075985", fontSize: 10 }}>Round-trip</span>
+                                  )}
                                 </span>
+                                <span style={{ display: "block", fontSize: 10, color: "#475467", marginTop: 2 }}>
+                                  {preset.tryHint}
+                                </span>
+                                {preset.workflowHint && (
+                                  <span style={{ display: "block", fontSize: 10, color: "#075985", marginTop: 2 }}>
+                                    {preset.workflowHint}
+                                  </span>
+                                )}
+                                <span style={{ display: "block", fontSize: 10, color: "#1e3a8a", marginTop: 2 }}>
+                                  Run demo applies it immediately.
+                                </span>
+                              </button>
+                              {preset.workflowKind === "round-trip" && (
+                                <button
+                                  type="button"
+                                  data-testid={`mesh-roundtrip-full-demo-${preset.id}`}
+                                  onClick={() => handleRunSurfaceMeshTopologyFullRoundTripDemoPreset(preset.id)}
+                                  style={{
+                                    justifySelf: "start",
+                                    fontSize: 10,
+                                    padding: "3px 8px",
+                                    borderColor: "#38bdf8",
+                                    background: "#e0f2fe",
+                                    color: "#075985",
+                                    fontWeight: 800,
+                                  }}
+                                  title="Load, edit, promote to Geometry, select the result, and show the linked Mesh source card."
+                                >
+                                  Run full round-trip demo
+                                </button>
                               )}
-                              <span style={{ display: "block", fontSize: 10, color: "#1e3a8a", marginTop: 2 }}>
-                                Run demo applies it immediately.
-                              </span>
-                            </button>
+                            </div>
                           ))}
                         </div>
                       </div>
@@ -79764,6 +79982,7 @@ type SurfacesControlsProps = {
   onGenerateSurfaceMeshAssetPreset: (id: string) => void;
   onApplySurfaceMeshTopologyDemoPreset: (id: string) => void;
   onApplySurfaceMeshTopologySavedPreset: (id: string) => void;
+  onRunSurfaceMeshTopologyFullRoundTripDemoPreset: (id: string) => void;
   volumePresetId: VolumePresetId;
   onChangeVolumePresetId: (id: VolumePresetId) => void;
 };
@@ -79824,6 +80043,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   onGenerateSurfaceMeshAssetPreset,
   onApplySurfaceMeshTopologyDemoPreset,
   onApplySurfaceMeshTopologySavedPreset,
+  onRunSurfaceMeshTopologyFullRoundTripDemoPreset,
   volumePresetId,
   onChangeVolumePresetId,
 }) => {
@@ -80260,70 +80480,90 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                   const thumb = thumbByViewMode(renderedThumb, diagramThumb, cardViewMode);
                   const summary = compactSummary(preset.summary);
                   return (
-                    <button
-                      key={`mesh-topology-gallery-card-${preset.id}`}
-                      type="button"
-                      data-testid={`mesh-topology-preset-card-${preset.id}`}
-                      onClick={() => onApplySurfaceMeshTopologyDemoPreset(preset.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "ArrowLeft") {
-                          e.preventDefault();
-                          focusGalleryCardNeighbor(e.currentTarget, "left");
-                        } else if (e.key === "ArrowRight") {
-                          e.preventDefault();
-                          focusGalleryCardNeighbor(e.currentTarget, "right");
-                        } else if (e.key === "ArrowUp") {
-                          e.preventDefault();
-                          focusGalleryCardNeighbor(e.currentTarget, "up");
-                        } else if (e.key === "ArrowDown") {
-                          e.preventDefault();
-                          focusGalleryCardNeighbor(e.currentTarget, "down");
-                        }
-                      }}
-                      className="gallery-scan-card surface-preset-card"
-                      title={`${preset.label}\n${preset.operation}\n${preset.summary}`}
-                    >
-                      <div className="gallery-scan-card-preview">
-                        <div className="gallery-scan-card-preview-frame">
-                          <img
-                            src={thumb}
-                            alt={`${preset.label} topology demo`}
-                            className="gallery-scan-card-preview-image"
-                            loading="lazy"
-                            decoding="async"
-                            onError={(event) => handleGalleryImageLoadError(event, diagramThumb)}
-                          />
-                        </div>
-                      </div>
-                      <div className="gallery-scan-card-meta">
-                        <div className="gallery-scan-card-title-row">
-                          <div className="gallery-scan-card-title">{preset.label}</div>
-                        </div>
-                        <div className="gallery-scan-card-summary" title={preset.summary}>
-                          {summary}
-                        </div>
-                        {preset.workflowHint && (
-                          <div className="gallery-scan-card-summary" title={preset.workflowHint}>
-                            {compactSummary(preset.workflowHint)}
+                    <div key={`mesh-topology-gallery-card-${preset.id}`} style={{ display: "grid", gap: 5 }}>
+                      <button
+                        type="button"
+                        data-testid={`mesh-topology-preset-card-${preset.id}`}
+                        onClick={() => onApplySurfaceMeshTopologyDemoPreset(preset.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "ArrowLeft") {
+                            e.preventDefault();
+                            focusGalleryCardNeighbor(e.currentTarget, "left");
+                          } else if (e.key === "ArrowRight") {
+                            e.preventDefault();
+                            focusGalleryCardNeighbor(e.currentTarget, "right");
+                          } else if (e.key === "ArrowUp") {
+                            e.preventDefault();
+                            focusGalleryCardNeighbor(e.currentTarget, "up");
+                          } else if (e.key === "ArrowDown") {
+                            e.preventDefault();
+                            focusGalleryCardNeighbor(e.currentTarget, "down");
+                          }
+                        }}
+                        className="gallery-scan-card surface-preset-card"
+                        title={`${preset.label}\n${preset.operation}\n${preset.summary}`}
+                      >
+                        <div className="gallery-scan-card-preview">
+                          <div className="gallery-scan-card-preview-frame">
+                            <img
+                              src={thumb}
+                              alt={`${preset.label} topology demo`}
+                              className="gallery-scan-card-preview-image"
+                              loading="lazy"
+                              decoding="async"
+                              onError={(event) => handleGalleryImageLoadError(event, diagramThumb)}
+                            />
                           </div>
-                        )}
-                        <div className="gallery-scan-card-formula">{preset.operation}</div>
-                        <div className="gallery-scan-card-chips">
-                          {[
-                            "Mesh",
-                            "Topology",
-                            ...(preset.workflowKind === "round-trip" ? ["Round-trip", "Promote"] : []),
-                          ].map((chip) => (
-                            <span key={`${preset.id}-${chip}`} className="gallery-scan-card-chip">
-                              {chip}
-                            </span>
-                          ))}
                         </div>
-                        <div className="gallery-scan-card-footer">
-                          <span className="gallery-scan-card-cta">Open demo</span>
+                        <div className="gallery-scan-card-meta">
+                          <div className="gallery-scan-card-title-row">
+                            <div className="gallery-scan-card-title">{preset.label}</div>
+                          </div>
+                          <div className="gallery-scan-card-summary" title={preset.summary}>
+                            {summary}
+                          </div>
+                          {preset.workflowHint && (
+                            <div className="gallery-scan-card-summary" title={preset.workflowHint}>
+                              {compactSummary(preset.workflowHint)}
+                            </div>
+                          )}
+                          <div className="gallery-scan-card-formula">{preset.operation}</div>
+                          <div className="gallery-scan-card-chips">
+                            {[
+                              "Mesh",
+                              "Topology",
+                              ...(preset.workflowKind === "round-trip" ? ["Round-trip", "Promote"] : []),
+                            ].map((chip) => (
+                              <span key={`${preset.id}-${chip}`} className="gallery-scan-card-chip">
+                                {chip}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="gallery-scan-card-footer">
+                            <span className="gallery-scan-card-cta">Open demo</span>
+                          </div>
                         </div>
-                      </div>
-                    </button>
+                      </button>
+                      {preset.workflowKind === "round-trip" && (
+                        <button
+                          type="button"
+                          data-testid={`mesh-gallery-roundtrip-full-demo-${preset.id}`}
+                          onClick={() => onRunSurfaceMeshTopologyFullRoundTripDemoPreset(preset.id)}
+                          style={{
+                            justifySelf: "start",
+                            fontSize: 11,
+                            padding: "4px 9px",
+                            borderColor: "#38bdf8",
+                            background: "#e0f2fe",
+                            color: "#075985",
+                            fontWeight: 800,
+                          }}
+                          title="Load, edit, promote to Geometry, select the result, and show the linked Mesh source card."
+                        >
+                          Run full round-trip demo
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
                 {surfaceMeshTopologySavedPresets.map((preset) => {
@@ -85076,6 +85316,7 @@ type SurfacesLeftPanelProps = {
   onApplySurfaceMeshTopologyDemoPreset: (id: string) => void;
   onApplySurfaceMeshTopologySavedPreset: (id: string) => void;
   onRunSurfaceMeshTopologyDemoPreset: (id: string) => void;
+  onRunSurfaceMeshTopologyFullRoundTripDemoPreset: (id: string) => void;
   onLoadSurfaceMeshFile: (files: FileList | File[] | null) => void;
   onConvertToMesh: () => void;
   onOpenMeshPromotionSourceGeometryObject: () => void;
@@ -85763,6 +86004,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onApplySurfaceMeshTopologyDemoPreset,
   onApplySurfaceMeshTopologySavedPreset,
   onRunSurfaceMeshTopologyDemoPreset,
+  onRunSurfaceMeshTopologyFullRoundTripDemoPreset,
   onLoadSurfaceMeshFile,
   onConvertToMesh,
   onOpenMeshPromotionSourceGeometryObject,
@@ -89444,34 +89686,54 @@ onChangeImplicitExpr,
                 </div>
                 <div style={{ display: "grid", gap: 5, marginTop: 7 }}>
                   {SURFACE_MESH_TOPOLOGY_DEMO_PRESETS.map((preset) => (
-                    <button
-                      key={`mesh-topology-demo-${preset.id}`}
-                      type="button"
-                      onClick={() => onApplySurfaceMeshTopologyDemoPreset(preset.id)}
-                      title={`${preset.operation}: ${preset.summary}\n${preset.expectedResult}`}
-                      style={{
-                        textAlign: "left",
-                        borderRadius: 7,
-                        border: "1px solid " + (preset.workflowKind === "round-trip" ? "#7dd3fc" : "#dbe2ea"),
-                        background: preset.workflowKind === "round-trip" ? "#f0f9ff" : "#f8fafc",
-                        padding: "5px 7px",
-                      }}
-                    >
-                      <span style={{ display: "flex", justifyContent: "space-between", gap: 8, fontWeight: 700 }}>
-                        <span>{preset.label}</span>
-                        {preset.workflowKind === "round-trip" && (
-                          <span style={{ color: "#075985", fontSize: 10 }}>Round-trip</span>
-                        )}
-                      </span>
-                      <span style={{ display: "block", fontSize: 10, color: "#475467", marginTop: 2 }}>
-                        {preset.tryHint}
-                      </span>
-                      {preset.workflowHint && (
-                        <span style={{ display: "block", fontSize: 10, color: "#075985", marginTop: 2 }}>
-                          {preset.workflowHint}
+                    <div key={`mesh-topology-demo-${preset.id}`} style={{ display: "grid", gap: 4 }}>
+                      <button
+                        type="button"
+                        onClick={() => onApplySurfaceMeshTopologyDemoPreset(preset.id)}
+                        title={`${preset.operation}: ${preset.summary}\n${preset.expectedResult}`}
+                        style={{
+                          textAlign: "left",
+                          borderRadius: 7,
+                          border: "1px solid " + (preset.workflowKind === "round-trip" ? "#7dd3fc" : "#dbe2ea"),
+                          background: preset.workflowKind === "round-trip" ? "#f0f9ff" : "#f8fafc",
+                          padding: "5px 7px",
+                        }}
+                      >
+                        <span style={{ display: "flex", justifyContent: "space-between", gap: 8, fontWeight: 700 }}>
+                          <span>{preset.label}</span>
+                          {preset.workflowKind === "round-trip" && (
+                            <span style={{ color: "#075985", fontSize: 10 }}>Round-trip</span>
+                          )}
                         </span>
+                        <span style={{ display: "block", fontSize: 10, color: "#475467", marginTop: 2 }}>
+                          {preset.tryHint}
+                        </span>
+                        {preset.workflowHint && (
+                          <span style={{ display: "block", fontSize: 10, color: "#075985", marginTop: 2 }}>
+                            {preset.workflowHint}
+                          </span>
+                        )}
+                      </button>
+                      {preset.workflowKind === "round-trip" && (
+                        <button
+                          type="button"
+                          data-testid={`mesh-roundtrip-full-demo-${preset.id}`}
+                          onClick={() => onRunSurfaceMeshTopologyFullRoundTripDemoPreset(preset.id)}
+                          style={{
+                            justifySelf: "start",
+                            fontSize: 10,
+                            padding: "3px 8px",
+                            borderColor: "#38bdf8",
+                            background: "#e0f2fe",
+                            color: "#075985",
+                            fontWeight: 800,
+                          }}
+                          title="Load, edit, promote to Geometry, select the result, and show the linked Mesh source card."
+                        >
+                          Run full round-trip demo
+                        </button>
                       )}
-                    </button>
+                    </div>
                   ))}
                 </div>
                 {surfaceMeshTopologyPreview.ghost && (

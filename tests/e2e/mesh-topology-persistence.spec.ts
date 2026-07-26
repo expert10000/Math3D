@@ -176,13 +176,16 @@ test.describe("Mesh topology persistence and handoff", () => {
       });
       await expect(page.getByTestId("mesh-topology-preset-card-topology_roundtrip_cube_split")).toBeVisible();
       await expect(page.getByTestId("mesh-topology-preset-card-topology_roundtrip_cube_bevel")).toBeVisible();
-      await page.getByTestId("mesh-topology-preset-card-topology_roundtrip_box_subdivide").click();
-      await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true })).then((button) => button.click());
-      await expect(page.getByText(/Workflow: Mesh object -> Face Subdivide -> Promote/i).first()).toBeVisible({
+      await expect(page.getByTestId("mesh-gallery-roundtrip-full-demo-topology_roundtrip_box_subdivide")).toBeVisible({
         timeout: 15_000,
       });
-      await firstVisible(page.getByRole("button", { name: "Subdivide Face", exact: true })).then((button) => button.click());
-      await expect(page.getByText(/Face subdivide/i).first()).toBeVisible({ timeout: 15_000 });
+      await page.getByTestId("mesh-gallery-roundtrip-full-demo-topology_roundtrip_box_subdivide").click();
+      await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId("geometry-right-linked-mesh-source")).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId("geometry-right-linked-mesh-source")).toContainText(/Linked Mesh edit source/i);
+      await expect(page.getByTestId("geometry-right-linked-mesh-source")).toContainText(/Latest: Face subdivide/i);
+      await expect(page.getByTestId("geometry-right-linked-mesh-source")).toContainText(/Round-trip linked/i);
+      await expect(await firstVisible(page.getByRole("checkbox", { name: "Wireframe", exact: true }))).toBeChecked();
 
       await runTopologyDemo(page, "topology_demo_collapse_edge", "Collapse Edge", /Collapse edge/i);
       await runTopologyDemo(page, "topology_demo_bevel_edge", "Bevel Edge", /Bevel edge/i);
