@@ -459,6 +459,8 @@ type SurfaceMeshTopologyDemoPreset = {
   summary: string;
   tryHint: string;
   expectedResult: string;
+  workflowHint?: string;
+  workflowKind?: "operation" | "round-trip";
   build: () => SurfaceMeshData;
   faceIndex: number;
   edge: [number, number];
@@ -7022,7 +7024,57 @@ const buildTopologyDemoPrismMesh = (label = "Topology demo prism cap"): SurfaceM
     "mesh-topology-demo-prism"
   );
 
+const buildTopologyRoundTripBoxMesh = (label = "Round-trip segmented box"): SurfaceMeshData =>
+  buildSurfaceMeshFromGeometry(
+    new THREE.BoxGeometry(1.8, 1.8, 1.8, 10, 10, 10),
+    label,
+    { kind: "polyhedronPreset", id: "mesh_box", label },
+    { mergeVertices: true }
+  );
+
 const SURFACE_MESH_TOPOLOGY_DEMO_PRESETS: SurfaceMeshTopologyDemoPreset[] = [
+  {
+    id: "topology_roundtrip_box_subdivide",
+    label: "Round-trip box subdivide",
+    operation: "Face Subdivide",
+    summary: "Segmented Box face -> Mesh edit -> Promote -> restore/apply back.",
+    tryHint: "Load the Box face, subdivide it, then Promote to Geometry and use Restore Before/After.",
+    expectedResult: "Face 848 becomes a center fan; Geometry can restore before/after and apply that Mesh state back.",
+    workflowHint: "Workflow: Mesh object -> Face Subdivide -> Promote -> Restore/Apply to Geometry.",
+    workflowKind: "round-trip",
+    build: () => buildTopologyRoundTripBoxMesh("Round-trip: Box face subdivide"),
+    faceIndex: 848,
+    edge: [0, 1],
+    subdivideMode: "center-fan",
+  },
+  {
+    id: "topology_roundtrip_cube_split",
+    label: "Round-trip cube split",
+    operation: "Split Edge",
+    summary: "Cube edge split -> promoted Geometry object -> apply selected Mesh state back.",
+    tryHint: "Load the cube edge, split it, Promote, then return through the linked Mesh source card.",
+    expectedResult: "Edge 4-5 gains a midpoint vertex; the promoted Geometry object keeps the source history.",
+    workflowHint: "Workflow: Mesh object -> Split Edge -> Promote -> Open Mesh Source -> Apply back.",
+    workflowKind: "round-trip",
+    build: () => buildTopologyDemoCubeMesh("Round-trip: cube split edge"),
+    faceIndex: 2,
+    edge: [4, 5],
+    splitRatio: 0.5,
+  },
+  {
+    id: "topology_roundtrip_cube_bevel",
+    label: "Round-trip cube bevel",
+    operation: "Bevel Edge",
+    summary: "Cube bevel band -> promoted Geometry object -> before/after Mesh source preview.",
+    tryHint: "Load the bevel edge, run Bevel, Promote, then compare Restore Before vs Restore After.",
+    expectedResult: "Edge 1-2 opens into a bevel band; Geometry shows linked Mesh edit source and restore actions.",
+    workflowHint: "Workflow: Mesh object -> Bevel Edge -> Promote -> Restore Before/After -> Apply back.",
+    workflowKind: "round-trip",
+    build: () => buildTopologyDemoCubeMesh("Round-trip: cube bevel edge"),
+    faceIndex: 8,
+    edge: [1, 2],
+    bevelAmount: 0.12,
+  },
   {
     id: "topology_demo_face_fan",
     label: "Face fan demo",
@@ -7076,7 +7128,11 @@ const SURFACE_MESH_TOPOLOGY_DEMO_PRESETS: SurfaceMeshTopologyDemoPreset[] = [
 const findSurfaceMeshTopologyDemoPresetByOperation = (
   operation: SurfaceMeshTopologyDemoPreset["operation"]
 ): SurfaceMeshTopologyDemoPreset | null =>
-  SURFACE_MESH_TOPOLOGY_DEMO_PRESETS.find((preset) => preset.operation === operation) ?? null;
+  SURFACE_MESH_TOPOLOGY_DEMO_PRESETS.find(
+    (preset) => preset.operation === operation && preset.workflowKind !== "round-trip"
+  ) ??
+  SURFACE_MESH_TOPOLOGY_DEMO_PRESETS.find((preset) => preset.operation === operation) ??
+  null;
 
 /* ---------------- Surfaces meta ---------------- */
 
@@ -29159,6 +29215,15 @@ const App: React.FC = () => {
       `Restored Mesh topology session: ${initialSurfaceMeshTopologySession.history.length} history step(s).`
     );
   }, [initialSurfaceMeshTopologySession]);
+  const clearSurfaceMeshTopologySessionState = useCallback(() => {
+    setMeshGeometryRoundTripSource(null);
+    setSurfaceMeshTopologyHistory([]);
+    setSelectedSurfaceMeshTopologyHistoryId(null);
+    setSurfaceMeshTopologyHistoryPreviewId(null);
+    setSurfaceMeshTopologyStatus(null);
+    setSurfaceMeshTopologyFeedback(null);
+    setSurfaceMeshTopologySaveName("");
+  }, []);
   const surfaceMeshTopologyAutoPickStampRef = useRef(0);
   const [vtkBusy, setVtkBusy] = useState(false);
   const [vtkError, setVtkError] = useState<string | null>(null);
@@ -43377,7 +43442,7 @@ case "mobius":
       );
       const meshReady = applySurfaceMeshOps(base);
       setMeshDataset(meshReady);
-      setMeshGeometryRoundTripSource(null);
+      clearSurfaceMeshTopologySessionState();
       setSurfaceMeshImportError(null);
       setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
@@ -43386,7 +43451,7 @@ case "mobius":
       const msg = err instanceof Error ? err.message : "Failed to build mesh preset.";
       setSurfaceMeshImportError(msg);
     }
-  }, [focusSurfaceMeshViewport]);
+  }, [clearSurfaceMeshTopologySessionState, focusSurfaceMeshViewport]);
 
   const handleApplySurfaceMeshTopologyDemoPreset = useCallback(
     (presetId: string) => {
@@ -43395,7 +43460,7 @@ case "mobius":
       try {
         const meshReady = preset.build();
         setMeshDataset(meshReady, `mesh-topology-demo:${preset.id}`);
-        setMeshGeometryRoundTripSource(null);
+        clearSurfaceMeshTopologySessionState();
         setSurfaceMeshImportError(null);
         setSurfaceMeshOpsError(null);
         setSurfaceMeshTopologyFaceIndex(preset.faceIndex);
@@ -43406,10 +43471,6 @@ case "mobius":
         if (preset.collapseMode) setSurfaceMeshTopologyCollapseMode(preset.collapseMode);
         if (preset.bevelAmount != null) setSurfaceMeshTopologyBevelAmount(preset.bevelAmount);
         setSurfaceMeshTopologyPreviewOperation(preset.operation);
-        setSurfaceMeshTopologyHistory([]);
-        setSelectedSurfaceMeshTopologyHistoryId(null);
-        setSurfaceMeshTopologyHistoryPreviewId(null);
-        setSurfaceMeshTopologyFeedback(null);
         setDatasetKind("mesh");
         setSurfaceViewerKind("mesh");
         setSurfacesPanelState("work");
@@ -43418,14 +43479,16 @@ case "mobius":
         appendMeshPromotionOperation(`loaded topology demo (${preset.operation})`);
         focusSurfaceMeshViewport(meshReady);
         setSurfaceMeshTopologyStatus(
-          `Ready: ${preset.label}. Face ${preset.faceIndex}, Edge ${preset.edge[0]}-${preset.edge[1]}. ${preset.tryHint} Expected: ${preset.expectedResult}`
+          `Ready: ${preset.label}. Face ${preset.faceIndex}, Edge ${preset.edge[0]}-${preset.edge[1]}. ${preset.tryHint} Expected: ${preset.expectedResult}${
+            preset.workflowHint ? ` ${preset.workflowHint}` : ""
+          }`
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to load topology demo.";
         setSurfaceMeshTopologyStatus(msg);
       }
     },
-    [appendMeshPromotionOperation, focusSurfaceMeshViewport, setMeshDataset]
+    [appendMeshPromotionOperation, clearSurfaceMeshTopologySessionState, focusSurfaceMeshViewport, setMeshDataset]
   );
 
   const handleGenerateSurfaceMeshAssetPreset = useCallback(
@@ -43442,6 +43505,7 @@ case "mobius":
         const base = await loadSurfaceMeshFromFile([file], { mergeVertices: surfaceMeshMergeVertices });
         const meshReady = { ...applySurfaceMeshOps(base), label: preset.label };
         setMeshDataset(meshReady);
+        clearSurfaceMeshTopologySessionState();
         setDatasetKind("mesh");
         setSurfaceViewerKind("mesh");
         focusSurfaceMeshViewport(meshReady);
@@ -43452,7 +43516,7 @@ case "mobius":
         setSurfaceMeshImportBusy(false);
       }
     },
-    [focusSurfaceMeshViewport, surfaceMeshMergeVertices]
+    [clearSurfaceMeshTopologySessionState, focusSurfaceMeshViewport, surfaceMeshMergeVertices]
   );
 
   const handleLoadSurfaceMeshFile = useCallback(
@@ -43464,6 +43528,7 @@ case "mobius":
         const base = await loadSurfaceMeshFromFile(files, { mergeVertices: surfaceMeshMergeVertices });
         const meshReady = applySurfaceMeshOps(base);
         setMeshDataset(meshReady);
+        clearSurfaceMeshTopologySessionState();
         setDatasetKind("mesh");
         setSurfaceViewerKind("mesh");
         focusSurfaceMeshViewport(meshReady);
@@ -43474,7 +43539,7 @@ case "mobius":
         setSurfaceMeshImportBusy(false);
       }
     },
-    [focusSurfaceMeshViewport, surfaceMeshMergeVertices]
+    [clearSurfaceMeshTopologySessionState, focusSurfaceMeshViewport, surfaceMeshMergeVertices]
   );
 
   const handleExportSurfaceMeshObj = useCallback(() => {
@@ -43900,7 +43965,7 @@ case "mobius":
       try {
         const meshReady = preset.build();
         setMeshDataset(meshReady, `mesh-topology-demo:${preset.id}`);
-        setMeshGeometryRoundTripSource(null);
+        clearSurfaceMeshTopologySessionState();
         setSurfaceMeshImportError(null);
         setSurfaceMeshOpsError(null);
         setSurfaceMeshTopologyFaceIndex(preset.faceIndex);
@@ -43911,16 +43976,13 @@ case "mobius":
         if (preset.collapseMode) setSurfaceMeshTopologyCollapseMode(preset.collapseMode);
         if (preset.bevelAmount != null) setSurfaceMeshTopologyBevelAmount(preset.bevelAmount);
         setSurfaceMeshTopologyPreviewOperation(preset.operation);
-        setSurfaceMeshTopologyHistory([]);
-        setSelectedSurfaceMeshTopologyHistoryId(null);
-        setSurfaceMeshTopologyHistoryPreviewId(null);
-        setSurfaceMeshTopologyFeedback(null);
         setDatasetKind("mesh");
         setSurfaceViewerKind("mesh");
         setSurfacesPanelState("work");
         setSurfacesLeftTab("analysis");
         setSurfacesWorkGalleryOpen(false);
         appendMeshPromotionOperation(`loaded topology demo (${preset.operation})`);
+        if (preset.workflowHint) setSurfaceMeshTopologyStatus(preset.workflowHint);
         focusSurfaceMeshViewport(meshReady);
         if (preset.operation === "Face Subdivide") {
           applySurfaceMeshTopologyEdit(
@@ -43988,7 +44050,7 @@ case "mobius":
         setSurfaceMeshTopologyStatus(msg);
       }
     },
-    [appendMeshPromotionOperation, applySurfaceMeshTopologyEdit, focusSurfaceMeshViewport, setMeshDataset]
+    [appendMeshPromotionOperation, applySurfaceMeshTopologyEdit, clearSurfaceMeshTopologySessionState, focusSurfaceMeshViewport, setMeshDataset]
   );
 
   const surfaceMeshTopologyFaceGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Face Subdivide");
@@ -44255,6 +44317,23 @@ case "mobius":
   );
   const meshGeometryRoundTripCanUpdateOriginal =
     !!meshGeometryRoundTripTarget && !geometryLockedObjectIds.has(meshGeometryRoundTripTarget.id);
+  const meshGeometryRoundTripSnapshotTitle = meshGeometryRoundTripSource
+    ? meshGeometryRoundTripSource.snapshotMode === "before"
+      ? "Viewing source BEFORE Geometry update"
+      : meshGeometryRoundTripSource.snapshotMode === "after"
+        ? "Viewing source AFTER Geometry update"
+        : "Viewing current Geometry Mesh source"
+    : "";
+  const meshGeometryRoundTripCountsLabel = surfaceMeshStats
+    ? `${surfaceMeshStats.vertCount.toLocaleString()} vertices / ${surfaceMeshStats.triCount.toLocaleString()} faces`
+    : "Counts unavailable";
+  const meshGeometryRoundTripStepLabel = meshGeometryRoundTripSource?.latestTopologyLabel
+    ? `Latest topology step: ${meshGeometryRoundTripSource.latestTopologyLabel}`
+    : meshGeometryRoundTripSource?.historyStepCount
+      ? `${meshGeometryRoundTripSource.historyStepCount} topology step${
+          meshGeometryRoundTripSource.historyStepCount === 1 ? "" : "s"
+        } attached`
+      : "No topology history attached";
 
   const handleOpenMeshRoundTripGeometryObject = useCallback(() => {
     if (!meshGeometryRoundTripSource) {
@@ -57562,6 +57641,22 @@ case "mobius":
                           <div style={{ color: "#334155" }}>
                             Apply edits back to the promoted Geometry object, or promote as a new copy.
                           </div>
+                          <div
+                            data-testid="mesh-roundtrip-panel-source-preview-banner"
+                            style={{
+                              border: "1px solid #7dd3fc",
+                              borderRadius: 7,
+                              background: "#e0f2fe",
+                              color: "#0c4a6e",
+                              padding: "6px 7px",
+                              display: "grid",
+                              gap: 3,
+                            }}
+                          >
+                            <strong>{meshGeometryRoundTripSnapshotTitle}</strong>
+                            <span>Counts: {meshGeometryRoundTripCountsLabel}</span>
+                            <span>{meshGeometryRoundTripStepLabel}</span>
+                          </div>
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                             <button
                               type="button"
@@ -57587,12 +57682,12 @@ case "mobius":
                               disabled={!surfaceMeshData?.positions?.length || !meshGeometryRoundTripCanUpdateOriginal}
                               title={
                                 meshGeometryRoundTripCanUpdateOriginal
-                                  ? "Apply the current Mesh edits back to the promoted Geometry object."
+                                  ? "Apply this visible Mesh state back to the promoted Geometry object."
                                   : "Original promoted mesh object is unavailable or locked."
                               }
                               style={{ fontSize: 10, padding: "2px 7px" }}
                             >
-                              Apply to Geometry Object
+                              Apply this state to Geometry Object
                             </button>
                           </div>
                         </div>
@@ -57650,15 +57745,25 @@ case "mobius":
                               style={{
                                 textAlign: "left",
                                 borderRadius: 7,
-                                border: "1px solid #dbe2ea",
-                                background: "#f8fafc",
+                                border: "1px solid " + (preset.workflowKind === "round-trip" ? "#7dd3fc" : "#dbe2ea"),
+                                background: preset.workflowKind === "round-trip" ? "#f0f9ff" : "#f8fafc",
                                 padding: "5px 7px",
                               }}
                             >
-                              <span style={{ display: "block", fontWeight: 700 }}>{preset.label}</span>
+                              <span style={{ display: "flex", justifyContent: "space-between", gap: 8, fontWeight: 700 }}>
+                                <span>{preset.label}</span>
+                                {preset.workflowKind === "round-trip" && (
+                                  <span style={{ color: "#075985", fontSize: 10 }}>Round-trip</span>
+                                )}
+                              </span>
                               <span style={{ display: "block", fontSize: 10, color: "#475467", marginTop: 2 }}>
                                 {preset.tryHint}
                               </span>
+                              {preset.workflowHint && (
+                                <span style={{ display: "block", fontSize: 10, color: "#075985", marginTop: 2 }}>
+                                  {preset.workflowHint}
+                                </span>
+                              )}
                               <span style={{ display: "block", fontSize: 10, color: "#1e3a8a", marginTop: 2 }}>
                                 Run demo applies it immediately.
                               </span>
@@ -58714,6 +58819,25 @@ case "mobius":
                         <span style={{ color: "#334155" }}>
                           Apply edits back to the promoted Geometry object, or promote as a new copy.
                         </span>
+                        <span
+                          data-testid="mesh-roundtrip-source-preview-banner"
+                          style={{
+                            flexBasis: "100%",
+                            border: "1px solid #7dd3fc",
+                            borderRadius: 7,
+                            background: "#e0f2fe",
+                            color: "#0c4a6e",
+                            padding: "5px 7px",
+                            display: "flex",
+                            gap: 8,
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <strong>{meshGeometryRoundTripSnapshotTitle}</strong>
+                          <span>Counts: {meshGeometryRoundTripCountsLabel}</span>
+                          <span>{meshGeometryRoundTripStepLabel}</span>
+                        </span>
                         <button
                           type="button"
                           data-testid="mesh-roundtrip-back-to-geometry"
@@ -58738,12 +58862,12 @@ case "mobius":
                           disabled={!surfaceMeshData?.positions?.length || !meshGeometryRoundTripCanUpdateOriginal}
                           title={
                             meshGeometryRoundTripCanUpdateOriginal
-                              ? "Apply the current Mesh edits back to the promoted Geometry object."
+                              ? "Apply this visible Mesh state back to the promoted Geometry object."
                               : "Original promoted mesh object is unavailable or locked."
                           }
                           style={{ fontSize: 10, padding: "2px 7px" }}
                         >
-                          Apply to Geometry Object
+                          Apply this state to Geometry Object
                         </button>
                       </div>
                     )}
@@ -80178,9 +80302,18 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                         <div className="gallery-scan-card-summary" title={preset.summary}>
                           {summary}
                         </div>
+                        {preset.workflowHint && (
+                          <div className="gallery-scan-card-summary" title={preset.workflowHint}>
+                            {compactSummary(preset.workflowHint)}
+                          </div>
+                        )}
                         <div className="gallery-scan-card-formula">{preset.operation}</div>
                         <div className="gallery-scan-card-chips">
-                          {["Mesh", "Topology"].map((chip) => (
+                          {[
+                            "Mesh",
+                            "Topology",
+                            ...(preset.workflowKind === "round-trip" ? ["Round-trip", "Promote"] : []),
+                          ].map((chip) => (
                             <span key={`${preset.id}-${chip}`} className="gallery-scan-card-chip">
                               {chip}
                             </span>
@@ -89319,15 +89452,25 @@ onChangeImplicitExpr,
                       style={{
                         textAlign: "left",
                         borderRadius: 7,
-                        border: "1px solid #dbe2ea",
-                        background: "#f8fafc",
+                        border: "1px solid " + (preset.workflowKind === "round-trip" ? "#7dd3fc" : "#dbe2ea"),
+                        background: preset.workflowKind === "round-trip" ? "#f0f9ff" : "#f8fafc",
                         padding: "5px 7px",
                       }}
                     >
-                      <span style={{ display: "block", fontWeight: 700 }}>{preset.label}</span>
+                      <span style={{ display: "flex", justifyContent: "space-between", gap: 8, fontWeight: 700 }}>
+                        <span>{preset.label}</span>
+                        {preset.workflowKind === "round-trip" && (
+                          <span style={{ color: "#075985", fontSize: 10 }}>Round-trip</span>
+                        )}
+                      </span>
                       <span style={{ display: "block", fontSize: 10, color: "#475467", marginTop: 2 }}>
                         {preset.tryHint}
                       </span>
+                      {preset.workflowHint && (
+                        <span style={{ display: "block", fontSize: 10, color: "#075985", marginTop: 2 }}>
+                          {preset.workflowHint}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>

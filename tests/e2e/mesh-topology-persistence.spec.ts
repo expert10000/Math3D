@@ -163,6 +163,27 @@ test.describe("Mesh topology persistence and handoff", () => {
       await page.getByRole("button", { name: /Saved Split Demo/i }).first().click();
       await expect(page.getByText(/Opened saved Mesh example: Saved Split Demo/i).first()).toBeVisible();
 
+      await openMeshGallery(page);
+      await page.getByTestId("mesh-preset-card-mesh_knot").click();
+      await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true })).then((button) => button.click());
+      await expect(page.getByText(/No Mesh topology edits yet/i).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/Last result: none/i).first()).toBeVisible();
+      await expect(page.getByTestId("mesh-geometry-roundtrip-card")).toHaveCount(0);
+
+      await openMeshGallery(page);
+      await expect(page.getByTestId("mesh-topology-preset-card-topology_roundtrip_box_subdivide")).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(page.getByTestId("mesh-topology-preset-card-topology_roundtrip_cube_split")).toBeVisible();
+      await expect(page.getByTestId("mesh-topology-preset-card-topology_roundtrip_cube_bevel")).toBeVisible();
+      await page.getByTestId("mesh-topology-preset-card-topology_roundtrip_box_subdivide").click();
+      await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true })).then((button) => button.click());
+      await expect(page.getByText(/Workflow: Mesh object -> Face Subdivide -> Promote/i).first()).toBeVisible({
+        timeout: 15_000,
+      });
+      await firstVisible(page.getByRole("button", { name: "Subdivide Face", exact: true })).then((button) => button.click());
+      await expect(page.getByText(/Face subdivide/i).first()).toBeVisible({ timeout: 15_000 });
+
       await runTopologyDemo(page, "topology_demo_collapse_edge", "Collapse Edge", /Collapse edge/i);
       await runTopologyDemo(page, "topology_demo_bevel_edge", "Bevel Edge", /Bevel edge/i);
 
@@ -190,6 +211,17 @@ test.describe("Mesh topology persistence and handoff", () => {
         timeout: 15_000,
       });
       await expect(page.getByTestId("mesh-geometry-roundtrip-card")).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId("mesh-roundtrip-source-preview-banner")).toContainText(
+        /Viewing source BEFORE Geometry update/,
+        { timeout: 15_000 }
+      );
+      await expect(page.getByTestId("mesh-roundtrip-source-preview-banner")).toContainText(
+        /Counts: \d+ vertices \/ \d+ faces/
+      );
+      await expect(page.getByTestId("mesh-roundtrip-source-preview-banner")).toContainText(/Latest topology step:/);
+      await expect(page.getByTestId("mesh-roundtrip-update-original")).toContainText(
+        /Apply this state to Geometry Object/
+      );
       await expect(page.getByTestId("mesh-roundtrip-update-original")).toBeEnabled();
       await page.getByTestId("mesh-roundtrip-update-original").click();
       await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
