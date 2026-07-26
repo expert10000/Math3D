@@ -5288,6 +5288,18 @@ type GeometryMeshRoundTripUpdateFeedback = {
   latestTopologyResult: string | null;
   at: number;
 };
+type GeometryRoundTripDemoFeedback = {
+  objectId: string;
+  presetId: string;
+  presetLabel: string;
+  pipelineLabel: string;
+  countsLabel: string;
+  latestTopologyLabel: string;
+  resultLabel: string;
+  summaryText: string;
+  savedExampleId?: string | null;
+  at: number;
+};
 type TopologySerializedSurfaceMeshData = {
   label: string;
   positions: number[];
@@ -10598,6 +10610,8 @@ const App: React.FC = () => {
   const [geometrySceneGalleryExpanded, setGeometrySceneGalleryExpanded] = useState(false);
   const [geometrySceneGalleryFilter, setGeometrySceneGalleryFilter] = useState<"all" | "construct" | "playgrounds" | "measure" | "smoke" | "debug">("all");
   const [geometryCreateActionStatus, setGeometryCreateActionStatus] = useState<string | null>(null);
+  const [geometryRoundTripDemoFeedback, setGeometryRoundTripDemoFeedback] =
+    useState<GeometryRoundTripDemoFeedback | null>(null);
   const [geometryArmedLineOperation, setGeometryArmedLineOperation] = useState<"extend" | "trim" | null>(null);
   const [geometryLineOperationCommitRequestId, setGeometryLineOperationCommitRequestId] = useState(0);
   const [geometryCreateSelectedCardExpanded, setGeometryCreateSelectedCardExpanded] = useState(false);
@@ -44226,6 +44240,20 @@ case "mobius":
           parameters: topologyHistoryLabels.join(" | "),
           destructive: false,
         });
+        const countsLabel = `V ${historyEntry.beforeCounts.vertexCount} -> ${historyEntry.afterCounts.vertexCount}, F ${historyEntry.beforeCounts.faceCount} -> ${historyEntry.afterCounts.faceCount}`;
+        const summaryText = `${preset.label}: ${countsLabel}, ${historyEntry.resultLabel}`;
+        setGeometryRoundTripDemoFeedback({
+          objectId: id,
+          presetId: preset.id,
+          presetLabel: preset.label,
+          pipelineLabel: "Mesh preset -> topology edit -> Geometry object",
+          countsLabel,
+          latestTopologyLabel: `${historyEntry.actionLabel} on ${historyEntry.targetLabel}`,
+          resultLabel: historyEntry.resultLabel,
+          summaryText,
+          savedExampleId: null,
+          at: Date.now(),
+        });
         const status = `Full round-trip demo ready: ${preset.label}. ${historyEntry.resultLabel}. Linked Mesh edit source card is visible.`;
         setSurfaceMeshTopologyStatus(status);
         setGeometryCreateActionStatus(status);
@@ -44502,6 +44530,71 @@ case "mobius":
       setMeshDataset,
     ]
   );
+
+  const handleCopyGeometryRoundTripDemoSummary = useCallback(async () => {
+    if (!geometryRoundTripDemoFeedback) {
+      setGeometryCreateActionStatus("No round-trip demo summary is available.");
+      return;
+    }
+    const text = geometryRoundTripDemoFeedback.summaryText;
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        throw new Error("Clipboard API unavailable.");
+      }
+      setGeometryCreateActionStatus(`Copied demo summary: ${text}`);
+    } catch {
+      try {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "true");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+        setGeometryCreateActionStatus(`Copied demo summary: ${text}`);
+      } catch {
+        setGeometryCreateActionStatus(`Demo summary: ${text}`);
+      }
+    }
+  }, [geometryRoundTripDemoFeedback]);
+
+  const handleSaveGeometryRoundTripDemoGalleryExample = useCallback(() => {
+    const feedback = geometryRoundTripDemoFeedback;
+    if (!feedback || feedback.objectId !== geometrySelectedSceneObject?.id) {
+      setGeometryCreateActionStatus("Select the completed round-trip demo object first.");
+      return;
+    }
+    const resolved = resolveGeometrySceneMeshById(feedback.objectId);
+    if (!resolved?.mesh?.positions?.length) {
+      setGeometryCreateActionStatus("Round-trip demo mesh is unavailable.");
+      return;
+    }
+    const historyEntry = geometrySelectedMeshTopologyHandoffHistoryEntry;
+    const name = `${feedback.presetLabel} showcase`;
+    const mesh = cloneSurfaceMeshData(resolved.mesh, name);
+    const preset: SurfaceMeshTopologySavedPreset = {
+      id: makeId(),
+      name,
+      createdAt: Date.now(),
+      summary: feedback.summaryText,
+      mesh: serializeTopologySurfaceMeshData(mesh),
+      history: historyEntry ? [serializeSurfaceMeshTopologyHistoryEntry(historyEntry)] : [],
+    };
+    setSurfaceMeshTopologySavedPresets((prev) => [preset, ...prev].slice(0, SURFACE_MESH_TOPOLOGY_SAVED_PRESET_LIMIT));
+    setGeometryRoundTripDemoFeedback((current) =>
+      current?.objectId === feedback.objectId ? { ...current, savedExampleId: preset.id } : current
+    );
+    setGeometryCreateActionStatus(`Saved Gallery example: ${preset.name}.`);
+  }, [
+    geometryRoundTripDemoFeedback,
+    geometrySelectedMeshTopologyHandoffHistoryEntry,
+    geometrySelectedSceneObject?.id,
+    resolveGeometrySceneMeshById,
+  ]);
 
   const meshGeometryRoundTripTarget = useMemo(
     () =>
@@ -74550,6 +74643,104 @@ case "mobius":
                                   <strong>Vertices/Faces:</strong> {geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} /{" "}
                                   {geometrySelectedSceneMeshInfo.triCount.toLocaleString()}
                                 </div>
+                                {geometryRoundTripDemoFeedback?.objectId === geometrySelectedSceneObject?.id && (
+                                  <div
+                                    data-testid="geometry-roundtrip-demo-banner"
+                                    style={{
+                                      marginTop: 6,
+                                      border: "1px solid #7dd3fc",
+                                      borderRadius: 8,
+                                      padding: "8px 9px",
+                                      background: "#ecfeff",
+                                      color: "#0f3557",
+                                      display: "grid",
+                                      gap: 5,
+                                      boxShadow: "0 8px 22px rgba(14,165,233,0.16)",
+                                    }}
+                                  >
+                                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                                      <strong>Round-trip demo complete</strong>
+                                      <span style={{ color: "#075985", fontWeight: 800 }}>
+                                        {geometryRoundTripDemoFeedback.presetLabel}
+                                      </span>
+                                    </div>
+                                    <div>{geometryRoundTripDemoFeedback.pipelineLabel}</div>
+                                    <div style={{ fontWeight: 800 }}>{geometryRoundTripDemoFeedback.countsLabel}</div>
+                                    <div style={{ color: "#075985" }}>
+                                      Latest: {geometryRoundTripDemoFeedback.latestTopologyLabel}
+                                      {" -> "}
+                                      {geometryRoundTripDemoFeedback.resultLabel}
+                                    </div>
+                                    <div
+                                      data-testid="geometry-roundtrip-demo-checklist"
+                                      style={{
+                                        display: "grid",
+                                        gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))",
+                                        gap: 4,
+                                        color: "#155e75",
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      {[
+                                        "Loaded preset",
+                                        "Applied topology edit",
+                                        "Promoted to Geometry",
+                                        "Linked source visible",
+                                      ].map((item) => (
+                                        <span key={`geometry-roundtrip-check-${item}`}>OK {item}</span>
+                                      ))}
+                                    </div>
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                      <button
+                                        type="button"
+                                        data-testid="geometry-roundtrip-demo-replay"
+                                        onClick={() =>
+                                          handleRunSurfaceMeshTopologyFullRoundTripDemoPreset(
+                                            geometryRoundTripDemoFeedback.presetId
+                                          )
+                                        }
+                                        style={{ fontSize: 10, padding: "2px 7px" }}
+                                      >
+                                        Replay demo
+                                      </button>
+                                      <button
+                                        type="button"
+                                        data-testid="geometry-roundtrip-demo-copy-summary"
+                                        onClick={handleCopyGeometryRoundTripDemoSummary}
+                                        style={{ fontSize: 10, padding: "2px 7px" }}
+                                      >
+                                        Copy demo summary
+                                      </button>
+                                      <button
+                                        type="button"
+                                        data-testid="geometry-roundtrip-demo-save-gallery"
+                                        onClick={handleSaveGeometryRoundTripDemoGalleryExample}
+                                        style={{ fontSize: 10, padding: "2px 7px" }}
+                                      >
+                                        {geometryRoundTripDemoFeedback.savedExampleId
+                                          ? "Saved as Gallery example"
+                                          : "Save as Gallery example"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        data-testid="geometry-roundtrip-demo-open-source"
+                                        onClick={() => handleOpenGeometryMeshTopologySource("current")}
+                                        style={{ fontSize: 10, padding: "2px 7px" }}
+                                      >
+                                        Open Mesh Source
+                                      </button>
+                                      <button
+                                        type="button"
+                                        data-testid="geometry-roundtrip-demo-restore-before"
+                                        onClick={() => handleOpenGeometryMeshTopologySource("before")}
+                                        disabled={!geometrySelectedMeshTopologyHandoffHistoryEntry}
+                                        style={{ fontSize: 10, padding: "2px 7px" }}
+                                      >
+                                        Restore Before
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
                                 {geometrySelectedSceneObject && (
                                   <div style={{ marginTop: 4 }}>
                                     <button
@@ -74575,14 +74766,23 @@ case "mobius":
                                     data-testid="geometry-right-linked-mesh-source"
                                     style={{
                                       marginTop: 6,
-                                      border: "1px solid #bae6fd",
+                                      border:
+                                        geometryMeshInfoAccentObjectId === geometrySelectedSceneObject?.id
+                                          ? "2px solid #0ea5e9"
+                                          : "1px solid #bae6fd",
                                       borderRadius: 8,
                                       padding: "7px 8px",
-                                      background: "#f0f9ff",
+                                      background:
+                                        geometryMeshInfoAccentObjectId === geometrySelectedSceneObject?.id ? "#e0f2fe" : "#f0f9ff",
                                       color: "#0f3557",
                                       display: "grid",
                                       gap: 5,
                                       fontSize: 10.5,
+                                      boxShadow:
+                                        geometryMeshInfoAccentObjectId === geometrySelectedSceneObject?.id
+                                          ? "0 0 0 4px rgba(14,165,233,0.16), 0 12px 24px rgba(14,165,233,0.18)"
+                                          : "none",
+                                      transition: "border-color 160ms ease, background 160ms ease, box-shadow 160ms ease",
                                     }}
                                   >
                                     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
