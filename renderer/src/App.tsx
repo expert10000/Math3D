@@ -5277,6 +5277,15 @@ type MeshGeometryRoundTripSource = {
   latestTopologyLabel: string | null;
   historyStepCount: number;
 };
+type GeometryMeshRoundTripUpdateFeedback = {
+  objectId: string;
+  objectName: string;
+  summary: string;
+  countsLabel: string;
+  latestTopologyLabel: string | null;
+  latestTopologyResult: string | null;
+  at: number;
+};
 type TopologySerializedSurfaceMeshData = {
   label: string;
   positions: number[];
@@ -8025,6 +8034,32 @@ function boundsFromPositions(positions: ArrayLike<number> | null | undefined): B
   return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
 }
 
+const buildGeometryMeshRoundTripUpdateFeedback = (
+  objectId: string,
+  mesh: SurfaceMeshData,
+  transform: GeometryObjectTransform,
+  summary: string
+): GeometryTopologyEditFeedback => {
+  const transformed = transformSurfaceMeshByGeometryTransform(mesh, transform);
+  const bounds = boundsFromPositions(transformed.positions);
+  const center = bounds
+    ? {
+        x: (bounds.min[0] + bounds.max[0]) * 0.5,
+        y: (bounds.min[1] + bounds.max[1]) * 0.5,
+        z: (bounds.min[2] + bounds.max[2]) * 0.5,
+      }
+    : null;
+  return {
+    id: makeId(),
+    objectId,
+    summary,
+    retainedSelectionLabel: "Updated original from Mesh",
+    points: center ? [center] : [],
+    edgeLines: limitPolylineSet(buildMeshEdgePolylines(transformed, true), 120),
+    facePolygons: [],
+  };
+};
+
 function clampBBox(b: BBox3, c: BBox3): BBox3 {
   return {
     min: [
@@ -10285,6 +10320,8 @@ const App: React.FC = () => {
   const [geometryVertexMoveAmount, setGeometryVertexMoveAmount] = useState(0.06);
   const [geometryVertexWeldDistance, setGeometryVertexWeldDistance] = useState(0.05);
   const [geometryLastDirectEdit, setGeometryLastDirectEdit] = useState<GeometryDirectEditStatus | null>(null);
+  const [geometryMeshRoundTripUpdateFeedback, setGeometryMeshRoundTripUpdateFeedback] =
+    useState<GeometryMeshRoundTripUpdateFeedback | null>(null);
   const [geometryTopologyEditFeedback, setGeometryTopologyEditFeedback] = useState<GeometryTopologyEditFeedback | null>(null);
   const [geometryLastActionContinuity, setGeometryLastActionContinuity] = useState<GeometryActionContinuityStatus | null>(null);
   const geometryTopologyEditFeedbackTimerRef = useRef<number | null>(null);
@@ -44255,18 +44292,23 @@ case "mobius":
       setSurfaceMeshTopologyStatus("Original Geometry mesh object is locked; promote as a new object instead.");
       return;
     }
+    const beforeCounts = countTriangleMeshTopology(target.mesh);
+    const afterCounts = countTriangleMeshTopology(surfaceMeshData);
+    const countsLabel = `V ${beforeCounts.vertexCount} -> ${afterCounts.vertexCount}, F ${beforeCounts.faceCount} -> ${afterCounts.faceCount}`;
     const latestTopologyEdit = surfaceMeshTopologyHistory[0] ?? null;
     const topologyHistoryLabels = surfaceMeshTopologyHistory
       .slice()
       .reverse()
       .map((entry) => `Mesh topology: ${entry.actionLabel} - ${entry.targetLabel} -> ${entry.resultLabel}`);
-    const updateLabel = latestTopologyEdit
-      ? `Round-trip update after ${latestTopologyEdit.actionLabel}`
-      : "Round-trip update from Mesh";
+    const updateLabel = "Mesh round-trip update";
+    const latestTopologyLabel = latestTopologyEdit
+      ? `${latestTopologyEdit.actionLabel} on ${latestTopologyEdit.targetLabel}`
+      : null;
+    const latestTopologyResult = latestTopologyEdit?.selectedResultLabel ?? null;
     const sourceOperationHistory = [
       ...(target.promotion?.sourceOperationHistory ?? []),
       ...topologyHistoryLabels,
-      `Pipeline: ${updateLabel}`,
+      `Pipeline: ${updateLabel} - ${countsLabel}`,
     ].slice(-20);
     const promoted = promoteGeometryToMesh({
       mesh: surfaceMeshData,
@@ -44276,24 +44318,56 @@ case "mobius":
       createdAt: target.promotion?.createdAt,
       labelOverride: target.name,
     });
-    queueGeometryHistoryIntent(target.id, {
+    const updatedTarget: GeometryDatasetMeshObject = {
+      ...target,
+      mesh: toDetachedMeshData(promoted.mesh, target.name),
+      promotion: promoted.metadata,
+    };
+    const beforeSnapshot = cloneGeometrySceneObjectSnapshot(target);
+    const afterSnapshot = cloneGeometrySceneObjectSnapshot(updatedTarget);
+    const summary = `Updated original from Mesh: ${countsLabel}`;
+    const operationParameters = latestTopologyEdit
+      ? `${summary}; source: ${latestTopologyLabel}; result: ${latestTopologyResult}`
+      : `${summary}; source: current Mesh source`;
+    const historyStep: GeometryObjectHistoryStep = {
+      id: makeId(),
+      at: Date.now(),
       action: "pipeline-mesh-roundtrip-update",
       label: updateLabel,
-      operationType: "Pipeline",
-      target: target.name,
-      parameters: latestTopologyEdit ? latestTopologyEdit.selectedResultLabel : "current Mesh source",
+      operationType: "Mesh topology edit",
+      operationTarget: target.name,
+      operationParameters,
       destructive: true,
-    });
+      warning: null,
+      objectId: target.id,
+      objectName: target.name,
+      sourceObjectId: meshGeometryRoundTripSource.objectId,
+      sourceObjectName: meshGeometryRoundTripSource.objectName,
+      beforeVertexCount: beforeCounts.vertexCount,
+      afterVertexCount: afterCounts.vertexCount,
+      beforeFaceCount: beforeCounts.faceCount,
+      afterFaceCount: afterCounts.faceCount,
+      beforeSummary: summarizeGeometryHistorySnapshot(beforeSnapshot),
+      afterSummary: summarizeGeometryHistorySnapshot(afterSnapshot),
+      changeSummary: summary,
+      topologySummary: latestTopologyEdit
+        ? `${latestTopologyEdit.actionLabel} on ${latestTopologyEdit.targetLabel} -> ${latestTopologyEdit.resultLabel}`
+        : "Mesh source applied to original Geometry object",
+      retainedSelection: null,
+      snapshot: afterSnapshot,
+    };
+    suppressGeometryHistoryCapture();
+    setGeometryObjectHistoryById((prev) => ({
+      ...prev,
+      [target.id]: [historyStep, ...(prev[target.id] ?? [])].slice(0, 24),
+    }));
+    setGeometryObjectRevisionById((prev) => ({
+      ...prev,
+      [target.id]: (prev[target.id] ?? 0) + 1,
+    }));
+    setGeometrySelectedHistoryStepId(historyStep.id);
     setGeometryDatasetMeshObjects((prev) =>
-      prev.map((entry) =>
-        entry.id === target.id
-          ? {
-              ...entry,
-              mesh: toDetachedMeshData(promoted.mesh, target.name),
-              promotion: promoted.metadata,
-            }
-          : entry
-      )
+      prev.map((entry) => (entry.id === target.id ? updatedTarget : entry))
     );
     if (promoted.frozen) {
       setGeometryLockedObjectIds((prev) => {
@@ -44307,9 +44381,28 @@ case "mobius":
     setGeometryMode("procedural");
     setMode("geometry");
     accentGeometryMeshInfo(target.id);
+    const topologyFeedback = buildGeometryMeshRoundTripUpdateFeedback(target.id, surfaceMeshData, target.transform, summary);
+    setGeometryTopologyEditFeedback(topologyFeedback);
+    if (geometryTopologyEditFeedbackTimerRef.current != null) {
+      window.clearTimeout(geometryTopologyEditFeedbackTimerRef.current);
+    }
+    geometryTopologyEditFeedbackTimerRef.current = window.setTimeout(() => {
+      setGeometryTopologyEditFeedback((current) => (current?.id === topologyFeedback.id ? null : current));
+      geometryTopologyEditFeedbackTimerRef.current = null;
+    }, 2400);
+    setGeometryMeshRoundTripUpdateFeedback({
+      objectId: target.id,
+      objectName: target.name,
+      summary,
+      countsLabel,
+      latestTopologyLabel,
+      latestTopologyResult,
+      at: Date.now(),
+    });
+    setGeometryWireframe(true);
     const status = latestTopologyEdit
-      ? `Updated original Geometry object from Mesh: ${latestTopologyEdit.selectedResultLabel}.`
-      : "Updated original Geometry object from Mesh.";
+      ? `${summary}. Latest Mesh topology step carried over: ${latestTopologyLabel} -> ${latestTopologyResult}.`
+      : `${summary}.`;
     setSurfaceMeshTopologyStatus(status);
     setGeometryCreateActionStatus(status);
   }, [
@@ -44318,9 +44411,9 @@ case "mobius":
     geometryLockedObjectIds,
     geometryPromotionMode,
     meshGeometryRoundTripSource,
-    queueGeometryHistoryIntent,
     surfaceMeshData,
     surfaceMeshTopologyHistory,
+    suppressGeometryHistoryCapture,
   ]);
 
   const handleWeldSurfaceMesh = useCallback(() => {
@@ -68544,6 +68637,47 @@ case "mobius":
                         ) : (
                           <div style={{ marginTop: 6, fontSize: 10.5, color: "#64748b" }}>
                             No variants saved for this object yet.
+                          </div>
+                        )}
+                        {geometryMeshRoundTripUpdateFeedback?.objectId === geometrySelectedDatasetMeshObject.id && (
+                          <div
+                            data-testid="geometry-roundtrip-update-feedback"
+                            style={{
+                              marginTop: 8,
+                              border: "1px solid #86efac",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#f0fdf4",
+                              color: "#14532d",
+                              display: "grid",
+                              gap: 4,
+                              fontSize: 10.5,
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                              <div style={{ fontWeight: 800 }}>Updated original from Mesh</div>
+                              <span
+                                style={{
+                                  border: "1px solid #86efac",
+                                  borderRadius: 999,
+                                  padding: "1px 6px",
+                                  background: "#dcfce7",
+                                  color: "#166534",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {new Date(geometryMeshRoundTripUpdateFeedback.at).toLocaleTimeString()}
+                              </span>
+                            </div>
+                            <div>{geometryMeshRoundTripUpdateFeedback.summary}</div>
+                            {geometryMeshRoundTripUpdateFeedback.latestTopologyLabel && (
+                              <div>
+                                Latest Mesh topology step: {geometryMeshRoundTripUpdateFeedback.latestTopologyLabel}
+                                {geometryMeshRoundTripUpdateFeedback.latestTopologyResult
+                                  ? ` -> ${geometryMeshRoundTripUpdateFeedback.latestTopologyResult}`
+                                  : ""}
+                              </div>
+                            )}
                           </div>
                         )}
                         {geometrySelectedMeshTopologyHandoff && (

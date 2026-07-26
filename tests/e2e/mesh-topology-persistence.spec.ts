@@ -185,9 +185,18 @@ test.describe("Mesh topology persistence and handoff", () => {
       });
       await expect(page.getByTestId("mesh-geometry-roundtrip-card")).toBeVisible({ timeout: 15_000 });
       await expect(page.getByTestId("mesh-roundtrip-update-original")).toBeEnabled();
-      await page.getByTestId("mesh-roundtrip-back-to-geometry").click();
+      await page.getByTestId("mesh-roundtrip-update-original").click();
       await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByTestId("geometry-right-open-object")).toBeVisible({ timeout: 15_000 });
+      await page.getByTestId("geometry-right-open-object").click();
+      await expect(page.getByTestId("geometry-roundtrip-update-feedback")).toContainText(
+        /Updated original from Mesh: V \d+ -> \d+, F \d+ -> \d+/,
+        { timeout: 15_000 }
+      );
+      await expect(page.getByText(/Latest Mesh topology step:/i).first()).toBeVisible();
+      await firstVisible(page.getByRole("button", { name: "Open History", exact: true })).then((button) => button.click());
+      await expect(page.getByText(/Mesh round-trip update/i).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/Mesh topology edit/i).first()).toBeVisible();
     } finally {
       await closeApp(ctx);
     }
