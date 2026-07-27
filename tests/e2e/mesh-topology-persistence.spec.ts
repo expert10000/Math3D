@@ -223,6 +223,30 @@ test.describe("Mesh topology persistence and handoff", () => {
       await expect(page.getByTestId("geometry-roundtrip-demo-save-gallery")).toContainText(/Saved as Gallery example/i, {
         timeout: 15_000,
       });
+      await page.reload();
+      await page.waitForLoadState("domcontentloaded");
+      await selectSection(page, "Geometry");
+      await firstVisible(page.getByRole("button", { name: "1 Create", exact: true })).then((button) => button.click());
+      await firstVisible(page.getByRole("button", { name: "Primitive", exact: true })).then((button) => button.click());
+      await expect(page.getByTestId("geometry-create-object-preset-shortcuts")).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId("geometry-create-open-selected-object-details")).toBeVisible();
+      await expect(page.getByTestId("geometry-create-object-preset-roundtrip-badge").first()).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(page.getByTestId("geometry-create-object-preset-roundtrip-badge").first()).toContainText(
+        /Saved from round-trip demo/i
+      );
+      await firstVisible(page.getByTestId("geometry-create-object-preset-apply")).then((button) => button.click());
+      await page.getByTestId("geometry-restored-preset-card").scrollIntoViewIfNeeded();
+      await expect(page.getByTestId("geometry-restored-preset-card")).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId("geometry-restored-preset-card")).toContainText(/Restored Geometry preset/i);
+      await expect(page.getByTestId("geometry-restored-preset-card")).toContainText(/Source topology step: Face subdivide/i);
+      await expect(page.getByTestId("geometry-restored-preset-card")).toContainText(/Linked Mesh source and history restored/i);
+      await expect(page.getByTestId("geometry-restored-preset-open-source")).toBeEnabled();
+      await expect(page.getByTestId("geometry-restored-preset-open-history")).toBeEnabled();
+      await expect(page.getByTestId("geometry-right-linked-mesh-source")).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId("geometry-right-linked-mesh-source")).toContainText(/Latest: Face subdivide/i);
+      await expect(page.getByTestId("geometry-right-linked-mesh-source")).toContainText(/history available/i);
       await openMeshGallery(page);
       await expect(page.getByRole("button", { name: /showcase/i }).first()).toBeVisible({
         timeout: 15_000,

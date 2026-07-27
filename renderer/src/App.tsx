@@ -1175,6 +1175,7 @@ type WorkbookGeometryDatasetMeshObject = {
   visible: boolean;
   material: GeometryObject["material"];
   promotion?: GeometryToMeshPromotionMetadata | null;
+  restoredGeometryPreset?: GeometryRestoredObjectPresetMetadata | null;
 };
 type GeometryObjectVariant = {
   id: string;
@@ -1220,6 +1221,17 @@ type GeometryObjectPreset = {
   name: string;
   createdAt: number;
   snapshot: GeometryObject | GeometryDatasetMeshObject;
+  source?: {
+    kind: "round-trip-demo";
+    label: string;
+    summaryText: string;
+    countsLabel: string;
+    latestTopologyLabel: string;
+    resultLabel: string;
+  } | null;
+};
+type StoredGeometryObjectPreset = Omit<GeometryObjectPreset, "snapshot"> & {
+  snapshot: GeometryObject | WorkbookGeometryDatasetMeshObject;
 };
 type GeometryOperationPreset = {
   id: string;
@@ -1803,6 +1815,7 @@ const serializeGeometryDatasetMeshObject = (obj: GeometryDatasetMeshObject): Wor
   visible: obj.visible,
   material: normalizeGeometryMaterial((obj as { material?: unknown })?.material),
   promotion: cloneGeometryPromotionMetadata(obj.promotion),
+  restoredGeometryPreset: obj.restoredGeometryPreset ? { ...obj.restoredGeometryPreset } : null,
 });
 
 const deserializeGeometryDatasetMeshObject = (
@@ -1831,6 +1844,7 @@ const deserializeGeometryDatasetMeshObject = (
   visible: Boolean(obj.visible ?? true),
   material: normalizeGeometryMaterial(obj.material),
   promotion: cloneGeometryPromotionMetadata(obj.promotion),
+  restoredGeometryPreset: obj.restoredGeometryPreset ? { ...obj.restoredGeometryPreset } : null,
 });
 
 const cloneVariantSnapshot = (
@@ -4064,6 +4078,7 @@ type GeometryDatasetMeshObject = {
   visible: boolean;
   material: GeometryObject["material"];
   promotion?: GeometryToMeshPromotionMetadata | null;
+  restoredGeometryPreset?: GeometryRestoredObjectPresetMetadata | null;
 };
 
 const DEFAULT_GEOMETRY_MATERIAL_COLOR = 0x8aa4ff;
@@ -5301,6 +5316,18 @@ type GeometryRoundTripDemoFeedback = {
   savedGeometryPresetId?: string | null;
   at: number;
 };
+type GeometryRestoredObjectPresetFeedback = {
+  objectId: string;
+  presetName: string;
+  savedAt: number;
+  countsLabel: string;
+  latestTopologyLabel: string;
+  resultLabel: string;
+  summaryText: string;
+  hasLinkedSource: boolean;
+  at: number;
+};
+type GeometryRestoredObjectPresetMetadata = Omit<GeometryRestoredObjectPresetFeedback, "objectId">;
 type TopologySerializedSurfaceMeshData = {
   label: string;
   positions: number[];
@@ -10616,6 +10643,8 @@ const App: React.FC = () => {
   const [geometryRoundTripDemoFeedback, setGeometryRoundTripDemoFeedback] =
     useState<GeometryRoundTripDemoFeedback | null>(null);
   const [geometryRoundTripDemoIncludeTransform, setGeometryRoundTripDemoIncludeTransform] = useState(false);
+  const [geometryRestoredObjectPresetFeedback, setGeometryRestoredObjectPresetFeedback] =
+    useState<GeometryRestoredObjectPresetFeedback | null>(null);
   const [geometryArmedLineOperation, setGeometryArmedLineOperation] = useState<"extend" | "trim" | null>(null);
   const [geometryLineOperationCommitRequestId, setGeometryLineOperationCommitRequestId] = useState(0);
   const [geometryCreateSelectedCardExpanded, setGeometryCreateSelectedCardExpanded] = useState(false);
@@ -10900,6 +10929,19 @@ const App: React.FC = () => {
       latest: topologySteps[topologySteps.length - 1] ?? null,
     };
   }, [geometrySelectedDatasetMeshObject]);
+  const geometryRestoredPresetInspectorDetails = useMemo<GeometryRestoredObjectPresetFeedback | null>(() => {
+    if (!geometrySelectedSceneObject) return null;
+    if (geometryRestoredObjectPresetFeedback?.objectId === geometrySelectedSceneObject.id) {
+      return geometryRestoredObjectPresetFeedback;
+    }
+    if (geometrySelectedDatasetMeshObject?.restoredGeometryPreset) {
+      return {
+        objectId: geometrySelectedDatasetMeshObject.id,
+        ...geometrySelectedDatasetMeshObject.restoredGeometryPreset,
+      };
+    }
+    return null;
+  }, [geometryRestoredObjectPresetFeedback, geometrySelectedDatasetMeshObject, geometrySelectedSceneObject]);
   const geometrySelectedVariantSet = useMemo(() => {
     if (!geometrySelectedSceneObject) return null;
     return geometryVariantSets[geometrySelectedSceneObject.id] ?? null;
@@ -12156,8 +12198,17 @@ const App: React.FC = () => {
     if (typeof window === "undefined") return;
     try {
       const raw = window.localStorage.getItem(GEOMETRY_OBJECT_PRESETS_KEY);
-      const parsed = raw ? (JSON.parse(raw) as GeometryObjectPreset[]) : [];
-      if (Array.isArray(parsed)) setGeometryObjectPresets(parsed.slice(0, 40));
+      const parsed = raw ? (JSON.parse(raw) as StoredGeometryObjectPreset[]) : [];
+      if (Array.isArray(parsed)) {
+        setGeometryObjectPresets(
+          parsed
+            .map((entry) => ({
+              ...entry,
+              snapshot: deserializeVariantSnapshot(entry.snapshot),
+            }))
+            .slice(0, 40)
+        );
+      }
     } catch {
       setGeometryObjectPresets([]);
     }
@@ -12165,7 +12216,13 @@ const App: React.FC = () => {
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      window.localStorage.setItem(GEOMETRY_OBJECT_PRESETS_KEY, JSON.stringify(geometryObjectPresets.slice(0, 40)));
+      const stored = geometryObjectPresets.slice(0, 40).map(
+        (entry): StoredGeometryObjectPreset => ({
+          ...entry,
+          snapshot: serializeVariantSnapshot(entry.snapshot),
+        })
+      );
+      window.localStorage.setItem(GEOMETRY_OBJECT_PRESETS_KEY, JSON.stringify(stored));
     } catch {
       // Ignore storage write failures.
     }
@@ -12185,10 +12242,32 @@ const App: React.FC = () => {
       if (!preset) return;
       const snapshot = preset.snapshot;
       const id = allocateUniqueGeometryObjectId();
+      let restoredObject: GeometryObject | GeometryDatasetMeshObject | null = null;
+      let restoredPresetMetadata: GeometryRestoredObjectPresetMetadata | null = null;
+      if (preset.source?.kind === "round-trip-demo") {
+        const counts =
+          "mesh" in snapshot
+            ? countTriangleMeshTopology(snapshot.mesh)
+            : null;
+        restoredPresetMetadata = {
+          presetName: preset.name,
+          savedAt: preset.createdAt,
+          countsLabel: counts
+            ? `${counts.vertexCount.toLocaleString()}V / ${counts.faceCount.toLocaleString()}F`
+            : preset.source.countsLabel,
+          latestTopologyLabel: preset.source.latestTopologyLabel,
+          resultLabel: preset.source.resultLabel,
+          summaryText: preset.source.summaryText,
+          hasLinkedSource: Boolean("promotion" in snapshot && snapshot.promotion?.sourceOperationHistory?.length),
+          at: Date.now(),
+        };
+      }
       if ("mesh" in snapshot) {
         const copy = cloneGeometryDatasetMeshObject(snapshot);
         copy.id = id;
         copy.name = `${preset.name}`;
+        copy.restoredGeometryPreset = restoredPresetMetadata;
+        restoredObject = copy;
         queueGeometryHistoryIntent(id, {
           action: "preset-apply",
           label: "Apply object preset",
@@ -12202,6 +12281,7 @@ const App: React.FC = () => {
         const copy = cloneGeometryObject(snapshot);
         copy.id = id;
         copy.name = `${preset.name}`;
+        restoredObject = copy;
         queueGeometryHistoryIntent(id, {
           action: "preset-apply",
           label: "Apply object preset",
@@ -12213,6 +12293,16 @@ const App: React.FC = () => {
         setGeometryObjects((prev) => [copy, ...prev]);
       }
       setGeometrySelectedObjectId(id);
+      setGeometryRightPanelTab("selection");
+      if (preset.source?.kind === "round-trip-demo" && restoredObject && restoredPresetMetadata) {
+        setGeometryRestoredObjectPresetFeedback({
+          objectId: id,
+          ...restoredPresetMetadata,
+        });
+        setGeometryCreateActionStatus(`Restored Geometry preset: ${preset.name}. ${preset.source.summaryText}`);
+      } else {
+        setGeometryRestoredObjectPresetFeedback(null);
+      }
     },
     [allocateUniqueGeometryObjectId, geometryObjectPresets, queueGeometryHistoryIntent]
   );
@@ -44633,6 +44723,14 @@ case "mobius":
         name,
         createdAt: Date.now(),
         snapshot,
+        source: {
+          kind: "round-trip-demo",
+          label: feedback.presetLabel,
+          summaryText: feedback.summaryText,
+          countsLabel: feedback.countsLabel,
+          latestTopologyLabel: feedback.latestTopologyLabel,
+          resultLabel: feedback.resultLabel,
+        },
       };
       setGeometryObjectPresets((prev) => [preset, ...prev].slice(0, 40));
       setGeometryRoundTripDemoFeedback((current) =>
@@ -62731,6 +62829,99 @@ case "mobius":
                           </button>
                         </div>
                       )}
+                      {(geometrySelectedSceneObject || geometryObjectPresets.length > 0) && (
+                        <div
+                          data-testid="geometry-create-object-preset-shortcuts"
+                          style={{
+                            border: "1px solid #bae6fd",
+                            borderRadius: 8,
+                            background: "#f0f9ff",
+                            padding: "7px 8px",
+                            display: "grid",
+                            gap: 7,
+                            fontSize: 11,
+                          }}
+                        >
+                          {geometrySelectedSceneObject && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                              <div
+                                style={{
+                                  minWidth: 0,
+                                  flex: "1 1 150px",
+                                  color: "#075985",
+                                  fontWeight: 800,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                                title={geometrySelectedSceneObject.name}
+                              >
+                                Active object: {geometrySelectedSceneObject.name}
+                              </div>
+                              <button
+                                type="button"
+                                data-testid="geometry-create-open-selected-object-details"
+                                onClick={() => {
+                                  setGeometrySelectedObjectId(geometrySelectedSceneObject.id);
+                                  setGeometryProceduralPanelTab("object");
+                                  setGeometryRightPanelTab("selection");
+                                  accentGeometryMeshInfo(geometrySelectedSceneObject.id);
+                                  setGeometryCreateActionStatus(`Object details open for ${geometrySelectedSceneObject.name}.`);
+                                }}
+                                style={{ fontSize: 10, padding: "3px 8px", fontWeight: 800 }}
+                              >
+                                Open Selected Object Details
+                              </button>
+                            </div>
+                          )}
+                          <div style={{ display: "grid", gap: 5 }}>
+                            <div style={{ color: "#0f3557", fontWeight: 800 }}>Saved Geometry object presets</div>
+                            {geometryObjectPresets.length ? (
+                              <div style={{ display: "grid", gap: 5 }}>
+                                {geometryObjectPresets.slice(0, 4).map((preset) => (
+                                  <button
+                                    key={`geometry-create-object-preset-apply-${preset.id}`}
+                                    type="button"
+                                    data-testid="geometry-create-object-preset-apply"
+                                    onClick={() => handleApplyGeometryObjectPreset(preset.id)}
+                                    style={{
+                                      justifyItems: "start",
+                                      display: "grid",
+                                      gap: 2,
+                                      fontSize: 10.5,
+                                      padding: "5px 7px",
+                                      textAlign: "left",
+                                    }}
+                                    title={new Date(preset.createdAt).toLocaleString()}
+                                  >
+                                    <span>Apply: {preset.name}</span>
+                                    {preset.source?.kind === "round-trip-demo" && (
+                                      <span
+                                        data-testid="geometry-create-object-preset-roundtrip-badge"
+                                        style={{
+                                          border: "1px solid #7dd3fc",
+                                          borderRadius: 999,
+                                          padding: "1px 6px",
+                                          background: "#ecfeff",
+                                          color: "#075985",
+                                          fontWeight: 800,
+                                          fontSize: 9.5,
+                                        }}
+                                      >
+                                        Saved from round-trip demo
+                                      </span>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <div style={{ color: "#64748b" }}>
+                                Save a round-trip Geometry preset and it will appear here.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div
@@ -68488,11 +68679,28 @@ case "mobius":
                             <button
                               key={`geometry-object-preset-apply-${preset.id}`}
                               type="button"
+                              data-testid="geometry-object-preset-apply"
                               onClick={() => handleApplyGeometryObjectPreset(preset.id)}
-                              style={{ fontSize: 11 }}
+                              style={{ fontSize: 11, display: "grid", gap: 2, justifyItems: "start" }}
                               title={new Date(preset.createdAt).toLocaleString()}
                             >
-                              Apply: {preset.name}
+                              <span>Apply: {preset.name}</span>
+                              {preset.source?.kind === "round-trip-demo" && (
+                                <span
+                                  data-testid="geometry-object-preset-roundtrip-badge"
+                                  style={{
+                                    border: "1px solid #7dd3fc",
+                                    borderRadius: 999,
+                                    padding: "1px 6px",
+                                    background: "#ecfeff",
+                                    color: "#075985",
+                                    fontWeight: 800,
+                                    fontSize: 9.5,
+                                  }}
+                                >
+                                  Saved from round-trip demo
+                                </span>
+                              )}
                             </button>
                           ))}
                         </div>
@@ -69368,11 +69576,28 @@ case "mobius":
                             <button
                               key={`geometry-object-preset-apply-dataset-${preset.id}`}
                               type="button"
+                              data-testid="geometry-object-preset-apply"
                               onClick={() => handleApplyGeometryObjectPreset(preset.id)}
-                              style={{ fontSize: 11 }}
+                              style={{ fontSize: 11, display: "grid", gap: 2, justifyItems: "start" }}
                               title={new Date(preset.createdAt).toLocaleString()}
                             >
-                              Apply: {preset.name}
+                              <span>Apply: {preset.name}</span>
+                              {preset.source?.kind === "round-trip-demo" && (
+                                <span
+                                  data-testid="geometry-object-preset-roundtrip-badge"
+                                  style={{
+                                    border: "1px solid #7dd3fc",
+                                    borderRadius: 999,
+                                    padding: "1px 6px",
+                                    background: "#ecfeff",
+                                    color: "#075985",
+                                    fontWeight: 800,
+                                    fontSize: 9.5,
+                                  }}
+                                >
+                                  Saved from round-trip demo
+                                </span>
+                              )}
                             </button>
                           ))}
                         </div>
@@ -74847,6 +75072,76 @@ case "mobius":
                                     >
                                       Object Details
                                     </button>
+                                  </div>
+                                )}
+                                {geometryRestoredPresetInspectorDetails && (
+                                  <div
+                                    data-testid="geometry-restored-preset-card"
+                                    style={{
+                                      marginTop: 6,
+                                      border: "1px solid #bbf7d0",
+                                      borderRadius: 8,
+                                      padding: "7px 8px",
+                                      background: "#f0fdf4",
+                                      color: "#14532d",
+                                      display: "grid",
+                                      gap: 5,
+                                      fontSize: 10.5,
+                                      boxShadow: "0 8px 18px rgba(34,197,94,0.12)",
+                                    }}
+                                  >
+                                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                      <strong>Restored Geometry preset</strong>
+                                      <span
+                                        style={{
+                                          border: "1px solid #86efac",
+                                          borderRadius: 999,
+                                          padding: "1px 6px",
+                                          background: "#dcfce7",
+                                          color: "#166534",
+                                          fontWeight: 800,
+                                        }}
+                                      >
+                                        Saved from round-trip demo
+                                      </span>
+                                    </div>
+                                    <div>{geometryRestoredPresetInspectorDetails.presetName}</div>
+                                    <div style={{ fontWeight: 800 }}>
+                                      Counts: {geometryRestoredPresetInspectorDetails.countsLabel}
+                                    </div>
+                                    <div>
+                                      Source topology step: {geometryRestoredPresetInspectorDetails.latestTopologyLabel}
+                                      {" -> "}
+                                      {geometryRestoredPresetInspectorDetails.resultLabel}
+                                    </div>
+                                    <div>Saved: {new Date(geometryRestoredPresetInspectorDetails.savedAt).toLocaleString()}</div>
+                                    <div style={{ color: "#166534", fontWeight: 700 }}>
+                                      {geometryRestoredPresetInspectorDetails.hasLinkedSource
+                                        ? "Linked Mesh source and history restored."
+                                        : "Preset restored; linked Mesh source metadata is unavailable."}
+                                    </div>
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                      <button
+                                        type="button"
+                                        data-testid="geometry-restored-preset-open-source"
+                                        onClick={() => handleOpenGeometryMeshTopologySource("current")}
+                                        disabled={!geometryRestoredPresetInspectorDetails.hasLinkedSource}
+                                        style={{ fontSize: 10, padding: "2px 7px" }}
+                                      >
+                                        Open Mesh Source
+                                      </button>
+                                      <button
+                                        type="button"
+                                        data-testid="geometry-restored-preset-open-history"
+                                        onClick={() => {
+                                          setGeometryProceduralPanelTab("history");
+                                          setGeometryRightPanelTab("selection");
+                                        }}
+                                        style={{ fontSize: 10, padding: "2px 7px" }}
+                                      >
+                                        Open History
+                                      </button>
+                                    </div>
                                   </div>
                                 )}
                                 {(geometrySelectedMeshTopologyHandoff || geometrySelectedPlainMeshHandoff) && (
