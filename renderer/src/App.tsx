@@ -5298,6 +5298,7 @@ type GeometryRoundTripDemoFeedback = {
   resultLabel: string;
   summaryText: string;
   savedExampleId?: string | null;
+  savedGeometryPresetId?: string | null;
   at: number;
 };
 type TopologySerializedSurfaceMeshData = {
@@ -5350,6 +5351,8 @@ type SurfaceMeshTopologySavedPreset = {
   summary: string;
   mesh: TopologySerializedSurfaceMeshData;
   history: StoredSurfaceMeshTopologyHistoryEntry[];
+  includesTransform?: boolean;
+  detailsLabel?: string;
 };
 
 const serializeTopologySurfaceMeshData = (mesh: SurfaceMeshData): TopologySerializedSurfaceMeshData => ({
@@ -10612,6 +10615,7 @@ const App: React.FC = () => {
   const [geometryCreateActionStatus, setGeometryCreateActionStatus] = useState<string | null>(null);
   const [geometryRoundTripDemoFeedback, setGeometryRoundTripDemoFeedback] =
     useState<GeometryRoundTripDemoFeedback | null>(null);
+  const [geometryRoundTripDemoIncludeTransform, setGeometryRoundTripDemoIncludeTransform] = useState(false);
   const [geometryArmedLineOperation, setGeometryArmedLineOperation] = useState<"extend" | "trim" | null>(null);
   const [geometryLineOperationCommitRequestId, setGeometryLineOperationCommitRequestId] = useState(0);
   const [geometryCreateSelectedCardExpanded, setGeometryCreateSelectedCardExpanded] = useState(false);
@@ -44252,6 +44256,7 @@ case "mobius":
           resultLabel: historyEntry.resultLabel,
           summaryText,
           savedExampleId: null,
+          savedGeometryPresetId: null,
           at: Date.now(),
         });
         const status = `Full round-trip demo ready: ${preset.label}. ${historyEntry.resultLabel}. Linked Mesh edit source card is visible.`;
@@ -44563,38 +44568,84 @@ case "mobius":
   }, [geometryRoundTripDemoFeedback]);
 
   const handleSaveGeometryRoundTripDemoGalleryExample = useCallback(() => {
-    const feedback = geometryRoundTripDemoFeedback;
-    if (!feedback || feedback.objectId !== geometrySelectedSceneObject?.id) {
-      setGeometryCreateActionStatus("Select the completed round-trip demo object first.");
-      return;
+    try {
+      const feedback = geometryRoundTripDemoFeedback;
+      if (!feedback || feedback.objectId !== geometrySelectedSceneObject?.id) {
+        setGeometryCreateActionStatus("Select the completed round-trip demo object first.");
+        return;
+      }
+      const resolved = resolveGeometrySceneMeshById(feedback.objectId);
+      if (!resolved?.mesh?.positions?.length) {
+        setGeometryCreateActionStatus("Round-trip demo mesh is unavailable.");
+        return;
+      }
+      const historyEntry = geometrySelectedMeshTopologyHandoffHistoryEntry;
+      const objectName = geometrySelectedSceneObject?.name?.trim() || feedback.presetLabel;
+      const name = `${objectName} showcase`;
+      const sourceMesh =
+        geometryRoundTripDemoIncludeTransform || !("mesh" in resolved.object)
+          ? resolved.mesh
+          : resolved.object.mesh;
+      const mesh = cloneSurfaceMeshData(sourceMesh, name);
+      const detailsLabel = `Includes: mesh, topology history${
+        geometryRoundTripDemoIncludeTransform ? ", transform" : "; no scene transform/material"
+      }`;
+      const preset: SurfaceMeshTopologySavedPreset = {
+        id: makeId(),
+        name,
+        createdAt: Date.now(),
+        summary: `${feedback.summaryText}. ${detailsLabel}`,
+        mesh: serializeTopologySurfaceMeshData(mesh),
+        history: historyEntry ? [serializeSurfaceMeshTopologyHistoryEntry(historyEntry)] : [],
+        includesTransform: geometryRoundTripDemoIncludeTransform,
+        detailsLabel,
+      };
+      setSurfaceMeshTopologySavedPresets((prev) => [preset, ...prev].slice(0, SURFACE_MESH_TOPOLOGY_SAVED_PRESET_LIMIT));
+      setGeometryRoundTripDemoFeedback((current) =>
+        current?.objectId === feedback.objectId ? { ...current, savedExampleId: preset.id } : current
+      );
+      setGeometryCreateActionStatus(`Saved Gallery example: ${preset.name}. ${detailsLabel}.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Save as Gallery example failed.";
+      setGeometryCreateActionStatus(msg);
     }
-    const resolved = resolveGeometrySceneMeshById(feedback.objectId);
-    if (!resolved?.mesh?.positions?.length) {
-      setGeometryCreateActionStatus("Round-trip demo mesh is unavailable.");
-      return;
-    }
-    const historyEntry = geometrySelectedMeshTopologyHandoffHistoryEntry;
-    const name = `${feedback.presetLabel} showcase`;
-    const mesh = cloneSurfaceMeshData(resolved.mesh, name);
-    const preset: SurfaceMeshTopologySavedPreset = {
-      id: makeId(),
-      name,
-      createdAt: Date.now(),
-      summary: feedback.summaryText,
-      mesh: serializeTopologySurfaceMeshData(mesh),
-      history: historyEntry ? [serializeSurfaceMeshTopologyHistoryEntry(historyEntry)] : [],
-    };
-    setSurfaceMeshTopologySavedPresets((prev) => [preset, ...prev].slice(0, SURFACE_MESH_TOPOLOGY_SAVED_PRESET_LIMIT));
-    setGeometryRoundTripDemoFeedback((current) =>
-      current?.objectId === feedback.objectId ? { ...current, savedExampleId: preset.id } : current
-    );
-    setGeometryCreateActionStatus(`Saved Gallery example: ${preset.name}.`);
   }, [
     geometryRoundTripDemoFeedback,
+    geometryRoundTripDemoIncludeTransform,
     geometrySelectedMeshTopologyHandoffHistoryEntry,
+    geometrySelectedSceneObject?.name,
     geometrySelectedSceneObject?.id,
     resolveGeometrySceneMeshById,
   ]);
+
+  const handleSaveGeometryRoundTripDemoObjectPreset = useCallback(() => {
+    try {
+      const feedback = geometryRoundTripDemoFeedback;
+      if (!feedback || feedback.objectId !== geometrySelectedSceneObject?.id) {
+        setGeometryCreateActionStatus("Select the completed round-trip demo object first.");
+        return;
+      }
+      const objectName = geometrySelectedSceneObject.name.trim() || feedback.presetLabel;
+      const name = `${objectName} Geometry preset`;
+      const snapshot = cloneGeometrySceneObjectSnapshot(geometrySelectedSceneObject);
+      const preset: GeometryObjectPreset = {
+        id: makeId(),
+        name,
+        createdAt: Date.now(),
+        snapshot,
+      };
+      setGeometryObjectPresets((prev) => [preset, ...prev].slice(0, 40));
+      setGeometryRoundTripDemoFeedback((current) =>
+        current?.objectId === feedback.objectId ? { ...current, savedGeometryPresetId: preset.id } : current
+      );
+      setGeometryCreateActionStatus(
+        `Saved Geometry object preset: ${preset.name}. Includes object transform, material, mesh, and linked topology source.`
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Save as Geometry preset failed.";
+      setGeometryCreateActionStatus(msg);
+    }
+  }, [geometryRoundTripDemoFeedback, geometrySelectedSceneObject]);
 
   const meshGeometryRoundTripTarget = useMemo(
     () =>
@@ -74671,6 +74722,33 @@ case "mobius":
                                       {" -> "}
                                       {geometryRoundTripDemoFeedback.resultLabel}
                                     </div>
+                                    <div style={{ color: "#475569" }}>
+                                      Saves mesh shape + topology history, not scene transform/material unless included below.
+                                    </div>
+                                    <label
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 6,
+                                        color: "#0f3557",
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        data-testid="geometry-roundtrip-demo-include-transform"
+                                        checked={geometryRoundTripDemoIncludeTransform}
+                                        onChange={(event) => setGeometryRoundTripDemoIncludeTransform(event.target.checked)}
+                                      />
+                                      Include object transform
+                                    </label>
+                                    <div data-testid="geometry-roundtrip-demo-save-details" style={{ color: "#155e75", fontWeight: 700 }}>
+                                      Includes: mesh, topology history
+                                      {geometryRoundTripDemoIncludeTransform ? ", transform" : "; no scene transform/material"}
+                                    </div>
+                                    <div data-testid="geometry-roundtrip-demo-geometry-save-details" style={{ color: "#155e75", fontWeight: 700 }}>
+                                      Geometry preset includes object transform, material, mesh, and linked topology source.
+                                    </div>
                                     <div
                                       data-testid="geometry-roundtrip-demo-checklist"
                                       style={{
@@ -74720,6 +74798,16 @@ case "mobius":
                                         {geometryRoundTripDemoFeedback.savedExampleId
                                           ? "Saved as Gallery example"
                                           : "Save as Gallery example"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        data-testid="geometry-roundtrip-demo-save-geometry"
+                                        onClick={handleSaveGeometryRoundTripDemoObjectPreset}
+                                        style={{ fontSize: 10, padding: "2px 7px" }}
+                                      >
+                                        {geometryRoundTripDemoFeedback.savedGeometryPresetId
+                                          ? "Saved as Geometry preset"
+                                          : "Save as Geometry preset"}
                                       </button>
                                       <button
                                         type="button"
@@ -80820,9 +80908,15 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                         <div className="gallery-scan-card-summary" title={preset.summary}>
                           {summary}
                         </div>
+                        <div
+                          className="gallery-scan-card-summary"
+                          title={preset.detailsLabel ?? "Includes: mesh, topology history"}
+                        >
+                          {preset.detailsLabel ?? "Includes: mesh, topology history"}
+                        </div>
                         <div className="gallery-scan-card-formula">saved topology edit</div>
                         <div className="gallery-scan-card-chips">
-                          {["Mesh", "Saved"].map((chip) => (
+                          {["Mesh", "Saved", ...(preset.includesTransform ? ["Transform"] : [])].map((chip) => (
                             <span key={`${preset.id}-${chip}`} className="gallery-scan-card-chip">
                               {chip}
                             </span>

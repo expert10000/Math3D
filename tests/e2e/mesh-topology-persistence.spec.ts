@@ -196,21 +196,38 @@ test.describe("Mesh topology persistence and handoff", () => {
       await expect(page.getByTestId("geometry-roundtrip-demo-replay")).toBeEnabled();
       await expect(page.getByTestId("geometry-roundtrip-demo-copy-summary")).toBeEnabled();
       await expect(page.getByTestId("geometry-roundtrip-demo-save-gallery")).toBeEnabled();
+      await expect(page.getByTestId("geometry-roundtrip-demo-save-geometry")).toBeEnabled();
       await expect(page.getByTestId("geometry-roundtrip-demo-open-source")).toBeEnabled();
       await expect(page.getByTestId("geometry-roundtrip-demo-restore-before")).toBeEnabled();
+      await expect(page.getByTestId("geometry-roundtrip-demo-save-details")).toContainText(
+        /Includes: mesh, topology history; no scene transform\/material/
+      );
+      await expect(page.getByTestId("geometry-roundtrip-demo-geometry-save-details")).toContainText(
+        /Geometry preset includes object transform, material, mesh, and linked topology source/
+      );
       await expect(page.getByTestId("geometry-right-linked-mesh-source")).toBeVisible({ timeout: 15_000 });
       await expect(page.getByTestId("geometry-right-linked-mesh-source")).toContainText(/Linked Mesh edit source/i);
       await expect(page.getByTestId("geometry-right-linked-mesh-source")).toContainText(/Latest: Face subdivide/i);
       await expect(page.getByTestId("geometry-right-linked-mesh-source")).toContainText(/Round-trip linked/i);
       await expect(await firstVisible(page.getByRole("checkbox", { name: "Wireframe", exact: true }))).toBeChecked();
+      await page.getByTestId("geometry-roundtrip-demo-include-transform").check();
+      await expect(page.getByTestId("geometry-roundtrip-demo-save-details")).toContainText(
+        /Includes: mesh, topology history, transform/
+      );
+      await page.getByTestId("geometry-roundtrip-demo-save-geometry").click();
+      await expect(page.getByTestId("geometry-roundtrip-demo-save-geometry")).toContainText(
+        /Saved as Geometry preset/i,
+        { timeout: 15_000 }
+      );
       await page.getByTestId("geometry-roundtrip-demo-save-gallery").click();
       await expect(page.getByTestId("geometry-roundtrip-demo-save-gallery")).toContainText(/Saved as Gallery example/i, {
         timeout: 15_000,
       });
       await openMeshGallery(page);
-      await expect(page.getByRole("button", { name: /Round-trip box subdivide showcase/i }).first()).toBeVisible({
+      await expect(page.getByRole("button", { name: /showcase/i }).first()).toBeVisible({
         timeout: 15_000,
       });
+      await expect(page.getByText(/Includes: mesh, topology history, transform/i).first()).toBeVisible();
 
       await runTopologyDemo(page, "topology_demo_collapse_edge", "Collapse Edge", /Collapse edge/i);
       await runTopologyDemo(page, "topology_demo_bevel_edge", "Bevel Edge", /Bevel edge/i);
