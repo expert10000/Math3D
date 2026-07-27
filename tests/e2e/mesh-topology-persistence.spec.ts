@@ -88,6 +88,27 @@ async function openMeshGallery(page: Page): Promise<void> {
   await expect(page.getByTestId("mesh-preset-grid")).toBeVisible({ timeout: 15_000 });
 }
 
+async function clickMeshViewerForSelection(page: Page): Promise<void> {
+  const hosts = page.getByTestId("surface-viewer-canvas-host");
+  const count = await hosts.count();
+  let best: Locator | null = null;
+  let bestArea = 0;
+  for (let i = 0; i < count; i += 1) {
+    const host = hosts.nth(i);
+    if (!(await host.isVisible().catch(() => false))) continue;
+    const box = await host.boundingBox();
+    const area = box ? box.width * box.height : 0;
+    if (area > bestArea) {
+      bestArea = area;
+      best = host;
+    }
+  }
+  if (!best) throw new Error("No visible mesh viewer found.");
+  const box = await best.boundingBox();
+  if (!box) throw new Error("Mesh viewer bounds unavailable.");
+  await page.mouse.click(box.x + box.width * 0.52, box.y + box.height * 0.48);
+}
+
 async function runTopologyDemo(
   page: Page,
   demoId: string,
@@ -98,6 +119,12 @@ async function runTopologyDemo(
   await page.getByTestId(`mesh-topology-preset-card-${demoId}`).click();
   const meshTools = await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true }));
   await meshTools.click();
+  if (operationButtonName === "Split Edge") {
+    await firstVisible(page.getByRole("button", { name: "Edge", exact: true })).then((button) => button.click());
+    await clickMeshViewerForSelection(page);
+    await expect(page.getByTestId("mesh-topology-selected-edge").first()).toContainText(/Selected edge: \d+-\d+/);
+    await expect(page.getByTestId("mesh-topology-advanced-ids").first()).not.toHaveAttribute("open", "");
+  }
   const operation = await firstVisible(page.getByRole("button", { name: operationButtonName, exact: true }));
   await operation.click();
   await expect(page.getByText(expectedHistoryName).first()).toBeVisible({ timeout: 15_000 });

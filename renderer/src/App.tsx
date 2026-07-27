@@ -34204,12 +34204,36 @@ const App: React.FC = () => {
       edgeB >= 0 &&
       edgeA < topology.vertexCount &&
       edgeB < topology.vertexCount;
+    const edgeValid = edgeInRange && incidentFaces.length > 0;
+    const faceEdgeCandidates: Array<[number, number]> = faceTri
+      ? [
+          [faceTri[0], faceTri[1]],
+          [faceTri[1], faceTri[2]],
+          [faceTri[2], faceTri[0]],
+        ]
+      : [];
+    const fallbackEdge =
+      surfaceMeshData && !edgeValid
+        ? faceEdgeCandidates.find(([a, b]) => findMeshEdgeIncidentFaceIndices(surfaceMeshData, a, b, 1).length > 0) ??
+          null
+        : null;
+    const effectiveEdgeA = fallbackEdge ? fallbackEdge[0] : edgeA;
+    const effectiveEdgeB = fallbackEdge ? fallbackEdge[1] : edgeB;
+    const effectiveIncidentFaces = fallbackEdge
+      ? surfaceMeshData
+        ? findMeshEdgeIncidentFaceIndices(surfaceMeshData, effectiveEdgeA, effectiveEdgeB, 12)
+        : []
+      : incidentFaces;
     return {
       faceValid: !!faceTri,
       faceLabel: faceTri ? `valid face; vertices ${faceTri.join(", ")}` : "not a valid face",
-      edgeValid: edgeInRange && incidentFaces.length > 0,
+      edgeValid: edgeValid || !!fallbackEdge,
       edgeLabel:
-        edgeA === edgeB
+        fallbackEdge
+          ? `using selected face edge ${effectiveEdgeA}-${effectiveEdgeB}; faces ${effectiveIncidentFaces
+              .slice(0, 4)
+              .join(", ")}${effectiveIncidentFaces.length > 4 ? "..." : ""}`
+          : edgeA === edgeB
           ? "not an edge; A and B match"
           : !edgeInRange
           ? "not an edge; vertex out of range"
@@ -34220,6 +34244,9 @@ const App: React.FC = () => {
       vertexLabel: vertex
         ? `valid vertex; ${formatHistoryVec3(vertex)}`
         : "not a valid vertex",
+      effectiveEdgeA,
+      effectiveEdgeB,
+      edgeFallbackActive: !!fallbackEdge,
     };
   }, [
     surfaceMeshData,
@@ -34234,23 +34261,17 @@ const App: React.FC = () => {
         setSurfaceMeshTopologyStatus("Enable Probe and click the current SurfaceMesh first.");
         return;
       }
-      if (surfaceMeshTopologyPickMode === "auto" || surfaceMeshTopologyPickMode === "face") {
-        setSurfaceMeshTopologyFaceIndex(pick.faceIndex);
-      }
-      if (surfaceMeshTopologyPickMode === "auto" || surfaceMeshTopologyPickMode === "edge") {
-        setSurfaceMeshTopologyEdgeA(pick.edgeA);
-        setSurfaceMeshTopologyEdgeB(pick.edgeB);
-      }
-      if (surfaceMeshTopologyPickMode === "auto" || surfaceMeshTopologyPickMode === "vertex") {
-        setSurfaceMeshTopologyVertexIndex(pick.vertexIndex);
-      }
+      setSurfaceMeshTopologyFaceIndex(pick.faceIndex);
+      setSurfaceMeshTopologyEdgeA(pick.edgeA);
+      setSurfaceMeshTopologyEdgeB(pick.edgeB);
+      setSurfaceMeshTopologyVertexIndex(pick.vertexIndex);
       const detail =
         surfaceMeshTopologyPickMode === "face"
-          ? `Face ${pick.faceIndex}`
+          ? `Face ${pick.faceIndex}; edge ${pick.edgeA}-${pick.edgeB} refreshed`
           : surfaceMeshTopologyPickMode === "edge"
-          ? `Edge ${pick.edgeA}-${pick.edgeB}`
+          ? `Edge ${pick.edgeA}-${pick.edgeB}; face ${pick.faceIndex} refreshed`
           : surfaceMeshTopologyPickMode === "vertex"
-          ? `Vertex ${pick.vertexIndex}`
+          ? `Vertex ${pick.vertexIndex}; edge ${pick.edgeA}-${pick.edgeB} refreshed`
           : `Face ${pick.faceIndex}, Edge ${pick.edgeA}-${pick.edgeB}, Vertex ${pick.vertexIndex}`;
       setSurfaceMeshTopologyStatus(`${surfaceMeshTopologyPickModeLabel} pick loaded: ${detail}.`);
     },
@@ -43826,24 +43847,24 @@ case "mobius":
       splitEdge: buildSurfaceMeshTopologyPreview("Split edge", (mesh) =>
         splitEdge(
           mesh,
-          Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0)),
-          Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0)),
+          surfaceMeshTopologyFieldValidation.effectiveEdgeA,
+          surfaceMeshTopologyFieldValidation.effectiveEdgeB,
           clampNumber(surfaceMeshTopologySplitRatio, 0.01, 0.99)
         )
       ),
       collapseEdge: buildSurfaceMeshTopologyPreview("Collapse edge", (mesh) =>
         collapseEdge(
           mesh,
-          Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0)),
-          Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0)),
+          surfaceMeshTopologyFieldValidation.effectiveEdgeA,
+          surfaceMeshTopologyFieldValidation.effectiveEdgeB,
           surfaceMeshTopologyCollapseMode
         )
       ),
       bevelEdge: buildSurfaceMeshTopologyPreview("Bevel edge", (mesh) =>
         bevelEdge(
           mesh,
-          Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0)),
-          Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0)),
+          surfaceMeshTopologyFieldValidation.effectiveEdgeA,
+          surfaceMeshTopologyFieldValidation.effectiveEdgeB,
           Math.max(0.001, surfaceMeshTopologyBevelAmount || 0.001)
         )
       ),
@@ -43853,8 +43874,8 @@ case "mobius":
       surfaceMeshTopologyGhostFeedback,
       surfaceMeshTopologyBevelAmount,
       surfaceMeshTopologyCollapseMode,
-      surfaceMeshTopologyEdgeA,
-      surfaceMeshTopologyEdgeB,
+      surfaceMeshTopologyFieldValidation.effectiveEdgeA,
+      surfaceMeshTopologyFieldValidation.effectiveEdgeB,
       surfaceMeshTopologyFaceIndex,
       surfaceMeshTopologyPreviewOperation,
       surfaceMeshTopologySplitRatio,
@@ -43960,8 +43981,8 @@ case "mobius":
 
   const handleSurfaceMeshSplitEdge = useCallback(() => {
     setSurfaceMeshTopologyPreviewOperation("Split Edge");
-    const edgeA = Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0));
-    const edgeB = Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0));
+    const edgeA = surfaceMeshTopologyFieldValidation.effectiveEdgeA;
+    const edgeB = surfaceMeshTopologyFieldValidation.effectiveEdgeB;
     if (!surfaceMeshTopologyFieldValidation.edgeValid) {
       setSurfaceMeshTopologyStatus(`Split Edge blocked: ${surfaceMeshTopologyFieldValidation.edgeLabel}.`);
       return;
@@ -43985,8 +44006,8 @@ case "mobius":
     );
   }, [
     applySurfaceMeshTopologyEdit,
-    surfaceMeshTopologyEdgeA,
-    surfaceMeshTopologyEdgeB,
+    surfaceMeshTopologyFieldValidation.effectiveEdgeA,
+    surfaceMeshTopologyFieldValidation.effectiveEdgeB,
     surfaceMeshTopologyFieldValidation.edgeLabel,
     surfaceMeshTopologyFieldValidation.edgeValid,
     surfaceMeshTopologySplitRatio,
@@ -43994,8 +44015,8 @@ case "mobius":
 
   const handleSurfaceMeshCollapseEdge = useCallback(() => {
     setSurfaceMeshTopologyPreviewOperation("Collapse Edge");
-    const edgeA = Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0));
-    const edgeB = Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0));
+    const edgeA = surfaceMeshTopologyFieldValidation.effectiveEdgeA;
+    const edgeB = surfaceMeshTopologyFieldValidation.effectiveEdgeB;
     if (!surfaceMeshTopologyFieldValidation.edgeValid) {
       setSurfaceMeshTopologyStatus(`Collapse Edge blocked: ${surfaceMeshTopologyFieldValidation.edgeLabel}.`);
       return;
@@ -44014,16 +44035,16 @@ case "mobius":
   }, [
     applySurfaceMeshTopologyEdit,
     surfaceMeshTopologyCollapseMode,
-    surfaceMeshTopologyEdgeA,
-    surfaceMeshTopologyEdgeB,
+    surfaceMeshTopologyFieldValidation.effectiveEdgeA,
+    surfaceMeshTopologyFieldValidation.effectiveEdgeB,
     surfaceMeshTopologyFieldValidation.edgeLabel,
     surfaceMeshTopologyFieldValidation.edgeValid,
   ]);
 
   const handleSurfaceMeshBevelEdge = useCallback(() => {
     setSurfaceMeshTopologyPreviewOperation("Bevel Edge");
-    const edgeA = Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0));
-    const edgeB = Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0));
+    const edgeA = surfaceMeshTopologyFieldValidation.effectiveEdgeA;
+    const edgeB = surfaceMeshTopologyFieldValidation.effectiveEdgeB;
     if (!surfaceMeshTopologyFieldValidation.edgeValid) {
       setSurfaceMeshTopologyStatus(`Bevel Edge blocked: ${surfaceMeshTopologyFieldValidation.edgeLabel}.`);
       return;
@@ -44042,8 +44063,8 @@ case "mobius":
   }, [
     applySurfaceMeshTopologyEdit,
     surfaceMeshTopologyBevelAmount,
-    surfaceMeshTopologyEdgeA,
-    surfaceMeshTopologyEdgeB,
+    surfaceMeshTopologyFieldValidation.effectiveEdgeA,
+    surfaceMeshTopologyFieldValidation.effectiveEdgeB,
     surfaceMeshTopologyFieldValidation.edgeLabel,
     surfaceMeshTopologyFieldValidation.edgeValid,
   ]);
@@ -44375,6 +44396,20 @@ case "mobius":
   const surfaceMeshTopologySplitGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Split Edge");
   const surfaceMeshTopologyCollapseGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Collapse Edge");
   const surfaceMeshTopologyBevelGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Bevel Edge");
+  const selectedSurfaceMeshTopologyFaceLabel = `Selected face: ${Math.max(
+    0,
+    Math.round(surfaceMeshTopologyFaceIndex || 0)
+  )}`;
+  const selectedSurfaceMeshTopologyEdgeLabel = `Selected edge: ${Math.max(
+    0,
+    Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeA || 0)
+  )}-${Math.max(0, Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeB || 0))}${
+    surfaceMeshTopologyFieldValidation.edgeFallbackActive ? " (from face)" : ""
+  }`;
+  const selectedSurfaceMeshTopologyVertexLabel = `Selected vertex: ${Math.max(
+    0,
+    Math.round(surfaceMeshTopologyVertexIndex || 0)
+  )}`;
 
   const surfaceMeshTopologyBreadcrumb = useMemo(() => {
     const preview = surfaceMeshTopologyHistoryPreviewId
@@ -58312,7 +58347,7 @@ case "mobius":
                           Pick source: {surfaceMeshTopologyPickSummary ?? (probeEnabled ? "click mesh" : "probe off")}
                         </span>
                         <button type="button" onClick={() => applySurfaceMeshTopologyPickToFields()} disabled={!surfaceMeshTopologyPickSummary}>
-                          Use Last Pick
+                          Refresh from pick
                         </button>
                         {!probeEnabled && (
                           <button type="button" onClick={() => setProbeEnabled(true)} disabled={!surfaceMeshStats}>
@@ -58321,26 +58356,28 @@ case "mobius":
                         )}
                       </div>
                       <div style={{ display: "grid", gap: 7 }}>
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 5,
+                            border: "1px solid #bfdbfe",
+                            borderRadius: 8,
+                            background: "#eff6ff",
+                            color: "#1e3a8a",
+                            padding: "7px 8px",
+                            fontSize: 11,
+                          }}
+                        >
+                          <strong>Use selected mesh entity</strong>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <span data-testid="mesh-topology-selected-face">{selectedSurfaceMeshTopologyFaceLabel}</span>
+                            <span data-testid="mesh-topology-selected-edge">{selectedSurfaceMeshTopologyEdgeLabel}</span>
+                            <span data-testid="mesh-topology-selected-vertex">{selectedSurfaceMeshTopologyVertexLabel}</span>
+                          </div>
+                          <span style={{ color: "#475467" }}>Click the mesh to update these picks before applying an operation.</span>
+                        </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                          <label style={{ fontSize: 11 }}>
-                            Face
-                            <input
-                              type="number"
-                              min={0}
-                              max={Math.max(0, (surfaceMeshStats?.triCount ?? 1) - 1)}
-                              step={1}
-                              value={surfaceMeshTopologyFaceIndex}
-                              onChange={(e) => {
-                                const v = Number(e.target.value);
-                                if (Number.isFinite(v)) {
-                                  setSurfaceMeshTopologyFaceIndex(
-                                    clampNumber(Math.round(v), 0, Math.max(0, (surfaceMeshStats?.triCount ?? 1) - 1))
-                                  );
-                                }
-                              }}
-                              style={{ width: 76, marginLeft: 6 }}
-                            />
-                          </label>
+                          <span style={{ fontSize: 11, fontWeight: 700 }}>{selectedSurfaceMeshTopologyFaceLabel}</span>
                           <select
                             value={surfaceMeshTopologySubdivideMode}
                             onChange={(e) => setSurfaceMeshTopologySubdivideMode(e.target.value as FaceSubdivideMode)}
@@ -58385,73 +58422,7 @@ case "mobius":
                           {surfaceMeshTopologyFieldValidation.faceLabel}
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                          <label style={{ fontSize: 11 }}>
-                            Vertex
-                            <input
-                              type="number"
-                              min={0}
-                              max={Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1)}
-                              step={1}
-                              value={surfaceMeshTopologyVertexIndex}
-                              onChange={(e) => {
-                                const v = Number(e.target.value);
-                                if (Number.isFinite(v)) {
-                                  setSurfaceMeshTopologyVertexIndex(
-                                    clampNumber(Math.round(v), 0, Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1))
-                                  );
-                                }
-                              }}
-                              style={{ width: 76, marginLeft: 6 }}
-                            />
-                          </label>
-                          <span
-                            style={{
-                              fontSize: 11,
-                              color: surfaceMeshTopologyFieldValidation.vertexValid ? "#047857" : "#b42318",
-                            }}
-                          >
-                            {surfaceMeshTopologyFieldValidation.vertexLabel}
-                          </span>
-                        </div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                          <label style={{ fontSize: 11 }}>
-                            Edge A
-                            <input
-                              type="number"
-                              min={0}
-                              max={Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1)}
-                              step={1}
-                              value={surfaceMeshTopologyEdgeA}
-                              onChange={(e) => {
-                                const v = Number(e.target.value);
-                                if (Number.isFinite(v)) {
-                                  setSurfaceMeshTopologyEdgeA(
-                                    clampNumber(Math.round(v), 0, Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1))
-                                  );
-                                }
-                              }}
-                              style={{ width: 76, marginLeft: 6 }}
-                            />
-                          </label>
-                          <label style={{ fontSize: 11 }}>
-                            B
-                            <input
-                              type="number"
-                              min={0}
-                              max={Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1)}
-                              step={1}
-                              value={surfaceMeshTopologyEdgeB}
-                              onChange={(e) => {
-                                const v = Number(e.target.value);
-                                if (Number.isFinite(v)) {
-                                  setSurfaceMeshTopologyEdgeB(
-                                    clampNumber(Math.round(v), 0, Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1))
-                                  );
-                                }
-                              }}
-                              style={{ width: 76, marginLeft: 6 }}
-                            />
-                          </label>
+                          <span style={{ fontSize: 11, fontWeight: 700 }}>{selectedSurfaceMeshTopologyEdgeLabel}</span>
                         </div>
                         <div
                           style={{
@@ -58595,6 +58566,117 @@ case "mobius":
                             <span style={{ fontSize: 11, color: "#475467" }}>{surfaceMeshTopologyPreview.bevelEdge}</span>
                           )}
                         </div>
+                        <details
+                          data-testid="mesh-topology-advanced-ids"
+                          style={{
+                            border: "1px solid #dbe2ea",
+                            borderRadius: 8,
+                            background: "#fff",
+                            padding: "6px 8px",
+                          }}
+                        >
+                          <summary style={{ cursor: "pointer", fontSize: 11, fontWeight: 700 }}>Advanced IDs</summary>
+                          <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
+                            <label style={{ fontSize: 11 }}>
+                              Face
+                              <input
+                                aria-label="Advanced face id"
+                                type="number"
+                                min={0}
+                                max={Math.max(0, (surfaceMeshStats?.triCount ?? 1) - 1)}
+                                step={1}
+                                value={surfaceMeshTopologyFaceIndex}
+                                onChange={(e) => {
+                                  const v = Number(e.target.value);
+                                  if (Number.isFinite(v)) {
+                                    setSurfaceMeshTopologyFaceIndex(
+                                      clampNumber(Math.round(v), 0, Math.max(0, (surfaceMeshStats?.triCount ?? 1) - 1))
+                                    );
+                                  }
+                                }}
+                                style={{ width: 76, marginLeft: 6 }}
+                              />
+                            </label>
+                            <label style={{ fontSize: 11 }}>
+                              Vertex
+                              <input
+                                aria-label="Advanced vertex id"
+                                type="number"
+                                min={0}
+                                max={Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1)}
+                                step={1}
+                                value={surfaceMeshTopologyVertexIndex}
+                                onChange={(e) => {
+                                  const v = Number(e.target.value);
+                                  if (Number.isFinite(v)) {
+                                    setSurfaceMeshTopologyVertexIndex(
+                                      clampNumber(Math.round(v), 0, Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1))
+                                    );
+                                  }
+                                }}
+                                style={{ width: 76, marginLeft: 6 }}
+                              />
+                            </label>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                              <label style={{ fontSize: 11 }}>
+                                Edge A
+                                <input
+                                  aria-label="Advanced edge A id"
+                                  type="number"
+                                  min={0}
+                                  max={Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1)}
+                                  step={1}
+                                  value={surfaceMeshTopologyEdgeA}
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    if (Number.isFinite(v)) {
+                                      setSurfaceMeshTopologyEdgeA(
+                                        clampNumber(
+                                          Math.round(v),
+                                          0,
+                                          Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1)
+                                        )
+                                      );
+                                    }
+                                  }}
+                                  style={{ width: 76, marginLeft: 6 }}
+                                />
+                              </label>
+                              <label style={{ fontSize: 11 }}>
+                                Edge B
+                                <input
+                                  aria-label="Advanced edge B id"
+                                  type="number"
+                                  min={0}
+                                  max={Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1)}
+                                  step={1}
+                                  value={surfaceMeshTopologyEdgeB}
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    if (Number.isFinite(v)) {
+                                      setSurfaceMeshTopologyEdgeB(
+                                        clampNumber(
+                                          Math.round(v),
+                                          0,
+                                          Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1)
+                                        )
+                                      );
+                                    }
+                                  }}
+                                  style={{ width: 76, marginLeft: 6 }}
+                                />
+                              </label>
+                            </div>
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: surfaceMeshTopologyFieldValidation.vertexValid ? "#047857" : "#b42318",
+                              }}
+                            >
+                              {surfaceMeshTopologyFieldValidation.vertexLabel}
+                            </span>
+                          </div>
+                        </details>
                       </div>
                       <div
                         style={{
@@ -58673,7 +58755,8 @@ case "mobius":
                                   setSurfaceMeshTopologyHistoryPreviewMode("after");
                                   setSurfaceMeshTopologyHistoryPreviewId(entry.id);
                                 }}
-                                onFocus={() => {
+                                onFocus={(event) => {
+                                  if (event.currentTarget !== event.target) return;
                                   setSurfaceMeshTopologyHistoryPreviewMode("after");
                                   setSurfaceMeshTopologyHistoryPreviewId(entry.id);
                                 }}
@@ -85845,6 +85928,9 @@ type SurfacesLeftPanelProps = {
     edgeLabel: string;
     vertexValid: boolean;
     vertexLabel: string;
+    effectiveEdgeA: number;
+    effectiveEdgeB: number;
+    edgeFallbackActive: boolean;
   };
   surfaceMeshTopologyPreview: {
     ghost: string | null;
@@ -87068,6 +87154,20 @@ onChangeImplicitExpr,
   const meshReady = !!surfaceMeshStats;
   const maxSurfaceMeshTopologyFaceIndex = Math.max(0, (surfaceMeshStats?.triCount ?? 1) - 1);
   const maxSurfaceMeshTopologyVertexIndex = Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1);
+  const selectedSurfaceMeshTopologyFaceLabel = `Selected face: ${Math.max(
+    0,
+    Math.round(surfaceMeshTopologyFaceIndex || 0)
+  )}`;
+  const selectedSurfaceMeshTopologyEdgeLabel = `Selected edge: ${Math.max(
+    0,
+    Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeA || 0)
+  )}-${Math.max(0, Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeB || 0))}${
+    surfaceMeshTopologyFieldValidation.edgeFallbackActive ? " (from face)" : ""
+  }`;
+  const selectedSurfaceMeshTopologyVertexLabel = `Selected vertex: ${Math.max(
+    0,
+    Math.round(surfaceMeshTopologyVertexIndex || 0)
+  )}`;
   const surfaceMeshTopologyFaceGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Face Subdivide");
   const surfaceMeshTopologySplitGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Split Edge");
   const surfaceMeshTopologyCollapseGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Collapse Edge");
@@ -90222,7 +90322,7 @@ onChangeImplicitExpr,
                   Pick source: {surfaceMeshTopologyPickSummary ?? (probeEnabled ? "click mesh" : "probe off")}
                 </span>
                 <button type="button" onClick={onUseSurfaceMeshTopologyPick} disabled={!meshReady || !surfaceMeshTopologyPickSummary}>
-                  Use Last Pick
+                  Refresh from pick
                 </button>
                 {!probeEnabled && (
                   <button type="button" onClick={onToggleProbe} disabled={!meshReady}>
@@ -90387,28 +90487,30 @@ onChangeImplicitExpr,
               </div>
 
               <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 5,
+                    border: "1px solid #bfdbfe",
+                    borderRadius: 8,
+                    background: "#eff6ff",
+                    color: "#1e3a8a",
+                    padding: "7px 8px",
+                    fontSize: 11,
+                  }}
+                >
+                  <strong>Use selected mesh entity</strong>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <span data-testid="mesh-topology-selected-face">{selectedSurfaceMeshTopologyFaceLabel}</span>
+                    <span data-testid="mesh-topology-selected-edge">{selectedSurfaceMeshTopologyEdgeLabel}</span>
+                    <span data-testid="mesh-topology-selected-vertex">{selectedSurfaceMeshTopologyVertexLabel}</span>
+                  </div>
+                  <span style={{ color: "#475467" }}>Click the mesh to update these picks before applying an operation.</span>
+                </div>
                 <div style={{ display: "grid", gap: 6 }}>
                   <div style={{ fontSize: 11, fontWeight: 700 }}>Face</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <label style={{ fontSize: 11 }}>
-                      Face
-                      <input
-                        type="number"
-                        min={0}
-                        max={maxSurfaceMeshTopologyFaceIndex}
-                        step={1}
-                        value={surfaceMeshTopologyFaceIndex}
-                        onChange={(e) => {
-                          const v = Number(e.target.value);
-                          if (Number.isFinite(v)) {
-                            onChangeSurfaceMeshTopologyFaceIndex(
-                              clampNumber(Math.round(v), 0, maxSurfaceMeshTopologyFaceIndex)
-                            );
-                          }
-                        }}
-                        style={{ width: 72, marginLeft: 6 }}
-                      />
-                    </label>
+                    <span style={{ fontSize: 11, fontWeight: 700 }}>{selectedSurfaceMeshTopologyFaceLabel}</span>
                     <select
                       value={surfaceMeshTopologySubdivideMode}
                       onChange={(e) => onChangeSurfaceMeshTopologySubdivideMode(e.target.value as FaceSubdivideMode)}
@@ -90454,79 +90556,9 @@ onChangeImplicitExpr,
                   </div>
                 </div>
                 <div style={{ display: "grid", gap: 6 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700 }}>Vertex</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <label style={{ fontSize: 11 }}>
-                      Vertex
-                      <input
-                        type="number"
-                        min={0}
-                        max={maxSurfaceMeshTopologyVertexIndex}
-                        step={1}
-                        value={surfaceMeshTopologyVertexIndex}
-                        onChange={(e) => {
-                          const v = Number(e.target.value);
-                          if (Number.isFinite(v)) {
-                            onChangeSurfaceMeshTopologyVertexIndex(
-                              clampNumber(Math.round(v), 0, maxSurfaceMeshTopologyVertexIndex)
-                            );
-                          }
-                        }}
-                        style={{ width: 72, marginLeft: 6 }}
-                      />
-                    </label>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        color: surfaceMeshTopologyFieldValidation.vertexValid ? "#047857" : "#b42318",
-                      }}
-                    >
-                      {surfaceMeshTopologyFieldValidation.vertexLabel}
-                    </span>
-                  </div>
-                </div>
-
-                <div style={{ display: "grid", gap: 6 }}>
                   <div style={{ fontSize: 11, fontWeight: 700 }}>Edge</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <label style={{ fontSize: 11 }}>
-                      A
-                      <input
-                        type="number"
-                        min={0}
-                        max={maxSurfaceMeshTopologyVertexIndex}
-                        step={1}
-                        value={surfaceMeshTopologyEdgeA}
-                        onChange={(e) => {
-                          const v = Number(e.target.value);
-                          if (Number.isFinite(v)) {
-                            onChangeSurfaceMeshTopologyEdgeA(
-                              clampNumber(Math.round(v), 0, maxSurfaceMeshTopologyVertexIndex)
-                            );
-                          }
-                        }}
-                        style={{ width: 72, marginLeft: 6 }}
-                      />
-                    </label>
-                    <label style={{ fontSize: 11 }}>
-                      B
-                      <input
-                        type="number"
-                        min={0}
-                        max={maxSurfaceMeshTopologyVertexIndex}
-                        step={1}
-                        value={surfaceMeshTopologyEdgeB}
-                        onChange={(e) => {
-                          const v = Number(e.target.value);
-                          if (Number.isFinite(v)) {
-                            onChangeSurfaceMeshTopologyEdgeB(
-                              clampNumber(Math.round(v), 0, maxSurfaceMeshTopologyVertexIndex)
-                            );
-                          }
-                        }}
-                        style={{ width: 72, marginLeft: 6 }}
-                      />
-                    </label>
+                    <span style={{ fontSize: 11, fontWeight: 700 }}>{selectedSurfaceMeshTopologyEdgeLabel}</span>
                   </div>
                   <div
                     style={{
@@ -90675,6 +90707,129 @@ onChangeImplicitExpr,
                     </div>
                   </div>
                 </div>
+                <details
+                  data-testid="mesh-topology-advanced-ids"
+                  style={{
+                    border: "1px solid #dbe2ea",
+                    borderRadius: 8,
+                    background: "#fff",
+                    padding: "6px 8px",
+                  }}
+                >
+                  <summary style={{ cursor: "pointer", fontSize: 11, fontWeight: 700 }}>Advanced IDs</summary>
+                  <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <label style={{ fontSize: 11 }}>
+                        Face
+                        <input
+                          aria-label="Advanced face id"
+                          type="number"
+                          min={0}
+                          max={maxSurfaceMeshTopologyFaceIndex}
+                          step={1}
+                          value={surfaceMeshTopologyFaceIndex}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (Number.isFinite(v)) {
+                              onChangeSurfaceMeshTopologyFaceIndex(
+                                clampNumber(Math.round(v), 0, maxSurfaceMeshTopologyFaceIndex)
+                              );
+                            }
+                          }}
+                          style={{ width: 72, marginLeft: 6 }}
+                        />
+                      </label>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: surfaceMeshTopologyFieldValidation.faceValid ? "#047857" : "#b42318",
+                        }}
+                      >
+                        {surfaceMeshTopologyFieldValidation.faceLabel}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <label style={{ fontSize: 11 }}>
+                        Vertex
+                        <input
+                          aria-label="Advanced vertex id"
+                          type="number"
+                          min={0}
+                          max={maxSurfaceMeshTopologyVertexIndex}
+                          step={1}
+                          value={surfaceMeshTopologyVertexIndex}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (Number.isFinite(v)) {
+                              onChangeSurfaceMeshTopologyVertexIndex(
+                                clampNumber(Math.round(v), 0, maxSurfaceMeshTopologyVertexIndex)
+                              );
+                            }
+                          }}
+                          style={{ width: 72, marginLeft: 6 }}
+                        />
+                      </label>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: surfaceMeshTopologyFieldValidation.vertexValid ? "#047857" : "#b42318",
+                        }}
+                      >
+                        {surfaceMeshTopologyFieldValidation.vertexLabel}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <label style={{ fontSize: 11 }}>
+                        Edge A
+                        <input
+                          aria-label="Advanced edge A id"
+                          type="number"
+                          min={0}
+                          max={maxSurfaceMeshTopologyVertexIndex}
+                          step={1}
+                          value={surfaceMeshTopologyEdgeA}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (Number.isFinite(v)) {
+                              onChangeSurfaceMeshTopologyEdgeA(
+                                clampNumber(Math.round(v), 0, maxSurfaceMeshTopologyVertexIndex)
+                              );
+                            }
+                          }}
+                          style={{ width: 72, marginLeft: 6 }}
+                        />
+                      </label>
+                      <label style={{ fontSize: 11 }}>
+                        Edge B
+                        <input
+                          aria-label="Advanced edge B id"
+                          type="number"
+                          min={0}
+                          max={maxSurfaceMeshTopologyVertexIndex}
+                          step={1}
+                          value={surfaceMeshTopologyEdgeB}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (Number.isFinite(v)) {
+                              onChangeSurfaceMeshTopologyEdgeB(
+                                clampNumber(Math.round(v), 0, maxSurfaceMeshTopologyVertexIndex)
+                              );
+                            }
+                          }}
+                          style={{ width: 72, marginLeft: 6 }}
+                        />
+                      </label>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: surfaceMeshTopologyFieldValidation.edgeValid ? "#047857" : "#b42318",
+                        }}
+                      >
+                        {surfaceMeshTopologyFieldValidation.edgeLabel}
+                      </span>
+                    </div>
+                  </div>
+                </details>
               </div>
               {surfaceMeshTopologyStatus && (
                 <div style={{ fontSize: 11, color: "#05603a", marginTop: 8 }}>{surfaceMeshTopologyStatus}</div>
