@@ -44410,6 +44410,14 @@ case "mobius":
     0,
     Math.round(surfaceMeshTopologyVertexIndex || 0)
   )}`;
+  const meshContextToolbarSelectionLabel =
+    surfaceMeshTopologyPickMode === "face"
+      ? selectedSurfaceMeshTopologyFaceLabel
+      : surfaceMeshTopologyPickMode === "edge"
+      ? selectedSurfaceMeshTopologyEdgeLabel
+      : surfaceMeshTopologyPickMode === "vertex"
+      ? selectedSurfaceMeshTopologyVertexLabel
+      : `Selected mesh: ${surfaceMeshLabel}`;
 
   const surfaceMeshTopologyBreadcrumb = useMemo(() => {
     const preview = surfaceMeshTopologyHistoryPreviewId
@@ -58990,9 +58998,127 @@ case "mobius":
                   background: cleanScreenshotSceneContainerBackground,
                   padding: compareLayoutEnabled ? 10 : 0,
                   boxSizing: "border-box",
+                  position: "relative",
                   ...viewerTouchContainmentStyle,
                 }}
               >
+                {surfaceViewerKind === "mesh" && surfaceMeshStats && !cleanScreenshotSurfaceActive && (
+                  <div
+                    data-testid="mesh-context-toolbar"
+                    onMouseDown={(event) => event.stopPropagation()}
+                    style={{
+                      position: "absolute",
+                      top: 10,
+                      left: 12,
+                      right: 12,
+                      zIndex: 8,
+                      display: "flex",
+                      gap: 6,
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      padding: "6px 8px",
+                      border: "1px solid #bfdbfe",
+                      borderRadius: 8,
+                      background: "rgba(239, 246, 255, 0.92)",
+                      boxShadow: "0 8px 18px rgba(15, 23, 42, 0.10)",
+                      fontSize: 11,
+                      color: "#1e3a8a",
+                      pointerEvents: "auto",
+                    }}
+                  >
+                    <strong>{meshContextToolbarSelectionLabel}</strong>
+                    {surfaceMeshTopologyPickMode === "face" && (
+                      <>
+                        <button
+                          type="button"
+                          data-testid="mesh-context-subdivide-face"
+                          onClick={handleSurfaceMeshFaceSubdivide}
+                          disabled={!surfaceMeshTopologyFieldValidation.faceValid}
+                          style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                        >
+                          Subdivide
+                        </button>
+                        <button type="button" disabled title="Face inset is planned for the shared contextual toolbar." style={{ padding: "3px 8px", fontSize: 11 }}>
+                          Inset
+                        </button>
+                        <button type="button" disabled title="Face extrude is planned for the shared contextual toolbar." style={{ padding: "3px 8px", fontSize: 11 }}>
+                          Extrude
+                        </button>
+                      </>
+                    )}
+                    {surfaceMeshTopologyPickMode === "edge" && (
+                      <>
+                        <button
+                          type="button"
+                          data-testid="mesh-context-split-edge"
+                          onClick={handleSurfaceMeshSplitEdge}
+                          disabled={!surfaceMeshTopologyFieldValidation.edgeValid}
+                          style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                        >
+                          Split
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="mesh-context-collapse-edge"
+                          onClick={handleSurfaceMeshCollapseEdge}
+                          disabled={!surfaceMeshTopologyFieldValidation.edgeValid}
+                          style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                        >
+                          Collapse
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="mesh-context-bevel-edge"
+                          onClick={handleSurfaceMeshBevelEdge}
+                          disabled={!surfaceMeshTopologyFieldValidation.edgeValid}
+                          style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                        >
+                          Bevel
+                        </button>
+                      </>
+                    )}
+                    {surfaceMeshTopologyPickMode === "vertex" && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setSurfaceMeshTopologyStatus(`${selectedSurfaceMeshTopologyVertexLabel} marker active.`)}
+                          style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                        >
+                          Marker
+                        </button>
+                        <button type="button" disabled title="Vertex move will use the shared transform tools." style={{ padding: "3px 8px", fontSize: 11 }}>
+                          Move
+                        </button>
+                      </>
+                    )}
+                    {surfaceMeshTopologyPickMode === "auto" && (
+                      <>
+                        <button type="button" onClick={handleConvertToMesh} disabled={!surfaceMeshExportable} style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}>
+                          Promote
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSaveSurfaceMeshTopologyEditedPreset}
+                          disabled={!surfaceMeshTopologyHistory.length}
+                          style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                        >
+                          Save edited
+                        </button>
+                        <button type="button" onClick={handleOpenMeshPromotionSourceGeometryObject} disabled={!meshPromotionTrace} style={{ padding: "3px 8px", fontSize: 11 }}>
+                          Mesh source
+                        </button>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      data-testid="mesh-context-advanced"
+                      onClick={() => setSurfaceMeshTopologyStatus("Advanced IDs are in Mesh tools below the quick operations.")}
+                      style={{ padding: "3px 8px", fontSize: 11 }}
+                    >
+                      Advanced
+                    </button>
+                  </div>
+                )}
                 {datasetKind === "volume" ? (
                   volumeViewMode === "slices" ? (
                     <div

@@ -122,10 +122,14 @@ async function runTopologyDemo(
   if (operationButtonName === "Split Edge") {
     await firstVisible(page.getByRole("button", { name: "Edge", exact: true })).then((button) => button.click());
     await clickMeshViewerForSelection(page);
+    await expect(page.getByTestId("mesh-context-toolbar")).toBeVisible();
     await expect(page.getByTestId("mesh-topology-selected-edge").first()).toContainText(/Selected edge: \d+-\d+/);
     await expect(page.getByTestId("mesh-topology-advanced-ids").first()).not.toHaveAttribute("open", "");
   }
-  const operation = await firstVisible(page.getByRole("button", { name: operationButtonName, exact: true }));
+  const operation =
+    operationButtonName === "Split Edge"
+      ? await firstVisible(page.getByTestId("mesh-context-split-edge"))
+      : await firstVisible(page.getByRole("button", { name: operationButtonName, exact: true }));
   await operation.click();
   await expect(page.getByText(expectedHistoryName).first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/Topology history/i).first()).toBeVisible();
