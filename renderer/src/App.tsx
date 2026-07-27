@@ -15203,6 +15203,33 @@ const App: React.FC = () => {
   const geometryHasFaceOperationPick = geometryFaceOperationPick?.faceIndex != null;
   const geometryHasEdgeOperationPick = Boolean(geometryEdgeOperationPick?.edgeVertices);
   const geometryHasVertexOperationPick = geometryVertexOperationPick?.vertexIndex != null;
+  const geometryContextToolbarSelectionLabel = useMemo(() => {
+    if (geometryProbeSelectionMode === "face") {
+      return geometryHasFaceOperationPick && geometryFaceOperationPick?.faceIndex != null
+        ? `Selected face: ${geometryFaceOperationPick.faceIndex}`
+        : "Click a face";
+    }
+    if (geometryProbeSelectionMode === "edge") {
+      return geometryHasEdgeOperationPick && geometryEdgeOperationPick?.edgeVertices
+        ? `Selected edge: ${geometryEdgeOperationPick.edgeVertices[0]}-${geometryEdgeOperationPick.edgeVertices[1]}`
+        : "Click an edge";
+    }
+    if (geometryProbeSelectionMode === "vertex") {
+      return geometryHasVertexOperationPick && geometryVertexOperationPick?.vertexIndex != null
+        ? `Selected vertex: ${geometryVertexOperationPick.vertexIndex}`
+        : "Click a vertex";
+    }
+    return geometrySelectedSceneObject ? `Selected object: ${geometrySelectedSceneObject.name}` : "Select an object";
+  }, [
+    geometryEdgeOperationPick,
+    geometryFaceOperationPick,
+    geometryHasEdgeOperationPick,
+    geometryHasFaceOperationPick,
+    geometryHasVertexOperationPick,
+    geometryProbeSelectionMode,
+    geometrySelectedSceneObject,
+    geometryVertexOperationPick,
+  ]);
   const tupleToGeometryPoint = useCallback((tuple: [number, number, number] | null | undefined): GeometryProbePoint | null => {
     if (!tuple || !tuple.every(Number.isFinite)) return null;
     return { x: tuple[0], y: tuple[1], z: tuple[2] };
@@ -73882,6 +73909,195 @@ case "mobius":
                     ...viewerTouchContainmentStyle,
                   }}
                 >
+                  {geometryMode === "procedural" && !geometryPanelsAsDrawers && (
+                    <div
+                      data-testid="geometry-context-toolbar"
+                      onMouseDown={(event) => event.stopPropagation()}
+                      style={{
+                        position: "absolute",
+                        top: 10,
+                        left: 12,
+                        right: 12,
+                        zIndex: 17,
+                        display: "flex",
+                        gap: 6,
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        padding: "6px 8px",
+                        border: "1px solid #bfdbfe",
+                        borderRadius: 8,
+                        background: "rgba(239, 246, 255, 0.92)",
+                        boxShadow: "0 8px 18px rgba(15, 23, 42, 0.10)",
+                        fontSize: 11,
+                        color: "#1e3a8a",
+                        pointerEvents: "auto",
+                      }}
+                    >
+                      <span style={{ color: "#475467", fontWeight: 700 }}>Pick:</span>
+                      {(["object", "face", "edge", "vertex"] as GeometryProbeSelectionMode[]).map((pickMode) => {
+                        const active = geometryProbeSelectionMode === pickMode;
+                        const label = pickMode[0].toUpperCase() + pickMode.slice(1);
+                        return (
+                          <button
+                            key={`geometry-context-pick-${pickMode}`}
+                            type="button"
+                            data-testid={`geometry-context-pick-${pickMode}`}
+                            onClick={() => {
+                              setGeometryProbeSelectionMode(pickMode);
+                              setGeometryProceduralHoverPick(null);
+                              setGeometryRightPanelTab("selection");
+                              if (pickMode === "face") setGeometryActiveOperationInputSlotId("source-face");
+                              if (pickMode === "edge") setGeometryActiveOperationInputSlotId("active-edge");
+                              if (pickMode === "vertex") setGeometryActiveOperationInputSlotId("active-vertex");
+                            }}
+                            aria-pressed={active}
+                            style={{
+                              padding: "3px 8px",
+                              fontSize: 11,
+                              fontWeight: active ? 800 : 650,
+                              borderColor: active ? "#0a66c2" : "#bfdbfe",
+                              background: active ? "#dbeafe" : "#ffffff",
+                              color: active ? "#1d4ed8" : "#334155",
+                            }}
+                            title={`Pick a Geometry ${pickMode}, then use the matching actions.`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                      <span style={{ color: "#93a4ba" }}>|</span>
+                      <strong data-testid="geometry-context-selection-label">{geometryContextToolbarSelectionLabel}</strong>
+                      {geometryProbeSelectionMode === "object" && (
+                        <>
+                          <button
+                            type="button"
+                            data-testid="geometry-context-open-object"
+                            onClick={() => {
+                              if (!geometrySelectedSceneObject) {
+                                setGeometryCreateActionStatus("Select an object first.");
+                                return;
+                              }
+                              setGeometrySelectedObjectId(geometrySelectedSceneObject.id);
+                              setGeometryMode("procedural");
+                              setGeometryProceduralPanelTab("object");
+                              setGeometryRightPanelTab("selection");
+                              accentGeometryMeshInfo(geometrySelectedSceneObject.id);
+                              setGeometryCreateActionStatus(`Object details open for ${geometrySelectedSceneObject.name}.`);
+                            }}
+                            disabled={!geometrySelectedSceneObject}
+                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                          >
+                            Open Object
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="geometry-context-transform"
+                            onClick={() => handleGeometryWorkflowStepClick("transform")}
+                            disabled={!geometrySelectedSceneObject}
+                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                          >
+                            Transform
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="geometry-context-history"
+                            onClick={() => {
+                              setGeometryMode("procedural");
+                              setGeometryProceduralPanelTab("object");
+                              setGeometryRightPanelTab("actions");
+                              setGeometryCreateActionStatus("History is open in the Geometry inspector.");
+                            }}
+                            disabled={!geometrySelectedSceneObject}
+                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                          >
+                            History
+                          </button>
+                        </>
+                      )}
+                      {geometryProbeSelectionMode === "face" && (
+                        <>
+                          <button
+                            type="button"
+                            data-testid="geometry-context-extrude-face"
+                            onClick={handleExtrudeSelectedFace}
+                            disabled={!geometryFaceTopologyActionPreview.ready}
+                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                          >
+                            Extrude
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="geometry-context-inset-face"
+                            onClick={handleInsetSelectedFace}
+                            disabled={!geometryHasFaceOperationPick}
+                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                          >
+                            Inset
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="geometry-context-delete-face"
+                            onClick={handleDeleteSelectedFace}
+                            disabled={!geometryHasFaceOperationPick}
+                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
+                      {geometryProbeSelectionMode === "edge" && (
+                        <>
+                          <button
+                            type="button"
+                            data-testid="geometry-context-split-edge"
+                            onClick={handleSplitSelectedProbeEdge}
+                            disabled={!geometryEdgeTopologyActionPreview.split.ready}
+                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                          >
+                            Split
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="geometry-context-mirror-edge"
+                            onClick={handleMirrorSelectedConstructionOperation}
+                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                          >
+                            Mirror
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="geometry-context-offset-edge"
+                            onClick={handleOffsetSelectedConstructionOperation}
+                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                          >
+                            Offset
+                          </button>
+                        </>
+                      )}
+                      {geometryProbeSelectionMode === "vertex" && (
+                        <>
+                          <button
+                            type="button"
+                            data-testid="geometry-context-vertex-marker"
+                            onClick={() => setGeometryCreateActionStatus(`${geometryContextToolbarSelectionLabel} marker active.`)}
+                            disabled={!geometryHasVertexOperationPick}
+                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                          >
+                            Marker
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="geometry-context-move-vertex"
+                            onClick={handleMoveSelectedVertex}
+                            disabled={!geometryHasVertexOperationPick}
+                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                          >
+                            Move
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                   {isPhoneLandscapeLayout && geometryMode === "procedural" && !geometryPanelsAsDrawers && (
                     <div
                       style={{

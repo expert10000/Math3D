@@ -189,14 +189,34 @@ const selectPickMode = async (page: Page, mode: PickMode) => {
 
 const clickUntilCommitted = async (page: Page, mode: PickMode) => {
   await selectPickMode(page, mode);
+  await clickViewerUntilCommitted(page, mode);
+};
+
+const clickViewerUntilCommitted = async (page: Page, mode: PickMode) => {
   const viewer = page.getByTestId("main-viewer");
   await expect(viewer).toBeVisible();
   const box = await viewer.boundingBox();
   if (!box) throw new Error("Viewer bounds unavailable");
+  const toolbar = page.getByTestId("geometry-context-toolbar");
+  const toolbarBox =
+    (await toolbar.isVisible().catch(() => false)) ? await toolbar.boundingBox().catch(() => null) : null;
+  const pickBox =
+    toolbarBox && toolbarBox.y < box.y + box.height && toolbarBox.y + toolbarBox.height > box.y
+      ? {
+          ...box,
+          y: Math.min(box.y + box.height - 12, Math.max(box.y, toolbarBox.y + toolbarBox.height + 8)),
+          height: Math.max(12, box.y + box.height - Math.min(box.y + box.height - 12, Math.max(box.y, toolbarBox.y + toolbarBox.height + 8))),
+        }
+      : box;
 
   const entity = page.getByTestId("geometry-pick-committed-entity");
   const status = page.getByTestId("geometry-pick-committed-status");
-  const points = pointGrid(box);
+  const alreadyOk = await entity
+    .evaluate((node, expectedMode) => (node.textContent ?? "").toLowerCase().includes(String(expectedMode)), mode)
+    .catch(() => false);
+  const alreadyValid = await status.evaluate((node) => (node.textContent ?? "").trim() === "valid").catch(() => false);
+  if (alreadyOk && alreadyValid) return;
+  const points = pointGrid(pickBox);
   for (const point of points) {
     await page.mouse.click(point.x, point.y);
     const ok = await entity
@@ -296,6 +316,8 @@ test("Geometry pick readout commits object, face, edge, and vertex modes", async
 
     await resetStorage(page);
     await openProceduralGeometry(page);
+    await page.getByTestId("geometry-workflow-step-transform").click();
+    await expect(page.getByTestId("geometry-workflow-step-transform")).toHaveAttribute("aria-current", "step");
 
     await clickUntilCommitted(page, "object");
     await expect(page.getByTestId("geometry-pick-committed-entity")).toContainText("object");
@@ -320,6 +342,39 @@ test("Geometry pick readout commits object, face, edge, and vertex modes", async
     await clickUntilCommitted(page, "vertex");
     await expect(page.getByTestId("geometry-pick-committed-entity")).toContainText("vertex");
     await expect(page.getByTestId("geometry-pick-vertex")).not.toContainText("n/a");
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
+test("Geometry contextual strip switches to face picking and runs extrude", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-geometry-context-face-"));
+  let app: ElectronApplication | null = null;
+
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+    await configureGeometryViewerForConstructionPicking(page);
+    await page.getByTestId("geometry-workflow-step-transform").click();
+    await expect(page.getByTestId("geometry-workflow-step-transform")).toHaveAttribute("aria-current", "step");
+
+    await expect(page.getByTestId("geometry-context-toolbar")).toBeVisible();
+    await page.getByTestId("geometry-context-pick-face").click();
+    await expect(page.getByTestId("geometry-context-pick-face")).toHaveAttribute("aria-pressed", "true");
+
+    await clickViewerUntilCommitted(page, "face");
+    await expect(page.getByTestId("geometry-context-selection-label")).toContainText("Selected face:");
+
+    await page.getByTestId("geometry-context-extrude-face").click();
+    await page.getByTestId("geometry-right-panel-tab-actions").click();
+    await expect(page.getByTestId("geometry-direct-edit-last")).toBeVisible();
+    await expect(page.getByTestId("geometry-direct-edit-last")).toContainText("Face extrude");
+    await expect(page.getByTestId("geometry-direct-edit-topology-summary")).toContainText("Face");
   } finally {
     if (app) await app.close().catch(() => undefined);
     rmSync(profileDir, { recursive: true, force: true });
