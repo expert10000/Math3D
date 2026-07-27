@@ -59026,6 +59026,39 @@ case "mobius":
                       pointerEvents: "auto",
                     }}
                   >
+                    <span style={{ color: "#475467", fontWeight: 700 }}>Pick:</span>
+                    {(["auto", "face", "edge", "vertex"] as SurfaceMeshTopologyPickMode[]).map((pickMode) => {
+                      const active = surfaceMeshTopologyPickMode === pickMode;
+                      const label = pickMode === "auto" ? "Object" : pickMode[0].toUpperCase() + pickMode.slice(1);
+                      return (
+                        <button
+                          key={`mesh-context-pick-${pickMode}`}
+                          type="button"
+                          data-testid={`mesh-context-pick-${pickMode}`}
+                          onClick={() => {
+                            setSurfaceMeshTopologyPickMode(pickMode);
+                            if (pickMode !== "auto" && !probeEnabled) setProbeEnabled(true);
+                          }}
+                          aria-pressed={active}
+                          style={{
+                            padding: "3px 8px",
+                            fontSize: 11,
+                            fontWeight: active ? 800 : 650,
+                            borderColor: active ? "#0a66c2" : "#bfdbfe",
+                            background: active ? "#dbeafe" : "#ffffff",
+                            color: active ? "#1d4ed8" : "#334155",
+                          }}
+                          title={
+                            pickMode === "auto"
+                              ? "Object-level mesh actions."
+                              : `Pick a mesh ${pickMode}, then use the matching tools.`
+                          }
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                    <span style={{ color: "#93a4ba" }}>|</span>
                     <strong>{meshContextToolbarSelectionLabel}</strong>
                     {surfaceMeshTopologyPickMode === "face" && (
                       <>

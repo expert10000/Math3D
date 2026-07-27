@@ -120,9 +120,9 @@ async function runTopologyDemo(
   const meshTools = await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true }));
   await meshTools.click();
   if (operationButtonName === "Split Edge") {
-    await firstVisible(page.getByRole("button", { name: "Edge", exact: true })).then((button) => button.click());
-    await clickMeshViewerForSelection(page);
     await expect(page.getByTestId("mesh-context-toolbar")).toBeVisible();
+    await page.getByTestId("mesh-context-pick-edge").click();
+    await clickMeshViewerForSelection(page);
     await expect(page.getByTestId("mesh-topology-selected-edge").first()).toContainText(/Selected edge: \d+-\d+/);
     await expect(page.getByTestId("mesh-topology-advanced-ids").first()).not.toHaveAttribute("open", "");
   }
