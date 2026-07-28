@@ -16,6 +16,7 @@ import * as fs from "node:fs";
 
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
+const isE2e = ["1", "true", "yes", "on", "y"].includes(String(process.env.MATH3D_E2E || "").toLowerCase());
 const isStartupSmoke = ["1", "true", "yes", "on", "y"].includes(String(process.env.MATH3D_STARTUP_SMOKE || "").toLowerCase());
 const isGeometrySmoke = ["1", "true", "yes", "on", "y"].includes(String(process.env.MATH3D_GEOMETRY_SMOKE || "").toLowerCase());
 const geometrySmokeTimeoutMs = Math.max(
@@ -48,7 +49,7 @@ const rendererMemoryResetBytes = parsePositiveNumberEnv("MATH3D_RENDERER_MEMORY_
 const rendererMemoryWarnSamples = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_WARN_SAMPLES", 3);
 const rendererMemoryReloadSamples = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_RELOAD_SAMPLES", 15);
 const rendererMemoryEmergencySamples = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_EMERGENCY_SAMPLES", 2);
-const rendererGpuMode = String(process.env.MATH3D_GPU_MODE ?? (isGeometrySmoke ? "swiftshader" : "hardware")).toLowerCase();
+const rendererGpuMode = String(process.env.MATH3D_GPU_MODE ?? (isGeometrySmoke ? "swiftshader" : isE2e ? "software" : "hardware")).toLowerCase();
 const rendererV8Mode = String(process.env.MATH3D_V8_MODE ?? (process.platform === "win32" ? "jitless" : "default")).toLowerCase();
 type MainWindowOptions = {
   memoryGuardRecovery?: boolean;
@@ -61,11 +62,15 @@ const shouldSkipAutosaveRecovery = ["1", "true", "yes", "on", "y"].includes(
 );
 
 const configureDevProfilePaths = () => {
-  if (!isDev) return;
+  if (!isDev && !isE2e) return;
 
-  const explicitRoot = process.env.MATH3D_DEV_USER_DATA_DIR?.trim();
+  const explicitRoot = process.env.MATH3D_DEV_USER_DATA_DIR?.trim() || process.env.MATH3D_E2E_USER_DATA_DIR?.trim();
   const workspaceKey = process.cwd().replace(/[^a-zA-Z0-9._-]+/g, "_").slice(-80) || "workspace";
-  const profileRoot = path.resolve(explicitRoot || path.join(os.tmpdir(), "math3d-electron-dev", workspaceKey));
+  const e2eRoot = process.env.LOCALAPPDATA?.trim() || process.env.APPDATA?.trim();
+  const profileRoot = path.resolve(
+    explicitRoot ||
+      (isE2e && e2eRoot ? path.join(e2eRoot, "math3d-e2e-profile") : path.join(os.tmpdir(), "math3d-electron-dev", workspaceKey))
+  );
   const sessionRoot = path.join(profileRoot, "session");
   const cacheRoot = path.join(profileRoot, "cache");
   const mediaCacheRoot = path.join(cacheRoot, "media");
@@ -90,6 +95,12 @@ if (rendererGpuMode === "swiftshader") {
   app.commandLine.appendSwitch("use-angle", "swiftshader");
 } else if (rendererGpuMode !== "hardware") {
   app.disableHardwareAcceleration();
+}
+
+if (isE2e) {
+  app.commandLine.appendSwitch("disable-gpu");
+  app.commandLine.appendSwitch("disable-gpu-compositing");
+  app.commandLine.appendSwitch("disable-gpu-sandbox");
 }
 
 if (rendererV8Mode === "jitless") {

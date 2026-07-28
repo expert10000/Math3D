@@ -49,6 +49,18 @@ const resetStorage = async (page: Page) => {
   await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
 };
 
+const removeProfileDir = async (profileDir: string) => {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      rmSync(profileDir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (attempt === 5) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+    }
+  }
+};
+
 const clickFirstVisibleButton = async (page: Page, name: string | RegExp) => {
   const buttons = page.getByRole("button", typeof name === "string" ? { name, exact: true } : { name });
   const count = await buttons.count();
@@ -286,7 +298,7 @@ test("Geometry pick readout commits object, face, edge, and vertex modes", async
     await expect(page.getByTestId("geometry-pick-vertex")).not.toContainText("n/a");
   } finally {
     if (app) await app.close().catch(() => undefined);
-    rmSync(profileDir, { recursive: true, force: true });
+    await removeProfileDir(profileDir);
   }
 });
 
@@ -328,7 +340,7 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
     await expect(page.getByTestId("geometry-direct-edit-topology-summary")).toContainText("Face");
   } finally {
     if (app) await app.close().catch(() => undefined);
-    rmSync(profileDir, { recursive: true, force: true });
+    await removeProfileDir(profileDir);
   }
 });
 
@@ -395,7 +407,7 @@ test("Geometry construct panel remembers workflow and search opens matching sect
     await expect(page.getByTestId("geometry-current-tool-sticky")).toContainText("POINTS");
   } finally {
     if (app) await app.close().catch(() => undefined);
-    rmSync(profileDir, { recursive: true, force: true });
+    await removeProfileDir(profileDir);
   }
 });
 
@@ -427,7 +439,7 @@ test("Geometry scene gallery filters and opens construct operations playground",
     await expect(page.getByTestId("geometry-plane-construction-result-construct-playground-principal-plane")).toContainText("Plane");
   } finally {
     if (app) await app.close().catch(() => undefined);
-    rmSync(profileDir, { recursive: true, force: true });
+    await removeProfileDir(profileDir);
   }
 });
 
@@ -529,7 +541,7 @@ test("Geometry construct panel stays readable in narrow landscape layout", async
     expect(layout.stats!.scrollWidth).toBeGreaterThanOrEqual(Math.floor(layout.stats!.width));
   } finally {
     if (app) await app.close().catch(() => undefined);
-    rmSync(profileDir, { recursive: true, force: true });
+    await removeProfileDir(profileDir);
   }
 });
 
@@ -586,7 +598,7 @@ test("Geometry construct panel stacks without panel collision on phone landscape
     expect(layout.left!.height).toBeLessThanOrEqual(Math.ceil(430 * 0.38) + 2);
   } finally {
     if (app) await app.close().catch(() => undefined);
-    rmSync(profileDir, { recursive: true, force: true });
+    await removeProfileDir(profileDir);
   }
 });
 
@@ -654,7 +666,7 @@ test("Geometry construct: edge extensions auto-fill line pair", async () => {
     }
   } finally {
     if (app) await app.close().catch(() => undefined);
-    rmSync(profileDir, { recursive: true, force: true });
+    await removeProfileDir(profileDir);
   }
 });
 
@@ -730,7 +742,7 @@ test("Geometry construct: relation plane methods show live previews before creat
     await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
   } finally {
     if (app) await app.close().catch(() => undefined);
-    rmSync(profileDir, { recursive: true, force: true });
+    await removeProfileDir(profileDir);
   }
 });
 
@@ -770,6 +782,6 @@ test("Geometry preset: torus line-plane construction restores lines and plane", 
     await expect(page.getByTestId("geometry-plane-method-panel")).toBeVisible();
   } finally {
     if (app) await app.close().catch(() => undefined);
-    rmSync(profileDir, { recursive: true, force: true });
+    await removeProfileDir(profileDir);
   }
 });
