@@ -34,6 +34,7 @@ import { SelectionStatsPanel } from "./components/SelectionStatsPanel";
 import { DiskStatsPanel } from "./components/DiskStatsPanel";
 import { WorkbookPanel } from "./components/WorkbookPanel";
 import { GeometryPickReadout } from "./components/GeometryPickReadout";
+import { ContextualActionStrip, type ContextualActionStripOption } from "./components/ContextualActionStrip";
 
 import {
   SurfaceViewer,
@@ -10751,7 +10752,7 @@ const App: React.FC = () => {
   const [geometryBakeError, setGeometryBakeError] = useState<string | null>(null);
   const geometryHistoryIntentQueueRef = useRef<Map<string, GeometryQueuedHistoryIntent[]>>(new Map());
   const [geometryGizmoEnabled, setGeometryGizmoEnabled] = useState(() =>
-    readGeometryViewportBoolean("transformEnabled", true)
+    readGeometryViewportBoolean("transformEnabled", false)
   );
   const [geometryGizmoMode, setGeometryGizmoMode] = useState<GeometryGizmoMode>(() => {
     const value = readGeometryViewportSettings().transformMode;
@@ -59036,63 +59037,24 @@ case "mobius":
                 }}
               >
                 {surfaceViewerKind === "mesh" && surfaceMeshStats && !cleanScreenshotSurfaceActive && (
-                  <div
-                    data-testid="mesh-context-toolbar"
-                    onMouseDown={(event) => event.stopPropagation()}
-                    style={{
-                      position: "absolute",
-                      top: 10,
-                      left: 12,
-                      right: 12,
-                      zIndex: 8,
-                      display: "flex",
-                      gap: 6,
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                      padding: "6px 8px",
-                      border: "1px solid #bfdbfe",
-                      borderRadius: 8,
-                      background: "rgba(239, 246, 255, 0.92)",
-                      boxShadow: "0 8px 18px rgba(15, 23, 42, 0.10)",
-                      fontSize: 11,
-                      color: "#1e3a8a",
-                      pointerEvents: "auto",
+                  <ContextualActionStrip
+                    testId="mesh-context-toolbar"
+                    pickOptions={
+                      [
+                        { id: "auto", label: "Object", title: "Object-level mesh actions." },
+                        { id: "face", label: "Face", title: "Pick a mesh face, then use the matching tools." },
+                        { id: "edge", label: "Edge", title: "Pick a mesh edge, then use the matching tools." },
+                        { id: "vertex", label: "Vertex", title: "Pick a mesh vertex, then use the matching tools." },
+                      ] satisfies readonly ContextualActionStripOption<SurfaceMeshTopologyPickMode>[]
+                    }
+                    activePick={surfaceMeshTopologyPickMode}
+                    onPickChange={(pickMode) => {
+                      setSurfaceMeshTopologyPickMode(pickMode);
+                      if (pickMode !== "auto" && !probeEnabled) setProbeEnabled(true);
                     }}
+                    selectionLabel={meshContextToolbarSelectionLabel}
+                    getPickTestId={(pickMode) => `mesh-context-pick-${pickMode}`}
                   >
-                    <span style={{ color: "#475467", fontWeight: 700 }}>Pick:</span>
-                    {(["auto", "face", "edge", "vertex"] as SurfaceMeshTopologyPickMode[]).map((pickMode) => {
-                      const active = surfaceMeshTopologyPickMode === pickMode;
-                      const label = pickMode === "auto" ? "Object" : pickMode[0].toUpperCase() + pickMode.slice(1);
-                      return (
-                        <button
-                          key={`mesh-context-pick-${pickMode}`}
-                          type="button"
-                          data-testid={`mesh-context-pick-${pickMode}`}
-                          onClick={() => {
-                            setSurfaceMeshTopologyPickMode(pickMode);
-                            if (pickMode !== "auto" && !probeEnabled) setProbeEnabled(true);
-                          }}
-                          aria-pressed={active}
-                          style={{
-                            padding: "3px 8px",
-                            fontSize: 11,
-                            fontWeight: active ? 800 : 650,
-                            borderColor: active ? "#0a66c2" : "#bfdbfe",
-                            background: active ? "#dbeafe" : "#ffffff",
-                            color: active ? "#1d4ed8" : "#334155",
-                          }}
-                          title={
-                            pickMode === "auto"
-                              ? "Object-level mesh actions."
-                              : `Pick a mesh ${pickMode}, then use the matching tools.`
-                          }
-                        >
-                          {label}
-                        </button>
-                      );
-                    })}
-                    <span style={{ color: "#93a4ba" }}>|</span>
-                    <strong>{meshContextToolbarSelectionLabel}</strong>
                     {surfaceMeshTopologyPickMode === "face" && (
                       <>
                         <button
@@ -59183,7 +59145,7 @@ case "mobius":
                     >
                       Advanced
                     </button>
-                  </div>
+                  </ContextualActionStrip>
                 )}
                 {datasetKind === "volume" ? (
                   volumeViewMode === "slices" ? (
@@ -73894,63 +73856,30 @@ case "mobius":
                   }}
                 >
                   {geometryMode === "procedural" && !geometryPanelsAsDrawers && (
-                    <div
-                      data-testid="geometry-context-toolbar"
-                      onMouseDown={(event) => event.stopPropagation()}
-                      style={{
-                        position: "absolute",
-                        top: 10,
-                        left: 12,
-                        right: 12,
-                        zIndex: 17,
-                        display: "flex",
-                        gap: 6,
-                        alignItems: "center",
-                        flexWrap: "wrap",
-                        padding: "6px 8px",
-                        border: "1px solid #bfdbfe",
-                        borderRadius: 8,
-                        background: "rgba(239, 246, 255, 0.92)",
-                        boxShadow: "0 8px 18px rgba(15, 23, 42, 0.10)",
-                        fontSize: 11,
-                        color: "#1e3a8a",
-                        pointerEvents: "auto",
+                    <ContextualActionStrip
+                      testId="geometry-context-toolbar"
+                      pickOptions={
+                        [
+                          { id: "object", label: "Object", title: "Pick a Geometry object, then use the matching actions." },
+                          { id: "face", label: "Face", title: "Pick a Geometry face, then use the matching actions." },
+                          { id: "edge", label: "Edge", title: "Pick a Geometry edge, then use the matching actions." },
+                          { id: "vertex", label: "Vertex", title: "Pick a Geometry vertex, then use the matching actions." },
+                        ] satisfies readonly ContextualActionStripOption<GeometryProbeSelectionMode>[]
+                      }
+                      activePick={geometryProbeSelectionMode}
+                      onPickChange={(pickMode) => {
+                        setGeometryProbeSelectionMode(pickMode);
+                        setGeometryProceduralHoverPick(null);
+                        setGeometryRightPanelTab("selection");
+                        if (pickMode === "face") setGeometryActiveOperationInputSlotId("source-face");
+                        if (pickMode === "edge") setGeometryActiveOperationInputSlotId("active-edge");
+                        if (pickMode === "vertex") setGeometryActiveOperationInputSlotId("active-vertex");
                       }}
+                      selectionLabel={geometryContextToolbarSelectionLabel}
+                      selectionTestId="geometry-context-selection-label"
+                      getPickTestId={(pickMode) => `geometry-context-pick-${pickMode}`}
+                      zIndex={17}
                     >
-                      <span style={{ color: "#475467", fontWeight: 700 }}>Pick:</span>
-                      {(["object", "face", "edge", "vertex"] as GeometryProbeSelectionMode[]).map((pickMode) => {
-                        const active = geometryProbeSelectionMode === pickMode;
-                        const label = pickMode[0].toUpperCase() + pickMode.slice(1);
-                        return (
-                          <button
-                            key={`geometry-context-pick-${pickMode}`}
-                            type="button"
-                            data-testid={`geometry-context-pick-${pickMode}`}
-                            onClick={() => {
-                              setGeometryProbeSelectionMode(pickMode);
-                              setGeometryProceduralHoverPick(null);
-                              setGeometryRightPanelTab("selection");
-                              if (pickMode === "face") setGeometryActiveOperationInputSlotId("source-face");
-                              if (pickMode === "edge") setGeometryActiveOperationInputSlotId("active-edge");
-                              if (pickMode === "vertex") setGeometryActiveOperationInputSlotId("active-vertex");
-                            }}
-                            aria-pressed={active}
-                            style={{
-                              padding: "3px 8px",
-                              fontSize: 11,
-                              fontWeight: active ? 800 : 650,
-                              borderColor: active ? "#0a66c2" : "#bfdbfe",
-                              background: active ? "#dbeafe" : "#ffffff",
-                              color: active ? "#1d4ed8" : "#334155",
-                            }}
-                            title={`Pick a Geometry ${pickMode}, then use the matching actions.`}
-                          >
-                            {label}
-                          </button>
-                        );
-                      })}
-                      <span style={{ color: "#93a4ba" }}>|</span>
-                      <strong data-testid="geometry-context-selection-label">{geometryContextToolbarSelectionLabel}</strong>
                       {geometryProbeSelectionMode === "object" && (
                         <>
                           <button
@@ -74080,7 +74009,7 @@ case "mobius":
                           </button>
                         </>
                       )}
-                    </div>
+                    </ContextualActionStrip>
                   )}
                   {isPhoneLandscapeLayout && geometryMode === "procedural" && !geometryPanelsAsDrawers && (
                     <div
