@@ -509,11 +509,11 @@ export function resolveGeometryPick(
       faceNormal,
       tangent: tupleFromVector(face.tangent),
       bitangent: tupleFromVector(face.bitangent),
-      tangentKind: "face-frame",
+      tangentKind: "face-frame" as const,
       barycentric: barycentricForFace(hitPoint, face),
       faceTopology: summarizeGeometryFaceTopology(mesh, face.faceIndex),
     };
-    return { ...pick, topologyReference: makeGeometryTopologyReference(pick) };
+    return { ...pick, topologyReference: makeGeometryTopologyReference(pick) ?? undefined };
   }
 
   if (mode === "vertex") {
@@ -558,7 +558,7 @@ export function resolveGeometryPick(
       vertexNormal,
       vertexTopology: summarizeGeometryVertexTopology(mesh, vertexIndex),
     };
-    return { ...pick, topologyReference: makeGeometryTopologyReference(pick) };
+    return { ...pick, topologyReference: makeGeometryTopologyReference(pick) ?? undefined };
   }
 
   const edge = face ? nearestEdgeOnFace(hitPoint, face, rawHit.screenPoint, rawHit.sourceTriangleScreen) : null;
@@ -595,8 +595,8 @@ export function resolveGeometryPick(
     faceNormal,
     tangent: tupleFromVector(edgeTangent),
     bitangent: tupleFromVector(bitangent),
-    tangentKind: "edge-direction",
+    tangentKind: "edge-direction" as const,
     edgeTopology: summarizeGeometryEdgeTopology(mesh, edge.edgeVertices),
   };
-  return { ...pick, topologyReference: makeGeometryTopologyReference(pick) };
+  return { ...pick, topologyReference: makeGeometryTopologyReference(pick) ?? undefined };
 }

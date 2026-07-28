@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOptions } from "electron";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
+import * as os from "node:os";
 
 import { listPresets, upsertPreset, removePreset } from "./presetsDb";
 import type { PresetKind, SurfacePresetRecord } from "./presetsDb";
@@ -58,6 +59,29 @@ const shouldStartMaximized = ["1", "true", "yes", "on", "y"].includes(
 const shouldSkipAutosaveRecovery = ["1", "true", "yes", "on", "y"].includes(
   String(process.env.MATH3D_SKIP_AUTOSAVE_RECOVERY ?? "").toLowerCase()
 );
+
+const configureDevProfilePaths = () => {
+  if (!isDev) return;
+
+  const explicitRoot = process.env.MATH3D_DEV_USER_DATA_DIR?.trim();
+  const workspaceKey = process.cwd().replace(/[^a-zA-Z0-9._-]+/g, "_").slice(-80) || "workspace";
+  const profileRoot = path.resolve(explicitRoot || path.join(os.tmpdir(), "math3d-electron-dev", workspaceKey));
+  const sessionRoot = path.join(profileRoot, "session");
+  const cacheRoot = path.join(profileRoot, "cache");
+  const mediaCacheRoot = path.join(cacheRoot, "media");
+
+  fs.mkdirSync(sessionRoot, { recursive: true });
+  fs.mkdirSync(cacheRoot, { recursive: true });
+  fs.mkdirSync(mediaCacheRoot, { recursive: true });
+
+  app.setPath("userData", profileRoot);
+  app.setPath("sessionData", sessionRoot);
+  app.setPath("cache", cacheRoot);
+  app.commandLine.appendSwitch("disk-cache-dir", cacheRoot);
+  app.commandLine.appendSwitch("media-cache-dir", mediaCacheRoot);
+};
+
+configureDevProfilePaths();
 
 if (rendererGpuMode === "swiftshader") {
   // Geometry smoke runs in CI/headless-like environments where GPU access can be

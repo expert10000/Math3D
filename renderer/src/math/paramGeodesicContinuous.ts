@@ -150,7 +150,8 @@ export function solveContinuousParamGeodesic(
     return { pts: trimmed, err: bestDist, theta };
   };
 
-  let best: { pts: THREE.Vector3[]; err: number; theta: number } | null = null;
+  type Candidate = { pts: THREE.Vector3[]; err: number; theta: number };
+  let best: Candidate | null = null;
   const sampleStep = (2 * span) / Math.max(2, angleSamples - 1);
   for (let i = 0; i < angleSamples; i++) {
     const t = -span + sampleStep * i;
@@ -165,7 +166,7 @@ export function solveContinuousParamGeodesic(
 
   let window = sampleStep;
   for (let pass = 0; pass < refinePasses; pass++) {
-    let localBest = best;
+    let localBest: Candidate = best;
     const samples = 7;
     const half = (samples - 1) / 2;
     for (let i = 0; i < samples; i++) {

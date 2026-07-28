@@ -48,8 +48,8 @@ export const configureOrbitControlsForTouch = (controls: OrbitTouchControlTarget
 
 export type OrbitTouchControlTarget = {
   touches?: {
-    ONE?: number;
-    TWO?: number;
+    ONE?: number | null;
+    TWO?: number | null;
   };
   screenSpacePanning?: boolean;
 };

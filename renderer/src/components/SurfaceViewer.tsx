@@ -489,7 +489,7 @@ const GIZMO_MENU_ITEMS: Array<{ id: GizmoMenuView; label: string }> = [
   { id: "iso", label: "Iso" },
 ];
 
-const iconCommonProps = {
+const iconCommonProps: React.SVGProps<SVGSVGElement> = {
   width: 14,
   height: 14,
   viewBox: "0 0 24 24",
@@ -3609,7 +3609,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const transformControls = new TransformControls(camera, renderer.domElement);
     transformControls.enabled = false;
-    transformControls.visible = false;
+    (transformControls as THREE.Object3D).visible = false;
     transformControls.setSize(1.35);
     transformControls.setMode(gizmoMode);
     transformControls.setSpace(gizmoSpace);
@@ -3859,8 +3859,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         },
       });
     };
-    const handleGizmoDraggingChanged = (event: { value?: boolean }) => {
-      const dragging = !!event?.value;
+    const handleGizmoDraggingChanged = (event: { value?: unknown }) => {
+      const dragging = event?.value === true;
       const ctrls = controlsRef.current;
       if (ctrls) ctrls.enabled = !dragging;
       if (dragging) {
@@ -4546,10 +4546,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const makeArrow = (dir: THREE.Vector3, len: number, color: number) => {
       const arrow = new THREE.ArrowHelper(dir, new THREE.Vector3(0, 0, 0), len, color, headLen, headWidth);
       arrow.renderOrder = 450;
-      arrow.line.material.depthTest = false;
-      arrow.line.material.depthWrite = false;
-      arrow.cone.material.depthTest = false;
-      arrow.cone.material.depthWrite = false;
+      for (const material of [arrow.line.material, arrow.cone.material].flat()) {
+        material.depthTest = false;
+        material.depthWrite = false;
+      }
       viewGizmo.add(arrow);
       return arrow;
     };
@@ -5856,7 +5856,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     tc?.detach();
     if (!tc) return;
     tc.enabled = false;
-    tc.visible = false;
+    (tc as THREE.Object3D).visible = false;
     if (helper) helper.visible = false;
     if (!gizmoEnabled || surfaceId !== "surface_mesh" || !gizmoMeshKey) return;
     const selectedOverride =
@@ -5877,7 +5877,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     applySurfaceMeshOverrideTransform(pivot, selectedOverride.transform);
     tc.attach(pivot);
     tc.enabled = true;
-    tc.visible = true;
+    (tc as THREE.Object3D).visible = true;
     if (helper) helper.visible = true;
   }, [gizmoEnabled, gizmoMeshKey, surfaceId, sceneEpoch, surfaceMeshOverride, surfaceMeshOverrides]);
 
@@ -6243,7 +6243,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     tc?.detach();
     if (tc) {
       tc.enabled = false;
-      tc.visible = false;
+      (tc as THREE.Object3D).visible = false;
       if (helper) helper.visible = false;
       if (gizmoEnabled && surfaceId === "surface_mesh" && gizmoMeshKey) {
         const selectedOverride =
@@ -6262,7 +6262,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           applySurfaceMeshOverrideTransform(pivot, selectedOverride.transform);
           tc.attach(pivot);
           tc.enabled = true;
-          tc.visible = true;
+          (tc as THREE.Object3D).visible = true;
           if (helper) helper.visible = true;
         }
       }

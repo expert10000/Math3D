@@ -31,7 +31,7 @@ const BINORMAL_COLOR = new THREE.Color(0xf97316);
 
 const vecFrom = (value: CurveViewerVec3) => new THREE.Vector3(value.x, value.y, value.z);
 
-const finiteVec = (value: CurveViewerVec3 | null | undefined) =>
+const finiteVec = (value: CurveViewerVec3 | null | undefined): value is CurveViewerVec3 =>
   !!value && Number.isFinite(value.x) && Number.isFinite(value.y) && Number.isFinite(value.z);
 
 const safeUnit = (value: CurveViewerVec3 | null | undefined) => {

@@ -36,7 +36,7 @@ const FALLBACK_VIEWPORT: ResponsiveViewportSize = {
 };
 
 const normalizeDimension = (value: number | undefined, fallback: number): number => {
-  if (!Number.isFinite(value)) return fallback;
+  if (value === undefined || !Number.isFinite(value)) return fallback;
   return Math.max(0, Math.round(value));
 };
 

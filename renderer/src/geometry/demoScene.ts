@@ -173,7 +173,7 @@ export const buildDemoPyramidConstruction = (): GeometryDemo => {
     if (incenterPoint) {
       incenterPoints.push(incenterPoint);
       faceIncircleSegments.push(
-        ...buildCircleSegments(incenter.center, incenter.normal, incenter.radius, {
+        ...buildCircleSegments(incenterPoint, incenter.normal, incenter.radius, {
           color: 0x16a34a,
           opacity: 0.55,
           segments: 36,

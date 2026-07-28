@@ -350,7 +350,8 @@ export function solveContinuousGraphGeodesic(
     return { points: points.slice(0, bestIndex + 1), bestDist };
   };
 
-  let best: { points: { x: number; y: number }[]; bestDist: number; angle: number } | null = null;
+  type Candidate = { points: { x: number; y: number }[]; bestDist: number; angle: number };
+  let best: Candidate | null = null;
   const step = (Math.PI * 2) / Math.max(6, angleSamples);
   for (let i = 0; i < angleSamples; i++) {
     const angle = i * step;
@@ -368,7 +369,7 @@ export function solveContinuousGraphGeodesic(
   let window = step;
   for (let pass = 0; pass < refinePasses; pass++) {
     const center = best.angle;
-    let localBest = best;
+    let localBest: Candidate = best;
     const samples = 7;
     const half = (samples - 1) / 2;
     for (let i = 0; i < samples; i++) {

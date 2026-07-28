@@ -1071,7 +1071,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       const tolerance =
         def.type === "perpendicular" || def.type === "parallel"
           ? Math.abs(def.toleranceDeg ?? 0.6)
-          : Math.abs(def.tolerance ?? 1e-3);
+          : Math.abs(("tolerance" in def ? def.tolerance : undefined) ?? 1e-3);
       const unit = def.type === "perpendicular" || def.type === "parallel" ? "deg" : "unit";
       return { def, result, disabled, status, residual, tolerance, unit };
     });

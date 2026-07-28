@@ -268,7 +268,9 @@ export function sampleMeshAt(opts: {
   if (!frame) return null;
 
   const meanEdge =
-    Number.isFinite(mesh.meanEdgeLength) && (mesh.meanEdgeLength ?? 0) > 0 ? mesh.meanEdgeLength : 1;
+    mesh.meanEdgeLength != null && Number.isFinite(mesh.meanEdgeLength) && mesh.meanEdgeLength > 0
+      ? mesh.meanEdgeLength
+      : 1;
   const scale = Math.max(1e-6, meanEdge);
   const du = vScale(frame.tangentU, scale);
   const dv = vScale(frame.tangentV, scale);

@@ -523,7 +523,7 @@ function makeSafeParamExpr(
   const trimmed = (expr ?? "").trim();
   if (!trimmed) return fallback;
 
-  let compiled: (u: number, v: number) => number;
+  let compiled: (u: number, v: number, pi: number, e: number, PI: number, E: number) => number;
   try {
     compiled = new Function(
       "u",
