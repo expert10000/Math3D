@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 export type ContextualActionStripOption<T extends string> = {
   id: T;
@@ -17,6 +17,43 @@ type ContextualActionStripProps<T extends string> = {
   zIndex?: number;
   children: ReactNode;
 };
+
+type ContextualActionStripActionProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "style" | "title"> & {
+  testId?: string;
+  disabledReason?: string;
+  title?: string;
+};
+
+export function ContextualActionStripAction({
+  testId,
+  disabled,
+  disabledReason,
+  title,
+  children,
+  ...buttonProps
+}: ContextualActionStripActionProps) {
+  return (
+    <button
+      {...buttonProps}
+      type="button"
+      data-testid={testId}
+      disabled={disabled}
+      title={disabled ? disabledReason ?? title : title}
+      style={{
+        padding: "3px 8px",
+        fontSize: 11,
+        fontWeight: 700,
+        borderColor: disabled ? "#cbd5e1" : "#bfdbfe",
+        background: disabled ? "#f1f5f9" : "#ffffff",
+        color: disabled ? "#94a3b8" : "#1e3a8a",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.88 : 1,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
 
 export function ContextualActionStrip<T extends string>({
   testId,

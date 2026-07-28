@@ -34,7 +34,11 @@ import { SelectionStatsPanel } from "./components/SelectionStatsPanel";
 import { DiskStatsPanel } from "./components/DiskStatsPanel";
 import { WorkbookPanel } from "./components/WorkbookPanel";
 import { GeometryPickReadout } from "./components/GeometryPickReadout";
-import { ContextualActionStrip, type ContextualActionStripOption } from "./components/ContextualActionStrip";
+import {
+  ContextualActionStrip,
+  ContextualActionStripAction,
+  type ContextualActionStripOption,
+} from "./components/ContextualActionStrip";
 
 import {
   SurfaceViewer,
@@ -15222,18 +15226,18 @@ const App: React.FC = () => {
   const geometryContextToolbarSelectionLabel = useMemo(() => {
     if (geometryProbeSelectionMode === "face") {
       return geometryHasFaceOperationPick && geometryFaceOperationPick?.faceIndex != null
-        ? `Selected face: ${geometryFaceOperationPick.faceIndex}`
-        : "Click a face";
+        ? `Selected face ${geometryFaceOperationPick.faceIndex}`
+        : "Click a face to enable Extrude";
     }
     if (geometryProbeSelectionMode === "edge") {
       return geometryHasEdgeOperationPick && geometryEdgeOperationPick?.edgeVertices
-        ? `Selected edge: ${geometryEdgeOperationPick.edgeVertices[0]}-${geometryEdgeOperationPick.edgeVertices[1]}`
-        : "Click an edge";
+        ? `Selected edge ${geometryEdgeOperationPick.edgeVertices[0]}-${geometryEdgeOperationPick.edgeVertices[1]}`
+        : "Click an edge to enable Split / Mirror / Offset";
     }
     if (geometryProbeSelectionMode === "vertex") {
       return geometryHasVertexOperationPick && geometryVertexOperationPick?.vertexIndex != null
-        ? `Selected vertex: ${geometryVertexOperationPick.vertexIndex}`
-        : "Click a vertex";
+        ? `Selected vertex ${geometryVertexOperationPick.vertexIndex}`
+        : "Click a vertex to enable Marker / Move";
     }
     return geometrySelectedSceneObject ? `Selected object: ${geometrySelectedSceneObject.name}` : "Select an object";
   }, [
@@ -44432,27 +44436,33 @@ case "mobius":
   const surfaceMeshTopologySplitGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Split Edge");
   const surfaceMeshTopologyCollapseGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Collapse Edge");
   const surfaceMeshTopologyBevelGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Bevel Edge");
-  const selectedSurfaceMeshTopologyFaceLabel = `Selected face: ${Math.max(
+  const selectedSurfaceMeshTopologyFaceLabel = `Selected face ${Math.max(
     0,
     Math.round(surfaceMeshTopologyFaceIndex || 0)
   )}`;
-  const selectedSurfaceMeshTopologyEdgeLabel = `Selected edge: ${Math.max(
+  const selectedSurfaceMeshTopologyEdgeLabel = `Selected edge ${Math.max(
     0,
     Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeA || 0)
   )}-${Math.max(0, Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeB || 0))}${
     surfaceMeshTopologyFieldValidation.edgeFallbackActive ? " (from face)" : ""
   }`;
-  const selectedSurfaceMeshTopologyVertexLabel = `Selected vertex: ${Math.max(
+  const selectedSurfaceMeshTopologyVertexLabel = `Selected vertex ${Math.max(
     0,
     Math.round(surfaceMeshTopologyVertexIndex || 0)
   )}`;
   const meshContextToolbarSelectionLabel =
     surfaceMeshTopologyPickMode === "face"
-      ? selectedSurfaceMeshTopologyFaceLabel
+      ? surfaceMeshTopologyFieldValidation.faceValid
+        ? selectedSurfaceMeshTopologyFaceLabel
+        : "Click a face to enable Subdivide"
       : surfaceMeshTopologyPickMode === "edge"
-      ? selectedSurfaceMeshTopologyEdgeLabel
+      ? surfaceMeshTopologyFieldValidation.edgeValid
+        ? selectedSurfaceMeshTopologyEdgeLabel
+        : "Click an edge to enable Split / Collapse / Bevel"
       : surfaceMeshTopologyPickMode === "vertex"
-      ? selectedSurfaceMeshTopologyVertexLabel
+      ? surfaceMeshTopologyFieldValidation.vertexValid
+        ? selectedSurfaceMeshTopologyVertexLabel
+        : "Click a vertex to enable Marker"
       : `Selected mesh: ${surfaceMeshLabel}`;
 
   const surfaceMeshTopologyBreadcrumb = useMemo(() => {
@@ -59057,94 +59067,95 @@ case "mobius":
                   >
                     {surfaceMeshTopologyPickMode === "face" && (
                       <>
-                        <button
-                          type="button"
-                          data-testid="mesh-context-subdivide-face"
+                        <ContextualActionStripAction
+                          testId="mesh-context-subdivide-face"
                           onClick={handleSurfaceMeshFaceSubdivide}
                           disabled={!surfaceMeshTopologyFieldValidation.faceValid}
-                          style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                          disabledReason="Click a mesh face to enable Subdivide."
                         >
                           Subdivide
-                        </button>
-                        <button type="button" disabled title="Face inset is planned for the shared contextual toolbar." style={{ padding: "3px 8px", fontSize: 11 }}>
+                        </ContextualActionStripAction>
+                        <ContextualActionStripAction disabled disabledReason="Face inset is planned for the shared contextual toolbar.">
                           Inset
-                        </button>
-                        <button type="button" disabled title="Face extrude is planned for the shared contextual toolbar." style={{ padding: "3px 8px", fontSize: 11 }}>
+                        </ContextualActionStripAction>
+                        <ContextualActionStripAction disabled disabledReason="Face extrude is planned for the shared contextual toolbar.">
                           Extrude
-                        </button>
+                        </ContextualActionStripAction>
                       </>
                     )}
                     {surfaceMeshTopologyPickMode === "edge" && (
                       <>
-                        <button
-                          type="button"
-                          data-testid="mesh-context-split-edge"
+                        <ContextualActionStripAction
+                          testId="mesh-context-split-edge"
                           onClick={handleSurfaceMeshSplitEdge}
                           disabled={!surfaceMeshTopologyFieldValidation.edgeValid}
-                          style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                          disabledReason="Click an edge to enable Split."
                         >
                           Split
-                        </button>
-                        <button
-                          type="button"
-                          data-testid="mesh-context-collapse-edge"
+                        </ContextualActionStripAction>
+                        <ContextualActionStripAction
+                          testId="mesh-context-collapse-edge"
                           onClick={handleSurfaceMeshCollapseEdge}
                           disabled={!surfaceMeshTopologyFieldValidation.edgeValid}
-                          style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                          disabledReason="Click an edge to enable Collapse."
                         >
                           Collapse
-                        </button>
-                        <button
-                          type="button"
-                          data-testid="mesh-context-bevel-edge"
+                        </ContextualActionStripAction>
+                        <ContextualActionStripAction
+                          testId="mesh-context-bevel-edge"
                           onClick={handleSurfaceMeshBevelEdge}
                           disabled={!surfaceMeshTopologyFieldValidation.edgeValid}
-                          style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                          disabledReason="Click an edge to enable Bevel."
                         >
                           Bevel
-                        </button>
+                        </ContextualActionStripAction>
                       </>
                     )}
                     {surfaceMeshTopologyPickMode === "vertex" && (
                       <>
-                        <button
-                          type="button"
+                        <ContextualActionStripAction
                           onClick={() => setSurfaceMeshTopologyStatus(`${selectedSurfaceMeshTopologyVertexLabel} marker active.`)}
-                          style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                          disabled={!surfaceMeshTopologyFieldValidation.vertexValid}
+                          disabledReason="Click a vertex to enable Marker."
                         >
                           Marker
-                        </button>
-                        <button type="button" disabled title="Vertex move will use the shared transform tools." style={{ padding: "3px 8px", fontSize: 11 }}>
+                        </ContextualActionStripAction>
+                        <ContextualActionStripAction disabled disabledReason="Vertex move will use the shared transform tools.">
                           Move
-                        </button>
+                        </ContextualActionStripAction>
                       </>
                     )}
                     {surfaceMeshTopologyPickMode === "auto" && (
                       <>
-                        <button type="button" onClick={handleConvertToMesh} disabled={!surfaceMeshExportable} style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}>
+                        <ContextualActionStripAction
+                          onClick={handleConvertToMesh}
+                          disabled={!surfaceMeshExportable}
+                          disabledReason="Load an exportable mesh to enable Promote."
+                        >
                           Promote
-                        </button>
-                        <button
-                          type="button"
+                        </ContextualActionStripAction>
+                        <ContextualActionStripAction
                           onClick={handleSaveSurfaceMeshTopologyEditedPreset}
                           disabled={!surfaceMeshTopologyHistory.length}
-                          style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                          disabledReason="Apply a topology edit before saving an edited mesh."
                         >
                           Save edited
-                        </button>
-                        <button type="button" onClick={handleOpenMeshPromotionSourceGeometryObject} disabled={!meshPromotionTrace} style={{ padding: "3px 8px", fontSize: 11 }}>
+                        </ContextualActionStripAction>
+                        <ContextualActionStripAction
+                          onClick={handleOpenMeshPromotionSourceGeometryObject}
+                          disabled={!meshPromotionTrace}
+                          disabledReason="This mesh has no linked Geometry source yet."
+                        >
                           Mesh source
-                        </button>
+                        </ContextualActionStripAction>
                       </>
                     )}
-                    <button
-                      type="button"
-                      data-testid="mesh-context-advanced"
+                    <ContextualActionStripAction
+                      testId="mesh-context-advanced"
                       onClick={() => setSurfaceMeshTopologyStatus("Advanced IDs are in Mesh tools below the quick operations.")}
-                      style={{ padding: "3px 8px", fontSize: 11 }}
                     >
                       Advanced
-                    </button>
+                    </ContextualActionStripAction>
                   </ContextualActionStrip>
                 )}
                 {datasetKind === "volume" ? (
@@ -73882,9 +73893,8 @@ case "mobius":
                     >
                       {geometryProbeSelectionMode === "object" && (
                         <>
-                          <button
-                            type="button"
-                            data-testid="geometry-context-open-object"
+                          <ContextualActionStripAction
+                            testId="geometry-context-open-object"
                             onClick={() => {
                               if (!geometrySelectedSceneObject) {
                                 setGeometryCreateActionStatus("Select an object first.");
@@ -73898,22 +73908,20 @@ case "mobius":
                               setGeometryCreateActionStatus(`Object details open for ${geometrySelectedSceneObject.name}.`);
                             }}
                             disabled={!geometrySelectedSceneObject}
-                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                            disabledReason="Select an object to open its details."
                           >
                             Open Object
-                          </button>
-                          <button
-                            type="button"
-                            data-testid="geometry-context-transform"
+                          </ContextualActionStripAction>
+                          <ContextualActionStripAction
+                            testId="geometry-context-transform"
                             onClick={() => handleGeometryWorkflowStepClick("transform")}
                             disabled={!geometrySelectedSceneObject}
-                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                            disabledReason="Select an object to transform it."
                           >
                             Transform
-                          </button>
-                          <button
-                            type="button"
-                            data-testid="geometry-context-history"
+                          </ContextualActionStripAction>
+                          <ContextualActionStripAction
+                            testId="geometry-context-history"
                             onClick={() => {
                               setGeometryMode("procedural");
                               setGeometryProceduralPanelTab("object");
@@ -73921,92 +73929,86 @@ case "mobius":
                               setGeometryCreateActionStatus("History is open in the Geometry inspector.");
                             }}
                             disabled={!geometrySelectedSceneObject}
-                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                            disabledReason="Select an object to open its history."
                           >
                             History
-                          </button>
+                          </ContextualActionStripAction>
                         </>
                       )}
                       {geometryProbeSelectionMode === "face" && (
                         <>
-                          <button
-                            type="button"
-                            data-testid="geometry-context-extrude-face"
+                          <ContextualActionStripAction
+                            testId="geometry-context-extrude-face"
                             onClick={handleExtrudeSelectedFace}
                             disabled={!geometryFaceTopologyActionPreview.ready}
-                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                            disabledReason="Click a face to enable Extrude."
                           >
                             Extrude
-                          </button>
-                          <button
-                            type="button"
-                            data-testid="geometry-context-inset-face"
+                          </ContextualActionStripAction>
+                          <ContextualActionStripAction
+                            testId="geometry-context-inset-face"
                             onClick={handleInsetSelectedFace}
                             disabled={!geometryHasFaceOperationPick}
-                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                            disabledReason="Click a face to enable Inset."
                           >
                             Inset
-                          </button>
-                          <button
-                            type="button"
-                            data-testid="geometry-context-delete-face"
+                          </ContextualActionStripAction>
+                          <ContextualActionStripAction
+                            testId="geometry-context-delete-face"
                             onClick={handleDeleteSelectedFace}
                             disabled={!geometryHasFaceOperationPick}
-                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                            disabledReason="Click a face to enable Delete."
                           >
                             Delete
-                          </button>
+                          </ContextualActionStripAction>
                         </>
                       )}
                       {geometryProbeSelectionMode === "edge" && (
                         <>
-                          <button
-                            type="button"
-                            data-testid="geometry-context-split-edge"
+                          <ContextualActionStripAction
+                            testId="geometry-context-split-edge"
                             onClick={handleSplitSelectedProbeEdge}
                             disabled={!geometryEdgeTopologyActionPreview.split.ready}
-                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                            disabledReason="Click an edge to enable Split."
                           >
                             Split
-                          </button>
-                          <button
-                            type="button"
-                            data-testid="geometry-context-mirror-edge"
+                          </ContextualActionStripAction>
+                          <ContextualActionStripAction
+                            testId="geometry-context-mirror-edge"
                             onClick={handleMirrorSelectedConstructionOperation}
-                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                            disabled={!geometryHasEdgeOperationPick}
+                            disabledReason="Click an edge to enable Mirror."
                           >
                             Mirror
-                          </button>
-                          <button
-                            type="button"
-                            data-testid="geometry-context-offset-edge"
+                          </ContextualActionStripAction>
+                          <ContextualActionStripAction
+                            testId="geometry-context-offset-edge"
                             onClick={handleOffsetSelectedConstructionOperation}
-                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                            disabled={!geometryHasEdgeOperationPick}
+                            disabledReason="Click an edge to enable Offset."
                           >
                             Offset
-                          </button>
+                          </ContextualActionStripAction>
                         </>
                       )}
                       {geometryProbeSelectionMode === "vertex" && (
                         <>
-                          <button
-                            type="button"
-                            data-testid="geometry-context-vertex-marker"
+                          <ContextualActionStripAction
+                            testId="geometry-context-vertex-marker"
                             onClick={() => setGeometryCreateActionStatus(`${geometryContextToolbarSelectionLabel} marker active.`)}
                             disabled={!geometryHasVertexOperationPick}
-                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                            disabledReason="Click a vertex to enable Marker."
                           >
                             Marker
-                          </button>
-                          <button
-                            type="button"
-                            data-testid="geometry-context-move-vertex"
+                          </ContextualActionStripAction>
+                          <ContextualActionStripAction
+                            testId="geometry-context-move-vertex"
                             onClick={handleMoveSelectedVertex}
                             disabled={!geometryHasVertexOperationPick}
-                            style={{ padding: "3px 8px", fontSize: 11, fontWeight: 700 }}
+                            disabledReason="Click a vertex to enable Move."
                           >
                             Move
-                          </button>
+                          </ContextualActionStripAction>
                         </>
                       )}
                     </ContextualActionStrip>
@@ -87218,17 +87220,17 @@ onChangeImplicitExpr,
   const meshReady = !!surfaceMeshStats;
   const maxSurfaceMeshTopologyFaceIndex = Math.max(0, (surfaceMeshStats?.triCount ?? 1) - 1);
   const maxSurfaceMeshTopologyVertexIndex = Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1);
-  const selectedSurfaceMeshTopologyFaceLabel = `Selected face: ${Math.max(
+  const selectedSurfaceMeshTopologyFaceLabel = `Selected face ${Math.max(
     0,
     Math.round(surfaceMeshTopologyFaceIndex || 0)
   )}`;
-  const selectedSurfaceMeshTopologyEdgeLabel = `Selected edge: ${Math.max(
+  const selectedSurfaceMeshTopologyEdgeLabel = `Selected edge ${Math.max(
     0,
     Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeA || 0)
   )}-${Math.max(0, Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeB || 0))}${
     surfaceMeshTopologyFieldValidation.edgeFallbackActive ? " (from face)" : ""
   }`;
-  const selectedSurfaceMeshTopologyVertexLabel = `Selected vertex: ${Math.max(
+  const selectedSurfaceMeshTopologyVertexLabel = `Selected vertex ${Math.max(
     0,
     Math.round(surfaceMeshTopologyVertexIndex || 0)
   )}`;

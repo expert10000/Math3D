@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
+import { chooseContextualPickMode, expectContextualActionReady } from "./helpers/contextualToolbar";
 import { clickSurfaceViewerCanvas } from "./helpers/viewerPicking";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
@@ -104,16 +105,17 @@ async function runTopologyDemo(
   const meshTools = await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true }));
   await meshTools.click();
   if (operationButtonName === "Split Edge") {
-    await expect(page.getByTestId("mesh-context-toolbar")).toBeVisible();
-    await page.getByTestId("mesh-context-pick-edge").click();
+    await chooseContextualPickMode(page, "mesh", "edge");
     await clickMeshViewerForSelection(page);
-    await expect(page.getByTestId("mesh-topology-selected-edge").first()).toContainText(/Selected edge: \d+-\d+/);
+    await expect(page.getByTestId("mesh-topology-selected-edge").first()).toContainText(/Selected edge \d+-\d+/);
+    await expect(page.getByTestId("mesh-context-toolbar")).toContainText(/Selected edge \d+-\d+/);
     await expect(page.getByTestId("mesh-topology-advanced-ids").first()).not.toHaveAttribute("open", "");
   }
   const operation =
     operationButtonName === "Split Edge"
       ? await firstVisible(page.getByTestId("mesh-context-split-edge"))
       : await firstVisible(page.getByRole("button", { name: operationButtonName, exact: true }));
+  if (operationButtonName === "Split Edge") await expectContextualActionReady(operation);
   await operation.click();
   await expect(page.getByText(expectedHistoryName).first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/Topology history/i).first()).toBeVisible();

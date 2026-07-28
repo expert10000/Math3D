@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
+import { chooseContextualPickMode, expectContextualActionReady } from "./helpers/contextualToolbar";
 import { pointGrid, surfaceViewerPickBox, type ViewerPoint } from "./helpers/viewerPicking";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
@@ -317,23 +318,14 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
     await page.getByTestId("geometry-workflow-step-transform").click();
     await expect(page.getByTestId("geometry-workflow-step-transform")).toHaveAttribute("aria-current", "step");
 
-    await selectContextOrInspectorPickMode(page, "face");
-
+    await chooseContextualPickMode(page, "geometry", "face");
     await clickViewerUntilCommitted(page, "face");
     const contextSelectionLabel = page.getByTestId("geometry-context-selection-label");
-    if (await contextSelectionLabel.isVisible().catch(() => false)) {
-      await expect(contextSelectionLabel).toContainText("Selected face:");
-    } else {
-      await expect(page.getByTestId("geometry-pick-committed-entity")).toContainText("face");
-    }
+    await expect(contextSelectionLabel).toContainText(/Selected face \d+/);
 
     const contextExtrude = page.getByTestId("geometry-context-extrude-face");
-    if (await contextExtrude.isVisible().catch(() => false)) {
-      await contextExtrude.click();
-    } else {
-      await page.getByTestId("geometry-right-panel-tab-actions").click();
-      await page.getByTestId("geometry-direct-edit-face-extrude").click();
-    }
+    await expectContextualActionReady(contextExtrude);
+    await contextExtrude.click();
     await page.getByTestId("geometry-right-panel-tab-actions").click();
     await expect(page.getByTestId("geometry-direct-edit-last")).toBeVisible();
     await expect(page.getByTestId("geometry-direct-edit-last")).toContainText("Face extrude");
