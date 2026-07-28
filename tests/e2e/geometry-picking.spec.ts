@@ -326,6 +326,8 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
     const contextExtrude = page.getByTestId("geometry-context-extrude-face");
     await expectContextualActionReady(contextExtrude);
     await contextExtrude.click();
+    await expect(page.getByTestId("geometry-context-confirmation")).toContainText(/Done: Face \d+ extruded, V \d+ -> \d+, F \d+ -> \d+/);
+    await expect(page.getByTestId("geometry-context-undo-last")).toBeVisible();
     await page.getByTestId("geometry-right-panel-tab-actions").click();
     await expect(page.getByTestId("geometry-direct-edit-last")).toBeVisible();
     await expect(page.getByTestId("geometry-direct-edit-last")).toContainText("Face extrude");

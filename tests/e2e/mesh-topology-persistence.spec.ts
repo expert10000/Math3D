@@ -117,6 +117,10 @@ async function runTopologyDemo(
       : await firstVisible(page.getByRole("button", { name: operationButtonName, exact: true }));
   if (operationButtonName === "Split Edge") await expectContextualActionReady(operation);
   await operation.click();
+  if (operationButtonName === "Split Edge") {
+    await expect(page.getByTestId("mesh-context-confirmation")).toContainText(/Done: Edge \d+-\d+ -> split vertex \(\+1V, \+2F\)/);
+    await expect(page.getByTestId("mesh-context-undo-last")).toBeVisible();
+  }
   await expect(page.getByText(expectedHistoryName).first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/Topology history/i).first()).toBeVisible();
 }

@@ -13,6 +13,11 @@ type ContextualActionStripProps<T extends string> = {
   onPickChange: (pick: T) => void;
   selectionLabel: ReactNode;
   selectionTestId?: string;
+  confirmationLabel?: ReactNode;
+  confirmationTestId?: string;
+  canUndoLast?: boolean;
+  onUndoLast?: () => void;
+  undoTestId?: string;
   getPickTestId?: (pick: T) => string;
   zIndex?: number;
   children: ReactNode;
@@ -22,6 +27,7 @@ type ContextualActionStripActionProps = Omit<ButtonHTMLAttributes<HTMLButtonElem
   testId?: string;
   disabledReason?: string;
   title?: string;
+  pulse?: boolean;
 };
 
 export function ContextualActionStripAction({
@@ -29,6 +35,7 @@ export function ContextualActionStripAction({
   disabled,
   disabledReason,
   title,
+  pulse,
   children,
   ...buttonProps
 }: ContextualActionStripActionProps) {
@@ -44,10 +51,12 @@ export function ContextualActionStripAction({
         fontSize: 11,
         fontWeight: 700,
         borderColor: disabled ? "#cbd5e1" : "#bfdbfe",
-        background: disabled ? "#f1f5f9" : "#ffffff",
-        color: disabled ? "#94a3b8" : "#1e3a8a",
+        background: disabled ? "#f1f5f9" : pulse ? "#dcfce7" : "#ffffff",
+        color: disabled ? "#94a3b8" : pulse ? "#166534" : "#1e3a8a",
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.88 : 1,
+        boxShadow: pulse ? "0 0 0 3px rgba(34, 197, 94, 0.22)" : undefined,
+        transition: "background 180ms ease, color 180ms ease, box-shadow 180ms ease",
       }}
     >
       {children}
@@ -62,6 +71,11 @@ export function ContextualActionStrip<T extends string>({
   onPickChange,
   selectionLabel,
   selectionTestId,
+  confirmationLabel,
+  confirmationTestId,
+  canUndoLast,
+  onUndoLast,
+  undoTestId,
   getPickTestId,
   zIndex = 8,
   children,
@@ -117,6 +131,29 @@ export function ContextualActionStrip<T extends string>({
       <span style={{ color: "#93a4ba" }}>|</span>
       <strong data-testid={selectionTestId}>{selectionLabel}</strong>
       {children}
+      {confirmationLabel && (
+        <>
+          <span style={{ color: "#93a4ba" }}>|</span>
+          <span
+            data-testid={confirmationTestId}
+            style={{
+              border: "1px solid #bbf7d0",
+              borderRadius: 999,
+              background: "#f0fdf4",
+              color: "#166534",
+              padding: "2px 8px",
+              fontWeight: 800,
+            }}
+          >
+            {confirmationLabel}
+          </span>
+        </>
+      )}
+      {canUndoLast && onUndoLast && (
+        <ContextualActionStripAction testId={undoTestId} onClick={onUndoLast} title="Undo the latest contextual action.">
+          Undo last
+        </ContextualActionStripAction>
+      )}
     </div>
   );
 }

@@ -5816,6 +5816,21 @@ const formatHistoryStepTopologyCounts = (step: GeometryObjectHistoryStep): strin
   return `V ${step.beforeVertexCount}->${step.afterVertexCount}; F ${step.beforeFaceCount}->${step.afterFaceCount}`;
 };
 
+const formatGeometryContextualResultSubject = (step: GeometryObjectHistoryStep): string => {
+  const target = step.operationTarget ?? step.label;
+  const label = step.label.toLowerCase();
+  if (label.includes("extrude")) return `${target} extruded`;
+  if (label.includes("inset")) return `${target} inset`;
+  if (label.includes("delete")) return `${target} deleted`;
+  if (label.includes("subdivide")) return `${target} subdivided`;
+  if (label.includes("split")) return `${target} split`;
+  if (label.includes("collapse")) return `${target} collapsed`;
+  if (label.includes("bevel")) return `${target} beveled`;
+  if (label.includes("move")) return `${target} moved`;
+  if (label.includes("weld")) return `${target} welded`;
+  return target;
+};
+
 const formatMeshEditFailureMessage = (actionLabel: string, message: string): string => {
   if (/Invalid edge selection/i.test(message)) {
     return `${actionLabel} needs a valid edge. Switch to Edge mode and click one mesh edge.`;
@@ -10442,7 +10457,13 @@ const App: React.FC = () => {
     useState<GeometryMeshRoundTripUpdateFeedback | null>(null);
   const [geometryTopologyEditFeedback, setGeometryTopologyEditFeedback] = useState<GeometryTopologyEditFeedback | null>(null);
   const [geometryLastActionContinuity, setGeometryLastActionContinuity] = useState<GeometryActionContinuityStatus | null>(null);
+  const [contextualActionPulseId, setContextualActionPulseId] = useState<string | null>(null);
   const geometryTopologyEditFeedbackTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!contextualActionPulseId) return;
+    const timer = window.setTimeout(() => setContextualActionPulseId(null), 1400);
+    return () => window.clearTimeout(timer);
+  }, [contextualActionPulseId]);
   useEffect(() => {
     return () => {
       if (geometryTopologyEditFeedbackTimerRef.current != null) {
@@ -15250,6 +15271,17 @@ const App: React.FC = () => {
     geometrySelectedSceneObject,
     geometryVertexOperationPick,
   ]);
+  const geometryContextToolbarConfirmationLabel = useMemo(() => {
+    if (!geometryLatestRecentAction) return null;
+    if (geometryLatestRecentAction.kind === "construction") {
+      return `Done: ${geometryLatestRecentAction.resultLabel}`;
+    }
+    const counts = formatHistoryStepTopologyCounts(geometryLatestRecentAction.step)
+      ?.replace(";", ",")
+      .replace(/->/g, " -> ") ?? null;
+    const subject = formatGeometryContextualResultSubject(geometryLatestRecentAction.step);
+    return `Done: ${subject}${counts ? `, ${counts}` : ""}`;
+  }, [geometryLatestRecentAction]);
   const tupleToGeometryPoint = useCallback((tuple: [number, number, number] | null | undefined): GeometryProbePoint | null => {
     if (!tuple || !tuple.every(Number.isFinite)) return null;
     return { x: tuple[0], y: tuple[1], z: tuple[2] };
@@ -16109,6 +16141,7 @@ const App: React.FC = () => {
           retainedSelection: retainedSelectionTarget,
           snapshot: afterSnapshot,
         };
+        setContextualActionPulseId(`geometry:${resolvedIntent.action}`);
         suppressGeometryHistoryCapture();
         setGeometryObjectHistoryById((prev) => ({
           ...prev,
@@ -26641,6 +26674,7 @@ const App: React.FC = () => {
       resultKind: "created-copy",
       detail: `Created a new selected copy from ${geometrySelectedSceneObject.name}.`,
     });
+    setContextualActionPulseId("geometry:mirror-copy");
     setGeometryRepeatMode("mirror-plane");
     setGeometryRepeatMirrorPlane(geometryMirrorPlaneOperationTarget ? "selected-face" : "xy");
     setGeometryCreateActionStatus(
@@ -43988,6 +44022,7 @@ case "mobius":
           beforeSnapshot: cloneSurfaceMeshData(sourceMesh, sourceMesh.label),
           snapshot: cloneSurfaceMeshData(edited, edited.label),
         };
+        setContextualActionPulseId(`mesh:${topologyAction}`);
         setSurfaceMeshTopologyHistory((prev) => [historyEntry, ...prev].slice(0, 24));
         setSelectedSurfaceMeshTopologyHistoryId(historyEntry.id);
         setMeshDataset(edited, traceOperation);
@@ -44464,6 +44499,8 @@ case "mobius":
         ? selectedSurfaceMeshTopologyVertexLabel
         : "Click a vertex to enable Marker"
       : `Selected mesh: ${surfaceMeshLabel}`;
+  const meshContextToolbarConfirmationLabel =
+    surfaceMeshTopologyHistory[0]?.resultLabel ? `Done: ${surfaceMeshTopologyHistory[0].resultLabel}` : null;
 
   const surfaceMeshTopologyBreadcrumb = useMemo(() => {
     const preview = surfaceMeshTopologyHistoryPreviewId
@@ -59063,6 +59100,11 @@ case "mobius":
                       if (pickMode !== "auto" && !probeEnabled) setProbeEnabled(true);
                     }}
                     selectionLabel={meshContextToolbarSelectionLabel}
+                    confirmationLabel={meshContextToolbarConfirmationLabel}
+                    confirmationTestId="mesh-context-confirmation"
+                    canUndoLast={surfaceMeshTopologyHistory.length > 0}
+                    onUndoLast={undoLatestSurfaceMeshTopologyEdit}
+                    undoTestId="mesh-context-undo-last"
                     getPickTestId={(pickMode) => `mesh-context-pick-${pickMode}`}
                   >
                     {surfaceMeshTopologyPickMode === "face" && (
@@ -59072,6 +59114,7 @@ case "mobius":
                           onClick={handleSurfaceMeshFaceSubdivide}
                           disabled={!surfaceMeshTopologyFieldValidation.faceValid}
                           disabledReason="Click a mesh face to enable Subdivide."
+                          pulse={contextualActionPulseId === "mesh:face-subdivide"}
                         >
                           Subdivide
                         </ContextualActionStripAction>
@@ -59090,6 +59133,7 @@ case "mobius":
                           onClick={handleSurfaceMeshSplitEdge}
                           disabled={!surfaceMeshTopologyFieldValidation.edgeValid}
                           disabledReason="Click an edge to enable Split."
+                          pulse={contextualActionPulseId === "mesh:edge-split"}
                         >
                           Split
                         </ContextualActionStripAction>
@@ -59098,6 +59142,7 @@ case "mobius":
                           onClick={handleSurfaceMeshCollapseEdge}
                           disabled={!surfaceMeshTopologyFieldValidation.edgeValid}
                           disabledReason="Click an edge to enable Collapse."
+                          pulse={contextualActionPulseId === "mesh:edge-collapse"}
                         >
                           Collapse
                         </ContextualActionStripAction>
@@ -59106,6 +59151,7 @@ case "mobius":
                           onClick={handleSurfaceMeshBevelEdge}
                           disabled={!surfaceMeshTopologyFieldValidation.edgeValid}
                           disabledReason="Click an edge to enable Bevel."
+                          pulse={contextualActionPulseId === "mesh:edge-bevel"}
                         >
                           Bevel
                         </ContextualActionStripAction>
@@ -73888,6 +73934,11 @@ case "mobius":
                       }}
                       selectionLabel={geometryContextToolbarSelectionLabel}
                       selectionTestId="geometry-context-selection-label"
+                      confirmationLabel={geometryContextToolbarConfirmationLabel}
+                      confirmationTestId="geometry-context-confirmation"
+                      canUndoLast={geometryCanUndoLatestAction}
+                      onUndoLast={handleUndoLatestGeometryHistoryStep}
+                      undoTestId="geometry-context-undo-last"
                       getPickTestId={(pickMode) => `geometry-context-pick-${pickMode}`}
                       zIndex={17}
                     >
@@ -73942,6 +73993,7 @@ case "mobius":
                             onClick={handleExtrudeSelectedFace}
                             disabled={!geometryFaceTopologyActionPreview.ready}
                             disabledReason="Click a face to enable Extrude."
+                            pulse={contextualActionPulseId === "geometry:face-extrude"}
                           >
                             Extrude
                           </ContextualActionStripAction>
@@ -73950,6 +74002,7 @@ case "mobius":
                             onClick={handleInsetSelectedFace}
                             disabled={!geometryHasFaceOperationPick}
                             disabledReason="Click a face to enable Inset."
+                            pulse={contextualActionPulseId === "geometry:face-inset"}
                           >
                             Inset
                           </ContextualActionStripAction>
@@ -73958,6 +74011,7 @@ case "mobius":
                             onClick={handleDeleteSelectedFace}
                             disabled={!geometryHasFaceOperationPick}
                             disabledReason="Click a face to enable Delete."
+                            pulse={contextualActionPulseId === "geometry:face-delete"}
                           >
                             Delete
                           </ContextualActionStripAction>
@@ -73970,6 +74024,7 @@ case "mobius":
                             onClick={handleSplitSelectedProbeEdge}
                             disabled={!geometryEdgeTopologyActionPreview.split.ready}
                             disabledReason="Click an edge to enable Split."
+                            pulse={contextualActionPulseId === "geometry:edge-split"}
                           >
                             Split
                           </ContextualActionStripAction>
@@ -73978,14 +74033,19 @@ case "mobius":
                             onClick={handleMirrorSelectedConstructionOperation}
                             disabled={!geometryHasEdgeOperationPick}
                             disabledReason="Click an edge to enable Mirror."
+                            pulse={contextualActionPulseId === "geometry:mirror-copy"}
                           >
                             Mirror
                           </ContextualActionStripAction>
                           <ContextualActionStripAction
                             testId="geometry-context-offset-edge"
-                            onClick={handleOffsetSelectedConstructionOperation}
+                            onClick={() => {
+                              setContextualActionPulseId("geometry:offset");
+                              handleOffsetSelectedConstructionOperation();
+                            }}
                             disabled={!geometryHasEdgeOperationPick}
                             disabledReason="Click an edge to enable Offset."
+                            pulse={contextualActionPulseId === "geometry:offset"}
                           >
                             Offset
                           </ContextualActionStripAction>
@@ -73995,9 +74055,13 @@ case "mobius":
                         <>
                           <ContextualActionStripAction
                             testId="geometry-context-vertex-marker"
-                            onClick={() => setGeometryCreateActionStatus(`${geometryContextToolbarSelectionLabel} marker active.`)}
+                            onClick={() => {
+                              setContextualActionPulseId("geometry:vertex-marker");
+                              setGeometryCreateActionStatus(`${geometryContextToolbarSelectionLabel} marker active.`);
+                            }}
                             disabled={!geometryHasVertexOperationPick}
                             disabledReason="Click a vertex to enable Marker."
+                            pulse={contextualActionPulseId === "geometry:vertex-marker"}
                           >
                             Marker
                           </ContextualActionStripAction>
@@ -74006,6 +74070,7 @@ case "mobius":
                             onClick={handleMoveSelectedVertex}
                             disabled={!geometryHasVertexOperationPick}
                             disabledReason="Click a vertex to enable Move."
+                            pulse={contextualActionPulseId === "geometry:vertex-move"}
                           >
                             Move
                           </ContextualActionStripAction>
