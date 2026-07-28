@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
+import { clickSurfaceViewerCanvas } from "./helpers/viewerPicking";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const firstLaunchKey = "math3d.computeEngines.firstLaunchSeen";
@@ -89,24 +90,7 @@ async function openMeshGallery(page: Page): Promise<void> {
 }
 
 async function clickMeshViewerForSelection(page: Page): Promise<void> {
-  const hosts = page.getByTestId("surface-viewer-canvas-host");
-  const count = await hosts.count();
-  let best: Locator | null = null;
-  let bestArea = 0;
-  for (let i = 0; i < count; i += 1) {
-    const host = hosts.nth(i);
-    if (!(await host.isVisible().catch(() => false))) continue;
-    const box = await host.boundingBox();
-    const area = box ? box.width * box.height : 0;
-    if (area > bestArea) {
-      bestArea = area;
-      best = host;
-    }
-  }
-  if (!best) throw new Error("No visible mesh viewer found.");
-  const box = await best.boundingBox();
-  if (!box) throw new Error("Mesh viewer bounds unavailable.");
-  await page.mouse.click(box.x + box.width * 0.52, box.y + box.height * 0.48);
+  await clickSurfaceViewerCanvas(page, 0.52, 0.48);
 }
 
 async function runTopologyDemo(

@@ -4,14 +4,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
+import { pointGrid, surfaceViewerPickBox, type ViewerPoint } from "./helpers/viewerPicking";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const COMPUTE_ENGINE_FIRST_LAUNCH_KEY = "math3d.computeEngines.firstLaunchSeen";
 const GEOMETRY_CONSTRUCT_PANEL_KEY = "math3d.ui.geometryConstructPanel.v1";
 
 type PickMode = "object" | "face" | "edge" | "vertex";
-type Bounds = { x: number; y: number; width: number; height: number };
-type ViewerPoint = { x: number; y: number };
 type EdgePickCandidate = {
   edgeLabel: string;
   objectId: string;
@@ -129,82 +128,6 @@ const openProceduralGeometry = async (page: Page, quickAddId = "torus") => {
   await expect(page.getByTestId("geometry-pick-committed")).toBeVisible();
 };
 
-const pointGrid = (box: Bounds) => {
-  const points: Array<{ x: number; y: number }> = [];
-  const center = { x: box.x + box.width * 0.5, y: box.y + box.height * 0.5 };
-  points.push(center);
-
-  for (const [fx, fy] of [
-    [0.22, 0.03],
-    [0.5, 0.03],
-    [0.78, 0.03],
-    [0.22, 0.97],
-    [0.5, 0.97],
-    [0.78, 0.97],
-    [0.03, 0.22],
-    [0.03, 0.5],
-    [0.03, 0.78],
-    [0.97, 0.22],
-    [0.97, 0.5],
-    [0.97, 0.78],
-  ]) {
-    points.push({ x: box.x + box.width * fx, y: box.y + box.height * fy });
-  }
-
-  for (const radius of [0.1, 0.18, 0.26, 0.34]) {
-    for (const [dx, dy] of [
-      [0, -radius],
-      [radius, 0],
-      [0, radius],
-      [-radius, 0],
-      [radius, -radius],
-      [radius, radius],
-      [-radius, radius],
-      [-radius, -radius],
-    ]) {
-      points.push({ x: box.x + box.width * (0.5 + dx), y: box.y + box.height * (0.5 + dy) });
-    }
-  }
-
-  const minX = box.x + box.width * 0.04;
-  const maxX = box.x + box.width * 0.96;
-  const minY = box.y + box.height * 0.04;
-  const maxY = box.y + box.height * 0.96;
-  for (let y = minY; y <= maxY; y += 18) {
-    for (let x = minX; x <= maxX; x += 18) {
-      points.push({ x, y });
-    }
-  }
-  return points;
-};
-
-const viewerPickBox = async (page: Page): Promise<Bounds> => {
-  const viewer = page.getByTestId("main-viewer");
-  await expect(viewer).toBeVisible();
-  const canvasHost = page.getByTestId("surface-viewer-canvas-host");
-  const box = (await canvasHost.isVisible().catch(() => false))
-    ? await canvasHost.boundingBox().catch(() => null)
-    : await viewer.boundingBox();
-  if (!box) throw new Error("Viewer bounds unavailable");
-  const toolbar = page.getByTestId("geometry-context-toolbar");
-  const toolbarBox =
-    (await toolbar.isVisible().catch(() => false)) ? await toolbar.boundingBox().catch(() => null) : null;
-  const controls = page.getByText("Viewport", { exact: true });
-  const controlsBox =
-    (await controls.isVisible().catch(() => false)) ? await controls.boundingBox().catch(() => null) : null;
-  const overlayBottom = Math.max(
-    box.y,
-    toolbarBox && toolbarBox.y < box.y + box.height ? toolbarBox.y + toolbarBox.height : box.y,
-    controlsBox && controlsBox.y < box.y + box.height ? controlsBox.y + controlsBox.height : box.y
-  );
-  const y = Math.min(box.y + box.height - 12, overlayBottom > box.y ? overlayBottom + 8 : box.y);
-  return {
-    ...box,
-    y,
-    height: Math.max(12, box.y + box.height - y),
-  };
-};
-
 const selectPickMode = async (page: Page, mode: PickMode) => {
   const selectionTab = page.getByTestId("geometry-right-panel-tab-selection");
   if (await selectionTab.isVisible().catch(() => false)) {
@@ -237,7 +160,7 @@ const clickViewerUntilCommitted = async (page: Page, mode: PickMode) => {
     .catch(() => false);
   const alreadyValid = await status.evaluate((node) => (node.textContent ?? "").trim() === "valid").catch(() => false);
   if (alreadyOk && alreadyValid) return;
-  const pickBox = await viewerPickBox(page);
+  const pickBox = await surfaceViewerPickBox(page);
   const points = pointGrid(pickBox);
   for (const point of points) {
     await page.mouse.click(point.x, point.y);
@@ -284,7 +207,7 @@ const findEdgePickCandidate = async (
   predicate: (candidate: EdgePickCandidate) => boolean = () => true
 ): Promise<EdgePickCandidate> => {
   await selectPickMode(page, "edge");
-  const box = await viewerPickBox(page);
+  const box = await surfaceViewerPickBox(page);
 
   const seen = new Set<string>();
   for (const point of pointGrid(box)) {
