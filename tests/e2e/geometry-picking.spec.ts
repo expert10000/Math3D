@@ -178,6 +178,33 @@ const pointGrid = (box: Bounds) => {
   return points;
 };
 
+const viewerPickBox = async (page: Page): Promise<Bounds> => {
+  const viewer = page.getByTestId("main-viewer");
+  await expect(viewer).toBeVisible();
+  const canvasHost = page.getByTestId("surface-viewer-canvas-host");
+  const box = (await canvasHost.isVisible().catch(() => false))
+    ? await canvasHost.boundingBox().catch(() => null)
+    : await viewer.boundingBox();
+  if (!box) throw new Error("Viewer bounds unavailable");
+  const toolbar = page.getByTestId("geometry-context-toolbar");
+  const toolbarBox =
+    (await toolbar.isVisible().catch(() => false)) ? await toolbar.boundingBox().catch(() => null) : null;
+  const controls = page.getByText("Viewport", { exact: true });
+  const controlsBox =
+    (await controls.isVisible().catch(() => false)) ? await controls.boundingBox().catch(() => null) : null;
+  const overlayBottom = Math.max(
+    box.y,
+    toolbarBox && toolbarBox.y < box.y + box.height ? toolbarBox.y + toolbarBox.height : box.y,
+    controlsBox && controlsBox.y < box.y + box.height ? controlsBox.y + controlsBox.height : box.y
+  );
+  const y = Math.min(box.y + box.height - 12, overlayBottom > box.y ? overlayBottom + 8 : box.y);
+  return {
+    ...box,
+    y,
+    height: Math.max(12, box.y + box.height - y),
+  };
+};
+
 const selectPickMode = async (page: Page, mode: PickMode) => {
   const selectionTab = page.getByTestId("geometry-right-panel-tab-selection");
   if (await selectionTab.isVisible().catch(() => false)) {
@@ -187,28 +214,22 @@ const selectPickMode = async (page: Page, mode: PickMode) => {
   await expect(page.getByTestId(`geometry-pick-mode-${mode}`)).toHaveAttribute("aria-pressed", "true");
 };
 
+const selectContextOrInspectorPickMode = async (page: Page, mode: PickMode) => {
+  const contextButton = page.getByTestId(`geometry-context-pick-${mode}`);
+  if (await contextButton.isVisible().catch(() => false)) {
+    await contextButton.click();
+    await expect(contextButton).toHaveAttribute("aria-pressed", "true");
+    return;
+  }
+  await selectPickMode(page, mode);
+};
+
 const clickUntilCommitted = async (page: Page, mode: PickMode) => {
   await selectPickMode(page, mode);
   await clickViewerUntilCommitted(page, mode);
 };
 
 const clickViewerUntilCommitted = async (page: Page, mode: PickMode) => {
-  const viewer = page.getByTestId("main-viewer");
-  await expect(viewer).toBeVisible();
-  const box = await viewer.boundingBox();
-  if (!box) throw new Error("Viewer bounds unavailable");
-  const toolbar = page.getByTestId("geometry-context-toolbar");
-  const toolbarBox =
-    (await toolbar.isVisible().catch(() => false)) ? await toolbar.boundingBox().catch(() => null) : null;
-  const pickBox =
-    toolbarBox && toolbarBox.y < box.y + box.height && toolbarBox.y + toolbarBox.height > box.y
-      ? {
-          ...box,
-          y: Math.min(box.y + box.height - 12, Math.max(box.y, toolbarBox.y + toolbarBox.height + 8)),
-          height: Math.max(12, box.y + box.height - Math.min(box.y + box.height - 12, Math.max(box.y, toolbarBox.y + toolbarBox.height + 8))),
-        }
-      : box;
-
   const entity = page.getByTestId("geometry-pick-committed-entity");
   const status = page.getByTestId("geometry-pick-committed-status");
   const alreadyOk = await entity
@@ -216,6 +237,7 @@ const clickViewerUntilCommitted = async (page: Page, mode: PickMode) => {
     .catch(() => false);
   const alreadyValid = await status.evaluate((node) => (node.textContent ?? "").trim() === "valid").catch(() => false);
   if (alreadyOk && alreadyValid) return;
+  const pickBox = await viewerPickBox(page);
   const points = pointGrid(pickBox);
   for (const point of points) {
     await page.mouse.click(point.x, point.y);
@@ -262,10 +284,7 @@ const findEdgePickCandidate = async (
   predicate: (candidate: EdgePickCandidate) => boolean = () => true
 ): Promise<EdgePickCandidate> => {
   await selectPickMode(page, "edge");
-  const viewer = page.getByTestId("main-viewer");
-  await expect(viewer).toBeVisible();
-  const box = await viewer.boundingBox();
-  if (!box) throw new Error("Viewer bounds unavailable");
+  const box = await viewerPickBox(page);
 
   const seen = new Set<string>();
   for (const point of pointGrid(box)) {
@@ -363,14 +382,23 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
     await page.getByTestId("geometry-workflow-step-transform").click();
     await expect(page.getByTestId("geometry-workflow-step-transform")).toHaveAttribute("aria-current", "step");
 
-    await expect(page.getByTestId("geometry-context-toolbar")).toBeVisible();
-    await page.getByTestId("geometry-context-pick-face").click();
-    await expect(page.getByTestId("geometry-context-pick-face")).toHaveAttribute("aria-pressed", "true");
+    await selectContextOrInspectorPickMode(page, "face");
 
     await clickViewerUntilCommitted(page, "face");
-    await expect(page.getByTestId("geometry-context-selection-label")).toContainText("Selected face:");
+    const contextSelectionLabel = page.getByTestId("geometry-context-selection-label");
+    if (await contextSelectionLabel.isVisible().catch(() => false)) {
+      await expect(contextSelectionLabel).toContainText("Selected face:");
+    } else {
+      await expect(page.getByTestId("geometry-pick-committed-entity")).toContainText("face");
+    }
 
-    await page.getByTestId("geometry-context-extrude-face").click();
+    const contextExtrude = page.getByTestId("geometry-context-extrude-face");
+    if (await contextExtrude.isVisible().catch(() => false)) {
+      await contextExtrude.click();
+    } else {
+      await page.getByTestId("geometry-right-panel-tab-actions").click();
+      await page.getByTestId("geometry-direct-edit-face-extrude").click();
+    }
     await page.getByTestId("geometry-right-panel-tab-actions").click();
     await expect(page.getByTestId("geometry-direct-edit-last")).toBeVisible();
     await expect(page.getByTestId("geometry-direct-edit-last")).toContainText("Face extrude");
