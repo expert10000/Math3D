@@ -111,6 +111,7 @@ export type GeometryViewerProps = {
     sourceTriangleScreen?: [[number, number], [number, number], [number, number]];
   }) => void;
   onPickHoverMiss?: () => void;
+  selectedMeshKey?: string | null;
   inspectSelectionMeshKey?: string | null;
   gizmoEnabled?: boolean;
   gizmoMeshKey?: string | null;

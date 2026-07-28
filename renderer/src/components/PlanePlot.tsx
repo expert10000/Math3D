@@ -1161,7 +1161,7 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
         const cy = y(0);
 
         if (domainCfg.domainRings) {
-          const ringCount = 6;
+          const ringCount: number = 6;
           const rMax = Math.max(1e-6, extent);
           const rMin = Math.max(1e-9, rMax * 1e-3);
           const logMin = Math.log(rMin);

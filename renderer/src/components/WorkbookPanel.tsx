@@ -558,7 +558,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
     }
     if (block.type === "compute") {
       const derived = computeStatusById[block.id];
-      const status = derived ?? block.compute?.lastRun?.status ?? block.compute?.status ?? "idle";
+      const status: string = derived ?? block.compute?.lastRun?.status ?? block.compute?.status ?? "idle";
       if (status === "failed") return { state: "fail", label: "failed" };
       if (status === "ok") return { state: "ok", label: "ok" };
       if (status === "disabled") return { state: "disabled", label: "disabled" };

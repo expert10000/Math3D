@@ -71,6 +71,7 @@ export type GeometryObjectType =
   | "cylinder"
   | "cone"
   | "torus"
+  | "plane"
   | "polyhedron";
 
 export type GeometryParamDef = {

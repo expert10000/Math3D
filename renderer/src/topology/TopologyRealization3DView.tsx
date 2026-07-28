@@ -731,10 +731,11 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
     return { minY, floorSize, center };
   }, [realization.faceRealizationMesh]);
   const floorY = sceneBounds.minY - 0.48;
-  const studioControlsRef = useRef<{
+  const studioControlsRef = useRef<any>(null);
+  const studioControlsTarget = studioControlsRef as React.MutableRefObject<{
     target: THREE.Vector3;
     update: () => void;
-  } | null>(null);
+  } | null>;
   const defaultStudioTarget: [number, number, number] = [sceneBounds.center.x, sceneBounds.center.y, sceneBounds.center.z];
   const activeCameraTarget = presentationCamera?.target ?? defaultStudioTarget;
   const cameraPosition = presentationCamera?.position ?? (isStudioRealization ? [5.2, 3.95, 5.7] : [3.6, 3.2, 3.8]);
@@ -933,7 +934,7 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
           gl.shadowMap.type = THREE.PCFSoftShadowMap;
         }}
       >
-        <PresentationCameraController config={presentationCamera} controlsRef={studioControlsRef} />
+        <PresentationCameraController config={presentationCamera} controlsRef={studioControlsTarget} />
         <color attach="background" args={[sceneBackground]} />
         {isStudioRealization ? (
           <>

@@ -42,6 +42,9 @@ import type {
   SceneBackgroundMode,
   SliceNormal,
   SlicePreset,
+  OverlayLabelSet,
+  OverlayMeshGroup,
+  OverlayPointSet,
   OverlayPolylineGroup,
   ViewportDebugSnapshot,
 } from "./SurfaceViewer";
@@ -344,6 +347,8 @@ type Props = {
   colorMode?: ColorMode;
   colorPalette?: ColorPalette;
   showChartGrid?: boolean;
+  chartGridMode?: "local" | "mesh-face";
+  onSurfaceCellSelectionEnabledChange?: (enabled: boolean) => void;
   chartGridCountU?: number;
   chartGridCountV?: number;
   paramDomain?: ParamDomain;
@@ -423,6 +428,9 @@ type Props = {
   geodesicHeatmapValues?: number[] | null;
   geodesicHeatmapEnabled?: boolean;
   overlayPolylineGroups?: OverlayPolylineGroup[] | null;
+  overlayPointSets?: OverlayPointSet[] | null;
+  overlayLabelSets?: OverlayLabelSet[] | null;
+  overlayMeshGroups?: OverlayMeshGroup[] | null;
   geodesicDiskEnabled?: boolean;
   geodesicDiskPickEnabled?: boolean;
   onGeodesicDiskPick?: (info: {
@@ -1457,6 +1465,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   colorMode = "solid",
   colorPalette = "blueRed",
   showChartGrid = false,
+  chartGridMode = "local",
+  onSurfaceCellSelectionEnabledChange,
   chartGridCountU = 11,
   chartGridCountV = 11,
   paramDomain,
@@ -1515,6 +1525,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     geodesicHeatmapValues = null,
     geodesicHeatmapEnabled = false,
     overlayPolylineGroups = null,
+    overlayPointSets = null,
+    overlayLabelSets = null,
+    overlayMeshGroups = null,
     geodesicDiskEnabled = false,
     geodesicDiskPickEnabled = false,
     geodesicDiskCenter = null,
@@ -2046,6 +2059,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   useEffect(() => {
     surfaceCellSelectionEnabledRef.current = surfaceCellSelectionEnabled;
   }, [surfaceCellSelectionEnabled]);
+  useEffect(() => {
+    onSurfaceCellSelectionEnabledChange?.(surfaceCellSelectionEnabled);
+  }, [onSurfaceCellSelectionEnabledChange, surfaceCellSelectionEnabled]);
   useEffect(() => {
     inspectEnabledRef.current = inspectEnabled;
   }, [inspectEnabled]);
@@ -6148,7 +6164,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const { wrapU, wrapV } = wrapFlagsFor(surfaceId);
     const uCount = Math.max(2, Math.round(chartGridCountU));
     const vCount = Math.max(2, Math.round(chartGridCountV));
-    const steps = 120;
+    const steps: number = 120;
 
     const group = new THREE.Group();
     group.name = "surface-cell-grid";

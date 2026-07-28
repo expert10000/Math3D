@@ -5119,7 +5119,7 @@ export const TopologyScreen: React.FC = () => {
                   {REGULAR_POLYGON_TEMPLATE_OPTIONS.map((entry) => {
                     const selected =
                       diagram.id === `polygon/${entry.sides}-gon` ||
-                      (presetId === `polygon_${entry.sides}` && buildMode === "editor");
+                      (presetId === `polygon_${entry.sides}` && buildMode === "preset");
                     return (
                       <button
                         key={`polygon-template-${entry.sides}`}

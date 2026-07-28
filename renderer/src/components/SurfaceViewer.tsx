@@ -3609,7 +3609,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const transformControls = new TransformControls(camera, renderer.domElement);
     transformControls.enabled = false;
-    (transformControls as THREE.Object3D).visible = false;
+    (transformControls as unknown as THREE.Object3D).visible = false;
     transformControls.setSize(1.35);
     transformControls.setMode(gizmoMode);
     transformControls.setSpace(gizmoSpace);
@@ -5856,7 +5856,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     tc?.detach();
     if (!tc) return;
     tc.enabled = false;
-    (tc as THREE.Object3D).visible = false;
+    (tc as unknown as THREE.Object3D).visible = false;
     if (helper) helper.visible = false;
     if (!gizmoEnabled || surfaceId !== "surface_mesh" || !gizmoMeshKey) return;
     const selectedOverride =
@@ -5877,7 +5877,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     applySurfaceMeshOverrideTransform(pivot, selectedOverride.transform);
     tc.attach(pivot);
     tc.enabled = true;
-    (tc as THREE.Object3D).visible = true;
+    (tc as unknown as THREE.Object3D).visible = true;
     if (helper) helper.visible = true;
   }, [gizmoEnabled, gizmoMeshKey, surfaceId, sceneEpoch, surfaceMeshOverride, surfaceMeshOverrides]);
 
@@ -6243,7 +6243,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     tc?.detach();
     if (tc) {
       tc.enabled = false;
-      (tc as THREE.Object3D).visible = false;
+      (tc as unknown as THREE.Object3D).visible = false;
       if (helper) helper.visible = false;
       if (gizmoEnabled && surfaceId === "surface_mesh" && gizmoMeshKey) {
         const selectedOverride =
@@ -6262,7 +6262,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           applySurfaceMeshOverrideTransform(pivot, selectedOverride.transform);
           tc.attach(pivot);
           tc.enabled = true;
-          (tc as THREE.Object3D).visible = true;
+          (tc as unknown as THREE.Object3D).visible = true;
           if (helper) helper.visible = true;
         }
       }
@@ -9875,7 +9875,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const span = getGraphSpan(1.5, 1.5);
       const xMax = span.xSpan;
       const yMax = span.ySpan;
-      const steps = 120;
+      const steps: number = 120;
 
       const addGraphGrid = (axis: "x" | "y", count: number, color: number) => {
         const positions: number[] = [];
@@ -10083,7 +10083,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         }
       }
 
-      const steps = 48;
+      const steps: number = 48;
       const addLocalGrid = (axis: "u" | "v", count: number, color: number) => {
         const positions: number[] = [];
         const mat = new THREE.LineBasicMaterial({

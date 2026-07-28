@@ -18,6 +18,7 @@ type GraphDomain = { xSpan: number; ySpan: number };
 type ParamDomain = { uMin: number; uMax: number; vMin: number; vMax: number };
 
 type BakeResult = { mesh: SurfaceMeshData } | { error: string };
+type GraphFnBuild = { fn: (x: number, y: number) => number } | { error: string };
 
 type GridBuild = {
   positions: Float32Array;
@@ -71,7 +72,7 @@ const triangulateGrid = (nx: number, ny: number, valid: Uint8Array) => {
   return indices;
 };
 
-const buildGraphFn = (surfaceId: SurfaceId, graphExpr: string) => {
+const buildGraphFn = (surfaceId: SurfaceId, graphExpr: string): GraphFnBuild => {
   if (surfaceId === "graph_saddle") return { fn: (x: number, y: number) => 0.4 * (x * x - y * y) };
   if (surfaceId === "graph_rotatedSaddle") return { fn: (x: number, y: number) => 0.8 * x * y };
   if (surfaceId === "graph_monkey") {

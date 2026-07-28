@@ -54,7 +54,7 @@ import {
   type SceneBackgroundMode,
   type ViewportDebugSnapshot,
 } from "./components/SurfaceViewer";
-import { GeometryViewer } from "./components/GeometryViewer";
+import { GeometryViewer, type GeometryViewerProps } from "./components/GeometryViewer";
 import { StereometryAnalyzerPanel } from "./components/StereometryAnalyzerPanel";
 import {
   ConstructionLabPanel,
@@ -2910,6 +2910,13 @@ type GeometryPlaneLineRef = {
   sourceEdgeVertexPair?: [number, number] | null;
   object?: GeometryDerivedConstructionObject;
 };
+type GeometryPlaneStatusInputRow = {
+  label: string;
+  value: string;
+  ok: boolean;
+  status?: "duplicate" | "invalid" | "incompatible";
+  detail?: string;
+};
 type GeometryPrincipalPlaneOutput = "xy" | "yz" | "xz" | "principal-1" | "principal-2" | "principal-3";
 type GeometryComputedPlaneOverlay = {
   origin: GeometryProbePoint;
@@ -3055,6 +3062,7 @@ type GeometryConstructionTreeObject = {
   objectId: string;
   label: string;
   entities: GeometryConstructionTreeEntity[];
+  entityByKey?: Map<string, GeometryConstructionTreeEntity>;
 };
 type GeometryConstructionHistoryEntry = {
   id: string;
@@ -4086,6 +4094,7 @@ const DEFAULT_GEOMETRY_MATERIAL_COLOR = 0x8aa4ff;
 const DEFAULT_GEOMETRY_MATERIAL_OPACITY = 1;
 const DEFAULT_GEOMETRY_MATERIAL_ROUGHNESS = 0.3;
 const DEFAULT_GEOMETRY_MATERIAL_METALNESS = 0.1;
+type GeometryViewerMeshOverride = NonNullable<GeometryViewerProps["meshOverrides"]>[number];
 
 const normalizeGeometryMaterial = (material: unknown): GeometryObject["material"] => {
   const m = material && typeof material === "object" ? (material as Record<string, unknown>) : {};
@@ -4140,7 +4149,7 @@ const isSeedGeometryBoxObject = (obj: GeometryObject) => {
   if (!isDefaultVec3(obj.transform.scale, { x: 1, y: 1, z: 1 })) return false;
   const material = normalizeGeometryMaterial(obj.material);
   const color = material.color;
-  const opacity = material.opacity;
+  const opacity = material.opacity ?? DEFAULT_GEOMETRY_MATERIAL_OPACITY;
   if (color !== DEFAULT_GEOMETRY_MATERIAL_COLOR) return false;
   if (Math.abs(opacity - DEFAULT_GEOMETRY_MATERIAL_OPACITY) > 1e-9) return false;
   return true;
@@ -6761,6 +6770,13 @@ const BRANCH_LAB_PROFILES: Record<Exclude<BranchLabProfileId, "none">, BranchLab
     cutLabel: "segment [-1, 1] on real axis",
     monodromyNote: "Crossing the cut or looping around one branch point swaps sheets.",
   },
+  sqrt_zab: {
+    id: "sqrt_zab",
+    label: "sqrt((z-a)(z-b))",
+    branchPoints: [{ re: -1, im: 0 }, { re: 1, im: 0 }],
+    cutLabel: "segment [a, b] on real axis",
+    monodromyNote: "Crossing the cut or looping around one branch point swaps sheets.",
+  },
 };
 
 const sanitizeBranchLabExpr = (src: string) =>
@@ -8981,6 +8997,7 @@ function autoLabelParamDomain(p: ParamDomain) {
 }
 
 const fmt = (x: number) => (Number.isFinite(x) ? x.toFixed(4) : String(x));
+const fmtNullable = (x: number | null | undefined) => (x == null ? "n/a" : fmt(x));
 const fmt3 = (v: { x: number; y: number; z: number }) => `(${fmt(v.x)}, ${fmt(v.y)}, ${fmt(v.z)})`;
 const geometryPickIdentityKey = (pick: GeometryPickResult | null | undefined) => {
   if (!pick) return "none";
@@ -14112,7 +14129,7 @@ const App: React.FC = () => {
           ...entry,
           objectName: resolved.object.name,
           length,
-          edgePoints: [a, b],
+          edgePoints: [a, b] as [{ x: number; y: number; z: number }, { x: number; y: number; z: number }],
         };
       });
       return changed ? next : prev;
@@ -14621,7 +14638,7 @@ const App: React.FC = () => {
           ...canonicalPick,
           label: `${canonicalPick.objectLabel} stale ${geometryProbeSelectionMode}`,
           topologyVersion: storedTopologyVersion,
-          topologyReference: pick.topologyReference ?? topologyReference,
+          topologyReference: pick.topologyReference ?? topologyReference ?? undefined,
           stale: true,
           faceIndex: undefined,
           vertexIndex: undefined,
@@ -15634,6 +15651,7 @@ const App: React.FC = () => {
       geometryDatasetMeshObjects.find((entry) => entry.id === geometryMeasuredEdgeCandidate.meshKey)?.name ??
       geometryMeasuredEdgeCandidate.meshKey;
     const [a, b] = geometryMeasuredEdgeCandidate.edgeVertexPair;
+    const edgePoints = geometryMeasuredEdgeCandidate.edgePoints;
     const pairKey = `${Math.min(a, b)}|${Math.max(a, b)}`;
     let toggledToMarked = false;
     setGeometryMarkedEdges((prev) => {
@@ -15656,7 +15674,7 @@ const App: React.FC = () => {
         meshKey: geometryMeasuredEdgeCandidate.meshKey,
         objectName,
         edgeVertexPair: geometryMeasuredEdgeCandidate.edgeVertexPair,
-        edgePoints: geometryMeasuredEdgeCandidate.edgePoints,
+        edgePoints,
       };
       return [nextEntry, ...prev].slice(0, 64);
     });
@@ -20377,7 +20395,7 @@ const App: React.FC = () => {
       },
     ];
   }, [geometryBooleanPreviewCurveLines, geometryMode]);
-  const geometryProceduralMeshOverrides = useMemo(() => {
+  const geometryProceduralMeshOverrides = useMemo<GeometryViewerMeshOverride[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     const base =
       geometryBooleanPreviewMeshes.length > 0
@@ -20399,8 +20417,8 @@ const App: React.FC = () => {
           roughness: 0.95,
           metalness: 0,
           flatShading: resolved.flatShading ?? false,
-          pickPolicy: "never",
-          renderableMetadata: { objectId: `${VARIANT_GHOST_MESH_KEY_PREFIX}${entry.id}`, pickPolicy: "never" },
+          pickPolicy: "never" as GeometryPickPolicy,
+          renderableMetadata: { objectId: `${VARIANT_GHOST_MESH_KEY_PREFIX}${entry.id}`, pickPolicy: "never" as GeometryPickPolicy },
           transform: {
             position: { ...resolved.transform.position },
             rotation: { ...resolved.transform.rotation },
@@ -20613,10 +20631,10 @@ const App: React.FC = () => {
       const evalPointSets: OverlayPointSet[] = [];
       const evalLabels: OverlayLabelSet["labels"] = [];
       const coreEval = coreResult.byId.get(object.id) ?? null;
-      const addPoint = (point: { x: number; y: number; z: number }, color = 0x0f766e, size = 0.095) => {
+      const addPoint = (point: { x: number; y: number; z: number }, color: number = 0x0f766e, size = 0.095) => {
         evalPointSets.push({ points: [point], color, size, opacity: 0.98 });
       };
-      const addLine = (lines: PolylineSet, color = GEOMETRY_VISUAL_LANGUAGE.selection, opacity = 0.9, radiusScale = 1.8) => {
+      const addLine = (lines: PolylineSet, color: number = GEOMETRY_VISUAL_LANGUAGE.selection, opacity = 0.9, radiusScale = 1.8) => {
         if (lines.length) evalGroups.push({ lines, color, opacity, radiusScale });
       };
       const addLabel = (point: { x: number; y: number; z: number }) => {
@@ -22189,18 +22207,7 @@ const App: React.FC = () => {
                 z: face.centroid.z + face.normal.z * d,
               }
             : face.centroid;
-        const planeNormal =
-          object.type === "face-plane-normal-to-selected-edge"
-            ? norm(
-                object.selectedEdgeRef
-                  ? {
-                      x: object.selectedEdgeRef.b.x - object.selectedEdgeRef.a.x,
-                      y: object.selectedEdgeRef.b.y - object.selectedEdgeRef.a.y,
-                      z: object.selectedEdgeRef.b.z - object.selectedEdgeRef.a.z,
-                    }
-                  : face.normal
-              ) ?? face.normal
-            : face.normal;
+        const planeNormal = face.normal;
         const basis = resolveHelperTangentBasis(planeNormal);
         const half = Math.max(
           0.15,
@@ -24845,8 +24852,8 @@ const App: React.FC = () => {
                     )
           : null;
     if (!snapshot) return { groups: null, pointSets: null };
-    const calmGroups = snapshot.groups
-      .map((group, groupIndex) => {
+    const calmGroups: OverlayPolylineGroup[] = snapshot.groups
+      .map((group, groupIndex): OverlayPolylineGroup | null => {
         const isPlaneFrame = group.color === GEOMETRY_VISUAL_LANGUAGE.selection && group.lines.length >= 6;
         const lines = isPlaneFrame ? group.lines.filter((_, lineIndex) => lineIndex < 4 || lineIndex > 5) : group.lines;
         if (!lines.length) return null;
@@ -24861,7 +24868,7 @@ const App: React.FC = () => {
               : group.radiusScale,
         };
       })
-      .filter((group): group is OverlayPolylineGroup => !!group);
+      .filter((group): group is OverlayPolylineGroup => group != null);
     const inputPointSets = inputPointRefs.map((ref) => {
       const hovered = hoveredVertex?.objectId === ref.objectId && hoveredVertex.vertexIndex === ref.vertexIndex;
       return {
@@ -24947,7 +24954,7 @@ const App: React.FC = () => {
     planned: boolean;
     message: string;
     createLabel: string;
-    inputs: Array<{ label: string; value: string; ok: boolean }>;
+    inputs: GeometryPlaneStatusInputRow[];
   } => {
     const faceTarget = geometrySourceFaceOperationTarget;
     const linePair = geometryLinePairAnalysis;
@@ -35227,10 +35234,8 @@ const App: React.FC = () => {
   const [surfaceFloatingToolbarOpen, setSurfaceFloatingToolbarOpen] = useState(false);
   const [geometryFloatingToolbarOpen, setGeometryFloatingToolbarOpen] = useState(false);
   const surfacePreviewFocusPrevRightPanelRef = useRef(true);
-  const surfacePreviewFocusPrevLeftTabRef = useRef<"scene" | "object" | "view" | "analysis" | "theory">("scene");
-  const [surfacesLeftTab, setSurfacesLeftTab] = useState<
-    "scene" | "object" | "view" | "analysis" | "theory"
-  >("scene");
+  const surfacePreviewFocusPrevLeftTabRef = useRef<SurfacesLeftTab>("scene");
+  const [surfacesLeftTab, setSurfacesLeftTab] = useState<SurfacesLeftTab>("scene");
   const prevModeRef = useRef<Mode>(mode);
   const skipSurfacesAutoBrowseOnModeChangeRef = useRef(false);
   const enterSurfacesWorkMode = useCallback(() => {
@@ -37753,7 +37758,7 @@ const App: React.FC = () => {
       } else {
         multiplierText = "requires closed loop";
         endValueText = "requires integer winding";
-        valueShiftText = profile === "log" ? "requires closed loop" : "n/a";
+        valueShiftText = "n/a";
       }
       rows.push({
         loopCount,
@@ -38310,6 +38315,7 @@ const App: React.FC = () => {
   /* ---------- central drawing effect (2D modes) ---------- */
   useEffect(() => {
     if (!zRef.current || !wRef.current) return;
+    const zPlot = zRef.current;
 
     switch (mode) {
 case "mobius":
@@ -38585,14 +38591,14 @@ case "mobius":
         layer: string
       ) => {
         for (const line of body) {
-          zRef.current.drawCurve(line, color, {
+          zPlot.drawCurve(line, color, {
             width: 1.2,
             opacity: 0.82,
             layer,
           });
         }
         for (const line of head) {
-          zRef.current.drawCurve(line, color, {
+          zPlot.drawCurve(line, color, {
             width: 1.2,
             opacity: 0.82,
             layer: `${layer}-head`,
@@ -42203,9 +42209,10 @@ case "mobius":
 
   const applyWorkbookWorkspace = (workspace: WorkbookWorkspaceState | undefined) => {
     if (!workspace || typeof workspace !== "object") return;
-    workspace = migrateWorkbookWorkspace(workspace);
+    const restoredWorkspace = migrateWorkbookWorkspace(workspace);
+    if (!restoredWorkspace || typeof restoredWorkspace !== "object") return;
 
-    const geometry = workspace.geometry;
+    const geometry = restoredWorkspace.geometry;
     if (geometry && typeof geometry === "object") {
       const savedMode = String((geometry as any).mode ?? "");
       setGeometryMode(
@@ -42298,7 +42305,7 @@ case "mobius":
       setGeometryConstructionHistory([]);
     }
 
-    const datasetItems = workspace.datasets?.items ?? [];
+    const datasetItems = restoredWorkspace.datasets?.items ?? [];
     const byId = new Map(datasetItems.map((item) => [item.id, item]));
 
     const graphRecipe = byId.get("surface:graph")?.recipe as any;
@@ -42427,7 +42434,7 @@ case "mobius":
       }
     }
 
-    const currentRef = workspace.datasets?.currentDatasetRef ?? "";
+    const currentRef = restoredWorkspace.datasets?.currentDatasetRef ?? "";
     if (currentRef.startsWith("graph:")) {
       setDatasetKind("surface");
       setSurfaceViewerKind("graph");
@@ -42447,7 +42454,7 @@ case "mobius":
       setDatasetKind("volume");
     }
 
-    const chart = workspace.analysis?.chart;
+    const chart = restoredWorkspace.analysis?.chart;
     if (chart) {
       setShowChartGrid(Boolean(chart.showChartGrid));
       if (Number.isFinite(chart.chartGridDensity)) {
@@ -42458,7 +42465,7 @@ case "mobius":
       }
     }
 
-    const scalars = workspace.analysis?.scalarFields;
+    const scalars = restoredWorkspace.analysis?.scalarFields;
     if (scalars) {
       setColorMode(scalars.colorMode);
       setColorPalette(scalars.colorPalette);
@@ -42480,7 +42487,7 @@ case "mobius":
       if (typeof scalars.calculusCustomScalarExpr === "string") setCalculusCustomScalarExpr(scalars.calculusCustomScalarExpr);
     }
 
-    const vectors = workspace.analysis?.vectorFields;
+    const vectors = restoredWorkspace.analysis?.vectorFields;
     if (vectors) {
       setCalculusVectorOverlayEnabled(Boolean(vectors.calculusVectorOverlayEnabled));
       if (typeof vectors.calculusVectorSource === "string") setCalculusVectorSource(vectors.calculusVectorSource);
@@ -42506,7 +42513,7 @@ case "mobius":
       }
     }
 
-    const overlays = workspace.analysis?.overlays;
+    const overlays = restoredWorkspace.analysis?.overlays;
     if (overlays) {
       setGeodesicPathEnabled(Boolean(overlays.geodesicPathEnabled));
       setGeodesicPathConstrain(Boolean(overlays.geodesicPathConstrain));
@@ -42537,13 +42544,15 @@ case "mobius":
         : [];
       if (!nextWorkbooks.length) return false;
       const normalized = normalizeWorkbooks(nextWorkbooks);
+      const firstWorkbook = normalized[0];
+      if (!firstWorkbook) return false;
       setWorkbooks(normalized);
       const nextActive =
         typeof migratedPayload?.activeWorkbookId === "string" &&
         normalized.some((w) => w.id === migratedPayload.activeWorkbookId)
           ? migratedPayload.activeWorkbookId
-          : normalized[0].id;
-      const nextStage = isWorkbookStageId(migratedPayload?.activeStageId) ? migratedPayload.activeStageId : "define";
+          : firstWorkbook.id;
+      const nextStage: WorkbookStageId = migratedPayload?.activeStageId ?? "define";
       setActiveWorkbookId(nextActive);
       setActiveStageId(nextStage);
       if (migratedPayload?.workspace) {
@@ -42782,9 +42791,10 @@ case "mobius":
   const handleValidateWorkbookGeometryTask = useCallback(() => {
     if (IS_REPLAY_MODE) return;
     if (!activeWorkbookId) return;
-    if (!activeWorkbook?.geometryTask) return;
+    const activeGeometryTask = activeWorkbook?.geometryTask;
+    if (!activeGeometryTask) return;
     const report = evaluateWorkbookGeometryTask(
-      activeWorkbook.geometryTask.spec,
+      activeGeometryTask.spec,
       resolveWorkbookGeometryTaskValidationContext()
     );
     const nextAssertStatus: NonNullable<WorkbookBlock["assert"]>["status"] =
@@ -42797,7 +42807,7 @@ case "mobius":
           ...workbook,
           updatedAt: Date.now(),
           geometryTask: {
-            ...(workbook.geometryTask ?? activeWorkbook.geometryTask),
+            ...(workbook.geometryTask ?? activeGeometryTask),
             lastValidation: report,
           },
           stages: workbook.stages.map((stage) =>
@@ -48650,14 +48660,12 @@ case "mobius":
       let interactionSourceCount = 0;
 
       if (pointRequest) {
-        const parsedSources = pointRequest.sources.map((point) => ({
-          path: buildPathEndpointFromPoint(point),
-          heat: buildHeatEndpointFromPoint(point),
-        }));
-        const validPathSources = parsedSources.filter(
-          (entry): entry is { path: GeodesicPathEndpoint; heat: GeodesicHeatEndpoint | null } =>
-            !!entry.path
-        );
+        const validPathSources: { path: GeodesicPathEndpoint; heat: GeodesicHeatEndpoint | null }[] = [];
+        for (const point of pointRequest.sources) {
+          const path = buildPathEndpointFromPoint(point);
+          if (!path) continue;
+          validPathSources.push({ path, heat: buildHeatEndpointFromPoint(point) });
+        }
         const end = buildPathEndpointFromPoint(pointRequest.target);
         const heatEnd = buildHeatEndpointFromPoint(pointRequest.target);
         if (!validPathSources.length || !end) {
@@ -53484,8 +53492,8 @@ case "mobius":
       roughness: 0.95,
       metalness: 0,
       flatShading: resolved.flatShading ?? false,
-      pickPolicy: "never",
-      renderableMetadata: { objectId: "timeline-ghost-previous", pickPolicy: "never" },
+      pickPolicy: "never" as GeometryPickPolicy,
+      renderableMetadata: { objectId: "timeline-ghost-previous", pickPolicy: "never" as GeometryPickPolicy },
       transform: {
         position: { ...resolved.transform.position },
         rotation: { ...resolved.transform.rotation },
@@ -53498,7 +53506,7 @@ case "mobius":
     geometryTimelineStepIndex,
     geometryTimelineSteps,
   ]);
-  const geometryProceduralMeshOverridesForViewer = useMemo(() => {
+  const geometryProceduralMeshOverridesForViewer = useMemo<GeometryViewerMeshOverride[] | null>(() => {
     if (!geometryTimelineGhostMeshOverride) return geometryProceduralMeshOverrides;
     const base = geometryProceduralMeshOverrides ?? [];
     return [...base, geometryTimelineGhostMeshOverride];
@@ -54858,7 +54866,7 @@ case "mobius":
   const vtkServiceColor = vtkServiceReady ? "#1f894f" : "#b42318";
   const octaveServiceColor = octaveBridgeReady ? "#1f894f" : "#9a6700";
   const sageServiceColor = sageBridgeReady ? "#1f894f" : "#9a6700";
-  const surfacesWorkspaceTabs = isPresentDisplayMode
+  const surfacesWorkspaceTabs: readonly SurfacesLeftTab[] = isPresentDisplayMode
     ? (["scene"] as const)
     : (["scene", "object", "view", "analysis", "services", "theory"] as const);
   const surfacesWorkTabsEnabled = surfacesLayoutVariant !== "layout2";
@@ -55136,6 +55144,7 @@ case "mobius":
                   onChangeVolumeStreamlineMaxSteps={handleVolumeStreamlineMaxStepsChange}
                   surfaceMeshLabel={surfaceMeshLabel}
                   surfaceMeshStats={surfaceMeshStats}
+                  surfaceMeshBounds={surfaceMeshBounds}
                   surfaceMeshSource={surfaceMeshData?.source ?? null}
                   meshPromotionTrace={meshPromotionTrace}
                   meshPromotionHasIndependentEdits={meshPromotionHasIndependentEdits}
@@ -56381,8 +56390,7 @@ case "mobius":
                     <button
                       type="button"
                       onClick={() => {
-                        const noPresetGalleryInCurrentContext =
-                          datasetKind === "volume" || surfaceViewerKind === "complex";
+                        const noPresetGalleryInCurrentContext = datasetKind === "volume";
                         if (noPresetGalleryInCurrentContext) {
                           setDatasetKind("surface");
                           handleChangeViewerKind("graph");
@@ -56485,7 +56493,7 @@ case "mobius":
                             setSurfacesPanelState("work");
                             setSurfacesLeftTab("scene");
                           }}
-                          style={surfacesModeButtonStyle(isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "complex", "actions")}
+                          style={surfacesModeButtonStyle(false, "actions")}
                         >
                           Complex
                         </button>
@@ -60184,6 +60192,7 @@ case "mobius":
                             rotationalProfilePointsText={rotationalProfilePointsText}
                             onChangeRotationalProfileMode={setRotationalProfileMode}
                             onChangeRotationalProfilePointsText={setRotationalProfilePointsText}
+                            bottomSheet={surfacePanelsAsDrawers}
                           />
                         )}
                         {showParamSurfaceOverlayLauncher && !paramSurfaceOverlayOpen && !cleanScreenshotSurfaceActive && (
@@ -62413,7 +62422,7 @@ case "mobius":
                           type="button"
                           onClick={() =>
                             setFullWorkbookSelectedBlockRef({
-                              stageId: fullWorkbookSelectedStage.id,
+                              stageId: fullWorkbookSelectedStage?.id ?? activeStageId,
                               blockId: block.id,
                             })
                           }
@@ -62755,20 +62764,17 @@ case "mobius":
                 <div style={{ minHeight: 0 }}>
                   <GeometryViewer
                     scene={geometryScene}
-                    lineRadiusScale={geometryMode === "demo" ? geometryDemoLineRadiusScale : 1}
-                    segmentRadiusScale={geometryMode === "demo" ? geometryDemoSegmentRadiusScale : 1}
-                    edgeRadiusScale={geometryMode === "demo" ? geometryDemoEdgeRadiusScale : 1}
-                    meshOverrides={geometryMode === "procedural" ? proceduralMeshSet.meshes : null}
+                    lineRadiusScale={1}
+                    segmentRadiusScale={1}
+                    edgeRadiusScale={1}
+                    meshOverrides={null}
                     wireframe={geometryWireframe}
                     showPlanes={geometryShowPlanes}
                     planeGridSettings={planeGridSettings}
                     materialOpacity={geometryOpacity}
                     selectedMeshKey={geometrySelectedObjectId}
-                    cameraResetToken={geometryResetToken}
+                    resetToken={geometryResetToken}
                     cameraFitCommand={geometryCameraFitCommand}
-                    viewPreset={geometryViewPreset}
-                    pointLabelScale={geometryDemoLabelScale}
-                    showPointLabels={geometryDemoShowPointLabels}
                     meshInteractionQualityMode={geometryEffectiveInteractionQualityMode}
                     meshInteractionRestoreDelayMs={geometryInteractionRestoreDelayMs}
                     meshInteractionPreviewTriangleTarget={geometryEffectiveInteractionPreviewTriangleTarget}
@@ -62776,25 +62782,9 @@ case "mobius":
                     meshInteractionHideSceneOverlays={geometryEffectiveHideSceneOverlays}
                     renderQuality={geometryEffectiveRenderQuality}
                     onMeshInteractionStateChange={handleGeometryViewerInteractionStateChange}
-                    cameraOverride={
-                      geometryMode === "scratch" || geometryMode === "workbook" ? geometryProblemCameraOverride : null
-                    }
-                    overlayPolylines={
-                      geometryMode === "scratch" || geometryMode === "workbook"
-                        ? geometryConstructionState?.scene?.polylines ?? null
-                        : null
-                    }
-                    highlightPolygons={geometryMode === "demo" ? geometryHighlightPolygons : null}
-                    highlightedPointIds={
-                      geometryMode === "demo"
-                        ? geometryHighlightedPointIds
-                        : null
-                    }
-                    claimPointIds={
-                      geometryMode === "demo"
-                        ? geometryClaimPointIds
-                        : null
-                    }
+                    cameraOverride={geometryProblemCameraOverride}
+                    extraOverlayPolylineGroups={null}
+                    highlightPolygons={null}
                     pickEnabled={false}
                   />
                 </div>
@@ -63413,7 +63403,7 @@ case "mobius":
                       )}
                     </div>
 
-                    {false && geometryGallerySelectedCard && (
+                    {false && geometryGallerySelectedCard && ((geometryGallerySelectedCard: GeometryGalleryCard) => (
                       <div
                         data-testid="geometry-create-selected-card-legacy"
                         style={{
@@ -63973,7 +63963,6 @@ case "mobius":
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setShowAxes(true);
                                     setGeometryCreateActionStatus("Coordinate-frame overlay enabled.");
                                   }}
                                   disabled={!geometrySelectedSceneObject}
@@ -64035,45 +64024,56 @@ case "mobius":
                                   </div>
                                   <div style={{ fontSize: 10, color: "#334155" }}>
                                     Active probe:{" "}
-                                    {geometryProbeSelectionDetails
-                                      ? `${geometryProbeSelectionDetails.mode}${
-                                          geometryProbeSelectionDetails.faceIndex != null ? ` · face #${geometryProbeSelectionDetails.faceIndex}` : ""
-                                        }${
-                                          geometryProbeSelectionDetails.edgeVertexPair
-                                            ? ` · edge [${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]`
-                                            : ""
-                                        }${
-                                          geometryProbeSelectionDetails.vertexIndex != null
-                                            ? ` · vertex #${geometryProbeSelectionDetails.vertexIndex}`
-                                            : ""
-                                        }`
-                                      : "none"}
+                                    {(() => {
+                                      const details = geometryProbeSelectionDetails!;
+                                      if (!details) return "none";
+                                      const edgePair = details.edgeVertexPair;
+                                      return `${details.mode}${
+                                        details.faceIndex != null ? ` · face #${details.faceIndex}` : ""
+                                      }${
+                                        edgePair ? ` · edge [${edgePair?.[0]}, ${edgePair?.[1]}]` : ""
+                                      }${
+                                        details.vertexIndex != null ? ` · vertex #${details.vertexIndex}` : ""
+                                      }`;
+                                    })()}
                                   </div>
-                                  {geometryProbeSelectionDetails?.mode === "face" && geometryProbeSelectionDetails.faceVertices ? (
-                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                      <button type="button" onClick={() => handleCreateHelperFromFaceSelection("face-plane")}>Face plane</button>
-                                      <button type="button" onClick={() => handleCreateHelperFromFaceSelection("face-normal")}>Face normal</button>
-                                      <button type="button" onClick={() => handleCreateHelperFromFaceSelection("face-centroid")}>Face centroid point</button>
-                                      <button type="button" onClick={() => handleCreateHelperFromFaceSelection("face-frame")}>Local coordinate frame</button>
-                                    </div>
-                                  ) : geometryProbeSelectionDetails?.mode === "edge" && geometryProbeSelectionDetails.edgePoints ? (
-                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                      <button type="button" onClick={() => handleCreateHelperFromEdgeSelection("edge-midpoint")}>Edge midpoint</button>
-                                      <button type="button" onClick={() => handleCreateHelperFromEdgeSelection("edge-direction")}>Edge direction vector</button>
-                                      <button type="button" onClick={() => handleCreateHelperFromEdgeSelection("edge-perp-plane")}>Perpendicular plane</button>
-                                      <button type="button" onClick={() => handleCreateHelperFromEdgeSelection("edge-ruler")}>Ruler</button>
-                                    </div>
-                                  ) : geometryProbeSelectionDetails?.mode === "vertex" ? (
-                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                      <button type="button" onClick={() => handleCreateHelperFromVertexSelection("vertex-point")}>Point marker</button>
-                                      <button type="button" onClick={() => handleCreateHelperFromVertexSelection("vertex-normal")}>Vertex normal</button>
-                                      <button type="button" onClick={() => handleCreateHelperFromVertexSelection("vertex-frame")}>Local frame</button>
-                                    </div>
-                                  ) : (
-                                    <div style={{ fontSize: 10, color: "#667085" }}>
-                                      Select a face/edge/vertex using Pick mode to enable contextual helper creation.
-                                    </div>
-                                  )}
+                                  {(() => {
+                                    const details = geometryProbeSelectionDetails!;
+                                    if (details?.mode === "face" && details.faceVertices) {
+                                      return (
+                                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                          <button type="button" onClick={() => handleCreateHelperFromFaceSelection("face-plane")}>Face plane</button>
+                                          <button type="button" onClick={() => handleCreateHelperFromFaceSelection("face-normal")}>Face normal</button>
+                                          <button type="button" onClick={() => handleCreateHelperFromFaceSelection("face-centroid")}>Face centroid point</button>
+                                          <button type="button" onClick={() => handleCreateHelperFromFaceSelection("face-frame")}>Local coordinate frame</button>
+                                        </div>
+                                      );
+                                    }
+                                    if (details?.mode === "edge" && details.edgePoints) {
+                                      return (
+                                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                          <button type="button" onClick={() => handleCreateHelperFromEdgeSelection("edge-midpoint")}>Edge midpoint</button>
+                                          <button type="button" onClick={() => handleCreateHelperFromEdgeSelection("edge-direction")}>Edge direction vector</button>
+                                          <button type="button" onClick={() => handleCreateHelperFromEdgeSelection("edge-perp-plane")}>Perpendicular plane</button>
+                                          <button type="button" onClick={() => handleCreateHelperFromEdgeSelection("edge-ruler")}>Ruler</button>
+                                        </div>
+                                      );
+                                    }
+                                    if (details?.mode === "vertex") {
+                                      return (
+                                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                          <button type="button" onClick={() => handleCreateHelperFromVertexSelection("vertex-point")}>Point marker</button>
+                                          <button type="button" onClick={() => handleCreateHelperFromVertexSelection("vertex-normal")}>Vertex normal</button>
+                                          <button type="button" onClick={() => handleCreateHelperFromVertexSelection("vertex-frame")}>Local frame</button>
+                                        </div>
+                                      );
+                                    }
+                                    return (
+                                      <div style={{ fontSize: 10, color: "#667085" }}>
+                                        Select a face/edge/vertex using Pick mode to enable contextual helper creation.
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                                 {geometryCreateActionStatus && (
                                   <div style={{ fontSize: 10, color: "#334155", width: "100%" }}>{geometryCreateActionStatus}</div>
@@ -64163,7 +64163,7 @@ case "mobius":
                           </>
                         )}
                       </div>
-                    )}
+                    ))(geometryGallerySelectedCard!)}
                     </>
                     )}
 
@@ -72396,7 +72396,7 @@ case "mobius":
                                   V(sphere) - (V(cylinder) - V(cone)) = {fmt(geometryVolumeRelationDemo.sphereMinusCylMinusCone)}
                                 </div>
                                 <div style={{ fontFamily: "monospace" }}>
-                                  V(sphere)/V(cylinder) = {fmt(geometryVolumeRelationDemo.sphereToCylinderRatio)} · V(sphere)/V(cone) = {fmt(geometryVolumeRelationDemo.sphereToConeRatio)}
+                                  V(sphere)/V(cylinder) = {fmtNullable(geometryVolumeRelationDemo.sphereToCylinderRatio)} · V(sphere)/V(cone) = {fmtNullable(geometryVolumeRelationDemo.sphereToConeRatio)}
                                 </div>
                                 <div style={{ color: "#475467" }}>
                                   For the classical Archimedes setup (same radius R, height 2R): V(sphere)=V(cylinder)-V(cone)=2/3 V(cylinder).
@@ -72448,13 +72448,13 @@ case "mobius":
                                   </div>
                                 )}
                                 <div style={{ fontFamily: "monospace" }}>
-                                  Length × s → measured {fmt(geometryScalingDemo.lengthRatio)} · expected {fmt(geometryScalingDemo.sMean)}
+                                  Length × s → measured {fmtNullable(geometryScalingDemo.lengthRatio)} · expected {fmtNullable(geometryScalingDemo.sMean)}
                                 </div>
                                 <div style={{ fontFamily: "monospace" }}>
-                                  Area × s² → measured {fmt(geometryScalingDemo.areaRatio)} · expected {fmt(geometryScalingDemo.expectedAreaRatio)}
+                                  Area × s² → measured {fmtNullable(geometryScalingDemo.areaRatio)} · expected {fmtNullable(geometryScalingDemo.expectedAreaRatio)}
                                 </div>
                                 <div style={{ fontFamily: "monospace" }}>
-                                  Volume × s³ → measured {fmt(geometryScalingDemo.volumeRatio)} · expected {fmt(geometryScalingDemo.expectedVolumeRatio)}
+                                  Volume × s³ → measured {fmtNullable(geometryScalingDemo.volumeRatio)} · expected {fmtNullable(geometryScalingDemo.expectedVolumeRatio)}
                                 </div>
                               </div>
                             ) : (
@@ -72523,7 +72523,7 @@ case "mobius":
                     }}
                   >
                     <div style={{ fontSize: 11, fontWeight: 700 }}>
-                      Workbook: {geometryMode === "demo" ? `Olympiad: ${activePlanimetryPresetMeta.label}` : activeWorkbook?.title ?? "Scratch workbook"}
+                      Workbook: {activeWorkbook?.title ?? "Scratch workbook"}
                     </div>
                     <div style={{ fontSize: 11, opacity: 0.82 }}>
                       Current block: {compactCurrentBlockTitle}
@@ -72677,18 +72677,7 @@ case "mobius":
                       </details>
                     </div>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {geometryMode === "demo" && geometryDemoFamily === "planimetry" && geometryPlanimetryStages.length > 0
-                        ? geometryPlanimetryStages.map((stage, idx) => (
-                            <button
-                              key={`compact-planimetry-stage-${stage.id}`}
-                              type="button"
-                              onClick={() => setGeometryPlanimetryStageIndex(idx)}
-                              style={pill(geometryPlanimetryStageIndex === idx)}
-                            >
-                              {idx + 1}
-                            </button>
-                          ))
-                        : WORKBOOK_STAGE_ORDER.map((stage, idx) => (
+                      {WORKBOOK_STAGE_ORDER.map((stage, idx) => (
                             <button
                               key={`compact-workbook-stage-${stage.id}`}
                               type="button"
@@ -72714,9 +72703,6 @@ case "mobius":
                       <button
                         type="button"
                         onClick={() => {
-                          if (geometryMode !== "workbook") {
-                            openGeometryWorkbookMode(geometryScratchSceneSeed);
-                          }
                           setGeometryWorkbookUiMode("full");
                         }}
                         style={{ fontSize: 11 }}
@@ -74542,9 +74528,9 @@ case "mobius":
                               </div>
                           <div style={{ display: "none" }}>
                             <div style={{ color: "#475569", fontWeight: 700 }}>Inputs</div>
-                            {geometryInspectorDependencyDetails.inputs.filter((edge) => edge.relation !== "contains").length ? (
+                            {(geometryInspectorDependencyDetails?.inputs ?? []).filter((edge) => edge.relation !== "contains").length ? (
                               <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                                {geometryInspectorDependencyDetails.inputs
+                                {(geometryInspectorDependencyDetails?.inputs ?? [])
                                   .filter((edge) => edge.relation !== "contains")
                                   .slice(0, 8)
                                   .map((edge) => {
@@ -74567,9 +74553,9 @@ case "mobius":
                           </div>
                           <div style={{ display: "none" }}>
                             <div style={{ color: "#475569", fontWeight: 700 }}>Outputs</div>
-                            {geometryInspectorDependencyDetails.outputs.filter((edge) => edge.relation !== "contains").length ? (
+                            {(geometryInspectorDependencyDetails?.outputs ?? []).filter((edge) => edge.relation !== "contains").length ? (
                               <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                                {geometryInspectorDependencyDetails.outputs
+                                {(geometryInspectorDependencyDetails?.outputs ?? [])
                                   .filter((edge) => edge.relation !== "contains")
                                   .slice(0, 8)
                                   .map((edge) => {
@@ -75375,7 +75361,7 @@ case "mobius":
                                   <strong>Vertices/Faces:</strong> {geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} /{" "}
                                   {geometrySelectedSceneMeshInfo.triCount.toLocaleString()}
                                 </div>
-                                {geometryRoundTripDemoFeedback?.objectId === geometrySelectedSceneObject?.id && (
+                                {geometryRoundTripDemoFeedback?.objectId === geometrySelectedSceneObject?.id && ((feedback: NonNullable<typeof geometryRoundTripDemoFeedback>) => (
                                   <div
                                     data-testid="geometry-roundtrip-demo-banner"
                                     style={{
@@ -75393,15 +75379,15 @@ case "mobius":
                                     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                                       <strong>Round-trip demo complete</strong>
                                       <span style={{ color: "#075985", fontWeight: 800 }}>
-                                        {geometryRoundTripDemoFeedback.presetLabel}
+                                        {feedback.presetLabel}
                                       </span>
                                     </div>
-                                    <div>{geometryRoundTripDemoFeedback.pipelineLabel}</div>
-                                    <div style={{ fontWeight: 800 }}>{geometryRoundTripDemoFeedback.countsLabel}</div>
+                                    <div>{feedback.pipelineLabel}</div>
+                                    <div style={{ fontWeight: 800 }}>{feedback.countsLabel}</div>
                                     <div style={{ color: "#075985" }}>
-                                      Latest: {geometryRoundTripDemoFeedback.latestTopologyLabel}
+                                      Latest: {feedback.latestTopologyLabel}
                                       {" -> "}
-                                      {geometryRoundTripDemoFeedback.resultLabel}
+                                      {feedback.resultLabel}
                                     </div>
                                     <div style={{ color: "#475569" }}>
                                       Saves mesh shape + topology history, not scene transform/material unless included below.
@@ -75455,7 +75441,7 @@ case "mobius":
                                         data-testid="geometry-roundtrip-demo-replay"
                                         onClick={() =>
                                           handleRunSurfaceMeshTopologyFullRoundTripDemoPreset(
-                                            geometryRoundTripDemoFeedback.presetId
+                                            feedback.presetId
                                           )
                                         }
                                         style={{ fontSize: 10, padding: "2px 7px" }}
@@ -75476,7 +75462,7 @@ case "mobius":
                                         onClick={handleSaveGeometryRoundTripDemoGalleryExample}
                                         style={{ fontSize: 10, padding: "2px 7px" }}
                                       >
-                                        {geometryRoundTripDemoFeedback.savedExampleId
+                                        {feedback.savedExampleId
                                           ? "Saved as Gallery example"
                                           : "Save as Gallery example"}
                                       </button>
@@ -75486,7 +75472,7 @@ case "mobius":
                                         onClick={handleSaveGeometryRoundTripDemoObjectPreset}
                                         style={{ fontSize: 10, padding: "2px 7px" }}
                                       >
-                                        {geometryRoundTripDemoFeedback.savedGeometryPresetId
+                                        {feedback.savedGeometryPresetId
                                           ? "Saved as Geometry preset"
                                           : "Save as Geometry preset"}
                                       </button>
@@ -75509,7 +75495,7 @@ case "mobius":
                                       </button>
                                     </div>
                                   </div>
-                                )}
+                                ))(geometryRoundTripDemoFeedback!)}
                                 {geometrySelectedSceneObject && (
                                   <div style={{ marginTop: 4 }}>
                                     <button
@@ -75659,11 +75645,13 @@ case "mobius":
                                     </div>
                                     <div>
                                       Counts:{" "}
-                                      {geometryMeshRoundTripUpdateFeedback?.objectId === geometrySelectedSceneObject?.id
-                                        ? geometryMeshRoundTripUpdateFeedback.countsLabel
-                                        : geometrySelectedSceneMeshInfo
+                                      {(() => {
+                                        const feedback = geometryMeshRoundTripUpdateFeedback;
+                                        if (feedback && feedback.objectId === geometrySelectedSceneObject?.id) return feedback.countsLabel;
+                                        return geometrySelectedSceneMeshInfo
                                           ? `${geometrySelectedSceneMeshInfo.vertCount.toLocaleString()}V / ${geometrySelectedSceneMeshInfo.triCount.toLocaleString()}F`
-                                          : "n/a"}
+                                          : "n/a";
+                                      })()}
                                     </div>
                                     <div style={{ color: "#075985", fontWeight: 700 }}>
                                       {geometrySelectedMeshTopologyHandoff
@@ -75738,7 +75726,13 @@ case "mobius":
                               selectedPick={geometrySelectedPick}
                               selectionDetails={geometryProbeSelectionDetails}
                               selectedObjectName={geometrySelectedSceneObject?.name ?? null}
-                              selectedObjectType={geometrySelectedSceneObject?.type ?? null}
+                              selectedObjectType={
+                                geometrySelectedSceneObject && "type" in geometrySelectedSceneObject
+                                  ? geometrySelectedSceneObject.type
+                                  : geometrySelectedSceneObject
+                                    ? "mesh"
+                                    : null
+                              }
                               selectedSceneMeshInfo={geometrySelectedSceneMeshInfo}
                               selectedEdgeMeaning={geometrySelectedEdgeMeaning}
                             />
@@ -78583,34 +78577,6 @@ case "mobius":
                             {otherComplexShowWPanel && (
                               <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
                                 <h3 style={styles.h3}>W preview</h3>
-                                {(otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue") && (
-                                  <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
-                                    <div style={{ opacity: 0.82 }}>f(γ), direction arrows, and selected point image.</div>
-                                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setOtherComplexWScaleMode("auto");
-                                          setOtherComplexActionStatus("W-plane auto-fit applied.");
-                                        }}
-                                        style={pill(false)}
-                                      >
-                                        Auto-fit
-                                      </button>
-                                      <span>Scale:</span>
-                                      <button type="button" onClick={() => setOtherComplexWScaleMode("linear")} style={pill(otherComplexWScaleMode === "linear")}>
-                                        linear
-                                      </button>
-                                      <button type="button" onClick={() => setOtherComplexWScaleMode("log")} style={pill(otherComplexWScaleMode === "log")}>
-                                        log
-                                      </button>
-                                      <button type="button" onClick={() => setOtherComplexWScaleMode("auto")} style={pill(otherComplexWScaleMode === "auto")}>
-                                        auto
-                                      </button>
-                                    </div>
-                                    {otherComplexWVisibilityNote && <div style={{ color: "#92400e" }}>{otherComplexWVisibilityNote}</div>}
-                                  </div>
-                                )}
                                 <div style={{ minHeight: 260, flex: 1 }}>
                                   <PlanePlot
                                     id="svgW"
@@ -82800,6 +82766,7 @@ type RotationalSplineOverlayProps = {
   rotationalProfilePointsText: string;
   onChangeRotationalProfileMode: (mode: RotationalProfileMode) => void;
   onChangeRotationalProfilePointsText: (value: string) => void;
+  bottomSheet?: boolean;
 };
 
 const RotationalSplineOverlay: React.FC<RotationalSplineOverlayProps> = ({
@@ -82807,6 +82774,7 @@ const RotationalSplineOverlay: React.FC<RotationalSplineOverlayProps> = ({
   rotationalProfilePointsText,
   onChangeRotationalProfileMode,
   onChangeRotationalProfilePointsText,
+  bottomSheet = false,
 }) => {
   if (rotationalProfileMode !== "points" && rotationalProfileMode !== "spline") return null;
 
@@ -84969,7 +84937,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
                 onChange={(e) => {
                   const raw = Number(e.target.value);
                   if (!Number.isFinite(raw)) return;
-                  onSetMaterialOpacity(clamp01(raw));
+                  onSetMaterialOpacity(clampNumber(raw, 0, 1));
                 }}
               />
               <div>Roughness</div>
@@ -84982,7 +84950,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
                 onChange={(e) => {
                   const raw = Number(e.target.value);
                   if (!Number.isFinite(raw)) return;
-                  onSetMaterialRoughness(clamp01(raw));
+                  onSetMaterialRoughness(clampNumber(raw, 0, 1));
                 }}
               />
               <div>Metalness</div>
@@ -84995,7 +84963,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
                 onChange={(e) => {
                   const raw = Number(e.target.value);
                   if (!Number.isFinite(raw)) return;
-                  onSetMaterialMetalness(clamp01(raw));
+                  onSetMaterialMetalness(clampNumber(raw, 0, 1));
                 }}
               />
               <div>Wireframe overlay</div>
@@ -85186,9 +85154,6 @@ type SurfacesInspectPanelProps = {
   onToggleProbeTangentPlane: () => void;
   showProbeTangents: boolean;
   onToggleProbeTangents: () => void;
-  geometryProbeSelectionMode?: GeometryProbeSelectionMode;
-  geometryProbeSelectionDetails?: GeometryProbeSelectionDetails | null;
-  geometryProbeHoverSelectionDetails?: GeometryProbeSelectionDetails | null;
 };
 
 const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
@@ -85215,9 +85180,9 @@ const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
   onToggleProbeTangentPlane,
   showProbeTangents,
   onToggleProbeTangents,
-  geometryProbeSelectionMode,
-  geometryProbeSelectionDetails,
-  geometryProbeHoverSelectionDetails,
+  geometryProbeSelectionMode = "object",
+  geometryProbeSelectionDetails = null,
+  geometryProbeHoverSelectionDetails = null,
 }) => {
   const [navigatorMode, setNavigatorMode] = useState<"click" | "hover">("click");
   const [navigatorDrag, setNavigatorDrag] = useState(false);
@@ -86061,6 +86026,7 @@ type SurfacesLeftPanelProps = {
   onChangeVolumeStreamlineMaxSteps: (v: number) => void;
   surfaceMeshLabel: string;
   surfaceMeshStats: { vertCount: number; triCount: number } | null;
+  surfaceMeshBounds: BBox3 | null;
   surfaceMeshSource: SurfaceMeshSource | null;
   meshPromotionTrace: MeshPromotionTraceState | null;
   meshPromotionHasIndependentEdits: boolean;
@@ -86765,6 +86731,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeVolumeStreamlineMaxSteps,
   surfaceMeshLabel,
   surfaceMeshStats,
+  surfaceMeshBounds,
   surfaceMeshSource,
   meshPromotionTrace,
   meshPromotionHasIndependentEdits,
@@ -94473,6 +94440,9 @@ type SurfacesRightPanelProps = {
   probeInfo: ProbeInfo | null;
   probeCurv: CurvatureData | null;
   paramProbeCurv: PrincipalCurvatureScalars | null;
+  geometryProbeSelectionMode?: GeometryProbeSelectionMode;
+  geometryProbeSelectionDetails?: GeometryProbeSelectionDetails | null;
+  geometryProbeHoverSelectionDetails?: GeometryProbeSelectionDetails | null;
   probeEnabled: boolean;
   onToggleProbe: () => void;
   showProbeNormal: boolean;
@@ -94674,9 +94644,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   inspectPos,
   inspectNormal,
   inspectMetrics,
-  geometryProbeSelectionMode,
-  geometryProbeSelectionDetails,
-  geometryProbeHoverSelectionDetails,
+  geometryProbeSelectionMode = "object",
+  geometryProbeSelectionDetails = null,
+  geometryProbeHoverSelectionDetails = null,
   onPickDomainUV,
   onPickDomainXY,
   onPickDomainXYZ,
