@@ -134,12 +134,6 @@ jobs:
       - name: Build app
         run: npm run build:core
 
-      - name: Run Electron startup smoke test
-        run: npm run test:app:startup:smoke
-
-      - name: Run geometry functional smoke
-        run: npm run test:app:geometry:smoke
-
       - name: Run fast Playwright app e2e tests
         run: npm run test:app:e2e:fast
 
@@ -157,6 +151,113 @@ jobs:
             dist/**
             renderer/dist/**
             build/python-worker-dist/worker.exe
+            playwright-report/**
+            test-results/**
+
+  app-smoke:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      electron_config_cache: ${{ github.workspace }}\.cache\electron
+      MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: "600000"
+      MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: "180000"
+      MATH3D_ELECTRON_DOWNLOAD_RETRIES: "2"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+          cache: 'npm'
+
+      - name: Show Node version
+        run: node --version
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: python/worker/requirements.freeze.txt
+
+      - name: Cache Electron downloads
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.electron_config_cache }}
+          key: ${{ runner.os }}-electron-cache-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-cache-
+
+      - name: Install npm dependencies (root + renderer, retry)
+        shell: pwsh
+        run: |
+          function Invoke-NpmWithRetry {
+            param(
+              [Parameter(Mandatory = $true)][string]$Label,
+              [Parameter(Mandatory = $true)][scriptblock]$Command,
+              [Parameter(Mandatory = $true)][string]$CleanupPath,
+              [int]$MaxAttempts = 3
+            )
+
+            for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+              Write-Host "[$Label] attempt $attempt/$MaxAttempts"
+              $output = & $Command 2>&1
+              $exitCode = $LASTEXITCODE
+              if ($output) {
+                $output | ForEach-Object { Write-Host $_ }
+              }
+
+              if ($exitCode -eq 0) {
+                return
+              }
+
+              $outputText = ($output | Out-String)
+              $lockMismatch = ($outputText -match "npm error code EUSAGE") -and (
+                ($outputText -match "can only install packages when your package\.json and package-lock\.json") -or
+                ($outputText -match "Invalid:\s+lock file") -or
+                ($outputText -match "Please update your lock file with")
+              )
+              if ($lockMismatch) {
+                throw "[$Label] failed with lockfile mismatch. npm ci cannot proceed when package.json and package-lock.json are out of sync. Run npm install locally, commit updated lockfiles, and rerun CI."
+              }
+
+              if ($attempt -eq $MaxAttempts) {
+                throw "[$Label] failed after $MaxAttempts attempts (exit $exitCode)."
+              }
+
+              Write-Warning "[$Label] failed with exit $exitCode. Cleaning up and retrying..."
+              if (Test-Path $CleanupPath) {
+                Remove-Item -Recurse -Force $CleanupPath -ErrorAction SilentlyContinue
+              }
+              Start-Sleep -Seconds (15 * $attempt)
+            }
+          }
+
+          Invoke-NpmWithRetry -Label "root npm ci" -Command { npm ci } -CleanupPath "node_modules"
+          Invoke-NpmWithRetry -Label "renderer npm install" -Command { npm --prefix renderer install } -CleanupPath "renderer/node_modules"
+
+      - name: Build app
+        run: npm run build:core
+
+      - name: Run Electron startup smoke test
+        run: npm run test:app:startup:smoke
+
+      - name: Run geometry functional smoke
+        run: npm run test:app:geometry:smoke
+
+      - name: Run Playwright smoke e2e tests
+        run: npm run test:app:e2e:smoke
+
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-app-smoke-artifacts
+          if-no-files-found: warn
+          path: |
             playwright-report/**
             test-results/**
 

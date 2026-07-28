@@ -33,6 +33,7 @@ import GaussMapPanel from "./components/GaussMapPanel";
 import { SelectionStatsPanel } from "./components/SelectionStatsPanel";
 import { DiskStatsPanel } from "./components/DiskStatsPanel";
 import { WorkbookPanel } from "./components/WorkbookPanel";
+import { GeometryPickReadout } from "./components/GeometryPickReadout";
 
 import {
   SurfaceViewer,
@@ -8981,9 +8982,6 @@ function autoLabelParamDomain(p: ParamDomain) {
 
 const fmt = (x: number) => (Number.isFinite(x) ? x.toFixed(4) : String(x));
 const fmt3 = (v: { x: number; y: number; z: number }) => `(${fmt(v.x)}, ${fmt(v.y)}, ${fmt(v.z)})`;
-const fmtPickTuple3 = (v?: [number, number, number] | null) =>
-  v ? `(${fmt(v[0])}, ${fmt(v[1])}, ${fmt(v[2])})` : "none";
-const formatGeometryPickEntity = (pick: GeometryPickResult | null | undefined) => pick?.label ?? "none";
 const geometryPickIdentityKey = (pick: GeometryPickResult | null | undefined) => {
   if (!pick) return "none";
   const topology = pick.topologyVersion ?? "n/a";
@@ -75372,7 +75370,7 @@ case "mobius":
                               <div style={{ display: "grid", gap: 4 }}>
                                 <div style={{ fontWeight: 700 }}>Current Selection</div>
                                 <div><strong>Object:</strong> {geometrySelectedSceneObject?.name ?? "n/a"}</div>
-                                <div><strong>Entity:</strong> {formatGeometryPickEntity(geometrySelectedPick)}</div>
+                                <div><strong>Entity:</strong> {geometrySelectedPick?.label ?? "none"}</div>
                                 <div>
                                   <strong>Vertices/Faces:</strong> {geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} /{" "}
                                   {geometrySelectedSceneMeshInfo.triCount.toLocaleString()}
@@ -75735,220 +75733,15 @@ case "mobius":
                                 Select an object with mesh data to enable detailed probe measurements.
                               </div>
                             )}
-                            <div data-testid="geometry-pick-hover" style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
-                              <div style={{ fontWeight: 700 }}>Hover</div>
-                              <div style={{ display: "grid", gridTemplateColumns: "104px 1fr", gap: "4px 8px" }}>
-                                <div style={{ color: "#556" }}>Entity</div>
-                                <div>{formatGeometryPickEntity(geometryHoverPick)}</div>
-                                <div style={{ color: "#556" }}>Point</div>
-                                <div>{fmtPickTuple3(geometryHoverPick?.worldPoint)}</div>
-                              </div>
-                            </div>
-
-                            <div data-testid="geometry-pick-committed" style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
-                              <div style={{ fontWeight: 700 }}>Committed Entity</div>
-                              <div style={{ display: "grid", gridTemplateColumns: "104px 1fr", gap: "4px 8px" }}>
-                                <div style={{ color: "#556" }}>Entity</div>
-                                <div data-testid="geometry-pick-committed-entity">{formatGeometryPickEntity(geometrySelectedPick)}</div>
-                                <div style={{ color: "#556" }}>Object</div>
-                                <div
-                                  data-testid="geometry-pick-committed-object"
-                                  data-object-id={geometrySelectedPick?.objectId ?? ""}
-                                >
-                                  {geometryProbeSelectionDetails?.objectLabel ?? geometrySelectedSceneObject?.name ?? "none"}
-                                </div>
-                                <div style={{ color: "#556" }}>Type</div>
-                                <div data-testid="geometry-pick-committed-type">{geometryProbeSelectionDetails?.objectType ?? geometrySelectedSceneObject?.type ?? "n/a"}</div>
-                                <div style={{ color: "#556" }}>Status</div>
-                                <div data-testid="geometry-pick-committed-status">{geometryProbeSelectionDetails?.stale ? "stale" : geometrySelectedPick ? "valid" : "none"}</div>
-                                {geometrySelectedPick?.kind === "object" ? (
-                                  <>
-                                    <div style={{ color: "#556" }}>Object id</div>
-                                    <div data-testid="geometry-pick-object-id">{geometrySelectedPick.objectId}</div>
-                                    <div style={{ color: "#556" }}>Vertices/Faces</div>
-                                    <div>
-                                      {geometrySelectedSceneMeshInfo
-                                        ? `${geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} / ${geometrySelectedSceneMeshInfo.triCount.toLocaleString()}`
-                                        : "n/a"}
-                                    </div>
-                                    <div style={{ color: "#556" }}>Bounds</div>
-                                    <div>
-                                      {geometrySelectedSceneMeshInfo?.bounds
-                                        ? `min (${fmt(geometrySelectedSceneMeshInfo.bounds.min[0])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.min[1])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.min[2])}) | max (${fmt(geometrySelectedSceneMeshInfo.bounds.max[0])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.max[1])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.max[2])})`
-                                        : "n/a"}
-                                    </div>
-                                  </>
-                                ) : (
-                                  <>
-                                        <div style={{ color: "#556" }}>World point</div>
-                                    <div data-testid="geometry-pick-world-point">{fmtPickTuple3(geometrySelectedPick?.worldPoint)}</div>
-                                    {geometrySelectedPick?.faceNormal && (
-                                      <>
-                                        <div style={{ color: "#556" }}>
-                                          {geometrySelectedPick.kind === "edge"
-                                            ? "Compatible normal"
-                                            : geometrySelectedPick.kind === "vertex"
-                                              ? "Source face normal"
-                                              : "Geometric normal"}
-                                        </div>
-                                        <div>{fmtPickTuple3(geometrySelectedPick.faceNormal)}</div>
-                                      </>
-                                    )}
-                                    {geometrySelectedPick?.surfaceNormal && (
-                                      <>
-                                        <div style={{ color: "#556" }}>Shading normal</div>
-                                        <div>{fmtPickTuple3(geometrySelectedPick.surfaceNormal)}</div>
-                                      </>
-                                    )}
-                                    {geometrySelectedPick?.vertexNormal && (
-                                      <>
-                                        <div style={{ color: "#556" }}>Vertex normal</div>
-                                        <div>{fmtPickTuple3(geometrySelectedPick.vertexNormal)}</div>
-                                      </>
-                                    )}
-                                    {geometrySelectedPick?.tangent && (
-                                      <>
-                                        <div style={{ color: "#556" }}>
-                                          {geometryProbeSelectionDetails?.tangentKind === "edge-direction" ? "Edge tangent" : "Tangent 1"}
-                                        </div>
-                                        <div>{fmtPickTuple3(geometrySelectedPick.tangent)}</div>
-                                      </>
-                                    )}
-                                    {geometrySelectedPick?.bitangent && (
-                                      <>
-                                        <div style={{ color: "#556" }}>
-                                          {geometryProbeSelectionDetails?.tangentKind === "edge-direction" ? "Side tangent" : "Tangent 2"}
-                                        </div>
-                                        <div>{fmtPickTuple3(geometrySelectedPick.bitangent)}</div>
-                                      </>
-                                    )}
-                                    {geometrySelectedPick?.kind === "vertex" && geometrySelectedPick?.vertexNormal && (
-                                      <>
-                                        <div style={{ color: "#556" }}>Tangent plane</div>
-                                        <div>defined by vertex normal</div>
-                                      </>
-                                    )}
-                                    {geometrySelectedPick?.kind === "face" && (
-                                      <>
-                                        <div style={{ color: "#556" }}>Face</div>
-                                        <div>
-                                          <span data-testid="geometry-pick-face">
-                                          #{geometryProbeSelectionDetails?.faceIndex ?? "n/a"}
-                                          {geometryProbeSelectionDetails?.sourceTriangle
-                                            ? ` | triangle [${geometryProbeSelectionDetails.sourceTriangle.join(", ")}]`
-                                            : ""}
-                                          </span>
-                                        </div>
-                                        <div style={{ color: "#556" }}>Barycentric</div>
-                                        <div>{fmtPickTuple3(geometryProbeSelectionDetails?.barycentric)}</div>
-                                        <div style={{ color: "#556" }}>Face area</div>
-                                        <div>
-                                          {geometryProbeSelectionDetails?.faceArea != null && Number.isFinite(geometryProbeSelectionDetails.faceArea)
-                                            ? fmt(geometryProbeSelectionDetails.faceArea)
-                                            : "n/a"}
-                                        </div>
-                                        <div style={{ color: "#556" }}>Adjacent faces</div>
-                                        <div data-testid="geometry-pick-face-adjacent-count">
-                                          {geometryProbeSelectionDetails?.faceTopology
-                                            ? geometryProbeSelectionDetails.faceTopology.adjacentFaces.toLocaleString()
-                                            : "n/a"}
-                                        </div>
-                                      </>
-                                    )}
-                                    {geometrySelectedPick?.kind === "edge" && (
-                                      <>
-                                        <div style={{ color: "#556" }}>Edge</div>
-                                        <div>
-                                          <span data-testid="geometry-pick-edge">
-                                          {geometryProbeSelectionDetails?.edgeVertexPair
-                                            ? `[${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]`
-                                            : "n/a"}
-                                          </span>
-                                        </div>
-                                        <div style={{ color: "#556" }}>Edge key</div>
-                                        <div>{geometryProbeSelectionDetails?.edgeKey ?? "n/a"}</div>
-                                        <div style={{ color: "#556" }}>Edge length</div>
-                                        <div>
-                                          {geometryProbeSelectionDetails?.edgeLength != null && Number.isFinite(geometryProbeSelectionDetails.edgeLength)
-                                            ? fmt(geometryProbeSelectionDetails.edgeLength)
-                                            : "n/a"}
-                                        </div>
-                                        <div style={{ color: "#556" }}>Adjacent faces</div>
-                                        <div data-testid="geometry-pick-edge-incident-count">
-                                          {geometryProbeSelectionDetails?.edgeTopology
-                                            ? geometryProbeSelectionDetails.edgeTopology.incidentFaces.toLocaleString()
-                                            : "n/a"}
-                                        </div>
-                                        <div style={{ color: "#556" }}>Boundary</div>
-                                        <div>
-                                          {geometryProbeSelectionDetails?.edgeTopology
-                                            ? geometryProbeSelectionDetails.edgeTopology.boundary
-                                              ? "yes"
-                                              : "no"
-                                            : "n/a"}
-                                        </div>
-                                        {geometrySelectedEdgeMeaning && (
-                                          <>
-                                            <div style={{ gridColumn: "1 / -1", marginTop: 4 }}>
-                                              <div
-                                                style={{
-                                                  border: "1px solid #dbeafe",
-                                                  borderRadius: 8,
-                                                  background: "#f8fbff",
-                                                  padding: "7px 8px",
-                                                  display: "grid",
-                                                  gap: 5,
-                                                }}
-                                              >
-                                                <strong>Geometry</strong>
-                                                <div style={{ display: "grid", gridTemplateColumns: "112px 1fr", gap: "3px 8px" }}>
-                                                  <span style={{ color: "#556" }}>Type</span>
-                                                  <span>{geometrySelectedEdgeMeaning.type}</span>
-                                                  <span style={{ color: "#556" }}>Direction</span>
-                                                  <span>{geometrySelectedEdgeMeaning.directionLabel}</span>
-                                                  <span style={{ color: "#556" }}>Underlying curve</span>
-                                                  <span>{geometrySelectedEdgeMeaning.curve}</span>
-                                                  <span style={{ color: "#556" }}>Supporting line</span>
-                                                  <span>{geometrySelectedEdgeMeaning.supportingLine}</span>
-                                                  <span style={{ color: "#556" }}>Normal</span>
-                                                  <span>{fmt3(geometrySelectedEdgeMeaning.normal)}</span>
-                                                  <span style={{ color: "#556" }}>Tangent</span>
-                                                  <span>{geometrySelectedEdgeMeaning.tangent ? fmt3(geometrySelectedEdgeMeaning.tangent) : "n/a"}</span>
-                                                </div>
-                                              </div>
-                                            </div>
-                                          </>
-                                        )}
-                                      </>
-                                    )}
-                                    {geometrySelectedPick?.kind === "vertex" && (
-                                      <>
-                                        <div style={{ color: "#556" }}>Vertex</div>
-                                        <div>
-                                          <span data-testid="geometry-pick-vertex">
-                                          {geometryProbeSelectionDetails?.vertexIndex != null
-                                            ? `#${geometryProbeSelectionDetails.vertexIndex}`
-                                            : "n/a"}
-                                          </span>
-                                        </div>
-                                        <div style={{ color: "#556" }}>Connected edges</div>
-                                        <div data-testid="geometry-pick-vertex-edge-count">
-                                          {geometryProbeSelectionDetails?.vertexTopology
-                                            ? geometryProbeSelectionDetails.vertexTopology.incidentEdges.toLocaleString()
-                                            : "n/a"}
-                                        </div>
-                                        <div style={{ color: "#556" }}>Connected faces</div>
-                                        <div data-testid="geometry-pick-vertex-face-count">
-                                          {geometryProbeSelectionDetails?.vertexTopology
-                                            ? geometryProbeSelectionDetails.vertexTopology.incidentFaces.toLocaleString()
-                                            : "n/a"}
-                                        </div>
-                                      </>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                          </div>
+                            <GeometryPickReadout
+                              hoverPick={geometryHoverPick}
+                              selectedPick={geometrySelectedPick}
+                              selectionDetails={geometryProbeSelectionDetails}
+                              selectedObjectName={geometrySelectedSceneObject?.name ?? null}
+                              selectedObjectType={geometrySelectedSceneObject?.type ?? null}
+                              selectedSceneMeshInfo={geometrySelectedSceneMeshInfo}
+                              selectedEdgeMeaning={geometrySelectedEdgeMeaning}
+                            />
                           </div>
                     ) : geometryRightPanelTab === "actions" ? (
                           <div

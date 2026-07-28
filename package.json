@@ -47,6 +47,7 @@
     "test:app:geometry:smoke": "node scripts/geometry-functional-smoke.mjs",
     "test:app:responsive:smoke": "node -e \"process.argv.splice(1,0,'responsive-layout-smoke'); import('./scripts/responsive-layout-smoke.mjs')\"",
     "test:app:e2e": "playwright test",
+    "test:app:e2e:smoke": "playwright test tests/e2e/worker-failure-injection.spec.ts tests/e2e/workspace-navigation.spec.ts --reporter=list",
     "test:app:e2e:fast": "playwright test tests/e2e/gallery-visual.spec.ts tests/e2e/geometry-picking.spec.ts tests/e2e/mesh-topology-persistence.spec.ts tests/e2e/object-scene.spec.ts tests/e2e/surface-functional.spec.ts tests/e2e/worker-failure-injection.spec.ts tests/e2e/workspace-navigation.spec.ts",
     "test:app:e2e:slow": "playwright test tests/e2e/memory-profile.spec.ts tests/e2e/release-1-4-9-mesh-geometry.spec.ts tests/e2e/release-1-4-9-topology-complex.spec.ts --reporter=list",
     "test:app:e2e:thumbnails": "set MATH3D_RUN_THUMBNAIL_CAPTURE_E2E=1&& playwright test tests/e2e/gallery-thumbnail-capture.spec.ts",
