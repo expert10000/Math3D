@@ -101,7 +101,12 @@ describe("sceneGalleryCatalog", () => {
     expect(playground?.initialScene.metadata?.playground).toBe(true);
     const constructions = playground?.initialScene.extensions?.["math3d.geometry.derivedConstructions.v1"];
     expect(Array.isArray(constructions)).toBe(true);
-    expect(constructions).toHaveLength(23);
+    expect(constructions).toHaveLength(24);
+    expect(constructions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "construct-playground-perpendicular-plane", type: "face-plane-normal-to-selected-edge" }),
+      ]),
+    );
   });
 
   it("keeps the direct edit playground ready for face, edge, and vertex workflows", () => {
