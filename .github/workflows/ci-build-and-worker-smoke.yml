@@ -263,11 +263,11 @@ jobs:
         run: npm run test:app:e2e:smoke
 
       - name: Upload smoke artifacts
-        if: ${{ always() && (hashFiles('playwright-report/**') != '' || hashFiles('test-results/**') != '') }}
+        if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: ci-app-smoke-artifacts
-          if-no-files-found: error
+          if-no-files-found: warn
           path: |
             playwright-report/**
             test-results/**
