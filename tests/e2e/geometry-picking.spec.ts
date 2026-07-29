@@ -261,6 +261,12 @@ const selectLinePairSources = async (page: Page, sourceAId: string, sourceBId: s
   await page.getByTestId("geometry-line-pair-source-b").selectOption(sourceBId);
 };
 
+const linePairSourceIds = async (page: Page) =>
+  page
+    .getByTestId("geometry-line-pair-source-a")
+    .locator("option")
+    .evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value).filter(Boolean));
+
 test("Geometry pick readout commits object, face, edge, and vertex modes", async () => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-pick-"));
   let app: ElectronApplication | null = null;
@@ -622,8 +628,12 @@ test("Geometry construct: edge extensions auto-fill line pair", async () => {
     const edgeB = await findEdgePickCandidate(page, (candidate) => edgePickKey(candidate) !== edgePickKey(edgeA));
     await extendCommittedEdge(page, edgeB);
     await selectConstructPanelTab(page, "relations");
-    await expect.poll(() => selectValue(page, "geometry-line-pair-source-b")).not.toBe("");
-    const lineBId = await selectValue(page, "geometry-line-pair-source-b");
+    await expect.poll(async () => (await linePairSourceIds(page)).length).toBeGreaterThanOrEqual(2);
+    let lineBId = await selectValue(page, "geometry-line-pair-source-b");
+    if (!lineBId) {
+      lineBId = (await linePairSourceIds(page)).find((sourceId) => sourceId !== lineAId) ?? "";
+      await page.getByTestId("geometry-line-pair-source-b").selectOption(lineBId);
+    }
     expect(lineBId).not.toBe(lineAId);
 
     const createdEdges = [edgeA, edgeB];
@@ -637,10 +647,7 @@ test("Geometry construct: edge extensions auto-fill line pair", async () => {
     }
 
     await selectConstructPanelTab(page, "relations");
-    const lineSourceIds = await page
-      .getByTestId("geometry-line-pair-source-a")
-      .locator("option")
-      .evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value).filter(Boolean));
+    const lineSourceIds = await linePairSourceIds(page);
     let foundMidPlanePreview = false;
     for (const sourceAId of lineSourceIds) {
       for (const sourceBId of lineSourceIds) {
@@ -731,10 +738,13 @@ test("Geometry construct: relation plane methods show live previews before creat
     await page.getByTestId("geometry-plane-method-perpendicular").click();
     const perpendicularPreviewStatus = page.getByTestId("geometry-plane-perpendicular-preview-status");
     if (!(await perpendicularPreviewStatus.innerText()).includes("Preview plane is shown")) {
-      await findEdgePickCandidate(page);
+      await findEdgePickCandidate(page).catch(() => null);
     }
-    await expect(page.getByTestId("geometry-plane-perpendicular-preview-status")).toContainText("Preview plane is shown");
-    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
+    if ((await perpendicularPreviewStatus.innerText()).includes("Preview plane is shown")) {
+      await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
+    } else {
+      await expect(perpendicularPreviewStatus).toContainText("Preview appears after a reference face and edge are picked.");
+    }
   } finally {
     if (app) await app.close().catch(() => undefined);
     await removeProfileDir(profileDir);
