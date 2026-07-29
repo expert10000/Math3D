@@ -1058,6 +1058,8 @@ const GEOMETRY_OBJECT_PRESETS_KEY = "math3d.geometry.objectPresets.v1";
 const GEOMETRY_OPERATION_PRESETS_KEY = "math3d.geometry.operationPresets.v1";
 const GEOMETRY_DERIVED_CONSTRUCTIONS_STORAGE_KEY = "math3d.geometry.derivedConstructions.v1";
 const GEOMETRY_EDIT_SESSION_KEY = "math3d.geometry.editSession.v1";
+const UI_CONTEXTUAL_GEOMETRY_PICK_MODE_KEY = "math3d.ui.contextual.geometryPickMode.v1";
+const UI_CONTEXTUAL_MESH_PICK_MODE_KEY = "math3d.ui.contextual.meshPickMode.v1";
 const WORKBOOK_AUTOSAVE_JOURNAL_KEY = "math3d.workbook.autosaveJournal.v1";
 const WORKBOOK_AUTOSAVE_RECOVERY_DISMISSED_AT_KEY = "math3d.workbook.autosaveRecoveryDismissedAt.v1";
 const WORKBOOK_BUNDLE_ASSET_MODE_KEY = "math3d.workbook.bundleAssetMode.v1";
@@ -2816,6 +2818,15 @@ const isGeometryOperationInputSlotId = (value: unknown): value is GeometryOperat
   typeof value === "string" && GEOMETRY_OPERATION_INPUT_DEFS.some((entry) => entry.slotId === value);
 const isGeometryProbeSelectionModeLocal = (value: unknown): value is GeometryProbeSelectionMode =>
   value === "object" || value === "face" || value === "edge" || value === "vertex";
+const readStoredGeometryContextualPickMode = (): GeometryProbeSelectionMode | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const value = window.localStorage.getItem(UI_CONTEXTUAL_GEOMETRY_PICK_MODE_KEY);
+    return isGeometryProbeSelectionModeLocal(value) ? value : null;
+  } catch {
+    return null;
+  }
+};
 const readGeometryEditSessionSnapshot = (): Partial<GeometryEditSessionSnapshot> | null => {
   if (typeof window === "undefined") return null;
   try {
@@ -5287,6 +5298,17 @@ type SurfaceMeshTopologyPick = {
   vertexIndex: number;
 };
 type SurfaceMeshTopologyPickMode = "auto" | "face" | "edge" | "vertex";
+const isSurfaceMeshTopologyPickMode = (value: unknown): value is SurfaceMeshTopologyPickMode =>
+  value === "auto" || value === "face" || value === "edge" || value === "vertex";
+const readStoredSurfaceMeshContextualPickMode = (): SurfaceMeshTopologyPickMode | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const value = window.localStorage.getItem(UI_CONTEXTUAL_MESH_PICK_MODE_KEY);
+    return isSurfaceMeshTopologyPickMode(value) ? value : null;
+  } catch {
+    return null;
+  }
+};
 type SurfaceMeshTopologyHistoryEntry = {
   id: string;
   at: number;
@@ -10319,8 +10341,16 @@ const App: React.FC = () => {
   const [geometryOperationPresets, setGeometryOperationPresets] = useState<GeometryOperationPreset[]>([]);
   const [geometryProbeSelectionMode, setGeometryProbeSelectionMode] = useState<GeometryProbeSelectionMode>(() => {
     const saved = readGeometryEditSessionSnapshot()?.probeSelectionMode;
-    return isGeometryProbeSelectionModeLocal(saved) ? saved : "object";
+    return isGeometryProbeSelectionModeLocal(saved) ? saved : readStoredGeometryContextualPickMode() ?? "object";
   });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(UI_CONTEXTUAL_GEOMETRY_PICK_MODE_KEY, geometryProbeSelectionMode);
+    } catch {
+      // Pick mode memory is a UI convenience.
+    }
+  }, [geometryProbeSelectionMode]);
   const [geometryPickThroughHelpersEnabled, setGeometryPickThroughHelpersEnabled] = useState(false);
   const [geometryOperationInputs, setGeometryOperationInputs] = useState<GeometryOperationInput[]>(() =>
     readPersistedGeometryOperationInputs()
@@ -15281,6 +15311,13 @@ const App: React.FC = () => {
       .replace(/->/g, " -> ") ?? null;
     const subject = formatGeometryContextualResultSubject(geometryLatestRecentAction.step);
     return `Done: ${subject}${counts ? `, ${counts}` : ""}`;
+  }, [geometryLatestRecentAction]);
+  const geometryContextToolbarLastCommandLabel = useMemo(() => {
+    if (!geometryLatestRecentAction) return null;
+    if (geometryLatestRecentAction.kind === "construction") {
+      return `${geometryLatestRecentAction.actionLabel}: ${geometryLatestRecentAction.resultLabel}`;
+    }
+    return formatGeometryContextualResultSubject(geometryLatestRecentAction.step);
   }, [geometryLatestRecentAction]);
   const tupleToGeometryPoint = useCallback((tuple: [number, number, number] | null | undefined): GeometryProbePoint | null => {
     if (!tuple || !tuple.every(Number.isFinite)) return null;
@@ -26688,6 +26725,63 @@ const App: React.FC = () => {
     geometrySelectedSceneObject,
     suppressGeometryHistoryCapture,
   ]);
+  const handleOpenGeometryContextHistory = useCallback(() => {
+    setGeometryMode("procedural");
+    if (geometryLatestRecentAction?.kind === "construction") {
+      setGeometryProceduralPanelTab("construct");
+      setGeometryRightPanelTab("dependencies");
+      setGeometryConstructPanelTab("tree");
+      if (geometryLatestRecentAction.step.resultId) {
+        setGeometrySelectedDerivedConstructionId(geometryLatestRecentAction.step.resultId);
+      }
+      setGeometryCreateActionStatus("Geometry construction history is open.");
+      return;
+    }
+    setGeometryProceduralPanelTab("object");
+    setGeometryRightPanelTab("actions");
+    if (geometryLatestRecentAction?.kind === "object") {
+      setGeometrySelectedObjectId(geometryLatestRecentAction.step.objectId);
+      setGeometrySelectedHistoryStepId(geometryLatestRecentAction.step.id);
+    }
+    setGeometryCreateActionStatus("Geometry object history is open.");
+  }, [geometryLatestRecentAction]);
+  const handleRunGeometryContextPrimaryAction = useCallback(() => {
+    if (geometryProbeSelectionMode === "face") {
+      handleExtrudeSelectedFace();
+      return;
+    }
+    if (geometryProbeSelectionMode === "edge") {
+      handleSplitSelectedProbeEdge();
+      return;
+    }
+    if (geometryProbeSelectionMode === "vertex") {
+      handleMoveSelectedVertex();
+      return;
+    }
+    if (geometrySelectedSceneObject) {
+      setGeometrySelectedObjectId(geometrySelectedSceneObject.id);
+      setGeometryMode("procedural");
+      setGeometryProceduralPanelTab("object");
+      setGeometryRightPanelTab("selection");
+      accentGeometryMeshInfo(geometrySelectedSceneObject.id);
+      setGeometryCreateActionStatus(`Object details open for ${geometrySelectedSceneObject.name}.`);
+    }
+  }, [
+    accentGeometryMeshInfo,
+    geometryProbeSelectionMode,
+    geometrySelectedSceneObject,
+    handleExtrudeSelectedFace,
+    handleMoveSelectedVertex,
+    handleSplitSelectedProbeEdge,
+  ]);
+  const geometryContextCanRunPrimaryAction =
+    geometryProbeSelectionMode === "face"
+      ? geometryFaceTopologyActionPreview.ready
+      : geometryProbeSelectionMode === "edge"
+        ? geometryEdgeTopologyActionPreview.split.ready
+        : geometryProbeSelectionMode === "vertex"
+          ? geometryHasVertexOperationPick
+          : !!geometrySelectedSceneObject;
   const geometryConstructionOperationTargetLabel = useMemo(() => {
     if (geometrySelectedMathConstructionId) {
       const selected = geometryMathConstructions.find((entry) => entry.id === geometrySelectedMathConstructionId);
@@ -29292,8 +29386,17 @@ const App: React.FC = () => {
   const [surfaceMeshTopologyVertexIndex, setSurfaceMeshTopologyVertexIndex] = useState(
     initialSurfaceMeshTopologySession?.fields.vertexIndex ?? 0
   );
-  const [surfaceMeshTopologyPickMode, setSurfaceMeshTopologyPickMode] =
-    useState<SurfaceMeshTopologyPickMode>("auto");
+  const [surfaceMeshTopologyPickMode, setSurfaceMeshTopologyPickMode] = useState<SurfaceMeshTopologyPickMode>(
+    () => readStoredSurfaceMeshContextualPickMode() ?? "auto"
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(UI_CONTEXTUAL_MESH_PICK_MODE_KEY, surfaceMeshTopologyPickMode);
+    } catch {
+      // Pick mode memory is a UI convenience.
+    }
+  }, [surfaceMeshTopologyPickMode]);
   const [surfaceMeshTopologySubdivideMode, setSurfaceMeshTopologySubdivideMode] = useState<FaceSubdivideMode>(
     initialSurfaceMeshTopologySession?.fields.subdivideMode ?? "center-fan"
   );
@@ -44501,6 +44604,12 @@ case "mobius":
       : `Selected mesh: ${surfaceMeshLabel}`;
   const meshContextToolbarConfirmationLabel =
     surfaceMeshTopologyHistory[0]?.resultLabel ? `Done: ${surfaceMeshTopologyHistory[0].resultLabel}` : null;
+  const meshContextToolbarLastCommandLabel = surfaceMeshTopologyHistory[0]
+    ? `${surfaceMeshTopologyHistory[0].targetLabel} ${surfaceMeshTopologyHistory[0].actionLabel
+        .replace(/\s+edge$/i, "")
+        .replace(/\s+face$/i, "")
+        .toLowerCase()}`
+    : null;
 
   const surfaceMeshTopologyBreadcrumb = useMemo(() => {
     const preview = surfaceMeshTopologyHistoryPreviewId
@@ -44539,6 +44648,18 @@ case "mobius":
     setSurfaceMeshTopologyStatus(`Undo Last: reverted ${latest.actionLabel} on ${latest.targetLabel}.`);
     handleChangeViewerKind("mesh");
   }, [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshTopologyHistory]);
+  const handleOpenMeshContextHistory = useCallback(() => {
+    const latest = surfaceMeshTopologyHistory[0] ?? null;
+    if (latest) {
+      setSelectedSurfaceMeshTopologyHistoryId(latest.id);
+      setSurfaceMeshTopologyHistoryPreviewId(latest.id);
+      setSurfaceMeshTopologyHistoryPreviewMode("after");
+      setSurfaceMeshTopologyStatus(`Topology history open: ${latest.actionLabel} on ${latest.targetLabel}.`);
+    } else {
+      setSurfaceMeshTopologyStatus("No Mesh topology history yet.");
+    }
+    handleChangeViewerKind("mesh");
+  }, [handleChangeViewerKind, surfaceMeshTopologyHistory]);
 
   const restoreSurfaceMeshTopologyHistoryEntry = useCallback(
     (entryId: string) => {
@@ -47126,6 +47247,35 @@ case "mobius":
     surfaceViewerKind === "complex"
       ? complexMeshReady
       : !isMeshLikeViewer && (surfaceViewerKind !== "implicit" || !!activeCgalMesh);
+  const handleRunMeshContextPrimaryAction = useCallback(() => {
+    if (surfaceMeshTopologyPickMode === "face") {
+      handleSurfaceMeshFaceSubdivide();
+      return;
+    }
+    if (surfaceMeshTopologyPickMode === "edge") {
+      handleSurfaceMeshSplitEdge();
+      return;
+    }
+    if (surfaceMeshTopologyPickMode === "vertex") {
+      setSurfaceMeshTopologyStatus(`${selectedSurfaceMeshTopologyVertexLabel} marker active.`);
+      return;
+    }
+    handleConvertToMesh();
+  }, [
+    handleConvertToMesh,
+    handleSurfaceMeshFaceSubdivide,
+    handleSurfaceMeshSplitEdge,
+    selectedSurfaceMeshTopologyVertexLabel,
+    surfaceMeshTopologyPickMode,
+  ]);
+  const meshContextCanRunPrimaryAction =
+    surfaceMeshTopologyPickMode === "face"
+      ? surfaceMeshTopologyFieldValidation.faceValid
+      : surfaceMeshTopologyPickMode === "edge"
+        ? surfaceMeshTopologyFieldValidation.edgeValid
+        : surfaceMeshTopologyPickMode === "vertex"
+          ? surfaceMeshTopologyFieldValidation.vertexValid
+          : surfaceMeshExportable;
   const vtkMeshAvailable = !!surfaceSampleSet?.meshData?.length;
 
   const cgalMeshInfo = useMemo(() => {
@@ -50570,6 +50720,20 @@ case "mobius":
         case "file:export-screenshot":
           void handleScreenshot("window");
           return;
+        case "edit:undo":
+          if (mode === "geometry") {
+            handleUndoLatestGeometryHistoryStep();
+            return;
+          }
+          if (surfaceViewerKind === "mesh" && surfaceMeshTopologyHistory.length > 0) {
+            undoLatestSurfaceMeshTopologyEdit();
+            return;
+          }
+          notify("No contextual action to undo.");
+          return;
+        case "edit:redo":
+          notify("Redo is not available for contextual actions yet.");
+          return;
         case "edit:copy-equation-config": {
           const payload = {
             mode,
@@ -50798,6 +50962,7 @@ case "mobius":
       handleSaveWorkbook,
       handleSaveWorkbookAs,
       handleScreenshot,
+      handleUndoLatestGeometryHistoryStep,
       implicitExpr,
       implicitResolution,
       mode,
@@ -50822,7 +50987,9 @@ case "mobius":
       setSurfaceViewerKind,
       setVolumeContourEnabled,
       setVolumeViewMode,
+      surfaceMeshTopologyHistory.length,
       surfaceViewerKind,
+      undoLatestSurfaceMeshTopologyEdit,
       volumeDims,
       volumePresetId,
       workbooks,
@@ -59102,9 +59269,15 @@ case "mobius":
                     selectionLabel={meshContextToolbarSelectionLabel}
                     confirmationLabel={meshContextToolbarConfirmationLabel}
                     confirmationTestId="mesh-context-confirmation"
+                    lastCommandLabel={meshContextToolbarLastCommandLabel}
+                    lastCommandTestId="mesh-context-last-command"
                     canUndoLast={surfaceMeshTopologyHistory.length > 0}
                     onUndoLast={undoLatestSurfaceMeshTopologyEdit}
                     undoTestId="mesh-context-undo-last"
+                    onOpenHistory={handleOpenMeshContextHistory}
+                    openHistoryTestId="mesh-context-open-history"
+                    canRunPrimaryAction={meshContextCanRunPrimaryAction}
+                    onPrimaryAction={handleRunMeshContextPrimaryAction}
                     getPickTestId={(pickMode) => `mesh-context-pick-${pickMode}`}
                   >
                     {surfaceMeshTopologyPickMode === "face" && (
@@ -73939,9 +74112,15 @@ case "mobius":
                       selectionTestId="geometry-context-selection-label"
                       confirmationLabel={geometryContextToolbarConfirmationLabel}
                       confirmationTestId="geometry-context-confirmation"
+                      lastCommandLabel={geometryContextToolbarLastCommandLabel}
+                      lastCommandTestId="geometry-context-last-command"
                       canUndoLast={geometryCanUndoLatestAction}
                       onUndoLast={handleUndoLatestGeometryHistoryStep}
                       undoTestId="geometry-context-undo-last"
+                      onOpenHistory={handleOpenGeometryContextHistory}
+                      openHistoryTestId="geometry-context-open-history"
+                      canRunPrimaryAction={geometryContextCanRunPrimaryAction}
+                      onPrimaryAction={handleRunGeometryContextPrimaryAction}
                       getPickTestId={(pickMode) => `geometry-context-pick-${pickMode}`}
                       zIndex={17}
                     >

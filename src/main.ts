@@ -517,6 +517,14 @@ function createWindow(options: MainWindowOptions = {}) {
   win.on("leave-full-screen", () => sendWindowState("leave-full-screen"));
   win.on("resize", () => sendWindowState("resize"));
   win.webContents.on("did-finish-load", () => sendWindowState("initial"));
+  win.webContents.on("before-input-event", (event, input) => {
+    const key = String(input.key ?? "").toLowerCase();
+    if (input.type !== "keyDown" || key !== "z" || !(input.control || input.meta) || input.alt) return;
+    event.preventDefault();
+    win.webContents.send("app:menu-command", {
+      command: input.shift ? "edit:redo" : "edit:undo",
+    });
+  });
   win.webContents.on("render-process-gone", (_event, details) => {
     console.error("[window] render-process-gone", details);
   });
@@ -894,8 +902,8 @@ function buildAppMenu(win: BrowserWindow) {
     {
       label: "Edit",
       submenu: [
-        { role: "undo", label: "Undo" },
-        { role: "redo", label: "Redo" },
+        action("Undo", "edit:undo", "CmdOrCtrl+Z"),
+        action("Redo", "edit:redo", "CmdOrCtrl+Shift+Z"),
         { type: "separator" },
         action("Copy equation/config", "edit:copy-equation-config", "CmdOrCtrl+Shift+C"),
         action("Duplicate object", "edit:duplicate-object", "CmdOrCtrl+D"),

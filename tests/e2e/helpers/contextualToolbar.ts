@@ -16,6 +16,37 @@ export async function expectContextualActionReady(action: Locator): Promise<void
   await expect(action).toBeEnabled();
 }
 
+export async function runContextualActionFlow({
+  page,
+  workspace,
+  pickMode,
+  pickEntity,
+  actionTestId,
+  confirmation,
+  runWithKeyboard = false,
+}: {
+  page: Page;
+  workspace: "geometry" | "mesh";
+  pickMode: ContextualPickMode;
+  pickEntity: () => Promise<void>;
+  actionTestId: string;
+  confirmation: string | RegExp;
+  runWithKeyboard?: boolean;
+}): Promise<void> {
+  await chooseContextualPickMode(page, workspace, pickMode);
+  await pickEntity();
+  const action = page.getByTestId(actionTestId);
+  await expectContextualActionReady(action);
+  if (runWithKeyboard) {
+    await page.keyboard.press("Enter");
+  } else {
+    await action.click();
+  }
+  await expect(page.getByTestId(`${workspace}-context-confirmation`)).toContainText(confirmation);
+  await expect(page.getByTestId(`${workspace}-context-last-command`)).toBeVisible();
+  await expect(page.getByTestId(`${workspace}-context-undo-last`)).toBeVisible();
+}
+
 export async function choosePickAndExpectActionReady(
   page: Page,
   workspace: "geometry" | "mesh",

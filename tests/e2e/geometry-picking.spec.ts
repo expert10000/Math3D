@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
-import { chooseContextualPickMode, expectContextualActionReady } from "./helpers/contextualToolbar";
+import { runContextualActionFlow } from "./helpers/contextualToolbar";
 import { contextualSelectionLabelPatterns } from "./helpers/contextualSelectionLabels";
 import { pointGrid, surfaceViewerPickBox, type ViewerPoint } from "./helpers/viewerPicking";
 
@@ -320,16 +320,22 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
     await page.getByTestId("geometry-workflow-step-transform").click();
     await expect(page.getByTestId("geometry-workflow-step-transform")).toHaveAttribute("aria-current", "step");
 
-    await chooseContextualPickMode(page, "geometry", "face");
-    await clickViewerUntilCommitted(page, "face");
-    const contextSelectionLabel = page.getByTestId("geometry-context-selection-label");
-    await expect(contextSelectionLabel).toContainText(contextualSelectionLabelPatterns.face);
-
-    const contextExtrude = page.getByTestId("geometry-context-extrude-face");
-    await expectContextualActionReady(contextExtrude);
-    await contextExtrude.click();
-    await expect(page.getByTestId("geometry-context-confirmation")).toContainText(/Done: Face \d+ extruded, V \d+ -> \d+, F \d+ -> \d+/);
-    await expect(page.getByTestId("geometry-context-undo-last")).toBeVisible();
+    await runContextualActionFlow({
+      page,
+      workspace: "geometry",
+      pickMode: "face",
+      actionTestId: "geometry-context-extrude-face",
+      confirmation: /Done: Face \d+ extruded, V \d+ -> \d+, F \d+ -> \d+/,
+      runWithKeyboard: true,
+      pickEntity: async () => {
+        await clickViewerUntilCommitted(page, "face");
+        await expect(page.getByTestId("geometry-context-selection-label")).toContainText(
+          contextualSelectionLabelPatterns.face
+        );
+      },
+    });
+    await expect(page.getByTestId("geometry-context-last-command")).toContainText(/Last: Face \d+ extruded/);
+    await page.getByTestId("geometry-context-open-history").click();
     await page.getByTestId("geometry-right-panel-tab-actions").click();
     await expect(page.getByTestId("geometry-direct-edit-last")).toBeVisible();
     await expect(page.getByTestId("geometry-direct-edit-last")).toContainText("Face extrude");

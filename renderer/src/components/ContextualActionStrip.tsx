@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 export type ContextualActionStripOption<T extends string> = {
@@ -15,9 +16,16 @@ type ContextualActionStripProps<T extends string> = {
   selectionTestId?: string;
   confirmationLabel?: ReactNode;
   confirmationTestId?: string;
+  lastCommandLabel?: ReactNode;
+  lastCommandTestId?: string;
   canUndoLast?: boolean;
   onUndoLast?: () => void;
   undoTestId?: string;
+  onOpenHistory?: () => void;
+  openHistoryTestId?: string;
+  canRunPrimaryAction?: boolean;
+  onPrimaryAction?: () => void;
+  keyboardShortcutsEnabled?: boolean;
   getPickTestId?: (pick: T) => string;
   zIndex?: number;
   children: ReactNode;
@@ -73,13 +81,45 @@ export function ContextualActionStrip<T extends string>({
   selectionTestId,
   confirmationLabel,
   confirmationTestId,
+  lastCommandLabel,
+  lastCommandTestId,
   canUndoLast,
   onUndoLast,
   undoTestId,
+  onOpenHistory,
+  openHistoryTestId,
+  canRunPrimaryAction,
+  onPrimaryAction,
+  keyboardShortcutsEnabled = true,
   getPickTestId,
   zIndex = 8,
   children,
 }: ContextualActionStripProps<T>) {
+  useEffect(() => {
+    if (!keyboardShortcutsEnabled) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const editingText =
+        tagName === "input" ||
+        tagName === "textarea" ||
+        tagName === "select" ||
+        Boolean(target?.isContentEditable);
+      if (editingText) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z" && canUndoLast && onUndoLast) {
+        event.preventDefault();
+        onUndoLast();
+        return;
+      }
+      if (event.key === "Enter" && canRunPrimaryAction && onPrimaryAction) {
+        event.preventDefault();
+        onPrimaryAction();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [canRunPrimaryAction, canUndoLast, keyboardShortcutsEnabled, onPrimaryAction, onUndoLast]);
+
   return (
     <div
       data-testid={testId}
@@ -149,10 +189,65 @@ export function ContextualActionStrip<T extends string>({
           </span>
         </>
       )}
-      {canUndoLast && onUndoLast && (
-        <ContextualActionStripAction testId={undoTestId} onClick={onUndoLast} title="Undo the latest contextual action.">
-          Undo last
-        </ContextualActionStripAction>
+      {lastCommandLabel && (
+        <span
+          data-testid={lastCommandTestId}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            border: "1px solid #c7d2fe",
+            borderRadius: 999,
+            background: "#eef2ff",
+            color: "#3730a3",
+            padding: "2px 7px",
+            fontWeight: 800,
+          }}
+        >
+          <span>Last: {lastCommandLabel}</span>
+          {canUndoLast && onUndoLast && (
+            <>
+              <span style={{ color: "#93a4ba" }}>|</span>
+              <button
+                type="button"
+                data-testid={undoTestId}
+                onClick={onUndoLast}
+                title="Undo the latest contextual action. Shortcut: Ctrl+Z."
+                style={{
+                  border: 0,
+                  background: "transparent",
+                  color: "#1d4ed8",
+                  fontWeight: 900,
+                  padding: 0,
+                  cursor: "pointer",
+                }}
+              >
+                Undo
+              </button>
+            </>
+          )}
+          {onOpenHistory && (
+            <>
+              <span style={{ color: "#93a4ba" }}>|</span>
+              <button
+                type="button"
+                data-testid={openHistoryTestId}
+                onClick={onOpenHistory}
+                title="Open the command history for this workspace."
+                style={{
+                  border: 0,
+                  background: "transparent",
+                  color: "#1d4ed8",
+                  fontWeight: 900,
+                  padding: 0,
+                  cursor: "pointer",
+                }}
+              >
+                Open history
+              </button>
+            </>
+          )}
+        </span>
       )}
     </div>
   );
