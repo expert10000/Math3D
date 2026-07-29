@@ -22,6 +22,8 @@ export async function runContextualActionFlow({
   pickMode,
   pickEntity,
   actionTestId,
+  preview,
+  applyPreviewTestId,
   confirmation,
   runWithKeyboard = false,
 }: {
@@ -30,6 +32,8 @@ export async function runContextualActionFlow({
   pickMode: ContextualPickMode;
   pickEntity: () => Promise<void>;
   actionTestId: string;
+  preview?: string | RegExp;
+  applyPreviewTestId?: string;
   confirmation: string | RegExp;
   runWithKeyboard?: boolean;
 }): Promise<void> {
@@ -37,8 +41,13 @@ export async function runContextualActionFlow({
   await pickEntity();
   const action = page.getByTestId(actionTestId);
   await expectContextualActionReady(action);
+  if (preview) {
+    await expect(page.getByTestId(`${workspace}-context-preview`)).toContainText(preview);
+  }
   if (runWithKeyboard) {
     await page.keyboard.press("Enter");
+  } else if (applyPreviewTestId) {
+    await page.getByTestId(applyPreviewTestId).click();
   } else {
     await action.click();
   }

@@ -139,6 +139,8 @@ async function runTopologyDemo(
       workspace: "mesh",
       pickMode: "edge",
       actionTestId: "mesh-active-selection-action-split-edge",
+      preview: /Preview: Edge \d+-\d+ -> midpoint vertex/,
+      applyPreviewTestId: "mesh-context-apply-preview",
       confirmation: /Done: Edge \d+-\d+ -> split vertex \(\+1V, \+2F\)/,
       pickEntity: async () => {
         await clickMeshViewerForSelection(page);

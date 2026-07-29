@@ -14,6 +14,9 @@ type ContextualActionStripProps<T extends string> = {
   onPickChange: (pick: T) => void;
   selectionLabel: ReactNode;
   selectionTestId?: string;
+  previewLabel?: ReactNode;
+  previewTestId?: string;
+  applyPreviewTestId?: string;
   confirmationLabel?: ReactNode;
   confirmationTestId?: string;
   lastCommandLabel?: ReactNode;
@@ -79,6 +82,9 @@ export function ContextualActionStrip<T extends string>({
   onPickChange,
   selectionLabel,
   selectionTestId,
+  previewLabel,
+  previewTestId,
+  applyPreviewTestId,
   confirmationLabel,
   confirmationTestId,
   lastCommandLabel,
@@ -170,6 +176,46 @@ export function ContextualActionStrip<T extends string>({
       })}
       <span style={{ color: "#93a4ba" }}>|</span>
       <strong data-testid={selectionTestId}>{selectionLabel}</strong>
+      {previewLabel && (
+        <>
+          <span style={{ color: "#93a4ba" }}>|</span>
+          <span
+            data-testid={previewTestId}
+            style={{
+              border: "1px solid #fed7aa",
+              borderRadius: 999,
+              background: "#fff7ed",
+              color: "#9a3412",
+              padding: "2px 8px",
+              fontWeight: 800,
+            }}
+          >
+            {previewLabel}
+          </span>
+          <button
+            type="button"
+            data-testid={applyPreviewTestId}
+            onClick={onPrimaryAction}
+            disabled={!canRunPrimaryAction || !onPrimaryAction}
+            title={
+              canRunPrimaryAction
+                ? "Apply the visible contextual preview. Shortcut: Enter."
+                : "Select a valid entity before applying the preview."
+            }
+            style={{
+              padding: "3px 8px",
+              fontSize: 11,
+              fontWeight: 800,
+              borderColor: canRunPrimaryAction ? "#fdba74" : "#cbd5e1",
+              background: canRunPrimaryAction ? "#ffedd5" : "#f1f5f9",
+              color: canRunPrimaryAction ? "#9a3412" : "#94a3b8",
+              cursor: canRunPrimaryAction ? "pointer" : "not-allowed",
+            }}
+          >
+            Apply preview
+          </button>
+        </>
+      )}
       {children}
       {confirmationLabel && (
         <>

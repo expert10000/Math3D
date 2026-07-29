@@ -15442,6 +15442,38 @@ const App: React.FC = () => {
     }
     return formatGeometryContextualResultSubject(geometryLatestRecentAction.step);
   }, [geometryLatestRecentAction]);
+  const geometryContextToolbarPreviewLabel = useMemo(() => {
+    if (geometryProbeSelectionMode === "face") {
+      return geometryHasFaceOperationPick && geometryFaceOperationPick?.faceIndex != null
+        ? `Preview: Face ${geometryFaceOperationPick.faceIndex} -> extrude ${formatCompactReal(geometryFaceExtrudeDistance)}`
+        : null;
+    }
+    if (geometryProbeSelectionMode === "edge") {
+      if (!geometryHasEdgeOperationPick || !geometryEdgeOperationPick?.edgeVertices) return null;
+      const [a, b] = geometryEdgeOperationPick.edgeVertices;
+      const splitRatio = clampNumber(Number.isFinite(geometryEdgeSplitRatio) ? geometryEdgeSplitRatio : 0.5, 0.02, 0.98);
+      const target = Math.abs(splitRatio - 0.5) < 1e-6 ? "midpoint vertex" : `${Math.round(splitRatio * 100)}% split vertex`;
+      return `Preview: Edge ${a}-${b} -> ${target}`;
+    }
+    if (geometryProbeSelectionMode === "vertex") {
+      return geometryHasVertexOperationPick && geometryVertexOperationPick?.vertexIndex != null
+        ? `Preview: Vertex ${geometryVertexOperationPick.vertexIndex} -> move ${formatCompactReal(geometryVertexMoveAmount)}`
+        : null;
+    }
+    return geometrySelectedSceneObject ? `Preview: ${geometrySelectedSceneObject.name} -> open object details` : null;
+  }, [
+    geometryEdgeOperationPick,
+    geometryEdgeSplitRatio,
+    geometryFaceExtrudeDistance,
+    geometryFaceOperationPick,
+    geometryHasEdgeOperationPick,
+    geometryHasFaceOperationPick,
+    geometryHasVertexOperationPick,
+    geometryProbeSelectionMode,
+    geometrySelectedSceneObject,
+    geometryVertexMoveAmount,
+    geometryVertexOperationPick,
+  ]);
   const tupleToGeometryPoint = useCallback((tuple: [number, number, number] | null | undefined): GeometryProbePoint | null => {
     if (!tuple || !tuple.every(Number.isFinite)) return null;
     return { x: tuple[0], y: tuple[1], z: tuple[2] };
@@ -44976,6 +45008,43 @@ case "mobius":
         .replace(/\s+face$/i, "")
         .toLowerCase()}`
     : null;
+  const meshContextToolbarPreviewLabel = useMemo(() => {
+    if (surfaceMeshTopologySelectionCleared) return null;
+    if (surfaceMeshTopologyPickMode === "face") {
+      if (!surfaceMeshTopologyFieldValidation.faceValid) return null;
+      const faceIndex = Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
+      const modeLabel = surfaceMeshTopologySubdivideMode === "center-fan" ? "center fan" : "4 triangles";
+      return `Preview: Face ${faceIndex} -> subdivide ${modeLabel}`;
+    }
+    if (surfaceMeshTopologyPickMode === "edge") {
+      if (!surfaceMeshTopologyFieldValidation.edgeValid) return null;
+      const a = Math.max(0, Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeA || 0));
+      const b = Math.max(0, Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeB || 0));
+      const splitRatio = clampNumber(Number.isFinite(surfaceMeshTopologySplitRatio) ? surfaceMeshTopologySplitRatio : 0.5, 0.01, 0.99);
+      const target = Math.abs(splitRatio - 0.5) < 1e-6 ? "midpoint vertex" : `${Math.round(splitRatio * 100)}% split vertex`;
+      return `Preview: Edge ${a}-${b} -> ${target}`;
+    }
+    if (surfaceMeshTopologyPickMode === "vertex") {
+      return surfaceMeshTopologyFieldValidation.vertexValid
+        ? `Preview: Vertex ${Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0))} -> marker`
+        : null;
+    }
+    return surfaceMeshData ? `Preview: ${surfaceMeshLabel} -> promote mesh` : null;
+  }, [
+    surfaceMeshData,
+    surfaceMeshLabel,
+    surfaceMeshTopologyFaceIndex,
+    surfaceMeshTopologyFieldValidation.edgeValid,
+    surfaceMeshTopologyFieldValidation.effectiveEdgeA,
+    surfaceMeshTopologyFieldValidation.effectiveEdgeB,
+    surfaceMeshTopologyFieldValidation.faceValid,
+    surfaceMeshTopologyFieldValidation.vertexValid,
+    surfaceMeshTopologyPickMode,
+    surfaceMeshTopologySelectionCleared,
+    surfaceMeshTopologySplitRatio,
+    surfaceMeshTopologySubdivideMode,
+    surfaceMeshTopologyVertexIndex,
+  ]);
 
   const surfaceMeshTopologyBreadcrumb = useMemo(() => {
     const preview = surfaceMeshTopologyHistoryPreviewId
@@ -59725,6 +59794,9 @@ case "mobius":
                       if (pickMode !== "auto" && !probeEnabled) setProbeEnabled(true);
                     }}
                     selectionLabel={meshActiveSelectionSummary.emptyState ?? meshActiveSelectionSummary.eventLabel ?? meshContextToolbarSelectionLabel}
+                    previewLabel={meshContextToolbarPreviewLabel}
+                    previewTestId="mesh-context-preview"
+                    applyPreviewTestId="mesh-context-apply-preview"
                     confirmationLabel={meshContextToolbarConfirmationLabel}
                     confirmationTestId="mesh-context-confirmation"
                     lastCommandLabel={meshContextToolbarLastCommandLabel}
@@ -74606,6 +74678,9 @@ case "mobius":
                       geometryContextToolbarSelectionLabel
                     }
                       selectionTestId="geometry-context-selection-label"
+                      previewLabel={geometryContextToolbarPreviewLabel}
+                      previewTestId="geometry-context-preview"
+                      applyPreviewTestId="geometry-context-apply-preview"
                       confirmationLabel={geometryContextToolbarConfirmationLabel}
                       confirmationTestId="geometry-context-confirmation"
                       lastCommandLabel={geometryContextToolbarLastCommandLabel}
