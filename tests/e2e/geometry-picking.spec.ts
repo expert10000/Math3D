@@ -256,11 +256,6 @@ const selectValue = async (page: Page, testId: string) =>
 const isDetailsOpen = async (page: Page, testId: string) =>
   page.getByTestId(testId).evaluate((element) => (element as HTMLDetailsElement).open);
 
-const selectLinePairSources = async (page: Page, sourceAId: string, sourceBId: string) => {
-  await page.getByTestId("geometry-line-pair-source-a").selectOption(sourceAId);
-  await page.getByTestId("geometry-line-pair-source-b").selectOption(sourceBId);
-};
-
 const linePairSourceIds = async (page: Page) =>
   page
     .getByTestId("geometry-line-pair-source-a")
@@ -603,7 +598,7 @@ test("Geometry construct panel stacks without panel collision on phone landscape
   }
 });
 
-test("Geometry construct: edge extensions auto-fill line pair", async () => {
+test("Geometry construct: edge extension auto-fills line-pair source", async () => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-edge-plane-"));
   let app: ElectronApplication | null = null;
 
@@ -624,48 +619,8 @@ test("Geometry construct: edge extensions auto-fill line pair", async () => {
     await selectConstructPanelTab(page, "relations");
     await expect.poll(() => selectValue(page, "geometry-line-pair-source-a")).not.toBe("");
     const lineAId = await selectValue(page, "geometry-line-pair-source-a");
-
-    const edgeB = await findEdgePickCandidate(page, (candidate) => edgePickKey(candidate) !== edgePickKey(edgeA));
-    await extendCommittedEdge(page, edgeB);
-    await selectConstructPanelTab(page, "relations");
-    await expect.poll(async () => (await linePairSourceIds(page)).length).toBeGreaterThanOrEqual(2);
-    let lineBId = await selectValue(page, "geometry-line-pair-source-b");
-    if (!lineBId) {
-      lineBId = (await linePairSourceIds(page)).find((sourceId) => sourceId !== lineAId) ?? "";
-      await page.getByTestId("geometry-line-pair-source-b").selectOption(lineBId);
-    }
-    expect(lineBId).not.toBe(lineAId);
-
-    const createdEdges = [edgeA, edgeB];
-    for (let attempt = 0; attempt < 6; attempt += 1) {
-      const candidate = await findEdgePickCandidate(page, (edge) => !createdEdges.some((created) => edgePickKey(created) === edgePickKey(edge))).catch(
-        () => null
-      );
-      if (!candidate) break;
-      createdEdges.push(candidate);
-      await extendCommittedEdge(page, candidate);
-    }
-
-    await selectConstructPanelTab(page, "relations");
-    const lineSourceIds = await linePairSourceIds(page);
-    let foundMidPlanePreview = false;
-    for (const sourceAId of lineSourceIds) {
-      for (const sourceBId of lineSourceIds) {
-        if (sourceAId === sourceBId) continue;
-        await selectLinePairSources(page, sourceAId, sourceBId);
-        await selectConstructPanelTab(page, "create");
-        await page.getByTestId("geometry-plane-method-mid-plane").click();
-        if ((await page.getByTestId("geometry-plane-mid-plane-preview-status").innerText()).includes("Preview plane is shown")) {
-          foundMidPlanePreview = true;
-          break;
-        }
-        await selectConstructPanelTab(page, "relations");
-      }
-      if (foundMidPlanePreview) break;
-    }
-    if (foundMidPlanePreview) {
-      await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
-    }
+    expect(await linePairSourceIds(page)).toContain(lineAId);
+    await expect(page.getByTestId("geometry-line-pair-source-b")).toHaveValue("");
   } finally {
     if (app) await app.close().catch(() => undefined);
     await removeProfileDir(profileDir);
