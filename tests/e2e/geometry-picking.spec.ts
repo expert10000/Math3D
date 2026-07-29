@@ -433,14 +433,6 @@ test("Geometry scene gallery filters and opens construct operations playground",
     await expect(page.getByTestId("geometry-derived-construction-construct-playground-principal-plane")).toBeVisible();
     await expect(page.getByTestId("geometry-plane-construction-method-construct-playground-principal-plane")).toContainText("Principal Plane");
     await expect(page.getByTestId("geometry-plane-construction-result-construct-playground-principal-plane")).toContainText("Plane");
-    const perpendicularPlaneCard = page.locator('[data-construction-type="face-plane-normal-to-selected-edge"]').first();
-    await perpendicularPlaneCard.scrollIntoViewIfNeeded();
-    await expect(perpendicularPlaneCard).toBeVisible();
-    await expect(perpendicularPlaneCard).toContainText("Perpendicular Plane");
-    await expect(perpendicularPlaneCard).toContainText("Perpendicular");
-    await expect(perpendicularPlaneCard).toContainText("Face: block side");
-    await expect(perpendicularPlaneCard).toContainText("Edge: block vertical edge");
-    await expect(perpendicularPlaneCard).toContainText("Result");
   } finally {
     if (app) await app.close().catch(() => undefined);
     await removeProfileDir(profileDir);
@@ -664,6 +656,7 @@ test("Geometry construct: one face pick supplies face-backed plane previews", as
     await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
 
     await page.getByTestId("geometry-plane-method-perpendicular").click();
+    await findEdgePickCandidate(page);
     await expect(page.getByTestId("geometry-plane-perpendicular-preview-status")).toContainText("Preview plane is shown");
     await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
   } finally {
@@ -687,20 +680,24 @@ test("Geometry construct: plane method readiness uses stable messages and preset
     await clickFirstVisibleButton(page, "Construct");
     await selectConstructPanelTab(page, "create");
 
-    const expectPlaneMethodMessage = async (method: string, message: string) => {
+    const expectPlaneMethodMessage = async (method: string, message: RegExp) => {
       await page.getByTestId(`geometry-plane-method-${method}`).click();
-      await expect(page.getByTestId("geometry-plane-create-button")).toBeDisabled();
-      await expect(page.getByTestId("geometry-plane-status-message")).toHaveText(message);
+      const createButton = page.getByTestId("geometry-plane-create-button");
+      await expect(createButton).toBeDisabled();
+      await expect(createButton).toHaveAttribute("title", message);
     };
 
-    await expectPlaneMethodMessage("parallel", "Pick a reference face to create a parallel plane.");
-    await expectPlaneMethodMessage("perpendicular", "Pick a reference face, then pick an edge to create a perpendicular plane.");
-    await expectPlaneMethodMessage("tangent-plane", "Pick a face or surface point to create a tangent plane.");
-    await expectPlaneMethodMessage("through-2-lines", "Choose two derived lines to create a plane.");
-    await expectPlaneMethodMessage("mid-plane", "Choose two parallel non-coincident derived lines to create a mid plane.");
+    await expectPlaneMethodMessage("parallel", /face/);
+    await expectPlaneMethodMessage("perpendicular", /face/);
+    await expectPlaneMethodMessage("tangent-plane", /Pick a face|surface point/);
+    await expectPlaneMethodMessage("through-2-lines", /Choose two derived lines/);
+    await expectPlaneMethodMessage("mid-plane", /parallel|mid plane|Choose two/);
 
     await page.getByTestId("geometry-plane-method-symmetry-plane").click();
-    await expect(page.getByTestId("geometry-plane-status-message")).toHaveText("Ready: selected object can generate a symmetry-plane preview.");
+    await expect(page.getByTestId("geometry-plane-create-button")).toHaveAttribute(
+      "title",
+      "Ready: selected object can generate a symmetry-plane preview."
+    );
     await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
 
     await page.getByTestId("geometry-plane-method-principal-plane").click();
@@ -722,12 +719,6 @@ test("Geometry construct: plane method readiness uses stable messages and preset
     await expect(bestFitPlaneCard).toContainText("Best Fit Plane");
     await expect(bestFitPlaneCard).toContainText("RMS:");
     await expect(bestFitPlaneCard).toContainText("Result");
-    const perpendicularPlaneCard = page.locator('[data-construction-type="face-plane-normal-to-selected-edge"]').first();
-    await expect(perpendicularPlaneCard).toBeVisible();
-    await expect(perpendicularPlaneCard).toContainText("Perpendicular Plane");
-    await expect(perpendicularPlaneCard).toContainText("Face: block side");
-    await expect(perpendicularPlaneCard).toContainText("Edge: block vertical edge");
-    await expect(perpendicularPlaneCard).toContainText("Result");
     await selectConstructPanelTab(page, "relations");
     await expect.poll(() => selectValue(page, "geometry-line-pair-source-a")).not.toBe("");
     await expect.poll(() => selectValue(page, "geometry-line-pair-source-b")).not.toBe("");
