@@ -328,6 +328,12 @@ const constructOperationsPlaygroundConstructions = () => {
       sourceEdgeVertexPair?: [number, number];
       sourcePoint?: GalleryPoint3;
       sourceNormal?: GalleryPoint3;
+      selectedEdgeRef?: {
+        objectId: string;
+        edgeVertexPair: [number, number];
+        a: GalleryPoint3;
+        b: GalleryPoint3;
+      };
       params?: Record<string, string | number | boolean>;
       constructionSummary?: { method: string; inputs: Array<{ label: string; value: string }>; result: string };
       frozenSnapshot: GalleryFrozenSnapshot;
@@ -469,7 +475,19 @@ const constructOperationsPlaygroundConstructions = () => {
       { label: "Object", value: "all playground sources" },
       { label: "RMS", value: "0.03" },
     ], p3(1, 0, -0.08), p3(0.05, 1, 0.08)),
-    make(20, {
+    {
+      ...plane(20, "construct-playground-perpendicular-plane", "face-plane-normal-to-selected-edge", "Perpendicular Plane", p3(-0.82, 0.55, 0.72), p3(1, 0, 0), 0x4f46e5, "Perpendicular", [
+        { label: "Face", value: "block side" },
+        { label: "Edge", value: "block vertical edge" },
+      ], p3(0, 1, 0), p3(0, 0, 1)),
+      selectedEdgeRef: {
+        objectId: sourceObjectId,
+        edgeVertexPair: [0, 1],
+        a: p3(-1.5, -0.6, -0.48),
+        b: p3(-1.5, -0.6, 0.48),
+      },
+    },
+    make(21, {
       id: "construct-playground-bounding-box",
       type: "object-bounding-box",
       name: "Bounding Box",
@@ -485,7 +503,7 @@ const constructOperationsPlaygroundConstructions = () => {
       ),
       constructionSummary: { method: "Bounding Box", inputs: [{ label: "Objects", value: "block, cylinder, torus" }], result: "Box" },
     }),
-    make(21, {
+    make(22, {
       id: "construct-playground-principal-axes",
       type: "object-principal-axes-preview",
       name: "Principal Axes",
@@ -505,7 +523,7 @@ const constructOperationsPlaygroundConstructions = () => {
       ),
       constructionSummary: { method: "Principal Axes", inputs: [{ label: "Object", value: "cylinder" }], result: "Axes" },
     }),
-    make(22, {
+    make(23, {
       id: "construct-playground-circumsphere",
       type: "object-circumscribed-sphere-preview",
       name: "Circumscribed Sphere",
@@ -525,7 +543,7 @@ const constructOperationsPlaygroundConstructions = () => {
       ),
       constructionSummary: { method: "Circumscribed Sphere", inputs: [{ label: "Object", value: "torus" }], result: "Sphere" },
     }),
-    make(23, {
+    make(24, {
       id: "construct-playground-angle-marker",
       type: "line-pair-angle-marker",
       name: "Angle Marker",
