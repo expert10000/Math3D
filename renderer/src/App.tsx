@@ -36,8 +36,11 @@ import { WorkbookPanel } from "./components/WorkbookPanel";
 import { GeometryPickReadout } from "./components/GeometryPickReadout";
 import {
   ActiveSelectionCard,
+  buildActiveSelectionSummary,
   type ActiveSelectionCardAction,
   type ActiveSelectionCardProps,
+  type ActiveSelectionSummary,
+  type ActiveSelectionWorkspace,
 } from "./components/ActiveSelectionCard";
 import {
   ContextualActionStrip,
@@ -10493,12 +10496,37 @@ const App: React.FC = () => {
   const [geometryTopologyEditFeedback, setGeometryTopologyEditFeedback] = useState<GeometryTopologyEditFeedback | null>(null);
   const [geometryLastActionContinuity, setGeometryLastActionContinuity] = useState<GeometryActionContinuityStatus | null>(null);
   const [contextualActionPulseId, setContextualActionPulseId] = useState<string | null>(null);
+  const [selectionEventStatus, setSelectionEventStatus] = useState<{
+    workspace: ActiveSelectionWorkspace;
+    label: string;
+    key: string;
+  } | null>(null);
+  const [selectionViewportPulse, setSelectionViewportPulse] = useState<{
+    workspace: ActiveSelectionWorkspace;
+    key: string;
+  } | null>(null);
+  const geometrySelectionEventKeyRef = useRef<string | null>(null);
+  const meshSelectionEventKeyRef = useRef<string | null>(null);
   const geometryTopologyEditFeedbackTimerRef = useRef<number | null>(null);
+  const showSelectionEventStatus = useCallback((workspace: ActiveSelectionWorkspace, label: string, key: string) => {
+    setSelectionEventStatus({ workspace, label, key });
+    setSelectionViewportPulse({ workspace, key });
+  }, []);
   useEffect(() => {
     if (!contextualActionPulseId) return;
     const timer = window.setTimeout(() => setContextualActionPulseId(null), 1400);
     return () => window.clearTimeout(timer);
   }, [contextualActionPulseId]);
+  useEffect(() => {
+    if (!selectionEventStatus) return;
+    const timer = window.setTimeout(() => setSelectionEventStatus(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [selectionEventStatus]);
+  useEffect(() => {
+    if (!selectionViewportPulse) return;
+    const timer = window.setTimeout(() => setSelectionViewportPulse(null), 900);
+    return () => window.clearTimeout(timer);
+  }, [selectionViewportPulse]);
   useEffect(() => {
     return () => {
       if (geometryTopologyEditFeedbackTimerRef.current != null) {
@@ -15220,6 +15248,10 @@ const App: React.FC = () => {
   const handleClearGeometryContextSelection = useCallback(() => {
     setGeometryProceduralPick(null);
     setGeometryProceduralHoverPick(null);
+    setGeometryHistoryPreviewStepId(null);
+    setGeometryTopologyEditFeedback(null);
+    setGeometryCreateActionStatus("Geometry selection cleared.");
+    showSelectionEventStatus("Geometry", "Selection cleared", `Geometry:clear:${Date.now()}`);
     if (geometryProbeSelectionMode === "object") {
       setGeometrySelectedObjectId(null);
       setGeometryOperationInputs((prev) =>
@@ -15236,7 +15268,7 @@ const App: React.FC = () => {
     setGeometryOperationInputs((prev) =>
       prev.map((entry) => (entry.slotId === slotId ? { ...entry, value: null } : entry))
     );
-  }, [geometryProbeSelectionMode]);
+  }, [geometryProbeSelectionMode, showSelectionEventStatus]);
   const handleUseProbeForGeometryOperationInput = useCallback(
     (slotId: GeometryOperationInputSlotId) => {
       const slot = geometryOperationInputBySlot.get(slotId);
@@ -15326,7 +15358,7 @@ const App: React.FC = () => {
     geometrySelectedSceneObject,
     geometryVertexOperationPick,
   ]);
-  const geometryActiveSelectionCardType =
+  const geometryActiveSelectionCardType: ActiveSelectionCardProps["type"] =
     geometryProbeSelectionMode === "face"
       ? "Face"
       : geometryProbeSelectionMode === "edge"
@@ -15354,6 +15386,44 @@ const App: React.FC = () => {
             : "none";
   const geometryActiveSelectionCardEmptyState =
     geometryActiveSelectionCardId === "none" ? geometryContextToolbarSelectionLabel : null;
+  const geometryActiveSelectionSummary = useMemo<ActiveSelectionSummary>(
+    () =>
+      buildActiveSelectionSummary({
+        workspace: "Geometry",
+        type: geometryActiveSelectionCardType,
+        entityId: geometryActiveSelectionCardId,
+        actions: geometryActiveSelectionCardActions,
+        emptyState: geometryActiveSelectionCardEmptyState,
+      }),
+    [
+      geometryActiveSelectionCardActions,
+      geometryActiveSelectionCardEmptyState,
+      geometryActiveSelectionCardId,
+      geometryActiveSelectionCardType,
+    ]
+  );
+  useEffect(() => {
+    const key = geometryActiveSelectionSummary.eventKey;
+    if (!key) {
+      geometrySelectionEventKeyRef.current = null;
+      return;
+    }
+    if (mode !== "geometry" || geometryMode !== "procedural") {
+      geometrySelectionEventKeyRef.current = key;
+      return;
+    }
+    if (geometrySelectionEventKeyRef.current === key) return;
+    geometrySelectionEventKeyRef.current = key;
+    if (geometryActiveSelectionSummary.eventLabel) {
+      showSelectionEventStatus("Geometry", geometryActiveSelectionSummary.eventLabel, key);
+    }
+  }, [
+    geometryActiveSelectionSummary.eventKey,
+    geometryActiveSelectionSummary.eventLabel,
+    geometryMode,
+    mode,
+    showSelectionEventStatus,
+  ]);
   const geometryContextToolbarConfirmationLabel = useMemo(() => {
     if (!geometryLatestRecentAction) return null;
     if (geometryLatestRecentAction.kind === "construction") {
@@ -20164,11 +20234,12 @@ const App: React.FC = () => {
     const selectedFaceBorder = faceBorderFrom(geometryProbeSelectionDetails);
     if (selectedFaceBorder?.length) {
       const points = geometryProbeSelectionDetails?.faceVertices ?? [];
+      const pulsing = selectionViewportPulse?.workspace === "Geometry";
       groups.push({
         lines: selectedFaceBorder,
-        color: GEOMETRY_VISUAL_LANGUAGE.selection,
-        opacity: 0.98,
-        radiusWorld: adaptiveProbeRadius(points) * 1.08,
+        color: pulsing ? 0xfacc15 : GEOMETRY_VISUAL_LANGUAGE.selection,
+        opacity: pulsing ? 1 : 0.98,
+        radiusWorld: adaptiveProbeRadius(points) * (pulsing ? 1.7 : 1.08),
       });
     }
     const edgeFrom = (detail: GeometryProbeSelectionDetails | null) => {
@@ -20188,17 +20259,18 @@ const App: React.FC = () => {
     const selectedEdges = edgeFrom(geometryProbeSelectionDetails);
     if (selectedEdges?.length) {
       const points = geometryProbeSelectionDetails?.edgePoints ?? [];
+      const pulsing = selectionViewportPulse?.workspace === "Geometry";
       groups.push({
         lines: selectedEdges,
-        color: GEOMETRY_VISUAL_LANGUAGE.originalGlow,
-        opacity: 0.38,
-        radiusWorld: adaptiveProbeRadius(points) * 2.35,
+        color: pulsing ? 0xfacc15 : GEOMETRY_VISUAL_LANGUAGE.originalGlow,
+        opacity: pulsing ? 0.5 : 0.38,
+        radiusWorld: adaptiveProbeRadius(points) * (pulsing ? 3.0 : 2.35),
       });
       groups.push({
         lines: selectedEdges,
-        color: GEOMETRY_VISUAL_LANGUAGE.original,
+        color: pulsing ? 0xf59e0b : GEOMETRY_VISUAL_LANGUAGE.original,
         opacity: 0.98,
-        radiusWorld: adaptiveProbeRadius(points) * 1.45,
+        radiusWorld: adaptiveProbeRadius(points) * (pulsing ? 1.85 : 1.45),
       });
     }
     return groups.length ? groups : null;
@@ -20208,6 +20280,7 @@ const App: React.FC = () => {
     geometryPrecisionPickActive,
     geometryProbeHoverSelectionDetails,
     geometryProbeSelectionDetails,
+    selectionViewportPulse?.workspace,
   ]);
   const geometryDirectEditPreviewOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural") return null;
@@ -20575,23 +20648,25 @@ const App: React.FC = () => {
       });
     }
     if (geometryProbeSelectionDetails?.mode === "edge" && geometryProbeSelectionDetails.edgePoints) {
+      const pulsing = selectionViewportPulse?.workspace === "Geometry";
       sets.push({
         points: geometryProbeSelectionDetails.edgePoints,
-        color: 0x2563eb,
-        size: 0.075,
+        color: pulsing ? 0xfacc15 : 0x2563eb,
+        size: pulsing ? 0.11 : 0.075,
         opacity: 0.98,
       });
     }
     if (geometryProbeSelectionDetails?.mode === "vertex") {
+      const pulsing = selectionViewportPulse?.workspace === "Geometry";
       sets.push({
         points: [geometryProbeSelectionDetails.point],
-        color: 0x2563eb,
-        size: 0.12,
+        color: pulsing ? 0xfacc15 : 0x2563eb,
+        size: pulsing ? 0.17 : 0.12,
         opacity: 0.98,
       });
     }
     return sets.length ? sets : null;
-  }, [geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails]);
+  }, [geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails, selectionViewportPulse?.workspace]);
   const geometryMathConstructionOverlays = useMemo<{
     groups: OverlayPolylineGroup[] | null;
     pointSets: OverlayPointSet[] | null;
@@ -32694,6 +32769,7 @@ const App: React.FC = () => {
     if (
       !isMeshLikeViewer ||
       surfaceMeshTopologyFeedback ||
+      surfaceMeshTopologySelectionCleared ||
       surfaceMeshTopologyHistoryPreviewId ||
       !surfaceMeshData?.positions?.length
     ) {
@@ -32761,6 +32837,7 @@ const App: React.FC = () => {
     surfaceMeshTopologyFeedback,
     surfaceMeshTopologyHistoryPreviewId,
     surfaceMeshTopologyPreviewOperation,
+    surfaceMeshTopologySelectionCleared,
     surfaceMeshTopologySplitRatio,
     surfaceMeshTopologySubdivideMode,
   ]);
@@ -32806,7 +32883,9 @@ const App: React.FC = () => {
   }, [surfaceMeshTopologyHistoryPreviewEntry, surfaceMeshTopologyHistoryPreviewMode]);
   const surfaceMeshTopologyViewerMesh = surfaceMeshTopologyHistoryDisplayMesh ?? surfaceMeshData;
   const surfaceMeshTopologySelectionFaceMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
-    if (!isMeshLikeViewer || !surfaceMeshTopologyViewerMesh?.positions?.length) return null;
+    if (surfaceMeshTopologySelectionCleared || !isMeshLikeViewer || !surfaceMeshTopologyViewerMesh?.positions?.length) {
+      return null;
+    }
     const polygon = readMeshFacePolygon(
       surfaceMeshTopologyViewerMesh,
       Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0))
@@ -32831,12 +32910,18 @@ const App: React.FC = () => {
       {
         positions,
         indices,
-        color: 0x38bdf8,
-        opacity: 0.24,
+        color: selectionViewportPulse?.workspace === "Mesh" ? 0xfacc15 : 0x38bdf8,
+        opacity: selectionViewportPulse?.workspace === "Mesh" ? 0.34 : 0.24,
         doubleSided: true,
       },
     ];
-  }, [isMeshLikeViewer, surfaceMeshTopologyFaceIndex, surfaceMeshTopologyViewerMesh]);
+  }, [
+    isMeshLikeViewer,
+    selectionViewportPulse?.workspace,
+    surfaceMeshTopologyFaceIndex,
+    surfaceMeshTopologySelectionCleared,
+    surfaceMeshTopologyViewerMesh,
+  ]);
   const surfaceMeshTopologyFeedbackMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
     if (!isMeshLikeViewer || !surfaceMeshTopologyFeedback?.facePolygons.length) return null;
     const groups: OverlayMeshGroup[] = [];
@@ -32865,7 +32950,9 @@ const App: React.FC = () => {
     return groups.length ? groups : null;
   }, [isMeshLikeViewer, surfaceMeshTopologyFeedback]);
   const surfaceMeshTopologyOverlayPointSets = useMemo<OverlayPointSet[] | null>(() => {
-    if (!isMeshLikeViewer || !surfaceMeshTopologyViewerMesh?.positions?.length) return null;
+    if (surfaceMeshTopologySelectionCleared || !isMeshLikeViewer || !surfaceMeshTopologyViewerMesh?.positions?.length) {
+      return null;
+    }
     const points: GeometryProbePoint[] = [];
     const edgeA = readMeshPoint(surfaceMeshTopologyViewerMesh, Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0)));
     const edgeB = readMeshPoint(surfaceMeshTopologyViewerMesh, Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0)));
@@ -32896,26 +32983,30 @@ const App: React.FC = () => {
       {
         points,
         color: 0xfff7ed,
-        size: 0.22,
-        opacity: 0.7,
+        size: selectionViewportPulse?.workspace === "Mesh" ? 0.3 : 0.22,
+        opacity: selectionViewportPulse?.workspace === "Mesh" ? 0.82 : 0.7,
       },
       {
         points,
-        color: 0xf97316,
-        size: 0.14,
+        color: selectionViewportPulse?.workspace === "Mesh" ? 0xfacc15 : 0xf97316,
+        size: selectionViewportPulse?.workspace === "Mesh" ? 0.2 : 0.14,
         opacity: 0.98,
       },
     ];
   }, [
     isMeshLikeViewer,
+    selectionViewportPulse?.workspace,
     surfaceMeshTopologyEdgeA,
     surfaceMeshTopologyEdgeB,
     surfaceMeshTopologyFaceIndex,
+    surfaceMeshTopologySelectionCleared,
     surfaceMeshTopologyViewerMesh,
     surfaceMeshTopologyVertexIndex,
   ]);
   const surfaceMeshTopologySelectionLabelSets = useMemo<OverlayLabelSet[] | null>(() => {
-    if (!isMeshLikeViewer || !surfaceMeshTopologyViewerMesh?.positions?.length) return null;
+    if (surfaceMeshTopologySelectionCleared || !isMeshLikeViewer || !surfaceMeshTopologyViewerMesh?.positions?.length) {
+      return null;
+    }
     const labels: OverlayLabelSet["labels"] = [];
     const faceIndex = Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
     const edgeAIndex = Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0));
@@ -32972,6 +33063,7 @@ const App: React.FC = () => {
     surfaceMeshTopologyEdgeA,
     surfaceMeshTopologyEdgeB,
     surfaceMeshTopologyFaceIndex,
+    surfaceMeshTopologySelectionCleared,
     surfaceMeshTopologyViewerMesh,
     surfaceMeshTopologyVertexIndex,
   ]);
@@ -33010,7 +33102,9 @@ const App: React.FC = () => {
     ];
   }, [isMeshLikeViewer, surfaceMeshTopologyFeedback]);
   const surfaceMeshTopologyOverlayPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
-    if (!isMeshLikeViewer || !surfaceMeshTopologyViewerMesh?.positions?.length) return null;
+    if (surfaceMeshTopologySelectionCleared || !isMeshLikeViewer || !surfaceMeshTopologyViewerMesh?.positions?.length) {
+      return null;
+    }
     const lines: PolylineSet = [];
     const edgeA = readMeshPoint(surfaceMeshTopologyViewerMesh, Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0)));
     const edgeB = readMeshPoint(surfaceMeshTopologyViewerMesh, Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0)));
@@ -33036,16 +33130,18 @@ const App: React.FC = () => {
     return [
       {
         lines,
-        color: 0xf97316,
+        color: selectionViewportPulse?.workspace === "Mesh" ? 0xfacc15 : 0xf97316,
         opacity: 0.95,
-        radiusWorld: 0.024,
+        radiusWorld: selectionViewportPulse?.workspace === "Mesh" ? 0.034 : 0.024,
       },
     ];
   }, [
     isMeshLikeViewer,
+    selectionViewportPulse?.workspace,
     surfaceMeshTopologyEdgeA,
     surfaceMeshTopologyEdgeB,
     surfaceMeshTopologyFaceIndex,
+    surfaceMeshTopologySelectionCleared,
     surfaceMeshTopologyViewerMesh,
   ]);
   const surfaceMeshTopologyGhostPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
@@ -34637,8 +34733,12 @@ const App: React.FC = () => {
   const handleClearSurfaceMeshTopologyContextSelection = useCallback(() => {
     clearInspect();
     setSurfaceMeshTopologySelectionCleared(true);
+    setSurfaceMeshTopologyFeedback(null);
+    setSurfaceMeshTopologyHistoryPreviewId(null);
+    setSurfaceMeshTopologyHistoryPreviewMode("after");
     setSurfaceMeshTopologyStatus("Mesh topology selection cleared.");
-  }, [clearInspect]);
+    showSelectionEventStatus("Mesh", "Selection cleared", `Mesh:clear:${Date.now()}`);
+  }, [clearInspect, showSelectionEventStatus]);
   const surfaceMeshConnectedComponentCount = useMemo(
     () => countMeshConnectedComponents(surfaceMeshData),
     [surfaceMeshData]
@@ -44829,6 +44929,45 @@ case "mobius":
             ? "Click a vertex to enable Marker"
             : "Load a mesh to enable object actions"
       : null;
+  const meshActiveSelectionSummary = useMemo<ActiveSelectionSummary>(
+    () =>
+      buildActiveSelectionSummary({
+        workspace: "Mesh",
+        type: meshActiveSelectionCardType,
+        entityId: meshActiveSelectionCardId,
+        actions: meshActiveSelectionCardActions,
+        emptyState: meshActiveSelectionCardEmptyState,
+      }),
+    [
+      meshActiveSelectionCardActions,
+      meshActiveSelectionCardEmptyState,
+      meshActiveSelectionCardId,
+      meshActiveSelectionCardType,
+    ]
+  );
+  useEffect(() => {
+    const key = meshActiveSelectionSummary.eventKey;
+    if (!key) {
+      meshSelectionEventKeyRef.current = null;
+      return;
+    }
+    const meshWorkspaceVisible = mode === "surfaces" && surfaceViewerKind === "mesh";
+    if (!meshWorkspaceVisible) {
+      meshSelectionEventKeyRef.current = key;
+      return;
+    }
+    if (meshSelectionEventKeyRef.current === key) return;
+    meshSelectionEventKeyRef.current = key;
+    if (meshActiveSelectionSummary.eventLabel) {
+      showSelectionEventStatus("Mesh", meshActiveSelectionSummary.eventLabel, key);
+    }
+  }, [
+    meshActiveSelectionSummary.eventKey,
+    meshActiveSelectionSummary.eventLabel,
+    mode,
+    showSelectionEventStatus,
+    surfaceViewerKind,
+  ]);
   const meshContextToolbarConfirmationLabel =
     surfaceMeshTopologyHistory[0]?.resultLabel ? `Done: ${surfaceMeshTopologyHistory[0].resultLabel}` : null;
   const meshContextToolbarLastCommandLabel = surfaceMeshTopologyHistory[0]
@@ -59585,7 +59724,7 @@ case "mobius":
                       setSurfaceMeshTopologyPickMode(pickMode);
                       if (pickMode !== "auto" && !probeEnabled) setProbeEnabled(true);
                     }}
-                    selectionLabel={meshContextToolbarSelectionLabel}
+                    selectionLabel={meshActiveSelectionSummary.emptyState ?? meshActiveSelectionSummary.eventLabel ?? meshContextToolbarSelectionLabel}
                     confirmationLabel={meshContextToolbarConfirmationLabel}
                     confirmationTestId="mesh-context-confirmation"
                     lastCommandLabel={meshContextToolbarLastCommandLabel}
@@ -59695,6 +59834,29 @@ case "mobius":
                       Advanced
                     </ContextualActionStripAction>
                   </ContextualActionStrip>
+                )}
+                {selectionEventStatus?.workspace === "Mesh" && !cleanScreenshotSurfaceActive && (
+                  <div
+                    key={selectionEventStatus.key}
+                    data-testid="mesh-selection-event-toast"
+                    style={{
+                      position: "absolute",
+                      top: 48,
+                      left: 14,
+                      zIndex: 18,
+                      border: "1px solid #bbf7d0",
+                      borderRadius: 8,
+                      background: "#f0fdf4",
+                      color: "#166534",
+                      padding: "5px 9px",
+                      fontSize: 11,
+                      fontWeight: 800,
+                      boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    {selectionEventStatus.label}
+                  </div>
                 )}
                 {datasetKind === "volume" ? (
                   volumeViewMode === "slices" ? (
@@ -61920,11 +62082,11 @@ case "mobius":
                       surfaceId={activeEqSurfaceId}
                       paramId={paramSurfaceId}
                       surfaceMeshLabel={surfaceMeshLabel}
-                      meshActiveSelectionCardType={meshActiveSelectionCardType}
-                      meshActiveSelectionCardId={meshActiveSelectionCardId}
-                      meshActiveSelectionCardActions={meshActiveSelectionCardActions}
+                      meshActiveSelectionCardType={meshActiveSelectionSummary.type}
+                      meshActiveSelectionCardId={meshActiveSelectionSummary.entityId}
+                      meshActiveSelectionCardActions={meshActiveSelectionSummary.actions}
                       meshActiveSelectionCardActionButtons={meshActiveSelectionCardActionButtons}
-                      meshActiveSelectionCardEmptyState={meshActiveSelectionCardEmptyState}
+                      meshActiveSelectionCardEmptyState={meshActiveSelectionSummary.emptyState}
                       meshActiveSelectionCardConfirmationLabel={meshContextToolbarConfirmationLabel}
                       meshActiveSelectionCardLastCommandLabel={meshContextToolbarLastCommandLabel}
                       meshActiveSelectionCardCanUndoLast={surfaceMeshTopologyHistory.length > 0}
@@ -74438,7 +74600,11 @@ case "mobius":
                         if (pickMode === "edge") setGeometryActiveOperationInputSlotId("active-edge");
                         if (pickMode === "vertex") setGeometryActiveOperationInputSlotId("active-vertex");
                       }}
-                      selectionLabel={geometryContextToolbarSelectionLabel}
+                    selectionLabel={
+                      geometryActiveSelectionSummary.emptyState ??
+                      geometryActiveSelectionSummary.eventLabel ??
+                      geometryContextToolbarSelectionLabel
+                    }
                       selectionTestId="geometry-context-selection-label"
                       confirmationLabel={geometryContextToolbarConfirmationLabel}
                       confirmationTestId="geometry-context-confirmation"
@@ -74589,6 +74755,29 @@ case "mobius":
                         </>
                       )}
                     </ContextualActionStrip>
+                  )}
+                  {selectionEventStatus?.workspace === "Geometry" && geometryMode === "procedural" && (
+                    <div
+                      key={selectionEventStatus.key}
+                      data-testid="geometry-selection-event-toast"
+                      style={{
+                        position: "absolute",
+                        top: 48,
+                        left: 14,
+                        zIndex: 18,
+                        border: "1px solid #bbf7d0",
+                        borderRadius: 8,
+                        background: "#f0fdf4",
+                        color: "#166534",
+                        padding: "5px 9px",
+                        fontSize: 11,
+                        fontWeight: 800,
+                        boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)",
+                        pointerEvents: "none",
+                      }}
+                    >
+                      {selectionEventStatus.label}
+                    </div>
                   )}
                   {isPhoneLandscapeLayout && geometryMode === "procedural" && !geometryPanelsAsDrawers && (
                     <div
@@ -75829,12 +76018,12 @@ case "mobius":
                           >
                             <ActiveSelectionCard
                               testId="geometry-active-selection-card"
-                              workspace="Geometry"
-                              type={geometryActiveSelectionCardType}
-                              entityId={geometryActiveSelectionCardId}
-                              actions={geometryActiveSelectionCardActions}
+                              workspace={geometryActiveSelectionSummary.workspace}
+                              type={geometryActiveSelectionSummary.type}
+                              entityId={geometryActiveSelectionSummary.entityId}
+                              actions={geometryActiveSelectionSummary.actions}
                               actionButtons={geometryActiveSelectionCardActionButtons}
-                              emptyState={geometryActiveSelectionCardEmptyState}
+                              emptyState={geometryActiveSelectionSummary.emptyState}
                               confirmationLabel={geometryContextToolbarConfirmationLabel}
                               confirmationTestId="geometry-active-selection-confirmation"
                               lastCommandLabel={geometryContextToolbarLastCommandLabel}

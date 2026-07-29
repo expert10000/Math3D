@@ -153,6 +153,7 @@ async function runTopologyDemo(
         await expect(page.getByTestId("mesh-active-selection-card-type")).toHaveText("Edge");
         await expect(page.getByTestId("mesh-active-selection-card-id")).toContainText(/Edge \d+-\d+/);
         await expect(page.getByTestId("mesh-active-selection-card-actions")).toContainText("Split, Collapse, Bevel");
+        await expect(page.getByTestId("mesh-selection-event-toast")).toContainText(/Selected edge \d+-\d+/);
       },
     });
     await expect(page.getByTestId("mesh-active-selection-confirmation")).toContainText(
@@ -161,6 +162,12 @@ async function runTopologyDemo(
     await expect(page.getByTestId("mesh-active-selection-last-command")).toBeVisible();
     await expect(page.getByTestId("mesh-active-selection-undo-last")).toBeVisible();
     await expect(page.getByTestId("mesh-context-last-command")).toContainText(/Last: Edge \d+-\d+ split/);
+    await page.getByTestId("mesh-active-selection-card-clear").click();
+    await expect(page.getByTestId("mesh-selection-event-toast")).toContainText("Selection cleared");
+    await expect(page.getByTestId("mesh-active-selection-card-id")).toContainText(
+      "Click an edge to enable Split / Collapse / Bevel"
+    );
+    await expect(page.getByTestId("mesh-context-toolbar")).toContainText("Click an edge to enable Split / Collapse / Bevel");
     await page.getByTestId("mesh-context-open-history").click();
   } else {
     const operation = await firstVisible(page.getByRole("button", { name: operationButtonName, exact: true }));

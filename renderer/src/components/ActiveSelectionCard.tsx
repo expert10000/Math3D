@@ -1,5 +1,8 @@
 import type { CSSProperties, ReactNode } from "react";
 
+export type ActiveSelectionWorkspace = "Mesh" | "Geometry";
+export type ActiveSelectionType = "Object" | "Face" | "Edge" | "Vertex";
+
 export type ActiveSelectionCardAction = {
   label: string;
   onClick?: () => void;
@@ -11,8 +14,8 @@ export type ActiveSelectionCardAction = {
 
 export type ActiveSelectionCardProps = {
   testId: string;
-  workspace: "Mesh" | "Geometry";
-  type: "Object" | "Face" | "Edge" | "Vertex";
+  workspace: ActiveSelectionWorkspace;
+  type: ActiveSelectionType;
   entityId: ReactNode;
   actions: readonly string[];
   actionButtons?: readonly ActiveSelectionCardAction[];
@@ -27,6 +30,57 @@ export type ActiveSelectionCardProps = {
   onOpenHistory?: () => void;
   openHistoryTestId?: string;
   onClearSelection?: () => void;
+};
+
+export type ActiveSelectionSummary = {
+  workspace: ActiveSelectionWorkspace;
+  type: ActiveSelectionType;
+  entityId: ReactNode;
+  actions: readonly string[];
+  emptyState?: ReactNode;
+  eventLabel: string | null;
+  eventKey: string | null;
+  pulseKey: string | null;
+};
+
+const selectionEntityText = (entityId: ReactNode): string | null =>
+  typeof entityId === "string" && entityId.trim() && entityId !== "none" ? entityId.trim() : null;
+
+const formatSelectionEventLabel = (type: ActiveSelectionType, entityId: ReactNode): string | null => {
+  const text = selectionEntityText(entityId);
+  if (!text) return null;
+  if (type === "Object") return `Selected object: ${text}`;
+  const typeLower = type.toLowerCase();
+  return text.toLowerCase().startsWith(typeLower)
+    ? `Selected ${text.slice(0, 1).toLowerCase()}${text.slice(1)}`
+    : `Selected ${typeLower} ${text}`;
+};
+
+export const buildActiveSelectionSummary = ({
+  workspace,
+  type,
+  entityId,
+  actions,
+  emptyState,
+}: {
+  workspace: ActiveSelectionWorkspace;
+  type: ActiveSelectionType;
+  entityId: ReactNode;
+  actions: readonly string[];
+  emptyState?: ReactNode;
+}): ActiveSelectionSummary => {
+  const eventLabel = emptyState ? null : formatSelectionEventLabel(type, entityId);
+  const eventKey = eventLabel ? `${workspace}:${type}:${selectionEntityText(entityId) ?? eventLabel}` : null;
+  return {
+    workspace,
+    type,
+    entityId,
+    actions,
+    emptyState,
+    eventLabel,
+    eventKey,
+    pulseKey: eventKey,
+  };
 };
 
 const cardStyle: CSSProperties = {

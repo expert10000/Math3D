@@ -341,6 +341,7 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
         await expect(page.getByTestId("geometry-active-selection-card-actions")).toContainText(
           "Extrude, Inset, Delete"
         );
+        await expect(page.getByTestId("geometry-selection-event-toast")).toContainText(/Selected face \d+/);
       },
     });
     await expect(page.getByTestId("geometry-active-selection-confirmation")).toContainText(
@@ -354,6 +355,11 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
     await expect(page.getByTestId("geometry-direct-edit-last")).toBeVisible();
     await expect(page.getByTestId("geometry-direct-edit-last")).toContainText("Face extrude");
     await expect(page.getByTestId("geometry-direct-edit-topology-summary")).toContainText("Face");
+    await page.getByTestId("geometry-right-panel-tab-selection").click();
+    await page.getByTestId("geometry-active-selection-card-clear").click();
+    await expect(page.getByTestId("geometry-selection-event-toast")).toContainText("Selection cleared");
+    await expect(page.getByTestId("geometry-active-selection-card-id")).toContainText("Click a face to enable Extrude");
+    await expect(page.getByTestId("geometry-context-selection-label")).toContainText("Click a face to enable Extrude");
   } finally {
     if (app) await app.close().catch(() => undefined);
     await removeProfileDir(profileDir);
