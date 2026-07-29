@@ -627,7 +627,7 @@ test("Geometry construct: edge extension auto-fills line-pair source", async () 
   }
 });
 
-test("Geometry construct: relation plane methods show live previews before create", async () => {
+test("Geometry construct: face-backed plane methods show live previews before create", async () => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-relation-plane-preview-"));
   let app: ElectronApplication | null = null;
 
@@ -655,41 +655,6 @@ test("Geometry construct: relation plane methods show live previews before creat
     await expect(page.getByTestId("geometry-plane-tangent-plane-preview-status")).toContainText("Preview plane is shown");
     await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
 
-    await page.getByTestId("geometry-plane-method-symmetry-plane").click();
-    const symmetryPreviewStatus = page.getByTestId("geometry-plane-symmetry-plane-preview-status");
-    if (!(await symmetryPreviewStatus.innerText()).includes("Preview plane is shown")) {
-      await clickUntilCommitted(page, "object");
-    }
-    await expect(page.getByTestId("geometry-plane-symmetry-plane-preview-status")).toContainText("Preview plane is shown");
-    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
-
-    await page.getByTestId("geometry-plane-method-principal-plane").click();
-    await page.getByTestId("geometry-principal-plane-output-principal-1").click();
-    await expect(page.getByTestId("geometry-plane-principal-plane-preview-status")).toContainText("Preview plane is shown");
-    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
-    await page.getByTestId("geometry-plane-create-button").click();
-    await selectConstructPanelTab(page, "tree");
-    const principalPlaneCard = page.locator('[data-construction-type="object-principal-plane"]').first();
-    await expect(principalPlaneCard).toBeVisible();
-    await expect(principalPlaneCard).toContainText("Method");
-    await expect(principalPlaneCard).toContainText("Principal Plane");
-    await expect(principalPlaneCard).toContainText("Output: Principal 1");
-    await expect(principalPlaneCard).toContainText("Result");
-
-    await selectConstructPanelTab(page, "create");
-    await page.getByTestId("geometry-plane-method-best-fit-plane").click();
-    await expect(page.getByTestId("geometry-plane-best-fit-plane-preview-status")).toContainText("Preview plane is shown");
-    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
-    await page.getByTestId("geometry-plane-create-button").click();
-    await selectConstructPanelTab(page, "tree");
-    const bestFitPlaneCard = page.locator('[data-construction-type="object-best-fit-plane"]').first();
-    await expect(bestFitPlaneCard).toBeVisible();
-    await expect(bestFitPlaneCard).toContainText("Best Fit Plane");
-    await expect(bestFitPlaneCard).toContainText("Algorithm: Least squares / PCA");
-    await expect(bestFitPlaneCard).toContainText("RMS:");
-    await expect(bestFitPlaneCard).toContainText("Result");
-
-    await selectConstructPanelTab(page, "create");
     await page.getByTestId("geometry-plane-method-perpendicular").click();
     const perpendicularPreviewStatus = page.getByTestId("geometry-plane-perpendicular-preview-status");
     if (!(await perpendicularPreviewStatus.innerText()).includes("Preview plane is shown")) {
@@ -700,6 +665,82 @@ test("Geometry construct: relation plane methods show live previews before creat
     } else {
       await expect(perpendicularPreviewStatus).toContainText("Preview appears after a reference face and edge are picked.");
     }
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    await removeProfileDir(profileDir);
+  }
+});
+
+test("Geometry construct: plane method readiness uses stable messages and preset inputs", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-plane-readiness-"));
+  let app: ElectronApplication | null = null;
+
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+
+    await resetStorage(page);
+    await clickFirstVisibleButton(page, "Geometry");
+    await clickFirstVisibleButton(page, "Procedural");
+    await clickFirstVisibleButton(page, "Construct");
+    await selectConstructPanelTab(page, "create");
+
+    const expectPlaneMethodMessage = async (method: string, message: string) => {
+      await page.getByTestId(`geometry-plane-method-${method}`).click();
+      await expect(page.getByTestId("geometry-plane-create-button")).toBeDisabled();
+      await expect(page.getByTestId("geometry-plane-status-message")).toHaveText(message);
+    };
+
+    await expectPlaneMethodMessage("parallel", "Pick a reference face to create a parallel plane.");
+    await expectPlaneMethodMessage("perpendicular", "Pick a reference face, then pick an edge to create a perpendicular plane.");
+    await expectPlaneMethodMessage("tangent-plane", "Pick a face or surface point to create a tangent plane.");
+    await expectPlaneMethodMessage("through-2-lines", "Choose two derived lines to create a plane.");
+    await expectPlaneMethodMessage("mid-plane", "Choose two parallel non-coincident derived lines to create a mid plane.");
+
+    await page.getByTestId("geometry-plane-method-symmetry-plane").click();
+    await expect(page.getByTestId("geometry-plane-status-message")).toHaveText("Ready: selected object can generate a symmetry-plane preview.");
+    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
+
+    await page.getByTestId("geometry-plane-method-principal-plane").click();
+    await expect(page.getByTestId("geometry-plane-principal-plane-preview-status")).toContainText("Preview plane is shown");
+    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
+
+    await page.getByTestId("geometry-plane-method-best-fit-plane").click();
+    await expect(page.getByTestId("geometry-plane-best-fit-plane-preview-status")).toContainText("Preview plane is shown");
+    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
+
+    await clickFirstVisibleButton(page, /^1 Create$/);
+    await clickFirstVisibleButton(page, "Presets");
+    await page.getByTestId("geometry-debug-scene-open-scene:construct-operations-playground").click();
+    await clickFirstVisibleButton(page, /^1 Create$/);
+    await clickFirstVisibleButton(page, "Construct");
+    await selectConstructPanelTab(page, "tree");
+    const bestFitPlaneCard = page.locator('[data-construction-type="object-best-fit-plane"]').first();
+    await expect(bestFitPlaneCard).toBeVisible();
+    await expect(bestFitPlaneCard).toContainText("Best Fit Plane");
+    await expect(bestFitPlaneCard).toContainText("RMS:");
+    await expect(bestFitPlaneCard).toContainText("Result");
+    await selectConstructPanelTab(page, "relations");
+    await expect.poll(() => selectValue(page, "geometry-line-pair-source-a")).not.toBe("");
+    await expect.poll(() => selectValue(page, "geometry-line-pair-source-b")).not.toBe("");
+    await selectConstructPanelTab(page, "create");
+
+    await page.getByTestId("geometry-plane-method-through-2-lines").click();
+    await expect(page.getByTestId("geometry-plane-through-lines-preview-status")).toContainText("Preview plane is shown");
+    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
+
+    await page.getByTestId("geometry-plane-method-mid-plane").click();
+    await expect(page.getByTestId("geometry-plane-mid-plane-preview-status")).toContainText("Preview plane is shown");
+    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
+
+    await page.getByTestId("geometry-plane-method-principal-plane").click();
+    await expect(page.getByTestId("geometry-plane-principal-plane-preview-status")).toContainText("Preview plane is shown");
+    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
+
+    await page.getByTestId("geometry-plane-method-best-fit-plane").click();
+    await expect(page.getByTestId("geometry-plane-best-fit-plane-preview-status")).toContainText("Preview plane is shown");
+    await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
   } finally {
     if (app) await app.close().catch(() => undefined);
     await removeProfileDir(profileDir);

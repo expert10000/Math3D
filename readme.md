@@ -253,7 +253,11 @@ $env:MATH3D_PYTHON = (Get-Command python).Source
 npm --prefix renderer run test
 npm run test:app:startup:smoke
 npm run test:app:geometry:smoke
+npm run test:release:smoke
 ```
+
+Release confidence checks and clean-profile installer launch verification are documented in
+[`docs/release-smoke-tests.md`](docs/release-smoke-tests.md).
 
 ## Docs
 

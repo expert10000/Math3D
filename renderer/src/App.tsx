@@ -25089,7 +25089,7 @@ const App: React.FC = () => {
                 : linePair.coincident
                   ? "Coincident lines require another constraint."
                   : "Choose intersecting or parallel non-coincident lines."
-            : "Choose two derived lines.",
+            : "Choose two derived lines to create a plane.",
           inputs: [
             { label: "Line A", value: linePair?.lineA.name ?? "Need derived line", ok: !!linePair?.lineA },
             { label: "Line B", value: linePair?.lineB.name ?? "Need derived line", ok: !!linePair?.lineB },
@@ -25107,7 +25107,7 @@ const App: React.FC = () => {
           ready: !!faceTarget,
           planned: false,
           createLabel: "Create Parallel Plane",
-          message: faceTarget ? "Ready: selected face plane will be copied as a parallel plane." : "Pick a reference face.",
+          message: faceTarget ? "Ready: selected face plane will be copied as a parallel plane." : "Pick a reference face to create a parallel plane.",
           inputs: [
             { label: "Reference plane", value: faceTarget ? `Face ${faceTarget.faceIndex ?? "-"}` : "Need face pick", ok: !!faceTarget },
             { label: "Placement", value: "Parallel face plane", ok: !!faceTarget },
@@ -25121,8 +25121,8 @@ const App: React.FC = () => {
           message: faceTarget && edgeTarget
             ? "Ready: selected face and edge define the perpendicular plane."
             : faceTarget
-              ? "Reference plane set. Pick an edge for the perpendicular plane."
-              : "Pick a source face first.",
+              ? "Reference face set. Pick an edge to create a perpendicular plane."
+              : "Pick a reference face, then pick an edge to create a perpendicular plane.",
           inputs: [
             { label: "Reference plane", value: faceTarget ? `Face ${faceTarget.faceIndex ?? "-"}` : "Need face pick", ok: !!faceTarget },
             { label: "Reference line", value: edgeTarget ? `Edge on ${edgeTarget.objectId}` : "Need edge pick", ok: !!edgeTarget },
@@ -25133,7 +25133,7 @@ const App: React.FC = () => {
           ready: !!faceTarget,
           planned: false,
           createLabel: "Create Offset Plane",
-          message: faceTarget ? "Ready: selected face will be offset by the distance below." : "Pick a reference face.",
+          message: faceTarget ? "Ready: selected face will be offset by the distance below." : "Pick a reference face to create an offset plane.",
           inputs: [
             { label: "Reference plane", value: faceTarget ? `Face ${faceTarget.faceIndex ?? "-"}` : "Need face pick", ok: !!faceTarget },
             { label: "Offset", value: fmt(geometryConstructOffsetDistance), ok: Number.isFinite(geometryConstructOffsetDistance) },
@@ -25148,7 +25148,7 @@ const App: React.FC = () => {
             ? linePair.canCreateMidPlane
               ? `Ready: parallel lines are ${fmt(linePair.distance)} apart.`
               : "Mid plane requires parallel non-coincident lines."
-            : "Choose two derived lines.",
+            : "Choose two parallel non-coincident derived lines to create a mid plane.",
           inputs: [
             { label: "Line A", value: linePair?.lineA.name ?? "Need derived line", ok: !!linePair?.lineA },
             { label: "Line B", value: linePair?.lineB.name ?? "Need derived line", ok: !!linePair?.lineB },
@@ -25166,7 +25166,7 @@ const App: React.FC = () => {
           ready: !!faceTarget,
           planned: false,
           createLabel: "Create Tangent Plane",
-          message: faceTarget ? "Ready: face pick supplies the point and normal." : "Pick a face or surface point.",
+          message: faceTarget ? "Ready: face pick supplies the point and normal." : "Pick a face or surface point to create a tangent plane.",
           inputs: [
             { label: "Surface", value: faceTarget ? faceTarget.objectId : "Need face pick", ok: !!faceTarget },
             { label: "Point source", value: faceTarget ? `Face ${faceTarget.faceIndex ?? "-"} pick` : "Surface pick", ok: !!faceTarget },
@@ -25177,7 +25177,7 @@ const App: React.FC = () => {
           ready: !!geometrySelectedObjectId,
           planned: false,
           createLabel: "Create Symmetry Plane",
-          message: geometrySelectedObjectId ? "Ready: selected object can generate a symmetry-plane preview." : "Select an object.",
+          message: geometrySelectedObjectId ? "Ready: selected object can generate a symmetry-plane preview." : "Select an object to create a symmetry plane.",
           inputs: [
             { label: "Object", value: geometrySelectedObjectId ?? "Need object selection", ok: !!geometrySelectedObjectId },
             { label: "Method", value: "Automatic", ok: !!geometrySelectedObjectId },
@@ -25190,7 +25190,7 @@ const App: React.FC = () => {
           createLabel: "Create Principal Plane",
           message: geometrySelectedObjectId
             ? `Ready: ${GEOMETRY_PRINCIPAL_PLANE_OUTPUT_LABELS[geometryPrincipalPlaneOutput]} plane will be created from the selected object.`
-            : "Select an object.",
+            : "Select an object to create a principal plane.",
           inputs: [
             { label: "Object", value: geometrySelectedObjectId ?? "Need object selection", ok: !!geometrySelectedObjectId },
             { label: "Output", value: GEOMETRY_PRINCIPAL_PLANE_OUTPUT_LABELS[geometryPrincipalPlaneOutput], ok: !!geometrySelectedObjectId },
@@ -25205,7 +25205,7 @@ const App: React.FC = () => {
             ? `Ready: least-squares plane from ${geometryBestFitPlaneObjectAnalysis.count} vertices; RMS ${fmt(geometryBestFitPlaneObjectAnalysis.rms)}.`
             : geometrySelectedObjectId
               ? "Selected object does not have enough valid vertices for a best-fit plane."
-              : "Select an object.",
+              : "Select an object with at least three valid vertices to create a best-fit plane.",
           inputs: [
             { label: "Object", value: geometryBestFitPlaneObjectAnalysis?.objectName ?? geometrySelectedObjectId ?? "Need object selection", ok: !!geometryBestFitPlaneObjectAnalysis },
             { label: "Algorithm", value: "Least squares / PCA", ok: !!geometryBestFitPlaneObjectAnalysis },
@@ -65115,7 +65115,10 @@ case "mobius":
                                       );
                                     })}
                                   </div>
-                                  <div style={{ color: geometryPlaneMethodStatus.ready ? "#166534" : geometryPlaneMethodStatus.planned ? "#64748b" : "#92400e" }}>
+                                  <div
+                                    data-testid="geometry-plane-status-message"
+                                    style={{ color: geometryPlaneMethodStatus.ready ? "#166534" : geometryPlaneMethodStatus.planned ? "#64748b" : "#92400e" }}
+                                  >
                                     {geometryPlaneMethodStatus.message}
                                   </div>
                                   {geometryPlaneConstructionMethod === "through-3-points" && (

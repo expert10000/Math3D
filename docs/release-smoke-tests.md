@@ -12,6 +12,8 @@ Prevent installer regressions by validating packaged behavior in a repeatable wa
   - `npm run test:release:smoke`
 - re-check existing build/install:
   - `powershell -ExecutionPolicy Bypass -File scripts/release-smoke.ps1 -SkipBuild -SkipInstall`
+- clean-profile installed-app launch check:
+  - `powershell -ExecutionPolicy Bypass -File scripts/release-smoke.ps1 -SkipBuild -StrictLaunchCheck`
 
 ## What the smoke run validates
 
@@ -31,19 +33,20 @@ Prevent installer regressions by validating packaged behavior in a repeatable wa
    - `ping`
    - `mesh.preview` (simple mesh op)
    - `mesh.transform` with `vtk_clean_normals` (VTK-based op)
-8. App launch check passes (unless `-SkipLaunchCheck`).
+8. App launch check passes against a temporary clean profile (unless `-SkipLaunchCheck`).
 9. Worker smoke passes even when python/conda paths are removed from `PATH`.
 
 ## Manual release checklist
 
 1. Run `npm run smoke:release` on release machine.
-2. Install same installer on a clean Windows VM with no Python installation.
-3. Launch app from Start Menu / install folder.
-4. In implicit mode:
+2. Re-run the launch check against the built installer with `powershell -ExecutionPolicy Bypass -File scripts/release-smoke.ps1 -SkipBuild -StrictLaunchCheck`.
+3. Install same installer on a clean Windows VM with no Python installation.
+4. Launch app from Start Menu / install folder.
+5. In implicit mode:
    - run `preview (VTK)`
    - run `gcalc (CGAL)`
-5. Confirm no fallback/setup prompt for system Python.
-6. If any failure occurs, collect diagnostics log from:
+6. Confirm no fallback/setup prompt for system Python.
+7. If any failure occurs, collect diagnostics log from:
    - `%APPDATA%\Math3D\logs\python-worker-diagnostics.log`
 
 ## GitHub Actions

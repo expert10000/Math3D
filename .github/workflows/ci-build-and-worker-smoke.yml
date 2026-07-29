@@ -43,10 +43,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '24.15.0'
           cache: 'npm'
@@ -55,14 +55,14 @@ jobs:
         run: node --version
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: python/worker/requirements.freeze.txt
 
       - name: Cache Electron downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ env.electron_config_cache }}
           key: ${{ runner.os }}-electron-cache-${{ hashFiles('package-lock.json') }}
@@ -147,7 +147,7 @@ jobs:
 
       - name: Upload build artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ci-build-and-worker-smoke-artifacts
           if-no-files-found: warn
@@ -169,10 +169,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '24.15.0'
           cache: 'npm'
@@ -181,14 +181,14 @@ jobs:
         run: node --version
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: python/worker/requirements.freeze.txt
 
       - name: Cache Electron downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ env.electron_config_cache }}
           key: ${{ runner.os }}-electron-cache-${{ hashFiles('package-lock.json') }}
@@ -263,11 +263,11 @@ jobs:
         run: npm run test:app:e2e:smoke
 
       - name: Upload smoke artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: ${{ always() && (hashFiles('playwright-report/**') != '' || hashFiles('test-results/**') != '') }}
+        uses: actions/upload-artifact@v7
         with:
           name: ci-app-smoke-artifacts
-          if-no-files-found: warn
+          if-no-files-found: error
           path: |
             playwright-report/**
             test-results/**
@@ -289,10 +289,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '24.15.0'
           cache: 'npm'
@@ -301,14 +301,14 @@ jobs:
         run: node --version
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: python/worker/requirements.freeze.txt
 
       - name: Cache Electron downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ env.electron_config_cache }}
           key: ${{ runner.os }}-electron-cache-${{ hashFiles('package-lock.json') }}
@@ -383,7 +383,7 @@ jobs:
 
       - name: Upload slow e2e artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ci-slow-app-e2e-artifacts
           if-no-files-found: warn
