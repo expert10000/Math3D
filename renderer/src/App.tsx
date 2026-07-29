@@ -34,6 +34,7 @@ import { SelectionStatsPanel } from "./components/SelectionStatsPanel";
 import { DiskStatsPanel } from "./components/DiskStatsPanel";
 import { WorkbookPanel } from "./components/WorkbookPanel";
 import { GeometryPickReadout } from "./components/GeometryPickReadout";
+import { ActiveSelectionCard, type ActiveSelectionCardProps } from "./components/ActiveSelectionCard";
 import {
   ContextualActionStrip,
   ContextualActionStripAction,
@@ -15212,6 +15213,26 @@ const App: React.FC = () => {
       prev.map((entry) => (entry.slotId === slotId ? { ...entry, value: null } : entry))
     );
   }, []);
+  const handleClearGeometryContextSelection = useCallback(() => {
+    setGeometryProceduralPick(null);
+    setGeometryProceduralHoverPick(null);
+    if (geometryProbeSelectionMode === "object") {
+      setGeometrySelectedObjectId(null);
+      setGeometryOperationInputs((prev) =>
+        prev.map((entry) => (entry.slotId === "primary-object" ? { ...entry, value: null } : entry))
+      );
+      return;
+    }
+    const slotId =
+      geometryProbeSelectionMode === "face"
+        ? "source-face"
+        : geometryProbeSelectionMode === "edge"
+          ? "active-edge"
+          : "active-vertex";
+    setGeometryOperationInputs((prev) =>
+      prev.map((entry) => (entry.slotId === slotId ? { ...entry, value: null } : entry))
+    );
+  }, [geometryProbeSelectionMode]);
   const handleUseProbeForGeometryOperationInput = useCallback(
     (slotId: GeometryOperationInputSlotId) => {
       const slot = geometryOperationInputBySlot.get(slotId);
@@ -15301,6 +15322,34 @@ const App: React.FC = () => {
     geometrySelectedSceneObject,
     geometryVertexOperationPick,
   ]);
+  const geometryActiveSelectionCardType =
+    geometryProbeSelectionMode === "face"
+      ? "Face"
+      : geometryProbeSelectionMode === "edge"
+        ? "Edge"
+        : geometryProbeSelectionMode === "vertex"
+          ? "Vertex"
+          : "Object";
+  const geometryActiveSelectionCardActions =
+    geometryProbeSelectionMode === "face"
+      ? ["Extrude", "Inset", "Delete"]
+      : geometryProbeSelectionMode === "edge"
+        ? ["Split", "Mirror", "Offset"]
+        : geometryProbeSelectionMode === "vertex"
+          ? ["Marker", "Move"]
+          : ["Open Object", "Transform", "History"];
+  const geometryActiveSelectionCardId =
+    geometryProbeSelectionMode === "face" && geometryHasFaceOperationPick && geometryFaceOperationPick?.faceIndex != null
+      ? `Face ${geometryFaceOperationPick.faceIndex}`
+      : geometryProbeSelectionMode === "edge" && geometryHasEdgeOperationPick && geometryEdgeOperationPick?.edgeVertices
+        ? `Edge ${geometryEdgeOperationPick.edgeVertices[0]}-${geometryEdgeOperationPick.edgeVertices[1]}`
+        : geometryProbeSelectionMode === "vertex" && geometryHasVertexOperationPick && geometryVertexOperationPick?.vertexIndex != null
+          ? `Vertex ${geometryVertexOperationPick.vertexIndex}`
+          : geometryProbeSelectionMode === "object" && geometrySelectedSceneObject
+            ? geometrySelectedSceneObject.name
+            : "none";
+  const geometryActiveSelectionCardEmptyState =
+    geometryActiveSelectionCardId === "none" ? geometryContextToolbarSelectionLabel : null;
   const geometryContextToolbarConfirmationLabel = useMemo(() => {
     if (!geometryLatestRecentAction) return null;
     if (geometryLatestRecentAction.kind === "construction") {
@@ -29389,6 +29438,7 @@ const App: React.FC = () => {
   const [surfaceMeshTopologyPickMode, setSurfaceMeshTopologyPickMode] = useState<SurfaceMeshTopologyPickMode>(
     () => readStoredSurfaceMeshContextualPickMode() ?? "auto"
   );
+  const [surfaceMeshTopologySelectionCleared, setSurfaceMeshTopologySelectionCleared] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -34439,6 +34489,7 @@ const App: React.FC = () => {
       setSurfaceMeshTopologyEdgeA(pick.edgeA);
       setSurfaceMeshTopologyEdgeB(pick.edgeB);
       setSurfaceMeshTopologyVertexIndex(pick.vertexIndex);
+      setSurfaceMeshTopologySelectionCleared(false);
       const detail =
         surfaceMeshTopologyPickMode === "face"
           ? `Face ${pick.faceIndex}; edge ${pick.edgeA}-${pick.edgeB} refreshed`
@@ -34457,6 +34508,11 @@ const App: React.FC = () => {
     surfaceMeshTopologyAutoPickStampRef.current = probeStamp;
     applySurfaceMeshTopologyPickToFields(surfaceMeshTopologyPick);
   }, [applySurfaceMeshTopologyPickToFields, probeEnabled, probeStamp, surfaceMeshTopologyPick, surfaceViewerKind]);
+  const handleClearSurfaceMeshTopologyContextSelection = useCallback(() => {
+    clearInspect();
+    setSurfaceMeshTopologySelectionCleared(true);
+    setSurfaceMeshTopologyStatus("Mesh topology selection cleared.");
+  }, [clearInspect]);
   const surfaceMeshConnectedComponentCount = useMemo(
     () => countMeshConnectedComponents(surfaceMeshData),
     [surfaceMeshData]
@@ -44590,18 +44646,63 @@ case "mobius":
   )}`;
   const meshContextToolbarSelectionLabel =
     surfaceMeshTopologyPickMode === "face"
-      ? surfaceMeshTopologyFieldValidation.faceValid
+      ? !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.faceValid
         ? selectedSurfaceMeshTopologyFaceLabel
         : "Click a face to enable Subdivide"
       : surfaceMeshTopologyPickMode === "edge"
-      ? surfaceMeshTopologyFieldValidation.edgeValid
+      ? !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.edgeValid
         ? selectedSurfaceMeshTopologyEdgeLabel
         : "Click an edge to enable Split / Collapse / Bevel"
       : surfaceMeshTopologyPickMode === "vertex"
-      ? surfaceMeshTopologyFieldValidation.vertexValid
+      ? !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.vertexValid
         ? selectedSurfaceMeshTopologyVertexLabel
         : "Click a vertex to enable Marker"
       : `Selected mesh: ${surfaceMeshLabel}`;
+  const meshActiveSelectionCardType: ActiveSelectionCardProps["type"] =
+    surfaceMeshTopologyPickMode === "face"
+      ? "Face"
+      : surfaceMeshTopologyPickMode === "edge"
+        ? "Edge"
+        : surfaceMeshTopologyPickMode === "vertex"
+          ? "Vertex"
+          : "Object";
+  const meshActiveSelectionCardActions =
+    surfaceMeshTopologyPickMode === "face"
+      ? ["Subdivide"]
+      : surfaceMeshTopologyPickMode === "edge"
+        ? ["Split", "Collapse", "Bevel"]
+        : surfaceMeshTopologyPickMode === "vertex"
+          ? ["Marker"]
+          : ["Promote", "Save edited", "Mesh source"];
+  const meshActiveSelectionCardId =
+    surfaceMeshTopologyPickMode === "face" &&
+    !surfaceMeshTopologySelectionCleared &&
+    surfaceMeshTopologyFieldValidation.faceValid
+      ? `Face ${Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0))}`
+      : surfaceMeshTopologyPickMode === "edge" &&
+          !surfaceMeshTopologySelectionCleared &&
+          surfaceMeshTopologyFieldValidation.edgeValid
+        ? `Edge ${Math.max(0, Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeA || 0))}-${Math.max(
+            0,
+            Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeB || 0)
+          )}`
+        : surfaceMeshTopologyPickMode === "vertex" &&
+            !surfaceMeshTopologySelectionCleared &&
+            surfaceMeshTopologyFieldValidation.vertexValid
+          ? `Vertex ${Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0))}`
+          : surfaceMeshTopologyPickMode === "auto" && surfaceMeshData
+            ? surfaceMeshLabel
+            : "none";
+  const meshActiveSelectionCardEmptyState =
+    meshActiveSelectionCardId === "none"
+      ? surfaceMeshTopologyPickMode === "face"
+        ? "Click a face to enable Subdivide"
+        : surfaceMeshTopologyPickMode === "edge"
+          ? "Click an edge to enable Split / Collapse / Bevel"
+          : surfaceMeshTopologyPickMode === "vertex"
+            ? "Click a vertex to enable Marker"
+            : "Load a mesh to enable object actions"
+      : null;
   const meshContextToolbarConfirmationLabel =
     surfaceMeshTopologyHistory[0]?.resultLabel ? `Done: ${surfaceMeshTopologyHistory[0].resultLabel}` : null;
   const meshContextToolbarLastCommandLabel = surfaceMeshTopologyHistory[0]
@@ -47270,11 +47371,11 @@ case "mobius":
   ]);
   const meshContextCanRunPrimaryAction =
     surfaceMeshTopologyPickMode === "face"
-      ? surfaceMeshTopologyFieldValidation.faceValid
+      ? !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.faceValid
       : surfaceMeshTopologyPickMode === "edge"
-        ? surfaceMeshTopologyFieldValidation.edgeValid
+        ? !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.edgeValid
         : surfaceMeshTopologyPickMode === "vertex"
-          ? surfaceMeshTopologyFieldValidation.vertexValid
+          ? !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.vertexValid
           : surfaceMeshExportable;
   const vtkMeshAvailable = !!surfaceSampleSet?.meshData?.length;
 
@@ -55390,6 +55491,7 @@ case "mobius":
                   surfaceMeshTopologyFieldValidation={surfaceMeshTopologyFieldValidation}
                   surfaceMeshTopologyPreview={surfaceMeshTopologyPreview}
                   surfaceMeshTopologyPickSummary={surfaceMeshTopologyPickSummary}
+                  surfaceMeshTopologySelectionCleared={surfaceMeshTopologySelectionCleared}
                   surfaceMeshTopologyStatus={surfaceMeshTopologyStatus}
                   onExportSurfaceMeshObj={handleExportSurfaceMeshObj}
                   onExportSurfaceMeshPly={handleExportSurfaceMeshPly}
@@ -55420,10 +55522,11 @@ case "mobius":
                   onUseSurfaceMeshTopologyPick={applySurfaceMeshTopologyPickToFields}
                   onSurfaceMeshFaceSubdivide={handleSurfaceMeshFaceSubdivide}
                   onSurfaceMeshSplitEdge={handleSurfaceMeshSplitEdge}
-  onSurfaceMeshCollapseEdge={handleSurfaceMeshCollapseEdge}
-  onSurfaceMeshBevelEdge={handleSurfaceMeshBevelEdge}
-  onApplySurfaceMeshTopologySelectedPreview={handleApplySurfaceMeshTopologySelectedPreview}
-  surfaceMeshTopologySaveName={surfaceMeshTopologySaveName}
+                  onSurfaceMeshCollapseEdge={handleSurfaceMeshCollapseEdge}
+                  onSurfaceMeshBevelEdge={handleSurfaceMeshBevelEdge}
+                  onApplySurfaceMeshTopologySelectedPreview={handleApplySurfaceMeshTopologySelectedPreview}
+                  onClearSurfaceMeshTopologySelection={handleClearSurfaceMeshTopologyContextSelection}
+                  surfaceMeshTopologySaveName={surfaceMeshTopologySaveName}
   onChangeSurfaceMeshTopologySaveName={setSurfaceMeshTopologySaveName}
   onSaveSurfaceMeshTopologyEditedPreset={handleSaveSurfaceMeshTopologyEditedPreset}
   implicitBakeResolution={implicitBakeResolution}
@@ -59285,7 +59388,7 @@ case "mobius":
                         <ContextualActionStripAction
                           testId="mesh-context-subdivide-face"
                           onClick={handleSurfaceMeshFaceSubdivide}
-                          disabled={!surfaceMeshTopologyFieldValidation.faceValid}
+                          disabled={surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.faceValid}
                           disabledReason="Click a mesh face to enable Subdivide."
                           pulse={contextualActionPulseId === "mesh:face-subdivide"}
                         >
@@ -59304,7 +59407,7 @@ case "mobius":
                         <ContextualActionStripAction
                           testId="mesh-context-split-edge"
                           onClick={handleSurfaceMeshSplitEdge}
-                          disabled={!surfaceMeshTopologyFieldValidation.edgeValid}
+                          disabled={surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.edgeValid}
                           disabledReason="Click an edge to enable Split."
                           pulse={contextualActionPulseId === "mesh:edge-split"}
                         >
@@ -59313,7 +59416,7 @@ case "mobius":
                         <ContextualActionStripAction
                           testId="mesh-context-collapse-edge"
                           onClick={handleSurfaceMeshCollapseEdge}
-                          disabled={!surfaceMeshTopologyFieldValidation.edgeValid}
+                          disabled={surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.edgeValid}
                           disabledReason="Click an edge to enable Collapse."
                           pulse={contextualActionPulseId === "mesh:edge-collapse"}
                         >
@@ -59322,7 +59425,7 @@ case "mobius":
                         <ContextualActionStripAction
                           testId="mesh-context-bevel-edge"
                           onClick={handleSurfaceMeshBevelEdge}
-                          disabled={!surfaceMeshTopologyFieldValidation.edgeValid}
+                          disabled={surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.edgeValid}
                           disabledReason="Click an edge to enable Bevel."
                           pulse={contextualActionPulseId === "mesh:edge-bevel"}
                         >
@@ -59334,7 +59437,7 @@ case "mobius":
                       <>
                         <ContextualActionStripAction
                           onClick={() => setSurfaceMeshTopologyStatus(`${selectedSurfaceMeshTopologyVertexLabel} marker active.`)}
-                          disabled={!surfaceMeshTopologyFieldValidation.vertexValid}
+                          disabled={surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.vertexValid}
                           disabledReason="Click a vertex to enable Marker."
                         >
                           Marker
@@ -61601,6 +61704,11 @@ case "mobius":
                       surfaceId={activeEqSurfaceId}
                       paramId={paramSurfaceId}
                       surfaceMeshLabel={surfaceMeshLabel}
+                      meshActiveSelectionCardType={meshActiveSelectionCardType}
+                      meshActiveSelectionCardId={meshActiveSelectionCardId}
+                      meshActiveSelectionCardActions={meshActiveSelectionCardActions}
+                      meshActiveSelectionCardEmptyState={meshActiveSelectionCardEmptyState}
+                      onClearSurfaceMeshTopologySelection={handleClearSurfaceMeshTopologyContextSelection}
                       surfaceMeshStats={surfaceMeshStats}
                       surfaceMeshBounds={surfaceMeshBounds}
                       surfaceMeshSource={surfaceMeshData?.source ?? null}
@@ -75497,6 +75605,15 @@ case "mobius":
                               fontSize: 11,
                             }}
                           >
+                            <ActiveSelectionCard
+                              testId="geometry-active-selection-card"
+                              workspace="Geometry"
+                              type={geometryActiveSelectionCardType}
+                              entityId={geometryActiveSelectionCardId}
+                              actions={geometryActiveSelectionCardActions}
+                              emptyState={geometryActiveSelectionCardEmptyState}
+                              onClearSelection={handleClearGeometryContextSelection}
+                            />
                             <div>
                               <strong>Pick Mode</strong>
                               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
@@ -86252,6 +86369,7 @@ type SurfacesLeftPanelProps = {
     bevelEdge: string | null;
   };
   surfaceMeshTopologyPickSummary: string | null;
+  surfaceMeshTopologySelectionCleared: boolean;
   surfaceMeshTopologyStatus: string | null;
   onExportSurfaceMeshObj: () => void;
   onExportSurfaceMeshPly: () => void;
@@ -86282,6 +86400,7 @@ type SurfacesLeftPanelProps = {
   onSurfaceMeshCollapseEdge: () => void;
   onSurfaceMeshBevelEdge: () => void;
   onApplySurfaceMeshTopologySelectedPreview: () => void;
+  onClearSurfaceMeshTopologySelection: () => void;
   surfaceMeshTopologySaveName: string;
   onChangeSurfaceMeshTopologySaveName: (value: string) => void;
   onSaveSurfaceMeshTopologyEditedPreset: () => void;
@@ -86941,6 +87060,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   surfaceMeshTopologyFieldValidation,
   surfaceMeshTopologyPreview,
   surfaceMeshTopologyPickSummary,
+  surfaceMeshTopologySelectionCleared,
   surfaceMeshTopologyStatus,
   onExportSurfaceMeshObj,
   onExportSurfaceMeshPly,
@@ -86971,6 +87091,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onSurfaceMeshCollapseEdge,
   onSurfaceMeshBevelEdge,
   onApplySurfaceMeshTopologySelectedPreview,
+  onClearSurfaceMeshTopologySelection,
   surfaceMeshTopologySaveName,
   onChangeSurfaceMeshTopologySaveName,
   onSaveSurfaceMeshTopologyEditedPreset,
@@ -87481,6 +87602,45 @@ onChangeImplicitExpr,
     0,
     Math.round(surfaceMeshTopologyVertexIndex || 0)
   )}`;
+  const meshActiveSelectionCardType =
+    surfaceMeshTopologyPickMode === "face"
+      ? "Face"
+      : surfaceMeshTopologyPickMode === "edge"
+        ? "Edge"
+        : surfaceMeshTopologyPickMode === "vertex"
+          ? "Vertex"
+          : "Object";
+  const meshActiveSelectionCardActions =
+    surfaceMeshTopologyPickMode === "face"
+      ? ["Subdivide"]
+      : surfaceMeshTopologyPickMode === "edge"
+        ? ["Split", "Collapse", "Bevel"]
+        : surfaceMeshTopologyPickMode === "vertex"
+          ? ["Marker"]
+          : ["Promote", "Save edited", "Mesh source"];
+  const meshActiveSelectionCardId =
+    surfaceMeshTopologyPickMode === "face" && !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.faceValid
+      ? `Face ${Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0))}`
+      : surfaceMeshTopologyPickMode === "edge" && !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.edgeValid
+        ? `Edge ${Math.max(0, Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeA || 0))}-${Math.max(
+            0,
+            Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeB || 0)
+          )}`
+        : surfaceMeshTopologyPickMode === "vertex" && !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.vertexValid
+          ? `Vertex ${Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0))}`
+          : surfaceMeshTopologyPickMode === "auto" && meshReady
+            ? surfaceMeshLabel
+            : "none";
+  const meshActiveSelectionCardEmptyState =
+    meshActiveSelectionCardId === "none"
+      ? surfaceMeshTopologyPickMode === "face"
+        ? "Click a face to enable Subdivide"
+        : surfaceMeshTopologyPickMode === "edge"
+          ? "Click an edge to enable Split / Collapse / Bevel"
+          : surfaceMeshTopologyPickMode === "vertex"
+            ? "Click a vertex to enable Marker"
+            : "Load a mesh to enable object actions"
+      : null;
   const surfaceMeshTopologyFaceGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Face Subdivide");
   const surfaceMeshTopologySplitGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Split Edge");
   const surfaceMeshTopologyCollapseGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Collapse Edge");
@@ -94468,6 +94628,11 @@ type SurfacesRightPanelProps = {
   surfaceId: SurfaceId;
   paramId: ParamSurfaceId;
   surfaceMeshLabel: string;
+  meshActiveSelectionCardType: ActiveSelectionCardProps["type"];
+  meshActiveSelectionCardId: ActiveSelectionCardProps["entityId"];
+  meshActiveSelectionCardActions: ActiveSelectionCardProps["actions"];
+  meshActiveSelectionCardEmptyState: ActiveSelectionCardProps["emptyState"];
+  onClearSurfaceMeshTopologySelection: () => void;
   surfaceMeshStats: { vertCount: number; triCount: number } | null;
   surfaceMeshBounds: BBox3 | null;
   surfaceMeshSource: SurfaceMeshSource | null;
@@ -94670,6 +94835,11 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   surfaceId,
   paramId,
   surfaceMeshLabel,
+  meshActiveSelectionCardType,
+  meshActiveSelectionCardId,
+  meshActiveSelectionCardActions,
+  meshActiveSelectionCardEmptyState,
+  onClearSurfaceMeshTopologySelection,
   surfaceMeshStats,
   surfaceMeshBounds,
   surfaceMeshSource,
@@ -95436,6 +95606,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             <button
               key={`inspector-tab-${tab.id}`}
               type="button"
+              data-testid={`mesh-inspector-tab-${tab.id}`}
               onClick={() => setInspectorPanelTab(tab.id)}
               style={pill(inspectorPanelTab === tab.id)}
               aria-pressed={inspectorPanelTab === tab.id}
@@ -95444,6 +95615,15 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             </button>
           ))}
         </div>
+        <ActiveSelectionCard
+          testId="mesh-active-selection-card"
+          workspace="Mesh"
+          type={meshActiveSelectionCardType}
+          entityId={meshActiveSelectionCardId}
+          actions={meshActiveSelectionCardActions}
+          emptyState={meshActiveSelectionCardEmptyState}
+          onClearSelection={onClearSurfaceMeshTopologySelection}
+        />
         <div
           style={{
             position: "sticky",
@@ -95689,27 +95869,27 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
         {inspectorPanelTab === "selection" && (
           <div style={inspectorSectionCard}>
-            <div style={inspectorSectionTitle}>Selection</div>
-            <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
-              <div>
-                <strong>Selected point p:</strong>{" "}
-                {probeInfo?.point ? `(${fmt(probeInfo.point.x)}, ${fmt(probeInfo.point.y)}, ${fmt(probeInfo.point.z)})` : "none"}
+              <div style={inspectorSectionTitle}>Selection</div>
+              <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+                <div>
+                  <strong>Selected point p:</strong>{" "}
+                  {probeInfo?.point ? `(${fmt(probeInfo.point.x)}, ${fmt(probeInfo.point.y)}, ${fmt(probeInfo.point.z)})` : "none"}
+                </div>
+                <div>
+                  <strong>Normal n:</strong>{" "}
+                  {probeInfo?.normal ? `(${fmt(probeInfo.normal.x)}, ${fmt(probeInfo.normal.y)}, ${fmt(probeInfo.normal.z)})` : "none"}
+                </div>
+                <div>
+                  <strong>Chart coordinates:</strong>{" "}
+                  {probeInfo?.uv
+                    ? `u,v=(${fmt(probeInfo.uv.u)}, ${fmt(probeInfo.uv.v)})`
+                    : probeInfo?.xy
+                      ? `x,y=(${fmt(probeInfo.xy.x)}, ${fmt(probeInfo.xy.y)})`
+                      : "n/a"}
+                </div>
+                <div><strong>Geodesic/path:</strong> {geodesicPathLength != null && Number.isFinite(geodesicPathLength) ? `length=${fmt(geodesicPathLength)}` : "n/a"}</div>
               </div>
-              <div>
-                <strong>Normal n:</strong>{" "}
-                {probeInfo?.normal ? `(${fmt(probeInfo.normal.x)}, ${fmt(probeInfo.normal.y)}, ${fmt(probeInfo.normal.z)})` : "none"}
-              </div>
-              <div>
-                <strong>Chart coordinates:</strong>{" "}
-                {probeInfo?.uv
-                  ? `u,v=(${fmt(probeInfo.uv.u)}, ${fmt(probeInfo.uv.v)})`
-                  : probeInfo?.xy
-                    ? `x,y=(${fmt(probeInfo.xy.x)}, ${fmt(probeInfo.xy.y)})`
-                    : "n/a"}
-              </div>
-              <div><strong>Geodesic/path:</strong> {geodesicPathLength != null && Number.isFinite(geodesicPathLength) ? `length=${fmt(geodesicPathLength)}` : "n/a"}</div>
             </div>
-          </div>
         )}
 
         {inspectorPanelTab === "probe" && (

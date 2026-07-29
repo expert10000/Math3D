@@ -52,13 +52,16 @@ const resetStorage = async (page: Page) => {
 };
 
 const removeProfileDir = async (profileDir: string) => {
-  for (let attempt = 0; attempt < 6; attempt += 1) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
     try {
       rmSync(profileDir, { recursive: true, force: true });
       return;
     } catch (error) {
-      if (attempt === 5) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+      if (attempt === 9) {
+        console.warn(`Unable to remove temporary profile ${profileDir}:`, error);
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
     }
   }
 };
@@ -331,6 +334,13 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
         await clickViewerUntilCommitted(page, "face");
         await expect(page.getByTestId("geometry-context-selection-label")).toContainText(
           contextualSelectionLabelPatterns.face
+        );
+        await expect(page.getByTestId("geometry-active-selection-card")).toBeVisible();
+        await expect(page.getByTestId("geometry-active-selection-card-workspace")).toHaveText("Geometry");
+        await expect(page.getByTestId("geometry-active-selection-card-type")).toHaveText("Face");
+        await expect(page.getByTestId("geometry-active-selection-card-id")).toContainText(/Face \d+/);
+        await expect(page.getByTestId("geometry-active-selection-card-actions")).toContainText(
+          "Extrude, Inset, Delete"
         );
       },
     });

@@ -53,6 +53,25 @@ async function selectSection(page: Page, label: (typeof sectionLabels)[number]):
   );
 }
 
+async function findMainWindow(app: ElectronApplication): Promise<Page> {
+  const firstWindow = await app.firstWindow();
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const windows = app.windows();
+    for (const candidate of windows.length ? windows : [firstWindow]) {
+      await candidate.waitForLoadState("domcontentloaded", { timeout: 1_000 }).catch(() => undefined);
+      const hasAppHeading = await candidate
+        .getByRole("heading", { name: /^math3d$/i, level: 1 })
+        .isVisible()
+        .catch(() => false);
+      if (hasAppHeading) return candidate;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  await expect(firstWindow.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
+  return firstWindow;
+}
+
 async function launchApp(): Promise<{ app: ElectronApplication; page: Page; profileDir: string }> {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-mesh-topology-"));
   const env: Record<string, string | undefined> = {
@@ -65,23 +84,32 @@ async function launchApp(): Promise<{ app: ElectronApplication; page: Page; prof
   delete env.ELECTRON_RUN_AS_NODE;
 
   const app = await launchRepoElectron({ args: ["."], cwd: repoRoot, env });
-  const page = await app.firstWindow();
-  await page.waitForLoadState("domcontentloaded");
-  await expect(page.getByText(/^math3d$/i).first()).toBeVisible();
+  const page = await findMainWindow(app);
   await page.evaluate((key) => {
     localStorage.clear();
     localStorage.setItem(key, "1");
   }, firstLaunchKey);
   await page.reload();
   await page.waitForLoadState("domcontentloaded");
-  await expect(page.getByText(/^math3d$/i).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
   return { app, page, profileDir };
 }
 
 async function closeApp(ctx: { app: ElectronApplication; profileDir: string } | null): Promise<void> {
   if (!ctx) return;
   await ctx.app.close().catch(() => undefined);
-  rmSync(ctx.profileDir, { recursive: true, force: true });
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      rmSync(ctx.profileDir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (attempt === 9) {
+        console.warn(`Unable to remove temporary profile ${ctx.profileDir}:`, error);
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+    }
+  }
 }
 
 async function openMeshGallery(page: Page): Promise<void> {
@@ -119,6 +147,12 @@ async function runTopologyDemo(
         );
         await expect(page.getByTestId("mesh-context-toolbar")).toContainText(contextualSelectionLabelPatterns.edge);
         await expect(page.getByTestId("mesh-topology-advanced-ids").first()).not.toHaveAttribute("open", "");
+        await page.getByTestId("mesh-inspector-tab-selection").click();
+        await expect(page.getByTestId("mesh-active-selection-card")).toBeVisible();
+        await expect(page.getByTestId("mesh-active-selection-card-workspace")).toHaveText("Mesh");
+        await expect(page.getByTestId("mesh-active-selection-card-type")).toHaveText("Edge");
+        await expect(page.getByTestId("mesh-active-selection-card-id")).toContainText(/Edge \d+-\d+/);
+        await expect(page.getByTestId("mesh-active-selection-card-actions")).toContainText("Split, Collapse, Bevel");
       },
     });
     await expect(page.getByTestId("mesh-context-last-command")).toContainText(/Last: Edge \d+-\d+ split/);
