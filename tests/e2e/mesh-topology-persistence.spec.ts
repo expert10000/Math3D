@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
 import { chooseContextualPickMode, expectContextualActionReady } from "./helpers/contextualToolbar";
+import { contextualSelectionLabelPatterns } from "./helpers/contextualSelectionLabels";
 import { clickSurfaceViewerCanvas } from "./helpers/viewerPicking";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
@@ -107,8 +108,10 @@ async function runTopologyDemo(
   if (operationButtonName === "Split Edge") {
     await chooseContextualPickMode(page, "mesh", "edge");
     await clickMeshViewerForSelection(page);
-    await expect(page.getByTestId("mesh-topology-selected-edge").first()).toContainText(/Selected edge:?\s+\d+-\d+/);
-    await expect(page.getByTestId("mesh-context-toolbar")).toContainText(/Selected edge:?\s+\d+-\d+/);
+    await expect(page.getByTestId("mesh-topology-selected-edge").first()).toContainText(
+      contextualSelectionLabelPatterns.edge
+    );
+    await expect(page.getByTestId("mesh-context-toolbar")).toContainText(contextualSelectionLabelPatterns.edge);
     await expect(page.getByTestId("mesh-topology-advanced-ids").first()).not.toHaveAttribute("open", "");
   }
   const operation =

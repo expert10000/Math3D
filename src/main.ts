@@ -62,14 +62,16 @@ const shouldSkipAutosaveRecovery = ["1", "true", "yes", "on", "y"].includes(
 );
 
 const configureDevProfilePaths = () => {
-  if (!isDev && !isE2e) return;
+  if (!isDev && !isE2e && !isStartupSmoke && !isGeometrySmoke) return;
 
   const explicitRoot = process.env.MATH3D_DEV_USER_DATA_DIR?.trim() || process.env.MATH3D_E2E_USER_DATA_DIR?.trim();
   const workspaceKey = process.cwd().replace(/[^a-zA-Z0-9._-]+/g, "_").slice(-80) || "workspace";
   const e2eRoot = process.env.LOCALAPPDATA?.trim() || process.env.APPDATA?.trim();
   const profileRoot = path.resolve(
     explicitRoot ||
-      (isE2e && e2eRoot ? path.join(e2eRoot, "math3d-e2e-profile") : path.join(os.tmpdir(), "math3d-electron-dev", workspaceKey))
+      ((isE2e || isStartupSmoke || isGeometrySmoke) && e2eRoot
+        ? path.join(e2eRoot, "math3d-e2e-profile")
+        : path.join(os.tmpdir(), "math3d-electron-dev", workspaceKey))
   );
   const sessionRoot = path.join(profileRoot, "session");
   const cacheRoot = path.join(profileRoot, "cache");

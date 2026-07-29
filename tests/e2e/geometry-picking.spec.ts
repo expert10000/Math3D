@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
 import { chooseContextualPickMode, expectContextualActionReady } from "./helpers/contextualToolbar";
+import { contextualSelectionLabelPatterns } from "./helpers/contextualSelectionLabels";
 import { pointGrid, surfaceViewerPickBox, type ViewerPoint } from "./helpers/viewerPicking";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
@@ -321,7 +322,7 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
     await chooseContextualPickMode(page, "geometry", "face");
     await clickViewerUntilCommitted(page, "face");
     const contextSelectionLabel = page.getByTestId("geometry-context-selection-label");
-    await expect(contextSelectionLabel).toContainText(/Selected face:?\s+\d+/);
+    await expect(contextSelectionLabel).toContainText(contextualSelectionLabelPatterns.face);
 
     const contextExtrude = page.getByTestId("geometry-context-extrude-face");
     await expectContextualActionReady(contextExtrude);

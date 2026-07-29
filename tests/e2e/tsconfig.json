@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "strictNullChecks": false,
+    "noImplicitAny": false,
+    "noEmit": true,
+    "types": ["node"],
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": [
+    "../../playwright.config.ts",
+    "./**/*.ts",
+    "../../scripts/**/*.mjs"
+  ]
+}

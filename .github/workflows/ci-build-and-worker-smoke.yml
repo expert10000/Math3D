@@ -120,11 +120,15 @@ jobs:
       - name: Run renderer unit tests
         run: npm --prefix renderer run test
 
+      - name: Run TypeScript noEmit checks
+        run: npm run typecheck:noemit
+
       - name: Install Python dependencies for worker freeze
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
           python -m pip install pyinstaller numpy scipy sympy vtk
+          python -c "import numpy, scipy, sympy, vtk; print('Python worker smoke dependencies available')"
           python -m pip install pygalmesh
           if ($LASTEXITCODE -ne 0) {
             Write-Warning "Optional dependency pygalmesh failed to install; continuing without mesh.generate support."
@@ -244,6 +248,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install numpy scipy sympy vtk
+          python -c "import numpy, scipy, sympy, vtk; print('Python worker smoke dependencies available')"
 
       - name: Build app
         run: npm run build:core
@@ -363,6 +368,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install pyinstaller numpy scipy sympy vtk
+          python -c "import numpy, scipy, sympy, vtk; print('Python worker smoke dependencies available')"
           python -m pip install pygalmesh
           if ($LASTEXITCODE -ne 0) {
             Write-Warning "Optional dependency pygalmesh failed to install; continuing without mesh.generate support."
