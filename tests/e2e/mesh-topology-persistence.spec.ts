@@ -107,8 +107,8 @@ async function runTopologyDemo(
   if (operationButtonName === "Split Edge") {
     await chooseContextualPickMode(page, "mesh", "edge");
     await clickMeshViewerForSelection(page);
-    await expect(page.getByTestId("mesh-topology-selected-edge").first()).toContainText(/Selected edge \d+-\d+/);
-    await expect(page.getByTestId("mesh-context-toolbar")).toContainText(/Selected edge \d+-\d+/);
+    await expect(page.getByTestId("mesh-topology-selected-edge").first()).toContainText(/Selected edge:?\s+\d+-\d+/);
+    await expect(page.getByTestId("mesh-context-toolbar")).toContainText(/Selected edge:?\s+\d+-\d+/);
     await expect(page.getByTestId("mesh-topology-advanced-ids").first()).not.toHaveAttribute("open", "");
   }
   const operation =

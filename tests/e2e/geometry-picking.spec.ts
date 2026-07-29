@@ -321,7 +321,7 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
     await chooseContextualPickMode(page, "geometry", "face");
     await clickViewerUntilCommitted(page, "face");
     const contextSelectionLabel = page.getByTestId("geometry-context-selection-label");
-    await expect(contextSelectionLabel).toContainText(/Selected face \d+/);
+    await expect(contextSelectionLabel).toContainText(/Selected face:?\s+\d+/);
 
     const contextExtrude = page.getByTestId("geometry-context-extrude-face");
     await expectContextualActionReady(contextExtrude);
