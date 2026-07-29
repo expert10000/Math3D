@@ -327,9 +327,8 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
       page,
       workspace: "geometry",
       pickMode: "face",
-      actionTestId: "geometry-context-extrude-face",
+      actionTestId: "geometry-active-selection-action-extrude-face",
       confirmation: /Done: Face \d+ extruded, V \d+ -> \d+, F \d+ -> \d+/,
-      runWithKeyboard: true,
       pickEntity: async () => {
         await clickViewerUntilCommitted(page, "face");
         await expect(page.getByTestId("geometry-context-selection-label")).toContainText(
@@ -344,6 +343,11 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
         );
       },
     });
+    await expect(page.getByTestId("geometry-active-selection-confirmation")).toContainText(
+      /Done: Face \d+ extruded, V \d+ -> \d+, F \d+ -> \d+/
+    );
+    await expect(page.getByTestId("geometry-active-selection-last-command")).toBeVisible();
+    await expect(page.getByTestId("geometry-active-selection-undo-last")).toBeVisible();
     await expect(page.getByTestId("geometry-context-last-command")).toContainText(/Last: Face \d+ extruded/);
     await page.getByTestId("geometry-context-open-history").click();
     await page.getByTestId("geometry-right-panel-tab-actions").click();

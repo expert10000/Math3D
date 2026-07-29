@@ -34,7 +34,11 @@ import { SelectionStatsPanel } from "./components/SelectionStatsPanel";
 import { DiskStatsPanel } from "./components/DiskStatsPanel";
 import { WorkbookPanel } from "./components/WorkbookPanel";
 import { GeometryPickReadout } from "./components/GeometryPickReadout";
-import { ActiveSelectionCard, type ActiveSelectionCardProps } from "./components/ActiveSelectionCard";
+import {
+  ActiveSelectionCard,
+  type ActiveSelectionCardAction,
+  type ActiveSelectionCardProps,
+} from "./components/ActiveSelectionCard";
 import {
   ContextualActionStrip,
   ContextualActionStripAction,
@@ -26831,6 +26835,128 @@ const App: React.FC = () => {
         : geometryProbeSelectionMode === "vertex"
           ? geometryHasVertexOperationPick
           : !!geometrySelectedSceneObject;
+  const geometryActiveSelectionCardActionButtons: readonly ActiveSelectionCardAction[] =
+    geometryProbeSelectionMode === "object"
+      ? [
+          {
+            label: "Open Object",
+            testId: "geometry-active-selection-action-open-object",
+            onClick: () => {
+              if (!geometrySelectedSceneObject) {
+                setGeometryCreateActionStatus("Select an object first.");
+                return;
+              }
+              setGeometrySelectedObjectId(geometrySelectedSceneObject.id);
+              setGeometryMode("procedural");
+              setGeometryProceduralPanelTab("object");
+              setGeometryRightPanelTab("selection");
+              accentGeometryMeshInfo(geometrySelectedSceneObject.id);
+              setGeometryCreateActionStatus(`Object details open for ${geometrySelectedSceneObject.name}.`);
+            },
+            disabled: !geometrySelectedSceneObject,
+            disabledReason: "Select an object to open its details.",
+          },
+          {
+            label: "Transform",
+            testId: "geometry-active-selection-action-transform",
+            onClick: () => {
+              setGeometryMode("procedural");
+              setGeometryProceduralPanelTab("transform");
+            },
+            disabled: !geometrySelectedSceneObject,
+            disabledReason: "Select an object to transform it.",
+          },
+          {
+            label: "History",
+            testId: "geometry-active-selection-action-history",
+            onClick: () => {
+              setGeometryMode("procedural");
+              setGeometryProceduralPanelTab("object");
+              setGeometryRightPanelTab("actions");
+              setGeometryCreateActionStatus("History is open in the Geometry inspector.");
+            },
+            disabled: !geometrySelectedSceneObject,
+            disabledReason: "Select an object to open its history.",
+          },
+        ]
+      : geometryProbeSelectionMode === "face"
+        ? [
+            {
+              label: "Extrude",
+              testId: "geometry-active-selection-action-extrude-face",
+              onClick: handleExtrudeSelectedFace,
+              disabled: !geometryFaceTopologyActionPreview.ready,
+              disabledReason: "Click a face to enable Extrude.",
+              pulse: contextualActionPulseId === "geometry:face-extrude",
+            },
+            {
+              label: "Inset",
+              testId: "geometry-active-selection-action-inset-face",
+              onClick: handleInsetSelectedFace,
+              disabled: !geometryHasFaceOperationPick,
+              disabledReason: "Click a face to enable Inset.",
+              pulse: contextualActionPulseId === "geometry:face-inset",
+            },
+            {
+              label: "Delete",
+              testId: "geometry-active-selection-action-delete-face",
+              onClick: handleDeleteSelectedFace,
+              disabled: !geometryHasFaceOperationPick,
+              disabledReason: "Click a face to enable Delete.",
+              pulse: contextualActionPulseId === "geometry:face-delete",
+            },
+          ]
+        : geometryProbeSelectionMode === "edge"
+          ? [
+              {
+                label: "Split",
+                testId: "geometry-active-selection-action-split-edge",
+                onClick: handleSplitSelectedProbeEdge,
+                disabled: !geometryEdgeTopologyActionPreview.split.ready,
+                disabledReason: "Click an edge to enable Split.",
+                pulse: contextualActionPulseId === "geometry:edge-split",
+              },
+              {
+                label: "Mirror",
+                testId: "geometry-active-selection-action-mirror-edge",
+                onClick: handleMirrorSelectedConstructionOperation,
+                disabled: !geometryHasEdgeOperationPick,
+                disabledReason: "Click an edge to enable Mirror.",
+                pulse: contextualActionPulseId === "geometry:mirror-copy",
+              },
+              {
+                label: "Offset",
+                testId: "geometry-active-selection-action-offset-edge",
+                onClick: () => {
+                  setContextualActionPulseId("geometry:offset");
+                  handleOffsetSelectedConstructionOperation();
+                },
+                disabled: !geometryHasEdgeOperationPick,
+                disabledReason: "Click an edge to enable Offset.",
+                pulse: contextualActionPulseId === "geometry:offset",
+              },
+            ]
+          : [
+              {
+                label: "Marker",
+                testId: "geometry-active-selection-action-vertex-marker",
+                onClick: () => {
+                  setContextualActionPulseId("geometry:vertex-marker");
+                  setGeometryCreateActionStatus(`${geometryContextToolbarSelectionLabel} marker active.`);
+                },
+                disabled: !geometryHasVertexOperationPick,
+                disabledReason: "Click a vertex to enable Marker.",
+                pulse: contextualActionPulseId === "geometry:vertex-marker",
+              },
+              {
+                label: "Move",
+                testId: "geometry-active-selection-action-move-vertex",
+                onClick: handleMoveSelectedVertex,
+                disabled: !geometryHasVertexOperationPick,
+                disabledReason: "Click a vertex to enable Move.",
+                pulse: contextualActionPulseId === "geometry:vertex-move",
+              },
+            ];
   const geometryConstructionOperationTargetLabel = useMemo(() => {
     if (geometrySelectedMathConstructionId) {
       const selected = geometryMathConstructions.find((entry) => entry.id === geometrySelectedMathConstructionId);
@@ -47377,6 +47503,96 @@ case "mobius":
         : surfaceMeshTopologyPickMode === "vertex"
           ? !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.vertexValid
           : surfaceMeshExportable;
+  const meshActiveSelectionCardActionButtons: readonly ActiveSelectionCardAction[] =
+    surfaceMeshTopologyPickMode === "face"
+      ? [
+          {
+            label: "Subdivide",
+            testId: "mesh-active-selection-action-subdivide-face",
+            onClick: handleSurfaceMeshFaceSubdivide,
+            disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.faceValid,
+            disabledReason: "Click a mesh face to enable Subdivide.",
+            pulse: contextualActionPulseId === "mesh:face-subdivide",
+          },
+          {
+            label: "Inset",
+            testId: "mesh-active-selection-action-inset-face",
+            disabled: true,
+            disabledReason: "Face inset is planned for the shared contextual toolbar.",
+          },
+          {
+            label: "Extrude",
+            testId: "mesh-active-selection-action-extrude-face",
+            disabled: true,
+            disabledReason: "Face extrude is planned for the shared contextual toolbar.",
+          },
+        ]
+      : surfaceMeshTopologyPickMode === "edge"
+        ? [
+            {
+              label: "Split",
+              testId: "mesh-active-selection-action-split-edge",
+              onClick: handleSurfaceMeshSplitEdge,
+              disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.edgeValid,
+              disabledReason: "Click an edge to enable Split.",
+              pulse: contextualActionPulseId === "mesh:edge-split",
+            },
+            {
+              label: "Collapse",
+              testId: "mesh-active-selection-action-collapse-edge",
+              onClick: handleSurfaceMeshCollapseEdge,
+              disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.edgeValid,
+              disabledReason: "Click an edge to enable Collapse.",
+              pulse: contextualActionPulseId === "mesh:edge-collapse",
+            },
+            {
+              label: "Bevel",
+              testId: "mesh-active-selection-action-bevel-edge",
+              onClick: handleSurfaceMeshBevelEdge,
+              disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.edgeValid,
+              disabledReason: "Click an edge to enable Bevel.",
+              pulse: contextualActionPulseId === "mesh:edge-bevel",
+            },
+          ]
+        : surfaceMeshTopologyPickMode === "vertex"
+          ? [
+              {
+                label: "Marker",
+                testId: "mesh-active-selection-action-vertex-marker",
+                onClick: () => setSurfaceMeshTopologyStatus(`${selectedSurfaceMeshTopologyVertexLabel} marker active.`),
+                disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.vertexValid,
+                disabledReason: "Click a vertex to enable Marker.",
+              },
+              {
+                label: "Move",
+                testId: "mesh-active-selection-action-move-vertex",
+                disabled: true,
+                disabledReason: "Vertex move will use the shared transform tools.",
+              },
+            ]
+          : [
+              {
+                label: "Promote",
+                testId: "mesh-active-selection-action-promote",
+                onClick: handleConvertToMesh,
+                disabled: !surfaceMeshExportable,
+                disabledReason: "Load an exportable mesh to enable Promote.",
+              },
+              {
+                label: "Save edited",
+                testId: "mesh-active-selection-action-save-edited",
+                onClick: handleSaveSurfaceMeshTopologyEditedPreset,
+                disabled: !surfaceMeshTopologyHistory.length,
+                disabledReason: "Apply a topology edit before saving an edited mesh.",
+              },
+              {
+                label: "Mesh source",
+                testId: "mesh-active-selection-action-mesh-source",
+                onClick: handleOpenMeshPromotionSourceGeometryObject,
+                disabled: !meshPromotionTrace,
+                disabledReason: "This mesh has no linked Geometry source yet.",
+              },
+            ];
   const vtkMeshAvailable = !!surfaceSampleSet?.meshData?.length;
 
   const cgalMeshInfo = useMemo(() => {
@@ -61707,7 +61923,13 @@ case "mobius":
                       meshActiveSelectionCardType={meshActiveSelectionCardType}
                       meshActiveSelectionCardId={meshActiveSelectionCardId}
                       meshActiveSelectionCardActions={meshActiveSelectionCardActions}
+                      meshActiveSelectionCardActionButtons={meshActiveSelectionCardActionButtons}
                       meshActiveSelectionCardEmptyState={meshActiveSelectionCardEmptyState}
+                      meshActiveSelectionCardConfirmationLabel={meshContextToolbarConfirmationLabel}
+                      meshActiveSelectionCardLastCommandLabel={meshContextToolbarLastCommandLabel}
+                      meshActiveSelectionCardCanUndoLast={surfaceMeshTopologyHistory.length > 0}
+                      onUndoSurfaceMeshTopologyEdit={undoLatestSurfaceMeshTopologyEdit}
+                      onOpenSurfaceMeshTopologyHistory={handleOpenMeshContextHistory}
                       onClearSurfaceMeshTopologySelection={handleClearSurfaceMeshTopologyContextSelection}
                       surfaceMeshStats={surfaceMeshStats}
                       surfaceMeshBounds={surfaceMeshBounds}
@@ -75611,7 +75833,17 @@ case "mobius":
                               type={geometryActiveSelectionCardType}
                               entityId={geometryActiveSelectionCardId}
                               actions={geometryActiveSelectionCardActions}
+                              actionButtons={geometryActiveSelectionCardActionButtons}
                               emptyState={geometryActiveSelectionCardEmptyState}
+                              confirmationLabel={geometryContextToolbarConfirmationLabel}
+                              confirmationTestId="geometry-active-selection-confirmation"
+                              lastCommandLabel={geometryContextToolbarLastCommandLabel}
+                              lastCommandTestId="geometry-active-selection-last-command"
+                              canUndoLast={geometryCanUndoLatestAction}
+                              onUndoLast={handleUndoLatestGeometryHistoryStep}
+                              undoTestId="geometry-active-selection-undo-last"
+                              onOpenHistory={handleOpenGeometryContextHistory}
+                              openHistoryTestId="geometry-active-selection-open-history"
                               onClearSelection={handleClearGeometryContextSelection}
                             />
                             <div>
@@ -94631,7 +94863,13 @@ type SurfacesRightPanelProps = {
   meshActiveSelectionCardType: ActiveSelectionCardProps["type"];
   meshActiveSelectionCardId: ActiveSelectionCardProps["entityId"];
   meshActiveSelectionCardActions: ActiveSelectionCardProps["actions"];
+  meshActiveSelectionCardActionButtons: readonly ActiveSelectionCardAction[];
   meshActiveSelectionCardEmptyState: ActiveSelectionCardProps["emptyState"];
+  meshActiveSelectionCardConfirmationLabel: ActiveSelectionCardProps["confirmationLabel"];
+  meshActiveSelectionCardLastCommandLabel: ActiveSelectionCardProps["lastCommandLabel"];
+  meshActiveSelectionCardCanUndoLast: boolean;
+  onUndoSurfaceMeshTopologyEdit: () => void;
+  onOpenSurfaceMeshTopologyHistory: () => void;
   onClearSurfaceMeshTopologySelection: () => void;
   surfaceMeshStats: { vertCount: number; triCount: number } | null;
   surfaceMeshBounds: BBox3 | null;
@@ -94838,7 +95076,13 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   meshActiveSelectionCardType,
   meshActiveSelectionCardId,
   meshActiveSelectionCardActions,
+  meshActiveSelectionCardActionButtons,
   meshActiveSelectionCardEmptyState,
+  meshActiveSelectionCardConfirmationLabel,
+  meshActiveSelectionCardLastCommandLabel,
+  meshActiveSelectionCardCanUndoLast,
+  onUndoSurfaceMeshTopologyEdit,
+  onOpenSurfaceMeshTopologyHistory,
   onClearSurfaceMeshTopologySelection,
   surfaceMeshStats,
   surfaceMeshBounds,
@@ -95621,7 +95865,17 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           type={meshActiveSelectionCardType}
           entityId={meshActiveSelectionCardId}
           actions={meshActiveSelectionCardActions}
+          actionButtons={meshActiveSelectionCardActionButtons}
           emptyState={meshActiveSelectionCardEmptyState}
+          confirmationLabel={meshActiveSelectionCardConfirmationLabel}
+          confirmationTestId="mesh-active-selection-confirmation"
+          lastCommandLabel={meshActiveSelectionCardLastCommandLabel}
+          lastCommandTestId="mesh-active-selection-last-command"
+          canUndoLast={meshActiveSelectionCardCanUndoLast}
+          onUndoLast={onUndoSurfaceMeshTopologyEdit}
+          undoTestId="mesh-active-selection-undo-last"
+          onOpenHistory={onOpenSurfaceMeshTopologyHistory}
+          openHistoryTestId="mesh-active-selection-open-history"
           onClearSelection={onClearSurfaceMeshTopologySelection}
         />
         <div

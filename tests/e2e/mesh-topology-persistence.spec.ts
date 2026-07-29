@@ -138,7 +138,7 @@ async function runTopologyDemo(
       page,
       workspace: "mesh",
       pickMode: "edge",
-      actionTestId: "mesh-context-split-edge",
+      actionTestId: "mesh-active-selection-action-split-edge",
       confirmation: /Done: Edge \d+-\d+ -> split vertex \(\+1V, \+2F\)/,
       pickEntity: async () => {
         await clickMeshViewerForSelection(page);
@@ -155,6 +155,11 @@ async function runTopologyDemo(
         await expect(page.getByTestId("mesh-active-selection-card-actions")).toContainText("Split, Collapse, Bevel");
       },
     });
+    await expect(page.getByTestId("mesh-active-selection-confirmation")).toContainText(
+      /Done: Edge \d+-\d+ -> split vertex \(\+1V, \+2F\)/
+    );
+    await expect(page.getByTestId("mesh-active-selection-last-command")).toBeVisible();
+    await expect(page.getByTestId("mesh-active-selection-undo-last")).toBeVisible();
     await expect(page.getByTestId("mesh-context-last-command")).toContainText(/Last: Edge \d+-\d+ split/);
     await page.getByTestId("mesh-context-open-history").click();
   } else {

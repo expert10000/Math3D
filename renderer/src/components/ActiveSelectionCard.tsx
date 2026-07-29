@@ -1,12 +1,31 @@
 import type { CSSProperties, ReactNode } from "react";
 
+export type ActiveSelectionCardAction = {
+  label: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  disabledReason?: string;
+  testId?: string;
+  pulse?: boolean;
+};
+
 export type ActiveSelectionCardProps = {
   testId: string;
   workspace: "Mesh" | "Geometry";
   type: "Object" | "Face" | "Edge" | "Vertex";
   entityId: ReactNode;
   actions: readonly string[];
+  actionButtons?: readonly ActiveSelectionCardAction[];
   emptyState?: ReactNode;
+  confirmationLabel?: ReactNode;
+  confirmationTestId?: string;
+  lastCommandLabel?: ReactNode;
+  lastCommandTestId?: string;
+  canUndoLast?: boolean;
+  onUndoLast?: () => void;
+  undoTestId?: string;
+  onOpenHistory?: () => void;
+  openHistoryTestId?: string;
   onClearSelection?: () => void;
 };
 
@@ -40,13 +59,41 @@ const labelStyle: CSSProperties = {
   fontWeight: 700,
 };
 
+const actionsRowStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 5,
+};
+
+const actionButtonStyle = (disabled?: boolean, pulse?: boolean): CSSProperties => ({
+  padding: "3px 8px",
+  fontSize: 10,
+  fontWeight: 800,
+  borderColor: disabled ? "#cbd5e1" : "#bfdbfe",
+  background: disabled ? "#f1f5f9" : pulse ? "#dcfce7" : "#ffffff",
+  color: disabled ? "#94a3b8" : pulse ? "#166534" : "#1e3a8a",
+  cursor: disabled ? "not-allowed" : "pointer",
+  opacity: disabled ? 0.88 : 1,
+  boxShadow: pulse ? "0 0 0 3px rgba(34, 197, 94, 0.18)" : undefined,
+});
+
 export function ActiveSelectionCard({
   testId,
   workspace,
   type,
   entityId,
   actions,
+  actionButtons,
   emptyState,
+  confirmationLabel,
+  confirmationTestId,
+  lastCommandLabel,
+  lastCommandTestId,
+  canUndoLast,
+  onUndoLast,
+  undoTestId,
+  onOpenHistory,
+  openHistoryTestId,
   onClearSelection,
 }: ActiveSelectionCardProps) {
   const hasSelection = !emptyState;
@@ -89,6 +136,70 @@ export function ActiveSelectionCard({
         <span style={labelStyle}>Available</span>
         <span data-testid={`${testId}-actions`}>{actions.length ? actions.join(", ") : "none"}</span>
       </div>
+      {actionButtons && actionButtons.length > 0 && (
+        <div style={rowStyle}>
+          <span style={labelStyle}>Run</span>
+          <span style={actionsRowStyle}>
+            {actionButtons.map((action) => (
+              <button
+                key={`${testId}-action-${action.label}`}
+                type="button"
+                data-testid={action.testId}
+                onClick={action.onClick}
+                disabled={action.disabled}
+                title={action.disabled ? action.disabledReason : undefined}
+                style={actionButtonStyle(action.disabled, action.pulse)}
+              >
+                {action.label}
+              </button>
+            ))}
+          </span>
+        </div>
+      )}
+      {confirmationLabel && (
+        <div
+          data-testid={confirmationTestId}
+          style={{
+            border: "1px solid #bbf7d0",
+            borderRadius: 8,
+            background: "#f0fdf4",
+            color: "#166534",
+            padding: "5px 7px",
+            fontWeight: 800,
+          }}
+        >
+          {confirmationLabel}
+        </div>
+      )}
+      {lastCommandLabel && (
+        <div
+          data-testid={lastCommandTestId}
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 6,
+            border: "1px solid #c7d2fe",
+            borderRadius: 8,
+            background: "#eef2ff",
+            color: "#3730a3",
+            padding: "5px 7px",
+            fontWeight: 800,
+          }}
+        >
+          <span>Last: {lastCommandLabel}</span>
+          {canUndoLast && onUndoLast && (
+            <button type="button" data-testid={undoTestId} onClick={onUndoLast} style={actionButtonStyle(false)}>
+              Undo
+            </button>
+          )}
+          {onOpenHistory && (
+            <button type="button" data-testid={openHistoryTestId} onClick={onOpenHistory} style={actionButtonStyle(false)}>
+              Open history
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
