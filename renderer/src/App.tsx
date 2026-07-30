@@ -15638,6 +15638,10 @@ const App: React.FC = () => {
     geometryVertexMoveAmount,
     geometryVertexOperationPick,
   ]);
+  const geometryViewportCommandPreviewLabel = useMemo(
+    () => geometryContextToolbarPreviewLabel?.replace(/^Preview:\s*/i, "") ?? null,
+    [geometryContextToolbarPreviewLabel]
+  );
   const tupleToGeometryPoint = useCallback((tuple: [number, number, number] | null | undefined): GeometryProbePoint | null => {
     if (!tuple || !tuple.every(Number.isFinite)) return null;
     return { x: tuple[0], y: tuple[1], z: tuple[2] };
@@ -20253,6 +20257,7 @@ const App: React.FC = () => {
   }, [geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails]);
   const geometryDirectEditPreviewFaceMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
     if (geometryMode !== "procedural") return null;
+    if (geometryProbeSelectionMode !== "face") return null;
     const selectedFace =
       geometryProbeSelectionDetails?.mode === "face" && geometryProbeSelectionDetails.faceVertices
         ? geometryProbeSelectionDetails
@@ -20265,11 +20270,19 @@ const App: React.FC = () => {
     const previewDistance = Math.abs(requestedDistance) > 1e-6 ? requestedDistance : 0.12;
     const positions: number[] = [];
     for (const vertex of faceVertices) {
+      positions.push(vertex.x, vertex.y, vertex.z);
+    }
+    for (const vertex of faceVertices) {
       positions.push(vertex.x + normal.x * previewDistance, vertex.y + normal.y * previewDistance, vertex.z + normal.z * previewDistance);
     }
     const indices: number[] = [];
     for (let i = 1; i + 1 < faceVertices.length; i += 1) {
-      indices.push(0, i, i + 1);
+      indices.push(faceVertices.length, faceVertices.length + i, faceVertices.length + i + 1);
+    }
+    for (let i = 0; i < faceVertices.length; i += 1) {
+      const next = (i + 1) % faceVertices.length;
+      indices.push(i, next, faceVertices.length + next);
+      indices.push(i, faceVertices.length + next, faceVertices.length + i);
     }
     return [
       {
@@ -20283,6 +20296,7 @@ const App: React.FC = () => {
   }, [
     geometryFaceExtrudeDistance,
     geometryMode,
+    geometryProbeSelectionMode,
     geometryProbeSelectionDetails,
     geometrySourceFaceOperationTarget,
   ]);
@@ -20488,7 +20502,7 @@ const App: React.FC = () => {
         : null;
     const faceVertices = selectedFace?.faceVertices ?? geometrySourceFaceOperationTarget?.faceVertices ?? null;
     const faceNormal = selectedFace?.normal ?? geometrySourceFaceOperationTarget?.normal ?? null;
-    if (faceVertices && faceVertices.length >= 3 && faceNormal) {
+    if (geometryProbeSelectionMode === "face" && faceVertices && faceVertices.length >= 3 && faceNormal) {
       const normal = geometryNormalizeVec(faceNormal) ?? { x: 0, y: 1, z: 0 };
       const requestedDistance = Number.isFinite(geometryFaceExtrudeDistance) ? geometryFaceExtrudeDistance : 0.15;
       const previewDistance = Math.abs(requestedDistance) > 1e-6 ? requestedDistance : 0.12;
@@ -20512,32 +20526,28 @@ const App: React.FC = () => {
         opacity: 0.62,
         radiusWorld: clampNumber(maxSpan * 0.007, 0.005, 0.016),
       });
-      const liftedFaceVertices = faceVertices.map((vertex) => geometryAdd(vertex, geometryScale(normal, 0.034)));
-      const subdivisionLines: PolylineSet = [];
-      if (geometryFaceSubdivideMode === "center-fan") {
-        const center = liftedFaceVertices.reduce(
-          (acc, vertex) => ({
-            x: acc.x + vertex.x / liftedFaceVertices.length,
-            y: acc.y + vertex.y / liftedFaceVertices.length,
-            z: acc.z + vertex.z / liftedFaceVertices.length,
-          }),
-          { x: 0, y: 0, z: 0 }
-        );
-        for (const vertex of liftedFaceVertices) {
-          subdivisionLines.push([center, vertex]);
-        }
-      } else if (liftedFaceVertices.length === 3) {
-        const midpoints = liftedFaceVertices.map((vertex, index) => {
-          const next = liftedFaceVertices[(index + 1) % liftedFaceVertices.length];
-          return { x: (vertex.x + next.x) * 0.5, y: (vertex.y + next.y) * 0.5, z: (vertex.z + next.z) * 0.5 };
-        });
-        for (let i = 0; i < midpoints.length; i += 1) {
-          subdivisionLines.push([midpoints[i], midpoints[(i + 1) % midpoints.length]]);
-        }
+      const center = faceVertices.reduce(
+        (acc, vertex) => ({
+          x: acc.x + vertex.x / faceVertices.length,
+          y: acc.y + vertex.y / faceVertices.length,
+          z: acc.z + vertex.z / faceVertices.length,
+        }),
+        { x: 0, y: 0, z: 0 }
+      );
+      const insetRatio = clampNumber(Number.isFinite(geometryFaceInsetRatio) ? geometryFaceInsetRatio : 0.2, 0.02, 0.92);
+      const insetLoop = faceVertices.map((vertex) =>
+        geometryAdd(
+          geometryAdd(center, geometryScale(geometrySub(vertex, center), 1 - insetRatio)),
+          geometryScale(normal, 0.044)
+        )
+      );
+      const insetLines: PolylineSet = [];
+      for (let i = 0; i < insetLoop.length; i += 1) {
+        insetLines.push([insetLoop[i], insetLoop[(i + 1) % insetLoop.length]]);
       }
-      if (subdivisionLines.length) {
+      if (insetLines.length) {
         groups.push({
-          lines: subdivisionLines,
+          lines: insetLines,
           color: 0xf59e0b,
           opacity: 0.92,
           radiusWorld: clampNumber(maxSpan * 0.01, 0.01, 0.028),
@@ -20549,29 +20559,18 @@ const App: React.FC = () => {
         ? geometryProbeSelectionDetails
         : null;
     const edgePoints = selectedEdge?.edgePoints ?? geometryEdgeOperationTarget?.edgePoints ?? null;
-    if (edgePoints) {
+    if (geometryProbeSelectionMode === "edge" && edgePoints) {
       const [a, b] = edgePoints;
       const direction = geometryNormalizeVec(geometrySub(b, a));
       if (direction) {
         const edgeLength = Math.max(geometryDistance(a, b), 1e-4);
         const ref = Math.abs(direction.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 };
         const side = geometryNormalizeVec(geometryCross(direction, ref)) ?? { x: 0, y: 0, z: 1 };
-        const bevelPreview = Math.min(
-          Math.max(Math.abs(Number.isFinite(geometryEdgeBevelAmount) ? geometryEdgeBevelAmount : 0), edgeLength * 0.06),
-          edgeLength * 0.22
-        );
         const tickSize = clampNumber(edgeLength * 0.16, 0.035, 0.18);
-        const center = geometryScale(geometryAdd(a, b), 0.5);
         const splitRatio = clampNumber(Number.isFinite(geometryEdgeSplitRatio) ? geometryEdgeSplitRatio : 0.5, 0.02, 0.98);
         const splitPoint = geometryAdd(a, geometryScale(geometrySub(b, a), splitRatio));
-        const collapseTarget =
-          geometryEdgeCollapseMode === "keep-a" ? a : geometryEdgeCollapseMode === "keep-b" ? b : center;
         groups.push({
-          lines: [
-            [geometryAdd(a, geometryScale(side, bevelPreview)), geometryAdd(b, geometryScale(side, bevelPreview))],
-            [geometryAdd(a, geometryScale(side, -bevelPreview)), geometryAdd(b, geometryScale(side, -bevelPreview))],
-            [geometryAdd(center, geometryScale(side, -tickSize)), geometryAdd(center, geometryScale(side, tickSize))],
-          ],
+          lines: [[a, splitPoint], [splitPoint, b]],
           color: previewColor,
           opacity: 0.74,
           radiusWorld: clampNumber(edgeLength * 0.012, 0.007, 0.02),
@@ -20581,15 +20580,6 @@ const App: React.FC = () => {
           color: 0xf59e0b,
           opacity: 0.96,
           radiusWorld: clampNumber(edgeLength * 0.014, 0.01, 0.024),
-        });
-        groups.push({
-          lines: [
-            [geometryAdd(collapseTarget, geometryScale(side, -tickSize * 0.5)), geometryAdd(collapseTarget, geometryScale(side, tickSize * 0.5))],
-            [geometryAdd(collapseTarget, geometryScale(direction, -tickSize * 0.5)), geometryAdd(collapseTarget, geometryScale(direction, tickSize * 0.5))],
-          ],
-          color: 0x8b5cf6,
-          opacity: 0.9,
-          radiusWorld: clampNumber(edgeLength * 0.011, 0.008, 0.02),
         });
       }
     }
@@ -20613,13 +20603,12 @@ const App: React.FC = () => {
     }
     return groups.length ? groups : null;
   }, [
-    geometryEdgeBevelAmount,
-    geometryEdgeCollapseMode,
     geometryEdgeOperationTarget,
     geometryEdgeSplitRatio,
     geometryFaceExtrudeDistance,
-    geometryFaceSubdivideMode,
+    geometryFaceInsetRatio,
     geometryMode,
+    geometryProbeSelectionMode,
     geometryProbeSelectionDetails,
     geometrySourceFaceOperationTarget,
     geometryVertexMoveAmount,
@@ -20627,6 +20616,7 @@ const App: React.FC = () => {
   ]);
   const geometryDirectEditPreviewPointSets = useMemo<OverlayPointSet[] | null>(() => {
     if (geometryMode !== "procedural") return null;
+    if (geometryProbeSelectionMode !== "edge") return null;
     const selectedEdge =
       geometryProbeSelectionDetails?.mode === "edge" && geometryProbeSelectionDetails.edgePoints
         ? geometryProbeSelectionDetails
@@ -20636,12 +20626,6 @@ const App: React.FC = () => {
     const [a, b] = edgePoints;
     const splitRatio = clampNumber(Number.isFinite(geometryEdgeSplitRatio) ? geometryEdgeSplitRatio : 0.5, 0.02, 0.98);
     const splitPoint = geometryAdd(a, geometryScale(geometrySub(b, a), splitRatio));
-    const collapsePoint =
-      geometryEdgeCollapseMode === "keep-a"
-        ? a
-        : geometryEdgeCollapseMode === "keep-b"
-          ? b
-          : geometryScale(geometryAdd(a, b), 0.5);
     return [
       {
         points: [splitPoint],
@@ -20655,24 +20639,12 @@ const App: React.FC = () => {
         size: 0.12,
         opacity: 0.98,
       },
-      {
-        points: [collapsePoint],
-        color: 0xf5f3ff,
-        size: 0.16,
-        opacity: 0.72,
-      },
-      {
-        points: [collapsePoint],
-        color: 0x8b5cf6,
-        size: 0.105,
-        opacity: 0.96,
-      },
     ];
   }, [
-    geometryEdgeCollapseMode,
     geometryEdgeOperationTarget,
     geometryEdgeSplitRatio,
     geometryMode,
+    geometryProbeSelectionMode,
     geometryProbeSelectionDetails,
   ]);
   const geometryArmedLineOperationPreviewGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
@@ -32967,6 +32939,7 @@ const App: React.FC = () => {
       surfaceMeshTopologyFeedback ||
       surfaceMeshTopologySelectionCleared ||
       surfaceMeshTopologyHistoryPreviewId ||
+      surfaceMeshTopologyPickMode === "auto" ||
       !surfaceMeshData?.positions?.length
     ) {
       return null;
@@ -33032,6 +33005,7 @@ const App: React.FC = () => {
     surfaceMeshTopologyFaceIndex,
     surfaceMeshTopologyFeedback,
     surfaceMeshTopologyHistoryPreviewId,
+    surfaceMeshTopologyPickMode,
     surfaceMeshTopologyPreviewOperation,
     surfaceMeshTopologySelectionCleared,
     surfaceMeshTopologySplitRatio,
@@ -33079,7 +33053,12 @@ const App: React.FC = () => {
   }, [surfaceMeshTopologyHistoryPreviewEntry, surfaceMeshTopologyHistoryPreviewMode]);
   const surfaceMeshTopologyViewerMesh = surfaceMeshTopologyHistoryDisplayMesh ?? surfaceMeshData;
   const surfaceMeshTopologySelectionFaceMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
-    if (surfaceMeshTopologySelectionCleared || !isMeshLikeViewer || !surfaceMeshTopologyViewerMesh?.positions?.length) {
+    if (
+      surfaceMeshTopologySelectionCleared ||
+      surfaceMeshTopologyPickMode === "auto" ||
+      !isMeshLikeViewer ||
+      !surfaceMeshTopologyViewerMesh?.positions?.length
+    ) {
       return null;
     }
     const polygon = readMeshFacePolygon(
@@ -33115,6 +33094,7 @@ const App: React.FC = () => {
     isMeshLikeViewer,
     selectionViewportPulse?.workspace,
     surfaceMeshTopologyFaceIndex,
+    surfaceMeshTopologyPickMode,
     surfaceMeshTopologySelectionCleared,
     surfaceMeshTopologyViewerMesh,
   ]);
@@ -33146,7 +33126,12 @@ const App: React.FC = () => {
     return groups.length ? groups : null;
   }, [isMeshLikeViewer, surfaceMeshTopologyFeedback]);
   const surfaceMeshTopologyOverlayPointSets = useMemo<OverlayPointSet[] | null>(() => {
-    if (surfaceMeshTopologySelectionCleared || !isMeshLikeViewer || !surfaceMeshTopologyViewerMesh?.positions?.length) {
+    if (
+      surfaceMeshTopologySelectionCleared ||
+      surfaceMeshTopologyPickMode === "auto" ||
+      !isMeshLikeViewer ||
+      !surfaceMeshTopologyViewerMesh?.positions?.length
+    ) {
       return null;
     }
     const points: GeometryProbePoint[] = [];
@@ -33195,12 +33180,18 @@ const App: React.FC = () => {
     surfaceMeshTopologyEdgeA,
     surfaceMeshTopologyEdgeB,
     surfaceMeshTopologyFaceIndex,
+    surfaceMeshTopologyPickMode,
     surfaceMeshTopologySelectionCleared,
     surfaceMeshTopologyViewerMesh,
     surfaceMeshTopologyVertexIndex,
   ]);
   const surfaceMeshTopologySelectionLabelSets = useMemo<OverlayLabelSet[] | null>(() => {
-    if (surfaceMeshTopologySelectionCleared || !isMeshLikeViewer || !surfaceMeshTopologyViewerMesh?.positions?.length) {
+    if (
+      surfaceMeshTopologySelectionCleared ||
+      surfaceMeshTopologyPickMode === "auto" ||
+      !isMeshLikeViewer ||
+      !surfaceMeshTopologyViewerMesh?.positions?.length
+    ) {
       return null;
     }
     const labels: OverlayLabelSet["labels"] = [];
@@ -33259,6 +33250,7 @@ const App: React.FC = () => {
     surfaceMeshTopologyEdgeA,
     surfaceMeshTopologyEdgeB,
     surfaceMeshTopologyFaceIndex,
+    surfaceMeshTopologyPickMode,
     surfaceMeshTopologySelectionCleared,
     surfaceMeshTopologyViewerMesh,
     surfaceMeshTopologyVertexIndex,
@@ -33298,7 +33290,12 @@ const App: React.FC = () => {
     ];
   }, [isMeshLikeViewer, surfaceMeshTopologyFeedback]);
   const surfaceMeshTopologyOverlayPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
-    if (surfaceMeshTopologySelectionCleared || !isMeshLikeViewer || !surfaceMeshTopologyViewerMesh?.positions?.length) {
+    if (
+      surfaceMeshTopologySelectionCleared ||
+      surfaceMeshTopologyPickMode === "auto" ||
+      !isMeshLikeViewer ||
+      !surfaceMeshTopologyViewerMesh?.positions?.length
+    ) {
       return null;
     }
     const lines: PolylineSet = [];
@@ -33337,6 +33334,7 @@ const App: React.FC = () => {
     surfaceMeshTopologyEdgeA,
     surfaceMeshTopologyEdgeB,
     surfaceMeshTopologyFaceIndex,
+    surfaceMeshTopologyPickMode,
     surfaceMeshTopologySelectionCleared,
     surfaceMeshTopologyViewerMesh,
   ]);
@@ -33351,6 +33349,199 @@ const App: React.FC = () => {
       },
     ];
   }, [isMeshLikeViewer, surfaceMeshTopologyGhostFeedback]);
+  const surfaceMeshCommandPreviewOverlays = useMemo<{
+    meshGroups: OverlayMeshGroup[] | null;
+    pointSets: OverlayPointSet[] | null;
+    polylineGroups: OverlayPolylineGroup[] | null;
+    labelSets: OverlayLabelSet[] | null;
+  }>(() => {
+    const empty = { meshGroups: null, pointSets: null, polylineGroups: null, labelSets: null };
+    if (
+      !isMeshLikeViewer ||
+      surfaceMeshTopologyFeedback ||
+      surfaceMeshTopologySelectionCleared ||
+      surfaceMeshTopologyHistoryPreviewId ||
+      surfaceMeshTopologyPickMode === "auto" ||
+      !surfaceMeshTopologyViewerMesh?.positions?.length
+    ) {
+      return empty;
+    }
+    const mesh = surfaceMeshTopologyViewerMesh;
+    const lift = (point: GeometryProbePoint, amount = 0.034): GeometryProbePoint => ({ x: point.x, y: point.y + amount, z: point.z });
+    const labelSets: OverlayLabelSet[] = [];
+    const addLabel = (text: string, position: GeometryProbePoint, color = 0x0f766e) => {
+      labelSets.push({
+        size: 0.76,
+        labels: [
+          {
+            text,
+            position,
+            color,
+            opacity: 0.96,
+          },
+        ],
+      });
+    };
+    if (surfaceMeshTopologyPreviewOperation === "Face Subdivide") {
+      const faceIndex = Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
+      const polygon = readMeshFacePolygon(mesh, faceIndex);
+      if (!polygon?.vertices?.length) return empty;
+      const normal = geometryNormalizeVec(polygonNormalFromVertices(polygon.vertices) ?? { x: 0, y: 1, z: 0 }) ?? {
+        x: 0,
+        y: 1,
+        z: 0,
+      };
+      const lifted = polygon.vertices.map((point) => geometryAdd(point, geometryScale(normal, 0.05)));
+      const center = lifted.reduce(
+        (acc, point) => ({
+          x: acc.x + point.x / lifted.length,
+          y: acc.y + point.y / lifted.length,
+          z: acc.z + point.z / lifted.length,
+        }),
+        { x: 0, y: 0, z: 0 }
+      );
+      const lines: PolylineSet = [];
+      if (surfaceMeshTopologySubdivideMode === "center-fan") {
+        for (const point of lifted) lines.push([center, point]);
+      } else if (lifted.length === 3) {
+        const midpoints = lifted.map((point, index) => {
+          const next = lifted[(index + 1) % lifted.length];
+          return geometryScale(geometryAdd(point, next), 0.5);
+        });
+        for (let i = 0; i < midpoints.length; i += 1) lines.push([midpoints[i], midpoints[(i + 1) % midpoints.length]]);
+      }
+      addLabel(`Preview face ${faceIndex}`, geometryAdd(center, geometryScale(normal, 0.08)));
+      return {
+        meshGroups: null,
+        pointSets: [
+          { points: [center], color: 0xf0fdfa, size: 0.28, opacity: 0.7 },
+          { points: [center], color: 0x14b8a6, size: 0.18, opacity: 0.98 },
+        ],
+        polylineGroups: lines.length
+          ? [{ lines, color: 0x14b8a6, opacity: 0.96, radiusWorld: 0.022 }]
+          : null,
+        labelSets,
+      };
+    }
+    const requestedA = Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0));
+    const requestedB = Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0));
+    let edgeA = requestedA;
+    let edgeB = requestedB;
+    const counts = countTriangleMeshTopology(mesh);
+    const edgeInRange = requestedA !== requestedB && requestedA < counts.vertexCount && requestedB < counts.vertexCount;
+    if (!edgeInRange || !findMeshEdgeIncidentFaceIndices(mesh, requestedA, requestedB, 1).length) {
+      const faceTri = readMeshFaceVertexIndices(mesh, Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0)));
+      const fallback = faceTri
+        ? ([[faceTri[0], faceTri[1]], [faceTri[1], faceTri[2]], [faceTri[2], faceTri[0]]] as Array<[number, number]>).find(
+            ([a, b]) => findMeshEdgeIncidentFaceIndices(mesh, a, b, 1).length > 0
+          )
+        : null;
+      if (!fallback) return empty;
+      edgeA = fallback[0];
+      edgeB = fallback[1];
+    }
+    const a = readMeshPoint(mesh, edgeA);
+    const b = readMeshPoint(mesh, edgeB);
+    if (!a || !b) return empty;
+    const direction = geometryNormalizeVec(geometrySub(b, a));
+    if (!direction) return empty;
+    const edgeLength = Math.max(geometryDistance(a, b), 1e-4);
+    const ref = Math.abs(direction.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 };
+    const side = geometryNormalizeVec(geometryCross(direction, ref)) ?? { x: 0, y: 0, z: 1 };
+    const center = geometryScale(geometryAdd(a, b), 0.5);
+    const splitRatio = clampNumber(Number.isFinite(surfaceMeshTopologySplitRatio) ? surfaceMeshTopologySplitRatio : 0.5, 0.01, 0.99);
+    const splitPoint = geometryAdd(a, geometryScale(geometrySub(b, a), splitRatio));
+    const tickSize = clampNumber(edgeLength * 0.15, 0.04, 0.2);
+    if (surfaceMeshTopologyPreviewOperation === "Collapse Edge") {
+      const target =
+        surfaceMeshTopologyCollapseMode === "keep-a" ? a : surfaceMeshTopologyCollapseMode === "keep-b" ? b : center;
+      const liftedTarget = lift(target, tickSize * 0.22);
+      addLabel(`Preview collapse ${edgeA}-${edgeB}`, geometryAdd(liftedTarget, geometryScale(side, tickSize * 0.75)), 0x7c3aed);
+      return {
+        meshGroups: null,
+        pointSets: [
+          { points: [liftedTarget], color: 0xf5f3ff, size: 0.28, opacity: 0.72 },
+          { points: [liftedTarget], color: 0x8b5cf6, size: 0.18, opacity: 0.98 },
+        ],
+        polylineGroups: [
+          { lines: [[lift(a), lift(b)]], color: 0xef4444, opacity: 0.34, radiusWorld: clampNumber(edgeLength * 0.018, 0.012, 0.035) },
+          {
+            lines: [
+              [geometryAdd(liftedTarget, geometryScale(side, -tickSize)), geometryAdd(liftedTarget, geometryScale(side, tickSize))],
+              [geometryAdd(liftedTarget, geometryScale(direction, -tickSize)), geometryAdd(liftedTarget, geometryScale(direction, tickSize))],
+            ],
+            color: 0x8b5cf6,
+            opacity: 0.9,
+            radiusWorld: clampNumber(edgeLength * 0.01, 0.008, 0.02),
+          },
+        ],
+        labelSets,
+      };
+    }
+    if (surfaceMeshTopologyPreviewOperation === "Bevel Edge") {
+      const amount = Math.min(
+        Math.max(Math.abs(Number.isFinite(surfaceMeshTopologyBevelAmount) ? surfaceMeshTopologyBevelAmount : 0.001), edgeLength * 0.04),
+        edgeLength * 0.24
+      );
+      const p0 = geometryAdd(a, geometryScale(side, amount));
+      const p1 = geometryAdd(b, geometryScale(side, amount));
+      const p2 = geometryAdd(b, geometryScale(side, -amount));
+      const p3 = geometryAdd(a, geometryScale(side, -amount));
+      const positions = [p0, p1, p2, p3].flatMap((point) => [point.x, point.y, point.z]);
+      addLabel(`Preview bevel ${edgeA}-${edgeB}`, geometryAdd(center, geometryScale(side, amount * 1.45)), 0x0f766e);
+      return {
+        meshGroups: [{ positions, indices: [0, 1, 2, 0, 2, 3], color: 0x14b8a6, opacity: 0.3, doubleSided: true }],
+        pointSets: null,
+        polylineGroups: [
+          {
+            lines: [[p0, p1], [p1, p2], [p2, p3], [p3, p0]],
+            color: 0x14b8a6,
+            opacity: 0.92,
+            radiusWorld: clampNumber(edgeLength * 0.012, 0.01, 0.024),
+          },
+        ],
+        labelSets,
+      };
+    }
+    addLabel(`Preview split ${edgeA}-${edgeB}`, geometryAdd(splitPoint, geometryScale(side, tickSize * 0.95)), 0xc2410c);
+    return {
+      meshGroups: null,
+      pointSets: [
+        { points: [splitPoint], color: 0xfff7ed, size: 0.32, opacity: 0.76 },
+        { points: [splitPoint], color: 0xf97316, size: 0.22, opacity: 0.98 },
+      ],
+      polylineGroups: [
+        {
+          lines: [[lift(a), lift(splitPoint)], [lift(splitPoint), lift(b)]],
+          color: 0xf97316,
+          opacity: 0.96,
+          radiusWorld: clampNumber(edgeLength * 0.014, 0.012, 0.03),
+        },
+        {
+          lines: [[geometryAdd(lift(splitPoint), geometryScale(side, -tickSize)), geometryAdd(lift(splitPoint), geometryScale(side, tickSize))]],
+          color: 0xfacc15,
+          opacity: 0.95,
+          radiusWorld: clampNumber(edgeLength * 0.011, 0.008, 0.022),
+        },
+      ],
+      labelSets,
+    };
+  }, [
+    isMeshLikeViewer,
+    surfaceMeshTopologyBevelAmount,
+    surfaceMeshTopologyCollapseMode,
+    surfaceMeshTopologyEdgeA,
+    surfaceMeshTopologyEdgeB,
+    surfaceMeshTopologyFaceIndex,
+    surfaceMeshTopologyFeedback,
+    surfaceMeshTopologyHistoryPreviewId,
+    surfaceMeshTopologyPickMode,
+    surfaceMeshTopologyPreviewOperation,
+    surfaceMeshTopologySelectionCleared,
+    surfaceMeshTopologySplitRatio,
+    surfaceMeshTopologySubdivideMode,
+    surfaceMeshTopologyViewerMesh,
+  ]);
   const surfaceMeshTopologyFeedbackPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (!isMeshLikeViewer || !surfaceMeshTopologyFeedback?.edgeLines.length) return null;
     return [
@@ -33389,10 +33580,12 @@ const App: React.FC = () => {
       groups.push(...surfaceMeshTopologyHistoryComparisonMeshGroups);
     }
     if (surfaceMeshTopologyGhostMeshGroups?.length) groups.push(...surfaceMeshTopologyGhostMeshGroups);
+    if (surfaceMeshCommandPreviewOverlays.meshGroups?.length) groups.push(...surfaceMeshCommandPreviewOverlays.meshGroups);
     if (surfaceMeshTopologySelectionFaceMeshGroups?.length) groups.push(...surfaceMeshTopologySelectionFaceMeshGroups);
     if (surfaceMeshTopologyFeedbackMeshGroups?.length) groups.push(...surfaceMeshTopologyFeedbackMeshGroups);
     return groups.length ? groups : null;
   }, [
+    surfaceMeshCommandPreviewOverlays.meshGroups,
     surfaceMeshTopologyFeedbackMeshGroups,
     surfaceMeshTopologyGhostMeshGroups,
     surfaceMeshTopologyHistoryComparisonMeshGroups,
@@ -33404,11 +33597,13 @@ const App: React.FC = () => {
     if (meshQualityOverlayPointSets?.length) sets.push(...meshQualityOverlayPointSets);
     if (surfaceMeshTopologyOverlayPointSets?.length) sets.push(...surfaceMeshTopologyOverlayPointSets);
     if (surfaceMeshTopologyGhostPointSets?.length) sets.push(...surfaceMeshTopologyGhostPointSets);
+    if (surfaceMeshCommandPreviewOverlays.pointSets?.length) sets.push(...surfaceMeshCommandPreviewOverlays.pointSets);
     if (surfaceMeshTopologyFeedbackPointSets?.length) sets.push(...surfaceMeshTopologyFeedbackPointSets);
     return sets.length ? sets : null;
   }, [
     complexMapOverlayPointsActive,
     meshQualityOverlayPointSets,
+    surfaceMeshCommandPreviewOverlays.pointSets,
     surfaceMeshTopologyFeedbackPointSets,
     surfaceMeshTopologyGhostPointSets,
     surfaceMeshTopologyOverlayPointSets,
@@ -33416,8 +33611,9 @@ const App: React.FC = () => {
   const combinedOverlayLabelSets = useMemo<OverlayLabelSet[] | null>(() => {
     const labels: OverlayLabelSet[] = [];
     if (surfaceMeshTopologySelectionLabelSets?.length) labels.push(...surfaceMeshTopologySelectionLabelSets);
+    if (surfaceMeshCommandPreviewOverlays.labelSets?.length) labels.push(...surfaceMeshCommandPreviewOverlays.labelSets);
     return labels.length ? labels : null;
-  }, [surfaceMeshTopologySelectionLabelSets]);
+  }, [surfaceMeshCommandPreviewOverlays.labelSets, surfaceMeshTopologySelectionLabelSets]);
 
   const [probeInfo, setProbeInfo] = useState<ProbeInfo | null>(null);
   const [probeCurv, setProbeCurv] = useState<CurvatureData | null>(null);
@@ -43840,6 +44036,7 @@ case "mobius":
     if (meshQualityOverlayPolylineGroups?.length) groups.push(...meshQualityOverlayPolylineGroups);
     if (surfaceMeshTopologyOverlayPolylineGroups?.length) groups.push(...surfaceMeshTopologyOverlayPolylineGroups);
     if (surfaceMeshTopologyGhostPolylineGroups?.length) groups.push(...surfaceMeshTopologyGhostPolylineGroups);
+    if (surfaceMeshCommandPreviewOverlays.polylineGroups?.length) groups.push(...surfaceMeshCommandPreviewOverlays.polylineGroups);
     if (surfaceMeshTopologyFeedbackPolylineGroups?.length) groups.push(...surfaceMeshTopologyFeedbackPolylineGroups);
     if (workbookCurveOverlayGhostGroups?.length) groups.push(...workbookCurveOverlayGhostGroups);
     if (workbookDirectionOverlayGhostGroups?.length) groups.push(...workbookDirectionOverlayGhostGroups);
@@ -43853,6 +44050,7 @@ case "mobius":
   }, [
     calculusVectorOverlayGroups,
     complexMapOverlayPolylineGroups,
+    surfaceMeshCommandPreviewOverlays.polylineGroups,
     surfaceMeshTopologyGhostPolylineGroups,
     meshQualityOverlayPolylineGroups,
     surfaceMeshTopologyFeedbackPolylineGroups,
@@ -43873,6 +44071,7 @@ case "mobius":
     if (meshQualityOverlayPolylineGroups?.length) groups.push(...meshQualityOverlayPolylineGroups);
     if (surfaceMeshTopologyOverlayPolylineGroups?.length) groups.push(...surfaceMeshTopologyOverlayPolylineGroups);
     if (surfaceMeshTopologyGhostPolylineGroups?.length) groups.push(...surfaceMeshTopologyGhostPolylineGroups);
+    if (surfaceMeshCommandPreviewOverlays.polylineGroups?.length) groups.push(...surfaceMeshCommandPreviewOverlays.polylineGroups);
     if (surfaceMeshTopologyFeedbackPolylineGroups?.length) groups.push(...surfaceMeshTopologyFeedbackPolylineGroups);
     if (calculusVectorOverlayGroups?.length) groups.push(...calculusVectorOverlayGroups);
     return groups.length ? groups : null;
@@ -43882,6 +44081,7 @@ case "mobius":
     combinedOverlayPolylineGroups,
     complexMapOverlayPolylineGroups,
     meshQualityOverlayPolylineGroups,
+    surfaceMeshCommandPreviewOverlays.polylineGroups,
     surfaceMeshTopologyFeedbackPolylineGroups,
     surfaceMeshTopologyGhostPolylineGroups,
     surfaceMeshTopologyOverlayPolylineGroups,
@@ -45209,6 +45409,10 @@ case "mobius":
     surfaceMeshTopologySubdivideMode,
     surfaceMeshTopologyVertexIndex,
   ]);
+  const meshViewportCommandPreviewLabel = useMemo(
+    () => meshContextToolbarPreviewLabel?.replace(/^Preview:\s*/i, "") ?? null,
+    [meshContextToolbarPreviewLabel]
+  );
 
   const surfaceMeshTopologyBreadcrumb = useMemo(() => {
     const preview = surfaceMeshTopologyHistoryPreviewId
@@ -60092,6 +60296,29 @@ case "mobius":
                     }}
                   >
                     {selectionEventStatus.label}
+                  </div>
+                )}
+                {surfaceViewerKind === "mesh" && meshViewportCommandPreviewLabel && !cleanScreenshotSurfaceActive && (
+                  <div
+                    data-testid="mesh-viewport-command-preview"
+                    style={{
+                      position: "absolute",
+                      top: 48,
+                      right: 14,
+                      zIndex: 17,
+                      maxWidth: 360,
+                      border: "1px solid #99f6e4",
+                      borderRadius: 8,
+                      background: "rgba(240,253,250,0.92)",
+                      color: "#0f766e",
+                      padding: "5px 9px",
+                      fontSize: 11,
+                      fontWeight: 800,
+                      boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    Viewport preview: {meshViewportCommandPreviewLabel}
                   </div>
                 )}
                 {datasetKind === "volume" ? (
@@ -76060,6 +76287,29 @@ case "mobius":
                   }
                   inspectSelectionMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
                 />
+                {geometryMode === "procedural" && geometryViewportCommandPreviewLabel && (
+                  <div
+                    data-testid="geometry-viewport-command-preview"
+                    style={{
+                      position: "absolute",
+                      top: 58,
+                      right: 14,
+                      zIndex: 16,
+                      maxWidth: 360,
+                      border: "1px solid #99f6e4",
+                      borderRadius: 8,
+                      background: "rgba(240,253,250,0.92)",
+                      color: "#0f766e",
+                      padding: "5px 9px",
+                      fontSize: 11,
+                      fontWeight: 800,
+                      boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    Viewport preview: {geometryViewportCommandPreviewLabel}
+                  </div>
+                )}
                 {geometryEdgeViewportTooltip && (
                   <div
                     data-testid="geometry-edge-hover-tooltip"

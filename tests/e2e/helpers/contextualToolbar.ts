@@ -23,6 +23,8 @@ export async function runContextualActionFlow({
   pickEntity,
   actionTestId,
   preview,
+  viewportPreview,
+  viewportPreviewTestId,
   applyPreviewTestId,
   confirmation,
   runWithKeyboard = false,
@@ -33,6 +35,8 @@ export async function runContextualActionFlow({
   pickEntity: () => Promise<void>;
   actionTestId: string;
   preview?: string | RegExp;
+  viewportPreview?: string | RegExp;
+  viewportPreviewTestId?: string;
   applyPreviewTestId?: string;
   confirmation: string | RegExp;
   runWithKeyboard?: boolean;
@@ -43,6 +47,11 @@ export async function runContextualActionFlow({
   await expectContextualActionReady(action);
   if (preview) {
     await expect(page.getByTestId(`${workspace}-context-preview`)).toContainText(preview);
+  }
+  if (viewportPreview) {
+    await expect(page.getByTestId(viewportPreviewTestId ?? `${workspace}-viewport-command-preview`)).toContainText(
+      viewportPreview
+    );
   }
   if (runWithKeyboard) {
     await page.keyboard.press("Enter");
