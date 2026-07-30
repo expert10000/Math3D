@@ -307,10 +307,32 @@ test("Geometry canvas picker commits a visible object pick", async () => {
     await page.getByTestId("geometry-workflow-step-transform").click();
     await expect(page.getByTestId("geometry-workflow-step-transform")).toHaveAttribute("aria-current", "step");
 
-    await clickViewerUntilSelectionLabel(page, "object", /Selected object:/i);
-    await expect(page.getByTestId("geometry-context-selection-label")).toContainText(/Selected object:/i);
+    await clickViewerUntilSelectionLabel(page, "object", /Selected geometry object:/i);
+    await expect(page.getByTestId("geometry-context-pick-object")).toContainText("Geometry Object");
+    await expect(page.getByTestId("geometry-context-pick-object")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("geometry-context-selection-label")).toContainText(/Selected geometry object:/i);
+    await expect(page.getByTestId("geometry-context-preview")).toContainText(
+      "Preview: open selected Geometry object details"
+    );
+    await expect(page.getByTestId("geometry-viewport-command-preview")).toContainText(
+      "Viewport preview: open selected Geometry object details"
+    );
+    await expect(page.getByTestId("geometry-object-selection-glow")).toContainText(
+      "Whole Geometry object selected"
+    );
+    await expect(page.getByTestId("geometry-context-open-object")).toContainText("Open Object Details");
+    await expect(page.getByTestId("geometry-context-open-object")).toBeEnabled();
+    await expect(page.getByTestId("geometry-context-transform")).toBeVisible();
+    await expect(page.getByTestId("geometry-context-history")).toBeVisible();
+    await expect(page.getByTestId("geometry-context-selection-label")).not.toContainText("Click a face to enable Extrude");
+    await expect(page.getByTestId("geometry-context-selection-label")).not.toContainText(
+      "Click an edge to enable Split / Mirror / Offset"
+    );
     await expect(page.getByTestId("geometry-active-selection-card")).toBeVisible();
     await expect(page.getByTestId("geometry-active-selection-card-type")).toHaveText("Object");
+    await expect(page.getByTestId("geometry-active-selection-card-actions")).toContainText(
+      "Open Object Details, Transform, History"
+    );
   } finally {
     if (app) await app.close().catch(() => undefined);
     await removeProfileDir(profileDir);

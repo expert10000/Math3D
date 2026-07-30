@@ -15511,7 +15511,9 @@ const App: React.FC = () => {
         ? `Selected vertex ${geometryVertexOperationPick.vertexIndex}`
         : "Click a vertex to enable Marker / Move";
     }
-    return geometrySelectedSceneObject ? `Selected object: ${geometrySelectedSceneObject.name}` : "Select an object";
+    return geometrySelectedSceneObject
+      ? `Selected geometry object: ${geometrySelectedSceneObject.name}`
+      : "Select a Geometry object";
   }, [
     geometryEdgeOperationPick,
     geometryFaceOperationPick,
@@ -15537,7 +15539,7 @@ const App: React.FC = () => {
         ? ["Split", "Mirror", "Offset"]
         : geometryProbeSelectionMode === "vertex"
           ? ["Marker", "Move"]
-          : ["Open Object", "Transform", "History"];
+          : ["Open Object Details", "Transform", "History"];
   const geometryActiveSelectionCardId =
     geometryProbeSelectionMode === "face" && geometryHasFaceOperationPick && geometryFaceOperationPick?.faceIndex != null
       ? `Face ${geometryFaceOperationPick.faceIndex}`
@@ -15624,7 +15626,7 @@ const App: React.FC = () => {
         ? `Preview: Vertex ${geometryVertexOperationPick.vertexIndex} -> move ${formatCompactReal(geometryVertexMoveAmount)}`
         : null;
     }
-    return geometrySelectedSceneObject ? `Preview: ${geometrySelectedSceneObject.name} -> open object details` : null;
+    return geometrySelectedSceneObject ? "Preview: open selected Geometry object details" : null;
   }, [
     geometryEdgeOperationPick,
     geometryEdgeSplitRatio,
@@ -19647,13 +19649,13 @@ const App: React.FC = () => {
   }, [geometryEulerSceneMeshCounts, geometryEulerScope, geometryEulerSelectedMeshCounts]);
   const geometryEulerActiveMeshLabel = useMemo(() => {
     if (geometryEulerScope === "selected" && geometryEulerSelectedMeshCounts && geometrySelectedSceneObject) {
-      return `Selected object: ${geometrySelectedSceneObject.name}`;
+      return `Selected geometry object: ${geometrySelectedSceneObject.name}`;
     }
     if (geometryEulerSceneMeshCounts) {
       return "Visible scene meshes (summed per mesh)";
     }
     if (geometrySelectedSceneObject) {
-      return `Selected object: ${geometrySelectedSceneObject.name}`;
+      return `Selected geometry object: ${geometrySelectedSceneObject.name}`;
     }
     return "No mesh selected";
   }, [
@@ -20116,6 +20118,71 @@ const App: React.FC = () => {
     geometryProbeHoverSelectionDetails,
     geometryProbeSelectionMode,
     proceduralMeshSet.meshes,
+  ]);
+  const geometryObjectSelectionPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (
+      geometryMode !== "procedural" ||
+      geometryProbeSelectionMode !== "object" ||
+      !geometrySelectedSceneObject
+    ) {
+      return null;
+    }
+    const selectedMesh = proceduralMeshSet.meshes.find((mesh) => mesh.id === geometrySelectedSceneObject.id) ?? null;
+    if (!selectedMesh?.positions?.length) return null;
+    const transformed = transformSurfaceMeshByGeometryTransform(selectedMesh, geometrySelectedSceneObject.transform);
+    const bounds = boundsFromPositions(transformed.positions);
+    if (!bounds) return null;
+    const span = Math.max(bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1], bounds.max[2] - bounds.min[2], 1);
+    const pad = span * 0.018;
+    const minX = bounds.min[0] - pad;
+    const minY = bounds.min[1] - pad;
+    const minZ = bounds.min[2] - pad;
+    const maxX = bounds.max[0] + pad;
+    const maxY = bounds.max[1] + pad;
+    const maxZ = bounds.max[2] + pad;
+    const p000 = { x: minX, y: minY, z: minZ };
+    const p100 = { x: maxX, y: minY, z: minZ };
+    const p010 = { x: minX, y: maxY, z: minZ };
+    const p110 = { x: maxX, y: maxY, z: minZ };
+    const p001 = { x: minX, y: minY, z: maxZ };
+    const p101 = { x: maxX, y: minY, z: maxZ };
+    const p011 = { x: minX, y: maxY, z: maxZ };
+    const p111 = { x: maxX, y: maxY, z: maxZ };
+    const lines: PolylineSet = [
+      [p000, p100],
+      [p100, p110],
+      [p110, p010],
+      [p010, p000],
+      [p001, p101],
+      [p101, p111],
+      [p111, p011],
+      [p011, p001],
+      [p000, p001],
+      [p100, p101],
+      [p110, p111],
+      [p010, p011],
+    ];
+    const pulsing = selectionViewportPulse?.workspace === "Geometry";
+    return [
+      {
+        lines,
+        color: pulsing ? 0xfacc15 : 0x22c55e,
+        opacity: pulsing ? 0.9 : 0.68,
+        radiusWorld: clampNumber(span * (pulsing ? 0.01 : 0.006), 0.012, 0.04),
+      },
+      {
+        lines,
+        color: 0x14b8a6,
+        opacity: 0.28,
+        radiusWorld: clampNumber(span * 0.014, 0.018, 0.06),
+      },
+    ];
+  }, [
+    geometryMode,
+    geometryProbeSelectionMode,
+    geometrySelectedSceneObject,
+    proceduralMeshSet.meshes,
+    selectionViewportPulse?.workspace,
   ]);
 
   const geometryProceduralFeatureOverlays = useMemo<{
@@ -27082,7 +27149,7 @@ const App: React.FC = () => {
     geometryProbeSelectionMode === "object"
       ? [
           {
-            label: "Open Object",
+            label: "Open Object Details",
             testId: "geometry-active-selection-action-open-object",
             onClick: () => {
               if (!geometrySelectedSceneObject) {
@@ -27586,6 +27653,7 @@ const App: React.FC = () => {
     if (geometryTopologyEditFeedbackPolylineGroups?.length) {
       groups.push(...geometryTopologyEditFeedbackPolylineGroups);
     }
+    if (geometryObjectSelectionPolylineGroups?.length) groups.push(...geometryObjectSelectionPolylineGroups);
     if (geometryProceduralSelectionOverlayGroups?.length) groups.push(...geometryProceduralSelectionOverlayGroups);
     if (helperGroupsVisible) {
       const helperOpacity = geometryPrecisionPickActive ? 0.22 : 1;
@@ -27604,6 +27672,7 @@ const App: React.FC = () => {
     return groups.length ? groups : null;
   }, [
     geometryMode,
+    geometryObjectSelectionPolylineGroups,
     geometryProceduralOverlayGroups,
     geometryProceduralSelectionOverlayGroups,
     geometryPrecisionPickActive,
@@ -75145,7 +75214,11 @@ case "mobius":
                       testId="geometry-context-toolbar"
                       pickOptions={
                         [
-                          { id: "object", label: "Object", title: "Pick a Geometry object, then use the matching actions." },
+                          {
+                            id: "object",
+                            label: "Geometry Object",
+                            title: "Whole-object actions: open details, transform, or inspect history.",
+                          },
                           { id: "face", label: "Face", title: "Pick a Geometry face, then use the matching actions." },
                           { id: "edge", label: "Edge", title: "Pick a Geometry edge, then use the matching actions." },
                           { id: "vertex", label: "Vertex", title: "Pick a Geometry vertex, then use the matching actions." },
@@ -75161,9 +75234,11 @@ case "mobius":
                         if (pickMode === "vertex") setGeometryActiveOperationInputSlotId("active-vertex");
                       }}
                     selectionLabel={
-                      geometryActiveSelectionSummary.emptyState ??
-                      geometryActiveSelectionSummary.eventLabel ??
-                      geometryContextToolbarSelectionLabel
+                      geometryProbeSelectionMode === "object"
+                        ? geometryContextToolbarSelectionLabel
+                        : geometryActiveSelectionSummary.emptyState ??
+                          geometryActiveSelectionSummary.eventLabel ??
+                          geometryContextToolbarSelectionLabel
                     }
                       selectionTestId="geometry-context-selection-label"
                       previewLabel={geometryContextToolbarPreviewLabel}
@@ -75202,7 +75277,7 @@ case "mobius":
                             disabled={!geometrySelectedSceneObject}
                             disabledReason="Select an object to open its details."
                           >
-                            Open Object
+                            Open Object Details
                           </ContextualActionStripAction>
                           <ContextualActionStripAction
                             testId="geometry-context-transform"
@@ -76407,6 +76482,32 @@ case "mobius":
                     Viewport preview: {geometryViewportCommandPreviewLabel}
                   </div>
                 )}
+                {geometryMode === "procedural" &&
+                  geometryProbeSelectionMode === "object" &&
+                  !!geometrySelectedSceneObject &&
+                  !cleanScreenshotActive && (
+                    <div
+                      data-testid="geometry-object-selection-glow"
+                      style={{
+                        position: "absolute",
+                        top: geometryViewportCommandPreviewLabel ? 92 : 58,
+                        right: 14,
+                        zIndex: 16,
+                        maxWidth: 300,
+                        border: "1px solid #bbf7d0",
+                        borderRadius: 8,
+                        background: "rgba(240,253,244,0.92)",
+                        color: "#166534",
+                        padding: "5px 9px",
+                        fontSize: 11,
+                        fontWeight: 800,
+                        boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)",
+                        pointerEvents: "none",
+                      }}
+                    >
+                      Whole Geometry object selected
+                    </div>
+                  )}
                 {geometryEdgeViewportTooltip && (
                   <div
                     data-testid="geometry-edge-hover-tooltip"
