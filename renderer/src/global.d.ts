@@ -424,6 +424,23 @@ declare global {
       geometrySmoke?: boolean;
       e2e?: boolean;
     };
+    __MATH3D_E2E_GEOMETRY_PICK__?: {
+      commitGeometryPick: (request: {
+        kind: "object" | "face" | "edge" | "vertex";
+        objectId?: string;
+        faceIndex?: number;
+        edgeVertices?: [number, number];
+        vertexIndex?: number;
+      }) => {
+        ok: boolean;
+        error?: string;
+        kind?: "object" | "face" | "edge" | "vertex";
+        objectId?: string;
+        faceIndex?: number;
+        edgeVertices?: [number, number];
+        vertexIndex?: number;
+      };
+    };
     __MATH3D_GEOMETRY_SMOKE_TRIGGER__?: boolean;
   }
 }

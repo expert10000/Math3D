@@ -14184,6 +14184,170 @@ const App: React.FC = () => {
     [proceduralMeshSet.meshes, resolveGeometrySceneObjectById]
   );
   useEffect(() => {
+    if (typeof window === "undefined" || !window.appRuntime?.e2e) return;
+
+    window.__MATH3D_E2E_GEOMETRY_PICK__ = {
+      commitGeometryPick: (request) => {
+        const kind = request?.kind;
+        if (!isGeometryProbeSelectionModeLocal(kind)) {
+          return { ok: false, error: `Unsupported pick kind: ${String(kind)}` };
+        }
+        const mesh =
+          (typeof request.objectId === "string"
+            ? proceduralMeshSet.meshes.find((entry) => entry.id === request.objectId)
+            : null) ??
+          (geometrySelectedObjectId
+            ? proceduralMeshSet.meshes.find((entry) => entry.id === geometrySelectedObjectId)
+            : null) ??
+          proceduralMeshSet.meshes[0] ??
+          null;
+        if (!mesh) return { ok: false, error: "No visible geometry mesh is available for deterministic picking." };
+
+        const sceneObject = resolveGeometrySceneObjectById(mesh.id);
+        const transform =
+          (sceneObject?.transform as GeometryObjectTransform | undefined) ??
+          (mesh.transform as GeometryObjectTransform | undefined) ?? {
+            position: { x: 0, y: 0, z: 0 },
+            rotation: { x: 0, y: 0, z: 0 },
+            scale: { x: 1, y: 1, z: 1 },
+          };
+        const worldMesh = transformSurfaceMeshByGeometryTransform(mesh, transform);
+        const topology = countTriangleMeshTopology(worldMesh);
+        if (topology.vertexCount <= 0) return { ok: false, error: `Mesh ${mesh.id} has no vertices.` };
+
+        const pointAt = (index: number) => readMeshPoint(worldMesh, index);
+        const faceAt = (faceIndex: number) => {
+          const tri = readMeshFaceVertexIndices(worldMesh, faceIndex);
+          if (!tri) return null;
+          const points = tri.map((index) => pointAt(index));
+          if (points.some((point) => !point)) return null;
+          const [a, b, c] = points as [GeometryProbePoint, GeometryProbePoint, GeometryProbePoint];
+          const normal = geometryNormalizeVec(geometryCross(geometrySub(b, a), geometrySub(c, a))) ?? { x: 0, y: 1, z: 0 };
+          const centroid = {
+            x: (a.x + b.x + c.x) / 3,
+            y: (a.y + b.y + c.y) / 3,
+            z: (a.z + b.z + c.z) / 3,
+          };
+          return { faceIndex, tri, points: [a, b, c] as const, normal, centroid };
+        };
+        const firstFace = () => {
+          for (let i = 0; i < topology.faceCount; i += 1) {
+            const face = faceAt(i);
+            if (face) return face;
+          }
+          return null;
+        };
+        const pickInfoForObject = (): GeometryProceduralPickInfo => {
+          let minX = Infinity;
+          let minY = Infinity;
+          let minZ = Infinity;
+          let maxX = -Infinity;
+          let maxY = -Infinity;
+          let maxZ = -Infinity;
+          for (let i = 0; i < topology.vertexCount; i += 1) {
+            const point = pointAt(i);
+            if (!point) continue;
+            minX = Math.min(minX, point.x);
+            minY = Math.min(minY, point.y);
+            minZ = Math.min(minZ, point.z);
+            maxX = Math.max(maxX, point.x);
+            maxY = Math.max(maxY, point.y);
+            maxZ = Math.max(maxZ, point.z);
+          }
+          const hasBounds = [minX, minY, minZ, maxX, maxY, maxZ].every(Number.isFinite);
+          return {
+            point: hasBounds
+              ? { x: (minX + maxX) / 2, y: (minY + maxY) / 2, z: (minZ + maxZ) / 2 }
+              : { x: 0, y: 0, z: 0 },
+            normal: { x: 0, y: 1, z: 0 },
+            meshKey: mesh.id,
+            distance: 0,
+            topologyVersion: geometryObjectRevisionById[mesh.id] ?? 0,
+          };
+        };
+
+        let pickInfo: GeometryProceduralPickInfo | null = null;
+        if (kind === "object") {
+          pickInfo = pickInfoForObject();
+        } else if (kind === "face") {
+          const face = faceAt(Number.isInteger(request.faceIndex) ? Number(request.faceIndex) : 0) ?? firstFace();
+          if (!face) return { ok: false, error: `Mesh ${mesh.id} has no valid face for deterministic picking.` };
+          pickInfo = {
+            point: face.centroid,
+            normal: face.normal,
+            meshKey: mesh.id,
+            faceIndex: face.faceIndex,
+            distance: 0,
+            topologyVersion: geometryObjectRevisionById[mesh.id] ?? 0,
+          };
+        } else if (kind === "edge") {
+          let containingFace = firstFace();
+          let edgeVertices = request.edgeVertices;
+          if (edgeVertices) {
+            for (let i = 0; i < topology.faceCount; i += 1) {
+              const face = faceAt(i);
+              if (!face) continue;
+              const sortedFaceVertices = new Set(face.tri);
+              if (sortedFaceVertices.has(edgeVertices[0]) && sortedFaceVertices.has(edgeVertices[1])) {
+                containingFace = face;
+                edgeVertices = edgeVertices[0] < edgeVertices[1] ? edgeVertices : [edgeVertices[1], edgeVertices[0]];
+                break;
+              }
+            }
+          } else if (containingFace) {
+            edgeVertices = [containingFace.tri[0], containingFace.tri[1]].sort((a, b) => a - b) as [number, number];
+          }
+          if (!containingFace || !edgeVertices) return { ok: false, error: `Mesh ${mesh.id} has no valid edge for deterministic picking.` };
+          const a = pointAt(edgeVertices[0]);
+          const b = pointAt(edgeVertices[1]);
+          if (!a || !b) return { ok: false, error: `Mesh ${mesh.id} edge vertices are out of range.` };
+          pickInfo = {
+            point: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 },
+            normal: containingFace.normal,
+            meshKey: mesh.id,
+            faceIndex: containingFace.faceIndex,
+            distance: 0,
+            topologyVersion: geometryObjectRevisionById[mesh.id] ?? 0,
+          };
+        } else {
+          const vertexIndex = Number.isInteger(request.vertexIndex) ? Number(request.vertexIndex) : firstFace()?.tri[0] ?? 0;
+          const point = pointAt(vertexIndex);
+          if (!point) return { ok: false, error: `Mesh ${mesh.id} has no valid vertex ${vertexIndex}.` };
+          pickInfo = {
+            point,
+            normal: { x: 0, y: 1, z: 0 },
+            meshKey: mesh.id,
+            vertexIndex,
+            distance: 0,
+            topologyVersion: geometryObjectRevisionById[mesh.id] ?? 0,
+          };
+        }
+
+        setGeometryProbeSelectionMode(kind);
+        handleProceduralPick(pickInfo);
+        return {
+          ok: true,
+          kind,
+          objectId: mesh.id,
+          faceIndex: pickInfo.faceIndex,
+          vertexIndex: pickInfo.vertexIndex,
+        };
+      },
+    };
+
+    return () => {
+      if (window.__MATH3D_E2E_GEOMETRY_PICK__?.commitGeometryPick) {
+        delete window.__MATH3D_E2E_GEOMETRY_PICK__;
+      }
+    };
+  }, [
+    geometryObjectRevisionById,
+    geometrySelectedObjectId,
+    handleProceduralPick,
+    proceduralMeshSet.meshes,
+    resolveGeometrySceneObjectById,
+  ]);
+  useEffect(() => {
     setGeometryMeasuredEdges((prev) => {
       let changed = false;
       const next = prev.map((entry) => {

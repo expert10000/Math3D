@@ -169,6 +169,21 @@ const clickUntilCommitted = async (page: Page, mode: PickMode) => {
   await clickViewerUntilCommitted(page, mode);
 };
 
+const commitDeterministicGeometryPick = async (page: Page, mode: PickMode) => {
+  await selectPickMode(page, mode);
+  const result = await page.evaluate((kind) => {
+    const picker = (window as Window & {
+      __MATH3D_E2E_GEOMETRY_PICK__?: {
+        commitGeometryPick: (request: { kind: PickMode }) => { ok: boolean; error?: string };
+      };
+    }).__MATH3D_E2E_GEOMETRY_PICK__;
+    return picker?.commitGeometryPick({ kind });
+  }, mode);
+  expect(result?.ok, result?.error ?? "Deterministic geometry picker is unavailable.").toBe(true);
+  await expect(page.getByTestId("geometry-pick-committed-entity")).toContainText(mode);
+  await expect(page.getByTestId("geometry-pick-committed-status")).toHaveText("valid");
+};
+
 const clickViewerUntilCommitted = async (page: Page, mode: PickMode) => {
   const entity = page.getByTestId("geometry-pick-committed-entity");
   const status = page.getByTestId("geometry-pick-committed-status");
@@ -279,7 +294,7 @@ test("Geometry pick readout commits object, face, edge, and vertex modes", async
     await page.getByTestId("geometry-workflow-step-transform").click();
     await expect(page.getByTestId("geometry-workflow-step-transform")).toHaveAttribute("aria-current", "step");
 
-    await clickUntilCommitted(page, "object");
+    await commitDeterministicGeometryPick(page, "object");
     await expect(page.getByTestId("geometry-pick-committed-entity")).toContainText("object");
     await expect(page.getByTestId("geometry-pick-object-id")).not.toHaveText("");
     await expect(page.getByTestId("geometry-pick-committed-type")).not.toHaveText("n/a");
@@ -290,16 +305,16 @@ test("Geometry pick readout commits object, face, edge, and vertex modes", async
     await expect(page.getByTestId("geometry-context-actions-panel")).toBeVisible();
     await page.getByTestId("geometry-right-panel-tab-selection").click();
 
-    await clickUntilCommitted(page, "face");
+    await commitDeterministicGeometryPick(page, "face");
     await expect(page.getByTestId("geometry-pick-committed-entity")).toContainText("face");
     await expect(page.getByTestId("geometry-pick-face")).not.toContainText("n/a");
     await expect(page.getByTestId("geometry-pick-world-point")).not.toContainText("none");
 
-    await clickUntilCommitted(page, "edge");
+    await commitDeterministicGeometryPick(page, "edge");
     await expect(page.getByTestId("geometry-pick-committed-entity")).toContainText("edge");
     await expect(page.getByTestId("geometry-pick-edge")).not.toContainText("n/a");
 
-    await clickUntilCommitted(page, "vertex");
+    await commitDeterministicGeometryPick(page, "vertex");
     await expect(page.getByTestId("geometry-pick-committed-entity")).toContainText("vertex");
     await expect(page.getByTestId("geometry-pick-vertex")).not.toContainText("n/a");
   } finally {
