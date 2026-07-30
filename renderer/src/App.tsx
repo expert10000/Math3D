@@ -47,6 +47,16 @@ import {
   ContextualActionStripAction,
   type ContextualActionStripOption,
 } from "./components/ContextualActionStrip";
+import {
+  ENTITY_CONTEXT_COPY,
+  OBJECT_CONTEXT_COPY,
+  formatContextEntityLabel,
+  formatContextEntityId,
+  formatContextEntityPreview,
+  getContextEntityActions,
+  getContextEntityDisabledReason,
+  getContextEntityEmptyState,
+} from "./selection/contextualSelectionModel";
 
 import {
   SurfaceViewer,
@@ -8197,96 +8207,6 @@ function boundsFromPositions(positions: ArrayLike<number> | null | undefined): B
   }
   if (!(minX <= maxX) || !(minY <= maxY) || !(minZ <= maxZ)) return null;
   return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
-}
-
-const OBJECT_CONTEXT_COPY = {
-  mesh: {
-    chip: "Mesh Object",
-    selectedPrefix: "Selected mesh object",
-    selectEmpty: "Select a Mesh object",
-    preview: "Preview: promote selected mesh to Geometry",
-    wholeSelected: "Whole mesh selected",
-    actions: ["Promote to Geometry", "Save edited", "Mesh source"],
-  },
-  geometry: {
-    chip: "Geometry Object",
-    selectedPrefix: "Selected geometry object",
-    selectEmpty: "Select a Geometry object",
-    preview: "Preview: open selected Geometry object details",
-    wholeSelected: "Whole Geometry object selected",
-    actions: ["Open Object Details", "Transform", "History"],
-  },
-} as const;
-
-type ContextualEntityWorkspace = "mesh" | "geometry";
-type ContextualEntityMode = "face" | "edge" | "vertex";
-
-const ENTITY_CONTEXT_COPY = {
-  mesh: {
-    face: {
-      actions: ["Subdivide"],
-      emptyState: "Click a face to enable Subdivide",
-    },
-    edge: {
-      actions: ["Split", "Collapse", "Bevel"],
-      emptyState: "Click an edge to enable Split / Collapse / Bevel",
-    },
-    vertex: {
-      actions: ["Marker"],
-      emptyState: "Click a vertex to enable Marker",
-    },
-  },
-  geometry: {
-    face: {
-      actions: ["Extrude", "Inset", "Delete"],
-      emptyState: "Click a face to enable Extrude",
-    },
-    edge: {
-      actions: ["Split", "Mirror", "Offset"],
-      emptyState: "Click an edge to enable Split / Mirror / Offset",
-    },
-    vertex: {
-      actions: ["Marker", "Move"],
-      emptyState: "Click a vertex to enable Marker / Move",
-    },
-  },
-} as const;
-
-function getEntityContextCopy(workspace: ContextualEntityWorkspace, mode: ContextualEntityMode) {
-  return ENTITY_CONTEXT_COPY[workspace][mode];
-}
-
-function capitalizeEntityMode(mode: ContextualEntityMode): "Face" | "Edge" | "Vertex" {
-  return mode === "face" ? "Face" : mode === "edge" ? "Edge" : "Vertex";
-}
-
-function formatContextEntityLabel(mode: ContextualEntityMode, id: string | number): string {
-  return `Selected ${mode} ${id}`;
-}
-
-function formatContextEntityId(mode: ContextualEntityMode, id: string | number): string {
-  return `${capitalizeEntityMode(mode)} ${id}`;
-}
-
-function formatContextEntityPreview(mode: ContextualEntityMode, id: string | number, result: string): string {
-  return `Preview: ${capitalizeEntityMode(mode)} ${id} -> ${result}`;
-}
-
-function getContextEntityActions(workspace: ContextualEntityWorkspace, mode: ContextualEntityMode): readonly string[] {
-  return getEntityContextCopy(workspace, mode).actions;
-}
-
-function getContextEntityEmptyState(workspace: ContextualEntityWorkspace, mode: ContextualEntityMode): string {
-  return getEntityContextCopy(workspace, mode).emptyState;
-}
-
-function getContextEntityDisabledReason(
-  workspace: ContextualEntityWorkspace,
-  mode: ContextualEntityMode,
-  action: string
-): string {
-  const noun = mode === "edge" ? "an edge" : mode === "face" ? "a face" : "a vertex";
-  return `Click ${noun} to enable ${action}.`;
 }
 
 function buildWholeObjectSelectionPolylineGroups(bounds: BBox3, pulsing: boolean): OverlayPolylineGroup[] {
