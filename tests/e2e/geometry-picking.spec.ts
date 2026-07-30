@@ -163,9 +163,17 @@ const selectContextOrInspectorPickMode = async (page: Page, mode: PickMode) => {
   await selectPickMode(page, mode);
 };
 
-const clickUntilCommitted = async (page: Page, mode: PickMode) => {
+const clickViewerUntilSelectionLabel = async (page: Page, mode: PickMode, pattern: RegExp) => {
   await selectPickMode(page, mode);
-  await clickViewerUntilCommitted(page, mode);
+  const label = page.getByTestId("geometry-context-selection-label");
+  if (pattern.test(await label.innerText().catch(() => ""))) return;
+
+  const pickBox = await surfaceViewerPickBox(page);
+  for (const point of pointGrid(pickBox)) {
+    await page.mouse.click(point.x, point.y);
+    if (pattern.test(await label.innerText().catch(() => ""))) return;
+  }
+  throw new Error(`Unable to commit ${mode} pick with visible selection label after canvas clicks`);
 };
 
 const commitDeterministicGeometryPick = async (
@@ -196,27 +204,6 @@ const commitDeterministicEdgePickCandidate = async (page: Page): Promise<EdgePic
   const candidate = await readCommittedEdgeCandidate(page);
   if (!candidate) throw new Error("Deterministic edge pick did not produce a committed edge candidate.");
   return candidate;
-};
-
-const clickViewerUntilCommitted = async (page: Page, mode: PickMode) => {
-  const entity = page.getByTestId("geometry-pick-committed-entity");
-  const status = page.getByTestId("geometry-pick-committed-status");
-  const alreadyOk = await entity
-    .evaluate((node, expectedMode) => (node.textContent ?? "").toLowerCase().includes(String(expectedMode)), mode)
-    .catch(() => false);
-  const alreadyValid = await status.evaluate((node) => (node.textContent ?? "").trim() === "valid").catch(() => false);
-  if (alreadyOk && alreadyValid) return;
-  const pickBox = await surfaceViewerPickBox(page);
-  const points = pointGrid(pickBox);
-  for (const point of points) {
-    await page.mouse.click(point.x, point.y);
-    const ok = await entity
-      .evaluate((node, expectedMode) => (node.textContent ?? "").toLowerCase().includes(String(expectedMode)), mode)
-      .catch(() => false);
-    const valid = await status.evaluate((node) => (node.textContent ?? "").trim() === "valid").catch(() => false);
-    if (ok && valid) return;
-  }
-  throw new Error(`Unable to commit ${mode} pick after ${points.length} viewer clicks`);
 };
 
 const parseEdgeVertices = (edgeLabel: string): [number, number] | null => {
@@ -320,10 +307,10 @@ test("Geometry canvas picker commits a visible object pick", async () => {
     await page.getByTestId("geometry-workflow-step-transform").click();
     await expect(page.getByTestId("geometry-workflow-step-transform")).toHaveAttribute("aria-current", "step");
 
-    await clickUntilCommitted(page, "object");
-    await expect(page.getByTestId("geometry-pick-committed-entity")).toContainText("object");
-    await expect(page.getByTestId("geometry-pick-object-id")).not.toHaveText("");
-    await expect(page.getByTestId("geometry-pick-committed-type")).not.toHaveText("n/a");
+    await clickViewerUntilSelectionLabel(page, "object", /Selected object:/i);
+    await expect(page.getByTestId("geometry-context-selection-label")).toContainText(/Selected object:/i);
+    await expect(page.getByTestId("geometry-active-selection-card")).toBeVisible();
+    await expect(page.getByTestId("geometry-active-selection-card-type")).toHaveText("Object");
   } finally {
     if (app) await app.close().catch(() => undefined);
     await removeProfileDir(profileDir);
