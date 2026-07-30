@@ -15,6 +15,17 @@ Prevent installer regressions by validating packaged behavior in a repeatable wa
 - clean-profile installed-app launch check:
   - `powershell -ExecutionPolicy Bypass -File scripts/release-smoke.ps1 -SkipBuild -StrictLaunchCheck`
 
+## Local release confidence pass
+
+Run these before treating a candidate as release-ready:
+
+1. TypeScript no-emit check: `npm run typecheck:noemit`
+2. Renderer unit tests: `npm --prefix renderer run test`
+3. App startup smoke: `npm run test:app:startup:smoke`
+4. Geometry smoke: `npm run test:app:geometry:smoke`
+5. Fast app e2e: `npm run test:app:e2e:fast`
+6. Package smoke: `npm run test:release:smoke`
+
 ## What the smoke run validates
 
 1. Installer package is produced (unless `-SkipBuild`).

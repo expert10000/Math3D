@@ -13,6 +13,7 @@ apps/mobile/.expo/
 /build/
 /playwright-report/
 /test-results/
+/output/ci-*/
 /output/memory-profiles/
 /output/release-checks/
 /site/

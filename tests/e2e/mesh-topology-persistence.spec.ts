@@ -6,7 +6,6 @@ import path from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
 import { runContextualActionFlow } from "./helpers/contextualToolbar";
 import { contextualSelectionLabelPatterns } from "./helpers/contextualSelectionLabels";
-import { clickSurfaceViewerCanvas } from "./helpers/viewerPicking";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const firstLaunchKey = "math3d.computeEngines.firstLaunchSeen";
@@ -119,8 +118,17 @@ async function openMeshGallery(page: Page): Promise<void> {
   await expect(page.getByTestId("mesh-preset-grid")).toBeVisible({ timeout: 15_000 });
 }
 
-async function clickMeshViewerForSelection(page: Page): Promise<void> {
-  await clickSurfaceViewerCanvas(page, 0.52, 0.48);
+async function selectDeterministicMeshEdge(page: Page): Promise<void> {
+  const advancedIds = page.getByTestId("mesh-topology-advanced-ids").first();
+  await expect(advancedIds).toBeVisible();
+  if ((await advancedIds.getAttribute("open")) == null) {
+    await advancedIds.locator("summary").click();
+  }
+  await expect(advancedIds).toHaveAttribute("open", "");
+  await advancedIds.getByLabel("Advanced edge A id").fill("4");
+  await advancedIds.getByLabel("Advanced edge B id").fill("5");
+  await expect(page.getByTestId("mesh-topology-selected-edge").first()).toContainText("Selected edge 4-5");
+  await expect(page.getByText(/valid edge/i).first()).toBeVisible();
 }
 
 async function runTopologyDemo(
@@ -143,12 +151,11 @@ async function runTopologyDemo(
       applyPreviewTestId: "mesh-context-apply-preview",
       confirmation: /Done: Edge \d+-\d+ -> split vertex \(\+1V, \+2F\)/,
       pickEntity: async () => {
-        await clickMeshViewerForSelection(page);
+        await selectDeterministicMeshEdge(page);
         await expect(page.getByTestId("mesh-topology-selected-edge").first()).toContainText(
           contextualSelectionLabelPatterns.edge
         );
         await expect(page.getByTestId("mesh-context-toolbar")).toContainText(contextualSelectionLabelPatterns.edge);
-        await expect(page.getByTestId("mesh-topology-advanced-ids").first()).not.toHaveAttribute("open", "");
         await page.getByTestId("mesh-inspector-tab-selection").click();
         await expect(page.getByTestId("mesh-active-selection-card")).toBeVisible();
         await expect(page.getByTestId("mesh-active-selection-card-workspace")).toHaveText("Mesh");

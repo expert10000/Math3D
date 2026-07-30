@@ -726,7 +726,7 @@ test("Geometry construct: plane method readiness uses stable messages and preset
 
     await expectPlaneMethodMessage("parallel", /face/);
     await expectPlaneMethodMessage("perpendicular", /face/);
-    await expectPlaneMethodMessage("tangent-plane", /Pick a face|surface point/);
+    await expectPlaneMethodMessage("tangent-plane", /Choose a face|surface point/);
     await expectPlaneMethodMessage("through-2-lines", /Choose two derived lines/);
     await expectPlaneMethodMessage("mid-plane", /parallel|mid plane|Choose two/);
 

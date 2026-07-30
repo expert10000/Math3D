@@ -17342,14 +17342,14 @@ const App: React.FC = () => {
     const faceLabel =
       geometrySourceFaceOperationTarget?.faceIndex != null
         ? `${geometrySourceFaceOperationTarget.objectId} face ${geometrySourceFaceOperationTarget.faceIndex}`
-        : "Pick face";
+        : "Choose face";
     const edgeLabel = geometryEdgeOperationTarget?.edgeVertexPair
       ? `${geometryEdgeOperationTarget.objectId} edge [${geometryEdgeOperationTarget.edgeVertexPair[0]}, ${geometryEdgeOperationTarget.edgeVertexPair[1]}]`
-      : "Pick edge";
+      : "Choose edge";
     const vertexLabel =
       geometryVertexOperationTarget?.vertexIndex != null
         ? `${geometryVertexOperationTarget.objectId} vertex ${geometryVertexOperationTarget.vertexIndex}`
-        : "Pick vertex";
+        : "Choose vertex";
     const abDuplicate =
       !!geometryEffectiveMathConstructionSourceAId &&
       !!geometryEffectiveMathConstructionSourceBId &&
@@ -17380,14 +17380,14 @@ const App: React.FC = () => {
         return {
           ready: !!geometrySourceFaceOperationTarget,
           createLabel: "Create Centroid",
-          message: geometrySourceFaceOperationTarget ? "Ready: source face is set." : "Pick a face or fill the Source face input.",
+          message: geometrySourceFaceOperationTarget ? "Ready: source face is set." : "Choose a face or fill the Source face input.",
           inputs: [{ label: "Face", value: faceLabel, ok: !!geometrySourceFaceOperationTarget }],
         };
       case "edge-midpoint":
         return {
           ready: !!geometryEdgeOperationTarget,
           createLabel: "Create Edge Mid",
-          message: geometryEdgeOperationTarget ? "Ready: source edge is set." : "Pick an edge or fill the Edge input.",
+          message: geometryEdgeOperationTarget ? "Ready: source edge is set." : "Choose an edge or fill the Edge input.",
           inputs: [{ label: "Edge", value: edgeLabel, ok: !!geometryEdgeOperationTarget }],
         };
       case "object-centroid":
@@ -17401,7 +17401,7 @@ const App: React.FC = () => {
         return {
           ready: !!geometryVertexOperationTarget,
           createLabel: "Create Copy",
-          message: geometryVertexOperationTarget ? "Ready: source vertex and distance are set." : "Pick a vertex or fill the Vertex input.",
+          message: geometryVertexOperationTarget ? "Ready: source vertex and distance are set." : "Choose a vertex or fill the Vertex input.",
           inputs: [
             { label: "Vertex", value: vertexLabel, ok: !!geometryVertexOperationTarget },
             {
@@ -17415,21 +17415,21 @@ const App: React.FC = () => {
         return {
           ready: !!geometryVertexOperationTarget,
           createLabel: "Create Label",
-          message: geometryVertexOperationTarget ? "Ready: source vertex is set." : "Pick a vertex or fill the Vertex input.",
+          message: geometryVertexOperationTarget ? "Ready: source vertex is set." : "Choose a vertex or fill the Vertex input.",
           inputs: [{ label: "Vertex", value: vertexLabel, ok: !!geometryVertexOperationTarget }],
         };
       case "vertex-normal-endpoint":
         return {
           ready: !!geometryVertexOperationTarget,
           createLabel: "Create Normal End",
-          message: geometryVertexOperationTarget ? "Ready: source vertex is set." : "Pick a vertex or fill the Vertex input.",
+          message: geometryVertexOperationTarget ? "Ready: source vertex is set." : "Choose a vertex or fill the Vertex input.",
           inputs: [{ label: "Vertex", value: vertexLabel, ok: !!geometryVertexOperationTarget }],
         };
       default:
         return {
           ready: !!geometryVertexOperationTarget,
           createLabel: "Create Marker",
-          message: geometryVertexOperationTarget ? "Ready: source vertex is set." : "Pick a vertex or fill the Vertex input.",
+          message: geometryVertexOperationTarget ? "Ready: source vertex is set." : "Choose a vertex or fill the Vertex input.",
           inputs: [{ label: "Vertex", value: vertexLabel, ok: !!geometryVertexOperationTarget }],
         };
     }
@@ -17484,11 +17484,11 @@ const App: React.FC = () => {
     const lineLabel = geometryMathConstructionLineOptions.find((entry) => entry.id === geometryEffectiveMathConstructionLineSourceId)?.name ?? "Need line";
     const edgeLabel = geometryEdgeOperationTarget?.edgeVertexPair
       ? `${geometryEdgeOperationTarget.objectId} edge [${geometryEdgeOperationTarget.edgeVertexPair[0]}, ${geometryEdgeOperationTarget.edgeVertexPair[1]}]`
-      : "Pick edge";
+      : "Choose edge";
     const faceLabel =
       geometrySourceFaceOperationTarget?.faceIndex != null
         ? `${geometrySourceFaceOperationTarget.objectId} face ${geometrySourceFaceOperationTarget.faceIndex}`
-        : "Pick face";
+        : "Choose face";
     const selectedObjectSlots = [
       geometryEffectiveMathConstructionSourceAId,
       geometryEffectiveMathConstructionSourceBId,
@@ -17562,14 +17562,14 @@ const App: React.FC = () => {
           ready: !!geometrySourceFaceOperationTarget,
           createLabel:
             geometryLineConstructionTool === "face-normal-line" ? "Create Face Normal" : "Create Perpendicular",
-          message: geometrySourceFaceOperationTarget ? "Ready: source face is set." : "Pick a face or fill the Source face input.",
+          message: geometrySourceFaceOperationTarget ? "Ready: source face is set." : "Choose a face or fill the Source face input.",
           inputs: [{ label: "Face", value: faceLabel, ok: !!geometrySourceFaceOperationTarget }],
         };
       case "edge-equal-length-copied-segment":
         return {
           ready: !!geometryEdgeOperationTarget,
           createLabel: "Create Copy",
-          message: geometryEdgeOperationTarget ? "Ready: source edge and length are set." : "Pick an edge or fill the Edge input.",
+          message: geometryEdgeOperationTarget ? "Ready: source edge and length are set." : "Choose an edge or fill the Edge input.",
           inputs: [
             { label: "Edge", value: edgeLabel, ok: !!geometryEdgeOperationTarget },
             {
@@ -17583,7 +17583,7 @@ const App: React.FC = () => {
         return {
           ready: !!geometryEdgeOperationTarget,
           createLabel: "Create Line",
-          message: geometryEdgeOperationTarget ? "Ready: source edge is set." : "Pick an edge or fill the Edge input.",
+          message: geometryEdgeOperationTarget ? "Ready: source edge is set." : "Choose an edge or fill the Edge input.",
           inputs: [{ label: "Edge", value: edgeLabel, ok: !!geometryEdgeOperationTarget }],
         };
     }
@@ -25371,7 +25371,7 @@ const App: React.FC = () => {
       const invalid = !!ref && !duplicate && geometryPlaneThreePointAnalysis.collinear;
       return {
         label: GEOMETRY_PLANE_POINT_SLOT_LABELS[slot],
-        value: ref ? `${ref.objectId} vertex ${ref.vertexIndex}` : "Pick vertex",
+        value: ref ? `${ref.objectId} vertex ${ref.vertexIndex}` : "Choose vertex",
         ok: !!ref && !duplicate && !invalid,
         status: duplicate ? "duplicate" as const : invalid ? "invalid" as const : undefined,
         detail: duplicate
@@ -25393,7 +25393,7 @@ const App: React.FC = () => {
               ? "Choose three distinct vertices."
               : geometryPlaneThreePointAnalysis.collinear
                 ? "Selected points are collinear; choose another point."
-                : `Next pick: ${GEOMETRY_PLANE_POINT_SLOT_LABELS[geometryPlanePointActiveSlot]}.`,
+                : `Next vertex: ${GEOMETRY_PLANE_POINT_SLOT_LABELS[geometryPlanePointActiveSlot]}.`,
           inputs: GEOMETRY_PLANE_POINT_SLOT_ORDER.map(planePointInput),
         };
       case "through-line-point":
@@ -25402,23 +25402,23 @@ const App: React.FC = () => {
           planned: false,
           createLabel: "Create Plane",
           message: !geometryPlaneLinePointAnalysis.line
-            ? "Pick an edge or choose a derived line."
+            ? "Choose a derived line or pick an edge for Line."
             : !geometryPlaneLinePointAnalysis.point
-              ? "Line set. Pick a point."
+              ? "Line set. Choose a point."
               : geometryPlaneLinePointAnalysis.pointOnLine
                 ? "Point lies on the line; choose a point away from it."
                 : "Ready: the line and point define one plane.",
           inputs: [
             {
               label: "Line",
-              value: geometryPlaneLinePointAnalysis.line?.name ?? "Need edge or derived line",
+              value: geometryPlaneLinePointAnalysis.line?.name ?? "Choose edge or derived line",
               ok: !!geometryPlaneLinePointAnalysis.line,
             },
             {
               label: "Point",
               value: geometryPlaneLinePointAnalysis.point
                 ? `${geometryPlaneLinePointAnalysis.point.objectId} vertex ${geometryPlaneLinePointAnalysis.point.vertexIndex}`
-                : "Pick vertex",
+                : "Choose vertex",
               ok: !!geometryPlaneLinePointAnalysis.point && !geometryPlaneLinePointAnalysis.pointOnLine,
               status: geometryPlaneLinePointAnalysis.pointOnLine ? "invalid" as const : undefined,
               detail: geometryPlaneLinePointAnalysis.pointOnLine ? "Point lies on the selected line." : undefined,
@@ -25443,8 +25443,8 @@ const App: React.FC = () => {
           message: linePair
             ? linePair.canCreatePlane
               ? linePair.parallel
-                ? "Parallel lines define one plane."
-                : "Intersecting lines define one plane."
+                ? "Ready: parallel lines define one plane."
+                : "Ready: intersecting lines define one plane."
               : linePair.skew
                 ? "Skew lines are not coplanar; use Common Perpendicular instead."
                 : linePair.coincident
@@ -25452,8 +25452,8 @@ const App: React.FC = () => {
                   : "Choose intersecting or parallel non-coincident lines."
             : "Choose two derived lines to create a plane.",
           inputs: [
-            { label: "Line A", value: linePair?.lineA.name ?? "Need derived line", ok: !!linePair?.lineA },
-            { label: "Line B", value: linePair?.lineB.name ?? "Need derived line", ok: !!linePair?.lineB },
+            { label: "Line A", value: linePair?.lineA.name ?? "Choose derived line", ok: !!linePair?.lineA },
+            { label: "Line B", value: linePair?.lineB.name ?? "Choose derived line", ok: !!linePair?.lineB },
             {
               label: "Detected relation",
               value: linePair?.relation ?? "-",
@@ -25468,9 +25468,9 @@ const App: React.FC = () => {
           ready: !!faceTarget,
           planned: false,
           createLabel: "Create Parallel Plane",
-          message: faceTarget ? "Ready: selected face plane will be copied as a parallel plane." : "Pick a reference face to create a parallel plane.",
+          message: faceTarget ? "Ready: selected face plane will be copied as a parallel plane." : "Choose a reference face to create a parallel plane.",
           inputs: [
-            { label: "Reference plane", value: faceTarget ? `Face ${faceTarget.faceIndex ?? "-"}` : "Need face pick", ok: !!faceTarget },
+            { label: "Reference plane", value: faceTarget ? `Face ${faceTarget.faceIndex ?? "-"}` : "Choose face", ok: !!faceTarget },
             { label: "Placement", value: "Parallel face plane", ok: !!faceTarget },
           ],
         };
@@ -25482,11 +25482,11 @@ const App: React.FC = () => {
           message: faceTarget && edgeTarget
             ? "Ready: selected face and edge define the perpendicular plane."
             : faceTarget
-              ? "Reference face set. Pick an edge to create a perpendicular plane."
-              : "Pick a reference face, then pick an edge to create a perpendicular plane.",
+              ? "Reference face set. Choose an edge to create a perpendicular plane."
+              : "Choose a reference face, then choose an edge to create a perpendicular plane.",
           inputs: [
-            { label: "Reference plane", value: faceTarget ? `Face ${faceTarget.faceIndex ?? "-"}` : "Need face pick", ok: !!faceTarget },
-            { label: "Reference line", value: edgeTarget ? `Edge on ${edgeTarget.objectId}` : "Need edge pick", ok: !!edgeTarget },
+            { label: "Reference plane", value: faceTarget ? `Face ${faceTarget.faceIndex ?? "-"}` : "Choose face", ok: !!faceTarget },
+            { label: "Reference line", value: edgeTarget ? `Edge on ${edgeTarget.objectId}` : "Choose edge", ok: !!edgeTarget },
           ],
         };
       case "offset":
@@ -25494,9 +25494,9 @@ const App: React.FC = () => {
           ready: !!faceTarget,
           planned: false,
           createLabel: "Create Offset Plane",
-          message: faceTarget ? "Ready: selected face will be offset by the distance below." : "Pick a reference face to create an offset plane.",
+          message: faceTarget ? "Ready: selected face will be offset by the distance below." : "Choose a reference face to create an offset plane.",
           inputs: [
-            { label: "Reference plane", value: faceTarget ? `Face ${faceTarget.faceIndex ?? "-"}` : "Need face pick", ok: !!faceTarget },
+            { label: "Reference plane", value: faceTarget ? `Face ${faceTarget.faceIndex ?? "-"}` : "Choose face", ok: !!faceTarget },
             { label: "Offset", value: fmt(geometryConstructOffsetDistance), ok: Number.isFinite(geometryConstructOffsetDistance) },
           ],
         };
@@ -25511,8 +25511,8 @@ const App: React.FC = () => {
               : "Mid plane requires parallel non-coincident lines."
             : "Choose two parallel non-coincident derived lines to create a mid plane.",
           inputs: [
-            { label: "Line A", value: linePair?.lineA.name ?? "Need derived line", ok: !!linePair?.lineA },
-            { label: "Line B", value: linePair?.lineB.name ?? "Need derived line", ok: !!linePair?.lineB },
+            { label: "Line A", value: linePair?.lineA.name ?? "Choose derived line", ok: !!linePair?.lineA },
+            { label: "Line B", value: linePair?.lineB.name ?? "Choose derived line", ok: !!linePair?.lineB },
             {
               label: "Result offset",
               value: linePair ? fmt(linePair.distance * 0.5) : "-",
@@ -25527,9 +25527,9 @@ const App: React.FC = () => {
           ready: !!faceTarget,
           planned: false,
           createLabel: "Create Tangent Plane",
-          message: faceTarget ? "Ready: face pick supplies the point and normal." : "Pick a face or surface point to create a tangent plane.",
+          message: faceTarget ? "Ready: face pick supplies the point and normal." : "Choose a face or surface point to create a tangent plane.",
           inputs: [
-            { label: "Surface", value: faceTarget ? faceTarget.objectId : "Need face pick", ok: !!faceTarget },
+            { label: "Surface", value: faceTarget ? faceTarget.objectId : "Choose face", ok: !!faceTarget },
             { label: "Point source", value: faceTarget ? `Face ${faceTarget.faceIndex ?? "-"} pick` : "Surface pick", ok: !!faceTarget },
           ],
         };
@@ -25789,7 +25789,7 @@ const App: React.FC = () => {
     setGeometryPlanePointSlots({ a: null, b: null, c: null });
     setGeometryPlanePointActiveSlot("a");
     setGeometryProbeSelectionMode("vertex");
-    setGeometryCreateActionStatus("Plane point inputs cleared. Next pick: Point A.");
+    setGeometryCreateActionStatus("Plane point inputs cleared. Next vertex: Point A.");
   }, []);
   const clearGeometryPlaneLinePointInputs = useCallback(() => {
     setGeometryPlaneLinePointSourceId(null);
@@ -25797,14 +25797,14 @@ const App: React.FC = () => {
     setGeometryPlaneLinePointActiveInput("line");
     setGeometryActiveOperationInputSlotId("active-edge");
     setGeometryProbeSelectionMode("edge");
-    setGeometryCreateActionStatus("Line + point inputs cleared. Pick an edge or choose a line.");
+    setGeometryCreateActionStatus("Line + point inputs cleared. Choose a derived line or edge.");
   }, []);
   const handleCreatePlaneThroughThreePickedPoints = useCallback(() => {
     const a = geometryPlanePointSlots.a;
     const b = geometryPlanePointSlots.b;
     const c = geometryPlanePointSlots.c;
     if (!a || !b || !c) {
-      setGeometryCreateActionStatus(`Pick ${GEOMETRY_PLANE_POINT_SLOT_LABELS[geometryPlanePointActiveSlot]} before creating the plane.`);
+      setGeometryCreateActionStatus(`Choose ${GEOMETRY_PLANE_POINT_SLOT_LABELS[geometryPlanePointActiveSlot]} before creating the plane.`);
       return;
     }
     if (!geometryPlaneThreePointAnalysis.ready || !geometryPlaneThreePointAnalysis.normal) {
@@ -25843,7 +25843,7 @@ const App: React.FC = () => {
     setGeometryPlanePointSlots({ a: null, b: null, c: null });
     setGeometryPlanePointActiveSlot("a");
     setGeometryProbeSelectionMode("vertex");
-    setGeometryCreateActionStatus("Plane through 3 points created. Next pick: Point A.");
+    setGeometryCreateActionStatus("Plane through 3 points created. Next vertex: Point A.");
   }, [
     appendDerivedConstruction,
     buildGeometryPlaneFromPointsFrozenSnapshot,
@@ -25858,11 +25858,11 @@ const App: React.FC = () => {
     const line = geometryPlaneLinePointAnalysis.line;
     const point = geometryPlaneLinePointAnalysis.point;
     if (!line) {
-      setGeometryCreateActionStatus("Pick an edge or choose a derived line before creating the plane.");
+      setGeometryCreateActionStatus("Choose a derived line or edge before creating the plane.");
       return;
     }
     if (!point) {
-      setGeometryCreateActionStatus("Pick a point before creating the plane.");
+      setGeometryCreateActionStatus("Choose a point before creating the plane.");
       return;
     }
     if (!geometryPlaneLinePointAnalysis.ready || !geometryPlaneLinePointAnalysis.normal) {
@@ -26134,7 +26134,7 @@ const App: React.FC = () => {
             if (geometryPlaneConstructionMethod === "through-line-point") {
               setGeometryPlaneLinePointActiveInput(operationInput.slot === "active-edge" ? "line" : "point");
             }
-            setGeometryCreateActionStatus(`Next pick fills the ${operationInput.label} input.`);
+            setGeometryCreateActionStatus(`Next selection fills the ${operationInput.label} input.`);
           },
           onClear: input.ok ? () => handleClearGeometryOperationInput(operationInput.slot) : undefined,
         };
@@ -26144,7 +26144,7 @@ const App: React.FC = () => {
           active: geometryProbeSelectionMode === "object",
           onActivate: () => {
             setGeometryProbeSelectionMode("object");
-            setGeometryCreateActionStatus("Pick an object to replace the object input.");
+            setGeometryCreateActionStatus("Choose an object to replace the object input.");
           },
           onClear: geometrySelectedObjectId ? () => setGeometrySelectedObjectId(null) : undefined,
         };
@@ -66024,7 +66024,7 @@ case "mobius":
                                   </div>
                                   {geometryPlaneConstructionMethod === "through-3-points" && (
                                     <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-                                      <span style={{ color: "#475569" }}>Next pick</span>
+                                      <span style={{ color: "#475569" }}>Next input</span>
                                       {GEOMETRY_PLANE_POINT_SLOT_ORDER.map((slot) => {
                                         const active = geometryPlanePointActiveSlot === slot;
                                         return (
@@ -66059,7 +66059,7 @@ case "mobius":
                                             setGeometryPlaneLinePointActiveInput("point");
                                             setGeometryActiveOperationInputSlotId("active-vertex");
                                             setGeometryProbeSelectionMode("vertex");
-                                            setGeometryCreateActionStatus("Line set. Pick a point.");
+                                            setGeometryCreateActionStatus("Line set. Choose a point.");
                                           }}
                                           disabled={!geometryPlaneLinePointLineOptions.length}
                                           style={{ minWidth: 0 }}
@@ -66080,7 +66080,7 @@ case "mobius":
                                             setGeometryPlaneLinePointActiveInput("line");
                                             setGeometryActiveOperationInputSlotId("active-edge");
                                             setGeometryProbeSelectionMode("edge");
-                                            setGeometryCreateActionStatus("Pick an edge for the plane line.");
+                                            setGeometryCreateActionStatus("Choose an edge for the plane line.");
                                           }}
                                           aria-pressed={geometryPlaneLinePointActiveInput === "line"}
                                           style={{ ...pill(geometryPlaneLinePointActiveInput === "line"), fontSize: 10.5, padding: "2px 8px" }}
@@ -66093,7 +66093,7 @@ case "mobius":
                                             setGeometryPlaneLinePointActiveInput("point");
                                             setGeometryActiveOperationInputSlotId("active-vertex");
                                             setGeometryProbeSelectionMode("vertex");
-                                            setGeometryCreateActionStatus("Pick a point for the plane.");
+                                            setGeometryCreateActionStatus("Choose a point for the plane.");
                                           }}
                                           disabled={!geometryPlaneLinePointLine}
                                           aria-pressed={geometryPlaneLinePointActiveInput === "point"}
