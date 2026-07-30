@@ -4,7 +4,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
-import { runContextualActionFlow, runContextualObjectModeCheck } from "./helpers/contextualToolbar";
+import {
+  runContextualActionFlow,
+  runContextualEntityModeCheck,
+  runContextualObjectModeCheck,
+} from "./helpers/contextualToolbar";
 import { contextualSelectionLabelPatterns } from "./helpers/contextualSelectionLabels";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
@@ -130,16 +134,16 @@ async function openGeometryBoxForObjectMode(page: Page): Promise<void> {
   await expect(page.getByTestId("geometry-workflow-step-transform")).toHaveAttribute("aria-current", "step");
 }
 
-async function commitGeometryObjectPick(page: Page): Promise<void> {
-  const result = await page.evaluate(() => {
+async function commitGeometryEntityPick(page: Page, kind: "object" | "face" | "edge" | "vertex"): Promise<void> {
+  const result = await page.evaluate((pickKind) => {
     const picker = (window as Window & {
       __MATH3D_E2E_GEOMETRY_PICK__?: {
-        commitGeometryPick: (request: { kind: "object" }) => { ok: boolean; error?: string };
+        commitGeometryPick: (request: { kind: "object" | "face" | "edge" | "vertex" }) => { ok: boolean; error?: string };
       };
     }).__MATH3D_E2E_GEOMETRY_PICK__;
-    return picker?.commitGeometryPick({ kind: "object" });
-  });
-  expect(result?.ok, result?.error ?? "Geometry object pick helper unavailable").toBeTruthy();
+    return picker?.commitGeometryPick({ kind: pickKind });
+  }, kind);
+  expect(result?.ok, result?.error ?? `Geometry ${kind} pick helper unavailable`).toBeTruthy();
 }
 
 async function selectDeterministicMeshEdge(page: Page): Promise<void> {
@@ -153,6 +157,18 @@ async function selectDeterministicMeshEdge(page: Page): Promise<void> {
   await advancedIds.getByLabel("Advanced edge B id").fill("5");
   await expect(page.getByTestId("mesh-topology-selected-edge").first()).toContainText("Selected edge 4-5");
   await expect(page.getByText(/valid edge/i).first()).toBeVisible();
+}
+
+async function selectDeterministicMeshFace(page: Page): Promise<void> {
+  const advancedIds = page.getByTestId("mesh-topology-advanced-ids").first();
+  await expect(advancedIds).toBeVisible();
+  if ((await advancedIds.getAttribute("open")) == null) {
+    await advancedIds.locator("summary").click();
+  }
+  await expect(advancedIds).toHaveAttribute("open", "");
+  await advancedIds.getByLabel("Advanced face id").fill("0");
+  await expect(page.getByTestId("mesh-topology-selected-face").first()).toContainText("Selected face 0");
+  await expect(page.getByText(/valid face/i).first()).toBeVisible();
 }
 
 async function runTopologyDemo(
@@ -294,7 +310,7 @@ test.describe("Mesh topology persistence and handoff", () => {
           await openGeometryBoxForObjectMode(page);
         },
         selectObject: async () => {
-          await commitGeometryObjectPick(page);
+          await commitGeometryEntityPick(page, "object");
         },
         chipLabel: "Geometry Object",
         selectionLabel: /Selected geometry object:/i,
@@ -308,6 +324,104 @@ test.describe("Mesh topology persistence and handoff", () => {
           { testId: "geometry-context-history", label: "History" },
         ],
         forbiddenSelectionHints: ["Click a face to enable Extrude", "Click an edge to enable Split / Mirror / Offset"],
+      });
+    } finally {
+      await closeApp(ctx);
+    }
+  });
+
+  test("keeps Mesh and Geometry face-edge entity modes in parity", async () => {
+    test.setTimeout(180_000);
+    let ctx: { app: ElectronApplication; page: Page; profileDir: string } | null = null;
+
+    try {
+      ctx = await launchApp();
+      const { page } = ctx;
+
+      await runContextualEntityModeCheck({
+        page,
+        workspace: "mesh",
+        pickMode: "face",
+        openWorkspace: async () => {
+          await openMeshGallery(page);
+          await page.getByTestId("mesh-preset-card-mesh_box").click();
+          await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true })).then((button) =>
+            button.click()
+          );
+        },
+        pickEntity: async () => {
+          await selectDeterministicMeshFace(page);
+        },
+        selectionLabel: /Selected face \d+/,
+        preview: /Preview: Face \d+ -> subdivide/,
+        viewportPreview: /Viewport preview: Face \d+ -> subdivide/,
+        cardType: "Face",
+        cardId: /Face \d+/,
+        cardActions: "Subdivide",
+        actionExpectations: [{ testId: "mesh-context-subdivide-face", label: "Subdivide", enabled: true }],
+      });
+
+      await runContextualEntityModeCheck({
+        page,
+        workspace: "mesh",
+        pickMode: "edge",
+        pickEntity: async () => {
+          await selectDeterministicMeshEdge(page);
+        },
+        selectionLabel: /Selected edge \d+-\d+/,
+        preview: /Preview: Edge \d+-\d+ -> midpoint vertex/,
+        viewportPreview: /Viewport preview: Edge \d+-\d+ -> midpoint vertex/,
+        cardType: "Edge",
+        cardId: /Edge \d+-\d+/,
+        cardActions: "Split, Collapse, Bevel",
+        actionExpectations: [
+          { testId: "mesh-context-split-edge", label: "Split", enabled: true },
+          { testId: "mesh-context-collapse-edge", label: "Collapse", enabled: true },
+          { testId: "mesh-context-bevel-edge", label: "Bevel", enabled: true },
+        ],
+      });
+
+      await runContextualEntityModeCheck({
+        page,
+        workspace: "geometry",
+        pickMode: "face",
+        openWorkspace: async () => {
+          await openGeometryBoxForObjectMode(page);
+        },
+        pickEntity: async () => {
+          await commitGeometryEntityPick(page, "face");
+        },
+        selectionLabel: /Selected face \d+/,
+        preview: /Preview: Face \d+ -> extrude 0\.15/,
+        viewportPreview: /Viewport preview: Face \d+ -> extrude 0\.15/,
+        cardType: "Face",
+        cardId: /Face \d+/,
+        cardActions: "Extrude, Inset, Delete",
+        actionExpectations: [
+          { testId: "geometry-context-extrude-face", label: "Extrude", enabled: true },
+          { testId: "geometry-context-inset-face", label: "Inset", enabled: true },
+          { testId: "geometry-context-delete-face", label: "Delete", enabled: true },
+        ],
+      });
+
+      await runContextualEntityModeCheck({
+        page,
+        workspace: "geometry",
+        pickMode: "edge",
+        pickEntity: async () => {
+          await commitGeometryEntityPick(page, "edge");
+        },
+        selectionLabel: /Selected edge \d+-\d+/,
+        preview: /Preview: Edge \d+-\d+ -> midpoint vertex/,
+        viewportPreview: /Viewport preview: Edge \d+-\d+ -> midpoint vertex/,
+        cardType: "Edge",
+        cardId: /Edge \d+-\d+/,
+        cardActions: "Split, Mirror, Offset",
+        actionExpectations: [
+          { testId: "geometry-context-split-edge", label: "Split", enabled: true },
+          { testId: "geometry-context-mirror-edge", label: "Mirror", enabled: true },
+          { testId: "geometry-context-offset-edge", label: "Offset", enabled: true },
+        ],
       });
     } finally {
       await closeApp(ctx);

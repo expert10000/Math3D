@@ -8218,6 +8218,77 @@ const OBJECT_CONTEXT_COPY = {
   },
 } as const;
 
+type ContextualEntityWorkspace = "mesh" | "geometry";
+type ContextualEntityMode = "face" | "edge" | "vertex";
+
+const ENTITY_CONTEXT_COPY = {
+  mesh: {
+    face: {
+      actions: ["Subdivide"],
+      emptyState: "Click a face to enable Subdivide",
+    },
+    edge: {
+      actions: ["Split", "Collapse", "Bevel"],
+      emptyState: "Click an edge to enable Split / Collapse / Bevel",
+    },
+    vertex: {
+      actions: ["Marker"],
+      emptyState: "Click a vertex to enable Marker",
+    },
+  },
+  geometry: {
+    face: {
+      actions: ["Extrude", "Inset", "Delete"],
+      emptyState: "Click a face to enable Extrude",
+    },
+    edge: {
+      actions: ["Split", "Mirror", "Offset"],
+      emptyState: "Click an edge to enable Split / Mirror / Offset",
+    },
+    vertex: {
+      actions: ["Marker", "Move"],
+      emptyState: "Click a vertex to enable Marker / Move",
+    },
+  },
+} as const;
+
+function getEntityContextCopy(workspace: ContextualEntityWorkspace, mode: ContextualEntityMode) {
+  return ENTITY_CONTEXT_COPY[workspace][mode];
+}
+
+function capitalizeEntityMode(mode: ContextualEntityMode): "Face" | "Edge" | "Vertex" {
+  return mode === "face" ? "Face" : mode === "edge" ? "Edge" : "Vertex";
+}
+
+function formatContextEntityLabel(mode: ContextualEntityMode, id: string | number): string {
+  return `Selected ${mode} ${id}`;
+}
+
+function formatContextEntityId(mode: ContextualEntityMode, id: string | number): string {
+  return `${capitalizeEntityMode(mode)} ${id}`;
+}
+
+function formatContextEntityPreview(mode: ContextualEntityMode, id: string | number, result: string): string {
+  return `Preview: ${capitalizeEntityMode(mode)} ${id} -> ${result}`;
+}
+
+function getContextEntityActions(workspace: ContextualEntityWorkspace, mode: ContextualEntityMode): readonly string[] {
+  return getEntityContextCopy(workspace, mode).actions;
+}
+
+function getContextEntityEmptyState(workspace: ContextualEntityWorkspace, mode: ContextualEntityMode): string {
+  return getEntityContextCopy(workspace, mode).emptyState;
+}
+
+function getContextEntityDisabledReason(
+  workspace: ContextualEntityWorkspace,
+  mode: ContextualEntityMode,
+  action: string
+): string {
+  const noun = mode === "edge" ? "an edge" : mode === "face" ? "a face" : "a vertex";
+  return `Click ${noun} to enable ${action}.`;
+}
+
 function buildWholeObjectSelectionPolylineGroups(bounds: BBox3, pulsing: boolean): OverlayPolylineGroup[] {
   const span = Math.max(bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1], bounds.max[2] - bounds.min[2], 1);
   const pad = span * 0.018;
@@ -15564,18 +15635,21 @@ const App: React.FC = () => {
   const geometryContextToolbarSelectionLabel = useMemo(() => {
     if (geometryProbeSelectionMode === "face") {
       return geometryHasFaceOperationPick && geometryFaceOperationPick?.faceIndex != null
-        ? `Selected face ${geometryFaceOperationPick.faceIndex}`
-        : "Click a face to enable Extrude";
+        ? formatContextEntityLabel("face", geometryFaceOperationPick.faceIndex)
+        : getContextEntityEmptyState("geometry", "face");
     }
     if (geometryProbeSelectionMode === "edge") {
       return geometryHasEdgeOperationPick && geometryEdgeOperationPick?.edgeVertices
-        ? `Selected edge ${geometryEdgeOperationPick.edgeVertices[0]}-${geometryEdgeOperationPick.edgeVertices[1]}`
-        : "Click an edge to enable Split / Mirror / Offset";
+        ? formatContextEntityLabel(
+            "edge",
+            `${geometryEdgeOperationPick.edgeVertices[0]}-${geometryEdgeOperationPick.edgeVertices[1]}`
+          )
+        : getContextEntityEmptyState("geometry", "edge");
     }
     if (geometryProbeSelectionMode === "vertex") {
       return geometryHasVertexOperationPick && geometryVertexOperationPick?.vertexIndex != null
-        ? `Selected vertex ${geometryVertexOperationPick.vertexIndex}`
-        : "Click a vertex to enable Marker / Move";
+        ? formatContextEntityLabel("vertex", geometryVertexOperationPick.vertexIndex)
+        : getContextEntityEmptyState("geometry", "vertex");
     }
     return geometrySelectedSceneObject
       ? `${OBJECT_CONTEXT_COPY.geometry.selectedPrefix}: ${geometrySelectedSceneObject.name}`
@@ -15600,19 +15674,22 @@ const App: React.FC = () => {
           : "Object";
   const geometryActiveSelectionCardActions =
     geometryProbeSelectionMode === "face"
-      ? ["Extrude", "Inset", "Delete"]
+      ? getContextEntityActions("geometry", "face")
       : geometryProbeSelectionMode === "edge"
-        ? ["Split", "Mirror", "Offset"]
+        ? getContextEntityActions("geometry", "edge")
         : geometryProbeSelectionMode === "vertex"
-          ? ["Marker", "Move"]
+          ? getContextEntityActions("geometry", "vertex")
           : [...OBJECT_CONTEXT_COPY.geometry.actions];
   const geometryActiveSelectionCardId =
     geometryProbeSelectionMode === "face" && geometryHasFaceOperationPick && geometryFaceOperationPick?.faceIndex != null
-      ? `Face ${geometryFaceOperationPick.faceIndex}`
+      ? formatContextEntityId("face", geometryFaceOperationPick.faceIndex)
       : geometryProbeSelectionMode === "edge" && geometryHasEdgeOperationPick && geometryEdgeOperationPick?.edgeVertices
-        ? `Edge ${geometryEdgeOperationPick.edgeVertices[0]}-${geometryEdgeOperationPick.edgeVertices[1]}`
+        ? formatContextEntityId(
+            "edge",
+            `${geometryEdgeOperationPick.edgeVertices[0]}-${geometryEdgeOperationPick.edgeVertices[1]}`
+          )
         : geometryProbeSelectionMode === "vertex" && geometryHasVertexOperationPick && geometryVertexOperationPick?.vertexIndex != null
-          ? `Vertex ${geometryVertexOperationPick.vertexIndex}`
+          ? formatContextEntityId("vertex", geometryVertexOperationPick.vertexIndex)
           : geometryProbeSelectionMode === "object" && geometrySelectedSceneObject
             ? geometrySelectedSceneObject.name
             : "none";
@@ -15677,7 +15754,11 @@ const App: React.FC = () => {
   const geometryContextToolbarPreviewLabel = useMemo(() => {
     if (geometryProbeSelectionMode === "face") {
       return geometryHasFaceOperationPick && geometryFaceOperationPick?.faceIndex != null
-        ? `Preview: Face ${geometryFaceOperationPick.faceIndex} -> extrude ${formatCompactReal(geometryFaceExtrudeDistance)}`
+        ? formatContextEntityPreview(
+            "face",
+            geometryFaceOperationPick.faceIndex,
+            `extrude ${formatCompactReal(geometryFaceExtrudeDistance)}`
+          )
         : null;
     }
     if (geometryProbeSelectionMode === "edge") {
@@ -15685,11 +15766,15 @@ const App: React.FC = () => {
       const [a, b] = geometryEdgeOperationPick.edgeVertices;
       const splitRatio = clampNumber(Number.isFinite(geometryEdgeSplitRatio) ? geometryEdgeSplitRatio : 0.5, 0.02, 0.98);
       const target = Math.abs(splitRatio - 0.5) < 1e-6 ? "midpoint vertex" : `${Math.round(splitRatio * 100)}% split vertex`;
-      return `Preview: Edge ${a}-${b} -> ${target}`;
+      return formatContextEntityPreview("edge", `${a}-${b}`, target);
     }
     if (geometryProbeSelectionMode === "vertex") {
       return geometryHasVertexOperationPick && geometryVertexOperationPick?.vertexIndex != null
-        ? `Preview: Vertex ${geometryVertexOperationPick.vertexIndex} -> move ${formatCompactReal(geometryVertexMoveAmount)}`
+        ? formatContextEntityPreview(
+            "vertex",
+            geometryVertexOperationPick.vertexIndex,
+            `move ${formatCompactReal(geometryVertexMoveAmount)}`
+          )
         : null;
     }
     return geometrySelectedSceneObject ? OBJECT_CONTEXT_COPY.geometry.preview : null;
@@ -27214,78 +27299,78 @@ const App: React.FC = () => {
       : geometryProbeSelectionMode === "face"
         ? [
             {
-              label: "Extrude",
+              label: ENTITY_CONTEXT_COPY.geometry.face.actions[0],
               testId: "geometry-active-selection-action-extrude-face",
               onClick: handleExtrudeSelectedFace,
               disabled: !geometryFaceTopologyActionPreview.ready,
-              disabledReason: "Click a face to enable Extrude.",
+              disabledReason: getContextEntityDisabledReason("geometry", "face", ENTITY_CONTEXT_COPY.geometry.face.actions[0]),
               pulse: contextualActionPulseId === "geometry:face-extrude",
             },
             {
-              label: "Inset",
+              label: ENTITY_CONTEXT_COPY.geometry.face.actions[1],
               testId: "geometry-active-selection-action-inset-face",
               onClick: handleInsetSelectedFace,
               disabled: !geometryHasFaceOperationPick,
-              disabledReason: "Click a face to enable Inset.",
+              disabledReason: getContextEntityDisabledReason("geometry", "face", ENTITY_CONTEXT_COPY.geometry.face.actions[1]),
               pulse: contextualActionPulseId === "geometry:face-inset",
             },
             {
-              label: "Delete",
+              label: ENTITY_CONTEXT_COPY.geometry.face.actions[2],
               testId: "geometry-active-selection-action-delete-face",
               onClick: handleDeleteSelectedFace,
               disabled: !geometryHasFaceOperationPick,
-              disabledReason: "Click a face to enable Delete.",
+              disabledReason: getContextEntityDisabledReason("geometry", "face", ENTITY_CONTEXT_COPY.geometry.face.actions[2]),
               pulse: contextualActionPulseId === "geometry:face-delete",
             },
           ]
         : geometryProbeSelectionMode === "edge"
           ? [
               {
-                label: "Split",
+                label: ENTITY_CONTEXT_COPY.geometry.edge.actions[0],
                 testId: "geometry-active-selection-action-split-edge",
                 onClick: handleSplitSelectedProbeEdge,
                 disabled: !geometryEdgeTopologyActionPreview.split.ready,
-                disabledReason: "Click an edge to enable Split.",
+                disabledReason: getContextEntityDisabledReason("geometry", "edge", ENTITY_CONTEXT_COPY.geometry.edge.actions[0]),
                 pulse: contextualActionPulseId === "geometry:edge-split",
               },
               {
-                label: "Mirror",
+                label: ENTITY_CONTEXT_COPY.geometry.edge.actions[1],
                 testId: "geometry-active-selection-action-mirror-edge",
                 onClick: handleMirrorSelectedConstructionOperation,
                 disabled: !geometryHasEdgeOperationPick,
-                disabledReason: "Click an edge to enable Mirror.",
+                disabledReason: getContextEntityDisabledReason("geometry", "edge", ENTITY_CONTEXT_COPY.geometry.edge.actions[1]),
                 pulse: contextualActionPulseId === "geometry:mirror-copy",
               },
               {
-                label: "Offset",
+                label: ENTITY_CONTEXT_COPY.geometry.edge.actions[2],
                 testId: "geometry-active-selection-action-offset-edge",
                 onClick: () => {
                   setContextualActionPulseId("geometry:offset");
                   handleOffsetSelectedConstructionOperation();
                 },
                 disabled: !geometryHasEdgeOperationPick,
-                disabledReason: "Click an edge to enable Offset.",
+                disabledReason: getContextEntityDisabledReason("geometry", "edge", ENTITY_CONTEXT_COPY.geometry.edge.actions[2]),
                 pulse: contextualActionPulseId === "geometry:offset",
               },
             ]
           : [
               {
-                label: "Marker",
+                label: ENTITY_CONTEXT_COPY.geometry.vertex.actions[0],
                 testId: "geometry-active-selection-action-vertex-marker",
                 onClick: () => {
                   setContextualActionPulseId("geometry:vertex-marker");
                   setGeometryCreateActionStatus(`${geometryContextToolbarSelectionLabel} marker active.`);
                 },
                 disabled: !geometryHasVertexOperationPick,
-                disabledReason: "Click a vertex to enable Marker.",
+                disabledReason: getContextEntityDisabledReason("geometry", "vertex", ENTITY_CONTEXT_COPY.geometry.vertex.actions[0]),
                 pulse: contextualActionPulseId === "geometry:vertex-marker",
               },
               {
-                label: "Move",
+                label: ENTITY_CONTEXT_COPY.geometry.vertex.actions[1],
                 testId: "geometry-active-selection-action-move-vertex",
                 onClick: handleMoveSelectedVertex,
                 disabled: !geometryHasVertexOperationPick,
-                disabledReason: "Click a vertex to enable Move.",
+                disabledReason: getContextEntityDisabledReason("geometry", "vertex", ENTITY_CONTEXT_COPY.geometry.vertex.actions[1]),
                 pulse: contextualActionPulseId === "geometry:vertex-move",
               },
             ];
@@ -45355,33 +45440,30 @@ case "mobius":
   const surfaceMeshTopologySplitGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Split Edge");
   const surfaceMeshTopologyCollapseGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Collapse Edge");
   const surfaceMeshTopologyBevelGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Bevel Edge");
-  const selectedSurfaceMeshTopologyFaceLabel = `Selected face ${Math.max(
-    0,
-    Math.round(surfaceMeshTopologyFaceIndex || 0)
-  )}`;
-  const selectedSurfaceMeshTopologyEdgeLabel = `Selected edge ${Math.max(
+  const selectedSurfaceMeshTopologyFaceId = Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
+  const selectedSurfaceMeshTopologyEdgeId = `${Math.max(
     0,
     Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeA || 0)
-  )}-${Math.max(0, Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeB || 0))}${
+  )}-${Math.max(0, Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeB || 0))}`;
+  const selectedSurfaceMeshTopologyVertexId = Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0));
+  const selectedSurfaceMeshTopologyFaceLabel = formatContextEntityLabel("face", selectedSurfaceMeshTopologyFaceId);
+  const selectedSurfaceMeshTopologyEdgeLabel = `${formatContextEntityLabel("edge", selectedSurfaceMeshTopologyEdgeId)}${
     surfaceMeshTopologyFieldValidation.edgeFallbackActive ? " (from face)" : ""
   }`;
-  const selectedSurfaceMeshTopologyVertexLabel = `Selected vertex ${Math.max(
-    0,
-    Math.round(surfaceMeshTopologyVertexIndex || 0)
-  )}`;
+  const selectedSurfaceMeshTopologyVertexLabel = formatContextEntityLabel("vertex", selectedSurfaceMeshTopologyVertexId);
   const meshContextToolbarSelectionLabel =
     surfaceMeshTopologyPickMode === "face"
       ? !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.faceValid
         ? selectedSurfaceMeshTopologyFaceLabel
-        : "Click a face to enable Subdivide"
+        : getContextEntityEmptyState("mesh", "face")
       : surfaceMeshTopologyPickMode === "edge"
       ? !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.edgeValid
         ? selectedSurfaceMeshTopologyEdgeLabel
-        : "Click an edge to enable Split / Collapse / Bevel"
+        : getContextEntityEmptyState("mesh", "edge")
       : surfaceMeshTopologyPickMode === "vertex"
       ? !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.vertexValid
         ? selectedSurfaceMeshTopologyVertexLabel
-        : "Click a vertex to enable Marker"
+        : getContextEntityEmptyState("mesh", "vertex")
       : `${OBJECT_CONTEXT_COPY.mesh.selectedPrefix}: ${surfaceMeshLabel}`;
   const meshActiveSelectionCardType: ActiveSelectionCardProps["type"] =
     surfaceMeshTopologyPickMode === "face"
@@ -45393,39 +45475,36 @@ case "mobius":
           : "Object";
   const meshActiveSelectionCardActions =
     surfaceMeshTopologyPickMode === "face"
-      ? ["Subdivide"]
+      ? getContextEntityActions("mesh", "face")
       : surfaceMeshTopologyPickMode === "edge"
-        ? ["Split", "Collapse", "Bevel"]
+        ? getContextEntityActions("mesh", "edge")
         : surfaceMeshTopologyPickMode === "vertex"
-          ? ["Marker"]
+          ? getContextEntityActions("mesh", "vertex")
           : [...OBJECT_CONTEXT_COPY.mesh.actions];
   const meshActiveSelectionCardId =
     surfaceMeshTopologyPickMode === "face" &&
     !surfaceMeshTopologySelectionCleared &&
     surfaceMeshTopologyFieldValidation.faceValid
-      ? `Face ${Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0))}`
+      ? formatContextEntityId("face", selectedSurfaceMeshTopologyFaceId)
       : surfaceMeshTopologyPickMode === "edge" &&
           !surfaceMeshTopologySelectionCleared &&
           surfaceMeshTopologyFieldValidation.edgeValid
-        ? `Edge ${Math.max(0, Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeA || 0))}-${Math.max(
-            0,
-            Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeB || 0)
-          )}`
+        ? formatContextEntityId("edge", selectedSurfaceMeshTopologyEdgeId)
         : surfaceMeshTopologyPickMode === "vertex" &&
             !surfaceMeshTopologySelectionCleared &&
             surfaceMeshTopologyFieldValidation.vertexValid
-          ? `Vertex ${Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0))}`
+          ? formatContextEntityId("vertex", selectedSurfaceMeshTopologyVertexId)
           : surfaceMeshTopologyPickMode === "auto" && surfaceMeshData
             ? surfaceMeshLabel
             : "none";
   const meshActiveSelectionCardEmptyState =
     meshActiveSelectionCardId === "none"
       ? surfaceMeshTopologyPickMode === "face"
-        ? "Click a face to enable Subdivide"
+        ? getContextEntityEmptyState("mesh", "face")
         : surfaceMeshTopologyPickMode === "edge"
-          ? "Click an edge to enable Split / Collapse / Bevel"
+          ? getContextEntityEmptyState("mesh", "edge")
           : surfaceMeshTopologyPickMode === "vertex"
-            ? "Click a vertex to enable Marker"
+            ? getContextEntityEmptyState("mesh", "vertex")
             : "Load a mesh to enable object actions"
       : null;
   const meshActiveSelectionSummary = useMemo<ActiveSelectionSummary>(
@@ -45481,7 +45560,7 @@ case "mobius":
       if (!surfaceMeshTopologyFieldValidation.faceValid) return null;
       const faceIndex = Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
       const modeLabel = surfaceMeshTopologySubdivideMode === "center-fan" ? "center fan" : "4 triangles";
-      return `Preview: Face ${faceIndex} -> subdivide ${modeLabel}`;
+      return formatContextEntityPreview("face", faceIndex, `subdivide ${modeLabel}`);
     }
     if (surfaceMeshTopologyPickMode === "edge") {
       if (!surfaceMeshTopologyFieldValidation.edgeValid) return null;
@@ -45489,11 +45568,11 @@ case "mobius":
       const b = Math.max(0, Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeB || 0));
       const splitRatio = clampNumber(Number.isFinite(surfaceMeshTopologySplitRatio) ? surfaceMeshTopologySplitRatio : 0.5, 0.01, 0.99);
       const target = Math.abs(splitRatio - 0.5) < 1e-6 ? "midpoint vertex" : `${Math.round(splitRatio * 100)}% split vertex`;
-      return `Preview: Edge ${a}-${b} -> ${target}`;
+      return formatContextEntityPreview("edge", `${a}-${b}`, target);
     }
     if (surfaceMeshTopologyPickMode === "vertex") {
       return surfaceMeshTopologyFieldValidation.vertexValid
-        ? `Preview: Vertex ${Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0))} -> marker`
+        ? formatContextEntityPreview("vertex", Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0)), "marker")
         : null;
     }
     return surfaceMeshData ? OBJECT_CONTEXT_COPY.mesh.preview : null;
@@ -48187,11 +48266,11 @@ case "mobius":
     surfaceMeshTopologyPickMode === "face"
       ? [
           {
-            label: "Subdivide",
+            label: ENTITY_CONTEXT_COPY.mesh.face.actions[0],
             testId: "mesh-active-selection-action-subdivide-face",
             onClick: handleSurfaceMeshFaceSubdivide,
             disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.faceValid,
-            disabledReason: "Click a mesh face to enable Subdivide.",
+            disabledReason: getContextEntityDisabledReason("mesh", "face", ENTITY_CONTEXT_COPY.mesh.face.actions[0]),
             pulse: contextualActionPulseId === "mesh:face-subdivide",
           },
           {
@@ -48210,38 +48289,38 @@ case "mobius":
       : surfaceMeshTopologyPickMode === "edge"
         ? [
             {
-              label: "Split",
+              label: ENTITY_CONTEXT_COPY.mesh.edge.actions[0],
               testId: "mesh-active-selection-action-split-edge",
               onClick: handleSurfaceMeshSplitEdge,
               disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.edgeValid,
-              disabledReason: "Click an edge to enable Split.",
+              disabledReason: getContextEntityDisabledReason("mesh", "edge", ENTITY_CONTEXT_COPY.mesh.edge.actions[0]),
               pulse: contextualActionPulseId === "mesh:edge-split",
             },
             {
-              label: "Collapse",
+              label: ENTITY_CONTEXT_COPY.mesh.edge.actions[1],
               testId: "mesh-active-selection-action-collapse-edge",
               onClick: handleSurfaceMeshCollapseEdge,
               disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.edgeValid,
-              disabledReason: "Click an edge to enable Collapse.",
+              disabledReason: getContextEntityDisabledReason("mesh", "edge", ENTITY_CONTEXT_COPY.mesh.edge.actions[1]),
               pulse: contextualActionPulseId === "mesh:edge-collapse",
             },
             {
-              label: "Bevel",
+              label: ENTITY_CONTEXT_COPY.mesh.edge.actions[2],
               testId: "mesh-active-selection-action-bevel-edge",
               onClick: handleSurfaceMeshBevelEdge,
               disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.edgeValid,
-              disabledReason: "Click an edge to enable Bevel.",
+              disabledReason: getContextEntityDisabledReason("mesh", "edge", ENTITY_CONTEXT_COPY.mesh.edge.actions[2]),
               pulse: contextualActionPulseId === "mesh:edge-bevel",
             },
           ]
         : surfaceMeshTopologyPickMode === "vertex"
           ? [
               {
-                label: "Marker",
+                label: ENTITY_CONTEXT_COPY.mesh.vertex.actions[0],
                 testId: "mesh-active-selection-action-vertex-marker",
                 onClick: () => setSurfaceMeshTopologyStatus(`${selectedSurfaceMeshTopologyVertexLabel} marker active.`),
                 disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.vertexValid,
-                disabledReason: "Click a vertex to enable Marker.",
+                disabledReason: getContextEntityDisabledReason("mesh", "vertex", ENTITY_CONTEXT_COPY.mesh.vertex.actions[0]),
               },
               {
                 label: "Move",
@@ -60299,10 +60378,10 @@ case "mobius":
                           testId="mesh-context-subdivide-face"
                           onClick={handleSurfaceMeshFaceSubdivide}
                           disabled={surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.faceValid}
-                          disabledReason="Click a mesh face to enable Subdivide."
+                          disabledReason={getContextEntityDisabledReason("mesh", "face", ENTITY_CONTEXT_COPY.mesh.face.actions[0])}
                           pulse={contextualActionPulseId === "mesh:face-subdivide"}
                         >
-                          Subdivide
+                          {ENTITY_CONTEXT_COPY.mesh.face.actions[0]}
                         </ContextualActionStripAction>
                         <ContextualActionStripAction disabled disabledReason="Face inset is planned for the shared contextual toolbar.">
                           Inset
@@ -60318,28 +60397,28 @@ case "mobius":
                           testId="mesh-context-split-edge"
                           onClick={handleSurfaceMeshSplitEdge}
                           disabled={surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.edgeValid}
-                          disabledReason="Click an edge to enable Split."
+                          disabledReason={getContextEntityDisabledReason("mesh", "edge", ENTITY_CONTEXT_COPY.mesh.edge.actions[0])}
                           pulse={contextualActionPulseId === "mesh:edge-split"}
                         >
-                          Split
+                          {ENTITY_CONTEXT_COPY.mesh.edge.actions[0]}
                         </ContextualActionStripAction>
                         <ContextualActionStripAction
                           testId="mesh-context-collapse-edge"
                           onClick={handleSurfaceMeshCollapseEdge}
                           disabled={surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.edgeValid}
-                          disabledReason="Click an edge to enable Collapse."
+                          disabledReason={getContextEntityDisabledReason("mesh", "edge", ENTITY_CONTEXT_COPY.mesh.edge.actions[1])}
                           pulse={contextualActionPulseId === "mesh:edge-collapse"}
                         >
-                          Collapse
+                          {ENTITY_CONTEXT_COPY.mesh.edge.actions[1]}
                         </ContextualActionStripAction>
                         <ContextualActionStripAction
                           testId="mesh-context-bevel-edge"
                           onClick={handleSurfaceMeshBevelEdge}
                           disabled={surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.edgeValid}
-                          disabledReason="Click an edge to enable Bevel."
+                          disabledReason={getContextEntityDisabledReason("mesh", "edge", ENTITY_CONTEXT_COPY.mesh.edge.actions[2])}
                           pulse={contextualActionPulseId === "mesh:edge-bevel"}
                         >
-                          Bevel
+                          {ENTITY_CONTEXT_COPY.mesh.edge.actions[2]}
                         </ContextualActionStripAction>
                       </>
                     )}
@@ -60348,9 +60427,9 @@ case "mobius":
                         <ContextualActionStripAction
                           onClick={() => setSurfaceMeshTopologyStatus(`${selectedSurfaceMeshTopologyVertexLabel} marker active.`)}
                           disabled={surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.vertexValid}
-                          disabledReason="Click a vertex to enable Marker."
+                          disabledReason={getContextEntityDisabledReason("mesh", "vertex", ENTITY_CONTEXT_COPY.mesh.vertex.actions[0])}
                         >
-                          Marker
+                          {ENTITY_CONTEXT_COPY.mesh.vertex.actions[0]}
                         </ContextualActionStripAction>
                         <ContextualActionStripAction disabled disabledReason="Vertex move will use the shared transform tools.">
                           Move
@@ -75286,28 +75365,28 @@ case "mobius":
                             testId="geometry-context-extrude-face"
                             onClick={handleExtrudeSelectedFace}
                             disabled={!geometryFaceTopologyActionPreview.ready}
-                            disabledReason="Click a face to enable Extrude."
+                            disabledReason={getContextEntityDisabledReason("geometry", "face", ENTITY_CONTEXT_COPY.geometry.face.actions[0])}
                             pulse={contextualActionPulseId === "geometry:face-extrude"}
                           >
-                            Extrude
+                            {ENTITY_CONTEXT_COPY.geometry.face.actions[0]}
                           </ContextualActionStripAction>
                           <ContextualActionStripAction
                             testId="geometry-context-inset-face"
                             onClick={handleInsetSelectedFace}
                             disabled={!geometryHasFaceOperationPick}
-                            disabledReason="Click a face to enable Inset."
+                            disabledReason={getContextEntityDisabledReason("geometry", "face", ENTITY_CONTEXT_COPY.geometry.face.actions[1])}
                             pulse={contextualActionPulseId === "geometry:face-inset"}
                           >
-                            Inset
+                            {ENTITY_CONTEXT_COPY.geometry.face.actions[1]}
                           </ContextualActionStripAction>
                           <ContextualActionStripAction
                             testId="geometry-context-delete-face"
                             onClick={handleDeleteSelectedFace}
                             disabled={!geometryHasFaceOperationPick}
-                            disabledReason="Click a face to enable Delete."
+                            disabledReason={getContextEntityDisabledReason("geometry", "face", ENTITY_CONTEXT_COPY.geometry.face.actions[2])}
                             pulse={contextualActionPulseId === "geometry:face-delete"}
                           >
-                            Delete
+                            {ENTITY_CONTEXT_COPY.geometry.face.actions[2]}
                           </ContextualActionStripAction>
                         </>
                       )}
@@ -75317,19 +75396,19 @@ case "mobius":
                             testId="geometry-context-split-edge"
                             onClick={handleSplitSelectedProbeEdge}
                             disabled={!geometryEdgeTopologyActionPreview.split.ready}
-                            disabledReason="Click an edge to enable Split."
+                            disabledReason={getContextEntityDisabledReason("geometry", "edge", ENTITY_CONTEXT_COPY.geometry.edge.actions[0])}
                             pulse={contextualActionPulseId === "geometry:edge-split"}
                           >
-                            Split
+                            {ENTITY_CONTEXT_COPY.geometry.edge.actions[0]}
                           </ContextualActionStripAction>
                           <ContextualActionStripAction
                             testId="geometry-context-mirror-edge"
                             onClick={handleMirrorSelectedConstructionOperation}
                             disabled={!geometryHasEdgeOperationPick}
-                            disabledReason="Click an edge to enable Mirror."
+                            disabledReason={getContextEntityDisabledReason("geometry", "edge", ENTITY_CONTEXT_COPY.geometry.edge.actions[1])}
                             pulse={contextualActionPulseId === "geometry:mirror-copy"}
                           >
-                            Mirror
+                            {ENTITY_CONTEXT_COPY.geometry.edge.actions[1]}
                           </ContextualActionStripAction>
                           <ContextualActionStripAction
                             testId="geometry-context-offset-edge"
@@ -75338,10 +75417,10 @@ case "mobius":
                               handleOffsetSelectedConstructionOperation();
                             }}
                             disabled={!geometryHasEdgeOperationPick}
-                            disabledReason="Click an edge to enable Offset."
+                            disabledReason={getContextEntityDisabledReason("geometry", "edge", ENTITY_CONTEXT_COPY.geometry.edge.actions[2])}
                             pulse={contextualActionPulseId === "geometry:offset"}
                           >
-                            Offset
+                            {ENTITY_CONTEXT_COPY.geometry.edge.actions[2]}
                           </ContextualActionStripAction>
                         </>
                       )}
@@ -75354,19 +75433,19 @@ case "mobius":
                               setGeometryCreateActionStatus(`${geometryContextToolbarSelectionLabel} marker active.`);
                             }}
                             disabled={!geometryHasVertexOperationPick}
-                            disabledReason="Click a vertex to enable Marker."
+                            disabledReason={getContextEntityDisabledReason("geometry", "vertex", ENTITY_CONTEXT_COPY.geometry.vertex.actions[0])}
                             pulse={contextualActionPulseId === "geometry:vertex-marker"}
                           >
-                            Marker
+                            {ENTITY_CONTEXT_COPY.geometry.vertex.actions[0]}
                           </ContextualActionStripAction>
                           <ContextualActionStripAction
                             testId="geometry-context-move-vertex"
                             onClick={handleMoveSelectedVertex}
                             disabled={!geometryHasVertexOperationPick}
-                            disabledReason="Click a vertex to enable Move."
+                            disabledReason={getContextEntityDisabledReason("geometry", "vertex", ENTITY_CONTEXT_COPY.geometry.vertex.actions[1])}
                             pulse={contextualActionPulseId === "geometry:vertex-move"}
                           >
-                            Move
+                            {ENTITY_CONTEXT_COPY.geometry.vertex.actions[1]}
                           </ContextualActionStripAction>
                         </>
                       )}
@@ -88674,20 +88753,17 @@ onChangeImplicitExpr,
   const meshReady = !!surfaceMeshStats;
   const maxSurfaceMeshTopologyFaceIndex = Math.max(0, (surfaceMeshStats?.triCount ?? 1) - 1);
   const maxSurfaceMeshTopologyVertexIndex = Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1);
-  const selectedSurfaceMeshTopologyFaceLabel = `Selected face ${Math.max(
-    0,
-    Math.round(surfaceMeshTopologyFaceIndex || 0)
-  )}`;
-  const selectedSurfaceMeshTopologyEdgeLabel = `Selected edge ${Math.max(
+  const selectedSurfaceMeshTopologyFaceId = Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
+  const selectedSurfaceMeshTopologyEdgeId = `${Math.max(
     0,
     Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeA || 0)
-  )}-${Math.max(0, Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeB || 0))}${
+  )}-${Math.max(0, Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeB || 0))}`;
+  const selectedSurfaceMeshTopologyVertexId = Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0));
+  const selectedSurfaceMeshTopologyFaceLabel = formatContextEntityLabel("face", selectedSurfaceMeshTopologyFaceId);
+  const selectedSurfaceMeshTopologyEdgeLabel = `${formatContextEntityLabel("edge", selectedSurfaceMeshTopologyEdgeId)}${
     surfaceMeshTopologyFieldValidation.edgeFallbackActive ? " (from face)" : ""
   }`;
-  const selectedSurfaceMeshTopologyVertexLabel = `Selected vertex ${Math.max(
-    0,
-    Math.round(surfaceMeshTopologyVertexIndex || 0)
-  )}`;
+  const selectedSurfaceMeshTopologyVertexLabel = formatContextEntityLabel("vertex", selectedSurfaceMeshTopologyVertexId);
   const meshActiveSelectionCardType =
     surfaceMeshTopologyPickMode === "face"
       ? "Face"
@@ -88698,33 +88774,30 @@ onChangeImplicitExpr,
           : "Object";
   const meshActiveSelectionCardActions =
     surfaceMeshTopologyPickMode === "face"
-      ? ["Subdivide"]
+      ? getContextEntityActions("mesh", "face")
       : surfaceMeshTopologyPickMode === "edge"
-        ? ["Split", "Collapse", "Bevel"]
+        ? getContextEntityActions("mesh", "edge")
         : surfaceMeshTopologyPickMode === "vertex"
-          ? ["Marker"]
+          ? getContextEntityActions("mesh", "vertex")
           : ["Promote", "Save edited", "Mesh source"];
   const meshActiveSelectionCardId =
     surfaceMeshTopologyPickMode === "face" && !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.faceValid
-      ? `Face ${Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0))}`
+      ? formatContextEntityId("face", selectedSurfaceMeshTopologyFaceId)
       : surfaceMeshTopologyPickMode === "edge" && !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.edgeValid
-        ? `Edge ${Math.max(0, Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeA || 0))}-${Math.max(
-            0,
-            Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeB || 0)
-          )}`
+        ? formatContextEntityId("edge", selectedSurfaceMeshTopologyEdgeId)
         : surfaceMeshTopologyPickMode === "vertex" && !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.vertexValid
-          ? `Vertex ${Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0))}`
+          ? formatContextEntityId("vertex", selectedSurfaceMeshTopologyVertexId)
           : surfaceMeshTopologyPickMode === "auto" && meshReady
             ? surfaceMeshLabel
             : "none";
   const meshActiveSelectionCardEmptyState =
     meshActiveSelectionCardId === "none"
       ? surfaceMeshTopologyPickMode === "face"
-        ? "Click a face to enable Subdivide"
+        ? getContextEntityEmptyState("mesh", "face")
         : surfaceMeshTopologyPickMode === "edge"
-          ? "Click an edge to enable Split / Collapse / Bevel"
+          ? getContextEntityEmptyState("mesh", "edge")
           : surfaceMeshTopologyPickMode === "vertex"
-            ? "Click a vertex to enable Marker"
+            ? getContextEntityEmptyState("mesh", "vertex")
             : "Load a mesh to enable object actions"
       : null;
   const surfaceMeshTopologyFaceGuidedPreset = findSurfaceMeshTopologyDemoPresetByOperation("Face Subdivide");

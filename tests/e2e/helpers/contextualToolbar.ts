@@ -117,6 +117,62 @@ export async function runContextualObjectModeCheck({
   }
 }
 
+export async function runContextualEntityModeCheck({
+  page,
+  workspace,
+  pickMode,
+  openWorkspace,
+  pickEntity,
+  selectionLabel,
+  preview,
+  viewportPreview,
+  cardType,
+  cardId,
+  cardActions,
+  actionExpectations,
+}: {
+  page: Page;
+  workspace: "geometry" | "mesh";
+  pickMode: "face" | "edge" | "vertex";
+  openWorkspace?: () => Promise<void>;
+  pickEntity: () => Promise<void>;
+  selectionLabel: string | RegExp;
+  preview: string | RegExp;
+  viewportPreview: string | RegExp;
+  cardType: "Face" | "Edge" | "Vertex";
+  cardId: string | RegExp;
+  cardActions: string | RegExp;
+  actionExpectations: readonly { testId: string; label: string | RegExp; enabled?: boolean }[];
+}): Promise<void> {
+  if (openWorkspace) await openWorkspace();
+  await chooseContextualPickMode(page, workspace, pickMode);
+  await pickEntity();
+
+  await expect(page.getByTestId(`${workspace}-context-pick-${pickMode}`)).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId(`${workspace}-context-selection-label`)).toContainText(selectionLabel);
+  await expect(page.getByTestId(`${workspace}-context-preview`)).toContainText(preview);
+  await expect(page.getByTestId(`${workspace}-viewport-command-preview`)).toContainText(viewportPreview);
+  const activeCard = page.getByTestId(`${workspace}-active-selection-card`);
+  if (!(await activeCard.isVisible().catch(() => false))) {
+    const selectionTab = page.getByTestId(`${workspace}-inspector-tab-selection`);
+    if (await selectionTab.isVisible().catch(() => false)) await selectionTab.click();
+  }
+  await expect(activeCard).toBeVisible();
+  await expect(page.getByTestId(`${workspace}-active-selection-card-workspace`)).toHaveText(
+    workspace === "mesh" ? "Mesh" : "Geometry"
+  );
+  await expect(page.getByTestId(`${workspace}-active-selection-card-type`)).toHaveText(cardType);
+  await expect(page.getByTestId(`${workspace}-active-selection-card-id`)).toContainText(cardId);
+  await expect(page.getByTestId(`${workspace}-active-selection-card-actions`)).toContainText(cardActions);
+
+  for (const action of actionExpectations) {
+    const actionLocator = page.getByTestId(action.testId);
+    await expect(actionLocator).toBeVisible();
+    await expect(actionLocator).toContainText(action.label);
+    if (action.enabled) await expect(actionLocator).toBeEnabled();
+  }
+}
+
 export async function choosePickAndExpectActionReady(
   page: Page,
   workspace: "geometry" | "mesh",
