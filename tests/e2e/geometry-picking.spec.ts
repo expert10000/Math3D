@@ -6,7 +6,7 @@ import path from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
 import { runContextualActionFlow } from "./helpers/contextualToolbar";
 import { contextualSelectionLabelPatterns } from "./helpers/contextualSelectionLabels";
-import { pointGrid, surfaceViewerPickBox, type ViewerPoint } from "./helpers/viewerPicking";
+import { pointGrid, surfaceViewerPickBox } from "./helpers/viewerPicking";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const COMPUTE_ENGINE_FIRST_LAUNCH_KEY = "math3d.computeEngines.firstLaunchSeen";
@@ -17,7 +17,6 @@ type EdgePickCandidate = {
   edgeLabel: string;
   objectId: string;
   vertices: [number, number];
-  point: ViewerPoint;
 };
 
 const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication; page: Page }> => {
@@ -169,8 +168,16 @@ const clickUntilCommitted = async (page: Page, mode: PickMode) => {
   await clickViewerUntilCommitted(page, mode);
 };
 
-const commitDeterministicGeometryPick = async (page: Page, mode: PickMode) => {
-  await selectPickMode(page, mode);
+const commitDeterministicGeometryPick = async (
+  page: Page,
+  mode: PickMode,
+  options: { useContextOrInspectorMode?: boolean } = {}
+) => {
+  if (options.useContextOrInspectorMode) {
+    await selectContextOrInspectorPickMode(page, mode);
+  } else {
+    await selectPickMode(page, mode);
+  }
   const result = await page.evaluate((kind) => {
     const picker = (window as Window & {
       __MATH3D_E2E_GEOMETRY_PICK__?: {
@@ -182,6 +189,13 @@ const commitDeterministicGeometryPick = async (page: Page, mode: PickMode) => {
   expect(result?.ok, result?.error ?? "Deterministic geometry picker is unavailable.").toBe(true);
   await expect(page.getByTestId("geometry-pick-committed-entity")).toContainText(mode);
   await expect(page.getByTestId("geometry-pick-committed-status")).toHaveText("valid");
+};
+
+const commitDeterministicEdgePickCandidate = async (page: Page): Promise<EdgePickCandidate> => {
+  await commitDeterministicGeometryPick(page, "edge");
+  const candidate = await readCommittedEdgeCandidate(page);
+  if (!candidate) throw new Error("Deterministic edge pick did not produce a committed edge candidate.");
+  return candidate;
 };
 
 const clickViewerUntilCommitted = async (page: Page, mode: PickMode) => {
@@ -211,15 +225,7 @@ const parseEdgeVertices = (edgeLabel: string): [number, number] | null => {
   return [Number(match[1]), Number(match[2])];
 };
 
-const sharedVertexCount = (a: EdgePickCandidate, b: EdgePickCandidate) =>
-  a.vertices.filter((vertex) => b.vertices.includes(vertex)).length;
-
-const edgePickKey = (candidate: EdgePickCandidate) => `${candidate.objectId}:${candidate.edgeLabel}`;
-
-const shareExactlyOneVertex = (a: EdgePickCandidate, b: EdgePickCandidate) =>
-  a.objectId === b.objectId && sharedVertexCount(a, b) === 1;
-
-const readCommittedEdgeCandidate = async (page: Page, point: ViewerPoint): Promise<EdgePickCandidate | null> => {
+const readCommittedEdgeCandidate = async (page: Page): Promise<EdgePickCandidate | null> => {
   const entity = (await page.getByTestId("geometry-pick-committed-entity").innerText()).toLowerCase();
   const status = (await page.getByTestId("geometry-pick-committed-status").innerText()).trim();
   if (!entity.includes("edge") || status !== "valid") return null;
@@ -231,31 +237,7 @@ const readCommittedEdgeCandidate = async (page: Page, point: ViewerPoint): Promi
   const objectId = (await page.getByTestId("geometry-pick-committed-object").getAttribute("data-object-id"))?.trim() ?? "";
   if (!objectId) return null;
 
-  return { edgeLabel, objectId, vertices, point };
-};
-
-const findEdgePickCandidate = async (
-  page: Page,
-  predicate: (candidate: EdgePickCandidate) => boolean = () => true
-): Promise<EdgePickCandidate> => {
-  await selectPickMode(page, "edge");
-  const box = await surfaceViewerPickBox(page);
-
-  const seen = new Set<string>();
-  for (const point of pointGrid(box)) {
-    await page.mouse.click(point.x, point.y);
-    const candidate = await readCommittedEdgeCandidate(page, point);
-    if (!candidate) continue;
-
-    const key = edgePickKey(candidate);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    if (predicate(candidate)) {
-      return candidate;
-    }
-  }
-
-  throw new Error(`Unable to find a matching edge pick; collected ${seen.size} edge(s).`);
+  return { edgeLabel, objectId, vertices };
 };
 
 const extendCommittedEdge = async (page: Page, candidate: EdgePickCandidate) => {
@@ -323,6 +305,31 @@ test("Geometry pick readout commits object, face, edge, and vertex modes", async
   }
 });
 
+test("Geometry canvas picker commits a visible object pick", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-canvas-pick-"));
+  let app: ElectronApplication | null = null;
+
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+    await configureGeometryViewerForConstructionPicking(page);
+    await page.getByTestId("geometry-workflow-step-transform").click();
+    await expect(page.getByTestId("geometry-workflow-step-transform")).toHaveAttribute("aria-current", "step");
+
+    await clickUntilCommitted(page, "object");
+    await expect(page.getByTestId("geometry-pick-committed-entity")).toContainText("object");
+    await expect(page.getByTestId("geometry-pick-object-id")).not.toHaveText("");
+    await expect(page.getByTestId("geometry-pick-committed-type")).not.toHaveText("n/a");
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    await removeProfileDir(profileDir);
+  }
+});
+
 test("Geometry contextual strip switches to face picking and runs extrude", async () => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-geometry-context-face-"));
   let app: ElectronApplication | null = null;
@@ -347,7 +354,7 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
       applyPreviewTestId: "geometry-context-apply-preview",
       confirmation: /Done: Face \d+ extruded, V \d+ -> \d+, F \d+ -> \d+/,
       pickEntity: async () => {
-        await clickViewerUntilCommitted(page, "face");
+        await commitDeterministicGeometryPick(page, "face", { useContextOrInspectorMode: true });
         await expect(page.getByTestId("geometry-context-selection-label")).toContainText(
           contextualSelectionLabelPatterns.face
         );
@@ -656,7 +663,7 @@ test("Geometry construct: edge extension auto-fills line-pair source", async () 
     await selectConstructPanelTab(page, "relations");
     await expect(page.getByTestId("geometry-line-pair-panel")).toHaveCount(1);
     await configureGeometryViewerForConstructionPicking(page);
-    const edgeA = await findEdgePickCandidate(page);
+    const edgeA = await commitDeterministicEdgePickCandidate(page);
 
     await extendCommittedEdge(page, edgeA);
     await selectConstructPanelTab(page, "relations");
@@ -686,7 +693,7 @@ test("Geometry construct: one face pick supplies face-backed plane previews", as
     await configureGeometryViewerForConstructionPicking(page);
 
     await page.getByTestId("geometry-plane-method-parallel").click();
-    await clickUntilCommitted(page, "face");
+    await commitDeterministicGeometryPick(page, "face");
     await expect(page.getByTestId("geometry-plane-parallel-preview-status")).toContainText("Preview plane is shown");
     await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
 
@@ -699,7 +706,7 @@ test("Geometry construct: one face pick supplies face-backed plane previews", as
     await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
 
     await page.getByTestId("geometry-plane-method-perpendicular").click();
-    await findEdgePickCandidate(page);
+    await commitDeterministicGeometryPick(page, "edge");
     await expect(page.getByTestId("geometry-plane-perpendicular-preview-status")).toContainText("Preview plane is shown");
     await expect(page.getByTestId("geometry-plane-create-button")).toBeEnabled();
   } finally {
