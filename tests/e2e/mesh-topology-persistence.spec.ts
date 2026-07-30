@@ -188,6 +188,44 @@ async function runTopologyDemo(
 }
 
 test.describe("Mesh topology persistence and handoff", () => {
+  test("keeps Mesh Object mode clear and promotes through Apply preview", async () => {
+    test.setTimeout(120_000);
+    let ctx: { app: ElectronApplication; page: Page; profileDir: string } | null = null;
+
+    try {
+      ctx = await launchApp();
+      const { page } = ctx;
+
+      await openMeshGallery(page);
+      await page.getByTestId("mesh-preset-card-mesh_box").click();
+      await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true })).then((button) => button.click());
+      await page.getByTestId("mesh-context-pick-auto").click();
+
+      await expect(page.getByTestId("mesh-context-pick-auto")).toContainText("Mesh Object");
+      await expect(page.getByTestId("mesh-context-pick-auto")).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByTestId("mesh-context-selection-label")).toContainText(/Selected mesh object:/);
+      await expect(page.getByTestId("mesh-context-preview")).toContainText("Preview: promote selected mesh to Geometry");
+      await expect(page.getByTestId("mesh-viewport-command-preview")).toContainText(
+        "Viewport preview: promote selected mesh to Geometry"
+      );
+      await expect(page.getByTestId("mesh-object-selection-glow")).toContainText("Whole mesh selected");
+      await expect(page.getByTestId("mesh-context-promote-mesh-object")).toBeVisible();
+      await expect(page.getByTestId("mesh-context-promote-mesh-object")).toBeEnabled();
+      await expect(page.getByTestId("mesh-context-save-edited")).toBeVisible();
+      await expect(page.getByTestId("mesh-context-mesh-source")).toBeVisible();
+      await expect(page.getByTestId("mesh-context-toolbar")).not.toContainText("Click a face to enable Subdivide");
+      await expect(page.getByTestId("mesh-context-toolbar")).not.toContainText(
+        "Click an edge to enable Split / Collapse / Bevel"
+      );
+
+      await page.getByTestId("mesh-context-apply-preview").click();
+      await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId("geometry-right-open-object")).toBeVisible({ timeout: 15_000 });
+    } finally {
+      await closeApp(ctx);
+    }
+  });
+
   test("shows an explicit empty topology handoff card for unedited Mesh promotions", async () => {
     test.setTimeout(120_000);
     let ctx: { app: ElectronApplication; page: Page; profileDir: string } | null = null;

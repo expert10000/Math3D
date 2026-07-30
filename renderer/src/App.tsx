@@ -33052,6 +33052,58 @@ const App: React.FC = () => {
       : surfaceMeshTopologyHistoryPreviewEntry.snapshot;
   }, [surfaceMeshTopologyHistoryPreviewEntry, surfaceMeshTopologyHistoryPreviewMode]);
   const surfaceMeshTopologyViewerMesh = surfaceMeshTopologyHistoryDisplayMesh ?? surfaceMeshData;
+  const surfaceMeshObjectSelectionPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (!isMeshLikeViewer || surfaceMeshTopologyPickMode !== "auto" || !surfaceMeshTopologyViewerMesh?.positions?.length) {
+      return null;
+    }
+    const bounds = boundsFromPositions(surfaceMeshTopologyViewerMesh.positions);
+    if (!bounds) return null;
+    const span = Math.max(bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1], bounds.max[2] - bounds.min[2], 1);
+    const pad = span * 0.018;
+    const minX = bounds.min[0] - pad;
+    const minY = bounds.min[1] - pad;
+    const minZ = bounds.min[2] - pad;
+    const maxX = bounds.max[0] + pad;
+    const maxY = bounds.max[1] + pad;
+    const maxZ = bounds.max[2] + pad;
+    const p000 = { x: minX, y: minY, z: minZ };
+    const p100 = { x: maxX, y: minY, z: minZ };
+    const p010 = { x: minX, y: maxY, z: minZ };
+    const p110 = { x: maxX, y: maxY, z: minZ };
+    const p001 = { x: minX, y: minY, z: maxZ };
+    const p101 = { x: maxX, y: minY, z: maxZ };
+    const p011 = { x: minX, y: maxY, z: maxZ };
+    const p111 = { x: maxX, y: maxY, z: maxZ };
+    const lines: PolylineSet = [
+      [p000, p100],
+      [p100, p110],
+      [p110, p010],
+      [p010, p000],
+      [p001, p101],
+      [p101, p111],
+      [p111, p011],
+      [p011, p001],
+      [p000, p001],
+      [p100, p101],
+      [p110, p111],
+      [p010, p011],
+    ];
+    const pulsing = selectionViewportPulse?.workspace === "Mesh";
+    return [
+      {
+        lines,
+        color: pulsing ? 0xfacc15 : 0x22c55e,
+        opacity: pulsing ? 0.9 : 0.68,
+        radiusWorld: clampNumber(span * (pulsing ? 0.01 : 0.006), 0.012, 0.04),
+      },
+      {
+        lines,
+        color: 0x14b8a6,
+        opacity: 0.28,
+        radiusWorld: clampNumber(span * 0.014, 0.018, 0.06),
+      },
+    ];
+  }, [isMeshLikeViewer, selectionViewportPulse?.workspace, surfaceMeshTopologyPickMode, surfaceMeshTopologyViewerMesh]);
   const surfaceMeshTopologySelectionFaceMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
     if (
       surfaceMeshTopologySelectionCleared ||
@@ -44031,9 +44083,10 @@ case "mobius":
   ]);
 
   const combinedOverlayPolylineGroups = useMemo(() => {
-    const groups: { lines: PolylineSet; color: number; opacity?: number; radiusScale?: number }[] = [];
+    const groups: OverlayPolylineGroup[] = [];
     if (complexMapOverlayPolylineGroups?.length) groups.push(...complexMapOverlayPolylineGroups);
     if (meshQualityOverlayPolylineGroups?.length) groups.push(...meshQualityOverlayPolylineGroups);
+    if (surfaceMeshObjectSelectionPolylineGroups?.length) groups.push(...surfaceMeshObjectSelectionPolylineGroups);
     if (surfaceMeshTopologyOverlayPolylineGroups?.length) groups.push(...surfaceMeshTopologyOverlayPolylineGroups);
     if (surfaceMeshTopologyGhostPolylineGroups?.length) groups.push(...surfaceMeshTopologyGhostPolylineGroups);
     if (surfaceMeshCommandPreviewOverlays.polylineGroups?.length) groups.push(...surfaceMeshCommandPreviewOverlays.polylineGroups);
@@ -44051,6 +44104,7 @@ case "mobius":
     calculusVectorOverlayGroups,
     complexMapOverlayPolylineGroups,
     surfaceMeshCommandPreviewOverlays.polylineGroups,
+    surfaceMeshObjectSelectionPolylineGroups,
     surfaceMeshTopologyGhostPolylineGroups,
     meshQualityOverlayPolylineGroups,
     surfaceMeshTopologyFeedbackPolylineGroups,
@@ -44066,9 +44120,10 @@ case "mobius":
 
   const compareOverlayPolylineGroups = useMemo(() => {
     if (!compareIgnoreWorkbookOverlays) return combinedOverlayPolylineGroups;
-    const groups: { lines: PolylineSet; color: number; opacity?: number; radiusScale?: number }[] = [];
+    const groups: OverlayPolylineGroup[] = [];
     if (complexMapOverlayPolylineGroups?.length) groups.push(...complexMapOverlayPolylineGroups);
     if (meshQualityOverlayPolylineGroups?.length) groups.push(...meshQualityOverlayPolylineGroups);
+    if (surfaceMeshObjectSelectionPolylineGroups?.length) groups.push(...surfaceMeshObjectSelectionPolylineGroups);
     if (surfaceMeshTopologyOverlayPolylineGroups?.length) groups.push(...surfaceMeshTopologyOverlayPolylineGroups);
     if (surfaceMeshTopologyGhostPolylineGroups?.length) groups.push(...surfaceMeshTopologyGhostPolylineGroups);
     if (surfaceMeshCommandPreviewOverlays.polylineGroups?.length) groups.push(...surfaceMeshCommandPreviewOverlays.polylineGroups);
@@ -44082,6 +44137,7 @@ case "mobius":
     complexMapOverlayPolylineGroups,
     meshQualityOverlayPolylineGroups,
     surfaceMeshCommandPreviewOverlays.polylineGroups,
+    surfaceMeshObjectSelectionPolylineGroups,
     surfaceMeshTopologyFeedbackPolylineGroups,
     surfaceMeshTopologyGhostPolylineGroups,
     surfaceMeshTopologyOverlayPolylineGroups,
@@ -45279,7 +45335,7 @@ case "mobius":
       ? !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.vertexValid
         ? selectedSurfaceMeshTopologyVertexLabel
         : "Click a vertex to enable Marker"
-      : `Selected mesh: ${surfaceMeshLabel}`;
+      : `Selected mesh object: ${surfaceMeshLabel}`;
   const meshActiveSelectionCardType: ActiveSelectionCardProps["type"] =
     surfaceMeshTopologyPickMode === "face"
       ? "Face"
@@ -45295,7 +45351,7 @@ case "mobius":
         ? ["Split", "Collapse", "Bevel"]
         : surfaceMeshTopologyPickMode === "vertex"
           ? ["Marker"]
-          : ["Promote", "Save edited", "Mesh source"];
+          : ["Promote to Geometry", "Save edited", "Mesh source"];
   const meshActiveSelectionCardId =
     surfaceMeshTopologyPickMode === "face" &&
     !surfaceMeshTopologySelectionCleared &&
@@ -45393,7 +45449,7 @@ case "mobius":
         ? `Preview: Vertex ${Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0))} -> marker`
         : null;
     }
-    return surfaceMeshData ? `Preview: ${surfaceMeshLabel} -> promote mesh` : null;
+    return surfaceMeshData ? `Preview: promote selected mesh to Geometry` : null;
   }, [
     surfaceMeshData,
     surfaceMeshLabel,
@@ -48050,6 +48106,7 @@ case "mobius":
     surfaceViewerKind === "complex"
       ? complexMeshReady
       : !isMeshLikeViewer && (surfaceViewerKind !== "implicit" || !!activeCgalMesh);
+  const meshObjectPromoteReady = isSurfaceDatasetKind(datasetKind) && !!surfaceMeshData?.positions?.length;
   const handleRunMeshContextPrimaryAction = useCallback(() => {
     if (surfaceMeshTopologyPickMode === "face") {
       handleSurfaceMeshFaceSubdivide();
@@ -48063,9 +48120,9 @@ case "mobius":
       setSurfaceMeshTopologyStatus(`${selectedSurfaceMeshTopologyVertexLabel} marker active.`);
       return;
     }
-    handleConvertToMesh();
+    handleDatasetToGeometryScene();
   }, [
-    handleConvertToMesh,
+    handleDatasetToGeometryScene,
     handleSurfaceMeshFaceSubdivide,
     handleSurfaceMeshSplitEdge,
     selectedSurfaceMeshTopologyVertexLabel,
@@ -48078,7 +48135,7 @@ case "mobius":
         ? !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.edgeValid
         : surfaceMeshTopologyPickMode === "vertex"
           ? !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.vertexValid
-          : surfaceMeshExportable;
+          : meshObjectPromoteReady;
   const meshActiveSelectionCardActionButtons: readonly ActiveSelectionCardAction[] =
     surfaceMeshTopologyPickMode === "face"
       ? [
@@ -48148,11 +48205,11 @@ case "mobius":
             ]
           : [
               {
-                label: "Promote",
+                label: "Promote to Geometry",
                 testId: "mesh-active-selection-action-promote",
-                onClick: handleConvertToMesh,
-                disabled: !surfaceMeshExportable,
-                disabledReason: "Load an exportable mesh to enable Promote.",
+                onClick: handleDatasetToGeometryScene,
+                disabled: !meshObjectPromoteReady,
+                disabledReason: "Load a mesh to enable Promote to Geometry.",
               },
               {
                 label: "Save edited",
@@ -60150,7 +60207,11 @@ case "mobius":
                     testId="mesh-context-toolbar"
                     pickOptions={
                       [
-                        { id: "auto", label: "Object", title: "Object-level mesh actions." },
+                        {
+                          id: "auto",
+                          label: "Mesh Object",
+                          title: "Whole-mesh actions: promote to Geometry, save edited mesh, or reopen source.",
+                        },
                         { id: "face", label: "Face", title: "Pick a mesh face, then use the matching tools." },
                         { id: "edge", label: "Edge", title: "Pick a mesh edge, then use the matching tools." },
                         { id: "vertex", label: "Vertex", title: "Pick a mesh vertex, then use the matching tools." },
@@ -60161,7 +60222,14 @@ case "mobius":
                       setSurfaceMeshTopologyPickMode(pickMode);
                       if (pickMode !== "auto" && !probeEnabled) setProbeEnabled(true);
                     }}
-                    selectionLabel={meshActiveSelectionSummary.emptyState ?? meshActiveSelectionSummary.eventLabel ?? meshContextToolbarSelectionLabel}
+                    selectionLabel={
+                      surfaceMeshTopologyPickMode === "auto"
+                        ? meshContextToolbarSelectionLabel
+                        : meshActiveSelectionSummary.emptyState ??
+                          meshActiveSelectionSummary.eventLabel ??
+                          meshContextToolbarSelectionLabel
+                    }
+                    selectionTestId="mesh-context-selection-label"
                     previewLabel={meshContextToolbarPreviewLabel}
                     previewTestId="mesh-context-preview"
                     applyPreviewTestId="mesh-context-apply-preview"
@@ -60245,13 +60313,15 @@ case "mobius":
                     {surfaceMeshTopologyPickMode === "auto" && (
                       <>
                         <ContextualActionStripAction
-                          onClick={handleConvertToMesh}
-                          disabled={!surfaceMeshExportable}
-                          disabledReason="Load an exportable mesh to enable Promote."
+                          testId="mesh-context-promote-mesh-object"
+                          onClick={handleDatasetToGeometryScene}
+                          disabled={!meshObjectPromoteReady}
+                          disabledReason="Load a mesh to enable Promote to Geometry."
                         >
-                          Promote
+                          Promote to Geometry
                         </ContextualActionStripAction>
                         <ContextualActionStripAction
+                          testId="mesh-context-save-edited"
                           onClick={handleSaveSurfaceMeshTopologyEditedPreset}
                           disabled={!surfaceMeshTopologyHistory.length}
                           disabledReason="Apply a topology edit before saving an edited mesh."
@@ -60259,6 +60329,7 @@ case "mobius":
                           Save edited
                         </ContextualActionStripAction>
                         <ContextualActionStripAction
+                          testId="mesh-context-mesh-source"
                           onClick={handleOpenMeshPromotionSourceGeometryObject}
                           disabled={!meshPromotionTrace}
                           disabledReason="This mesh has no linked Geometry source yet."
@@ -60321,6 +60392,32 @@ case "mobius":
                     Viewport preview: {meshViewportCommandPreviewLabel}
                   </div>
                 )}
+                {surfaceViewerKind === "mesh" &&
+                  surfaceMeshTopologyPickMode === "auto" &&
+                  !!surfaceMeshData?.positions?.length &&
+                  !cleanScreenshotSurfaceActive && (
+                    <div
+                      data-testid="mesh-object-selection-glow"
+                      style={{
+                        position: "absolute",
+                        top: meshViewportCommandPreviewLabel ? 82 : 48,
+                        right: 14,
+                        zIndex: 17,
+                        maxWidth: 300,
+                        border: "1px solid #bbf7d0",
+                        borderRadius: 8,
+                        background: "rgba(240,253,244,0.92)",
+                        color: "#166534",
+                        padding: "5px 9px",
+                        fontSize: 11,
+                        fontWeight: 800,
+                        boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)",
+                        pointerEvents: "none",
+                      }}
+                    >
+                      Whole mesh selected
+                    </div>
+                  )}
                 {datasetKind === "volume" ? (
                   volumeViewMode === "slices" ? (
                     <div
