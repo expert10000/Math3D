@@ -8199,6 +8199,72 @@ function boundsFromPositions(positions: ArrayLike<number> | null | undefined): B
   return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
 }
 
+const OBJECT_CONTEXT_COPY = {
+  mesh: {
+    chip: "Mesh Object",
+    selectedPrefix: "Selected mesh object",
+    selectEmpty: "Select a Mesh object",
+    preview: "Preview: promote selected mesh to Geometry",
+    wholeSelected: "Whole mesh selected",
+    actions: ["Promote to Geometry", "Save edited", "Mesh source"],
+  },
+  geometry: {
+    chip: "Geometry Object",
+    selectedPrefix: "Selected geometry object",
+    selectEmpty: "Select a Geometry object",
+    preview: "Preview: open selected Geometry object details",
+    wholeSelected: "Whole Geometry object selected",
+    actions: ["Open Object Details", "Transform", "History"],
+  },
+} as const;
+
+function buildWholeObjectSelectionPolylineGroups(bounds: BBox3, pulsing: boolean): OverlayPolylineGroup[] {
+  const span = Math.max(bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1], bounds.max[2] - bounds.min[2], 1);
+  const pad = span * 0.018;
+  const minX = bounds.min[0] - pad;
+  const minY = bounds.min[1] - pad;
+  const minZ = bounds.min[2] - pad;
+  const maxX = bounds.max[0] + pad;
+  const maxY = bounds.max[1] + pad;
+  const maxZ = bounds.max[2] + pad;
+  const p000 = { x: minX, y: minY, z: minZ };
+  const p100 = { x: maxX, y: minY, z: minZ };
+  const p010 = { x: minX, y: maxY, z: minZ };
+  const p110 = { x: maxX, y: maxY, z: minZ };
+  const p001 = { x: minX, y: minY, z: maxZ };
+  const p101 = { x: maxX, y: minY, z: maxZ };
+  const p011 = { x: minX, y: maxY, z: maxZ };
+  const p111 = { x: maxX, y: maxY, z: maxZ };
+  const lines: PolylineSet = [
+    [p000, p100],
+    [p100, p110],
+    [p110, p010],
+    [p010, p000],
+    [p001, p101],
+    [p101, p111],
+    [p111, p011],
+    [p011, p001],
+    [p000, p001],
+    [p100, p101],
+    [p110, p111],
+    [p010, p011],
+  ];
+  return [
+    {
+      lines,
+      color: pulsing ? 0xfacc15 : 0x22c55e,
+      opacity: pulsing ? 0.9 : 0.68,
+      radiusWorld: clampNumber(span * (pulsing ? 0.01 : 0.006), 0.012, 0.04),
+    },
+    {
+      lines,
+      color: 0x14b8a6,
+      opacity: 0.28,
+      radiusWorld: clampNumber(span * 0.014, 0.018, 0.06),
+    },
+  ];
+}
+
 const buildGeometryMeshRoundTripUpdateFeedback = (
   objectId: string,
   mesh: SurfaceMeshData,
@@ -15512,8 +15578,8 @@ const App: React.FC = () => {
         : "Click a vertex to enable Marker / Move";
     }
     return geometrySelectedSceneObject
-      ? `Selected geometry object: ${geometrySelectedSceneObject.name}`
-      : "Select a Geometry object";
+      ? `${OBJECT_CONTEXT_COPY.geometry.selectedPrefix}: ${geometrySelectedSceneObject.name}`
+      : OBJECT_CONTEXT_COPY.geometry.selectEmpty;
   }, [
     geometryEdgeOperationPick,
     geometryFaceOperationPick,
@@ -15539,7 +15605,7 @@ const App: React.FC = () => {
         ? ["Split", "Mirror", "Offset"]
         : geometryProbeSelectionMode === "vertex"
           ? ["Marker", "Move"]
-          : ["Open Object Details", "Transform", "History"];
+          : [...OBJECT_CONTEXT_COPY.geometry.actions];
   const geometryActiveSelectionCardId =
     geometryProbeSelectionMode === "face" && geometryHasFaceOperationPick && geometryFaceOperationPick?.faceIndex != null
       ? `Face ${geometryFaceOperationPick.faceIndex}`
@@ -15626,7 +15692,7 @@ const App: React.FC = () => {
         ? `Preview: Vertex ${geometryVertexOperationPick.vertexIndex} -> move ${formatCompactReal(geometryVertexMoveAmount)}`
         : null;
     }
-    return geometrySelectedSceneObject ? "Preview: open selected Geometry object details" : null;
+    return geometrySelectedSceneObject ? OBJECT_CONTEXT_COPY.geometry.preview : null;
   }, [
     geometryEdgeOperationPick,
     geometryEdgeSplitRatio,
@@ -19649,13 +19715,13 @@ const App: React.FC = () => {
   }, [geometryEulerSceneMeshCounts, geometryEulerScope, geometryEulerSelectedMeshCounts]);
   const geometryEulerActiveMeshLabel = useMemo(() => {
     if (geometryEulerScope === "selected" && geometryEulerSelectedMeshCounts && geometrySelectedSceneObject) {
-      return `Selected geometry object: ${geometrySelectedSceneObject.name}`;
+      return `${OBJECT_CONTEXT_COPY.geometry.selectedPrefix}: ${geometrySelectedSceneObject.name}`;
     }
     if (geometryEulerSceneMeshCounts) {
       return "Visible scene meshes (summed per mesh)";
     }
     if (geometrySelectedSceneObject) {
-      return `Selected geometry object: ${geometrySelectedSceneObject.name}`;
+      return `${OBJECT_CONTEXT_COPY.geometry.selectedPrefix}: ${geometrySelectedSceneObject.name}`;
     }
     return "No mesh selected";
   }, [
@@ -20132,51 +20198,7 @@ const App: React.FC = () => {
     const transformed = transformSurfaceMeshByGeometryTransform(selectedMesh, geometrySelectedSceneObject.transform);
     const bounds = boundsFromPositions(transformed.positions);
     if (!bounds) return null;
-    const span = Math.max(bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1], bounds.max[2] - bounds.min[2], 1);
-    const pad = span * 0.018;
-    const minX = bounds.min[0] - pad;
-    const minY = bounds.min[1] - pad;
-    const minZ = bounds.min[2] - pad;
-    const maxX = bounds.max[0] + pad;
-    const maxY = bounds.max[1] + pad;
-    const maxZ = bounds.max[2] + pad;
-    const p000 = { x: minX, y: minY, z: minZ };
-    const p100 = { x: maxX, y: minY, z: minZ };
-    const p010 = { x: minX, y: maxY, z: minZ };
-    const p110 = { x: maxX, y: maxY, z: minZ };
-    const p001 = { x: minX, y: minY, z: maxZ };
-    const p101 = { x: maxX, y: minY, z: maxZ };
-    const p011 = { x: minX, y: maxY, z: maxZ };
-    const p111 = { x: maxX, y: maxY, z: maxZ };
-    const lines: PolylineSet = [
-      [p000, p100],
-      [p100, p110],
-      [p110, p010],
-      [p010, p000],
-      [p001, p101],
-      [p101, p111],
-      [p111, p011],
-      [p011, p001],
-      [p000, p001],
-      [p100, p101],
-      [p110, p111],
-      [p010, p011],
-    ];
-    const pulsing = selectionViewportPulse?.workspace === "Geometry";
-    return [
-      {
-        lines,
-        color: pulsing ? 0xfacc15 : 0x22c55e,
-        opacity: pulsing ? 0.9 : 0.68,
-        radiusWorld: clampNumber(span * (pulsing ? 0.01 : 0.006), 0.012, 0.04),
-      },
-      {
-        lines,
-        color: 0x14b8a6,
-        opacity: 0.28,
-        radiusWorld: clampNumber(span * 0.014, 0.018, 0.06),
-      },
-    ];
+    return buildWholeObjectSelectionPolylineGroups(bounds, selectionViewportPulse?.workspace === "Geometry");
   }, [
     geometryMode,
     geometryProbeSelectionMode,
@@ -27149,7 +27171,7 @@ const App: React.FC = () => {
     geometryProbeSelectionMode === "object"
       ? [
           {
-            label: "Open Object Details",
+            label: OBJECT_CONTEXT_COPY.geometry.actions[0],
             testId: "geometry-active-selection-action-open-object",
             onClick: () => {
               if (!geometrySelectedSceneObject) {
@@ -27167,7 +27189,7 @@ const App: React.FC = () => {
             disabledReason: "Select an object to open its details.",
           },
           {
-            label: "Transform",
+            label: OBJECT_CONTEXT_COPY.geometry.actions[1],
             testId: "geometry-active-selection-action-transform",
             onClick: () => {
               setGeometryMode("procedural");
@@ -27177,7 +27199,7 @@ const App: React.FC = () => {
             disabledReason: "Select an object to transform it.",
           },
           {
-            label: "History",
+            label: OBJECT_CONTEXT_COPY.geometry.actions[2],
             testId: "geometry-active-selection-action-history",
             onClick: () => {
               setGeometryMode("procedural");
@@ -33127,51 +33149,7 @@ const App: React.FC = () => {
     }
     const bounds = boundsFromPositions(surfaceMeshTopologyViewerMesh.positions);
     if (!bounds) return null;
-    const span = Math.max(bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1], bounds.max[2] - bounds.min[2], 1);
-    const pad = span * 0.018;
-    const minX = bounds.min[0] - pad;
-    const minY = bounds.min[1] - pad;
-    const minZ = bounds.min[2] - pad;
-    const maxX = bounds.max[0] + pad;
-    const maxY = bounds.max[1] + pad;
-    const maxZ = bounds.max[2] + pad;
-    const p000 = { x: minX, y: minY, z: minZ };
-    const p100 = { x: maxX, y: minY, z: minZ };
-    const p010 = { x: minX, y: maxY, z: minZ };
-    const p110 = { x: maxX, y: maxY, z: minZ };
-    const p001 = { x: minX, y: minY, z: maxZ };
-    const p101 = { x: maxX, y: minY, z: maxZ };
-    const p011 = { x: minX, y: maxY, z: maxZ };
-    const p111 = { x: maxX, y: maxY, z: maxZ };
-    const lines: PolylineSet = [
-      [p000, p100],
-      [p100, p110],
-      [p110, p010],
-      [p010, p000],
-      [p001, p101],
-      [p101, p111],
-      [p111, p011],
-      [p011, p001],
-      [p000, p001],
-      [p100, p101],
-      [p110, p111],
-      [p010, p011],
-    ];
-    const pulsing = selectionViewportPulse?.workspace === "Mesh";
-    return [
-      {
-        lines,
-        color: pulsing ? 0xfacc15 : 0x22c55e,
-        opacity: pulsing ? 0.9 : 0.68,
-        radiusWorld: clampNumber(span * (pulsing ? 0.01 : 0.006), 0.012, 0.04),
-      },
-      {
-        lines,
-        color: 0x14b8a6,
-        opacity: 0.28,
-        radiusWorld: clampNumber(span * 0.014, 0.018, 0.06),
-      },
-    ];
+    return buildWholeObjectSelectionPolylineGroups(bounds, selectionViewportPulse?.workspace === "Mesh");
   }, [isMeshLikeViewer, selectionViewportPulse?.workspace, surfaceMeshTopologyPickMode, surfaceMeshTopologyViewerMesh]);
   const surfaceMeshTopologySelectionFaceMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
     if (
@@ -45404,7 +45382,7 @@ case "mobius":
       ? !surfaceMeshTopologySelectionCleared && surfaceMeshTopologyFieldValidation.vertexValid
         ? selectedSurfaceMeshTopologyVertexLabel
         : "Click a vertex to enable Marker"
-      : `Selected mesh object: ${surfaceMeshLabel}`;
+      : `${OBJECT_CONTEXT_COPY.mesh.selectedPrefix}: ${surfaceMeshLabel}`;
   const meshActiveSelectionCardType: ActiveSelectionCardProps["type"] =
     surfaceMeshTopologyPickMode === "face"
       ? "Face"
@@ -45420,7 +45398,7 @@ case "mobius":
         ? ["Split", "Collapse", "Bevel"]
         : surfaceMeshTopologyPickMode === "vertex"
           ? ["Marker"]
-          : ["Promote to Geometry", "Save edited", "Mesh source"];
+          : [...OBJECT_CONTEXT_COPY.mesh.actions];
   const meshActiveSelectionCardId =
     surfaceMeshTopologyPickMode === "face" &&
     !surfaceMeshTopologySelectionCleared &&
@@ -45518,7 +45496,7 @@ case "mobius":
         ? `Preview: Vertex ${Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0))} -> marker`
         : null;
     }
-    return surfaceMeshData ? `Preview: promote selected mesh to Geometry` : null;
+    return surfaceMeshData ? OBJECT_CONTEXT_COPY.mesh.preview : null;
   }, [
     surfaceMeshData,
     surfaceMeshLabel,
@@ -48274,21 +48252,21 @@ case "mobius":
             ]
           : [
               {
-                label: "Promote to Geometry",
+                label: OBJECT_CONTEXT_COPY.mesh.actions[0],
                 testId: "mesh-active-selection-action-promote",
                 onClick: handleDatasetToGeometryScene,
                 disabled: !meshObjectPromoteReady,
                 disabledReason: "Load a mesh to enable Promote to Geometry.",
               },
               {
-                label: "Save edited",
+                label: OBJECT_CONTEXT_COPY.mesh.actions[1],
                 testId: "mesh-active-selection-action-save-edited",
                 onClick: handleSaveSurfaceMeshTopologyEditedPreset,
                 disabled: !surfaceMeshTopologyHistory.length,
                 disabledReason: "Apply a topology edit before saving an edited mesh.",
               },
               {
-                label: "Mesh source",
+                label: OBJECT_CONTEXT_COPY.mesh.actions[2],
                 testId: "mesh-active-selection-action-mesh-source",
                 onClick: handleOpenMeshPromotionSourceGeometryObject,
                 disabled: !meshPromotionTrace,
@@ -60278,7 +60256,7 @@ case "mobius":
                       [
                         {
                           id: "auto",
-                          label: "Mesh Object",
+                          label: OBJECT_CONTEXT_COPY.mesh.chip,
                           title: "Whole-mesh actions: promote to Geometry, save edited mesh, or reopen source.",
                         },
                         { id: "face", label: "Face", title: "Pick a mesh face, then use the matching tools." },
@@ -60387,7 +60365,7 @@ case "mobius":
                           disabled={!meshObjectPromoteReady}
                           disabledReason="Load a mesh to enable Promote to Geometry."
                         >
-                          Promote to Geometry
+                          {OBJECT_CONTEXT_COPY.mesh.actions[0]}
                         </ContextualActionStripAction>
                         <ContextualActionStripAction
                           testId="mesh-context-save-edited"
@@ -60395,7 +60373,7 @@ case "mobius":
                           disabled={!surfaceMeshTopologyHistory.length}
                           disabledReason="Apply a topology edit before saving an edited mesh."
                         >
-                          Save edited
+                          {OBJECT_CONTEXT_COPY.mesh.actions[1]}
                         </ContextualActionStripAction>
                         <ContextualActionStripAction
                           testId="mesh-context-mesh-source"
@@ -60403,7 +60381,7 @@ case "mobius":
                           disabled={!meshPromotionTrace}
                           disabledReason="This mesh has no linked Geometry source yet."
                         >
-                          Mesh source
+                          {OBJECT_CONTEXT_COPY.mesh.actions[2]}
                         </ContextualActionStripAction>
                       </>
                     )}
@@ -60484,7 +60462,7 @@ case "mobius":
                         pointerEvents: "none",
                       }}
                     >
-                      Whole mesh selected
+                      {OBJECT_CONTEXT_COPY.mesh.wholeSelected}
                     </div>
                   )}
                 {datasetKind === "volume" ? (
@@ -75216,7 +75194,7 @@ case "mobius":
                         [
                           {
                             id: "object",
-                            label: "Geometry Object",
+                            label: OBJECT_CONTEXT_COPY.geometry.chip,
                             title: "Whole-object actions: open details, transform, or inspect history.",
                           },
                           { id: "face", label: "Face", title: "Pick a Geometry face, then use the matching actions." },
@@ -75277,7 +75255,7 @@ case "mobius":
                             disabled={!geometrySelectedSceneObject}
                             disabledReason="Select an object to open its details."
                           >
-                            Open Object Details
+                            {OBJECT_CONTEXT_COPY.geometry.actions[0]}
                           </ContextualActionStripAction>
                           <ContextualActionStripAction
                             testId="geometry-context-transform"
@@ -75285,7 +75263,7 @@ case "mobius":
                             disabled={!geometrySelectedSceneObject}
                             disabledReason="Select an object to transform it."
                           >
-                            Transform
+                            {OBJECT_CONTEXT_COPY.geometry.actions[1]}
                           </ContextualActionStripAction>
                           <ContextualActionStripAction
                             testId="geometry-context-history"
@@ -75298,7 +75276,7 @@ case "mobius":
                             disabled={!geometrySelectedSceneObject}
                             disabledReason="Select an object to open its history."
                           >
-                            History
+                            {OBJECT_CONTEXT_COPY.geometry.actions[2]}
                           </ContextualActionStripAction>
                         </>
                       )}
@@ -76505,7 +76483,7 @@ case "mobius":
                         pointerEvents: "none",
                       }}
                     >
-                      Whole Geometry object selected
+                      {OBJECT_CONTEXT_COPY.geometry.wholeSelected}
                     </div>
                   )}
                 {geometryEdgeViewportTooltip && (

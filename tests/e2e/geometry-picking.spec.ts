@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
-import { runContextualActionFlow } from "./helpers/contextualToolbar";
+import { runContextualActionFlow, runContextualObjectModeCheck } from "./helpers/contextualToolbar";
 import { contextualSelectionLabelPatterns } from "./helpers/contextualSelectionLabels";
 import { pointGrid, surfaceViewerPickBox } from "./helpers/viewerPicking";
 
@@ -302,32 +302,32 @@ test("Geometry canvas picker commits a visible object pick", async () => {
     const page = launched.page;
 
     await resetStorage(page);
-    await openProceduralGeometry(page, "box");
-    await configureGeometryViewerForConstructionPicking(page);
-    await page.getByTestId("geometry-workflow-step-transform").click();
-    await expect(page.getByTestId("geometry-workflow-step-transform")).toHaveAttribute("aria-current", "step");
-
-    await clickViewerUntilSelectionLabel(page, "object", /Selected geometry object:/i);
-    await expect(page.getByTestId("geometry-context-pick-object")).toContainText("Geometry Object");
-    await expect(page.getByTestId("geometry-context-pick-object")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByTestId("geometry-context-selection-label")).toContainText(/Selected geometry object:/i);
-    await expect(page.getByTestId("geometry-context-preview")).toContainText(
-      "Preview: open selected Geometry object details"
-    );
-    await expect(page.getByTestId("geometry-viewport-command-preview")).toContainText(
-      "Viewport preview: open selected Geometry object details"
-    );
-    await expect(page.getByTestId("geometry-object-selection-glow")).toContainText(
-      "Whole Geometry object selected"
-    );
-    await expect(page.getByTestId("geometry-context-open-object")).toContainText("Open Object Details");
-    await expect(page.getByTestId("geometry-context-open-object")).toBeEnabled();
-    await expect(page.getByTestId("geometry-context-transform")).toBeVisible();
-    await expect(page.getByTestId("geometry-context-history")).toBeVisible();
-    await expect(page.getByTestId("geometry-context-selection-label")).not.toContainText("Click a face to enable Extrude");
-    await expect(page.getByTestId("geometry-context-selection-label")).not.toContainText(
-      "Click an edge to enable Split / Mirror / Offset"
-    );
+    await runContextualObjectModeCheck({
+      page,
+      workspace: "geometry",
+      pickMode: "object",
+      openWorkspace: async () => {
+        await openProceduralGeometry(page, "box");
+        await configureGeometryViewerForConstructionPicking(page);
+        await page.getByTestId("geometry-workflow-step-transform").click();
+        await expect(page.getByTestId("geometry-workflow-step-transform")).toHaveAttribute("aria-current", "step");
+      },
+      selectObject: async () => {
+        await commitDeterministicGeometryPick(page, "object", { useContextOrInspectorMode: true });
+      },
+      chipLabel: "Geometry Object",
+      selectionLabel: /Selected geometry object:/i,
+      preview: "Preview: open selected Geometry object details",
+      viewportPreview: "Viewport preview: open selected Geometry object details",
+      wholeObjectBadgeTestId: "geometry-object-selection-glow",
+      wholeObjectBadgeLabel: "Whole Geometry object selected",
+      actionExpectations: [
+        { testId: "geometry-context-open-object", label: "Open Object Details", enabled: true },
+        { testId: "geometry-context-transform", label: "Transform" },
+        { testId: "geometry-context-history", label: "History" },
+      ],
+      forbiddenSelectionHints: ["Click a face to enable Extrude", "Click an edge to enable Split / Mirror / Offset"],
+    });
     await expect(page.getByTestId("geometry-active-selection-card")).toBeVisible();
     await expect(page.getByTestId("geometry-active-selection-card-type")).toHaveText("Object");
     await expect(page.getByTestId("geometry-active-selection-card-actions")).toContainText(

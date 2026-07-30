@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
-import { runContextualActionFlow } from "./helpers/contextualToolbar";
+import { runContextualActionFlow, runContextualObjectModeCheck } from "./helpers/contextualToolbar";
 import { contextualSelectionLabelPatterns } from "./helpers/contextualSelectionLabels";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
@@ -118,6 +118,30 @@ async function openMeshGallery(page: Page): Promise<void> {
   await expect(page.getByTestId("mesh-preset-grid")).toBeVisible({ timeout: 15_000 });
 }
 
+async function openGeometryBoxForObjectMode(page: Page): Promise<void> {
+  await selectSection(page, "Geometry");
+  await expect(page.getByRole("heading", { name: "Geometry Viewer", exact: true })).toBeVisible();
+  await firstVisible(page.getByRole("button", { name: "Procedural", exact: true })).then((button) => button.click());
+  await firstVisible(page.getByTestId("geometry-workflow-step-create")).then((button) => button.click());
+  await firstVisible(page.getByRole("button", { name: "Primitive", exact: true })).then((button) => button.click());
+  await page.getByTestId("geometry-gallery-quick-add-box").click();
+  await firstVisible(page.getByRole("button", { name: "Fit scene", exact: true })).then((button) => button.click());
+  await firstVisible(page.getByTestId("geometry-workflow-step-transform")).then((button) => button.click());
+  await expect(page.getByTestId("geometry-workflow-step-transform")).toHaveAttribute("aria-current", "step");
+}
+
+async function commitGeometryObjectPick(page: Page): Promise<void> {
+  const result = await page.evaluate(() => {
+    const picker = (window as Window & {
+      __MATH3D_E2E_GEOMETRY_PICK__?: {
+        commitGeometryPick: (request: { kind: "object" }) => { ok: boolean; error?: string };
+      };
+    }).__MATH3D_E2E_GEOMETRY_PICK__;
+    return picker?.commitGeometryPick({ kind: "object" });
+  });
+  expect(result?.ok, result?.error ?? "Geometry object pick helper unavailable").toBeTruthy();
+}
+
 async function selectDeterministicMeshEdge(page: Page): Promise<void> {
   const advancedIds = page.getByTestId("mesh-topology-advanced-ids").first();
   await expect(advancedIds).toBeVisible();
@@ -196,31 +220,95 @@ test.describe("Mesh topology persistence and handoff", () => {
       ctx = await launchApp();
       const { page } = ctx;
 
-      await openMeshGallery(page);
-      await page.getByTestId("mesh-preset-card-mesh_box").click();
-      await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true })).then((button) => button.click());
-      await page.getByTestId("mesh-context-pick-auto").click();
-
-      await expect(page.getByTestId("mesh-context-pick-auto")).toContainText("Mesh Object");
-      await expect(page.getByTestId("mesh-context-pick-auto")).toHaveAttribute("aria-pressed", "true");
-      await expect(page.getByTestId("mesh-context-selection-label")).toContainText(/Selected mesh object:/);
-      await expect(page.getByTestId("mesh-context-preview")).toContainText("Preview: promote selected mesh to Geometry");
-      await expect(page.getByTestId("mesh-viewport-command-preview")).toContainText(
-        "Viewport preview: promote selected mesh to Geometry"
-      );
-      await expect(page.getByTestId("mesh-object-selection-glow")).toContainText("Whole mesh selected");
-      await expect(page.getByTestId("mesh-context-promote-mesh-object")).toBeVisible();
-      await expect(page.getByTestId("mesh-context-promote-mesh-object")).toBeEnabled();
-      await expect(page.getByTestId("mesh-context-save-edited")).toBeVisible();
-      await expect(page.getByTestId("mesh-context-mesh-source")).toBeVisible();
-      await expect(page.getByTestId("mesh-context-toolbar")).not.toContainText("Click a face to enable Subdivide");
-      await expect(page.getByTestId("mesh-context-toolbar")).not.toContainText(
-        "Click an edge to enable Split / Collapse / Bevel"
-      );
+      await runContextualObjectModeCheck({
+        page,
+        workspace: "mesh",
+        pickMode: "auto",
+        openWorkspace: async () => {
+          await openMeshGallery(page);
+          await page.getByTestId("mesh-preset-card-mesh_box").click();
+          await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true })).then((button) =>
+            button.click()
+          );
+        },
+        chipLabel: "Mesh Object",
+        selectionLabel: /Selected mesh object:/,
+        preview: "Preview: promote selected mesh to Geometry",
+        viewportPreview: "Viewport preview: promote selected mesh to Geometry",
+        wholeObjectBadgeTestId: "mesh-object-selection-glow",
+        wholeObjectBadgeLabel: "Whole mesh selected",
+        actionExpectations: [
+          { testId: "mesh-context-promote-mesh-object", label: "Promote to Geometry", enabled: true },
+          { testId: "mesh-context-save-edited", label: "Save edited" },
+          { testId: "mesh-context-mesh-source", label: "Mesh source" },
+        ],
+        forbiddenSelectionHints: ["Click a face to enable Subdivide", "Click an edge to enable Split / Collapse / Bevel"],
+      });
 
       await page.getByTestId("mesh-context-apply-preview").click();
       await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByTestId("geometry-right-open-object")).toBeVisible({ timeout: 15_000 });
+    } finally {
+      await closeApp(ctx);
+    }
+  });
+
+  test("keeps Mesh and Geometry object-mode command strips in parity", async () => {
+    test.setTimeout(150_000);
+    let ctx: { app: ElectronApplication; page: Page; profileDir: string } | null = null;
+
+    try {
+      ctx = await launchApp();
+      const { page } = ctx;
+
+      await runContextualObjectModeCheck({
+        page,
+        workspace: "mesh",
+        pickMode: "auto",
+        openWorkspace: async () => {
+          await openMeshGallery(page);
+          await page.getByTestId("mesh-preset-card-mesh_box").click();
+          await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true })).then((button) =>
+            button.click()
+          );
+        },
+        chipLabel: "Mesh Object",
+        selectionLabel: /Selected mesh object:/,
+        preview: "Preview: promote selected mesh to Geometry",
+        viewportPreview: "Viewport preview: promote selected mesh to Geometry",
+        wholeObjectBadgeTestId: "mesh-object-selection-glow",
+        wholeObjectBadgeLabel: "Whole mesh selected",
+        actionExpectations: [
+          { testId: "mesh-context-promote-mesh-object", label: "Promote to Geometry", enabled: true },
+          { testId: "mesh-context-save-edited", label: "Save edited" },
+          { testId: "mesh-context-mesh-source", label: "Mesh source" },
+        ],
+        forbiddenSelectionHints: ["Click a face to enable Subdivide", "Click an edge to enable Split / Collapse / Bevel"],
+      });
+
+      await runContextualObjectModeCheck({
+        page,
+        workspace: "geometry",
+        pickMode: "object",
+        openWorkspace: async () => {
+          await openGeometryBoxForObjectMode(page);
+        },
+        selectObject: async () => {
+          await commitGeometryObjectPick(page);
+        },
+        chipLabel: "Geometry Object",
+        selectionLabel: /Selected geometry object:/i,
+        preview: "Preview: open selected Geometry object details",
+        viewportPreview: "Viewport preview: open selected Geometry object details",
+        wholeObjectBadgeTestId: "geometry-object-selection-glow",
+        wholeObjectBadgeLabel: "Whole Geometry object selected",
+        actionExpectations: [
+          { testId: "geometry-context-open-object", label: "Open Object Details", enabled: true },
+          { testId: "geometry-context-transform", label: "Transform" },
+          { testId: "geometry-context-history", label: "History" },
+        ],
+        forbiddenSelectionHints: ["Click a face to enable Extrude", "Click an edge to enable Split / Mirror / Offset"],
+      });
     } finally {
       await closeApp(ctx);
     }
