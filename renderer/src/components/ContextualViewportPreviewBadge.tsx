@@ -4,6 +4,8 @@ import type { ContextualViewportPreview } from "../selection/contextualViewportP
 type ContextualViewportPreviewBadgeProps = {
   readonly testId: string;
   readonly preview: ContextualViewportPreview;
+  readonly state?: "preview" | "applied";
+  readonly appliedLabel?: string | null;
   readonly top: number;
   readonly right?: number;
   readonly zIndex?: number;
@@ -19,29 +21,35 @@ const previewBadgeStyle = ({
   zIndex = 17,
   maxWidth = 380,
   clickable,
+  state,
 }: {
   readonly top: number;
   readonly right?: number;
   readonly zIndex?: number;
   readonly maxWidth?: number;
   readonly clickable: boolean;
+  readonly state: "preview" | "applied";
 }): CSSProperties => ({
   position: "absolute",
   top,
   right,
   zIndex,
   maxWidth,
-  border: "1px solid #99f6e4",
+  border: state === "applied" ? "1px solid #86efac" : "1px solid #99f6e4",
   borderRadius: 8,
-  background: "rgba(240,253,250,0.94)",
-  color: "#0f766e",
+  background: state === "applied" ? "rgba(240,253,244,0.96)" : "rgba(240,253,250,0.94)",
+  color: state === "applied" ? "#166534" : "#0f766e",
   padding: "6px 9px",
   fontSize: 11,
   fontWeight: 800,
-  boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)",
+  boxShadow:
+    state === "applied"
+      ? "0 8px 24px rgba(22, 101, 52, 0.18)"
+      : "0 8px 24px rgba(15, 23, 42, 0.12)",
   pointerEvents: "auto",
   cursor: clickable ? "pointer" : "default",
   userSelect: "none",
+  transition: "opacity 180ms ease, transform 180ms ease, border-color 180ms ease, background 180ms ease",
 });
 
 const detailGridStyle: CSSProperties = {
@@ -56,6 +64,8 @@ const detailGridStyle: CSSProperties = {
 export function ContextualViewportPreviewBadge({
   testId,
   preview,
+  state = "preview",
+  appliedLabel,
   top,
   right,
   zIndex,
@@ -79,6 +89,7 @@ export function ContextualViewportPreviewBadge({
       data-preview-operation={preview.operation}
       data-preview-entity={preview.selectedEntity}
       data-preview-action-pulse={preview.actionPulseId ?? ""}
+      data-preview-state={state}
       data-overlay-count={preview.overlayCount}
       data-has-overlay={preview.hasOverlay ? "true" : "false"}
       role={clickable ? "button" : undefined}
@@ -92,9 +103,9 @@ export function ContextualViewportPreviewBadge({
       onMouseEnter={onHoverStart}
       onMouseLeave={onHoverEnd}
       onMouseDown={(event) => event.stopPropagation()}
-      style={previewBadgeStyle({ top, right, zIndex, maxWidth, clickable })}
+      style={previewBadgeStyle({ top, right, zIndex, maxWidth, clickable, state })}
     >
-      <div>Viewport preview: {preview.label}</div>
+      <div>{state === "applied" ? `Applied: ${appliedLabel ?? preview.label}` : `Viewport preview: ${preview.label}`}</div>
       <div data-testid={`${testId}-details`} style={detailGridStyle}>
         <span>Operation</span>
         <span>{preview.operation}</span>

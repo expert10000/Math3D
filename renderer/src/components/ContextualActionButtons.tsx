@@ -29,6 +29,7 @@ const contextualActionButtonStyle = (
   color: disabled ? "#94a3b8" : pulse ? "#166534" : "#1e3a8a",
   cursor: disabled ? "not-allowed" : "pointer",
   opacity: disabled ? 0.88 : 1,
+  pointerEvents: "auto",
   boxShadow: pulse
     ? `0 0 0 3px rgba(34, 197, 94, ${variant === "card" ? "0.18" : "0.22"})`
     : undefined,

@@ -28,6 +28,40 @@ export async function expectViewportPreviewOverlay(
   await expect(previewLocator).toHaveAttribute("data-overlay-count", /^[1-9]\d*$/);
 }
 
+export async function expectCommandPreviewOverlayToggle({
+  page,
+  workspace,
+  preview,
+  viewportPreview,
+  viewportPreviewTestId,
+}: {
+  page: Page;
+  workspace: "geometry" | "mesh";
+  preview: string | RegExp;
+  viewportPreview: string | RegExp;
+  viewportPreviewTestId?: string;
+}): Promise<void> {
+  const legend = page.getByTestId(`${workspace}-command-preview-legend`);
+  const toggle = page.getByTestId(`${workspace}-command-preview-overlays-toggle`);
+  const stripPreview = page.getByTestId(`${workspace}-context-preview`);
+  const viewportPreviewLocator = page.getByTestId(viewportPreviewTestId ?? `${workspace}-viewport-command-preview`);
+
+  await expect(legend).toBeVisible();
+  await expect(legend).toContainText("Preview");
+  await expect(legend).toContainText("Selected");
+  await expect(legend).toContainText("Applied");
+  await expect(legend).toContainText("Removed");
+
+  await expect(toggle).toBeVisible();
+  await toggle.setChecked(false);
+  await expect(stripPreview).toContainText(preview);
+  await expect(viewportPreviewLocator).toBeHidden();
+
+  await toggle.setChecked(true);
+  await expect(stripPreview).toContainText(preview);
+  await expectViewportPreviewOverlay(page, workspace, viewportPreview, viewportPreviewTestId);
+}
+
 export async function runContextualActionFlow({
   page,
   workspace,
@@ -39,6 +73,7 @@ export async function runContextualActionFlow({
   viewportPreviewTestId,
   applyPreviewTestId,
   clickViewportPreview = false,
+  checkOverlayToggle = false,
   confirmation,
   runWithKeyboard = false,
 }: {
@@ -52,6 +87,7 @@ export async function runContextualActionFlow({
   viewportPreviewTestId?: string;
   applyPreviewTestId?: string;
   clickViewportPreview?: boolean;
+  checkOverlayToggle?: boolean;
   confirmation: string | RegExp;
   runWithKeyboard?: boolean;
 }): Promise<void> {
@@ -74,6 +110,15 @@ export async function runContextualActionFlow({
     await expect(viewportPreviewLocator.getByTestId(`${viewportPreviewTestId ?? `${workspace}-viewport-command-preview`}-details`)).toContainText(
       /Overlay/
     );
+    if (checkOverlayToggle && preview) {
+      await expectCommandPreviewOverlayToggle({
+        page,
+        workspace,
+        preview,
+        viewportPreview,
+        viewportPreviewTestId,
+      });
+    }
   }
   if (runWithKeyboard) {
     await page.keyboard.press("Enter");
@@ -83,6 +128,10 @@ export async function runContextualActionFlow({
     await page.getByTestId(applyPreviewTestId).click();
   } else {
     await action.click();
+  }
+  if (clickViewportPreview && viewportPreview) {
+    await expect(viewportPreviewLocator).toHaveAttribute("data-preview-state", "applied");
+    await expect(viewportPreviewLocator).toContainText(/Applied:/);
   }
   await expect(page.getByTestId(`${workspace}-context-confirmation`)).toContainText(confirmation);
   await expect(page.getByTestId(`${workspace}-context-last-command`)).toBeVisible();

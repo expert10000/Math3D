@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import { CommandPreviewLegend } from "./CommandPreviewLegend";
 import { ContextualRenderedActionButton, type ContextualButtonAction } from "./ContextualActionButtons";
 
 export type ActiveSelectionWorkspace = "Mesh" | "Geometry";
@@ -24,6 +25,7 @@ export type ActiveSelectionCardProps = {
   onOpenHistory?: () => void;
   openHistoryTestId?: string;
   onClearSelection?: () => void;
+  legendTestId?: string;
 };
 
 export type ActiveSelectionSummary = {
@@ -142,6 +144,7 @@ export function ActiveSelectionCard({
   onOpenHistory,
   openHistoryTestId,
   onClearSelection,
+  legendTestId,
 }: ActiveSelectionCardProps) {
   const hasSelection = !emptyState;
   return (
@@ -166,6 +169,9 @@ export function ActiveSelectionCard({
             Clear selection
           </button>
         )}
+      </div>
+      <div>
+        <CommandPreviewLegend testId={legendTestId ?? `${testId}-preview-legend`} compact />
       </div>
       <div style={rowStyle}>
         <span style={labelStyle}>Workspace</span>

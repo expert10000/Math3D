@@ -63,6 +63,7 @@ import { buildContextualSelectionState } from "./selection/contextualSelectionSt
 import {
   buildContextualViewportPreview,
   formatContextualViewportPreviewCounts,
+  type ContextualViewportPreview,
   type ContextualViewportPreviewOperation,
 } from "./selection/contextualViewportPreview";
 
@@ -1089,6 +1090,7 @@ const GEOMETRY_DERIVED_CONSTRUCTIONS_STORAGE_KEY = "math3d.geometry.derivedConst
 const GEOMETRY_EDIT_SESSION_KEY = "math3d.geometry.editSession.v1";
 const UI_CONTEXTUAL_GEOMETRY_PICK_MODE_KEY = "math3d.ui.contextual.geometryPickMode.v1";
 const UI_CONTEXTUAL_MESH_PICK_MODE_KEY = "math3d.ui.contextual.meshPickMode.v1";
+const UI_CONTEXTUAL_COMMAND_PREVIEW_OVERLAYS_KEY = "math3d.ui.contextual.commandPreviewOverlays.v1";
 const WORKBOOK_AUTOSAVE_JOURNAL_KEY = "math3d.workbook.autosaveJournal.v1";
 const WORKBOOK_AUTOSAVE_RECOVERY_DISMISSED_AT_KEY = "math3d.workbook.autosaveRecoveryDismissedAt.v1";
 const WORKBOOK_BUNDLE_ASSET_MODE_KEY = "math3d.workbook.bundleAssetMode.v1";
@@ -3009,6 +3011,13 @@ const GEOMETRY_VISUAL_LANGUAGE = {
   selection: 0x2563eb,
   label: 0x0f172a,
 } as const;
+const CONTEXTUAL_APPLIED_PREVIEW_DURATION_MS = 1800;
+type AppliedContextualViewportPreview = {
+  workspace: ActiveSelectionWorkspace;
+  preview: ContextualViewportPreview;
+  label: string;
+  key: string;
+};
 type GeometryDerivedConstructionObject = {
   id: string;
   type: GeometryDerivedConstructionType;
@@ -10585,6 +10594,16 @@ const App: React.FC = () => {
   const [geometryTopologyEditFeedback, setGeometryTopologyEditFeedback] = useState<GeometryTopologyEditFeedback | null>(null);
   const [geometryLastActionContinuity, setGeometryLastActionContinuity] = useState<GeometryActionContinuityStatus | null>(null);
   const [contextualActionPulseId, setContextualActionPulseId] = useState<string | null>(null);
+  const [commandPreviewOverlaysVisible, setCommandPreviewOverlaysVisible] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      return window.localStorage.getItem(UI_CONTEXTUAL_COMMAND_PREVIEW_OVERLAYS_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const [appliedContextualViewportPreview, setAppliedContextualViewportPreview] =
+    useState<AppliedContextualViewportPreview | null>(null);
   const [selectionEventStatus, setSelectionEventStatus] = useState<{
     workspace: ActiveSelectionWorkspace;
     label: string;
@@ -10597,6 +10616,23 @@ const App: React.FC = () => {
   const geometrySelectionEventKeyRef = useRef<string | null>(null);
   const meshSelectionEventKeyRef = useRef<string | null>(null);
   const geometryTopologyEditFeedbackTimerRef = useRef<number | null>(null);
+  const appliedContextualViewportPreviewTimerRef = useRef<number | null>(null);
+  const showAppliedContextualViewportPreview = useCallback(
+    (workspace: ActiveSelectionWorkspace, preview: ContextualViewportPreview | null, label: string) => {
+      if (!preview) return;
+      const key = `${workspace}:${preview.operation}:${preview.selectedEntity}:${Date.now()}`;
+      setAppliedContextualViewportPreview({ workspace, preview, label, key });
+      if (preview.actionPulseId) setContextualActionPulseId(preview.actionPulseId);
+      if (appliedContextualViewportPreviewTimerRef.current != null) {
+        window.clearTimeout(appliedContextualViewportPreviewTimerRef.current);
+      }
+      appliedContextualViewportPreviewTimerRef.current = window.setTimeout(() => {
+        setAppliedContextualViewportPreview((current) => (current?.key === key ? null : current));
+        appliedContextualViewportPreviewTimerRef.current = null;
+      }, CONTEXTUAL_APPLIED_PREVIEW_DURATION_MS);
+    },
+    []
+  );
   const showSelectionEventStatus = useCallback((workspace: ActiveSelectionWorkspace, label: string, key: string) => {
     setSelectionEventStatus({ workspace, label, key });
     setSelectionViewportPulse({ workspace, key });
@@ -10606,6 +10642,16 @@ const App: React.FC = () => {
     const timer = window.setTimeout(() => setContextualActionPulseId(null), 1400);
     return () => window.clearTimeout(timer);
   }, [contextualActionPulseId]);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        UI_CONTEXTUAL_COMMAND_PREVIEW_OVERLAYS_KEY,
+        commandPreviewOverlaysVisible ? "1" : "0"
+      );
+    } catch {
+      // Ignore storage failures; this is a visual preference only.
+    }
+  }, [commandPreviewOverlaysVisible]);
   useEffect(() => {
     if (!selectionEventStatus) return;
     const timer = window.setTimeout(() => setSelectionEventStatus(null), 6000);
@@ -10620,6 +10666,9 @@ const App: React.FC = () => {
     return () => {
       if (geometryTopologyEditFeedbackTimerRef.current != null) {
         window.clearTimeout(geometryTopologyEditFeedbackTimerRef.current);
+      }
+      if (appliedContextualViewportPreviewTimerRef.current != null) {
+        window.clearTimeout(appliedContextualViewportPreviewTimerRef.current);
       }
     };
   }, []);
@@ -16549,7 +16598,41 @@ const App: React.FC = () => {
           retainedSelection: retainedSelectionTarget,
           snapshot: afterSnapshot,
         };
-        setContextualActionPulseId(`geometry:${resolvedIntent.action}`);
+        const geometryActionPulseId = `geometry:${resolvedIntent.action}`;
+        setContextualActionPulseId(geometryActionPulseId);
+        const appliedCountsLabel = formatContextualViewportPreviewCounts(beforeCounts, afterCounts);
+        const appliedPreviewOperation: ContextualViewportPreviewOperation =
+          resolvedIntent.action === "face-extrude"
+            ? "Extrude"
+            : resolvedIntent.action === "face-inset"
+              ? "Inset"
+              : resolvedIntent.action === "face-delete"
+                ? "Delete"
+                : resolvedIntent.action === "edge-split"
+                  ? "Split"
+                  : resolvedIntent.action === "vertex-move"
+                    ? "Move"
+                    : "Move";
+        showAppliedContextualViewportPreview(
+          "Geometry",
+          buildContextualViewportPreview({
+            workspace: "Geometry",
+            operation: appliedPreviewOperation,
+            selectedEntity: resolvedIntent.target ?? actionLabel,
+            label: topologyFeedback.summary || resolvedIntent.label,
+            actionPulseId: geometryActionPulseId,
+            details: [{ label: "Counts", value: appliedCountsLabel }],
+            overlays: {
+              pointSets: topologyFeedback.points.length
+                ? [{ points: topologyFeedback.points, color: 0x22c55e, size: 0.22, opacity: 0.95 }]
+                : null,
+              polylineGroups: topologyFeedback.edgeLines.length
+                ? [{ lines: topologyFeedback.edgeLines, color: 0x22c55e, opacity: 0.92, radiusWorld: 0.024 }]
+                : null,
+            },
+          }),
+          `${topologyFeedback.summary || resolvedIntent.label}, ${appliedCountsLabel}`
+        );
         suppressGeometryHistoryCapture();
         setGeometryObjectHistoryById((prev) => ({
           ...prev,
@@ -16586,7 +16669,7 @@ const App: React.FC = () => {
         geometryTopologyEditFeedbackTimerRef.current = window.setTimeout(() => {
           setGeometryTopologyEditFeedback((current) => (current?.id === topologyFeedback.id ? null : current));
           geometryTopologyEditFeedbackTimerRef.current = null;
-        }, 2400);
+        }, CONTEXTUAL_APPLIED_PREVIEW_DURATION_MS);
         if (retainedSelectionPick && retainedSelectionTarget) {
           const slotId =
             retainedSelectionTarget.slotId ??
@@ -16648,13 +16731,14 @@ const App: React.FC = () => {
       geometryDatasetMeshObjects,
       geometryObjects,
       geometryLockedObjectIds,
-      geometrySelectedObjectId,
-      proceduralMeshSet.meshes,
-      setGeometryCreateActionStatus,
-      setGeometryLastDirectEdit,
-      setGeometryLastActionContinuity,
-      suppressGeometryHistoryCapture,
-    ]
+        geometrySelectedObjectId,
+        proceduralMeshSet.meshes,
+        setGeometryCreateActionStatus,
+        setGeometryLastDirectEdit,
+        setGeometryLastActionContinuity,
+        showAppliedContextualViewportPreview,
+        suppressGeometryHistoryCapture,
+      ]
   );
   const handleExtrudeSelectedFace = useCallback(() => {
     if (!geometryFaceOperationPick || geometryFaceOperationPick.faceIndex == null) {
@@ -20326,6 +20410,7 @@ const App: React.FC = () => {
   }, [geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails]);
   const geometryDirectEditPreviewFaceMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
     if (geometryMode !== "procedural") return null;
+    if (!commandPreviewOverlaysVisible) return null;
     if (geometryProbeSelectionMode !== "face") return null;
     const selectedFace =
       geometryProbeSelectionDetails?.mode === "face" && geometryProbeSelectionDetails.faceVertices
@@ -20364,6 +20449,7 @@ const App: React.FC = () => {
     ];
   }, [
     geometryFaceExtrudeDistance,
+    commandPreviewOverlaysVisible,
     geometryMode,
     geometryProbeSelectionMode,
     geometryProbeSelectionDetails,
@@ -20389,7 +20475,7 @@ const App: React.FC = () => {
       groups.push({
         positions,
         indices,
-        color: 0x22d3ee,
+        color: 0x22c55e,
         opacity: 0.36,
         doubleSided: true,
       });
@@ -20447,6 +20533,11 @@ const App: React.FC = () => {
         : null,
     };
   }, [geometryHistoryPreviewStep, geometryMode]);
+  const geometryAppliedContextualViewportPreview =
+    appliedContextualViewportPreview?.workspace === "Geometry" ? appliedContextualViewportPreview : null;
+  const geometryAppliedContextualViewportPreviewOverlays = commandPreviewOverlaysVisible
+    ? geometryAppliedContextualViewportPreview?.preview.overlays ?? null
+    : null;
   const geometryProceduralViewerOverlayMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     const groups: OverlayMeshGroup[] = [];
@@ -20459,11 +20550,15 @@ const App: React.FC = () => {
     if (geometryDirectEditPreviewFaceMeshGroups?.length) {
       groups.push(...geometryDirectEditPreviewFaceMeshGroups);
     }
+    if (geometryAppliedContextualViewportPreviewOverlays?.meshGroups?.length) {
+      groups.push(...geometryAppliedContextualViewportPreviewOverlays.meshGroups);
+    }
     if (geometryTopologyEditFeedbackMeshGroups?.length) {
       groups.push(...geometryTopologyEditFeedbackMeshGroups);
     }
     return groups.length ? groups : null;
   }, [
+    geometryAppliedContextualViewportPreviewOverlays,
     geometryDirectEditPreviewFaceMeshGroups,
     geometryHistoryPreviewOverlays.meshGroups,
     geometryMode,
@@ -20563,6 +20658,7 @@ const App: React.FC = () => {
   ]);
   const geometryDirectEditPreviewOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural") return null;
+    if (!commandPreviewOverlaysVisible) return null;
     const groups: OverlayPolylineGroup[] = [];
     const previewColor = 0x0f766e;
     const selectedFace =
@@ -20672,6 +20768,7 @@ const App: React.FC = () => {
     }
     return groups.length ? groups : null;
   }, [
+    commandPreviewOverlaysVisible,
     geometryEdgeOperationTarget,
     geometryEdgeSplitRatio,
     geometryFaceExtrudeDistance,
@@ -20685,6 +20782,7 @@ const App: React.FC = () => {
   ]);
   const geometryDirectEditPreviewPointSets = useMemo<OverlayPointSet[] | null>(() => {
     if (geometryMode !== "procedural") return null;
+    if (!commandPreviewOverlaysVisible) return null;
     if (geometryProbeSelectionMode !== "edge") return null;
     const selectedEdge =
       geometryProbeSelectionDetails?.mode === "edge" && geometryProbeSelectionDetails.edgePoints
@@ -20710,6 +20808,7 @@ const App: React.FC = () => {
       },
     ];
   }, [
+    commandPreviewOverlaysVisible,
     geometryEdgeOperationTarget,
     geometryEdgeSplitRatio,
     geometryMode,
@@ -20718,6 +20817,7 @@ const App: React.FC = () => {
   ]);
   const geometryDirectEditPreviewLabelSets = useMemo<OverlayLabelSet[] | null>(() => {
     if (geometryMode !== "procedural" || !geometryViewportCommandPreviewLabel) return null;
+    if (!commandPreviewOverlaysVisible) return null;
     const labels: OverlayLabelSet["labels"] = [];
     const pushLabel = (position: GeometryProbePoint | null | undefined, color = 0x0f766e) => {
       if (!position) return;
@@ -20774,6 +20874,7 @@ const App: React.FC = () => {
     }
     return labels.length ? [{ labels, size: 0.76 }] : null;
   }, [
+    commandPreviewOverlaysVisible,
     geometryEdgeOperationTarget,
     geometryEdgeSplitRatio,
     geometryMode,
@@ -20885,6 +20986,8 @@ const App: React.FC = () => {
       geometryViewportCommandPreviewLabel,
     ]
   );
+  const geometryVisibleContextualViewportPreview =
+    geometryAppliedContextualViewportPreview?.preview ?? geometryContextualViewportPreview;
   const geometryArmedLineOperationPreviewGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural" || geometryArmedLineOperation !== "extend") return null;
     const detail = geometryProbeHoverSelectionDetails;
@@ -27674,13 +27777,13 @@ const App: React.FC = () => {
     return [
       {
         points: geometryTopologyEditFeedback.points,
-        color: 0xfff7ed,
+        color: 0xdcfce7,
         size: 0.36,
         opacity: 0.62,
       },
       {
         points: geometryTopologyEditFeedback.points,
-        color: 0xfacc15,
+        color: 0x22c55e,
         size: 0.26,
         opacity: 0.98,
       },
@@ -27743,6 +27846,9 @@ const App: React.FC = () => {
     if (geometryDirectEditPreviewPointSets?.length) {
       sets.push(...geometryDirectEditPreviewPointSets);
     }
+    if (geometryAppliedContextualViewportPreviewOverlays?.pointSets?.length) {
+      sets.push(...geometryAppliedContextualViewportPreviewOverlays.pointSets);
+    }
     if (geometryTopologyEditFeedbackPointSets?.length) {
       sets.push(...geometryTopologyEditFeedbackPointSets);
     }
@@ -27760,6 +27866,7 @@ const App: React.FC = () => {
     geometryPlaneMidPlanePreviewOverlays.pointSets,
     geometryMathConstructionOverlays.pointSets,
     geometryProceduralSnapPreviewPointSet,
+    geometryAppliedContextualViewportPreviewOverlays,
     geometryDirectEditPreviewPointSets,
     geometryTopologyEditFeedbackPointSets,
   ]);
@@ -27768,7 +27875,7 @@ const App: React.FC = () => {
     return [
       {
         lines: geometryTopologyEditFeedback.edgeLines,
-        color: 0xf59e0b,
+        color: 0x22c55e,
         opacity: 0.95,
         radiusWorld: 0.024,
       },
@@ -27809,6 +27916,9 @@ const App: React.FC = () => {
     if (geometryDirectEditPreviewOverlayGroups?.length) {
       groups.push(...geometryDirectEditPreviewOverlayGroups);
     }
+    if (geometryAppliedContextualViewportPreviewOverlays?.polylineGroups?.length) {
+      groups.push(...geometryAppliedContextualViewportPreviewOverlays.polylineGroups);
+    }
     if (geometryTopologyEditFeedbackPolylineGroups?.length) {
       groups.push(...geometryTopologyEditFeedbackPolylineGroups);
     }
@@ -27840,6 +27950,7 @@ const App: React.FC = () => {
     geometryBooleanPreviewOverlayGroups,
     geometryProceduralFeatureOverlays.groups,
     geometryArmedLineOperationPreviewGroups,
+    geometryAppliedContextualViewportPreviewOverlays,
     geometryDirectEditPreviewOverlayGroups,
     geometryTopologyEditFeedbackPolylineGroups,
     geometryDerivedConstructionOverlays.groups,
@@ -27936,7 +28047,7 @@ const App: React.FC = () => {
     if (geometryMode !== "procedural") return null;
     if (geometryPrecisionPickActive && !geometryPickThroughHelpersEnabled) return null;
     const labels: OverlayLabelSet[] = [];
-    const pushLabelSets = (source: OverlayLabelSet[] | null | undefined) => {
+    const pushLabelSets = (source: readonly OverlayLabelSet[] | null | undefined) => {
       if (!source?.length) return;
       if (!geometryPrecisionPickActive) {
         labels.push(...source);
@@ -27959,6 +28070,7 @@ const App: React.FC = () => {
     pushLabelSets(geometryMathConstructionOverlays.labelSets);
     pushLabelSets(geometryConstructionViewportBadgeLabelSets);
     pushLabelSets(geometryDirectEditPreviewLabelSets);
+    pushLabelSets(geometryAppliedContextualViewportPreviewOverlays?.labelSets);
     pushLabelSets(geometryTopologyEditFeedbackLabelSets);
     pushLabelSets(geometryHistoryPreviewOverlays.labelSets);
     if (geometryTimelineShowAnnotations && geometryProceduralAnnotationOverlays.labelSets?.length) {
@@ -27977,6 +28089,7 @@ const App: React.FC = () => {
     geometryMathConstructionOverlays.labelSets,
     geometryConstructionViewportBadgeLabelSets,
     geometryDirectEditPreviewLabelSets,
+    geometryAppliedContextualViewportPreviewOverlays,
     geometryTopologyEditFeedbackLabelSets,
     geometryHistoryPreviewOverlays.labelSets,
     geometryProceduralAnnotationOverlays.labelSets,
@@ -33160,12 +33273,16 @@ const App: React.FC = () => {
   }, [isMeshLikeViewer, meshQualityReport, meshQualityShowNonManifoldEdges]);
   useEffect(() => {
     if (!surfaceMeshTopologyFeedback) return;
-    const timeout = window.setTimeout(() => setSurfaceMeshTopologyFeedback(null), 1800);
+    const timeout = window.setTimeout(
+      () => setSurfaceMeshTopologyFeedback(null),
+      CONTEXTUAL_APPLIED_PREVIEW_DURATION_MS
+    );
     return () => window.clearTimeout(timeout);
   }, [surfaceMeshTopologyFeedback]);
   const surfaceMeshTopologyGhostFeedback = useMemo<GeometryTopologyEditFeedback | null>(() => {
     if (
       !isMeshLikeViewer ||
+      !commandPreviewOverlaysVisible ||
       surfaceMeshTopologyFeedback ||
       surfaceMeshTopologySelectionCleared ||
       surfaceMeshTopologyHistoryPreviewId ||
@@ -33226,6 +33343,7 @@ const App: React.FC = () => {
       return null;
     }
   }, [
+    commandPreviewOverlaysVisible,
     isMeshLikeViewer,
     surfaceMeshData,
     surfaceMeshTopologyBevelAmount,
@@ -33356,7 +33474,7 @@ const App: React.FC = () => {
       groups.push({
         positions,
         indices,
-        color: 0x22d3ee,
+        color: 0x22c55e,
         opacity: 0.36,
         doubleSided: true,
       });
@@ -33515,13 +33633,13 @@ const App: React.FC = () => {
     return [
       {
         points: surfaceMeshTopologyFeedback.points,
-        color: 0xfff7ed,
+        color: 0xdcfce7,
         size: 0.34,
         opacity: 0.62,
       },
       {
         points: surfaceMeshTopologyFeedback.points,
-        color: 0xfacc15,
+        color: 0x22c55e,
         size: 0.24,
         opacity: 0.98,
       },
@@ -33596,6 +33714,7 @@ const App: React.FC = () => {
     const empty = { meshGroups: null, pointSets: null, polylineGroups: null, labelSets: null };
     if (
       !isMeshLikeViewer ||
+      !commandPreviewOverlaysVisible ||
       surfaceMeshTopologyFeedback ||
       surfaceMeshTopologySelectionCleared ||
       surfaceMeshTopologyHistoryPreviewId ||
@@ -33765,6 +33884,7 @@ const App: React.FC = () => {
       labelSets,
     };
   }, [
+    commandPreviewOverlaysVisible,
     isMeshLikeViewer,
     surfaceMeshTopologyBevelAmount,
     surfaceMeshTopologyCollapseMode,
@@ -33785,7 +33905,7 @@ const App: React.FC = () => {
     return [
       {
         lines: surfaceMeshTopologyFeedback.edgeLines,
-        color: 0x22d3ee,
+        color: 0x22c55e,
         opacity: 0.96,
         radiusWorld: 0.028,
       },
@@ -33812,6 +33932,11 @@ const App: React.FC = () => {
     surfaceMeshTopologyHistoryPreviewEntry,
     surfaceMeshTopologyHistoryPreviewMode,
   ]);
+  const meshAppliedContextualViewportPreview =
+    appliedContextualViewportPreview?.workspace === "Mesh" ? appliedContextualViewportPreview : null;
+  const meshAppliedContextualViewportPreviewOverlays = commandPreviewOverlaysVisible
+    ? meshAppliedContextualViewportPreview?.preview.overlays ?? null
+    : null;
   const combinedOverlayMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
     const groups: OverlayMeshGroup[] = [];
     if (surfaceMeshTopologyHistoryComparisonMeshGroups?.length) {
@@ -33819,10 +33944,14 @@ const App: React.FC = () => {
     }
     if (surfaceMeshTopologyGhostMeshGroups?.length) groups.push(...surfaceMeshTopologyGhostMeshGroups);
     if (surfaceMeshCommandPreviewOverlays.meshGroups?.length) groups.push(...surfaceMeshCommandPreviewOverlays.meshGroups);
+    if (meshAppliedContextualViewportPreviewOverlays?.meshGroups?.length) {
+      groups.push(...meshAppliedContextualViewportPreviewOverlays.meshGroups);
+    }
     if (surfaceMeshTopologySelectionFaceMeshGroups?.length) groups.push(...surfaceMeshTopologySelectionFaceMeshGroups);
     if (surfaceMeshTopologyFeedbackMeshGroups?.length) groups.push(...surfaceMeshTopologyFeedbackMeshGroups);
     return groups.length ? groups : null;
   }, [
+    meshAppliedContextualViewportPreviewOverlays,
     surfaceMeshCommandPreviewOverlays.meshGroups,
     surfaceMeshTopologyFeedbackMeshGroups,
     surfaceMeshTopologyGhostMeshGroups,
@@ -33836,10 +33965,14 @@ const App: React.FC = () => {
     if (surfaceMeshTopologyOverlayPointSets?.length) sets.push(...surfaceMeshTopologyOverlayPointSets);
     if (surfaceMeshTopologyGhostPointSets?.length) sets.push(...surfaceMeshTopologyGhostPointSets);
     if (surfaceMeshCommandPreviewOverlays.pointSets?.length) sets.push(...surfaceMeshCommandPreviewOverlays.pointSets);
+    if (meshAppliedContextualViewportPreviewOverlays?.pointSets?.length) {
+      sets.push(...meshAppliedContextualViewportPreviewOverlays.pointSets);
+    }
     if (surfaceMeshTopologyFeedbackPointSets?.length) sets.push(...surfaceMeshTopologyFeedbackPointSets);
     return sets.length ? sets : null;
   }, [
     complexMapOverlayPointsActive,
+    meshAppliedContextualViewportPreviewOverlays,
     meshQualityOverlayPointSets,
     surfaceMeshCommandPreviewOverlays.pointSets,
     surfaceMeshTopologyFeedbackPointSets,
@@ -33850,8 +33983,15 @@ const App: React.FC = () => {
     const labels: OverlayLabelSet[] = [];
     if (surfaceMeshTopologySelectionLabelSets?.length) labels.push(...surfaceMeshTopologySelectionLabelSets);
     if (surfaceMeshCommandPreviewOverlays.labelSets?.length) labels.push(...surfaceMeshCommandPreviewOverlays.labelSets);
+    if (meshAppliedContextualViewportPreviewOverlays?.labelSets?.length) {
+      labels.push(...meshAppliedContextualViewportPreviewOverlays.labelSets);
+    }
     return labels.length ? labels : null;
-  }, [surfaceMeshCommandPreviewOverlays.labelSets, surfaceMeshTopologySelectionLabelSets]);
+  }, [
+    meshAppliedContextualViewportPreviewOverlays,
+    surfaceMeshCommandPreviewOverlays.labelSets,
+    surfaceMeshTopologySelectionLabelSets,
+  ]);
 
   const [probeInfo, setProbeInfo] = useState<ProbeInfo | null>(null);
   const [probeCurv, setProbeCurv] = useState<CurvatureData | null>(null);
@@ -44276,6 +44416,9 @@ case "mobius":
     if (surfaceMeshTopologyOverlayPolylineGroups?.length) groups.push(...surfaceMeshTopologyOverlayPolylineGroups);
     if (surfaceMeshTopologyGhostPolylineGroups?.length) groups.push(...surfaceMeshTopologyGhostPolylineGroups);
     if (surfaceMeshCommandPreviewOverlays.polylineGroups?.length) groups.push(...surfaceMeshCommandPreviewOverlays.polylineGroups);
+    if (meshAppliedContextualViewportPreviewOverlays?.polylineGroups?.length) {
+      groups.push(...meshAppliedContextualViewportPreviewOverlays.polylineGroups);
+    }
     if (surfaceMeshTopologyFeedbackPolylineGroups?.length) groups.push(...surfaceMeshTopologyFeedbackPolylineGroups);
     if (workbookCurveOverlayGhostGroups?.length) groups.push(...workbookCurveOverlayGhostGroups);
     if (workbookDirectionOverlayGhostGroups?.length) groups.push(...workbookDirectionOverlayGhostGroups);
@@ -44289,6 +44432,7 @@ case "mobius":
   }, [
     calculusVectorOverlayGroups,
     complexMapOverlayPolylineGroups,
+    meshAppliedContextualViewportPreviewOverlays,
     surfaceMeshCommandPreviewOverlays.polylineGroups,
     surfaceMeshObjectSelectionPolylineGroups,
     surfaceMeshTopologyGhostPolylineGroups,
@@ -45104,7 +45248,32 @@ case "mobius":
           beforeSnapshot: cloneSurfaceMeshData(sourceMesh, sourceMesh.label),
           snapshot: cloneSurfaceMeshData(edited, edited.label),
         };
-        setContextualActionPulseId(`mesh:${topologyAction}`);
+        const meshActionPulseId = `mesh:${topologyAction}`;
+        setContextualActionPulseId(meshActionPulseId);
+        const appliedCountsLabel = formatContextualViewportPreviewCounts(beforeCounts, afterCounts);
+        const appliedPreviewOperation: ContextualViewportPreviewOperation =
+          topologyAction === "face-subdivide"
+            ? "Subdivide"
+            : topologyAction === "edge-collapse"
+              ? "Collapse"
+              : topologyAction === "edge-bevel"
+                ? "Bevel"
+                : topologyAction === "edge-split"
+                  ? "Split"
+                  : "Split";
+        showAppliedContextualViewportPreview(
+          "Mesh",
+          buildContextualViewportPreview({
+            workspace: "Mesh",
+            operation: appliedPreviewOperation,
+            selectedEntity: targetLabel,
+            label: historyEntry.resultLabel,
+            actionPulseId: meshActionPulseId,
+            details: [{ label: "Counts", value: appliedCountsLabel }],
+            overlays: surfaceMeshCommandPreviewOverlays,
+          }),
+          `${historyEntry.resultLabel}, ${appliedCountsLabel}`
+        );
         setSurfaceMeshTopologyHistory((prev) => [historyEntry, ...prev].slice(0, 24));
         setSelectedSurfaceMeshTopologyHistoryId(historyEntry.id);
         setMeshDataset(edited, traceOperation);
@@ -45117,7 +45286,14 @@ case "mobius":
         setSurfaceMeshTopologyStatus(formatMeshEditFailureMessage(actionLabel, err?.message ?? `${actionLabel} failed.`));
       }
     },
-    [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshData]
+    [
+      appendMeshPromotionOperation,
+      handleChangeViewerKind,
+      setMeshDataset,
+      showAppliedContextualViewportPreview,
+      surfaceMeshCommandPreviewOverlays,
+      surfaceMeshData,
+    ]
   );
 
   const handleSurfaceMeshFaceSubdivide = useCallback(() => {
@@ -45713,6 +45889,8 @@ case "mobius":
       surfaceMeshCommandPreviewOverlays,
     ]
   );
+  const meshVisibleContextualViewportPreview =
+    meshAppliedContextualViewportPreview?.preview ?? meshContextualViewportPreview;
 
   const surfaceMeshTopologyBreadcrumb = useMemo(() => {
     const preview = surfaceMeshTopologyHistoryPreviewId
@@ -60494,6 +60672,10 @@ case "mobius":
                     openHistoryTestId="mesh-context-open-history"
                     canRunPrimaryAction={meshContextCanRunPrimaryAction}
                     onPrimaryAction={handleRunMeshContextPrimaryAction}
+                    commandPreviewOverlaysVisible={commandPreviewOverlaysVisible}
+                    onCommandPreviewOverlaysVisibleChange={setCommandPreviewOverlaysVisible}
+                    commandPreviewOverlayToggleTestId="mesh-command-preview-overlays-toggle"
+                    commandPreviewLegendTestId="mesh-command-preview-legend"
                     getPickTestId={(pickMode) => `mesh-context-pick-${pickMode}`}
                   >
                     {surfaceMeshTopologyPickMode === "face" && (
@@ -60579,25 +60761,32 @@ case "mobius":
                     {selectionEventStatus.label}
                   </div>
                 )}
-                {surfaceViewerKind === "mesh" && meshContextualViewportPreview && !cleanScreenshotSurfaceActive && (
+                {surfaceViewerKind === "mesh" &&
+                  commandPreviewOverlaysVisible &&
+                  meshVisibleContextualViewportPreview &&
+                  !cleanScreenshotSurfaceActive && (
                   <ContextualViewportPreviewBadge
                     testId="mesh-viewport-command-preview"
-                    preview={meshContextualViewportPreview}
+                    preview={meshVisibleContextualViewportPreview}
+                    state={meshAppliedContextualViewportPreview ? "applied" : "preview"}
+                    appliedLabel={meshAppliedContextualViewportPreview?.label}
                     top={48}
                     onApply={
-                      surfaceMeshTopologyPickMode === "auto"
-                        ? handleDatasetToGeometryScene
-                        : handleApplySurfaceMeshTopologySelectedPreview
+                      meshAppliedContextualViewportPreview
+                        ? undefined
+                        : surfaceMeshTopologyPickMode === "auto"
+                          ? handleDatasetToGeometryScene
+                          : handleApplySurfaceMeshTopologySelectedPreview
                     }
                     onHoverStart={() => {
-                      if (meshContextualViewportPreview.actionPulseId) {
-                        setContextualActionPulseId(meshContextualViewportPreview.actionPulseId);
+                      if (meshVisibleContextualViewportPreview.actionPulseId) {
+                        setContextualActionPulseId(meshVisibleContextualViewportPreview.actionPulseId);
                       }
                     }}
                     onHoverEnd={() => {
                       if (
-                        meshContextualViewportPreview.actionPulseId &&
-                        contextualActionPulseId === meshContextualViewportPreview.actionPulseId
+                        meshVisibleContextualViewportPreview.actionPulseId &&
+                        contextualActionPulseId === meshVisibleContextualViewportPreview.actionPulseId
                       ) {
                         setContextualActionPulseId(null);
                       }
@@ -60612,7 +60801,7 @@ case "mobius":
                       data-testid="mesh-object-selection-glow"
                       style={{
                         position: "absolute",
-                        top: meshContextualViewportPreview ? 82 : 48,
+                        top: meshVisibleContextualViewportPreview ? 82 : 48,
                         right: 14,
                         zIndex: 17,
                         maxWidth: 300,
@@ -75398,6 +75587,10 @@ case "mobius":
                       openHistoryTestId="geometry-context-open-history"
                       canRunPrimaryAction={geometryContextCanRunPrimaryAction}
                       onPrimaryAction={handleRunGeometryContextPrimaryAction}
+                      commandPreviewOverlaysVisible={commandPreviewOverlaysVisible}
+                      onCommandPreviewOverlaysVisibleChange={setCommandPreviewOverlaysVisible}
+                      commandPreviewOverlayToggleTestId="geometry-command-preview-overlays-toggle"
+                      commandPreviewLegendTestId="geometry-command-preview-legend"
                       getPickTestId={(pickMode) => `geometry-context-pick-${pickMode}`}
                       zIndex={17}
                     >
@@ -76527,22 +76720,24 @@ case "mobius":
                   }
                   inspectSelectionMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
                 />
-                {geometryMode === "procedural" && geometryContextualViewportPreview && (
+                {geometryMode === "procedural" && commandPreviewOverlaysVisible && geometryVisibleContextualViewportPreview && (
                   <ContextualViewportPreviewBadge
                     testId="geometry-viewport-command-preview"
-                    preview={geometryContextualViewportPreview}
+                    preview={geometryVisibleContextualViewportPreview}
+                    state={geometryAppliedContextualViewportPreview ? "applied" : "preview"}
+                    appliedLabel={geometryAppliedContextualViewportPreview?.label}
                     top={58}
                     zIndex={16}
-                    onApply={handleRunGeometryContextPrimaryAction}
+                    onApply={geometryAppliedContextualViewportPreview ? undefined : handleRunGeometryContextPrimaryAction}
                     onHoverStart={() => {
-                      if (geometryContextualViewportPreview.actionPulseId) {
-                        setContextualActionPulseId(geometryContextualViewportPreview.actionPulseId);
+                      if (geometryVisibleContextualViewportPreview.actionPulseId) {
+                        setContextualActionPulseId(geometryVisibleContextualViewportPreview.actionPulseId);
                       }
                     }}
                     onHoverEnd={() => {
                       if (
-                        geometryContextualViewportPreview.actionPulseId &&
-                        contextualActionPulseId === geometryContextualViewportPreview.actionPulseId
+                        geometryVisibleContextualViewportPreview.actionPulseId &&
+                        contextualActionPulseId === geometryVisibleContextualViewportPreview.actionPulseId
                       ) {
                         setContextualActionPulseId(null);
                       }
@@ -76557,7 +76752,7 @@ case "mobius":
                       data-testid="geometry-object-selection-glow"
                       style={{
                         position: "absolute",
-                        top: geometryContextualViewportPreview ? 92 : 58,
+                        top: geometryVisibleContextualViewportPreview ? 92 : 58,
                         right: 14,
                         zIndex: 16,
                         maxWidth: 300,

@@ -190,6 +190,7 @@ async function runTopologyDemo(
       preview: /Preview: Edge \d+-\d+ -> midpoint vertex/,
       viewportPreview: /Viewport preview: Edge \d+-\d+ -> midpoint vertex/,
       clickViewportPreview: true,
+      checkOverlayToggle: true,
       confirmation: /Done: Edge \d+-\d+ -> split vertex \(\+1V, \+2F\)/,
       pickEntity: async () => {
         await selectDeterministicMeshEdge(page);

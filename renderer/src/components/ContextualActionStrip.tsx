@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { CommandPreviewLegend } from "./CommandPreviewLegend";
 import { ContextualRenderedActionButton } from "./ContextualActionButtons";
 
 export type ContextualActionStripOption<T extends string> = {
@@ -29,6 +30,10 @@ type ContextualActionStripProps<T extends string> = {
   openHistoryTestId?: string;
   canRunPrimaryAction?: boolean;
   onPrimaryAction?: () => void;
+  commandPreviewOverlaysVisible?: boolean;
+  onCommandPreviewOverlaysVisibleChange?: (visible: boolean) => void;
+  commandPreviewOverlayToggleTestId?: string;
+  commandPreviewLegendTestId?: string;
   keyboardShortcutsEnabled?: boolean;
   getPickTestId?: (pick: T) => string;
   zIndex?: number;
@@ -85,6 +90,10 @@ export function ContextualActionStrip<T extends string>({
   openHistoryTestId,
   canRunPrimaryAction,
   onPrimaryAction,
+  commandPreviewOverlaysVisible = true,
+  onCommandPreviewOverlaysVisibleChange,
+  commandPreviewOverlayToggleTestId,
+  commandPreviewLegendTestId,
   keyboardShortcutsEnabled = true,
   getPickTestId,
   zIndex = 8,
@@ -136,7 +145,7 @@ export function ContextualActionStrip<T extends string>({
         boxShadow: "0 8px 18px rgba(15, 23, 42, 0.10)",
         fontSize: 11,
         color: "#1e3a8a",
-        pointerEvents: "auto",
+        pointerEvents: "none",
       }}
     >
       <span style={{ color: "#475467", fontWeight: 700 }}>Pick:</span>
@@ -156,6 +165,7 @@ export function ContextualActionStrip<T extends string>({
               borderColor: active ? "#0a66c2" : "#bfdbfe",
               background: active ? "#dbeafe" : "#ffffff",
               color: active ? "#1d4ed8" : "#334155",
+              pointerEvents: "auto",
             }}
             title={pickOption.title}
           >
@@ -171,11 +181,16 @@ export function ContextualActionStrip<T extends string>({
           <span
             data-testid={previewTestId}
             style={{
+              display: "inline-block",
               border: "1px solid #fed7aa",
               borderRadius: 999,
               background: "#fff7ed",
               color: "#9a3412",
+              maxWidth: 320,
+              overflow: "hidden",
               padding: "2px 8px",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
               fontWeight: 800,
             }}
           >
@@ -199,6 +214,7 @@ export function ContextualActionStrip<T extends string>({
               background: canRunPrimaryAction ? "#ffedd5" : "#f1f5f9",
               color: canRunPrimaryAction ? "#9a3412" : "#94a3b8",
               cursor: canRunPrimaryAction ? "pointer" : "not-allowed",
+              pointerEvents: "auto",
             }}
           >
             Apply preview
@@ -206,17 +222,55 @@ export function ContextualActionStrip<T extends string>({
         </>
       )}
       {children}
+      <span style={{ color: "#93a4ba" }}>|</span>
+      <span style={{ pointerEvents: "auto" }}>
+        <CommandPreviewLegend testId={commandPreviewLegendTestId} />
+      </span>
+      {onCommandPreviewOverlaysVisibleChange && (
+        <label
+          title="Show or hide viewport command preview badges and ghost overlays. Strip preview text remains visible."
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            border: "1px solid #cbd5e1",
+            borderRadius: 999,
+            background: commandPreviewOverlaysVisible ? "#f0fdf4" : "#f8fafc",
+            color: commandPreviewOverlaysVisible ? "#166534" : "#475467",
+            padding: "2px 7px",
+            fontWeight: 800,
+            cursor: "pointer",
+            pointerEvents: "auto",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <input
+            type="checkbox"
+            data-testid={commandPreviewOverlayToggleTestId}
+            checked={commandPreviewOverlaysVisible}
+            onChange={(event) => onCommandPreviewOverlaysVisibleChange(event.target.checked)}
+            style={{ width: 12, height: 12, margin: 0 }}
+          />
+          Show command preview overlays
+        </label>
+      )}
       {confirmationLabel && (
         <>
           <span style={{ color: "#93a4ba" }}>|</span>
           <span
             data-testid={confirmationTestId}
             style={{
+              display: "inline-block",
               border: "1px solid #bbf7d0",
               borderRadius: 999,
               background: "#f0fdf4",
               color: "#166534",
+              maxWidth: 360,
+              overflow: "hidden",
               padding: "2px 8px",
+              pointerEvents: "none",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
               fontWeight: 800,
             }}
           >
@@ -237,9 +291,22 @@ export function ContextualActionStrip<T extends string>({
             color: "#3730a3",
             padding: "2px 7px",
             fontWeight: 800,
+            pointerEvents: "none",
           }}
         >
-          <span>Last: {lastCommandLabel}</span>
+          <span
+            style={{
+              display: "inline-block",
+              maxWidth: 300,
+              overflow: "hidden",
+              pointerEvents: "none",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              verticalAlign: "bottom",
+            }}
+          >
+            Last: {lastCommandLabel}
+          </span>
           {canUndoLast && onUndoLast && (
             <>
               <span style={{ color: "#93a4ba" }}>|</span>
@@ -254,6 +321,7 @@ export function ContextualActionStrip<T extends string>({
                   color: "#1d4ed8",
                   fontWeight: 900,
                   padding: 0,
+                  pointerEvents: "auto",
                   cursor: "pointer",
                 }}
               >
@@ -275,6 +343,7 @@ export function ContextualActionStrip<T extends string>({
                   color: "#1d4ed8",
                   fontWeight: 900,
                   padding: 0,
+                  pointerEvents: "auto",
                   cursor: "pointer",
                 }}
               >
