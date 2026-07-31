@@ -38,6 +38,7 @@ export async function runContextualActionFlow({
   viewportPreview,
   viewportPreviewTestId,
   applyPreviewTestId,
+  clickViewportPreview = false,
   confirmation,
   runWithKeyboard = false,
 }: {
@@ -50,6 +51,7 @@ export async function runContextualActionFlow({
   viewportPreview?: string | RegExp;
   viewportPreviewTestId?: string;
   applyPreviewTestId?: string;
+  clickViewportPreview?: boolean;
   confirmation: string | RegExp;
   runWithKeyboard?: boolean;
 }): Promise<void> {
@@ -60,11 +62,23 @@ export async function runContextualActionFlow({
   if (preview) {
     await expect(page.getByTestId(`${workspace}-context-preview`)).toContainText(preview);
   }
+  const viewportPreviewLocator = page.getByTestId(viewportPreviewTestId ?? `${workspace}-viewport-command-preview`);
   if (viewportPreview) {
     await expectViewportPreviewOverlay(page, workspace, viewportPreview, viewportPreviewTestId);
+    await expect(viewportPreviewLocator.getByTestId(`${viewportPreviewTestId ?? `${workspace}-viewport-command-preview`}-details`)).toContainText(
+      /Operation/
+    );
+    await expect(viewportPreviewLocator.getByTestId(`${viewportPreviewTestId ?? `${workspace}-viewport-command-preview`}-details`)).toContainText(
+      /Selected/
+    );
+    await expect(viewportPreviewLocator.getByTestId(`${viewportPreviewTestId ?? `${workspace}-viewport-command-preview`}-details`)).toContainText(
+      /Overlay/
+    );
   }
   if (runWithKeyboard) {
     await page.keyboard.press("Enter");
+  } else if (clickViewportPreview) {
+    await viewportPreviewLocator.click();
   } else if (applyPreviewTestId) {
     await page.getByTestId(applyPreviewTestId).click();
   } else {

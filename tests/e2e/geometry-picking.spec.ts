@@ -361,7 +361,7 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
       actionTestId: "geometry-active-selection-action-extrude-face",
       preview: /Preview: Face \d+ -> extrude 0\.15/,
       viewportPreview: /Viewport preview: Face \d+ -> extrude 0\.15/,
-      applyPreviewTestId: "geometry-context-apply-preview",
+      clickViewportPreview: true,
       confirmation: /Done: Face \d+ extruded, V \d+ -> \d+, F \d+ -> \d+/,
       pickEntity: async () => {
         await commitDeterministicGeometryPick(page, "face", { useContextOrInspectorMode: true });

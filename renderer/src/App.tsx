@@ -48,6 +48,7 @@ import {
   type ContextualActionStripOption,
 } from "./components/ContextualActionStrip";
 import { ContextualRenderedActionStripButtons } from "./components/ContextualActionButtons";
+import { ContextualViewportPreviewBadge } from "./components/ContextualViewportPreviewBadge";
 import {
   OBJECT_CONTEXT_COPY,
   formatContextEntityLabel,
@@ -61,6 +62,7 @@ import {
 import { buildContextualSelectionState } from "./selection/contextualSelectionState";
 import {
   buildContextualViewportPreview,
+  formatContextualViewportPreviewCounts,
   type ContextualViewportPreviewOperation,
 } from "./selection/contextualViewportPreview";
 
@@ -20789,6 +20791,65 @@ const App: React.FC = () => {
         : geometryProbeSelectionMode === "vertex"
           ? "Move"
           : "Move";
+  const geometryContextualViewportPreviewPulseId =
+    geometryProbeSelectionMode === "face"
+      ? "geometry:face-extrude"
+      : geometryProbeSelectionMode === "edge"
+        ? "geometry:edge-split"
+        : geometryProbeSelectionMode === "vertex"
+          ? "geometry:vertex-move"
+          : null;
+  const geometryContextualViewportPreviewCountDetail = useMemo(() => {
+    if (geometryProbeSelectionMode === "face") {
+      const objectId = geometryFaceOperationPick?.meshKey ?? geometryFaceOperationPick?.objectId ?? geometrySelectedObjectId;
+      const faceIndex = geometryFaceOperationPick?.faceIndex;
+      if (faceIndex == null) return null;
+      const result = previewGeometryMeshEdit(objectId, "Extrude face", (mesh) =>
+        extrudeFace(mesh, faceIndex, geometryFaceExtrudeDistance)
+      );
+      return result.ready ? formatContextualViewportPreviewCounts(result.beforeCounts, result.afterCounts) : null;
+    }
+    if (geometryProbeSelectionMode === "edge") {
+      const objectId = geometryEdgeOperationPick?.meshKey ?? geometryEdgeOperationPick?.objectId ?? geometrySelectedObjectId;
+      const edgePair = geometryEdgeOperationPick?.edgeVertices;
+      if (!edgePair) return null;
+      const splitRatio = clampNumber(Number.isFinite(geometryEdgeSplitRatio) ? geometryEdgeSplitRatio : 0.5, 0.02, 0.98);
+      const result = previewGeometryMeshEdit(objectId, "Split edge", (mesh) =>
+        splitEdge(mesh, edgePair[0], edgePair[1], splitRatio)
+      );
+      return result.ready ? formatContextualViewportPreviewCounts(result.beforeCounts, result.afterCounts) : null;
+    }
+    if (geometryProbeSelectionMode === "vertex") {
+      const objectId = geometryVertexOperationPick?.meshKey ?? geometryVertexOperationPick?.objectId ?? geometrySelectedObjectId;
+      const vertexIndex = geometryVertexOperationPick?.vertexIndex;
+      if (vertexIndex == null) return null;
+      const moveNormal =
+        geometryVertexOperationPick?.vertexNormal ??
+        geometryVertexOperationPick?.normal ??
+        geometryVertexOperationPick?.faceNormal ??
+        ([0, 1, 0] as [number, number, number]);
+      const result = previewGeometryMeshEdit(objectId, "Move vertex", (mesh) =>
+        moveVertex(
+          mesh,
+          vertexIndex,
+          geometryVertexMoveAmount,
+          { x: moveNormal[0], y: moveNormal[1], z: moveNormal[2] }
+        )
+      );
+      return result.ready ? formatContextualViewportPreviewCounts(result.beforeCounts, result.afterCounts) : null;
+    }
+    return null;
+  }, [
+    geometryEdgeOperationPick,
+    geometryEdgeSplitRatio,
+    geometryFaceExtrudeDistance,
+    geometryFaceOperationPick,
+    geometryProbeSelectionMode,
+    geometrySelectedObjectId,
+    geometryVertexMoveAmount,
+    geometryVertexOperationPick,
+    previewGeometryMeshEdit,
+  ]);
   const geometryContextualViewportPreview = useMemo(
     () =>
       buildContextualViewportPreview({
@@ -20796,6 +20857,10 @@ const App: React.FC = () => {
         operation: geometryContextualViewportPreviewOperation,
         selectedEntity: geometryContextSelectionState.cardId !== "none" ? geometryContextSelectionState.cardId : null,
         label: geometryViewportCommandPreviewLabel,
+        actionPulseId: geometryContextualViewportPreviewPulseId,
+        details: geometryContextualViewportPreviewCountDetail
+          ? [{ label: "Counts", value: geometryContextualViewportPreviewCountDetail }]
+          : [],
         overlays: {
           meshGroups: geometryDirectEditPreviewFaceMeshGroups,
           pointSets: geometryDirectEditPreviewPointSets,
@@ -20808,7 +20873,9 @@ const App: React.FC = () => {
       }),
     [
       geometryContextSelectionState.cardId,
+      geometryContextualViewportPreviewCountDetail,
       geometryContextualViewportPreviewOperation,
+      geometryContextualViewportPreviewPulseId,
       geometryDirectEditPreviewFaceMeshGroups,
       geometryDirectEditPreviewLabelSets,
       geometryDirectEditPreviewOverlayGroups,
@@ -44861,6 +44928,20 @@ case "mobius":
     },
     [surfaceMeshData]
   );
+  const buildSurfaceMeshTopologyPreviewCountDetail = useCallback(
+    (_actionLabel: string, edit: (mesh: SurfaceMeshData) => SurfaceMeshData): string | null => {
+      if (!surfaceMeshData?.positions?.length) return null;
+      try {
+        const beforeCounts = countTriangleMeshTopology(surfaceMeshData);
+        const edited = applySurfaceMeshOps(edit(cloneSurfaceMeshData(surfaceMeshData, surfaceMeshData.label)));
+        const afterCounts = countTriangleMeshTopology(edited);
+        return formatContextualViewportPreviewCounts(beforeCounts, afterCounts);
+      } catch {
+        return null;
+      }
+    },
+    [surfaceMeshData]
+  );
 
   const surfaceMeshTopologyPreview = useMemo(
     () => ({
@@ -44908,6 +44989,51 @@ case "mobius":
       surfaceMeshTopologyFieldValidation.effectiveEdgeB,
       surfaceMeshTopologyFaceIndex,
       surfaceMeshTopologyPreviewOperation,
+      surfaceMeshTopologySplitRatio,
+      surfaceMeshTopologySubdivideMode,
+    ]
+  );
+  const surfaceMeshTopologyPreviewCountDetails = useMemo(
+    () => ({
+      faceSubdivide: buildSurfaceMeshTopologyPreviewCountDetail("Face subdivide", (mesh) =>
+        subdivideFace(
+          mesh,
+          Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0)),
+          surfaceMeshTopologySubdivideMode
+        )
+      ),
+      splitEdge: buildSurfaceMeshTopologyPreviewCountDetail("Split edge", (mesh) =>
+        splitEdge(
+          mesh,
+          surfaceMeshTopologyFieldValidation.effectiveEdgeA,
+          surfaceMeshTopologyFieldValidation.effectiveEdgeB,
+          clampNumber(surfaceMeshTopologySplitRatio, 0.01, 0.99)
+        )
+      ),
+      collapseEdge: buildSurfaceMeshTopologyPreviewCountDetail("Collapse edge", (mesh) =>
+        collapseEdge(
+          mesh,
+          surfaceMeshTopologyFieldValidation.effectiveEdgeA,
+          surfaceMeshTopologyFieldValidation.effectiveEdgeB,
+          surfaceMeshTopologyCollapseMode
+        )
+      ),
+      bevelEdge: buildSurfaceMeshTopologyPreviewCountDetail("Bevel edge", (mesh) =>
+        bevelEdge(
+          mesh,
+          surfaceMeshTopologyFieldValidation.effectiveEdgeA,
+          surfaceMeshTopologyFieldValidation.effectiveEdgeB,
+          Math.max(0.001, surfaceMeshTopologyBevelAmount || 0.001)
+        )
+      ),
+    }),
+    [
+      buildSurfaceMeshTopologyPreviewCountDetail,
+      surfaceMeshTopologyBevelAmount,
+      surfaceMeshTopologyCollapseMode,
+      surfaceMeshTopologyFieldValidation.effectiveEdgeA,
+      surfaceMeshTopologyFieldValidation.effectiveEdgeB,
+      surfaceMeshTopologyFaceIndex,
       surfaceMeshTopologySplitRatio,
       surfaceMeshTopologySubdivideMode,
     ]
@@ -45543,6 +45669,28 @@ case "mobius":
             : surfaceMeshTopologyPreviewOperation === "Bevel Edge"
               ? "Bevel"
               : "Split";
+  const meshContextualViewportPreviewPulseId =
+    surfaceMeshTopologyPickMode === "auto"
+      ? null
+      : surfaceMeshTopologyPickMode === "face"
+        ? "mesh:face-subdivide"
+        : surfaceMeshTopologyPickMode === "vertex"
+          ? "mesh:vertex-marker"
+          : surfaceMeshTopologyPreviewOperation === "Collapse Edge"
+            ? "mesh:edge-collapse"
+            : surfaceMeshTopologyPreviewOperation === "Bevel Edge"
+              ? "mesh:edge-bevel"
+              : "mesh:edge-split";
+  const meshContextualViewportPreviewCountDetail =
+    surfaceMeshTopologyPickMode === "face"
+      ? surfaceMeshTopologyPreviewCountDetails.faceSubdivide
+      : surfaceMeshTopologyPickMode === "edge" && surfaceMeshTopologyPreviewOperation === "Collapse Edge"
+        ? surfaceMeshTopologyPreviewCountDetails.collapseEdge
+        : surfaceMeshTopologyPickMode === "edge" && surfaceMeshTopologyPreviewOperation === "Bevel Edge"
+          ? surfaceMeshTopologyPreviewCountDetails.bevelEdge
+          : surfaceMeshTopologyPickMode === "edge"
+            ? surfaceMeshTopologyPreviewCountDetails.splitEdge
+            : null;
   const meshContextualViewportPreview = useMemo(
     () =>
       buildContextualViewportPreview({
@@ -45550,11 +45698,17 @@ case "mobius":
         operation: meshContextualViewportPreviewOperation,
         selectedEntity: meshContextSelectionState.cardId !== "none" ? meshContextSelectionState.cardId : null,
         label: meshViewportCommandPreviewLabel,
+        actionPulseId: meshContextualViewportPreviewPulseId,
+        details: meshContextualViewportPreviewCountDetail
+          ? [{ label: "Counts", value: meshContextualViewportPreviewCountDetail }]
+          : [],
         overlays: surfaceMeshCommandPreviewOverlays,
       }),
     [
       meshContextSelectionState.cardId,
+      meshContextualViewportPreviewCountDetail,
       meshContextualViewportPreviewOperation,
+      meshContextualViewportPreviewPulseId,
       meshViewportCommandPreviewLabel,
       surfaceMeshCommandPreviewOverlays,
     ]
@@ -60426,32 +60580,29 @@ case "mobius":
                   </div>
                 )}
                 {surfaceViewerKind === "mesh" && meshContextualViewportPreview && !cleanScreenshotSurfaceActive && (
-                  <div
-                    data-testid="mesh-viewport-command-preview"
-                    data-preview-workspace={meshContextualViewportPreview.workspace}
-                    data-preview-operation={meshContextualViewportPreview.operation}
-                    data-preview-entity={meshContextualViewportPreview.selectedEntity}
-                    data-overlay-count={meshContextualViewportPreview.overlayCount}
-                    data-has-overlay={meshContextualViewportPreview.hasOverlay ? "true" : "false"}
-                    style={{
-                      position: "absolute",
-                      top: 48,
-                      right: 14,
-                      zIndex: 17,
-                      maxWidth: 360,
-                      border: "1px solid #99f6e4",
-                      borderRadius: 8,
-                      background: "rgba(240,253,250,0.92)",
-                      color: "#0f766e",
-                      padding: "5px 9px",
-                      fontSize: 11,
-                      fontWeight: 800,
-                      boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)",
-                      pointerEvents: "none",
+                  <ContextualViewportPreviewBadge
+                    testId="mesh-viewport-command-preview"
+                    preview={meshContextualViewportPreview}
+                    top={48}
+                    onApply={
+                      surfaceMeshTopologyPickMode === "auto"
+                        ? handleDatasetToGeometryScene
+                        : handleApplySurfaceMeshTopologySelectedPreview
+                    }
+                    onHoverStart={() => {
+                      if (meshContextualViewportPreview.actionPulseId) {
+                        setContextualActionPulseId(meshContextualViewportPreview.actionPulseId);
+                      }
                     }}
-                  >
-                    Viewport preview: {meshContextualViewportPreview.label}
-                  </div>
+                    onHoverEnd={() => {
+                      if (
+                        meshContextualViewportPreview.actionPulseId &&
+                        contextualActionPulseId === meshContextualViewportPreview.actionPulseId
+                      ) {
+                        setContextualActionPulseId(null);
+                      }
+                    }}
+                  />
                 )}
                 {surfaceViewerKind === "mesh" &&
                   surfaceMeshTopologyPickMode === "auto" &&
@@ -76377,32 +76528,26 @@ case "mobius":
                   inspectSelectionMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
                 />
                 {geometryMode === "procedural" && geometryContextualViewportPreview && (
-                  <div
-                    data-testid="geometry-viewport-command-preview"
-                    data-preview-workspace={geometryContextualViewportPreview.workspace}
-                    data-preview-operation={geometryContextualViewportPreview.operation}
-                    data-preview-entity={geometryContextualViewportPreview.selectedEntity}
-                    data-overlay-count={geometryContextualViewportPreview.overlayCount}
-                    data-has-overlay={geometryContextualViewportPreview.hasOverlay ? "true" : "false"}
-                    style={{
-                      position: "absolute",
-                      top: 58,
-                      right: 14,
-                      zIndex: 16,
-                      maxWidth: 360,
-                      border: "1px solid #99f6e4",
-                      borderRadius: 8,
-                      background: "rgba(240,253,250,0.92)",
-                      color: "#0f766e",
-                      padding: "5px 9px",
-                      fontSize: 11,
-                      fontWeight: 800,
-                      boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)",
-                      pointerEvents: "none",
+                  <ContextualViewportPreviewBadge
+                    testId="geometry-viewport-command-preview"
+                    preview={geometryContextualViewportPreview}
+                    top={58}
+                    zIndex={16}
+                    onApply={handleRunGeometryContextPrimaryAction}
+                    onHoverStart={() => {
+                      if (geometryContextualViewportPreview.actionPulseId) {
+                        setContextualActionPulseId(geometryContextualViewportPreview.actionPulseId);
+                      }
                     }}
-                  >
-                    Viewport preview: {geometryContextualViewportPreview.label}
-                  </div>
+                    onHoverEnd={() => {
+                      if (
+                        geometryContextualViewportPreview.actionPulseId &&
+                        contextualActionPulseId === geometryContextualViewportPreview.actionPulseId
+                      ) {
+                        setContextualActionPulseId(null);
+                      }
+                    }}
+                  />
                 )}
                 {geometryMode === "procedural" &&
                   geometryProbeSelectionMode === "object" &&

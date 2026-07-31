@@ -25,12 +25,19 @@ export type ContextualViewportPreviewOverlays = {
   readonly labelSets?: readonly OverlayLabelSet[] | null;
 };
 
+export type ContextualViewportPreviewDetail = {
+  readonly label: string;
+  readonly value: string;
+};
+
 export type ContextualViewportPreview = {
   readonly workspace: ContextualViewportPreviewWorkspace;
   readonly operation: ContextualViewportPreviewOperation;
   readonly selectedEntity: string;
   readonly label: string;
   readonly overlays: ContextualViewportPreviewOverlays;
+  readonly actionPulseId?: string | null;
+  readonly details: readonly ContextualViewportPreviewDetail[];
   readonly overlayCount: number;
   readonly hasOverlay: boolean;
 };
@@ -49,12 +56,16 @@ export function buildContextualViewportPreview({
   selectedEntity,
   label,
   overlays,
+  actionPulseId,
+  details = [],
 }: {
   readonly workspace: ContextualViewportPreviewWorkspace;
   readonly operation: ContextualViewportPreviewOperation;
   readonly selectedEntity: string | null | undefined;
   readonly label: string | null | undefined;
   readonly overlays: ContextualViewportPreviewOverlays;
+  readonly actionPulseId?: string | null;
+  readonly details?: readonly ContextualViewportPreviewDetail[];
 }): ContextualViewportPreview | null {
   if (!label || !selectedEntity) return null;
   const overlayCount = countContextualViewportPreviewOverlays(overlays);
@@ -64,7 +75,16 @@ export function buildContextualViewportPreview({
     selectedEntity,
     label,
     overlays,
+    actionPulseId,
+    details,
     overlayCount,
     hasOverlay: overlayCount > 0,
   };
+}
+
+export function formatContextualViewportPreviewCounts(
+  beforeCounts: { readonly vertexCount: number; readonly faceCount: number },
+  afterCounts: { readonly vertexCount: number; readonly faceCount: number }
+): string {
+  return `V ${beforeCounts.vertexCount} -> ${afterCounts.vertexCount}, F ${beforeCounts.faceCount} -> ${afterCounts.faceCount}`;
 }
