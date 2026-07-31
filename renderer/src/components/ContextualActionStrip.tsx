@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { ContextualRenderedActionButton } from "./ContextualActionButtons";
 
 export type ContextualActionStripOption<T extends string> = {
   id: T;
@@ -51,27 +52,15 @@ export function ContextualActionStripAction({
   ...buttonProps
 }: ContextualActionStripActionProps) {
   return (
-    <button
+    <ContextualRenderedActionButton
       {...buttonProps}
-      type="button"
-      data-testid={testId}
+      label={children}
+      testId={testId}
       disabled={disabled}
-      title={disabled ? disabledReason ?? title : title}
-      style={{
-        padding: "3px 8px",
-        fontSize: 11,
-        fontWeight: 700,
-        borderColor: disabled ? "#cbd5e1" : "#bfdbfe",
-        background: disabled ? "#f1f5f9" : pulse ? "#dcfce7" : "#ffffff",
-        color: disabled ? "#94a3b8" : pulse ? "#166534" : "#1e3a8a",
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.88 : 1,
-        boxShadow: pulse ? "0 0 0 3px rgba(34, 197, 94, 0.22)" : undefined,
-        transition: "background 180ms ease, color 180ms ease, box-shadow 180ms ease",
-      }}
-    >
-      {children}
-    </button>
+      disabledReason={disabledReason ?? title}
+      pulse={pulse}
+      variant="strip"
+    />
   );
 }
 

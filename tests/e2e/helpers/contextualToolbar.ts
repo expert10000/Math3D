@@ -16,6 +16,18 @@ export async function expectContextualActionReady(action: Locator): Promise<void
   await expect(action).toBeEnabled();
 }
 
+export async function expectViewportPreviewOverlay(
+  page: Page,
+  workspace: "geometry" | "mesh",
+  preview: string | RegExp,
+  viewportPreviewTestId?: string
+): Promise<void> {
+  const previewLocator = page.getByTestId(viewportPreviewTestId ?? `${workspace}-viewport-command-preview`);
+  await expect(previewLocator).toContainText(preview);
+  await expect(previewLocator).toHaveAttribute("data-has-overlay", "true");
+  await expect(previewLocator).toHaveAttribute("data-overlay-count", /^[1-9]\d*$/);
+}
+
 export async function runContextualActionFlow({
   page,
   workspace,
@@ -49,9 +61,7 @@ export async function runContextualActionFlow({
     await expect(page.getByTestId(`${workspace}-context-preview`)).toContainText(preview);
   }
   if (viewportPreview) {
-    await expect(page.getByTestId(viewportPreviewTestId ?? `${workspace}-viewport-command-preview`)).toContainText(
-      viewportPreview
-    );
+    await expectViewportPreviewOverlay(page, workspace, viewportPreview, viewportPreviewTestId);
   }
   if (runWithKeyboard) {
     await page.keyboard.press("Enter");
@@ -151,7 +161,7 @@ export async function runContextualEntityModeCheck({
   await expect(page.getByTestId(`${workspace}-context-pick-${pickMode}`)).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId(`${workspace}-context-selection-label`)).toContainText(selectionLabel);
   await expect(page.getByTestId(`${workspace}-context-preview`)).toContainText(preview);
-  await expect(page.getByTestId(`${workspace}-viewport-command-preview`)).toContainText(viewportPreview);
+  await expectViewportPreviewOverlay(page, workspace, viewportPreview);
   const activeCard = page.getByTestId(`${workspace}-active-selection-card`);
   if (!(await activeCard.isVisible().catch(() => false))) {
     const selectionTab = page.getByTestId(`${workspace}-inspector-tab-selection`);
@@ -170,6 +180,12 @@ export async function runContextualEntityModeCheck({
     await expect(actionLocator).toBeVisible();
     await expect(actionLocator).toContainText(action.label);
     if (action.enabled) await expect(actionLocator).toBeEnabled();
+
+    const cardActionTestId = action.testId.replace(`${workspace}-context-`, `${workspace}-active-selection-action-`);
+    const cardActionLocator = page.getByTestId(cardActionTestId);
+    await expect(cardActionLocator).toBeVisible();
+    await expect(cardActionLocator).toContainText(action.label);
+    if (action.enabled) await expect(cardActionLocator).toBeEnabled();
   }
 }
 

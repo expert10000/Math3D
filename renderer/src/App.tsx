@@ -47,6 +47,7 @@ import {
   ContextualActionStripAction,
   type ContextualActionStripOption,
 } from "./components/ContextualActionStrip";
+import { ContextualRenderedActionStripButtons } from "./components/ContextualActionButtons";
 import {
   OBJECT_CONTEXT_COPY,
   formatContextEntityLabel,
@@ -56,9 +57,12 @@ import { getContextualActionDescriptors } from "./selection/contextualActions";
 import {
   buildContextualRenderedActionsForPrefix,
   type ContextualActionBinding,
-  type ContextualRenderedAction,
 } from "./selection/contextualActionRendering";
 import { buildContextualSelectionState } from "./selection/contextualSelectionState";
+import {
+  buildContextualViewportPreview,
+  type ContextualViewportPreviewOperation,
+} from "./selection/contextualViewportPreview";
 
 import {
   SurfaceViewer,
@@ -464,28 +468,6 @@ import {
   parseWorkbookProject,
   type WorkbookBundleAssetMode,
 } from "./workbook/projectFormat";
-
-const renderContextualStripRenderedAction = ({
-  label,
-  testId,
-  onClick,
-  disabled,
-  disabledReason,
-  pulse,
-}: ContextualRenderedAction) => {
-  return (
-    <ContextualActionStripAction
-      key={testId}
-      testId={testId}
-      onClick={onClick}
-      disabled={disabled}
-      disabledReason={disabledReason}
-      pulse={pulse}
-    >
-      {label}
-    </ContextualActionStripAction>
-  );
-};
 
 type ContextualActionBindingMap = Partial<Record<ContextualEntityMode, readonly ContextualActionBinding[]>>;
 
@@ -20732,6 +20714,110 @@ const App: React.FC = () => {
     geometryProbeSelectionMode,
     geometryProbeSelectionDetails,
   ]);
+  const geometryDirectEditPreviewLabelSets = useMemo<OverlayLabelSet[] | null>(() => {
+    if (geometryMode !== "procedural" || !geometryViewportCommandPreviewLabel) return null;
+    const labels: OverlayLabelSet["labels"] = [];
+    const pushLabel = (position: GeometryProbePoint | null | undefined, color = 0x0f766e) => {
+      if (!position) return;
+      labels.push({
+        text: `Preview ${geometryViewportCommandPreviewLabel}`,
+        position,
+        color,
+        opacity: 0.96,
+        size: 0.76,
+      });
+    };
+    if (geometryProbeSelectionMode === "face") {
+      const selectedFace =
+        geometryProbeSelectionDetails?.mode === "face" && geometryProbeSelectionDetails.faceVertices
+          ? geometryProbeSelectionDetails
+          : null;
+      const faceVertices = selectedFace?.faceVertices ?? geometrySourceFaceOperationTarget?.faceVertices ?? null;
+      const faceNormal = selectedFace?.normal ?? geometrySourceFaceOperationTarget?.normal ?? null;
+      if (faceVertices?.length && faceNormal) {
+        const normal = geometryNormalizeVec(faceNormal) ?? { x: 0, y: 1, z: 0 };
+        const center = faceVertices.reduce(
+          (acc, vertex) => ({
+            x: acc.x + vertex.x / faceVertices.length,
+            y: acc.y + vertex.y / faceVertices.length,
+            z: acc.z + vertex.z / faceVertices.length,
+          }),
+          { x: 0, y: 0, z: 0 }
+        );
+        pushLabel(geometryAdd(center, geometryScale(normal, 0.12)));
+      }
+    } else if (geometryProbeSelectionMode === "edge") {
+      const selectedEdge =
+        geometryProbeSelectionDetails?.mode === "edge" && geometryProbeSelectionDetails.edgePoints
+          ? geometryProbeSelectionDetails
+          : null;
+      const edgePoints = selectedEdge?.edgePoints ?? geometryEdgeOperationTarget?.edgePoints ?? null;
+      if (edgePoints) {
+        const [a, b] = edgePoints;
+        const splitRatio = clampNumber(Number.isFinite(geometryEdgeSplitRatio) ? geometryEdgeSplitRatio : 0.5, 0.02, 0.98);
+        const splitPoint = geometryAdd(a, geometryScale(geometrySub(b, a), splitRatio));
+        pushLabel({ x: splitPoint.x, y: splitPoint.y + 0.08, z: splitPoint.z }, 0xc2410c);
+      }
+    } else if (geometryProbeSelectionMode === "vertex") {
+      const selectedVertex =
+        geometryProbeSelectionDetails?.mode === "vertex" && geometryProbeSelectionDetails.vertexIndex != null
+          ? geometryProbeSelectionDetails
+          : null;
+      const vertexPoint = selectedVertex?.point ?? geometryVertexOperationTarget?.point ?? null;
+      const vertexNormal = selectedVertex?.normal ?? geometryVertexOperationTarget?.normal ?? null;
+      if (vertexPoint && vertexNormal) {
+        const normal = geometryNormalizeVec(vertexNormal) ?? { x: 0, y: 1, z: 0 };
+        pushLabel(geometryAdd(vertexPoint, geometryScale(normal, 0.12)), 0x7c3aed);
+      }
+    }
+    return labels.length ? [{ labels, size: 0.76 }] : null;
+  }, [
+    geometryEdgeOperationTarget,
+    geometryEdgeSplitRatio,
+    geometryMode,
+    geometryProbeSelectionDetails,
+    geometryProbeSelectionMode,
+    geometrySourceFaceOperationTarget,
+    geometryVertexOperationTarget,
+    geometryViewportCommandPreviewLabel,
+  ]);
+  const geometryContextualViewportPreviewOperation: ContextualViewportPreviewOperation =
+    geometryProbeSelectionMode === "face"
+      ? "Extrude"
+      : geometryProbeSelectionMode === "edge"
+        ? "Split"
+        : geometryProbeSelectionMode === "vertex"
+          ? "Move"
+          : "Move";
+  const geometryContextualViewportPreview = useMemo(
+    () =>
+      buildContextualViewportPreview({
+        workspace: "Geometry",
+        operation: geometryContextualViewportPreviewOperation,
+        selectedEntity: geometryContextSelectionState.cardId !== "none" ? geometryContextSelectionState.cardId : null,
+        label: geometryViewportCommandPreviewLabel,
+        overlays: {
+          meshGroups: geometryDirectEditPreviewFaceMeshGroups,
+          pointSets: geometryDirectEditPreviewPointSets,
+          polylineGroups:
+            geometryProbeSelectionMode === "object"
+              ? geometryObjectSelectionPolylineGroups
+              : geometryDirectEditPreviewOverlayGroups,
+          labelSets: geometryDirectEditPreviewLabelSets,
+        },
+      }),
+    [
+      geometryContextSelectionState.cardId,
+      geometryContextualViewportPreviewOperation,
+      geometryDirectEditPreviewFaceMeshGroups,
+      geometryDirectEditPreviewLabelSets,
+      geometryDirectEditPreviewOverlayGroups,
+      geometryDirectEditPreviewPointSets,
+      geometryObjectSelectionPolylineGroups,
+      geometryProbeSelectionMode,
+      geometryViewportCommandPreviewLabel,
+    ]
+  );
   const geometryArmedLineOperationPreviewGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural" || geometryArmedLineOperation !== "extend") return null;
     const detail = geometryProbeHoverSelectionDetails;
@@ -27805,6 +27891,7 @@ const App: React.FC = () => {
     pushLabelSets(geometrySelectedDerivedLineGizmoOverlays.labelSets);
     pushLabelSets(geometryMathConstructionOverlays.labelSets);
     pushLabelSets(geometryConstructionViewportBadgeLabelSets);
+    pushLabelSets(geometryDirectEditPreviewLabelSets);
     pushLabelSets(geometryTopologyEditFeedbackLabelSets);
     pushLabelSets(geometryHistoryPreviewOverlays.labelSets);
     if (geometryTimelineShowAnnotations && geometryProceduralAnnotationOverlays.labelSets?.length) {
@@ -27822,6 +27909,7 @@ const App: React.FC = () => {
     geometrySelectedDerivedLineGizmoOverlays.labelSets,
     geometryMathConstructionOverlays.labelSets,
     geometryConstructionViewportBadgeLabelSets,
+    geometryDirectEditPreviewLabelSets,
     geometryTopologyEditFeedbackLabelSets,
     geometryHistoryPreviewOverlays.labelSets,
     geometryProceduralAnnotationOverlays.labelSets,
@@ -45443,6 +45531,34 @@ case "mobius":
     () => meshContextToolbarPreviewLabel?.replace(/^Preview:\s*/i, "") ?? null,
     [meshContextToolbarPreviewLabel]
   );
+  const meshContextualViewportPreviewOperation: ContextualViewportPreviewOperation =
+    surfaceMeshTopologyPickMode === "auto"
+      ? "Promote"
+      : surfaceMeshTopologyPickMode === "face"
+        ? "Subdivide"
+        : surfaceMeshTopologyPickMode === "vertex"
+          ? "Move"
+          : surfaceMeshTopologyPreviewOperation === "Collapse Edge"
+            ? "Collapse"
+            : surfaceMeshTopologyPreviewOperation === "Bevel Edge"
+              ? "Bevel"
+              : "Split";
+  const meshContextualViewportPreview = useMemo(
+    () =>
+      buildContextualViewportPreview({
+        workspace: "Mesh",
+        operation: meshContextualViewportPreviewOperation,
+        selectedEntity: meshContextSelectionState.cardId !== "none" ? meshContextSelectionState.cardId : null,
+        label: meshViewportCommandPreviewLabel,
+        overlays: surfaceMeshCommandPreviewOverlays,
+      }),
+    [
+      meshContextSelectionState.cardId,
+      meshContextualViewportPreviewOperation,
+      meshViewportCommandPreviewLabel,
+      surfaceMeshCommandPreviewOverlays,
+    ]
+  );
 
   const surfaceMeshTopologyBreadcrumb = useMemo(() => {
     const preview = surfaceMeshTopologyHistoryPreviewId
@@ -60228,7 +60344,7 @@ case "mobius":
                   >
                     {surfaceMeshTopologyPickMode === "face" && (
                       <>
-                        {meshContextualStripEntityActions.map(renderContextualStripRenderedAction)}
+                        <ContextualRenderedActionStripButtons actions={meshContextualStripEntityActions} />
                         <ContextualActionStripAction disabled disabledReason="Face inset is planned for the shared contextual toolbar.">
                           Inset
                         </ContextualActionStripAction>
@@ -60239,12 +60355,12 @@ case "mobius":
                     )}
                     {surfaceMeshTopologyPickMode === "edge" && (
                       <>
-                        {meshContextualStripEntityActions.map(renderContextualStripRenderedAction)}
+                        <ContextualRenderedActionStripButtons actions={meshContextualStripEntityActions} />
                       </>
                     )}
                     {surfaceMeshTopologyPickMode === "vertex" && (
                       <>
-                        {meshContextualStripEntityActions.map(renderContextualStripRenderedAction)}
+                        <ContextualRenderedActionStripButtons actions={meshContextualStripEntityActions} />
                         <ContextualActionStripAction disabled disabledReason="Vertex move will use the shared transform tools.">
                           Move
                         </ContextualActionStripAction>
@@ -60309,9 +60425,14 @@ case "mobius":
                     {selectionEventStatus.label}
                   </div>
                 )}
-                {surfaceViewerKind === "mesh" && meshViewportCommandPreviewLabel && !cleanScreenshotSurfaceActive && (
+                {surfaceViewerKind === "mesh" && meshContextualViewportPreview && !cleanScreenshotSurfaceActive && (
                   <div
                     data-testid="mesh-viewport-command-preview"
+                    data-preview-workspace={meshContextualViewportPreview.workspace}
+                    data-preview-operation={meshContextualViewportPreview.operation}
+                    data-preview-entity={meshContextualViewportPreview.selectedEntity}
+                    data-overlay-count={meshContextualViewportPreview.overlayCount}
+                    data-has-overlay={meshContextualViewportPreview.hasOverlay ? "true" : "false"}
                     style={{
                       position: "absolute",
                       top: 48,
@@ -60329,7 +60450,7 @@ case "mobius":
                       pointerEvents: "none",
                     }}
                   >
-                    Viewport preview: {meshViewportCommandPreviewLabel}
+                    Viewport preview: {meshContextualViewportPreview.label}
                   </div>
                 )}
                 {surfaceViewerKind === "mesh" &&
@@ -60340,7 +60461,7 @@ case "mobius":
                       data-testid="mesh-object-selection-glow"
                       style={{
                         position: "absolute",
-                        top: meshViewportCommandPreviewLabel ? 82 : 48,
+                        top: meshContextualViewportPreview ? 82 : 48,
                         right: 14,
                         zIndex: 17,
                         maxWidth: 300,
@@ -75175,17 +75296,17 @@ case "mobius":
                       )}
                       {geometryProbeSelectionMode === "face" && (
                         <>
-                          {geometryContextualStripEntityActions.map(renderContextualStripRenderedAction)}
+                          <ContextualRenderedActionStripButtons actions={geometryContextualStripEntityActions} />
                         </>
                       )}
                       {geometryProbeSelectionMode === "edge" && (
                         <>
-                          {geometryContextualStripEntityActions.map(renderContextualStripRenderedAction)}
+                          <ContextualRenderedActionStripButtons actions={geometryContextualStripEntityActions} />
                         </>
                       )}
                       {geometryProbeSelectionMode === "vertex" && (
                         <>
-                          {geometryContextualStripEntityActions.map(renderContextualStripRenderedAction)}
+                          <ContextualRenderedActionStripButtons actions={geometryContextualStripEntityActions} />
                         </>
                       )}
                     </ContextualActionStrip>
@@ -76255,9 +76376,14 @@ case "mobius":
                   }
                   inspectSelectionMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
                 />
-                {geometryMode === "procedural" && geometryViewportCommandPreviewLabel && (
+                {geometryMode === "procedural" && geometryContextualViewportPreview && (
                   <div
                     data-testid="geometry-viewport-command-preview"
+                    data-preview-workspace={geometryContextualViewportPreview.workspace}
+                    data-preview-operation={geometryContextualViewportPreview.operation}
+                    data-preview-entity={geometryContextualViewportPreview.selectedEntity}
+                    data-overlay-count={geometryContextualViewportPreview.overlayCount}
+                    data-has-overlay={geometryContextualViewportPreview.hasOverlay ? "true" : "false"}
                     style={{
                       position: "absolute",
                       top: 58,
@@ -76275,7 +76401,7 @@ case "mobius":
                       pointerEvents: "none",
                     }}
                   >
-                    Viewport preview: {geometryViewportCommandPreviewLabel}
+                    Viewport preview: {geometryContextualViewportPreview.label}
                   </div>
                 )}
                 {geometryMode === "procedural" &&
@@ -76286,7 +76412,7 @@ case "mobius":
                       data-testid="geometry-object-selection-glow"
                       style={{
                         position: "absolute",
-                        top: geometryViewportCommandPreviewLabel ? 92 : 58,
+                        top: geometryContextualViewportPreview ? 92 : 58,
                         right: 14,
                         zIndex: 16,
                         maxWidth: 300,

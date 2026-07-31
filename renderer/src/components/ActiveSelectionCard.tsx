@@ -1,16 +1,10 @@
 import type { CSSProperties, ReactNode } from "react";
+import { ContextualRenderedActionButton, type ContextualButtonAction } from "./ContextualActionButtons";
 
 export type ActiveSelectionWorkspace = "Mesh" | "Geometry";
 export type ActiveSelectionType = "Object" | "Face" | "Edge" | "Vertex";
 
-export type ActiveSelectionCardAction = {
-  label: string;
-  onClick?: () => void;
-  disabled?: boolean;
-  disabledReason?: string;
-  testId?: string;
-  pulse?: boolean;
-};
+export type ActiveSelectionCardAction = ContextualButtonAction;
 
 export type ActiveSelectionCardProps = {
   testId: string;
@@ -119,16 +113,15 @@ const actionsRowStyle: CSSProperties = {
   gap: 5,
 };
 
-const actionButtonStyle = (disabled?: boolean, pulse?: boolean): CSSProperties => ({
+const historyButtonStyle = (disabled?: boolean): CSSProperties => ({
   padding: "3px 8px",
   fontSize: 10,
   fontWeight: 800,
   borderColor: disabled ? "#cbd5e1" : "#bfdbfe",
-  background: disabled ? "#f1f5f9" : pulse ? "#dcfce7" : "#ffffff",
-  color: disabled ? "#94a3b8" : pulse ? "#166534" : "#1e3a8a",
+  background: disabled ? "#f1f5f9" : "#ffffff",
+  color: disabled ? "#94a3b8" : "#1e3a8a",
   cursor: disabled ? "not-allowed" : "pointer",
   opacity: disabled ? 0.88 : 1,
-  boxShadow: pulse ? "0 0 0 3px rgba(34, 197, 94, 0.18)" : undefined,
 });
 
 export function ActiveSelectionCard({
@@ -195,17 +188,11 @@ export function ActiveSelectionCard({
           <span style={labelStyle}>Run</span>
           <span style={actionsRowStyle}>
             {actionButtons.map((action) => (
-              <button
+              <ContextualRenderedActionButton
                 key={`${testId}-action-${action.label}`}
-                type="button"
-                data-testid={action.testId}
-                onClick={action.onClick}
-                disabled={action.disabled}
-                title={action.disabled ? action.disabledReason : undefined}
-                style={actionButtonStyle(action.disabled, action.pulse)}
-              >
-                {action.label}
-              </button>
+                {...action}
+                variant="card"
+              />
             ))}
           </span>
         </div>
@@ -243,12 +230,12 @@ export function ActiveSelectionCard({
         >
           <span>Last: {lastCommandLabel}</span>
           {canUndoLast && onUndoLast && (
-            <button type="button" data-testid={undoTestId} onClick={onUndoLast} style={actionButtonStyle(false)}>
+            <button type="button" data-testid={undoTestId} onClick={onUndoLast} style={historyButtonStyle(false)}>
               Undo
             </button>
           )}
           {onOpenHistory && (
-            <button type="button" data-testid={openHistoryTestId} onClick={onOpenHistory} style={actionButtonStyle(false)}>
+            <button type="button" data-testid={openHistoryTestId} onClick={onOpenHistory} style={historyButtonStyle(false)}>
               Open history
             </button>
           )}
