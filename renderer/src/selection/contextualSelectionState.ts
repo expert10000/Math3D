@@ -71,16 +71,27 @@ export function buildContextualSelectionState({
   }
 
   const entity = entities[pickMode];
-  const ready = Boolean(entity && entity.valid && !selectionCleared);
   const emptyState = getContextEntityEmptyState(workspace, pickMode);
+  if (!entity || !entity.valid || selectionCleared) {
+    return {
+      selectionLabel: emptyState,
+      activeCardType: activeCardTypeFromPickMode(pickMode),
+      cardId: "none",
+      emptyState,
+      actions: getContextEntityActions(workspace, pickMode),
+      previewLabel: null,
+      canRunPrimaryAction: false,
+    };
+  }
+
   return {
-    selectionLabel: ready ? `${formatContextEntityLabel(pickMode, entity.id)}${entity.labelSuffix ?? ""}` : emptyState,
+    selectionLabel: `${formatContextEntityLabel(pickMode, entity.id)}${entity.labelSuffix ?? ""}`,
     activeCardType: activeCardTypeFromPickMode(pickMode),
-    cardId: ready ? formatContextEntityId(pickMode, entity.id) : "none",
-    emptyState: ready ? null : emptyState,
+    cardId: formatContextEntityId(pickMode, entity.id),
+    emptyState: null,
     actions: getContextEntityActions(workspace, pickMode),
     previewLabel:
-      ready && entity.previewResult ? formatContextEntityPreview(pickMode, entity.id, entity.previewResult) : null,
-    canRunPrimaryAction: ready && (entity.primaryReady ?? true),
+      entity.previewResult ? formatContextEntityPreview(pickMode, entity.id, entity.previewResult) : null,
+    canRunPrimaryAction: entity.primaryReady ?? true,
   };
 }

@@ -1,8 +1,8 @@
-import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from "react";
+import type { ButtonHTMLAttributes, CSSProperties, MouseEventHandler, ReactNode } from "react";
 
 export type ContextualButtonAction = {
   readonly label: ReactNode;
-  readonly onClick?: () => void;
+  readonly onClick?: MouseEventHandler<HTMLButtonElement>;
   readonly disabled?: boolean;
   readonly disabledReason?: string;
   readonly testId?: string;
