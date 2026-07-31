@@ -88,3 +88,72 @@ export function formatContextualViewportPreviewCounts(
 ): string {
   return `V ${beforeCounts.vertexCount} -> ${afterCounts.vertexCount}, F ${beforeCounts.faceCount} -> ${afterCounts.faceCount}`;
 }
+
+export function applyContextualViewportPreviewAccessibility(
+  preview: ContextualViewportPreview | null,
+  highVisibility: boolean
+): ContextualViewportPreview | null {
+  if (!preview || !highVisibility) return preview;
+  const overlays =
+    applyContextualViewportPreviewOverlayAccessibility(preview.overlays, highVisibility, preview.label) ?? preview.overlays;
+  return {
+    ...preview,
+    overlays,
+    overlayCount: countContextualViewportPreviewOverlays(overlays),
+    hasOverlay: countContextualViewportPreviewOverlays(overlays) > 0,
+  };
+}
+
+export function applyContextualViewportPreviewOverlayAccessibility(
+  overlays: ContextualViewportPreviewOverlays | null | undefined,
+  highVisibility: boolean,
+  fallbackLabel = "command preview"
+): ContextualViewportPreviewOverlays | null {
+  if (!overlays) return null;
+  if (!highVisibility) return overlays;
+  const labelSets = overlays.labelSets?.length
+    ? overlays.labelSets.map((set) => ({
+        ...set,
+        size: Math.max(set.size ?? 0.76, 0.92),
+        labels: set.labels.map((label) => ({
+          ...label,
+          text: label.text.match(/^(Preview|Selected|Applied|Removed)\b/i)
+            ? label.text
+            : `Preview: ${label.text}`,
+          color: label.color ?? 0x0f172a,
+          opacity: Math.max(label.opacity ?? 0.96, 0.98),
+          size: Math.max(label.size ?? set.size ?? 0.76, 0.92),
+        })),
+      }))
+    : [
+        {
+          size: 0.92,
+          labels: [
+            {
+              text: `Preview: ${fallbackLabel}`,
+              position: { x: 0, y: 0, z: 0 },
+              color: 0x0369a1,
+              opacity: 0.98,
+            },
+          ],
+        },
+      ];
+  return {
+    meshGroups: overlays.meshGroups?.map((group) => ({
+      ...group,
+      opacity: Math.max(group.opacity ?? 0.3, 0.42),
+    })),
+    pointSets: overlays.pointSets?.map((set) => ({
+      ...set,
+      size: Math.max(set.size ?? 0.14, 0.24),
+      opacity: Math.max(set.opacity ?? 0.8, 0.96),
+    })),
+    polylineGroups: overlays.polylineGroups?.map((group) => ({
+      ...group,
+      opacity: Math.max(group.opacity ?? 0.8, 0.98),
+      radiusScale: group.radiusWorld == null ? Math.max(group.radiusScale ?? 1.5, 2.35) : group.radiusScale,
+      radiusWorld: group.radiusWorld == null ? group.radiusWorld : Math.max(group.radiusWorld, 0.028),
+    })),
+    labelSets,
+  };
+}

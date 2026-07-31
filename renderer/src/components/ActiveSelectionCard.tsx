@@ -26,6 +26,11 @@ export type ActiveSelectionCardProps = {
   openHistoryTestId?: string;
   onClearSelection?: () => void;
   legendTestId?: string;
+  previewHighVisibility?: boolean;
+  previewAccessibilityLabel?: ReactNode;
+  previewAccessibilityTestId?: string;
+  onOpenPreviewSettings?: () => void;
+  openPreviewSettingsTestId?: string;
 };
 
 export type ActiveSelectionSummary = {
@@ -145,6 +150,11 @@ export function ActiveSelectionCard({
   openHistoryTestId,
   onClearSelection,
   legendTestId,
+  previewHighVisibility = false,
+  previewAccessibilityLabel,
+  previewAccessibilityTestId,
+  onOpenPreviewSettings,
+  openPreviewSettingsTestId,
 }: ActiveSelectionCardProps) {
   const hasSelection = !emptyState;
   return (
@@ -171,7 +181,11 @@ export function ActiveSelectionCard({
         )}
       </div>
       <div>
-        <CommandPreviewLegend testId={legendTestId ?? `${testId}-preview-legend`} compact />
+        <CommandPreviewLegend
+          testId={legendTestId ?? `${testId}-preview-legend`}
+          compact
+          highVisibility={previewHighVisibility}
+        />
       </div>
       <div style={rowStyle}>
         <span style={labelStyle}>Workspace</span>
@@ -216,6 +230,45 @@ export function ActiveSelectionCard({
           }}
         >
           {confirmationLabel}
+        </div>
+      )}
+      {previewAccessibilityLabel && (
+        <div
+          data-testid={previewAccessibilityTestId ?? `${testId}-preview-accessibility`}
+          style={{
+            display: "grid",
+            gap: 5,
+            border: "1px solid #bae6fd",
+            borderRadius: 8,
+            background: "#f0f9ff",
+            color: "#0c4a6e",
+            padding: "5px 7px",
+            fontWeight: 800,
+          }}
+        >
+          <div style={rowStyle}>
+            <span style={labelStyle}>Preview accessibility</span>
+            <span>{previewAccessibilityLabel}</span>
+          </div>
+          {onOpenPreviewSettings && (
+            <button
+              type="button"
+              data-testid={openPreviewSettingsTestId ?? `${testId}-open-preview-settings`}
+              onClick={onOpenPreviewSettings}
+              style={{
+                justifySelf: "start",
+                padding: "3px 8px",
+                fontSize: 10,
+                fontWeight: 800,
+                borderColor: "#7dd3fc",
+                background: "#ffffff",
+                color: "#0369a1",
+              }}
+              title="Open preview overlay and accessibility settings."
+            >
+              Open preview settings
+            </button>
+          )}
         </div>
       )}
       {lastCommandLabel && (

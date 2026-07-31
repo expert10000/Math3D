@@ -42,6 +42,7 @@ import {
   type ActiveSelectionSummary,
   type ActiveSelectionWorkspace,
 } from "./components/ActiveSelectionCard";
+import { CommandPreviewLegend } from "./components/CommandPreviewLegend";
 import {
   ContextualActionStrip,
   ContextualActionStripAction,
@@ -61,6 +62,8 @@ import {
 } from "./selection/contextualActionRendering";
 import { buildContextualSelectionState } from "./selection/contextualSelectionState";
 import {
+  applyContextualViewportPreviewAccessibility,
+  applyContextualViewportPreviewOverlayAccessibility,
   buildContextualViewportPreview,
   formatContextualViewportPreviewCounts,
   type ContextualViewportPreview,
@@ -1091,6 +1094,7 @@ const GEOMETRY_EDIT_SESSION_KEY = "math3d.geometry.editSession.v1";
 const UI_CONTEXTUAL_GEOMETRY_PICK_MODE_KEY = "math3d.ui.contextual.geometryPickMode.v1";
 const UI_CONTEXTUAL_MESH_PICK_MODE_KEY = "math3d.ui.contextual.meshPickMode.v1";
 const UI_CONTEXTUAL_COMMAND_PREVIEW_OVERLAYS_KEY = "math3d.ui.contextual.commandPreviewOverlays.v1";
+const UI_CONTEXTUAL_COMMAND_PREVIEW_HIGH_VISIBILITY_KEY = "math3d.ui.contextual.commandPreviewHighVisibility.v1";
 const WORKBOOK_AUTOSAVE_JOURNAL_KEY = "math3d.workbook.autosaveJournal.v1";
 const WORKBOOK_AUTOSAVE_RECOVERY_DISMISSED_AT_KEY = "math3d.workbook.autosaveRecoveryDismissedAt.v1";
 const WORKBOOK_BUNDLE_ASSET_MODE_KEY = "math3d.workbook.bundleAssetMode.v1";
@@ -10602,6 +10606,14 @@ const App: React.FC = () => {
       return true;
     }
   });
+  const [commandPreviewHighVisibility, setCommandPreviewHighVisibility] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem(UI_CONTEXTUAL_COMMAND_PREVIEW_HIGH_VISIBILITY_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
   const [appliedContextualViewportPreview, setAppliedContextualViewportPreview] =
     useState<AppliedContextualViewportPreview | null>(null);
   const [selectionEventStatus, setSelectionEventStatus] = useState<{
@@ -10652,6 +10664,16 @@ const App: React.FC = () => {
       // Ignore storage failures; this is a visual preference only.
     }
   }, [commandPreviewOverlaysVisible]);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        UI_CONTEXTUAL_COMMAND_PREVIEW_HIGH_VISIBILITY_KEY,
+        commandPreviewHighVisibility ? "1" : "0"
+      );
+    } catch {
+      // Ignore storage failures; this is a visual preference only.
+    }
+  }, [commandPreviewHighVisibility]);
   useEffect(() => {
     if (!selectionEventStatus) return;
     const timer = window.setTimeout(() => setSelectionEventStatus(null), 6000);
@@ -20536,7 +20558,11 @@ const App: React.FC = () => {
   const geometryAppliedContextualViewportPreview =
     appliedContextualViewportPreview?.workspace === "Geometry" ? appliedContextualViewportPreview : null;
   const geometryAppliedContextualViewportPreviewOverlays = commandPreviewOverlaysVisible
-    ? geometryAppliedContextualViewportPreview?.preview.overlays ?? null
+    ? applyContextualViewportPreviewOverlayAccessibility(
+        geometryAppliedContextualViewportPreview?.preview.overlays,
+        commandPreviewHighVisibility,
+        geometryAppliedContextualViewportPreview?.label ?? "Geometry command result"
+      )
     : null;
   const geometryProceduralViewerOverlayMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
     if (geometryMode !== "procedural") return null;
@@ -20884,6 +20910,27 @@ const App: React.FC = () => {
     geometryVertexOperationTarget,
     geometryViewportCommandPreviewLabel,
   ]);
+  const geometryDirectEditAccessiblePreviewOverlays = useMemo(
+    () =>
+      applyContextualViewportPreviewOverlayAccessibility(
+        {
+          meshGroups: geometryDirectEditPreviewFaceMeshGroups,
+          pointSets: geometryDirectEditPreviewPointSets,
+          polylineGroups: geometryDirectEditPreviewOverlayGroups,
+          labelSets: geometryDirectEditPreviewLabelSets,
+        },
+        commandPreviewHighVisibility,
+        geometryViewportCommandPreviewLabel ?? "Geometry command preview"
+      ),
+    [
+      commandPreviewHighVisibility,
+      geometryDirectEditPreviewFaceMeshGroups,
+      geometryDirectEditPreviewLabelSets,
+      geometryDirectEditPreviewOverlayGroups,
+      geometryDirectEditPreviewPointSets,
+      geometryViewportCommandPreviewLabel,
+    ]
+  );
   const geometryContextualViewportPreviewOperation: ContextualViewportPreviewOperation =
     geometryProbeSelectionMode === "face"
       ? "Extrude"
@@ -20963,13 +21010,13 @@ const App: React.FC = () => {
           ? [{ label: "Counts", value: geometryContextualViewportPreviewCountDetail }]
           : [],
         overlays: {
-          meshGroups: geometryDirectEditPreviewFaceMeshGroups,
-          pointSets: geometryDirectEditPreviewPointSets,
+          meshGroups: geometryDirectEditAccessiblePreviewOverlays?.meshGroups ?? null,
+          pointSets: geometryDirectEditAccessiblePreviewOverlays?.pointSets ?? null,
           polylineGroups:
             geometryProbeSelectionMode === "object"
               ? geometryObjectSelectionPolylineGroups
-              : geometryDirectEditPreviewOverlayGroups,
-          labelSets: geometryDirectEditPreviewLabelSets,
+              : geometryDirectEditAccessiblePreviewOverlays?.polylineGroups ?? null,
+          labelSets: geometryDirectEditAccessiblePreviewOverlays?.labelSets ?? null,
         },
       }),
     [
@@ -20977,17 +21024,20 @@ const App: React.FC = () => {
       geometryContextualViewportPreviewCountDetail,
       geometryContextualViewportPreviewOperation,
       geometryContextualViewportPreviewPulseId,
-      geometryDirectEditPreviewFaceMeshGroups,
-      geometryDirectEditPreviewLabelSets,
-      geometryDirectEditPreviewOverlayGroups,
-      geometryDirectEditPreviewPointSets,
+      geometryDirectEditAccessiblePreviewOverlays,
       geometryObjectSelectionPolylineGroups,
       geometryProbeSelectionMode,
       geometryViewportCommandPreviewLabel,
     ]
   );
-  const geometryVisibleContextualViewportPreview =
-    geometryAppliedContextualViewportPreview?.preview ?? geometryContextualViewportPreview;
+  const geometryVisibleContextualViewportPreview = useMemo(
+    () =>
+      applyContextualViewportPreviewAccessibility(
+        geometryAppliedContextualViewportPreview?.preview ?? geometryContextualViewportPreview,
+        commandPreviewHighVisibility
+      ),
+    [commandPreviewHighVisibility, geometryAppliedContextualViewportPreview, geometryContextualViewportPreview]
+  );
   const geometryArmedLineOperationPreviewGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural" || geometryArmedLineOperation !== "extend") return null;
     const detail = geometryProbeHoverSelectionDetails;
@@ -27843,8 +27893,8 @@ const App: React.FC = () => {
     if (geometryProceduralSnapPreviewPointSet?.length) {
       sets.push(...geometryProceduralSnapPreviewPointSet);
     }
-    if (geometryDirectEditPreviewPointSets?.length) {
-      sets.push(...geometryDirectEditPreviewPointSets);
+    if (geometryDirectEditAccessiblePreviewOverlays?.pointSets?.length) {
+      sets.push(...geometryDirectEditAccessiblePreviewOverlays.pointSets);
     }
     if (geometryAppliedContextualViewportPreviewOverlays?.pointSets?.length) {
       sets.push(...geometryAppliedContextualViewportPreviewOverlays.pointSets);
@@ -27867,7 +27917,7 @@ const App: React.FC = () => {
     geometryMathConstructionOverlays.pointSets,
     geometryProceduralSnapPreviewPointSet,
     geometryAppliedContextualViewportPreviewOverlays,
-    geometryDirectEditPreviewPointSets,
+    geometryDirectEditAccessiblePreviewOverlays,
     geometryTopologyEditFeedbackPointSets,
   ]);
   const geometryTopologyEditFeedbackPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
@@ -27913,8 +27963,8 @@ const App: React.FC = () => {
     if (geometryArmedLineOperationPreviewGroups?.length) {
       groups.push(...geometryArmedLineOperationPreviewGroups);
     }
-    if (geometryDirectEditPreviewOverlayGroups?.length) {
-      groups.push(...geometryDirectEditPreviewOverlayGroups);
+    if (geometryDirectEditAccessiblePreviewOverlays?.polylineGroups?.length) {
+      groups.push(...geometryDirectEditAccessiblePreviewOverlays.polylineGroups);
     }
     if (geometryAppliedContextualViewportPreviewOverlays?.polylineGroups?.length) {
       groups.push(...geometryAppliedContextualViewportPreviewOverlays.polylineGroups);
@@ -27951,7 +28001,7 @@ const App: React.FC = () => {
     geometryProceduralFeatureOverlays.groups,
     geometryArmedLineOperationPreviewGroups,
     geometryAppliedContextualViewportPreviewOverlays,
-    geometryDirectEditPreviewOverlayGroups,
+    geometryDirectEditAccessiblePreviewOverlays,
     geometryTopologyEditFeedbackPolylineGroups,
     geometryDerivedConstructionOverlays.groups,
     geometryPlaneBasicInputPreviewOverlays.groups,
@@ -28069,7 +28119,7 @@ const App: React.FC = () => {
     pushLabelSets(geometrySelectedDerivedLineGizmoOverlays.labelSets);
     pushLabelSets(geometryMathConstructionOverlays.labelSets);
     pushLabelSets(geometryConstructionViewportBadgeLabelSets);
-    pushLabelSets(geometryDirectEditPreviewLabelSets);
+    pushLabelSets(geometryDirectEditAccessiblePreviewOverlays?.labelSets);
     pushLabelSets(geometryAppliedContextualViewportPreviewOverlays?.labelSets);
     pushLabelSets(geometryTopologyEditFeedbackLabelSets);
     pushLabelSets(geometryHistoryPreviewOverlays.labelSets);
@@ -28088,7 +28138,7 @@ const App: React.FC = () => {
     geometrySelectedDerivedLineGizmoOverlays.labelSets,
     geometryMathConstructionOverlays.labelSets,
     geometryConstructionViewportBadgeLabelSets,
-    geometryDirectEditPreviewLabelSets,
+    geometryDirectEditAccessiblePreviewOverlays,
     geometryAppliedContextualViewportPreviewOverlays,
     geometryTopologyEditFeedbackLabelSets,
     geometryHistoryPreviewOverlays.labelSets,
@@ -33935,15 +33985,30 @@ const App: React.FC = () => {
   const meshAppliedContextualViewportPreview =
     appliedContextualViewportPreview?.workspace === "Mesh" ? appliedContextualViewportPreview : null;
   const meshAppliedContextualViewportPreviewOverlays = commandPreviewOverlaysVisible
-    ? meshAppliedContextualViewportPreview?.preview.overlays ?? null
+    ? applyContextualViewportPreviewOverlayAccessibility(
+        meshAppliedContextualViewportPreview?.preview.overlays,
+        commandPreviewHighVisibility,
+        meshAppliedContextualViewportPreview?.label ?? "Mesh command result"
+      )
     : null;
+  const surfaceMeshAccessibleCommandPreviewOverlays = useMemo(
+    () =>
+      applyContextualViewportPreviewOverlayAccessibility(
+        surfaceMeshCommandPreviewOverlays,
+        commandPreviewHighVisibility,
+        "Mesh command preview"
+      ),
+    [commandPreviewHighVisibility, surfaceMeshCommandPreviewOverlays]
+  );
   const combinedOverlayMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
     const groups: OverlayMeshGroup[] = [];
     if (surfaceMeshTopologyHistoryComparisonMeshGroups?.length) {
       groups.push(...surfaceMeshTopologyHistoryComparisonMeshGroups);
     }
     if (surfaceMeshTopologyGhostMeshGroups?.length) groups.push(...surfaceMeshTopologyGhostMeshGroups);
-    if (surfaceMeshCommandPreviewOverlays.meshGroups?.length) groups.push(...surfaceMeshCommandPreviewOverlays.meshGroups);
+    if (surfaceMeshAccessibleCommandPreviewOverlays?.meshGroups?.length) {
+      groups.push(...surfaceMeshAccessibleCommandPreviewOverlays.meshGroups);
+    }
     if (meshAppliedContextualViewportPreviewOverlays?.meshGroups?.length) {
       groups.push(...meshAppliedContextualViewportPreviewOverlays.meshGroups);
     }
@@ -33952,7 +34017,7 @@ const App: React.FC = () => {
     return groups.length ? groups : null;
   }, [
     meshAppliedContextualViewportPreviewOverlays,
-    surfaceMeshCommandPreviewOverlays.meshGroups,
+    surfaceMeshAccessibleCommandPreviewOverlays,
     surfaceMeshTopologyFeedbackMeshGroups,
     surfaceMeshTopologyGhostMeshGroups,
     surfaceMeshTopologyHistoryComparisonMeshGroups,
@@ -33964,7 +34029,9 @@ const App: React.FC = () => {
     if (meshQualityOverlayPointSets?.length) sets.push(...meshQualityOverlayPointSets);
     if (surfaceMeshTopologyOverlayPointSets?.length) sets.push(...surfaceMeshTopologyOverlayPointSets);
     if (surfaceMeshTopologyGhostPointSets?.length) sets.push(...surfaceMeshTopologyGhostPointSets);
-    if (surfaceMeshCommandPreviewOverlays.pointSets?.length) sets.push(...surfaceMeshCommandPreviewOverlays.pointSets);
+    if (surfaceMeshAccessibleCommandPreviewOverlays?.pointSets?.length) {
+      sets.push(...surfaceMeshAccessibleCommandPreviewOverlays.pointSets);
+    }
     if (meshAppliedContextualViewportPreviewOverlays?.pointSets?.length) {
       sets.push(...meshAppliedContextualViewportPreviewOverlays.pointSets);
     }
@@ -33974,7 +34041,7 @@ const App: React.FC = () => {
     complexMapOverlayPointsActive,
     meshAppliedContextualViewportPreviewOverlays,
     meshQualityOverlayPointSets,
-    surfaceMeshCommandPreviewOverlays.pointSets,
+    surfaceMeshAccessibleCommandPreviewOverlays,
     surfaceMeshTopologyFeedbackPointSets,
     surfaceMeshTopologyGhostPointSets,
     surfaceMeshTopologyOverlayPointSets,
@@ -33982,14 +34049,16 @@ const App: React.FC = () => {
   const combinedOverlayLabelSets = useMemo<OverlayLabelSet[] | null>(() => {
     const labels: OverlayLabelSet[] = [];
     if (surfaceMeshTopologySelectionLabelSets?.length) labels.push(...surfaceMeshTopologySelectionLabelSets);
-    if (surfaceMeshCommandPreviewOverlays.labelSets?.length) labels.push(...surfaceMeshCommandPreviewOverlays.labelSets);
+    if (surfaceMeshAccessibleCommandPreviewOverlays?.labelSets?.length) {
+      labels.push(...surfaceMeshAccessibleCommandPreviewOverlays.labelSets);
+    }
     if (meshAppliedContextualViewportPreviewOverlays?.labelSets?.length) {
       labels.push(...meshAppliedContextualViewportPreviewOverlays.labelSets);
     }
     return labels.length ? labels : null;
   }, [
     meshAppliedContextualViewportPreviewOverlays,
-    surfaceMeshCommandPreviewOverlays.labelSets,
+    surfaceMeshAccessibleCommandPreviewOverlays,
     surfaceMeshTopologySelectionLabelSets,
   ]);
 
@@ -44415,7 +44484,9 @@ case "mobius":
     if (surfaceMeshObjectSelectionPolylineGroups?.length) groups.push(...surfaceMeshObjectSelectionPolylineGroups);
     if (surfaceMeshTopologyOverlayPolylineGroups?.length) groups.push(...surfaceMeshTopologyOverlayPolylineGroups);
     if (surfaceMeshTopologyGhostPolylineGroups?.length) groups.push(...surfaceMeshTopologyGhostPolylineGroups);
-    if (surfaceMeshCommandPreviewOverlays.polylineGroups?.length) groups.push(...surfaceMeshCommandPreviewOverlays.polylineGroups);
+    if (surfaceMeshAccessibleCommandPreviewOverlays?.polylineGroups?.length) {
+      groups.push(...surfaceMeshAccessibleCommandPreviewOverlays.polylineGroups);
+    }
     if (meshAppliedContextualViewportPreviewOverlays?.polylineGroups?.length) {
       groups.push(...meshAppliedContextualViewportPreviewOverlays.polylineGroups);
     }
@@ -44433,7 +44504,7 @@ case "mobius":
     calculusVectorOverlayGroups,
     complexMapOverlayPolylineGroups,
     meshAppliedContextualViewportPreviewOverlays,
-    surfaceMeshCommandPreviewOverlays.polylineGroups,
+    surfaceMeshAccessibleCommandPreviewOverlays,
     surfaceMeshObjectSelectionPolylineGroups,
     surfaceMeshTopologyGhostPolylineGroups,
     meshQualityOverlayPolylineGroups,
@@ -44456,7 +44527,9 @@ case "mobius":
     if (surfaceMeshObjectSelectionPolylineGroups?.length) groups.push(...surfaceMeshObjectSelectionPolylineGroups);
     if (surfaceMeshTopologyOverlayPolylineGroups?.length) groups.push(...surfaceMeshTopologyOverlayPolylineGroups);
     if (surfaceMeshTopologyGhostPolylineGroups?.length) groups.push(...surfaceMeshTopologyGhostPolylineGroups);
-    if (surfaceMeshCommandPreviewOverlays.polylineGroups?.length) groups.push(...surfaceMeshCommandPreviewOverlays.polylineGroups);
+    if (surfaceMeshAccessibleCommandPreviewOverlays?.polylineGroups?.length) {
+      groups.push(...surfaceMeshAccessibleCommandPreviewOverlays.polylineGroups);
+    }
     if (surfaceMeshTopologyFeedbackPolylineGroups?.length) groups.push(...surfaceMeshTopologyFeedbackPolylineGroups);
     if (calculusVectorOverlayGroups?.length) groups.push(...calculusVectorOverlayGroups);
     return groups.length ? groups : null;
@@ -44466,7 +44539,7 @@ case "mobius":
     combinedOverlayPolylineGroups,
     complexMapOverlayPolylineGroups,
     meshQualityOverlayPolylineGroups,
-    surfaceMeshCommandPreviewOverlays.polylineGroups,
+    surfaceMeshAccessibleCommandPreviewOverlays,
     surfaceMeshObjectSelectionPolylineGroups,
     surfaceMeshTopologyFeedbackPolylineGroups,
     surfaceMeshTopologyGhostPolylineGroups,
@@ -45270,7 +45343,7 @@ case "mobius":
             label: historyEntry.resultLabel,
             actionPulseId: meshActionPulseId,
             details: [{ label: "Counts", value: appliedCountsLabel }],
-            overlays: surfaceMeshCommandPreviewOverlays,
+        overlays: surfaceMeshAccessibleCommandPreviewOverlays ?? surfaceMeshCommandPreviewOverlays,
           }),
           `${historyEntry.resultLabel}, ${appliedCountsLabel}`
         );
@@ -45878,7 +45951,7 @@ case "mobius":
         details: meshContextualViewportPreviewCountDetail
           ? [{ label: "Counts", value: meshContextualViewportPreviewCountDetail }]
           : [],
-        overlays: surfaceMeshCommandPreviewOverlays,
+        overlays: surfaceMeshAccessibleCommandPreviewOverlays ?? surfaceMeshCommandPreviewOverlays,
       }),
     [
       meshContextSelectionState.cardId,
@@ -45886,11 +45959,19 @@ case "mobius":
       meshContextualViewportPreviewOperation,
       meshContextualViewportPreviewPulseId,
       meshViewportCommandPreviewLabel,
+      surfaceMeshAccessibleCommandPreviewOverlays,
+      surfaceMeshAccessibleCommandPreviewOverlays,
       surfaceMeshCommandPreviewOverlays,
     ]
   );
-  const meshVisibleContextualViewportPreview =
-    meshAppliedContextualViewportPreview?.preview ?? meshContextualViewportPreview;
+  const meshVisibleContextualViewportPreview = useMemo(
+    () =>
+      applyContextualViewportPreviewAccessibility(
+        meshAppliedContextualViewportPreview?.preview ?? meshContextualViewportPreview,
+        commandPreviewHighVisibility
+      ),
+    [commandPreviewHighVisibility, meshAppliedContextualViewportPreview, meshContextualViewportPreview]
+  );
 
   const surfaceMeshTopologyBreadcrumb = useMemo(() => {
     const preview = surfaceMeshTopologyHistoryPreviewId
@@ -57713,6 +57794,7 @@ case "mobius":
                     </button>
                     <button
                       type="button"
+                      data-testid="top-settings-button"
                       onClick={() => setPreferencesOpen(true)}
                       title="Settings / Preferences"
                       style={topNavButtonStyle(preferencesOpen)}
@@ -60673,6 +60755,7 @@ case "mobius":
                     canRunPrimaryAction={meshContextCanRunPrimaryAction}
                     onPrimaryAction={handleRunMeshContextPrimaryAction}
                     commandPreviewOverlaysVisible={commandPreviewOverlaysVisible}
+                    commandPreviewHighVisibility={commandPreviewHighVisibility}
                     onCommandPreviewOverlaysVisibleChange={setCommandPreviewOverlaysVisible}
                     commandPreviewOverlayToggleTestId="mesh-command-preview-overlays-toggle"
                     commandPreviewLegendTestId="mesh-command-preview-legend"
@@ -60771,6 +60854,7 @@ case "mobius":
                     state={meshAppliedContextualViewportPreview ? "applied" : "preview"}
                     appliedLabel={meshAppliedContextualViewportPreview?.label}
                     top={48}
+                    highVisibility={commandPreviewHighVisibility}
                     onApply={
                       meshAppliedContextualViewportPreview
                         ? undefined
@@ -61114,6 +61198,31 @@ case "mobius":
                           >
                             {showInViewportOverlayControls ? "Overlay controls: on" : "Overlay controls: off"}
                           </button>
+                          <label
+                            title="Show or hide viewport command preview badges and ghost overlays. Strip preview text remains visible."
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 5,
+                              borderRadius: 8,
+                              border: "1px solid " + (commandPreviewOverlaysVisible ? "#86efac" : "#c7d2e2"),
+                              background: commandPreviewOverlaysVisible ? "#f0fdf4" : "#f8fafc",
+                              color: commandPreviewOverlaysVisible ? "#166534" : "#334155",
+                              fontWeight: commandPreviewOverlaysVisible ? 700 : 600,
+                              fontSize: 11,
+                              padding: "5px 10px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              data-testid="mesh-display-command-preview-overlays-toggle"
+                              checked={commandPreviewOverlaysVisible}
+                              onChange={(event) => setCommandPreviewOverlaysVisible(event.target.checked)}
+                              style={{ width: 12, height: 12, margin: 0 }}
+                            />
+                            Command preview
+                          </label>
                           <span
                             style={{
                               borderRadius: 8,
@@ -63054,6 +63163,9 @@ case "mobius":
                       onUndoSurfaceMeshTopologyEdit={undoLatestSurfaceMeshTopologyEdit}
                       onOpenSurfaceMeshTopologyHistory={handleOpenMeshContextHistory}
                       onClearSurfaceMeshTopologySelection={handleClearSurfaceMeshTopologyContextSelection}
+                      meshContextualPreviewActive={Boolean(meshVisibleContextualViewportPreview)}
+                      commandPreviewHighVisibility={commandPreviewHighVisibility}
+                      onOpenPreviewSettings={() => setPreferencesOpen(true)}
                       surfaceMeshStats={surfaceMeshStats}
                       surfaceMeshBounds={surfaceMeshBounds}
                       surfaceMeshSource={surfaceMeshData?.source ?? null}
@@ -75045,6 +75157,7 @@ case "mobius":
             >
               {geometryViewerControlsOpen && !geometryPanelsAsDrawers && !isPhoneLandscapeLayout && (
               <div
+                data-testid="geometry-viewer-controls-strip"
                 style={{
                   borderBottom: "1px solid #9fb0c7",
                   padding: "8px 10px",
@@ -75118,6 +75231,25 @@ case "mobius":
                     )}
                   </div>
                 )}
+                <button
+                  type="button"
+                  data-testid="geometry-viewer-controls-hide"
+                  onClick={() => setGeometryViewerControlsOpen(false)}
+                  style={{
+                    borderRadius: 8,
+                    border: "1px solid #cbd5e1",
+                    background: "#ffffff",
+                    color: "#334155",
+                    fontWeight: 800,
+                    fontSize: 11,
+                    padding: "5px 10px",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                  title="Hide viewer controls to give the viewport more space."
+                >
+                  Hide controls
+                </button>
                 <div
                   style={{
                     display: "flex",
@@ -75306,6 +75438,18 @@ case "mobius":
                         onChange={(e) => setGeometryCreateActionsOverlayOpen(e.target.checked)}
                       />
                       Create overlay
+                    </label>
+                    <label
+                      title="Show or hide viewport command preview badges and ghost overlays. Strip preview text remains visible."
+                      style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
+                    >
+                      <input
+                        type="checkbox"
+                        data-testid="geometry-display-command-preview-overlays-toggle"
+                        checked={commandPreviewOverlaysVisible}
+                        onChange={(event) => setCommandPreviewOverlaysVisible(event.target.checked)}
+                      />
+                      Command preview
                     </label>
                   </>
                 )}
@@ -75541,6 +75685,31 @@ case "mobius":
                     ...viewerTouchContainmentStyle,
                   }}
                 >
+                  {!geometryViewerControlsOpen && !geometryPanelsAsDrawers && !isPhoneLandscapeLayout && (
+                    <button
+                      type="button"
+                      data-testid="geometry-viewer-controls-show"
+                      onClick={() => setGeometryViewerControlsOpen(true)}
+                      style={{
+                        position: "absolute",
+                        top: 8,
+                        left: 10,
+                        zIndex: 20,
+                        borderRadius: 8,
+                        border: "1px solid #93c5fd",
+                        background: "rgba(239, 246, 255, 0.94)",
+                        color: "#1d4ed8",
+                        fontWeight: 850,
+                        fontSize: 11,
+                        padding: "5px 10px",
+                        cursor: "pointer",
+                        boxShadow: "0 8px 18px rgba(15, 23, 42, 0.12)",
+                      }}
+                      title="Show viewer controls."
+                    >
+                      Show controls
+                    </button>
+                  )}
                   {geometryMode === "procedural" && !geometryPanelsAsDrawers && (
                     <ContextualActionStrip
                       testId="geometry-context-toolbar"
@@ -75588,6 +75757,7 @@ case "mobius":
                       canRunPrimaryAction={geometryContextCanRunPrimaryAction}
                       onPrimaryAction={handleRunGeometryContextPrimaryAction}
                       commandPreviewOverlaysVisible={commandPreviewOverlaysVisible}
+                      commandPreviewHighVisibility={commandPreviewHighVisibility}
                       onCommandPreviewOverlaysVisibleChange={setCommandPreviewOverlaysVisible}
                       commandPreviewOverlayToggleTestId="geometry-command-preview-overlays-toggle"
                       commandPreviewLegendTestId="geometry-command-preview-legend"
@@ -76728,6 +76898,7 @@ case "mobius":
                     appliedLabel={geometryAppliedContextualViewportPreview?.label}
                     top={58}
                     zIndex={16}
+                    highVisibility={commandPreviewHighVisibility}
                     onApply={geometryAppliedContextualViewportPreview ? undefined : handleRunGeometryContextPrimaryAction}
                     onHoverStart={() => {
                       if (geometryVisibleContextualViewportPreview.actionPulseId) {
@@ -76983,6 +77154,17 @@ case "mobius":
                               onOpenHistory={handleOpenGeometryContextHistory}
                               openHistoryTestId="geometry-active-selection-open-history"
                               onClearSelection={handleClearGeometryContextSelection}
+                              previewHighVisibility={commandPreviewHighVisibility}
+                              previewAccessibilityLabel={
+                                geometryVisibleContextualViewportPreview
+                                  ? `High visibility: ${commandPreviewHighVisibility ? "on" : "off"}`
+                                  : undefined
+                              }
+                              previewAccessibilityTestId="geometry-active-selection-card-preview-accessibility"
+                              onOpenPreviewSettings={
+                                geometryVisibleContextualViewportPreview ? () => setPreferencesOpen(true) : undefined
+                              }
+                              openPreviewSettingsTestId="geometry-active-selection-card-open-preview-settings"
                             />
                             <div>
                               <strong>Pick Mode</strong>
@@ -81398,13 +81580,99 @@ case "mobius":
             >
               <div>
                 <div style={{ fontSize: 13, fontWeight: 800 }}>Settings / Preferences</div>
-                <div style={{ fontSize: 11, color: "#667085" }}>Compute Engines</div>
+                <div style={{ fontSize: 11, color: "#667085" }}>Command previews and compute engines</div>
               </div>
               <button type="button" onClick={() => setPreferencesOpen(false)} style={{ padding: "4px 8px", fontSize: 11 }}>
                 Close
               </button>
             </div>
-            <div style={{ overflow: "auto", padding: 12 }}>
+            <div data-testid="settings-preferences-panel" style={{ overflow: "auto", padding: 12, display: "grid", gap: 12 }}>
+              <section
+                data-testid="settings-command-preview-section"
+                style={{
+                  border: "1px solid #dbeafe",
+                  borderRadius: 10,
+                  background: "#f8fbff",
+                  padding: "10px 12px",
+                  display: "grid",
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 850, color: "#1e3a8a" }}>Command previews</div>
+                    <div style={{ fontSize: 11, color: "#64748b" }}>
+                      Controls viewport ghosts and preview badges for Mesh and Geometry command strips.
+                    </div>
+                  </div>
+                  <CommandPreviewLegend
+                    testId="settings-command-preview-legend"
+                    compact
+                    highVisibility={commandPreviewHighVisibility}
+                  />
+                </div>
+                <label
+                  title="Show or hide viewport command preview badges and ghost overlays. Strip preview text remains visible."
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 7,
+                    width: "fit-content",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: commandPreviewOverlaysVisible ? "#166534" : "#475569",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    data-testid="settings-command-preview-overlays-toggle"
+                    checked={commandPreviewOverlaysVisible}
+                    onChange={(event) => setCommandPreviewOverlaysVisible(event.target.checked)}
+                  />
+                  Show command preview overlays
+                </label>
+                <label
+                  title="Use stronger preview outlines and non-color labels in Mesh and Geometry viewport previews."
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 7,
+                    width: "fit-content",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: commandPreviewHighVisibility ? "#0f172a" : "#475569",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    data-testid="settings-command-preview-high-visibility-toggle"
+                    checked={commandPreviewHighVisibility}
+                    onChange={(event) => setCommandPreviewHighVisibility(event.target.checked)}
+                  />
+                  High visibility preview mode
+                </label>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span data-testid="settings-command-preview-overlays-state" style={{ fontSize: 11, color: "#475569" }}>
+                    Viewport previews are {commandPreviewOverlaysVisible ? "on" : "off"}.
+                  </span>
+                  <span data-testid="settings-command-preview-high-visibility-state" style={{ fontSize: 11, color: "#475569" }}>
+                    High visibility is {commandPreviewHighVisibility ? "on" : "off"}.
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="settings-command-preview-restore-defaults"
+                    onClick={() => {
+                      setCommandPreviewOverlaysVisible(true);
+                      setCommandPreviewHighVisibility(false);
+                    }}
+                    style={{ padding: "3px 8px", fontSize: 11 }}
+                  >
+                    Restore preview defaults
+                  </button>
+                </div>
+              </section>
               <ComputeEngineManagerPanel />
             </div>
           </div>
@@ -95994,6 +96262,9 @@ type SurfacesRightPanelProps = {
   onUndoSurfaceMeshTopologyEdit: () => void;
   onOpenSurfaceMeshTopologyHistory: () => void;
   onClearSurfaceMeshTopologySelection: () => void;
+  meshContextualPreviewActive: boolean;
+  commandPreviewHighVisibility: boolean;
+  onOpenPreviewSettings: () => void;
   surfaceMeshStats: { vertCount: number; triCount: number } | null;
   surfaceMeshBounds: BBox3 | null;
   surfaceMeshSource: SurfaceMeshSource | null;
@@ -96207,6 +96478,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   onUndoSurfaceMeshTopologyEdit,
   onOpenSurfaceMeshTopologyHistory,
   onClearSurfaceMeshTopologySelection,
+  meshContextualPreviewActive,
+  commandPreviewHighVisibility,
+  onOpenPreviewSettings,
   surfaceMeshStats,
   surfaceMeshBounds,
   surfaceMeshSource,
@@ -97000,6 +97274,15 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           onOpenHistory={onOpenSurfaceMeshTopologyHistory}
           openHistoryTestId="mesh-active-selection-open-history"
           onClearSelection={onClearSurfaceMeshTopologySelection}
+          previewHighVisibility={commandPreviewHighVisibility}
+          previewAccessibilityLabel={
+            meshContextualPreviewActive
+              ? `High visibility: ${commandPreviewHighVisibility ? "on" : "off"}`
+              : undefined
+          }
+          previewAccessibilityTestId="mesh-active-selection-card-preview-accessibility"
+          onOpenPreviewSettings={meshContextualPreviewActive ? onOpenPreviewSettings : undefined}
+          openPreviewSettingsTestId="mesh-active-selection-card-open-preview-settings"
         />
         <div
           style={{

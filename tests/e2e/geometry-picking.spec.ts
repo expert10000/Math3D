@@ -353,6 +353,12 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
     await configureGeometryViewerForConstructionPicking(page);
     await page.getByTestId("geometry-workflow-step-transform").click();
     await expect(page.getByTestId("geometry-workflow-step-transform")).toHaveAttribute("aria-current", "step");
+    await expect(page.getByTestId("geometry-viewer-controls-strip")).toBeVisible();
+    await page.getByTestId("geometry-viewer-controls-hide").click();
+    await expect(page.getByTestId("geometry-viewer-controls-strip")).toBeHidden();
+    await expect(page.getByTestId("geometry-viewer-controls-show")).toBeVisible();
+    await page.getByTestId("geometry-viewer-controls-show").click();
+    await expect(page.getByTestId("geometry-viewer-controls-strip")).toBeVisible();
 
     await runContextualActionFlow({
       page,
@@ -363,6 +369,10 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
       viewportPreview: /Viewport preview: Face \d+ -> extrude 0\.15/,
       clickViewportPreview: true,
       checkOverlayToggle: true,
+      checkDisplayToolbarOverlayToggle: true,
+      checkSettingsOverlayToggle: true,
+      checkHighVisibilityToggle: true,
+      checkActiveSelectionPreviewAccessibility: true,
       confirmation: /Done: Face \d+ extruded, V \d+ -> \d+, F \d+ -> \d+/,
       pickEntity: async () => {
         await commitDeterministicGeometryPick(page, "face", { useContextOrInspectorMode: true });

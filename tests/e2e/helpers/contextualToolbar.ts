@@ -62,6 +62,139 @@ export async function expectCommandPreviewOverlayToggle({
   await expectViewportPreviewOverlay(page, workspace, viewportPreview, viewportPreviewTestId);
 }
 
+export async function expectDisplayToolbarCommandPreviewToggle({
+  page,
+  workspace,
+  preview,
+  viewportPreview,
+  viewportPreviewTestId,
+}: {
+  page: Page;
+  workspace: "geometry" | "mesh";
+  preview: string | RegExp;
+  viewportPreview: string | RegExp;
+  viewportPreviewTestId?: string;
+}): Promise<void> {
+  const toggle = page.getByTestId(`${workspace}-display-command-preview-overlays-toggle`);
+  const stripPreview = page.getByTestId(`${workspace}-context-preview`);
+  const viewportPreviewLocator = page.getByTestId(viewportPreviewTestId ?? `${workspace}-viewport-command-preview`);
+
+  await expect(toggle).toBeVisible();
+  await toggle.setChecked(false);
+  await expect(stripPreview).toContainText(preview);
+  await expect(viewportPreviewLocator).toBeHidden();
+
+  await toggle.setChecked(true);
+  await expect(stripPreview).toContainText(preview);
+  await expectViewportPreviewOverlay(page, workspace, viewportPreview, viewportPreviewTestId);
+}
+
+export async function setCommandPreviewOverlayPreferenceFromSettings(page: Page, visible: boolean): Promise<void> {
+  await page.getByTestId("top-settings-button").click();
+  await expect(page.getByTestId("settings-command-preview-section")).toBeVisible();
+  const toggle = page.getByTestId("settings-command-preview-overlays-toggle");
+  await expect(toggle).toBeVisible();
+  await toggle.setChecked(visible);
+  await expect(page.getByTestId("settings-command-preview-overlays-state")).toContainText(
+    visible ? "Viewport previews are on." : "Viewport previews are off."
+  );
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.getByTestId("settings-command-preview-section")).toBeHidden();
+}
+
+export async function restoreCommandPreviewDefaultsFromSettings(page: Page): Promise<void> {
+  await page.getByTestId("top-settings-button").click();
+  await expect(page.getByTestId("settings-command-preview-section")).toBeVisible();
+  await page.getByTestId("settings-command-preview-restore-defaults").click();
+  await expect(page.getByTestId("settings-command-preview-overlays-toggle")).toBeChecked();
+  await expect(page.getByTestId("settings-command-preview-overlays-state")).toContainText("Viewport previews are on.");
+  await expect(page.getByTestId("settings-command-preview-high-visibility-toggle")).not.toBeChecked();
+  await expect(page.getByTestId("settings-command-preview-high-visibility-state")).toContainText("High visibility is off.");
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.getByTestId("settings-command-preview-section")).toBeHidden();
+}
+
+export async function setCommandPreviewHighVisibilityFromSettings(page: Page, visible: boolean): Promise<void> {
+  await page.getByTestId("top-settings-button").click();
+  await expect(page.getByTestId("settings-command-preview-section")).toBeVisible();
+  const toggle = page.getByTestId("settings-command-preview-high-visibility-toggle");
+  await expect(toggle).toBeVisible();
+  await toggle.setChecked(visible);
+  await expect(page.getByTestId("settings-command-preview-high-visibility-state")).toContainText(
+    visible ? "High visibility is on." : "High visibility is off."
+  );
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.getByTestId("settings-command-preview-section")).toBeHidden();
+}
+
+export async function expectCommandPreviewHighVisibilityMode({
+  page,
+  workspace,
+  preview,
+  viewportPreview,
+  viewportPreviewTestId,
+}: {
+  page: Page;
+  workspace: "geometry" | "mesh";
+  preview: string | RegExp;
+  viewportPreview: string | RegExp;
+  viewportPreviewTestId?: string;
+}): Promise<void> {
+  const legend = page.getByTestId(`${workspace}-command-preview-legend`);
+  const viewportPreviewLocator = page.getByTestId(viewportPreviewTestId ?? `${workspace}-viewport-command-preview`);
+  await setCommandPreviewHighVisibilityFromSettings(page, true);
+  await expect(page.getByTestId(`${workspace}-context-preview`)).toContainText(preview);
+  await expect(legend).toHaveAttribute("data-high-visibility", "true");
+  await expect(legend).toContainText("High visibility");
+  await expectViewportPreviewOverlay(page, workspace, viewportPreview, viewportPreviewTestId);
+  await expect(viewportPreviewLocator).toHaveAttribute("data-high-visibility", "true");
+  await expect(viewportPreviewLocator.getByTestId(`${viewportPreviewTestId ?? `${workspace}-viewport-command-preview`}-accessibility-labels`)).toContainText(
+    /Preview.*Selected.*Applied.*Removed|Preview/
+  );
+
+  await restoreCommandPreviewDefaultsFromSettings(page);
+  await expect(page.getByTestId(`${workspace}-context-preview`)).toContainText(preview);
+  await expect(legend).toHaveAttribute("data-high-visibility", "false");
+  await expectViewportPreviewOverlay(page, workspace, viewportPreview, viewportPreviewTestId);
+  await expect(viewportPreviewLocator).toHaveAttribute("data-high-visibility", "false");
+  await expect(viewportPreviewLocator.getByTestId(`${viewportPreviewTestId ?? `${workspace}-viewport-command-preview`}-accessibility-labels`)).toBeHidden();
+}
+
+export async function expectActiveSelectionPreviewAccessibilityHandoff(
+  page: Page,
+  workspace: "geometry" | "mesh"
+): Promise<void> {
+  const activeCard = page.getByTestId(`${workspace}-active-selection-card`);
+  if (!(await activeCard.isVisible().catch(() => false))) {
+    const selectionTab = page.getByTestId(
+      workspace === "geometry" ? "geometry-right-panel-tab-selection" : "mesh-inspector-tab-selection"
+    );
+    if (await selectionTab.isVisible().catch(() => false)) await selectionTab.click();
+  }
+
+  await expect(activeCard).toBeVisible();
+  const accessibilityRow = page.getByTestId(`${workspace}-active-selection-card-preview-accessibility`);
+  await expect(accessibilityRow).toBeVisible();
+  await expect(accessibilityRow).toContainText("Preview accessibility");
+  await expect(accessibilityRow).toContainText("High visibility: off");
+
+  await page.getByTestId(`${workspace}-active-selection-card-open-preview-settings`).click();
+  await expect(page.getByTestId("settings-command-preview-section")).toBeVisible();
+  const highVisibilityToggle = page.getByTestId("settings-command-preview-high-visibility-toggle");
+  await expect(highVisibilityToggle).toBeVisible();
+  await highVisibilityToggle.setChecked(true);
+  await expect(page.getByTestId("settings-command-preview-high-visibility-state")).toContainText("High visibility is on.");
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(accessibilityRow).toContainText("High visibility: on");
+
+  await page.getByTestId(`${workspace}-active-selection-card-open-preview-settings`).click();
+  await expect(page.getByTestId("settings-command-preview-section")).toBeVisible();
+  await page.getByTestId("settings-command-preview-restore-defaults").click();
+  await expect(page.getByTestId("settings-command-preview-high-visibility-state")).toContainText("High visibility is off.");
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(accessibilityRow).toContainText("High visibility: off");
+}
+
 export async function runContextualActionFlow({
   page,
   workspace,
@@ -74,6 +207,10 @@ export async function runContextualActionFlow({
   applyPreviewTestId,
   clickViewportPreview = false,
   checkOverlayToggle = false,
+  checkDisplayToolbarOverlayToggle = false,
+  checkSettingsOverlayToggle = false,
+  checkHighVisibilityToggle = false,
+  checkActiveSelectionPreviewAccessibility = false,
   confirmation,
   runWithKeyboard = false,
 }: {
@@ -88,6 +225,10 @@ export async function runContextualActionFlow({
   applyPreviewTestId?: string;
   clickViewportPreview?: boolean;
   checkOverlayToggle?: boolean;
+  checkDisplayToolbarOverlayToggle?: boolean;
+  checkSettingsOverlayToggle?: boolean;
+  checkHighVisibilityToggle?: boolean;
+  checkActiveSelectionPreviewAccessibility?: boolean;
   confirmation: string | RegExp;
   runWithKeyboard?: boolean;
 }): Promise<void> {
@@ -118,6 +259,35 @@ export async function runContextualActionFlow({
         viewportPreview,
         viewportPreviewTestId,
       });
+    }
+    if (checkDisplayToolbarOverlayToggle && preview) {
+      await expectDisplayToolbarCommandPreviewToggle({
+        page,
+        workspace,
+        preview,
+        viewportPreview,
+        viewportPreviewTestId,
+      });
+    }
+    if (checkSettingsOverlayToggle && preview) {
+      await setCommandPreviewOverlayPreferenceFromSettings(page, false);
+      await expect(page.getByTestId(`${workspace}-context-preview`)).toContainText(preview);
+      await expect(viewportPreviewLocator).toBeHidden();
+      await restoreCommandPreviewDefaultsFromSettings(page);
+      await expect(page.getByTestId(`${workspace}-context-preview`)).toContainText(preview);
+      await expectViewportPreviewOverlay(page, workspace, viewportPreview, viewportPreviewTestId);
+    }
+    if (checkHighVisibilityToggle && preview) {
+      await expectCommandPreviewHighVisibilityMode({
+        page,
+        workspace,
+        preview,
+        viewportPreview,
+        viewportPreviewTestId,
+      });
+    }
+    if (checkActiveSelectionPreviewAccessibility) {
+      await expectActiveSelectionPreviewAccessibilityHandoff(page, workspace);
     }
   }
   if (runWithKeyboard) {

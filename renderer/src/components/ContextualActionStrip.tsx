@@ -31,6 +31,7 @@ type ContextualActionStripProps<T extends string> = {
   canRunPrimaryAction?: boolean;
   onPrimaryAction?: () => void;
   commandPreviewOverlaysVisible?: boolean;
+  commandPreviewHighVisibility?: boolean;
   onCommandPreviewOverlaysVisibleChange?: (visible: boolean) => void;
   commandPreviewOverlayToggleTestId?: string;
   commandPreviewLegendTestId?: string;
@@ -91,6 +92,7 @@ export function ContextualActionStrip<T extends string>({
   canRunPrimaryAction,
   onPrimaryAction,
   commandPreviewOverlaysVisible = true,
+  commandPreviewHighVisibility = false,
   onCommandPreviewOverlaysVisibleChange,
   commandPreviewOverlayToggleTestId,
   commandPreviewLegendTestId,
@@ -224,7 +226,7 @@ export function ContextualActionStrip<T extends string>({
       {children}
       <span style={{ color: "#93a4ba" }}>|</span>
       <span style={{ pointerEvents: "auto" }}>
-        <CommandPreviewLegend testId={commandPreviewLegendTestId} />
+        <CommandPreviewLegend testId={commandPreviewLegendTestId} highVisibility={commandPreviewHighVisibility} />
       </span>
       {onCommandPreviewOverlaysVisibleChange && (
         <label
