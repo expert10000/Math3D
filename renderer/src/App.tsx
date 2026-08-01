@@ -74,15 +74,28 @@ import {
 import { buildContextualSelectionState } from "./selection/contextualSelectionState";
 import {
   applyContextualViewportPreviewAccessibility,
-  applyContextualViewportPreviewOverlayContract,
   buildContextualViewportPreview,
   CONTEXTUAL_VIEWPORT_PREVIEW_TIMING,
   formatContextualViewportPreviewCounts,
-  contextualViewportPreviewRoleColor,
-  contextualViewportPreviewRoleOpacity,
   type ContextualViewportPreview,
   type ContextualViewportPreviewOperation,
+  type ContextualViewportPreviewRole,
 } from "./selection/contextualViewportPreview";
+import {
+  makeViewportPreviewLabelSet,
+  makeViewportPreviewMeshGroup,
+  makeViewportPreviewPointSet,
+  makeViewportPreviewPolylineGroup,
+  normalizeViewportPreviewOverlays,
+  viewportPreviewRoleColor,
+  viewportPreviewRoleOpacity,
+} from "./selection/viewportPreviewOverlays";
+import {
+  buildGeometryConstructionCommandHistoryEntry,
+  buildGeometryObjectCommandHistoryEntry,
+  buildMeshTopologyCommandHistoryEntry,
+  type UnifiedCommandHistoryEntry,
+} from "./selection/unifiedCommandHistory";
 
 import {
   SurfaceViewer,
@@ -4137,6 +4150,7 @@ type GeometryRecentActionHistoryEntry =
       actionLabel: string;
       resultLabel: string;
       parametersLabel?: string | null;
+      command: UnifiedCommandHistoryEntry;
       step: GeometryObjectHistoryStep;
     }
   | {
@@ -4149,6 +4163,7 @@ type GeometryRecentActionHistoryEntry =
       actionLabel: string;
       resultLabel: string;
       parametersLabel?: string | null;
+      command: UnifiedCommandHistoryEntry;
       step: GeometryConstructionHistoryEntry;
     };
 type GeometryTimelineSource = "history" | "variants" | "workbook" | "theorem";
@@ -5895,21 +5910,6 @@ const formatHistoryStepTopologyCounts = (step: GeometryObjectHistoryStep): strin
     return null;
   }
   return `V ${step.beforeVertexCount}->${step.afterVertexCount}; F ${step.beforeFaceCount}->${step.afterFaceCount}`;
-};
-
-const formatGeometryContextualResultSubject = (step: GeometryObjectHistoryStep): string => {
-  const target = step.operationTarget ?? step.label;
-  const label = step.label.toLowerCase();
-  if (label.includes("extrude")) return `${target} extruded`;
-  if (label.includes("inset")) return `${target} inset`;
-  if (label.includes("delete")) return `${target} deleted`;
-  if (label.includes("subdivide")) return `${target} subdivided`;
-  if (label.includes("split")) return `${target} split`;
-  if (label.includes("collapse")) return `${target} collapsed`;
-  if (label.includes("bevel")) return `${target} beveled`;
-  if (label.includes("move")) return `${target} moved`;
-  if (label.includes("weld")) return `${target} welded`;
-  return target;
 };
 
 const formatMeshEditFailureMessage = (actionLabel: string, message: string): string => {
@@ -12116,41 +12116,37 @@ const App: React.FC = () => {
   );
   const geometryRecentActionHistory = useMemo<GeometryRecentActionHistoryEntry[]>(() => {
     const objectEntries: GeometryRecentActionHistoryEntry[] = geometryRecentSceneHistory.map((entry) => {
-      const mirrorSource =
-        entry.operationType === "Mirror"
-          ? entry.changeSummary.match(/^Created mirror copy from (.+)\.$/)?.[1] ?? entry.operationTarget ?? entry.objectName
-          : null;
-      const lineageSource = entry.sourceObjectName ?? mirrorSource ?? null;
-      const isCopyLike =
-        !!lineageSource ||
-        entry.action === "duplicate" ||
-        entry.action === "history-duplicate" ||
-        entry.action === "mirror-copy";
+      const command = buildGeometryObjectCommandHistoryEntry(entry);
       return {
         kind: "object",
         id: `object:${entry.id}`,
-        at: entry.at,
-        label: entry.label,
-        detail: `${entry.objectName} - ${entry.operationType}${entry.operationTarget ? ` - ${entry.operationTarget}` : ""}`,
-        sourceLabel: lineageSource ?? entry.objectName,
-        actionLabel: entry.operationType,
-        resultLabel: isCopyLike ? `${lineageSource ?? entry.objectName} -> ${entry.objectName}` : entry.topologySummary ?? entry.objectName,
-        parametersLabel: entry.operationParameters,
+        at: command.at,
+        label: command.title,
+        detail: command.detail,
+        sourceLabel: command.sourceLabel,
+        actionLabel: command.actionLabel,
+        resultLabel: command.resultLabel,
+        parametersLabel: command.parametersLabel,
+        command,
         step: entry,
       };
     });
-    const constructionEntries: GeometryRecentActionHistoryEntry[] = geometryConstructionHistory.map((entry) => ({
-      kind: "construction",
-      id: `construction:${entry.id}`,
-      at: entry.at,
-      label: entry.planeSummary ? `${entry.action} plane` : entry.action,
-      detail: entry.planeSummary ? `${entry.source} - ${entry.planeSummary.method}` : `${entry.source} - ${entry.result}`,
-      sourceLabel: entry.operationSummary?.source ?? entry.source,
-      actionLabel: entry.operationSummary?.action ?? entry.action,
-      resultLabel: entry.operationSummary?.result ?? entry.result,
-      parametersLabel: entry.operationSummary?.parameters,
-      step: entry,
-    }));
+    const constructionEntries: GeometryRecentActionHistoryEntry[] = geometryConstructionHistory.map((entry) => {
+      const command = buildGeometryConstructionCommandHistoryEntry(entry);
+      return {
+        kind: "construction",
+        id: `construction:${entry.id}`,
+        at: command.at,
+        label: command.title,
+        detail: command.detail,
+        sourceLabel: command.sourceLabel,
+        actionLabel: command.actionLabel,
+        resultLabel: command.resultLabel,
+        parametersLabel: command.parametersLabel,
+        command,
+        step: entry,
+      };
+    });
     return [...objectEntries, ...constructionEntries].sort((a, b) => b.at - a.at).slice(0, 12);
   }, [geometryConstructionHistory, geometryRecentSceneHistory]);
   const geometryLatestRecentAction = geometryRecentActionHistory[0] ?? null;
@@ -15779,21 +15775,11 @@ const App: React.FC = () => {
   ]);
   const geometryContextToolbarConfirmationLabel = useMemo(() => {
     if (!geometryLatestRecentAction) return null;
-    if (geometryLatestRecentAction.kind === "construction") {
-      return `Done: ${geometryLatestRecentAction.resultLabel}`;
-    }
-    const counts = formatHistoryStepTopologyCounts(geometryLatestRecentAction.step)
-      ?.replace(";", ",")
-      .replace(/->/g, " -> ") ?? null;
-    const subject = formatGeometryContextualResultSubject(geometryLatestRecentAction.step);
-    return `Done: ${subject}${counts ? `, ${counts}` : ""}`;
+    return geometryLatestRecentAction.command.confirmationLabel;
   }, [geometryLatestRecentAction]);
   const geometryContextToolbarLastCommandLabel = useMemo(() => {
     if (!geometryLatestRecentAction) return null;
-    if (geometryLatestRecentAction.kind === "construction") {
-      return `${geometryLatestRecentAction.actionLabel}: ${geometryLatestRecentAction.resultLabel}`;
-    }
-    return formatGeometryContextualResultSubject(geometryLatestRecentAction.step);
+    return geometryLatestRecentAction.command.lastCommandLabel;
   }, [geometryLatestRecentAction]);
   const geometryContextToolbarPreviewLabel = geometryContextSelectionState.previewLabel;
   const geometryViewportCommandPreviewLabel = useMemo(
@@ -20500,13 +20486,11 @@ const App: React.FC = () => {
       indices.push(i, faceVertices.length + next, faceVertices.length + i);
     }
     return [
-      {
+      makeViewportPreviewMeshGroup({
         positions,
         indices,
-        color: contextualViewportPreviewRoleColor("preview"),
         opacity: 0.28,
-        doubleSided: true,
-      },
+      }),
     ];
   }, [
     geometryFaceExtrudeDistance,
@@ -20533,13 +20517,12 @@ const App: React.FC = () => {
       for (let i = 1; i + 1 < vertices.length; i += 1) {
         indices.push(0, i, i + 1);
       }
-      groups.push({
+      groups.push(makeViewportPreviewMeshGroup({
         positions,
         indices,
-        color: contextualViewportPreviewRoleColor("applied"),
+        role: "applied",
         opacity: 0.36,
-        doubleSided: true,
-      });
+      }));
     }
     return groups.length ? groups : null;
   }, [geometryMode, geometryTopologyEditFeedback]);
@@ -20597,7 +20580,7 @@ const App: React.FC = () => {
   const geometryAppliedContextualViewportPreview =
     appliedContextualViewportPreview?.workspace === "Geometry" ? appliedContextualViewportPreview : null;
   const geometryAppliedContextualViewportPreviewOverlays = commandPreviewOverlaysVisible
-    ? applyContextualViewportPreviewOverlayContract(
+    ? normalizeViewportPreviewOverlays(
         geometryAppliedContextualViewportPreview?.preview.overlays,
         {
           phase: "applied",
@@ -20728,7 +20711,7 @@ const App: React.FC = () => {
     if (geometryMode !== "procedural") return null;
     if (!commandPreviewOverlaysVisible) return null;
     const groups: OverlayPolylineGroup[] = [];
-    const previewColor = contextualViewportPreviewRoleColor("preview");
+    const previewColor = viewportPreviewRoleColor("preview");
     const selectedFace =
       geometryProbeSelectionDetails?.mode === "face" && geometryProbeSelectionDetails.faceVertices
         ? geometryProbeSelectionDetails
@@ -20781,7 +20764,7 @@ const App: React.FC = () => {
       if (insetLines.length) {
         groups.push({
           lines: insetLines,
-          color: contextualViewportPreviewRoleColor("selected"),
+          color: viewportPreviewRoleColor("selected"),
           opacity: 0.92,
           radiusWorld: clampNumber(maxSpan * 0.01, 0.01, 0.028),
         });
@@ -20810,7 +20793,7 @@ const App: React.FC = () => {
         });
         groups.push({
           lines: [[geometryAdd(splitPoint, geometryScale(side, -tickSize * 0.68)), geometryAdd(splitPoint, geometryScale(side, tickSize * 0.68))]],
-          color: contextualViewportPreviewRoleColor("selected"),
+          color: viewportPreviewRoleColor("selected"),
           opacity: 0.96,
           radiusWorld: clampNumber(edgeLength * 0.014, 0.01, 0.024),
         });
@@ -20864,13 +20847,13 @@ const App: React.FC = () => {
     return [
       {
         points: [splitPoint],
-        color: contextualViewportPreviewRoleColor("selected", "fillColor"),
+        color: viewportPreviewRoleColor("selected", "fillColor"),
         size: 0.18,
         opacity: 0.78,
       },
       {
         points: [splitPoint],
-        color: contextualViewportPreviewRoleColor("selected"),
+        color: viewportPreviewRoleColor("selected"),
         size: 0.12,
         opacity: 0.98,
       },
@@ -20889,7 +20872,7 @@ const App: React.FC = () => {
     const labels: OverlayLabelSet["labels"] = [];
     const pushLabel = (
       position: GeometryProbePoint | null | undefined,
-      color = contextualViewportPreviewRoleColor("preview", "darkColor")
+      color = viewportPreviewRoleColor("preview", "darkColor")
     ) => {
       if (!position) return;
       labels.push({
@@ -20957,7 +20940,7 @@ const App: React.FC = () => {
   ]);
   const geometryDirectEditAccessiblePreviewOverlays = useMemo(
     () =>
-      applyContextualViewportPreviewOverlayContract(
+      normalizeViewportPreviewOverlays(
         {
           meshGroups: geometryDirectEditPreviewFaceMeshGroups,
           pointSets: geometryDirectEditPreviewPointSets,
@@ -33547,7 +33530,7 @@ const App: React.FC = () => {
       groups.push({
         positions,
         indices,
-        color: contextualViewportPreviewRoleColor("preview"),
+        color: viewportPreviewRoleColor("preview"),
         opacity: 0.2,
         doubleSided: true,
       });
@@ -33867,7 +33850,7 @@ const App: React.FC = () => {
     return [
       {
         lines: surfaceMeshTopologyGhostFeedback.edgeLines,
-        color: contextualViewportPreviewRoleColor("preview"),
+        color: viewportPreviewRoleColor("preview"),
         opacity: 0.78,
         radiusWorld: 0.018,
       },
@@ -33897,19 +33880,9 @@ const App: React.FC = () => {
     const addLabel = (
       text: string,
       position: GeometryProbePoint,
-      color = contextualViewportPreviewRoleColor("preview", "darkColor")
+      role: ContextualViewportPreviewRole = "preview"
     ) => {
-      labelSets.push({
-        size: 0.76,
-        labels: [
-          {
-            text,
-            position,
-            color,
-            opacity: 0.96,
-          },
-        ],
-      });
+      labelSets.push(makeViewportPreviewLabelSet({ labels: [{ text, position, opacity: 0.96 }], role }));
     };
     if (surfaceMeshTopologyPreviewOperation === "Face Subdivide") {
       const faceIndex = Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
@@ -33943,11 +33916,11 @@ const App: React.FC = () => {
       return {
         meshGroups: null,
         pointSets: [
-          { points: [center], color: contextualViewportPreviewRoleColor("preview", "fillColor"), size: 0.28, opacity: 0.7 },
-          { points: [center], color: contextualViewportPreviewRoleColor("preview"), size: 0.18, opacity: 0.98 },
+          makeViewportPreviewPointSet({ points: [center], role: "preview", tone: "fillColor", size: 0.28, opacity: 0.7 }),
+          makeViewportPreviewPointSet({ points: [center], role: "preview", size: 0.18, opacity: 0.98 }),
         ],
         polylineGroups: lines.length
-          ? [{ lines, color: contextualViewportPreviewRoleColor("preview"), opacity: 0.96, radiusWorld: 0.022 }]
+          ? [makeViewportPreviewPolylineGroup({ lines, role: "preview", opacity: 0.96, radiusWorld: 0.022 })]
           : null,
         labelSets,
       };
@@ -33988,30 +33961,31 @@ const App: React.FC = () => {
       addLabel(
         `Preview collapse ${edgeA}-${edgeB}`,
         geometryAdd(liftedTarget, geometryScale(side, tickSize * 0.75)),
-        contextualViewportPreviewRoleColor("removed", "darkColor")
+        "removed"
       );
       return {
         meshGroups: null,
         pointSets: [
-          { points: [liftedTarget], color: contextualViewportPreviewRoleColor("removedFaded", "fillColor"), size: 0.28, opacity: 0.72 },
-          { points: [liftedTarget], color: contextualViewportPreviewRoleColor("removed", "darkColor"), size: 0.18, opacity: 0.98 },
+          makeViewportPreviewPointSet({ points: [liftedTarget], role: "removedFaded", tone: "fillColor", size: 0.28, opacity: 0.72 }),
+          makeViewportPreviewPointSet({ points: [liftedTarget], role: "removed", tone: "darkColor", size: 0.18, opacity: 0.98 }),
         ],
         polylineGroups: [
-          {
+          makeViewportPreviewPolylineGroup({
             lines: [[lift(a), lift(b)]],
-            color: contextualViewportPreviewRoleColor("removed"),
-            opacity: contextualViewportPreviewRoleOpacity("removedFaded"),
+            role: "removed",
+            opacity: viewportPreviewRoleOpacity("removedFaded"),
             radiusWorld: clampNumber(edgeLength * 0.018, 0.012, 0.035),
-          },
-          {
+          }),
+          makeViewportPreviewPolylineGroup({
             lines: [
               [geometryAdd(liftedTarget, geometryScale(side, -tickSize)), geometryAdd(liftedTarget, geometryScale(side, tickSize))],
               [geometryAdd(liftedTarget, geometryScale(direction, -tickSize)), geometryAdd(liftedTarget, geometryScale(direction, tickSize))],
             ],
-            color: contextualViewportPreviewRoleColor("removed", "darkColor"),
+            role: "removed",
+            tone: "darkColor",
             opacity: 0.9,
             radiusWorld: clampNumber(edgeLength * 0.01, 0.008, 0.02),
-          },
+          }),
         ],
         labelSets,
       };
@@ -34029,22 +34003,20 @@ const App: React.FC = () => {
       addLabel(`Preview bevel ${edgeA}-${edgeB}`, geometryAdd(center, geometryScale(side, amount * 1.45)));
       return {
         meshGroups: [
-          {
+          makeViewportPreviewMeshGroup({
             positions,
             indices: [0, 1, 2, 0, 2, 3],
-            color: contextualViewportPreviewRoleColor("preview"),
             opacity: 0.3,
-            doubleSided: true,
-          },
+          }),
         ],
         pointSets: null,
         polylineGroups: [
-          {
+          makeViewportPreviewPolylineGroup({
             lines: [[p0, p1], [p1, p2], [p2, p3], [p3, p0]],
-            color: contextualViewportPreviewRoleColor("preview"),
+            role: "preview",
             opacity: 0.92,
             radiusWorld: clampNumber(edgeLength * 0.012, 0.01, 0.024),
-          },
+          }),
         ],
         labelSets,
       };
@@ -34052,27 +34024,28 @@ const App: React.FC = () => {
     addLabel(
       `Preview split ${edgeA}-${edgeB}`,
       geometryAdd(splitPoint, geometryScale(side, tickSize * 0.95)),
-      contextualViewportPreviewRoleColor("selected", "darkColor")
+      "selected"
     );
     return {
       meshGroups: null,
       pointSets: [
-        { points: [splitPoint], color: contextualViewportPreviewRoleColor("selected", "fillColor"), size: 0.32, opacity: 0.76 },
-        { points: [splitPoint], color: contextualViewportPreviewRoleColor("selected"), size: 0.22, opacity: 0.98 },
+        makeViewportPreviewPointSet({ points: [splitPoint], role: "selected", tone: "fillColor", size: 0.32, opacity: 0.76 }),
+        makeViewportPreviewPointSet({ points: [splitPoint], role: "selected", size: 0.22, opacity: 0.98 }),
       ],
       polylineGroups: [
-        {
+        makeViewportPreviewPolylineGroup({
           lines: [[lift(a), lift(splitPoint)], [lift(splitPoint), lift(b)]],
-          color: contextualViewportPreviewRoleColor("selected"),
+          role: "selected",
           opacity: 0.96,
           radiusWorld: clampNumber(edgeLength * 0.014, 0.012, 0.03),
-        },
-        {
+        }),
+        makeViewportPreviewPolylineGroup({
           lines: [[geometryAdd(lift(splitPoint), geometryScale(side, -tickSize)), geometryAdd(lift(splitPoint), geometryScale(side, tickSize))]],
-          color: contextualViewportPreviewRoleColor("preview", "fillColor"),
+          role: "preview",
+          tone: "fillColor",
           opacity: 0.95,
           radiusWorld: clampNumber(edgeLength * 0.011, 0.008, 0.022),
-        },
+        }),
       ],
       labelSets,
     };
@@ -34098,7 +34071,7 @@ const App: React.FC = () => {
     return [
       {
         lines: surfaceMeshTopologyFeedback.edgeLines,
-        color: contextualViewportPreviewRoleColor("applied"),
+        color: viewportPreviewRoleColor("applied"),
         opacity: 0.96,
         radiusWorld: 0.028,
       },
@@ -34128,7 +34101,7 @@ const App: React.FC = () => {
   const meshAppliedContextualViewportPreview =
     appliedContextualViewportPreview?.workspace === "Mesh" ? appliedContextualViewportPreview : null;
   const meshAppliedContextualViewportPreviewOverlays = commandPreviewOverlaysVisible
-    ? applyContextualViewportPreviewOverlayContract(
+    ? normalizeViewportPreviewOverlays(
         meshAppliedContextualViewportPreview?.preview.overlays,
         {
           phase: "applied",
@@ -34139,7 +34112,7 @@ const App: React.FC = () => {
     : null;
   const surfaceMeshAccessibleCommandPreviewOverlays = useMemo(
     () =>
-      applyContextualViewportPreviewOverlayContract(
+      normalizeViewportPreviewOverlays(
         surfaceMeshCommandPreviewOverlays,
         {
           phase: "preview",
@@ -46042,14 +46015,12 @@ case "mobius":
     showSelectionEventStatus,
     surfaceViewerKind,
   ]);
-  const meshContextToolbarConfirmationLabel =
-    surfaceMeshTopologyHistory[0]?.resultLabel ? `Done: ${surfaceMeshTopologyHistory[0].resultLabel}` : null;
-  const meshContextToolbarLastCommandLabel = surfaceMeshTopologyHistory[0]
-    ? `${surfaceMeshTopologyHistory[0].targetLabel} ${surfaceMeshTopologyHistory[0].actionLabel
-        .replace(/\s+edge$/i, "")
-        .replace(/\s+face$/i, "")
-        .toLowerCase()}`
-    : null;
+  const meshLatestUnifiedCommandHistoryEntry = useMemo(
+    () => (surfaceMeshTopologyHistory[0] ? buildMeshTopologyCommandHistoryEntry(surfaceMeshTopologyHistory[0]) : null),
+    [surfaceMeshTopologyHistory]
+  );
+  const meshContextToolbarConfirmationLabel = meshLatestUnifiedCommandHistoryEntry?.confirmationLabel ?? null;
+  const meshContextToolbarLastCommandLabel = meshLatestUnifiedCommandHistoryEntry?.lastCommandLabel ?? null;
   const meshContextToolbarPreviewLabel = meshContextSelectionState.previewLabel;
   const meshViewportCommandPreviewLabel = useMemo(
     () => meshContextToolbarPreviewLabel?.replace(/^Preview:\s*/i, "") ?? null,
