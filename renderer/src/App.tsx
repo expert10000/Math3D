@@ -56,6 +56,8 @@ import {
   viewerControlButtonStyle,
   viewerControlCheckStyle,
   viewerControlLabelStyle,
+  viewerControlsOverlayChipStyle,
+  type ViewerControlsDensity,
 } from "./components/ViewerControls";
 import {
   OBJECT_CONTEXT_COPY,
@@ -1121,10 +1123,12 @@ const UI_VIEWPORT_PRESET_KEY = "math3d.ui.viewportPreset.v1";
 const UI_VIEWPORT_OVERLAY_CONTROLS_KEY = "math3d.ui.viewportOverlayControls.v1";
 const UI_SURFACE_VIEW_GIZMO_KEY = "math3d.ui.surfaceViewGizmo.v1";
 const UI_MESH_VIEWER_CONTROLS_KEY = "math3d.ui.meshViewerControls.v1";
+const UI_MESH_VIEWER_CONTROLS_DENSITY_KEY = "math3d.ui.meshViewerControlsDensity.v1";
 const UI_WORKSPACE_MODE_KEY = "math3d.ui.workspaceMode.v1";
 const UI_GEOMETRY_MODE_KEY = "math3d.ui.geometryMode.v1";
 const UI_GEOMETRY_PROCEDURAL_PANEL_KEY = "math3d.ui.geometryProceduralPanel.v1";
 const UI_GEOMETRY_VIEWER_CONTROLS_KEY = "math3d.ui.geometryViewerControls.v1";
+const UI_GEOMETRY_VIEWER_CONTROLS_DENSITY_KEY = "math3d.ui.geometryViewerControlsDensity.v1";
 const UI_GEOMETRY_VIEWPORT_SETTINGS_KEY = "math3d.ui.geometryViewportSettings.v1";
 const UI_GEOMETRY_CONSTRUCT_PANEL_KEY = "math3d.ui.geometryConstructPanel.v1";
 const WORKBOOK_AUTOSAVE_INTERVAL_SEC = 30;
@@ -7425,6 +7429,9 @@ const pill = (active: boolean): React.CSSProperties => ({
   fontSize: 12,
 });
 
+const isViewerControlsDensity = (value: string | null | undefined): value is ViewerControlsDensity =>
+  value === "normal" || value === "compact";
+
 const PARAM_CURVATURE_COLOR_MODES: ColorMode[] = ["gaussian", "mean", "k1", "k2"];
 
 const COLOR_MODE_LABELS: Record<ColorMode, string> = {
@@ -10200,6 +10207,11 @@ const App: React.FC = () => {
     if (typeof window === "undefined" || IS_REPLAY_MODE) return true;
     return window.localStorage.getItem(UI_GEOMETRY_VIEWER_CONTROLS_KEY) !== "0";
   });
+  const [geometryViewerControlsDensity, setGeometryViewerControlsDensity] = useState<ViewerControlsDensity>(() => {
+    if (typeof window === "undefined" || IS_REPLAY_MODE) return "normal";
+    const saved = window.localStorage.getItem(UI_GEOMETRY_VIEWER_CONTROLS_DENSITY_KEY);
+    return isViewerControlsDensity(saved) ? saved : "normal";
+  });
   const [geometryWorkspaceTab, setGeometryWorkspaceTab] = useState<ConstructionWorkspaceTab>("build");
   const [geometryDemoTab, setGeometryDemoTab] = useState<GeometryDemoTab>("task");
   const [geometryProceduralPanelTab, setGeometryProceduralPanelTab] =
@@ -10218,6 +10230,10 @@ const App: React.FC = () => {
     if (typeof window === "undefined" || IS_REPLAY_MODE) return;
     window.localStorage.setItem(UI_GEOMETRY_VIEWER_CONTROLS_KEY, geometryViewerControlsOpen ? "1" : "0");
   }, [geometryViewerControlsOpen]);
+  useEffect(() => {
+    if (typeof window === "undefined" || IS_REPLAY_MODE) return;
+    window.localStorage.setItem(UI_GEOMETRY_VIEWER_CONTROLS_DENSITY_KEY, geometryViewerControlsDensity);
+  }, [geometryViewerControlsDensity]);
   useEffect(() => {
     window.localStorage.setItem(UI_GEOMETRY_PROCEDURAL_PANEL_KEY, geometryProceduralPanelTab);
   }, [geometryProceduralPanelTab]);
@@ -28790,6 +28806,11 @@ const App: React.FC = () => {
     if (IS_REPLAY_MODE) return true;
     return localStorage.getItem(UI_MESH_VIEWER_CONTROLS_KEY) !== "0";
   });
+  const [meshViewerControlsDensity, setMeshViewerControlsDensity] = useState<ViewerControlsDensity>(() => {
+    if (IS_REPLAY_MODE) return "normal";
+    const saved = localStorage.getItem(UI_MESH_VIEWER_CONTROLS_DENSITY_KEY);
+    return isViewerControlsDensity(saved) ? saved : "normal";
+  });
   const [showSurfaceViewGizmo, setShowSurfaceViewGizmo] = useState(() => {
     if (IS_REPLAY_MODE) return true;
     return localStorage.getItem(UI_SURFACE_VIEW_GIZMO_KEY) !== "0";
@@ -28846,6 +28867,11 @@ const App: React.FC = () => {
     if (IS_REPLAY_MODE) return;
     localStorage.setItem(UI_MESH_VIEWER_CONTROLS_KEY, meshViewerControlsOpen ? "1" : "0");
   }, [meshViewerControlsOpen]);
+
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    localStorage.setItem(UI_MESH_VIEWER_CONTROLS_DENSITY_KEY, meshViewerControlsDensity);
+  }, [meshViewerControlsDensity]);
 
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
@@ -60785,7 +60811,13 @@ case "mobius":
                     commandPreviewOverlayToggleTestId="mesh-command-preview-overlays-toggle"
                     commandPreviewLegendTestId="mesh-command-preview-legend"
                     getPickTestId={(pickMode) => `mesh-context-pick-${pickMode}`}
-                    top={showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && meshViewerControlsOpen ? 252 : 10}
+                    top={
+                      showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && meshViewerControlsOpen
+                        ? meshViewerControlsDensity === "compact"
+                          ? 178
+                          : 252
+                        : 10
+                    }
                   >
                     {surfaceMeshTopologyPickMode === "face" && (
                       <>
@@ -60879,7 +60911,13 @@ case "mobius":
                     preview={meshVisibleContextualViewportPreview}
                     state={meshAppliedContextualViewportPreview ? "applied" : "preview"}
                     appliedLabel={meshAppliedContextualViewportPreview?.label}
-                    top={showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && meshViewerControlsOpen ? 306 : 48}
+                    top={
+                      showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && meshViewerControlsOpen
+                        ? meshViewerControlsDensity === "compact"
+                          ? 232
+                          : 306
+                        : 48
+                    }
                     highVisibility={commandPreviewHighVisibility}
                     onApply={
                       meshAppliedContextualViewportPreview
@@ -60913,9 +60951,13 @@ case "mobius":
                         position: "absolute",
                         top:
                           showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && meshViewerControlsOpen
-                            ? meshVisibleContextualViewportPreview
-                              ? 342
-                              : 306
+                            ? meshViewerControlsDensity === "compact"
+                              ? meshVisibleContextualViewportPreview
+                                ? 268
+                                : 232
+                              : meshVisibleContextualViewportPreview
+                                ? 342
+                                : 306
                             : meshVisibleContextualViewportPreview
                               ? 82
                               : 48,
@@ -61082,30 +61124,41 @@ case "mobius":
                       !surfacePanelsAsDrawers &&
                       surfaceViewerKind === "mesh" &&
                       meshViewerControlsOpen && (
-                        <button
-                          type="button"
-                          data-testid="mesh-viewer-controls-hide"
-                          onClick={() => setMeshViewerControlsOpen(false)}
+                        <div
                           style={{
                             position: "absolute",
                             top: 8,
                             right: 10,
                             zIndex: 60,
-                            borderRadius: 999,
-                            border: "1px solid #cbd5e1",
-                            background: "rgba(255, 255, 255, 0.96)",
-                            color: "#334155",
-                            fontWeight: 850,
-                            fontSize: 11,
-                            padding: "4px 9px",
-                            cursor: "pointer",
-                            whiteSpace: "nowrap",
-                            boxShadow: "0 8px 18px rgba(15, 23, 42, 0.12)",
+                            display: "inline-flex",
+                            gap: 5,
                           }}
-                          title="Hide viewer controls to give the viewport more space."
                         >
-                          Controls on
-                        </button>
+                          <button
+                            type="button"
+                            data-testid="mesh-viewer-controls-density-toggle"
+                            onClick={() =>
+                              setMeshViewerControlsDensity((density) => (density === "compact" ? "normal" : "compact"))
+                            }
+                            style={viewerControlsOverlayChipStyle(meshViewerControlsDensity === "compact")}
+                            title={
+                              meshViewerControlsDensity === "compact"
+                                ? "Show full viewer controls."
+                                : "Use compact viewer controls."
+                            }
+                          >
+                            {meshViewerControlsDensity === "compact" ? "Compact" : "Full"}
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="mesh-viewer-controls-hide"
+                            onClick={() => setMeshViewerControlsOpen(false)}
+                            style={viewerControlsOverlayChipStyle(false)}
+                            title="Hide viewer controls to give the viewport more space."
+                          >
+                            Hide
+                          </button>
+                        </div>
                       )}
                     {showSurfaceLocalToolStrip &&
                       !surfacePanelsAsDrawers &&
@@ -61120,15 +61173,7 @@ case "mobius":
                             top: 8,
                             right: 10,
                             zIndex: 30,
-                            borderRadius: 999,
-                            border: "1px solid #93c5fd",
-                            background: "rgba(239, 246, 255, 0.94)",
-                            color: "#1d4ed8",
-                            fontWeight: 850,
-                            fontSize: 11,
-                            padding: "4px 9px",
-                            cursor: "pointer",
-                            boxShadow: "0 8px 18px rgba(15, 23, 42, 0.12)",
+                            ...viewerControlsOverlayChipStyle(true),
                           }}
                           title="Show viewer controls."
                         >
@@ -61140,17 +61185,22 @@ case "mobius":
                       (surfaceViewerKind !== "mesh" || meshViewerControlsOpen) && (
                       <ViewerControlsStrip
                         testId={surfaceViewerKind === "mesh" ? "mesh-viewer-controls-strip" : undefined}
+                        density={surfaceViewerKind === "mesh" ? meshViewerControlsDensity : "normal"}
                         style={{
                           position: "relative",
                           zIndex: surfaceViewerKind === "mesh" ? 30 : undefined,
                           justifyContent: "space-between",
                           margin: compareLayoutEnabled ? "0 0 6px 0" : 0,
-                          paddingRight: surfaceViewerKind === "mesh" ? 108 : 10,
+                          paddingRight: surfaceViewerKind === "mesh" ? 136 : 10,
                           borderBottom: "1px solid #e3e8f0",
                           background: "linear-gradient(180deg, rgba(249,251,253,0.98), rgba(244,247,251,0.98))",
                         }}
                       >
-                        <ViewerControlGroup label="Mesh" style={{ flex: "1 1 620px" }}>
+                        <ViewerControlGroup
+                          label={surfaceViewerKind === "mesh" && meshViewerControlsDensity === "compact" ? "M" : "Mesh"}
+                          density={surfaceViewerKind === "mesh" ? meshViewerControlsDensity : "normal"}
+                          style={{ flex: meshViewerControlsDensity === "compact" ? "1 1 460px" : "1 1 620px" }}
+                        >
                           {showSurfaceFormulaEditorLauncher && (
                             <button
                               type="button"
@@ -61191,7 +61241,13 @@ case "mobius":
                                   : "Choose an editable preset first."
                               }
                             >
-                              {surfaceFormulaEditorOpen ? "Surface editor: on" : "Surface editor"}
+                              {surfaceFormulaEditorOpen
+                                ? meshViewerControlsDensity === "compact"
+                                  ? "Editor on"
+                                  : "Surface editor: on"
+                                : meshViewerControlsDensity === "compact"
+                                  ? "Editor"
+                                  : "Surface editor"}
                             </button>
                           )}
                           <button
@@ -61288,7 +61344,13 @@ case "mobius":
                             }}
                             aria-pressed={showInViewportOverlayControls}
                           >
-                            {showInViewportOverlayControls ? "Overlay controls: on" : "Overlay controls: off"}
+                            {showInViewportOverlayControls
+                              ? meshViewerControlsDensity === "compact"
+                                ? "Overlay on"
+                                : "Overlay controls: on"
+                              : meshViewerControlsDensity === "compact"
+                                ? "Overlay off"
+                                : "Overlay controls: off"}
                           </button>
                           <label
                             title="Show or hide viewport command preview badges and ghost overlays. Strip preview text remains visible."
@@ -61313,7 +61375,7 @@ case "mobius":
                               onChange={(event) => setCommandPreviewOverlaysVisible(event.target.checked)}
                               style={{ width: 12, height: 12, margin: 0 }}
                             />
-                            Command preview
+                            {meshViewerControlsDensity === "compact" ? "Preview" : "Command preview"}
                           </label>
                           <span
                             style={{
@@ -61327,10 +61389,24 @@ case "mobius":
                               lineHeight: 1,
                             }}
                           >
-                            {showChartGrid ? "Grid: surface chart" : showPlanes ? "Grid: planes" : "Grid: none"}
+                            {meshViewerControlsDensity === "compact"
+                              ? showChartGrid
+                                ? "Grid: chart"
+                                : showPlanes
+                                  ? "Grid: planes"
+                                  : "Grid: none"
+                              : showChartGrid
+                                ? "Grid: surface chart"
+                                : showPlanes
+                                  ? "Grid: planes"
+                                  : "Grid: none"}
                           </span>
                         </ViewerControlGroup>
-                        <ViewerControlGroup label="Panel" style={{ flex: "0 0 auto" }}>
+                        <ViewerControlGroup
+                          label={meshViewerControlsDensity === "compact" ? "P" : "Panel"}
+                          density={meshViewerControlsDensity}
+                          style={{ flex: "0 0 auto" }}
+                        >
                           {(["inspector", "workbook"] as const).map((tab) => {
                             const active = rightPanelTab === tab;
                             return (
@@ -75250,42 +75326,58 @@ case "mobius":
               }}
             >
               {geometryViewerControlsOpen && !geometryPanelsAsDrawers && !isPhoneLandscapeLayout && (
-                <button
-                  type="button"
-                  data-testid="geometry-viewer-controls-hide"
-                  onClick={() => setGeometryViewerControlsOpen(false)}
+                <div
                   style={{
                     position: "absolute",
                     top: 8,
                     right: 10,
                     zIndex: 60,
-                    borderRadius: 999,
-                    border: "1px solid #cbd5e1",
-                    background: "rgba(255, 255, 255, 0.96)",
-                    color: "#334155",
-                    fontWeight: 850,
-                    fontSize: 11,
-                    padding: "4px 9px",
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                    boxShadow: "0 8px 18px rgba(15, 23, 42, 0.12)",
+                    display: "inline-flex",
+                    gap: 5,
                   }}
-                  title="Hide viewer controls to give the viewport more space."
                 >
-                  Controls on
-                </button>
+                  <button
+                    type="button"
+                    data-testid="geometry-viewer-controls-density-toggle"
+                    onClick={() =>
+                      setGeometryViewerControlsDensity((density) => (density === "compact" ? "normal" : "compact"))
+                    }
+                    style={viewerControlsOverlayChipStyle(geometryViewerControlsDensity === "compact")}
+                    title={
+                      geometryViewerControlsDensity === "compact"
+                        ? "Show full viewer controls."
+                        : "Use compact viewer controls."
+                    }
+                  >
+                    {geometryViewerControlsDensity === "compact" ? "Compact" : "Full"}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="geometry-viewer-controls-hide"
+                    onClick={() => setGeometryViewerControlsOpen(false)}
+                    style={viewerControlsOverlayChipStyle(false)}
+                    title="Hide viewer controls to give the viewport more space."
+                  >
+                    Hide
+                  </button>
+                </div>
               )}
               {geometryViewerControlsOpen && !geometryPanelsAsDrawers && !isPhoneLandscapeLayout && (
               <ViewerControlsStrip
                 testId="geometry-viewer-controls-strip"
+                density={geometryViewerControlsDensity}
                 style={{
                   borderBottom: "1px solid #9fb0c7",
-                  paddingRight: 108,
+                  paddingRight: 136,
                   background: "linear-gradient(180deg, #f8fbff 0%, #f1f6fd 100%)",
                 }}
               >
                 {geometryMode === "procedural" && (
-                  <ViewerControlGroup label="Transform" style={{ flex: "0 0 auto" }}>
+                  <ViewerControlGroup
+                    label={geometryViewerControlsDensity === "compact" ? "T" : "Transform"}
+                    density={geometryViewerControlsDensity}
+                    style={{ flex: "0 0 auto" }}
+                  >
                     {GEOMETRY_GIZMO_MODE_OPTIONS.map((option) => {
                       const active = geometryGizmoEnabled && geometryGizmoMode === option.id;
                       return (
@@ -75298,7 +75390,7 @@ case "mobius":
                             handleToggleGeometryGizmoMode(option.id);
                           }}
                           style={{
-                            ...viewerControlButtonStyle(active),
+                            ...viewerControlButtonStyle(active, geometryViewerControlsDensity),
                             borderColor: active ? "#2563eb" : "#cbd5e1",
                             background: active ? "#dbeafe" : "#fff",
                             color: active ? "#1d4ed8" : "#334155",
@@ -75328,7 +75420,11 @@ case "mobius":
                     )}
                   </ViewerControlGroup>
                 )}
-                <ViewerControlGroup label="Display" style={{ flex: "2 1 650px" }}>
+                <ViewerControlGroup
+                  label={geometryViewerControlsDensity === "compact" ? "D" : "Display"}
+                  density={geometryViewerControlsDensity}
+                  style={{ flex: geometryViewerControlsDensity === "compact" ? "2 1 520px" : "2 1 650px" }}
+                >
                 <label style={viewerControlCheckStyle}>
                   <input
                     type="checkbox"
@@ -75343,7 +75439,7 @@ case "mobius":
                     checked={geometryShowPlanes}
                     onChange={(e) => setGeometryShowPlanes(e.target.checked)}
                   />
-                  Coords
+                  {geometryViewerControlsDensity === "compact" ? "Coords" : "Coordinates"}
                 </label>
                 {geometryShowPlanes && (
                   <>
@@ -75483,7 +75579,7 @@ case "mobius":
                         checked={showGeometryDependencyOverlay}
                         onChange={(e) => setShowGeometryDependencyOverlay(e.target.checked)}
                       />
-                      Deps
+                      {geometryViewerControlsDensity === "compact" ? "Deps" : "Dependencies"}
                     </label>
                     <label style={viewerControlCheckStyle}>
                       <input
@@ -75491,7 +75587,7 @@ case "mobius":
                         checked={geometryCreateActionsOverlayOpen}
                         onChange={(e) => setGeometryCreateActionsOverlayOpen(e.target.checked)}
                       />
-                      Create
+                      {geometryViewerControlsDensity === "compact" ? "Create" : "Create overlay"}
                     </label>
                     <label
                       title="Show or hide viewport command preview badges and ghost overlays. Strip preview text remains visible."
@@ -75503,7 +75599,7 @@ case "mobius":
                         checked={commandPreviewOverlaysVisible}
                         onChange={(event) => setCommandPreviewOverlaysVisible(event.target.checked)}
                       />
-                      Preview
+                      {geometryViewerControlsDensity === "compact" ? "Preview" : "Command preview"}
                     </label>
                   </>
                 )}
@@ -75582,7 +75678,11 @@ case "mobius":
                   </>
                 )}
                 </ViewerControlGroup>
-                <ViewerControlGroup label="Viewport" style={{ flex: "1 1 520px" }}>
+                <ViewerControlGroup
+                  label={geometryViewerControlsDensity === "compact" ? "V" : "Viewport"}
+                  density={geometryViewerControlsDensity}
+                  style={{ flex: geometryViewerControlsDensity === "compact" ? "1 1 430px" : "1 1 520px" }}
+                >
                   <div
                     style={{
                       display: "inline-flex",
@@ -75619,12 +75719,14 @@ case "mobius":
                       Full
                     </button>
                   </div>
-                  <span style={{ ...viewerControlLabelStyle, marginLeft: 4 }}>Camera</span>
+                  <span style={{ ...viewerControlLabelStyle, marginLeft: 4 }}>
+                    {geometryViewerControlsDensity === "compact" ? "Cam" : "Camera"}
+                  </span>
                   <button
                     type="button"
                     onClick={() => handleGeometryApplyViewPreset("3d")}
                     aria-pressed={geometryViewPreset === "3d"}
-                    style={viewerControlButtonStyle(geometryViewPreset === "3d")}
+                    style={viewerControlButtonStyle(geometryViewPreset === "3d", geometryViewerControlsDensity)}
                   >
                     3D
                   </button>
@@ -75632,28 +75734,28 @@ case "mobius":
                     type="button"
                     onClick={() => handleGeometryApplyViewPreset("planar")}
                     aria-pressed={geometryViewPreset === "planar"}
-                    style={viewerControlButtonStyle(geometryViewPreset === "planar")}
+                    style={viewerControlButtonStyle(geometryViewPreset === "planar", geometryViewerControlsDensity)}
                   >
                     Planar
                   </button>
                   <button
                     type="button"
                     onClick={() => handleGeometryFit("scene")}
-                    style={viewerControlButtonStyle(false)}
+                    style={viewerControlButtonStyle(false, geometryViewerControlsDensity)}
                   >
                     Fit scene
                   </button>
                   <button
                     type="button"
                     onClick={() => handleGeometryFit("stage")}
-                    style={viewerControlButtonStyle(false)}
+                    style={viewerControlButtonStyle(false, geometryViewerControlsDensity)}
                   >
-                    Fit active stage
+                    {geometryViewerControlsDensity === "compact" ? "Fit stage" : "Fit active stage"}
                   </button>
                   <button
                     type="button"
                     onClick={() => handleGeometryFit("claim")}
-                    style={viewerControlButtonStyle(false)}
+                    style={viewerControlButtonStyle(false, geometryViewerControlsDensity)}
                   >
                     Fit claim
                   </button>
@@ -75663,9 +75765,9 @@ case "mobius":
                       setWorkspaceCameraPreset("reset_camera");
                       setGeometryResetToken((t) => t + 1);
                     }}
-                    style={viewerControlButtonStyle(false)}
+                    style={viewerControlButtonStyle(false, geometryViewerControlsDensity)}
                   >
-                    Reset camera
+                    {geometryViewerControlsDensity === "compact" ? "Reset" : "Reset camera"}
                   </button>
                   <label style={viewerControlCheckStyle}>
                     <input
@@ -75673,7 +75775,7 @@ case "mobius":
                       checked={geometryIncludeHelpersInFit}
                       onChange={(event) => setGeometryIncludeHelpersInFit(event.target.checked)}
                     />
-                    Helpers
+                    {geometryViewerControlsDensity === "compact" ? "Helpers" : "Include helpers in fit"}
                   </label>
                 </ViewerControlGroup>
               </ViewerControlsStrip>
@@ -75711,15 +75813,7 @@ case "mobius":
                         top: 8,
                         right: 10,
                         zIndex: 20,
-                        borderRadius: 999,
-                        border: "1px solid #93c5fd",
-                        background: "rgba(239, 246, 255, 0.94)",
-                        color: "#1d4ed8",
-                        fontWeight: 850,
-                        fontSize: 11,
-                        padding: "4px 9px",
-                        cursor: "pointer",
-                        boxShadow: "0 8px 18px rgba(15, 23, 42, 0.12)",
+                        ...viewerControlsOverlayChipStyle(true),
                       }}
                       title="Show viewer controls."
                     >
