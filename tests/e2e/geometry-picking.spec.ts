@@ -6,6 +6,7 @@ import path from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
 import { runContextualActionFlow, runContextualObjectModeCheck } from "./helpers/contextualToolbar";
 import { contextualSelectionLabelPatterns } from "./helpers/contextualSelectionLabels";
+import { expectViewerControlsResponsiveLayout } from "./helpers/viewerControlsLayout";
 import { pointGrid, surfaceViewerPickBox } from "./helpers/viewerPicking";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
@@ -356,11 +357,13 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
     await expect(page.getByTestId("geometry-viewer-controls-strip")).toBeVisible();
     await expect(page.getByTestId("geometry-viewer-controls-mode")).toHaveAttribute("data-mode", "normal");
     await expect(page.getByTestId("geometry-viewer-controls-mode")).toContainText("Controls: Full");
+    await expectViewerControlsResponsiveLayout(page, "geometry", "normal");
     await page.getByTestId("geometry-viewer-controls-mode-button").click();
     await page.getByTestId("geometry-viewer-controls-mode-compact").click();
     await expect(page.getByTestId("geometry-viewer-controls-mode")).toHaveAttribute("data-mode", "compact");
     await expect(page.getByTestId("geometry-viewer-controls-mode")).toContainText("Controls: Compact");
     await expect(page.getByTestId("geometry-viewer-controls-strip")).toHaveAttribute("data-density", "compact");
+    await expectViewerControlsResponsiveLayout(page, "geometry", "compact");
     await page.reload();
     await expect(page.getByTestId("geometry-viewer-controls-strip")).toBeVisible();
     await expect(page.getByTestId("geometry-viewer-controls-mode")).toHaveAttribute("data-mode", "compact");
@@ -370,6 +373,7 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
     await expect(page.getByTestId("geometry-viewer-controls-strip")).toBeHidden();
     await expect(page.getByTestId("geometry-viewer-controls-show")).toBeVisible();
     await expect(page.getByTestId("geometry-viewer-controls-show")).toHaveText("Show controls");
+    await expectViewerControlsResponsiveLayout(page, "geometry", "hidden");
     await page.reload();
     await expect(page.getByTestId("geometry-viewer-controls-strip")).toBeHidden();
     await expect(page.getByTestId("geometry-viewer-controls-show")).toBeVisible();

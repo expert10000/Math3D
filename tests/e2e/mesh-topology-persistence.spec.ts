@@ -10,6 +10,7 @@ import {
   runContextualObjectModeCheck,
 } from "./helpers/contextualToolbar";
 import { contextualSelectionLabelPatterns } from "./helpers/contextualSelectionLabels";
+import { expectViewerControlsResponsiveLayout } from "./helpers/viewerControlsLayout";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const firstLaunchKey = "math3d.computeEngines.firstLaunchSeen";
@@ -192,11 +193,13 @@ async function runTopologyDemo(
   await page.getByTestId("mesh-viewer-controls-mode-normal").click();
   await expect(page.getByTestId("mesh-viewer-controls-mode")).toHaveAttribute("data-mode", "normal");
   await expect(page.getByTestId("mesh-viewer-controls-mode")).toContainText("Controls: Full");
+  await expectViewerControlsResponsiveLayout(page, "mesh", "normal");
   await page.getByTestId("mesh-viewer-controls-mode-button").click();
   await page.getByTestId("mesh-viewer-controls-mode-compact").click();
   await expect(page.getByTestId("mesh-viewer-controls-mode")).toHaveAttribute("data-mode", "compact");
   await expect(page.getByTestId("mesh-viewer-controls-mode")).toContainText("Controls: Compact");
   await expect(page.getByTestId("mesh-viewer-controls-strip")).toHaveAttribute("data-density", "compact");
+  await expectViewerControlsResponsiveLayout(page, "mesh", "compact");
   await page.reload();
   await reopenDemoAfterReload();
   await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeVisible();
@@ -207,6 +210,7 @@ async function runTopologyDemo(
   await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeHidden();
   await expect(page.getByTestId("mesh-viewer-controls-show")).toBeVisible();
   await expect(page.getByTestId("mesh-viewer-controls-show")).toHaveText("Show controls");
+  await expectViewerControlsResponsiveLayout(page, "mesh", "hidden");
   await page.reload();
   await reopenDemoAfterReload();
   await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeHidden();

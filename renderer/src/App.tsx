@@ -61224,9 +61224,14 @@ case "mobius":
                         style={{
                           position: "relative",
                           zIndex: surfaceViewerKind === "mesh" ? 30 : undefined,
-                          justifyContent: "space-between",
+                          justifyContent: "flex-start",
                           margin: compareLayoutEnabled ? "0 0 6px 0" : 0,
-                          paddingRight: surfaceViewerKind === "mesh" ? 174 : 10,
+                          padding:
+                            surfaceViewerKind === "mesh"
+                              ? meshViewerControlsDensity === "compact"
+                                ? "3px 260px 3px 5px"
+                                : "5px 260px 5px 7px"
+                              : undefined,
                           borderBottom: "1px solid #e3e8f0",
                           background: "linear-gradient(180deg, rgba(249,251,253,0.98), rgba(244,247,251,0.98))",
                         }}
@@ -61234,7 +61239,7 @@ case "mobius":
                         <ViewerControlGroup
                           label={surfaceViewerKind === "mesh" && meshViewerControlsDensity === "compact" ? "M" : "Mesh"}
                           density={surfaceViewerKind === "mesh" ? meshViewerControlsDensity : "normal"}
-                          style={{ flex: meshViewerControlsDensity === "compact" ? "1 1 460px" : "1 1 620px" }}
+                          style={{ flex: meshViewerControlsDensity === "compact" ? "1 1 340px" : "1 1 480px" }}
                         >
                           {showSurfaceFormulaEditorLauncher && (
                             <button
@@ -75385,7 +75390,8 @@ case "mobius":
                 density={geometryViewerControlsDensity}
                 style={{
                   borderBottom: "1px solid #9fb0c7",
-                  paddingRight: 174,
+                  padding:
+                    geometryViewerControlsDensity === "compact" ? "3px 260px 3px 5px" : "5px 260px 5px 7px",
                   background: "linear-gradient(180deg, #f8fbff 0%, #f1f6fd 100%)",
                 }}
               >
@@ -75440,7 +75446,7 @@ case "mobius":
                 <ViewerControlGroup
                   label={geometryViewerControlsDensity === "compact" ? "D" : "Display"}
                   density={geometryViewerControlsDensity}
-                  style={{ flex: geometryViewerControlsDensity === "compact" ? "2 1 520px" : "2 1 650px" }}
+                  style={{ flex: geometryViewerControlsDensity === "compact" ? "2 1 390px" : "2 1 520px" }}
                 >
                 <label style={viewerControlCheckStyle}>
                   <input
@@ -75698,7 +75704,7 @@ case "mobius":
                 <ViewerControlGroup
                   label={geometryViewerControlsDensity === "compact" ? "V" : "Viewport"}
                   density={geometryViewerControlsDensity}
-                  style={{ flex: geometryViewerControlsDensity === "compact" ? "1 1 430px" : "1 1 520px" }}
+                  style={{ flex: geometryViewerControlsDensity === "compact" ? "1 1 330px" : "1 1 440px" }}
                 >
                   <div
                     style={{

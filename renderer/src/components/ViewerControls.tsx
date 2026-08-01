@@ -6,10 +6,13 @@ export type ViewerControlsMode = ViewerControlsDensity | "hidden";
 
 export const viewerControlStripStyle: CSSProperties = {
   display: "flex",
-  alignItems: "center",
+  alignItems: "flex-start",
   flexWrap: "wrap",
-  gap: 5,
+  gap: "4px 6px",
   padding: "5px 7px",
+  boxSizing: "border-box",
+  width: "100%",
+  overflow: "visible",
 };
 
 export const viewerControlGroupStyle: CSSProperties = {
@@ -17,11 +20,14 @@ export const viewerControlGroupStyle: CSSProperties = {
   alignItems: "center",
   gap: 5,
   flexWrap: "wrap",
+  minWidth: 0,
+  maxWidth: "100%",
   minHeight: 28,
   padding: "2px 5px",
   border: "1px solid #cbd5e1",
   borderRadius: 7,
   background: "rgba(255, 255, 255, 0.92)",
+  boxSizing: "border-box",
 };
 
 export const viewerControlLabelStyle: CSSProperties = {
@@ -36,7 +42,7 @@ export const viewerControlLabelStyle: CSSProperties = {
 export const viewerControlCheckStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
-  gap: 4,
+  gap: 3,
   color: "#334155",
   fontSize: 11,
   fontWeight: 600,
@@ -175,7 +181,7 @@ export function ViewerControlsModeSelect({ value, testId, onChange, style }: Vie
 }
 
 const compactStripStyle: CSSProperties = {
-  gap: 3,
+  gap: "3px 4px",
   padding: "3px 5px",
 };
 
