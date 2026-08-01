@@ -37,6 +37,7 @@ type ContextualActionStripProps<T extends string> = {
   commandPreviewLegendTestId?: string;
   keyboardShortcutsEnabled?: boolean;
   getPickTestId?: (pick: T) => string;
+  placement?: "overlay" | "inline";
   top?: number;
   zIndex?: number;
   children: ReactNode;
@@ -99,6 +100,7 @@ export function ContextualActionStrip<T extends string>({
   commandPreviewLegendTestId,
   keyboardShortcutsEnabled = true,
   getPickTestId,
+  placement = "overlay",
   top = 10,
   zIndex = 8,
   children,
@@ -133,24 +135,30 @@ export function ContextualActionStrip<T extends string>({
       data-testid={testId}
       onMouseDown={(event) => event.stopPropagation()}
       style={{
-        position: "absolute",
-        top,
-        left: 12,
+        position: placement === "inline" ? "relative" : "absolute",
+        top: placement === "inline" ? undefined : top,
+        left: placement === "inline" ? undefined : 12,
         zIndex,
-        maxWidth: "calc(100% - 24px)",
+        width: placement === "inline" ? "100%" : undefined,
+        maxWidth: placement === "inline" ? "100%" : "calc(100% - 24px)",
         display: "flex",
         gap: 5,
         alignItems: "center",
-        flexWrap: "nowrap",
+        flexWrap: placement === "inline" ? "wrap" : "nowrap",
         overflow: "visible",
         padding: "4px 7px",
         border: "1px solid #bfdbfe",
-        borderRadius: 999,
-        background: "rgba(239, 246, 255, 0.82)",
-        boxShadow: "0 4px 12px rgba(15, 23, 42, 0.08)",
+        borderRadius: placement === "inline" ? 0 : 999,
+        borderLeft: placement === "inline" ? 0 : "1px solid #bfdbfe",
+        borderRight: placement === "inline" ? 0 : "1px solid #bfdbfe",
+        background:
+          placement === "inline"
+            ? "linear-gradient(180deg, rgba(239, 246, 255, 0.98), rgba(248, 251, 255, 0.98))"
+            : "rgba(239, 246, 255, 0.82)",
+        boxShadow: placement === "inline" ? "none" : "0 4px 12px rgba(15, 23, 42, 0.08)",
         fontSize: 11,
         color: "#1e3a8a",
-        pointerEvents: "none",
+        pointerEvents: placement === "inline" ? "auto" : "none",
         whiteSpace: "nowrap",
       }}
     >

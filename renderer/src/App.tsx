@@ -55887,6 +55887,13 @@ case "mobius":
   const surfaceLeftPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(leftWidth, 280) : leftWidth;
   const surfaceRightPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(rightWidth, 280) : rightWidth;
   const geometryRightPanelWidth = Math.min(rightWidth, geometrySidePanelWidth);
+  const geometryViewerControlsAvailableWidth =
+    viewportSize.width -
+    (isGeometryStackedLayout ? 0 : geometryCreateLeftPanelWidth) -
+    (showGeometryRightPanel && !isGeometryStackedLayout ? geometryRightPanelWidth : 0) -
+    42;
+  const geometryViewerControlsHaveRoom =
+    isGeometryStackedLayout || !showGeometryRightPanel || geometryViewerControlsAvailableWidth >= 720;
   const drawerBackdropStyle: React.CSSProperties = {
     position: "fixed",
     inset: 0,
@@ -75290,9 +75297,19 @@ case "mobius":
                 boxShadow: "inset 0 0 0 1px #b8c5d8",
                 order: isGeometryStackedLayout ? 1 : 0,
                 position: "relative",
+                display: isGeometryStackedLayout ? undefined : "grid",
+                gridTemplateColumns:
+                  !isGeometryStackedLayout && showGeometryRightPanel
+                    ? `minmax(0, 1fr) 6px ${geometryRightPanelWidth}px`
+                    : "minmax(0, 1fr)",
+                gridTemplateRows: !isGeometryStackedLayout ? "auto auto minmax(0, 1fr)" : undefined,
+                alignItems: "stretch",
               }}
             >
-              {geometryViewerControlsOpen && !geometryPanelsAsDrawers && !isPhoneLandscapeLayout && (
+              {geometryViewerControlsOpen &&
+                geometryViewerControlsHaveRoom &&
+                !geometryPanelsAsDrawers &&
+                !isPhoneLandscapeLayout && (
                 <ViewerControlsModeSelect
                   testId="geometry-viewer-controls-mode"
                   value={geometryViewerControlsDensity}
@@ -75306,19 +75323,66 @@ case "mobius":
                   style={{
                     position: "absolute",
                     top: 8,
-                    right: 10,
+                    right:
+                      showGeometryRightPanel && !isGeometryStackedLayout
+                        ? geometryRightPanelWidth + 24
+                        : 10,
                     zIndex: 60,
                   }}
                 />
               )}
-              {geometryViewerControlsOpen && !geometryPanelsAsDrawers && !isPhoneLandscapeLayout && (
+              {geometryViewerControlsOpen &&
+                !geometryViewerControlsHaveRoom &&
+                !geometryPanelsAsDrawers &&
+                !isPhoneLandscapeLayout && (
+                <div
+                  style={{
+                    width: "100%",
+                    maxWidth: "100%",
+                    boxSizing: "border-box",
+                    minHeight: 38,
+                    gridColumn: isGeometryStackedLayout ? undefined : "1",
+                    gridRow: isGeometryStackedLayout ? undefined : "1",
+                    borderBottom: "1px solid #9fb0c7",
+                    background: "linear-gradient(180deg, #f8fbff 0%, #f1f6fd 100%)",
+                    position: "relative",
+                  }}
+                >
+                  <ViewerControlsModeSelect
+                    testId="geometry-viewer-controls-mode"
+                    value={geometryViewerControlsDensity}
+                    onChange={(mode: ViewerControlsMode) => {
+                      if (mode === "hidden") {
+                        setGeometryViewerControlsOpen(false);
+                        return;
+                      }
+                      setGeometryViewerControlsDensity(mode);
+                    }}
+                    style={{
+                      position: "absolute",
+                      top: 6,
+                      right: 10,
+                      zIndex: 60,
+                    }}
+                  />
+                </div>
+              )}
+              {geometryViewerControlsOpen &&
+                geometryViewerControlsHaveRoom &&
+                !geometryPanelsAsDrawers &&
+                !isPhoneLandscapeLayout && (
               <ViewerControlsStrip
                 testId="geometry-viewer-controls-strip"
                 density={geometryViewerControlsDensity}
                 style={{
+                  width: "100%",
+                  maxWidth: "100%",
+                  boxSizing: "border-box",
+                  gridColumn: isGeometryStackedLayout ? undefined : "1",
+                  gridRow: isGeometryStackedLayout ? undefined : "1",
                   borderBottom: "1px solid #9fb0c7",
                   padding:
-                    geometryViewerControlsDensity === "compact" ? "3px 260px 3px 5px" : "5px 260px 5px 7px",
+                    geometryViewerControlsDensity === "compact" ? "3px 170px 3px 5px" : "5px 170px 5px 7px",
                   background: "linear-gradient(180deg, #f8fbff 0%, #f1f6fd 100%)",
                 }}
               >
@@ -75730,11 +75794,137 @@ case "mobius":
                 </ViewerControlGroup>
               </ViewerControlsStrip>
               )}
+              {geometryMode === "procedural" && !geometryPanelsAsDrawers && !isPhoneLandscapeLayout && (
+                <div
+                  style={{
+                    width: "100%",
+                    maxWidth: "100%",
+                    boxSizing: "border-box",
+                    gridColumn: isGeometryStackedLayout ? undefined : "1",
+                    gridRow: isGeometryStackedLayout ? undefined : "2",
+                  }}
+                >
+                <ContextualActionStrip
+                  testId="geometry-context-toolbar"
+                  placement="inline"
+                  pickOptions={
+                    [
+                      {
+                        id: "object",
+                        label: OBJECT_CONTEXT_COPY.geometry.chip,
+                        title: "Whole-object actions: open details, transform, or inspect history.",
+                      },
+                      { id: "face", label: "Face", title: "Pick a Geometry face, then use the matching actions." },
+                      { id: "edge", label: "Edge", title: "Pick a Geometry edge, then use the matching actions." },
+                      { id: "vertex", label: "Vertex", title: "Pick a Geometry vertex, then use the matching actions." },
+                    ] satisfies readonly ContextualActionStripOption<GeometryProbeSelectionMode>[]
+                  }
+                  activePick={geometryProbeSelectionMode}
+                  onPickChange={(pickMode) => {
+                    setGeometryProbeSelectionMode(pickMode);
+                    setGeometryProceduralHoverPick(null);
+                    setGeometryRightPanelTab("selection");
+                    if (pickMode === "face") setGeometryActiveOperationInputSlotId("source-face");
+                    if (pickMode === "edge") setGeometryActiveOperationInputSlotId("active-edge");
+                    if (pickMode === "vertex") setGeometryActiveOperationInputSlotId("active-vertex");
+                  }}
+                  selectionLabel={
+                    geometryProbeSelectionMode === "object"
+                      ? geometryContextToolbarSelectionLabel
+                      : geometryActiveSelectionSummary.emptyState ??
+                        geometryActiveSelectionSummary.eventLabel ??
+                        geometryContextToolbarSelectionLabel
+                  }
+                  selectionTestId="geometry-context-selection-label"
+                  previewLabel={geometryContextToolbarPreviewLabel}
+                  previewTestId="geometry-context-preview"
+                  applyPreviewTestId="geometry-context-apply-preview"
+                  confirmationLabel={geometryContextToolbarConfirmationLabel}
+                  confirmationTestId="geometry-context-confirmation"
+                  lastCommandLabel={geometryContextToolbarLastCommandLabel}
+                  lastCommandTestId="geometry-context-last-command"
+                  canUndoLast={geometryCanUndoLatestAction}
+                  onUndoLast={handleUndoLatestGeometryHistoryStep}
+                  undoTestId="geometry-context-undo-last"
+                  onOpenHistory={handleOpenGeometryContextHistory}
+                  openHistoryTestId="geometry-context-open-history"
+                  canRunPrimaryAction={geometryContextCanRunPrimaryAction}
+                  onPrimaryAction={handleRunGeometryContextPrimaryAction}
+                  commandPreviewOverlaysVisible={commandPreviewOverlaysVisible}
+                  commandPreviewHighVisibility={commandPreviewHighVisibility}
+                  onCommandPreviewOverlaysVisibleChange={setCommandPreviewOverlaysVisible}
+                  commandPreviewOverlayToggleTestId="geometry-command-preview-overlays-toggle"
+                  commandPreviewLegendTestId="geometry-command-preview-legend"
+                  getPickTestId={(pickMode) => `geometry-context-pick-${pickMode}`}
+                  zIndex={17}
+                >
+                  {geometryProbeSelectionMode === "object" && (
+                    <>
+                      <ContextualActionStripAction
+                        testId="geometry-context-open-object"
+                        onClick={() => {
+                          if (!geometrySelectedSceneObject) {
+                            setGeometryCreateActionStatus("Select an object first.");
+                            return;
+                          }
+                          setGeometrySelectedObjectId(geometrySelectedSceneObject.id);
+                          setGeometryMode("procedural");
+                          setGeometryProceduralPanelTab("object");
+                          setGeometryRightPanelTab("selection");
+                          accentGeometryMeshInfo(geometrySelectedSceneObject.id);
+                          setGeometryCreateActionStatus(`Object details open for ${geometrySelectedSceneObject.name}.`);
+                        }}
+                        disabled={!geometrySelectedSceneObject}
+                        disabledReason="Select an object to open its details."
+                      >
+                        {OBJECT_CONTEXT_COPY.geometry.actions[0]}
+                      </ContextualActionStripAction>
+                      <ContextualActionStripAction
+                        testId="geometry-context-transform"
+                        onClick={() => handleGeometryWorkflowStepClick("transform")}
+                        disabled={!geometrySelectedSceneObject}
+                        disabledReason="Select an object to transform it."
+                      >
+                        {OBJECT_CONTEXT_COPY.geometry.actions[1]}
+                      </ContextualActionStripAction>
+                      <ContextualActionStripAction
+                        testId="geometry-context-history"
+                        onClick={() => {
+                          setGeometryMode("procedural");
+                          setGeometryProceduralPanelTab("object");
+                          setGeometryRightPanelTab("actions");
+                          setGeometryCreateActionStatus("History is open in the Geometry inspector.");
+                        }}
+                        disabled={!geometrySelectedSceneObject}
+                        disabledReason="Select an object to open its history."
+                      >
+                        {OBJECT_CONTEXT_COPY.geometry.actions[2]}
+                      </ContextualActionStripAction>
+                    </>
+                  )}
+                  {geometryProbeSelectionMode === "face" && (
+                    <>
+                      <ContextualRenderedActionStripButtons actions={geometryContextualStripEntityActions} />
+                    </>
+                  )}
+                  {geometryProbeSelectionMode === "edge" && (
+                    <>
+                      <ContextualRenderedActionStripButtons actions={geometryContextualStripEntityActions} />
+                    </>
+                  )}
+                  {geometryProbeSelectionMode === "vertex" && (
+                    <>
+                      <ContextualRenderedActionStripButtons actions={geometryContextualStripEntityActions} />
+                    </>
+                  )}
+                </ContextualActionStrip>
+                </div>
+              )}
               <div
                 style={{
                   flex: 1,
                   minHeight: isGeometryStackedLayout ? responsiveLayout.viewerMinHeight : 0,
-                  display: "flex",
+                  display: isGeometryStackedLayout ? "flex" : "contents",
                   flexDirection: isGeometryStackedLayout ? "column" : "row",
                   alignItems: "stretch",
                 }}
@@ -75747,6 +75937,8 @@ case "mobius":
                     flex: 1,
                     minHeight: 0,
                     minWidth: 0,
+                    gridColumn: isGeometryStackedLayout ? undefined : "1",
+                    gridRow: isGeometryStackedLayout ? undefined : "3",
                     overflow: "hidden",
                     background: "#f8fbff",
                     position: "relative",
@@ -75769,121 +75961,6 @@ case "mobius":
                     >
                       Show controls
                     </button>
-                  )}
-                  {geometryMode === "procedural" && !geometryPanelsAsDrawers && (
-                    <ContextualActionStrip
-                      testId="geometry-context-toolbar"
-                      pickOptions={
-                        [
-                          {
-                            id: "object",
-                            label: OBJECT_CONTEXT_COPY.geometry.chip,
-                            title: "Whole-object actions: open details, transform, or inspect history.",
-                          },
-                          { id: "face", label: "Face", title: "Pick a Geometry face, then use the matching actions." },
-                          { id: "edge", label: "Edge", title: "Pick a Geometry edge, then use the matching actions." },
-                          { id: "vertex", label: "Vertex", title: "Pick a Geometry vertex, then use the matching actions." },
-                        ] satisfies readonly ContextualActionStripOption<GeometryProbeSelectionMode>[]
-                      }
-                      activePick={geometryProbeSelectionMode}
-                      onPickChange={(pickMode) => {
-                        setGeometryProbeSelectionMode(pickMode);
-                        setGeometryProceduralHoverPick(null);
-                        setGeometryRightPanelTab("selection");
-                        if (pickMode === "face") setGeometryActiveOperationInputSlotId("source-face");
-                        if (pickMode === "edge") setGeometryActiveOperationInputSlotId("active-edge");
-                        if (pickMode === "vertex") setGeometryActiveOperationInputSlotId("active-vertex");
-                      }}
-                    selectionLabel={
-                      geometryProbeSelectionMode === "object"
-                        ? geometryContextToolbarSelectionLabel
-                        : geometryActiveSelectionSummary.emptyState ??
-                          geometryActiveSelectionSummary.eventLabel ??
-                          geometryContextToolbarSelectionLabel
-                    }
-                      selectionTestId="geometry-context-selection-label"
-                      previewLabel={geometryContextToolbarPreviewLabel}
-                      previewTestId="geometry-context-preview"
-                      applyPreviewTestId="geometry-context-apply-preview"
-                      confirmationLabel={geometryContextToolbarConfirmationLabel}
-                      confirmationTestId="geometry-context-confirmation"
-                      lastCommandLabel={geometryContextToolbarLastCommandLabel}
-                      lastCommandTestId="geometry-context-last-command"
-                      canUndoLast={geometryCanUndoLatestAction}
-                      onUndoLast={handleUndoLatestGeometryHistoryStep}
-                      undoTestId="geometry-context-undo-last"
-                      onOpenHistory={handleOpenGeometryContextHistory}
-                      openHistoryTestId="geometry-context-open-history"
-                      canRunPrimaryAction={geometryContextCanRunPrimaryAction}
-                      onPrimaryAction={handleRunGeometryContextPrimaryAction}
-                      commandPreviewOverlaysVisible={commandPreviewOverlaysVisible}
-                      commandPreviewHighVisibility={commandPreviewHighVisibility}
-                      onCommandPreviewOverlaysVisibleChange={setCommandPreviewOverlaysVisible}
-                      commandPreviewOverlayToggleTestId="geometry-command-preview-overlays-toggle"
-                      commandPreviewLegendTestId="geometry-command-preview-legend"
-                      getPickTestId={(pickMode) => `geometry-context-pick-${pickMode}`}
-                      zIndex={17}
-                    >
-                      {geometryProbeSelectionMode === "object" && (
-                        <>
-                          <ContextualActionStripAction
-                            testId="geometry-context-open-object"
-                            onClick={() => {
-                              if (!geometrySelectedSceneObject) {
-                                setGeometryCreateActionStatus("Select an object first.");
-                                return;
-                              }
-                              setGeometrySelectedObjectId(geometrySelectedSceneObject.id);
-                              setGeometryMode("procedural");
-                              setGeometryProceduralPanelTab("object");
-                              setGeometryRightPanelTab("selection");
-                              accentGeometryMeshInfo(geometrySelectedSceneObject.id);
-                              setGeometryCreateActionStatus(`Object details open for ${geometrySelectedSceneObject.name}.`);
-                            }}
-                            disabled={!geometrySelectedSceneObject}
-                            disabledReason="Select an object to open its details."
-                          >
-                            {OBJECT_CONTEXT_COPY.geometry.actions[0]}
-                          </ContextualActionStripAction>
-                          <ContextualActionStripAction
-                            testId="geometry-context-transform"
-                            onClick={() => handleGeometryWorkflowStepClick("transform")}
-                            disabled={!geometrySelectedSceneObject}
-                            disabledReason="Select an object to transform it."
-                          >
-                            {OBJECT_CONTEXT_COPY.geometry.actions[1]}
-                          </ContextualActionStripAction>
-                          <ContextualActionStripAction
-                            testId="geometry-context-history"
-                            onClick={() => {
-                              setGeometryMode("procedural");
-                              setGeometryProceduralPanelTab("object");
-                              setGeometryRightPanelTab("actions");
-                              setGeometryCreateActionStatus("History is open in the Geometry inspector.");
-                            }}
-                            disabled={!geometrySelectedSceneObject}
-                            disabledReason="Select an object to open its history."
-                          >
-                            {OBJECT_CONTEXT_COPY.geometry.actions[2]}
-                          </ContextualActionStripAction>
-                        </>
-                      )}
-                      {geometryProbeSelectionMode === "face" && (
-                        <>
-                          <ContextualRenderedActionStripButtons actions={geometryContextualStripEntityActions} />
-                        </>
-                      )}
-                      {geometryProbeSelectionMode === "edge" && (
-                        <>
-                          <ContextualRenderedActionStripButtons actions={geometryContextualStripEntityActions} />
-                        </>
-                      )}
-                      {geometryProbeSelectionMode === "vertex" && (
-                        <>
-                          <ContextualRenderedActionStripButtons actions={geometryContextualStripEntityActions} />
-                        </>
-                      )}
-                    </ContextualActionStrip>
                   )}
                   {selectionEventStatus?.workspace === "Geometry" && geometryMode === "procedural" && (
                     <div
@@ -77110,7 +77187,16 @@ case "mobius":
                   </div>
                 )}
                 </div>
-                {showGeometryRightPanel && !isGeometryStackedLayout && <div onMouseDown={startDragRight} style={splitterStyle} />}
+                {showGeometryRightPanel && !isGeometryStackedLayout && (
+                  <div
+                    onMouseDown={startDragRight}
+                    style={{
+                      ...splitterStyle,
+                      gridColumn: "2",
+                      gridRow: "1 / 4",
+                    }}
+                  />
+                )}
                 {showGeometryRightPanel && (
                   <div
                     data-testid="geometry-right-panel"
@@ -77122,6 +77208,8 @@ case "mobius":
                       overflowY: "auto",
                       order: isGeometryStackedLayout ? 3 : 0,
                       borderLeft: isGeometryStackedLayout ? "1px solid #d9e2ef" : undefined,
+                      gridColumn: isGeometryStackedLayout ? undefined : "3",
+                      gridRow: isGeometryStackedLayout ? undefined : "1 / 4",
                       ...geometryRightDrawerStyle,
                     }}
                   >
