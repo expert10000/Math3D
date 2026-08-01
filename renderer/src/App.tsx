@@ -74,9 +74,12 @@ import {
 import { buildContextualSelectionState } from "./selection/contextualSelectionState";
 import {
   applyContextualViewportPreviewAccessibility,
-  applyContextualViewportPreviewOverlayAccessibility,
+  applyContextualViewportPreviewOverlayContract,
   buildContextualViewportPreview,
+  CONTEXTUAL_VIEWPORT_PREVIEW_TIMING,
   formatContextualViewportPreviewCounts,
+  contextualViewportPreviewRoleColor,
+  contextualViewportPreviewRoleOpacity,
   type ContextualViewportPreview,
   type ContextualViewportPreviewOperation,
 } from "./selection/contextualViewportPreview";
@@ -3030,7 +3033,6 @@ const GEOMETRY_VISUAL_LANGUAGE = {
   selection: 0x2563eb,
   label: 0x0f172a,
 } as const;
-const CONTEXTUAL_APPLIED_PREVIEW_DURATION_MS = 1800;
 type AppliedContextualViewportPreview = {
   workspace: ActiveSelectionWorkspace;
   preview: ContextualViewportPreview;
@@ -10675,7 +10677,7 @@ const App: React.FC = () => {
       appliedContextualViewportPreviewTimerRef.current = window.setTimeout(() => {
         setAppliedContextualViewportPreview((current) => (current?.key === key ? null : current));
         appliedContextualViewportPreviewTimerRef.current = null;
-      }, CONTEXTUAL_APPLIED_PREVIEW_DURATION_MS);
+      }, CONTEXTUAL_VIEWPORT_PREVIEW_TIMING.appliedDurationMs);
     },
     []
   );
@@ -10685,7 +10687,10 @@ const App: React.FC = () => {
   }, []);
   useEffect(() => {
     if (!contextualActionPulseId) return;
-    const timer = window.setTimeout(() => setContextualActionPulseId(null), 1400);
+    const timer = window.setTimeout(
+      () => setContextualActionPulseId(null),
+      CONTEXTUAL_VIEWPORT_PREVIEW_TIMING.actionPulseMs
+    );
     return () => window.clearTimeout(timer);
   }, [contextualActionPulseId]);
   useEffect(() => {
@@ -16725,7 +16730,7 @@ const App: React.FC = () => {
         geometryTopologyEditFeedbackTimerRef.current = window.setTimeout(() => {
           setGeometryTopologyEditFeedback((current) => (current?.id === topologyFeedback.id ? null : current));
           geometryTopologyEditFeedbackTimerRef.current = null;
-        }, CONTEXTUAL_APPLIED_PREVIEW_DURATION_MS);
+        }, CONTEXTUAL_VIEWPORT_PREVIEW_TIMING.appliedDurationMs);
         if (retainedSelectionPick && retainedSelectionTarget) {
           const slotId =
             retainedSelectionTarget.slotId ??
@@ -20498,7 +20503,7 @@ const App: React.FC = () => {
       {
         positions,
         indices,
-        color: 0x14b8a6,
+        color: contextualViewportPreviewRoleColor("preview"),
         opacity: 0.28,
         doubleSided: true,
       },
@@ -20531,7 +20536,7 @@ const App: React.FC = () => {
       groups.push({
         positions,
         indices,
-        color: 0x22c55e,
+        color: contextualViewportPreviewRoleColor("applied"),
         opacity: 0.36,
         doubleSided: true,
       });
@@ -20592,10 +20597,13 @@ const App: React.FC = () => {
   const geometryAppliedContextualViewportPreview =
     appliedContextualViewportPreview?.workspace === "Geometry" ? appliedContextualViewportPreview : null;
   const geometryAppliedContextualViewportPreviewOverlays = commandPreviewOverlaysVisible
-    ? applyContextualViewportPreviewOverlayAccessibility(
+    ? applyContextualViewportPreviewOverlayContract(
         geometryAppliedContextualViewportPreview?.preview.overlays,
-        commandPreviewHighVisibility,
-        geometryAppliedContextualViewportPreview?.label ?? "Geometry command result"
+        {
+          phase: "applied",
+          highVisibility: commandPreviewHighVisibility,
+          fallbackLabel: geometryAppliedContextualViewportPreview?.label ?? "Geometry command result",
+        }
       )
     : null;
   const geometryProceduralViewerOverlayMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
@@ -20720,7 +20728,7 @@ const App: React.FC = () => {
     if (geometryMode !== "procedural") return null;
     if (!commandPreviewOverlaysVisible) return null;
     const groups: OverlayPolylineGroup[] = [];
-    const previewColor = 0x0f766e;
+    const previewColor = contextualViewportPreviewRoleColor("preview");
     const selectedFace =
       geometryProbeSelectionDetails?.mode === "face" && geometryProbeSelectionDetails.faceVertices
         ? geometryProbeSelectionDetails
@@ -20773,7 +20781,7 @@ const App: React.FC = () => {
       if (insetLines.length) {
         groups.push({
           lines: insetLines,
-          color: 0xf59e0b,
+          color: contextualViewportPreviewRoleColor("selected"),
           opacity: 0.92,
           radiusWorld: clampNumber(maxSpan * 0.01, 0.01, 0.028),
         });
@@ -20802,7 +20810,7 @@ const App: React.FC = () => {
         });
         groups.push({
           lines: [[geometryAdd(splitPoint, geometryScale(side, -tickSize * 0.68)), geometryAdd(splitPoint, geometryScale(side, tickSize * 0.68))]],
-          color: 0xf59e0b,
+          color: contextualViewportPreviewRoleColor("selected"),
           opacity: 0.96,
           radiusWorld: clampNumber(edgeLength * 0.014, 0.01, 0.024),
         });
@@ -20856,13 +20864,13 @@ const App: React.FC = () => {
     return [
       {
         points: [splitPoint],
-        color: 0xfffbeb,
+        color: contextualViewportPreviewRoleColor("selected", "fillColor"),
         size: 0.18,
         opacity: 0.78,
       },
       {
         points: [splitPoint],
-        color: 0xf59e0b,
+        color: contextualViewportPreviewRoleColor("selected"),
         size: 0.12,
         opacity: 0.98,
       },
@@ -20879,7 +20887,10 @@ const App: React.FC = () => {
     if (geometryMode !== "procedural" || !geometryViewportCommandPreviewLabel) return null;
     if (!commandPreviewOverlaysVisible) return null;
     const labels: OverlayLabelSet["labels"] = [];
-    const pushLabel = (position: GeometryProbePoint | null | undefined, color = 0x0f766e) => {
+    const pushLabel = (
+      position: GeometryProbePoint | null | undefined,
+      color = contextualViewportPreviewRoleColor("preview", "darkColor")
+    ) => {
       if (!position) return;
       labels.push({
         text: `Preview ${geometryViewportCommandPreviewLabel}`,
@@ -20946,15 +20957,18 @@ const App: React.FC = () => {
   ]);
   const geometryDirectEditAccessiblePreviewOverlays = useMemo(
     () =>
-      applyContextualViewportPreviewOverlayAccessibility(
+      applyContextualViewportPreviewOverlayContract(
         {
           meshGroups: geometryDirectEditPreviewFaceMeshGroups,
           pointSets: geometryDirectEditPreviewPointSets,
           polylineGroups: geometryDirectEditPreviewOverlayGroups,
           labelSets: geometryDirectEditPreviewLabelSets,
         },
-        commandPreviewHighVisibility,
-        geometryViewportCommandPreviewLabel ?? "Geometry command preview"
+        {
+          phase: "preview",
+          highVisibility: commandPreviewHighVisibility,
+          fallbackLabel: geometryViewportCommandPreviewLabel ?? "Geometry command preview",
+        }
       ),
     [
       commandPreviewHighVisibility,
@@ -33429,7 +33443,7 @@ const App: React.FC = () => {
     if (!surfaceMeshTopologyFeedback) return;
     const timeout = window.setTimeout(
       () => setSurfaceMeshTopologyFeedback(null),
-      CONTEXTUAL_APPLIED_PREVIEW_DURATION_MS
+      CONTEXTUAL_VIEWPORT_PREVIEW_TIMING.appliedDurationMs
     );
     return () => window.clearTimeout(timeout);
   }, [surfaceMeshTopologyFeedback]);
@@ -33533,7 +33547,7 @@ const App: React.FC = () => {
       groups.push({
         positions,
         indices,
-        color: 0x60a5fa,
+        color: contextualViewportPreviewRoleColor("preview"),
         opacity: 0.2,
         doubleSided: true,
       });
@@ -33853,7 +33867,7 @@ const App: React.FC = () => {
     return [
       {
         lines: surfaceMeshTopologyGhostFeedback.edgeLines,
-        color: 0x60a5fa,
+        color: contextualViewportPreviewRoleColor("preview"),
         opacity: 0.78,
         radiusWorld: 0.018,
       },
@@ -33880,7 +33894,11 @@ const App: React.FC = () => {
     const mesh = surfaceMeshTopologyViewerMesh;
     const lift = (point: GeometryProbePoint, amount = 0.034): GeometryProbePoint => ({ x: point.x, y: point.y + amount, z: point.z });
     const labelSets: OverlayLabelSet[] = [];
-    const addLabel = (text: string, position: GeometryProbePoint, color = 0x0f766e) => {
+    const addLabel = (
+      text: string,
+      position: GeometryProbePoint,
+      color = contextualViewportPreviewRoleColor("preview", "darkColor")
+    ) => {
       labelSets.push({
         size: 0.76,
         labels: [
@@ -33925,11 +33943,11 @@ const App: React.FC = () => {
       return {
         meshGroups: null,
         pointSets: [
-          { points: [center], color: 0xf0fdfa, size: 0.28, opacity: 0.7 },
-          { points: [center], color: 0x14b8a6, size: 0.18, opacity: 0.98 },
+          { points: [center], color: contextualViewportPreviewRoleColor("preview", "fillColor"), size: 0.28, opacity: 0.7 },
+          { points: [center], color: contextualViewportPreviewRoleColor("preview"), size: 0.18, opacity: 0.98 },
         ],
         polylineGroups: lines.length
-          ? [{ lines, color: 0x14b8a6, opacity: 0.96, radiusWorld: 0.022 }]
+          ? [{ lines, color: contextualViewportPreviewRoleColor("preview"), opacity: 0.96, radiusWorld: 0.022 }]
           : null,
         labelSets,
       };
@@ -33967,21 +33985,30 @@ const App: React.FC = () => {
       const target =
         surfaceMeshTopologyCollapseMode === "keep-a" ? a : surfaceMeshTopologyCollapseMode === "keep-b" ? b : center;
       const liftedTarget = lift(target, tickSize * 0.22);
-      addLabel(`Preview collapse ${edgeA}-${edgeB}`, geometryAdd(liftedTarget, geometryScale(side, tickSize * 0.75)), 0x7c3aed);
+      addLabel(
+        `Preview collapse ${edgeA}-${edgeB}`,
+        geometryAdd(liftedTarget, geometryScale(side, tickSize * 0.75)),
+        contextualViewportPreviewRoleColor("removed", "darkColor")
+      );
       return {
         meshGroups: null,
         pointSets: [
-          { points: [liftedTarget], color: 0xf5f3ff, size: 0.28, opacity: 0.72 },
-          { points: [liftedTarget], color: 0x8b5cf6, size: 0.18, opacity: 0.98 },
+          { points: [liftedTarget], color: contextualViewportPreviewRoleColor("removedFaded", "fillColor"), size: 0.28, opacity: 0.72 },
+          { points: [liftedTarget], color: contextualViewportPreviewRoleColor("removed", "darkColor"), size: 0.18, opacity: 0.98 },
         ],
         polylineGroups: [
-          { lines: [[lift(a), lift(b)]], color: 0xef4444, opacity: 0.34, radiusWorld: clampNumber(edgeLength * 0.018, 0.012, 0.035) },
+          {
+            lines: [[lift(a), lift(b)]],
+            color: contextualViewportPreviewRoleColor("removed"),
+            opacity: contextualViewportPreviewRoleOpacity("removedFaded"),
+            radiusWorld: clampNumber(edgeLength * 0.018, 0.012, 0.035),
+          },
           {
             lines: [
               [geometryAdd(liftedTarget, geometryScale(side, -tickSize)), geometryAdd(liftedTarget, geometryScale(side, tickSize))],
               [geometryAdd(liftedTarget, geometryScale(direction, -tickSize)), geometryAdd(liftedTarget, geometryScale(direction, tickSize))],
             ],
-            color: 0x8b5cf6,
+            color: contextualViewportPreviewRoleColor("removed", "darkColor"),
             opacity: 0.9,
             radiusWorld: clampNumber(edgeLength * 0.01, 0.008, 0.02),
           },
@@ -33999,14 +34026,22 @@ const App: React.FC = () => {
       const p2 = geometryAdd(b, geometryScale(side, -amount));
       const p3 = geometryAdd(a, geometryScale(side, -amount));
       const positions = [p0, p1, p2, p3].flatMap((point) => [point.x, point.y, point.z]);
-      addLabel(`Preview bevel ${edgeA}-${edgeB}`, geometryAdd(center, geometryScale(side, amount * 1.45)), 0x0f766e);
+      addLabel(`Preview bevel ${edgeA}-${edgeB}`, geometryAdd(center, geometryScale(side, amount * 1.45)));
       return {
-        meshGroups: [{ positions, indices: [0, 1, 2, 0, 2, 3], color: 0x14b8a6, opacity: 0.3, doubleSided: true }],
+        meshGroups: [
+          {
+            positions,
+            indices: [0, 1, 2, 0, 2, 3],
+            color: contextualViewportPreviewRoleColor("preview"),
+            opacity: 0.3,
+            doubleSided: true,
+          },
+        ],
         pointSets: null,
         polylineGroups: [
           {
             lines: [[p0, p1], [p1, p2], [p2, p3], [p3, p0]],
-            color: 0x14b8a6,
+            color: contextualViewportPreviewRoleColor("preview"),
             opacity: 0.92,
             radiusWorld: clampNumber(edgeLength * 0.012, 0.01, 0.024),
           },
@@ -34014,23 +34049,27 @@ const App: React.FC = () => {
         labelSets,
       };
     }
-    addLabel(`Preview split ${edgeA}-${edgeB}`, geometryAdd(splitPoint, geometryScale(side, tickSize * 0.95)), 0xc2410c);
+    addLabel(
+      `Preview split ${edgeA}-${edgeB}`,
+      geometryAdd(splitPoint, geometryScale(side, tickSize * 0.95)),
+      contextualViewportPreviewRoleColor("selected", "darkColor")
+    );
     return {
       meshGroups: null,
       pointSets: [
-        { points: [splitPoint], color: 0xfff7ed, size: 0.32, opacity: 0.76 },
-        { points: [splitPoint], color: 0xf97316, size: 0.22, opacity: 0.98 },
+        { points: [splitPoint], color: contextualViewportPreviewRoleColor("selected", "fillColor"), size: 0.32, opacity: 0.76 },
+        { points: [splitPoint], color: contextualViewportPreviewRoleColor("selected"), size: 0.22, opacity: 0.98 },
       ],
       polylineGroups: [
         {
           lines: [[lift(a), lift(splitPoint)], [lift(splitPoint), lift(b)]],
-          color: 0xf97316,
+          color: contextualViewportPreviewRoleColor("selected"),
           opacity: 0.96,
           radiusWorld: clampNumber(edgeLength * 0.014, 0.012, 0.03),
         },
         {
           lines: [[geometryAdd(lift(splitPoint), geometryScale(side, -tickSize)), geometryAdd(lift(splitPoint), geometryScale(side, tickSize))]],
-          color: 0xfacc15,
+          color: contextualViewportPreviewRoleColor("preview", "fillColor"),
           opacity: 0.95,
           radiusWorld: clampNumber(edgeLength * 0.011, 0.008, 0.022),
         },
@@ -34059,7 +34098,7 @@ const App: React.FC = () => {
     return [
       {
         lines: surfaceMeshTopologyFeedback.edgeLines,
-        color: 0x22c55e,
+        color: contextualViewportPreviewRoleColor("applied"),
         opacity: 0.96,
         radiusWorld: 0.028,
       },
@@ -34089,18 +34128,24 @@ const App: React.FC = () => {
   const meshAppliedContextualViewportPreview =
     appliedContextualViewportPreview?.workspace === "Mesh" ? appliedContextualViewportPreview : null;
   const meshAppliedContextualViewportPreviewOverlays = commandPreviewOverlaysVisible
-    ? applyContextualViewportPreviewOverlayAccessibility(
+    ? applyContextualViewportPreviewOverlayContract(
         meshAppliedContextualViewportPreview?.preview.overlays,
-        commandPreviewHighVisibility,
-        meshAppliedContextualViewportPreview?.label ?? "Mesh command result"
+        {
+          phase: "applied",
+          highVisibility: commandPreviewHighVisibility,
+          fallbackLabel: meshAppliedContextualViewportPreview?.label ?? "Mesh command result",
+        }
       )
     : null;
   const surfaceMeshAccessibleCommandPreviewOverlays = useMemo(
     () =>
-      applyContextualViewportPreviewOverlayAccessibility(
+      applyContextualViewportPreviewOverlayContract(
         surfaceMeshCommandPreviewOverlays,
-        commandPreviewHighVisibility,
-        "Mesh command preview"
+        {
+          phase: "preview",
+          highVisibility: commandPreviewHighVisibility,
+          fallbackLabel: "Mesh command preview",
+        }
       ),
     [commandPreviewHighVisibility, surfaceMeshCommandPreviewOverlays]
   );
@@ -60871,6 +60916,7 @@ case "mobius":
                           : 252
                         : 10
                     }
+                    zIndex={showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && meshViewerControlsOpen ? 70 : undefined}
                   >
                     {surfaceMeshTopologyPickMode === "face" && (
                       <>

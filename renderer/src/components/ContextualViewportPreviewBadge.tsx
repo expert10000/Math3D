@@ -1,5 +1,9 @@
 import type { CSSProperties, KeyboardEvent } from "react";
-import type { ContextualViewportPreview } from "../selection/contextualViewportPreview";
+import {
+  CONTEXTUAL_VIEWPORT_PREVIEW_ROLE_STYLES,
+  formatContextualViewportPreviewBadgeLabel,
+  type ContextualViewportPreview,
+} from "../selection/contextualViewportPreview";
 
 type ContextualViewportPreviewBadgeProps = {
   readonly testId: string;
@@ -15,6 +19,8 @@ type ContextualViewportPreviewBadgeProps = {
   readonly onHoverStart?: () => void;
   readonly onHoverEnd?: () => void;
 };
+
+const colorToCss = (color: number) => `#${color.toString(16).padStart(6, "0")}`;
 
 const previewBadgeStyle = ({
   top,
@@ -40,8 +46,8 @@ const previewBadgeStyle = ({
   maxWidth,
   border: highVisibility
     ? state === "applied"
-      ? "2px solid #15803d"
-      : "2px solid #0369a1"
+      ? `2px solid ${colorToCss(CONTEXTUAL_VIEWPORT_PREVIEW_ROLE_STYLES.applied.darkColor)}`
+      : `2px solid ${colorToCss(CONTEXTUAL_VIEWPORT_PREVIEW_ROLE_STYLES.preview.darkColor)}`
     : state === "applied"
       ? "1px solid #86efac"
       : "1px solid #99f6e4",
@@ -53,7 +59,13 @@ const previewBadgeStyle = ({
     : state === "applied"
       ? "rgba(240,253,244,0.96)"
       : "rgba(240,253,250,0.94)",
-  color: highVisibility ? "#0f172a" : state === "applied" ? "#166534" : "#0f766e",
+  color: highVisibility
+    ? "#0f172a"
+    : colorToCss(
+        state === "applied"
+          ? CONTEXTUAL_VIEWPORT_PREVIEW_ROLE_STYLES.applied.darkColor
+          : CONTEXTUAL_VIEWPORT_PREVIEW_ROLE_STYLES.preview.darkColor
+      ),
   padding: highVisibility ? "7px 10px" : "6px 9px",
   fontSize: highVisibility ? 12 : 11,
   fontWeight: highVisibility ? 900 : 800,
@@ -127,7 +139,10 @@ export function ContextualViewportPreviewBadge({
       style={previewBadgeStyle({ top, right, zIndex, maxWidth, clickable, state, highVisibility })}
     >
       <div>
-        {state === "applied" ? `Applied: ${appliedLabel ?? preview.label}` : `Viewport preview: ${preview.label}`}
+        {formatContextualViewportPreviewBadgeLabel({
+          phase: state,
+          label: state === "applied" ? appliedLabel ?? preview.label : preview.label,
+        })}
       </div>
       {highVisibility && (
         <div

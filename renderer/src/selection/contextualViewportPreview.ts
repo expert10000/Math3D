@@ -6,6 +6,52 @@ import type {
 } from "../components/SurfaceViewer";
 
 export type ContextualViewportPreviewWorkspace = "Mesh" | "Geometry";
+export type ContextualViewportPreviewPhase = "preview" | "applied";
+export type ContextualViewportPreviewRole = "preview" | "selected" | "applied" | "removed" | "removedFaded" | "label";
+
+export const CONTEXTUAL_VIEWPORT_PREVIEW_TIMING = {
+  appliedDurationMs: 1800,
+  actionPulseMs: 1400,
+} as const;
+
+export const CONTEXTUAL_VIEWPORT_PREVIEW_ROLE_STYLES = {
+  preview: {
+    color: 0x38bdf8,
+    darkColor: 0x0369a1,
+    fillColor: 0xe0f2fe,
+    opacity: 0.78,
+  },
+  selected: {
+    color: 0xf97316,
+    darkColor: 0xc2410c,
+    fillColor: 0xfff7ed,
+    opacity: 0.96,
+  },
+  applied: {
+    color: 0x22c55e,
+    darkColor: 0x166534,
+    fillColor: 0xdcfce7,
+    opacity: 0.96,
+  },
+  removed: {
+    color: 0xef4444,
+    darkColor: 0xb91c1c,
+    fillColor: 0xfee2e2,
+    opacity: 0.82,
+  },
+  removedFaded: {
+    color: 0x64748b,
+    darkColor: 0x334155,
+    fillColor: 0xe2e8f0,
+    opacity: 0.34,
+  },
+  label: {
+    color: 0x0f172a,
+    darkColor: 0x0f172a,
+    fillColor: 0xffffff,
+    opacity: 0.98,
+  },
+} as const;
 
 export type ContextualViewportPreviewOperation =
   | "Subdivide"
@@ -41,6 +87,14 @@ export type ContextualViewportPreview = {
   readonly overlayCount: number;
   readonly hasOverlay: boolean;
 };
+
+export const contextualViewportPreviewRoleColor = (
+  role: ContextualViewportPreviewRole,
+  tone: "color" | "darkColor" | "fillColor" = "color"
+): number => CONTEXTUAL_VIEWPORT_PREVIEW_ROLE_STYLES[role][tone];
+
+export const contextualViewportPreviewRoleOpacity = (role: ContextualViewportPreviewRole): number =>
+  CONTEXTUAL_VIEWPORT_PREVIEW_ROLE_STYLES[role].opacity;
 
 export function countContextualViewportPreviewOverlays(overlays: ContextualViewportPreviewOverlays): number {
   const meshCount = overlays.meshGroups?.length ?? 0;
@@ -102,6 +156,61 @@ export function applyContextualViewportPreviewAccessibility(
     overlayCount: countContextualViewportPreviewOverlays(overlays),
     hasOverlay: countContextualViewportPreviewOverlays(overlays) > 0,
   };
+}
+
+export function formatContextualViewportPreviewBadgeLabel({
+  phase,
+  label,
+}: {
+  readonly phase: ContextualViewportPreviewPhase;
+  readonly label: string;
+}): string {
+  return phase === "applied" ? `Applied: ${label}` : `Viewport preview: ${label}`;
+}
+
+export function applyContextualViewportPreviewOverlayContract(
+  overlays: ContextualViewportPreviewOverlays | null | undefined,
+  {
+    phase = "preview",
+    highVisibility = false,
+    fallbackLabel = "command preview",
+  }: {
+    readonly phase?: ContextualViewportPreviewPhase;
+    readonly highVisibility?: boolean;
+    readonly fallbackLabel?: string;
+  } = {}
+): ContextualViewportPreviewOverlays | null {
+  if (!overlays) return null;
+  const phaseStyled =
+    phase === "applied"
+      ? {
+          meshGroups: overlays.meshGroups?.map((group) => ({
+            ...group,
+            color: contextualViewportPreviewRoleColor("applied"),
+            opacity: Math.max(group.opacity ?? 0, 0.38),
+          })),
+          pointSets: overlays.pointSets?.map((set) => ({
+            ...set,
+            color: contextualViewportPreviewRoleColor("applied"),
+            opacity: Math.max(set.opacity ?? 0, contextualViewportPreviewRoleOpacity("applied")),
+          })),
+          polylineGroups: overlays.polylineGroups?.map((group) => ({
+            ...group,
+            color: contextualViewportPreviewRoleColor("applied"),
+            opacity: Math.max(group.opacity ?? 0, contextualViewportPreviewRoleOpacity("applied")),
+          })),
+          labelSets: overlays.labelSets?.map((set) => ({
+            ...set,
+            labels: set.labels.map((label) => ({
+              ...label,
+              text: label.text.match(/^Applied\b/i) ? label.text : `Applied: ${label.text.replace(/^Preview\s*:?\s*/i, "")}`,
+              color: contextualViewportPreviewRoleColor("applied", "darkColor"),
+              opacity: Math.max(label.opacity ?? 0, contextualViewportPreviewRoleOpacity("applied")),
+            })),
+          })),
+        }
+      : overlays;
+  return applyContextualViewportPreviewOverlayAccessibility(phaseStyled, highVisibility, fallbackLabel);
 }
 
 export function applyContextualViewportPreviewOverlayAccessibility(

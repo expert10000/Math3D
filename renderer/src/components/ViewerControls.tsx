@@ -13,6 +13,7 @@ export const viewerControlStripStyle: CSSProperties = {
   boxSizing: "border-box",
   width: "100%",
   overflow: "visible",
+  pointerEvents: "none",
 };
 
 export const viewerControlGroupStyle: CSSProperties = {
@@ -28,6 +29,7 @@ export const viewerControlGroupStyle: CSSProperties = {
   borderRadius: 7,
   background: "rgba(255, 255, 255, 0.92)",
   boxSizing: "border-box",
+  pointerEvents: "auto",
 };
 
 export const viewerControlLabelStyle: CSSProperties = {

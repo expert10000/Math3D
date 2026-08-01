@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { CONTEXTUAL_VIEWPORT_PREVIEW_ROLE_STYLES } from "../selection/contextualViewportPreview";
 
 const legendStyle: CSSProperties = {
   display: "inline-flex",
@@ -14,11 +15,13 @@ const legendStyle: CSSProperties = {
 };
 
 const legendItems = [
-  ["Preview", "#38bdf8"],
-  ["Selected", "#f97316"],
-  ["Applied", "#22c55e"],
-  ["Removed", "#ef4444"],
+  ["Preview", CONTEXTUAL_VIEWPORT_PREVIEW_ROLE_STYLES.preview.color],
+  ["Selected", CONTEXTUAL_VIEWPORT_PREVIEW_ROLE_STYLES.selected.color],
+  ["Applied", CONTEXTUAL_VIEWPORT_PREVIEW_ROLE_STYLES.applied.color],
+  ["Removed", CONTEXTUAL_VIEWPORT_PREVIEW_ROLE_STYLES.removed.color],
 ] as const;
+
+const colorToCss = (color: number) => `#${color.toString(16).padStart(6, "0")}`;
 
 export function CommandPreviewLegend({
   testId,
@@ -53,7 +56,7 @@ export function CommandPreviewLegend({
               width: 8,
               height: 8,
               borderRadius: 999,
-              background: color,
+              background: colorToCss(color),
               boxShadow: highVisibility
                 ? "0 0 0 2px #ffffff, 0 0 0 3px #0f172a"
                 : "0 0 0 1px rgba(15, 23, 42, 0.12)",
