@@ -25,6 +25,11 @@ export type UnifiedCommandHistoryEntry = {
   readonly lastCommandLabel: string;
 };
 
+export type UnifiedCommandHistoryRow = {
+  readonly label: "Source" | "Action" | "Before" | "After" | "Result" | "Params";
+  readonly value: string;
+};
+
 export type MeshTopologyCommandHistorySource = {
   readonly id: string;
   readonly at: number;
@@ -82,12 +87,54 @@ export function formatUnifiedCommandCounts(
   return `V ${beforeCounts.vertexCount} -> ${afterCounts.vertexCount}${separator}F ${beforeCounts.faceCount} -> ${afterCounts.faceCount}`;
 }
 
+export function buildUnifiedCommandHistoryRows(entry: UnifiedCommandHistoryEntry): UnifiedCommandHistoryRow[] {
+  const rows: UnifiedCommandHistoryRow[] = [
+    { label: "Source", value: entry.sourceLabel },
+    {
+      label: "Action",
+      value: entry.targetLabel ? `${entry.actionLabel} - ${entry.targetLabel}` : entry.actionLabel,
+    },
+  ];
+  if (entry.beforeCounts) {
+    rows.push({
+      label: "Before",
+      value: `V ${entry.beforeCounts.vertexCount} / F ${entry.beforeCounts.faceCount}`,
+    });
+  }
+  if (entry.afterCounts) {
+    rows.push({
+      label: "After",
+      value: `V ${entry.afterCounts.vertexCount} / F ${entry.afterCounts.faceCount}`,
+    });
+  }
+  rows.push({ label: "Result", value: entry.resultLabel });
+  if (entry.parametersLabel) {
+    rows.push({ label: "Params", value: entry.parametersLabel });
+  }
+  return rows;
+}
+
 const compactActionLabel = (actionLabel: string): string =>
   actionLabel
     .replace(/\s+edge$/i, "")
     .replace(/\s+face$/i, "")
     .trim()
     .toLowerCase();
+
+const formatGeometryCommandSubject = (entry: GeometryObjectCommandHistorySource): string => {
+  const target = entry.operationTarget ?? entry.label;
+  const label = entry.label.toLowerCase();
+  if (label.includes("extrude")) return `${target} extruded`;
+  if (label.includes("inset")) return `${target} inset`;
+  if (label.includes("delete")) return `${target} deleted`;
+  if (label.includes("subdivide")) return `${target} subdivided`;
+  if (label.includes("split")) return `${target} split`;
+  if (label.includes("collapse")) return `${target} collapsed`;
+  if (label.includes("bevel")) return `${target} beveled`;
+  if (label.includes("move")) return `${target} moved`;
+  if (label.includes("weld")) return `${target} welded`;
+  return target;
+};
 
 export function buildMeshTopologyCommandHistoryEntry(
   entry: MeshTopologyCommandHistorySource
@@ -137,7 +184,7 @@ export function buildGeometryObjectCommandHistoryEntry(
       ? null
       : { vertexCount: entry.afterVertexCount, faceCount: entry.afterFaceCount };
   const countsLabel = formatUnifiedCommandCounts(beforeCounts, afterCounts);
-  const subject = entry.operationTarget ?? entry.label;
+  const subject = formatGeometryCommandSubject(entry);
   const resultLabel = isCopyLike
     ? `${lineageSource ?? entry.objectName} -> ${entry.objectName}`
     : entry.topologySummary ?? entry.objectName;

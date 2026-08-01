@@ -3,6 +3,7 @@ import {
   buildGeometryConstructionCommandHistoryEntry,
   buildGeometryObjectCommandHistoryEntry,
   buildMeshTopologyCommandHistoryEntry,
+  buildUnifiedCommandHistoryRows,
   formatUnifiedCommandCounts,
 } from "./unifiedCommandHistory";
 
@@ -63,8 +64,8 @@ describe("unifiedCommandHistory", () => {
       targetLabel: "Face 8",
       resultLabel: "Face 8 -> extruded prism",
       countsLabel: "V 27 -> 30, F 19 -> 26",
-      confirmationLabel: "Done: Face 8, V 27 -> 30, F 19 -> 26",
-      lastCommandLabel: "Face 8",
+      confirmationLabel: "Done: Face 8 extruded, V 27 -> 30, F 19 -> 26",
+      lastCommandLabel: "Face 8 extruded",
     });
   });
 
@@ -93,5 +94,41 @@ describe("unifiedCommandHistory", () => {
       confirmationLabel: "Done: Projected line on plane",
       lastCommandLabel: "Project line: Projected line on plane",
     });
+  });
+
+  it("builds the same command-history rows for Mesh Split and Geometry Extrude", () => {
+    const meshRows = buildUnifiedCommandHistoryRows(
+      buildMeshTopologyCommandHistoryEntry({
+        id: "m2",
+        at: 400,
+        actionLabel: "Split edge",
+        sourceLabel: "Box",
+        targetLabel: "Edge 5-6",
+        paramsLabel: "ratio=0.5000",
+        resultLabel: "Edge 5-6 -> split vertex (+1V, +2F)",
+        beforeCounts: { vertexCount: 8, faceCount: 12 },
+        afterCounts: { vertexCount: 9, faceCount: 14 },
+      })
+    );
+    const geometryRows = buildUnifiedCommandHistoryRows(
+      buildGeometryObjectCommandHistoryEntry({
+        id: "g2",
+        at: 500,
+        action: "face-extrude",
+        label: "Face extrude",
+        operationType: "Face edit",
+        operationTarget: "Face 8",
+        operationParameters: "distance=0.15",
+        objectName: "Box",
+        topologySummary: "Face 8 -> extruded prism",
+        beforeVertexCount: 27,
+        afterVertexCount: 30,
+        beforeFaceCount: 19,
+        afterFaceCount: 26,
+      })
+    );
+
+    expect(meshRows.map((row) => row.label)).toEqual(["Source", "Action", "Before", "After", "Result", "Params"]);
+    expect(geometryRows.map((row) => row.label)).toEqual(["Source", "Action", "Before", "After", "Result", "Params"]);
   });
 });

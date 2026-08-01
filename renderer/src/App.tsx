@@ -43,6 +43,7 @@ import {
   type ActiveSelectionWorkspace,
 } from "./components/ActiveSelectionCard";
 import { CommandPreviewLegend } from "./components/CommandPreviewLegend";
+import { CommandHistoryCard } from "./components/CommandHistoryCard";
 import {
   ContextualActionStrip,
   ContextualActionStripAction,
@@ -5898,18 +5899,6 @@ const formatTopologyCountDelta = (
   const vertexDelta = afterCounts.vertexCount - beforeCounts.vertexCount;
   const faceDelta = afterCounts.faceCount - beforeCounts.faceCount;
   return `${vertexDelta >= 0 ? "+" : ""}${vertexDelta}V, ${faceDelta >= 0 ? "+" : ""}${faceDelta}F`;
-};
-
-const formatHistoryStepTopologyCounts = (step: GeometryObjectHistoryStep): string | null => {
-  if (
-    step.beforeVertexCount == null ||
-    step.afterVertexCount == null ||
-    step.beforeFaceCount == null ||
-    step.afterFaceCount == null
-  ) {
-    return null;
-  }
-  return `V ${step.beforeVertexCount}->${step.afterVertexCount}; F ${step.beforeFaceCount}->${step.afterFaceCount}`;
 };
 
 const formatMeshEditFailureMessage = (actionLabel: string, message: string): string => {
@@ -60586,9 +60575,12 @@ case "mobius":
                         {surfaceMeshTopologyHistory.length ? (
                           <div style={{ display: "grid", gap: 5 }}>
                             {surfaceMeshTopologyHistory.slice(0, 5).map((entry) => (
-                              <div
+                              <CommandHistoryCard
                                 key={`mesh-topology-history-${entry.id}`}
-                                tabIndex={0}
+                                command={buildMeshTopologyCommandHistoryEntry(entry)}
+                                selected={selectedSurfaceMeshTopologyHistoryId === entry.id}
+                                previewing={surfaceMeshTopologyHistoryPreviewId === entry.id}
+                                title={`Preview ${entry.actionLabel}: ${entry.targetLabel}`}
                                 onMouseEnter={() => {
                                   setSurfaceMeshTopologyHistoryPreviewMode("after");
                                   setSurfaceMeshTopologyHistoryPreviewId(entry.id);
@@ -60598,137 +60590,68 @@ case "mobius":
                                   setSurfaceMeshTopologyHistoryPreviewMode("after");
                                   setSurfaceMeshTopologyHistoryPreviewId(entry.id);
                                 }}
-                                title={`Preview ${entry.actionLabel}: ${entry.targetLabel}`}
-                                style={{
-                                  border:
-                                    "1px solid " +
-                                    (surfaceMeshTopologyHistoryPreviewId === entry.id ||
-                                    selectedSurfaceMeshTopologyHistoryId === entry.id
-                                      ? "#0a66c2"
-                                      : "#dbe2ea"),
-                                  borderRadius: 7,
-                                  background:
-                                    surfaceMeshTopologyHistoryPreviewId === entry.id
-                                      ? "#ecfeff"
-                                      : selectedSurfaceMeshTopologyHistoryId === entry.id
-                                      ? "#eaf3ff"
-                                      : "#f8fafc",
-                                  padding: "5px 7px",
-                                  display: "grid",
-                                  gap: 5,
-                                }}
-                              >
-                                <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                                  <strong>{entry.actionLabel}</strong>
-                                  <span style={{ color: "#64748b" }}>
-                                    {new Date(entry.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                                  </span>
-                                </span>
-                                <span
-                                  style={{
-                                    border: "1px solid #dbeafe",
-                                    borderRadius: 6,
-                                    background: "#eff6ff",
-                                    color: "#1e3a8a",
-                                    padding: "3px 6px",
-                                    fontSize: 10,
-                                    fontWeight: 800,
-                                  }}
-                                >
-                                  {`V ${entry.beforeCounts.vertexCount}->${entry.afterCounts.vertexCount}, F ${entry.beforeCounts.faceCount}->${entry.afterCounts.faceCount}`}
-                                </span>
-                                <span
-                                  style={{
-                                    display: "grid",
-                                    gridTemplateColumns: "48px minmax(0, 1fr)",
-                                    gap: "2px 6px",
-                                    border: "1px solid #e2e8f0",
-                                    borderRadius: 6,
-                                    background: "#ffffff",
-                                    padding: "4px 6px",
-                                    fontSize: 10,
-                                    color: "#334155",
-                                  }}
-                                >
-                                  <span style={{ color: "#64748b", fontWeight: 800 }}>Source</span>
-                                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.sourceLabel}</span>
-                                  <span style={{ color: "#64748b", fontWeight: 800 }}>Before</span>
-                                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
-                                    V {entry.beforeCounts.vertexCount} / F {entry.beforeCounts.faceCount}
-                                  </span>
-                                  <span style={{ color: "#64748b", fontWeight: 800 }}>Action</span>
-                                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
-                                    {entry.actionLabel} - {entry.targetLabel}
-                                  </span>
-                                  <span style={{ color: "#64748b", fontWeight: 800 }}>After</span>
-                                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
-                                    V {entry.afterCounts.vertexCount} / F {entry.afterCounts.faceCount}
-                                  </span>
-                                  <span style={{ color: "#64748b", fontWeight: 800 }}>Result</span>
-                                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.resultLabel}</span>
-                                  <span style={{ color: "#64748b", fontWeight: 800 }}>Params</span>
-                                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.paramsLabel}</span>
-                                </span>
-                                <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap" }}>
-                                  <button
-                                    type="button"
-                                    onMouseEnter={() => {
-                                      setSurfaceMeshTopologyHistoryPreviewMode("before");
-                                      setSurfaceMeshTopologyHistoryPreviewId(entry.id);
-                                    }}
-                                    onFocus={() => {
-                                      setSurfaceMeshTopologyHistoryPreviewMode("before");
-                                      setSurfaceMeshTopologyHistoryPreviewId(entry.id);
-                                    }}
-                                    onClick={() => {
-                                      setSurfaceMeshTopologyHistoryPreviewMode("before");
-                                      setSurfaceMeshTopologyHistoryPreviewId(entry.id);
-                                    }}
-                                    style={{ padding: "2px 7px", fontSize: 10 }}
-                                  >
-                                    Preview Before
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onMouseEnter={() => {
-                                      setSurfaceMeshTopologyHistoryPreviewMode("after");
-                                      setSurfaceMeshTopologyHistoryPreviewId(entry.id);
-                                    }}
-                                    onFocus={() => {
-                                      setSurfaceMeshTopologyHistoryPreviewMode("after");
-                                      setSurfaceMeshTopologyHistoryPreviewId(entry.id);
-                                    }}
-                                    onClick={() => {
-                                      setSurfaceMeshTopologyHistoryPreviewMode("after");
-                                      setSurfaceMeshTopologyHistoryPreviewId(entry.id);
-                                    }}
-                                    style={{ padding: "2px 7px", fontSize: 10 }}
-                                  >
-                                    Preview After
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setSelectedSurfaceMeshTopologyHistoryId(entry.id)}
-                                    style={{ padding: "2px 7px", fontSize: 10 }}
-                                  >
-                                    Open
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => restoreSurfaceMeshTopologyHistoryEntry(entry.id)}
-                                    style={{ padding: "2px 7px", fontSize: 10 }}
-                                  >
-                                    Restore
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => copySurfaceMeshTopologyHistoryEntry(entry.id)}
-                                    style={{ padding: "2px 7px", fontSize: 10 }}
-                                  >
-                                    Copy
-                                  </button>
-                                </span>
-                              </div>
+                                actions={
+                                  <>
+                                    <button
+                                      type="button"
+                                      onMouseEnter={() => {
+                                        setSurfaceMeshTopologyHistoryPreviewMode("before");
+                                        setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                      }}
+                                      onFocus={() => {
+                                        setSurfaceMeshTopologyHistoryPreviewMode("before");
+                                        setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                      }}
+                                      onClick={() => {
+                                        setSurfaceMeshTopologyHistoryPreviewMode("before");
+                                        setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                      }}
+                                      style={{ padding: "2px 7px", fontSize: 10 }}
+                                    >
+                                      Preview Before
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onMouseEnter={() => {
+                                        setSurfaceMeshTopologyHistoryPreviewMode("after");
+                                        setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                      }}
+                                      onFocus={() => {
+                                        setSurfaceMeshTopologyHistoryPreviewMode("after");
+                                        setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                      }}
+                                      onClick={() => {
+                                        setSurfaceMeshTopologyHistoryPreviewMode("after");
+                                        setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                      }}
+                                      style={{ padding: "2px 7px", fontSize: 10 }}
+                                    >
+                                      Preview After
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedSurfaceMeshTopologyHistoryId(entry.id)}
+                                      style={{ padding: "2px 7px", fontSize: 10 }}
+                                    >
+                                      Open
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => restoreSurfaceMeshTopologyHistoryEntry(entry.id)}
+                                      style={{ padding: "2px 7px", fontSize: 10 }}
+                                    >
+                                      Restore
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => copySurfaceMeshTopologyHistoryEntry(entry.id)}
+                                      style={{ padding: "2px 7px", fontSize: 10 }}
+                                    >
+                                      Copy
+                                    </button>
+                                  </>
+                                }
+                              />
                             ))}
                           </div>
                         ) : (
@@ -60880,14 +60803,7 @@ case "mobius":
                     commandPreviewOverlayToggleTestId="mesh-command-preview-overlays-toggle"
                     commandPreviewLegendTestId="mesh-command-preview-legend"
                     getPickTestId={(pickMode) => `mesh-context-pick-${pickMode}`}
-                    top={
-                      showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && meshViewerControlsOpen
-                        ? meshViewerControlsDensity === "compact"
-                          ? 178
-                          : 252
-                        : 10
-                    }
-                    zIndex={showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && meshViewerControlsOpen ? 70 : undefined}
+                    zIndex={70}
                   >
                     {surfaceMeshTopologyPickMode === "face" && (
                       <>
@@ -60981,13 +60897,7 @@ case "mobius":
                     preview={meshVisibleContextualViewportPreview}
                     state={meshAppliedContextualViewportPreview ? "applied" : "preview"}
                     appliedLabel={meshAppliedContextualViewportPreview?.label}
-                    top={
-                      showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && meshViewerControlsOpen
-                        ? meshViewerControlsDensity === "compact"
-                          ? 232
-                          : 306
-                        : 48
-                    }
+                    top={58}
                     highVisibility={commandPreviewHighVisibility}
                     onApply={
                       meshAppliedContextualViewportPreview
@@ -77979,182 +77889,94 @@ case "mobius":
                                     {geometryRecentActionHistory.slice(0, 5).map((entry) => {
                                       if (entry.kind === "object") {
                                         const historyStep = entry.step;
-                                        const topologyCountLabel = formatHistoryStepTopologyCounts(historyStep);
                                         return (
-                                          <div
+                                          <CommandHistoryCard
                                             key={`geometry-actions-history-${entry.id}`}
-                                            data-testid="geometry-actions-history-step"
-                                            tabIndex={0}
+                                            command={entry.command}
+                                            selected={geometrySelectedHistoryStepId === historyStep.id}
+                                            testId="geometry-actions-history-step"
+                                            countTestId="geometry-actions-history-count-row"
+                                            rowsTestId="geometry-actions-history-operation-trail"
+                                            title={`${historyStep.operationType}: ${historyStep.label}${historyStep.operationParameters ? `\n${historyStep.operationParameters}` : ""}`}
                                             onMouseEnter={() => setGeometryHistoryPreviewStepId(historyStep.id)}
                                             onMouseLeave={() => setGeometryHistoryPreviewStepId((current) => (current === historyStep.id ? null : current))}
                                             onFocus={() => setGeometryHistoryPreviewStepId(historyStep.id)}
                                             onBlur={() => setGeometryHistoryPreviewStepId((current) => (current === historyStep.id ? null : current))}
-                                            title={`${historyStep.operationType}: ${historyStep.label}${historyStep.operationParameters ? `\n${historyStep.operationParameters}` : ""}`}
-                                            style={{
-                                              textAlign: "left",
-                                              border: "1px solid " + (geometrySelectedHistoryStepId === historyStep.id ? "#0a66c2" : "#dbe2ea"),
-                                              borderRadius: 7,
-                                              background: geometrySelectedHistoryStepId === historyStep.id ? "#eaf3ff" : "#f8fafc",
-                                              padding: "5px 7px",
-                                              display: "grid",
-                                              gap: 5,
-                                            }}
-                                          >
-                                            <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                                              <strong>{historyStep.label}</strong>
-                                              <span style={{ color: "#64748b" }}>{new Date(historyStep.at).toLocaleTimeString()}</span>
-                                            </span>
-                                            <span style={{ color: "#475569" }}>{entry.detail}</span>
-                                            {topologyCountLabel && (
-                                              <span
-                                                data-testid="geometry-actions-history-count-row"
-                                                style={{
-                                                  border: "1px solid #dbeafe",
-                                                  borderRadius: 6,
-                                                  background: "#eff6ff",
-                                                  color: "#1e3a8a",
-                                                  padding: "3px 6px",
-                                                  fontSize: 10,
-                                                  fontWeight: 800,
-                                                }}
-                                              >
-                                                {topologyCountLabel}
-                                              </span>
-                                            )}
-                                            <span
-                                              data-testid="geometry-actions-history-operation-trail"
-                                              style={{
-                                                display: "grid",
-                                                gridTemplateColumns: "48px minmax(0, 1fr)",
-                                                gap: "2px 6px",
-                                                border: "1px solid #e2e8f0",
-                                                borderRadius: 6,
-                                                background: "#ffffff",
-                                                padding: "4px 6px",
-                                                fontSize: 10,
-                                                color: "#334155",
-                                              }}
-                                            >
-                                              <span style={{ color: "#64748b", fontWeight: 800 }}>Source</span>
-                                              <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.sourceLabel}</span>
-                                              <span style={{ color: "#64748b", fontWeight: 800 }}>Action</span>
-                                              <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.actionLabel}</span>
-                                              <span style={{ color: "#64748b", fontWeight: 800 }}>Result</span>
-                                              <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.resultLabel}</span>
-                                              {entry.parametersLabel && (
-                                                <>
-                                                  <span style={{ color: "#64748b", fontWeight: 800 }}>Params</span>
-                                                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.parametersLabel}</span>
-                                                </>
-                                              )}
-                                            </span>
-                                            <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap" }}>
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  setGeometrySelectedObjectId(historyStep.objectId);
-                                                  setGeometrySelectedHistoryStepId(historyStep.id);
-                                                  setGeometryProceduralPanelTab("history");
-                                                }}
-                                                style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
-                                              >
-                                                Open
-                                              </button>
-                                              <button
-                                                type="button"
-                                                data-testid="geometry-actions-history-restore-step"
-                                                onClick={() => restoreGeometryObjectFromHistoryStep(historyStep.objectId, historyStep)}
-                                                disabled={geometryLockedObjectIds.has(historyStep.objectId)}
-                                                style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
-                                              >
-                                                Restore
-                                              </button>
-                                              <button
-                                                type="button"
-                                                data-testid="geometry-actions-history-copy-step"
-                                                onClick={() => duplicateGeometryObjectFromHistoryStep(historyStep)}
-                                                style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
-                                              >
-                                                Copy
-                                              </button>
-                                            </span>
-                                          </div>
+                                            actions={
+                                              <>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setGeometrySelectedObjectId(historyStep.objectId);
+                                                    setGeometrySelectedHistoryStepId(historyStep.id);
+                                                    setGeometryProceduralPanelTab("history");
+                                                  }}
+                                                  style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                                >
+                                                  Open
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  data-testid="geometry-actions-history-restore-step"
+                                                  onClick={() => restoreGeometryObjectFromHistoryStep(historyStep.objectId, historyStep)}
+                                                  disabled={geometryLockedObjectIds.has(historyStep.objectId)}
+                                                  style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                                >
+                                                  Restore
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  data-testid="geometry-actions-history-copy-step"
+                                                  onClick={() => duplicateGeometryObjectFromHistoryStep(historyStep)}
+                                                  style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                                >
+                                                  Copy
+                                                </button>
+                                              </>
+                                            }
+                                          />
                                         );
                                       }
                                       const constructionStep = entry.step;
                                       const canOpenConstruction = !!constructionStep.resultId && geometryDerivedConstructions.some((derived) => derived.id === constructionStep.resultId);
                                       return (
-                                        <div
+                                        <CommandHistoryCard
                                           key={`geometry-actions-history-${entry.id}`}
-                                          data-testid="geometry-actions-history-construction-step"
-                                          tabIndex={0}
+                                          command={entry.command}
+                                          selected={geometrySelectedDerivedConstructionId === constructionStep.resultId}
+                                          tone="construction"
+                                          testId="geometry-actions-history-construction-step"
+                                          rowsTestId="geometry-actions-history-construction-trail"
                                           title={constructionStep.steps.join(" -> ")}
-                                          style={{
-                                            textAlign: "left",
-                                            border: "1px solid " + (geometrySelectedDerivedConstructionId === constructionStep.resultId ? "#0a66c2" : "#dbe2ea"),
-                                            borderRadius: 7,
-                                            background: geometrySelectedDerivedConstructionId === constructionStep.resultId ? "#eef6ff" : "#f8fafc",
-                                            padding: "5px 7px",
-                                            display: "grid",
-                                            gap: 5,
-                                          }}
-                                        >
-                                          <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                                            <strong>{entry.label}</strong>
-                                            <span style={{ color: "#64748b" }}>{new Date(entry.at).toLocaleTimeString()}</span>
-                                          </span>
-                                          <span
-                                            data-testid="geometry-actions-history-construction-trail"
-                                            style={{
-                                              display: "grid",
-                                              gridTemplateColumns: "48px minmax(0, 1fr)",
-                                              gap: "2px 6px",
-                                              border: "1px solid #ccfbf1",
-                                              borderRadius: 6,
-                                              background: "#f0fdfa",
-                                              padding: "4px 6px",
-                                              fontSize: 10,
-                                              color: "#134e4a",
-                                            }}
-                                          >
-                                            <span style={{ color: "#0f766e", fontWeight: 800 }}>Source</span>
-                                            <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.sourceLabel}</span>
-                                            <span style={{ color: "#0f766e", fontWeight: 800 }}>Action</span>
-                                            <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.actionLabel}</span>
-                                            <span style={{ color: "#0f766e", fontWeight: 800 }}>Result</span>
-                                            <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.resultLabel}</span>
-                                            {entry.parametersLabel && (
-                                              <>
-                                                <span style={{ color: "#0f766e", fontWeight: 800 }}>Params</span>
-                                                <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{entry.parametersLabel}</span>
-                                              </>
-                                            )}
-                                          </span>
-                                          {constructionStep.planeSummary && (
-                                            <span style={{ color: "#475569" }}>
-                                              Method: {constructionStep.planeSummary.method}; output {constructionStep.planeSummary.result}
-                                            </span>
-                                          )}
-                                          <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-                                            <button
-                                              type="button"
-                                              data-testid="geometry-actions-history-open-construction"
-                                              onClick={() => {
-                                                if (!constructionStep.resultId) return;
-                                                setGeometrySelectedDerivedConstructionId(constructionStep.resultId);
-                                                setGeometrySelectedMathConstructionId(null);
-                                                setGeometryProceduralPanelTab("construct");
-                                                setGeometryConstructPanelTab("tree");
-                                                setGeometryCreateActionStatus(`Opened construction history: ${constructionStep.result}.`);
-                                              }}
-                                              disabled={!canOpenConstruction}
-                                              style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
-                                            >
-                                              Open
-                                            </button>
-                                            <span style={{ color: "#64748b", fontWeight: 700 }}>Construction</span>
-                                          </span>
-                                        </div>
+                                          footer={
+                                            constructionStep.planeSummary ? (
+                                              <span style={{ color: "#475569" }}>
+                                                Method: {constructionStep.planeSummary.method}; output {constructionStep.planeSummary.result}
+                                              </span>
+                                            ) : null
+                                          }
+                                          actions={
+                                            <>
+                                              <button
+                                                type="button"
+                                                data-testid="geometry-actions-history-open-construction"
+                                                onClick={() => {
+                                                  if (!constructionStep.resultId) return;
+                                                  setGeometrySelectedDerivedConstructionId(constructionStep.resultId);
+                                                  setGeometrySelectedMathConstructionId(null);
+                                                  setGeometryProceduralPanelTab("construct");
+                                                  setGeometryConstructPanelTab("tree");
+                                                  setGeometryCreateActionStatus(`Opened construction history: ${constructionStep.result}.`);
+                                                }}
+                                                disabled={!canOpenConstruction}
+                                                style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                              >
+                                                Open
+                                              </button>
+                                              <span style={{ color: "#64748b", fontWeight: 700 }}>Construction</span>
+                                            </>
+                                          }
+                                        />
                                       );
                                     })}
                                   </div>

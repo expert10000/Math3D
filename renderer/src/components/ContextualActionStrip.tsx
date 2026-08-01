@@ -136,20 +136,22 @@ export function ContextualActionStrip<T extends string>({
         position: "absolute",
         top,
         left: 12,
-        right: 12,
         zIndex,
+        maxWidth: "calc(100% - 24px)",
         display: "flex",
-        gap: 6,
+        gap: 5,
         alignItems: "center",
-        flexWrap: "wrap",
-        padding: "6px 8px",
+        flexWrap: "nowrap",
+        overflow: "visible",
+        padding: "4px 7px",
         border: "1px solid #bfdbfe",
-        borderRadius: 8,
-        background: "rgba(239, 246, 255, 0.92)",
-        boxShadow: "0 8px 18px rgba(15, 23, 42, 0.10)",
+        borderRadius: 999,
+        background: "rgba(239, 246, 255, 0.82)",
+        boxShadow: "0 4px 12px rgba(15, 23, 42, 0.08)",
         fontSize: 11,
         color: "#1e3a8a",
         pointerEvents: "none",
+        whiteSpace: "nowrap",
       }}
     >
       <span style={{ color: "#475467", fontWeight: 700 }}>Pick:</span>
@@ -190,7 +192,7 @@ export function ContextualActionStrip<T extends string>({
               borderRadius: 999,
               background: "#fff7ed",
               color: "#9a3412",
-              maxWidth: 320,
+              maxWidth: 240,
               overflow: "hidden",
               padding: "2px 8px",
               textOverflow: "ellipsis",
@@ -228,7 +230,11 @@ export function ContextualActionStrip<T extends string>({
       {children}
       <span style={{ color: "#93a4ba" }}>|</span>
       <span style={{ pointerEvents: "auto" }}>
-        <CommandPreviewLegend testId={commandPreviewLegendTestId} highVisibility={commandPreviewHighVisibility} />
+        <CommandPreviewLegend
+          testId={commandPreviewLegendTestId}
+          compact
+          highVisibility={commandPreviewHighVisibility}
+        />
       </span>
       {onCommandPreviewOverlaysVisibleChange && (
         <label
@@ -255,7 +261,7 @@ export function ContextualActionStrip<T extends string>({
             onChange={(event) => onCommandPreviewOverlaysVisibleChange(event.target.checked)}
             style={{ width: 12, height: 12, margin: 0 }}
           />
-          Show command preview overlays
+          Overlays
         </label>
       )}
       {confirmationLabel && (
@@ -269,7 +275,7 @@ export function ContextualActionStrip<T extends string>({
               borderRadius: 999,
               background: "#f0fdf4",
               color: "#166534",
-              maxWidth: 360,
+              maxWidth: 240,
               overflow: "hidden",
               padding: "2px 8px",
               pointerEvents: "none",
@@ -301,7 +307,7 @@ export function ContextualActionStrip<T extends string>({
           <span
             style={{
               display: "inline-block",
-              maxWidth: 300,
+              maxWidth: 220,
               overflow: "hidden",
               pointerEvents: "none",
               textOverflow: "ellipsis",
