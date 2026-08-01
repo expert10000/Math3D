@@ -51,6 +51,13 @@ import {
 import { ContextualRenderedActionStripButtons } from "./components/ContextualActionButtons";
 import { ContextualViewportPreviewBadge } from "./components/ContextualViewportPreviewBadge";
 import {
+  ViewerControlGroup,
+  ViewerControlsStrip,
+  viewerControlButtonStyle,
+  viewerControlCheckStyle,
+  viewerControlLabelStyle,
+} from "./components/ViewerControls";
+import {
   OBJECT_CONTEXT_COPY,
   formatContextEntityLabel,
   type ContextualEntityMode,
@@ -60778,7 +60785,7 @@ case "mobius":
                     commandPreviewOverlayToggleTestId="mesh-command-preview-overlays-toggle"
                     commandPreviewLegendTestId="mesh-command-preview-legend"
                     getPickTestId={(pickMode) => `mesh-context-pick-${pickMode}`}
-                    top={showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && meshViewerControlsOpen ? 184 : 10}
+                    top={showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && meshViewerControlsOpen ? 252 : 10}
                   >
                     {surfaceMeshTopologyPickMode === "face" && (
                       <>
@@ -60872,7 +60879,7 @@ case "mobius":
                     preview={meshVisibleContextualViewportPreview}
                     state={meshAppliedContextualViewportPreview ? "applied" : "preview"}
                     appliedLabel={meshAppliedContextualViewportPreview?.label}
-                    top={showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && meshViewerControlsOpen ? 228 : 48}
+                    top={showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && meshViewerControlsOpen ? 306 : 48}
                     highVisibility={commandPreviewHighVisibility}
                     onApply={
                       meshAppliedContextualViewportPreview
@@ -60907,8 +60914,8 @@ case "mobius":
                         top:
                           showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && meshViewerControlsOpen
                             ? meshVisibleContextualViewportPreview
-                              ? 264
-                              : 228
+                              ? 342
+                              : 306
                             : meshVisibleContextualViewportPreview
                               ? 82
                               : 48,
@@ -61131,24 +61138,19 @@ case "mobius":
                     {showSurfaceLocalToolStrip &&
                       !surfacePanelsAsDrawers &&
                       (surfaceViewerKind !== "mesh" || meshViewerControlsOpen) && (
-                      <div
-                        data-testid={surfaceViewerKind === "mesh" ? "mesh-viewer-controls-strip" : undefined}
+                      <ViewerControlsStrip
+                        testId={surfaceViewerKind === "mesh" ? "mesh-viewer-controls-strip" : undefined}
                         style={{
                           position: "relative",
                           zIndex: surfaceViewerKind === "mesh" ? 30 : undefined,
-                          display: "flex",
-                          alignItems: "center",
                           justifyContent: "space-between",
-                          gap: 8,
-                          flexWrap: "wrap",
                           margin: compareLayoutEnabled ? "0 0 6px 0" : 0,
-                          padding: "8px 10px",
                           paddingRight: surfaceViewerKind === "mesh" ? 108 : 10,
                           borderBottom: "1px solid #e3e8f0",
                           background: "linear-gradient(180deg, rgba(249,251,253,0.98), rgba(244,247,251,0.98))",
                         }}
                       >
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <ViewerControlGroup label="Mesh" style={{ flex: "1 1 620px" }}>
                           {showSurfaceFormulaEditorLauncher && (
                             <button
                               type="button"
@@ -61315,19 +61317,20 @@ case "mobius":
                           </label>
                           <span
                             style={{
-                              borderRadius: 8,
+                              borderRadius: 999,
                               border: "1px solid #c7d2e2",
                               background: "#f8fafc",
                               color: "#64748b",
                               fontWeight: 600,
                               fontSize: 11,
-                              padding: "5px 10px",
+                              padding: "4px 8px",
+                              lineHeight: 1,
                             }}
                           >
                             {showChartGrid ? "Grid: surface chart" : showPlanes ? "Grid: planes" : "Grid: none"}
                           </span>
-                        </div>
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        </ViewerControlGroup>
+                        <ViewerControlGroup label="Panel" style={{ flex: "0 0 auto" }}>
                           {(["inspector", "workbook"] as const).map((tab) => {
                             const active = rightPanelTab === tab;
                             return (
@@ -61354,8 +61357,8 @@ case "mobius":
                               </button>
                             );
                           })}
-                        </div>
-                      </div>
+                        </ViewerControlGroup>
+                      </ViewerControlsStrip>
                     )}
                     {isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "mesh" && meshGeometryRoundTripSource && (
                       <div
@@ -75273,34 +75276,16 @@ case "mobius":
                 </button>
               )}
               {geometryViewerControlsOpen && !geometryPanelsAsDrawers && !isPhoneLandscapeLayout && (
-              <div
-                data-testid="geometry-viewer-controls-strip"
+              <ViewerControlsStrip
+                testId="geometry-viewer-controls-strip"
                 style={{
                   borderBottom: "1px solid #9fb0c7",
-                  padding: "8px 10px",
                   paddingRight: 108,
                   background: "linear-gradient(180deg, #f8fbff 0%, #f1f6fd 100%)",
-                  display: "flex",
-                  alignItems: "stretch",
-                  flexWrap: "wrap",
-                  gap: 8,
                 }}
               >
                 {geometryMode === "procedural" && (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 4,
-                      flexWrap: "wrap",
-                      padding: "4px 6px",
-                      border: "1px solid #cbd5e1",
-                      borderRadius: 6,
-                      background: "#fff",
-                      fontSize: 12,
-                    }}
-                  >
-                    <span style={{ fontWeight: 700, color: "#1e3a8a", marginRight: 2 }}>Transform</span>
+                  <ViewerControlGroup label="Transform" style={{ flex: "0 0 auto" }}>
                     {GEOMETRY_GIZMO_MODE_OPTIONS.map((option) => {
                       const active = geometryGizmoEnabled && geometryGizmoMode === option.id;
                       return (
@@ -75313,13 +75298,10 @@ case "mobius":
                             handleToggleGeometryGizmoMode(option.id);
                           }}
                           style={{
-                            padding: "3px 8px",
-                            borderRadius: 6,
-                            border: "1px solid " + (active ? "#2563eb" : "#cbd5e1"),
+                            ...viewerControlButtonStyle(active),
+                            borderColor: active ? "#2563eb" : "#cbd5e1",
                             background: active ? "#dbeafe" : "#fff",
                             color: active ? "#1d4ed8" : "#334155",
-                            fontWeight: active ? 800 : 600,
-                            fontSize: 11,
                           }}
                         >
                           {option.label}
@@ -75330,10 +75312,7 @@ case "mobius":
                       <label
                         title="Scale all axes together"
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                          fontSize: 11,
+                          ...viewerControlCheckStyle,
                           color: "#1e3a8a",
                           fontWeight: 700,
                           paddingLeft: 2,
@@ -75347,22 +75326,10 @@ case "mobius":
                         Uniform
                       </label>
                     )}
-                  </div>
+                  </ViewerControlGroup>
                 )}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    flexWrap: "wrap",
-                    padding: "4px 6px",
-                    border: "1px solid #cbd5e1",
-                    borderRadius: 6,
-                    background: "#fff",
-                  }}
-                >
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#1e3a8a" }}>Display</span>
-                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                <ViewerControlGroup label="Display" style={{ flex: "2 1 650px" }}>
+                <label style={viewerControlCheckStyle}>
                   <input
                     type="checkbox"
                     checked={geometryWireframe}
@@ -75370,17 +75337,17 @@ case "mobius":
                   />
                   Wireframe
                 </label>
-                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                <label style={viewerControlCheckStyle}>
                   <input
                     type="checkbox"
                     checked={geometryShowPlanes}
                     onChange={(e) => setGeometryShowPlanes(e.target.checked)}
                   />
-                  Coordinates
+                  Coords
                 </label>
                 {geometryShowPlanes && (
                   <>
-                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, opacity: geometryShowPlanes ? 1 : 0.6 }}>
+                <label style={{ ...viewerControlCheckStyle, opacity: geometryShowPlanes ? 1 : 0.6 }}>
                   <input
                     type="checkbox"
                     checked={planeGridSettings.showXY}
@@ -75394,7 +75361,7 @@ case "mobius":
                   />
                   XY
                 </label>
-                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, opacity: geometryShowPlanes ? 1 : 0.6 }}>
+                <label style={{ ...viewerControlCheckStyle, opacity: geometryShowPlanes ? 1 : 0.6 }}>
                   <input
                     type="checkbox"
                     checked={planeGridSettings.showXZ}
@@ -75408,7 +75375,7 @@ case "mobius":
                   />
                   XZ
                 </label>
-                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, opacity: geometryShowPlanes ? 1 : 0.6 }}>
+                <label style={{ ...viewerControlCheckStyle, opacity: geometryShowPlanes ? 1 : 0.6 }}>
                   <input
                     type="checkbox"
                     checked={planeGridSettings.showYZ}
@@ -75424,10 +75391,7 @@ case "mobius":
                 </label>
                 <label
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    fontSize: 12,
+                    ...viewerControlCheckStyle,
                     opacity: geometryShowPlanes ? 1 : 0.6,
                   }}
                 >
@@ -75446,10 +75410,7 @@ case "mobius":
                 </label>
                 <label
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    fontSize: 12,
+                    ...viewerControlCheckStyle,
                     opacity: geometryShowPlanes && planeGridSettings.showGrid ? 1 : 0.6,
                   }}
                 >
@@ -75468,10 +75429,7 @@ case "mobius":
                 </label>
                 <label
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    fontSize: 12,
+                    ...viewerControlCheckStyle,
                     opacity: geometryShowPlanes ? 1 : 0.6,
                   }}
                 >
@@ -75490,10 +75448,7 @@ case "mobius":
                 </label>
                 <label
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    fontSize: 12,
+                    ...viewerControlCheckStyle,
                     opacity: geometryShowPlanes && planeGridSettings.showLabels ? 1 : 0.6,
                   }}
                 >
@@ -75514,7 +75469,7 @@ case "mobius":
                 )}
                 {geometryMode === "procedural" && (
                   <>
-                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                    <label style={viewerControlCheckStyle}>
                       <input
                         type="checkbox"
                         checked={geometryShowViewportBadges}
@@ -75522,25 +75477,25 @@ case "mobius":
                       />
                       Badges
                     </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                    <label style={viewerControlCheckStyle}>
                       <input
                         type="checkbox"
                         checked={showGeometryDependencyOverlay}
                         onChange={(e) => setShowGeometryDependencyOverlay(e.target.checked)}
                       />
-                      Dependencies
+                      Deps
                     </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                    <label style={viewerControlCheckStyle}>
                       <input
                         type="checkbox"
                         checked={geometryCreateActionsOverlayOpen}
                         onChange={(e) => setGeometryCreateActionsOverlayOpen(e.target.checked)}
                       />
-                      Create overlay
+                      Create
                     </label>
                     <label
                       title="Show or hide viewport command preview badges and ghost overlays. Strip preview text remains visible."
-                      style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
+                      style={viewerControlCheckStyle}
                     >
                       <input
                         type="checkbox"
@@ -75548,11 +75503,11 @@ case "mobius":
                         checked={commandPreviewOverlaysVisible}
                         onChange={(event) => setCommandPreviewOverlaysVisible(event.target.checked)}
                       />
-                      Command preview
+                      Preview
                     </label>
                   </>
                 )}
-                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                <label style={{ ...viewerControlCheckStyle, gap: 5 }}>
                   Opacity
                   <input
                     type="range"
@@ -75565,7 +75520,7 @@ case "mobius":
                 </label>
                 {(geometryMode === "scratch" || geometryMode === "workbook") && (
                   <>
-                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                    <label style={viewerControlCheckStyle}>
                       <input
                         type="checkbox"
                         checked={geometryPrincipalProjectionEnabled}
@@ -75626,23 +75581,17 @@ case "mobius":
                     </label>
                   </>
                 )}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto", flexWrap: "wrap" }}>
-                  <span style={{ alignSelf: "center", fontSize: 11, fontWeight: 800, color: "#1e3a8a", marginRight: 2 }}>
-                    Viewport
-                  </span>
+                </ViewerControlGroup>
+                <ViewerControlGroup label="Viewport" style={{ flex: "1 1 520px" }}>
                   <div
                     style={{
-                      display: "flex",
+                      display: "inline-flex",
                       alignItems: "center",
-                      gap: 4,
-                      border: "1px solid #d1d5db",
-                      borderRadius: 6,
-                      padding: "4px 6px",
-                      background: "#fff",
+                      gap: 3,
+                      flexWrap: "wrap",
                     }}
                   >
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "#1e3a8a", marginRight: 2 }}>
+                    <span style={{ ...viewerControlLabelStyle, color: "#475569" }}>
                       Quality {geometryGlobalQualityOverrideMode === "auto" && geometryHeavySceneActive ? "Auto→Fast" : ""}
                     </span>
                     <button
@@ -75670,34 +75619,12 @@ case "mobius":
                       Full
                     </button>
                   </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                      flex: "1 1 420px",
-                      flexWrap: "wrap",
-                      padding: "4px 6px",
-                      border: "1px solid #cbd5e1",
-                      borderRadius: 6,
-                      background: "#fff",
-                    }}
-                  >
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#1e3a8a", marginRight: 2 }}>Camera</span>
+                  <span style={{ ...viewerControlLabelStyle, marginLeft: 4 }}>Camera</span>
                   <button
                     type="button"
                     onClick={() => handleGeometryApplyViewPreset("3d")}
                     aria-pressed={geometryViewPreset === "3d"}
-                    style={{
-                      whiteSpace: "nowrap",
-                      fontSize: 11,
-                      lineHeight: 1.1,
-                      padding: "4px 10px",
-                      border: "1px solid " + (geometryViewPreset === "3d" ? "#0369a1" : "#d1d5db"),
-                      background: geometryViewPreset === "3d" ? "#e0f2fe" : "#fff",
-                      color: geometryViewPreset === "3d" ? "#0c4a6e" : "#334155",
-                      fontWeight: geometryViewPreset === "3d" ? 700 : 600,
-                    }}
+                    style={viewerControlButtonStyle(geometryViewPreset === "3d")}
                   >
                     3D
                   </button>
@@ -75705,37 +75632,28 @@ case "mobius":
                     type="button"
                     onClick={() => handleGeometryApplyViewPreset("planar")}
                     aria-pressed={geometryViewPreset === "planar"}
-                    style={{
-                      whiteSpace: "nowrap",
-                      fontSize: 11,
-                      lineHeight: 1.1,
-                      padding: "4px 10px",
-                      border: "1px solid " + (geometryViewPreset === "planar" ? "#0369a1" : "#d1d5db"),
-                      background: geometryViewPreset === "planar" ? "#e0f2fe" : "#fff",
-                      color: geometryViewPreset === "planar" ? "#0c4a6e" : "#334155",
-                      fontWeight: geometryViewPreset === "planar" ? 700 : 600,
-                    }}
+                    style={viewerControlButtonStyle(geometryViewPreset === "planar")}
                   >
                     Planar
                   </button>
                   <button
                     type="button"
                     onClick={() => handleGeometryFit("scene")}
-                    style={{ whiteSpace: "nowrap", fontSize: 11, lineHeight: 1.1, padding: "4px 10px" }}
+                    style={viewerControlButtonStyle(false)}
                   >
                     Fit scene
                   </button>
                   <button
                     type="button"
                     onClick={() => handleGeometryFit("stage")}
-                    style={{ whiteSpace: "nowrap", fontSize: 11, lineHeight: 1.1, padding: "4px 10px" }}
+                    style={viewerControlButtonStyle(false)}
                   >
                     Fit active stage
                   </button>
                   <button
                     type="button"
                     onClick={() => handleGeometryFit("claim")}
-                    style={{ whiteSpace: "nowrap", fontSize: 11, lineHeight: 1.1, padding: "4px 10px" }}
+                    style={viewerControlButtonStyle(false)}
                   >
                     Fit claim
                   </button>
@@ -75745,21 +75663,20 @@ case "mobius":
                       setWorkspaceCameraPreset("reset_camera");
                       setGeometryResetToken((t) => t + 1);
                     }}
-                    style={{ whiteSpace: "nowrap", fontSize: 11, lineHeight: 1.1, padding: "4px 10px" }}
+                    style={viewerControlButtonStyle(false)}
                   >
                     Reset camera
                   </button>
-                  <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#334155" }}>
+                  <label style={viewerControlCheckStyle}>
                     <input
                       type="checkbox"
                       checked={geometryIncludeHelpersInFit}
                       onChange={(event) => setGeometryIncludeHelpersInFit(event.target.checked)}
                     />
-                    Include helper objects in fit
+                    Helpers
                   </label>
-                  </div>
-                </div>
-              </div>
+                </ViewerControlGroup>
+              </ViewerControlsStrip>
               )}
               <div
                 style={{
