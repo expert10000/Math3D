@@ -52,11 +52,13 @@ import { ContextualRenderedActionStripButtons } from "./components/ContextualAct
 import { ContextualViewportPreviewBadge } from "./components/ContextualViewportPreviewBadge";
 import {
   ViewerControlGroup,
+  ViewerControlsModeSelect,
   ViewerControlsStrip,
   viewerControlButtonStyle,
   viewerControlCheckStyle,
   viewerControlLabelStyle,
   viewerControlsOverlayChipStyle,
+  type ViewerControlsMode,
   type ViewerControlsDensity,
 } from "./components/ViewerControls";
 import {
@@ -61124,41 +61126,23 @@ case "mobius":
                       !surfacePanelsAsDrawers &&
                       surfaceViewerKind === "mesh" &&
                       meshViewerControlsOpen && (
-                        <div
+                        <ViewerControlsModeSelect
+                          testId="mesh-viewer-controls-mode"
+                          value={meshViewerControlsDensity}
+                          onChange={(mode: ViewerControlsMode) => {
+                            if (mode === "hidden") {
+                              setMeshViewerControlsOpen(false);
+                              return;
+                            }
+                            setMeshViewerControlsDensity(mode);
+                          }}
                           style={{
                             position: "absolute",
                             top: 8,
                             right: 10,
                             zIndex: 60,
-                            display: "inline-flex",
-                            gap: 5,
                           }}
-                        >
-                          <button
-                            type="button"
-                            data-testid="mesh-viewer-controls-density-toggle"
-                            onClick={() =>
-                              setMeshViewerControlsDensity((density) => (density === "compact" ? "normal" : "compact"))
-                            }
-                            style={viewerControlsOverlayChipStyle(meshViewerControlsDensity === "compact")}
-                            title={
-                              meshViewerControlsDensity === "compact"
-                                ? "Show full viewer controls."
-                                : "Use compact viewer controls."
-                            }
-                          >
-                            {meshViewerControlsDensity === "compact" ? "Compact" : "Full"}
-                          </button>
-                          <button
-                            type="button"
-                            data-testid="mesh-viewer-controls-hide"
-                            onClick={() => setMeshViewerControlsOpen(false)}
-                            style={viewerControlsOverlayChipStyle(false)}
-                            title="Hide viewer controls to give the viewport more space."
-                          >
-                            Hide
-                          </button>
-                        </div>
+                        />
                       )}
                     {showSurfaceLocalToolStrip &&
                       !surfacePanelsAsDrawers &&
@@ -61177,7 +61161,7 @@ case "mobius":
                           }}
                           title="Show viewer controls."
                         >
-                          Controls
+                          Show controls
                         </button>
                       )}
                     {showSurfaceLocalToolStrip &&
@@ -61191,7 +61175,7 @@ case "mobius":
                           zIndex: surfaceViewerKind === "mesh" ? 30 : undefined,
                           justifyContent: "space-between",
                           margin: compareLayoutEnabled ? "0 0 6px 0" : 0,
-                          paddingRight: surfaceViewerKind === "mesh" ? 136 : 10,
+                          paddingRight: surfaceViewerKind === "mesh" ? 174 : 10,
                           borderBottom: "1px solid #e3e8f0",
                           background: "linear-gradient(180deg, rgba(249,251,253,0.98), rgba(244,247,251,0.98))",
                         }}
@@ -75326,41 +75310,23 @@ case "mobius":
               }}
             >
               {geometryViewerControlsOpen && !geometryPanelsAsDrawers && !isPhoneLandscapeLayout && (
-                <div
+                <ViewerControlsModeSelect
+                  testId="geometry-viewer-controls-mode"
+                  value={geometryViewerControlsDensity}
+                  onChange={(mode: ViewerControlsMode) => {
+                    if (mode === "hidden") {
+                      setGeometryViewerControlsOpen(false);
+                      return;
+                    }
+                    setGeometryViewerControlsDensity(mode);
+                  }}
                   style={{
                     position: "absolute",
                     top: 8,
                     right: 10,
                     zIndex: 60,
-                    display: "inline-flex",
-                    gap: 5,
                   }}
-                >
-                  <button
-                    type="button"
-                    data-testid="geometry-viewer-controls-density-toggle"
-                    onClick={() =>
-                      setGeometryViewerControlsDensity((density) => (density === "compact" ? "normal" : "compact"))
-                    }
-                    style={viewerControlsOverlayChipStyle(geometryViewerControlsDensity === "compact")}
-                    title={
-                      geometryViewerControlsDensity === "compact"
-                        ? "Show full viewer controls."
-                        : "Use compact viewer controls."
-                    }
-                  >
-                    {geometryViewerControlsDensity === "compact" ? "Compact" : "Full"}
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="geometry-viewer-controls-hide"
-                    onClick={() => setGeometryViewerControlsOpen(false)}
-                    style={viewerControlsOverlayChipStyle(false)}
-                    title="Hide viewer controls to give the viewport more space."
-                  >
-                    Hide
-                  </button>
-                </div>
+                />
               )}
               {geometryViewerControlsOpen && !geometryPanelsAsDrawers && !isPhoneLandscapeLayout && (
               <ViewerControlsStrip
@@ -75368,7 +75334,7 @@ case "mobius":
                 density={geometryViewerControlsDensity}
                 style={{
                   borderBottom: "1px solid #9fb0c7",
-                  paddingRight: 136,
+                  paddingRight: 174,
                   background: "linear-gradient(180deg, #f8fbff 0%, #f1f6fd 100%)",
                 }}
               >
@@ -75817,7 +75783,7 @@ case "mobius":
                       }}
                       title="Show viewer controls."
                     >
-                      Controls
+                      Show controls
                     </button>
                   )}
                   {geometryMode === "procedural" && !geometryPanelsAsDrawers && (

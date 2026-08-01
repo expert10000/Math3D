@@ -181,12 +181,35 @@ async function runTopologyDemo(
   await page.getByTestId(`mesh-topology-preset-card-${demoId}`).click();
   const meshTools = await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true }));
   await meshTools.click();
+  const reopenDemoAfterReload = async () => {
+    await openMeshGallery(page);
+    await page.getByTestId(`mesh-topology-preset-card-${demoId}`).click();
+    const tools = await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true }));
+    await tools.click();
+  };
   await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeVisible();
-  await page.getByTestId("mesh-viewer-controls-hide").click();
+  await page.getByTestId("mesh-viewer-controls-mode").selectOption("normal");
+  await expect(page.getByTestId("mesh-viewer-controls-mode")).toHaveValue("normal");
+  await page.getByTestId("mesh-viewer-controls-mode").selectOption("compact");
+  await expect(page.getByTestId("mesh-viewer-controls-mode")).toHaveValue("compact");
+  await expect(page.getByTestId("mesh-viewer-controls-strip")).toHaveAttribute("data-density", "compact");
+  await page.reload();
+  await reopenDemoAfterReload();
+  await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeVisible();
+  await expect(page.getByTestId("mesh-viewer-controls-mode")).toHaveValue("compact");
+  await expect(page.getByTestId("mesh-viewer-controls-strip")).toHaveAttribute("data-density", "compact");
+  await page.getByTestId("mesh-viewer-controls-mode").selectOption("hidden");
   await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeHidden();
   await expect(page.getByTestId("mesh-viewer-controls-show")).toBeVisible();
+  await expect(page.getByTestId("mesh-viewer-controls-show")).toHaveText("Show controls");
+  await page.reload();
+  await reopenDemoAfterReload();
+  await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeHidden();
+  await expect(page.getByTestId("mesh-viewer-controls-show")).toBeVisible();
+  await expect(page.getByTestId("mesh-viewer-controls-show")).toHaveText("Show controls");
   await page.getByTestId("mesh-viewer-controls-show").click();
   await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeVisible();
+  await expect(page.getByTestId("mesh-viewer-controls-mode")).toHaveValue("compact");
   if (operationButtonName === "Split Edge") {
     await runContextualActionFlow({
       page,

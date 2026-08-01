@@ -124,8 +124,8 @@ const configureGeometryViewerForConstructionPicking = async (page: Page) => {
     return true;
   }).toBe(true);
 
-  const fullButton = await findFirstVisibleButton(page, "Full");
-  if (!fullButton) throw new Error("Visible Full quality button not found.");
+  const fullButton = page.getByTestId("geometry-viewer-controls-strip").getByRole("button", { name: "Full", exact: true });
+  await expect(fullButton).toBeVisible();
   if ((await fullButton.getAttribute("aria-pressed").catch(() => null)) !== "true") {
     await fullButton.click();
   }
@@ -354,14 +354,25 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
     await page.getByTestId("geometry-workflow-step-transform").click();
     await expect(page.getByTestId("geometry-workflow-step-transform")).toHaveAttribute("aria-current", "step");
     await expect(page.getByTestId("geometry-viewer-controls-strip")).toBeVisible();
-    await page.getByTestId("geometry-viewer-controls-hide").click();
+    await expect(page.getByTestId("geometry-viewer-controls-mode")).toHaveValue("normal");
+    await page.getByTestId("geometry-viewer-controls-mode").selectOption("compact");
+    await expect(page.getByTestId("geometry-viewer-controls-mode")).toHaveValue("compact");
+    await expect(page.getByTestId("geometry-viewer-controls-strip")).toHaveAttribute("data-density", "compact");
+    await page.reload();
+    await expect(page.getByTestId("geometry-viewer-controls-strip")).toBeVisible();
+    await expect(page.getByTestId("geometry-viewer-controls-mode")).toHaveValue("compact");
+    await expect(page.getByTestId("geometry-viewer-controls-strip")).toHaveAttribute("data-density", "compact");
+    await page.getByTestId("geometry-viewer-controls-mode").selectOption("hidden");
     await expect(page.getByTestId("geometry-viewer-controls-strip")).toBeHidden();
     await expect(page.getByTestId("geometry-viewer-controls-show")).toBeVisible();
+    await expect(page.getByTestId("geometry-viewer-controls-show")).toHaveText("Show controls");
     await page.reload();
     await expect(page.getByTestId("geometry-viewer-controls-strip")).toBeHidden();
     await expect(page.getByTestId("geometry-viewer-controls-show")).toBeVisible();
+    await expect(page.getByTestId("geometry-viewer-controls-show")).toHaveText("Show controls");
     await page.getByTestId("geometry-viewer-controls-show").click();
     await expect(page.getByTestId("geometry-viewer-controls-strip")).toBeVisible();
+    await expect(page.getByTestId("geometry-viewer-controls-mode")).toHaveValue("compact");
     await configureGeometryViewerForConstructionPicking(page);
     await page.getByTestId("geometry-workflow-step-transform").click();
     await expect(page.getByTestId("geometry-workflow-step-transform")).toHaveAttribute("aria-current", "step");

@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
 export type ViewerControlsDensity = "normal" | "compact";
+export type ViewerControlsMode = ViewerControlsDensity | "hidden";
 
 export const viewerControlStripStyle: CSSProperties = {
   display: "flex",
@@ -67,6 +68,39 @@ export const viewerControlsOverlayChipStyle = (active = false): CSSProperties =>
   whiteSpace: "nowrap",
   boxShadow: "0 8px 18px rgba(15, 23, 42, 0.12)",
 });
+
+type ViewerControlsModeSelectProps = {
+  value: ViewerControlsDensity;
+  testId: string;
+  onChange: (mode: ViewerControlsMode) => void;
+  style?: CSSProperties;
+};
+
+export function ViewerControlsModeSelect({ value, testId, onChange, style }: ViewerControlsModeSelectProps) {
+  return (
+    <select
+      data-testid={testId}
+      value={value}
+      onChange={(event) => onChange(event.target.value as ViewerControlsMode)}
+      style={{
+        ...viewerControlsOverlayChipStyle(value === "compact"),
+        appearance: "auto",
+        paddingRight: 6,
+        ...style,
+      }}
+      title={
+        value === "compact"
+          ? "Compact controls use shorter labels and tighter spacing."
+          : "Full controls show complete labels."
+      }
+      aria-label="Viewer controls mode"
+    >
+      <option value="normal">Controls: Full</option>
+      <option value="compact">Controls: Compact</option>
+      <option value="hidden">Hide controls</option>
+    </select>
+  );
+}
 
 const compactStripStyle: CSSProperties = {
   gap: 3,
