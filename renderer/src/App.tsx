@@ -29581,6 +29581,57 @@ const App: React.FC = () => {
 
   // Surfaces viewer kind
   const [surfaceViewerKind, setSurfaceViewerKind] = useState<SurfaceViewerKind>("implicit");
+
+  useEffect(() => {
+    const handleViewerControlsShortcut = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || !event.shiftKey || event.key.toLowerCase() !== "v") return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.tagName === "SELECT" ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      if (mode === "geometry") {
+        event.preventDefault();
+        if (!geometryViewerControlsOpen) {
+          setGeometryViewerControlsOpen(true);
+          setGeometryViewerControlsDensity("normal");
+          return;
+        }
+        if (geometryViewerControlsDensity === "normal") {
+          setGeometryViewerControlsDensity("compact");
+          return;
+        }
+        setGeometryViewerControlsOpen(false);
+        return;
+      }
+      if (mode === "surfaces" && surfaceViewerKind === "mesh") {
+        event.preventDefault();
+        if (!meshViewerControlsOpen) {
+          setMeshViewerControlsOpen(true);
+          setMeshViewerControlsDensity("normal");
+          return;
+        }
+        if (meshViewerControlsDensity === "normal") {
+          setMeshViewerControlsDensity("compact");
+          return;
+        }
+        setMeshViewerControlsOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleViewerControlsShortcut);
+    return () => window.removeEventListener("keydown", handleViewerControlsShortcut);
+  }, [
+    geometryViewerControlsDensity,
+    geometryViewerControlsOpen,
+    meshViewerControlsDensity,
+    meshViewerControlsOpen,
+    mode,
+    surfaceViewerKind,
+  ]);
   const [datasetKind, setDatasetKind] = useState<DatasetKind>("surface");
   const [initialSurfaceMeshTopologySession] = useState<RestoredSurfaceMeshTopologySession | null>(() =>
     readStoredSurfaceMeshTopologySession()

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 export type ViewerControlsDensity = "normal" | "compact";
@@ -69,6 +70,9 @@ export const viewerControlsOverlayChipStyle = (active = false): CSSProperties =>
   boxShadow: "0 8px 18px rgba(15, 23, 42, 0.12)",
 });
 
+const viewerControlsModeLabel = (value: ViewerControlsDensity) =>
+  value === "compact" ? "Controls: Compact" : "Controls: Full";
+
 type ViewerControlsModeSelectProps = {
   value: ViewerControlsDensity;
   testId: string;
@@ -77,28 +81,96 @@ type ViewerControlsModeSelectProps = {
 };
 
 export function ViewerControlsModeSelect({ value, testId, onChange, style }: ViewerControlsModeSelectProps) {
+  const [open, setOpen] = useState(false);
+  const chooseMode = (mode: ViewerControlsMode) => {
+    setOpen(false);
+    onChange(mode);
+  };
+
   return (
-    <select
+    <div
       data-testid={testId}
-      value={value}
-      onChange={(event) => onChange(event.target.value as ViewerControlsMode)}
+      data-mode={value}
       style={{
-        ...viewerControlsOverlayChipStyle(value === "compact"),
-        appearance: "auto",
-        paddingRight: 6,
+        position: "relative",
+        display: "inline-flex",
         ...style,
       }}
+    >
+      <button
+        type="button"
+        data-testid={`${testId}-button`}
+        onClick={() => setOpen((current) => !current)}
+        style={{
+          ...viewerControlsOverlayChipStyle(value === "compact"),
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 5,
+          minWidth: 118,
+          justifyContent: "space-between",
+        }}
       title={
         value === "compact"
           ? "Compact controls use shorter labels and tighter spacing."
           : "Full controls show complete labels."
       }
-      aria-label="Viewer controls mode"
-    >
-      <option value="normal">Controls: Full</option>
-      <option value="compact">Controls: Compact</option>
-      <option value="hidden">Hide controls</option>
-    </select>
+        aria-label="Viewer controls mode"
+        aria-expanded={open}
+      >
+        <span>{viewerControlsModeLabel(value)}</span>
+        <span aria-hidden="true" style={{ fontSize: 9, color: "#64748b" }}>
+          v
+        </span>
+      </button>
+      {open && (
+        <div
+          data-testid={`${testId}-menu`}
+          role="menu"
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            right: 0,
+            zIndex: 80,
+            minWidth: 152,
+            border: "1px solid #bfdbfe",
+            borderRadius: 8,
+            background: "rgba(255, 255, 255, 0.98)",
+            boxShadow: "0 12px 26px rgba(15, 23, 42, 0.18)",
+            padding: 4,
+            display: "grid",
+            gap: 3,
+          }}
+        >
+          {[
+            ["normal", "Full controls", "Full controls show complete labels."],
+            ["compact", "Compact controls", "Compact controls use shorter labels and tighter spacing."],
+            ["hidden", "Hide controls", "Hide controls and leave only the Show controls chip."],
+          ].map(([mode, label, title]) => (
+            <button
+              key={mode}
+              type="button"
+              data-testid={`${testId}-${mode}`}
+              role="menuitem"
+              onClick={() => chooseMode(mode as ViewerControlsMode)}
+              style={{
+                border: "1px solid " + (mode === value ? "#93c5fd" : "transparent"),
+                borderRadius: 6,
+                background: mode === value ? "#eff6ff" : "transparent",
+                color: mode === value ? "#1d4ed8" : "#334155",
+                cursor: "pointer",
+                fontSize: 11,
+                fontWeight: mode === value ? 800 : 650,
+                padding: "5px 7px",
+                textAlign: "left",
+              }}
+              title={title}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -188,17 +188,22 @@ async function runTopologyDemo(
     await tools.click();
   };
   await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeVisible();
-  await page.getByTestId("mesh-viewer-controls-mode").selectOption("normal");
-  await expect(page.getByTestId("mesh-viewer-controls-mode")).toHaveValue("normal");
-  await page.getByTestId("mesh-viewer-controls-mode").selectOption("compact");
-  await expect(page.getByTestId("mesh-viewer-controls-mode")).toHaveValue("compact");
+  await page.getByTestId("mesh-viewer-controls-mode-button").click();
+  await page.getByTestId("mesh-viewer-controls-mode-normal").click();
+  await expect(page.getByTestId("mesh-viewer-controls-mode")).toHaveAttribute("data-mode", "normal");
+  await expect(page.getByTestId("mesh-viewer-controls-mode")).toContainText("Controls: Full");
+  await page.getByTestId("mesh-viewer-controls-mode-button").click();
+  await page.getByTestId("mesh-viewer-controls-mode-compact").click();
+  await expect(page.getByTestId("mesh-viewer-controls-mode")).toHaveAttribute("data-mode", "compact");
+  await expect(page.getByTestId("mesh-viewer-controls-mode")).toContainText("Controls: Compact");
   await expect(page.getByTestId("mesh-viewer-controls-strip")).toHaveAttribute("data-density", "compact");
   await page.reload();
   await reopenDemoAfterReload();
   await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeVisible();
-  await expect(page.getByTestId("mesh-viewer-controls-mode")).toHaveValue("compact");
+  await expect(page.getByTestId("mesh-viewer-controls-mode")).toHaveAttribute("data-mode", "compact");
   await expect(page.getByTestId("mesh-viewer-controls-strip")).toHaveAttribute("data-density", "compact");
-  await page.getByTestId("mesh-viewer-controls-mode").selectOption("hidden");
+  await page.getByTestId("mesh-viewer-controls-mode-button").click();
+  await page.getByTestId("mesh-viewer-controls-mode-hidden").click();
   await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeHidden();
   await expect(page.getByTestId("mesh-viewer-controls-show")).toBeVisible();
   await expect(page.getByTestId("mesh-viewer-controls-show")).toHaveText("Show controls");
@@ -209,7 +214,12 @@ async function runTopologyDemo(
   await expect(page.getByTestId("mesh-viewer-controls-show")).toHaveText("Show controls");
   await page.getByTestId("mesh-viewer-controls-show").click();
   await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeVisible();
-  await expect(page.getByTestId("mesh-viewer-controls-mode")).toHaveValue("compact");
+  await expect(page.getByTestId("mesh-viewer-controls-mode")).toHaveAttribute("data-mode", "compact");
+  await page.keyboard.press("Control+Shift+V");
+  await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeHidden();
+  await page.keyboard.press("Control+Shift+V");
+  await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeVisible();
+  await expect(page.getByTestId("mesh-viewer-controls-mode")).toHaveAttribute("data-mode", "normal");
   if (operationButtonName === "Split Edge") {
     await runContextualActionFlow({
       page,
