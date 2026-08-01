@@ -181,6 +181,12 @@ async function runTopologyDemo(
   await page.getByTestId(`mesh-topology-preset-card-${demoId}`).click();
   const meshTools = await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true }));
   await meshTools.click();
+  await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeVisible();
+  await page.getByTestId("mesh-viewer-controls-hide").click();
+  await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeHidden();
+  await expect(page.getByTestId("mesh-viewer-controls-show")).toBeVisible();
+  await page.getByTestId("mesh-viewer-controls-show").click();
+  await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeVisible();
   if (operationButtonName === "Split Edge") {
     await runContextualActionFlow({
       page,

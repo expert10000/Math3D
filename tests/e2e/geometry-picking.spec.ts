@@ -357,8 +357,14 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
     await page.getByTestId("geometry-viewer-controls-hide").click();
     await expect(page.getByTestId("geometry-viewer-controls-strip")).toBeHidden();
     await expect(page.getByTestId("geometry-viewer-controls-show")).toBeVisible();
+    await page.reload();
+    await expect(page.getByTestId("geometry-viewer-controls-strip")).toBeHidden();
+    await expect(page.getByTestId("geometry-viewer-controls-show")).toBeVisible();
     await page.getByTestId("geometry-viewer-controls-show").click();
     await expect(page.getByTestId("geometry-viewer-controls-strip")).toBeVisible();
+    await configureGeometryViewerForConstructionPicking(page);
+    await page.getByTestId("geometry-workflow-step-transform").click();
+    await expect(page.getByTestId("geometry-workflow-step-transform")).toHaveAttribute("aria-current", "step");
 
     await runContextualActionFlow({
       page,

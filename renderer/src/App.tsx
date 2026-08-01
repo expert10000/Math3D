@@ -1113,9 +1113,11 @@ const UI_DISPLAY_MODE_KEY = "math3d.ui.displayMode.v1";
 const UI_VIEWPORT_PRESET_KEY = "math3d.ui.viewportPreset.v1";
 const UI_VIEWPORT_OVERLAY_CONTROLS_KEY = "math3d.ui.viewportOverlayControls.v1";
 const UI_SURFACE_VIEW_GIZMO_KEY = "math3d.ui.surfaceViewGizmo.v1";
+const UI_MESH_VIEWER_CONTROLS_KEY = "math3d.ui.meshViewerControls.v1";
 const UI_WORKSPACE_MODE_KEY = "math3d.ui.workspaceMode.v1";
 const UI_GEOMETRY_MODE_KEY = "math3d.ui.geometryMode.v1";
 const UI_GEOMETRY_PROCEDURAL_PANEL_KEY = "math3d.ui.geometryProceduralPanel.v1";
+const UI_GEOMETRY_VIEWER_CONTROLS_KEY = "math3d.ui.geometryViewerControls.v1";
 const UI_GEOMETRY_VIEWPORT_SETTINGS_KEY = "math3d.ui.geometryViewportSettings.v1";
 const UI_GEOMETRY_CONSTRUCT_PANEL_KEY = "math3d.ui.geometryConstructPanel.v1";
 const WORKBOOK_AUTOSAVE_INTERVAL_SEC = 30;
@@ -10187,7 +10189,10 @@ const App: React.FC = () => {
     return isGeometryModeValue(saved) ? saved : "procedural";
   });
   const [geometryWorkbookUiMode, setGeometryWorkbookUiMode] = useState<GeometryWorkbookUiMode>("compact");
-  const [geometryViewerControlsOpen, setGeometryViewerControlsOpen] = useState(true);
+  const [geometryViewerControlsOpen, setGeometryViewerControlsOpen] = useState(() => {
+    if (typeof window === "undefined" || IS_REPLAY_MODE) return true;
+    return window.localStorage.getItem(UI_GEOMETRY_VIEWER_CONTROLS_KEY) !== "0";
+  });
   const [geometryWorkspaceTab, setGeometryWorkspaceTab] = useState<ConstructionWorkspaceTab>("build");
   const [geometryDemoTab, setGeometryDemoTab] = useState<GeometryDemoTab>("task");
   const [geometryProceduralPanelTab, setGeometryProceduralPanelTab] =
@@ -10202,6 +10207,10 @@ const App: React.FC = () => {
   useEffect(() => {
     window.localStorage.setItem(UI_GEOMETRY_MODE_KEY, geometryMode);
   }, [geometryMode]);
+  useEffect(() => {
+    if (typeof window === "undefined" || IS_REPLAY_MODE) return;
+    window.localStorage.setItem(UI_GEOMETRY_VIEWER_CONTROLS_KEY, geometryViewerControlsOpen ? "1" : "0");
+  }, [geometryViewerControlsOpen]);
   useEffect(() => {
     window.localStorage.setItem(UI_GEOMETRY_PROCEDURAL_PANEL_KEY, geometryProceduralPanelTab);
   }, [geometryProceduralPanelTab]);
@@ -28770,6 +28779,10 @@ const App: React.FC = () => {
     if (IS_REPLAY_MODE) return false;
     return localStorage.getItem(UI_VIEWPORT_OVERLAY_CONTROLS_KEY) === "1";
   });
+  const [meshViewerControlsOpen, setMeshViewerControlsOpen] = useState(() => {
+    if (IS_REPLAY_MODE) return true;
+    return localStorage.getItem(UI_MESH_VIEWER_CONTROLS_KEY) !== "0";
+  });
   const [showSurfaceViewGizmo, setShowSurfaceViewGizmo] = useState(() => {
     if (IS_REPLAY_MODE) return true;
     return localStorage.getItem(UI_SURFACE_VIEW_GIZMO_KEY) !== "0";
@@ -28821,6 +28834,11 @@ const App: React.FC = () => {
     if (IS_REPLAY_MODE) return;
     localStorage.setItem(UI_VIEWPORT_OVERLAY_CONTROLS_KEY, showInViewportOverlayControls ? "1" : "0");
   }, [showInViewportOverlayControls]);
+
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    localStorage.setItem(UI_MESH_VIEWER_CONTROLS_KEY, meshViewerControlsOpen ? "1" : "0");
+  }, [meshViewerControlsOpen]);
 
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
@@ -60760,6 +60778,7 @@ case "mobius":
                     commandPreviewOverlayToggleTestId="mesh-command-preview-overlays-toggle"
                     commandPreviewLegendTestId="mesh-command-preview-legend"
                     getPickTestId={(pickMode) => `mesh-context-pick-${pickMode}`}
+                    top={showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && meshViewerControlsOpen ? 184 : 10}
                   >
                     {surfaceMeshTopologyPickMode === "face" && (
                       <>
@@ -60853,7 +60872,7 @@ case "mobius":
                     preview={meshVisibleContextualViewportPreview}
                     state={meshAppliedContextualViewportPreview ? "applied" : "preview"}
                     appliedLabel={meshAppliedContextualViewportPreview?.label}
-                    top={48}
+                    top={showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && meshViewerControlsOpen ? 228 : 48}
                     highVisibility={commandPreviewHighVisibility}
                     onApply={
                       meshAppliedContextualViewportPreview
@@ -60885,7 +60904,14 @@ case "mobius":
                       data-testid="mesh-object-selection-glow"
                       style={{
                         position: "absolute",
-                        top: meshVisibleContextualViewportPreview ? 82 : 48,
+                        top:
+                          showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && meshViewerControlsOpen
+                            ? meshVisibleContextualViewportPreview
+                              ? 264
+                              : 228
+                            : meshVisibleContextualViewportPreview
+                              ? 82
+                              : 48,
                         right: 14,
                         zIndex: 17,
                         maxWidth: 300,
@@ -61042,11 +61068,74 @@ case "mobius":
                       flexDirection: "column",
                       height: "100%",
                       minHeight: 0,
+                      position: "relative",
                     }}
                   >
-                    {showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && (
+                    {showSurfaceLocalToolStrip &&
+                      !surfacePanelsAsDrawers &&
+                      surfaceViewerKind === "mesh" &&
+                      meshViewerControlsOpen && (
+                        <button
+                          type="button"
+                          data-testid="mesh-viewer-controls-hide"
+                          onClick={() => setMeshViewerControlsOpen(false)}
+                          style={{
+                            position: "absolute",
+                            top: 8,
+                            right: 10,
+                            zIndex: 60,
+                            borderRadius: 999,
+                            border: "1px solid #cbd5e1",
+                            background: "rgba(255, 255, 255, 0.96)",
+                            color: "#334155",
+                            fontWeight: 850,
+                            fontSize: 11,
+                            padding: "4px 9px",
+                            cursor: "pointer",
+                            whiteSpace: "nowrap",
+                            boxShadow: "0 8px 18px rgba(15, 23, 42, 0.12)",
+                          }}
+                          title="Hide viewer controls to give the viewport more space."
+                        >
+                          Controls on
+                        </button>
+                      )}
+                    {showSurfaceLocalToolStrip &&
+                      !surfacePanelsAsDrawers &&
+                      surfaceViewerKind === "mesh" &&
+                      !meshViewerControlsOpen && (
+                        <button
+                          type="button"
+                          data-testid="mesh-viewer-controls-show"
+                          onClick={() => setMeshViewerControlsOpen(true)}
+                          style={{
+                            position: "absolute",
+                            top: 8,
+                            right: 10,
+                            zIndex: 30,
+                            borderRadius: 999,
+                            border: "1px solid #93c5fd",
+                            background: "rgba(239, 246, 255, 0.94)",
+                            color: "#1d4ed8",
+                            fontWeight: 850,
+                            fontSize: 11,
+                            padding: "4px 9px",
+                            cursor: "pointer",
+                            boxShadow: "0 8px 18px rgba(15, 23, 42, 0.12)",
+                          }}
+                          title="Show viewer controls."
+                        >
+                          Controls
+                        </button>
+                      )}
+                    {showSurfaceLocalToolStrip &&
+                      !surfacePanelsAsDrawers &&
+                      (surfaceViewerKind !== "mesh" || meshViewerControlsOpen) && (
                       <div
+                        data-testid={surfaceViewerKind === "mesh" ? "mesh-viewer-controls-strip" : undefined}
                         style={{
+                          position: "relative",
+                          zIndex: surfaceViewerKind === "mesh" ? 30 : undefined,
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "space-between",
@@ -61054,6 +61143,7 @@ case "mobius":
                           flexWrap: "wrap",
                           margin: compareLayoutEnabled ? "0 0 6px 0" : 0,
                           padding: "8px 10px",
+                          paddingRight: surfaceViewerKind === "mesh" ? 108 : 10,
                           borderBottom: "1px solid #e3e8f0",
                           background: "linear-gradient(180deg, rgba(249,251,253,0.98), rgba(244,247,251,0.98))",
                         }}
@@ -75153,14 +75243,42 @@ case "mobius":
                 background: "#f8fbff",
                 boxShadow: "inset 0 0 0 1px #b8c5d8",
                 order: isGeometryStackedLayout ? 1 : 0,
+                position: "relative",
               }}
             >
+              {geometryViewerControlsOpen && !geometryPanelsAsDrawers && !isPhoneLandscapeLayout && (
+                <button
+                  type="button"
+                  data-testid="geometry-viewer-controls-hide"
+                  onClick={() => setGeometryViewerControlsOpen(false)}
+                  style={{
+                    position: "absolute",
+                    top: 8,
+                    right: 10,
+                    zIndex: 60,
+                    borderRadius: 999,
+                    border: "1px solid #cbd5e1",
+                    background: "rgba(255, 255, 255, 0.96)",
+                    color: "#334155",
+                    fontWeight: 850,
+                    fontSize: 11,
+                    padding: "4px 9px",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    boxShadow: "0 8px 18px rgba(15, 23, 42, 0.12)",
+                  }}
+                  title="Hide viewer controls to give the viewport more space."
+                >
+                  Controls on
+                </button>
+              )}
               {geometryViewerControlsOpen && !geometryPanelsAsDrawers && !isPhoneLandscapeLayout && (
               <div
                 data-testid="geometry-viewer-controls-strip"
                 style={{
                   borderBottom: "1px solid #9fb0c7",
                   padding: "8px 10px",
+                  paddingRight: 108,
                   background: "linear-gradient(180deg, #f8fbff 0%, #f1f6fd 100%)",
                   display: "flex",
                   alignItems: "stretch",
@@ -75231,25 +75349,6 @@ case "mobius":
                     )}
                   </div>
                 )}
-                <button
-                  type="button"
-                  data-testid="geometry-viewer-controls-hide"
-                  onClick={() => setGeometryViewerControlsOpen(false)}
-                  style={{
-                    borderRadius: 8,
-                    border: "1px solid #cbd5e1",
-                    background: "#ffffff",
-                    color: "#334155",
-                    fontWeight: 800,
-                    fontSize: 11,
-                    padding: "5px 10px",
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                  title="Hide viewer controls to give the viewport more space."
-                >
-                  Hide controls
-                </button>
                 <div
                   style={{
                     display: "flex",
@@ -75693,21 +75792,21 @@ case "mobius":
                       style={{
                         position: "absolute",
                         top: 8,
-                        left: 10,
+                        right: 10,
                         zIndex: 20,
-                        borderRadius: 8,
+                        borderRadius: 999,
                         border: "1px solid #93c5fd",
                         background: "rgba(239, 246, 255, 0.94)",
                         color: "#1d4ed8",
                         fontWeight: 850,
                         fontSize: 11,
-                        padding: "5px 10px",
+                        padding: "4px 9px",
                         cursor: "pointer",
                         boxShadow: "0 8px 18px rgba(15, 23, 42, 0.12)",
                       }}
                       title="Show viewer controls."
                     >
-                      Show controls
+                      Controls
                     </button>
                   )}
                   {geometryMode === "procedural" && !geometryPanelsAsDrawers && (

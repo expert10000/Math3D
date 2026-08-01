@@ -37,6 +37,7 @@ type ContextualActionStripProps<T extends string> = {
   commandPreviewLegendTestId?: string;
   keyboardShortcutsEnabled?: boolean;
   getPickTestId?: (pick: T) => string;
+  top?: number;
   zIndex?: number;
   children: ReactNode;
 };
@@ -98,6 +99,7 @@ export function ContextualActionStrip<T extends string>({
   commandPreviewLegendTestId,
   keyboardShortcutsEnabled = true,
   getPickTestId,
+  top = 10,
   zIndex = 8,
   children,
 }: ContextualActionStripProps<T>) {
@@ -132,7 +134,7 @@ export function ContextualActionStrip<T extends string>({
       onMouseDown={(event) => event.stopPropagation()}
       style={{
         position: "absolute",
-        top: 10,
+        top,
         left: 12,
         right: 12,
         zIndex,
