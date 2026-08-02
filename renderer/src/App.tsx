@@ -97472,7 +97472,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   if (resultsOnlyInspector) {
     return (
       <section>
-        <h2 style={styles.h2}>Inspector</h2>
+        <h2 style={styles.h2}>INSPECTOR</h2>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
           {resultsInspectorTabs.map((tab) => (
             <button
@@ -97982,7 +97982,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
   return (
     <section>
-      <h2 style={styles.h2}>Inspector</h2>
+      <h2 style={styles.h2}>INSPECTOR</h2>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
         {inspectorTabs.map((tab) => (
           <button
