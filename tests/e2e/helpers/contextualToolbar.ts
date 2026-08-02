@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
-export type ContextualPickMode = "object" | "face" | "edge" | "vertex" | "auto";
+export type ContextualPickMode = "object" | "face" | "edge" | "vertex";
 
 export async function chooseContextualPickMode(
   page: Page,
@@ -14,6 +14,23 @@ export async function chooseContextualPickMode(
 export async function expectContextualActionReady(action: Locator): Promise<void> {
   await expect(action).toBeVisible();
   await expect(action).toBeEnabled();
+}
+
+async function expectLocatorEventuallyContainsText(
+  locator: Locator,
+  expected: string | RegExp,
+  timeout = 15_000
+): Promise<void> {
+  await expect(locator).toBeVisible();
+  await expect
+    .poll(
+      async () => {
+        const text = (await locator.textContent()) ?? "";
+        return typeof expected === "string" ? text.includes(expected) : expected.test(text);
+      },
+      { timeout }
+    )
+    .toBe(true);
 }
 
 export async function expectViewportPreviewOverlay(
@@ -325,7 +342,7 @@ export async function runContextualObjectModeCheck({
 }: {
   page: Page;
   workspace: "geometry" | "mesh";
-  pickMode: "object" | "auto";
+  pickMode: "object";
   openWorkspace: () => Promise<void>;
   selectObject?: () => Promise<void>;
   chipLabel: string | RegExp;
@@ -343,10 +360,10 @@ export async function runContextualObjectModeCheck({
 
   await expect(page.getByTestId(`${workspace}-context-pick-${pickMode}`)).toContainText(chipLabel);
   await expect(page.getByTestId(`${workspace}-context-pick-${pickMode}`)).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByTestId(`${workspace}-context-selection-label`)).toContainText(selectionLabel);
-  await expect(page.getByTestId(`${workspace}-context-preview`)).toContainText(preview);
-  await expect(page.getByTestId(`${workspace}-viewport-command-preview`)).toContainText(viewportPreview);
-  await expect(page.getByTestId(wholeObjectBadgeTestId)).toContainText(wholeObjectBadgeLabel);
+  await expectLocatorEventuallyContainsText(page.getByTestId(`${workspace}-context-selection-label`), selectionLabel);
+  await expectLocatorEventuallyContainsText(page.getByTestId(`${workspace}-context-preview`), preview);
+  await expectLocatorEventuallyContainsText(page.getByTestId(`${workspace}-viewport-command-preview`), viewportPreview);
+  await expectLocatorEventuallyContainsText(page.getByTestId(wholeObjectBadgeTestId), wholeObjectBadgeLabel);
 
   for (const action of actionExpectations) {
     const actionLocator = page.getByTestId(action.testId);

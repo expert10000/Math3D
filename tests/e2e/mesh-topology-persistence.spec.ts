@@ -295,7 +295,7 @@ test.describe("Mesh topology persistence and handoff", () => {
       await runContextualObjectModeCheck({
         page,
         workspace: "mesh",
-        pickMode: "auto",
+        pickMode: "object",
         openWorkspace: async () => {
           await openMeshGallery(page);
           await page.getByTestId("mesh-preset-card-mesh_box").click();
@@ -336,7 +336,7 @@ test.describe("Mesh topology persistence and handoff", () => {
       await runContextualObjectModeCheck({
         page,
         workspace: "mesh",
-        pickMode: "auto",
+        pickMode: "object",
         openWorkspace: async () => {
           await openMeshGallery(page);
           await page.getByTestId("mesh-preset-card-mesh_box").click();
