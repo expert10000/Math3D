@@ -77378,9 +77378,7 @@ case "mobius":
                             onClick={() => {
                               setGeometryRightPanelMode(tab);
                               if (tab === "workbook") {
-                                if (geometryMode !== "workbook") {
-                                  openGeometryWorkbookMode(geometryScratchSceneSeed);
-                                }
+                                openGeometryWorkbookMode(geometryScratchSceneSeed);
                                 setGeometryWorkbookUiMode("full");
                               }
                             }}
