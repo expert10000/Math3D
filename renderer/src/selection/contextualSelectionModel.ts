@@ -84,5 +84,5 @@ export function getContextEntityDisabledReason(
   action: string
 ): string {
   const noun = mode === "edge" ? "an edge" : mode === "face" ? "a face" : "a vertex";
-  return `Click ${noun} to enable ${action}.`;
+  return `Choose ${noun} to enable ${action}.`;
 }
