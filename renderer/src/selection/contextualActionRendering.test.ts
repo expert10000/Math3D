@@ -24,7 +24,7 @@ describe("contextualActionRendering", () => {
       testId: "mesh-context-split-edge",
       onClick,
       disabled: false,
-      disabledReason: "Click an edge to enable Split.",
+      disabledReason: "Choose an edge to enable Split.",
       pulse: true,
     });
   });

@@ -24,29 +24,29 @@ export const ENTITY_CONTEXT_COPY = {
   mesh: {
     face: {
       actions: ["Subdivide"],
-      emptyState: "Click a face to enable Subdivide",
+      emptyState: "Choose a face to enable Subdivide",
     },
     edge: {
       actions: ["Split", "Collapse", "Bevel"],
-      emptyState: "Click an edge to enable Split / Collapse / Bevel",
+      emptyState: "Choose an edge to enable Split / Collapse / Bevel",
     },
     vertex: {
       actions: ["Marker"],
-      emptyState: "Click a vertex to enable Marker",
+      emptyState: "Choose a vertex to enable Marker",
     },
   },
   geometry: {
     face: {
       actions: ["Extrude", "Inset", "Delete"],
-      emptyState: "Click a face to enable Extrude",
+      emptyState: "Choose a face to enable Extrude",
     },
     edge: {
       actions: ["Split", "Mirror", "Offset"],
-      emptyState: "Click an edge to enable Split / Mirror / Offset",
+      emptyState: "Choose an edge to enable Split / Mirror / Offset",
     },
     vertex: {
       actions: ["Marker", "Move"],
-      emptyState: "Click a vertex to enable Marker / Move",
+      emptyState: "Choose a vertex to enable Marker / Move",
     },
   },
 } as const;

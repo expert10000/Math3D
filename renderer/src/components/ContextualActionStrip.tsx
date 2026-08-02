@@ -188,7 +188,21 @@ export function ContextualActionStrip<T extends string>({
         );
       })}
       <span style={{ color: "#93a4ba" }}>|</span>
-      <strong data-testid={selectionTestId}>{selectionLabel}</strong>
+      <strong
+        data-testid={selectionTestId}
+        style={{
+          display: "inline-block",
+          flex: placement === "inline" ? "0 1 360px" : undefined,
+          minWidth: 0,
+          maxWidth: placement === "inline" ? 360 : 260,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          verticalAlign: "bottom",
+        }}
+      >
+        {selectionLabel}
+      </strong>
       {previewLabel && (
         <>
           <span style={{ color: "#93a4ba" }}>|</span>

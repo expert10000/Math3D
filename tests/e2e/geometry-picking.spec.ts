@@ -125,12 +125,18 @@ const configureGeometryViewerForConstructionPicking = async (page: Page) => {
     return true;
   }).toBe(true);
 
-  const fullButton = page.getByTestId("geometry-viewer-controls-strip").getByRole("button", { name: "Full", exact: true });
-  await expect(fullButton).toBeVisible();
-  if ((await fullButton.getAttribute("aria-pressed").catch(() => null)) !== "true") {
-    await fullButton.click();
+  const showControls = page.getByTestId("geometry-viewer-controls-show");
+  if (await showControls.isVisible().catch(() => false)) {
+    await showControls.click();
   }
-  await expect(fullButton).toHaveAttribute("aria-pressed", "true");
+
+  const modeControl = page.getByTestId("geometry-viewer-controls-mode");
+  await expect(modeControl).toBeVisible();
+  if ((await modeControl.getAttribute("data-mode").catch(() => null)) !== "normal") {
+    await page.getByTestId("geometry-viewer-controls-mode-button").click();
+    await page.getByTestId("geometry-viewer-controls-mode-normal").click();
+  }
+  await expect(modeControl).toHaveAttribute("data-mode", "normal");
 };
 
 const openProceduralGeometry = async (page: Page, quickAddId = "torus") => {
@@ -141,7 +147,6 @@ const openProceduralGeometry = async (page: Page, quickAddId = "torus") => {
   const quickAdd = page.getByTestId(`geometry-gallery-quick-add-${quickAddId}`);
   await expect(quickAdd).toBeVisible();
   await quickAdd.click();
-  await clickFirstVisibleButton(page, "Fit scene");
   await expect(page.getByTestId("geometry-pick-committed")).toBeVisible();
 };
 
@@ -350,6 +355,7 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
     const page = launched.page;
 
     await resetStorage(page);
+    await page.setViewportSize({ width: 1680, height: 980 });
     await openProceduralGeometry(page, "box");
     await configureGeometryViewerForConstructionPicking(page);
     await page.getByTestId("geometry-workflow-step-transform").click();
@@ -433,8 +439,8 @@ test("Geometry contextual strip switches to face picking and runs extrude", asyn
     await page.getByTestId("geometry-right-panel-tab-selection").click();
     await page.getByTestId("geometry-active-selection-card-clear").click();
     await expect(page.getByTestId("geometry-selection-event-toast")).toContainText("Selection cleared");
-    await expect(page.getByTestId("geometry-active-selection-card-id")).toContainText("Click a face to enable Extrude");
-    await expect(page.getByTestId("geometry-context-selection-label")).toContainText("Click a face to enable Extrude");
+    await expect(page.getByTestId("geometry-active-selection-card-id")).toContainText("Choose a face to enable Extrude");
+    await expect(page.getByTestId("geometry-context-selection-label")).toContainText("Choose a face to enable Extrude");
   } finally {
     if (app) await app.close().catch(() => undefined);
     await removeProfileDir(profileDir);

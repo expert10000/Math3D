@@ -40,10 +40,10 @@ describe("contextualSelectionState", () => {
         },
       })
     ).toMatchObject({
-      selectionLabel: "Click an edge to enable Split / Collapse / Bevel",
+      selectionLabel: "Choose an edge to enable Split / Collapse / Bevel",
       activeCardType: "Edge",
       cardId: "none",
-      emptyState: "Click an edge to enable Split / Collapse / Bevel",
+      emptyState: "Choose an edge to enable Split / Collapse / Bevel",
       actions: ["Split", "Collapse", "Bevel"],
       previewLabel: null,
       canRunPrimaryAction: false,

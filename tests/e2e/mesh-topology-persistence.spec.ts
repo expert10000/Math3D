@@ -130,7 +130,7 @@ async function openGeometryBoxForObjectMode(page: Page): Promise<void> {
   await firstVisible(page.getByTestId("geometry-workflow-step-create")).then((button) => button.click());
   await firstVisible(page.getByRole("button", { name: "Primitive", exact: true })).then((button) => button.click());
   await page.getByTestId("geometry-gallery-quick-add-box").click();
-  await firstVisible(page.getByRole("button", { name: "Fit scene", exact: true })).then((button) => button.click());
+  await expect(page.getByTestId("geometry-pick-committed")).toBeVisible();
   await firstVisible(page.getByTestId("geometry-workflow-step-transform")).then((button) => button.click());
   await expect(page.getByTestId("geometry-workflow-step-transform")).toHaveAttribute("aria-current", "step");
 }
@@ -188,18 +188,25 @@ async function runTopologyDemo(
     const tools = await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true }));
     await tools.click();
   };
+  const useRoomyViewerControlsViewport = async () => {
+    await page.setViewportSize({ width: 1680, height: 980 });
+    await page.waitForTimeout(80);
+  };
+  await useRoomyViewerControlsViewport();
   await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeVisible();
   await page.getByTestId("mesh-viewer-controls-mode-button").click();
   await page.getByTestId("mesh-viewer-controls-mode-normal").click();
   await expect(page.getByTestId("mesh-viewer-controls-mode")).toHaveAttribute("data-mode", "normal");
   await expect(page.getByTestId("mesh-viewer-controls-mode")).toContainText("Controls: Full");
   await expectViewerControlsResponsiveLayout(page, "mesh", "normal");
+  await useRoomyViewerControlsViewport();
   await page.getByTestId("mesh-viewer-controls-mode-button").click();
   await page.getByTestId("mesh-viewer-controls-mode-compact").click();
   await expect(page.getByTestId("mesh-viewer-controls-mode")).toHaveAttribute("data-mode", "compact");
   await expect(page.getByTestId("mesh-viewer-controls-mode")).toContainText("Controls: Compact");
   await expect(page.getByTestId("mesh-viewer-controls-strip")).toHaveAttribute("data-density", "compact");
   await expectViewerControlsResponsiveLayout(page, "mesh", "compact");
+  await useRoomyViewerControlsViewport();
   await page.reload();
   await reopenDemoAfterReload();
   await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeVisible();
@@ -211,6 +218,7 @@ async function runTopologyDemo(
   await expect(page.getByTestId("mesh-viewer-controls-show")).toBeVisible();
   await expect(page.getByTestId("mesh-viewer-controls-show")).toHaveText("Show controls");
   await expectViewerControlsResponsiveLayout(page, "mesh", "hidden");
+  await useRoomyViewerControlsViewport();
   await page.reload();
   await reopenDemoAfterReload();
   await expect(page.getByTestId("mesh-viewer-controls-strip")).toBeHidden();
@@ -238,7 +246,7 @@ async function runTopologyDemo(
       checkSettingsOverlayToggle: true,
       checkHighVisibilityToggle: true,
       checkActiveSelectionPreviewAccessibility: true,
-      confirmation: /Done: Edge \d+-\d+ -> split vertex \(\+1V, \+2F\)/,
+      confirmation: /Done: midpoint vertex on Edge \d+-\d+/,
       pickEntity: async () => {
         await selectDeterministicMeshEdge(page);
         await expect(page.getByTestId("mesh-topology-selected-edge").first()).toContainText(
@@ -255,7 +263,7 @@ async function runTopologyDemo(
       },
     });
     await expect(page.getByTestId("mesh-active-selection-confirmation")).toContainText(
-      /Done: Edge \d+-\d+ -> split vertex \(\+1V, \+2F\)/
+      /Done: midpoint vertex on Edge \d+-\d+/
     );
     await expect(page.getByTestId("mesh-active-selection-last-command")).toBeVisible();
     await expect(page.getByTestId("mesh-active-selection-undo-last")).toBeVisible();
@@ -263,9 +271,9 @@ async function runTopologyDemo(
     await page.getByTestId("mesh-active-selection-card-clear").click();
     await expect(page.getByTestId("mesh-selection-event-toast")).toContainText("Selection cleared");
     await expect(page.getByTestId("mesh-active-selection-card-id")).toContainText(
-      "Click an edge to enable Split / Collapse / Bevel"
+      "Choose an edge to enable Split / Collapse / Bevel"
     );
-    await expect(page.getByTestId("mesh-context-toolbar")).toContainText("Click an edge to enable Split / Collapse / Bevel");
+    await expect(page.getByTestId("mesh-context-toolbar")).toContainText("Choose an edge to enable Split / Collapse / Bevel");
     await page.getByTestId("mesh-context-open-history").click();
   } else {
     const operation = await firstVisible(page.getByRole("button", { name: operationButtonName, exact: true }));

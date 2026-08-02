@@ -1143,6 +1143,7 @@ const UI_VIEWPORT_OVERLAY_CONTROLS_KEY = "math3d.ui.viewportOverlayControls.v1";
 const UI_SURFACE_VIEW_GIZMO_KEY = "math3d.ui.surfaceViewGizmo.v1";
 const UI_MESH_VIEWER_CONTROLS_KEY = "math3d.ui.meshViewerControls.v1";
 const UI_MESH_VIEWER_CONTROLS_DENSITY_KEY = "math3d.ui.meshViewerControlsDensity.v1";
+const UI_MESH_VIEWER_CONTROLS_LAYOUT_KEY = "math3d.ui.meshViewerControlsLayout.v2";
 const UI_WORKSPACE_MODE_KEY = "math3d.ui.workspaceMode.v1";
 const UI_GEOMETRY_MODE_KEY = "math3d.ui.geometryMode.v1";
 const UI_GEOMETRY_PROCEDURAL_PANEL_KEY = "math3d.ui.geometryProceduralPanel.v1";
@@ -2478,6 +2479,7 @@ type GeometryBooleanPreviewMesh = SurfaceMeshData & {
 type GeometryRepeatAxis = "x" | "y" | "z" | "custom";
 type GeometryRepeatGridPlane = "xy" | "xz" | "yz";
 type GeometryRepeatMirrorPlane = "xy" | "xz" | "yz" | "selected-face";
+type GeometryRightPanelMode = "inspector" | "workbook";
 type GeometryRightPanelTab = "selection" | "properties" | "actions" | "dependencies";
 type GeometryInspectorPanelTab = "probe" | "dependencies";
 type GeometryConstructPanelTab = "create" | "edit" | "relations" | "measure" | "tree" | "inspect";
@@ -15957,9 +15959,9 @@ const App: React.FC = () => {
       actionLabel: string,
       edit: (mesh: SurfaceMeshData) => SurfaceMeshData
     ): { ready: true; beforeCounts: { vertexCount: number; faceCount: number }; afterCounts: { vertexCount: number; faceCount: number } } | { ready: false; message: string } => {
-      if (!objectId) return { ready: false, message: "Pick an object first." };
+      if (!objectId) return { ready: false, message: "Choose an object first." };
       const resolved = resolveGeometrySceneMeshById(objectId);
-      if (!resolved) return { ready: false, message: "Pick an object with mesh faces first." };
+      if (!resolved) return { ready: false, message: "Choose an object with mesh faces first." };
       try {
         const beforeCounts = countTriangleMeshTopology(resolved.mesh);
         const edited = applySurfaceMeshOps(edit(cloneSurfaceMeshData(resolved.mesh, resolved.mesh.label)));
@@ -15973,7 +15975,7 @@ const App: React.FC = () => {
   );
   const geometryFaceTopologyActionPreview = useMemo<GeometryTopologyActionPreview>(() => {
     if (!geometrySourceFaceOperationTarget) {
-      return { ready: false, title: "Subdivide", detail: "Pick a face to preview subdivision.", tone: "blocked" };
+      return { ready: false, title: "Subdivide", detail: "Choose a face to preview subdivision.", tone: "blocked" };
     }
     const faceIndex = geometrySourceFaceOperationTarget.faceIndex;
     const modeLabel = geometryFaceSubdivideMode === "center-fan" ? "center fan" : "4 triangles";
@@ -15998,7 +16000,7 @@ const App: React.FC = () => {
     const blocked = (title: string): GeometryTopologyActionPreview => ({
       ready: false,
       title,
-      detail: "Pick an edge to preview this edit.",
+      detail: "Choose an edge to preview this edit.",
       tone: "blocked",
     });
     if (!geometryEdgeOperationTarget?.edgeVertexPair) {
@@ -16139,7 +16141,7 @@ const App: React.FC = () => {
       return;
     }
     if (!geometryMeasuredEdgeCandidate) {
-      setGeometryCreateActionStatus("No edge selected. Click a mesh edge in the viewport first.");
+      setGeometryCreateActionStatus("No edge selected. Choose a mesh edge first.");
       return;
     }
     const objectName =
@@ -16173,7 +16175,7 @@ const App: React.FC = () => {
       return;
     }
     if (!geometryMeasuredEdgeCandidate?.edgePoints || !geometryMeasuredEdgeCandidate.edgeVertexPair) {
-      setGeometryCreateActionStatus("No edge selected. Click a mesh edge in the viewport first.");
+      setGeometryCreateActionStatus("No edge selected. Choose a mesh edge first.");
       return;
     }
     const objectName =
@@ -16383,7 +16385,7 @@ const App: React.FC = () => {
   const handleAddEntityIdAnnotation = useCallback(() => {
     const detail = geometryProbeSelectionDetails;
     if (!detail) {
-      setGeometryAnnotationStatus("Pick a mesh element first.");
+      setGeometryAnnotationStatus("Choose a mesh element first.");
       return;
     }
     if (detail.mode === "vertex" && detail.vertexIndex != null) {
@@ -28761,6 +28763,7 @@ const App: React.FC = () => {
     const saved = localStorage.getItem(WORKBOOK_PANEL_KEY);
     return saved === "workbook" ? "workbook" : "inspector";
   });
+  const [geometryRightPanelMode, setGeometryRightPanelMode] = useState<GeometryRightPanelMode>("inspector");
   const [geometryRightPanelTab, setGeometryRightPanelTab] = useState<GeometryRightPanelTab>("selection");
   const [geometryInspectorPanelTab, setGeometryInspectorPanelTab] = useState<GeometryInspectorPanelTab>("probe");
   const geometryTransformGizmoActive =
@@ -28792,6 +28795,12 @@ const App: React.FC = () => {
   });
   const [meshViewerControlsOpen, setMeshViewerControlsOpen] = useState(() => {
     if (IS_REPLAY_MODE) return true;
+    if (localStorage.getItem(UI_MESH_VIEWER_CONTROLS_LAYOUT_KEY) !== "1") {
+      localStorage.setItem(UI_MESH_VIEWER_CONTROLS_LAYOUT_KEY, "1");
+      localStorage.setItem(UI_MESH_VIEWER_CONTROLS_KEY, "1");
+      localStorage.setItem(UI_MESH_VIEWER_CONTROLS_DENSITY_KEY, "normal");
+      return true;
+    }
     return localStorage.getItem(UI_MESH_VIEWER_CONTROLS_KEY) !== "0";
   });
   const [meshViewerControlsDensity, setMeshViewerControlsDensity] = useState<ViewerControlsDensity>(() => {
@@ -54647,6 +54656,16 @@ case "mobius":
     !isPhoneViewerPriorityLayout &&
     !surfacesBrowseModeActive;
   const showSurfaceLocalToolStrip = showSurfaceWorkflowStrip && !isSurfacePreviewMode;
+  const showMeshViewerLocalToolStrip =
+    mode === "surfaces" &&
+    isSurfaceDatasetKind(datasetKind) &&
+    surfaceViewerKind === "mesh" &&
+    !isPresentDisplayMode &&
+    !cleanScreenshotSurfaceActive &&
+    !isPhoneViewerPriorityLayout &&
+    !isSurfacePreviewMode;
+  const showCurrentSurfaceViewerControls =
+    surfaceViewerKind === "mesh" ? showMeshViewerLocalToolStrip : showSurfaceLocalToolStrip;
   const showGeometryWorkflowStrip = mode === "geometry" && !isPresentDisplayMode;
   const geometryDemonstrationsViewerActive =
     geometryMode === "demo" || (geometryMode === "procedural" && geometryProceduralPanelTab === "demonstrations");
@@ -60762,116 +60781,6 @@ case "mobius":
                   ...viewerTouchContainmentStyle,
                 }}
               >
-                {surfaceViewerKind === "mesh" && surfaceMeshStats && !cleanScreenshotSurfaceActive && (
-                  <ContextualActionStrip
-                    testId="mesh-context-toolbar"
-                    pickOptions={
-                      [
-                        {
-                          id: "auto",
-                          label: OBJECT_CONTEXT_COPY.mesh.chip,
-                          title: "Whole-mesh actions: promote to Geometry, save edited mesh, or reopen source.",
-                        },
-                        { id: "face", label: "Face", title: "Pick a mesh face, then use the matching tools." },
-                        { id: "edge", label: "Edge", title: "Pick a mesh edge, then use the matching tools." },
-                        { id: "vertex", label: "Vertex", title: "Pick a mesh vertex, then use the matching tools." },
-                      ] satisfies readonly ContextualActionStripOption<SurfaceMeshTopologyPickMode>[]
-                    }
-                    activePick={surfaceMeshTopologyPickMode}
-                    onPickChange={(pickMode) => {
-                      setSurfaceMeshTopologyPickMode(pickMode);
-                      if (pickMode !== "auto" && !probeEnabled) setProbeEnabled(true);
-                    }}
-                    selectionLabel={
-                      surfaceMeshTopologyPickMode === "auto"
-                        ? meshContextToolbarSelectionLabel
-                        : meshActiveSelectionSummary.emptyState ??
-                          meshActiveSelectionSummary.eventLabel ??
-                          meshContextToolbarSelectionLabel
-                    }
-                    selectionTestId="mesh-context-selection-label"
-                    previewLabel={meshContextToolbarPreviewLabel}
-                    previewTestId="mesh-context-preview"
-                    applyPreviewTestId="mesh-context-apply-preview"
-                    confirmationLabel={meshContextToolbarConfirmationLabel}
-                    confirmationTestId="mesh-context-confirmation"
-                    lastCommandLabel={meshContextToolbarLastCommandLabel}
-                    lastCommandTestId="mesh-context-last-command"
-                    canUndoLast={surfaceMeshTopologyHistory.length > 0}
-                    onUndoLast={undoLatestSurfaceMeshTopologyEdit}
-                    undoTestId="mesh-context-undo-last"
-                    onOpenHistory={handleOpenMeshContextHistory}
-                    openHistoryTestId="mesh-context-open-history"
-                    canRunPrimaryAction={meshContextCanRunPrimaryAction}
-                    onPrimaryAction={handleRunMeshContextPrimaryAction}
-                    commandPreviewOverlaysVisible={commandPreviewOverlaysVisible}
-                    commandPreviewHighVisibility={commandPreviewHighVisibility}
-                    onCommandPreviewOverlaysVisibleChange={setCommandPreviewOverlaysVisible}
-                    commandPreviewOverlayToggleTestId="mesh-command-preview-overlays-toggle"
-                    commandPreviewLegendTestId="mesh-command-preview-legend"
-                    getPickTestId={(pickMode) => `mesh-context-pick-${pickMode}`}
-                    zIndex={70}
-                  >
-                    {surfaceMeshTopologyPickMode === "face" && (
-                      <>
-                        <ContextualRenderedActionStripButtons actions={meshContextualStripEntityActions} />
-                        <ContextualActionStripAction disabled disabledReason="Face inset is planned for the shared contextual toolbar.">
-                          Inset
-                        </ContextualActionStripAction>
-                        <ContextualActionStripAction disabled disabledReason="Face extrude is planned for the shared contextual toolbar.">
-                          Extrude
-                        </ContextualActionStripAction>
-                      </>
-                    )}
-                    {surfaceMeshTopologyPickMode === "edge" && (
-                      <>
-                        <ContextualRenderedActionStripButtons actions={meshContextualStripEntityActions} />
-                      </>
-                    )}
-                    {surfaceMeshTopologyPickMode === "vertex" && (
-                      <>
-                        <ContextualRenderedActionStripButtons actions={meshContextualStripEntityActions} />
-                        <ContextualActionStripAction disabled disabledReason="Vertex move will use the shared transform tools.">
-                          Move
-                        </ContextualActionStripAction>
-                      </>
-                    )}
-                    {surfaceMeshTopologyPickMode === "auto" && (
-                      <>
-                        <ContextualActionStripAction
-                          testId="mesh-context-promote-mesh-object"
-                          onClick={handleDatasetToGeometryScene}
-                          disabled={!meshObjectPromoteReady}
-                          disabledReason="Load a mesh to enable Promote to Geometry."
-                        >
-                          {OBJECT_CONTEXT_COPY.mesh.actions[0]}
-                        </ContextualActionStripAction>
-                        <ContextualActionStripAction
-                          testId="mesh-context-save-edited"
-                          onClick={handleSaveSurfaceMeshTopologyEditedPreset}
-                          disabled={!surfaceMeshTopologyHistory.length}
-                          disabledReason="Apply a topology edit before saving an edited mesh."
-                        >
-                          {OBJECT_CONTEXT_COPY.mesh.actions[1]}
-                        </ContextualActionStripAction>
-                        <ContextualActionStripAction
-                          testId="mesh-context-mesh-source"
-                          onClick={handleOpenMeshPromotionSourceGeometryObject}
-                          disabled={!meshPromotionTrace}
-                          disabledReason="This mesh has no linked Geometry source yet."
-                        >
-                          {OBJECT_CONTEXT_COPY.mesh.actions[2]}
-                        </ContextualActionStripAction>
-                      </>
-                    )}
-                    <ContextualActionStripAction
-                      testId="mesh-context-advanced"
-                      onClick={() => setSurfaceMeshTopologyStatus("Advanced IDs are in Mesh tools below the quick operations.")}
-                    >
-                      Advanced
-                    </ContextualActionStripAction>
-                  </ContextualActionStrip>
-                )}
                 {selectionEventStatus?.workspace === "Mesh" && !cleanScreenshotSurfaceActive && (
                   <div
                     key={selectionEventStatus.key}
@@ -60904,7 +60813,13 @@ case "mobius":
                     preview={meshVisibleContextualViewportPreview}
                     state={meshAppliedContextualViewportPreview ? "applied" : "preview"}
                     appliedLabel={meshAppliedContextualViewportPreview?.label}
-                    top={58}
+                    top={
+                      showMeshViewerLocalToolStrip && !surfacePanelsAsDrawers
+                        ? meshViewerControlsDensity === "compact"
+                          ? 154
+                          : 208
+                        : 58
+                    }
                     highVisibility={commandPreviewHighVisibility}
                     onApply={
                       meshAppliedContextualViewportPreview
@@ -60937,7 +60852,7 @@ case "mobius":
                       style={{
                         position: "absolute",
                         top:
-                          showSurfaceLocalToolStrip && !surfacePanelsAsDrawers && meshViewerControlsOpen
+                          showMeshViewerLocalToolStrip && !surfacePanelsAsDrawers && meshViewerControlsOpen
                             ? meshViewerControlsDensity === "compact"
                               ? meshVisibleContextualViewportPreview
                                 ? 268
@@ -61107,7 +61022,7 @@ case "mobius":
                       position: "relative",
                     }}
                   >
-                    {showSurfaceLocalToolStrip &&
+                    {showMeshViewerLocalToolStrip &&
                       !surfacePanelsAsDrawers &&
                       surfaceViewerKind === "mesh" &&
                       meshViewerControlsOpen && (
@@ -61125,11 +61040,11 @@ case "mobius":
                             position: "absolute",
                             top: 8,
                             right: 10,
-                            zIndex: 60,
+                            zIndex: 90,
                           }}
                         />
                       )}
-                    {showSurfaceLocalToolStrip &&
+                    {showMeshViewerLocalToolStrip &&
                       !surfacePanelsAsDrawers &&
                       surfaceViewerKind === "mesh" &&
                       !meshViewerControlsOpen && (
@@ -61141,7 +61056,7 @@ case "mobius":
                             position: "absolute",
                             top: 8,
                             right: 10,
-                            zIndex: 30,
+                            zIndex: 90,
                             ...viewerControlsOverlayChipStyle(true),
                           }}
                           title="Show viewer controls."
@@ -61149,7 +61064,7 @@ case "mobius":
                           Show controls
                         </button>
                       )}
-                    {showSurfaceLocalToolStrip &&
+                    {showCurrentSurfaceViewerControls &&
                       !surfacePanelsAsDrawers &&
                       (surfaceViewerKind !== "mesh" || meshViewerControlsOpen) && (
                       <ViewerControlsStrip
@@ -61163,17 +61078,20 @@ case "mobius":
                           padding:
                             surfaceViewerKind === "mesh"
                               ? meshViewerControlsDensity === "compact"
-                                ? "3px 260px 3px 5px"
-                                : "5px 260px 5px 7px"
+                                ? "3px 170px 3px 5px"
+                                : "5px 170px 5px 7px"
                               : undefined,
                           borderBottom: "1px solid #e3e8f0",
                           background: "linear-gradient(180deg, rgba(249,251,253,0.98), rgba(244,247,251,0.98))",
-                        }}
+                          }}
                       >
                         <ViewerControlGroup
                           label={surfaceViewerKind === "mesh" && meshViewerControlsDensity === "compact" ? "M" : "Mesh"}
                           density={surfaceViewerKind === "mesh" ? meshViewerControlsDensity : "normal"}
-                          style={{ flex: meshViewerControlsDensity === "compact" ? "1 1 340px" : "1 1 480px" }}
+                          style={{
+                            flex: meshViewerControlsDensity === "compact" ? "0 0 auto" : "0 0 100%",
+                            alignSelf: "flex-start",
+                          }}
                         >
                           {showSurfaceFormulaEditorLauncher && (
                             <button
@@ -61303,44 +61221,166 @@ case "mobius":
                               Open workbook scene (detailed)
                             </button>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => setShowInViewportOverlayControls((v) => !v)}
-                            style={{
-                              borderRadius: 8,
-                              border: "1px solid " + (showInViewportOverlayControls ? "#2563eb" : "#c7d2e2"),
-                              background: showInViewportOverlayControls ? "#eff6ff" : "#f8fafc",
-                              color: showInViewportOverlayControls ? "#1d4ed8" : "#334155",
-                              fontWeight: showInViewportOverlayControls ? 700 : 600,
-                              fontSize: 11,
-                              padding: "5px 10px",
-                              cursor: "pointer",
-                            }}
-                            aria-pressed={showInViewportOverlayControls}
-                          >
-                            {showInViewportOverlayControls
-                              ? meshViewerControlsDensity === "compact"
-                                ? "Overlay on"
-                                : "Overlay controls: on"
-                              : meshViewerControlsDensity === "compact"
-                                ? "Overlay off"
-                                : "Overlay controls: off"}
-                          </button>
+                        </ViewerControlGroup>
+                        <ViewerControlGroup
+                          label={meshViewerControlsDensity === "compact" ? "D" : "Display"}
+                          density={meshViewerControlsDensity}
+                          style={{ flex: meshViewerControlsDensity === "compact" ? "2 1 420px" : "2 1 560px" }}
+                        >
+                          <label style={viewerControlCheckStyle}>
+                            <input
+                              type="checkbox"
+                              checked={showWireframe}
+                              onChange={() => setShowWireframe((value) => !value)}
+                            />
+                            Wireframe
+                          </label>
+                          <label style={viewerControlCheckStyle}>
+                            <input
+                              type="checkbox"
+                              checked={showBoundingBox}
+                              onChange={() => setShowBoundingBox((value) => !value)}
+                            />
+                            {meshViewerControlsDensity === "compact" ? "Bounds" : "Bounding box"}
+                          </label>
+                          <label style={viewerControlCheckStyle}>
+                            <input
+                              type="checkbox"
+                              checked={showSurfaceViewGizmo}
+                              onChange={() => setShowSurfaceViewGizmo((value) => !value)}
+                            />
+                            Gizmo
+                          </label>
+                          <label style={viewerControlCheckStyle}>
+                            <input type="checkbox" checked={showPlanes} onChange={toggleCoordinatePlanes} />
+                            {meshViewerControlsDensity === "compact" ? "Coords" : "Coordinates"}
+                          </label>
+                          {showPlanes && (
+                            <>
+                              <label style={{ ...viewerControlCheckStyle, opacity: showPlanes ? 1 : 0.6 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={planeGridSettings.showXY}
+                                  disabled={!showPlanes}
+                                  onChange={(event) =>
+                                    setPlaneGridSettings((prev) => ({ ...prev, showXY: event.target.checked }))
+                                  }
+                                />
+                                XY
+                              </label>
+                              <label style={{ ...viewerControlCheckStyle, opacity: showPlanes ? 1 : 0.6 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={planeGridSettings.showXZ}
+                                  disabled={!showPlanes}
+                                  onChange={(event) =>
+                                    setPlaneGridSettings((prev) => ({ ...prev, showXZ: event.target.checked }))
+                                  }
+                                />
+                                XZ
+                              </label>
+                              <label style={{ ...viewerControlCheckStyle, opacity: showPlanes ? 1 : 0.6 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={planeGridSettings.showYZ}
+                                  disabled={!showPlanes}
+                                  onChange={(event) =>
+                                    setPlaneGridSettings((prev) => ({ ...prev, showYZ: event.target.checked }))
+                                  }
+                                />
+                                YZ
+                              </label>
+                              <label style={{ ...viewerControlCheckStyle, opacity: showPlanes ? 1 : 0.6 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={planeGridSettings.showGrid}
+                                  disabled={!showPlanes}
+                                  onChange={(event) =>
+                                    setPlaneGridSettings((prev) => ({ ...prev, showGrid: event.target.checked }))
+                                  }
+                                />
+                                Major
+                              </label>
+                              <label
+                                style={{
+                                  ...viewerControlCheckStyle,
+                                  opacity: showPlanes && planeGridSettings.showGrid ? 1 : 0.6,
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={planeGridSettings.showMinorGrid}
+                                  disabled={!showPlanes || !planeGridSettings.showGrid}
+                                  onChange={(event) =>
+                                    setPlaneGridSettings((prev) => ({ ...prev, showMinorGrid: event.target.checked }))
+                                  }
+                                />
+                                Minor
+                              </label>
+                              <label style={{ ...viewerControlCheckStyle, opacity: showPlanes ? 1 : 0.6 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={planeGridSettings.showLabels}
+                                  disabled={!showPlanes}
+                                  onChange={(event) =>
+                                    setPlaneGridSettings((prev) => ({ ...prev, showLabels: event.target.checked }))
+                                  }
+                                />
+                                Labels
+                              </label>
+                              <label
+                                style={{
+                                  ...viewerControlCheckStyle,
+                                  opacity: showPlanes && planeGridSettings.showLabels ? 1 : 0.6,
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={planeGridSettings.showAxisLabels}
+                                  disabled={!showPlanes || !planeGridSettings.showLabels}
+                                  onChange={(event) =>
+                                    setPlaneGridSettings((prev) => ({ ...prev, showAxisLabels: event.target.checked }))
+                                  }
+                                />
+                                Axes
+                              </label>
+                            </>
+                          )}
+                          <label style={viewerControlCheckStyle}>
+                            <input type="checkbox" checked={showChartGrid} onChange={toggleSurfaceChartGrid} />
+                            {meshViewerControlsDensity === "compact" ? "Chart" : "Chart grid"}
+                          </label>
+                          {showChartGrid && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setMeshChartGridMode("local")}
+                                aria-pressed={meshChartGridMode === "local"}
+                                style={viewerControlButtonStyle(meshChartGridMode === "local", meshViewerControlsDensity)}
+                              >
+                                {meshViewerControlsDensity === "compact" ? "Local" : "Local chart"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setMeshChartGridMode("meshFace")}
+                                aria-pressed={meshChartGridMode === "meshFace"}
+                                style={viewerControlButtonStyle(meshChartGridMode === "meshFace", meshViewerControlsDensity)}
+                              >
+                                {meshViewerControlsDensity === "compact" ? "Face" : "Mesh-face"}
+                              </button>
+                            </>
+                          )}
+                          <label style={viewerControlCheckStyle}>
+                            <input
+                              type="checkbox"
+                              checked={showInViewportOverlayControls}
+                              onChange={(event) => setShowInViewportOverlayControls(event.target.checked)}
+                            />
+                            {meshViewerControlsDensity === "compact" ? "Overlay" : "Overlay controls"}
+                          </label>
                           <label
                             title="Show or hide viewport command preview badges and ghost overlays. Strip preview text remains visible."
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 5,
-                              borderRadius: 8,
-                              border: "1px solid " + (commandPreviewOverlaysVisible ? "#86efac" : "#c7d2e2"),
-                              background: commandPreviewOverlaysVisible ? "#f0fdf4" : "#f8fafc",
-                              color: commandPreviewOverlaysVisible ? "#166534" : "#334155",
-                              fontWeight: commandPreviewOverlaysVisible ? 700 : 600,
-                              fontSize: 11,
-                              padding: "5px 10px",
-                              cursor: "pointer",
-                            }}
+                            style={viewerControlCheckStyle}
                           >
                             <input
                               type="checkbox"
@@ -61351,70 +61391,177 @@ case "mobius":
                             />
                             {meshViewerControlsDensity === "compact" ? "Preview" : "Command preview"}
                           </label>
-                          <span
-                            style={{
-                              borderRadius: 999,
-                              border: "1px solid #c7d2e2",
-                              background: "#f8fafc",
-                              color: "#64748b",
-                              fontWeight: 600,
-                              fontSize: 11,
-                              padding: "4px 8px",
-                              lineHeight: 1,
-                            }}
-                          >
-                            {meshViewerControlsDensity === "compact"
-                              ? showChartGrid
-                                ? "Grid: chart"
-                                : showPlanes
-                                  ? "Grid: planes"
-                                  : "Grid: none"
-                              : showChartGrid
-                                ? "Grid: surface chart"
-                                : showPlanes
-                                  ? "Grid: planes"
-                                  : "Grid: none"}
-                          </span>
                         </ViewerControlGroup>
                         <ViewerControlGroup
-                          label={meshViewerControlsDensity === "compact" ? "P" : "Panel"}
+                          label={meshViewerControlsDensity === "compact" ? "V" : "Viewport"}
                           density={meshViewerControlsDensity}
-                          style={{ flex: "0 0 auto" }}
+                          style={{ flex: meshViewerControlsDensity === "compact" ? "1 1 300px" : "1 1 400px" }}
                         >
-                          {(["inspector", "workbook"] as const).map((tab) => {
-                            const active = rightPanelTab === tab;
-                            return (
-                              <button
-                                key={`surface-local-tab-${tab}`}
-                                type="button"
-                                onClick={() => {
-                                  if (!showRightPanel) setShowRightPanel(true);
-                                  setRightPanelTab(tab);
-                                }}
-                                aria-pressed={active}
-                                style={{
-                                  borderRadius: 8,
-                                  border: "1px solid " + (active ? "#2563eb" : "#c7d2e2"),
-                                  background: active ? "#eff6ff" : "#f8fafc",
-                                  color: active ? "#1d4ed8" : "#334155",
-                                  fontWeight: active ? 700 : 600,
-                                  fontSize: 11,
-                                  padding: "5px 10px",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                {tab === "inspector" ? "Inspector" : "Workbook"}
-                              </button>
-                            );
-                          })}
+                          <span style={{ ...viewerControlLabelStyle, color: "#475569" }}>
+                            {meshViewerControlsDensity === "compact" ? "Qual" : "Quality"}
+                          </span>
+                          {(
+                            [
+                              ["performance", "Fast"],
+                              ["balanced", "Balanced"],
+                              ["sharp", "Full"],
+                            ] as const
+                          ).map(([quality, label]) => (
+                            <button
+                              key={`mesh-viewer-quality-${quality}`}
+                              type="button"
+                              onClick={() => setSurfaceRenderQuality(quality)}
+                              aria-pressed={surfaceRenderQuality === quality}
+                              style={viewerControlButtonStyle(surfaceRenderQuality === quality, meshViewerControlsDensity)}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                          <span style={{ ...viewerControlLabelStyle, marginLeft: 4 }}>
+                            {meshViewerControlsDensity === "compact" ? "Cam" : "Camera"}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setCameraResetToken((token) => token + 1)}
+                            style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
+                          >
+                            {meshViewerControlsDensity === "compact" ? "Reset" : "Reset camera"}
+                          </button>
+                          <label style={viewerControlCheckStyle}>
+                            <input
+                              type="checkbox"
+                              checked={compareCameraSync}
+                              onChange={(event) => setCompareCameraSync(event.target.checked)}
+                            />
+                            {meshViewerControlsDensity === "compact" ? "Sync" : "Camera sync"}
+                          </label>
                         </ViewerControlGroup>
                       </ViewerControlsStrip>
+                    )}
+                    {surfaceViewerKind === "mesh" && surfaceMeshStats && !cleanScreenshotSurfaceActive && (
+                      <div
+                        style={{
+                          width: "100%",
+                          maxWidth: "100%",
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        <ContextualActionStrip
+                          testId="mesh-context-toolbar"
+                          placement="inline"
+                          pickOptions={
+                            [
+                              {
+                                id: "auto",
+                                label: OBJECT_CONTEXT_COPY.mesh.chip,
+                                title: "Whole-mesh actions: promote to Geometry, save edited mesh, or reopen source.",
+                              },
+                              { id: "face", label: "Face", title: "Choose a mesh face, then use the matching tools." },
+                              { id: "edge", label: "Edge", title: "Choose a mesh edge, then use the matching tools." },
+                              { id: "vertex", label: "Vertex", title: "Choose a mesh vertex, then use the matching tools." },
+                            ] satisfies readonly ContextualActionStripOption<SurfaceMeshTopologyPickMode>[]
+                          }
+                          activePick={surfaceMeshTopologyPickMode}
+                          onPickChange={(pickMode) => {
+                            setSurfaceMeshTopologyPickMode(pickMode);
+                            if (pickMode !== "auto" && !probeEnabled) setProbeEnabled(true);
+                          }}
+                          selectionLabel={
+                            surfaceMeshTopologyPickMode === "auto"
+                              ? meshContextToolbarSelectionLabel
+                              : meshActiveSelectionSummary.emptyState ??
+                                meshActiveSelectionSummary.eventLabel ??
+                                meshContextToolbarSelectionLabel
+                          }
+                          selectionTestId="mesh-context-selection-label"
+                          previewLabel={meshContextToolbarPreviewLabel}
+                          previewTestId="mesh-context-preview"
+                          applyPreviewTestId="mesh-context-apply-preview"
+                          confirmationLabel={meshContextToolbarConfirmationLabel}
+                          confirmationTestId="mesh-context-confirmation"
+                          lastCommandLabel={meshContextToolbarLastCommandLabel}
+                          lastCommandTestId="mesh-context-last-command"
+                          canUndoLast={surfaceMeshTopologyHistory.length > 0}
+                          onUndoLast={undoLatestSurfaceMeshTopologyEdit}
+                          undoTestId="mesh-context-undo-last"
+                          onOpenHistory={handleOpenMeshContextHistory}
+                          openHistoryTestId="mesh-context-open-history"
+                          canRunPrimaryAction={meshContextCanRunPrimaryAction}
+                          onPrimaryAction={handleRunMeshContextPrimaryAction}
+                          commandPreviewOverlaysVisible={commandPreviewOverlaysVisible}
+                          commandPreviewHighVisibility={commandPreviewHighVisibility}
+                          onCommandPreviewOverlaysVisibleChange={setCommandPreviewOverlaysVisible}
+                          commandPreviewOverlayToggleTestId="mesh-command-preview-overlays-toggle"
+                          commandPreviewLegendTestId="mesh-command-preview-legend"
+                          getPickTestId={(pickMode) => `mesh-context-pick-${pickMode}`}
+                          zIndex={17}
+                        >
+                          {surfaceMeshTopologyPickMode === "face" && (
+                            <>
+                              <ContextualRenderedActionStripButtons actions={meshContextualStripEntityActions} />
+                              <ContextualActionStripAction disabled disabledReason="Face inset is planned for the shared contextual toolbar.">
+                                Inset
+                              </ContextualActionStripAction>
+                              <ContextualActionStripAction disabled disabledReason="Face extrude is planned for the shared contextual toolbar.">
+                                Extrude
+                              </ContextualActionStripAction>
+                            </>
+                          )}
+                          {surfaceMeshTopologyPickMode === "edge" && (
+                            <>
+                              <ContextualRenderedActionStripButtons actions={meshContextualStripEntityActions} />
+                            </>
+                          )}
+                          {surfaceMeshTopologyPickMode === "vertex" && (
+                            <>
+                              <ContextualRenderedActionStripButtons actions={meshContextualStripEntityActions} />
+                              <ContextualActionStripAction disabled disabledReason="Vertex move will use the shared transform tools.">
+                                Move
+                              </ContextualActionStripAction>
+                            </>
+                          )}
+                          {surfaceMeshTopologyPickMode === "auto" && (
+                            <>
+                              <ContextualActionStripAction
+                                testId="mesh-context-promote-mesh-object"
+                                onClick={handleDatasetToGeometryScene}
+                                disabled={!meshObjectPromoteReady}
+                                disabledReason="Load a mesh to enable Promote to Geometry."
+                              >
+                                {OBJECT_CONTEXT_COPY.mesh.actions[0]}
+                              </ContextualActionStripAction>
+                              <ContextualActionStripAction
+                                testId="mesh-context-save-edited"
+                                onClick={handleSaveSurfaceMeshTopologyEditedPreset}
+                                disabled={!surfaceMeshTopologyHistory.length}
+                                disabledReason="Apply a topology edit before saving an edited mesh."
+                              >
+                                {OBJECT_CONTEXT_COPY.mesh.actions[1]}
+                              </ContextualActionStripAction>
+                              <ContextualActionStripAction
+                                testId="mesh-context-mesh-source"
+                                onClick={handleOpenMeshPromotionSourceGeometryObject}
+                                disabled={!meshPromotionTrace}
+                                disabledReason="This mesh has no linked Geometry source yet."
+                              >
+                                {OBJECT_CONTEXT_COPY.mesh.actions[2]}
+                              </ContextualActionStripAction>
+                            </>
+                          )}
+                          <ContextualActionStripAction
+                            testId="mesh-context-advanced"
+                            onClick={() => setSurfaceMeshTopologyStatus("Advanced IDs are in Mesh tools below the quick operations.")}
+                          >
+                            Advanced
+                          </ContextualActionStripAction>
+                        </ContextualActionStrip>
+                      </div>
                     )}
                     {isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "mesh" && meshGeometryRoundTripSource && (
                       <div
                         data-testid="mesh-geometry-roundtrip-card"
                         style={{
-                          margin: showSurfaceLocalToolStrip && !surfacePanelsAsDrawers ? "0 8px 6px" : "6px 0",
+                          margin: showCurrentSurfaceViewerControls && !surfacePanelsAsDrawers ? "0 8px 6px" : "6px 0",
                           border: "1px solid #bae6fd",
                           borderRadius: 8,
                           background: "#f0f9ff",
@@ -61504,7 +61651,7 @@ case "mobius":
                         height: "100%",
                         minHeight: 0,
                         flex: 1,
-                        padding: showSurfaceLocalToolStrip && !surfacePanelsAsDrawers ? 8 : 0,
+                        padding: showCurrentSurfaceViewerControls && !surfacePanelsAsDrawers ? 8 : 0,
                         boxSizing: "border-box",
                       }}
                     >
@@ -75814,9 +75961,9 @@ case "mobius":
                         label: OBJECT_CONTEXT_COPY.geometry.chip,
                         title: "Whole-object actions: open details, transform, or inspect history.",
                       },
-                      { id: "face", label: "Face", title: "Pick a Geometry face, then use the matching actions." },
-                      { id: "edge", label: "Edge", title: "Pick a Geometry edge, then use the matching actions." },
-                      { id: "vertex", label: "Vertex", title: "Pick a Geometry vertex, then use the matching actions." },
+                      { id: "face", label: "Face", title: "Choose a Geometry face, then use the matching actions." },
+                      { id: "edge", label: "Edge", title: "Choose a Geometry edge, then use the matching actions." },
+                      { id: "vertex", label: "Vertex", title: "Choose a Geometry vertex, then use the matching actions." },
                     ] satisfies readonly ContextualActionStripOption<GeometryProbeSelectionMode>[]
                   }
                   activePick={geometryProbeSelectionMode}
@@ -77221,8 +77368,32 @@ case "mobius":
                         </button>
                       </div>
                     )}
+                    <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+                      {(["inspector", "workbook"] as const).map((tab) => {
+                        const active = geometryRightPanelMode === tab;
+                        return (
+                          <button
+                            key={`geometry-right-panel-mode-${tab}`}
+                            type="button"
+                            onClick={() => {
+                              setGeometryRightPanelMode(tab);
+                              if (tab === "workbook") {
+                                if (geometryMode !== "workbook") {
+                                  openGeometryWorkbookMode(geometryScratchSceneSeed);
+                                }
+                                setGeometryWorkbookUiMode("full");
+                              }
+                            }}
+                            style={pill(active)}
+                            aria-pressed={active}
+                          >
+                            {tab === "inspector" ? "Inspector" : "Workbook"}
+                          </button>
+                        );
+                      })}
+                    </div>
                     <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
-                      <div style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>Inspector</div>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>INSPECTOR</div>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         {([
                           ["selection", "Selection"],
@@ -77877,7 +78048,7 @@ case "mobius":
                                     setGeometryProbeSelectionMode("edge");
                                     setGeometryActiveOperationInputSlotId("active-edge");
                                     setGeometryProceduralHoverPick(null);
-                                    setGeometryCreateActionStatus("Edge pick mode active. Click an edge to fill the Edge slot.");
+                                    setGeometryCreateActionStatus("Edge selection mode active. Choose an edge to fill the Edge slot.");
                                   }}
                                   style={{ ...geometryOperationButtonStyle, ...pill(geometryProbeSelectionMode === "edge") }}
                                   aria-pressed={geometryProbeSelectionMode === "edge"}
@@ -78387,7 +78558,7 @@ case "mobius":
                                 </div>
                               )}
                               {geometrySelectedPick?.kind === "object" && (
-                                <div style={{ color: "#64748b" }}>Pick a face, edge, or vertex to show direct edit tools.</div>
+                                <div style={{ color: "#64748b" }}>Choose a face, edge, or vertex to show direct edit tools.</div>
                               )}
                             </div>
                             <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
@@ -97301,7 +97472,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   if (resultsOnlyInspector) {
     return (
       <section>
-        <h2 style={styles.h2}>INSPECTOR</h2>
+        <h2 style={styles.h2}>Inspector</h2>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
           {resultsInspectorTabs.map((tab) => (
             <button
@@ -97811,7 +97982,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
   return (
     <section>
-      <h2 style={styles.h2}>INSPECTOR</h2>
+      <h2 style={styles.h2}>Inspector</h2>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
         {inspectorTabs.map((tab) => (
           <button

@@ -30,9 +30,9 @@ describe("contextualActions", () => {
   });
 
   it("keeps disabled reasons aligned with shared wording", () => {
-    expect(getContextualActionDescriptors("mesh", "edge")[0].disabledReason).toBe("Click an edge to enable Split.");
+    expect(getContextualActionDescriptors("mesh", "edge")[0].disabledReason).toBe("Choose an edge to enable Split.");
     expect(getContextualActionDescriptors("geometry", "face")[0].disabledReason).toBe(
-      "Click a face to enable Extrude."
+      "Choose a face to enable Extrude."
     );
   });
 });
