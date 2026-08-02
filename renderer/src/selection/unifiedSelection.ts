@@ -51,6 +51,37 @@ export type UnifiedSelection = {
   readonly source: "geometry-pick" | "mesh-topology" | "mesh-object";
 };
 
+export type UnifiedSelectionEntityId = string;
+export type UnifiedSelectionKey = string;
+
+export type UnifiedSelectionDomain = {
+  readonly workspace: UnifiedSelectionWorkspace;
+  readonly selectionType: UnifiedSelectionKind;
+  readonly objectId: string;
+  readonly objectLabel: string;
+  readonly objectType?: string | null;
+  readonly meshKey?: string | null;
+  readonly topologyVersion?: number | null;
+};
+
+export type UnifiedSelectionCounts = Readonly<Record<UnifiedSelectionKind, number>>;
+
+export type UnifiedSelectionSet = {
+  readonly domain: UnifiedSelectionDomain | null;
+  readonly items: readonly UnifiedSelection[];
+  readonly keys: readonly UnifiedSelectionKey[];
+  readonly count: number;
+  readonly counts: UnifiedSelectionCounts;
+  readonly activeKey: UnifiedSelectionKey | null;
+  readonly anchorKey: UnifiedSelectionKey | null;
+  readonly activeSelection: UnifiedSelection | null;
+  readonly anchorSelection: UnifiedSelection | null;
+  readonly empty: boolean;
+  readonly label: string;
+};
+
+export type UnifiedSelectionSetEditMode = "replace" | "add" | "toggle" | "remove" | "clear";
+
 export type MeshTopologyUnifiedSelectionMode = "object" | "face" | "edge" | "vertex";
 
 export type MeshTopologyUnifiedSelectionInput = {
@@ -76,6 +107,27 @@ const EMPTY_TOPOLOGY: UnifiedSelectionTopology = {
   adjacentVertices: [],
 };
 
+const EMPTY_SELECTION_COUNTS: UnifiedSelectionCounts = {
+  object: 0,
+  face: 0,
+  edge: 0,
+  vertex: 0,
+};
+
+const EMPTY_SELECTION_SET: UnifiedSelectionSet = {
+  domain: null,
+  items: [],
+  keys: [],
+  count: 0,
+  counts: EMPTY_SELECTION_COUNTS,
+  activeKey: null,
+  anchorKey: null,
+  activeSelection: null,
+  anchorSelection: null,
+  empty: true,
+  label: "No selection",
+};
+
 const toVec3 = (value: readonly [number, number, number] | undefined | null): UnifiedSelectionVec3 | null =>
   value ? [value[0], value[1], value[2]] : null;
 
@@ -92,6 +144,177 @@ const formatSelectionLabel = (kind: UnifiedSelectionKind, objectLabel: string, i
 
 const edgeIdFromVertices = (vertices: readonly [number, number] | null | undefined): string | null =>
   vertices ? `${vertices[0]}-${vertices[1]}` : null;
+
+const encodeKeyPart = (value: string | number | null | undefined): string =>
+  encodeURIComponent(value == null ? "" : String(value));
+
+const pluralSelectionKind = (kind: UnifiedSelectionKind, count: number): string =>
+  count === 1 ? kind : kind === "vertex" ? "vertices" : `${kind}s`;
+
+export function getUnifiedSelectionEntityId(selection: UnifiedSelection): UnifiedSelectionEntityId | null {
+  if (selection.selectionType === "object") return `object:${selection.objectId}`;
+  if (selection.selectionType === "face") {
+    return selection.faceId == null ? null : `face:${selection.faceId}`;
+  }
+  if (selection.selectionType === "edge") {
+    const edgeId = selection.edgeId ?? edgeIdFromVertices(selection.edgeVertices);
+    return edgeId ? `edge:${edgeId}` : null;
+  }
+  return selection.vertexId == null ? null : `vertex:${selection.vertexId}`;
+}
+
+export function getUnifiedSelectionKey(selection: UnifiedSelection): UnifiedSelectionKey | null {
+  const entityId = getUnifiedSelectionEntityId(selection);
+  if (!entityId) return null;
+  return [
+    selection.workspace,
+    selection.objectId,
+    selection.meshKey ?? "",
+    selection.topologyVersion ?? "",
+    selection.selectionType,
+    entityId,
+  ]
+    .map(encodeKeyPart)
+    .join("|");
+}
+
+export function getUnifiedSelectionDomain(selection: UnifiedSelection): UnifiedSelectionDomain {
+  return {
+    workspace: selection.workspace,
+    selectionType: selection.selectionType,
+    objectId: selection.objectId,
+    objectLabel: selection.objectLabel,
+    objectType: selection.objectType ?? null,
+    meshKey: selection.meshKey ?? null,
+    topologyVersion: selection.topologyVersion ?? null,
+  };
+}
+
+export function areUnifiedSelectionDomainsEqual(
+  a: UnifiedSelectionDomain | null | undefined,
+  b: UnifiedSelectionDomain | null | undefined
+): boolean {
+  if (!a || !b) return false;
+  return (
+    a.workspace === b.workspace &&
+    a.selectionType === b.selectionType &&
+    a.objectId === b.objectId &&
+    (a.meshKey ?? null) === (b.meshKey ?? null) &&
+    (a.topologyVersion ?? null) === (b.topologyVersion ?? null)
+  );
+}
+
+export function areUnifiedSelectionsInSameSetDomain(a: UnifiedSelection, b: UnifiedSelection): boolean {
+  return areUnifiedSelectionDomainsEqual(getUnifiedSelectionDomain(a), getUnifiedSelectionDomain(b));
+}
+
+const findSelectionByKey = (
+  items: readonly UnifiedSelection[],
+  keys: readonly UnifiedSelectionKey[],
+  key: UnifiedSelectionKey | null | undefined
+): UnifiedSelection | null => {
+  if (!key) return null;
+  const index = keys.indexOf(key);
+  return index >= 0 ? items[index] ?? null : null;
+};
+
+export function createUnifiedSelectionSet(
+  selections: readonly (UnifiedSelection | null | undefined)[],
+  options: { activeKey?: UnifiedSelectionKey | null; anchorKey?: UnifiedSelectionKey | null } = {}
+): UnifiedSelectionSet {
+  let domain: UnifiedSelectionDomain | null = null;
+  const items: UnifiedSelection[] = [];
+  const keys: UnifiedSelectionKey[] = [];
+
+  for (const selection of selections) {
+    if (!selection) continue;
+    const key = getUnifiedSelectionKey(selection);
+    if (!key) continue;
+    const selectionDomain = getUnifiedSelectionDomain(selection);
+    if (!domain) domain = selectionDomain;
+    if (!areUnifiedSelectionDomainsEqual(domain, selectionDomain)) continue;
+    const existingIndex = keys.indexOf(key);
+    if (existingIndex >= 0) {
+      items[existingIndex] = selection;
+    } else {
+      keys.push(key);
+      items.push(selection);
+    }
+  }
+
+  if (!domain || !items.length) return EMPTY_SELECTION_SET;
+
+  const counts: Record<UnifiedSelectionKind, number> = { ...EMPTY_SELECTION_COUNTS };
+  items.forEach((item) => {
+    counts[item.selectionType] += 1;
+  });
+  const activeKey = options.activeKey && keys.includes(options.activeKey) ? options.activeKey : keys[keys.length - 1] ?? null;
+  const anchorKey = options.anchorKey && keys.includes(options.anchorKey) ? options.anchorKey : keys[0] ?? null;
+  const activeSelection = findSelectionByKey(items, keys, activeKey);
+  const anchorSelection = findSelectionByKey(items, keys, anchorKey);
+  const label =
+    items.length === 1
+      ? items[0].label
+      : `${items.length} ${pluralSelectionKind(domain.selectionType, items.length)} selected on ${domain.objectLabel}`;
+
+  return {
+    domain,
+    items,
+    keys,
+    count: items.length,
+    counts,
+    activeKey,
+    anchorKey,
+    activeSelection,
+    anchorSelection,
+    empty: false,
+    label,
+  };
+}
+
+export function updateUnifiedSelectionSet(
+  previous: UnifiedSelectionSet,
+  selection: UnifiedSelection | null | undefined,
+  mode: UnifiedSelectionSetEditMode
+): UnifiedSelectionSet {
+  if (mode === "clear") return EMPTY_SELECTION_SET;
+  if (!selection) return mode === "replace" ? EMPTY_SELECTION_SET : previous;
+
+  const key = getUnifiedSelectionKey(selection);
+  if (!key) return previous;
+  const selectionDomain = getUnifiedSelectionDomain(selection);
+  if (mode === "replace") {
+    return createUnifiedSelectionSet([selection], { activeKey: key, anchorKey: key });
+  }
+  if (!previous.domain || !areUnifiedSelectionDomainsEqual(previous.domain, selectionDomain)) {
+    return mode === "remove" ? previous : createUnifiedSelectionSet([selection], { activeKey: key, anchorKey: key });
+  }
+
+  const index = previous.keys.indexOf(key);
+  if (mode === "remove") {
+    if (index < 0) return previous;
+    const nextItems = previous.items.filter((_item, itemIndex) => itemIndex !== index);
+    return createUnifiedSelectionSet(nextItems, {
+      activeKey: previous.activeKey === key ? undefined : previous.activeKey,
+      anchorKey: previous.anchorKey === key ? undefined : previous.anchorKey,
+    });
+  }
+  if (mode === "toggle" && index >= 0) {
+    const nextItems = previous.items.filter((_item, itemIndex) => itemIndex !== index);
+    return createUnifiedSelectionSet(nextItems, {
+      activeKey: previous.activeKey === key ? undefined : previous.activeKey,
+      anchorKey: previous.anchorKey === key ? undefined : previous.anchorKey,
+    });
+  }
+
+  const nextItems = [...previous.items];
+  if (index >= 0) nextItems[index] = selection;
+  else nextItems.push(selection);
+  return createUnifiedSelectionSet(nextItems, {
+    activeKey: key,
+    anchorKey: previous.anchorKey ?? key,
+  });
+}
 
 const readMeshVertex = (mesh: SurfaceMeshData | null, index: number | null): UnifiedSelectionVec3 | null => {
   if (!mesh || index == null) return null;
