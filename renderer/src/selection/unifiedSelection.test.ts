@@ -66,9 +66,9 @@ describe("unifiedSelection", () => {
     });
   });
 
-  it("adapts Mesh object mode from the existing auto pick mode", () => {
+  it("adapts Mesh object mode to the shared selection contract", () => {
     const selection = unifiedSelectionFromMeshTopology({
-      mode: "auto",
+      mode: "object",
       objectLabel: "Bunny mesh",
       objectId: "bunny",
       mesh: squareMesh,

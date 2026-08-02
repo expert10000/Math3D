@@ -51,7 +51,7 @@ export type UnifiedSelection = {
   readonly source: "geometry-pick" | "mesh-topology" | "mesh-object";
 };
 
-export type MeshTopologyUnifiedSelectionMode = "object" | "auto" | "face" | "edge" | "vertex";
+export type MeshTopologyUnifiedSelectionMode = "object" | "face" | "edge" | "vertex";
 
 export type MeshTopologyUnifiedSelectionInput = {
   readonly objectId?: string | null;
@@ -206,7 +206,7 @@ export function unifiedSelectionFromMeshTopology(
   const objectLabel = formatMeshObjectLabel(input);
   const objectId = input.objectId ?? input.meshKey ?? objectLabel;
   const meshKey = input.meshKey ?? objectId;
-  const mode = input.mode === "auto" ? "object" : input.mode;
+  const mode = input.mode;
 
   if (mode === "object") {
     if (!input.mesh && !input.objectLabel && !input.objectId) return null;

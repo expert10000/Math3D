@@ -5378,14 +5378,18 @@ type SurfaceMeshTopologyPick = {
   edgeB: number;
   vertexIndex: number;
 };
-type SurfaceMeshTopologyPickMode = "auto" | "face" | "edge" | "vertex";
+type SurfaceMeshTopologyPickMode = "object" | "face" | "edge" | "vertex";
 const isSurfaceMeshTopologyPickMode = (value: unknown): value is SurfaceMeshTopologyPickMode =>
-  value === "auto" || value === "face" || value === "edge" || value === "vertex";
+  value === "object" || value === "face" || value === "edge" || value === "vertex";
+const normalizeSurfaceMeshTopologyPickMode = (value: unknown): SurfaceMeshTopologyPickMode | null => {
+  if (value === "auto") return "object";
+  return isSurfaceMeshTopologyPickMode(value) ? value : null;
+};
 const readStoredSurfaceMeshContextualPickMode = (): SurfaceMeshTopologyPickMode | null => {
   if (typeof window === "undefined") return null;
   try {
     const value = window.localStorage.getItem(UI_CONTEXTUAL_MESH_PICK_MODE_KEY);
-    return isSurfaceMeshTopologyPickMode(value) ? value : null;
+    return normalizeSurfaceMeshTopologyPickMode(value);
   } catch {
     return null;
   }
@@ -30317,7 +30321,7 @@ const App: React.FC = () => {
     initialSurfaceMeshTopologySession?.fields.vertexIndex ?? 0
   );
   const [surfaceMeshTopologyPickMode, setSurfaceMeshTopologyPickMode] = useState<SurfaceMeshTopologyPickMode>(
-    () => readStoredSurfaceMeshContextualPickMode() ?? "auto"
+    () => readStoredSurfaceMeshContextualPickMode() ?? "object"
   );
   const [surfaceMeshTopologySelectionCleared, setSurfaceMeshTopologySelectionCleared] = useState(false);
   useEffect(() => {
@@ -33455,7 +33459,7 @@ const App: React.FC = () => {
       surfaceMeshTopologyFeedback ||
       surfaceMeshTopologySelectionCleared ||
       surfaceMeshTopologyHistoryPreviewId ||
-      surfaceMeshTopologyPickMode === "auto" ||
+      surfaceMeshTopologyPickMode === "object" ||
       !surfaceMeshData?.positions?.length
     ) {
       return null;
@@ -33570,7 +33574,7 @@ const App: React.FC = () => {
   }, [surfaceMeshTopologyHistoryPreviewEntry, surfaceMeshTopologyHistoryPreviewMode]);
   const surfaceMeshTopologyViewerMesh = surfaceMeshTopologyHistoryDisplayMesh ?? surfaceMeshData;
   const surfaceMeshObjectSelectionPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
-    if (!isMeshLikeViewer || surfaceMeshTopologyPickMode !== "auto" || !surfaceMeshTopologyViewerMesh?.positions?.length) {
+    if (!isMeshLikeViewer || surfaceMeshTopologyPickMode !== "object" || !surfaceMeshTopologyViewerMesh?.positions?.length) {
       return null;
     }
     const bounds = boundsFromPositions(surfaceMeshTopologyViewerMesh.positions);
@@ -33580,7 +33584,7 @@ const App: React.FC = () => {
   const surfaceMeshTopologySelectionFaceMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
     if (
       surfaceMeshTopologySelectionCleared ||
-      surfaceMeshTopologyPickMode === "auto" ||
+      surfaceMeshTopologyPickMode === "object" ||
       !isMeshLikeViewer ||
       !surfaceMeshTopologyViewerMesh?.positions?.length
     ) {
@@ -33653,7 +33657,7 @@ const App: React.FC = () => {
   const surfaceMeshTopologyOverlayPointSets = useMemo<OverlayPointSet[] | null>(() => {
     if (
       surfaceMeshTopologySelectionCleared ||
-      surfaceMeshTopologyPickMode === "auto" ||
+      surfaceMeshTopologyPickMode === "object" ||
       !isMeshLikeViewer ||
       !surfaceMeshTopologyViewerMesh?.positions?.length
     ) {
@@ -33713,7 +33717,7 @@ const App: React.FC = () => {
   const surfaceMeshTopologySelectionLabelSets = useMemo<OverlayLabelSet[] | null>(() => {
     if (
       surfaceMeshTopologySelectionCleared ||
-      surfaceMeshTopologyPickMode === "auto" ||
+      surfaceMeshTopologyPickMode === "object" ||
       !isMeshLikeViewer ||
       !surfaceMeshTopologyViewerMesh?.positions?.length
     ) {
@@ -33817,7 +33821,7 @@ const App: React.FC = () => {
   const surfaceMeshTopologyOverlayPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (
       surfaceMeshTopologySelectionCleared ||
-      surfaceMeshTopologyPickMode === "auto" ||
+      surfaceMeshTopologyPickMode === "object" ||
       !isMeshLikeViewer ||
       !surfaceMeshTopologyViewerMesh?.positions?.length
     ) {
@@ -33887,7 +33891,7 @@ const App: React.FC = () => {
       surfaceMeshTopologyFeedback ||
       surfaceMeshTopologySelectionCleared ||
       surfaceMeshTopologyHistoryPreviewId ||
-      surfaceMeshTopologyPickMode === "auto" ||
+      surfaceMeshTopologyPickMode === "object" ||
       !surfaceMeshTopologyViewerMesh?.positions?.length
     ) {
       return empty;
@@ -35224,6 +35228,37 @@ const App: React.FC = () => {
 
   // probe
   const [probeEnabled, setProbeEnabled] = useState(false);
+  useEffect(() => {
+    const shortcutModes = ["object", "face", "edge", "vertex"] as const;
+    const handleSelectionModeShortcut = (event: KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || target?.isContentEditable) return;
+      const index = Number(event.key) - 1;
+      const nextMode = shortcutModes[index];
+      if (!nextMode) return;
+
+      if (mode === "geometry" && geometryMode === "procedural") {
+        event.preventDefault();
+        setGeometryProbeSelectionMode(nextMode);
+        setGeometryProceduralHoverPick(null);
+        setGeometryRightPanelTab("selection");
+        if (nextMode === "face") setGeometryActiveOperationInputSlotId("source-face");
+        if (nextMode === "edge") setGeometryActiveOperationInputSlotId("active-edge");
+        if (nextMode === "vertex") setGeometryActiveOperationInputSlotId("active-vertex");
+        return;
+      }
+
+      if (mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "mesh") {
+        event.preventDefault();
+        setSurfaceMeshTopologyPickMode(nextMode);
+        if (nextMode !== "object" && !probeEnabled) setProbeEnabled(true);
+      }
+    };
+    window.addEventListener("keydown", handleSelectionModeShortcut);
+    return () => window.removeEventListener("keydown", handleSelectionModeShortcut);
+  }, [datasetKind, geometryMode, mode, probeEnabled, surfaceViewerKind]);
   const [showProbeNormal, setShowProbeNormal] = useState(true);
   const [showProbeTangentPlane, setShowProbeTangentPlane] = useState(true);
   const [showProbeTangents, setShowProbeTangents] = useState(true);
@@ -45968,7 +46003,7 @@ case "mobius":
         ],
         vertexIndex: selectedSurfaceMeshTopologyVertexId,
         valid:
-          surfaceMeshTopologyPickMode === "auto"
+          surfaceMeshTopologyPickMode === "object"
             ? Boolean(surfaceMeshData)
             : surfaceMeshTopologyPickMode === "face"
               ? surfaceMeshTopologyFieldValidation.faceValid
@@ -46003,7 +46038,7 @@ case "mobius":
       : `${Math.round(meshEdgePreviewSplitRatio * 100)}% split vertex`;
   const meshContextSelectionState = buildContextualSelectionState({
     workspace: "mesh",
-    pickMode: surfaceMeshTopologyPickMode === "auto" ? "object" : surfaceMeshTopologyPickMode,
+    pickMode: surfaceMeshTopologyPickMode,
     objectLabel: meshUnifiedSelection?.selectionType === "object" ? meshUnifiedSelection.objectLabel : surfaceMeshLabel,
     objectReady: Boolean(meshUnifiedSelection?.selectionType === "object" || surfaceMeshData),
     objectEmptyState: "Load a mesh to enable object actions",
@@ -46092,7 +46127,7 @@ case "mobius":
     [meshContextToolbarPreviewLabel]
   );
   const meshContextualViewportPreviewOperation: ContextualViewportPreviewOperation =
-    surfaceMeshTopologyPickMode === "auto"
+    surfaceMeshTopologyPickMode === "object"
       ? "Promote"
       : surfaceMeshTopologyPickMode === "face"
         ? "Subdivide"
@@ -46104,7 +46139,7 @@ case "mobius":
               ? "Bevel"
               : "Split";
   const meshContextualViewportPreviewPulseId =
-    surfaceMeshTopologyPickMode === "auto"
+    surfaceMeshTopologyPickMode === "object"
       ? null
       : surfaceMeshTopologyPickMode === "face"
         ? "mesh:face-subdivide"
@@ -48817,7 +48852,7 @@ case "mobius":
     surfaceMeshTopologyPickMode,
   ]);
   const meshContextCanRunPrimaryAction =
-    surfaceMeshTopologyPickMode === "auto"
+    surfaceMeshTopologyPickMode === "object"
       ? meshObjectPromoteReady && meshContextSelectionState.canRunPrimaryAction
       : meshContextSelectionState.canRunPrimaryAction;
   const meshContextualActionBindings: ContextualActionBindingMap = {
@@ -48859,7 +48894,7 @@ case "mobius":
     ],
   };
   const meshContextualActionMode: ContextualEntityMode | null =
-    surfaceMeshTopologyPickMode === "auto" ? null : surfaceMeshTopologyPickMode;
+    surfaceMeshTopologyPickMode === "object" ? null : surfaceMeshTopologyPickMode;
   const meshActiveSelectionEntityActionButtons = buildContextualRenderedActionsForPrefix(
     meshContextualActionMode ? meshContextualActionBindings[meshContextualActionMode] : undefined,
     "mesh-active-selection-action"
@@ -60099,7 +60134,7 @@ case "mobius":
                       >
                         <div style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Pick target</div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          {(["auto", "face", "edge", "vertex"] as SurfaceMeshTopologyPickMode[]).map((pickMode) => (
+                          {(["object", "face", "edge", "vertex"] as SurfaceMeshTopologyPickMode[]).map((pickMode) => (
                             <button
                               key={`mesh-tools-topology-primary-pick-mode-${pickMode}`}
                               type="button"
@@ -60114,7 +60149,7 @@ case "mobius":
                                 fontWeight: surfaceMeshTopologyPickMode === pickMode ? 700 : 600,
                               }}
                             >
-                              {pickMode === "auto" ? "Auto" : pickMode[0].toUpperCase() + pickMode.slice(1)}
+                              {pickMode[0].toUpperCase() + pickMode.slice(1)}
                             </button>
                           ))}
                         </div>
@@ -60246,7 +60281,7 @@ case "mobius":
                       )}
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
                         <span style={{ color: "#475467" }}>Pick target</span>
-                        {(["auto", "face", "edge", "vertex"] as SurfaceMeshTopologyPickMode[]).map((pickMode) => (
+                        {(["object", "face", "edge", "vertex"] as SurfaceMeshTopologyPickMode[]).map((pickMode) => (
                           <button
                             key={`mesh-tools-topology-pick-mode-${pickMode}`}
                             type="button"
@@ -60260,7 +60295,7 @@ case "mobius":
                               borderColor: surfaceMeshTopologyPickMode === pickMode ? "#0a66c2" : undefined,
                             }}
                           >
-                            {pickMode === "auto" ? "Auto" : pickMode[0].toUpperCase() + pickMode.slice(1)}
+                            {pickMode[0].toUpperCase() + pickMode.slice(1)}
                           </button>
                         ))}
                         <span style={{ color: "#475467" }}>
@@ -60891,7 +60926,7 @@ case "mobius":
                     onApply={
                       meshAppliedContextualViewportPreview
                         ? undefined
-                        : surfaceMeshTopologyPickMode === "auto"
+                        : surfaceMeshTopologyPickMode === "object"
                           ? handleDatasetToGeometryScene
                           : handleApplySurfaceMeshTopologySelectedPreview
                     }
@@ -60911,7 +60946,7 @@ case "mobius":
                   />
                 )}
                 {surfaceViewerKind === "mesh" &&
-                  surfaceMeshTopologyPickMode === "auto" &&
+                  surfaceMeshTopologyPickMode === "object" &&
                   !!surfaceMeshData?.positions?.length &&
                   !cleanScreenshotSurfaceActive && (
                     <div
@@ -61519,7 +61554,7 @@ case "mobius":
                           pickOptions={
                             [
                               {
-                                id: "auto",
+                                id: "object",
                                 label: OBJECT_CONTEXT_COPY.mesh.chip,
                                 title: "Whole-mesh actions: promote to Geometry, save edited mesh, or reopen source.",
                               },
@@ -61531,10 +61566,10 @@ case "mobius":
                           activePick={surfaceMeshTopologyPickMode}
                           onPickChange={(pickMode) => {
                             setSurfaceMeshTopologyPickMode(pickMode);
-                            if (pickMode !== "auto" && !probeEnabled) setProbeEnabled(true);
+                            if (pickMode !== "object" && !probeEnabled) setProbeEnabled(true);
                           }}
                           selectionLabel={
-                            surfaceMeshTopologyPickMode === "auto"
+                            surfaceMeshTopologyPickMode === "object"
                               ? meshContextToolbarSelectionLabel
                               : meshActiveSelectionSummary.emptyState ??
                                 meshActiveSelectionSummary.eventLabel ??
@@ -61587,7 +61622,7 @@ case "mobius":
                               </ContextualActionStripAction>
                             </>
                           )}
-                          {surfaceMeshTopologyPickMode === "auto" && (
+                          {surfaceMeshTopologyPickMode === "object" && (
                             <>
                               <ContextualActionStripAction
                                 testId="mesh-context-promote-mesh-object"
@@ -89535,7 +89570,7 @@ onChangeImplicitExpr,
   const selectedSurfaceMeshTopologyVertexLabel = formatContextEntityLabel("vertex", selectedSurfaceMeshTopologyVertexId);
   const meshContextSelectionState = buildContextualSelectionState({
     workspace: "mesh",
-    pickMode: surfaceMeshTopologyPickMode === "auto" ? "object" : surfaceMeshTopologyPickMode,
+    pickMode: surfaceMeshTopologyPickMode,
     objectLabel: surfaceMeshLabel,
     objectReady: meshReady,
     objectEmptyState: "Load a mesh to enable object actions",
@@ -92696,7 +92731,7 @@ onChangeImplicitExpr,
                 }}
               >
                 <span style={{ color: "#475467" }}>Pick target</span>
-                {(["auto", "face", "edge", "vertex"] as SurfaceMeshTopologyPickMode[]).map((pickMode) => (
+                {(["object", "face", "edge", "vertex"] as SurfaceMeshTopologyPickMode[]).map((pickMode) => (
                   <button
                     key={`surface-mesh-topology-pick-mode-${pickMode}`}
                     type="button"
@@ -92707,7 +92742,7 @@ onChangeImplicitExpr,
                       borderColor: surfaceMeshTopologyPickMode === pickMode ? "#0a66c2" : undefined,
                     }}
                   >
-                    {pickMode === "auto" ? "Auto" : pickMode[0].toUpperCase() + pickMode.slice(1)}
+                    {pickMode[0].toUpperCase() + pickMode.slice(1)}
                   </button>
                 ))}
                 <span style={{ color: "#475467" }}>
@@ -92748,7 +92783,7 @@ onChangeImplicitExpr,
                 >
                   <div style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Pick target</div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {(["auto", "face", "edge", "vertex"] as SurfaceMeshTopologyPickMode[]).map((pickMode) => (
+                    {(["object", "face", "edge", "vertex"] as SurfaceMeshTopologyPickMode[]).map((pickMode) => (
                       <button
                         key={`surface-mesh-topology-primary-pick-mode-${pickMode}`}
                         type="button"
@@ -92760,7 +92795,7 @@ onChangeImplicitExpr,
                           fontWeight: surfaceMeshTopologyPickMode === pickMode ? 700 : 600,
                         }}
                       >
-                        {pickMode === "auto" ? "Auto" : pickMode[0].toUpperCase() + pickMode.slice(1)}
+                        {pickMode[0].toUpperCase() + pickMode.slice(1)}
                       </button>
                     ))}
                   </div>
