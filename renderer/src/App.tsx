@@ -97,6 +97,10 @@ import {
   buildMeshTopologyCommandHistoryEntry,
   type UnifiedCommandHistoryEntry,
 } from "./selection/unifiedCommandHistory";
+import {
+  unifiedSelectionFromGeometryPick,
+  unifiedSelectionFromMeshTopology,
+} from "./selection/unifiedSelection";
 
 import {
   SurfaceViewer,
@@ -15476,6 +15480,10 @@ const App: React.FC = () => {
     [geometryProceduralHoverPick, resolveGeometryProbeSelectionDetails]
   );
   const geometrySelectedPick = geometryProbeSelectionDetails?.pick ?? null;
+  const geometryUnifiedSelection = useMemo(
+    () => unifiedSelectionFromGeometryPick(geometrySelectedPick),
+    [geometrySelectedPick]
+  );
   const geometryHoverPick = geometryProbeHoverSelectionDetails?.pick ?? null;
   const geometryActiveEditedObjectBreadcrumb = useMemo(() => {
     if (!geometrySelectedSceneObject) return null;
@@ -15698,24 +15706,36 @@ const App: React.FC = () => {
   const geometryContextSelectionState = buildContextualSelectionState({
     workspace: "geometry",
     pickMode: geometryProbeSelectionMode,
-    objectLabel: geometrySelectedSceneObject?.name ?? null,
-    objectReady: Boolean(geometrySelectedSceneObject),
+    objectLabel:
+      geometryUnifiedSelection?.selectionType === "object"
+        ? geometryUnifiedSelection.objectLabel
+        : geometrySelectedSceneObject?.name ?? null,
+    objectReady: Boolean(geometryUnifiedSelection?.selectionType === "object" || geometrySelectedSceneObject),
     objectEmptyState: OBJECT_CONTEXT_COPY.geometry.selectEmpty,
     entities: {
       face: {
-        id: geometryFaceContextId,
+        id:
+          geometryUnifiedSelection?.selectionType === "face" && geometryUnifiedSelection.faceId != null
+            ? geometryUnifiedSelection.faceId
+            : geometryFaceContextId,
         valid: geometryHasFaceOperationPick,
         primaryReady: geometryHasFaceOperationPick,
         previewResult: `extrude ${formatCompactReal(geometryFaceExtrudeDistance)}`,
       },
       edge: {
-        id: geometryEdgeContextId,
+        id:
+          geometryUnifiedSelection?.selectionType === "edge" && geometryUnifiedSelection.edgeId
+            ? geometryUnifiedSelection.edgeId
+            : geometryEdgeContextId,
         valid: geometryHasEdgeOperationPick,
         primaryReady: geometryHasEdgeOperationPick,
         previewResult: geometryEdgePreviewResult,
       },
       vertex: {
-        id: geometryVertexContextId,
+        id:
+          geometryUnifiedSelection?.selectionType === "vertex" && geometryUnifiedSelection.vertexId != null
+            ? geometryUnifiedSelection.vertexId
+            : geometryVertexContextId,
         valid: geometryHasVertexOperationPick,
         previewResult: `move ${formatCompactReal(geometryVertexMoveAmount)}`,
       },
@@ -45933,6 +45953,44 @@ case "mobius":
     surfaceMeshTopologyFieldValidation.edgeFallbackActive ? " (from face)" : ""
   }`;
   const selectedSurfaceMeshTopologyVertexLabel = formatContextEntityLabel("vertex", selectedSurfaceMeshTopologyVertexId);
+  const meshUnifiedSelection = useMemo(
+    () =>
+      unifiedSelectionFromMeshTopology({
+        mode: surfaceMeshTopologyPickMode,
+        objectId: `mesh:${surfaceMeshLabel}`,
+        objectLabel: surfaceMeshLabel,
+        meshKey: `mesh:${surfaceMeshLabel}`,
+        mesh: surfaceMeshData,
+        faceIndex: selectedSurfaceMeshTopologyFaceId,
+        edgeVertices: [
+          surfaceMeshTopologyFieldValidation.effectiveEdgeA,
+          surfaceMeshTopologyFieldValidation.effectiveEdgeB,
+        ],
+        vertexIndex: selectedSurfaceMeshTopologyVertexId,
+        valid:
+          surfaceMeshTopologyPickMode === "auto"
+            ? Boolean(surfaceMeshData)
+            : surfaceMeshTopologyPickMode === "face"
+              ? surfaceMeshTopologyFieldValidation.faceValid
+              : surfaceMeshTopologyPickMode === "edge"
+                ? surfaceMeshTopologyFieldValidation.edgeValid
+                : surfaceMeshTopologyFieldValidation.vertexValid,
+        selectionCleared: surfaceMeshTopologySelectionCleared,
+      }),
+    [
+      selectedSurfaceMeshTopologyFaceId,
+      selectedSurfaceMeshTopologyVertexId,
+      surfaceMeshData,
+      surfaceMeshLabel,
+      surfaceMeshTopologyFieldValidation.edgeValid,
+      surfaceMeshTopologyFieldValidation.effectiveEdgeA,
+      surfaceMeshTopologyFieldValidation.effectiveEdgeB,
+      surfaceMeshTopologyFieldValidation.faceValid,
+      surfaceMeshTopologyFieldValidation.vertexValid,
+      surfaceMeshTopologyPickMode,
+      surfaceMeshTopologySelectionCleared,
+    ]
+  );
   const meshFacePreviewResult = `subdivide ${surfaceMeshTopologySubdivideMode === "center-fan" ? "center fan" : "4 triangles"}`;
   const meshEdgePreviewSplitRatio = clampNumber(
     Number.isFinite(surfaceMeshTopologySplitRatio) ? surfaceMeshTopologySplitRatio : 0.5,
@@ -45946,24 +46004,33 @@ case "mobius":
   const meshContextSelectionState = buildContextualSelectionState({
     workspace: "mesh",
     pickMode: surfaceMeshTopologyPickMode === "auto" ? "object" : surfaceMeshTopologyPickMode,
-    objectLabel: surfaceMeshLabel,
-    objectReady: Boolean(surfaceMeshData),
+    objectLabel: meshUnifiedSelection?.selectionType === "object" ? meshUnifiedSelection.objectLabel : surfaceMeshLabel,
+    objectReady: Boolean(meshUnifiedSelection?.selectionType === "object" || surfaceMeshData),
     objectEmptyState: "Load a mesh to enable object actions",
     selectionCleared: surfaceMeshTopologySelectionCleared,
     entities: {
       face: {
-        id: selectedSurfaceMeshTopologyFaceId,
+        id:
+          meshUnifiedSelection?.selectionType === "face" && meshUnifiedSelection.faceId != null
+            ? meshUnifiedSelection.faceId
+            : selectedSurfaceMeshTopologyFaceId,
         valid: surfaceMeshTopologyFieldValidation.faceValid,
         previewResult: meshFacePreviewResult,
       },
       edge: {
-        id: selectedSurfaceMeshTopologyEdgeId,
+        id:
+          meshUnifiedSelection?.selectionType === "edge" && meshUnifiedSelection.edgeId
+            ? meshUnifiedSelection.edgeId
+            : selectedSurfaceMeshTopologyEdgeId,
         valid: surfaceMeshTopologyFieldValidation.edgeValid,
         labelSuffix: surfaceMeshTopologyFieldValidation.edgeFallbackActive ? " (from face)" : "",
         previewResult: meshEdgePreviewResult,
       },
       vertex: {
-        id: selectedSurfaceMeshTopologyVertexId,
+        id:
+          meshUnifiedSelection?.selectionType === "vertex" && meshUnifiedSelection.vertexId != null
+            ? meshUnifiedSelection.vertexId
+            : selectedSurfaceMeshTopologyVertexId,
         valid: surfaceMeshTopologyFieldValidation.vertexValid,
         previewResult: "marker",
       },

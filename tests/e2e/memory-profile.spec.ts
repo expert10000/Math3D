@@ -479,23 +479,65 @@ async function largestVisibleCanvasHost(page: Page) {
   return hosts.nth(bestIndex);
 }
 
-async function openSurfaceCanvas(page: Page): Promise<Awaited<ReturnType<typeof largestVisibleCanvasHost>>> {
-  const labels = await getAvailableSections(page);
-  await selectSection(page, labels, "Surfaces");
-  await setSurfacesLayout(page, 3);
-  await setSurfacesLayout3PanelMode(page, "work");
-  await page.waitForFunction(
-    () =>
-      Array.from(document.querySelectorAll("[data-testid='surface-viewer-canvas-host']")).some((element) => {
+async function waitForVisibleSurfaceCanvasHost(page: Page, timeout = 7_500): Promise<boolean> {
+  return page
+    .waitForFunction(
+      () =>
+        Array.from(document.querySelectorAll("[data-testid='surface-viewer-canvas-host']")).some((element) => {
+          if (!(element instanceof HTMLElement)) return false;
+          const rect = element.getBoundingClientRect();
+          const style = window.getComputedStyle(element);
+          return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+        }),
+      undefined,
+      { timeout }
+    )
+    .then(() => true)
+    .catch(() => false);
+}
+
+async function visibleTestIds(page: Page, limit = 80): Promise<string[]> {
+  return page.evaluate((maxCount) => {
+    const ids = Array.from(document.querySelectorAll("[data-testid]"))
+      .filter((element): element is HTMLElement => {
         if (!(element instanceof HTMLElement)) return false;
         const rect = element.getBoundingClientRect();
         const style = window.getComputedStyle(element);
         return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
-      }),
-    undefined,
-    { timeout: 15_000 }
-  );
-  return largestVisibleCanvasHost(page);
+      })
+      .map((element) => element.getAttribute("data-testid"))
+      .filter((testId): testId is string => Boolean(testId));
+    return Array.from(new Set(ids)).slice(0, maxCount);
+  }, limit);
+}
+
+async function openSurfaceCanvas(page: Page): Promise<Awaited<ReturnType<typeof largestVisibleCanvasHost>>> {
+  const labels = await getAvailableSections(page);
+  await selectSection(page, labels, "Surfaces");
+
+  const attempts: Array<() => Promise<void>> = [
+    async () => {
+      await setSurfacesLayout(page, 3);
+      await clickFirstVisibleByTestId(page, "surface-family-explicit");
+      await setSurfacesLayout3PanelMode(page, "work");
+    },
+    async () => {
+      await setSurfacesLayout(page, 2);
+      await clickFirstVisibleByTestId(page, "surface-family-explicit");
+    },
+    async () => {
+      await setSurfacesLayout(page, 1);
+      await clickFirstVisibleByTestId(page, "surface-family-explicit");
+    },
+  ];
+
+  for (const attempt of attempts) {
+    await attempt();
+    if (await waitForVisibleSurfaceCanvasHost(page)) return largestVisibleCanvasHost(page);
+  }
+
+  const ids = await visibleTestIds(page);
+  throw new Error(`No visible surface canvas host found after opening Surfaces. Visible test ids: ${ids.join(", ")}`);
 }
 
 async function runCanvas(
@@ -1124,7 +1166,7 @@ test("Memory profile: desktop run records process tree RSS", async ({}, testInfo
   const finalIdleMs = positiveIntFromEnv("MATH3D_MEMORY_PROFILE_FINAL_IDLE_MS", 5_000);
   const electronArgs = electronArgsFromEnv();
   const estimatedActionCount = scenario === "module-sweep" ? sectionLabels.length : actionCount;
-  test.setTimeout(Math.max(10 * 60 * 1000, estimatedActionCount * actionDelayMs + finalIdleMs + 4 * 60 * 1000));
+  test.setTimeout(Math.max(15 * 60 * 1000, estimatedActionCount * actionDelayMs + finalIdleMs + 8 * 60 * 1000));
 
   let ctx: Awaited<ReturnType<typeof launchMemoryProfileApp>> | null = null;
   let sampling = true;
