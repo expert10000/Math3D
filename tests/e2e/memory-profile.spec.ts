@@ -482,10 +482,19 @@ async function largestVisibleCanvasHost(page: Page) {
 async function openSurfaceCanvas(page: Page): Promise<Awaited<ReturnType<typeof largestVisibleCanvasHost>>> {
   const labels = await getAvailableSections(page);
   await selectSection(page, labels, "Surfaces");
-  const layout3 = page.getByTestId("surfaces-layout-3").first();
-  if ((await layout3.count()) > 0 && (await layout3.isVisible())) {
-    await layout3.click();
-  }
+  await setSurfacesLayout(page, 3);
+  await setSurfacesLayout3PanelMode(page, "work");
+  await page.waitForFunction(
+    () =>
+      Array.from(document.querySelectorAll("[data-testid='surface-viewer-canvas-host']")).some((element) => {
+        if (!(element instanceof HTMLElement)) return false;
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+      }),
+    undefined,
+    { timeout: 15_000 }
+  );
   return largestVisibleCanvasHost(page);
 }
 
