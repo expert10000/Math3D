@@ -26,6 +26,11 @@ Run these before treating a candidate as release-ready:
 5. Fast app e2e: `npm run test:app:e2e:fast`
 6. Package smoke: `npm run test:release:smoke`
 
+Expected package-build notes:
+
+- PyInstaller may report missing optional conda/MKL or cluster DLLs such as `msmpi.dll`, `impi.dll`, `pgc.dll`, or `pgmath.dll`. Treat those as non-blocking only when the packaged and installed worker protocol smoke checks pass.
+- `pygalmesh` is optional unless `MATH3D_REQUIRE_PYGALMESH=1` is set. Without it, `mesh.generate` is unavailable, but `mesh.preview`, VTK transforms, and geodesic operations still smoke-test.
+
 ## What the smoke run validates
 
 1. Installer package is produced (unless `-SkipBuild`).

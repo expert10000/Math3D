@@ -71,6 +71,12 @@ Set `MATH3D_WORKER_FAILURE_INJECTION` before launch to force deterministic VTK p
 - `worker-timeout`
 - `worker-malformed-error`
 
+## Deterministic viewer setup
+
+Use deterministic fixtures, preset loaders, explicit ID fields, or E2E-only picker hooks for workflow tests where the assertion is about construction state, contextual actions, persistence, or command results.
+
+Keep canvas-click setup only for tests whose assertion is specifically about real viewer picking. Memory profile scenarios may also use canvas clicks because they measure interaction behavior rather than construction correctness.
+
 ## Optional packaged paths
 
 If installed binaries are in non-default paths, set:

@@ -1,6 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import type { ElectronApplication } from "playwright";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
@@ -109,7 +109,7 @@ const installSaveCapture = async (page: Page) => {
   });
 };
 
-const saveWorkspace = async (page: Page): Promise<string> => {
+const saveWorkspace = async (page: Page, testInfo: TestInfo): Promise<string> => {
   await openWorkbookPanel(page);
   await installSaveCapture(page);
   await page.evaluate(() => {
@@ -127,7 +127,8 @@ const saveWorkspace = async (page: Page): Promise<string> => {
     const win = window as unknown as { __math3dE2E?: { lastSavedText?: string | null } };
     return win.__math3dE2E?.lastSavedText ?? "";
   });
-  const outPath = path.join(os.tmpdir(), `math3d-workspace-${Date.now()}-${Math.random().toString(16).slice(2)}.math3d`);
+  const outPath = testInfo.outputPath("saved-workspace.math3d");
+  mkdirSync(path.dirname(outPath), { recursive: true });
   writeFileSync(outPath, payload, "utf8");
   return outPath;
 };
@@ -239,7 +240,7 @@ test("Geometry gallery: select vs add flow, quick add, and filtering", async () 
   }
 });
 
-test("Persistence: save workspace and reopen restores scene", async () => {
+test("Persistence: save workspace and reopen restores scene", async ({}, testInfo) => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-persist-"));
   const env = {
     APPDATA: profileDir,
@@ -261,7 +262,7 @@ test("Persistence: save workspace and reopen restores scene", async () => {
     await expect.poll(async () => (await readGeometryStats(firstPage)).objectCount).toBe(baseCount + 1);
     const savedStats = await readGeometryStats(firstPage);
 
-    savedWorkspacePath = await saveWorkspace(firstPage);
+    savedWorkspacePath = await saveWorkspace(firstPage, testInfo);
     await expect.poll(async () => {
       return firstPage.evaluate(() => Number(localStorage.getItem("math3d.workbook.manualSaveAt.v1") ?? 0));
     }).toBeGreaterThan(0);
