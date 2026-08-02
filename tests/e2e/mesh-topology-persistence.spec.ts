@@ -258,7 +258,9 @@ async function runTopologyDemo(
         await expect(page.getByTestId("mesh-active-selection-card-workspace")).toHaveText("Mesh");
         await expect(page.getByTestId("mesh-active-selection-card-type")).toHaveText("Edge");
         await expect(page.getByTestId("mesh-active-selection-card-id")).toContainText(/Edge \d+-\d+/);
-        await expect(page.getByTestId("mesh-active-selection-card-actions")).toContainText("Split, Collapse, Bevel");
+        await expect(page.getByTestId("mesh-active-selection-card-actions")).toContainText(
+          "Split, Collapse, Bevel, Loop, Ring, Boundary"
+        );
         await expect(page.getByTestId("mesh-selection-event-toast")).toContainText(/Selected edge \d+-\d+/);
       },
     });
@@ -271,9 +273,11 @@ async function runTopologyDemo(
     await page.getByTestId("mesh-active-selection-card-clear").click();
     await expect(page.getByTestId("mesh-selection-event-toast")).toContainText("Selection cleared");
     await expect(page.getByTestId("mesh-active-selection-card-id")).toContainText(
-      "Choose an edge to enable Split / Collapse / Bevel"
+      "Choose an edge to enable Split / Collapse / Bevel / Loop / Ring / Boundary"
     );
-    await expect(page.getByTestId("mesh-context-toolbar")).toContainText("Choose an edge to enable Split / Collapse / Bevel");
+    await expect(page.getByTestId("mesh-context-toolbar")).toContainText(
+      "Choose an edge to enable Split / Collapse / Bevel / Loop / Ring / Boundary"
+    );
     await page.getByTestId("mesh-context-open-history").click();
   } else {
     const operation = await firstVisible(page.getByRole("button", { name: operationButtonName, exact: true }));
@@ -316,6 +320,18 @@ test.describe("Mesh topology persistence and handoff", () => {
         ],
         forbiddenSelectionHints: ["Click a face to enable Subdivide", "Click an edge to enable Split / Collapse / Bevel"],
       });
+
+      await page.getByTestId("mesh-inspector-tab-object").click();
+      await expect(page.getByTestId("mesh-inspector-topology-flags")).toContainText(/Manifold: yes/);
+      await expect(page.getByTestId("mesh-inspector-vertex-adjacency")).toContainText(/v0/);
+      await expect(page.getByTestId("mesh-inspector-vertex-adjacency")).toContainText(/neighbors: v/);
+      await expect(page.getByTestId("mesh-inspector-face-adjacency")).toContainText(/neighbors: f/);
+      await expect(page.getByTestId("mesh-inspector-edge-incidence")).toContainText(/faces: f/);
+      await page.getByTestId("mesh-selection-filter-kind-face").click();
+      await expect(page.getByTestId("mesh-context-pick-face")).toBeDisabled();
+      await expect(page.getByTestId("mesh-selection-filter-summary")).toContainText(/types: object, edge, vertex/);
+      await page.getByTestId("mesh-selection-filter-kind-face").click();
+      await expect(page.getByTestId("mesh-context-pick-face")).toBeEnabled();
 
       await page.getByTestId("mesh-context-apply-preview").click();
       await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
@@ -416,6 +432,9 @@ test.describe("Mesh topology persistence and handoff", () => {
         cardActions: "Subdivide",
         actionExpectations: [{ testId: "mesh-context-subdivide-face", label: "Subdivide", enabled: true }],
       });
+      await expect(page.getByTestId("mesh-topology-select-edge-loop")).toBeDisabled();
+      await expect(page.getByTestId("mesh-topology-select-edge-ring")).toBeDisabled();
+      await expect(page.getByTestId("mesh-topology-select-boundary")).toBeDisabled();
 
       await runContextualEntityModeCheck({
         page,
@@ -429,13 +448,30 @@ test.describe("Mesh topology persistence and handoff", () => {
         viewportPreview: /Viewport preview: Edge \d+-\d+ -> midpoint vertex/,
         cardType: "Edge",
         cardId: /Edge \d+-\d+/,
-        cardActions: "Split, Collapse, Bevel",
+        cardActions: "Split, Collapse, Bevel, Loop, Ring, Boundary",
         actionExpectations: [
           { testId: "mesh-context-split-edge", label: "Split", enabled: true },
           { testId: "mesh-context-collapse-edge", label: "Collapse", enabled: true },
           { testId: "mesh-context-bevel-edge", label: "Bevel", enabled: true },
+          { testId: "mesh-context-select-edge-loop", label: "Loop", enabled: true },
+          { testId: "mesh-context-select-edge-ring", label: "Ring", enabled: true },
+          { testId: "mesh-context-select-boundary", label: "Boundary", enabled: true },
         ],
       });
+      await page.getByTestId("mesh-context-select-edge-loop").click();
+      await expect(page.getByTestId("mesh-selection-event-toast")).toContainText(
+        /Edge loop selected \d+ edges? from Edge \d+-\d+\./
+      );
+      await expect(page.getByTestId("mesh-edge-selection-summary").first()).toContainText(
+        /Edge loop selected \d+ edges? from Edge \d+-\d+\./
+      );
+      await page.getByTestId("mesh-selection-filter-topology-boundary").click();
+      await expect(page.getByTestId("mesh-selection-filter-summary")).toContainText(
+        "Only boundary selections are enabled"
+      );
+      await expect(page.getByTestId("mesh-context-split-edge")).toBeDisabled();
+      await page.getByTestId("mesh-selection-filter-topology-all").click();
+      await expect(page.getByTestId("mesh-context-split-edge")).toBeEnabled();
 
       await runContextualEntityModeCheck({
         page,

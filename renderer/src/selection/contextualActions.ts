@@ -10,6 +10,9 @@ export type ContextualOperationKey =
   | "split-edge"
   | "collapse-edge"
   | "bevel-edge"
+  | "select-edge-loop"
+  | "select-edge-ring"
+  | "select-boundary"
   | "vertex-marker"
   | "extrude-face"
   | "inset-face"
@@ -52,6 +55,21 @@ const CONTEXTUAL_ACTION_DESCRIPTOR_SPECS = {
         operationKey: "bevel-edge",
         testIdSuffix: "bevel-edge",
         pulseId: "mesh:edge-bevel",
+      },
+      {
+        operationKey: "select-edge-loop",
+        testIdSuffix: "select-edge-loop",
+        pulseId: "mesh:edge-loop",
+      },
+      {
+        operationKey: "select-edge-ring",
+        testIdSuffix: "select-edge-ring",
+        pulseId: "mesh:edge-ring",
+      },
+      {
+        operationKey: "select-boundary",
+        testIdSuffix: "select-boundary",
+        pulseId: "mesh:boundary-select",
       },
     ],
     vertex: [

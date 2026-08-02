@@ -98,8 +98,12 @@ import {
   type UnifiedCommandHistoryEntry,
 } from "./selection/unifiedCommandHistory";
 import {
+  describeUnifiedSelectionFilter,
+  evaluateUnifiedSelectionFilter,
   unifiedSelectionFromGeometryPick,
   unifiedSelectionFromMeshTopology,
+  type UnifiedSelectionFilter,
+  type UnifiedSelectionKind,
 } from "./selection/unifiedSelection";
 
 import {
@@ -393,6 +397,16 @@ import {
   type EdgeCollapseMode,
   type FaceSubdivideMode,
 } from "./mesh/meshEditOps";
+import {
+  selectMeshEdgesByTool,
+  type MeshEdgeSelectionResult,
+  type MeshEdgeSelectionTool,
+} from "./mesh/edgeSelection";
+import {
+  computeMeshTopologyInspector,
+  type MeshTopologyInspectorDetails,
+  type MeshTopologyListRow,
+} from "./mesh/topologyInspector";
 import type { MeshQualityReport, MeshQualityReportPhase } from "./mesh/meshQualityReport";
 import type {
   DatasetKind,
@@ -5379,6 +5393,15 @@ type SurfaceMeshTopologyPick = {
   vertexIndex: number;
 };
 type SurfaceMeshTopologyPickMode = "object" | "face" | "edge" | "vertex";
+type UnifiedSelectionTopologyFilterMode = "all" | "boundary" | "interior" | "non-manifold";
+type UnifiedSelectionKindFilterState = Record<SurfaceMeshTopologyPickMode, boolean>;
+const SURFACE_MESH_TOPOLOGY_PICK_MODES: readonly SurfaceMeshTopologyPickMode[] = ["object", "face", "edge", "vertex"];
+const DEFAULT_UNIFIED_SELECTION_KIND_FILTERS: UnifiedSelectionKindFilterState = {
+  object: true,
+  face: true,
+  edge: true,
+  vertex: true,
+};
 const isSurfaceMeshTopologyPickMode = (value: unknown): value is SurfaceMeshTopologyPickMode =>
   value === "object" || value === "face" || value === "edge" || value === "vertex";
 const normalizeSurfaceMeshTopologyPickMode = (value: unknown): SurfaceMeshTopologyPickMode | null => {
@@ -9968,6 +9991,9 @@ const App: React.FC = () => {
   const meshSplitEdgeAction = meshEdgeActionDescriptors[0]!;
   const meshCollapseEdgeAction = meshEdgeActionDescriptors[1]!;
   const meshBevelEdgeAction = meshEdgeActionDescriptors[2]!;
+  const meshSelectEdgeLoopAction = meshEdgeActionDescriptors[3]!;
+  const meshSelectEdgeRingAction = meshEdgeActionDescriptors[4]!;
+  const meshSelectBoundaryAction = meshEdgeActionDescriptors[5]!;
   const meshVertexMarkerAction = meshVertexActionDescriptors[0]!;
   const geometryExtrudeFaceAction = geometryFaceActionDescriptors[0]!;
   const geometryInsetFaceAction = geometryFaceActionDescriptors[1]!;
@@ -30323,7 +30349,12 @@ const App: React.FC = () => {
   const [surfaceMeshTopologyPickMode, setSurfaceMeshTopologyPickMode] = useState<SurfaceMeshTopologyPickMode>(
     () => readStoredSurfaceMeshContextualPickMode() ?? "object"
   );
+  const [unifiedSelectionKindFilters, setUnifiedSelectionKindFilters] =
+    useState<UnifiedSelectionKindFilterState>(DEFAULT_UNIFIED_SELECTION_KIND_FILTERS);
+  const [unifiedSelectionTopologyFilter, setUnifiedSelectionTopologyFilter] =
+    useState<UnifiedSelectionTopologyFilterMode>("all");
   const [surfaceMeshTopologySelectionCleared, setSurfaceMeshTopologySelectionCleared] = useState(false);
+  const [surfaceMeshEdgeSelection, setSurfaceMeshEdgeSelection] = useState<MeshEdgeSelectionResult | null>(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -30332,6 +30363,62 @@ const App: React.FC = () => {
       // Pick mode memory is a UI convenience.
     }
   }, [surfaceMeshTopologyPickMode]);
+  const enabledUnifiedSelectionKinds = useMemo(
+    () => SURFACE_MESH_TOPOLOGY_PICK_MODES.filter((pickMode) => unifiedSelectionKindFilters[pickMode]),
+    [unifiedSelectionKindFilters]
+  );
+  const unifiedSelectionFilter = useMemo<UnifiedSelectionFilter>(() => {
+    const filter: UnifiedSelectionFilter = {
+      selectionTypes:
+        enabledUnifiedSelectionKinds.length === SURFACE_MESH_TOPOLOGY_PICK_MODES.length
+          ? undefined
+          : (enabledUnifiedSelectionKinds as readonly UnifiedSelectionKind[]),
+      boundary:
+        unifiedSelectionTopologyFilter === "boundary"
+          ? "only"
+          : unifiedSelectionTopologyFilter === "interior"
+            ? "exclude"
+            : "any",
+      nonManifold: unifiedSelectionTopologyFilter === "non-manifold" ? "only" : "any",
+    };
+    return filter;
+  }, [enabledUnifiedSelectionKinds, unifiedSelectionTopologyFilter]);
+  const unifiedSelectionFilterLabel = useMemo(
+    () => describeUnifiedSelectionFilter(unifiedSelectionFilter),
+    [unifiedSelectionFilter]
+  );
+  const handleToggleUnifiedSelectionKindFilter = useCallback((pickMode: SurfaceMeshTopologyPickMode) => {
+    setUnifiedSelectionKindFilters((current) => {
+      const enabledCount = SURFACE_MESH_TOPOLOGY_PICK_MODES.filter((mode) => current[mode]).length;
+      if (current[pickMode] && enabledCount <= 1) return current;
+      const next = { ...current, [pickMode]: !current[pickMode] };
+      return next;
+    });
+  }, []);
+  const handleChangeSurfaceMeshTopologyPickMode = useCallback(
+    (pickMode: SurfaceMeshTopologyPickMode) => {
+      if (!unifiedSelectionKindFilters[pickMode]) {
+        setSurfaceMeshTopologyStatus(`Selection filter excludes ${pickMode} picks.`);
+        return;
+      }
+      setSurfaceMeshTopologyPickMode(pickMode);
+    },
+    [unifiedSelectionKindFilters]
+  );
+  useEffect(() => {
+    if (unifiedSelectionKindFilters[surfaceMeshTopologyPickMode]) return;
+    const fallbackMode = SURFACE_MESH_TOPOLOGY_PICK_MODES.find((mode) => unifiedSelectionKindFilters[mode]) ?? "object";
+    setSurfaceMeshTopologyPickMode(fallbackMode);
+  }, [surfaceMeshTopologyPickMode, unifiedSelectionKindFilters]);
+  useEffect(() => {
+    setSurfaceMeshEdgeSelection(null);
+  }, [
+    surfaceMeshData,
+    surfaceMeshTopologyEdgeA,
+    surfaceMeshTopologyEdgeB,
+    surfaceMeshTopologyPickMode,
+    surfaceMeshTopologySelectionCleared,
+  ]);
   const [surfaceMeshTopologySubdivideMode, setSurfaceMeshTopologySubdivideMode] = useState<FaceSubdivideMode>(
     initialSurfaceMeshTopologySession?.fields.subdivideMode ?? "center-fan"
   );
@@ -33863,6 +33950,51 @@ const App: React.FC = () => {
     surfaceMeshTopologyEdgeA,
     surfaceMeshTopologyEdgeB,
     surfaceMeshTopologyFaceIndex,
+    surfaceMeshTopologyPickMode,
+    surfaceMeshTopologySelectionCleared,
+    surfaceMeshTopologyViewerMesh,
+  ]);
+  const surfaceMeshEdgeSelectionPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (
+      surfaceMeshTopologySelectionCleared ||
+      surfaceMeshTopologyPickMode !== "edge" ||
+      !isMeshLikeViewer ||
+      !surfaceMeshTopologyViewerMesh?.positions?.length ||
+      !surfaceMeshEdgeSelection?.edges.length
+    ) {
+      return null;
+    }
+    const lines: PolylineSet = [];
+    for (const [aIndex, bIndex] of surfaceMeshEdgeSelection.edges) {
+      const a = readMeshPoint(surfaceMeshTopologyViewerMesh, aIndex);
+      const b = readMeshPoint(surfaceMeshTopologyViewerMesh, bIndex);
+      if (a && b) lines.push([a, b]);
+    }
+    if (!lines.length) return null;
+    const color =
+      surfaceMeshEdgeSelection.tool === "loop"
+        ? 0x14b8a6
+        : surfaceMeshEdgeSelection.tool === "ring"
+          ? 0x8b5cf6
+          : 0xf59e0b;
+    return [
+      {
+        lines,
+        color: 0xffffff,
+        opacity: 0.76,
+        radiusWorld: 0.04,
+      },
+      {
+        lines,
+        color,
+        opacity: 0.98,
+        radiusWorld: selectionViewportPulse?.workspace === "Mesh" ? 0.034 : 0.026,
+      },
+    ];
+  }, [
+    isMeshLikeViewer,
+    selectionViewportPulse?.workspace,
+    surfaceMeshEdgeSelection,
     surfaceMeshTopologyPickMode,
     surfaceMeshTopologySelectionCleared,
     surfaceMeshTopologyViewerMesh,
@@ -44658,6 +44790,7 @@ case "mobius":
     if (meshQualityOverlayPolylineGroups?.length) groups.push(...meshQualityOverlayPolylineGroups);
     if (surfaceMeshObjectSelectionPolylineGroups?.length) groups.push(...surfaceMeshObjectSelectionPolylineGroups);
     if (surfaceMeshTopologyOverlayPolylineGroups?.length) groups.push(...surfaceMeshTopologyOverlayPolylineGroups);
+    if (surfaceMeshEdgeSelectionPolylineGroups?.length) groups.push(...surfaceMeshEdgeSelectionPolylineGroups);
     if (surfaceMeshTopologyGhostPolylineGroups?.length) groups.push(...surfaceMeshTopologyGhostPolylineGroups);
     if (surfaceMeshAccessibleCommandPreviewOverlays?.polylineGroups?.length) {
       groups.push(...surfaceMeshAccessibleCommandPreviewOverlays.polylineGroups);
@@ -44680,6 +44813,7 @@ case "mobius":
     complexMapOverlayPolylineGroups,
     meshAppliedContextualViewportPreviewOverlays,
     surfaceMeshAccessibleCommandPreviewOverlays,
+    surfaceMeshEdgeSelectionPolylineGroups,
     surfaceMeshObjectSelectionPolylineGroups,
     surfaceMeshTopologyGhostPolylineGroups,
     meshQualityOverlayPolylineGroups,
@@ -44701,6 +44835,7 @@ case "mobius":
     if (meshQualityOverlayPolylineGroups?.length) groups.push(...meshQualityOverlayPolylineGroups);
     if (surfaceMeshObjectSelectionPolylineGroups?.length) groups.push(...surfaceMeshObjectSelectionPolylineGroups);
     if (surfaceMeshTopologyOverlayPolylineGroups?.length) groups.push(...surfaceMeshTopologyOverlayPolylineGroups);
+    if (surfaceMeshEdgeSelectionPolylineGroups?.length) groups.push(...surfaceMeshEdgeSelectionPolylineGroups);
     if (surfaceMeshTopologyGhostPolylineGroups?.length) groups.push(...surfaceMeshTopologyGhostPolylineGroups);
     if (surfaceMeshAccessibleCommandPreviewOverlays?.polylineGroups?.length) {
       groups.push(...surfaceMeshAccessibleCommandPreviewOverlays.polylineGroups);
@@ -44715,6 +44850,7 @@ case "mobius":
     complexMapOverlayPolylineGroups,
     meshQualityOverlayPolylineGroups,
     surfaceMeshAccessibleCommandPreviewOverlays,
+    surfaceMeshEdgeSelectionPolylineGroups,
     surfaceMeshObjectSelectionPolylineGroups,
     surfaceMeshTopologyFeedbackPolylineGroups,
     surfaceMeshTopologyGhostPolylineGroups,
@@ -45650,6 +45786,72 @@ case "mobius":
     surfaceMeshTopologyFieldValidation.edgeValid,
   ]);
 
+  const handleSelectSurfaceMeshEdgeSet = useCallback(
+    (tool: MeshEdgeSelectionTool) => {
+      const label = tool === "loop" ? "Edge loop" : tool === "ring" ? "Edge ring" : "Boundary";
+      const edgeA = surfaceMeshTopologyFieldValidation.effectiveEdgeA;
+      const edgeB = surfaceMeshTopologyFieldValidation.effectiveEdgeB;
+      if (surfaceMeshTopologyPickMode !== "edge") {
+        setSurfaceMeshEdgeSelection(null);
+        setSurfaceMeshTopologyStatus(`${label} needs Edge pick mode.`);
+        return;
+      }
+      if (!surfaceMeshData?.positions?.length) {
+        setSurfaceMeshTopologyStatus("Surface mesh not ready yet.");
+        return;
+      }
+      if (!surfaceMeshTopologyFieldValidation.edgeValid) {
+        setSurfaceMeshTopologyStatus(`${label} blocked: ${surfaceMeshTopologyFieldValidation.edgeLabel}.`);
+        return;
+      }
+      const filterResult = evaluateUnifiedSelectionFilter(
+        unifiedSelectionFromMeshTopology({
+          mode: "edge",
+          objectId: `mesh:${surfaceMeshLabel}`,
+          objectLabel: surfaceMeshLabel,
+          meshKey: `mesh:${surfaceMeshLabel}`,
+          mesh: surfaceMeshData,
+          edgeVertices: [edgeA, edgeB],
+          valid: true,
+          selectionCleared: surfaceMeshTopologySelectionCleared,
+        }),
+        unifiedSelectionFilter
+      );
+      if (!filterResult.accepted) {
+        setSurfaceMeshEdgeSelection(null);
+        setSurfaceMeshTopologyStatus(`${label} blocked: ${filterResult.reasons[0] ?? "Selection filtered out"}.`);
+        return;
+      }
+      try {
+        const selection = selectMeshEdgesByTool(surfaceMeshData, edgeA, edgeB, tool);
+        setSurfaceMeshTopologyFeedback(null);
+        setSurfaceMeshTopologyHistoryPreviewId(null);
+        setSurfaceMeshEdgeSelection(selection);
+        setContextualActionPulseId(
+          tool === "loop" ? "mesh:edge-loop" : tool === "ring" ? "mesh:edge-ring" : "mesh:boundary-select"
+        );
+        setSurfaceMeshTopologyStatus(selection.status);
+        showSelectionEventStatus("Mesh", selection.status, `mesh-edge-${tool}:${selection.edges.length}:${edgeA}-${edgeB}`);
+      } catch (err: any) {
+        const label = tool === "loop" ? "Edge loop" : tool === "ring" ? "Edge ring" : "Boundary";
+        setSurfaceMeshEdgeSelection(null);
+        setSurfaceMeshTopologyStatus(formatMeshEditFailureMessage(label, err?.message ?? `${label} selection failed.`));
+      }
+    },
+    [
+      showSelectionEventStatus,
+      surfaceMeshData,
+      surfaceMeshTopologyFieldValidation.effectiveEdgeA,
+      surfaceMeshTopologyFieldValidation.effectiveEdgeB,
+      surfaceMeshTopologyFieldValidation.edgeLabel,
+      surfaceMeshTopologyFieldValidation.edgeValid,
+      surfaceMeshTopologyPickMode,
+      surfaceMeshLabel,
+      surfaceMeshTopologySelectionCleared,
+      unifiedSelectionFilter,
+    ]
+  );
+
   const handleApplySurfaceMeshTopologySelectedPreview = useCallback(() => {
     if (surfaceMeshTopologyPreviewOperation === "Face Subdivide") {
       handleSurfaceMeshFaceSubdivide();
@@ -46026,6 +46228,16 @@ case "mobius":
       surfaceMeshTopologySelectionCleared,
     ]
   );
+  const meshUnifiedSelectionFilterResult = useMemo(
+    () => evaluateUnifiedSelectionFilter(meshUnifiedSelection, unifiedSelectionFilter),
+    [meshUnifiedSelection, unifiedSelectionFilter]
+  );
+  const filteredMeshUnifiedSelection = meshUnifiedSelectionFilterResult.accepted ? meshUnifiedSelection : null;
+  const meshUnifiedSelectionFilterStatus =
+    meshUnifiedSelection && !meshUnifiedSelectionFilterResult.accepted
+      ? meshUnifiedSelectionFilterResult.reasons[0] ?? "Selection filtered out"
+      : null;
+  const meshUnifiedSelectionFiltered = Boolean(meshUnifiedSelectionFilterStatus);
   const meshFacePreviewResult = `subdivide ${surfaceMeshTopologySubdivideMode === "center-fan" ? "center fan" : "4 triangles"}`;
   const meshEdgePreviewSplitRatio = clampNumber(
     Number.isFinite(surfaceMeshTopologySplitRatio) ? surfaceMeshTopologySplitRatio : 0.5,
@@ -46039,34 +46251,48 @@ case "mobius":
   const meshContextSelectionState = buildContextualSelectionState({
     workspace: "mesh",
     pickMode: surfaceMeshTopologyPickMode,
-    objectLabel: meshUnifiedSelection?.selectionType === "object" ? meshUnifiedSelection.objectLabel : surfaceMeshLabel,
-    objectReady: Boolean(meshUnifiedSelection?.selectionType === "object" || surfaceMeshData),
+    objectLabel:
+      filteredMeshUnifiedSelection?.selectionType === "object" ? filteredMeshUnifiedSelection.objectLabel : surfaceMeshLabel,
+    objectReady: Boolean(
+      unifiedSelectionKindFilters.object &&
+        (filteredMeshUnifiedSelection?.selectionType === "object" || surfaceMeshData) &&
+        (surfaceMeshTopologyPickMode !== "object" || meshUnifiedSelectionFilterResult.accepted)
+    ),
     objectEmptyState: "Load a mesh to enable object actions",
     selectionCleared: surfaceMeshTopologySelectionCleared,
     entities: {
       face: {
         id:
-          meshUnifiedSelection?.selectionType === "face" && meshUnifiedSelection.faceId != null
-            ? meshUnifiedSelection.faceId
+          filteredMeshUnifiedSelection?.selectionType === "face" && filteredMeshUnifiedSelection.faceId != null
+            ? filteredMeshUnifiedSelection.faceId
             : selectedSurfaceMeshTopologyFaceId,
-        valid: surfaceMeshTopologyFieldValidation.faceValid,
+        valid:
+          unifiedSelectionKindFilters.face &&
+          surfaceMeshTopologyFieldValidation.faceValid &&
+          (surfaceMeshTopologyPickMode !== "face" || meshUnifiedSelectionFilterResult.accepted),
         previewResult: meshFacePreviewResult,
       },
       edge: {
         id:
-          meshUnifiedSelection?.selectionType === "edge" && meshUnifiedSelection.edgeId
-            ? meshUnifiedSelection.edgeId
+          filteredMeshUnifiedSelection?.selectionType === "edge" && filteredMeshUnifiedSelection.edgeId
+            ? filteredMeshUnifiedSelection.edgeId
             : selectedSurfaceMeshTopologyEdgeId,
-        valid: surfaceMeshTopologyFieldValidation.edgeValid,
+        valid:
+          unifiedSelectionKindFilters.edge &&
+          surfaceMeshTopologyFieldValidation.edgeValid &&
+          (surfaceMeshTopologyPickMode !== "edge" || meshUnifiedSelectionFilterResult.accepted),
         labelSuffix: surfaceMeshTopologyFieldValidation.edgeFallbackActive ? " (from face)" : "",
         previewResult: meshEdgePreviewResult,
       },
       vertex: {
         id:
-          meshUnifiedSelection?.selectionType === "vertex" && meshUnifiedSelection.vertexId != null
-            ? meshUnifiedSelection.vertexId
+          filteredMeshUnifiedSelection?.selectionType === "vertex" && filteredMeshUnifiedSelection.vertexId != null
+            ? filteredMeshUnifiedSelection.vertexId
             : selectedSurfaceMeshTopologyVertexId,
-        valid: surfaceMeshTopologyFieldValidation.vertexValid,
+        valid:
+          unifiedSelectionKindFilters.vertex &&
+          surfaceMeshTopologyFieldValidation.vertexValid &&
+          (surfaceMeshTopologyPickMode !== "vertex" || meshUnifiedSelectionFilterResult.accepted),
         previewResult: "marker",
       },
     },
@@ -48868,19 +49094,61 @@ case "mobius":
       {
         descriptor: meshSplitEdgeAction,
         onClick: handleSurfaceMeshSplitEdge,
-        disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.edgeValid,
+        disabled:
+          surfaceMeshTopologyPickMode !== "edge" ||
+          surfaceMeshTopologySelectionCleared ||
+          meshUnifiedSelectionFiltered ||
+          !surfaceMeshTopologyFieldValidation.edgeValid,
         activePulseId: contextualActionPulseId,
       },
       {
         descriptor: meshCollapseEdgeAction,
         onClick: handleSurfaceMeshCollapseEdge,
-        disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.edgeValid,
+        disabled:
+          surfaceMeshTopologyPickMode !== "edge" ||
+          surfaceMeshTopologySelectionCleared ||
+          meshUnifiedSelectionFiltered ||
+          !surfaceMeshTopologyFieldValidation.edgeValid,
         activePulseId: contextualActionPulseId,
       },
       {
         descriptor: meshBevelEdgeAction,
         onClick: handleSurfaceMeshBevelEdge,
-        disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.edgeValid,
+        disabled:
+          surfaceMeshTopologyPickMode !== "edge" ||
+          surfaceMeshTopologySelectionCleared ||
+          meshUnifiedSelectionFiltered ||
+          !surfaceMeshTopologyFieldValidation.edgeValid,
+        activePulseId: contextualActionPulseId,
+      },
+      {
+        descriptor: meshSelectEdgeLoopAction,
+        onClick: () => handleSelectSurfaceMeshEdgeSet("loop"),
+        disabled:
+          surfaceMeshTopologyPickMode !== "edge" ||
+          surfaceMeshTopologySelectionCleared ||
+          meshUnifiedSelectionFiltered ||
+          !surfaceMeshTopologyFieldValidation.edgeValid,
+        activePulseId: contextualActionPulseId,
+      },
+      {
+        descriptor: meshSelectEdgeRingAction,
+        onClick: () => handleSelectSurfaceMeshEdgeSet("ring"),
+        disabled:
+          surfaceMeshTopologyPickMode !== "edge" ||
+          surfaceMeshTopologySelectionCleared ||
+          meshUnifiedSelectionFiltered ||
+          !surfaceMeshTopologyFieldValidation.edgeValid,
+        activePulseId: contextualActionPulseId,
+      },
+      {
+        descriptor: meshSelectBoundaryAction,
+        onClick: () => handleSelectSurfaceMeshEdgeSet("boundary"),
+        disabled:
+          surfaceMeshTopologyPickMode !== "edge" ||
+          surfaceMeshTopologySelectionCleared ||
+          meshUnifiedSelectionFiltered ||
+          !surfaceMeshTopologyFieldValidation.edgeValid,
         activePulseId: contextualActionPulseId,
       },
     ],
@@ -48964,14 +49232,37 @@ case "mobius":
       triCount: Math.floor(activeCgalMesh.indices.length / 3),
     };
   }, [activeCgalMesh]);
+  const surfaceInspectorTopologyMesh = surfaceViewerKind === "implicit" ? activeCgalMeshData : surfaceMeshData;
+  const surfaceInspectorTopologyDetails = useMemo(
+    () => computeMeshTopologyInspector(surfaceInspectorTopologyMesh, { rowLimit: 18, itemLimit: 12 }),
+    [surfaceInspectorTopologyMesh]
+  );
   const surfaceInspectorMeshStats = useMemo(
     () => ({
-      vertexCount: meshQualityReport?.vertexCount ?? surfaceMeshStats?.vertCount ?? cgalMeshInfo?.vertexCount ?? null,
-      faceCount: meshQualityReport?.faceCount ?? surfaceMeshStats?.triCount ?? cgalMeshInfo?.triCount ?? null,
-      boundaryEdgeCount: meshQualityReport?.topology.boundaryEdgeCount ?? null,
-      connectedComponentCount: surfaceMeshConnectedComponentCount,
+      vertexCount:
+        meshQualityReport?.vertexCount ??
+        surfaceInspectorTopologyDetails?.vertexCount ??
+        surfaceMeshStats?.vertCount ??
+        cgalMeshInfo?.vertexCount ??
+        null,
+      faceCount:
+        meshQualityReport?.faceCount ??
+        surfaceInspectorTopologyDetails?.faceCount ??
+        surfaceMeshStats?.triCount ??
+        cgalMeshInfo?.triCount ??
+        null,
+      boundaryEdgeCount:
+        meshQualityReport?.topology.boundaryEdgeCount ?? surfaceInspectorTopologyDetails?.boundaryEdgeCount ?? null,
+      connectedComponentCount:
+        surfaceInspectorTopologyDetails?.connectedComponentCount ?? surfaceMeshConnectedComponentCount,
     }),
-    [meshQualityReport, surfaceMeshStats, cgalMeshInfo, surfaceMeshConnectedComponentCount]
+    [
+      cgalMeshInfo,
+      meshQualityReport,
+      surfaceInspectorTopologyDetails,
+      surfaceMeshConnectedComponentCount,
+      surfaceMeshStats,
+    ]
   );
   const readFiniteRange = (values: Float32Array | null | undefined): { min: number; max: number } | null => {
     if (!values?.length) return null;
@@ -57088,6 +57379,11 @@ case "mobius":
                   surfaceMeshTopologyPickSummary={surfaceMeshTopologyPickSummary}
                   surfaceMeshTopologySelectionCleared={surfaceMeshTopologySelectionCleared}
                   surfaceMeshTopologyStatus={surfaceMeshTopologyStatus}
+                  surfaceMeshEdgeSelection={surfaceMeshEdgeSelection}
+                  unifiedSelectionKindFilters={unifiedSelectionKindFilters}
+                  unifiedSelectionTopologyFilter={unifiedSelectionTopologyFilter}
+                  unifiedSelectionFilterLabel={unifiedSelectionFilterLabel}
+                  unifiedSelectionFilterStatus={meshUnifiedSelectionFilterStatus}
                   onExportSurfaceMeshObj={handleExportSurfaceMeshObj}
                   onExportSurfaceMeshPly={handleExportSurfaceMeshPly}
                   onExportSurfaceMeshGlb={handleExportSurfaceMeshGlb}
@@ -57105,9 +57401,11 @@ case "mobius":
                   onChangeSurfaceMeshTopologyEdgeB={setSurfaceMeshTopologyEdgeB}
                   onChangeSurfaceMeshTopologyVertexIndex={setSurfaceMeshTopologyVertexIndex}
                   onChangeSurfaceMeshTopologyPickMode={(pickMode) => {
-                    setSurfaceMeshTopologyPickMode(pickMode);
+                    handleChangeSurfaceMeshTopologyPickMode(pickMode);
                     if (!probeEnabled) setProbeEnabled(true);
                   }}
+                  onToggleUnifiedSelectionKindFilter={handleToggleUnifiedSelectionKindFilter}
+                  onChangeUnifiedSelectionTopologyFilter={setUnifiedSelectionTopologyFilter}
                   onChangeSurfaceMeshTopologySubdivideMode={setSurfaceMeshTopologySubdivideMode}
                   onChangeSurfaceMeshTopologySplitRatio={setSurfaceMeshTopologySplitRatio}
                   onChangeSurfaceMeshTopologyCollapseMode={setSurfaceMeshTopologyCollapseMode}
@@ -57119,6 +57417,7 @@ case "mobius":
                   onSurfaceMeshSplitEdge={handleSurfaceMeshSplitEdge}
                   onSurfaceMeshCollapseEdge={handleSurfaceMeshCollapseEdge}
                   onSurfaceMeshBevelEdge={handleSurfaceMeshBevelEdge}
+                  onSelectSurfaceMeshEdgeSet={handleSelectSurfaceMeshEdgeSet}
                   onApplySurfaceMeshTopologySelectedPreview={handleApplySurfaceMeshTopologySelectedPreview}
                   onClearSurfaceMeshTopologySelection={handleClearSurfaceMeshTopologyContextSelection}
                   surfaceMeshTopologySaveName={surfaceMeshTopologySaveName}
@@ -60033,7 +60332,7 @@ case "mobius":
                         </div>
                       </div>
                       <div style={{ fontSize: 11, color: "#475467" }}>
-                        Face Subdivide, Split Edge, Collapse Edge, Bevel Edge
+                        Face Subdivide, Split Edge, Collapse Edge, Bevel Edge, Edge Loop, Edge Ring, Boundary
                       </div>
                       {meshGeometryRoundTripSource && (
                         <div
@@ -60134,24 +60433,74 @@ case "mobius":
                       >
                         <div style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Pick target</div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          {(["object", "face", "edge", "vertex"] as SurfaceMeshTopologyPickMode[]).map((pickMode) => (
+                          {SURFACE_MESH_TOPOLOGY_PICK_MODES.map((pickMode) => (
                             <button
                               key={`mesh-tools-topology-primary-pick-mode-${pickMode}`}
                               type="button"
                               onClick={() => {
-                                setSurfaceMeshTopologyPickMode(pickMode);
+                                handleChangeSurfaceMeshTopologyPickMode(pickMode);
                                 if (!probeEnabled) setProbeEnabled(true);
                               }}
-                              disabled={!surfaceMeshStats}
+                              disabled={!surfaceMeshStats || !unifiedSelectionKindFilters[pickMode]}
                               style={{
                                 background: surfaceMeshTopologyPickMode === pickMode ? "#bfdbfe" : "#fff",
                                 borderColor: surfaceMeshTopologyPickMode === pickMode ? "#0a66c2" : "#d0d5dd",
+                                color: unifiedSelectionKindFilters[pickMode] ? undefined : "#98a2b3",
                                 fontWeight: surfaceMeshTopologyPickMode === pickMode ? 700 : 600,
                               }}
                             >
                               {pickMode[0].toUpperCase() + pickMode.slice(1)}
                             </button>
                           ))}
+                        </div>
+                        <div style={{ display: "grid", gap: 5, borderTop: "1px solid #dbeafe", paddingTop: 6 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Selection filters</div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {SURFACE_MESH_TOPOLOGY_PICK_MODES.map((pickMode) => {
+                              const enabledCount = SURFACE_MESH_TOPOLOGY_PICK_MODES.filter(
+                                (mode) => unifiedSelectionKindFilters[mode]
+                              ).length;
+                              return (
+                                <button
+                                  key={`mesh-selection-filter-kind-${pickMode}`}
+                                  type="button"
+                                  data-testid={`mesh-selection-filter-kind-${pickMode}`}
+                                  onClick={() => handleToggleUnifiedSelectionKindFilter(pickMode)}
+                                  disabled={unifiedSelectionKindFilters[pickMode] && enabledCount <= 1}
+                                  aria-pressed={unifiedSelectionKindFilters[pickMode]}
+                                  style={pill(unifiedSelectionKindFilters[pickMode])}
+                                >
+                                  {pickMode[0].toUpperCase() + pickMode.slice(1)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {(["all", "boundary", "interior", "non-manifold"] as UnifiedSelectionTopologyFilterMode[]).map(
+                              (filterMode) => (
+                                <button
+                                  key={`mesh-selection-filter-topology-${filterMode}`}
+                                  type="button"
+                                  data-testid={`mesh-selection-filter-topology-${filterMode}`}
+                                  onClick={() => setUnifiedSelectionTopologyFilter(filterMode)}
+                                  aria-pressed={unifiedSelectionTopologyFilter === filterMode}
+                                  style={pill(unifiedSelectionTopologyFilter === filterMode)}
+                                >
+                                  {filterMode === "all"
+                                    ? "All topology"
+                                    : filterMode === "non-manifold"
+                                      ? "Non-manifold"
+                                      : filterMode[0].toUpperCase() + filterMode.slice(1)}
+                                </button>
+                              )
+                            )}
+                          </div>
+                          <div
+                            data-testid="mesh-selection-filter-summary"
+                            style={{ fontSize: 11, color: meshUnifiedSelectionFilterStatus ? "#b42318" : "#475467" }}
+                          >
+                            {meshUnifiedSelectionFilterStatus ?? unifiedSelectionFilterLabel}
+                          </div>
                         </div>
                       </div>
                       <div
@@ -60281,18 +60630,19 @@ case "mobius":
                       )}
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
                         <span style={{ color: "#475467" }}>Pick target</span>
-                        {(["object", "face", "edge", "vertex"] as SurfaceMeshTopologyPickMode[]).map((pickMode) => (
+                        {SURFACE_MESH_TOPOLOGY_PICK_MODES.map((pickMode) => (
                           <button
                             key={`mesh-tools-topology-pick-mode-${pickMode}`}
                             type="button"
                             onClick={() => {
-                              setSurfaceMeshTopologyPickMode(pickMode);
+                              handleChangeSurfaceMeshTopologyPickMode(pickMode);
                               if (!probeEnabled) setProbeEnabled(true);
                             }}
-                            disabled={!surfaceMeshStats}
+                            disabled={!surfaceMeshStats || !unifiedSelectionKindFilters[pickMode]}
                             style={{
                               background: surfaceMeshTopologyPickMode === pickMode ? "#dbeafe" : undefined,
                               borderColor: surfaceMeshTopologyPickMode === pickMode ? "#0a66c2" : undefined,
+                              color: unifiedSelectionKindFilters[pickMode] ? undefined : "#98a2b3",
                             }}
                           >
                             {pickMode[0].toUpperCase() + pickMode.slice(1)}
@@ -60329,6 +60679,11 @@ case "mobius":
                             <span data-testid="mesh-topology-selected-edge">{selectedSurfaceMeshTopologyEdgeLabel}</span>
                             <span data-testid="mesh-topology-selected-vertex">{selectedSurfaceMeshTopologyVertexLabel}</span>
                           </div>
+                          {surfaceMeshEdgeSelection && (
+                            <span data-testid="mesh-edge-selection-summary" style={{ color: "#0f766e", fontWeight: 800 }}>
+                              {surfaceMeshEdgeSelection.status}
+                            </span>
+                          )}
                           <span style={{ color: "#475467" }}>Click the mesh to update these picks before applying an operation.</span>
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -60341,7 +60696,15 @@ case "mobius":
                             <option value="center-fan">Center fan</option>
                             <option value="four-triangles">Four triangles</option>
                           </select>
-                          <button type="button" onClick={handleSurfaceMeshFaceSubdivide} disabled={!surfaceMeshStats}>
+                          <button
+                            type="button"
+                            onClick={handleSurfaceMeshFaceSubdivide}
+                            disabled={
+                              surfaceMeshTopologyPickMode !== "face" ||
+                              !surfaceMeshStats ||
+                              meshUnifiedSelectionFiltered
+                            }
+                          >
                             Subdivide Face
                           </button>
                           {surfaceMeshTopologyFaceGuidedPreset && (
@@ -60406,7 +60769,12 @@ case "mobius":
                           <button
                             type="button"
                             onClick={handleSurfaceMeshSplitEdge}
-                            disabled={!surfaceMeshStats || !surfaceMeshTopologyFieldValidation.edgeValid}
+                            disabled={
+                              surfaceMeshTopologyPickMode !== "edge" ||
+                              !surfaceMeshStats ||
+                              meshUnifiedSelectionFiltered ||
+                              !surfaceMeshTopologyFieldValidation.edgeValid
+                            }
                           >
                             Split Edge
                           </button>
@@ -60447,7 +60815,12 @@ case "mobius":
                           <button
                             type="button"
                             onClick={handleSurfaceMeshCollapseEdge}
-                            disabled={!surfaceMeshStats || !surfaceMeshTopologyFieldValidation.edgeValid}
+                            disabled={
+                              surfaceMeshTopologyPickMode !== "edge" ||
+                              !surfaceMeshStats ||
+                              meshUnifiedSelectionFiltered ||
+                              !surfaceMeshTopologyFieldValidation.edgeValid
+                            }
                           >
                             Collapse Edge
                           </button>
@@ -60493,7 +60866,12 @@ case "mobius":
                           <button
                             type="button"
                             onClick={handleSurfaceMeshBevelEdge}
-                            disabled={!surfaceMeshStats || !surfaceMeshTopologyFieldValidation.edgeValid}
+                            disabled={
+                              surfaceMeshTopologyPickMode !== "edge" ||
+                              !surfaceMeshStats ||
+                              meshUnifiedSelectionFiltered ||
+                              !surfaceMeshTopologyFieldValidation.edgeValid
+                            }
                           >
                             Bevel Edge
                           </button>
@@ -60520,6 +60898,48 @@ case "mobius":
                           {surfaceMeshTopologyPreview.bevelEdge && (
                             <span style={{ fontSize: 11, color: "#475467" }}>{surfaceMeshTopologyPreview.bevelEdge}</span>
                           )}
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <span style={{ fontSize: 11, fontWeight: 700 }}>Selection</span>
+                          <button
+                            type="button"
+                            data-testid="mesh-topology-select-edge-loop"
+                            onClick={() => handleSelectSurfaceMeshEdgeSet("loop")}
+                            disabled={
+                              surfaceMeshTopologyPickMode !== "edge" ||
+                              !surfaceMeshStats ||
+                              meshUnifiedSelectionFiltered ||
+                              !surfaceMeshTopologyFieldValidation.edgeValid
+                            }
+                          >
+                            Loop
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="mesh-topology-select-edge-ring"
+                            onClick={() => handleSelectSurfaceMeshEdgeSet("ring")}
+                            disabled={
+                              surfaceMeshTopologyPickMode !== "edge" ||
+                              !surfaceMeshStats ||
+                              meshUnifiedSelectionFiltered ||
+                              !surfaceMeshTopologyFieldValidation.edgeValid
+                            }
+                          >
+                            Ring
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="mesh-topology-select-boundary"
+                            onClick={() => handleSelectSurfaceMeshEdgeSet("boundary")}
+                            disabled={
+                              surfaceMeshTopologyPickMode !== "edge" ||
+                              !surfaceMeshStats ||
+                              meshUnifiedSelectionFiltered ||
+                              !surfaceMeshTopologyFieldValidation.edgeValid
+                            }
+                          >
+                            Boundary
+                          </button>
                         </div>
                         <details
                           data-testid="mesh-topology-advanced-ids"
@@ -61552,28 +61972,29 @@ case "mobius":
                           testId="mesh-context-toolbar"
                           placement="inline"
                           pickOptions={
-                            [
-                              {
-                                id: "object",
-                                label: OBJECT_CONTEXT_COPY.mesh.chip,
-                                title: "Whole-mesh actions: promote to Geometry, save edited mesh, or reopen source.",
-                              },
-                              { id: "face", label: "Face", title: "Choose a mesh face, then use the matching tools." },
-                              { id: "edge", label: "Edge", title: "Choose a mesh edge, then use the matching tools." },
-                              { id: "vertex", label: "Vertex", title: "Choose a mesh vertex, then use the matching tools." },
-                            ] satisfies readonly ContextualActionStripOption<SurfaceMeshTopologyPickMode>[]
+                            SURFACE_MESH_TOPOLOGY_PICK_MODES.map((pickMode) => ({
+                              id: pickMode,
+                              label: pickMode === "object" ? OBJECT_CONTEXT_COPY.mesh.chip : pickMode[0].toUpperCase() + pickMode.slice(1),
+                              title:
+                                pickMode === "object"
+                                  ? "Whole-mesh actions: promote to Geometry, save edited mesh, or reopen source."
+                                  : `Choose a mesh ${pickMode}, then use the matching tools.`,
+                              disabled: !unifiedSelectionKindFilters[pickMode],
+                              disabledReason: `Selection filter excludes ${pickMode} picks.`,
+                            })) satisfies readonly ContextualActionStripOption<SurfaceMeshTopologyPickMode>[]
                           }
                           activePick={surfaceMeshTopologyPickMode}
                           onPickChange={(pickMode) => {
-                            setSurfaceMeshTopologyPickMode(pickMode);
+                            handleChangeSurfaceMeshTopologyPickMode(pickMode);
                             if (pickMode !== "object" && !probeEnabled) setProbeEnabled(true);
                           }}
                           selectionLabel={
-                            surfaceMeshTopologyPickMode === "object"
+                            meshUnifiedSelectionFilterStatus ??
+                            (surfaceMeshTopologyPickMode === "object"
                               ? meshContextToolbarSelectionLabel
                               : meshActiveSelectionSummary.emptyState ??
                                 meshActiveSelectionSummary.eventLabel ??
-                                meshContextToolbarSelectionLabel
+                                meshContextToolbarSelectionLabel)
                           }
                           selectionTestId="mesh-context-selection-label"
                           previewLabel={meshContextToolbarPreviewLabel}
@@ -63674,6 +64095,7 @@ case "mobius":
                       meshInteractionHideWireframe={meshInteractionHideWireframe}
                       onChangeMeshInteractionHideWireframe={setMeshInteractionHideWireframe}
                       meshInspectorStats={surfaceInspectorMeshStats}
+                      meshTopologyDetails={surfaceInspectorTopologyDetails}
                       badTriangleCount={surfaceInspectorBadTriangleCount}
                       geodesicPathLength={geodesicHeatLength}
                       curvatureRanges={surfaceInspectorCurvatureRanges}
@@ -88340,6 +88762,11 @@ type SurfacesLeftPanelProps = {
   surfaceMeshTopologyPickSummary: string | null;
   surfaceMeshTopologySelectionCleared: boolean;
   surfaceMeshTopologyStatus: string | null;
+  surfaceMeshEdgeSelection: MeshEdgeSelectionResult | null;
+  unifiedSelectionKindFilters: UnifiedSelectionKindFilterState;
+  unifiedSelectionTopologyFilter: UnifiedSelectionTopologyFilterMode;
+  unifiedSelectionFilterLabel: string;
+  unifiedSelectionFilterStatus: string | null;
   onExportSurfaceMeshObj: () => void;
   onExportSurfaceMeshPly: () => void;
   onExportSurfaceMeshGlb: () => void;
@@ -88357,6 +88784,8 @@ type SurfacesLeftPanelProps = {
   onChangeSurfaceMeshTopologyEdgeB: (v: number) => void;
   onChangeSurfaceMeshTopologyVertexIndex: (v: number) => void;
   onChangeSurfaceMeshTopologyPickMode: (mode: SurfaceMeshTopologyPickMode) => void;
+  onToggleUnifiedSelectionKindFilter: (mode: SurfaceMeshTopologyPickMode) => void;
+  onChangeUnifiedSelectionTopologyFilter: (mode: UnifiedSelectionTopologyFilterMode) => void;
   onChangeSurfaceMeshTopologySubdivideMode: (mode: FaceSubdivideMode) => void;
   onChangeSurfaceMeshTopologySplitRatio: (v: number) => void;
   onChangeSurfaceMeshTopologyCollapseMode: (mode: EdgeCollapseMode) => void;
@@ -88368,6 +88797,7 @@ type SurfacesLeftPanelProps = {
   onSurfaceMeshSplitEdge: () => void;
   onSurfaceMeshCollapseEdge: () => void;
   onSurfaceMeshBevelEdge: () => void;
+  onSelectSurfaceMeshEdgeSet: (tool: MeshEdgeSelectionTool) => void;
   onApplySurfaceMeshTopologySelectedPreview: () => void;
   onClearSurfaceMeshTopologySelection: () => void;
   surfaceMeshTopologySaveName: string;
@@ -89031,6 +89461,11 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   surfaceMeshTopologyPickSummary,
   surfaceMeshTopologySelectionCleared,
   surfaceMeshTopologyStatus,
+  surfaceMeshEdgeSelection,
+  unifiedSelectionKindFilters,
+  unifiedSelectionTopologyFilter,
+  unifiedSelectionFilterLabel,
+  unifiedSelectionFilterStatus,
   onExportSurfaceMeshObj,
   onExportSurfaceMeshPly,
   onExportSurfaceMeshGlb,
@@ -89048,6 +89483,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeSurfaceMeshTopologyEdgeB,
   onChangeSurfaceMeshTopologyVertexIndex,
   onChangeSurfaceMeshTopologyPickMode,
+  onToggleUnifiedSelectionKindFilter,
+  onChangeUnifiedSelectionTopologyFilter,
   onChangeSurfaceMeshTopologySubdivideMode,
   onChangeSurfaceMeshTopologySplitRatio,
   onChangeSurfaceMeshTopologyCollapseMode,
@@ -89059,6 +89496,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onSurfaceMeshSplitEdge,
   onSurfaceMeshCollapseEdge,
   onSurfaceMeshBevelEdge,
+  onSelectSurfaceMeshEdgeSet,
   onApplySurfaceMeshTopologySelectedPreview,
   onClearSurfaceMeshTopologySelection,
   surfaceMeshTopologySaveName,
@@ -92731,15 +93169,16 @@ onChangeImplicitExpr,
                 }}
               >
                 <span style={{ color: "#475467" }}>Pick target</span>
-                {(["object", "face", "edge", "vertex"] as SurfaceMeshTopologyPickMode[]).map((pickMode) => (
+                {SURFACE_MESH_TOPOLOGY_PICK_MODES.map((pickMode) => (
                   <button
                     key={`surface-mesh-topology-pick-mode-${pickMode}`}
                     type="button"
                     onClick={() => onChangeSurfaceMeshTopologyPickMode(pickMode)}
-                    disabled={!meshReady}
+                    disabled={!meshReady || !unifiedSelectionKindFilters[pickMode]}
                     style={{
                       background: surfaceMeshTopologyPickMode === pickMode ? "#dbeafe" : undefined,
                       borderColor: surfaceMeshTopologyPickMode === pickMode ? "#0a66c2" : undefined,
+                      color: unifiedSelectionKindFilters[pickMode] ? undefined : "#98a2b3",
                     }}
                   >
                     {pickMode[0].toUpperCase() + pickMode.slice(1)}
@@ -92768,7 +93207,7 @@ onChangeImplicitExpr,
               >
                 <div style={{ fontSize: 11, fontWeight: 700 }}>Current implementations</div>
                 <div style={{ fontSize: 11, color: "#475467", marginTop: 3 }}>
-                  Face Subdivide, Split Edge, Collapse Edge, Bevel Edge
+                  Face Subdivide, Split Edge, Collapse Edge, Bevel Edge, Edge Loop, Edge Ring, Boundary
                 </div>
                 <div
                   style={{
@@ -92783,21 +93222,71 @@ onChangeImplicitExpr,
                 >
                   <div style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Pick target</div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {(["object", "face", "edge", "vertex"] as SurfaceMeshTopologyPickMode[]).map((pickMode) => (
+                    {SURFACE_MESH_TOPOLOGY_PICK_MODES.map((pickMode) => (
                       <button
                         key={`surface-mesh-topology-primary-pick-mode-${pickMode}`}
                         type="button"
                         onClick={() => onChangeSurfaceMeshTopologyPickMode(pickMode)}
-                        disabled={!meshReady}
+                        disabled={!meshReady || !unifiedSelectionKindFilters[pickMode]}
                         style={{
                           background: surfaceMeshTopologyPickMode === pickMode ? "#bfdbfe" : "#fff",
                           borderColor: surfaceMeshTopologyPickMode === pickMode ? "#0a66c2" : "#d0d5dd",
+                          color: unifiedSelectionKindFilters[pickMode] ? undefined : "#98a2b3",
                           fontWeight: surfaceMeshTopologyPickMode === pickMode ? 700 : 600,
                         }}
                       >
                         {pickMode[0].toUpperCase() + pickMode.slice(1)}
                       </button>
                     ))}
+                  </div>
+                  <div style={{ display: "grid", gap: 5, borderTop: "1px solid #dbeafe", paddingTop: 6 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Selection filters</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {SURFACE_MESH_TOPOLOGY_PICK_MODES.map((pickMode) => {
+                        const enabledCount = SURFACE_MESH_TOPOLOGY_PICK_MODES.filter(
+                          (mode) => unifiedSelectionKindFilters[mode]
+                        ).length;
+                        return (
+                          <button
+                            key={`surface-mesh-selection-filter-kind-${pickMode}`}
+                            type="button"
+                            data-testid={`mesh-selection-filter-kind-secondary-${pickMode}`}
+                            onClick={() => onToggleUnifiedSelectionKindFilter(pickMode)}
+                            disabled={unifiedSelectionKindFilters[pickMode] && enabledCount <= 1}
+                            aria-pressed={unifiedSelectionKindFilters[pickMode]}
+                            style={pill(unifiedSelectionKindFilters[pickMode])}
+                          >
+                            {pickMode[0].toUpperCase() + pickMode.slice(1)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {(["all", "boundary", "interior", "non-manifold"] as UnifiedSelectionTopologyFilterMode[]).map(
+                        (filterMode) => (
+                          <button
+                            key={`surface-mesh-selection-filter-topology-${filterMode}`}
+                            type="button"
+                            data-testid={`mesh-selection-filter-topology-secondary-${filterMode}`}
+                            onClick={() => onChangeUnifiedSelectionTopologyFilter(filterMode)}
+                            aria-pressed={unifiedSelectionTopologyFilter === filterMode}
+                            style={pill(unifiedSelectionTopologyFilter === filterMode)}
+                          >
+                            {filterMode === "all"
+                              ? "All topology"
+                              : filterMode === "non-manifold"
+                                ? "Non-manifold"
+                                : filterMode[0].toUpperCase() + filterMode.slice(1)}
+                          </button>
+                        )
+                      )}
+                    </div>
+                    <div
+                      data-testid="mesh-selection-filter-summary-secondary"
+                      style={{ fontSize: 11, color: unifiedSelectionFilterStatus ? "#b42318" : "#475467" }}
+                    >
+                      {unifiedSelectionFilterStatus ?? unifiedSelectionFilterLabel}
+                    </div>
                   </div>
                 </div>
                 <div style={{ display: "grid", gap: 5, marginTop: 7 }}>
@@ -92932,6 +93421,11 @@ onChangeImplicitExpr,
                     <span data-testid="mesh-topology-selected-edge">{selectedSurfaceMeshTopologyEdgeLabel}</span>
                     <span data-testid="mesh-topology-selected-vertex">{selectedSurfaceMeshTopologyVertexLabel}</span>
                   </div>
+                  {surfaceMeshEdgeSelection && (
+                    <span data-testid="mesh-edge-selection-summary" style={{ color: "#0f766e", fontWeight: 800 }}>
+                      {surfaceMeshEdgeSelection.status}
+                    </span>
+                  )}
                   <span style={{ color: "#475467" }}>Click the mesh to update these picks before applying an operation.</span>
                 </div>
                 <div style={{ display: "grid", gap: 6 }}>
@@ -92946,7 +93440,15 @@ onChangeImplicitExpr,
                       <option value="center-fan">Center fan</option>
                       <option value="four-triangles">Four triangles</option>
                     </select>
-                    <button type="button" onClick={onSurfaceMeshFaceSubdivide} disabled={!meshReady}>
+                    <button
+                      type="button"
+                      onClick={onSurfaceMeshFaceSubdivide}
+                      disabled={
+                        surfaceMeshTopologyPickMode !== "face" ||
+                        !meshReady ||
+                        Boolean(unifiedSelectionFilterStatus)
+                      }
+                    >
                       Subdivide Face
                     </button>
                     {surfaceMeshTopologyFaceGuidedPreset && (
@@ -93015,7 +93517,12 @@ onChangeImplicitExpr,
                       <button
                         type="button"
                         onClick={onSurfaceMeshSplitEdge}
-                        disabled={!meshReady || !surfaceMeshTopologyFieldValidation.edgeValid}
+                        disabled={
+                          surfaceMeshTopologyPickMode !== "edge" ||
+                          !meshReady ||
+                          Boolean(unifiedSelectionFilterStatus) ||
+                          !surfaceMeshTopologyFieldValidation.edgeValid
+                        }
                       >
                         Split Edge
                       </button>
@@ -93056,7 +93563,12 @@ onChangeImplicitExpr,
                       <button
                         type="button"
                         onClick={onSurfaceMeshCollapseEdge}
-                        disabled={!meshReady || !surfaceMeshTopologyFieldValidation.edgeValid}
+                        disabled={
+                          surfaceMeshTopologyPickMode !== "edge" ||
+                          !meshReady ||
+                          Boolean(unifiedSelectionFilterStatus) ||
+                          !surfaceMeshTopologyFieldValidation.edgeValid
+                        }
                       >
                         Collapse Edge
                       </button>
@@ -93104,7 +93616,12 @@ onChangeImplicitExpr,
                       <button
                         type="button"
                         onClick={onSurfaceMeshBevelEdge}
-                        disabled={!meshReady || !surfaceMeshTopologyFieldValidation.edgeValid}
+                        disabled={
+                          surfaceMeshTopologyPickMode !== "edge" ||
+                          !meshReady ||
+                          Boolean(unifiedSelectionFilterStatus) ||
+                          !surfaceMeshTopologyFieldValidation.edgeValid
+                        }
                       >
                         Bevel Edge
                       </button>
@@ -93131,6 +93648,48 @@ onChangeImplicitExpr,
                       {surfaceMeshTopologyPreview.bevelEdge && (
                         <span style={{ fontSize: 11, color: "#475467" }}>{surfaceMeshTopologyPreview.bevelEdge}</span>
                       )}
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <span style={{ fontSize: 11, fontWeight: 700 }}>Selection</span>
+                      <button
+                        type="button"
+                        data-testid="mesh-topology-select-edge-loop"
+                        onClick={() => onSelectSurfaceMeshEdgeSet("loop")}
+                        disabled={
+                          surfaceMeshTopologyPickMode !== "edge" ||
+                          !meshReady ||
+                          Boolean(unifiedSelectionFilterStatus) ||
+                          !surfaceMeshTopologyFieldValidation.edgeValid
+                        }
+                      >
+                        Loop
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="mesh-topology-select-edge-ring"
+                        onClick={() => onSelectSurfaceMeshEdgeSet("ring")}
+                        disabled={
+                          surfaceMeshTopologyPickMode !== "edge" ||
+                          !meshReady ||
+                          Boolean(unifiedSelectionFilterStatus) ||
+                          !surfaceMeshTopologyFieldValidation.edgeValid
+                        }
+                      >
+                        Ring
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="mesh-topology-select-boundary"
+                        onClick={() => onSelectSurfaceMeshEdgeSet("boundary")}
+                        disabled={
+                          surfaceMeshTopologyPickMode !== "edge" ||
+                          !meshReady ||
+                          Boolean(unifiedSelectionFilterStatus) ||
+                          !surfaceMeshTopologyFieldValidation.edgeValid
+                        }
+                      >
+                        Boundary
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -96717,6 +97276,7 @@ type SurfacesRightPanelProps = {
     boundaryEdgeCount: number | null;
     connectedComponentCount: number | null;
   };
+  meshTopologyDetails: MeshTopologyInspectorDetails | null;
   badTriangleCount: number | null;
   geodesicPathLength: number | null;
   curvatureRanges: {
@@ -96926,6 +97486,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   meshInteractionHideWireframe,
   onChangeMeshInteractionHideWireframe,
   meshInspectorStats,
+  meshTopologyDetails,
   badTriangleCount,
   geodesicPathLength,
   curvatureRanges,
@@ -97065,6 +97626,135 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     marginBottom: 7,
     color: "#0f172a",
   };
+  const topologyFlagTone = {
+    good: { background: "#ecfdf3", border: "#abefc6", color: "#067647" },
+    warn: { background: "#fff1f3", border: "#fecdd6", color: "#b42318" },
+    neutral: { background: "#f8fafc", border: "#dbe4ee", color: "#475467" },
+  } as const;
+  const renderTopologyRows = (
+    rows: readonly MeshTopologyListRow[],
+    totalCount: number,
+    emptyLabel: string,
+    testId: string
+  ) => (
+    <div data-testid={testId} style={{ display: "grid", gap: 5 }}>
+      {rows.length === 0 ? (
+        <div style={{ color: "#64748b" }}>{emptyLabel}</div>
+      ) : (
+        rows.map((row) => (
+          <div key={`${testId}-${row.label}`} style={{ display: "grid", gap: 2 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <strong>{row.label}</strong>
+              {row.flags.map((flag) => (
+                <span
+                  key={`${testId}-${row.label}-${flag}`}
+                  style={{
+                    border: "1px solid #dbe4ee",
+                    borderRadius: 999,
+                    color: "#475467",
+                    padding: "1px 6px",
+                    fontSize: 10,
+                    fontWeight: 700,
+                  }}
+                >
+                  {flag}
+                </span>
+              ))}
+            </div>
+            <div style={{ color: "#475467", lineHeight: 1.4 }}>{row.detail}</div>
+          </div>
+        ))
+      )}
+      {totalCount > rows.length && (
+        <div style={{ color: "#64748b" }}>
+          Showing first {rows.length.toLocaleString()} of {totalCount.toLocaleString()} rows.
+        </div>
+      )}
+    </div>
+  );
+  const renderTopologyDetails = (testIdPrefix: string) =>
+    meshTopologyDetails ? (
+      <div style={{ fontSize: 11, display: "grid", gap: 10 }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} data-testid={`${testIdPrefix}-topology-flags`}>
+          {meshTopologyDetails.flags.map((flag) => {
+            const tone = topologyFlagTone[flag.tone];
+            return (
+              <span
+                key={`${testIdPrefix}-topology-flag-${flag.label}`}
+                style={{
+                  display: "inline-flex",
+                  gap: 4,
+                  alignItems: "center",
+                  border: `1px solid ${tone.border}`,
+                  borderRadius: 999,
+                  background: tone.background,
+                  color: tone.color,
+                  padding: "2px 8px",
+                  fontSize: 10,
+                  fontWeight: 800,
+                }}
+              >
+                {flag.label}: {flag.value}
+              </span>
+            );
+          })}
+        </div>
+        <div style={{ display: "grid", gap: 5 }}>
+          <div>
+            <strong>Edges:</strong> {meshTopologyDetails.edgeCount.toLocaleString()}
+          </div>
+          <div>
+            <strong>Euler characteristic:</strong> {meshTopologyDetails.eulerCharacteristic.toLocaleString()}
+          </div>
+          <div>
+            <strong>Boundary components:</strong> {topologyBoundaryLoopsLabel}
+          </div>
+        </div>
+        <div style={{ display: "grid", gap: 4 }}>
+          <strong>Vertex adjacency</strong>
+          {renderTopologyRows(
+            meshTopologyDetails.vertexAdjacencyRows,
+            meshTopologyDetails.vertexCount,
+            "No vertices.",
+            `${testIdPrefix}-vertex-adjacency`
+          )}
+        </div>
+        <div style={{ display: "grid", gap: 4 }}>
+          <strong>Face adjacency</strong>
+          {renderTopologyRows(
+            meshTopologyDetails.faceAdjacencyRows,
+            meshTopologyDetails.faceCount,
+            "No faces.",
+            `${testIdPrefix}-face-adjacency`
+          )}
+        </div>
+        <div style={{ display: "grid", gap: 4 }}>
+          <strong>Edge incidence</strong>
+          {renderTopologyRows(
+            meshTopologyDetails.edgeIncidenceRows,
+            meshTopologyDetails.edgeCount,
+            "No edges.",
+            `${testIdPrefix}-edge-incidence`
+          )}
+        </div>
+        <div style={{ display: "grid", gap: 4 }} data-testid={`${testIdPrefix}-boundary-components`}>
+          <strong>Boundary components</strong>
+          {meshTopologyDetails.boundaryLoops.length === 0 ? (
+            <div style={{ color: "#64748b" }}>No boundary edges.</div>
+          ) : (
+            meshTopologyDetails.boundaryLoops.map((loop) => (
+              <div key={`${testIdPrefix}-boundary-${loop.label}`} style={{ color: "#475467" }}>
+                <strong>{loop.label}:</strong> {loop.edgeCount.toLocaleString()} edges
+                {loop.edges.length ? ` (${loop.edges.map((edge) => `e${edge}`).join(", ")})` : ""}
+                {loop.edgeCount > loop.edges.length ? ` +${loop.edgeCount - loop.edges.length} more` : ""}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    ) : (
+      <div style={{ fontSize: 11, color: "#64748b" }}>Topology details are not available for the current view.</div>
+    );
   const workflowStatePriority: Record<SurfaceWorkflowStepState, number> = {
     disabled: 0,
     done: 1,
@@ -97319,28 +98009,19 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const activeVectorFieldLabel =
     calculusVectorOverlayEnabled && calculusActiveVectorField ? calculusActiveVectorField : "none";
   const curvatureLineCountLabel = showCurvatureLines ? `<= ${Math.max(0, Math.round(curvatureMaxLines))}` : "n/a";
-  const topologyBoundaryLoopsLabel = "n/a";
-  const topologyOrientabilityLabel = "unknown";
+  const topologyBoundaryLoopsLabel = meshTopologyDetails
+    ? `${meshTopologyDetails.boundaryLoops.length.toLocaleString()} component${
+        meshTopologyDetails.boundaryLoops.length === 1 ? "" : "s"
+      }`
+    : "n/a";
+  const topologyOrientabilityLabel =
+    meshTopologyDetails?.orientable == null ? "unknown" : meshTopologyDetails.orientable ? "yes" : "no";
   const topologyEulerCharacteristic = (() => {
-    const vertices = meshInspectorStats.vertexCount;
-    const faces = meshInspectorStats.faceCount;
-    const boundaryEdges = meshInspectorStats.boundaryEdgeCount;
-    const nonManifoldEdges = meshQualityReport?.topology.nonManifoldEdgeCount ?? null;
-    if (
-      vertices == null ||
-      faces == null ||
-      boundaryEdges == null ||
-      !Number.isFinite(vertices) ||
-      !Number.isFinite(faces) ||
-      !Number.isFinite(boundaryEdges)
-    ) {
-      return null;
-    }
-    if (nonManifoldEdges != null && nonManifoldEdges > 0) return null;
-    const estimatedEdges = (3 * faces - boundaryEdges) / 2;
-    if (!Number.isFinite(estimatedEdges)) return null;
-    return vertices - estimatedEdges + faces;
+    if (meshTopologyDetails) return meshTopologyDetails.eulerCharacteristic;
+    return null;
   })();
+  const topologyNonManifoldEdgeCount =
+    meshQualityReport?.topology.nonManifoldEdgeCount ?? meshTopologyDetails?.nonManifoldEdgeCount ?? null;
   const showDetailedResultsCards = showDomainPicker;
   const showAllResultsCards = showDetailedResultsCards && analysisResultsView === "show-all";
   const showFocusedResultCard = showDetailedResultsCards && analysisResultsView === "current-screen";
@@ -97382,7 +98063,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           rows: [
             { label: "Bad triangles", value: formatInspectorCount(badTriangleCount) },
             { label: "Boundary edges", value: formatInspectorCount(meshInspectorStats.boundaryEdgeCount) },
-            { label: "Non-manifold edges", value: formatInspectorCount(meshQualityReport?.topology.nonManifoldEdgeCount ?? null) },
+            { label: "Non-manifold edges", value: formatInspectorCount(topologyNonManifoldEdgeCount) },
             {
               label: "Max aspect ratio",
               value: meshQualityReport?.metrics.aspectRatio.max != null ? fmt(meshQualityReport.metrics.aspectRatio.max) : "n/a",
@@ -97520,9 +98201,10 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
   const meshBackendLabel = cgalMeshInfo ? "CGAL" : vtkLastResult ? "VTK" : isImplicitViewer ? "VTK / CGAL" : "SurfaceMesh";
   const watertight =
-    meshQualityReport?.topology?.boundaryEdgeCount != null && meshQualityReport?.topology?.nonManifoldEdgeCount != null
+    meshTopologyDetails?.watertight ??
+    (meshQualityReport?.topology?.boundaryEdgeCount != null && meshQualityReport?.topology?.nonManifoldEdgeCount != null
       ? meshQualityReport.topology.boundaryEdgeCount === 0 && meshQualityReport.topology.nonManifoldEdgeCount === 0
-      : null;
+      : null);
   const normalStatus =
     normalMagnitude == null ? "unknown" : hasUnstableNormals ? "unstable" : vtkLastResult?.normalsRecomputed ? "recomputed" : "valid";
   const operationBeforeFaces = vtkLastResult?.beforeFaces ?? null;
@@ -97640,6 +98322,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 <div><strong>Backend:</strong> {meshBackendLabel}</div>
                 <div><strong>Vertices:</strong> {formatInspectorCount(meshInspectorStats.vertexCount)}</div>
                 <div><strong>Faces:</strong> {formatInspectorCount(meshInspectorStats.faceCount)}</div>
+                <div><strong>Edges:</strong> {formatInspectorCount(meshTopologyDetails?.edgeCount ?? null)}</div>
                 <div>
                   <strong>Bounds:</strong>{" "}
                   {surfaceMeshBounds
@@ -97661,6 +98344,11 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                   )}
                 </div>
               </div>
+            </div>
+
+            <div style={inspectorSectionCard}>
+              <div style={inspectorSectionTitle}>Topology Details</div>
+              {renderTopologyDetails("mesh-inspector")}
             </div>
 
             <div style={inspectorSectionCard}>
@@ -98037,7 +98725,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                     <div><strong>Status:</strong> {meshQualityStatus}</div>
                     <div><strong>Bad triangles:</strong> {formatInspectorCount(badTriangleCount)}</div>
                     <div><strong>Boundary edges:</strong> {formatInspectorCount(meshInspectorStats.boundaryEdgeCount)}</div>
-                    <div><strong>Non-manifold edges:</strong> {formatInspectorCount(meshQualityReport?.topology.nonManifoldEdgeCount ?? null)}</div>
+                    <div><strong>Non-manifold edges:</strong> {formatInspectorCount(topologyNonManifoldEdgeCount)}</div>
                     <div><strong>Min angle:</strong> n/a</div>
                     <div><strong>Max aspect ratio:</strong> {meshQualityReport?.metrics.aspectRatio.max != null ? fmt(meshQualityReport.metrics.aspectRatio.max) : "n/a"}</div>
                   </div>
@@ -98048,9 +98736,13 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                   <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
                     <div><strong>Status:</strong> {topologyDiagnosticsStatus}</div>
                     <div><strong>Connected components:</strong> {formatInspectorCount(meshInspectorStats.connectedComponentCount)}</div>
+                    <div><strong>Edges:</strong> {formatInspectorCount(meshTopologyDetails?.edgeCount ?? null)}</div>
+                    <div><strong>Boundary edges:</strong> {formatInspectorCount(meshInspectorStats.boundaryEdgeCount)}</div>
+                    <div><strong>Non-manifold edges:</strong> {formatInspectorCount(topologyNonManifoldEdgeCount)}</div>
                     <div><strong>Boundary loops:</strong> {topologyBoundaryLoopsLabel}</div>
                     <div><strong>Euler characteristic χ:</strong> {topologyEulerCharacteristic != null && Number.isFinite(topologyEulerCharacteristic) ? fmt(topologyEulerCharacteristic) : "n/a"}</div>
                     <div><strong>Orientability:</strong> {topologyOrientabilityLabel}</div>
+                    {renderTopologyDetails("mesh-results-topology")}
                   </div>
                 </div>
               </>
@@ -98561,9 +99253,16 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
           <div><strong>Vertices:</strong> {formatInspectorCount(meshInspectorStats.vertexCount)}</div>
           <div><strong>Faces:</strong> {formatInspectorCount(meshInspectorStats.faceCount)}</div>
+          <div><strong>Edges:</strong> {formatInspectorCount(meshTopologyDetails?.edgeCount ?? null)}</div>
           <div><strong>Boundary edges:</strong> {formatInspectorCount(meshInspectorStats.boundaryEdgeCount)}</div>
           <div><strong>Connected components:</strong> {formatInspectorCount(meshInspectorStats.connectedComponentCount)}</div>
+          <div><strong>Non-manifold edges:</strong> {formatInspectorCount(topologyNonManifoldEdgeCount)}</div>
         </div>
+      </div>
+
+      <div style={inspectorSectionCard}>
+        <div style={inspectorSectionTitle}>Topology details</div>
+        {renderTopologyDetails("mesh-inspector-fallback")}
       </div>
 
       <div style={inspectorSectionCard}>
@@ -98763,7 +99462,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           <div><strong>Status:</strong> {meshQualityStatus}</div>
           <div><strong>Bad triangles:</strong> {formatInspectorCount(badTriangleCount)}</div>
           <div><strong>Boundary edges:</strong> {formatInspectorCount(meshInspectorStats.boundaryEdgeCount)}</div>
-          <div><strong>Non-manifold edges:</strong> {formatInspectorCount(meshQualityReport?.topology.nonManifoldEdgeCount ?? null)}</div>
+          <div><strong>Non-manifold edges:</strong> {formatInspectorCount(topologyNonManifoldEdgeCount)}</div>
           <div><strong>Min angle:</strong> n/a</div>
           <div><strong>Max aspect ratio:</strong> {meshQualityReport?.metrics.aspectRatio.max != null ? fmt(meshQualityReport.metrics.aspectRatio.max) : "n/a"}</div>
         </div>
@@ -98774,9 +99473,13 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
           <div><strong>Status:</strong> {topologyDiagnosticsStatus}</div>
           <div><strong>Connected components:</strong> {formatInspectorCount(meshInspectorStats.connectedComponentCount)}</div>
+          <div><strong>Edges:</strong> {formatInspectorCount(meshTopologyDetails?.edgeCount ?? null)}</div>
+          <div><strong>Boundary edges:</strong> {formatInspectorCount(meshInspectorStats.boundaryEdgeCount)}</div>
+          <div><strong>Non-manifold edges:</strong> {formatInspectorCount(topologyNonManifoldEdgeCount)}</div>
           <div><strong>Boundary loops:</strong> {topologyBoundaryLoopsLabel}</div>
           <div><strong>Euler characteristic χ:</strong> {topologyEulerCharacteristic != null && Number.isFinite(topologyEulerCharacteristic) ? fmt(topologyEulerCharacteristic) : "n/a"}</div>
           <div><strong>Orientability:</strong> {topologyOrientabilityLabel}</div>
+          {renderTopologyDetails("mesh-results-topology-fallback")}
         </div>
       </div>
         </>

@@ -5,16 +5,29 @@ describe("contextualActions", () => {
   it("builds Mesh edge action descriptors", () => {
     const descriptors = getContextualActionDescriptors("mesh", "edge");
 
-    expect(descriptors.map((descriptor) => descriptor.label)).toEqual(["Split", "Collapse", "Bevel"]);
+    expect(descriptors.map((descriptor) => descriptor.label)).toEqual([
+      "Split",
+      "Collapse",
+      "Bevel",
+      "Loop",
+      "Ring",
+      "Boundary",
+    ]);
     expect(descriptors.map((descriptor) => descriptor.operationKey)).toEqual([
       "split-edge",
       "collapse-edge",
       "bevel-edge",
+      "select-edge-loop",
+      "select-edge-ring",
+      "select-boundary",
     ]);
     expect(descriptors.map((descriptor) => descriptor.testIdSuffix)).toEqual([
       "split-edge",
       "collapse-edge",
       "bevel-edge",
+      "select-edge-loop",
+      "select-edge-ring",
+      "select-boundary",
     ]);
   });
 

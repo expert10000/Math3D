@@ -4,6 +4,9 @@ import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 import {
   areUnifiedSelectionsInSameSetDomain,
   createUnifiedSelectionSet,
+  describeUnifiedSelectionFilter,
+  evaluateUnifiedSelectionFilter,
+  filterUnifiedSelectionSet,
   getUnifiedSelectionEntityId,
   getUnifiedSelectionKey,
   unifiedSelectionFromGeometryPick,
@@ -265,5 +268,73 @@ describe("unifiedSelection", () => {
     set = updateUnifiedSelectionSet(set, null, "clear");
     expect(set.empty).toBe(true);
     expect(set.label).toBe("No selection");
+  });
+
+  it("filters unified selections by type and topology flags", () => {
+    const boundaryEdge = unifiedSelectionFromMeshTopology({
+      mode: "edge",
+      objectLabel: "Square mesh",
+      meshKey: "square-mesh",
+      mesh: squareMesh,
+      edgeVertices: [0, 1],
+      valid: true,
+    });
+    const interiorEdge = unifiedSelectionFromMeshTopology({
+      mode: "edge",
+      objectLabel: "Square mesh",
+      meshKey: "square-mesh",
+      mesh: squareMesh,
+      edgeVertices: [0, 2],
+      valid: true,
+    });
+    const face = unifiedSelectionFromMeshTopology({
+      mode: "face",
+      objectLabel: "Square mesh",
+      meshKey: "square-mesh",
+      mesh: squareMesh,
+      faceIndex: 0,
+      valid: true,
+    });
+
+    expect(evaluateUnifiedSelectionFilter(boundaryEdge, { selectionTypes: ["edge"], boundary: "only" })).toEqual({
+      accepted: true,
+      reasons: [],
+    });
+    expect(evaluateUnifiedSelectionFilter(interiorEdge, { selectionTypes: ["edge"], boundary: "only" })).toMatchObject({
+      accepted: false,
+      reasons: ["Only boundary selections are enabled"],
+    });
+    expect(evaluateUnifiedSelectionFilter(face, { selectionTypes: ["edge"] })).toMatchObject({
+      accepted: false,
+      reasons: ["face selections are filtered out"],
+    });
+    expect(describeUnifiedSelectionFilter({ selectionTypes: ["edge"], boundary: "exclude" })).toBe(
+      "types: edge · interior only"
+    );
+  });
+
+  it("filters selection sets while preserving active keys when possible", () => {
+    const edgeA = unifiedSelectionFromMeshTopology({
+      mode: "edge",
+      objectLabel: "Square mesh",
+      meshKey: "square-mesh",
+      mesh: squareMesh,
+      edgeVertices: [0, 1],
+      valid: true,
+    });
+    const edgeB = unifiedSelectionFromMeshTopology({
+      mode: "edge",
+      objectLabel: "Square mesh",
+      meshKey: "square-mesh",
+      mesh: squareMesh,
+      edgeVertices: [0, 2],
+      valid: true,
+    });
+    const set = createUnifiedSelectionSet([edgeA, edgeB]);
+    const filtered = filterUnifiedSelectionSet(set, { boundary: "exclude" });
+
+    expect(filtered.count).toBe(1);
+    expect(filtered.activeSelection?.edgeId).toBe("0-2");
+    expect(filtered.label).toBe("Square mesh edge [0-2]");
   });
 });

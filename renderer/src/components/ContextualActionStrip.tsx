@@ -7,6 +7,8 @@ export type ContextualActionStripOption<T extends string> = {
   id: T;
   label: string;
   title?: string;
+  disabled?: boolean;
+  disabledReason?: string;
 };
 
 type ContextualActionStripProps<T extends string> = {
@@ -171,6 +173,7 @@ export function ContextualActionStrip<T extends string>({
             type="button"
             data-testid={getPickTestId?.(pickOption.id)}
             onClick={() => onPickChange(pickOption.id)}
+            disabled={pickOption.disabled}
             aria-pressed={active}
             style={{
               padding: "3px 8px",
@@ -178,10 +181,10 @@ export function ContextualActionStrip<T extends string>({
               fontWeight: active ? 800 : 650,
               borderColor: active ? "#0a66c2" : "#bfdbfe",
               background: active ? "#dbeafe" : "#ffffff",
-              color: active ? "#1d4ed8" : "#334155",
+              color: pickOption.disabled ? "#98a2b3" : active ? "#1d4ed8" : "#334155",
               pointerEvents: "auto",
             }}
-            title={pickOption.title}
+            title={pickOption.disabled ? pickOption.disabledReason ?? pickOption.title : pickOption.title}
           >
             {pickOption.label}
           </button>

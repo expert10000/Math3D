@@ -40,11 +40,11 @@ describe("contextualSelectionState", () => {
         },
       })
     ).toMatchObject({
-      selectionLabel: "Choose an edge to enable Split / Collapse / Bevel",
+      selectionLabel: "Choose an edge to enable Split / Collapse / Bevel / Loop / Ring / Boundary",
       activeCardType: "Edge",
       cardId: "none",
-      emptyState: "Choose an edge to enable Split / Collapse / Bevel",
-      actions: ["Split", "Collapse", "Bevel"],
+      emptyState: "Choose an edge to enable Split / Collapse / Bevel / Loop / Ring / Boundary",
+      actions: ["Split", "Collapse", "Bevel", "Loop", "Ring", "Boundary"],
       previewLabel: null,
       canRunPrimaryAction: false,
     });

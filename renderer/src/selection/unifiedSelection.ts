@@ -84,6 +84,22 @@ export type UnifiedSelectionSetEditMode = "replace" | "add" | "toggle" | "remove
 
 export type MeshTopologyUnifiedSelectionMode = "object" | "face" | "edge" | "vertex";
 
+export type UnifiedSelectionTopologyFilterMode = "any" | "only" | "exclude";
+
+export type UnifiedSelectionFilter = {
+  readonly workspaces?: readonly UnifiedSelectionWorkspace[];
+  readonly selectionTypes?: readonly UnifiedSelectionKind[];
+  readonly lifecycles?: readonly UnifiedSelectionLifecycle[];
+  readonly stale?: "include" | "exclude" | "only";
+  readonly boundary?: UnifiedSelectionTopologyFilterMode;
+  readonly nonManifold?: UnifiedSelectionTopologyFilterMode;
+};
+
+export type UnifiedSelectionFilterResult = {
+  readonly accepted: boolean;
+  readonly reasons: readonly string[];
+};
+
 export type MeshTopologyUnifiedSelectionInput = {
   readonly objectId?: string | null;
   readonly objectLabel?: string | null;
@@ -206,6 +222,92 @@ export function areUnifiedSelectionDomainsEqual(
 
 export function areUnifiedSelectionsInSameSetDomain(a: UnifiedSelection, b: UnifiedSelection): boolean {
   return areUnifiedSelectionDomainsEqual(getUnifiedSelectionDomain(a), getUnifiedSelectionDomain(b));
+}
+
+const selectionTouchesBoundary = (selection: UnifiedSelection): boolean =>
+  selection.topology.boundary === true || (selection.topology.boundaryEdges ?? 0) > 0;
+
+const selectionIsNonManifold = (selection: UnifiedSelection): boolean => selection.topology.nonManifold === true;
+
+const matchTopologyMode = (value: boolean, mode: UnifiedSelectionTopologyFilterMode | undefined): boolean => {
+  if (!mode || mode === "any") return true;
+  return mode === "only" ? value : !value;
+};
+
+export function evaluateUnifiedSelectionFilter(
+  selection: UnifiedSelection | null | undefined,
+  filter: UnifiedSelectionFilter | null | undefined
+): UnifiedSelectionFilterResult {
+  if (!selection) return { accepted: false, reasons: ["No selection"] };
+  if (!filter) return { accepted: true, reasons: [] };
+
+  const reasons: string[] = [];
+  if (filter.workspaces?.length && !filter.workspaces.includes(selection.workspace)) {
+    reasons.push(`Workspace ${selection.workspace} is filtered out`);
+  }
+  if (filter.selectionTypes?.length && !filter.selectionTypes.includes(selection.selectionType)) {
+    reasons.push(`${selection.selectionType} selections are filtered out`);
+  }
+  if (filter.lifecycles?.length && !filter.lifecycles.includes(selection.lifecycle)) {
+    reasons.push(`${selection.lifecycle} selections are filtered out`);
+  }
+  if (filter.stale === "exclude" && selection.stale) {
+    reasons.push("Stale selections are filtered out");
+  } else if (filter.stale === "only" && !selection.stale) {
+    reasons.push("Only stale selections are enabled");
+  }
+  if (!matchTopologyMode(selectionTouchesBoundary(selection), filter.boundary)) {
+    reasons.push(filter.boundary === "only" ? "Only boundary selections are enabled" : "Boundary selections are filtered out");
+  }
+  if (!matchTopologyMode(selectionIsNonManifold(selection), filter.nonManifold)) {
+    reasons.push(
+      filter.nonManifold === "only"
+        ? "Only non-manifold selections are enabled"
+        : "Non-manifold selections are filtered out"
+    );
+  }
+
+  return { accepted: reasons.length === 0, reasons };
+}
+
+export function unifiedSelectionMatchesFilter(
+  selection: UnifiedSelection | null | undefined,
+  filter: UnifiedSelectionFilter | null | undefined
+): boolean {
+  return evaluateUnifiedSelectionFilter(selection, filter).accepted;
+}
+
+export function filterUnifiedSelections(
+  selections: readonly (UnifiedSelection | null | undefined)[],
+  filter: UnifiedSelectionFilter | null | undefined
+): UnifiedSelection[] {
+  return selections.filter((selection): selection is UnifiedSelection => unifiedSelectionMatchesFilter(selection, filter));
+}
+
+export function filterUnifiedSelectionSet(
+  set: UnifiedSelectionSet,
+  filter: UnifiedSelectionFilter | null | undefined
+): UnifiedSelectionSet {
+  if (!filter || set.empty) return set;
+  return createUnifiedSelectionSet(filterUnifiedSelections(set.items, filter), {
+    activeKey: set.activeKey,
+    anchorKey: set.anchorKey,
+  });
+}
+
+export function describeUnifiedSelectionFilter(filter: UnifiedSelectionFilter | null | undefined): string {
+  if (!filter) return "All selections";
+  const parts: string[] = [];
+  if (filter.workspaces?.length) parts.push(`workspace: ${filter.workspaces.join(", ")}`);
+  if (filter.selectionTypes?.length) parts.push(`types: ${filter.selectionTypes.join(", ")}`);
+  if (filter.lifecycles?.length) parts.push(`state: ${filter.lifecycles.join(", ")}`);
+  if (filter.stale === "exclude") parts.push("fresh only");
+  if (filter.stale === "only") parts.push("stale only");
+  if (filter.boundary === "only") parts.push("boundary only");
+  if (filter.boundary === "exclude") parts.push("interior only");
+  if (filter.nonManifold === "only") parts.push("non-manifold only");
+  if (filter.nonManifold === "exclude") parts.push("manifold only");
+  return parts.length ? parts.join(" · ") : "All selections";
 }
 
 const findSelectionByKey = (
