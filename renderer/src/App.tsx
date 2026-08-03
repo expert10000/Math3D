@@ -34,6 +34,7 @@ import { SelectionStatsPanel } from "./components/SelectionStatsPanel";
 import { DiskStatsPanel } from "./components/DiskStatsPanel";
 import { WorkbookPanel } from "./components/WorkbookPanel";
 import { GeometryPickReadout } from "./components/GeometryPickReadout";
+import { UnifiedSelectionInspector } from "./components/UnifiedSelectionInspector";
 import {
   ActiveSelectionCard,
   buildActiveSelectionSummary,
@@ -91,6 +92,7 @@ import {
   viewportPreviewRoleColor,
   viewportPreviewRoleOpacity,
 } from "./selection/viewportPreviewOverlays";
+import { buildSelectionManagerHighlightOverlays } from "./selection/selectionHighlighting";
 import {
   buildGeometryConstructionCommandHistoryEntry,
   buildGeometryObjectCommandHistoryEntry,
@@ -110,6 +112,7 @@ import {
   selectionResultWithState,
   unifiedSelectionFromGeometryPick,
   unifiedSelectionFromMeshTopology,
+  type SelectionResult,
   type UnifiedSelectionFilter,
   type UnifiedSelectionKind,
 } from "./selection/unifiedSelection";
@@ -4239,6 +4242,25 @@ const normalizeGeometryMaterial = (material: unknown): GeometryObject["material"
         ? clampNumber(metalnessRaw, 0, 1)
         : DEFAULT_GEOMETRY_MATERIAL_METALNESS,
   };
+};
+
+const formatInspectorMaterialInfo = (
+  material: { color?: number; opacity?: number; roughness?: number; metalness?: number } | null | undefined
+): string | null => {
+  if (!material) return null;
+  const color = typeof material.color === "number" && Number.isFinite(material.color)
+    ? `#${Math.round(material.color).toString(16).padStart(6, "0")}`
+    : "default";
+  const opacity = typeof material.opacity === "number" && Number.isFinite(material.opacity)
+    ? material.opacity.toFixed(2)
+    : "n/a";
+  const roughness = typeof material.roughness === "number" && Number.isFinite(material.roughness)
+    ? material.roughness.toFixed(2)
+    : "n/a";
+  const metalness = typeof material.metalness === "number" && Number.isFinite(material.metalness)
+    ? material.metalness.toFixed(2)
+    : "n/a";
+  return `${color}, opacity ${opacity}, roughness ${roughness}, metalness ${metalness}`;
 };
 
 const isDefaultVec3 = (value: Vec3, expected: Vec3) =>
@@ -15643,6 +15665,27 @@ const App: React.FC = () => {
       geometrySelectedSelectionResult,
     ]
   );
+  const geometrySelectionHighlightOverlays = useMemo(
+    () =>
+      buildSelectionManagerHighlightOverlays(
+        geometrySelectionManager,
+        (selection) => resolveGeometrySceneMeshById(selection.meshKey ?? selection.objectId)?.mesh ?? null
+      ),
+    [geometrySelectionManager, resolveGeometrySceneMeshById]
+  );
+  const geometryUnifiedInspectorSelection = useMemo(
+    () => geometrySelectionManager.editing ?? geometrySelectionManager.preview ?? geometrySelectionManager.selected ?? geometrySelectionManager.hover,
+    [geometrySelectionManager]
+  );
+  const geometryUnifiedInspectorMaterialInfo = useMemo(() => {
+    const objectId = geometryUnifiedInspectorSelection?.objectId ?? geometrySelectedSceneObject?.id ?? null;
+    const object = objectId ? resolveGeometrySceneObjectById(objectId) : geometrySelectedSceneObject;
+    if (!object) return null;
+    return formatInspectorMaterialInfo(normalizeGeometryMaterial((object as { material?: unknown } | null)?.material));
+  }, [geometrySelectedSceneObject, geometryUnifiedInspectorSelection?.objectId, resolveGeometrySceneObjectById]);
+  const geometryUnifiedInspectorCreaseInfo = geometryPolySharpEdgesEnabled
+    ? `sharp edges on, threshold ${geometryPolyDihedralThresholdDeg.toFixed(0)} deg`
+    : "sharp edges off";
   const geometryActiveEditedObjectBreadcrumb = useMemo(() => {
     if (!geometrySelectedSceneObject) return null;
     const latestStep = geometrySelectedObjectHistory[0] ?? null;
@@ -20767,6 +20810,9 @@ const App: React.FC = () => {
     if (geometryProceduralSelectionFaceMeshGroups?.length) {
       groups.push(...geometryProceduralSelectionFaceMeshGroups);
     }
+    if (geometrySelectionHighlightOverlays.meshGroups.length) {
+      groups.push(...geometrySelectionHighlightOverlays.meshGroups);
+    }
     if (geometryDirectEditPreviewFaceMeshGroups?.length) {
       groups.push(...geometryDirectEditPreviewFaceMeshGroups);
     }
@@ -20783,6 +20829,7 @@ const App: React.FC = () => {
     geometryHistoryPreviewOverlays.meshGroups,
     geometryMode,
     geometryProceduralSelectionFaceMeshGroups,
+    geometrySelectionHighlightOverlays.meshGroups,
     geometryTopologyEditFeedbackMeshGroups,
   ]);
   const geometryProceduralSelectionOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
@@ -21424,8 +21471,17 @@ const App: React.FC = () => {
         opacity: 0.98,
       });
     }
+    if (geometrySelectionHighlightOverlays.pointSets.length) {
+      sets.push(...geometrySelectionHighlightOverlays.pointSets);
+    }
     return sets.length ? sets : null;
-  }, [geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails, selectionViewportPulse?.workspace]);
+  }, [
+    geometryMode,
+    geometryProbeHoverSelectionDetails,
+    geometryProbeSelectionDetails,
+    geometrySelectionHighlightOverlays.pointSets,
+    selectionViewportPulse?.workspace,
+  ]);
   const geometryMathConstructionOverlays = useMemo<{
     groups: OverlayPolylineGroup[] | null;
     pointSets: OverlayPointSet[] | null;
@@ -28174,6 +28230,9 @@ const App: React.FC = () => {
     }
     if (geometryObjectSelectionPolylineGroups?.length) groups.push(...geometryObjectSelectionPolylineGroups);
     if (geometryProceduralSelectionOverlayGroups?.length) groups.push(...geometryProceduralSelectionOverlayGroups);
+    if (geometrySelectionHighlightOverlays.polylineGroups.length) {
+      groups.push(...geometrySelectionHighlightOverlays.polylineGroups);
+    }
     if (helperGroupsVisible) {
       const helperOpacity = geometryPrecisionPickActive ? 0.22 : 1;
       const pushHelperGroups = (source: OverlayPolylineGroup[] | null | undefined) => {
@@ -28202,6 +28261,7 @@ const App: React.FC = () => {
     geometryArmedLineOperationPreviewGroups,
     geometryAppliedContextualViewportPreviewOverlays,
     geometryDirectEditAccessiblePreviewOverlays,
+    geometrySelectionHighlightOverlays.polylineGroups,
     geometryTopologyEditFeedbackPolylineGroups,
     geometryDerivedConstructionOverlays.groups,
     geometryPlaneBasicInputPreviewOverlays.groups,
@@ -46570,6 +46630,46 @@ case "mobius":
     () => createUnifiedSelectionManagerState([meshSelectionResult, meshEditingSelectionResult, meshPreviewSelectionResult]),
     [meshEditingSelectionResult, meshPreviewSelectionResult, meshSelectionResult]
   );
+  const meshSelectionHighlightOverlays = useMemo(
+    () => buildSelectionManagerHighlightOverlays(meshSelectionManager, () => surfaceMeshTopologyViewerMesh),
+    [meshSelectionManager, surfaceMeshTopologyViewerMesh]
+  );
+  const meshUnifiedInspectorSelection = useMemo(
+    () => meshSelectionManager.editing ?? meshSelectionManager.preview ?? meshSelectionManager.selected ?? meshSelectionManager.hover,
+    [meshSelectionManager]
+  );
+  const meshUnifiedInspectorMaterialInfo = useMemo(
+    () =>
+      formatInspectorMaterialInfo({
+        color: DEFAULT_GEOMETRY_MATERIAL_COLOR,
+        opacity: materialOpacity,
+        roughness: materialRoughness,
+        metalness: materialMetalness,
+      }),
+    [materialMetalness, materialOpacity, materialRoughness]
+  );
+  const meshUnifiedInspectorCreaseInfo =
+    meshQualityReport?.metrics.dihedralAngleDeg.avg != null && Number.isFinite(meshQualityReport.metrics.dihedralAngleDeg.avg)
+      ? `dihedral avg ${meshQualityReport.metrics.dihedralAngleDeg.avg.toFixed(1)} deg`
+      : null;
+  const meshViewerOverlayMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
+    const groups: OverlayMeshGroup[] = [];
+    if (combinedOverlayMeshGroups?.length) groups.push(...combinedOverlayMeshGroups);
+    if (meshSelectionHighlightOverlays.meshGroups.length) groups.push(...meshSelectionHighlightOverlays.meshGroups);
+    return groups.length ? groups : null;
+  }, [combinedOverlayMeshGroups, meshSelectionHighlightOverlays.meshGroups]);
+  const meshViewerOverlayPointSets = useMemo<OverlayPointSet[] | null>(() => {
+    const sets: OverlayPointSet[] = [];
+    if (combinedOverlayPointSets?.length) sets.push(...combinedOverlayPointSets);
+    if (meshSelectionHighlightOverlays.pointSets.length) sets.push(...meshSelectionHighlightOverlays.pointSets);
+    return sets.length ? sets : null;
+  }, [combinedOverlayPointSets, meshSelectionHighlightOverlays.pointSets]);
+  const meshViewerOverlayPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    const groups: OverlayPolylineGroup[] = [];
+    if (combinedOverlayPolylineGroups?.length) groups.push(...combinedOverlayPolylineGroups);
+    if (meshSelectionHighlightOverlays.polylineGroups.length) groups.push(...meshSelectionHighlightOverlays.polylineGroups);
+    return groups.length ? groups : null;
+  }, [combinedOverlayPolylineGroups, meshSelectionHighlightOverlays.polylineGroups]);
   const meshUnifiedSelectionFilterStatus =
     meshUnifiedSelection && !meshUnifiedSelectionFilterResult.accepted
       ? meshUnifiedSelectionFilterResult.reasons[0] ?? "Selection filtered out"
@@ -57721,6 +57821,9 @@ case "mobius":
                   unifiedSelectionTopologyFilter={unifiedSelectionTopologyFilter}
                   unifiedSelectionFilterLabel={unifiedSelectionFilterLabel}
                   unifiedSelectionFilterStatus={meshUnifiedSelectionFilterStatus}
+                  meshUnifiedInspectorSelection={meshUnifiedInspectorSelection}
+                  meshUnifiedInspectorMaterialInfo={meshUnifiedInspectorMaterialInfo}
+                  meshUnifiedInspectorCreaseInfo={meshUnifiedInspectorCreaseInfo}
                   onExportSurfaceMeshObj={handleExportSurfaceMeshObj}
                   onExportSurfaceMeshPly={handleExportSurfaceMeshPly}
                   onExportSurfaceMeshGlb={handleExportSurfaceMeshGlb}
@@ -60839,6 +60942,12 @@ case "mobius":
                             {meshUnifiedSelectionFilterStatus ?? unifiedSelectionFilterLabel}
                           </div>
                         </div>
+                        <UnifiedSelectionInspector
+                          selection={meshUnifiedInspectorSelection}
+                          title="Unified selection"
+                          materialInfo={meshUnifiedInspectorMaterialInfo}
+                          creaseInfo={meshUnifiedInspectorCreaseInfo}
+                        />
                       </div>
                       <div
                         style={{
@@ -62915,10 +63024,10 @@ case "mobius":
                             geodesicHeatPolylines={geodesicHeatPolylines}
                             geodesicHeatmapValues={geodesicHeatHeatmapValues}
                             geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
-                            overlayPolylineGroups={combinedOverlayPolylineGroups}
-                            overlayPointSets={combinedOverlayPointSets}
+                            overlayPolylineGroups={meshViewerOverlayPolylineGroups}
+                            overlayPointSets={meshViewerOverlayPointSets}
                             overlayLabelSets={combinedOverlayLabelSets}
-                            overlayMeshGroups={combinedOverlayMeshGroups}
+                            overlayMeshGroups={meshViewerOverlayMeshGroups}
                             geodesicDiskEnabled={geodesicDiskEnabled}
                             geodesicDiskPickEnabled={geodesicDiskEnabled && geodesicDiskPickMode}
                             onGeodesicDiskPick={handleGeodesicDiskPick}
@@ -63067,10 +63176,10 @@ case "mobius":
                         overlayHeatmapEnabled={overlayHeatmapEnabled}
                         overlayPolylines={complexMapOverlayPolylines}
                         overlayPolylinesColor={0xffd400}
-                        overlayPolylineGroups={combinedOverlayPolylineGroups}
-                        overlayPointSets={combinedOverlayPointSets}
+                        overlayPolylineGroups={meshViewerOverlayPolylineGroups}
+                        overlayPointSets={meshViewerOverlayPointSets}
                         overlayLabelSets={combinedOverlayLabelSets}
-                        overlayMeshGroups={combinedOverlayMeshGroups}
+                        overlayMeshGroups={meshViewerOverlayMeshGroups}
                         geodesicDiskEnabled={geodesicDiskEnabled}
                         geodesicDiskPickEnabled={geodesicDiskEnabled && geodesicDiskPickMode}
                         onGeodesicDiskPick={handleGeodesicDiskPick}
@@ -78887,6 +78996,12 @@ case "mobius":
                                 Select an object with mesh data to enable detailed probe measurements.
                               </div>
                             )}
+                            <UnifiedSelectionInspector
+                              selection={geometryUnifiedInspectorSelection}
+                              title="Unified selection"
+                              materialInfo={geometryUnifiedInspectorMaterialInfo}
+                              creaseInfo={geometryUnifiedInspectorCreaseInfo}
+                            />
                             <GeometryPickReadout
                               hoverPick={geometryHoverPick}
                               selectedPick={geometrySelectedPick}
@@ -89350,6 +89465,9 @@ type SurfacesLeftPanelProps = {
   unifiedSelectionTopologyFilter: UnifiedSelectionTopologyFilterMode;
   unifiedSelectionFilterLabel: string;
   unifiedSelectionFilterStatus: string | null;
+  meshUnifiedInspectorSelection: SelectionResult | null;
+  meshUnifiedInspectorMaterialInfo: string | null;
+  meshUnifiedInspectorCreaseInfo: string | null;
   onExportSurfaceMeshObj: () => void;
   onExportSurfaceMeshPly: () => void;
   onExportSurfaceMeshGlb: () => void;
@@ -90049,6 +90167,9 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   unifiedSelectionTopologyFilter,
   unifiedSelectionFilterLabel,
   unifiedSelectionFilterStatus,
+  meshUnifiedInspectorSelection,
+  meshUnifiedInspectorMaterialInfo,
+  meshUnifiedInspectorCreaseInfo,
   onExportSurfaceMeshObj,
   onExportSurfaceMeshPly,
   onExportSurfaceMeshGlb,
@@ -93871,6 +93992,12 @@ onChangeImplicitExpr,
                       {unifiedSelectionFilterStatus ?? unifiedSelectionFilterLabel}
                     </div>
                   </div>
+                  <UnifiedSelectionInspector
+                    selection={meshUnifiedInspectorSelection}
+                    title="Unified selection"
+                    materialInfo={meshUnifiedInspectorMaterialInfo}
+                    creaseInfo={meshUnifiedInspectorCreaseInfo}
+                  />
                 </div>
                 <div style={{ display: "grid", gap: 5, marginTop: 7 }}>
                   {SURFACE_MESH_TOPOLOGY_DEMO_PRESETS.map((preset) => (
