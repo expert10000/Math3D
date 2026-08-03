@@ -42,13 +42,35 @@ export type UnifiedCommandParameterEdit = {
   readonly editable: boolean;
 };
 
+export type UnifiedOperationNodeAction = {
+  readonly id:
+    | "restore-params"
+    | "apply-edited"
+    | "restore-before"
+    | "restore-after"
+    | "open"
+    | "copy";
+  readonly label: string;
+  readonly enabled: boolean;
+};
+
+export type UnifiedOperationNodeParameterDrafts = Record<string, Record<string, string>>;
+
 export type UnifiedOperationTreeNode = {
   readonly id: string;
   readonly command: UnifiedCommandHistoryEntry;
   readonly rows: UnifiedCommandHistoryRow[];
+  readonly sourceSnapshotLabel: string;
+  readonly resultSnapshotLabel: string;
+  readonly operationType: string;
+  readonly targetLabel: string | null;
+  readonly parametersLabel: string | null;
   readonly parameterEdits: UnifiedCommandParameterEdit[];
   readonly canRestoreParameters: boolean;
   readonly canEditParameters: boolean;
+  readonly canRestoreBefore: boolean;
+  readonly canRestoreAfter: boolean;
+  readonly actions: UnifiedOperationNodeAction[];
   readonly topologyChanged: boolean;
   readonly children: UnifiedOperationTreeNode[];
 };
@@ -222,18 +244,71 @@ export function parseUnifiedCommandParameterLabel(
     .filter((entry): entry is UnifiedCommandParameterEdit => !!entry);
 }
 
+export const formatUnifiedCommandParameterDraftValue = (value: UnifiedCommandParameterValue): string =>
+  typeof value === "boolean" ? (value ? "true" : "false") : String(value);
+
+export const resolveUnifiedCommandParameterDraftValue = (
+  node: UnifiedOperationTreeNode,
+  drafts: UnifiedOperationNodeParameterDrafts,
+  parameter: UnifiedCommandParameterEdit
+): string => drafts[node.id]?.[parameter.key] ?? formatUnifiedCommandParameterDraftValue(parameter.value);
+
+export const coerceUnifiedCommandParameterDraftValue = (
+  parameter: UnifiedCommandParameterEdit,
+  rawValue: string
+): UnifiedCommandParameterValue => {
+  if (parameter.valueType === "boolean") return rawValue === "true";
+  if (parameter.valueType === "number") {
+    const numeric = Number(rawValue);
+    return Number.isFinite(numeric) ? numeric : parameter.value;
+  }
+  return rawValue;
+};
+
+export function buildUnifiedOperationNodeActions(node: Pick<
+  UnifiedOperationTreeNode,
+  "canRestoreParameters" | "canEditParameters" | "canRestoreBefore" | "canRestoreAfter"
+>): UnifiedOperationNodeAction[] {
+  return [
+    { id: "restore-params", label: "Restore params", enabled: node.canRestoreParameters },
+    { id: "apply-edited", label: "Apply edited", enabled: node.canEditParameters },
+    { id: "restore-before", label: "Restore before", enabled: node.canRestoreBefore },
+    { id: "restore-after", label: "Restore after", enabled: node.canRestoreAfter },
+    { id: "open", label: "Open", enabled: true },
+    { id: "copy", label: "Copy", enabled: true },
+  ];
+}
+
 export function buildUnifiedOperationTreeNode(entry: UnifiedCommandHistoryEntry): UnifiedOperationTreeNode {
   const rows = buildUnifiedCommandHistoryRows(entry);
   const parameterEdits = parseUnifiedCommandParameterLabel(entry.parametersLabel);
-  return {
+  const canRestoreBefore = !!entry.beforeCounts;
+  const canRestoreAfter = !!entry.afterCounts || entry.kind === "construction";
+  const nodeWithoutActions = {
     id: entry.id,
     command: entry,
     rows,
+    sourceSnapshotLabel: entry.beforeCounts
+      ? `Before snapshot: V ${entry.beforeCounts.vertexCount} / F ${entry.beforeCounts.faceCount}`
+      : `Source snapshot: ${entry.sourceLabel}`,
+    resultSnapshotLabel: entry.afterCounts
+      ? `Result snapshot: V ${entry.afterCounts.vertexCount} / F ${entry.afterCounts.faceCount}`
+      : `Result snapshot: ${entry.resultLabel}`,
+    operationType: entry.actionLabel,
+    targetLabel: entry.targetLabel ?? null,
+    parametersLabel: entry.parametersLabel ?? null,
     parameterEdits,
     canRestoreParameters: parameterEdits.length > 0,
     canEditParameters: parameterEdits.some((param) => param.editable),
+    canRestoreBefore,
+    canRestoreAfter,
+    actions: [],
     topologyChanged: !!entry.beforeCounts && !!entry.afterCounts,
     children: [],
+  };
+  return {
+    ...nodeWithoutActions,
+    actions: buildUnifiedOperationNodeActions(nodeWithoutActions),
   };
 }
 

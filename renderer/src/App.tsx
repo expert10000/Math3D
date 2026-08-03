@@ -98,9 +98,13 @@ import {
   buildGeometryObjectCommandHistoryEntry,
   buildMeshTopologyCommandHistoryEntry,
   buildUnifiedOperationTreeNode,
+  coerceUnifiedCommandParameterDraftValue,
+  formatUnifiedCommandParameterDraftValue,
+  resolveUnifiedCommandParameterDraftValue,
   type UnifiedCommandHistoryEntry,
   type UnifiedCommandParameterEdit,
   type UnifiedCommandParameterValue,
+  type UnifiedOperationNodeParameterDrafts,
   type UnifiedOperationTreeNode,
 } from "./selection/unifiedCommandHistory";
 import {
@@ -5465,7 +5469,7 @@ type SurfaceMeshTopologyOperationTarget = {
   faceIndex: number | null;
   edge: [number, number] | null;
 };
-type OperationNodeParameterDrafts = Record<string, Record<string, string>>;
+type OperationNodeParameterDrafts = UnifiedOperationNodeParameterDrafts;
 const surfaceMeshTopologyOperationFromAction = (actionLabel: string): SurfaceMeshTopologyOperation | null => {
   const normalized = actionLabel.trim().toLowerCase();
   if (normalized.includes("subdivide")) return "Face Subdivide";
@@ -5482,24 +5486,16 @@ const parseSurfaceMeshTopologyOperationTarget = (targetLabel: string): SurfaceMe
     edge: edgeMatch ? [Number(edgeMatch[1]), Number(edgeMatch[2])] : null,
   };
 };
-const formatUnifiedCommandParameterDraftValue = (value: UnifiedCommandParameterValue): string =>
-  typeof value === "boolean" ? (value ? "true" : "false") : String(value);
-const resolveUnifiedCommandParameterDraftValue = (
-  node: UnifiedOperationTreeNode,
-  drafts: OperationNodeParameterDrafts,
-  parameter: UnifiedCommandParameterEdit
-): string => drafts[node.id]?.[parameter.key] ?? formatUnifiedCommandParameterDraftValue(parameter.value);
-const coerceUnifiedCommandParameterDraftValue = (
-  parameter: UnifiedCommandParameterEdit,
-  rawValue: string
-): UnifiedCommandParameterValue => {
-  if (parameter.valueType === "boolean") return rawValue === "true";
-  if (parameter.valueType === "number") {
-    const numeric = Number(rawValue);
-    return Number.isFinite(numeric) ? numeric : parameter.value;
-  }
-  return rawValue;
-};
+const renderUnifiedOperationNodeSnapshotSummary = (node: UnifiedOperationTreeNode) => (
+  <div style={{ display: "grid", gap: 2, color: "#475569" }}>
+    <span>{node.sourceSnapshotLabel}</span>
+    <span>{node.resultSnapshotLabel}</span>
+    <span>
+      Operation: {node.operationType}
+      {node.targetLabel ? ` - ${node.targetLabel}` : ""}
+    </span>
+  </div>
+);
 type MeshGeometryRoundTripSource = {
   objectId: string;
   objectName: string;
@@ -13658,6 +13654,47 @@ const App: React.FC = () => {
       geometryOperationNodeParameterDrafts,
       handleUpdateGeometryObjectParam,
     ]
+  );
+  const applyGeometryConstructionOperationNodeParameters = useCallback(
+    (historyStep: GeometryConstructionHistoryEntry, useEditedDrafts: boolean) => {
+      if (!historyStep.resultId) {
+        setGeometryCreateActionStatus("Construction node blocked: result helper is no longer active.");
+        return;
+      }
+      const derived = geometryDerivedConstructions.find((entry) => entry.id === historyStep.resultId) ?? null;
+      if (!derived) {
+        setGeometryCreateActionStatus("Construction node blocked: live helper not found.");
+        return;
+      }
+      const node = buildUnifiedOperationTreeNode(buildGeometryConstructionCommandHistoryEntry(historyStep));
+      const editableParams = node.parameterEdits.filter((parameter) => parameter.key in (derived.params ?? {}));
+      if (!editableParams.length) {
+        setGeometryCreateActionStatus("This construction node has no editable parameters.");
+        return;
+      }
+      const nextParams = { ...(derived.params ?? {}) };
+      for (const parameter of editableParams) {
+        const raw = useEditedDrafts
+          ? resolveUnifiedCommandParameterDraftValue(node, geometryOperationNodeParameterDrafts, parameter)
+          : formatUnifiedCommandParameterDraftValue(parameter.value);
+        const value = coerceUnifiedCommandParameterDraftValue(parameter, raw);
+        if (typeof value === "number" && Number.isFinite(value)) {
+          if (parameter.key === "distance") nextParams.distance = value;
+          if (parameter.key === "length") nextParams.length = value;
+        }
+      }
+      setGeometryDerivedConstructions((prev) =>
+        prev.map((entry) => (entry.id === derived.id ? { ...entry, params: nextParams } : entry))
+      );
+      setGeometrySelectedDerivedConstructionId(derived.id);
+      setGeometrySelectedMathConstructionId(null);
+      setGeometryProceduralPanelTab("construct");
+      setGeometryConstructPanelTab("tree");
+      setGeometryCreateActionStatus(
+        `${useEditedDrafts ? "Applied edited" : "Restored"} construction params from ${historyStep.action}.`
+      );
+    },
+    [geometryDerivedConstructions, geometryOperationNodeParameterDrafts]
   );
   const handleRebuildGeometryObject = useCallback(
     (id: string) => {
@@ -61608,6 +61645,7 @@ case "mobius":
                                             {operationNode.topologyChanged ? "editable params" : "params"}
                                           </span>
                                         </div>
+                                        {renderUnifiedOperationNodeSnapshotSummary(operationNode)}
                                         {operationNode.parameterEdits.map((parameter) => {
                                           const draftValue = resolveUnifiedCommandParameterDraftValue(
                                             operationNode,
@@ -79300,6 +79338,7 @@ case "mobius":
                                                     <strong>Operation node</strong>
                                                     <span style={{ color: "#475569" }}>editable params</span>
                                                   </div>
+                                                  {renderUnifiedOperationNodeSnapshotSummary(operationNode)}
                                                   {editableParameterEdits.map((parameter) => {
                                                     const draftValue = resolveUnifiedCommandParameterDraftValue(
                                                       operationNode,
@@ -79418,6 +79457,13 @@ case "mobius":
                                       }
                                       const constructionStep = entry.step;
                                       const canOpenConstruction = !!constructionStep.resultId && geometryDerivedConstructions.some((derived) => derived.id === constructionStep.resultId);
+                                      const constructionNode = buildUnifiedOperationTreeNode(entry.command);
+                                      const constructionParams = constructionStep.resultId
+                                        ? geometryDerivedConstructions.find((derived) => derived.id === constructionStep.resultId)?.params ?? null
+                                        : null;
+                                      const editableConstructionParams = constructionParams
+                                        ? constructionNode.parameterEdits.filter((parameter) => parameter.key in constructionParams)
+                                        : [];
                                       return (
                                         <CommandHistoryCard
                                           key={`geometry-actions-history-${entry.id}`}
@@ -79428,11 +79474,88 @@ case "mobius":
                                           rowsTestId="geometry-actions-history-construction-trail"
                                           title={constructionStep.steps.join(" -> ")}
                                           footer={
-                                            constructionStep.planeSummary ? (
-                                              <span style={{ color: "#475569" }}>
-                                                Method: {constructionStep.planeSummary.method}; output {constructionStep.planeSummary.result}
-                                              </span>
-                                            ) : null
+                                            <div style={{ display: "grid", gap: 5 }}>
+                                              {constructionStep.planeSummary ? (
+                                                <span style={{ color: "#475569" }}>
+                                                  Method: {constructionStep.planeSummary.method}; output {constructionStep.planeSummary.result}
+                                                </span>
+                                              ) : null}
+                                              {editableConstructionParams.length ? (
+                                                <div
+                                                  data-testid="geometry-construction-operation-tree-node"
+                                                  style={{
+                                                    border: "1px solid #dbeafe",
+                                                    borderRadius: 6,
+                                                    background: "#f8fbff",
+                                                    padding: "5px 6px",
+                                                    display: "grid",
+                                                    gap: 5,
+                                                    fontSize: 10,
+                                                  }}
+                                                >
+                                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                                    <strong>Operation node</strong>
+                                                    <span style={{ color: "#475569" }}>editable params</span>
+                                                  </div>
+                                                  {renderUnifiedOperationNodeSnapshotSummary(constructionNode)}
+                                                  {editableConstructionParams.map((parameter) => {
+                                                    const draftValue = resolveUnifiedCommandParameterDraftValue(
+                                                      constructionNode,
+                                                      geometryOperationNodeParameterDrafts,
+                                                      parameter
+                                                    );
+                                                    return (
+                                                      <label
+                                                        key={`${constructionNode.id}:${parameter.key}`}
+                                                        style={{
+                                                          display: "grid",
+                                                          gridTemplateColumns: "64px minmax(0, 1fr)",
+                                                          gap: 5,
+                                                          alignItems: "center",
+                                                        }}
+                                                      >
+                                                        <span style={{ color: "#334155", fontWeight: 800 }}>{parameter.label}</span>
+                                                        <input
+                                                          aria-label={`Edit ${parameter.label} for ${constructionStep.action}`}
+                                                          type={parameter.valueType === "number" ? "number" : "text"}
+                                                          step={parameter.valueType === "number" ? "any" : undefined}
+                                                          value={draftValue}
+                                                          onChange={(event) => {
+                                                            const value = event.currentTarget.value;
+                                                            setGeometryOperationNodeParameterDrafts((prev) => ({
+                                                              ...prev,
+                                                              [constructionNode.id]: {
+                                                                ...(prev[constructionNode.id] ?? {}),
+                                                                [parameter.key]: value,
+                                                              },
+                                                            }));
+                                                          }}
+                                                          style={{ minWidth: 0, width: "100%" }}
+                                                        />
+                                                      </label>
+                                                    );
+                                                  })}
+                                                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                                    <button
+                                                      type="button"
+                                                      data-testid="geometry-construction-operation-node-restore-params"
+                                                      onClick={() => applyGeometryConstructionOperationNodeParameters(constructionStep, false)}
+                                                      style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                                    >
+                                                      Restore params
+                                                    </button>
+                                                    <button
+                                                      type="button"
+                                                      data-testid="geometry-construction-operation-node-apply-edited"
+                                                      onClick={() => applyGeometryConstructionOperationNodeParameters(constructionStep, true)}
+                                                      style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                                    >
+                                                      Apply edited
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                              ) : null}
+                                            </div>
                                           }
                                           actions={
                                             <>
@@ -98414,10 +98537,22 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             <strong>Edges:</strong> {meshTopologyDetails.edgeCount.toLocaleString()}
           </div>
           <div>
+            <strong>Components:</strong> {meshTopologyDetails.connectedComponentCount.toLocaleString()}
+          </div>
+          <div>
             <strong>Euler characteristic:</strong> {meshTopologyDetails.eulerCharacteristic.toLocaleString()}
           </div>
           <div>
-            <strong>Boundary components:</strong> {topologyBoundaryLoopsLabel}
+            <strong>Boundary edges:</strong> {meshTopologyDetails.boundaryEdgeCount.toLocaleString()}
+          </div>
+          <div>
+            <strong>Boundary loops:</strong> {topologyBoundaryLoopsLabel}
+          </div>
+          <div>
+            <strong>Mesh state:</strong> {meshTopologyDetails.topologyTypeLabel}
+          </div>
+          <div>
+            <strong>Orientability:</strong> {meshTopologyDetails.orientabilityLabel}
           </div>
         </div>
         <div style={{ display: "grid", gap: 4 }}>
@@ -98448,7 +98583,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           )}
         </div>
         <div style={{ display: "grid", gap: 4 }} data-testid={`${testIdPrefix}-boundary-components`}>
-          <strong>Boundary components</strong>
+          <strong>Boundary loops</strong>
           {meshTopologyDetails.boundaryLoops.length === 0 ? (
             <div style={{ color: "#64748b" }}>No boundary edges.</div>
           ) : (
@@ -98457,6 +98592,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 <strong>{loop.label}:</strong> {loop.edgeCount.toLocaleString()} edges
                 {loop.edges.length ? ` (${loop.edges.map((edge) => `e${edge}`).join(", ")})` : ""}
                 {loop.edgeCount > loop.edges.length ? ` +${loop.edgeCount - loop.edges.length} more` : ""}
+                {loop.vertices.length ? `; vertices ${loop.vertices.map((vertex) => `v${vertex}`).join(" -> ")}` : ""}
               </div>
             ))
           )}

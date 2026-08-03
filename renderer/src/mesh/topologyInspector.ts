@@ -10,6 +10,7 @@ export type MeshTopologyBoundaryLoop = {
   readonly label: string;
   readonly edgeCount: number;
   readonly edges: readonly string[];
+  readonly vertices: readonly number[];
   readonly closed: boolean;
 };
 
@@ -30,7 +31,11 @@ export type MeshTopologyInspectorDetails = {
   readonly hasBoundary: boolean;
   readonly manifold: boolean;
   readonly watertight: boolean;
+  readonly closed: boolean;
+  readonly open: boolean;
   readonly orientable: boolean | null;
+  readonly orientabilityLabel: "orientable" | "unknown" | "non-orientable";
+  readonly topologyTypeLabel: "closed mesh" | "open mesh" | "non-manifold mesh";
   readonly isolatedVertexCount: number;
   readonly rowLimit: number;
   readonly itemLimit: number;
@@ -169,6 +174,52 @@ const computeBoundaryLoops = (
   const boundarySet = new Set(boundaryKeys);
   const visited = new Set<string>();
   const loops: MeshTopologyBoundaryLoop[] = [];
+
+  const orderedComponent = (component: readonly string[]): { edges: string[]; vertices: number[]; closed: boolean } => {
+    const componentSet = new Set(component);
+    const vertexToKeys = new Map<number, string[]>();
+    for (const key of component) {
+      const edge = edgeMap.get(key);
+      if (!edge) continue;
+      vertexToKeys.set(edge.a, [...(vertexToKeys.get(edge.a) ?? []), key]);
+      vertexToKeys.set(edge.b, [...(vertexToKeys.get(edge.b) ?? []), key]);
+    }
+    const endpoints = [...vertexToKeys.entries()]
+      .filter(([, keys]) => keys.length === 1)
+      .map(([vertex]) => vertex);
+    const closed = endpoints.length === 0 && [...vertexToKeys.values()].every((keys) => keys.length === 2);
+    const startVertex = endpoints[0] ?? [...vertexToKeys.keys()].sort((a, b) => a - b)[0] ?? null;
+    if (startVertex == null) return { edges: [...component], vertices: [], closed: false };
+
+    const orderedEdges: string[] = [];
+    const orderedVertices: number[] = [startVertex];
+    let currentVertex = startVertex;
+    let previousKey: string | null = null;
+    for (let guard = 0; guard < component.length; guard += 1) {
+      const nextKey = (vertexToKeys.get(currentVertex) ?? [])
+        .filter((key) => componentSet.has(key) && key !== previousKey && !orderedEdges.includes(key))
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))[0];
+      if (!nextKey) break;
+      const edge = edgeMap.get(nextKey);
+      if (!edge) break;
+      orderedEdges.push(nextKey);
+      const nextVertex = edge.a === currentVertex ? edge.b : edge.a;
+      if (!closed || nextVertex !== startVertex || orderedEdges.length < component.length) {
+        orderedVertices.push(nextVertex);
+      }
+      previousKey = nextKey;
+      currentVertex = nextVertex;
+      if (closed && currentVertex === startVertex && orderedEdges.length === component.length) break;
+    }
+
+    if (orderedEdges.length !== component.length) {
+      for (const key of component) {
+        if (!orderedEdges.includes(key)) orderedEdges.push(key);
+      }
+    }
+    return { edges: orderedEdges, vertices: orderedVertices, closed };
+  };
+
   for (const startKey of boundaryKeys) {
     if (visited.has(startKey)) continue;
     const queue = [startKey];
@@ -190,20 +241,14 @@ const computeBoundaryLoops = (
         }
       }
     }
-    const closed = [...vertices].every((vertex) => {
-      let degree = 0;
-      for (const key of vertexEdges[vertex] ?? []) {
-        if (boundarySet.has(key) && component.includes(key)) degree += 1;
-      }
-      return degree === 2;
-    });
+    const ordered = orderedComponent(component);
     const loopIndex = loops.length + 1;
-    const sortedEdges = component.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
     loops.push({
-      label: `${closed ? "loop" : "chain"} ${loopIndex}`,
-      edgeCount: sortedEdges.length,
-      edges: sortedEdges.slice(0, itemLimit),
-      closed,
+      label: `${ordered.closed ? "loop" : "chain"} ${loopIndex}`,
+      edgeCount: ordered.edges.length,
+      edges: ordered.edges.slice(0, itemLimit),
+      vertices: ordered.vertices.slice(0, itemLimit + 1),
+      closed: ordered.closed,
     });
   }
   return loops;
@@ -273,6 +318,10 @@ export const computeMeshTopologyInspector = (
   const hasBoundary = boundaryKeys.length > 0;
   const manifold = nonManifoldEdgeCount === 0;
   const watertight = !hasBoundary && manifold;
+  const closed = watertight;
+  const open = hasBoundary && manifold;
+  const orientabilityLabel = orientable == null ? "unknown" : orientable ? "orientable" : "non-orientable";
+  const topologyTypeLabel = !manifold ? "non-manifold mesh" : closed ? "closed mesh" : "open mesh";
   const eulerCharacteristic = vertexCount - edgeRows.length + faceCount;
 
   const vertexAdjacencyRows = vertexNeighbors.slice(0, rowLimit).map<MeshTopologyListRow>((neighbors, vertexIndex) => {
@@ -314,6 +363,7 @@ export const computeMeshTopologyInspector = (
 
   const flags: MeshTopologyFlag[] = [
     { label: "Manifold", value: manifold ? "yes" : "no", tone: manifold ? "good" : "warn" },
+    { label: "Mesh", value: topologyTypeLabel, tone: !manifold ? "warn" : closed ? "good" : "neutral" },
     { label: "Watertight", value: watertight ? "yes" : "no", tone: watertight ? "good" : hasBoundary ? "neutral" : "warn" },
     { label: "Boundary", value: hasBoundary ? "yes" : "no", tone: hasBoundary ? "neutral" : "good" },
     {
@@ -323,7 +373,7 @@ export const computeMeshTopologyInspector = (
     },
     {
       label: "Orientable",
-      value: orientable == null ? "unknown" : orientable ? "yes" : "no",
+      value: orientabilityLabel,
       tone: orientable === false ? "warn" : orientable === true ? "good" : "neutral",
     },
     {
@@ -344,7 +394,11 @@ export const computeMeshTopologyInspector = (
     hasBoundary,
     manifold,
     watertight,
+    closed,
+    open,
     orientable,
+    orientabilityLabel,
+    topologyTypeLabel,
     isolatedVertexCount,
     rowLimit,
     itemLimit,

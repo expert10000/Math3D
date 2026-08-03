@@ -5,7 +5,9 @@ import {
   buildMeshTopologyCommandHistoryEntry,
   buildUnifiedOperationTreeNode,
   buildUnifiedCommandHistoryRows,
+  coerceUnifiedCommandParameterDraftValue,
   formatUnifiedCommandCounts,
+  resolveUnifiedCommandParameterDraftValue,
   parseUnifiedCommandParameterLabel,
 } from "./unifiedCommandHistory";
 
@@ -183,10 +185,48 @@ describe("unifiedCommandHistory", () => {
 
     expect(node).toMatchObject({
       id: "mesh:m3",
+      sourceSnapshotLabel: "Before snapshot: V 8 / F 12",
+      resultSnapshotLabel: "Result snapshot: V 10 / F 14",
+      operationType: "Bevel edge",
+      targetLabel: "Edge 1-2",
+      parametersLabel: "amount=0.0600",
       canRestoreParameters: true,
       canEditParameters: true,
+      canRestoreBefore: true,
+      canRestoreAfter: true,
       topologyChanged: true,
     });
     expect(node.parameterEdits.map((entry) => [entry.key, entry.value])).toEqual([["amount", 0.06]]);
+    expect(node.actions.map((entry) => [entry.id, entry.enabled])).toEqual([
+      ["restore-params", true],
+      ["apply-edited", true],
+      ["restore-before", true],
+      ["restore-after", true],
+      ["open", true],
+      ["copy", true],
+    ]);
+  });
+
+  it("resolves and coerces operation-node draft values through shared helpers", () => {
+    const node = buildUnifiedOperationTreeNode(
+      buildGeometryConstructionCommandHistoryEntry({
+        id: "c2",
+        at: 700,
+        action: "Extend",
+        source: "Line A",
+        result: "Line A extended",
+        operationSummary: {
+          source: "Line A",
+          action: "Extend line",
+          result: "Line A extended",
+          parameters: "length=0.75",
+        },
+      })
+    );
+    const parameter = node.parameterEdits[0];
+
+    expect(resolveUnifiedCommandParameterDraftValue(node, {}, parameter)).toBe("0.75");
+    expect(resolveUnifiedCommandParameterDraftValue(node, { [node.id]: { length: "1.25" } }, parameter)).toBe("1.25");
+    expect(coerceUnifiedCommandParameterDraftValue(parameter, "1.25")).toBe(1.25);
   });
 });
