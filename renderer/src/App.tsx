@@ -103,7 +103,10 @@ import {
 } from "./selection/unifiedCommandHistory";
 import {
   describeUnifiedSelectionFilter,
+  createUnifiedSelectionManagerState,
   evaluateUnifiedSelectionFilter,
+  selectionResultFromGeometryPick,
+  selectionResultFromUnifiedSelection,
   unifiedSelectionFromGeometryPick,
   unifiedSelectionFromMeshTopology,
   type UnifiedSelectionFilter,
@@ -15598,6 +15601,18 @@ const App: React.FC = () => {
     [geometrySelectedPick]
   );
   const geometryHoverPick = geometryProbeHoverSelectionDetails?.pick ?? null;
+  const geometrySelectedSelectionResult = useMemo(
+    () => selectionResultFromUnifiedSelection(geometryUnifiedSelection),
+    [geometryUnifiedSelection]
+  );
+  const geometryHoverSelectionResult = useMemo(
+    () => selectionResultFromGeometryPick(geometryHoverPick, "hover"),
+    [geometryHoverPick]
+  );
+  const geometrySelectionManager = useMemo(
+    () => createUnifiedSelectionManagerState([geometrySelectedSelectionResult, geometryHoverSelectionResult]),
+    [geometryHoverSelectionResult, geometrySelectedSelectionResult]
+  );
   const geometryActiveEditedObjectBreadcrumb = useMemo(() => {
     if (!geometrySelectedSceneObject) return null;
     const latestStep = geometrySelectedObjectHistory[0] ?? null;
@@ -15820,10 +15835,10 @@ const App: React.FC = () => {
     workspace: "geometry",
     pickMode: geometryProbeSelectionMode,
     objectLabel:
-      geometryUnifiedSelection?.selectionType === "object"
-        ? geometryUnifiedSelection.objectLabel
+      geometrySelectionManager.selected?.entityType === "object"
+        ? geometrySelectionManager.selected.objectLabel
         : geometrySelectedSceneObject?.name ?? null,
-    objectReady: Boolean(geometryUnifiedSelection?.selectionType === "object" || geometrySelectedSceneObject),
+    objectReady: Boolean(geometrySelectionManager.selected?.entityType === "object" || geometrySelectedSceneObject),
     objectEmptyState: OBJECT_CONTEXT_COPY.geometry.selectEmpty,
     entities: {
       face: {
@@ -46492,6 +46507,14 @@ case "mobius":
     [meshUnifiedSelection, unifiedSelectionFilter]
   );
   const filteredMeshUnifiedSelection = meshUnifiedSelectionFilterResult.accepted ? meshUnifiedSelection : null;
+  const meshSelectionResult = useMemo(
+    () => selectionResultFromUnifiedSelection(filteredMeshUnifiedSelection),
+    [filteredMeshUnifiedSelection]
+  );
+  const meshSelectionManager = useMemo(
+    () => createUnifiedSelectionManagerState([meshSelectionResult]),
+    [meshSelectionResult]
+  );
   const meshUnifiedSelectionFilterStatus =
     meshUnifiedSelection && !meshUnifiedSelectionFilterResult.accepted
       ? meshUnifiedSelectionFilterResult.reasons[0] ?? "Selection filtered out"
@@ -46511,10 +46534,10 @@ case "mobius":
     workspace: "mesh",
     pickMode: surfaceMeshTopologyPickMode,
     objectLabel:
-      filteredMeshUnifiedSelection?.selectionType === "object" ? filteredMeshUnifiedSelection.objectLabel : surfaceMeshLabel,
+      meshSelectionManager.selected?.entityType === "object" ? meshSelectionManager.selected.objectLabel : surfaceMeshLabel,
     objectReady: Boolean(
       unifiedSelectionKindFilters.object &&
-        (filteredMeshUnifiedSelection?.selectionType === "object" || surfaceMeshData) &&
+        (meshSelectionManager.selected?.entityType === "object" || surfaceMeshData) &&
         (surfaceMeshTopologyPickMode !== "object" || meshUnifiedSelectionFilterResult.accepted)
     ),
     objectEmptyState: "Load a mesh to enable object actions",

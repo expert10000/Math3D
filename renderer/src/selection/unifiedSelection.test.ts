@@ -3,12 +3,15 @@ import { resolveGeometryPick, type GeometryPickContext, type GeometryRawHit } fr
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 import {
   areUnifiedSelectionsInSameSetDomain,
+  createUnifiedSelectionManagerState,
   createUnifiedSelectionSet,
   describeUnifiedSelectionFilter,
   evaluateUnifiedSelectionFilter,
   filterUnifiedSelectionSet,
   getUnifiedSelectionEntityId,
   getUnifiedSelectionKey,
+  selectionResultFromGeometryPick,
+  selectionResultFromMeshTopology,
   unifiedSelectionFromGeometryPick,
   unifiedSelectionFromMeshTopology,
   updateUnifiedSelectionSet,
@@ -75,6 +78,51 @@ describe("unifiedSelection", () => {
       kind: "face",
       faceIndex: 0,
     });
+    expect(selection).toMatchObject({
+      entityType: "face",
+      entityId: "face:0",
+      point: [0.5, 0.5, 0],
+      normal: [0, 0, 1],
+      state: "selected",
+      adjacency: {
+        faces: [1],
+        edges: ["0:1", "1:2", "0:2"],
+        vertices: [0, 1, 2],
+      },
+      topologyFlags: {
+        hasTopology: true,
+        boundary: false,
+        nonManifold: false,
+        stale: false,
+        faceVertexCount: 3,
+        topologyVersion: 7,
+      },
+    });
+  });
+
+  it("returns the doc-facing SelectionResult shape for Geometry picks", () => {
+    const pick = resolveGeometryPick(rawHit, "edge", geometryContext);
+    const selection = selectionResultFromGeometryPick(pick, "hover");
+
+    expect(selection).toMatchObject({
+      workspace: "geometry",
+      objectId: "square-1",
+      entityType: "edge",
+      entityId: "edge:0-2",
+      point: [0.5, 0.5, 0],
+      state: "hover",
+      adjacency: {
+        faces: [0, 1],
+        vertices: [0, 2],
+      },
+      topologyFlags: {
+        hasTopology: true,
+        boundary: false,
+        nonManifold: false,
+        stale: false,
+        topologyVersion: 7,
+      },
+    });
   });
 
   it("adapts Mesh object mode to the shared selection contract", () => {
@@ -122,6 +170,83 @@ describe("unifiedSelection", () => {
       boundary: false,
       nonManifold: false,
     });
+    expect(selection).toMatchObject({
+      entityType: "edge",
+      entityId: "edge:0-2",
+      point: [0.5, 0.5, 0],
+      state: "selected",
+      adjacency: {
+        faces: [0, 1],
+        vertices: [0, 2],
+        incidentFaces: 2,
+      },
+      topologyFlags: {
+        hasTopology: true,
+        boundary: false,
+        nonManifold: false,
+        stale: false,
+      },
+    });
+  });
+
+  it("returns the doc-facing SelectionResult shape for Mesh topology picks", () => {
+    const selection = selectionResultFromMeshTopology(
+      {
+        mode: "vertex",
+        objectLabel: "Square mesh",
+        meshKey: "square-mesh",
+        mesh: squareMesh,
+        vertexIndex: 2,
+        valid: true,
+      },
+      "editing"
+    );
+
+    expect(selection).toMatchObject({
+      workspace: "mesh",
+      objectId: "square-mesh",
+      entityType: "vertex",
+      entityId: "vertex:2",
+      point: [1, 1, 0],
+      normal: null,
+      state: "editing",
+      adjacency: {
+        faces: [0, 1],
+        incidentFaces: 2,
+        incidentEdges: 3,
+        valence: 3,
+      },
+      topologyFlags: {
+        hasTopology: true,
+        boundary: true,
+        nonManifold: false,
+        stale: false,
+        boundaryEdges: 2,
+      },
+    });
+    expect([...(selection?.adjacency.vertices ?? [])].sort((a, b) => a - b)).toEqual([0, 1, 3]);
+  });
+
+  it("creates a shared manager snapshot from normalized selection results", () => {
+    const geometryPick = resolveGeometryPick(rawHit, "face", geometryContext);
+    const geometryHover = selectionResultFromGeometryPick(geometryPick, "hover");
+    const meshSelected = selectionResultFromMeshTopology({
+      mode: "edge",
+      objectLabel: "Square mesh",
+      meshKey: "square-mesh",
+      mesh: squareMesh,
+      edgeVertices: [0, 2],
+      valid: true,
+    });
+
+    const manager = createUnifiedSelectionManagerState([geometryHover, meshSelected]);
+
+    expect(manager.hover?.entityId).toBe("face:0");
+    expect(manager.selected?.entityId).toBe("edge:0-2");
+    expect(manager.active?.entityId).toBe("edge:0-2");
+    expect(manager.byEntityId["face:0"]?.workspace).toBe("geometry");
+    expect(manager.byEntityId["edge:0-2"]?.workspace).toBe("mesh");
+    expect(manager.label).toBe("Square mesh edge [0-2]");
   });
 
   it("returns null for cleared or invalid Mesh entity selections", () => {

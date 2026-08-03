@@ -10,7 +10,7 @@ import {
 
 export type UnifiedSelectionWorkspace = "geometry" | "mesh";
 export type UnifiedSelectionKind = "object" | "face" | "edge" | "vertex";
-export type UnifiedSelectionLifecycle = "selected" | "hover" | "editing";
+export type UnifiedSelectionLifecycle = "selected" | "hover" | "editing" | "preview";
 export type UnifiedSelectionVec3 = readonly [number, number, number];
 
 export type UnifiedSelectionTopology = {
@@ -26,18 +26,58 @@ export type UnifiedSelectionTopology = {
   readonly faceVertexCount?: number;
 };
 
-export type UnifiedSelection = {
+export type SelectionResultAdjacency = {
+  readonly faces: readonly number[];
+  readonly edges: readonly string[];
+  readonly vertices: readonly number[];
+  readonly incidentFaces?: number;
+  readonly incidentEdges?: number;
+  readonly valence?: number;
+};
+
+export type SelectionResultTopologyFlags = {
+  readonly hasTopology: boolean;
+  readonly boundary: boolean;
+  readonly nonManifold: boolean;
+  readonly stale: boolean;
+  readonly boundaryEdges?: number;
+  readonly faceVertexCount?: number;
+  readonly topologyVersion?: number | null;
+};
+
+export type SelectionResult = {
   readonly workspace: UnifiedSelectionWorkspace;
-  readonly selectionType: UnifiedSelectionKind;
-  readonly lifecycle: UnifiedSelectionLifecycle;
   readonly objectId: string;
   readonly objectLabel: string;
   readonly objectType?: string | null;
+  readonly entityType: UnifiedSelectionKind;
+  readonly entityId: string;
+  readonly point: UnifiedSelectionVec3 | null;
+  readonly normal: UnifiedSelectionVec3 | null;
+  readonly adjacency: SelectionResultAdjacency;
+  readonly topologyFlags: SelectionResultTopologyFlags;
+  readonly state: UnifiedSelectionLifecycle;
   readonly meshKey?: string | null;
   readonly topologyVersion?: number | null;
-  readonly topologyReference?: GeometryTopologyReference | null;
   readonly stale: boolean;
   readonly label: string;
+};
+
+export type UnifiedSelectionManagerState = {
+  readonly selected: SelectionResult | null;
+  readonly hover: SelectionResult | null;
+  readonly editing: SelectionResult | null;
+  readonly preview: SelectionResult | null;
+  readonly active: SelectionResult | null;
+  readonly results: readonly SelectionResult[];
+  readonly byEntityId: Readonly<Record<string, SelectionResult>>;
+  readonly label: string;
+};
+
+export type UnifiedSelection = SelectionResult & {
+  readonly selectionType: UnifiedSelectionKind;
+  readonly lifecycle: UnifiedSelectionLifecycle;
+  readonly topologyReference?: GeometryTopologyReference | null;
   readonly faceId?: number | null;
   readonly edgeId?: string | null;
   readonly edgeVertices?: readonly [number, number] | null;
@@ -144,6 +184,17 @@ const EMPTY_SELECTION_SET: UnifiedSelectionSet = {
   label: "No selection",
 };
 
+const EMPTY_SELECTION_MANAGER_STATE: UnifiedSelectionManagerState = {
+  selected: null,
+  hover: null,
+  editing: null,
+  preview: null,
+  active: null,
+  results: [],
+  byEntityId: {},
+  label: "No selection",
+};
+
 const toVec3 = (value: readonly [number, number, number] | undefined | null): UnifiedSelectionVec3 | null =>
   value ? [value[0], value[1], value[2]] : null;
 
@@ -161,6 +212,92 @@ const formatSelectionLabel = (kind: UnifiedSelectionKind, objectLabel: string, i
 const edgeIdFromVertices = (vertices: readonly [number, number] | null | undefined): string | null =>
   vertices ? `${vertices[0]}-${vertices[1]}` : null;
 
+const buildSelectionEntityId = (
+  kind: UnifiedSelectionKind,
+  objectId: string,
+  ids: {
+    readonly faceId?: number | null;
+    readonly edgeId?: string | null;
+    readonly vertexId?: number | null;
+  } = {}
+): string => {
+  if (kind === "object") return `object:${objectId}`;
+  if (kind === "face") return `face:${ids.faceId ?? ""}`;
+  if (kind === "edge") return `edge:${ids.edgeId ?? ""}`;
+  return `vertex:${ids.vertexId ?? ""}`;
+};
+
+const topologyTouchesBoundary = (topology: UnifiedSelectionTopology): boolean =>
+  topology.boundary === true || (topology.boundaryEdges ?? 0) > 0;
+
+const topologyIsNonManifold = (topology: UnifiedSelectionTopology): boolean => topology.nonManifold === true;
+
+const topologyHasDetails = (topology: UnifiedSelectionTopology): boolean =>
+  topology.adjacentFaces.length > 0 ||
+  topology.adjacentEdges.length > 0 ||
+  topology.adjacentVertices.length > 0 ||
+  topology.incidentFaces != null ||
+  topology.incidentEdges != null ||
+  topology.valence != null ||
+  topology.boundaryEdges != null ||
+  topology.boundary != null ||
+  topology.nonManifold != null ||
+  topology.faceVertexCount != null;
+
+const buildSelectionResultFields = (input: {
+  readonly workspace: UnifiedSelectionWorkspace;
+  readonly kind: UnifiedSelectionKind;
+  readonly lifecycle: UnifiedSelectionLifecycle;
+  readonly objectId: string;
+  readonly objectLabel: string;
+  readonly objectType?: string | null;
+  readonly meshKey?: string | null;
+  readonly topologyVersion?: number | null;
+  readonly stale: boolean;
+  readonly label: string;
+  readonly faceId?: number | null;
+  readonly edgeId?: string | null;
+  readonly vertexId?: number | null;
+  readonly worldPosition?: UnifiedSelectionVec3 | null;
+  readonly normal?: UnifiedSelectionVec3 | null;
+  readonly topology: UnifiedSelectionTopology;
+}): SelectionResult => ({
+  workspace: input.workspace,
+  objectId: input.objectId,
+  objectLabel: input.objectLabel,
+  objectType: input.objectType ?? null,
+  entityType: input.kind,
+  entityId: buildSelectionEntityId(input.kind, input.objectId, {
+    faceId: input.faceId,
+    edgeId: input.edgeId,
+    vertexId: input.vertexId,
+  }),
+  point: input.worldPosition ?? null,
+  normal: input.normal ?? null,
+  adjacency: {
+    faces: input.topology.adjacentFaces,
+    edges: input.topology.adjacentEdges,
+    vertices: input.topology.adjacentVertices,
+    incidentFaces: input.topology.incidentFaces,
+    incidentEdges: input.topology.incidentEdges,
+    valence: input.topology.valence,
+  },
+  topologyFlags: {
+    hasTopology: topologyHasDetails(input.topology),
+    boundary: topologyTouchesBoundary(input.topology),
+    nonManifold: topologyIsNonManifold(input.topology),
+    stale: input.stale,
+    boundaryEdges: input.topology.boundaryEdges,
+    faceVertexCount: input.topology.faceVertexCount,
+    topologyVersion: input.topologyVersion ?? null,
+  },
+  state: input.lifecycle,
+  meshKey: input.meshKey ?? null,
+  topologyVersion: input.topologyVersion ?? null,
+  stale: input.stale,
+  label: input.label,
+});
+
 const encodeKeyPart = (value: string | number | null | undefined): string =>
   encodeURIComponent(value == null ? "" : String(value));
 
@@ -168,6 +305,7 @@ const pluralSelectionKind = (kind: UnifiedSelectionKind, count: number): string 
   count === 1 ? kind : kind === "vertex" ? "vertices" : `${kind}s`;
 
 export function getUnifiedSelectionEntityId(selection: UnifiedSelection): UnifiedSelectionEntityId | null {
+  if (selection.entityId) return selection.entityId;
   if (selection.selectionType === "object") return `object:${selection.objectId}`;
   if (selection.selectionType === "face") {
     return selection.faceId == null ? null : `face:${selection.faceId}`;
@@ -225,9 +363,10 @@ export function areUnifiedSelectionsInSameSetDomain(a: UnifiedSelection, b: Unif
 }
 
 const selectionTouchesBoundary = (selection: UnifiedSelection): boolean =>
-  selection.topology.boundary === true || (selection.topology.boundaryEdges ?? 0) > 0;
+  selection.topologyFlags.boundary || topologyTouchesBoundary(selection.topology);
 
-const selectionIsNonManifold = (selection: UnifiedSelection): boolean => selection.topology.nonManifold === true;
+const selectionIsNonManifold = (selection: UnifiedSelection): boolean =>
+  selection.topologyFlags.nonManifold || topologyIsNonManifold(selection.topology);
 
 const matchTopologyMode = (value: boolean, mode: UnifiedSelectionTopologyFilterMode | undefined): boolean => {
   if (!mode || mode === "any") return true;
@@ -308,6 +447,36 @@ export function describeUnifiedSelectionFilter(filter: UnifiedSelectionFilter | 
   if (filter.nonManifold === "only") parts.push("non-manifold only");
   if (filter.nonManifold === "exclude") parts.push("manifold only");
   return parts.length ? parts.join(" · ") : "All selections";
+}
+
+export function createUnifiedSelectionManagerState(
+  selections: readonly (SelectionResult | UnifiedSelection | null | undefined)[]
+): UnifiedSelectionManagerState {
+  const results = selections.filter((selection): selection is SelectionResult => !!selection);
+  if (!results.length) return EMPTY_SELECTION_MANAGER_STATE;
+  const byEntityId: Record<string, SelectionResult> = {};
+  let selected: SelectionResult | null = null;
+  let hover: SelectionResult | null = null;
+  let editing: SelectionResult | null = null;
+  let preview: SelectionResult | null = null;
+  for (const result of results) {
+    byEntityId[result.entityId] = result;
+    if (result.state === "selected") selected = result;
+    else if (result.state === "hover") hover = result;
+    else if (result.state === "editing") editing = result;
+    else if (result.state === "preview") preview = result;
+  }
+  const active = editing ?? selected ?? hover ?? preview ?? results[results.length - 1] ?? null;
+  return {
+    selected,
+    hover,
+    editing,
+    preview,
+    active,
+    results,
+    byEntityId,
+    label: active?.label ?? "No selection",
+  };
 }
 
 const findSelectionByKey = (
@@ -496,26 +665,39 @@ export function unifiedSelectionFromGeometryPick(
               boundaryEdges: pick.vertexTopology?.boundaryEdges,
             }
           : EMPTY_TOPOLOGY;
-
-  return {
+  const worldPosition = toVec3(pick.worldPoint);
+  const normal = toVec3(pick.normal);
+  const resultFields = buildSelectionResultFields({
     workspace: "geometry",
-    selectionType: pick.kind,
+    kind: pick.kind,
     lifecycle,
     objectId: pick.objectId,
     objectLabel: pick.objectLabel,
     objectType: pick.objectType,
     meshKey: pick.meshKey ?? null,
     topologyVersion: pick.topologyVersion ?? null,
-    topologyReference: pick.topologyReference ?? null,
     stale: Boolean(pick.stale),
     label: pick.label,
     faceId: pick.faceIndex ?? null,
     edgeId,
+    vertexId: pick.vertexIndex ?? null,
+    worldPosition,
+    normal,
+    topology,
+  });
+
+  return {
+    ...resultFields,
+    selectionType: pick.kind,
+    lifecycle,
+    topologyReference: pick.topologyReference ?? null,
+    faceId: pick.faceIndex ?? null,
+    edgeId,
     edgeVertices: pick.edgeVertices ?? null,
     vertexId: pick.vertexIndex ?? null,
-    worldPosition: toVec3(pick.worldPoint),
+    worldPosition,
     localPosition: toVec3(pick.localPoint),
-    normal: toVec3(pick.normal),
+    normal,
     tangent: toVec3(pick.tangent),
     bitangent: toVec3(pick.bitangent),
     topology,
@@ -535,23 +717,34 @@ export function unifiedSelectionFromMeshTopology(
 
   if (mode === "object") {
     if (!input.mesh && !input.objectLabel && !input.objectId) return null;
-    return {
+    const label = formatSelectionLabel("object", objectLabel);
+    const worldPosition = input.worldPosition ?? null;
+    const normal = input.normal ?? null;
+    const resultFields = buildSelectionResultFields({
       workspace: "mesh",
-      selectionType: "object",
+      kind: "object",
       lifecycle,
       objectId,
       objectLabel,
       objectType: input.objectType ?? "mesh",
       meshKey,
       topologyVersion: input.topologyVersion ?? null,
-      topologyReference: null,
       stale: false,
-      label: formatSelectionLabel("object", objectLabel),
+      label,
+      worldPosition,
+      normal,
+      topology: EMPTY_TOPOLOGY,
+    });
+    return {
+      ...resultFields,
+      selectionType: "object",
+      lifecycle,
+      topologyReference: null,
       faceId: null,
       edgeId: null,
       edgeVertices: null,
       vertexId: null,
-      worldPosition: input.worldPosition ?? null,
+      worldPosition,
       normal: input.normal ?? null,
       tangent: null,
       bitangent: null,
@@ -612,28 +805,78 @@ export function unifiedSelectionFromMeshTopology(
           };
 
   const entityId = mode === "face" ? faceId : mode === "edge" ? edgeId : vertexId;
-  return {
+  const label = formatSelectionLabel(mode, objectLabel, entityId);
+  const normal = input.normal ?? null;
+  const resultFields = buildSelectionResultFields({
     workspace: "mesh",
-    selectionType: mode,
+    kind: mode,
     lifecycle,
     objectId,
     objectLabel,
     objectType: input.objectType ?? "mesh",
     meshKey,
     topologyVersion: input.topologyVersion ?? null,
-    topologyReference: null,
     stale: false,
-    label: formatSelectionLabel(mode, objectLabel, entityId),
+    label,
+    faceId,
+    edgeId,
+    vertexId,
+    worldPosition: derivedWorldPosition,
+    normal,
+    topology,
+  });
+  return {
+    ...resultFields,
+    selectionType: mode,
+    lifecycle,
+    topologyReference: null,
     faceId,
     edgeId,
     edgeVertices,
     vertexId,
     worldPosition: derivedWorldPosition,
     localPosition: null,
-    normal: input.normal ?? null,
+    normal,
     tangent: null,
     bitangent: null,
     topology,
     source: "mesh-topology",
   };
+}
+
+export function selectionResultFromUnifiedSelection(
+  selection: UnifiedSelection | null | undefined
+): SelectionResult | null {
+  if (!selection) return null;
+  return {
+    workspace: selection.workspace,
+    objectId: selection.objectId,
+    objectLabel: selection.objectLabel,
+    objectType: selection.objectType ?? null,
+    entityType: selection.entityType,
+    entityId: selection.entityId,
+    point: selection.point,
+    normal: selection.normal,
+    adjacency: selection.adjacency,
+    topologyFlags: selection.topologyFlags,
+    state: selection.state,
+    meshKey: selection.meshKey ?? null,
+    topologyVersion: selection.topologyVersion ?? null,
+    stale: selection.stale,
+    label: selection.label,
+  };
+}
+
+export function selectionResultFromGeometryPick(
+  pick: GeometryPickResult | null | undefined,
+  lifecycle: UnifiedSelectionLifecycle = "selected"
+): SelectionResult | null {
+  return selectionResultFromUnifiedSelection(unifiedSelectionFromGeometryPick(pick, lifecycle));
+}
+
+export function selectionResultFromMeshTopology(
+  input: MeshTopologyUnifiedSelectionInput,
+  lifecycle: UnifiedSelectionLifecycle = "selected"
+): SelectionResult | null {
+  return selectionResultFromUnifiedSelection(unifiedSelectionFromMeshTopology(input, lifecycle));
 }
