@@ -3195,6 +3195,8 @@ type GeometryConstructionHistoryEntry = {
   source: string;
   result: string;
   resultId?: string;
+  beforeDerivedConstructions?: GeometryDerivedConstructionObject[] | null;
+  afterDerivedConstructions?: GeometryDerivedConstructionObject[] | null;
   steps: string[];
   operationSummary?: {
     source: string;
@@ -3618,6 +3620,18 @@ const normalizeGeometryDerivedConstructionsForRestore = (raw: unknown): Geometry
       visible: entry.visible !== false,
       createdAt: Number.isFinite(entry.createdAt) ? Number(entry.createdAt) : Date.now(),
     }));
+};
+const cloneGeometryDerivedConstructions = (
+  entries: readonly GeometryDerivedConstructionObject[]
+): GeometryDerivedConstructionObject[] => {
+  try {
+    if (typeof globalThis.structuredClone === "function") {
+      return globalThis.structuredClone(entries) as GeometryDerivedConstructionObject[];
+    }
+  } catch {
+    // Fall through to JSON cloning for older runtimes.
+  }
+  return JSON.parse(JSON.stringify(entries)) as GeometryDerivedConstructionObject[];
 };
 const resolveGeometryLineExtensionMode = (value: unknown): GeometryLineExtensionMode =>
   value === "ray" || value === "segment" || value === "infinite" ? value : "infinite";
@@ -12224,7 +12238,11 @@ const App: React.FC = () => {
       };
     });
     const constructionEntries: GeometryRecentActionHistoryEntry[] = geometryConstructionHistory.map((entry) => {
-      const command = buildGeometryConstructionCommandHistoryEntry(entry);
+      const command = buildGeometryConstructionCommandHistoryEntry({
+        ...entry,
+        hasSourceSnapshot: Boolean(entry.beforeDerivedConstructions?.length || entry.beforeDerivedConstructions),
+        hasResultSnapshot: Boolean(entry.afterDerivedConstructions?.length || entry.afterDerivedConstructions),
+      });
       return {
         kind: "construction",
         id: `construction:${entry.id}`,
@@ -13695,6 +13713,35 @@ const App: React.FC = () => {
       );
     },
     [geometryDerivedConstructions, geometryOperationNodeParameterDrafts]
+  );
+  const restoreGeometryConstructionHistorySnapshot = useCallback(
+    (historyStep: GeometryConstructionHistoryEntry, mode: "before" | "after") => {
+      const snapshot =
+        mode === "before" ? historyStep.beforeDerivedConstructions : historyStep.afterDerivedConstructions;
+      if (!snapshot) {
+        setGeometryCreateActionStatus(`Restore ${mode} blocked: construction snapshot is unavailable.`);
+        return;
+      }
+      const restored = cloneGeometryDerivedConstructions(snapshot);
+      setGeometryDerivedConstructions(restored);
+      const preferredId =
+        mode === "after" && historyStep.resultId && restored.some((entry) => entry.id === historyStep.resultId)
+          ? historyStep.resultId
+          : restored[0]?.id ?? null;
+      setGeometrySelectedDerivedConstructionId(preferredId);
+      setGeometrySelectedMathConstructionId(null);
+      setGeometryRelationTargetDerivedId((current) =>
+        current && restored.some((entry) => entry.id === current) ? current : null
+      );
+      setGeometrySectionSourceDerivedId((current) =>
+        current && restored.some((entry) => entry.id === current) ? current : null
+      );
+      geometryDerivedLastValidSnapshotRef.current.clear();
+      setGeometryProceduralPanelTab("construct");
+      setGeometryConstructPanelTab("tree");
+      setGeometryCreateActionStatus(`Restored construction ${mode}: ${historyStep.result}.`);
+    },
+    []
   );
   const handleRebuildGeometryObject = useCallback(
     (id: string) => {
@@ -17435,7 +17482,9 @@ const App: React.FC = () => {
         visible: true,
         createdAt: Date.now(),
       };
-      setGeometryDerivedConstructions((prev) => [next, ...prev]);
+      const beforeDerivedConstructions = cloneGeometryDerivedConstructions(geometryDerivedConstructions);
+      const afterDerivedConstructions = cloneGeometryDerivedConstructions([next, ...geometryDerivedConstructions]);
+      setGeometryDerivedConstructions(afterDerivedConstructions);
       setGeometrySelectedDerivedConstructionId(next.id);
       rememberGeometryLinePairCandidate(next);
       setGeometryProceduralPanelTab("construct");
@@ -17451,6 +17500,8 @@ const App: React.FC = () => {
           source,
           result,
           resultId: next.id,
+          beforeDerivedConstructions,
+          afterDerivedConstructions,
           steps: [`Select ${geometryDerivedConstructionSourceEntityLabel(next)}`, action, `Created ${result}`],
           operationSummary: {
             source,
@@ -17470,7 +17521,7 @@ const App: React.FC = () => {
         `Derived object created: ${GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[next.type]}.`
       );
     },
-    [geometryObjectRevisionById, rememberGeometryLinePairCandidate, resolveGeometrySceneObjectById]
+    [geometryDerivedConstructions, geometryObjectRevisionById, rememberGeometryLinePairCandidate, resolveGeometrySceneObjectById]
   );
   const handleCreateDerivedFromVertex = useCallback(
     (
@@ -18169,7 +18220,11 @@ const App: React.FC = () => {
   }, []);
   const handleDeleteDerivedConstruction = useCallback((id: string) => {
     const existing = geometryDerivedConstructions.find((entry) => entry.id === id) ?? null;
-    setGeometryDerivedConstructions((prev) => prev.filter((entry) => entry.id !== id));
+    const beforeDerivedConstructions = cloneGeometryDerivedConstructions(geometryDerivedConstructions);
+    const afterDerivedConstructions = cloneGeometryDerivedConstructions(
+      geometryDerivedConstructions.filter((entry) => entry.id !== id)
+    );
+    setGeometryDerivedConstructions(afterDerivedConstructions);
     setGeometryDerivedRelationConstraints((prev) => prev.filter((entry) => entry.derivedId !== id));
     setGeometrySelectedDerivedConstructionId((prev) => (prev === id ? null : prev));
     setGeometryRelationTargetDerivedId((prev) => (prev === id ? null : prev));
@@ -18184,6 +18239,8 @@ const App: React.FC = () => {
           action: "Delete",
           source: geometryDerivedConstructionSourceReference(existing, sourceObjectName),
           result: geometryDerivedConstructionName(existing),
+          beforeDerivedConstructions,
+          afterDerivedConstructions,
           steps: [`Select ${geometryDerivedConstructionName(existing)}`, "Delete", "Removed construction"],
         },
         ...prev.map((entry) => (entry.resultId === id ? { ...entry, resultId: undefined } : entry)),
@@ -25381,7 +25438,9 @@ const App: React.FC = () => {
             }
           : entry.frozenSnapshot,
       };
-      setGeometryDerivedConstructions((prev) => [next, ...prev]);
+      const beforeDerivedConstructions = cloneGeometryDerivedConstructions(geometryDerivedConstructions);
+      const afterDerivedConstructions = cloneGeometryDerivedConstructions([next, ...geometryDerivedConstructions]);
+      setGeometryDerivedConstructions(afterDerivedConstructions);
       setGeometrySelectedDerivedConstructionId(next.id);
       rememberGeometryLinePairCandidate(next);
       setGeometrySelectedMathConstructionId(null);
@@ -25398,6 +25457,8 @@ const App: React.FC = () => {
           source,
           result,
           resultId: next.id,
+          beforeDerivedConstructions,
+          afterDerivedConstructions,
           steps: [`Select ${operationSource}`, action, `Created ${result}`],
           operationSummary: {
             source: operationSource,
@@ -25416,7 +25477,7 @@ const App: React.FC = () => {
       setGeometryCreateActionStatus(`Construction ${suffix.toLowerCase()}: ${next.name}.`);
       return next;
     },
-    [rememberGeometryLinePairCandidate, resolveGeometrySceneObjectById]
+    [geometryDerivedConstructions, rememberGeometryLinePairCandidate, resolveGeometrySceneObjectById]
   );
   const handleCreateLinePairDerivedConstruction = useCallback(
     (
@@ -25668,7 +25729,9 @@ const App: React.FC = () => {
         visible: true,
         createdAt: Date.now(),
       };
-      setGeometryDerivedConstructions((prev) => [next, ...prev]);
+      const beforeDerivedConstructions = cloneGeometryDerivedConstructions(geometryDerivedConstructions);
+      const afterDerivedConstructions = cloneGeometryDerivedConstructions([next, ...geometryDerivedConstructions]);
+      setGeometryDerivedConstructions(afterDerivedConstructions);
       setGeometrySelectedDerivedConstructionId(next.id);
       setGeometrySelectedMathConstructionId(null);
       setGeometryConstructionHistory((prev) => [
@@ -25679,6 +25742,8 @@ const App: React.FC = () => {
           source: `${lineA.name} + ${lineB.name}`,
           result: labelText,
           resultId: next.id,
+          beforeDerivedConstructions,
+          afterDerivedConstructions,
           steps: [`Select ${lineA.name}`, `Select ${lineB.name}`, `Created ${labelText}`],
           operationSummary: {
             source: `${lineA.name} + ${lineB.name}`,
@@ -25692,7 +25757,7 @@ const App: React.FC = () => {
       ].slice(0, 40));
       setGeometryCreateActionStatus(`${labelText} created from ${lineA.name} and ${lineB.name}.`);
     },
-    [geometryLinePairAnalysis, resolveHelperTangentBasis]
+    [geometryDerivedConstructions, geometryLinePairAnalysis, resolveHelperTangentBasis]
   );
   const selectGeometryPlaneConstructionMethod = useCallback(
     (method: GeometryPlaneConstructionMethod) => {
@@ -79574,6 +79639,24 @@ case "mobius":
                                                 style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
                                               >
                                                 Open
+                                              </button>
+                                              <button
+                                                type="button"
+                                                data-testid="geometry-actions-history-construction-restore-before"
+                                                onClick={() => restoreGeometryConstructionHistorySnapshot(constructionStep, "before")}
+                                                disabled={!constructionStep.beforeDerivedConstructions}
+                                                style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                              >
+                                                Restore Before
+                                              </button>
+                                              <button
+                                                type="button"
+                                                data-testid="geometry-actions-history-construction-restore-after"
+                                                onClick={() => restoreGeometryConstructionHistorySnapshot(constructionStep, "after")}
+                                                disabled={!constructionStep.afterDerivedConstructions}
+                                                style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                              >
+                                                Restore After
                                               </button>
                                               <span style={{ color: "#64748b", fontWeight: 700 }}>Construction</span>
                                             </>

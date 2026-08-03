@@ -81,6 +81,8 @@ describe("unifiedCommandHistory", () => {
         action: "Project",
         source: "Line A",
         result: "Projected line",
+        hasSourceSnapshot: true,
+        hasResultSnapshot: true,
         operationSummary: {
           source: "Line A",
           action: "Project line",
@@ -95,6 +97,8 @@ describe("unifiedCommandHistory", () => {
       actionLabel: "Project line",
       resultLabel: "Projected line on plane",
       parametersLabel: "plane=XY",
+      hasSourceSnapshot: true,
+      hasResultSnapshot: true,
       confirmationLabel: "Done: Projected line on plane",
       lastCommandLabel: "Project line: Projected line on plane",
     });
@@ -205,6 +209,33 @@ describe("unifiedCommandHistory", () => {
       ["open", true],
       ["copy", true],
     ]);
+  });
+
+  it("exposes construction source and result snapshot restore actions", () => {
+    const node = buildUnifiedOperationTreeNode(
+      buildGeometryConstructionCommandHistoryEntry({
+        id: "c-snap",
+        at: 650,
+        action: "Offset",
+        source: "Face plane",
+        result: "Offset plane",
+        hasSourceSnapshot: true,
+        hasResultSnapshot: true,
+        operationSummary: {
+          source: "Face plane",
+          action: "Offset plane",
+          result: "Offset plane",
+          parameters: "distance=0.25",
+        },
+      })
+    );
+
+    expect(node.sourceSnapshotLabel).toBe("Source snapshot: Face plane");
+    expect(node.resultSnapshotLabel).toBe("Result snapshot: Offset plane");
+    expect(node.canRestoreBefore).toBe(true);
+    expect(node.canRestoreAfter).toBe(true);
+    expect(node.actions.find((entry) => entry.id === "restore-before")?.enabled).toBe(true);
+    expect(node.actions.find((entry) => entry.id === "restore-after")?.enabled).toBe(true);
   });
 
   it("resolves and coerces operation-node draft values through shared helpers", () => {

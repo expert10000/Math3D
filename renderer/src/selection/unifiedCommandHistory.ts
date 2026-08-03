@@ -20,6 +20,8 @@ export type UnifiedCommandHistoryEntry = {
   readonly parametersLabel?: string | null;
   readonly beforeCounts?: UnifiedCommandHistoryCounts | null;
   readonly afterCounts?: UnifiedCommandHistoryCounts | null;
+  readonly hasSourceSnapshot?: boolean;
+  readonly hasResultSnapshot?: boolean;
   readonly countsLabel?: string | null;
   readonly confirmationLabel: string;
   readonly lastCommandLabel: string;
@@ -112,6 +114,8 @@ export type GeometryConstructionCommandHistorySource = {
   readonly action: string;
   readonly source: string;
   readonly result: string;
+  readonly hasSourceSnapshot?: boolean;
+  readonly hasResultSnapshot?: boolean;
   readonly operationSummary?: {
     readonly source?: string | null;
     readonly action?: string | null;
@@ -282,18 +286,22 @@ export function buildUnifiedOperationNodeActions(node: Pick<
 export function buildUnifiedOperationTreeNode(entry: UnifiedCommandHistoryEntry): UnifiedOperationTreeNode {
   const rows = buildUnifiedCommandHistoryRows(entry);
   const parameterEdits = parseUnifiedCommandParameterLabel(entry.parametersLabel);
-  const canRestoreBefore = !!entry.beforeCounts;
-  const canRestoreAfter = !!entry.afterCounts || entry.kind === "construction";
+  const canRestoreBefore = !!entry.beforeCounts || entry.hasSourceSnapshot === true;
+  const canRestoreAfter = !!entry.afterCounts || entry.hasResultSnapshot === true;
   const nodeWithoutActions = {
     id: entry.id,
     command: entry,
     rows,
     sourceSnapshotLabel: entry.beforeCounts
       ? `Before snapshot: V ${entry.beforeCounts.vertexCount} / F ${entry.beforeCounts.faceCount}`
-      : `Source snapshot: ${entry.sourceLabel}`,
+      : entry.hasSourceSnapshot
+        ? `Source snapshot: ${entry.sourceLabel}`
+        : `Source: ${entry.sourceLabel}`,
     resultSnapshotLabel: entry.afterCounts
       ? `Result snapshot: V ${entry.afterCounts.vertexCount} / F ${entry.afterCounts.faceCount}`
-      : `Result snapshot: ${entry.resultLabel}`,
+      : entry.hasResultSnapshot
+        ? `Result snapshot: ${entry.resultLabel}`
+        : `Result: ${entry.resultLabel}`,
     operationType: entry.actionLabel,
     targetLabel: entry.targetLabel ?? null,
     parametersLabel: entry.parametersLabel ?? null,
@@ -430,6 +438,8 @@ export function buildGeometryConstructionCommandHistoryEntry(
     actionLabel,
     resultLabel,
     parametersLabel: entry.operationSummary?.parameters,
+    hasSourceSnapshot: entry.hasSourceSnapshot === true,
+    hasResultSnapshot: entry.hasResultSnapshot === true,
     countsLabel: null,
     confirmationLabel: `Done: ${resultLabel}`,
     lastCommandLabel: `${actionLabel}: ${resultLabel}`,
