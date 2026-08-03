@@ -13743,6 +13743,21 @@ const App: React.FC = () => {
     },
     []
   );
+  const openGeometryConstructionHistoryPanel = useCallback((historyStep?: GeometryConstructionHistoryEntry | null) => {
+    if (historyStep?.resultId) {
+      setGeometrySelectedDerivedConstructionId(historyStep.resultId);
+      setGeometrySelectedMathConstructionId(null);
+    }
+    setGeometryMode("procedural");
+    setGeometryProceduralPanelTab("construct");
+    setGeometryConstructPanelTab("tree");
+    setGeometryRightPanelTab("actions");
+    setGeometryCreateActionStatus(
+      historyStep
+        ? `Opened full construction history for ${historyStep.result}.`
+        : "Opened full construction history."
+    );
+  }, []);
   const handleRebuildGeometryObject = useCallback(
     (id: string) => {
       const draft = geometryObjectParamDrafts[id];
@@ -34632,6 +34647,7 @@ const App: React.FC = () => {
   ]);
 
   const [probeInfo, setProbeInfo] = useState<ProbeInfo | null>(null);
+  const [surfaceMeshHoverPick, setSurfaceMeshHoverPick] = useState<GeometryProceduralPickInfo | null>(null);
   const [probeCurv, setProbeCurv] = useState<CurvatureData | null>(null);
   const [probeStamp, setProbeStamp] = useState(0);
   const [paramProbeCurv, setParamProbeCurv] = useState<PrincipalCurvatureScalars | null>(null);
@@ -35530,6 +35546,15 @@ const App: React.FC = () => {
         handleStopSurfacesCameraTour();
         setGeometryProceduralPick(null);
         setGeometryProceduralHoverPick(null);
+        setGeometryHistoryPreviewStepId(null);
+        setSurfaceMeshHoverPick(null);
+        setSurfaceMeshEdgeSelection(null);
+        setSurfaceMeshTopologySelectionCleared(true);
+        setSurfaceMeshTopologyFeedback(null);
+        setSurfaceMeshTopologyHistoryPreviewId(null);
+        setSurfaceMeshTopologyHistoryPreviewMode("after");
+        setGeometryCreateActionStatus("Selection cleared.");
+        setSurfaceMeshTopologyStatus("Selection cleared.");
         clearInspect();
       }
     };
@@ -36065,6 +36090,19 @@ const App: React.FC = () => {
       probeInfo?.point?.x,
       probeInfo?.point?.y,
       probeInfo?.point?.z,
+      surfaceMeshData,
+      surfaceViewerKind,
+    ]
+  );
+  const surfaceMeshTopologyHoverPick = useMemo(
+    () =>
+      surfaceViewerKind === "mesh"
+        ? resolveSurfaceMeshTopologyPick(surfaceMeshData, surfaceMeshHoverPick?.point ?? null)
+        : null,
+    [
+      surfaceMeshHoverPick?.point?.x,
+      surfaceMeshHoverPick?.point?.y,
+      surfaceMeshHoverPick?.point?.z,
       surfaceMeshData,
       surfaceViewerKind,
     ]
@@ -40940,6 +40978,7 @@ case "mobius":
     setParamProbeUV(null);
     setImplicitProbeXYZ(null);
     setComplexMapProbe(null);
+    setSurfaceMeshHoverPick(null);
   }, [activeEqSurfaceId, paramSurfaceId, surfaceViewerKind, colorMode]);
 
   useEffect(() => {
@@ -40948,6 +40987,7 @@ case "mobius":
       setProbeCurv(null);
       setParamProbeCurv(null);
       setComplexMapProbe(null);
+      setSurfaceMeshHoverPick(null);
     }
   }, [probeEnabled]);
 
@@ -40970,6 +41010,21 @@ case "mobius":
     },
     [surfaceViewerKind, activeEqSurfaceId, graphExpr, buildComplexMapProbe]
   );
+  const handleSurfaceMeshInspectHover = useCallback((info: GeometryProceduralPickInfo) => {
+    setSurfaceMeshHoverPick({
+      point: info.point,
+      normal: info.normal,
+      meshKey: info.meshKey,
+      faceIndex: info.faceIndex,
+      vertexIndex: info.vertexIndex,
+      distance: info.distance,
+      screenPoint: info.screenPoint,
+      sourceTriangleScreen: info.sourceTriangleScreen,
+    });
+  }, []);
+  const handleSurfaceMeshInspectHoverMiss = useCallback(() => {
+    setSurfaceMeshHoverPick(null);
+  }, []);
 
   const sampleSurfaceAtPoint = useCallback(
     (pick: SurfaceQueryPick): SurfaceQuerySample | null => {
@@ -46324,6 +46379,28 @@ case "mobius":
       unifiedSelectionFilter,
     ]
   );
+  useEffect(() => {
+    const handleMeshSelectionActionShortcut = (event: KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || target?.isContentEditable) return;
+      const key = event.key.toLowerCase();
+      const tool: MeshEdgeSelectionTool | null =
+        key === "l" ? "loop" : key === "r" ? "ring" : key === "b" ? "boundary" : null;
+      if (!tool) return;
+      const meshShortcutActive =
+        mode === "surfaces" &&
+        isSurfaceDatasetKind(datasetKind) &&
+        surfaceViewerKind === "mesh" &&
+        surfaceMeshTopologyPickMode === "edge";
+      if (!meshShortcutActive) return;
+      event.preventDefault();
+      handleSelectSurfaceMeshEdgeSet(tool);
+    };
+    window.addEventListener("keydown", handleMeshSelectionActionShortcut);
+    return () => window.removeEventListener("keydown", handleMeshSelectionActionShortcut);
+  }, [datasetKind, handleSelectSurfaceMeshEdgeSet, mode, surfaceMeshTopologyPickMode, surfaceViewerKind]);
 
   const handleApplySurfaceMeshTopologySelectedPreview = useCallback(() => {
     if (surfaceMeshTopologyPreviewOperation === "Face Subdivide") {
@@ -46710,6 +46787,44 @@ case "mobius":
     () => selectionResultFromUnifiedSelection(filteredMeshUnifiedSelection),
     [filteredMeshUnifiedSelection]
   );
+  const meshHoverUnifiedSelection = useMemo(() => {
+    if (!surfaceMeshTopologyHoverPick || surfaceMeshTopologyPickMode === "object") return null;
+    return unifiedSelectionFromMeshTopology(
+      {
+        mode: surfaceMeshTopologyPickMode,
+        objectId: `mesh:${surfaceMeshLabel}`,
+        objectLabel: surfaceMeshLabel,
+        meshKey: `mesh:${surfaceMeshLabel}`,
+        mesh: surfaceMeshData,
+        faceIndex: surfaceMeshTopologyHoverPick.faceIndex,
+        edgeVertices: [surfaceMeshTopologyHoverPick.edgeA, surfaceMeshTopologyHoverPick.edgeB],
+        vertexIndex: surfaceMeshTopologyHoverPick.vertexIndex,
+        worldPosition: surfaceMeshHoverPick
+          ? [surfaceMeshHoverPick.point.x, surfaceMeshHoverPick.point.y, surfaceMeshHoverPick.point.z]
+          : null,
+        normal: surfaceMeshHoverPick
+          ? [surfaceMeshHoverPick.normal.x, surfaceMeshHoverPick.normal.y, surfaceMeshHoverPick.normal.z]
+          : null,
+        valid: true,
+        selectionCleared: false,
+      },
+      "hover"
+    );
+  }, [
+    surfaceMeshData,
+    surfaceMeshHoverPick,
+    surfaceMeshLabel,
+    surfaceMeshTopologyHoverPick,
+    surfaceMeshTopologyPickMode,
+  ]);
+  const meshHoverSelectionFilterResult = useMemo(
+    () => evaluateUnifiedSelectionFilter(meshHoverUnifiedSelection, unifiedSelectionFilter),
+    [meshHoverUnifiedSelection, unifiedSelectionFilter]
+  );
+  const meshHoverSelectionResult = useMemo(
+    () => selectionResultFromUnifiedSelection(meshHoverSelectionFilterResult.accepted ? meshHoverUnifiedSelection : null),
+    [meshHoverSelectionFilterResult.accepted, meshHoverUnifiedSelection]
+  );
   const meshOperationNodeParameterEditing = useMemo(
     () => Object.values(meshOperationNodeParameterDrafts).some((draft) => Object.keys(draft).length > 0),
     [meshOperationNodeParameterDrafts]
@@ -46729,8 +46844,14 @@ case "mobius":
     [meshSelectionResult, surfaceMeshTopologyPickMode]
   );
   const meshSelectionManager = useMemo(
-    () => createUnifiedSelectionManagerState([meshSelectionResult, meshEditingSelectionResult, meshPreviewSelectionResult]),
-    [meshEditingSelectionResult, meshPreviewSelectionResult, meshSelectionResult]
+    () =>
+      createUnifiedSelectionManagerState([
+        meshSelectionResult,
+        meshHoverSelectionResult,
+        meshEditingSelectionResult,
+        meshPreviewSelectionResult,
+      ]),
+    [meshEditingSelectionResult, meshHoverSelectionResult, meshPreviewSelectionResult, meshSelectionResult]
   );
   const meshSelectionHighlightOverlays = useMemo(
     () => buildSelectionManagerHighlightOverlays(meshSelectionManager, () => surfaceMeshTopologyViewerMesh),
@@ -47041,7 +47162,7 @@ case "mobius":
     },
     [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshTopologyHistory]
   );
-  const handleSaveSurfaceMeshTopologyEditedPreset = useCallback(() => {
+  const saveSurfaceMeshTopologyEditedPreset = useCallback((openGeometry = false) => {
     if (!surfaceMeshData?.positions?.length) {
       setSurfaceMeshTopologyStatus("No Mesh result to save yet.");
       return;
@@ -47050,10 +47171,7 @@ case "mobius":
     const fallbackName = latest
       ? `${surfaceMeshData.label ?? "Mesh"} - ${latest.actionLabel}`
       : `${surfaceMeshData.label ?? "Mesh"} edited`;
-    const providedName = surfaceMeshTopologySaveName.trim();
-    const promptedName = providedName ? providedName : window.prompt("Saved mesh example name", fallbackName);
-    const name = promptedName?.trim();
-    if (!name?.trim()) return;
+    const name = surfaceMeshTopologySaveName.trim() || fallbackName;
     const history = surfaceMeshTopologyHistory
       .slice(0, SURFACE_MESH_TOPOLOGY_PERSIST_HISTORY_LIMIT)
       .map(serializeSurfaceMeshTopologyHistoryEntry);
@@ -47069,8 +47187,15 @@ case "mobius":
     };
     setSurfaceMeshTopologySavedPresets((prev) => [preset, ...prev].slice(0, SURFACE_MESH_TOPOLOGY_SAVED_PRESET_LIMIT));
     setSurfaceMeshTopologySaveName("");
-    setSurfaceMeshTopologyStatus(`Saved edited Mesh example: ${preset.name}.`);
+    setSurfaceMeshTopologyStatus(
+      openGeometry
+        ? `Saved edited Mesh example: ${preset.name}. Opening Geometry.`
+        : `Saved edited Mesh example: ${preset.name}.`
+    );
     appendMeshPromotionOperation(`saved edited mesh example (${preset.name})`);
+    if (openGeometry) {
+      handleDatasetToGeometryScene();
+    }
   }, [
     appendMeshPromotionOperation,
     surfaceMeshData,
@@ -47078,6 +47203,12 @@ case "mobius":
     surfaceMeshTopologyHistory,
     surfaceMeshTopologySaveName,
   ]);
+  const handleSaveSurfaceMeshTopologyEditedPreset = useCallback(() => {
+    saveSurfaceMeshTopologyEditedPreset(false);
+  }, [saveSurfaceMeshTopologyEditedPreset]);
+  const handleSaveAndOpenGeometrySurfaceMeshTopologyEditedPreset = useCallback(() => {
+    saveSurfaceMeshTopologyEditedPreset(true);
+  }, [saveSurfaceMeshTopologyEditedPreset]);
 
   const handleApplySurfaceMeshTopologySavedPreset = useCallback(
     (presetId: string) => {
@@ -61624,11 +61755,11 @@ case "mobius":
                             </button>
                             <button
                               type="button"
-                              onClick={handleSaveSurfaceMeshTopologyEditedPreset}
+                              onClick={handleSaveAndOpenGeometrySurfaceMeshTopologyEditedPreset}
                               disabled={!surfaceMeshData?.positions?.length || !surfaceMeshTopologyHistory.length}
                               style={{ padding: "2px 7px", fontSize: 10 }}
                             >
-                              Save edited
+                              Save + Open Geometry
                             </button>
                             <span style={{ fontSize: 10, color: "#475467" }}>{surfaceMeshTopologyHistory.length} steps</span>
                           </span>
@@ -63257,8 +63388,10 @@ case "mobius":
                         selectionMask={selectionMask}
                         selectRegionEnabled={selectRegionEnabled}
                         onSelectionPick={handleSurfaceSelectionPick}
-                        inspectEnabled={inspectEnabled}
+                        inspectEnabled={inspectEnabled || (surfaceViewerKind === "mesh" && probeEnabled)}
                         onInspectPick={handleInspectPick}
+                        onInspectHover={surfaceViewerKind === "mesh" ? handleSurfaceMeshInspectHover : undefined}
+                        onInspectHoverMiss={surfaceViewerKind === "mesh" ? handleSurfaceMeshInspectHoverMiss : undefined}
                         inspectPoint={inspectPos}
                         selectionOverlayVisible={selectionOverlayVisible}
                         selectionOverlayOnTop={selectionOverlayOnTop}
@@ -68803,73 +68936,117 @@ case "mobius":
                         >
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
                             <div style={{ fontWeight: 700, color: "#0f172a" }}>Construction history</div>
-                            <span style={{ color: "#64748b" }}>{geometryConstructionHistory.length} step(s)</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                              <span style={{ color: "#64748b" }}>{geometryConstructionHistory.length} step(s)</span>
+                              <button
+                                type="button"
+                                onClick={() => openGeometryConstructionHistoryPanel()}
+                                style={{ fontSize: 10, padding: "2px 7px" }}
+                              >
+                                Open full history
+                              </button>
+                            </div>
                           </div>
                           {geometryConstructionHistory.length ? (
                             <div style={{ display: "grid", gap: 6 }}>
                               {geometryConstructionHistory.slice(0, 5).map((entry, index) => (
-                                <button
+                                <div
                                   key={`geometry-construction-history-${entry.id}`}
-                                  type="button"
-                                  onClick={() => {
-                                    if (entry.resultId) {
-                                      setGeometrySelectedDerivedConstructionId(entry.resultId);
-                                      setGeometrySelectedMathConstructionId(null);
-                                    }
-                                  }}
-                                  disabled={!entry.resultId}
                                   style={{
                                     border: "1px solid #dbe2ea",
                                     borderRadius: 7,
                                     background: entry.resultId ? "#f8fbff" : "#f8fafc",
                                     padding: "6px 7px",
-                                    textAlign: "left",
                                     display: "grid",
-                                    gap: 3,
-                                    cursor: entry.resultId ? "pointer" : "default",
+                                    gap: 5,
                                   }}
-                                  title={entry.steps.join(" -> ")}
                                 >
-                                  <strong>{index + 1}. {entry.planeSummary ? "Plane" : entry.action}</strong>
-                                  {entry.planeSummary ? (
-                                    <span
-                                      data-testid={`geometry-construction-history-plane-summary-${entry.id}`}
-                                      style={{
-                                        display: "grid",
-                                        gap: 3,
-                                        color: "#334155",
-                                      }}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (entry.resultId) {
+                                        setGeometrySelectedDerivedConstructionId(entry.resultId);
+                                        setGeometrySelectedMathConstructionId(null);
+                                      }
+                                    }}
+                                    disabled={!entry.resultId}
+                                    style={{
+                                      border: "0",
+                                      background: "transparent",
+                                      padding: 0,
+                                      textAlign: "left",
+                                      display: "grid",
+                                      gap: 3,
+                                      cursor: entry.resultId ? "pointer" : "default",
+                                    }}
+                                    title={entry.steps.join(" -> ")}
+                                  >
+                                    <strong>{index + 1}. {entry.planeSummary ? "Plane" : entry.action}</strong>
+                                    {entry.planeSummary ? (
+                                      <span
+                                        data-testid={`geometry-construction-history-plane-summary-${entry.id}`}
+                                        style={{
+                                          display: "grid",
+                                          gap: 3,
+                                          color: "#334155",
+                                        }}
+                                      >
+                                        <span style={{ display: "grid", gridTemplateColumns: "52px 1fr", gap: 6 }}>
+                                          <span style={{ color: "#64748b", fontWeight: 700 }}>Method</span>
+                                          <span data-testid={`geometry-construction-history-plane-method-${entry.id}`} style={{ fontWeight: 800 }}>
+                                            {entry.planeSummary.method}
+                                          </span>
+                                        </span>
+                                        <span style={{ display: "grid", gridTemplateColumns: "52px 1fr", gap: 6 }}>
+                                          <span style={{ color: "#64748b", fontWeight: 700 }}>Inputs</span>
+                                          <span style={{ display: "grid", gap: 2 }}>
+                                            {entry.planeSummary.inputs.map((input, inputIndex) => (
+                                              <span key={`geometry-history-plane-input-${entry.id}-${inputIndex}`} data-testid={`geometry-construction-history-plane-input-${entry.id}-${inputIndex}`}>
+                                                {input}
+                                              </span>
+                                            ))}
+                                          </span>
+                                        </span>
+                                        <span style={{ display: "grid", gridTemplateColumns: "52px 1fr", gap: 6 }}>
+                                          <span style={{ color: "#64748b", fontWeight: 700 }}>Result</span>
+                                          <span data-testid={`geometry-construction-history-plane-result-${entry.id}`} style={{ color: "#0f766e", fontWeight: 800 }}>
+                                            {entry.planeSummary.result}
+                                          </span>
+                                        </span>
+                                      </span>
+                                    ) : (
+                                      <>
+                                        <span style={{ color: "#334155" }}>{entry.steps.join(" -> ")}</span>
+                                        <span style={{ color: "#64748b" }}>Source: {entry.source}</span>
+                                      </>
+                                    )}
+                                  </button>
+                                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => openGeometryConstructionHistoryPanel(entry)}
+                                      style={{ fontSize: 10, padding: "2px 7px" }}
                                     >
-                                      <span style={{ display: "grid", gridTemplateColumns: "52px 1fr", gap: 6 }}>
-                                        <span style={{ color: "#64748b", fontWeight: 700 }}>Method</span>
-                                        <span data-testid={`geometry-construction-history-plane-method-${entry.id}`} style={{ fontWeight: 800 }}>
-                                          {entry.planeSummary.method}
-                                        </span>
-                                      </span>
-                                      <span style={{ display: "grid", gridTemplateColumns: "52px 1fr", gap: 6 }}>
-                                        <span style={{ color: "#64748b", fontWeight: 700 }}>Inputs</span>
-                                        <span style={{ display: "grid", gap: 2 }}>
-                                          {entry.planeSummary.inputs.map((input, inputIndex) => (
-                                            <span key={`geometry-history-plane-input-${entry.id}-${inputIndex}`} data-testid={`geometry-construction-history-plane-input-${entry.id}-${inputIndex}`}>
-                                              {input}
-                                            </span>
-                                          ))}
-                                        </span>
-                                      </span>
-                                      <span style={{ display: "grid", gridTemplateColumns: "52px 1fr", gap: 6 }}>
-                                        <span style={{ color: "#64748b", fontWeight: 700 }}>Result</span>
-                                        <span data-testid={`geometry-construction-history-plane-result-${entry.id}`} style={{ color: "#0f766e", fontWeight: 800 }}>
-                                          {entry.planeSummary.result}
-                                        </span>
-                                      </span>
-                                    </span>
-                                  ) : (
-                                    <>
-                                      <span style={{ color: "#334155" }}>{entry.steps.join(" -> ")}</span>
-                                      <span style={{ color: "#64748b" }}>Source: {entry.source}</span>
-                                    </>
-                                  )}
-                                </button>
+                                      Open full history
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => restoreGeometryConstructionHistorySnapshot(entry, "before")}
+                                      disabled={!entry.beforeDerivedConstructions}
+                                      style={{ fontSize: 10, padding: "2px 7px" }}
+                                    >
+                                      Restore Before
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => restoreGeometryConstructionHistorySnapshot(entry, "after")}
+                                      disabled={!entry.afterDerivedConstructions}
+                                      style={{ fontSize: 10, padding: "2px 7px" }}
+                                    >
+                                      Restore After
+                                    </button>
+                                  </div>
+                                </div>
                               ))}
                             </div>
                           ) : (

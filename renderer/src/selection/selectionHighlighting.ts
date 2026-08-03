@@ -3,7 +3,7 @@ import type {
   OverlayPointSet,
   OverlayPolylineGroup,
 } from "../components/SurfaceViewer";
-import { buildMeshEdgeTopology, meshEdgeKey, selectMeshEdgesByTool } from "../mesh/edgeSelection";
+import { buildMeshEdgeTopology, meshEdgeKey } from "../mesh/edgeSelection";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 import type { SelectionResult, UnifiedSelectionManagerState } from "./unifiedSelection";
 
@@ -204,22 +204,6 @@ export function buildSelectionHighlightOverlays(
         0.018
       );
       if (connectedFaces) meshGroups.push(connectedFaces);
-      for (const tool of ["loop", "ring"] as const) {
-        try {
-          const candidate = selectMeshEdgesByTool(mesh, pair[0], pair[1], tool);
-          const lines = edgeLinesFromPairs(mesh, candidate.edges.filter(([a, b]) => meshEdgeKey(a, b) !== meshEdgeKey(pair[0], pair[1])));
-          if (lines.length) {
-            polylineGroups.push({
-              lines,
-              color: tool === "loop" ? SELECTION_HIGHLIGHT_COLORS.adjacent : SELECTION_HIGHLIGHT_COLORS.preview,
-              opacity: tool === "loop" ? 0.46 : 0.36,
-              radiusWorld: tool === "loop" ? 0.009 : 0.007,
-            });
-          }
-        } catch {
-          // Some geometry picks resolve to visual helper edges that are not part of the mesh topology.
-        }
-      }
     }
   } else if (selection.entityType === "vertex") {
     const vertexIndex = selectedVertexId(selection);
