@@ -107,6 +107,7 @@ import {
   evaluateUnifiedSelectionFilter,
   selectionResultFromGeometryPick,
   selectionResultFromUnifiedSelection,
+  selectionResultWithState,
   unifiedSelectionFromGeometryPick,
   unifiedSelectionFromMeshTopology,
   type UnifiedSelectionFilter,
@@ -15609,9 +15610,38 @@ const App: React.FC = () => {
     () => selectionResultFromGeometryPick(geometryHoverPick, "hover"),
     [geometryHoverPick]
   );
+  const geometryOperationNodeParameterEditing = useMemo(
+    () => Object.values(geometryOperationNodeParameterDrafts).some((draft) => Object.keys(draft).length > 0),
+    [geometryOperationNodeParameterDrafts]
+  );
+  const geometryEditingSelectionResult = useMemo(
+    () =>
+      geometrySelectedSelectionResult && (geometryProbeSelectionMode !== "object" || geometryOperationNodeParameterEditing)
+        ? selectionResultWithState(geometrySelectedSelectionResult, "editing")
+        : null,
+    [geometryOperationNodeParameterEditing, geometryProbeSelectionMode, geometrySelectedSelectionResult]
+  );
+  const geometryPreviewSelectionResult = useMemo(
+    () =>
+      geometrySelectedSelectionResult && geometryProbeSelectionMode !== "object"
+        ? selectionResultWithState(geometrySelectedSelectionResult, "preview")
+        : null,
+    [geometryProbeSelectionMode, geometrySelectedSelectionResult]
+  );
   const geometrySelectionManager = useMemo(
-    () => createUnifiedSelectionManagerState([geometrySelectedSelectionResult, geometryHoverSelectionResult]),
-    [geometryHoverSelectionResult, geometrySelectedSelectionResult]
+    () =>
+      createUnifiedSelectionManagerState([
+        geometrySelectedSelectionResult,
+        geometryHoverSelectionResult,
+        geometryEditingSelectionResult,
+        geometryPreviewSelectionResult,
+      ]),
+    [
+      geometryEditingSelectionResult,
+      geometryHoverSelectionResult,
+      geometryPreviewSelectionResult,
+      geometrySelectedSelectionResult,
+    ]
   );
   const geometryActiveEditedObjectBreadcrumb = useMemo(() => {
     if (!geometrySelectedSceneObject) return null;
@@ -35472,21 +35502,28 @@ const App: React.FC = () => {
       const nextMode = shortcutModes[index];
       if (!nextMode) return;
 
-      if (mode === "geometry" && geometryMode === "procedural") {
-        event.preventDefault();
-        setGeometryProbeSelectionMode(nextMode);
-        setGeometryProceduralHoverPick(null);
+      const geometryShortcutActive = mode === "geometry" && geometryMode === "procedural";
+      const meshShortcutActive = mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "mesh";
+      if (!geometryShortcutActive && !meshShortcutActive) return;
+
+      event.preventDefault();
+      const nextLabel =
+        nextMode === "object" ? "Object" : nextMode === "face" ? "Face" : nextMode === "edge" ? "Edge" : "Vertex";
+      setGeometryProbeSelectionMode(nextMode);
+      setSurfaceMeshTopologyPickMode(nextMode);
+      setGeometryCreateActionStatus(`Selection: ${nextLabel}`);
+      setSurfaceMeshTopologyStatus(`Selection: ${nextLabel}`);
+      setGeometryProceduralHoverPick(null);
+
+      if (geometryShortcutActive) {
         setGeometryRightPanelTab("selection");
         if (nextMode === "face") setGeometryActiveOperationInputSlotId("source-face");
         if (nextMode === "edge") setGeometryActiveOperationInputSlotId("active-edge");
         if (nextMode === "vertex") setGeometryActiveOperationInputSlotId("active-vertex");
-        return;
       }
 
-      if (mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "mesh") {
-        event.preventDefault();
-        setSurfaceMeshTopologyPickMode(nextMode);
-        if (nextMode !== "object" && !probeEnabled) setProbeEnabled(true);
+      if (meshShortcutActive && nextMode !== "object" && !probeEnabled) {
+        setProbeEnabled(true);
       }
     };
     window.addEventListener("keydown", handleSelectionModeShortcut);
@@ -46511,9 +46548,27 @@ case "mobius":
     () => selectionResultFromUnifiedSelection(filteredMeshUnifiedSelection),
     [filteredMeshUnifiedSelection]
   );
+  const meshOperationNodeParameterEditing = useMemo(
+    () => Object.values(meshOperationNodeParameterDrafts).some((draft) => Object.keys(draft).length > 0),
+    [meshOperationNodeParameterDrafts]
+  );
+  const meshEditingSelectionResult = useMemo(
+    () =>
+      meshSelectionResult && (surfaceMeshTopologyPickMode !== "object" || meshOperationNodeParameterEditing)
+        ? selectionResultWithState(meshSelectionResult, "editing")
+        : null,
+    [meshOperationNodeParameterEditing, meshSelectionResult, surfaceMeshTopologyPickMode]
+  );
+  const meshPreviewSelectionResult = useMemo(
+    () =>
+      meshSelectionResult && surfaceMeshTopologyPickMode !== "object"
+        ? selectionResultWithState(meshSelectionResult, "preview")
+        : null,
+    [meshSelectionResult, surfaceMeshTopologyPickMode]
+  );
   const meshSelectionManager = useMemo(
-    () => createUnifiedSelectionManagerState([meshSelectionResult]),
-    [meshSelectionResult]
+    () => createUnifiedSelectionManagerState([meshSelectionResult, meshEditingSelectionResult, meshPreviewSelectionResult]),
+    [meshEditingSelectionResult, meshPreviewSelectionResult, meshSelectionResult]
   );
   const meshUnifiedSelectionFilterStatus =
     meshUnifiedSelection && !meshUnifiedSelectionFilterResult.accepted

@@ -479,6 +479,30 @@ export function createUnifiedSelectionManagerState(
   };
 }
 
+export function selectionResultWithState(
+  selection: SelectionResult | UnifiedSelection | null | undefined,
+  state: UnifiedSelectionLifecycle
+): SelectionResult | null {
+  if (!selection) return null;
+  return {
+    workspace: selection.workspace,
+    objectId: selection.objectId,
+    objectLabel: selection.objectLabel,
+    objectType: selection.objectType ?? null,
+    entityType: selection.entityType,
+    entityId: selection.entityId,
+    point: selection.point,
+    normal: selection.normal,
+    adjacency: selection.adjacency,
+    topologyFlags: selection.topologyFlags,
+    state,
+    meshKey: selection.meshKey ?? null,
+    topologyVersion: selection.topologyVersion ?? null,
+    stale: selection.stale,
+    label: selection.label,
+  };
+}
+
 const findSelectionByKey = (
   items: readonly UnifiedSelection[],
   keys: readonly UnifiedSelectionKey[],

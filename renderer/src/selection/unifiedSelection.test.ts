@@ -12,6 +12,7 @@ import {
   getUnifiedSelectionKey,
   selectionResultFromGeometryPick,
   selectionResultFromMeshTopology,
+  selectionResultWithState,
   unifiedSelectionFromGeometryPick,
   unifiedSelectionFromMeshTopology,
   updateUnifiedSelectionSet,
@@ -239,11 +240,15 @@ describe("unifiedSelection", () => {
       valid: true,
     });
 
-    const manager = createUnifiedSelectionManagerState([geometryHover, meshSelected]);
+    const meshEditing = selectionResultWithState(meshSelected, "editing");
+    const geometryPreview = selectionResultWithState(geometryHover, "preview");
+    const manager = createUnifiedSelectionManagerState([geometryHover, meshSelected, meshEditing, geometryPreview]);
 
     expect(manager.hover?.entityId).toBe("face:0");
     expect(manager.selected?.entityId).toBe("edge:0-2");
-    expect(manager.active?.entityId).toBe("edge:0-2");
+    expect(manager.editing?.entityId).toBe("edge:0-2");
+    expect(manager.preview?.entityId).toBe("face:0");
+    expect(manager.active?.state).toBe("editing");
     expect(manager.byEntityId["face:0"]?.workspace).toBe("geometry");
     expect(manager.byEntityId["edge:0-2"]?.workspace).toBe("mesh");
     expect(manager.label).toBe("Square mesh edge [0-2]");
