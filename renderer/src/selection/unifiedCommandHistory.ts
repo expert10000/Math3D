@@ -30,6 +30,29 @@ export type UnifiedCommandHistoryRow = {
   readonly value: string;
 };
 
+export type UnifiedCommandParameterValue = string | number | boolean;
+
+export type UnifiedCommandParameterEdit = {
+  readonly key: string;
+  readonly label: string;
+  readonly value: UnifiedCommandParameterValue;
+  readonly valueType: "number" | "boolean" | "string";
+  readonly sourceValue: string;
+  readonly restoreValue?: UnifiedCommandParameterValue | null;
+  readonly editable: boolean;
+};
+
+export type UnifiedOperationTreeNode = {
+  readonly id: string;
+  readonly command: UnifiedCommandHistoryEntry;
+  readonly rows: UnifiedCommandHistoryRow[];
+  readonly parameterEdits: UnifiedCommandParameterEdit[];
+  readonly canRestoreParameters: boolean;
+  readonly canEditParameters: boolean;
+  readonly topologyChanged: boolean;
+  readonly children: UnifiedOperationTreeNode[];
+};
+
 export type MeshTopologyCommandHistorySource = {
   readonly id: string;
   readonly at: number;
@@ -112,6 +135,112 @@ export function buildUnifiedCommandHistoryRows(entry: UnifiedCommandHistoryEntry
     rows.push({ label: "Params", value: entry.parametersLabel });
   }
   return rows;
+}
+
+const splitUnifiedCommandParameterParts = (parametersLabel: string): string[] => {
+  const parts: string[] = [];
+  let start = 0;
+  let depth = 0;
+  for (let i = 0; i < parametersLabel.length; i += 1) {
+    const ch = parametersLabel[i];
+    if (ch === "(" || ch === "[" || ch === "{") depth += 1;
+    if (ch === ")" || ch === "]" || ch === "}") depth = Math.max(0, depth - 1);
+    if (depth > 0) continue;
+    const rest = parametersLabel.slice(i);
+    const separatorLength =
+      rest.startsWith(" | ") || rest.startsWith(" · ")
+        ? 3
+        : ch === "," && /^\s+[A-Za-z][\w.-]*\s*(=|:)/.test(parametersLabel.slice(i + 1))
+          ? 1
+          : 0;
+    if (!separatorLength) continue;
+    const part = parametersLabel.slice(start, i).trim();
+    if (part) parts.push(part);
+    start = i + separatorLength;
+    i = start - 1;
+  }
+  const finalPart = parametersLabel.slice(start).trim();
+  if (finalPart) parts.push(finalPart);
+  return parts;
+};
+
+const parseUnifiedCommandParameterValue = (rawValue: string): UnifiedCommandParameterValue => {
+  const withoutAnnotation = rawValue.trim().replace(/\s+\([^)]*\)\s*$/, "").trim();
+  if (/^(true|false)$/i.test(withoutAnnotation)) return /^true$/i.test(withoutAnnotation);
+  if (/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(withoutAnnotation)) {
+    const numeric = Number(withoutAnnotation);
+    if (Number.isFinite(numeric)) return numeric;
+  }
+  return withoutAnnotation;
+};
+
+const classifyUnifiedCommandParameterValue = (
+  value: UnifiedCommandParameterValue
+): UnifiedCommandParameterEdit["valueType"] => {
+  if (typeof value === "number") return "number";
+  if (typeof value === "boolean") return "boolean";
+  return "string";
+};
+
+export function parseUnifiedCommandParameterLabel(
+  parametersLabel: string | null | undefined
+): UnifiedCommandParameterEdit[] {
+  if (!parametersLabel?.trim()) return [];
+  return splitUnifiedCommandParameterParts(parametersLabel)
+    .map((part): UnifiedCommandParameterEdit | null => {
+      const changedMatch = part.match(/^([A-Za-z][\w.-]*)\s*:\s*(.*?)\s*->\s*(.+)$/);
+      if (changedMatch) {
+        const [, key, beforeRaw, afterRaw] = changedMatch;
+        const value = parseUnifiedCommandParameterValue(afterRaw);
+        return {
+          key,
+          label: key,
+          value,
+          valueType: classifyUnifiedCommandParameterValue(value),
+          sourceValue: afterRaw.trim(),
+          restoreValue: parseUnifiedCommandParameterValue(beforeRaw),
+          editable: true,
+        };
+      }
+
+      const valueMatch = part.match(/^([A-Za-z][\w.-]*)\s*=\s*(.+)$/);
+      if (valueMatch) {
+        const [, key, raw] = valueMatch;
+        const value = parseUnifiedCommandParameterValue(raw);
+        return {
+          key,
+          label: key,
+          value,
+          valueType: classifyUnifiedCommandParameterValue(value),
+          sourceValue: raw.trim(),
+          restoreValue: value,
+          editable: true,
+        };
+      }
+      return null;
+    })
+    .filter((entry): entry is UnifiedCommandParameterEdit => !!entry);
+}
+
+export function buildUnifiedOperationTreeNode(entry: UnifiedCommandHistoryEntry): UnifiedOperationTreeNode {
+  const rows = buildUnifiedCommandHistoryRows(entry);
+  const parameterEdits = parseUnifiedCommandParameterLabel(entry.parametersLabel);
+  return {
+    id: entry.id,
+    command: entry,
+    rows,
+    parameterEdits,
+    canRestoreParameters: parameterEdits.length > 0,
+    canEditParameters: parameterEdits.some((param) => param.editable),
+    topologyChanged: !!entry.beforeCounts && !!entry.afterCounts,
+    children: [],
+  };
+}
+
+export function buildUnifiedOperationTreeNodes(
+  entries: readonly UnifiedCommandHistoryEntry[]
+): UnifiedOperationTreeNode[] {
+  return entries.map(buildUnifiedOperationTreeNode);
 }
 
 const compactActionLabel = (actionLabel: string): string =>

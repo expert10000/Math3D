@@ -3,8 +3,10 @@ import {
   buildGeometryConstructionCommandHistoryEntry,
   buildGeometryObjectCommandHistoryEntry,
   buildMeshTopologyCommandHistoryEntry,
+  buildUnifiedOperationTreeNode,
   buildUnifiedCommandHistoryRows,
   formatUnifiedCommandCounts,
+  parseUnifiedCommandParameterLabel,
 } from "./unifiedCommandHistory";
 
 describe("unifiedCommandHistory", () => {
@@ -130,5 +132,61 @@ describe("unifiedCommandHistory", () => {
 
     expect(meshRows.map((row) => row.label)).toEqual(["Source", "Action", "Before", "After", "Result", "Params"]);
     expect(geometryRows.map((row) => row.label)).toEqual(["Source", "Action", "Before", "After", "Result", "Params"]);
+  });
+
+  it("parses command parameters into editable values", () => {
+    expect(parseUnifiedCommandParameterLabel("ratio=0.5000 (50%), visible=true")).toEqual([
+      {
+        key: "ratio",
+        label: "ratio",
+        value: 0.5,
+        valueType: "number",
+        sourceValue: "0.5000 (50%)",
+        restoreValue: 0.5,
+        editable: true,
+      },
+      {
+        key: "visible",
+        label: "visible",
+        value: true,
+        valueType: "boolean",
+        sourceValue: "true",
+        restoreValue: true,
+        editable: true,
+      },
+    ]);
+
+    expect(parseUnifiedCommandParameterLabel("radius: 1 -> 2.5")).toMatchObject([
+      {
+        key: "radius",
+        value: 2.5,
+        restoreValue: 1,
+        valueType: "number",
+      },
+    ]);
+  });
+
+  it("builds editable operation-tree metadata from commands", () => {
+    const node = buildUnifiedOperationTreeNode(
+      buildMeshTopologyCommandHistoryEntry({
+        id: "m3",
+        at: 600,
+        actionLabel: "Bevel edge",
+        sourceLabel: "Box",
+        targetLabel: "Edge 1-2",
+        paramsLabel: "amount=0.0600",
+        resultLabel: "Edge 1-2 -> bevel band (+2V, +2F)",
+        beforeCounts: { vertexCount: 8, faceCount: 12 },
+        afterCounts: { vertexCount: 10, faceCount: 14 },
+      })
+    );
+
+    expect(node).toMatchObject({
+      id: "mesh:m3",
+      canRestoreParameters: true,
+      canEditParameters: true,
+      topologyChanged: true,
+    });
+    expect(node.parameterEdits.map((entry) => [entry.key, entry.value])).toEqual([["amount", 0.06]]);
   });
 });

@@ -95,7 +95,11 @@ import {
   buildGeometryConstructionCommandHistoryEntry,
   buildGeometryObjectCommandHistoryEntry,
   buildMeshTopologyCommandHistoryEntry,
+  buildUnifiedOperationTreeNode,
   type UnifiedCommandHistoryEntry,
+  type UnifiedCommandParameterEdit,
+  type UnifiedCommandParameterValue,
+  type UnifiedOperationTreeNode,
 } from "./selection/unifiedCommandHistory";
 import {
   describeUnifiedSelectionFilter,
@@ -5430,6 +5434,45 @@ type SurfaceMeshTopologyHistoryEntry = {
   selectedResultLabel: string;
   beforeSnapshot: SurfaceMeshData;
   snapshot: SurfaceMeshData;
+};
+type SurfaceMeshTopologyOperationTarget = {
+  faceIndex: number | null;
+  edge: [number, number] | null;
+};
+type OperationNodeParameterDrafts = Record<string, Record<string, string>>;
+const surfaceMeshTopologyOperationFromAction = (actionLabel: string): SurfaceMeshTopologyOperation | null => {
+  const normalized = actionLabel.trim().toLowerCase();
+  if (normalized.includes("subdivide")) return "Face Subdivide";
+  if (normalized.includes("split")) return "Split Edge";
+  if (normalized.includes("collapse")) return "Collapse Edge";
+  if (normalized.includes("bevel")) return "Bevel Edge";
+  return null;
+};
+const parseSurfaceMeshTopologyOperationTarget = (targetLabel: string): SurfaceMeshTopologyOperationTarget => {
+  const faceMatch = targetLabel.match(/\bface\s+(\d+)/i);
+  const edgeMatch = targetLabel.match(/\bedge\s+(\d+)\s*-\s*(\d+)/i);
+  return {
+    faceIndex: faceMatch ? Number(faceMatch[1]) : null,
+    edge: edgeMatch ? [Number(edgeMatch[1]), Number(edgeMatch[2])] : null,
+  };
+};
+const formatUnifiedCommandParameterDraftValue = (value: UnifiedCommandParameterValue): string =>
+  typeof value === "boolean" ? (value ? "true" : "false") : String(value);
+const resolveUnifiedCommandParameterDraftValue = (
+  node: UnifiedOperationTreeNode,
+  drafts: OperationNodeParameterDrafts,
+  parameter: UnifiedCommandParameterEdit
+): string => drafts[node.id]?.[parameter.key] ?? formatUnifiedCommandParameterDraftValue(parameter.value);
+const coerceUnifiedCommandParameterDraftValue = (
+  parameter: UnifiedCommandParameterEdit,
+  rawValue: string
+): UnifiedCommandParameterValue => {
+  if (parameter.valueType === "boolean") return rawValue === "true";
+  if (parameter.valueType === "number") {
+    const numeric = Number(rawValue);
+    return Number.isFinite(numeric) ? numeric : parameter.value;
+  }
+  return rawValue;
 };
 type MeshGeometryRoundTripSource = {
   objectId: string;
@@ -10910,6 +10953,8 @@ const App: React.FC = () => {
     const id = makeId();
     return [createGeometryObject("box", id)];
   });
+  const [geometryOperationNodeParameterDrafts, setGeometryOperationNodeParameterDrafts] =
+    useState<OperationNodeParameterDrafts>({});
   const [geometryDatasetMeshObjects, setGeometryDatasetMeshObjects] = useState<GeometryDatasetMeshObject[]>([]);
   const [geometryLockedObjectIds, setGeometryLockedObjectIds] = useState<Set<string>>(() => new Set());
   const [geometrySelectedObjectId, setGeometrySelectedObjectId] = useState<string | null>(() => {
@@ -13549,6 +13594,44 @@ const App: React.FC = () => {
       }));
     },
     [geometryObjectLiveRebuild, handleUpdateGeometryParam]
+  );
+  const applyGeometryOperationNodeParameters = useCallback(
+    (historyStep: GeometryObjectHistoryStep, useEditedDrafts: boolean) => {
+      if (geometryLockedObjectIds.has(historyStep.objectId)) {
+        setGeometryCreateActionStatus("Operation node blocked: object is locked.");
+        return;
+      }
+      const obj = geometryObjects.find((candidate) => candidate.id === historyStep.objectId) ?? null;
+      if (!obj) {
+        setGeometryCreateActionStatus("Operation node blocked: procedural object not found.");
+        return;
+      }
+      const node = buildUnifiedOperationTreeNode(buildGeometryObjectCommandHistoryEntry(historyStep));
+      const editableParams = node.parameterEdits.filter((parameter) => parameter.key in obj.params);
+      if (!editableParams.length) {
+        setGeometryCreateActionStatus("This operation node has no editable procedural parameters.");
+        return;
+      }
+      for (const parameter of editableParams) {
+        const raw = useEditedDrafts
+          ? resolveUnifiedCommandParameterDraftValue(node, geometryOperationNodeParameterDrafts, parameter)
+          : formatUnifiedCommandParameterDraftValue(parameter.value);
+        const value = coerceUnifiedCommandParameterDraftValue(parameter, raw);
+        handleUpdateGeometryObjectParam(historyStep.objectId, parameter.key, value);
+      }
+      setGeometrySelectedObjectId(historyStep.objectId);
+      setGeometrySelectedHistoryStepId(historyStep.id);
+      setGeometryProceduralPanelTab("history");
+      setGeometryCreateActionStatus(
+        `${useEditedDrafts ? "Applied edited" : "Restored"} params from ${historyStep.label}.`
+      );
+    },
+    [
+      geometryLockedObjectIds,
+      geometryObjects,
+      geometryOperationNodeParameterDrafts,
+      handleUpdateGeometryObjectParam,
+    ]
   );
   const handleRebuildGeometryObject = useCallback(
     (id: string) => {
@@ -30441,6 +30524,8 @@ const App: React.FC = () => {
   const [surfaceMeshTopologyHistory, setSurfaceMeshTopologyHistory] = useState<SurfaceMeshTopologyHistoryEntry[]>(
     initialSurfaceMeshTopologySession?.history ?? []
   );
+  const [meshOperationNodeParameterDrafts, setMeshOperationNodeParameterDrafts] =
+    useState<OperationNodeParameterDrafts>({});
   const [meshGeometryRoundTripSource, setMeshGeometryRoundTripSource] = useState<MeshGeometryRoundTripSource | null>(null);
   const [selectedSurfaceMeshTopologyHistoryId, setSelectedSurfaceMeshTopologyHistoryId] = useState<string | null>(
     initialSurfaceMeshTopologySession?.selectedHistoryId ?? null
@@ -30527,6 +30612,7 @@ const App: React.FC = () => {
     setSurfaceMeshTopologyStatus(null);
     setSurfaceMeshTopologyFeedback(null);
     setSurfaceMeshTopologySaveName("");
+    setMeshOperationNodeParameterDrafts({});
   }, []);
   const surfaceMeshTopologyAutoPickStampRef = useRef(0);
   const [vtkBusy, setVtkBusy] = useState(false);
@@ -45785,6 +45871,179 @@ case "mobius":
     surfaceMeshTopologyFieldValidation.edgeLabel,
     surfaceMeshTopologyFieldValidation.edgeValid,
   ]);
+
+  const restoreSurfaceMeshTopologyOperationNodeParameters = useCallback(
+    (entryId: string, useEditedDrafts = false) => {
+      const entry = surfaceMeshTopologyHistory.find((candidate) => candidate.id === entryId);
+      if (!entry) {
+        setSurfaceMeshTopologyStatus("Operation node not found.");
+        return false;
+      }
+      const operation = surfaceMeshTopologyOperationFromAction(entry.actionLabel);
+      const target = parseSurfaceMeshTopologyOperationTarget(entry.targetLabel);
+      const node = buildUnifiedOperationTreeNode(buildMeshTopologyCommandHistoryEntry(entry));
+      const readValue = (key: string) => {
+        const parameter = node.parameterEdits.find((candidate) => candidate.key === key);
+        if (!parameter) return null;
+        if (!useEditedDrafts) return parameter.value;
+        return coerceUnifiedCommandParameterDraftValue(
+          parameter,
+          resolveUnifiedCommandParameterDraftValue(node, meshOperationNodeParameterDrafts, parameter)
+        );
+      };
+
+      if (operation === "Face Subdivide") {
+        if (target.faceIndex != null) setSurfaceMeshTopologyFaceIndex(target.faceIndex);
+        const mode = readValue("mode");
+        if (mode === "center-fan" || mode === "four-triangles") setSurfaceMeshTopologySubdivideMode(mode);
+        setSurfaceMeshTopologyPickMode("face");
+      } else if (operation === "Split Edge") {
+        if (target.edge) {
+          setSurfaceMeshTopologyEdgeA(target.edge[0]);
+          setSurfaceMeshTopologyEdgeB(target.edge[1]);
+        }
+        const ratio = readValue("ratio");
+        if (typeof ratio === "number") setSurfaceMeshTopologySplitRatio(clampNumber(ratio, 0.01, 0.99));
+        setSurfaceMeshTopologyPickMode("edge");
+      } else if (operation === "Collapse Edge") {
+        if (target.edge) {
+          setSurfaceMeshTopologyEdgeA(target.edge[0]);
+          setSurfaceMeshTopologyEdgeB(target.edge[1]);
+        }
+        const mode = readValue("mode");
+        if (mode === "midpoint" || mode === "keep-a" || mode === "keep-b") setSurfaceMeshTopologyCollapseMode(mode);
+        setSurfaceMeshTopologyPickMode("edge");
+      } else if (operation === "Bevel Edge") {
+        if (target.edge) {
+          setSurfaceMeshTopologyEdgeA(target.edge[0]);
+          setSurfaceMeshTopologyEdgeB(target.edge[1]);
+        }
+        const amount = readValue("amount");
+        if (typeof amount === "number") setSurfaceMeshTopologyBevelAmount(Math.max(0.001, amount));
+        setSurfaceMeshTopologyPickMode("edge");
+      } else {
+        setSurfaceMeshTopologyStatus("This operation node has no editable Mesh operation parameters.");
+        return false;
+      }
+      setSurfaceMeshTopologyPreviewOperation(operation);
+      setSelectedSurfaceMeshTopologyHistoryId(entry.id);
+      setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+      setSurfaceMeshTopologyHistoryPreviewMode("before");
+      setSurfaceMeshTopologyStatus(
+        `${useEditedDrafts ? "Edited" : "Restored"} params: ${operation} on ${entry.targetLabel}.`
+      );
+      return true;
+    },
+    [meshOperationNodeParameterDrafts, surfaceMeshTopologyHistory]
+  );
+
+  const applyEditedSurfaceMeshTopologyOperationNode = useCallback(
+    (entryId: string) => {
+      const entry = surfaceMeshTopologyHistory.find((candidate) => candidate.id === entryId);
+      if (!entry) {
+        setSurfaceMeshTopologyStatus("Operation node not found.");
+        return;
+      }
+      const operation = surfaceMeshTopologyOperationFromAction(entry.actionLabel);
+      const target = parseSurfaceMeshTopologyOperationTarget(entry.targetLabel);
+      const command = buildMeshTopologyCommandHistoryEntry(entry);
+      const node = buildUnifiedOperationTreeNode(command);
+      const readNumber = (key: string, fallback: number) => {
+        const parameter = node.parameterEdits.find((candidate) => candidate.key === key);
+        if (!parameter) return fallback;
+        const value = coerceUnifiedCommandParameterDraftValue(
+          parameter,
+          resolveUnifiedCommandParameterDraftValue(node, meshOperationNodeParameterDrafts, parameter)
+        );
+        return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+      };
+      const readString = (key: string, fallback: string) => {
+        const parameter = node.parameterEdits.find((candidate) => candidate.key === key);
+        if (!parameter) return fallback;
+        const value = coerceUnifiedCommandParameterDraftValue(
+          parameter,
+          resolveUnifiedCommandParameterDraftValue(node, meshOperationNodeParameterDrafts, parameter)
+        );
+        return typeof value === "string" ? value : fallback;
+      };
+
+      if (operation === "Face Subdivide") {
+        if (target.faceIndex == null) {
+          setSurfaceMeshTopologyStatus("Apply edited blocked: face target is missing.");
+          return;
+        }
+        const modeRaw = readString("mode", "center-fan");
+        const mode: FaceSubdivideMode = modeRaw === "four-triangles" ? "four-triangles" : "center-fan";
+        applySurfaceMeshTopologyEdit(
+          "Face subdivide",
+          "mesh-topology:face-subdivide-edited-node",
+          `operation node face ${target.faceIndex} subdivided (${mode})`,
+          "edited operation node",
+          `Face ${target.faceIndex}`,
+          `mode=${mode}`,
+          mode === "center-fan" ? "center fan triangles" : "four-triangle split",
+          (mesh) => subdivideFace(mesh, target.faceIndex!, mode),
+          entry.beforeSnapshot
+        );
+        return;
+      }
+
+      if (!target.edge) {
+        setSurfaceMeshTopologyStatus("Apply edited blocked: edge target is missing.");
+        return;
+      }
+      const [edgeA, edgeB] = target.edge;
+      if (operation === "Split Edge") {
+        const ratio = clampNumber(readNumber("ratio", 0.5), 0.01, 0.99);
+        applySurfaceMeshTopologyEdit(
+          "Split edge",
+          "mesh-topology:split-edge-edited-node",
+          `operation node edge ${edgeA}-${edgeB} split (${Math.round(ratio * 100)}%)`,
+          "edited operation node",
+          `Edge ${edgeA}-${edgeB}`,
+          `ratio=${fmt(ratio)}`,
+          `midpoint vertex on Edge ${edgeA}-${edgeB}`,
+          (mesh) => splitEdge(mesh, edgeA, edgeB, ratio),
+          entry.beforeSnapshot
+        );
+        return;
+      }
+      if (operation === "Collapse Edge") {
+        const modeRaw = readString("mode", "midpoint");
+        const mode: EdgeCollapseMode =
+          modeRaw === "keep-a" || modeRaw === "keep-b" || modeRaw === "midpoint" ? modeRaw : "midpoint";
+        applySurfaceMeshTopologyEdit(
+          "Collapse edge",
+          "mesh-topology:collapse-edge-edited-node",
+          `operation node edge ${edgeA}-${edgeB} collapsed (${mode})`,
+          "edited operation node",
+          `Edge ${edgeA}-${edgeB}`,
+          `mode=${mode}`,
+          mode === "keep-a" ? `merged vertex ${edgeA}` : mode === "keep-b" ? `merged vertex ${edgeB}` : "midpoint vertex",
+          (mesh) => collapseEdge(mesh, edgeA, edgeB, mode),
+          entry.beforeSnapshot
+        );
+        return;
+      }
+      if (operation === "Bevel Edge") {
+        const amount = Math.max(0.001, readNumber("amount", 0.06));
+        applySurfaceMeshTopologyEdit(
+          "Bevel edge",
+          "mesh-topology:bevel-edge-edited-node",
+          `operation node edge ${edgeA}-${edgeB} beveled (${fmt(amount)})`,
+          "edited operation node",
+          `Edge ${edgeA}-${edgeB}`,
+          `amount=${fmt(amount)}`,
+          `bevel band from Edge ${edgeA}-${edgeB}`,
+          (mesh) => bevelEdge(mesh, edgeA, edgeB, amount),
+          entry.beforeSnapshot
+        );
+        return;
+      }
+      setSurfaceMeshTopologyStatus("This operation node cannot be replayed yet.");
+    },
+    [applySurfaceMeshTopologyEdit, meshOperationNodeParameterDrafts, surfaceMeshTopologyHistory]
+  );
 
   const handleSelectSurfaceMeshEdgeSet = useCallback(
     (tool: MeshEdgeSelectionTool) => {
@@ -61122,85 +61381,226 @@ case "mobius":
                         </label>
                         {surfaceMeshTopologyHistory.length ? (
                           <div style={{ display: "grid", gap: 5 }}>
-                            {surfaceMeshTopologyHistory.slice(0, 5).map((entry) => (
-                              <CommandHistoryCard
-                                key={`mesh-topology-history-${entry.id}`}
-                                command={buildMeshTopologyCommandHistoryEntry(entry)}
-                                selected={selectedSurfaceMeshTopologyHistoryId === entry.id}
-                                previewing={surfaceMeshTopologyHistoryPreviewId === entry.id}
-                                title={`Preview ${entry.actionLabel}: ${entry.targetLabel}`}
-                                onMouseEnter={() => {
-                                  setSurfaceMeshTopologyHistoryPreviewMode("after");
-                                  setSurfaceMeshTopologyHistoryPreviewId(entry.id);
-                                }}
-                                onFocus={(event) => {
-                                  if (event.currentTarget !== event.target) return;
-                                  setSurfaceMeshTopologyHistoryPreviewMode("after");
-                                  setSurfaceMeshTopologyHistoryPreviewId(entry.id);
-                                }}
-                                actions={
-                                  <>
-                                    <button
-                                      type="button"
-                                      onMouseEnter={() => {
-                                        setSurfaceMeshTopologyHistoryPreviewMode("before");
-                                        setSurfaceMeshTopologyHistoryPreviewId(entry.id);
-                                      }}
-                                      onFocus={() => {
-                                        setSurfaceMeshTopologyHistoryPreviewMode("before");
-                                        setSurfaceMeshTopologyHistoryPreviewId(entry.id);
-                                      }}
-                                      onClick={() => {
-                                        setSurfaceMeshTopologyHistoryPreviewMode("before");
-                                        setSurfaceMeshTopologyHistoryPreviewId(entry.id);
-                                      }}
-                                      style={{ padding: "2px 7px", fontSize: 10 }}
-                                    >
-                                      Preview Before
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onMouseEnter={() => {
-                                        setSurfaceMeshTopologyHistoryPreviewMode("after");
-                                        setSurfaceMeshTopologyHistoryPreviewId(entry.id);
-                                      }}
-                                      onFocus={() => {
-                                        setSurfaceMeshTopologyHistoryPreviewMode("after");
-                                        setSurfaceMeshTopologyHistoryPreviewId(entry.id);
-                                      }}
-                                      onClick={() => {
-                                        setSurfaceMeshTopologyHistoryPreviewMode("after");
-                                        setSurfaceMeshTopologyHistoryPreviewId(entry.id);
-                                      }}
-                                      style={{ padding: "2px 7px", fontSize: 10 }}
-                                    >
-                                      Preview After
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setSelectedSurfaceMeshTopologyHistoryId(entry.id)}
-                                      style={{ padding: "2px 7px", fontSize: 10 }}
-                                    >
-                                      Open
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => restoreSurfaceMeshTopologyHistoryEntry(entry.id)}
-                                      style={{ padding: "2px 7px", fontSize: 10 }}
-                                    >
-                                      Restore
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => copySurfaceMeshTopologyHistoryEntry(entry.id)}
-                                      style={{ padding: "2px 7px", fontSize: 10 }}
-                                    >
-                                      Copy
-                                    </button>
-                                  </>
-                                }
-                              />
-                            ))}
+                            {surfaceMeshTopologyHistory.slice(0, 5).map((entry) => {
+                              const command = buildMeshTopologyCommandHistoryEntry(entry);
+                              const operationNode = buildUnifiedOperationTreeNode(command);
+                              const operation = surfaceMeshTopologyOperationFromAction(entry.actionLabel);
+                              return (
+                                <CommandHistoryCard
+                                  key={`mesh-topology-history-${entry.id}`}
+                                  command={command}
+                                  selected={selectedSurfaceMeshTopologyHistoryId === entry.id}
+                                  previewing={surfaceMeshTopologyHistoryPreviewId === entry.id}
+                                  title={`Preview ${entry.actionLabel}: ${entry.targetLabel}`}
+                                  onMouseEnter={() => {
+                                    setSurfaceMeshTopologyHistoryPreviewMode("after");
+                                    setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                  }}
+                                  onFocus={(event) => {
+                                    if (event.currentTarget !== event.target) return;
+                                    setSurfaceMeshTopologyHistoryPreviewMode("after");
+                                    setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                  }}
+                                  footer={
+                                    operationNode.parameterEdits.length ? (
+                                      <div
+                                        data-testid="mesh-operation-tree-node"
+                                        style={{
+                                          border: "1px solid #dbeafe",
+                                          borderRadius: 6,
+                                          background: "#f8fbff",
+                                          padding: "5px 6px",
+                                          display: "grid",
+                                          gap: 5,
+                                          fontSize: 10,
+                                        }}
+                                      >
+                                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                          <strong>Operation node</strong>
+                                          <span style={{ color: "#475569" }}>
+                                            {operationNode.topologyChanged ? "editable params" : "params"}
+                                          </span>
+                                        </div>
+                                        {operationNode.parameterEdits.map((parameter) => {
+                                          const draftValue = resolveUnifiedCommandParameterDraftValue(
+                                            operationNode,
+                                            meshOperationNodeParameterDrafts,
+                                            parameter
+                                          );
+                                          const modeOptions =
+                                            operation === "Face Subdivide" && parameter.key === "mode"
+                                              ? [
+                                                  { value: "center-fan", label: "Center fan" },
+                                                  { value: "four-triangles", label: "Four triangles" },
+                                                ]
+                                              : operation === "Collapse Edge" && parameter.key === "mode"
+                                                ? [
+                                                    { value: "midpoint", label: "Midpoint" },
+                                                    { value: "keep-a", label: "Keep A" },
+                                                    { value: "keep-b", label: "Keep B" },
+                                                  ]
+                                                : null;
+                                          return (
+                                            <label
+                                              key={`${operationNode.id}:${parameter.key}`}
+                                              style={{
+                                                display: "grid",
+                                                gridTemplateColumns: "64px minmax(0, 1fr)",
+                                                gap: 5,
+                                                alignItems: "center",
+                                              }}
+                                            >
+                                              <span style={{ color: "#334155", fontWeight: 800 }}>{parameter.label}</span>
+                                              {modeOptions ? (
+                                                <select
+                                                  aria-label={`Edit ${parameter.label} for ${entry.actionLabel}`}
+                                                  value={draftValue}
+                                                  onChange={(event) => {
+                                                    const value = event.currentTarget.value;
+                                                    setMeshOperationNodeParameterDrafts((prev) => ({
+                                                      ...prev,
+                                                      [operationNode.id]: {
+                                                        ...(prev[operationNode.id] ?? {}),
+                                                        [parameter.key]: value,
+                                                      },
+                                                    }));
+                                                  }}
+                                                  style={{ minWidth: 0, width: "100%" }}
+                                                >
+                                                  {modeOptions.map((option) => (
+                                                    <option key={`${operationNode.id}:${parameter.key}:${option.value}`} value={option.value}>
+                                                      {option.label}
+                                                    </option>
+                                                  ))}
+                                                </select>
+                                              ) : parameter.valueType === "boolean" ? (
+                                                <select
+                                                  aria-label={`Edit ${parameter.label} for ${entry.actionLabel}`}
+                                                  value={draftValue}
+                                                  onChange={(event) => {
+                                                    const value = event.currentTarget.value;
+                                                    setMeshOperationNodeParameterDrafts((prev) => ({
+                                                      ...prev,
+                                                      [operationNode.id]: {
+                                                        ...(prev[operationNode.id] ?? {}),
+                                                        [parameter.key]: value,
+                                                      },
+                                                    }));
+                                                  }}
+                                                  style={{ minWidth: 0, width: "100%" }}
+                                                >
+                                                  <option value="true">true</option>
+                                                  <option value="false">false</option>
+                                                </select>
+                                              ) : (
+                                                <input
+                                                  aria-label={`Edit ${parameter.label} for ${entry.actionLabel}`}
+                                                  type={parameter.valueType === "number" ? "number" : "text"}
+                                                  min={parameter.key === "ratio" ? 0.01 : parameter.key === "amount" ? 0.001 : undefined}
+                                                  max={parameter.key === "ratio" ? 0.99 : undefined}
+                                                  step={parameter.key === "ratio" ? 0.01 : parameter.key === "amount" ? 0.001 : "any"}
+                                                  value={draftValue}
+                                                  onChange={(event) => {
+                                                    const value = event.currentTarget.value;
+                                                    setMeshOperationNodeParameterDrafts((prev) => ({
+                                                      ...prev,
+                                                      [operationNode.id]: {
+                                                        ...(prev[operationNode.id] ?? {}),
+                                                        [parameter.key]: value,
+                                                      },
+                                                    }));
+                                                  }}
+                                                  style={{ minWidth: 0, width: "100%" }}
+                                                />
+                                              )}
+                                            </label>
+                                          );
+                                        })}
+                                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                          <button
+                                            type="button"
+                                            data-testid="mesh-operation-node-restore-params"
+                                            onClick={() => restoreSurfaceMeshTopologyOperationNodeParameters(entry.id)}
+                                            style={{ padding: "2px 7px", fontSize: 10 }}
+                                          >
+                                            Restore params
+                                          </button>
+                                          <button
+                                            type="button"
+                                            data-testid="mesh-operation-node-apply-edited"
+                                            onClick={() => applyEditedSurfaceMeshTopologyOperationNode(entry.id)}
+                                            style={{ padding: "2px 7px", fontSize: 10 }}
+                                          >
+                                            Apply edited
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : null
+                                  }
+                                  actions={
+                                    <>
+                                      <button
+                                        type="button"
+                                        onMouseEnter={() => {
+                                          setSurfaceMeshTopologyHistoryPreviewMode("before");
+                                          setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                        }}
+                                        onFocus={() => {
+                                          setSurfaceMeshTopologyHistoryPreviewMode("before");
+                                          setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                        }}
+                                        onClick={() => {
+                                          setSurfaceMeshTopologyHistoryPreviewMode("before");
+                                          setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                        }}
+                                        style={{ padding: "2px 7px", fontSize: 10 }}
+                                      >
+                                        Preview Before
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onMouseEnter={() => {
+                                          setSurfaceMeshTopologyHistoryPreviewMode("after");
+                                          setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                        }}
+                                        onFocus={() => {
+                                          setSurfaceMeshTopologyHistoryPreviewMode("after");
+                                          setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                        }}
+                                        onClick={() => {
+                                          setSurfaceMeshTopologyHistoryPreviewMode("after");
+                                          setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+                                        }}
+                                        style={{ padding: "2px 7px", fontSize: 10 }}
+                                      >
+                                        Preview After
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedSurfaceMeshTopologyHistoryId(entry.id)}
+                                        style={{ padding: "2px 7px", fontSize: 10 }}
+                                      >
+                                        Open
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => restoreSurfaceMeshTopologyHistoryEntry(entry.id)}
+                                        style={{ padding: "2px 7px", fontSize: 10 }}
+                                      >
+                                        Restore
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => copySurfaceMeshTopologyHistoryEntry(entry.id)}
+                                        style={{ padding: "2px 7px", fontSize: 10 }}
+                                      >
+                                        Copy
+                                      </button>
+                                    </>
+                                  }
+                                />
+                              );
+                            })}
                           </div>
                         ) : (
                           <div style={{ fontSize: 11, color: "#475467" }}>No Mesh topology edits yet.</div>
@@ -78670,6 +79070,12 @@ case "mobius":
                                     {geometryRecentActionHistory.slice(0, 5).map((entry) => {
                                       if (entry.kind === "object") {
                                         const historyStep = entry.step;
+                                        const operationNode = buildUnifiedOperationTreeNode(entry.command);
+                                        const historyStepParams =
+                                          "params" in historyStep.snapshot ? historyStep.snapshot.params : null;
+                                        const editableParameterEdits = historyStepParams
+                                          ? operationNode.parameterEdits.filter((parameter) => parameter.key in historyStepParams)
+                                          : [];
                                         return (
                                           <CommandHistoryCard
                                             key={`geometry-actions-history-${entry.id}`}
@@ -78683,6 +79089,105 @@ case "mobius":
                                             onMouseLeave={() => setGeometryHistoryPreviewStepId((current) => (current === historyStep.id ? null : current))}
                                             onFocus={() => setGeometryHistoryPreviewStepId(historyStep.id)}
                                             onBlur={() => setGeometryHistoryPreviewStepId((current) => (current === historyStep.id ? null : current))}
+                                            footer={
+                                              editableParameterEdits.length ? (
+                                                <div
+                                                  data-testid="geometry-operation-tree-node"
+                                                  style={{
+                                                    border: "1px solid #dbeafe",
+                                                    borderRadius: 6,
+                                                    background: "#f8fbff",
+                                                    padding: "5px 6px",
+                                                    display: "grid",
+                                                    gap: 5,
+                                                    fontSize: 10,
+                                                  }}
+                                                >
+                                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                                    <strong>Operation node</strong>
+                                                    <span style={{ color: "#475569" }}>editable params</span>
+                                                  </div>
+                                                  {editableParameterEdits.map((parameter) => {
+                                                    const draftValue = resolveUnifiedCommandParameterDraftValue(
+                                                      operationNode,
+                                                      geometryOperationNodeParameterDrafts,
+                                                      parameter
+                                                    );
+                                                    return (
+                                                      <label
+                                                        key={`${operationNode.id}:${parameter.key}`}
+                                                        style={{
+                                                          display: "grid",
+                                                          gridTemplateColumns: "64px minmax(0, 1fr)",
+                                                          gap: 5,
+                                                          alignItems: "center",
+                                                        }}
+                                                      >
+                                                        <span style={{ color: "#334155", fontWeight: 800 }}>{parameter.label}</span>
+                                                        {parameter.valueType === "boolean" ? (
+                                                          <select
+                                                            aria-label={`Edit ${parameter.label} for ${historyStep.label}`}
+                                                            value={draftValue}
+                                                            onChange={(event) => {
+                                                              const value = event.currentTarget.value;
+                                                              setGeometryOperationNodeParameterDrafts((prev) => ({
+                                                                ...prev,
+                                                                [operationNode.id]: {
+                                                                  ...(prev[operationNode.id] ?? {}),
+                                                                  [parameter.key]: value,
+                                                                },
+                                                              }));
+                                                            }}
+                                                            style={{ minWidth: 0, width: "100%" }}
+                                                          >
+                                                            <option value="true">true</option>
+                                                            <option value="false">false</option>
+                                                          </select>
+                                                        ) : (
+                                                          <input
+                                                            aria-label={`Edit ${parameter.label} for ${historyStep.label}`}
+                                                            type={parameter.valueType === "number" ? "number" : "text"}
+                                                            step={parameter.valueType === "number" ? "any" : undefined}
+                                                            value={draftValue}
+                                                            onChange={(event) => {
+                                                              const value = event.currentTarget.value;
+                                                              setGeometryOperationNodeParameterDrafts((prev) => ({
+                                                                ...prev,
+                                                                [operationNode.id]: {
+                                                                  ...(prev[operationNode.id] ?? {}),
+                                                                  [parameter.key]: value,
+                                                                },
+                                                              }));
+                                                            }}
+                                                            style={{ minWidth: 0, width: "100%" }}
+                                                          />
+                                                        )}
+                                                      </label>
+                                                    );
+                                                  })}
+                                                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                                    <button
+                                                      type="button"
+                                                      data-testid="geometry-operation-node-restore-params"
+                                                      onClick={() => applyGeometryOperationNodeParameters(historyStep, false)}
+                                                      disabled={geometryLockedObjectIds.has(historyStep.objectId)}
+                                                      style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                                    >
+                                                      Restore params
+                                                    </button>
+                                                    <button
+                                                      type="button"
+                                                      data-testid="geometry-operation-node-apply-edited"
+                                                      onClick={() => applyGeometryOperationNodeParameters(historyStep, true)}
+                                                      disabled={geometryLockedObjectIds.has(historyStep.objectId)}
+                                                      style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                                    >
+                                                      Apply edited
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                              ) : null
+                                            }
                                             actions={
                                               <>
                                                 <button
