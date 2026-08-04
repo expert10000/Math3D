@@ -439,6 +439,19 @@ import {
   type MeshEdgeSelectionTool,
 } from "./mesh/edgeSelection";
 import {
+  applyMeshTopologyEditDefinition,
+  createMeshTopologyEditDefinition,
+  createMeshTopologyEdgeTarget,
+  createMeshTopologyFaceTarget,
+  createMeshTopologySourceVersion,
+  resolveMeshTopologyEditDefinitionTarget,
+  retargetMeshTopologyEditDefinition,
+  updateMeshTopologyEditDefinitionParameters,
+  type MeshTopologyEditDefinition,
+  type MeshTopologyEditParameters,
+  type MeshTopologyEditTarget,
+} from "./mesh/topologyEditDefinition";
+import {
   computeMeshTopologyInspector,
   type MeshTopologyInspectorDetails,
   type MeshTopologyListRow,
@@ -5667,20 +5680,13 @@ type SurfaceMeshTopologyHistoryEntry = {
   sourceLabel: string;
   targetLabel: string;
   paramsLabel: string;
-  definition: SurfaceMeshTopologyDefinition;
+  definition: MeshTopologyEditDefinition;
   resultLabel: string;
   beforeCounts: { vertexCount: number; faceCount: number };
   afterCounts: { vertexCount: number; faceCount: number };
   selectedResultLabel: string;
   beforeSnapshot: SurfaceMeshData;
   snapshot: SurfaceMeshData;
-};
-type SurfaceMeshTopologyDefinition = {
-  operation: SurfaceMeshTopologyOperation;
-  selectionKey: string;
-  selectionBreadcrumb: string;
-  paramsLabel: string;
-  replayLabel: string;
 };
 type SurfaceMeshTopologyOperationTarget = {
   faceIndex: number | null;
@@ -5703,37 +5709,122 @@ const parseSurfaceMeshTopologyOperationTarget = (targetLabel: string): SurfaceMe
     edge: edgeMatch ? [Number(edgeMatch[1]), Number(edgeMatch[2])] : null,
   };
 };
-const normalizeSurfaceMeshTopologyDefinitionPart = (value: string): string =>
-  value.trim().replace(/\s+/g, " ").replace(/[|;]/g, "-");
+const surfaceMeshTopologyParametersFromLabel = (
+  operation: SurfaceMeshTopologyOperation,
+  paramsLabel: string
+): MeshTopologyEditParameters => {
+  if (operation === "Face Subdivide") {
+    const mode = paramsLabel.includes("four-triangles") ? "four-triangles" : "center-fan";
+    return { mode };
+  }
+  if (operation === "Split Edge") {
+    const ratio = Number(paramsLabel.match(/ratio=([+-]?(?:\d+\.?\d*|\.\d+))/)?.[1] ?? 0.5);
+    return { ratio: clampNumber(ratio, 0.01, 0.99) };
+  }
+  if (operation === "Collapse Edge") {
+    const modeMatch = paramsLabel.match(/mode=([A-Za-z-]+)/)?.[1];
+    const mode: EdgeCollapseMode =
+      modeMatch === "keep-a" || modeMatch === "keep-b" || modeMatch === "midpoint" ? modeMatch : "midpoint";
+    return { mode };
+  }
+  const amount = Number(paramsLabel.match(/amount=([+-]?(?:\d+\.?\d*|\.\d+))/)?.[1] ?? 0.06);
+  return { amount: Math.max(0.001, Number.isFinite(amount) ? amount : 0.06) };
+};
+const surfaceMeshTopologyTargetFromLabel = (
+  operation: SurfaceMeshTopologyOperation,
+  targetLabel: string
+): MeshTopologyEditTarget => {
+  const target = parseSurfaceMeshTopologyOperationTarget(targetLabel);
+  if (operation === "Face Subdivide") return createMeshTopologyFaceTarget(target.faceIndex ?? 0);
+  const edge = target.edge ?? [0, 1];
+  return createMeshTopologyEdgeTarget(edge[0], edge[1]);
+};
 const buildSurfaceMeshTopologyDefinition = ({
   actionLabel,
   sourceLabel,
   targetLabel,
   paramsLabel,
+  beforeCounts,
 }: {
   actionLabel: string;
   sourceLabel: string;
   targetLabel: string;
   paramsLabel: string;
-}): SurfaceMeshTopologyDefinition => {
+  beforeCounts: { vertexCount: number; faceCount: number };
+}): MeshTopologyEditDefinition => {
   const operation = surfaceMeshTopologyOperationFromAction(actionLabel) ?? "Split Edge";
-  const target = parseSurfaceMeshTopologyOperationTarget(targetLabel);
-  const targetKey = target.edge
-    ? `edge:${Math.min(target.edge[0], target.edge[1])}-${Math.max(target.edge[0], target.edge[1])}`
-    : target.faceIndex != null
-      ? `face:${target.faceIndex}`
-      : normalizeSurfaceMeshTopologyDefinitionPart(targetLabel).toLowerCase();
-  const sourceKey = normalizeSurfaceMeshTopologyDefinitionPart(sourceLabel);
-  const selectionKey = `mesh|${sourceKey}|${targetKey}`;
-  const selectionBreadcrumb = `Mesh > ${sourceLabel} > ${targetLabel}`;
-  const parameterText = paramsLabel.trim() || "params=none";
-  return {
+  return createMeshTopologyEditDefinition({
     operation,
-    selectionKey,
-    selectionBreadcrumb,
-    paramsLabel: parameterText,
-    replayLabel: `selection=${selectionKey}; params=${parameterText}`,
-  };
+    sourceMeshVersion: createMeshTopologySourceVersion({
+      label: sourceLabel,
+      vertexCount: beforeCounts.vertexCount,
+      faceCount: beforeCounts.faceCount,
+    }),
+    target: surfaceMeshTopologyTargetFromLabel(operation, targetLabel),
+    parameters: surfaceMeshTopologyParametersFromLabel(operation, paramsLabel),
+  });
+};
+const surfaceMeshTopologyActionLabelFromDefinition = (definition: MeshTopologyEditDefinition): string =>
+  definition.operation === "Face Subdivide"
+    ? "Face subdivide"
+    : definition.operation === "Split Edge"
+      ? "Split edge"
+      : definition.operation === "Collapse Edge"
+        ? "Collapse edge"
+        : "Bevel edge";
+const surfaceMeshTopologyTraceActionFromDefinition = (definition: MeshTopologyEditDefinition): string =>
+  definition.operation === "Face Subdivide"
+    ? "face-subdivide"
+    : definition.operation === "Split Edge"
+      ? "edge-split"
+      : definition.operation === "Collapse Edge"
+        ? "edge-collapse"
+        : "edge-bevel";
+const surfaceMeshTopologySelectedResultLabelFromDefinition = (definition: MeshTopologyEditDefinition): string => {
+  if (definition.operation === "Face Subdivide") {
+    return "mode" in definition.parameters && definition.parameters.mode === "four-triangles"
+      ? "four-triangle split"
+      : "center fan triangles";
+  }
+  if (definition.target.kind !== "edge") return definition.target.label;
+  const edgeLabel = definition.target.label;
+  if (definition.operation === "Split Edge") return `midpoint vertex on ${edgeLabel}`;
+  if (definition.operation === "Collapse Edge") {
+    const mode = "mode" in definition.parameters ? definition.parameters.mode : "midpoint";
+    return mode === "keep-a"
+      ? `merged vertex ${definition.target.edge[0]}`
+      : mode === "keep-b"
+        ? `merged vertex ${definition.target.edge[1]}`
+        : "midpoint vertex";
+  }
+  return `bevel band from ${edgeLabel}`;
+};
+const updateSurfaceMeshTopologyDefinitionParameter = (
+  definition: MeshTopologyEditDefinition,
+  key: string,
+  value: UnifiedCommandParameterValue
+): MeshTopologyEditDefinition => {
+  if (definition.operation === "Face Subdivide" && key === "mode") {
+    const mode: FaceSubdivideMode = value === "four-triangles" ? "four-triangles" : "center-fan";
+    return updateMeshTopologyEditDefinitionParameters(definition, { mode });
+  }
+  if (definition.operation === "Split Edge" && key === "ratio") {
+    const ratio = typeof value === "number" ? value : Number(value);
+    return updateMeshTopologyEditDefinitionParameters(definition, {
+      ratio: clampNumber(Number.isFinite(ratio) ? ratio : 0.5, 0.01, 0.99),
+    });
+  }
+  if (definition.operation === "Collapse Edge" && key === "mode") {
+    const mode: EdgeCollapseMode = value === "keep-a" || value === "keep-b" || value === "midpoint" ? value : "midpoint";
+    return updateMeshTopologyEditDefinitionParameters(definition, { mode });
+  }
+  if (definition.operation === "Bevel Edge" && key === "amount") {
+    const amount = typeof value === "number" ? value : Number(value);
+    return updateMeshTopologyEditDefinitionParameters(definition, {
+      amount: Math.max(0.001, Number.isFinite(amount) ? amount : 0.06),
+    });
+  }
+  return definition;
 };
 const renderUnifiedOperationNodeSnapshotSummary = (node: UnifiedOperationTreeNode) => (
   <div style={{ display: "grid", gap: 2, color: "#475569" }}>
@@ -5841,6 +5932,21 @@ type SurfaceMeshTopologySavedPreset = {
   detailsLabel?: string;
 };
 
+const isStoredMeshTopologyEditDefinition = (value: unknown): value is MeshTopologyEditDefinition => {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<MeshTopologyEditDefinition>;
+  return (
+    typeof candidate.operation === "string" &&
+    !!candidate.sourceMeshVersion &&
+    typeof candidate.sourceMeshVersion.key === "string" &&
+    !!candidate.target &&
+    typeof candidate.target.key === "string" &&
+    !!candidate.parameters &&
+    typeof candidate.selectionKey === "string" &&
+    typeof candidate.replayLabel === "string"
+  );
+};
+
 const serializeTopologySurfaceMeshData = (mesh: SurfaceMeshData): TopologySerializedSurfaceMeshData => ({
   label: mesh.label,
   positions: Array.from(mesh.positions),
@@ -5903,13 +6009,20 @@ const deserializeSurfaceMeshTopologyHistoryEntry = (
     targetLabel: typeof entry.targetLabel === "string" ? entry.targetLabel : "target",
     paramsLabel: typeof entry.paramsLabel === "string" ? entry.paramsLabel : "params",
     definition:
-      entry.definition && typeof entry.definition.selectionKey === "string"
+      isStoredMeshTopologyEditDefinition(entry.definition)
         ? entry.definition
         : buildSurfaceMeshTopologyDefinition({
             actionLabel: typeof entry.actionLabel === "string" ? entry.actionLabel : "Topology edit",
             sourceLabel: typeof entry.sourceLabel === "string" ? entry.sourceLabel : "Surface mesh",
             targetLabel: typeof entry.targetLabel === "string" ? entry.targetLabel : "target",
             paramsLabel: typeof entry.paramsLabel === "string" ? entry.paramsLabel : "params",
+            beforeCounts: entry.beforeCounts ?? {
+              vertexCount: Math.floor(beforeSnapshot.positions.length / 3),
+              faceCount:
+                beforeSnapshot.indices && beforeSnapshot.indices.length >= 3
+                  ? Math.floor(beforeSnapshot.indices.length / 3)
+                  : Math.floor(Math.floor(beforeSnapshot.positions.length / 3) / 3),
+            },
           }),
     resultLabel: typeof entry.resultLabel === "string" ? entry.resultLabel : "edited mesh",
     beforeCounts: entry.beforeCounts,
@@ -46413,6 +46526,7 @@ case "mobius":
             sourceLabel: baseLabel,
             targetLabel,
             paramsLabel,
+            beforeCounts,
           }),
           resultLabel: buildTopologyEditSummary(topologyAction, targetLabel, beforeCounts, afterCounts),
           beforeCounts,
@@ -46582,8 +46696,7 @@ case "mobius":
         setSurfaceMeshTopologyStatus("Operation node not found.");
         return false;
       }
-      const operation = surfaceMeshTopologyOperationFromAction(entry.actionLabel);
-      const target = parseSurfaceMeshTopologyOperationTarget(entry.targetLabel);
+      const operation = entry.definition.operation;
       const node = buildUnifiedOperationTreeNode(buildMeshTopologyCommandHistoryEntry(entry));
       const readValue = (key: string) => {
         const parameter = node.parameterEdits.find((candidate) => candidate.key === key);
@@ -46596,30 +46709,30 @@ case "mobius":
       };
 
       if (operation === "Face Subdivide") {
-        if (target.faceIndex != null) setSurfaceMeshTopologyFaceIndex(target.faceIndex);
+        if (entry.definition.target.kind === "face") setSurfaceMeshTopologyFaceIndex(entry.definition.target.faceIndex);
         const mode = readValue("mode");
         if (mode === "center-fan" || mode === "four-triangles") setSurfaceMeshTopologySubdivideMode(mode);
         setSurfaceMeshTopologyPickMode("face");
       } else if (operation === "Split Edge") {
-        if (target.edge) {
-          setSurfaceMeshTopologyEdgeA(target.edge[0]);
-          setSurfaceMeshTopologyEdgeB(target.edge[1]);
+        if (entry.definition.target.kind === "edge") {
+          setSurfaceMeshTopologyEdgeA(entry.definition.target.edge[0]);
+          setSurfaceMeshTopologyEdgeB(entry.definition.target.edge[1]);
         }
         const ratio = readValue("ratio");
         if (typeof ratio === "number") setSurfaceMeshTopologySplitRatio(clampNumber(ratio, 0.01, 0.99));
         setSurfaceMeshTopologyPickMode("edge");
       } else if (operation === "Collapse Edge") {
-        if (target.edge) {
-          setSurfaceMeshTopologyEdgeA(target.edge[0]);
-          setSurfaceMeshTopologyEdgeB(target.edge[1]);
+        if (entry.definition.target.kind === "edge") {
+          setSurfaceMeshTopologyEdgeA(entry.definition.target.edge[0]);
+          setSurfaceMeshTopologyEdgeB(entry.definition.target.edge[1]);
         }
         const mode = readValue("mode");
         if (mode === "midpoint" || mode === "keep-a" || mode === "keep-b") setSurfaceMeshTopologyCollapseMode(mode);
         setSurfaceMeshTopologyPickMode("edge");
       } else if (operation === "Bevel Edge") {
-        if (target.edge) {
-          setSurfaceMeshTopologyEdgeA(target.edge[0]);
-          setSurfaceMeshTopologyEdgeB(target.edge[1]);
+        if (entry.definition.target.kind === "edge") {
+          setSurfaceMeshTopologyEdgeA(entry.definition.target.edge[0]);
+          setSurfaceMeshTopologyEdgeB(entry.definition.target.edge[1]);
         }
         const amount = readValue("amount");
         if (typeof amount === "number") setSurfaceMeshTopologyBevelAmount(Math.max(0.001, amount));
@@ -46633,11 +46746,72 @@ case "mobius":
       setSurfaceMeshTopologyHistoryPreviewId(entry.id);
       setSurfaceMeshTopologyHistoryPreviewMode("before");
       setSurfaceMeshTopologyStatus(
-        `${useEditedDrafts ? "Edited" : "Restored"} params: ${operation} on ${entry.targetLabel}.`
+        `${useEditedDrafts ? "Edited" : "Restored"} params: ${operation} on ${entry.definition.target.label}.`
       );
       return true;
     },
     [meshOperationNodeParameterDrafts, surfaceMeshTopologyHistory]
+  );
+
+  const replaySurfaceMeshTopologyDefinition = useCallback(
+    (entryId: string, definitionOverride?: MeshTopologyEditDefinition, traceSuffix = "replay-definition") => {
+      const entry = surfaceMeshTopologyHistory.find((candidate) => candidate.id === entryId);
+      if (!entry) {
+        setSurfaceMeshTopologyStatus("Operation node not found.");
+        return;
+      }
+      const definition = definitionOverride ?? entry.definition;
+      const resolved = resolveMeshTopologyEditDefinitionTarget(entry.beforeSnapshot, definition);
+      if (!resolved.ok) {
+        setSurfaceMeshTopologyStatus(`Replay definition blocked: ${resolved.reason}`);
+        return;
+      }
+      const actionLabel = surfaceMeshTopologyActionLabelFromDefinition(definition);
+      const topologyAction = surfaceMeshTopologyTraceActionFromDefinition(definition);
+      applySurfaceMeshTopologyEdit(
+        actionLabel,
+        `mesh-topology:${topologyAction}-${traceSuffix}`,
+        `definition ${definition.operation} replayed (${definition.paramsLabel})`,
+        "definition replay",
+        definition.target.label,
+        definition.paramsLabel,
+        surfaceMeshTopologySelectedResultLabelFromDefinition(definition),
+        (mesh) => applyMeshTopologyEditDefinition(mesh, definition),
+        entry.beforeSnapshot
+      );
+    },
+    [applySurfaceMeshTopologyEdit, surfaceMeshTopologyHistory]
+  );
+
+  const handleUpdateSurfaceMeshTopologyDefinitionParameter = useCallback(
+    (entry: SurfaceMeshTopologyHistoryEntry, parameter: UnifiedCommandParameterEdit, rawValue: string) => {
+      const command = buildMeshTopologyCommandHistoryEntry(entry);
+      const node = buildUnifiedOperationTreeNode(command);
+      const value = coerceUnifiedCommandParameterDraftValue(parameter, rawValue);
+      const nextDefinition = updateSurfaceMeshTopologyDefinitionParameter(entry.definition, parameter.key, value);
+      setMeshOperationNodeParameterDrafts((prev) => ({
+        ...prev,
+        [node.id]: {
+          ...(prev[node.id] ?? {}),
+          [parameter.key]: rawValue,
+        },
+      }));
+      setSurfaceMeshTopologyHistory((history) =>
+        history.map((candidate) =>
+          candidate.id === entry.id
+            ? {
+                ...candidate,
+                targetLabel: nextDefinition.target.label,
+                paramsLabel: nextDefinition.paramsLabel,
+                definition: nextDefinition,
+                selectedResultLabel: surfaceMeshTopologySelectedResultLabelFromDefinition(nextDefinition),
+              }
+            : candidate
+        )
+      );
+      setSurfaceMeshTopologyStatus(`Updated definition: ${nextDefinition.replayLabel}.`);
+    },
+    []
   );
 
   const applyEditedSurfaceMeshTopologyOperationNode = useCallback(
@@ -46647,105 +46821,56 @@ case "mobius":
         setSurfaceMeshTopologyStatus("Operation node not found.");
         return;
       }
-      const operation = surfaceMeshTopologyOperationFromAction(entry.actionLabel);
-      const target = parseSurfaceMeshTopologyOperationTarget(entry.targetLabel);
-      const command = buildMeshTopologyCommandHistoryEntry(entry);
-      const node = buildUnifiedOperationTreeNode(command);
-      const readNumber = (key: string, fallback: number) => {
-        const parameter = node.parameterEdits.find((candidate) => candidate.key === key);
-        if (!parameter) return fallback;
-        const value = coerceUnifiedCommandParameterDraftValue(
-          parameter,
-          resolveUnifiedCommandParameterDraftValue(node, meshOperationNodeParameterDrafts, parameter)
-        );
-        return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-      };
-      const readString = (key: string, fallback: string) => {
-        const parameter = node.parameterEdits.find((candidate) => candidate.key === key);
-        if (!parameter) return fallback;
-        const value = coerceUnifiedCommandParameterDraftValue(
-          parameter,
-          resolveUnifiedCommandParameterDraftValue(node, meshOperationNodeParameterDrafts, parameter)
-        );
-        return typeof value === "string" ? value : fallback;
-      };
-
-      if (operation === "Face Subdivide") {
-        if (target.faceIndex == null) {
-          setSurfaceMeshTopologyStatus("Apply edited blocked: face target is missing.");
-          return;
-        }
-        const modeRaw = readString("mode", "center-fan");
-        const mode: FaceSubdivideMode = modeRaw === "four-triangles" ? "four-triangles" : "center-fan";
-        applySurfaceMeshTopologyEdit(
-          "Face subdivide",
-          "mesh-topology:face-subdivide-edited-node",
-          `operation node face ${target.faceIndex} subdivided (${mode})`,
-          "edited operation node",
-          `Face ${target.faceIndex}`,
-          `mode=${mode}`,
-          mode === "center-fan" ? "center fan triangles" : "four-triangle split",
-          (mesh) => subdivideFace(mesh, target.faceIndex!, mode),
-          entry.beforeSnapshot
-        );
-        return;
-      }
-
-      if (!target.edge) {
-        setSurfaceMeshTopologyStatus("Apply edited blocked: edge target is missing.");
-        return;
-      }
-      const [edgeA, edgeB] = target.edge;
-      if (operation === "Split Edge") {
-        const ratio = clampNumber(readNumber("ratio", 0.5), 0.01, 0.99);
-        applySurfaceMeshTopologyEdit(
-          "Split edge",
-          "mesh-topology:split-edge-edited-node",
-          `operation node edge ${edgeA}-${edgeB} split (${Math.round(ratio * 100)}%)`,
-          "edited operation node",
-          `Edge ${edgeA}-${edgeB}`,
-          `ratio=${fmt(ratio)}`,
-          `midpoint vertex on Edge ${edgeA}-${edgeB}`,
-          (mesh) => splitEdge(mesh, edgeA, edgeB, ratio),
-          entry.beforeSnapshot
-        );
-        return;
-      }
-      if (operation === "Collapse Edge") {
-        const modeRaw = readString("mode", "midpoint");
-        const mode: EdgeCollapseMode =
-          modeRaw === "keep-a" || modeRaw === "keep-b" || modeRaw === "midpoint" ? modeRaw : "midpoint";
-        applySurfaceMeshTopologyEdit(
-          "Collapse edge",
-          "mesh-topology:collapse-edge-edited-node",
-          `operation node edge ${edgeA}-${edgeB} collapsed (${mode})`,
-          "edited operation node",
-          `Edge ${edgeA}-${edgeB}`,
-          `mode=${mode}`,
-          mode === "keep-a" ? `merged vertex ${edgeA}` : mode === "keep-b" ? `merged vertex ${edgeB}` : "midpoint vertex",
-          (mesh) => collapseEdge(mesh, edgeA, edgeB, mode),
-          entry.beforeSnapshot
-        );
-        return;
-      }
-      if (operation === "Bevel Edge") {
-        const amount = Math.max(0.001, readNumber("amount", 0.06));
-        applySurfaceMeshTopologyEdit(
-          "Bevel edge",
-          "mesh-topology:bevel-edge-edited-node",
-          `operation node edge ${edgeA}-${edgeB} beveled (${fmt(amount)})`,
-          "edited operation node",
-          `Edge ${edgeA}-${edgeB}`,
-          `amount=${fmt(amount)}`,
-          `bevel band from Edge ${edgeA}-${edgeB}`,
-          (mesh) => bevelEdge(mesh, edgeA, edgeB, amount),
-          entry.beforeSnapshot
-        );
-        return;
-      }
-      setSurfaceMeshTopologyStatus("This operation node cannot be replayed yet.");
+      replaySurfaceMeshTopologyDefinition(entryId, entry.definition, "edited-definition");
     },
-    [applySurfaceMeshTopologyEdit, meshOperationNodeParameterDrafts, surfaceMeshTopologyHistory]
+    [replaySurfaceMeshTopologyDefinition, surfaceMeshTopologyHistory]
+  );
+
+  const retargetSurfaceMeshTopologyOperationNode = useCallback(
+    (entryId: string) => {
+      const entry = surfaceMeshTopologyHistory.find((candidate) => candidate.id === entryId);
+      if (!entry) {
+        setSurfaceMeshTopologyStatus("Operation node not found.");
+        return;
+      }
+      const nextTarget =
+        entry.definition.operation === "Face Subdivide"
+          ? createMeshTopologyFaceTarget(surfaceMeshTopologyFaceIndex)
+          : createMeshTopologyEdgeTarget(
+              surfaceMeshTopologyFieldValidation.effectiveEdgeA,
+              surfaceMeshTopologyFieldValidation.effectiveEdgeB
+            );
+      const nextDefinition = retargetMeshTopologyEditDefinition(entry.definition, nextTarget);
+      const resolved = resolveMeshTopologyEditDefinitionTarget(entry.beforeSnapshot, nextDefinition);
+      if (!resolved.ok) {
+        setSurfaceMeshTopologyStatus(`Retarget blocked: ${resolved.reason}`);
+        return;
+      }
+      setSurfaceMeshTopologyHistory((history) =>
+        history.map((candidate) =>
+          candidate.id === entry.id
+            ? {
+                ...candidate,
+                targetLabel: nextDefinition.target.label,
+                paramsLabel: nextDefinition.paramsLabel,
+                definition: nextDefinition,
+                selectedResultLabel: surfaceMeshTopologySelectedResultLabelFromDefinition(nextDefinition),
+              }
+            : candidate
+        )
+      );
+      setSelectedSurfaceMeshTopologyHistoryId(entry.id);
+      setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+      setSurfaceMeshTopologyHistoryPreviewMode("before");
+      setSurfaceMeshTopologyPickMode(entry.definition.operation === "Face Subdivide" ? "face" : "edge");
+      setSurfaceMeshTopologyStatus(`Retargeted definition to ${nextDefinition.target.label}.`);
+    },
+    [
+      surfaceMeshTopologyFaceIndex,
+      surfaceMeshTopologyFieldValidation.effectiveEdgeA,
+      surfaceMeshTopologyFieldValidation.effectiveEdgeB,
+      surfaceMeshTopologyHistory,
+    ]
   );
 
   const handleSelectSurfaceMeshEdgeSet = useCallback(
@@ -47048,6 +47173,7 @@ case "mobius":
         sourceLabel: baseLabel,
         targetLabel,
         paramsLabel,
+        beforeCounts,
       }),
       resultLabel: buildTopologyEditSummary(topologyAction, targetLabel, beforeCounts, afterCounts),
       beforeCounts,
@@ -62602,13 +62728,7 @@ case "mobius":
                                                   value={draftValue}
                                                   onChange={(event) => {
                                                     const value = event.currentTarget.value;
-                                                    setMeshOperationNodeParameterDrafts((prev) => ({
-                                                      ...prev,
-                                                      [operationNode.id]: {
-                                                        ...(prev[operationNode.id] ?? {}),
-                                                        [parameter.key]: value,
-                                                      },
-                                                    }));
+                                                    handleUpdateSurfaceMeshTopologyDefinitionParameter(entry, parameter, value);
                                                   }}
                                                   style={{ minWidth: 0, width: "100%" }}
                                                 >
@@ -62624,13 +62744,7 @@ case "mobius":
                                                   value={draftValue}
                                                   onChange={(event) => {
                                                     const value = event.currentTarget.value;
-                                                    setMeshOperationNodeParameterDrafts((prev) => ({
-                                                      ...prev,
-                                                      [operationNode.id]: {
-                                                        ...(prev[operationNode.id] ?? {}),
-                                                        [parameter.key]: value,
-                                                      },
-                                                    }));
+                                                    handleUpdateSurfaceMeshTopologyDefinitionParameter(entry, parameter, value);
                                                   }}
                                                   style={{ minWidth: 0, width: "100%" }}
                                                 >
@@ -62647,13 +62761,7 @@ case "mobius":
                                                   value={draftValue}
                                                   onChange={(event) => {
                                                     const value = event.currentTarget.value;
-                                                    setMeshOperationNodeParameterDrafts((prev) => ({
-                                                      ...prev,
-                                                      [operationNode.id]: {
-                                                        ...(prev[operationNode.id] ?? {}),
-                                                        [parameter.key]: value,
-                                                      },
-                                                    }));
+                                                    handleUpdateSurfaceMeshTopologyDefinitionParameter(entry, parameter, value);
                                                   }}
                                                   style={{ minWidth: 0, width: "100%" }}
                                                 />
@@ -62677,6 +62785,22 @@ case "mobius":
                                             style={{ padding: "2px 7px", fontSize: 10 }}
                                           >
                                             Apply edited
+                                          </button>
+                                          <button
+                                            type="button"
+                                            data-testid="mesh-operation-node-replay-definition"
+                                            onClick={() => replaySurfaceMeshTopologyDefinition(entry.id)}
+                                            style={{ padding: "2px 7px", fontSize: 10 }}
+                                          >
+                                            Replay definition
+                                          </button>
+                                          <button
+                                            type="button"
+                                            data-testid="mesh-operation-node-retarget"
+                                            onClick={() => retargetSurfaceMeshTopologyOperationNode(entry.id)}
+                                            style={{ padding: "2px 7px", fontSize: 10 }}
+                                          >
+                                            Retarget
                                           </button>
                                         </div>
                                       </div>
