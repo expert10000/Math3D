@@ -58366,6 +58366,7 @@ case "mobius":
                   unifiedSelectionFilterLabel={unifiedSelectionFilterLabel}
                   unifiedSelectionFilterStatus={meshUnifiedSelectionFilterStatus}
                   meshUnifiedInspectorSelection={meshUnifiedInspectorSelection}
+                  meshMultiSelectionSet={meshMultiSelectionSet}
                   meshUnifiedInspectorMaterialInfo={meshUnifiedInspectorMaterialInfo}
                   meshUnifiedInspectorCreaseInfo={meshUnifiedInspectorCreaseInfo}
                   onExportSurfaceMeshObj={handleExportSurfaceMeshObj}
@@ -90185,6 +90186,7 @@ type SurfacesLeftPanelProps = {
   unifiedSelectionFilterLabel: string;
   unifiedSelectionFilterStatus: string | null;
   meshUnifiedInspectorSelection: SelectionResult | null;
+  meshMultiSelectionSet: UnifiedSelectionSet;
   meshUnifiedInspectorMaterialInfo: string | null;
   meshUnifiedInspectorCreaseInfo: string | null;
   onExportSurfaceMeshObj: () => void;
@@ -90887,6 +90889,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   unifiedSelectionFilterLabel,
   unifiedSelectionFilterStatus,
   meshUnifiedInspectorSelection,
+  meshMultiSelectionSet,
   meshUnifiedInspectorMaterialInfo,
   meshUnifiedInspectorCreaseInfo,
   onExportSurfaceMeshObj,
