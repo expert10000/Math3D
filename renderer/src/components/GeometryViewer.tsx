@@ -12,6 +12,7 @@ import {
   type OverlayMeshGroup,
   type OverlayPointSet,
   type OverlayPolylineGroup,
+  type SurfaceViewerPickModifiers,
 } from "./SurfaceViewer";
 import type { GeometryScene, Polygon3 } from "../geometry/types";
 import { buildGeometryRenderData } from "../geometry/render";
@@ -98,6 +99,7 @@ export type GeometryViewerProps = {
     distance?: number;
     screenPoint?: [number, number];
     sourceTriangleScreen?: [[number, number], [number, number], [number, number]];
+    modifiers?: SurfaceViewerPickModifiers;
   }) => void;
   onPickMiss?: () => void;
   onPickHover?: (info: {
@@ -109,6 +111,7 @@ export type GeometryViewerProps = {
     distance?: number;
     screenPoint?: [number, number];
     sourceTriangleScreen?: [[number, number], [number, number], [number, number]];
+    modifiers?: SurfaceViewerPickModifiers;
   }) => void;
   onPickHoverMiss?: () => void;
   selectedMeshKey?: string | null;
@@ -388,6 +391,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
                 distance: info.distance,
                 screenPoint: info.screenPoint,
                 sourceTriangleScreen: info.sourceTriangleScreen,
+                modifiers: info.modifiers,
               });
             }
           : undefined
@@ -405,6 +409,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
                 distance: info.distance,
                 screenPoint: info.screenPoint,
                 sourceTriangleScreen: info.sourceTriangleScreen,
+                modifiers: info.modifiers,
               });
             }
           : undefined

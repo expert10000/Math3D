@@ -108,6 +108,10 @@ export type UnifiedSelectionCounts = Readonly<Record<UnifiedSelectionKind, numbe
 
 export type UnifiedSelectionSet = {
   readonly domain: UnifiedSelectionDomain | null;
+  readonly mixedDomain: boolean;
+  readonly objectIds: readonly string[];
+  readonly objectLabels: readonly string[];
+  readonly selectionTypes: readonly UnifiedSelectionKind[];
   readonly items: readonly UnifiedSelection[];
   readonly keys: readonly UnifiedSelectionKey[];
   readonly count: number;
@@ -172,6 +176,10 @@ const EMPTY_SELECTION_COUNTS: UnifiedSelectionCounts = {
 
 const EMPTY_SELECTION_SET: UnifiedSelectionSet = {
   domain: null,
+  mixedDomain: false,
+  objectIds: [],
+  objectLabels: [],
+  selectionTypes: [],
   items: [],
   keys: [],
   count: 0,
@@ -518,6 +526,7 @@ export function createUnifiedSelectionSet(
   options: { activeKey?: UnifiedSelectionKey | null; anchorKey?: UnifiedSelectionKey | null } = {}
 ): UnifiedSelectionSet {
   let domain: UnifiedSelectionDomain | null = null;
+  let mixedDomain = false;
   const items: UnifiedSelection[] = [];
   const keys: UnifiedSelectionKey[] = [];
 
@@ -527,7 +536,7 @@ export function createUnifiedSelectionSet(
     if (!key) continue;
     const selectionDomain = getUnifiedSelectionDomain(selection);
     if (!domain) domain = selectionDomain;
-    if (!areUnifiedSelectionDomainsEqual(domain, selectionDomain)) continue;
+    else if (!areUnifiedSelectionDomainsEqual(domain, selectionDomain)) mixedDomain = true;
     const existingIndex = keys.indexOf(key);
     if (existingIndex >= 0) {
       items[existingIndex] = selection;
@@ -540,20 +549,36 @@ export function createUnifiedSelectionSet(
   if (!domain || !items.length) return EMPTY_SELECTION_SET;
 
   const counts: Record<UnifiedSelectionKind, number> = { ...EMPTY_SELECTION_COUNTS };
+  const objectIds: string[] = [];
+  const objectLabels: string[] = [];
+  const selectionTypes: UnifiedSelectionKind[] = [];
   items.forEach((item) => {
     counts[item.selectionType] += 1;
+    if (!objectIds.includes(item.objectId)) objectIds.push(item.objectId);
+    const objectLabel = item.objectLabel || item.objectId;
+    if (!objectLabels.includes(objectLabel)) objectLabels.push(objectLabel);
+    if (!selectionTypes.includes(item.selectionType)) selectionTypes.push(item.selectionType);
   });
   const activeKey = options.activeKey && keys.includes(options.activeKey) ? options.activeKey : keys[keys.length - 1] ?? null;
   const anchorKey = options.anchorKey && keys.includes(options.anchorKey) ? options.anchorKey : keys[0] ?? null;
   const activeSelection = findSelectionByKey(items, keys, activeKey);
   const anchorSelection = findSelectionByKey(items, keys, anchorKey);
+  const primaryType = selectionTypes.length === 1 ? selectionTypes[0] : null;
+  const objectScope =
+    objectLabels.length === 1 ? ` on ${objectLabels[0]}` : objectLabels.length > 1 ? ` across ${objectLabels.length} objects` : "";
   const label =
     items.length === 1
       ? items[0].label
-      : `${items.length} ${pluralSelectionKind(domain.selectionType, items.length)} selected on ${domain.objectLabel}`;
+      : primaryType
+        ? `${items.length} ${pluralSelectionKind(primaryType, items.length)} selected${objectScope}`
+        : `${items.length} items selected${objectScope}`;
 
   return {
-    domain,
+    domain: mixedDomain ? null : domain,
+    mixedDomain,
+    objectIds,
+    objectLabels,
+    selectionTypes,
     items,
     keys,
     count: items.length,
@@ -577,11 +602,10 @@ export function updateUnifiedSelectionSet(
 
   const key = getUnifiedSelectionKey(selection);
   if (!key) return previous;
-  const selectionDomain = getUnifiedSelectionDomain(selection);
   if (mode === "replace") {
     return createUnifiedSelectionSet([selection], { activeKey: key, anchorKey: key });
   }
-  if (!previous.domain || !areUnifiedSelectionDomainsEqual(previous.domain, selectionDomain)) {
+  if (!previous.items.length) {
     return mode === "remove" ? previous : createUnifiedSelectionSet([selection], { activeKey: key, anchorKey: key });
   }
 

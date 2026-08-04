@@ -256,9 +256,11 @@ export function buildSelectionManagerHighlightOverlays(
   resolveMesh: (selection: SelectionResult) => SurfaceMeshData | null | undefined
 ): SelectionHighlightOverlays {
   const result = { meshGroups: [] as OverlayMeshGroup[], pointSets: [] as OverlayPointSet[], polylineGroups: [] as OverlayPolylineGroup[] };
-  const selections = [manager.hover, manager.selected, manager.editing, manager.preview].filter(
-    (selection): selection is SelectionResult => !!selection
-  );
+  const selections = manager.results.length
+    ? manager.results
+    : [manager.hover, manager.selected, manager.editing, manager.preview].filter(
+        (selection): selection is SelectionResult => !!selection
+      );
   const seen = new Set<string>();
   for (const selection of selections) {
     const key = `${selection.state}:${selection.workspace}:${selection.objectId}:${selection.meshKey ?? ""}:${selection.entityId}`;

@@ -474,6 +474,14 @@ export type ProbeInfo = {
   normal: { x: number; y: number; z: number };
   uv?: { u: number; v: number };
   xy?: { x: number; y: number };
+  modifiers?: SurfaceViewerPickModifiers;
+};
+
+export type SurfaceViewerPickModifiers = {
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
 };
 
 type GizmoView = "xy" | "xyNeg" | "xz" | "xzNeg" | "yz" | "yzNeg" | "iso";
@@ -1411,6 +1419,7 @@ type Props = {
     sampleIndex?: number;
     meshKey?: string;
     vertexIndex?: number;
+    modifiers?: SurfaceViewerPickModifiers;
   }) => void;
   geodesicPathEnabled?: boolean;
   onGeodesicPathPick?: (info: {
@@ -1473,6 +1482,7 @@ type Props = {
     sourceTriangleScreen?: [[number, number], [number, number], [number, number]];
     uv?: { u: number; v: number };
     xy?: { x: number; y: number };
+    modifiers?: SurfaceViewerPickModifiers;
   }) => void;
   onInspectPickMiss?: () => void;
   onInspectHover?: (info: {
@@ -1487,6 +1497,7 @@ type Props = {
     sourceTriangleScreen?: [[number, number], [number, number], [number, number]];
     uv?: { u: number; v: number };
     xy?: { x: number; y: number };
+    modifiers?: SurfaceViewerPickModifiers;
   }) => void;
   onInspectHoverMiss?: () => void;
   inspectSelectionMeshKey?: string | null;
@@ -1858,7 +1869,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
         point: THREE.Vector3,
         normalWorld: THREE.Vector3,
         xyDomain?: { x: number; y: number },
-        uvDomain?: { u: number; v: number }
+        uvDomain?: { u: number; v: number },
+        modifiers?: SurfaceViewerPickModifiers
       ) => void)
     | null
   >(null);
@@ -1923,6 +1935,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
               sourceTriangleScreen?: [[number, number], [number, number], [number, number]];
               uv?: { u: number; v: number };
               xy?: { x: number; y: number };
+              modifiers?: SurfaceViewerPickModifiers;
             };
   } | null>(null);
 
@@ -4692,7 +4705,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       point: THREE.Vector3,
       normalWorld: THREE.Vector3,
       xyDomain?: { x: number; y: number },
-      uvDomain?: { u: number; v: number }
+      uvDomain?: { u: number; v: number },
+      modifiers?: SurfaceViewerPickModifiers
     ) => {
       const n = normalWorld.clone().normalize();
 
@@ -4747,6 +4761,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           normal: { x: n.x, y: n.y, z: n.z },
           xy: xyDomain,
           uv: uvDomain,
+          modifiers,
         });
       }
     };
@@ -4837,6 +4852,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       pointer.set(x, y);
+      const pickModifiers: SurfaceViewerPickModifiers = {
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+      };
 
       raycaster.setFromCamera(pointer, camera);
       const gridPickMesh = chartGridPickMeshRef.current;
@@ -5124,6 +5145,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
               sourceTriangleScreen: inspectScreenInfo.sourceTriangleScreen,
               uv: uvDomain,
               xy: xyDomain,
+              modifiers: pickModifiers,
             },
           };
           const dragStartCb = onDragStartRef.current;
@@ -5165,6 +5187,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
                 sourceTriangleScreen: inspectScreenInfo.sourceTriangleScreen,
                 uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
                 xy: xyDomain,
+                modifiers: pickModifiers,
               });
             } else {
               inspectCb({
@@ -5179,6 +5202,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
                 sourceTriangleScreen: inspectScreenInfo.sourceTriangleScreen,
                 uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
                 xy: xyDomain,
+                modifiers: pickModifiers,
               });
             }
           }
@@ -5186,7 +5210,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         }
 
       if (probeEnabled) {
-        applyProbe(point, normalWorld, xyDomain, uvDomain);
+        applyProbe(point, normalWorld, xyDomain, uvDomain, pickModifiers);
       }
 
       const selectionCb = onSelectionPickRef.current;
@@ -5199,6 +5223,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           sampleIndex: nearest?.index,
           meshKey: nearest?.sample.meshKey,
           vertexIndex: nearest?.sample.vertexIndex,
+          modifiers: pickModifiers,
         });
       }
     };
@@ -5220,6 +5245,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       pointer.set(x, y);
+      const hoverModifiers: SurfaceViewerPickModifiers = {
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+      };
       raycaster.setFromCamera(pointer, camera);
 
         if (dragState && event.pointerId === dragState.pointerId) {
@@ -5290,6 +5321,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           sourceTriangleScreen: inspectScreenInfo.sourceTriangleScreen,
           uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
           xy: xyDomain,
+          modifiers: hoverModifiers,
         });
       } else {
         inspectHoverCb({
@@ -5304,6 +5336,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           sourceTriangleScreen: inspectScreenInfo.sourceTriangleScreen,
           uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
           xy: xyDomain,
+          modifiers: hoverModifiers,
         });
       }
     };
@@ -5337,6 +5370,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
               sourceTriangleScreen: clickPick.sourceTriangleScreen,
               uv: clickPick.uv ?? (clickPick.xy ? { u: clickPick.xy.x, v: clickPick.xy.y } : undefined),
               xy: clickPick.xy,
+              modifiers: clickPick.modifiers,
             });
           } else {
             inspectCb({
@@ -5351,6 +5385,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
               sourceTriangleScreen: clickPick.sourceTriangleScreen,
               uv: clickPick.uv ?? (clickPick.xy ? { u: clickPick.xy.x, v: clickPick.xy.y } : undefined),
               xy: clickPick.xy,
+              modifiers: clickPick.modifiers,
             });
           }
         }

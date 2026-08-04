@@ -110,15 +110,21 @@ import {
 import {
   describeUnifiedSelectionFilter,
   createUnifiedSelectionManagerState,
+  createUnifiedSelectionSet,
   evaluateUnifiedSelectionFilter,
+  getUnifiedSelectionKey,
   selectionResultFromGeometryPick,
   selectionResultFromUnifiedSelection,
   selectionResultWithState,
   unifiedSelectionFromGeometryPick,
   unifiedSelectionFromMeshTopology,
+  updateUnifiedSelectionSet,
   type SelectionResult,
+  type UnifiedSelection,
   type UnifiedSelectionFilter,
   type UnifiedSelectionKind,
+  type UnifiedSelectionSet,
+  type UnifiedSelectionSetEditMode,
 } from "./selection/unifiedSelection";
 
 import {
@@ -131,6 +137,7 @@ import {
   type OverlayPointSet,
   type OverlayPolylineGroup,
   type ProbeInfo,
+  type SurfaceViewerPickModifiers,
   type CameraTourCommand,
   type CameraTourEvent,
   type CameraTourMode,
@@ -2904,6 +2911,37 @@ type GeometryProceduralPickInfo = {
   sourceTriangleScreen?: [[number, number], [number, number], [number, number]];
   topologyVersion?: number;
   topologyReference?: GeometryTopologyReference | null;
+  modifiers?: SurfaceViewerPickModifiers;
+};
+
+const selectionSetEditModeFromModifiers = (
+  modifiers: SurfaceViewerPickModifiers | null | undefined
+): UnifiedSelectionSetEditMode => {
+  if (modifiers?.ctrlKey || modifiers?.metaKey) return "toggle";
+  if (modifiers?.shiftKey) return "add";
+  return "replace";
+};
+const selectionModifierSignature = (modifiers: SurfaceViewerPickModifiers | null | undefined): string =>
+  `${modifiers?.ctrlKey ? "c" : "-"}${modifiers?.metaKey ? "m" : "-"}${modifiers?.shiftKey ? "s" : "-"}${
+    modifiers?.altKey ? "a" : "-"
+  }`;
+
+const applyUnifiedSelectionSetEdit = (
+  previous: UnifiedSelectionSet,
+  selection: UnifiedSelection | null | undefined,
+  modifiers: SurfaceViewerPickModifiers | null | undefined,
+  expansion: readonly UnifiedSelection[] = []
+): UnifiedSelectionSet => {
+  const mode = selectionSetEditModeFromModifiers(modifiers);
+  if (mode === "replace" || !selection) return updateUnifiedSelectionSet(previous, selection, mode);
+  if (modifiers?.shiftKey && expansion.length > 1) {
+    let next = previous.empty ? createUnifiedSelectionSet([], {}) : previous;
+    for (const item of expansion) {
+      next = updateUnifiedSelectionSet(next, item, "add");
+    }
+    return next;
+  }
+  return updateUnifiedSelectionSet(previous, selection, mode);
 };
 type GeometryProbeSelectionDetails = {
   mode: GeometryProbeSelectionMode;
@@ -5499,6 +5537,114 @@ const readStoredSurfaceMeshContextualPickMode = (): SurfaceMeshTopologyPickMode 
   } catch {
     return null;
   }
+};
+const buildSurfaceMeshUnifiedSelectionFromPick = (
+  mesh: SurfaceMeshData | null,
+  meshLabel: string,
+  pickMode: SurfaceMeshTopologyPickMode,
+  pick: SurfaceMeshTopologyPick,
+  lifecycle: "selected" | "hover" | "editing" | "preview" = "selected"
+): UnifiedSelection | null => {
+  const topology = mesh?.positions?.length ? countTriangleMeshTopology(mesh) : { vertexCount: 0, faceCount: 0 };
+  const faceValid = pick.faceIndex >= 0 && pick.faceIndex < topology.faceCount;
+  const edgeValid =
+    !!mesh &&
+    pick.edgeA !== pick.edgeB &&
+    pick.edgeA >= 0 &&
+    pick.edgeB >= 0 &&
+    pick.edgeA < topology.vertexCount &&
+    pick.edgeB < topology.vertexCount &&
+    findMeshEdgeIncidentFaceIndices(mesh, pick.edgeA, pick.edgeB, 1).length > 0;
+  const vertexValid = pick.vertexIndex >= 0 && pick.vertexIndex < topology.vertexCount;
+  return unifiedSelectionFromMeshTopology(
+    {
+      mode: pickMode,
+      objectId: `mesh:${meshLabel}`,
+      objectLabel: meshLabel,
+      meshKey: `mesh:${meshLabel}`,
+      mesh,
+      faceIndex: pick.faceIndex,
+      edgeVertices: [pick.edgeA, pick.edgeB],
+      vertexIndex: pick.vertexIndex,
+      valid:
+        pickMode === "object"
+          ? Boolean(mesh)
+          : pickMode === "face"
+            ? faceValid
+            : pickMode === "edge"
+              ? edgeValid
+              : vertexValid,
+      selectionCleared: false,
+    },
+    lifecycle
+  );
+};
+const buildSurfaceMeshShiftExpansionSelections = (
+  mesh: SurfaceMeshData | null,
+  meshLabel: string,
+  pickMode: SurfaceMeshTopologyPickMode,
+  pick: SurfaceMeshTopologyPick,
+  anchor: UnifiedSelection | null | undefined
+): UnifiedSelection[] => {
+  const selected = buildSurfaceMeshUnifiedSelectionFromPick(mesh, meshLabel, pickMode, pick);
+  if (!selected || !mesh?.positions?.length || pickMode === "object") return selected ? [selected] : [];
+  const topology = countTriangleMeshTopology(mesh);
+  const selections: UnifiedSelection[] = [];
+  const pushPick = (nextPick: SurfaceMeshTopologyPick) => {
+    const item = buildSurfaceMeshUnifiedSelectionFromPick(mesh, meshLabel, pickMode, nextPick);
+    if (item) selections.push(item);
+  };
+
+  if (pickMode === "face") {
+    const anchorFace = anchor?.selectionType === "face" ? anchor.faceId ?? null : null;
+    if (anchorFace != null && anchorFace >= 0 && anchorFace < topology.faceCount) {
+      const min = Math.max(0, Math.min(anchorFace, pick.faceIndex));
+      const max = Math.min(topology.faceCount - 1, Math.max(anchorFace, pick.faceIndex));
+      for (let faceIndex = min; faceIndex <= max && selections.length < 250; faceIndex += 1) {
+        const tri = readMeshFaceVertexIndices(mesh, faceIndex);
+        pushPick({
+          faceIndex,
+          edgeA: tri?.[0] ?? pick.edgeA,
+          edgeB: tri?.[1] ?? pick.edgeB,
+          vertexIndex: tri?.[0] ?? pick.vertexIndex,
+        });
+      }
+      return selections.length ? selections : [selected];
+    }
+    pushPick(pick);
+    for (const faceIndex of selected.topology.adjacentFaces.slice(0, 64)) {
+      const tri = readMeshFaceVertexIndices(mesh, faceIndex);
+      if (tri) pushPick({ faceIndex, edgeA: tri[0], edgeB: tri[1], vertexIndex: tri[0] });
+    }
+    return selections.length ? selections : [selected];
+  }
+
+  if (pickMode === "edge") {
+    const incidentFaces = findMeshEdgeIncidentFaceIndices(mesh, pick.edgeA, pick.edgeB, 12);
+    const seen = new Set<string>();
+    for (const faceIndex of incidentFaces) {
+      const tri = readMeshFaceVertexIndices(mesh, faceIndex);
+      if (!tri) continue;
+      for (const [edgeA, edgeB] of [[tri[0], tri[1]], [tri[1], tri[2]], [tri[2], tri[0]]] as const) {
+        const key = edgeA < edgeB ? `${edgeA}:${edgeB}` : `${edgeB}:${edgeA}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        pushPick({ faceIndex, edgeA, edgeB, vertexIndex: edgeA });
+      }
+    }
+    return selections.length ? selections : [selected];
+  }
+
+  if (pickMode === "vertex") {
+    const vertexIds = new Set<number>([pick.vertexIndex, ...selected.topology.adjacentVertices]);
+    for (const vertexIndex of Array.from(vertexIds).slice(0, 250)) {
+      if (vertexIndex < 0 || vertexIndex >= topology.vertexCount) continue;
+      pushPick({ faceIndex: pick.faceIndex, edgeA: pick.edgeA, edgeB: pick.edgeB, vertexIndex });
+    }
+    return selections.length ? selections : [selected];
+  }
+
+  return [selected];
 };
 type SurfaceMeshTopologyHistoryEntry = {
   id: string;
@@ -10610,6 +10756,9 @@ const App: React.FC = () => {
   const [geometryProceduralPick, setGeometryProceduralPick] = useState<GeometryProceduralPickInfo | null>(
     () => readGeometryEditSessionSnapshot()?.proceduralPick ?? null
   );
+  const [geometryMultiSelectionSet, setGeometryMultiSelectionSet] = useState<UnifiedSelectionSet>(() =>
+    createUnifiedSelectionSet([])
+  );
   const [geometryProceduralHoverPick, setGeometryProceduralHoverPick] = useState<GeometryProceduralPickInfo | null>(null);
   const [geometryObjectHistoryById, setGeometryObjectHistoryById] = useState<Record<string, GeometryObjectHistoryStep[]>>({});
   const [geometrySelectedHistoryStepId, setGeometrySelectedHistoryStepId] = useState<string | null>(null);
@@ -10958,6 +11107,7 @@ const App: React.FC = () => {
       screenPoint: info.screenPoint,
       sourceTriangleScreen: info.sourceTriangleScreen,
       topologyVersion: info.meshKey ? geometryObjectRevisionById[info.meshKey] ?? 0 : undefined,
+      modifiers: info.modifiers,
     });
   }, [geometryObjectRevisionById]);
   const handleProceduralPickHoverMiss = useCallback(() => {
@@ -11134,6 +11284,7 @@ const App: React.FC = () => {
       screenPoint: info.screenPoint,
       sourceTriangleScreen: info.sourceTriangleScreen,
       topologyVersion: info.meshKey ? geometryObjectRevisionById[info.meshKey] ?? 0 : undefined,
+      modifiers: info.modifiers,
     });
     if (geometryArmedLineOperation && info.meshKey) {
       setGeometryLineOperationCommitRequestId((prev) => prev + 1);
@@ -15756,10 +15907,42 @@ const App: React.FC = () => {
     () => unifiedSelectionFromGeometryPick(geometrySelectedPick),
     [geometrySelectedPick]
   );
+  const geometrySelectionSetAppliedKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!geometryUnifiedSelection) return;
+    const key = getUnifiedSelectionKey(geometryUnifiedSelection);
+    const signature = `${key ?? geometryUnifiedSelection.entityId}:${selectionModifierSignature(
+      geometryProceduralPick?.modifiers
+    )}:${geometryProceduralPick?.point.x ?? ""}:${geometryProceduralPick?.point.y ?? ""}:${geometryProceduralPick?.point.z ?? ""}`;
+    if (geometrySelectionSetAppliedKeyRef.current === signature) return;
+    geometrySelectionSetAppliedKeyRef.current = signature;
+    const editMode = selectionSetEditModeFromModifiers(geometryProceduralPick?.modifiers);
+    const togglesOffCurrentSelection = editMode === "toggle" && !!key && geometryMultiSelectionSet.keys.includes(key);
+    setGeometryMultiSelectionSet((previous) =>
+      applyUnifiedSelectionSetEdit(previous, geometryUnifiedSelection, geometryProceduralPick?.modifiers)
+    );
+    if (togglesOffCurrentSelection) {
+      setGeometryProceduralPick(null);
+    }
+  }, [
+    geometryMultiSelectionSet.keys,
+    geometryProceduralPick?.modifiers,
+    geometryProceduralPick?.point.x,
+    geometryProceduralPick?.point.y,
+    geometryProceduralPick?.point.z,
+    geometryUnifiedSelection,
+  ]);
   const geometryHoverPick = geometryProbeHoverSelectionDetails?.pick ?? null;
   const geometrySelectedSelectionResult = useMemo(
     () => selectionResultFromUnifiedSelection(geometryUnifiedSelection),
     [geometryUnifiedSelection]
+  );
+  const geometryMultiSelectionResults = useMemo(
+    () =>
+      geometryMultiSelectionSet.items
+        .map((selection) => selectionResultFromUnifiedSelection(selection))
+        .filter((selection): selection is SelectionResult => !!selection),
+    [geometryMultiSelectionSet.items]
   );
   const geometryHoverSelectionResult = useMemo(
     () => selectionResultFromGeometryPick(geometryHoverPick, "hover"),
@@ -15786,7 +15969,7 @@ const App: React.FC = () => {
   const geometrySelectionManager = useMemo(
     () =>
       createUnifiedSelectionManagerState([
-        geometrySelectedSelectionResult,
+        ...(geometryMultiSelectionResults.length ? geometryMultiSelectionResults : [geometrySelectedSelectionResult]),
         geometryHoverSelectionResult,
         geometryEditingSelectionResult,
         geometryPreviewSelectionResult,
@@ -15794,6 +15977,7 @@ const App: React.FC = () => {
     [
       geometryEditingSelectionResult,
       geometryHoverSelectionResult,
+      geometryMultiSelectionResults,
       geometryPreviewSelectionResult,
       geometrySelectedSelectionResult,
     ]
@@ -15940,6 +16124,7 @@ const App: React.FC = () => {
   const handleClearGeometryContextSelection = useCallback(() => {
     setGeometryProceduralPick(null);
     setGeometryProceduralHoverPick(null);
+    setGeometryMultiSelectionSet(createUnifiedSelectionSet([]));
     setGeometryHistoryPreviewStepId(null);
     setGeometryTopologyEditFeedback(null);
     setGeometryCreateActionStatus("Geometry selection cleared.");
@@ -30725,6 +30910,9 @@ const App: React.FC = () => {
   const [unifiedSelectionTopologyFilter, setUnifiedSelectionTopologyFilter] =
     useState<UnifiedSelectionTopologyFilterMode>("all");
   const [surfaceMeshTopologySelectionCleared, setSurfaceMeshTopologySelectionCleared] = useState(false);
+  const [meshMultiSelectionSet, setMeshMultiSelectionSet] = useState<UnifiedSelectionSet>(() =>
+    createUnifiedSelectionSet([])
+  );
   const [surfaceMeshEdgeSelection, setSurfaceMeshEdgeSelection] = useState<MeshEdgeSelectionResult | null>(null);
   const surfaceMeshEdgeSelectionRef = useRef<MeshEdgeSelectionResult | null>(null);
   useEffect(() => {
@@ -35619,8 +35807,10 @@ const App: React.FC = () => {
         handleStopSurfacesCameraTour();
         setGeometryProceduralPick(null);
         setGeometryProceduralHoverPick(null);
+        setGeometryMultiSelectionSet(createUnifiedSelectionSet([]));
         setGeometryHistoryPreviewStepId(null);
         setSurfaceMeshHoverPick(null);
+        setMeshMultiSelectionSet(createUnifiedSelectionSet([]));
         setSurfaceMeshEdgeSelection(null);
         setSurfaceMeshTopologySelectionCleared(true);
         setSurfaceMeshTopologyFeedback(null);
@@ -36259,7 +36449,7 @@ const App: React.FC = () => {
     surfaceMeshTopologyVertexIndex,
   ]);
   const applySurfaceMeshTopologyPickToFields = useCallback(
-    (pick: SurfaceMeshTopologyPick | null = surfaceMeshTopologyPick) => {
+    (pick: SurfaceMeshTopologyPick | null = surfaceMeshTopologyPick, modifiers?: SurfaceViewerPickModifiers) => {
       if (!pick) {
         setSurfaceMeshTopologyStatus("Enable Probe and click the current SurfaceMesh first.");
         return;
@@ -36269,6 +36459,34 @@ const App: React.FC = () => {
       setSurfaceMeshTopologyEdgeB(pick.edgeB);
       setSurfaceMeshTopologyVertexIndex(pick.vertexIndex);
       setSurfaceMeshTopologySelectionCleared(false);
+      const pickedSelection = buildSurfaceMeshUnifiedSelectionFromPick(
+        surfaceMeshData,
+        surfaceMeshLabel,
+        surfaceMeshTopologyPickMode,
+        pick
+      );
+      const pickedSelectionAccepted = evaluateUnifiedSelectionFilter(pickedSelection, unifiedSelectionFilter).accepted;
+      if (pickedSelectionAccepted) {
+        const pickedSelectionKey = pickedSelection ? getUnifiedSelectionKey(pickedSelection) : null;
+        const editMode = selectionSetEditModeFromModifiers(modifiers);
+        const togglesOffCurrentSelection =
+          editMode === "toggle" && !!pickedSelectionKey && meshMultiSelectionSet.keys.includes(pickedSelectionKey);
+        setMeshMultiSelectionSet((previous) => {
+          const expansion = modifiers?.shiftKey
+            ? buildSurfaceMeshShiftExpansionSelections(
+                surfaceMeshData,
+                surfaceMeshLabel,
+                surfaceMeshTopologyPickMode,
+                pick,
+                previous.anchorSelection
+              )
+            : [];
+          return applyUnifiedSelectionSetEdit(previous, pickedSelection, modifiers, expansion);
+        });
+        if (togglesOffCurrentSelection) {
+          setSurfaceMeshTopologySelectionCleared(true);
+        }
+      }
       const detail =
         surfaceMeshTopologyPickMode === "face"
           ? `Face ${pick.faceIndex}; edge ${pick.edgeA}-${pick.edgeB} refreshed`
@@ -36279,17 +36497,26 @@ const App: React.FC = () => {
           : `Face ${pick.faceIndex}, Edge ${pick.edgeA}-${pick.edgeB}, Vertex ${pick.vertexIndex}`;
       setSurfaceMeshTopologyStatus(`${surfaceMeshTopologyPickModeLabel} pick loaded: ${detail}.`);
     },
-    [surfaceMeshTopologyPick, surfaceMeshTopologyPickMode, surfaceMeshTopologyPickModeLabel]
+    [
+      surfaceMeshData,
+      surfaceMeshLabel,
+      surfaceMeshTopologyPick,
+      surfaceMeshTopologyPickMode,
+      surfaceMeshTopologyPickModeLabel,
+      unifiedSelectionFilter,
+      meshMultiSelectionSet.keys,
+    ]
   );
   useEffect(() => {
     if (surfaceViewerKind !== "mesh" || !probeEnabled || !surfaceMeshTopologyPick) return;
     if (surfaceMeshTopologyAutoPickStampRef.current === probeStamp) return;
     surfaceMeshTopologyAutoPickStampRef.current = probeStamp;
-    applySurfaceMeshTopologyPickToFields(surfaceMeshTopologyPick);
-  }, [applySurfaceMeshTopologyPickToFields, probeEnabled, probeStamp, surfaceMeshTopologyPick, surfaceViewerKind]);
+    applySurfaceMeshTopologyPickToFields(surfaceMeshTopologyPick, probeInfo?.modifiers);
+  }, [applySurfaceMeshTopologyPickToFields, probeEnabled, probeInfo?.modifiers, probeStamp, surfaceMeshTopologyPick, surfaceViewerKind]);
   const handleClearSurfaceMeshTopologyContextSelection = useCallback(() => {
     clearInspect();
     setSurfaceMeshTopologySelectionCleared(true);
+    setMeshMultiSelectionSet(createUnifiedSelectionSet([]));
     setSurfaceMeshTopologyFeedback(null);
     setSurfaceMeshTopologyHistoryPreviewId(null);
     setSurfaceMeshTopologyHistoryPreviewMode("after");
@@ -46864,6 +47091,13 @@ case "mobius":
     () => selectionResultFromUnifiedSelection(filteredMeshUnifiedSelection),
     [filteredMeshUnifiedSelection]
   );
+  const meshMultiSelectionResults = useMemo(
+    () =>
+      meshMultiSelectionSet.items
+        .map((selection) => selectionResultFromUnifiedSelection(selection))
+        .filter((selection): selection is SelectionResult => !!selection),
+    [meshMultiSelectionSet.items]
+  );
   const meshHoverUnifiedSelection = useMemo(() => {
     if (!surfaceMeshTopologyHoverPick || surfaceMeshTopologyPickMode === "object") return null;
     return unifiedSelectionFromMeshTopology(
@@ -46923,12 +47157,12 @@ case "mobius":
   const meshSelectionManager = useMemo(
     () =>
       createUnifiedSelectionManagerState([
-        meshSelectionResult,
+        ...(meshMultiSelectionResults.length ? meshMultiSelectionResults : [meshSelectionResult]),
         meshHoverSelectionResult,
         meshEditingSelectionResult,
         meshPreviewSelectionResult,
       ]),
-    [meshEditingSelectionResult, meshHoverSelectionResult, meshPreviewSelectionResult, meshSelectionResult]
+    [meshEditingSelectionResult, meshHoverSelectionResult, meshMultiSelectionResults, meshPreviewSelectionResult, meshSelectionResult]
   );
   const meshSelectionHighlightOverlays = useMemo(
     () => buildSelectionManagerHighlightOverlays(meshSelectionManager, () => surfaceMeshTopologyViewerMesh),
@@ -61254,6 +61488,7 @@ case "mobius":
                         </div>
                         <UnifiedSelectionInspector
                           selection={meshUnifiedInspectorSelection}
+                          selectionSet={meshMultiSelectionSet}
                           title="Unified selection"
                           materialInfo={meshUnifiedInspectorMaterialInfo}
                           creaseInfo={meshUnifiedInspectorCreaseInfo}
@@ -79379,6 +79614,7 @@ case "mobius":
                             )}
                             <UnifiedSelectionInspector
                               selection={geometryUnifiedInspectorSelection}
+                              selectionSet={geometryMultiSelectionSet}
                               title="Unified selection"
                               materialInfo={geometryUnifiedInspectorMaterialInfo}
                               creaseInfo={geometryUnifiedInspectorCreaseInfo}
@@ -94477,6 +94713,7 @@ onChangeImplicitExpr,
                   </div>
                   <UnifiedSelectionInspector
                     selection={meshUnifiedInspectorSelection}
+                    selectionSet={meshMultiSelectionSet}
                     title="Unified selection"
                     materialInfo={meshUnifiedInspectorMaterialInfo}
                     creaseInfo={meshUnifiedInspectorCreaseInfo}

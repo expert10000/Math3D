@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
-import { selectionResultFromMeshTopology } from "./unifiedSelection";
-import { buildSelectionHighlightOverlays } from "./selectionHighlighting";
+import { createUnifiedSelectionManagerState, selectionResultFromMeshTopology } from "./unifiedSelection";
+import { buildSelectionHighlightOverlays, buildSelectionManagerHighlightOverlays } from "./selectionHighlighting";
 
 const stripMesh: SurfaceMeshData = {
   label: "Strip",
@@ -68,5 +68,27 @@ describe("selectionHighlighting", () => {
     expect(overlays.meshGroups.length).toBe(1);
     expect(overlays.polylineGroups.length).toBe(1);
     expect(overlays.pointSets.length).toBe(2);
+  });
+
+  it("builds overlays for every selected result in a manager snapshot", () => {
+    const first = selectionResultFromMeshTopology({
+      mode: "edge",
+      objectLabel: "Strip",
+      mesh: stripMesh,
+      edgeVertices: [0, 1],
+      valid: true,
+    });
+    const second = selectionResultFromMeshTopology({
+      mode: "edge",
+      objectLabel: "Strip",
+      mesh: stripMesh,
+      edgeVertices: [1, 4],
+      valid: true,
+    });
+    const manager = createUnifiedSelectionManagerState([first, second]);
+
+    const overlays = buildSelectionManagerHighlightOverlays(manager, () => stripMesh);
+
+    expect(overlays.polylineGroups.length).toBeGreaterThanOrEqual(2);
   });
 });

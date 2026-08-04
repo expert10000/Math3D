@@ -302,7 +302,7 @@ describe("unifiedSelection", () => {
     expect(set.anchorSelection).toBe(selection);
   });
 
-  it("dedupes multi-selection items inside one workspace/object/type domain", () => {
+  it("dedupes multi-selection items while preserving mixed entity buckets", () => {
     const edgeA = unifiedSelectionFromMeshTopology({
       mode: "edge",
       objectLabel: "Square mesh",
@@ -340,11 +340,13 @@ describe("unifiedSelection", () => {
     expect(edgeA && vertex && areUnifiedSelectionsInSameSetDomain(edgeA, vertex)).toBe(false);
 
     const set = createUnifiedSelectionSet([edgeA, edgeB, duplicateEdgeA, vertex]);
-    expect(set.count).toBe(2);
-    expect(set.items.map((item) => item.edgeId)).toEqual(["0-1", "0-2"]);
-    expect(set.counts).toEqual({ object: 0, face: 0, edge: 2, vertex: 0 });
-    expect(set.label).toBe("2 edges selected on Square mesh");
-    expect(set.activeSelection?.edgeId).toBe("0-2");
+    expect(set.count).toBe(3);
+    expect(set.items.map((item) => item.entityId)).toEqual(["edge:0-1", "edge:0-2", "vertex:1"]);
+    expect(set.counts).toEqual({ object: 0, face: 0, edge: 2, vertex: 1 });
+    expect(set.label).toBe("3 items selected on Square mesh");
+    expect(set.mixedDomain).toBe(true);
+    expect(set.domain).toBeNull();
+    expect(set.activeSelection?.vertexId).toBe(1);
     expect(set.anchorSelection?.edgeId).toBe("0-1");
   });
 
@@ -391,13 +393,41 @@ describe("unifiedSelection", () => {
     expect(set.items.map((item) => item.edgeId)).toEqual(["0-2"]);
 
     set = updateUnifiedSelectionSet(set, face, "add");
-    expect(set.count).toBe(1);
-    expect(set.domain?.selectionType).toBe("face");
+    expect(set.count).toBe(2);
+    expect(set.counts).toEqual({ object: 0, face: 1, edge: 1, vertex: 0 });
+    expect(set.domain).toBeNull();
+    expect(set.mixedDomain).toBe(true);
     expect(set.activeSelection?.faceId).toBe(0);
 
     set = updateUnifiedSelectionSet(set, null, "clear");
     expect(set.empty).toBe(true);
     expect(set.label).toBe("No selection");
+  });
+
+  it("allows Ctrl-style additions across Geometry objects", () => {
+    const first = unifiedSelectionFromGeometryPick(resolveGeometryPick(rawHit, "edge", geometryContext));
+    const secondContext: GeometryPickContext = {
+      objects: [
+        {
+          objectId: "square-2",
+          objectLabel: "Square B",
+          objectType: "mesh",
+          meshKey: "square-2",
+          topologyVersion: 3,
+          worldMesh: squareMesh,
+        },
+      ],
+    };
+    const second = unifiedSelectionFromGeometryPick(
+      resolveGeometryPick({ ...rawHit, renderObjectId: "square-2" }, "edge", secondContext)
+    );
+
+    let set = updateUnifiedSelectionSet(createUnifiedSelectionSet([]), first, "replace");
+    set = updateUnifiedSelectionSet(set, second, "add");
+
+    expect(set.count).toBe(2);
+    expect(set.objectLabels).toEqual(["Square A", "Square B"]);
+    expect(set.label).toBe("2 edges selected across 2 objects");
   });
 
   it("filters unified selections by type and topology flags", () => {
