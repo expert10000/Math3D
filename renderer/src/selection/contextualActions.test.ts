@@ -12,6 +12,8 @@ describe("contextualActions", () => {
       "Loop",
       "Ring",
       "Boundary",
+      "Sharp",
+      "Feature",
     ]);
     expect(descriptors.map((descriptor) => descriptor.operationKey)).toEqual([
       "split-edge",
@@ -20,6 +22,8 @@ describe("contextualActions", () => {
       "select-edge-loop",
       "select-edge-ring",
       "select-boundary",
+      "select-sharp-edges",
+      "select-feature-edges",
     ]);
     expect(descriptors.map((descriptor) => descriptor.testIdSuffix)).toEqual([
       "split-edge",
@@ -28,6 +32,8 @@ describe("contextualActions", () => {
       "select-edge-loop",
       "select-edge-ring",
       "select-boundary",
+      "select-sharp-edges",
+      "select-feature-edges",
     ]);
   });
 

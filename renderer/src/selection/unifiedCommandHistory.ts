@@ -18,6 +18,7 @@ export type UnifiedCommandHistoryEntry = {
   readonly targetLabel?: string | null;
   readonly resultLabel: string;
   readonly parametersLabel?: string | null;
+  readonly definitionLabel?: string | null;
   readonly beforeCounts?: UnifiedCommandHistoryCounts | null;
   readonly afterCounts?: UnifiedCommandHistoryCounts | null;
   readonly hasSourceSnapshot?: boolean;
@@ -28,7 +29,7 @@ export type UnifiedCommandHistoryEntry = {
 };
 
 export type UnifiedCommandHistoryRow = {
-  readonly label: "Source" | "Action" | "Before" | "After" | "Result" | "Params";
+  readonly label: "Source" | "Action" | "Before" | "After" | "Result" | "Params" | "Def";
   readonly value: string;
 };
 
@@ -84,6 +85,8 @@ export type MeshTopologyCommandHistorySource = {
   readonly sourceLabel: string;
   readonly targetLabel: string;
   readonly paramsLabel?: string | null;
+  readonly definitionLabel?: string | null;
+  readonly definition?: { readonly replayLabel?: string | null } | null;
   readonly resultLabel: string;
   readonly selectedResultLabel?: string | null;
   readonly beforeCounts: UnifiedCommandHistoryCounts;
@@ -159,6 +162,9 @@ export function buildUnifiedCommandHistoryRows(entry: UnifiedCommandHistoryEntry
   rows.push({ label: "Result", value: entry.resultLabel });
   if (entry.parametersLabel) {
     rows.push({ label: "Params", value: entry.parametersLabel });
+  }
+  if (entry.definitionLabel) {
+    rows.push({ label: "Def", value: entry.definitionLabel });
   }
   return rows;
 }
@@ -366,6 +372,7 @@ export function buildMeshTopologyCommandHistoryEntry(
     targetLabel: entry.targetLabel,
     resultLabel: entry.resultLabel,
     parametersLabel: entry.paramsLabel ?? null,
+    definitionLabel: entry.definitionLabel ?? entry.definition?.replayLabel ?? null,
     beforeCounts: entry.beforeCounts,
     afterCounts: entry.afterCounts,
     countsLabel,

@@ -45,6 +45,7 @@ import {
 } from "./components/ActiveSelectionCard";
 import { CommandPreviewLegend } from "./components/CommandPreviewLegend";
 import { CommandHistoryCard } from "./components/CommandHistoryCard";
+import { SelectionContextMenu } from "./components/SelectionContextMenu";
 import {
   ContextualActionStrip,
   ContextualActionStripAction,
@@ -73,6 +74,11 @@ import {
   buildContextualRenderedActionsForPrefix,
   type ContextualActionBinding,
 } from "./selection/contextualActionRendering";
+import {
+  contextualSelectionMenuTitle,
+  formatContextualSelectionBreadcrumb,
+} from "./selection/contextualMenuModel";
+import { getAdaptiveTopologyGizmoConfig } from "./selection/adaptiveTopologyGizmo";
 import { buildContextualSelectionState } from "./selection/contextualSelectionState";
 import {
   applyContextualViewportPreviewAccessibility,
@@ -117,6 +123,7 @@ import {
   selectionResultFromUnifiedSelection,
   selectionResultWithState,
   unifiedSelectionFromGeometryPick,
+  unifiedSelectionFromGeometryObject,
   unifiedSelectionFromMeshTopology,
   updateUnifiedSelectionSet,
   type SelectionResult,
@@ -126,6 +133,13 @@ import {
   type UnifiedSelectionSet,
   type UnifiedSelectionSetEditMode,
 } from "./selection/unifiedSelection";
+import {
+  addSelectionHistoryEntry,
+  bookmarkSelectionEntry,
+  getRedoSelectionEntry,
+  removeSelectionBookmark,
+  type SelectionHistoryEntry,
+} from "./selection/selectionHistory";
 
 import {
   SurfaceViewer,
@@ -5653,12 +5667,20 @@ type SurfaceMeshTopologyHistoryEntry = {
   sourceLabel: string;
   targetLabel: string;
   paramsLabel: string;
+  definition: SurfaceMeshTopologyDefinition;
   resultLabel: string;
   beforeCounts: { vertexCount: number; faceCount: number };
   afterCounts: { vertexCount: number; faceCount: number };
   selectedResultLabel: string;
   beforeSnapshot: SurfaceMeshData;
   snapshot: SurfaceMeshData;
+};
+type SurfaceMeshTopologyDefinition = {
+  operation: SurfaceMeshTopologyOperation;
+  selectionKey: string;
+  selectionBreadcrumb: string;
+  paramsLabel: string;
+  replayLabel: string;
 };
 type SurfaceMeshTopologyOperationTarget = {
   faceIndex: number | null;
@@ -5679,6 +5701,38 @@ const parseSurfaceMeshTopologyOperationTarget = (targetLabel: string): SurfaceMe
   return {
     faceIndex: faceMatch ? Number(faceMatch[1]) : null,
     edge: edgeMatch ? [Number(edgeMatch[1]), Number(edgeMatch[2])] : null,
+  };
+};
+const normalizeSurfaceMeshTopologyDefinitionPart = (value: string): string =>
+  value.trim().replace(/\s+/g, " ").replace(/[|;]/g, "-");
+const buildSurfaceMeshTopologyDefinition = ({
+  actionLabel,
+  sourceLabel,
+  targetLabel,
+  paramsLabel,
+}: {
+  actionLabel: string;
+  sourceLabel: string;
+  targetLabel: string;
+  paramsLabel: string;
+}): SurfaceMeshTopologyDefinition => {
+  const operation = surfaceMeshTopologyOperationFromAction(actionLabel) ?? "Split Edge";
+  const target = parseSurfaceMeshTopologyOperationTarget(targetLabel);
+  const targetKey = target.edge
+    ? `edge:${Math.min(target.edge[0], target.edge[1])}-${Math.max(target.edge[0], target.edge[1])}`
+    : target.faceIndex != null
+      ? `face:${target.faceIndex}`
+      : normalizeSurfaceMeshTopologyDefinitionPart(targetLabel).toLowerCase();
+  const sourceKey = normalizeSurfaceMeshTopologyDefinitionPart(sourceLabel);
+  const selectionKey = `mesh|${sourceKey}|${targetKey}`;
+  const selectionBreadcrumb = `Mesh > ${sourceLabel} > ${targetLabel}`;
+  const parameterText = paramsLabel.trim() || "params=none";
+  return {
+    operation,
+    selectionKey,
+    selectionBreadcrumb,
+    paramsLabel: parameterText,
+    replayLabel: `selection=${selectionKey}; params=${parameterText}`,
   };
 };
 const renderUnifiedOperationNodeSnapshotSummary = (node: UnifiedOperationTreeNode) => (
@@ -5848,6 +5902,15 @@ const deserializeSurfaceMeshTopologyHistoryEntry = (
     sourceLabel: typeof entry.sourceLabel === "string" ? entry.sourceLabel : "Surface mesh",
     targetLabel: typeof entry.targetLabel === "string" ? entry.targetLabel : "target",
     paramsLabel: typeof entry.paramsLabel === "string" ? entry.paramsLabel : "params",
+    definition:
+      entry.definition && typeof entry.definition.selectionKey === "string"
+        ? entry.definition
+        : buildSurfaceMeshTopologyDefinition({
+            actionLabel: typeof entry.actionLabel === "string" ? entry.actionLabel : "Topology edit",
+            sourceLabel: typeof entry.sourceLabel === "string" ? entry.sourceLabel : "Surface mesh",
+            targetLabel: typeof entry.targetLabel === "string" ? entry.targetLabel : "target",
+            paramsLabel: typeof entry.paramsLabel === "string" ? entry.paramsLabel : "params",
+          }),
     resultLabel: typeof entry.resultLabel === "string" ? entry.resultLabel : "edited mesh",
     beforeCounts: entry.beforeCounts,
     afterCounts: entry.afterCounts,
@@ -10254,6 +10317,8 @@ const App: React.FC = () => {
   const meshSelectEdgeLoopAction = meshEdgeActionDescriptors[3]!;
   const meshSelectEdgeRingAction = meshEdgeActionDescriptors[4]!;
   const meshSelectBoundaryAction = meshEdgeActionDescriptors[5]!;
+  const meshSelectSharpEdgesAction = meshEdgeActionDescriptors[6]!;
+  const meshSelectFeatureEdgesAction = meshEdgeActionDescriptors[7]!;
   const meshVertexMarkerAction = meshVertexActionDescriptors[0]!;
   const geometryExtrudeFaceAction = geometryFaceActionDescriptors[0]!;
   const geometryInsetFaceAction = geometryFaceActionDescriptors[1]!;
@@ -10949,6 +11014,10 @@ const App: React.FC = () => {
     workspace: ActiveSelectionWorkspace;
     key: string;
   } | null>(null);
+  const [geometrySelectionHistory, setGeometrySelectionHistory] = useState<SelectionHistoryEntry[]>([]);
+  const [geometrySelectionBookmarks, setGeometrySelectionBookmarks] = useState<SelectionHistoryEntry[]>([]);
+  const [meshSelectionHistory, setMeshSelectionHistory] = useState<SelectionHistoryEntry[]>([]);
+  const [meshSelectionBookmarks, setMeshSelectionBookmarks] = useState<SelectionHistoryEntry[]>([]);
   const geometrySelectionEventKeyRef = useRef<string | null>(null);
   const meshSelectionEventKeyRef = useRef<string | null>(null);
   const geometryTopologyEditFeedbackTimerRef = useRef<number | null>(null);
@@ -11189,6 +11258,12 @@ const App: React.FC = () => {
     y: number;
     derivedId: string;
   } | null>(null);
+  const [selectionContextMenu, setSelectionContextMenu] = useState<{
+    workspace: "mesh" | "geometry";
+    x: number;
+    y: number;
+  } | null>(null);
+  const handleCloseSelectionContextMenu = useCallback(() => setSelectionContextMenu(null), []);
   const [geometryDemonstrationCategory, setGeometryDemonstrationCategory] =
     useState<GeometryDemonstrationCategory>("cross_sections");
   const [geometryDemoSectionAnimationEnabled, setGeometryDemoSectionAnimationEnabled] = useState(false);
@@ -15907,6 +15982,18 @@ const App: React.FC = () => {
     () => unifiedSelectionFromGeometryPick(geometrySelectedPick),
     [geometrySelectedPick]
   );
+  const geometryObjectUnifiedSelection = useMemo(() => {
+    if (geometryProbeSelectionMode !== "object" || !geometrySelectedSceneObject) return null;
+    return unifiedSelectionFromGeometryObject({
+      objectId: geometrySelectedSceneObject.id,
+      objectLabel: geometrySelectedSceneObject.name,
+      objectType: "type" in geometrySelectedSceneObject ? geometrySelectedSceneObject.type : "mesh",
+      meshKey: geometrySelectedSceneObject.id,
+      topologyVersion: geometryObjectRevisionById[geometrySelectedSceneObject.id] ?? 0,
+    });
+  }, [geometryObjectRevisionById, geometryProbeSelectionMode, geometrySelectedSceneObject]);
+  const geometryActiveUnifiedSelection =
+    geometryProbeSelectionMode === "object" ? geometryObjectUnifiedSelection : geometryUnifiedSelection;
   const geometrySelectionSetAppliedKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!geometryUnifiedSelection) return;
@@ -15934,8 +16021,8 @@ const App: React.FC = () => {
   ]);
   const geometryHoverPick = geometryProbeHoverSelectionDetails?.pick ?? null;
   const geometrySelectedSelectionResult = useMemo(
-    () => selectionResultFromUnifiedSelection(geometryUnifiedSelection),
-    [geometryUnifiedSelection]
+    () => selectionResultFromUnifiedSelection(geometryActiveUnifiedSelection),
+    [geometryActiveUnifiedSelection]
   );
   const geometryMultiSelectionResults = useMemo(
     () =>
@@ -16280,6 +16367,15 @@ const App: React.FC = () => {
       geometryActiveSelectionCardId,
       geometryActiveSelectionCardType,
     ]
+  );
+  const geometryAdaptiveTopologyGizmoLabel = useMemo(
+    () =>
+      getAdaptiveTopologyGizmoConfig(
+        "Geometry",
+        geometryActiveSelectionCardType,
+        !geometryActiveSelectionCardEmptyState
+      ).statusLabel,
+    [geometryActiveSelectionCardEmptyState, geometryActiveSelectionCardType]
   );
   useEffect(() => {
     const key = geometryActiveSelectionSummary.eventKey;
@@ -27640,16 +27736,28 @@ const App: React.FC = () => {
   ]);
   const handleOpenGeometryLineQuickMenu = useCallback(
     (event: React.MouseEvent) => {
-      if (!geometrySelectedDerivedConstructionEval?.object.type.includes("line")) return;
+      if (!geometrySelectedDerivedConstructionEval?.object.type.includes("line")) {
+        if (geometryMode !== "procedural") return;
+        event.preventDefault();
+        event.stopPropagation();
+        setGeometryLineQuickMenu(null);
+        setSelectionContextMenu({
+          workspace: "geometry",
+          x: event.clientX,
+          y: event.clientY,
+        });
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
+      setSelectionContextMenu(null);
       setGeometryLineQuickMenu({
         x: event.clientX,
         y: event.clientY,
         derivedId: geometrySelectedDerivedConstructionEval.object.id,
       });
     },
-    [geometrySelectedDerivedConstructionEval]
+    [geometryMode, geometrySelectedDerivedConstructionEval]
   );
   const handleRunGeometryLineQuickOperation = useCallback(
     (
@@ -28168,6 +28276,26 @@ const App: React.FC = () => {
           },
         ]
       : geometryActiveSelectionEntityActionButtons;
+  const geometrySelectionBreadcrumb = useMemo(
+    () =>
+      formatContextualSelectionBreadcrumb({
+        workspace: "geometry",
+        targetMode: geometryProbeSelectionMode,
+        objectLabel: geometrySelectedSceneObject?.name ?? (geometryProbeSelectionMode === "object" ? geometryActiveSelectionCardId : null),
+        entityLabel:
+          geometryProbeSelectionMode === "object"
+            ? null
+            : geometryActiveSelectionCardEmptyState
+              ? null
+              : geometryActiveSelectionCardId,
+      }),
+    [
+      geometryActiveSelectionCardEmptyState,
+      geometryActiveSelectionCardId,
+      geometryProbeSelectionMode,
+      geometrySelectedSceneObject?.name,
+    ]
+  );
   const geometryConstructionOperationTargetLabel = useMemo(() => {
     if (geometrySelectedMathConstructionId) {
       const selected = geometryMathConstructions.find((entry) => entry.id === geometrySelectedMathConstructionId);
@@ -46280,6 +46408,12 @@ case "mobius":
           sourceLabel: baseLabel,
           targetLabel,
           paramsLabel,
+          definition: buildSurfaceMeshTopologyDefinition({
+            actionLabel,
+            sourceLabel: baseLabel,
+            targetLabel,
+            paramsLabel,
+          }),
           resultLabel: buildTopologyEditSummary(topologyAction, targetLabel, beforeCounts, afterCounts),
           beforeCounts,
           afterCounts,
@@ -46616,7 +46750,16 @@ case "mobius":
 
   const handleSelectSurfaceMeshEdgeSet = useCallback(
     (tool: MeshEdgeSelectionTool) => {
-      const label = tool === "loop" ? "Edge loop" : tool === "ring" ? "Edge ring" : "Boundary";
+      const label =
+        tool === "loop"
+          ? "Edge loop"
+          : tool === "ring"
+            ? "Edge ring"
+            : tool === "boundary"
+              ? "Boundary"
+              : tool === "sharp"
+                ? "Sharp edges"
+                : "Feature edges";
       const edgeA = surfaceMeshTopologyFieldValidation.effectiveEdgeA;
       const edgeB = surfaceMeshTopologyFieldValidation.effectiveEdgeB;
       if (surfaceMeshTopologyPickMode !== "edge") {
@@ -46659,12 +46802,19 @@ case "mobius":
         surfaceMeshEdgeSelectionRef.current = selection;
         setSurfaceMeshEdgeSelection(selection);
         setContextualActionPulseId(
-          tool === "loop" ? "mesh:edge-loop" : tool === "ring" ? "mesh:edge-ring" : "mesh:boundary-select"
+          tool === "loop"
+            ? "mesh:edge-loop"
+            : tool === "ring"
+              ? "mesh:edge-ring"
+              : tool === "boundary"
+                ? "mesh:boundary-select"
+                : tool === "sharp"
+                  ? "mesh:sharp-select"
+                  : "mesh:feature-select"
         );
         setSurfaceMeshTopologyStatus(selection.status);
         showSelectionEventStatus("Mesh", selection.status, `mesh-edge-${tool}:${selection.edges.length}:${edgeA}-${edgeB}`);
       } catch (err: any) {
-        const label = tool === "loop" ? "Edge loop" : tool === "ring" ? "Edge ring" : "Boundary";
         surfaceMeshEdgeSelectionRef.current = null;
         setSurfaceMeshEdgeSelection(null);
         setSurfaceMeshTopologyStatus(formatMeshEditFailureMessage(label, err?.message ?? `${label} selection failed.`));
@@ -46691,7 +46841,17 @@ case "mobius":
       if (tag === "input" || tag === "textarea" || tag === "select" || target?.isContentEditable) return;
       const key = event.key.toLowerCase();
       const tool: MeshEdgeSelectionTool | null =
-        key === "l" ? "loop" : key === "r" ? "ring" : key === "b" ? "boundary" : null;
+        key === "l"
+          ? "loop"
+          : key === "r"
+            ? "ring"
+            : key === "b"
+              ? "boundary"
+              : key === "s"
+                ? "sharp"
+                : key === "f"
+                  ? "feature"
+                  : null;
       if (!tool) return;
       const meshShortcutActive =
         mode === "surfaces" &&
@@ -46883,6 +47043,12 @@ case "mobius":
       sourceLabel: baseLabel,
       targetLabel,
       paramsLabel,
+      definition: buildSurfaceMeshTopologyDefinition({
+        actionLabel,
+        sourceLabel: baseLabel,
+        targetLabel,
+        paramsLabel,
+      }),
       resultLabel: buildTopologyEditSummary(topologyAction, targetLabel, beforeCounts, afterCounts),
       beforeCounts,
       afterCounts,
@@ -47288,6 +47454,15 @@ case "mobius":
       meshActiveSelectionCardId,
       meshActiveSelectionCardType,
     ]
+  );
+  const meshAdaptiveTopologyGizmoLabel = useMemo(
+    () =>
+      getAdaptiveTopologyGizmoConfig(
+        "Mesh",
+        meshActiveSelectionCardType,
+        !meshActiveSelectionCardEmptyState
+      ).statusLabel,
+    [meshActiveSelectionCardEmptyState, meshActiveSelectionCardType]
   );
   useEffect(() => {
     const key = meshActiveSelectionSummary.eventKey;
@@ -50132,6 +50307,26 @@ case "mobius":
           !surfaceMeshTopologyFieldValidation.edgeValid,
         activePulseId: contextualActionPulseId,
       },
+      {
+        descriptor: meshSelectSharpEdgesAction,
+        onClick: () => handleSelectSurfaceMeshEdgeSet("sharp"),
+        disabled:
+          surfaceMeshTopologyPickMode !== "edge" ||
+          surfaceMeshTopologySelectionCleared ||
+          meshUnifiedSelectionFiltered ||
+          !surfaceMeshTopologyFieldValidation.edgeValid,
+        activePulseId: contextualActionPulseId,
+      },
+      {
+        descriptor: meshSelectFeatureEdgesAction,
+        onClick: () => handleSelectSurfaceMeshEdgeSet("feature"),
+        disabled:
+          surfaceMeshTopologyPickMode !== "edge" ||
+          surfaceMeshTopologySelectionCleared ||
+          meshUnifiedSelectionFiltered ||
+          !surfaceMeshTopologyFieldValidation.edgeValid,
+        activePulseId: contextualActionPulseId,
+      },
     ],
     vertex: [
       {
@@ -50204,6 +50399,186 @@ case "mobius":
                 disabledReason: "This mesh has no linked Geometry source yet.",
               },
             ];
+  const meshSelectionBreadcrumb = useMemo(
+    () =>
+      formatContextualSelectionBreadcrumb({
+        workspace: "mesh",
+        targetMode: surfaceMeshTopologyPickMode,
+        objectLabel: surfaceMeshLabel ?? surfaceMeshData?.label ?? meshActiveSelectionCardId,
+        entityLabel:
+          surfaceMeshTopologyPickMode === "object"
+            ? null
+            : meshActiveSelectionCardEmptyState
+              ? null
+              : meshActiveSelectionCardId,
+      }),
+    [
+      meshActiveSelectionCardEmptyState,
+      meshActiveSelectionCardId,
+      surfaceMeshData?.label,
+      surfaceMeshLabel,
+      surfaceMeshTopologyPickMode,
+    ]
+  );
+  const handleOpenMeshViewportContextMenu = useCallback(
+    (event: React.MouseEvent) => {
+      const screenshotSurfaceActive = cleanScreenshotActive && mode === "surfaces" && isSurfaceDatasetKind(datasetKind);
+      if (surfaceViewerKind !== "mesh" || !surfaceMeshStats || screenshotSurfaceActive) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setGeometryLineQuickMenu(null);
+      setSelectionContextMenu({
+        workspace: "mesh",
+        x: event.clientX,
+        y: event.clientY,
+      });
+    },
+    [cleanScreenshotActive, datasetKind, mode, surfaceMeshStats, surfaceViewerKind]
+  );
+  const geometryCurrentSelectionKey = geometryActiveUnifiedSelection ? getUnifiedSelectionKey(geometryActiveUnifiedSelection) : null;
+  const meshCurrentSelectionKey = filteredMeshUnifiedSelection ? getUnifiedSelectionKey(filteredMeshUnifiedSelection) : null;
+  useEffect(() => {
+    if (!geometryActiveUnifiedSelection || geometryActiveSelectionCardEmptyState) return;
+    setGeometrySelectionHistory((history) =>
+      addSelectionHistoryEntry(history, geometryActiveUnifiedSelection, {
+        breadcrumb: geometrySelectionBreadcrumb,
+      })
+    );
+  }, [geometryActiveSelectionCardEmptyState, geometryActiveUnifiedSelection, geometrySelectionBreadcrumb]);
+  useEffect(() => {
+    if (!filteredMeshUnifiedSelection || meshActiveSelectionCardEmptyState) return;
+    setMeshSelectionHistory((history) =>
+      addSelectionHistoryEntry(history, filteredMeshUnifiedSelection, {
+        breadcrumb: meshSelectionBreadcrumb,
+      })
+    );
+  }, [filteredMeshUnifiedSelection, meshActiveSelectionCardEmptyState, meshSelectionBreadcrumb]);
+  const handleBookmarkGeometrySelection = useCallback(() => {
+    if (!geometryActiveUnifiedSelection || geometryActiveSelectionCardEmptyState) {
+      setGeometryCreateActionStatus("Select a Geometry object, face, edge, or vertex before bookmarking.");
+      return;
+    }
+    setGeometrySelectionBookmarks((bookmarks) =>
+      bookmarkSelectionEntry(bookmarks, geometryActiveUnifiedSelection, {
+        breadcrumb: geometrySelectionBreadcrumb,
+      })
+    );
+    setGeometryCreateActionStatus(`Bookmarked ${geometrySelectionBreadcrumb}.`);
+  }, [geometryActiveSelectionCardEmptyState, geometryActiveUnifiedSelection, geometrySelectionBreadcrumb]);
+  const handleBookmarkMeshSelection = useCallback(() => {
+    if (!filteredMeshUnifiedSelection || meshActiveSelectionCardEmptyState) {
+      setSurfaceMeshTopologyStatus("Select a Mesh object, face, edge, or vertex before bookmarking.");
+      return;
+    }
+    setMeshSelectionBookmarks((bookmarks) =>
+      bookmarkSelectionEntry(bookmarks, filteredMeshUnifiedSelection, {
+        breadcrumb: meshSelectionBreadcrumb,
+      })
+    );
+    setSurfaceMeshTopologyStatus(`Bookmarked ${meshSelectionBreadcrumb}.`);
+  }, [filteredMeshUnifiedSelection, meshActiveSelectionCardEmptyState, meshSelectionBreadcrumb]);
+  const handleRestoreGeometrySelectionEntry = useCallback(
+    (entry: SelectionHistoryEntry) => {
+      const selection = entry.selection;
+      if (selection.workspace !== "geometry") return;
+      const pickMode = selection.selectionType as GeometryProbeSelectionMode;
+      setGeometryMode("procedural");
+      setGeometryRightPanelTab("selection");
+      setGeometryProbeSelectionMode(pickMode);
+      setGeometrySelectedObjectId(selection.objectId);
+      setGeometryMultiSelectionSet(createUnifiedSelectionSet([selection]));
+      if (pickMode === "object") {
+        setGeometryProceduralPick(null);
+      } else {
+        const point = selection.worldPosition ?? selection.point ?? [0, 0, 0];
+        const normal = selection.normal ?? [0, 1, 0];
+        setGeometryProceduralPick({
+          point: { x: point[0], y: point[1], z: point[2] },
+          normal: { x: normal[0], y: normal[1], z: normal[2] },
+          meshKey: selection.meshKey ?? selection.objectId,
+          faceIndex: selection.faceId ?? undefined,
+          vertexIndex: selection.vertexId ?? undefined,
+          distance: 0,
+          topologyVersion: selection.topologyVersion ?? undefined,
+          topologyReference: selection.topologyReference ?? null,
+        });
+      }
+      setGeometryCreateActionStatus(`Restored ${entry.breadcrumb}.`);
+      showSelectionEventStatus("Geometry", `Restored ${selection.label}`, `Geometry:restore:${entry.key}`);
+    },
+    [showSelectionEventStatus]
+  );
+  const handleRestoreMeshSelectionEntry = useCallback(
+    (entry: SelectionHistoryEntry) => {
+      const selection = entry.selection;
+      if (selection.workspace !== "mesh") return;
+      const pickMode = selection.selectionType as SurfaceMeshTopologyPickMode;
+      setDatasetKind("mesh");
+      handleChangeViewerKind("mesh");
+      setUnifiedSelectionKindFilters((filters) => ({ ...filters, [pickMode]: true }));
+      setUnifiedSelectionTopologyFilter("all");
+      setSurfaceMeshTopologyPickMode(pickMode);
+      setSurfaceMeshTopologySelectionCleared(false);
+      if (selection.faceId != null) setSurfaceMeshTopologyFaceIndex(selection.faceId);
+      if (selection.edgeVertices) {
+        setSurfaceMeshTopologyEdgeA(selection.edgeVertices[0]);
+        setSurfaceMeshTopologyEdgeB(selection.edgeVertices[1]);
+      }
+      if (selection.vertexId != null) setSurfaceMeshTopologyVertexIndex(selection.vertexId);
+      setMeshMultiSelectionSet(createUnifiedSelectionSet([selection]));
+      setSurfaceMeshTopologyStatus(`Restored ${entry.breadcrumb}.`);
+      showSelectionEventStatus("Mesh", `Restored ${selection.label}`, `Mesh:restore:${entry.key}`);
+    },
+    [handleChangeViewerKind, showSelectionEventStatus]
+  );
+  const geometryRedoSelectionEntry = getRedoSelectionEntry(geometrySelectionHistory, geometryCurrentSelectionKey);
+  const meshRedoSelectionEntry = getRedoSelectionEntry(meshSelectionHistory, meshCurrentSelectionKey);
+  const handleRedoGeometrySelection = useCallback(() => {
+    if (geometryRedoSelectionEntry) handleRestoreGeometrySelectionEntry(geometryRedoSelectionEntry);
+  }, [geometryRedoSelectionEntry, handleRestoreGeometrySelectionEntry]);
+  const handleRedoMeshSelection = useCallback(() => {
+    if (meshRedoSelectionEntry) handleRestoreMeshSelectionEntry(meshRedoSelectionEntry);
+  }, [handleRestoreMeshSelectionEntry, meshRedoSelectionEntry]);
+  const activeSelectionContextMenu = selectionContextMenu
+    ? {
+        testId:
+          selectionContextMenu.workspace === "mesh"
+            ? "mesh-selection-context-menu"
+            : "geometry-selection-context-menu",
+        title:
+          selectionContextMenu.workspace === "mesh"
+            ? contextualSelectionMenuTitle("mesh", surfaceMeshTopologyPickMode)
+            : contextualSelectionMenuTitle("geometry", geometryProbeSelectionMode),
+        breadcrumb:
+          selectionContextMenu.workspace === "mesh"
+            ? meshSelectionBreadcrumb
+            : geometrySelectionBreadcrumb,
+        actions:
+          selectionContextMenu.workspace === "mesh"
+            ? [
+                ...meshActiveSelectionCardActionButtons,
+                {
+                  label: "Bookmark selection",
+                  testId: "mesh-context-bookmark-selection",
+                  onClick: handleBookmarkMeshSelection,
+                  disabled: !filteredMeshUnifiedSelection || !!meshActiveSelectionCardEmptyState,
+                  disabledReason: "Select a Mesh object, face, edge, or vertex before bookmarking.",
+                } satisfies ActiveSelectionCardAction,
+              ]
+            : [
+                ...geometryActiveSelectionCardActionButtons,
+                {
+                  label: "Bookmark selection",
+                  testId: "geometry-context-bookmark-selection",
+                  onClick: handleBookmarkGeometrySelection,
+                  disabled: !geometryActiveUnifiedSelection || !!geometryActiveSelectionCardEmptyState,
+                  disabledReason: "Select a Geometry object, face, edge, or vertex before bookmarking.",
+                } satisfies ActiveSelectionCardAction,
+              ],
+        x: selectionContextMenu.x,
+        y: selectionContextMenu.y,
+      }
+    : null;
   const vtkMeshAvailable = !!surfaceSampleSet?.meshData?.length;
 
   const cgalMeshInfo = useMemo(() => {
@@ -61317,7 +61692,7 @@ case "mobius":
                         </div>
                       </div>
                       <div style={{ fontSize: 11, color: "#475467" }}>
-                        Face Subdivide, Split Edge, Collapse Edge, Bevel Edge, Edge Loop, Edge Ring, Boundary
+                        Face Subdivide, Split Edge, Collapse Edge, Bevel Edge, Edge Loop, Edge Ring, Boundary, Sharp, Feature
                       </div>
                       {meshGeometryRoundTripSource && (
                         <div
@@ -61931,6 +62306,32 @@ case "mobius":
                             }
                           >
                             Boundary
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="mesh-topology-select-sharp"
+                            onClick={() => handleSelectSurfaceMeshEdgeSet("sharp")}
+                            disabled={
+                              surfaceMeshTopologyPickMode !== "edge" ||
+                              !surfaceMeshStats ||
+                              meshUnifiedSelectionFiltered ||
+                              !surfaceMeshTopologyFieldValidation.edgeValid
+                            }
+                          >
+                            Sharp
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="mesh-topology-select-feature"
+                            onClick={() => handleSelectSurfaceMeshEdgeSet("feature")}
+                            disabled={
+                              surfaceMeshTopologyPickMode !== "edge" ||
+                              !surfaceMeshStats ||
+                              meshUnifiedSelectionFiltered ||
+                              !surfaceMeshTopologyFieldValidation.edgeValid
+                            }
+                          >
+                            Feature
                           </button>
                         </div>
                         <details
@@ -63343,6 +63744,8 @@ case "mobius":
                       }}
                     >
                       <div
+                        data-testid="surface-primary-viewer"
+                        onContextMenu={handleOpenMeshViewportContextMenu}
                         style={{
                           borderRadius: 10,
                           overflow: "hidden",
@@ -63760,6 +64163,32 @@ case "mobius":
                         suspendPointerInteractions={surfaceFormulaEditorOpen}
                       />
                         )}
+                        {!cleanScreenshotSurfaceActive && surfaceViewerKind === "mesh" && surfaceMeshStats && (
+                          <div
+                            data-testid="mesh-viewport-selection-breadcrumb"
+                            style={{
+                              position: "absolute",
+                              left: 12,
+                              bottom: 12,
+                              zIndex: 8,
+                              maxWidth: "calc(100% - 24px)",
+                              border: "1px solid rgba(148,163,184,0.42)",
+                              borderRadius: 8,
+                              background: "rgba(255,255,255,0.88)",
+                              color: "#334155",
+                              boxShadow: "0 8px 22px rgba(15,23,42,0.12)",
+                              padding: "5px 8px",
+                              fontSize: 11,
+                              fontWeight: 800,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              pointerEvents: "none",
+                            }}
+                          >
+                            {meshSelectionBreadcrumb}
+                          </div>
+                        )}
                         {!cleanScreenshotSurfaceActive &&
                           isSurfaceDatasetKind(datasetKind) &&
                           (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") &&
@@ -63798,6 +64227,17 @@ case "mobius":
                               </div>
                             </div>
                           )}
+                        {activeSelectionContextMenu?.testId === "mesh-selection-context-menu" && (
+                          <SelectionContextMenu
+                            testId={activeSelectionContextMenu.testId}
+                            x={activeSelectionContextMenu.x}
+                            y={activeSelectionContextMenu.y}
+                            title={activeSelectionContextMenu.title}
+                            breadcrumb={activeSelectionContextMenu.breadcrumb}
+                            actions={activeSelectionContextMenu.actions}
+                            onClose={handleCloseSelectionContextMenu}
+                          />
+                        )}
                         {!cleanScreenshotSurfaceActive && showMeshSaveOverlayLauncher && !meshSaveOverlayOpen && (
                           <button
                             type="button"
@@ -65128,9 +65568,20 @@ case "mobius":
                       meshActiveSelectionCardConfirmationLabel={meshContextToolbarConfirmationLabel}
                       meshActiveSelectionCardLastCommandLabel={meshContextToolbarLastCommandLabel}
                       meshActiveSelectionCardCanUndoLast={surfaceMeshTopologyHistory.length > 0}
+                      meshAdaptiveTopologyGizmoLabel={meshAdaptiveTopologyGizmoLabel}
                       onUndoSurfaceMeshTopologyEdit={undoLatestSurfaceMeshTopologyEdit}
                       onOpenSurfaceMeshTopologyHistory={handleOpenMeshContextHistory}
                       onClearSurfaceMeshTopologySelection={handleClearSurfaceMeshTopologyContextSelection}
+                      meshCanBookmarkSelection={Boolean(filteredMeshUnifiedSelection && !meshActiveSelectionCardEmptyState)}
+                      onBookmarkMeshSelection={handleBookmarkMeshSelection}
+                      meshCanRedoSelection={Boolean(meshRedoSelectionEntry)}
+                      onRedoMeshSelection={handleRedoMeshSelection}
+                      meshSelectionHistoryItems={meshSelectionHistory}
+                      meshSelectionBookmarks={meshSelectionBookmarks}
+                      onRestoreMeshSelection={handleRestoreMeshSelectionEntry}
+                      onRemoveMeshSelectionBookmark={(entry) =>
+                        setMeshSelectionBookmarks((bookmarks) => removeSelectionBookmark(bookmarks, entry.key))
+                      }
                       meshContextualPreviewActive={Boolean(meshVisibleContextualViewportPreview)}
                       commandPreviewHighVisibility={commandPreviewHighVisibility}
                       onOpenPreviewSettings={() => setPreferencesOpen(true)}
@@ -78897,6 +79348,32 @@ case "mobius":
                   }
                   inspectSelectionMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
                 />
+                {geometryMode === "procedural" && !cleanScreenshotActive && (
+                  <div
+                    data-testid="geometry-viewport-selection-breadcrumb"
+                    style={{
+                      position: "absolute",
+                      left: 12,
+                      bottom: 12,
+                      zIndex: 16,
+                      maxWidth: "calc(100% - 24px)",
+                      border: "1px solid rgba(148,163,184,0.42)",
+                      borderRadius: 8,
+                      background: "rgba(255,255,255,0.88)",
+                      color: "#334155",
+                      boxShadow: "0 8px 22px rgba(15,23,42,0.12)",
+                      padding: "5px 8px",
+                      fontSize: 11,
+                      fontWeight: 800,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    {geometrySelectionBreadcrumb}
+                  </div>
+                )}
                 {geometryMode === "procedural" && commandPreviewOverlaysVisible && geometryVisibleContextualViewportPreview && (
                   <ContextualViewportPreviewBadge
                     testId="geometry-viewport-command-preview"
@@ -79056,6 +79533,17 @@ case "mobius":
                     </div>
                   </div>
                 )}
+                {activeSelectionContextMenu?.testId === "geometry-selection-context-menu" && (
+                  <SelectionContextMenu
+                    testId={activeSelectionContextMenu.testId}
+                    x={activeSelectionContextMenu.x}
+                    y={activeSelectionContextMenu.y}
+                    title={activeSelectionContextMenu.title}
+                    breadcrumb={activeSelectionContextMenu.breadcrumb}
+                    actions={activeSelectionContextMenu.actions}
+                    onClose={handleCloseSelectionContextMenu}
+                  />
+                )}
                 </div>
                 {showGeometryRightPanel && !isGeometryStackedLayout && (
                   <div
@@ -79194,6 +79682,20 @@ case "mobius":
                               onOpenHistory={handleOpenGeometryContextHistory}
                               openHistoryTestId="geometry-active-selection-open-history"
                               onClearSelection={handleClearGeometryContextSelection}
+                              canBookmarkSelection={Boolean(geometryActiveUnifiedSelection && !geometryActiveSelectionCardEmptyState)}
+                              onBookmarkSelection={handleBookmarkGeometrySelection}
+                              bookmarkSelectionTestId="geometry-active-selection-bookmark"
+                              canRedoSelection={Boolean(geometryRedoSelectionEntry)}
+                              onRedoSelection={handleRedoGeometrySelection}
+                              redoSelectionTestId="geometry-active-selection-redo"
+                              selectionHistoryItems={geometrySelectionHistory}
+                              selectionBookmarks={geometrySelectionBookmarks}
+                              onRestoreSelection={handleRestoreGeometrySelectionEntry}
+                              onRemoveSelectionBookmark={(entry) =>
+                                setGeometrySelectionBookmarks((bookmarks) => removeSelectionBookmark(bookmarks, entry.key))
+                              }
+                              adaptiveGizmoLabel={geometryAdaptiveTopologyGizmoLabel}
+                              adaptiveGizmoTestId="geometry-active-selection-adaptive-gizmo"
                               previewHighVisibility={commandPreviewHighVisibility}
                               previewAccessibilityLabel={
                                 geometryVisibleContextualViewportPreview
@@ -94633,7 +95135,7 @@ onChangeImplicitExpr,
               >
                 <div style={{ fontSize: 11, fontWeight: 700 }}>Current implementations</div>
                 <div style={{ fontSize: 11, color: "#475467", marginTop: 3 }}>
-                  Face Subdivide, Split Edge, Collapse Edge, Bevel Edge, Edge Loop, Edge Ring, Boundary
+                  Face Subdivide, Split Edge, Collapse Edge, Bevel Edge, Edge Loop, Edge Ring, Boundary, Sharp, Feature
                 </div>
                 <div
                   style={{
@@ -95122,6 +95624,32 @@ onChangeImplicitExpr,
                         }
                       >
                         Boundary
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="mesh-topology-select-sharp"
+                        onClick={() => onSelectSurfaceMeshEdgeSet("sharp")}
+                        disabled={
+                          surfaceMeshTopologyPickMode !== "edge" ||
+                          !meshReady ||
+                          Boolean(unifiedSelectionFilterStatus) ||
+                          !surfaceMeshTopologyFieldValidation.edgeValid
+                        }
+                      >
+                        Sharp
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="mesh-topology-select-feature"
+                        onClick={() => onSelectSurfaceMeshEdgeSet("feature")}
+                        disabled={
+                          surfaceMeshTopologyPickMode !== "edge" ||
+                          !meshReady ||
+                          Boolean(unifiedSelectionFilterStatus) ||
+                          !surfaceMeshTopologyFieldValidation.edgeValid
+                        }
+                      >
+                        Feature
                       </button>
                     </div>
                   </div>
@@ -98582,9 +99110,18 @@ type SurfacesRightPanelProps = {
   meshActiveSelectionCardConfirmationLabel: ActiveSelectionCardProps["confirmationLabel"];
   meshActiveSelectionCardLastCommandLabel: ActiveSelectionCardProps["lastCommandLabel"];
   meshActiveSelectionCardCanUndoLast: boolean;
+  meshAdaptiveTopologyGizmoLabel: ActiveSelectionCardProps["adaptiveGizmoLabel"];
   onUndoSurfaceMeshTopologyEdit: () => void;
   onOpenSurfaceMeshTopologyHistory: () => void;
   onClearSurfaceMeshTopologySelection: () => void;
+  meshCanBookmarkSelection: boolean;
+  onBookmarkMeshSelection: () => void;
+  meshCanRedoSelection: boolean;
+  onRedoMeshSelection: () => void;
+  meshSelectionHistoryItems: readonly SelectionHistoryEntry[];
+  meshSelectionBookmarks: readonly SelectionHistoryEntry[];
+  onRestoreMeshSelection: (entry: SelectionHistoryEntry) => void;
+  onRemoveMeshSelectionBookmark: (entry: SelectionHistoryEntry) => void;
   meshContextualPreviewActive: boolean;
   commandPreviewHighVisibility: boolean;
   onOpenPreviewSettings: () => void;
@@ -98799,9 +99336,18 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   meshActiveSelectionCardConfirmationLabel,
   meshActiveSelectionCardLastCommandLabel,
   meshActiveSelectionCardCanUndoLast,
+  meshAdaptiveTopologyGizmoLabel,
   onUndoSurfaceMeshTopologyEdit,
   onOpenSurfaceMeshTopologyHistory,
   onClearSurfaceMeshTopologySelection,
+  meshCanBookmarkSelection,
+  onBookmarkMeshSelection,
+  meshCanRedoSelection,
+  onRedoMeshSelection,
+  meshSelectionHistoryItems,
+  meshSelectionBookmarks,
+  onRestoreMeshSelection,
+  onRemoveMeshSelectionBookmark,
   meshContextualPreviewActive,
   commandPreviewHighVisibility,
   onOpenPreviewSettings,
@@ -99733,6 +100279,18 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           onOpenHistory={onOpenSurfaceMeshTopologyHistory}
           openHistoryTestId="mesh-active-selection-open-history"
           onClearSelection={onClearSurfaceMeshTopologySelection}
+          canBookmarkSelection={meshCanBookmarkSelection}
+          onBookmarkSelection={onBookmarkMeshSelection}
+          bookmarkSelectionTestId="mesh-active-selection-bookmark"
+          canRedoSelection={meshCanRedoSelection}
+          onRedoSelection={onRedoMeshSelection}
+          redoSelectionTestId="mesh-active-selection-redo"
+          selectionHistoryItems={meshSelectionHistoryItems}
+          selectionBookmarks={meshSelectionBookmarks}
+          onRestoreSelection={onRestoreMeshSelection}
+          onRemoveSelectionBookmark={onRemoveMeshSelectionBookmark}
+          adaptiveGizmoLabel={meshAdaptiveTopologyGizmoLabel}
+          adaptiveGizmoTestId="mesh-active-selection-adaptive-gizmo"
           previewHighVisibility={commandPreviewHighVisibility}
           previewAccessibilityLabel={
             meshContextualPreviewActive

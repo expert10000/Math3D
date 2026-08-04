@@ -27,6 +27,7 @@ describe("unifiedCommandHistory", () => {
         sourceLabel: "Box",
         targetLabel: "Edge 5-6",
         paramsLabel: "ratio=0.5000",
+        definitionLabel: "selection=mesh|Box|edge|5-6; params=ratio=0.5000",
         resultLabel: "Edge 5-6 -> split vertex (+1V, +2F)",
         selectedResultLabel: "midpoint vertex on Edge 5-6",
         beforeCounts: { vertexCount: 8, faceCount: 12 },
@@ -39,8 +40,31 @@ describe("unifiedCommandHistory", () => {
       actionLabel: "Split edge",
       targetLabel: "Edge 5-6",
       countsLabel: "V 8 -> 9, F 12 -> 14",
+      definitionLabel: "selection=mesh|Box|edge|5-6; params=ratio=0.5000",
       confirmationLabel: "Done: midpoint vertex on Edge 5-6",
       lastCommandLabel: "Edge 5-6 split",
+    });
+  });
+
+  it("shows Mesh topology definitions as command-history rows", () => {
+    const rows = buildUnifiedCommandHistoryRows(
+      buildMeshTopologyCommandHistoryEntry({
+        id: "m-def",
+        at: 150,
+        actionLabel: "Bevel edge",
+        sourceLabel: "Box",
+        targetLabel: "Edge 1-2",
+        paramsLabel: "amount=0.0600",
+        definitionLabel: "selection=mesh|Box|edge|1-2; params=amount=0.0600",
+        resultLabel: "Edge 1-2 -> bevel band",
+        beforeCounts: { vertexCount: 8, faceCount: 12 },
+        afterCounts: { vertexCount: 10, faceCount: 14 },
+      })
+    );
+
+    expect(rows.at(-1)).toEqual({
+      label: "Def",
+      value: "selection=mesh|Box|edge|1-2; params=amount=0.0600",
     });
   });
 

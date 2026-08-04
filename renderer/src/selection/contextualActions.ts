@@ -13,6 +13,8 @@ export type ContextualOperationKey =
   | "select-edge-loop"
   | "select-edge-ring"
   | "select-boundary"
+  | "select-sharp-edges"
+  | "select-feature-edges"
   | "vertex-marker"
   | "extrude-face"
   | "inset-face"
@@ -70,6 +72,16 @@ const CONTEXTUAL_ACTION_DESCRIPTOR_SPECS = {
         operationKey: "select-boundary",
         testIdSuffix: "select-boundary",
         pulseId: "mesh:boundary-select",
+      },
+      {
+        operationKey: "select-sharp-edges",
+        testIdSuffix: "select-sharp-edges",
+        pulseId: "mesh:sharp-select",
+      },
+      {
+        operationKey: "select-feature-edges",
+        testIdSuffix: "select-feature-edges",
+        pulseId: "mesh:feature-select",
       },
     ],
     vertex: [

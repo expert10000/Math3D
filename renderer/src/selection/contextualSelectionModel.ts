@@ -27,8 +27,8 @@ export const ENTITY_CONTEXT_COPY = {
       emptyState: "Choose a face to enable Subdivide",
     },
     edge: {
-      actions: ["Split", "Collapse", "Bevel", "Loop", "Ring", "Boundary"],
-      emptyState: "Choose an edge to enable Split / Collapse / Bevel / Loop / Ring / Boundary",
+      actions: ["Split", "Collapse", "Bevel", "Loop", "Ring", "Boundary", "Sharp", "Feature"],
+      emptyState: "Choose an edge to enable Split / Collapse / Bevel / Loop / Ring / Boundary / Sharp / Feature",
     },
     vertex: {
       actions: ["Marker"],

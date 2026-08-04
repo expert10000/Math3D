@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { CommandPreviewLegend } from "./CommandPreviewLegend";
 import { ContextualRenderedActionButton, type ContextualButtonAction } from "./ContextualActionButtons";
+import type { SelectionHistoryEntry } from "../selection/selectionHistory";
 
 export type ActiveSelectionWorkspace = "Mesh" | "Geometry";
 export type ActiveSelectionType = "Object" | "Face" | "Edge" | "Vertex";
@@ -25,6 +26,18 @@ export type ActiveSelectionCardProps = {
   onOpenHistory?: () => void;
   openHistoryTestId?: string;
   onClearSelection?: () => void;
+  canBookmarkSelection?: boolean;
+  onBookmarkSelection?: () => void;
+  bookmarkSelectionTestId?: string;
+  canRedoSelection?: boolean;
+  onRedoSelection?: () => void;
+  redoSelectionTestId?: string;
+  selectionHistoryItems?: readonly SelectionHistoryEntry[];
+  selectionBookmarks?: readonly SelectionHistoryEntry[];
+  onRestoreSelection?: (entry: SelectionHistoryEntry) => void;
+  onRemoveSelectionBookmark?: (entry: SelectionHistoryEntry) => void;
+  adaptiveGizmoLabel?: ReactNode;
+  adaptiveGizmoTestId?: string;
   legendTestId?: string;
   previewHighVisibility?: boolean;
   previewAccessibilityLabel?: ReactNode;
@@ -149,6 +162,18 @@ export function ActiveSelectionCard({
   onOpenHistory,
   openHistoryTestId,
   onClearSelection,
+  canBookmarkSelection,
+  onBookmarkSelection,
+  bookmarkSelectionTestId,
+  canRedoSelection,
+  onRedoSelection,
+  redoSelectionTestId,
+  selectionHistoryItems,
+  selectionBookmarks,
+  onRestoreSelection,
+  onRemoveSelectionBookmark,
+  adaptiveGizmoLabel,
+  adaptiveGizmoTestId,
   legendTestId,
   previewHighVisibility = false,
   previewAccessibilityLabel,
@@ -157,6 +182,69 @@ export function ActiveSelectionCard({
   openPreviewSettingsTestId,
 }: ActiveSelectionCardProps) {
   const hasSelection = !emptyState;
+  const renderSelectionEntryList = (
+    label: string,
+    entries: readonly SelectionHistoryEntry[] | undefined,
+    emptyLabel: string,
+    testIdSuffix: string,
+    removable = false
+  ) => (
+    <div style={rowStyle}>
+      <span style={labelStyle}>{label}</span>
+      <span data-testid={`${testId}-${testIdSuffix}`} style={{ display: "grid", gap: 4 }}>
+        {entries?.length ? (
+          entries.slice(0, 5).map((entry) => (
+            <span key={`${testId}-${testIdSuffix}-${entry.key}`} style={{ display: "flex", gap: 5, minWidth: 0 }}>
+              <button
+                type="button"
+                data-testid={`${testId}-${testIdSuffix}-restore-${entry.key}`}
+                onClick={() => onRestoreSelection?.(entry)}
+                disabled={!onRestoreSelection}
+                title={entry.breadcrumb}
+                style={{
+                  flex: "1 1 auto",
+                  minWidth: 0,
+                  padding: "3px 6px",
+                  fontSize: 10,
+                  fontWeight: 800,
+                  textAlign: "left",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  borderColor: "#bfdbfe",
+                  background: "#ffffff",
+                  color: "#1e3a8a",
+                }}
+              >
+                {entry.breadcrumb}
+              </button>
+              {removable && onRemoveSelectionBookmark && (
+                <button
+                  type="button"
+                  data-testid={`${testId}-${testIdSuffix}-remove-${entry.key}`}
+                  onClick={() => onRemoveSelectionBookmark(entry)}
+                  title="Remove bookmark"
+                  style={{
+                    flex: "0 0 auto",
+                    padding: "3px 6px",
+                    fontSize: 10,
+                    fontWeight: 800,
+                    borderColor: "#fecaca",
+                    background: "#fff1f2",
+                    color: "#be123c",
+                  }}
+                >
+                  Remove
+                </button>
+              )}
+            </span>
+          ))
+        ) : (
+          <span style={{ color: "#64748b" }}>{emptyLabel}</span>
+        )}
+      </span>
+    </div>
+  );
   return (
     <div data-testid={testId} style={cardStyle}>
       <div style={titleRowStyle}>
@@ -203,6 +291,12 @@ export function ActiveSelectionCard({
         <span style={labelStyle}>Available</span>
         <span data-testid={`${testId}-actions`}>{actions.length ? actions.join(", ") : "none"}</span>
       </div>
+      {adaptiveGizmoLabel && (
+        <div style={rowStyle}>
+          <span style={labelStyle}>Gizmo</span>
+          <span data-testid={adaptiveGizmoTestId ?? `${testId}-adaptive-gizmo`}>{adaptiveGizmoLabel}</span>
+        </div>
+      )}
       {actionButtons && actionButtons.length > 0 && (
         <div style={rowStyle}>
           <span style={labelStyle}>Run</span>
@@ -217,6 +311,42 @@ export function ActiveSelectionCard({
           </span>
         </div>
       )}
+      {(onBookmarkSelection ||
+        onRedoSelection ||
+        selectionHistoryItems !== undefined ||
+        selectionBookmarks !== undefined) && (
+        <div style={rowStyle}>
+          <span style={labelStyle}>Selection</span>
+          <span style={actionsRowStyle}>
+            <ContextualRenderedActionButton
+              label="Bookmark selection"
+              testId={bookmarkSelectionTestId ?? `${testId}-bookmark-selection`}
+              onClick={onBookmarkSelection}
+              disabled={!onBookmarkSelection || !canBookmarkSelection}
+              disabledReason={
+                onBookmarkSelection
+                  ? "Select an entity before bookmarking it."
+                  : "Reload the workspace to enable selection bookmarking."
+              }
+              variant="card"
+            />
+            <ContextualRenderedActionButton
+              label="Redo selection"
+              testId={redoSelectionTestId ?? `${testId}-redo-selection`}
+              onClick={onRedoSelection}
+              disabled={!onRedoSelection || !canRedoSelection}
+              disabledReason={
+                onRedoSelection
+                  ? "No recent selection is available to restore."
+                  : "Reload the workspace to enable selection redo."
+              }
+              variant="card"
+            />
+          </span>
+        </div>
+      )}
+      {renderSelectionEntryList("Recent", selectionHistoryItems, "No recent selections", "selection-history")}
+      {renderSelectionEntryList("Bookmarks", selectionBookmarks, "No bookmarked selections", "selection-bookmarks", true)}
       {confirmationLabel && (
         <div
           data-testid={confirmationTestId}

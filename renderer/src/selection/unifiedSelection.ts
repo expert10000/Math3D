@@ -88,7 +88,7 @@ export type UnifiedSelection = SelectionResult & {
   readonly tangent?: UnifiedSelectionVec3 | null;
   readonly bitangent?: UnifiedSelectionVec3 | null;
   readonly topology: UnifiedSelectionTopology;
-  readonly source: "geometry-pick" | "mesh-topology" | "mesh-object";
+  readonly source: "geometry-pick" | "geometry-object" | "mesh-topology" | "mesh-object";
 };
 
 export type UnifiedSelectionEntityId = string;
@@ -157,6 +157,16 @@ export type MeshTopologyUnifiedSelectionInput = {
   readonly vertexIndex?: number | null;
   readonly valid?: boolean;
   readonly selectionCleared?: boolean;
+  readonly worldPosition?: UnifiedSelectionVec3 | null;
+  readonly normal?: UnifiedSelectionVec3 | null;
+};
+
+export type GeometryObjectUnifiedSelectionInput = {
+  readonly objectId: string;
+  readonly objectLabel: string;
+  readonly objectType?: string | null;
+  readonly meshKey?: string | null;
+  readonly topologyVersion?: number | null;
   readonly worldPosition?: UnifiedSelectionVec3 | null;
   readonly normal?: UnifiedSelectionVec3 | null;
 };
@@ -750,6 +760,47 @@ export function unifiedSelectionFromGeometryPick(
     bitangent: toVec3(pick.bitangent),
     topology,
     source: "geometry-pick",
+  };
+}
+
+export function unifiedSelectionFromGeometryObject(
+  input: GeometryObjectUnifiedSelectionInput | null | undefined,
+  lifecycle: UnifiedSelectionLifecycle = "selected"
+): UnifiedSelection | null {
+  if (!input?.objectId || !input.objectLabel) return null;
+  const worldPosition = input.worldPosition ?? null;
+  const normal = input.normal ?? null;
+  const resultFields = buildSelectionResultFields({
+    workspace: "geometry",
+    kind: "object",
+    lifecycle,
+    objectId: input.objectId,
+    objectLabel: input.objectLabel,
+    objectType: input.objectType ?? null,
+    meshKey: input.meshKey ?? input.objectId,
+    topologyVersion: input.topologyVersion ?? null,
+    stale: false,
+    label: formatSelectionLabel("object", input.objectLabel),
+    worldPosition,
+    normal,
+    topology: EMPTY_TOPOLOGY,
+  });
+  return {
+    ...resultFields,
+    selectionType: "object",
+    lifecycle,
+    topologyReference: null,
+    faceId: null,
+    edgeId: null,
+    edgeVertices: null,
+    vertexId: null,
+    worldPosition,
+    localPosition: null,
+    normal,
+    tangent: null,
+    bitangent: null,
+    topology: EMPTY_TOPOLOGY,
+    source: "geometry-object",
   };
 }
 

@@ -1,6 +1,6 @@
 import type { SurfaceMeshData } from "./surfaceMesh";
 
-export type MeshEdgeSelectionTool = "loop" | "ring" | "boundary";
+export type MeshEdgeSelectionTool = "loop" | "ring" | "boundary" | "sharp" | "feature";
 export type MeshEdgePair = readonly [number, number];
 
 export type MeshEdgeSelectionResult = {
@@ -30,6 +30,7 @@ type MeshEdgeTopology = {
 const MAX_SELECTION_EDGES = 512;
 const LOOP_CONTINUATION_COS = Math.cos((45 * Math.PI) / 180);
 const RING_PARALLEL_COS = Math.cos((35 * Math.PI) / 180);
+const DEFAULT_SHARP_EDGE_ANGLE_DEG = 35;
 
 export const meshEdgeKey = (a: number, b: number): string => {
   const i0 = Math.min(a, b);
@@ -144,6 +145,81 @@ const absDirectionDot = (
   return Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2]);
 };
 
+const triangleNormal = (
+  mesh: SurfaceMeshData,
+  triangle: Tri
+): readonly [number, number, number] | null => {
+  const a = readPoint(mesh, triangle[0]);
+  const b = readPoint(mesh, triangle[1]);
+  const c = readPoint(mesh, triangle[2]);
+  if (!a || !b || !c) return null;
+  const abx = b[0] - a[0];
+  const aby = b[1] - a[1];
+  const abz = b[2] - a[2];
+  const acx = c[0] - a[0];
+  const acy = c[1] - a[1];
+  const acz = c[2] - a[2];
+  const nx = aby * acz - abz * acy;
+  const ny = abz * acx - abx * acz;
+  const nz = abx * acy - aby * acx;
+  const len = Math.hypot(nx, ny, nz);
+  if (!Number.isFinite(len) || len <= 1e-12) return null;
+  return [nx / len, ny / len, nz / len];
+};
+
+const clampUnit = (value: number): number => Math.max(-1, Math.min(1, value));
+
+const computeFaceNormals = (
+  mesh: SurfaceMeshData,
+  topology: MeshEdgeTopology
+): readonly (readonly [number, number, number] | null)[] =>
+  topology.triangles.map((triangle) => triangleNormal(mesh, triangle));
+
+const computeSharpEdgeKeys = (
+  mesh: SurfaceMeshData,
+  topology: MeshEdgeTopology,
+  angleDeg = DEFAULT_SHARP_EDGE_ANGLE_DEG
+): string[] => {
+  const faceNormals = computeFaceNormals(mesh, topology);
+  const thresholdRad = (Math.max(0, Math.min(180, angleDeg)) * Math.PI) / 180;
+  const keys: string[] = [];
+  for (const [key, info] of topology.edges) {
+    if (info.faces.length !== 2) continue;
+    const n0 = faceNormals[info.faces[0]];
+    const n1 = faceNormals[info.faces[1]];
+    if (!n0 || !n1) continue;
+    const dot = Math.abs(clampUnit(n0[0] * n1[0] + n0[1] * n1[1] + n0[2] * n1[2]));
+    const angle = Math.acos(dot);
+    if (angle >= thresholdRad) keys.push(key);
+  }
+  return keys;
+};
+
+const connectedEdgeComponent = (
+  topology: MeshEdgeTopology,
+  seed: MeshEdgePair,
+  selectableKeys: readonly string[]
+): string[] => {
+  if (!selectableKeys.length) return [];
+  const seedKey = meshEdgeKey(seed[0], seed[1]);
+  const selectableSet = new Set(selectableKeys);
+  if (!selectableSet.has(seedKey)) return selectableKeys.slice(0, MAX_SELECTION_EDGES);
+
+  const visited = new Set<string>([seedKey]);
+  const queue = [seedKey];
+  for (let cursor = 0; cursor < queue.length && visited.size < MAX_SELECTION_EDGES; cursor += 1) {
+    const [a, b] = edgePairFromKey(queue[cursor]);
+    for (const vertex of [a, b]) {
+      for (const candidate of topology.vertexEdges.get(vertex) ?? []) {
+        if (!selectableSet.has(candidate) || visited.has(candidate)) continue;
+        visited.add(candidate);
+        queue.push(candidate);
+      }
+    }
+  }
+  return [...visited];
+};
+
 const growLoopSide = (
   mesh: SurfaceMeshData,
   topology: MeshEdgeTopology,
@@ -225,29 +301,31 @@ const selectBoundary = (topology: MeshEdgeTopology, seed: MeshEdgePair): string[
     .filter(([, info]) => info.faces.length === 1)
     .map(([key]) => key);
   if (!boundaryKeys.length) return [];
+  return connectedEdgeComponent(topology, seed, boundaryKeys);
+};
 
-  const seedKey = meshEdgeKey(seed[0], seed[1]);
-  const seedIsBoundary = boundaryKeys.includes(seedKey);
-  if (!seedIsBoundary) return boundaryKeys;
+const selectSharpEdges = (mesh: SurfaceMeshData, topology: MeshEdgeTopology, seed: MeshEdgePair): string[] =>
+  connectedEdgeComponent(topology, seed, computeSharpEdgeKeys(mesh, topology));
 
-  const boundarySet = new Set(boundaryKeys);
-  const visited = new Set<string>([seedKey]);
-  const queue = [seedKey];
-  for (let cursor = 0; cursor < queue.length && visited.size < MAX_SELECTION_EDGES; cursor += 1) {
-    const [a, b] = edgePairFromKey(queue[cursor]);
-    for (const vertex of [a, b]) {
-      for (const candidate of topology.vertexEdges.get(vertex) ?? []) {
-        if (!boundarySet.has(candidate) || visited.has(candidate)) continue;
-        visited.add(candidate);
-        queue.push(candidate);
-      }
-    }
-  }
-  return [...visited];
+const selectFeatureEdges = (mesh: SurfaceMeshData, topology: MeshEdgeTopology, seed: MeshEdgePair): string[] => {
+  const sharpKeys = computeSharpEdgeKeys(mesh, topology);
+  const featureKeys = [...topology.edges.entries()]
+    .filter(([, info]) => info.faces.length !== 2)
+    .map(([key]) => key);
+  const combined = Array.from(new Set([...featureKeys, ...sharpKeys]));
+  return connectedEdgeComponent(topology, seed, combined);
 };
 
 const toolLabel = (tool: MeshEdgeSelectionTool) =>
-  tool === "loop" ? "Edge loop" : tool === "ring" ? "Edge ring" : "Boundary";
+  tool === "loop"
+    ? "Edge loop"
+    : tool === "ring"
+      ? "Edge ring"
+      : tool === "boundary"
+        ? "Boundary"
+        : tool === "sharp"
+          ? "Sharp edges"
+          : "Feature edges";
 
 export function selectMeshEdgesByTool(
   mesh: SurfaceMeshData,
@@ -278,7 +356,11 @@ export function selectMeshEdgesByTool(
       ? selectEdgeLoop(mesh, topology, [a, b])
       : tool === "ring"
         ? selectEdgeRing(mesh, topology, [a, b])
-        : selectBoundary(topology, [a, b]);
+        : tool === "boundary"
+          ? selectBoundary(topology, [a, b])
+          : tool === "sharp"
+            ? selectSharpEdges(mesh, topology, [a, b])
+            : selectFeatureEdges(mesh, topology, [a, b]);
   const edges = selectedKeys.map(edgePairFromKey);
   const label = toolLabel(tool);
   const seedLabel = `Edge ${seedInfo.a}-${seedInfo.b}`;

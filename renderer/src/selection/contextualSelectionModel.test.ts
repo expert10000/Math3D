@@ -17,7 +17,16 @@ describe("contextualSelectionModel", () => {
 
   it("keeps Mesh and Geometry action lists in the shared model", () => {
     expect(getContextEntityActions("mesh", "face")).toEqual(["Subdivide"]);
-    expect(getContextEntityActions("mesh", "edge")).toEqual(["Split", "Collapse", "Bevel", "Loop", "Ring", "Boundary"]);
+    expect(getContextEntityActions("mesh", "edge")).toEqual([
+      "Split",
+      "Collapse",
+      "Bevel",
+      "Loop",
+      "Ring",
+      "Boundary",
+      "Sharp",
+      "Feature",
+    ]);
     expect(getContextEntityActions("geometry", "face")).toEqual(["Extrude", "Inset", "Delete"]);
     expect(getContextEntityActions("geometry", "edge")).toEqual(["Split", "Mirror", "Offset"]);
   });

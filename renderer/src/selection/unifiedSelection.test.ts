@@ -14,6 +14,7 @@ import {
   selectionResultFromMeshTopology,
   selectionResultWithState,
   unifiedSelectionFromGeometryPick,
+  unifiedSelectionFromGeometryObject,
   unifiedSelectionFromMeshTopology,
   updateUnifiedSelectionSet,
 } from "./unifiedSelection";
@@ -142,6 +143,27 @@ describe("unifiedSelection", () => {
       label: "Bunny mesh object",
       source: "mesh-object",
     });
+  });
+
+  it("adapts Geometry object state to the shared selection contract", () => {
+    const selection = unifiedSelectionFromGeometryObject({
+      objectId: "box-1",
+      objectLabel: "Box",
+      objectType: "box",
+      topologyVersion: 3,
+    });
+
+    expect(selection).toMatchObject({
+      workspace: "geometry",
+      selectionType: "object",
+      objectId: "box-1",
+      objectLabel: "Box",
+      meshKey: "box-1",
+      topologyVersion: 3,
+      label: "Box object",
+      source: "geometry-object",
+    });
+    expect(getUnifiedSelectionKey(selection!)).toBe("geometry|box-1|box-1|3|object|object%3Abox-1");
   });
 
   it("adapts Mesh edge fields and computes topology when mesh data is available", () => {
