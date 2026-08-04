@@ -63,8 +63,8 @@ describe("contextualSelectionState", () => {
       activeCardType: "Object",
       cardId: "Box",
       emptyState: null,
-      actions: ["Promote to Geometry", "Save edited", "Mesh source"],
-      previewLabel: "Preview: promote selected mesh to Geometry",
+      actions: ["Open in Geometry", "Save edited", "Mesh source"],
+      previewLabel: "Preview: open selected mesh in Geometry",
       canRunPrimaryAction: true,
     });
   });

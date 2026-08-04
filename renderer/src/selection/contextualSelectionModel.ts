@@ -6,9 +6,9 @@ export const OBJECT_CONTEXT_COPY = {
     chip: "Mesh Object",
     selectedPrefix: "Selected mesh object",
     selectEmpty: "Select a Mesh object",
-    preview: "Preview: promote selected mesh to Geometry",
+    preview: "Preview: open selected mesh in Geometry",
     wholeSelected: "Whole mesh selected",
-    actions: ["Promote to Geometry", "Save edited", "Mesh source"],
+    actions: ["Open in Geometry", "Save edited", "Mesh source"],
   },
   geometry: {
     chip: "Geometry Object",

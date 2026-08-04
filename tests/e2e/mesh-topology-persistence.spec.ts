@@ -309,12 +309,12 @@ test.describe("Mesh topology persistence and handoff", () => {
         },
         chipLabel: "Mesh Object",
         selectionLabel: /Selected mesh object:/,
-        preview: "Preview: promote selected mesh to Geometry",
-        viewportPreview: "Viewport preview: promote selected mesh to Geometry",
+        preview: "Preview: open selected mesh in Geometry",
+        viewportPreview: "Viewport preview: open selected mesh in Geometry",
         wholeObjectBadgeTestId: "mesh-object-selection-glow",
         wholeObjectBadgeLabel: "Whole mesh selected",
         actionExpectations: [
-          { testId: "mesh-context-promote-mesh-object", label: "Promote to Geometry", enabled: true },
+          { testId: "mesh-context-promote-mesh-object", label: "Open in Geometry", enabled: true },
           { testId: "mesh-context-save-edited", label: "Save edited" },
           { testId: "mesh-context-mesh-source", label: "Mesh source" },
         ],
@@ -362,12 +362,12 @@ test.describe("Mesh topology persistence and handoff", () => {
         },
         chipLabel: "Mesh Object",
         selectionLabel: /Selected mesh object:/,
-        preview: "Preview: promote selected mesh to Geometry",
-        viewportPreview: "Viewport preview: promote selected mesh to Geometry",
+        preview: "Preview: open selected mesh in Geometry",
+        viewportPreview: "Viewport preview: open selected mesh in Geometry",
         wholeObjectBadgeTestId: "mesh-object-selection-glow",
         wholeObjectBadgeLabel: "Whole mesh selected",
         actionExpectations: [
-          { testId: "mesh-context-promote-mesh-object", label: "Promote to Geometry", enabled: true },
+          { testId: "mesh-context-promote-mesh-object", label: "Open in Geometry", enabled: true },
           { testId: "mesh-context-save-edited", label: "Save edited" },
           { testId: "mesh-context-mesh-source", label: "Mesh source" },
         ],
@@ -544,6 +544,41 @@ test.describe("Mesh topology persistence and handoff", () => {
       await expect(page.getByText(/Selected: Demo: bevel edge mesh object \(Mesh source\)/i).first()).toBeVisible({
         timeout: 15_000,
       });
+    } finally {
+      await closeApp(ctx);
+    }
+  });
+
+  test("opens a split Box mesh in Geometry with linked Mesh source", async () => {
+    test.setTimeout(120_000);
+    let ctx: { app: ElectronApplication; page: Page; profileDir: string } | null = null;
+
+    try {
+      ctx = await launchApp();
+      const { page } = ctx;
+
+      await openMeshGallery(page);
+      await page.getByTestId("mesh-preset-card-mesh_box").click();
+      await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true })).then((button) =>
+        button.click()
+      );
+      await page.setViewportSize({ width: 1680, height: 980 });
+      await page.getByTestId("mesh-context-pick-edge").click();
+      await selectDeterministicMeshEdge(page);
+      await expect(page.getByTestId("mesh-context-split-edge")).toBeEnabled();
+      await page.getByTestId("mesh-context-split-edge").click();
+      await expect(page.getByText(/Done: midpoint vertex on Edge/i).first()).toBeVisible({ timeout: 15_000 });
+
+      await page.getByTestId("mesh-topology-select-edge-ring").click();
+      await expect(page.getByTestId("mesh-edge-selection-summary").first()).toContainText(/Edge ring selected/i);
+      await page.getByTestId("mesh-topology-save-open-geometry").scrollIntoViewIfNeeded();
+      await page.getByTestId("mesh-topology-save-open-geometry").click();
+
+      await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId("geometry-right-linked-mesh-source")).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId("geometry-right-linked-mesh-source")).toContainText(/Linked Mesh edit source/i);
+      await expect(page.getByTestId("geometry-right-linked-mesh-source")).toContainText(/Latest: Split edge/i);
+      await expect(page.getByTestId("geometry-right-linked-mesh-source")).toContainText(/Selection overlay: Edge ring selected/i);
     } finally {
       await closeApp(ctx);
     }

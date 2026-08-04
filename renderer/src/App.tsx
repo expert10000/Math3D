@@ -1276,6 +1276,13 @@ type WorkbookEmbeddedMesh = {
   uvs?: number[] | null;
   source: SurfaceMeshSource;
 };
+type MeshSourceSelectionOverlay = {
+  tool: MeshEdgeSelectionTool;
+  seed: [number, number];
+  edges: Array<[number, number]>;
+  label: string;
+  status: string;
+};
 type WorkbookGeometryDatasetMeshObject = {
   id: string;
   name: string;
@@ -1285,6 +1292,7 @@ type WorkbookGeometryDatasetMeshObject = {
   material: GeometryObject["material"];
   promotion?: GeometryToMeshPromotionMetadata | null;
   restoredGeometryPreset?: GeometryRestoredObjectPresetMetadata | null;
+  sourceSelectionOverlay?: MeshSourceSelectionOverlay | null;
 };
 type GeometryObjectVariant = {
   id: string;
@@ -1892,6 +1900,28 @@ const deserializeSurfaceMeshData = (mesh: WorkbookEmbeddedMesh): SurfaceMeshData
   source: mesh.source,
 });
 
+const cloneMeshSourceSelectionOverlay = (
+  overlay:
+    | {
+        readonly tool: MeshEdgeSelectionTool;
+        readonly seed: readonly [number, number];
+        readonly edges: readonly (readonly [number, number])[];
+        readonly label: string;
+        readonly status: string;
+      }
+    | null
+    | undefined
+): MeshSourceSelectionOverlay | null =>
+  overlay
+    ? {
+        tool: overlay.tool,
+        seed: [Number(overlay.seed[0]), Number(overlay.seed[1])],
+        edges: overlay.edges.map(([a, b]) => [Number(a), Number(b)]),
+        label: overlay.label,
+        status: overlay.status,
+      }
+    : null;
+
 const cloneGeometryPromotionMetadata = (
   promotion: GeometryToMeshPromotionMetadata | null | undefined
 ): GeometryToMeshPromotionMetadata | null => {
@@ -1925,6 +1955,7 @@ const serializeGeometryDatasetMeshObject = (obj: GeometryDatasetMeshObject): Wor
   material: normalizeGeometryMaterial((obj as { material?: unknown })?.material),
   promotion: cloneGeometryPromotionMetadata(obj.promotion),
   restoredGeometryPreset: obj.restoredGeometryPreset ? { ...obj.restoredGeometryPreset } : null,
+  sourceSelectionOverlay: cloneMeshSourceSelectionOverlay(obj.sourceSelectionOverlay),
 });
 
 const deserializeGeometryDatasetMeshObject = (
@@ -1954,6 +1985,7 @@ const deserializeGeometryDatasetMeshObject = (
   material: normalizeGeometryMaterial(obj.material),
   promotion: cloneGeometryPromotionMetadata(obj.promotion),
   restoredGeometryPreset: obj.restoredGeometryPreset ? { ...obj.restoredGeometryPreset } : null,
+  sourceSelectionOverlay: cloneMeshSourceSelectionOverlay(obj.sourceSelectionOverlay),
 });
 
 const cloneVariantSnapshot = (
@@ -4228,6 +4260,7 @@ type GeometryDatasetMeshObject = {
   material: GeometryObject["material"];
   promotion?: GeometryToMeshPromotionMetadata | null;
   restoredGeometryPreset?: GeometryRestoredObjectPresetMetadata | null;
+  sourceSelectionOverlay?: MeshSourceSelectionOverlay | null;
 };
 
 const DEFAULT_GEOMETRY_MATERIAL_COLOR = 0x8aa4ff;
@@ -5320,6 +5353,8 @@ const cloneGeometryDatasetMeshObject = (obj: GeometryDatasetMeshObject): Geometr
   },
   material: normalizeGeometryMaterial((obj as { material?: unknown })?.material),
   promotion: cloneGeometryPromotionMetadata(obj.promotion),
+  restoredGeometryPreset: obj.restoredGeometryPreset ? { ...obj.restoredGeometryPreset } : null,
+  sourceSelectionOverlay: cloneMeshSourceSelectionOverlay(obj.sourceSelectionOverlay),
 });
 const cloneGeometrySceneObjectSnapshot = (
   obj: GeometryObject | GeometryDatasetMeshObject
@@ -7299,7 +7334,7 @@ const SURFACE_MESH_TOPOLOGY_DEMO_PRESETS: SurfaceMeshTopologyDemoPreset[] = [
     label: "Round-trip box subdivide",
     operation: "Face Subdivide",
     summary: "Segmented Box face -> Mesh edit -> Promote -> restore/apply back.",
-    tryHint: "Load the Box face, subdivide it, then Promote to Geometry and use Restore Before/After.",
+    tryHint: "Load the Box face, subdivide it, then Open in Geometry and use Restore Before/After.",
     expectedResult: "Face 848 becomes a center fan; Geometry can restore before/after and apply that Mesh state back.",
     workflowHint: "Workflow: Mesh object -> Face Subdivide -> Promote -> Restore/Apply to Geometry.",
     workflowKind: "round-trip",
@@ -12371,13 +12406,12 @@ const App: React.FC = () => {
   }, [geometrySelectedHistoryStepId, geometrySelectedObjectId]);
   const handleSaveSelectedHistoryStepAsPreset = useCallback(() => {
     if (!geometrySelectedHistoryStep) return;
-    const defaultName = `${geometrySelectedHistoryStep.objectName} · ${geometrySelectedHistoryStep.label}`;
-    const name = window.prompt("Preset name", defaultName);
-    if (!name?.trim()) return;
+    const name = `${geometrySelectedHistoryStep.objectName} - ${geometrySelectedHistoryStep.label}`;
     const snapshot = cloneGeometrySceneObjectSnapshot(geometrySelectedHistoryStep.snapshot);
     setGeometryObjectPresets((prev) =>
-      [{ id: makeId(), name: name.trim(), createdAt: Date.now(), snapshot }, ...prev].slice(0, 40)
+      [{ id: makeId(), name, createdAt: Date.now(), snapshot }, ...prev].slice(0, 40)
     );
+    setGeometryCreateActionStatus(`Saved preset: ${name}.`);
   }, [geometrySelectedHistoryStep]);
   const restoreGeometryObjectFromHistoryStep = useCallback(
     (objectId: string, step: GeometryObjectHistoryStep) => {
@@ -12638,12 +12672,12 @@ const App: React.FC = () => {
   }, [geometryObjectPresets]);
   const handleSaveSelectedGeometryObjectPreset = useCallback(() => {
     if (!geometrySelectedSceneObject) return;
-    const name = window.prompt("Preset name", `${geometrySelectedSceneObject.name} preset`);
-    if (!name?.trim()) return;
+    const name = `${geometrySelectedSceneObject.name} preset`;
     const snapshot = cloneGeometrySceneObjectSnapshot(geometrySelectedSceneObject);
     setGeometryObjectPresets((prev) =>
-      [{ id: makeId(), name: name.trim(), createdAt: Date.now(), snapshot }, ...prev].slice(0, 40)
+      [{ id: makeId(), name, createdAt: Date.now(), snapshot }, ...prev].slice(0, 40)
     );
+    setGeometryCreateActionStatus(`Saved preset: ${name}.`);
   }, [geometrySelectedSceneObject]);
   const handleApplyGeometryObjectPreset = useCallback(
     (presetId: string) => {
@@ -26904,9 +26938,7 @@ const App: React.FC = () => {
       ? geometryMathConstructions.find((entry) => entry.id === geometrySelectedMathConstructionId) ?? null
       : null;
     if (selectedMath) {
-      const nextName = window.prompt("Rename construction", selectedMath.name);
-      const trimmed = nextName?.trim();
-      if (!trimmed) return;
+      const trimmed = `${selectedMath.name} renamed`;
       setGeometryMathConstructions((prev) =>
         prev.map((entry) => (entry.id === selectedMath.id ? { ...entry, name: trimmed } : entry))
       );
@@ -26918,9 +26950,7 @@ const App: React.FC = () => {
       : null;
     if (selectedDerived) {
       const currentName = geometryDerivedConstructionName(selectedDerived);
-      const nextName = window.prompt("Rename construction", currentName);
-      const trimmed = nextName?.trim();
-      if (!trimmed) return;
+      const trimmed = `${currentName} renamed`;
       setGeometryDerivedConstructions((prev) =>
         prev.map((entry) => (entry.id === selectedDerived.id ? { ...entry, name: trimmed } : entry))
       );
@@ -26928,8 +26958,9 @@ const App: React.FC = () => {
       return;
     }
     if (geometrySelectedSceneObject) {
-      const nextName = window.prompt("Rename object", geometrySelectedSceneObject.name);
-      if (nextName != null) handleRenameGeometryObject(geometrySelectedSceneObject.id, nextName);
+      setGeometryProceduralPanelTab("object");
+      setGeometryRightPanelTab("properties");
+      setGeometryCreateActionStatus("Use the Object Details name field to rename this object.");
       return;
     }
     setGeometryCreateActionStatus("Select a construction or object to rename.");
@@ -28304,6 +28335,37 @@ const App: React.FC = () => {
       },
     ];
   }, [geometryMode, geometryTopologyEditFeedback]);
+  const geometryMeshSourceSelectionPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (geometryMode !== "procedural") return null;
+    const overlay = geometrySelectedDatasetMeshObject?.sourceSelectionOverlay;
+    if (!overlay?.edges.length || !geometrySelectedDatasetMeshObject?.mesh.positions?.length) return null;
+    const worldMesh = transformSurfaceMeshByGeometryTransform(
+      geometrySelectedDatasetMeshObject.mesh,
+      geometrySelectedDatasetMeshObject.transform
+    );
+    const lines: PolylineSet = [];
+    for (const [aIndex, bIndex] of overlay.edges) {
+      const a = readMeshPoint(worldMesh, aIndex);
+      const b = readMeshPoint(worldMesh, bIndex);
+      if (a && b) lines.push([a, b]);
+    }
+    if (!lines.length) return null;
+    const color = overlay.tool === "loop" ? 0x14b8a6 : overlay.tool === "ring" ? 0x8b5cf6 : 0xf59e0b;
+    return [
+      {
+        lines,
+        color: 0xffffff,
+        opacity: 0.74,
+        radiusWorld: 0.036,
+      },
+      {
+        lines,
+        color,
+        opacity: 0.98,
+        radiusWorld: 0.026,
+      },
+    ];
+  }, [geometryMode, geometrySelectedDatasetMeshObject]);
   const geometryProceduralViewerOverlayPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     const groups: OverlayPolylineGroup[] = [];
@@ -28345,6 +28407,9 @@ const App: React.FC = () => {
     if (geometryTopologyEditFeedbackPolylineGroups?.length) {
       groups.push(...geometryTopologyEditFeedbackPolylineGroups);
     }
+    if (geometryMeshSourceSelectionPolylineGroups?.length) {
+      groups.push(...geometryMeshSourceSelectionPolylineGroups);
+    }
     if (geometryObjectSelectionPolylineGroups?.length) groups.push(...geometryObjectSelectionPolylineGroups);
     if (geometryProceduralSelectionOverlayGroups?.length) groups.push(...geometryProceduralSelectionOverlayGroups);
     if (geometrySelectionHighlightOverlays.polylineGroups.length) {
@@ -28380,6 +28445,7 @@ const App: React.FC = () => {
     geometryDirectEditAccessiblePreviewOverlays,
     geometrySelectionHighlightOverlays.polylineGroups,
     geometryTopologyEditFeedbackPolylineGroups,
+    geometryMeshSourceSelectionPolylineGroups,
     geometryDerivedConstructionOverlays.groups,
     geometryPlaneBasicInputPreviewOverlays.groups,
     geometryPlaneMidPlanePreviewOverlays.groups,
@@ -30660,6 +30726,10 @@ const App: React.FC = () => {
     useState<UnifiedSelectionTopologyFilterMode>("all");
   const [surfaceMeshTopologySelectionCleared, setSurfaceMeshTopologySelectionCleared] = useState(false);
   const [surfaceMeshEdgeSelection, setSurfaceMeshEdgeSelection] = useState<MeshEdgeSelectionResult | null>(null);
+  const surfaceMeshEdgeSelectionRef = useRef<MeshEdgeSelectionResult | null>(null);
+  useEffect(() => {
+    surfaceMeshEdgeSelectionRef.current = surfaceMeshEdgeSelection;
+  }, [surfaceMeshEdgeSelection]);
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -30872,18 +30942,18 @@ const App: React.FC = () => {
     vtkBooleanOperandObjectId,
   ]);
   const handleSaveGeometryOperationPreset = useCallback(() => {
-    const name = window.prompt("Operation preset name", "VTK operation preset");
-    if (!name?.trim()) return;
+    const name = `VTK operation preset ${geometryOperationPresets.length + 1}`;
     const preset: GeometryOperationPreset = {
       id: makeId(),
-      name: name.trim(),
+      name,
       createdAt: Date.now(),
       outputMode: vtkOutputMode,
       smoothIterations: Math.max(1, Math.round(vtkSmoothIterations)),
       smoothPassband: clampNumber(vtkSmoothPassband, 0.001, 1),
     };
     setGeometryOperationPresets((prev) => [preset, ...prev].slice(0, 40));
-  }, [vtkOutputMode, vtkSmoothIterations, vtkSmoothPassband]);
+    setGeometryCreateActionStatus(`Saved operation preset: ${name}.`);
+  }, [geometryOperationPresets.length, vtkOutputMode, vtkSmoothIterations, vtkSmoothPassband]);
   const handleApplyGeometryOperationPreset = useCallback((presetId: string) => {
     const preset = geometryOperationPresets.find((entry) => entry.id === presetId);
     if (!preset) return;
@@ -31696,6 +31766,8 @@ const App: React.FC = () => {
       visible: true,
       material: { color: 0x8aa4ff, opacity: 1 },
       promotion: promoted.metadata,
+      sourceSelectionOverlay:
+        surfaceViewerKind === "mesh" ? cloneMeshSourceSelectionOverlay(surfaceMeshEdgeSelectionRef.current) : null,
     };
     setGeometryObjects((prev) => (prev.length === 1 && isSeedGeometryBoxObject(prev[0]) ? [] : prev));
     setGeometryDatasetMeshObjects((prev) => [obj, ...prev]);
@@ -31708,6 +31780,7 @@ const App: React.FC = () => {
     }
     setGeometrySelectedObjectId(id);
     setGeometryProceduralPanelTab("object");
+    setGeometryRightPanelTab("selection");
     setGeometryMode("procedural");
     setMode("geometry");
     if (latestTopologyEdit) {
@@ -46320,6 +46393,7 @@ case "mobius":
       const edgeA = surfaceMeshTopologyFieldValidation.effectiveEdgeA;
       const edgeB = surfaceMeshTopologyFieldValidation.effectiveEdgeB;
       if (surfaceMeshTopologyPickMode !== "edge") {
+        surfaceMeshEdgeSelectionRef.current = null;
         setSurfaceMeshEdgeSelection(null);
         setSurfaceMeshTopologyStatus(`${label} needs Edge pick mode.`);
         return;
@@ -46346,6 +46420,7 @@ case "mobius":
         unifiedSelectionFilter
       );
       if (!filterResult.accepted) {
+        surfaceMeshEdgeSelectionRef.current = null;
         setSurfaceMeshEdgeSelection(null);
         setSurfaceMeshTopologyStatus(`${label} blocked: ${filterResult.reasons[0] ?? "Selection filtered out"}.`);
         return;
@@ -46354,6 +46429,7 @@ case "mobius":
         const selection = selectMeshEdgesByTool(surfaceMeshData, edgeA, edgeB, tool);
         setSurfaceMeshTopologyFeedback(null);
         setSurfaceMeshTopologyHistoryPreviewId(null);
+        surfaceMeshEdgeSelectionRef.current = selection;
         setSurfaceMeshEdgeSelection(selection);
         setContextualActionPulseId(
           tool === "loop" ? "mesh:edge-loop" : tool === "ring" ? "mesh:edge-ring" : "mesh:boundary-select"
@@ -46362,6 +46438,7 @@ case "mobius":
         showSelectionEventStatus("Mesh", selection.status, `mesh-edge-${tool}:${selection.edges.length}:${edgeA}-${edgeB}`);
       } catch (err: any) {
         const label = tool === "loop" ? "Edge loop" : tool === "ring" ? "Edge ring" : "Boundary";
+        surfaceMeshEdgeSelectionRef.current = null;
         setSurfaceMeshEdgeSelection(null);
         setSurfaceMeshTopologyStatus(formatMeshEditFailureMessage(label, err?.message ?? `${label} selection failed.`));
       }
@@ -49876,7 +49953,7 @@ case "mobius":
                 testId: "mesh-active-selection-action-promote",
                 onClick: handleDatasetToGeometryScene,
                 disabled: !meshObjectPromoteReady,
-                disabledReason: "Load a mesh to enable Promote to Geometry.",
+                disabledReason: "Load a mesh to enable Open in Geometry.",
               },
               {
                 label: OBJECT_CONTEXT_COPY.mesh.actions[1],
@@ -61755,6 +61832,16 @@ case "mobius":
                             </button>
                             <button
                               type="button"
+                              data-testid="mesh-topology-save-edited"
+                              onClick={handleSaveSurfaceMeshTopologyEditedPreset}
+                              disabled={!surfaceMeshData?.positions?.length || !surfaceMeshTopologyHistory.length}
+                              style={{ padding: "2px 7px", fontSize: 10 }}
+                            >
+                              Save edited
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="mesh-topology-save-open-geometry"
                               onClick={handleSaveAndOpenGeometrySurfaceMeshTopologyEditedPreset}
                               disabled={!surfaceMeshData?.positions?.length || !surfaceMeshTopologyHistory.length}
                               style={{ padding: "2px 7px", fontSize: 10 }}
@@ -62488,61 +62575,70 @@ case "mobius":
                           <button
                             type="button"
                             onClick={handleDatasetToGeometryScene}
-                            disabled={!unifiedMeshObjectActionEnabled}
+                            disabled={surfaceViewerKind === "mesh" ? !meshObjectPromoteReady : !unifiedMeshObjectActionEnabled}
                             style={{
                               borderRadius: 8,
                               border:
                                 "1px solid " +
-                                (unifiedMeshObjectActionIsReadyState
+                                (surfaceViewerKind === "mesh"
                                   ? "#0f766e"
                                   : unifiedMeshObjectActionEnabled
                                   ? "#0f766e"
                                   : "#d1d5db"),
-                              background: unifiedMeshObjectActionIsReadyState
+                              background: surfaceViewerKind === "mesh"
                                 ? "#f0fdf4"
                                 : unifiedMeshObjectActionEnabled
                                 ? "#ecfdf5"
                                 : "#f8fafc",
                               color:
-                                unifiedMeshObjectActionIsReadyState || unifiedMeshObjectActionEnabled
+                                surfaceViewerKind === "mesh" || unifiedMeshObjectActionEnabled
                                   ? "#0f766e"
                                   : "#94a3b8",
                               fontWeight: 650,
                               fontSize: 11,
                               padding: "5px 10px",
-                              cursor: unifiedMeshObjectActionEnabled ? "pointer" : "default",
+                              cursor:
+                                surfaceViewerKind === "mesh"
+                                  ? meshObjectPromoteReady ? "pointer" : "not-allowed"
+                                  : unifiedMeshObjectActionEnabled ? "pointer" : "default",
                             }}
                             title={
-                              unifiedMeshObjectActionIsReadyState
+                              surfaceViewerKind === "mesh"
+                                ? "Open this edited mesh as a Geometry mesh object."
+                                : unifiedMeshObjectActionIsReadyState
                                 ? "Current workspace is already an editable Mesh dataset."
                                 : unifiedMeshObjectActionEnabled
                                 ? "Bake current SurfaceMesh into a detached Mesh object (Geometry module)."
                                 : "SurfaceMesh dataset is required before baking to Mesh."
                             }
                           >
-                            {unifiedMeshObjectActionLabel}
+                            {surfaceViewerKind === "mesh" ? "Open in Geometry" : unifiedMeshObjectActionLabel}
                           </button>
                           <button
                             type="button"
                             onClick={handleConvertToMesh}
-                            disabled={!surfaceMeshExportable}
+                            disabled={surfaceViewerKind === "mesh" || !surfaceMeshExportable}
                             style={{
                               borderRadius: 8,
-                              border: "1px solid " + (surfaceMeshExportable ? "#0a66c2" : "#d1d5db"),
-                              background: surfaceMeshExportable ? "#eff6ff" : "#f8fafc",
-                              color: surfaceMeshExportable ? "#1d4ed8" : "#94a3b8",
+                              border:
+                                "1px solid " +
+                                (surfaceViewerKind !== "mesh" && surfaceMeshExportable ? "#0a66c2" : "#d1d5db"),
+                              background: surfaceViewerKind !== "mesh" && surfaceMeshExportable ? "#eff6ff" : "#f8fafc",
+                              color: surfaceViewerKind !== "mesh" && surfaceMeshExportable ? "#1d4ed8" : "#94a3b8",
                               fontWeight: 650,
                               fontSize: 11,
                               padding: "5px 10px",
-                              cursor: surfaceMeshExportable ? "pointer" : "not-allowed",
+                              cursor: surfaceViewerKind !== "mesh" && surfaceMeshExportable ? "pointer" : "not-allowed",
                             }}
                             title={
-                              surfaceMeshExportable
+                              surfaceViewerKind === "mesh"
+                                ? "This object is already a SurfaceMesh. Use Open in Geometry for Geometry handoff."
+                                : surfaceMeshExportable
                                 ? "Promote current surface definition to SurfaceMesh dataset."
                                 : "Surface must be bake-ready to promote."
                             }
                           >
-                            Promote to SurfaceMesh
+                            {surfaceViewerKind === "mesh" ? "Already SurfaceMesh" : "Promote to SurfaceMesh"}
                           </button>
                           {isSurfaceDatasetKind(datasetKind) && (surfaceViewerKind === "graph" || surfaceViewerKind === "implicit") && (
                             <button
@@ -62798,7 +62894,7 @@ case "mobius":
                               label: pickMode === "object" ? OBJECT_CONTEXT_COPY.mesh.chip : pickMode[0].toUpperCase() + pickMode.slice(1),
                               title:
                                 pickMode === "object"
-                                  ? "Whole-mesh actions: promote to Geometry, save edited mesh, or reopen source."
+                                  ? "Whole-mesh actions: open in Geometry, save edited mesh, or reopen source."
                                   : `Choose a mesh ${pickMode}, then use the matching tools.`,
                               disabled: !unifiedSelectionKindFilters[pickMode],
                               disabledReason: `Selection filter excludes ${pickMode} picks.`,
@@ -62870,7 +62966,7 @@ case "mobius":
                                 testId="mesh-context-promote-mesh-object"
                                 onClick={handleDatasetToGeometryScene}
                                 disabled={!meshObjectPromoteReady}
-                                disabledReason="Load a mesh to enable Promote to Geometry."
+                                disabledReason="Load a mesh to enable Open in Geometry."
                               >
                                 {OBJECT_CONTEXT_COPY.mesh.actions[0]}
                               </ContextualActionStripAction>
@@ -79208,6 +79304,11 @@ case "mobius":
                                           : "n/a";
                                       })()}
                                     </div>
+                                    {geometrySelectedDatasetMeshObject?.sourceSelectionOverlay && (
+                                      <div>
+                                        Selection overlay: {geometrySelectedDatasetMeshObject.sourceSelectionOverlay.status}
+                                      </div>
+                                    )}
                                     <div style={{ color: "#075985", fontWeight: 700 }}>
                                       {geometrySelectedMeshTopologyHandoff
                                         ? geometrySelectedMeshTopologyHandoffHistoryEntry
@@ -87883,8 +87984,7 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  const nextName = window.prompt("Rename object", node.name);
-                  if (nextName != null) onRenameNode?.(node.id, nextName);
+                  onRenameNode?.(node.id, `${node.name} renamed`);
                 }}
                 style={{ textAlign: "left", padding: "5px 8px", fontSize: 11, borderRadius: 6 }}
               >
