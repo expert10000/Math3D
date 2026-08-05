@@ -38,7 +38,7 @@ describe("geometryTopologyGizmo", () => {
       enabled: true,
       mode: "face",
       axis: { x: 0, y: 1, z: 0 },
-      length: 2,
+      length: 0.55,
       label: "Geometry face handle",
     });
     expect(target?.origin.x).toBeCloseTo(1);
@@ -69,7 +69,7 @@ describe("geometryTopologyGizmo", () => {
       mode: "edge",
       origin: { x: 2.5, y: 2, z: 3 },
       axis: { x: 1, y: 0, z: 0 },
-      length: 3,
+      length: 0.55,
       label: "Geometry edge handle",
     });
   });

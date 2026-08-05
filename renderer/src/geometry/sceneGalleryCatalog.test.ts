@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  GEOMETRY_DATASET_MESH_OBJECTS_SCENE_EXTENSION_KEY,
   GEOMETRY_SCENE_GALLERY,
   GEOMETRY_SCENE_GALLERY_BY_ID,
   GEOMETRY_SCENE_GALLERY_CATEGORY_ORDER,
@@ -32,7 +33,7 @@ describe("sceneGalleryCatalog", () => {
       ]],
       ["Measurement", ["Equal-volume objects", "Surface-area comparison", "Bounding dimensions"]],
       ["Mathematical Demonstrations", ["Cavalieri principle", "Sphere section", "Scaling laws", "Euler polyhedron relation"]],
-      ["Geometry to Mesh", ["Validity warning example", "Promotion example", "Analysis result"]],
+      ["Geometry to Mesh", ["Topology gizmo playground", "Validity warning example", "Promotion example", "Analysis result"]],
       ["Workbook Examples", ["Guided construction", "Validated student task"]],
     ]);
     for (const [category, titles] of expected) {
@@ -119,5 +120,28 @@ describe("sceneGalleryCatalog", () => {
       "Editable prism",
       "Editable grid plane",
     ]);
+  });
+
+  it("keeps the topology gizmo playground ready with an editable mesh object", () => {
+    const playground = GEOMETRY_SCENE_GALLERY_BY_ID.get("scene:topology-gizmo-playground");
+    expect(playground?.category).toBe("Geometry to Mesh");
+    expect(playground?.initialScene.metadata?.playground).toBe(true);
+    expect(playground?.initialScene.metadata?.meshObject).toBe(true);
+    expect(playground?.initialScene.metadata?.selectedObjectId).toBe("topology-gizmo-editable-mesh");
+    const meshObjects = playground?.initialScene.extensions?.[GEOMETRY_DATASET_MESH_OBJECTS_SCENE_EXTENSION_KEY];
+    expect(Array.isArray(meshObjects)).toBe(true);
+    expect(meshObjects).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "topology-gizmo-editable-mesh",
+          name: "Editable topology mesh",
+          mesh: expect.objectContaining({
+            label: "Editable topology mesh",
+            indices: expect.any(Array),
+            positions: expect.any(Array),
+          }),
+        }),
+      ])
+    );
   });
 });

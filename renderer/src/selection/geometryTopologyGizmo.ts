@@ -102,6 +102,7 @@ export function buildGeometryTopologyGizmoTarget({
 }: GeometryTopologyGizmoTargetInput): SurfaceTopologyGizmoTarget | null {
   if (geometryMode !== "procedural" || selectionMode === "object") return null;
   const length = Math.max(0.001, Number.isFinite(referenceLength) ? referenceLength : 1);
+  const displayLength = Math.min(length, 0.55);
   if (selectionMode === "face") {
     if (!faceTarget) return null;
     const normal = normalizePoint(faceTarget.normal) ?? { x: 0, y: 1, z: 0 };
@@ -111,7 +112,7 @@ export function buildGeometryTopologyGizmoTarget({
       mode: "face",
       origin: addPoint(origin, scalePoint(normal, 0.05)),
       axis: normal,
-      length,
+      length: displayLength,
       color: 0x0ea5e9,
       label: "Geometry face handle",
     };
@@ -127,7 +128,7 @@ export function buildGeometryTopologyGizmoTarget({
       mode: "edge",
       origin: scalePoint(addPoint(a, b), 0.5),
       axis,
-      length,
+      length: displayLength,
       color: 0xf97316,
       label: "Geometry edge handle",
     };
@@ -139,7 +140,7 @@ export function buildGeometryTopologyGizmoTarget({
     mode: "vertex",
     origin: vertexTarget.point,
     axis,
-    length,
+    length: displayLength,
     color: 0x22c55e,
     label: "Geometry vertex handle",
   };

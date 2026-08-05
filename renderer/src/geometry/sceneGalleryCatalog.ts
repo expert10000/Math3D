@@ -45,6 +45,8 @@ export type GeometryGallerySceneEntry = {
   recommendedPanels?: string[];
 };
 
+export const GEOMETRY_DATASET_MESH_OBJECTS_SCENE_EXTENSION_KEY = "math3d.geometry.datasetMeshObjects.v1";
+
 const thumb = (title: string, subtitle: string, accent: string): string => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180" preserveAspectRatio="none"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f8fbff"/><stop offset="100%" stop-color="#e6eef8"/></linearGradient></defs><rect x="0" y="0" width="320" height="180" fill="url(#g)"/><rect x="16" y="16" width="288" height="148" rx="12" fill="#ffffff" stroke="#d6deea"/><circle cx="64" cy="90" r="28" fill="none" stroke="${accent}" stroke-width="4"/><path d="M120 112 L170 58 L210 94 L258 66" fill="none" stroke="${accent}" stroke-width="4" stroke-linecap="round"/><text x="28" y="42" font-family="Segoe UI, Arial" font-size="16" font-weight="700" fill="#1f2937">${title}</text><text x="28" y="62" font-family="Segoe UI, Arial" font-size="12" fill="#475467">${subtitle}</text></svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
@@ -86,6 +88,53 @@ const sceneDoc = (
 
 const derivedConstructionExtension = (entries: unknown[]) => ({
   "math3d.geometry.derivedConstructions.v1": entries,
+});
+
+const topologyGizmoMeshObject = {
+  id: "topology-gizmo-editable-mesh",
+  name: "Editable topology mesh",
+  mesh: {
+    label: "Editable topology mesh",
+    positions: [
+      -0.9, -0.5, -0.65,
+      0.9, -0.5, -0.65,
+      0.9, 0.5, -0.65,
+      -0.9, 0.5, -0.65,
+      -0.9, -0.5, 0.65,
+      0.9, -0.5, 0.65,
+      0.9, 0.5, 0.65,
+      -0.9, 0.5, 0.65,
+    ],
+    indices: [
+      0, 2, 1,
+      0, 3, 2,
+      4, 5, 6,
+      4, 6, 7,
+      0, 1, 5,
+      0, 5, 4,
+      1, 2, 6,
+      1, 6, 5,
+      2, 3, 7,
+      2, 7, 6,
+      3, 0, 4,
+      3, 4, 7,
+    ],
+    normals: null,
+    uvs: null,
+    source: { kind: "detachedMesh", fromKind: "scenePreset", fromLabel: "Topology gizmo playground" },
+  },
+  transform: {
+    position: { x: -0.35, y: 0, z: 0 },
+    rotation: { x: 0, y: 0.32, z: 0 },
+    scale: { x: 1, y: 1, z: 1 },
+  },
+  visible: true,
+  material: { color: 0x0ea5e9, opacity: 0.94 },
+  promotion: null,
+};
+
+const datasetMeshObjectsExtension = (objects: unknown[]) => ({
+  [GEOMETRY_DATASET_MESH_OBJECTS_SCENE_EXTENSION_KEY]: objects,
 });
 
 type GalleryPoint3 = { x: number; y: number; z: number };
@@ -661,6 +710,45 @@ export const GEOMETRY_SCENE_GALLERY: GeometryGallerySceneEntry[] = [
         { id: "select-box", label: "Select box", note: "Use the Selection inspector to confirm object identity.", action: { kind: "selectObject", objectName: "Editable box" } },
         { id: "open-analysis", label: "Open probe tools", note: "Use Face, Edge, and Vertex pick modes from the right inspector.", action: { kind: "setPanel", panel: "analysis" } },
         { id: "edit-actions", label: "Run edit actions", note: "Open Actions and try Extrude Face, Split Edge, or Move Vertex.", action: { kind: "setStatus", message: "Direct edit playground ready: pick face, edge, or vertex, then use Actions." } },
+      ],
+    },
+    recommendedPanels: ["analysis", "object", "scene"],
+  },
+  {
+    id: "scene:topology-gizmo-playground",
+    title: "Topology gizmo playground",
+    category: "Geometry to Mesh",
+    description: "Geometry scene preset with an editable mesh object ready for Face, Edge, and Vertex handle checks.",
+    thumbnail: thumb("Topology gizmo", "Editable mesh object", "#0ea5e9"),
+    learningGoals: ["Select a mesh face, edge, or vertex", "Drag topology handles and confirm direct mesh edits"],
+    initialScene: sceneDoc(
+      "topology-gizmo-playground",
+      "Topology gizmo playground",
+      [
+        baseObject({
+          id: "topology-gizmo-reference-box",
+          name: "Reference box",
+          type: "box",
+          params: { width: 0.55, height: 0.55, depth: 0.55 },
+          transform: { position: { x: 1.45, y: 0, z: 0 }, rotation: { x: 0.1, y: -0.35, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+          material: { color: 0xf97316, opacity: 0.72 },
+          group: "helper",
+        }),
+      ],
+      {
+        scenario: "topology-gizmo-playground",
+        playground: true,
+        meshObject: true,
+        selectedObjectId: topologyGizmoMeshObject.id,
+      },
+      datasetMeshObjectsExtension([topologyGizmoMeshObject])
+    ),
+    timeline: {
+      autoplayIntervalMs: 1700,
+      steps: [
+        { id: "select-mesh", label: "Select mesh", note: "Use the editable mesh object as the topology target.", action: { kind: "selectObject", objectName: "Editable topology mesh" } },
+        { id: "open-analysis", label: "Open selection", note: "Pick Face, Edge, or Vertex and drag the viewport handle.", action: { kind: "setPanel", panel: "analysis" } },
+        { id: "status", label: "Try handle", note: "Use the active selection card to switch Edge handle mode between Split and Bevel.", action: { kind: "setStatus", message: "Topology gizmo playground ready: pick face, edge, or vertex on the mesh object." } },
       ],
     },
     recommendedPanels: ["analysis", "object", "scene"],

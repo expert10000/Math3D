@@ -1859,6 +1859,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   });
   const geodesicDiskGroupRef = useRef<THREE.Group | null>(null);
   const topologyGizmoGroupRef = useRef<THREE.Group | null>(null);
+  const topologyGizmoLineRef = useRef<THREE.Line | null>(null);
+  const topologyGizmoConeRef = useRef<THREE.Mesh | null>(null);
+  const topologyGizmoHandleRef = useRef<THREE.Mesh | null>(null);
   const topologyGizmoHitTargetsRef = useRef<THREE.Object3D[]>([]);
   const sampleSetRef = useRef<SurfaceSampleSet | null>(null);
   const selectRegionEnabledRef = useRef(selectRegionEnabled);
@@ -1981,9 +1984,12 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     plane: THREE.Plane;
     startPoint: THREE.Vector3;
     lastPoint: THREE.Vector3;
+    handleStartPoint: THREE.Vector3;
     lastDistance: number;
     moved: boolean;
   } | null>(null);
+  const pendingTopologyGizmoDragInfoRef = useRef<SurfaceTopologyGizmoDragInfo | null>(null);
+  const topologyGizmoDragFrameRef = useRef<number | null>(null);
 
   type ViewMode = "free" | GizmoView;
   const [viewMode, setViewMode] = useState<ViewMode>("free");
@@ -4897,6 +4903,21 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       state.lastPoint.copy(point);
       state.lastDistance = distance;
       if (Math.abs(distance) > 1e-5) state.moved = true;
+      const handlePoint = state.handleStartPoint.clone().addScaledVector(state.axis, distance);
+      const line = topologyGizmoLineRef.current;
+      if (line) {
+        const positionAttr = line.geometry.getAttribute("position") as THREE.BufferAttribute | null;
+        if (positionAttr && positionAttr.count >= 2) {
+          positionAttr.setXYZ(0, state.origin.x, state.origin.y, state.origin.z);
+          positionAttr.setXYZ(1, handlePoint.x, handlePoint.y, handlePoint.z);
+          positionAttr.needsUpdate = true;
+          line.geometry.computeBoundingSphere();
+        }
+      }
+      const cone = topologyGizmoConeRef.current;
+      if (cone) cone.position.copy(handlePoint);
+      const handle = topologyGizmoHandleRef.current;
+      if (handle) handle.position.copy(handlePoint);
       return {
         mode: state.mode,
         origin: { x: state.origin.x, y: state.origin.y, z: state.origin.z },
@@ -4905,6 +4926,27 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         delta: { x: delta.x, y: delta.y, z: delta.z },
         distance,
       };
+    };
+
+    const flushPendingTopologyGizmoDrag = () => {
+      const pending = pendingTopologyGizmoDragInfoRef.current;
+      pendingTopologyGizmoDragInfoRef.current = null;
+      if (topologyGizmoDragFrameRef.current != null) {
+        cancelAnimationFrame(topologyGizmoDragFrameRef.current);
+        topologyGizmoDragFrameRef.current = null;
+      }
+      if (pending) onTopologyGizmoDragRef.current?.(pending);
+    };
+
+    const scheduleTopologyGizmoDrag = (info: SurfaceTopologyGizmoDragInfo) => {
+      pendingTopologyGizmoDragInfoRef.current = info;
+      if (topologyGizmoDragFrameRef.current != null) return;
+      topologyGizmoDragFrameRef.current = requestAnimationFrame(() => {
+        topologyGizmoDragFrameRef.current = null;
+        const pending = pendingTopologyGizmoDragInfoRef.current;
+        pendingTopologyGizmoDragInfoRef.current = null;
+        if (pending) onTopologyGizmoDragRef.current?.(pending);
+      });
     };
 
       const handlePointerDown = (event: PointerEvent) => {
@@ -4962,6 +5004,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
             const hitPoint = new THREE.Vector3();
             if (raycaster.ray.intersectPlane(plane, hitPoint)) {
               beginMeshInteraction();
+              const visualLength = Math.max(0.18, activeTopologyGizmo.length ?? radiusRef.current * 0.16);
               topologyGizmoDragStateRef.current = {
                 pointerId: event.pointerId,
                 mode: activeTopologyGizmo.mode,
@@ -4970,6 +5013,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
                 plane,
                 startPoint: hitPoint.clone(),
                 lastPoint: hitPoint.clone(),
+                handleStartPoint: origin.clone().addScaledVector(axis, visualLength),
                 lastDistance: 0,
                 moved: false,
               };
@@ -5384,7 +5428,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         const hitPoint = new THREE.Vector3();
         if (!raycaster.ray.intersectPlane(topologyDragState.plane, hitPoint)) return;
         const dragInfo = buildTopologyGizmoDragInfo(topologyDragState, hitPoint);
-        onTopologyGizmoDragRef.current?.(dragInfo);
+        scheduleTopologyGizmoDrag(dragInfo);
         event.preventDefault();
         event.stopPropagation();
         return;
@@ -5482,6 +5526,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const topologyDragState = topologyGizmoDragStateRef.current;
       if (topologyDragState && event.pointerId === topologyDragState.pointerId) {
         topologyGizmoDragStateRef.current = null;
+        flushPendingTopologyGizmoDrag();
         endMeshInteraction();
         renderer.domElement.releasePointerCapture?.(event.pointerId);
         const controls = controlsRef.current;
@@ -5718,6 +5763,11 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       forceReframeRef.current = null;
       stopCameraTour("stopped", false);
       cancelAnimationFrame(frameId);
+      if (topologyGizmoDragFrameRef.current != null) {
+        cancelAnimationFrame(topologyGizmoDragFrameRef.current);
+        topologyGizmoDragFrameRef.current = null;
+        pendingTopologyGizmoDragInfoRef.current = null;
+      }
       if (resizeFrameId) cancelAnimationFrame(resizeFrameId);
       if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
       ro.disconnect();
@@ -6028,6 +6078,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (child) child.traverse(disposeObject3D);
     }
     topologyGizmoHitTargetsRef.current = [];
+    topologyGizmoLineRef.current = null;
+    topologyGizmoConeRef.current = null;
+    topologyGizmoHandleRef.current = null;
     const target = topologyGizmo;
     if (!target?.enabled) {
       group.visible = false;
@@ -6049,6 +6102,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     );
     line.renderOrder = 4000;
     group.add(line);
+    topologyGizmoLineRef.current = line;
 
     const tipRadius = Math.max(0.03, baseLength * 0.07);
     const cone = new THREE.Mesh(
@@ -6059,6 +6113,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), axis);
     cone.renderOrder = 4001;
     group.add(cone);
+    topologyGizmoConeRef.current = cone;
 
     const root = new THREE.Mesh(
       new THREE.SphereGeometry(tipRadius * 0.65, 16, 16),
@@ -6076,6 +6131,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     handle.renderOrder = 4002;
     (handle as any).userData.__topologyGizmoHandle = true;
     group.add(handle);
+    topologyGizmoHandleRef.current = handle;
     topologyGizmoHitTargetsRef.current = [handle, cone];
     group.visible = true;
   }, [sceneEpoch, topologyGizmo]);

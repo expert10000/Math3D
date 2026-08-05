@@ -269,6 +269,7 @@ import {
   type GeometryGalleryRecipe,
 } from "./geometry/objectGalleryCatalog";
 import {
+  GEOMETRY_DATASET_MESH_OBJECTS_SCENE_EXTENSION_KEY,
   GEOMETRY_SCENE_GALLERY,
   GEOMETRY_SCENE_GALLERY_BY_ID,
   GEOMETRY_SCENE_GALLERY_CATEGORY_ORDER,
@@ -2558,7 +2559,7 @@ type GeometryTopologyRetainedSelectionTarget =
       label?: string;
       message?: string;
     };
-type GeometryTopologyRetainSelectionResolver = (context: {
+type GeometryTopologyEditContext = {
   beforeMesh: SurfaceMeshData;
   afterMesh: SurfaceMeshData;
   transformedAfterMesh: SurfaceMeshData;
@@ -2566,9 +2567,11 @@ type GeometryTopologyRetainSelectionResolver = (context: {
   afterCounts: { vertexCount: number; faceCount: number };
   objectId: string;
   objectName: string;
-}) => GeometryTopologyRetainedSelectionTarget | null;
+};
+type GeometryTopologyRetainSelectionResolver = (context: GeometryTopologyEditContext) => GeometryTopologyRetainedSelectionTarget | null;
 type GeometryMeshEditIntent = Partial<GeometryHistoryIntent> & {
   retainSelection?: GeometryTopologyRetainSelectionResolver;
+  sourceSelectionOverlay?: (context: GeometryTopologyEditContext) => MeshSourceSelectionOverlay | null;
   topologySummaryOverride?: string;
 };
 type GeometryActionContinuityStatus = {
@@ -13603,31 +13606,68 @@ const App: React.FC = () => {
       setGeometryGizmoEnabled(false);
       setGeometryGlobalQualityOverrideMode("full");
       const rawObjects = entry.initialScene.objects ?? [];
-      if (rawObjects.length) {
-        const nextObjects = rawObjects.map((sceneObject, index) => {
-          const idRaw = `${(sceneObject as { id?: string }).id ?? ""}`.trim();
-          const id = idRaw || `${entry.id}:obj:${index + 1}`;
-          const sourceTypeRaw = `${(sceneObject as { type?: string }).type ?? "box"}`.trim();
-          const sourceType = (sourceTypeRaw || "box") as GeometryObjectType;
-          const seeded = createGeometryObject(sourceType, id);
-          return {
-            ...seeded,
-            name: `${(sceneObject as { name?: string }).name ?? seeded.name}`,
-            params: { ...seeded.params, ...((sceneObject as { params?: Record<string, number | boolean | string> }).params ?? {}) },
-            transform: {
-              position: { ...(sceneObject.transform?.position ?? seeded.transform.position) },
-              rotation: { ...(sceneObject.transform?.rotation ?? seeded.transform.rotation) },
-              scale: { ...(sceneObject.transform?.scale ?? seeded.transform.scale) },
-            },
-            visible: typeof sceneObject.visible === "boolean" ? sceneObject.visible : seeded.visible,
-            material: normalizeGeometryMaterial((sceneObject as { material?: unknown }).material ?? seeded.material),
-            group: (sceneObject as { group?: string }).group,
-          };
-        });
+      const sceneExtensions = entry.initialScene.extensions ?? {};
+      const sceneDatasetMeshObjectsRaw =
+        sceneExtensions[GEOMETRY_DATASET_MESH_OBJECTS_SCENE_EXTENSION_KEY] ??
+        (sceneExtensions as { datasetMeshObjects?: unknown }).datasetMeshObjects;
+      const sceneDatasetMeshObjects = Array.isArray(sceneDatasetMeshObjectsRaw)
+        ? sceneDatasetMeshObjectsRaw
+            .filter((meshObject) => meshObject && typeof (meshObject as { id?: unknown }).id === "string")
+            .filter((meshObject) => {
+              const mesh = (meshObject as { mesh?: unknown }).mesh as { positions?: unknown } | undefined;
+              return mesh && Array.isArray(mesh.positions);
+            })
+            .map((meshObject) => deserializeGeometryDatasetMeshObject(meshObject as WorkbookGeometryDatasetMeshObject))
+        : [];
+      if (rawObjects.length || sceneDatasetMeshObjects.length) {
+        const nextObjects = rawObjects.length
+          ? rawObjects.map((sceneObject, index) => {
+              const idRaw = `${(sceneObject as { id?: string }).id ?? ""}`.trim();
+              const id = idRaw || `${entry.id}:obj:${index + 1}`;
+              const sourceTypeRaw = `${(sceneObject as { type?: string }).type ?? "box"}`.trim();
+              const sourceType = (sourceTypeRaw || "box") as GeometryObjectType;
+              const seeded = createGeometryObject(sourceType, id);
+              return {
+                ...seeded,
+                name: `${(sceneObject as { name?: string }).name ?? seeded.name}`,
+                params: { ...seeded.params, ...((sceneObject as { params?: Record<string, number | boolean | string> }).params ?? {}) },
+                transform: {
+                  position: { ...(sceneObject.transform?.position ?? seeded.transform.position) },
+                  rotation: { ...(sceneObject.transform?.rotation ?? seeded.transform.rotation) },
+                  scale: { ...(sceneObject.transform?.scale ?? seeded.transform.scale) },
+                },
+                visible: typeof sceneObject.visible === "boolean" ? sceneObject.visible : seeded.visible,
+                material: normalizeGeometryMaterial((sceneObject as { material?: unknown }).material ?? seeded.material),
+                group: (sceneObject as { group?: string }).group,
+              };
+            })
+          : [];
         setGeometryObjects(nextObjects);
-        setGeometryDatasetMeshObjects([]);
-        setGeometryLockedObjectIds(new Set());
-        setGeometrySelectedObjectId(nextObjects[0]?.id ?? null);
+        setGeometryDatasetMeshObjects(sceneDatasetMeshObjects);
+        setGeometryLockedObjectIds(
+          new Set(
+            sceneDatasetMeshObjects
+              .filter((meshObject) => meshObject.promotion?.promotionMode === "frozen_baked_object")
+              .map((meshObject) => meshObject.id)
+          )
+        );
+        const preferredSelectedId =
+          typeof entry.initialScene.metadata?.selectedObjectId === "string" ? entry.initialScene.metadata.selectedObjectId : null;
+        const selectionIds = new Set([...nextObjects.map((object) => object.id), ...sceneDatasetMeshObjects.map((object) => object.id)]);
+        setGeometrySelectedObjectId(
+          preferredSelectedId && selectionIds.has(preferredSelectedId)
+            ? preferredSelectedId
+            : sceneDatasetMeshObjects[0]?.id ?? nextObjects[0]?.id ?? null
+        );
+        setGeometryProceduralPick(null);
+        setGeometryProceduralHoverPick(null);
+        setGeometryMultiSelectionSet(createUnifiedSelectionSet([]));
+        setGeometryOperationInputs(GEOMETRY_OPERATION_INPUT_DEFS.map((input) => ({ ...input, value: null })));
+        setGeometryActiveOperationInputSlotId("primary-object");
+        setGeometryObjectRevisionById({});
+        setGeometryLastDirectEdit(null);
+        setGeometryTopologyEditFeedback(null);
+        setGeometryLastActionContinuity(null);
       } else if (entry.initialScene.geometry) {
         globalThis.dispatchEvent(
           new CustomEvent<ProblemSceneCloneDetail>("math3d:problem-scene:clone-to-geometry3d", {
@@ -13638,7 +13678,6 @@ const App: React.FC = () => {
           })
         );
       }
-      const sceneExtensions = entry.initialScene.extensions ?? {};
       const restoredDerivedConstructions = normalizeGeometryDerivedConstructionsForRestore(
         sceneExtensions[GEOMETRY_DERIVED_CONSTRUCTIONS_STORAGE_KEY] ?? (sceneExtensions as { derivedConstructions?: unknown }).derivedConstructions
       );
@@ -17498,16 +17537,18 @@ const App: React.FC = () => {
             : target.promotion,
         };
         const transformedEdited = transformSurfaceMeshByGeometryTransform(edited, updatedTarget.transform);
-        const retainedSelectionTarget =
-          intent?.retainSelection?.({
-            beforeMesh: target.mesh,
-            afterMesh: edited,
-            transformedAfterMesh: transformedEdited,
-            beforeCounts,
-            afterCounts,
-            objectId,
-            objectName: updatedTarget.name,
-          }) ?? null;
+        const editContext: GeometryTopologyEditContext = {
+          beforeMesh: target.mesh,
+          afterMesh: edited,
+          transformedAfterMesh: transformedEdited,
+          beforeCounts,
+          afterCounts,
+          objectId,
+          objectName: updatedTarget.name,
+        };
+        const retainedSelectionTarget = intent?.retainSelection?.(editContext) ?? null;
+        const sourceSelectionOverlay = intent?.sourceSelectionOverlay?.(editContext) ?? null;
+        updatedTarget.sourceSelectionOverlay = sourceSelectionOverlay ?? updatedTarget.sourceSelectionOverlay ?? null;
         const retainedSelectionLabel = retainedSelectionTarget
           ? formatRetainedTopologySelectionLabel(retainedSelectionTarget)
           : null;
@@ -17870,6 +17911,18 @@ const App: React.FC = () => {
           ? `Midpoint vertex #${beforeCounts.vertexCount}`
           : `${splitPercent}% split vertex #${beforeCounts.vertexCount}`,
         message: isMidpointSplit ? "Selected the new midpoint vertex." : "Selected the new split vertex.",
+      }),
+      sourceSelectionOverlay: ({ beforeCounts }) => ({
+        tool: "boundary",
+        seed: [a, beforeCounts.vertexCount],
+        edges: [
+          [a, beforeCounts.vertexCount],
+          [beforeCounts.vertexCount, b],
+        ],
+        label: "Split result",
+        status: isMidpointSplit
+          ? `Split result: new midpoint vertex #${beforeCounts.vertexCount}.`
+          : `Split result: new ${splitPercent}% vertex #${beforeCounts.vertexCount}.`,
       }),
     });
   }, [
