@@ -23,16 +23,16 @@ export const OBJECT_CONTEXT_COPY = {
 export const ENTITY_CONTEXT_COPY = {
   mesh: {
     face: {
-      actions: ["Subdivide"],
-      emptyState: "Choose a face to enable Subdivide",
+      actions: ["Subdivide", "Extrude", "Inset"],
+      emptyState: "Choose a face to enable Subdivide / Extrude / Inset",
     },
     edge: {
       actions: ["Split", "Collapse", "Bevel", "Loop", "Ring", "Boundary", "Sharp", "Feature"],
       emptyState: "Choose an edge to enable Split / Collapse / Bevel / Loop / Ring / Boundary / Sharp / Feature",
     },
     vertex: {
-      actions: ["Marker"],
-      emptyState: "Choose a vertex to enable Marker",
+      actions: ["Marker", "Move"],
+      emptyState: "Choose a vertex to enable Marker / Move",
     },
   },
   geometry: {

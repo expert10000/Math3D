@@ -37,6 +37,18 @@ describe("contextualActions", () => {
     ]);
   });
 
+  it("builds Mesh face and vertex topology action descriptors", () => {
+    expect(getContextualActionDescriptors("mesh", "face").map((descriptor) => descriptor.operationKey)).toEqual([
+      "subdivide-face",
+      "extrude-face",
+      "inset-face",
+    ]);
+    expect(getContextualActionDescriptors("mesh", "vertex").map((descriptor) => descriptor.operationKey)).toEqual([
+      "vertex-marker",
+      "move-vertex",
+    ]);
+  });
+
   it("builds Geometry face action descriptors", () => {
     const descriptors = getContextualActionDescriptors("geometry", "face");
 

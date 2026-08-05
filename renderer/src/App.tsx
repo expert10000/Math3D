@@ -78,7 +78,11 @@ import {
   contextualSelectionMenuTitle,
   formatContextualSelectionBreadcrumb,
 } from "./selection/contextualMenuModel";
-import { getAdaptiveTopologyGizmoConfig } from "./selection/adaptiveTopologyGizmo";
+import {
+  getAdaptiveTopologyGizmoConfig,
+  mapTopologyGizmoDragToParams,
+  type AdaptiveTopologyGizmoDragParams,
+} from "./selection/adaptiveTopologyGizmo";
 import { buildContextualSelectionState } from "./selection/contextualSelectionState";
 import {
   applyContextualViewportPreviewAccessibility,
@@ -159,6 +163,8 @@ import {
   type MeshInteractionQualityMode,
   type RenderQuality,
   type SceneBackgroundMode,
+  type SurfaceTopologyGizmoDragInfo,
+  type SurfaceTopologyGizmoTarget,
   type ViewportDebugSnapshot,
 } from "./components/SurfaceViewer";
 
@@ -444,6 +450,7 @@ import {
   createMeshTopologyEdgeTarget,
   createMeshTopologyFaceTarget,
   createMeshTopologySourceVersion,
+  createMeshTopologyVertexTarget,
   resolveMeshTopologyEditDefinitionTarget,
   retargetMeshTopologyEditDefinition,
   updateMeshTopologyEditDefinitionParameters,
@@ -604,12 +611,22 @@ type SurfaceMeshTopologyDemoPreset = {
   collapseMode?: EdgeCollapseMode;
   bevelAmount?: number;
 };
-type SurfaceMeshTopologyOperation = "Face Subdivide" | "Split Edge" | "Collapse Edge" | "Bevel Edge";
+type SurfaceMeshTopologyOperation =
+  | "Face Subdivide"
+  | "Extrude Face"
+  | "Inset Face"
+  | "Split Edge"
+  | "Collapse Edge"
+  | "Bevel Edge"
+  | "Move Vertex";
 const SURFACE_MESH_TOPOLOGY_OPERATION_OPTIONS: SurfaceMeshTopologyOperation[] = [
   "Face Subdivide",
+  "Extrude Face",
+  "Inset Face",
   "Split Edge",
   "Collapse Edge",
   "Bevel Edge",
+  "Move Vertex",
 ];
 type GeometrySavedSectionCurve = {
   id: string;
@@ -5691,28 +5708,42 @@ type SurfaceMeshTopologyHistoryEntry = {
 type SurfaceMeshTopologyOperationTarget = {
   faceIndex: number | null;
   edge: [number, number] | null;
+  vertexIndex: number | null;
 };
 type OperationNodeParameterDrafts = UnifiedOperationNodeParameterDrafts;
 const surfaceMeshTopologyOperationFromAction = (actionLabel: string): SurfaceMeshTopologyOperation | null => {
   const normalized = actionLabel.trim().toLowerCase();
+  if (normalized.includes("extrude")) return "Extrude Face";
+  if (normalized.includes("inset")) return "Inset Face";
   if (normalized.includes("subdivide")) return "Face Subdivide";
   if (normalized.includes("split")) return "Split Edge";
   if (normalized.includes("collapse")) return "Collapse Edge";
   if (normalized.includes("bevel")) return "Bevel Edge";
+  if (normalized.includes("move")) return "Move Vertex";
   return null;
 };
 const parseSurfaceMeshTopologyOperationTarget = (targetLabel: string): SurfaceMeshTopologyOperationTarget => {
   const faceMatch = targetLabel.match(/\bface\s+(\d+)/i);
   const edgeMatch = targetLabel.match(/\bedge\s+(\d+)\s*-\s*(\d+)/i);
+  const vertexMatch = targetLabel.match(/\bvertex\s+(\d+)/i);
   return {
     faceIndex: faceMatch ? Number(faceMatch[1]) : null,
     edge: edgeMatch ? [Number(edgeMatch[1]), Number(edgeMatch[2])] : null,
+    vertexIndex: vertexMatch ? Number(vertexMatch[1]) : null,
   };
 };
 const surfaceMeshTopologyParametersFromLabel = (
   operation: SurfaceMeshTopologyOperation,
   paramsLabel: string
 ): MeshTopologyEditParameters => {
+  if (operation === "Extrude Face") {
+    const distance = Number(paramsLabel.match(/distance=([+-]?(?:\d+\.?\d*|\.\d+))/)?.[1] ?? 0.08);
+    return { distance: Number.isFinite(distance) ? distance : 0.08 };
+  }
+  if (operation === "Inset Face") {
+    const ratio = Number(paramsLabel.match(/ratio=([+-]?(?:\d+\.?\d*|\.\d+))/)?.[1] ?? 0.2);
+    return { ratio: clampNumber(ratio, 0.02, 0.92) };
+  }
   if (operation === "Face Subdivide") {
     const mode = paramsLabel.includes("four-triangles") ? "four-triangles" : "center-fan";
     return { mode };
@@ -5727,6 +5758,17 @@ const surfaceMeshTopologyParametersFromLabel = (
       modeMatch === "keep-a" || modeMatch === "keep-b" || modeMatch === "midpoint" ? modeMatch : "midpoint";
     return { mode };
   }
+  if (operation === "Move Vertex") {
+    const amount = Number(paramsLabel.match(/amount=([+-]?(?:\d+\.?\d*|\.\d+))/)?.[1] ?? 0.06);
+    const dirX = Number(paramsLabel.match(/dirX=([+-]?(?:\d+\.?\d*|\.\d+))/)?.[1] ?? NaN);
+    const dirY = Number(paramsLabel.match(/dirY=([+-]?(?:\d+\.?\d*|\.\d+))/)?.[1] ?? NaN);
+    const dirZ = Number(paramsLabel.match(/dirZ=([+-]?(?:\d+\.?\d*|\.\d+))/)?.[1] ?? NaN);
+    const direction =
+      Number.isFinite(dirX) && Number.isFinite(dirY) && Number.isFinite(dirZ)
+        ? { x: dirX, y: dirY, z: dirZ }
+        : null;
+    return { amount: Math.max(0.001, Number.isFinite(amount) ? Math.abs(amount) : 0.06), direction };
+  }
   const amount = Number(paramsLabel.match(/amount=([+-]?(?:\d+\.?\d*|\.\d+))/)?.[1] ?? 0.06);
   return { amount: Math.max(0.001, Number.isFinite(amount) ? amount : 0.06) };
 };
@@ -5735,7 +5777,10 @@ const surfaceMeshTopologyTargetFromLabel = (
   targetLabel: string
 ): MeshTopologyEditTarget => {
   const target = parseSurfaceMeshTopologyOperationTarget(targetLabel);
-  if (operation === "Face Subdivide") return createMeshTopologyFaceTarget(target.faceIndex ?? 0);
+  if (operation === "Face Subdivide" || operation === "Extrude Face" || operation === "Inset Face") {
+    return createMeshTopologyFaceTarget(target.faceIndex ?? 0);
+  }
+  if (operation === "Move Vertex") return createMeshTopologyVertexTarget(target.vertexIndex ?? 0);
   const edge = target.edge ?? [0, 1];
   return createMeshTopologyEdgeTarget(edge[0], edge[1]);
 };
@@ -5767,25 +5812,40 @@ const buildSurfaceMeshTopologyDefinition = ({
 const surfaceMeshTopologyActionLabelFromDefinition = (definition: MeshTopologyEditDefinition): string =>
   definition.operation === "Face Subdivide"
     ? "Face subdivide"
-    : definition.operation === "Split Edge"
-      ? "Split edge"
-      : definition.operation === "Collapse Edge"
-        ? "Collapse edge"
-        : "Bevel edge";
+    : definition.operation === "Extrude Face"
+      ? "Extrude face"
+      : definition.operation === "Inset Face"
+        ? "Inset face"
+        : definition.operation === "Split Edge"
+          ? "Split edge"
+          : definition.operation === "Collapse Edge"
+            ? "Collapse edge"
+            : definition.operation === "Move Vertex"
+              ? "Move vertex"
+              : "Bevel edge";
 const surfaceMeshTopologyTraceActionFromDefinition = (definition: MeshTopologyEditDefinition): string =>
   definition.operation === "Face Subdivide"
     ? "face-subdivide"
-    : definition.operation === "Split Edge"
-      ? "edge-split"
-      : definition.operation === "Collapse Edge"
-        ? "edge-collapse"
-        : "edge-bevel";
+    : definition.operation === "Extrude Face"
+      ? "face-extrude"
+      : definition.operation === "Inset Face"
+        ? "face-inset"
+        : definition.operation === "Split Edge"
+          ? "edge-split"
+          : definition.operation === "Collapse Edge"
+            ? "edge-collapse"
+            : definition.operation === "Move Vertex"
+              ? "vertex-move"
+              : "edge-bevel";
 const surfaceMeshTopologySelectedResultLabelFromDefinition = (definition: MeshTopologyEditDefinition): string => {
   if (definition.operation === "Face Subdivide") {
     return "mode" in definition.parameters && definition.parameters.mode === "four-triangles"
       ? "four-triangle split"
       : "center fan triangles";
   }
+  if (definition.operation === "Extrude Face") return `extruded ${definition.target.label}`;
+  if (definition.operation === "Inset Face") return `inset ${definition.target.label}`;
+  if (definition.operation === "Move Vertex") return `moved ${definition.target.label}`;
   if (definition.target.kind !== "edge") return definition.target.label;
   const edgeLabel = definition.target.label;
   if (definition.operation === "Split Edge") return `midpoint vertex on ${edgeLabel}`;
@@ -5808,6 +5868,18 @@ const updateSurfaceMeshTopologyDefinitionParameter = (
     const mode: FaceSubdivideMode = value === "four-triangles" ? "four-triangles" : "center-fan";
     return updateMeshTopologyEditDefinitionParameters(definition, { mode });
   }
+  if (definition.operation === "Extrude Face" && key === "distance") {
+    const distance = typeof value === "number" ? value : Number(value);
+    return updateMeshTopologyEditDefinitionParameters(definition, {
+      distance: Number.isFinite(distance) ? distance : 0.08,
+    });
+  }
+  if (definition.operation === "Inset Face" && key === "ratio") {
+    const ratio = typeof value === "number" ? value : Number(value);
+    return updateMeshTopologyEditDefinitionParameters(definition, {
+      ratio: clampNumber(Number.isFinite(ratio) ? ratio : 0.2, 0.02, 0.92),
+    });
+  }
   if (definition.operation === "Split Edge" && key === "ratio") {
     const ratio = typeof value === "number" ? value : Number(value);
     return updateMeshTopologyEditDefinitionParameters(definition, {
@@ -5822,6 +5894,14 @@ const updateSurfaceMeshTopologyDefinitionParameter = (
     const amount = typeof value === "number" ? value : Number(value);
     return updateMeshTopologyEditDefinitionParameters(definition, {
       amount: Math.max(0.001, Number.isFinite(amount) ? amount : 0.06),
+    });
+  }
+  if (definition.operation === "Move Vertex" && key === "amount") {
+    const amount = typeof value === "number" ? value : Number(value);
+    const direction = "amount" in definition.parameters ? definition.parameters.direction : null;
+    return updateMeshTopologyEditDefinitionParameters(definition, {
+      amount: Math.max(0.001, Number.isFinite(amount) ? Math.abs(amount) : 0.06),
+      direction,
     });
   }
   return definition;
@@ -5909,9 +5989,13 @@ type StoredSurfaceMeshTopologySession = {
     vertexIndex: number;
     previewOperation: SurfaceMeshTopologyOperation;
     subdivideMode: FaceSubdivideMode;
+    extrudeDistance?: number;
+    insetRatio?: number;
     splitRatio: number;
     collapseMode: EdgeCollapseMode;
     bevelAmount: number;
+    vertexMoveAmount?: number;
+    vertexMoveDirection?: GeometryProbePoint | null;
   };
 };
 type RestoredSurfaceMeshTopologySession = Omit<
@@ -10424,6 +10508,8 @@ const App: React.FC = () => {
   const geometryVertexActionDescriptors = getContextualActionDescriptors("geometry", "vertex");
 
   const meshSubdivideFaceAction = meshFaceActionDescriptors[0]!;
+  const meshExtrudeFaceAction = meshFaceActionDescriptors[1]!;
+  const meshInsetFaceAction = meshFaceActionDescriptors[2]!;
   const meshSplitEdgeAction = meshEdgeActionDescriptors[0]!;
   const meshCollapseEdgeAction = meshEdgeActionDescriptors[1]!;
   const meshBevelEdgeAction = meshEdgeActionDescriptors[2]!;
@@ -10433,6 +10519,7 @@ const App: React.FC = () => {
   const meshSelectSharpEdgesAction = meshEdgeActionDescriptors[6]!;
   const meshSelectFeatureEdgesAction = meshEdgeActionDescriptors[7]!;
   const meshVertexMarkerAction = meshVertexActionDescriptors[0]!;
+  const meshMoveVertexAction = meshVertexActionDescriptors[1]!;
   const geometryExtrudeFaceAction = geometryFaceActionDescriptors[0]!;
   const geometryInsetFaceAction = geometryFaceActionDescriptors[1]!;
   const geometryDeleteFaceAction = geometryFaceActionDescriptors[2]!;
@@ -31226,6 +31313,12 @@ const App: React.FC = () => {
   const [surfaceMeshTopologySubdivideMode, setSurfaceMeshTopologySubdivideMode] = useState<FaceSubdivideMode>(
     initialSurfaceMeshTopologySession?.fields.subdivideMode ?? "center-fan"
   );
+  const [surfaceMeshTopologyExtrudeDistance, setSurfaceMeshTopologyExtrudeDistance] = useState(
+    initialSurfaceMeshTopologySession?.fields.extrudeDistance ?? 0.08
+  );
+  const [surfaceMeshTopologyInsetRatio, setSurfaceMeshTopologyInsetRatio] = useState(
+    initialSurfaceMeshTopologySession?.fields.insetRatio ?? 0.2
+  );
   const [surfaceMeshTopologySplitRatio, setSurfaceMeshTopologySplitRatio] = useState(
     initialSurfaceMeshTopologySession?.fields.splitRatio ?? 0.5
   );
@@ -31235,6 +31328,11 @@ const App: React.FC = () => {
   const [surfaceMeshTopologyBevelAmount, setSurfaceMeshTopologyBevelAmount] = useState(
     initialSurfaceMeshTopologySession?.fields.bevelAmount ?? 0.06
   );
+  const [surfaceMeshTopologyVertexMoveAmount, setSurfaceMeshTopologyVertexMoveAmount] = useState(
+    initialSurfaceMeshTopologySession?.fields.vertexMoveAmount ?? 0.06
+  );
+  const [surfaceMeshTopologyVertexMoveDirection, setSurfaceMeshTopologyVertexMoveDirection] =
+    useState<GeometryProbePoint | null>(initialSurfaceMeshTopologySession?.fields.vertexMoveDirection ?? { x: 0, y: 1, z: 0 });
   const [surfaceMeshTopologyPreviewOperation, setSurfaceMeshTopologyPreviewOperation] =
     useState<SurfaceMeshTopologyOperation>(
       initialSurfaceMeshTopologySession?.fields.previewOperation ?? "Split Edge"
@@ -31279,9 +31377,13 @@ const App: React.FC = () => {
         vertexIndex: surfaceMeshTopologyVertexIndex,
         previewOperation: surfaceMeshTopologyPreviewOperation,
         subdivideMode: surfaceMeshTopologySubdivideMode,
+        extrudeDistance: surfaceMeshTopologyExtrudeDistance,
+        insetRatio: surfaceMeshTopologyInsetRatio,
         splitRatio: surfaceMeshTopologySplitRatio,
         collapseMode: surfaceMeshTopologyCollapseMode,
         bevelAmount: surfaceMeshTopologyBevelAmount,
+        vertexMoveAmount: surfaceMeshTopologyVertexMoveAmount,
+        vertexMoveDirection: surfaceMeshTopologyVertexMoveDirection,
       },
     };
     try {
@@ -31299,11 +31401,15 @@ const App: React.FC = () => {
     surfaceMeshTopologyCollapseMode,
     surfaceMeshTopologyEdgeA,
     surfaceMeshTopologyEdgeB,
+    surfaceMeshTopologyExtrudeDistance,
     surfaceMeshTopologyFaceIndex,
     surfaceMeshTopologyHistory,
+    surfaceMeshTopologyInsetRatio,
     surfaceMeshTopologyPreviewOperation,
     surfaceMeshTopologySplitRatio,
     surfaceMeshTopologySubdivideMode,
+    surfaceMeshTopologyVertexMoveAmount,
+    surfaceMeshTopologyVertexMoveDirection,
     surfaceMeshTopologyVertexIndex,
   ]);
   useEffect(() => {
@@ -34376,6 +34482,22 @@ const App: React.FC = () => {
           faceIndex,
           surfaceMeshTopologySubdivideMode
         );
+      } else if (surfaceMeshTopologyPreviewOperation === "Extrude Face") {
+        action = "face-extrude";
+        targetLabel = `Face ${faceIndex}`;
+        edited = extrudeFace(
+          cloneSurfaceMeshData(surfaceMeshData, surfaceMeshData.label),
+          faceIndex,
+          Math.max(0.001, Math.abs(surfaceMeshTopologyExtrudeDistance || 0.001))
+        );
+      } else if (surfaceMeshTopologyPreviewOperation === "Inset Face") {
+        action = "face-inset";
+        targetLabel = `Face ${faceIndex}`;
+        edited = insetFace(
+          cloneSurfaceMeshData(surfaceMeshData, surfaceMeshData.label),
+          faceIndex,
+          clampNumber(surfaceMeshTopologyInsetRatio, 0.02, 0.92)
+        );
       } else if (surfaceMeshTopologyPreviewOperation === "Collapse Edge") {
         action = "edge-collapse";
         edited = collapseEdge(
@@ -34391,6 +34513,17 @@ const App: React.FC = () => {
           edgeA,
           edgeB,
           Math.max(0.001, surfaceMeshTopologyBevelAmount || 0.001)
+        );
+      } else if (surfaceMeshTopologyPreviewOperation === "Move Vertex") {
+        const vertexIndex = Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0));
+        const direction = surfaceMeshTopologyVertexMoveDirection ?? { x: 0, y: 1, z: 0 };
+        action = "vertex-move";
+        targetLabel = `Vertex ${vertexIndex}`;
+        edited = moveVertex(
+          cloneSurfaceMeshData(surfaceMeshData, surfaceMeshData.label),
+          vertexIndex,
+          Math.max(0.001, Math.abs(surfaceMeshTopologyVertexMoveAmount || 0.001)),
+          direction
         );
       } else {
         edited = splitEdge(
@@ -34420,14 +34553,19 @@ const App: React.FC = () => {
     surfaceMeshTopologyCollapseMode,
     surfaceMeshTopologyEdgeA,
     surfaceMeshTopologyEdgeB,
+    surfaceMeshTopologyExtrudeDistance,
     surfaceMeshTopologyFaceIndex,
     surfaceMeshTopologyFeedback,
     surfaceMeshTopologyHistoryPreviewId,
+    surfaceMeshTopologyInsetRatio,
     surfaceMeshTopologyPickMode,
     surfaceMeshTopologyPreviewOperation,
     surfaceMeshTopologySelectionCleared,
     surfaceMeshTopologySplitRatio,
     surfaceMeshTopologySubdivideMode,
+    surfaceMeshTopologyVertexIndex,
+    surfaceMeshTopologyVertexMoveAmount,
+    surfaceMeshTopologyVertexMoveDirection,
   ]);
   const surfaceMeshTopologyGhostMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
     if (!isMeshLikeViewer || !surfaceMeshTopologyGhostFeedback?.facePolygons.length) return null;
@@ -34470,6 +34608,118 @@ const App: React.FC = () => {
       : surfaceMeshTopologyHistoryPreviewEntry.snapshot;
   }, [surfaceMeshTopologyHistoryPreviewEntry, surfaceMeshTopologyHistoryPreviewMode]);
   const surfaceMeshTopologyViewerMesh = surfaceMeshTopologyHistoryDisplayMesh ?? surfaceMeshData;
+  const surfaceMeshTopologyGizmoDragParamsRef = useRef<AdaptiveTopologyGizmoDragParams | null>(null);
+  const surfaceMeshTopologyGizmoReferenceLength = useMemo(() => {
+    if (!surfaceMeshTopologyViewerMesh?.positions?.length) return 1;
+    if (surfaceMeshTopologyPickMode === "edge") {
+      const a = readMeshPoint(surfaceMeshTopologyViewerMesh, Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0)));
+      const b = readMeshPoint(surfaceMeshTopologyViewerMesh, Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0)));
+      if (a && b) return Math.max(geometryDistance(a, b), 0.001);
+    }
+    const bounds = boundsFromPositions(surfaceMeshTopologyViewerMesh.positions);
+    if (!bounds) return 1;
+    return Math.max(
+      geometryDistance(
+        { x: bounds.min[0], y: bounds.min[1], z: bounds.min[2] },
+        { x: bounds.max[0], y: bounds.max[1], z: bounds.max[2] }
+      ) * 0.12,
+      0.001
+    );
+  }, [
+    surfaceMeshTopologyEdgeA,
+    surfaceMeshTopologyEdgeB,
+    surfaceMeshTopologyPickMode,
+    surfaceMeshTopologyViewerMesh,
+  ]);
+  const surfaceMeshTopologyGizmoTarget = useMemo<SurfaceTopologyGizmoTarget | null>(() => {
+    if (
+      surfaceMeshTopologySelectionCleared ||
+      surfaceMeshTopologyPickMode === "object" ||
+      !isMeshLikeViewer ||
+      !surfaceMeshTopologyViewerMesh?.positions?.length
+    ) {
+      return null;
+    }
+    if (surfaceMeshTopologyPickMode === "face") {
+      const polygon = readMeshFacePolygon(
+        surfaceMeshTopologyViewerMesh,
+        Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0))
+      );
+      if (!polygon?.vertices?.length) return null;
+      const normal = geometryNormalizeVec(polygonNormalFromVertices(polygon.vertices) ?? { x: 0, y: 1, z: 0 }) ?? {
+        x: 0,
+        y: 1,
+        z: 0,
+      };
+      const origin = polygon.vertices.reduce(
+        (acc, point) => ({
+          x: acc.x + point.x / polygon.vertices.length,
+          y: acc.y + point.y / polygon.vertices.length,
+          z: acc.z + point.z / polygon.vertices.length,
+        }),
+        { x: 0, y: 0, z: 0 }
+      );
+      return {
+        enabled: true,
+        mode: "face",
+        origin: geometryAdd(origin, geometryScale(normal, 0.05)),
+        axis: normal,
+        length: surfaceMeshTopologyGizmoReferenceLength,
+        color: 0x0ea5e9,
+        label: "Face handle",
+      };
+    }
+    if (surfaceMeshTopologyPickMode === "edge") {
+      const a = readMeshPoint(surfaceMeshTopologyViewerMesh, Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0)));
+      const b = readMeshPoint(surfaceMeshTopologyViewerMesh, Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0)));
+      if (!a || !b) return null;
+      const axis = geometryNormalizeVec(geometrySub(b, a));
+      if (!axis) return null;
+      return {
+        enabled: true,
+        mode: "edge",
+        origin: geometryScale(geometryAdd(a, b), 0.5),
+        axis,
+        length: surfaceMeshTopologyGizmoReferenceLength,
+        color: 0xf97316,
+        label: "Edge handle",
+      };
+    }
+    const vertex = readMeshPoint(
+      surfaceMeshTopologyViewerMesh,
+      Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0))
+    );
+    if (!vertex) return null;
+    const polygon = readMeshFacePolygon(
+      surfaceMeshTopologyViewerMesh,
+      Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0))
+    );
+    const axis = geometryNormalizeVec(
+      surfaceMeshTopologyVertexMoveDirection ??
+        (polygon?.vertices?.length ? polygonNormalFromVertices(polygon.vertices) : null) ??
+        { x: 0, y: 1, z: 0 }
+    ) ?? { x: 0, y: 1, z: 0 };
+    return {
+      enabled: true,
+      mode: "vertex",
+      origin: vertex,
+      axis,
+      length: surfaceMeshTopologyGizmoReferenceLength,
+      color: 0x22c55e,
+      label: "Vertex handle",
+    };
+  }, [
+    isMeshLikeViewer,
+    surfaceMeshTopologyFaceIndex,
+    surfaceMeshTopologyEdgeA,
+    surfaceMeshTopologyEdgeB,
+    surfaceMeshTopologyGizmoReferenceLength,
+    surfaceMeshTopologyPickMode,
+    surfaceMeshTopologySelectionCleared,
+    surfaceMeshTopologyVertexIndex,
+    surfaceMeshTopologyVertexMoveDirection,
+    surfaceMeshTopologyViewerMesh,
+  ]);
   const surfaceMeshObjectSelectionPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (!isMeshLikeViewer || surfaceMeshTopologyPickMode !== "object" || !surfaceMeshTopologyViewerMesh?.positions?.length) {
       return null;
@@ -46497,12 +46747,18 @@ case "mobius":
         const topologyAction =
           traceOperation.includes("face-subdivide")
             ? "face-subdivide"
+            : traceOperation.includes("face-extrude")
+            ? "face-extrude"
+            : traceOperation.includes("face-inset")
+            ? "face-inset"
             : traceOperation.includes("split-edge")
             ? "edge-split"
             : traceOperation.includes("collapse-edge")
             ? "edge-collapse"
             : traceOperation.includes("bevel-edge")
             ? "edge-bevel"
+            : traceOperation.includes("vertex-move")
+            ? "vertex-move"
             : "mesh-topology";
         setSurfaceMeshTopologyFeedback(
           buildTopologyEditFeedback(
@@ -46541,13 +46797,19 @@ case "mobius":
         const appliedPreviewOperation: ContextualViewportPreviewOperation =
           topologyAction === "face-subdivide"
             ? "Subdivide"
+            : topologyAction === "face-extrude"
+              ? "Extrude"
+              : topologyAction === "face-inset"
+                ? "Inset"
             : topologyAction === "edge-collapse"
               ? "Collapse"
               : topologyAction === "edge-bevel"
                 ? "Bevel"
                 : topologyAction === "edge-split"
                   ? "Split"
-                  : "Split";
+                  : topologyAction === "vertex-move"
+                    ? "Move"
+                    : "Split";
         showAppliedContextualViewportPreview(
           "Mesh",
           buildContextualViewportPreview({
@@ -46599,7 +46861,65 @@ case "mobius":
     );
   }, [applySurfaceMeshTopologyEdit, surfaceMeshTopologyFaceIndex, surfaceMeshTopologySubdivideMode]);
 
-  const handleSurfaceMeshSplitEdge = useCallback(() => {
+  const handleSurfaceMeshExtrudeFace = useCallback(
+    (distanceOverride?: number) => {
+      setSurfaceMeshTopologyPreviewOperation("Extrude Face");
+      const faceIndex = Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
+      if (!surfaceMeshTopologyFieldValidation.faceValid) {
+        setSurfaceMeshTopologyStatus(`Extrude Face blocked: ${surfaceMeshTopologyFieldValidation.faceLabel}.`);
+        return;
+      }
+      const distance = Math.max(0.001, Math.abs((distanceOverride ?? surfaceMeshTopologyExtrudeDistance) || 0.001));
+      applySurfaceMeshTopologyEdit(
+        "Extrude face",
+        "mesh-topology:face-extrude",
+        `topology face ${faceIndex} extruded (${fmt(distance)})`,
+        "face extrude",
+        `Face ${faceIndex}`,
+        `distance=${fmt(distance)}`,
+        `extruded Face ${faceIndex}`,
+        (mesh) => extrudeFace(mesh, faceIndex, distance)
+      );
+    },
+    [
+      applySurfaceMeshTopologyEdit,
+      surfaceMeshTopologyExtrudeDistance,
+      surfaceMeshTopologyFaceIndex,
+      surfaceMeshTopologyFieldValidation.faceLabel,
+      surfaceMeshTopologyFieldValidation.faceValid,
+    ]
+  );
+
+  const handleSurfaceMeshInsetFace = useCallback(
+    (ratioOverride?: number) => {
+      setSurfaceMeshTopologyPreviewOperation("Inset Face");
+      const faceIndex = Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
+      if (!surfaceMeshTopologyFieldValidation.faceValid) {
+        setSurfaceMeshTopologyStatus(`Inset Face blocked: ${surfaceMeshTopologyFieldValidation.faceLabel}.`);
+        return;
+      }
+      const ratio = clampNumber(ratioOverride ?? surfaceMeshTopologyInsetRatio, 0.02, 0.92);
+      applySurfaceMeshTopologyEdit(
+        "Inset face",
+        "mesh-topology:face-inset",
+        `topology face ${faceIndex} inset (${fmt(ratio)})`,
+        "face inset",
+        `Face ${faceIndex}`,
+        `ratio=${fmt(ratio)}`,
+        `inset Face ${faceIndex}`,
+        (mesh) => insetFace(mesh, faceIndex, ratio)
+      );
+    },
+    [
+      applySurfaceMeshTopologyEdit,
+      surfaceMeshTopologyFaceIndex,
+      surfaceMeshTopologyFieldValidation.faceLabel,
+      surfaceMeshTopologyFieldValidation.faceValid,
+      surfaceMeshTopologyInsetRatio,
+    ]
+  );
+
+  const handleSurfaceMeshSplitEdge = useCallback((ratioOverride?: number) => {
     setSurfaceMeshTopologyPreviewOperation("Split Edge");
     const edgeA = surfaceMeshTopologyFieldValidation.effectiveEdgeA;
     const edgeB = surfaceMeshTopologyFieldValidation.effectiveEdgeB;
@@ -46607,7 +46927,7 @@ case "mobius":
       setSurfaceMeshTopologyStatus(`Split Edge blocked: ${surfaceMeshTopologyFieldValidation.edgeLabel}.`);
       return;
     }
-    const ratio = clampNumber(surfaceMeshTopologySplitRatio, 0.01, 0.99);
+    const ratio = clampNumber(ratioOverride ?? surfaceMeshTopologySplitRatio, 0.01, 0.99);
     applySurfaceMeshTopologyEdit(
       "Split edge",
       "mesh-topology:split-edge",
@@ -46661,7 +46981,7 @@ case "mobius":
     surfaceMeshTopologyFieldValidation.edgeValid,
   ]);
 
-  const handleSurfaceMeshBevelEdge = useCallback(() => {
+  const handleSurfaceMeshBevelEdge = useCallback((amountOverride?: number) => {
     setSurfaceMeshTopologyPreviewOperation("Bevel Edge");
     const edgeA = surfaceMeshTopologyFieldValidation.effectiveEdgeA;
     const edgeB = surfaceMeshTopologyFieldValidation.effectiveEdgeB;
@@ -46669,7 +46989,7 @@ case "mobius":
       setSurfaceMeshTopologyStatus(`Bevel Edge blocked: ${surfaceMeshTopologyFieldValidation.edgeLabel}.`);
       return;
     }
-    const amount = Math.max(0.001, surfaceMeshTopologyBevelAmount || 0.001);
+    const amount = Math.max(0.001, (amountOverride ?? surfaceMeshTopologyBevelAmount) || 0.001);
     applySurfaceMeshTopologyEdit(
       "Bevel edge",
       "mesh-topology:bevel-edge",
@@ -46688,6 +47008,37 @@ case "mobius":
     surfaceMeshTopologyFieldValidation.edgeLabel,
     surfaceMeshTopologyFieldValidation.edgeValid,
   ]);
+
+  const handleSurfaceMeshMoveVertex = useCallback(
+    (amountOverride?: number, directionOverride?: GeometryProbePoint | null) => {
+      setSurfaceMeshTopologyPreviewOperation("Move Vertex");
+      const vertexIndex = Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0));
+      if (!surfaceMeshTopologyFieldValidation.vertexValid) {
+        setSurfaceMeshTopologyStatus(`Move Vertex blocked: ${surfaceMeshTopologyFieldValidation.vertexLabel}.`);
+        return;
+      }
+      const amount = Math.max(0.001, Math.abs((amountOverride ?? surfaceMeshTopologyVertexMoveAmount) || 0.001));
+      const direction = directionOverride ?? surfaceMeshTopologyVertexMoveDirection ?? { x: 0, y: 1, z: 0 };
+      applySurfaceMeshTopologyEdit(
+        "Move vertex",
+        "mesh-topology:vertex-move",
+        `topology vertex ${vertexIndex} moved (${fmt(amount)})`,
+        "vertex move",
+        `Vertex ${vertexIndex}`,
+        `amount=${fmt(amount)}, dirX=${fmt(direction.x)}, dirY=${fmt(direction.y)}, dirZ=${fmt(direction.z)}`,
+        `moved Vertex ${vertexIndex}`,
+        (mesh) => moveVertex(mesh, vertexIndex, amount, direction)
+      );
+    },
+    [
+      applySurfaceMeshTopologyEdit,
+      surfaceMeshTopologyFieldValidation.vertexLabel,
+      surfaceMeshTopologyFieldValidation.vertexValid,
+      surfaceMeshTopologyVertexIndex,
+      surfaceMeshTopologyVertexMoveAmount,
+      surfaceMeshTopologyVertexMoveDirection,
+    ]
+  );
 
   const restoreSurfaceMeshTopologyOperationNodeParameters = useCallback(
     (entryId: string, useEditedDrafts = false) => {
@@ -46713,6 +47064,16 @@ case "mobius":
         const mode = readValue("mode");
         if (mode === "center-fan" || mode === "four-triangles") setSurfaceMeshTopologySubdivideMode(mode);
         setSurfaceMeshTopologyPickMode("face");
+      } else if (operation === "Extrude Face") {
+        if (entry.definition.target.kind === "face") setSurfaceMeshTopologyFaceIndex(entry.definition.target.faceIndex);
+        const distance = readValue("distance");
+        if (typeof distance === "number") setSurfaceMeshTopologyExtrudeDistance(Math.max(0.001, Math.abs(distance)));
+        setSurfaceMeshTopologyPickMode("face");
+      } else if (operation === "Inset Face") {
+        if (entry.definition.target.kind === "face") setSurfaceMeshTopologyFaceIndex(entry.definition.target.faceIndex);
+        const ratio = readValue("ratio");
+        if (typeof ratio === "number") setSurfaceMeshTopologyInsetRatio(clampNumber(ratio, 0.02, 0.92));
+        setSurfaceMeshTopologyPickMode("face");
       } else if (operation === "Split Edge") {
         if (entry.definition.target.kind === "edge") {
           setSurfaceMeshTopologyEdgeA(entry.definition.target.edge[0]);
@@ -46737,6 +47098,17 @@ case "mobius":
         const amount = readValue("amount");
         if (typeof amount === "number") setSurfaceMeshTopologyBevelAmount(Math.max(0.001, amount));
         setSurfaceMeshTopologyPickMode("edge");
+      } else if (operation === "Move Vertex") {
+        if (entry.definition.target.kind === "vertex") setSurfaceMeshTopologyVertexIndex(entry.definition.target.vertexIndex);
+        const amount = readValue("amount");
+        if (typeof amount === "number") setSurfaceMeshTopologyVertexMoveAmount(Math.max(0.001, Math.abs(amount)));
+        const dirX = readValue("dirX");
+        const dirY = readValue("dirY");
+        const dirZ = readValue("dirZ");
+        if (typeof dirX === "number" && typeof dirY === "number" && typeof dirZ === "number") {
+          setSurfaceMeshTopologyVertexMoveDirection({ x: dirX, y: dirY, z: dirZ });
+        }
+        setSurfaceMeshTopologyPickMode("vertex");
       } else {
         setSurfaceMeshTopologyStatus("This operation node has no editable Mesh operation parameters.");
         return false;
@@ -46834,12 +47206,16 @@ case "mobius":
         return;
       }
       const nextTarget =
-        entry.definition.operation === "Face Subdivide"
+        entry.definition.operation === "Face Subdivide" ||
+        entry.definition.operation === "Extrude Face" ||
+        entry.definition.operation === "Inset Face"
           ? createMeshTopologyFaceTarget(surfaceMeshTopologyFaceIndex)
-          : createMeshTopologyEdgeTarget(
-              surfaceMeshTopologyFieldValidation.effectiveEdgeA,
-              surfaceMeshTopologyFieldValidation.effectiveEdgeB
-            );
+          : entry.definition.operation === "Move Vertex"
+            ? createMeshTopologyVertexTarget(surfaceMeshTopologyVertexIndex)
+            : createMeshTopologyEdgeTarget(
+                surfaceMeshTopologyFieldValidation.effectiveEdgeA,
+                surfaceMeshTopologyFieldValidation.effectiveEdgeB
+              );
       const nextDefinition = retargetMeshTopologyEditDefinition(entry.definition, nextTarget);
       const resolved = resolveMeshTopologyEditDefinitionTarget(entry.beforeSnapshot, nextDefinition);
       if (!resolved.ok) {
@@ -46862,7 +47238,15 @@ case "mobius":
       setSelectedSurfaceMeshTopologyHistoryId(entry.id);
       setSurfaceMeshTopologyHistoryPreviewId(entry.id);
       setSurfaceMeshTopologyHistoryPreviewMode("before");
-      setSurfaceMeshTopologyPickMode(entry.definition.operation === "Face Subdivide" ? "face" : "edge");
+      setSurfaceMeshTopologyPickMode(
+        entry.definition.operation === "Face Subdivide" ||
+          entry.definition.operation === "Extrude Face" ||
+          entry.definition.operation === "Inset Face"
+          ? "face"
+          : entry.definition.operation === "Move Vertex"
+            ? "vertex"
+            : "edge"
+      );
       setSurfaceMeshTopologyStatus(`Retargeted definition to ${nextDefinition.target.label}.`);
     },
     [
@@ -46870,6 +47254,7 @@ case "mobius":
       surfaceMeshTopologyFieldValidation.effectiveEdgeA,
       surfaceMeshTopologyFieldValidation.effectiveEdgeB,
       surfaceMeshTopologyHistory,
+      surfaceMeshTopologyVertexIndex,
     ]
   );
 
@@ -46994,20 +47379,126 @@ case "mobius":
   const handleApplySurfaceMeshTopologySelectedPreview = useCallback(() => {
     if (surfaceMeshTopologyPreviewOperation === "Face Subdivide") {
       handleSurfaceMeshFaceSubdivide();
+    } else if (surfaceMeshTopologyPreviewOperation === "Extrude Face") {
+      handleSurfaceMeshExtrudeFace();
+    } else if (surfaceMeshTopologyPreviewOperation === "Inset Face") {
+      handleSurfaceMeshInsetFace();
     } else if (surfaceMeshTopologyPreviewOperation === "Collapse Edge") {
       handleSurfaceMeshCollapseEdge();
     } else if (surfaceMeshTopologyPreviewOperation === "Bevel Edge") {
       handleSurfaceMeshBevelEdge();
+    } else if (surfaceMeshTopologyPreviewOperation === "Move Vertex") {
+      handleSurfaceMeshMoveVertex();
     } else {
       handleSurfaceMeshSplitEdge();
     }
   }, [
     handleSurfaceMeshBevelEdge,
     handleSurfaceMeshCollapseEdge,
+    handleSurfaceMeshExtrudeFace,
     handleSurfaceMeshFaceSubdivide,
+    handleSurfaceMeshInsetFace,
+    handleSurfaceMeshMoveVertex,
     handleSurfaceMeshSplitEdge,
     surfaceMeshTopologyPreviewOperation,
   ]);
+
+  const handleSurfaceMeshTopologyGizmoDrag = useCallback(
+    (info: SurfaceTopologyGizmoDragInfo) => {
+      const selectionType = info.mode === "face" ? "Face" : info.mode === "edge" ? "Edge" : "Vertex";
+      const requestedOperation =
+        info.mode === "face"
+          ? surfaceMeshTopologyPreviewOperation === "Extrude Face" || surfaceMeshTopologyPreviewOperation === "Inset Face"
+            ? surfaceMeshTopologyPreviewOperation
+            : null
+          : info.mode === "edge"
+            ? surfaceMeshTopologyPreviewOperation === "Bevel Edge"
+              ? "Bevel Edge"
+              : "Split Edge"
+            : "Move Vertex";
+      const params = mapTopologyGizmoDragToParams({
+        workspace: "Mesh",
+        selectionType,
+        operation: requestedOperation,
+        dragDistance: info.distance,
+        referenceLength: surfaceMeshTopologyGizmoReferenceLength,
+        initialRatio: info.mode === "face" ? surfaceMeshTopologyInsetRatio : surfaceMeshTopologySplitRatio,
+        initialAmount:
+          info.mode === "face"
+            ? surfaceMeshTopologyExtrudeDistance
+            : info.mode === "edge"
+              ? surfaceMeshTopologyBevelAmount
+              : surfaceMeshTopologyVertexMoveAmount,
+      });
+      surfaceMeshTopologyGizmoDragParamsRef.current = params;
+      if (!params) return;
+      if (params.operation === "Extrude Face") {
+        setSurfaceMeshTopologyPreviewOperation("Extrude Face");
+        setSurfaceMeshTopologyExtrudeDistance(params.distance);
+        setSurfaceMeshTopologyStatus(`Face handle: Extrude ${params.label}.`);
+      } else if (params.operation === "Inset Face") {
+        setSurfaceMeshTopologyPreviewOperation("Inset Face");
+        setSurfaceMeshTopologyInsetRatio(params.ratio);
+        setSurfaceMeshTopologyStatus(`Face handle: Inset ${params.label}.`);
+      } else if (params.operation === "Split Edge") {
+        setSurfaceMeshTopologyPreviewOperation("Split Edge");
+        setSurfaceMeshTopologySplitRatio(params.ratio);
+        setSurfaceMeshTopologyStatus(`Edge handle: Split ${params.label}.`);
+      } else if (params.operation === "Bevel Edge") {
+        setSurfaceMeshTopologyPreviewOperation("Bevel Edge");
+        setSurfaceMeshTopologyBevelAmount(params.amount);
+        setSurfaceMeshTopologyStatus(`Edge handle: Bevel ${params.label}.`);
+      } else if (params.operation === "Move Vertex") {
+        const direction = geometryNormalizeVec(geometryScale(info.axis, params.directionSign)) ?? info.axis;
+        setSurfaceMeshTopologyPreviewOperation("Move Vertex");
+        setSurfaceMeshTopologyVertexMoveAmount(params.amount);
+        setSurfaceMeshTopologyVertexMoveDirection(direction);
+        setSurfaceMeshTopologyStatus(`Vertex handle: Move ${params.label}.`);
+      }
+    },
+    [
+      surfaceMeshTopologyBevelAmount,
+      surfaceMeshTopologyExtrudeDistance,
+      surfaceMeshTopologyGizmoReferenceLength,
+      surfaceMeshTopologyInsetRatio,
+      surfaceMeshTopologyPreviewOperation,
+      surfaceMeshTopologySplitRatio,
+      surfaceMeshTopologyVertexMoveAmount,
+    ]
+  );
+
+  const handleSurfaceMeshTopologyGizmoDragEnd = useCallback(
+    (info: SurfaceTopologyGizmoDragInfo) => {
+      handleSurfaceMeshTopologyGizmoDrag(info);
+      const params = surfaceMeshTopologyGizmoDragParamsRef.current;
+      surfaceMeshTopologyGizmoDragParamsRef.current = null;
+      if (!params) return;
+      if (params.operation === "Extrude Face") {
+        handleSurfaceMeshExtrudeFace(params.distance);
+      } else if (params.operation === "Inset Face") {
+        handleSurfaceMeshInsetFace(params.ratio);
+      } else if (params.operation === "Split Edge") {
+        handleSurfaceMeshSplitEdge(params.ratio);
+      } else if (params.operation === "Bevel Edge") {
+        handleSurfaceMeshBevelEdge(params.amount);
+      } else if (params.operation === "Move Vertex") {
+        const direction = geometryNormalizeVec(geometryScale(info.axis, params.directionSign)) ?? info.axis;
+        handleSurfaceMeshMoveVertex(params.amount, direction);
+      } else if (params.operation === "Face Subdivide") {
+        setSurfaceMeshTopologySubdivideMode(params.mode);
+        handleSurfaceMeshFaceSubdivide();
+      }
+    },
+    [
+      handleSurfaceMeshBevelEdge,
+      handleSurfaceMeshExtrudeFace,
+      handleSurfaceMeshFaceSubdivide,
+      handleSurfaceMeshInsetFace,
+      handleSurfaceMeshMoveVertex,
+      handleSurfaceMeshSplitEdge,
+      handleSurfaceMeshTopologyGizmoDrag,
+    ]
+  );
 
   const handleRunSurfaceMeshTopologyDemoPreset = useCallback(
     (presetId: string) => {
@@ -50340,24 +50831,33 @@ case "mobius":
   const meshObjectPromoteReady = isSurfaceDatasetKind(datasetKind) && !!surfaceMeshData?.positions?.length;
   const handleRunMeshContextPrimaryAction = useCallback(() => {
     if (surfaceMeshTopologyPickMode === "face") {
-      handleSurfaceMeshFaceSubdivide();
+      if (surfaceMeshTopologyPreviewOperation === "Extrude Face") handleSurfaceMeshExtrudeFace();
+      else if (surfaceMeshTopologyPreviewOperation === "Inset Face") handleSurfaceMeshInsetFace();
+      else handleSurfaceMeshFaceSubdivide();
       return;
     }
     if (surfaceMeshTopologyPickMode === "edge") {
-      handleSurfaceMeshSplitEdge();
+      if (surfaceMeshTopologyPreviewOperation === "Bevel Edge") handleSurfaceMeshBevelEdge();
+      else if (surfaceMeshTopologyPreviewOperation === "Collapse Edge") handleSurfaceMeshCollapseEdge();
+      else handleSurfaceMeshSplitEdge();
       return;
     }
     if (surfaceMeshTopologyPickMode === "vertex") {
-      setSurfaceMeshTopologyStatus(`${selectedSurfaceMeshTopologyVertexLabel} marker active.`);
+      handleSurfaceMeshMoveVertex();
       return;
     }
     handleDatasetToGeometryScene();
   }, [
     handleDatasetToGeometryScene,
+    handleSurfaceMeshBevelEdge,
+    handleSurfaceMeshCollapseEdge,
+    handleSurfaceMeshExtrudeFace,
     handleSurfaceMeshFaceSubdivide,
+    handleSurfaceMeshInsetFace,
+    handleSurfaceMeshMoveVertex,
     handleSurfaceMeshSplitEdge,
-    selectedSurfaceMeshTopologyVertexLabel,
     surfaceMeshTopologyPickMode,
+    surfaceMeshTopologyPreviewOperation,
   ]);
   const meshContextCanRunPrimaryAction =
     surfaceMeshTopologyPickMode === "object"
@@ -50368,6 +50868,18 @@ case "mobius":
       {
         descriptor: meshSubdivideFaceAction,
         onClick: handleSurfaceMeshFaceSubdivide,
+        disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.faceValid,
+        activePulseId: contextualActionPulseId,
+      },
+      {
+        descriptor: meshExtrudeFaceAction,
+        onClick: () => handleSurfaceMeshExtrudeFace(),
+        disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.faceValid,
+        activePulseId: contextualActionPulseId,
+      },
+      {
+        descriptor: meshInsetFaceAction,
+        onClick: () => handleSurfaceMeshInsetFace(),
         disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.faceValid,
         activePulseId: contextualActionPulseId,
       },
@@ -50461,6 +50973,12 @@ case "mobius":
         disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.vertexValid,
         activePulseId: contextualActionPulseId,
       },
+      {
+        descriptor: meshMoveVertexAction,
+        onClick: () => handleSurfaceMeshMoveVertex(),
+        disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.vertexValid,
+        activePulseId: contextualActionPulseId,
+      },
     ],
   };
   const meshContextualActionMode: ContextualEntityMode | null =
@@ -50475,33 +50993,11 @@ case "mobius":
   );
   const meshActiveSelectionCardActionButtons: readonly ActiveSelectionCardAction[] =
     surfaceMeshTopologyPickMode === "face"
-      ? [
-          ...meshActiveSelectionEntityActionButtons,
-          {
-            label: "Inset",
-            testId: "mesh-active-selection-action-inset-face",
-            disabled: true,
-            disabledReason: "Face inset is planned for the shared contextual toolbar.",
-          },
-          {
-            label: "Extrude",
-            testId: "mesh-active-selection-action-extrude-face",
-            disabled: true,
-            disabledReason: "Face extrude is planned for the shared contextual toolbar.",
-          },
-        ]
+      ? meshActiveSelectionEntityActionButtons
       : surfaceMeshTopologyPickMode === "edge"
         ? meshActiveSelectionEntityActionButtons
-        : surfaceMeshTopologyPickMode === "vertex"
-          ? [
-              ...meshActiveSelectionEntityActionButtons,
-              {
-                label: "Move",
-                testId: "mesh-active-selection-action-move-vertex",
-                disabled: true,
-                disabledReason: "Vertex move will use the shared transform tools.",
-              },
-            ]
+      : surfaceMeshTopologyPickMode === "vertex"
+          ? meshActiveSelectionEntityActionButtons
           : [
               {
                 label: OBJECT_CONTEXT_COPY.mesh.actions[0],
@@ -62261,7 +62757,7 @@ case "mobius":
                           </label>
                           <button
                             type="button"
-                            onClick={handleSurfaceMeshSplitEdge}
+                            onClick={() => handleSurfaceMeshSplitEdge()}
                             disabled={
                               surfaceMeshTopologyPickMode !== "edge" ||
                               !surfaceMeshStats ||
@@ -62358,7 +62854,7 @@ case "mobius":
                           </label>
                           <button
                             type="button"
-                            onClick={handleSurfaceMeshBevelEdge}
+                            onClick={() => handleSurfaceMeshBevelEdge()}
                             disabled={
                               surfaceMeshTopologyPickMode !== "edge" ||
                               !surfaceMeshStats ||
@@ -64271,6 +64767,11 @@ case "mobius":
                         overlayHeatmapEnabled={overlayHeatmapEnabled}
                         overlayPolylines={complexMapOverlayPolylines}
                         overlayPolylinesColor={0xffd400}
+                        topologyGizmo={surfaceViewerKind === "mesh" ? surfaceMeshTopologyGizmoTarget : null}
+                        onTopologyGizmoDrag={surfaceViewerKind === "mesh" ? handleSurfaceMeshTopologyGizmoDrag : undefined}
+                        onTopologyGizmoDragEnd={
+                          surfaceViewerKind === "mesh" ? handleSurfaceMeshTopologyGizmoDragEnd : undefined
+                        }
                         overlayPolylineGroups={meshViewerOverlayPolylineGroups}
                         overlayPointSets={meshViewerOverlayPointSets}
                         overlayLabelSets={combinedOverlayLabelSets}

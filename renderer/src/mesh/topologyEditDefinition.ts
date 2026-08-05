@@ -1,6 +1,9 @@
 import {
   bevelEdge,
   collapseEdge,
+  extrudeFace,
+  insetFace,
+  moveVertex,
   splitEdge,
   subdivideFace,
   type EdgeCollapseMode,
@@ -9,7 +12,14 @@ import {
 import { buildMeshEdgeTopology, meshEdgeKey } from "./edgeSelection";
 import type { SurfaceMeshData } from "./surfaceMesh";
 
-export type MeshTopologyEditOperation = "Face Subdivide" | "Split Edge" | "Collapse Edge" | "Bevel Edge";
+export type MeshTopologyEditOperation =
+  | "Face Subdivide"
+  | "Extrude Face"
+  | "Inset Face"
+  | "Split Edge"
+  | "Collapse Edge"
+  | "Bevel Edge"
+  | "Move Vertex";
 
 export type MeshTopologySourceVersion = {
   readonly label: string;
@@ -20,13 +30,15 @@ export type MeshTopologySourceVersion = {
 
 export type MeshTopologyEditTarget =
   | { readonly kind: "face"; readonly faceIndex: number; readonly key: string; readonly label: string }
-  | { readonly kind: "edge"; readonly edge: readonly [number, number]; readonly key: string; readonly label: string };
+  | { readonly kind: "edge"; readonly edge: readonly [number, number]; readonly key: string; readonly label: string }
+  | { readonly kind: "vertex"; readonly vertexIndex: number; readonly key: string; readonly label: string };
 
 export type MeshTopologyEditParameters =
   | { readonly mode: FaceSubdivideMode }
+  | { readonly distance: number }
   | { readonly ratio: number }
   | { readonly mode: EdgeCollapseMode }
-  | { readonly amount: number };
+  | { readonly amount: number; readonly direction?: { readonly x: number; readonly y: number; readonly z: number } | null };
 
 export type MeshTopologyEditDefinition = {
   readonly operation: MeshTopologyEditOperation;
@@ -107,9 +119,27 @@ export function createMeshTopologyEdgeTarget(edgeA: number, edgeB: number): Mesh
   };
 }
 
+export function createMeshTopologyVertexTarget(vertexIndex: number): MeshTopologyEditTarget {
+  const resolved = Math.max(0, Math.round(vertexIndex || 0));
+  return {
+    kind: "vertex",
+    vertexIndex: resolved,
+    key: `vertex:${resolved}`,
+    label: `Vertex ${resolved}`,
+  };
+}
+
 export function formatMeshTopologyEditParameters(parameters: MeshTopologyEditParameters): string {
+  if ("distance" in parameters) return `distance=${formatNumber(parameters.distance)}`;
   if ("ratio" in parameters) return `ratio=${formatNumber(parameters.ratio)}`;
-  if ("amount" in parameters) return `amount=${formatNumber(parameters.amount)}`;
+  if ("amount" in parameters) {
+    if (parameters.direction) {
+      return `amount=${formatNumber(parameters.amount)}, dirX=${formatNumber(parameters.direction.x)}, dirY=${formatNumber(
+        parameters.direction.y
+      )}, dirZ=${formatNumber(parameters.direction.z)}`;
+    }
+    return `amount=${formatNumber(parameters.amount)}`;
+  }
   return `mode=${parameters.mode}`;
 }
 
@@ -176,6 +206,16 @@ export function resolveMeshTopologyEditDefinitionTarget(
     };
   }
 
+  if (definition.target.kind === "vertex") {
+    if (definition.target.vertexIndex >= 0 && definition.target.vertexIndex < vertexCount) {
+      return { ok: true, target: definition.target };
+    }
+    return {
+      ok: false,
+      reason: `${definition.target.label} is outside source mesh version ${definition.sourceMeshVersion.key}.`,
+    };
+  }
+
   const [a, b] = definition.target.edge;
   if (a < 0 || b < 0 || a >= vertexCount || b >= vertexCount || a === b) {
     return {
@@ -199,8 +239,28 @@ export function applyMeshTopologyEditDefinition(
   if (!resolved.ok) throw new Error(resolved.reason);
   if (definition.operation === "Face Subdivide") {
     if (definition.target.kind !== "face") throw new Error("Definition target is not a face.");
-    const mode = "mode" in definition.parameters ? definition.parameters.mode : "center-fan";
+    const mode =
+      "mode" in definition.parameters &&
+      (definition.parameters.mode === "center-fan" || definition.parameters.mode === "four-triangles")
+        ? definition.parameters.mode
+        : "center-fan";
     return subdivideFace(mesh, definition.target.faceIndex, mode);
+  }
+  if (definition.operation === "Extrude Face") {
+    if (definition.target.kind !== "face") throw new Error("Definition target is not a face.");
+    const distance = "distance" in definition.parameters ? definition.parameters.distance : 0.08;
+    return extrudeFace(mesh, definition.target.faceIndex, distance);
+  }
+  if (definition.operation === "Inset Face") {
+    if (definition.target.kind !== "face") throw new Error("Definition target is not a face.");
+    const ratio = "ratio" in definition.parameters ? definition.parameters.ratio : 0.2;
+    return insetFace(mesh, definition.target.faceIndex, ratio);
+  }
+  if (definition.operation === "Move Vertex") {
+    if (definition.target.kind !== "vertex") throw new Error("Definition target is not a vertex.");
+    const amount = "amount" in definition.parameters ? definition.parameters.amount : 0.06;
+    const direction = "amount" in definition.parameters ? definition.parameters.direction : null;
+    return moveVertex(mesh, definition.target.vertexIndex, amount, direction);
   }
   if (definition.target.kind !== "edge") throw new Error("Definition target is not an edge.");
   const [edgeA, edgeB] = definition.target.edge;
@@ -209,7 +269,13 @@ export function applyMeshTopologyEditDefinition(
     return splitEdge(mesh, edgeA, edgeB, ratio);
   }
   if (definition.operation === "Collapse Edge") {
-    const mode = "mode" in definition.parameters ? definition.parameters.mode : "midpoint";
+    const mode =
+      "mode" in definition.parameters &&
+      (definition.parameters.mode === "midpoint" ||
+        definition.parameters.mode === "keep-a" ||
+        definition.parameters.mode === "keep-b")
+        ? definition.parameters.mode
+        : "midpoint";
     return collapseEdge(mesh, edgeA, edgeB, mode);
   }
   const amount = "amount" in definition.parameters ? definition.parameters.amount : 0.06;

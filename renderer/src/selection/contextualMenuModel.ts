@@ -40,7 +40,7 @@ export function formatContextualSelectionBreadcrumb({
   objectLabel,
   entityLabel,
 }: ContextualSelectionBreadcrumbInput): string {
-  const parts = [WORKSPACE_LABELS[workspace]];
+  const parts: string[] = [WORKSPACE_LABELS[workspace]];
   const object = cleanLabel(objectLabel);
   parts.push(object ? `Object: ${object}` : "Object");
   if (targetMode !== "object") {

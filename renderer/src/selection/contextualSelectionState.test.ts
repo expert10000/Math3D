@@ -20,7 +20,7 @@ describe("contextualSelectionState", () => {
       activeCardType: "Face",
       cardId: "Face 8",
       emptyState: null,
-      actions: ["Subdivide"],
+      actions: ["Subdivide", "Extrude", "Inset"],
       previewLabel: "Preview: Face 8 -> subdivide center fan",
       canRunPrimaryAction: true,
     });
@@ -40,11 +40,11 @@ describe("contextualSelectionState", () => {
         },
       })
     ).toMatchObject({
-      selectionLabel: "Choose an edge to enable Split / Collapse / Bevel / Loop / Ring / Boundary",
+      selectionLabel: "Choose an edge to enable Split / Collapse / Bevel / Loop / Ring / Boundary / Sharp / Feature",
       activeCardType: "Edge",
       cardId: "none",
-      emptyState: "Choose an edge to enable Split / Collapse / Bevel / Loop / Ring / Boundary",
-      actions: ["Split", "Collapse", "Bevel", "Loop", "Ring", "Boundary"],
+      emptyState: "Choose an edge to enable Split / Collapse / Bevel / Loop / Ring / Boundary / Sharp / Feature",
+      actions: ["Split", "Collapse", "Bevel", "Loop", "Ring", "Boundary", "Sharp", "Feature"],
       previewLabel: null,
       canRunPrimaryAction: false,
     });

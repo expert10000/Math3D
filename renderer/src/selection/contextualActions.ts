@@ -41,6 +41,16 @@ const CONTEXTUAL_ACTION_DESCRIPTOR_SPECS = {
         testIdSuffix: "subdivide-face",
         pulseId: "mesh:face-subdivide",
       },
+      {
+        operationKey: "extrude-face",
+        testIdSuffix: "extrude-face",
+        pulseId: "mesh:face-extrude",
+      },
+      {
+        operationKey: "inset-face",
+        testIdSuffix: "inset-face",
+        pulseId: "mesh:face-inset",
+      },
     ],
     edge: [
       {
@@ -89,6 +99,11 @@ const CONTEXTUAL_ACTION_DESCRIPTOR_SPECS = {
         operationKey: "vertex-marker",
         testIdSuffix: "vertex-marker",
         pulseId: "mesh:vertex-marker",
+      },
+      {
+        operationKey: "move-vertex",
+        testIdSuffix: "move-vertex",
+        pulseId: "mesh:vertex-move",
       },
     ],
   },

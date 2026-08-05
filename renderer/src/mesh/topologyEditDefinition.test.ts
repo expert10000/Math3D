@@ -6,6 +6,7 @@ import {
   createMeshTopologyEdgeTarget,
   createMeshTopologyFaceTarget,
   createMeshTopologySourceVersion,
+  createMeshTopologyVertexTarget,
   resolveMeshTopologyEditDefinitionTarget,
   retargetMeshTopologyEditDefinition,
   updateMeshTopologyEditDefinitionParameters,
@@ -78,6 +79,36 @@ describe("topologyEditDefinition", () => {
     expect(Math.floor((replayed.indices?.length ?? 0) / 3)).toBe(4);
   });
 
+  it("replays face extrude definitions with editable distance params", () => {
+    const definition = createMeshTopologyEditDefinition({
+      operation: "Extrude Face",
+      sourceMeshVersion: createMeshTopologySourceVersion({ label: "Box", vertexCount: 4, faceCount: 2 }),
+      target: createMeshTopologyFaceTarget(0),
+      parameters: { distance: 0.2 },
+    });
+
+    const replayed = applyMeshTopologyEditDefinition(makeMesh(), definition);
+
+    expect(definition.paramsLabel).toBe("distance=0.2");
+    expect(Math.floor(replayed.positions.length / 3)).toBe(7);
+    expect(Math.floor((replayed.indices?.length ?? 0) / 3)).toBe(9);
+  });
+
+  it("creates stable vertex definition keys and replays move vertex definitions", () => {
+    const definition = createMeshTopologyEditDefinition({
+      operation: "Move Vertex",
+      sourceMeshVersion: createMeshTopologySourceVersion({ label: "Box", vertexCount: 4, faceCount: 2 }),
+      target: createMeshTopologyVertexTarget(1),
+      parameters: { amount: 0.25, direction: { x: 1, y: 0, z: 0 } },
+    });
+
+    const replayed = applyMeshTopologyEditDefinition(makeMesh(), definition);
+
+    expect(definition.selectionKey).toBe("mesh:Box:v4:f2|Move Vertex|vertex:1");
+    expect(definition.paramsLabel).toBe("amount=0.25, dirX=1, dirY=0, dirZ=0");
+    expect(replayed.positions[3]).toBeCloseTo(1.25);
+  });
+
   it("updates edited parameters directly on the definition", () => {
     const definition = createMeshTopologyEditDefinition({
       operation: "Bevel Edge",
@@ -121,5 +152,19 @@ describe("topologyEditDefinition", () => {
     expect(() => applyMeshTopologyEditDefinition(makeMesh(), definition)).toThrow(
       "Edge 0-3 is missing in source mesh version mesh:Box:v4:f2."
     );
+  });
+
+  it("reports missing vertex targets before replay", () => {
+    const definition = createMeshTopologyEditDefinition({
+      operation: "Move Vertex",
+      sourceMeshVersion: createMeshTopologySourceVersion({ label: "Box", vertexCount: 4, faceCount: 2 }),
+      target: createMeshTopologyVertexTarget(8),
+      parameters: { amount: 0.2, direction: { x: 0, y: 1, z: 0 } },
+    });
+
+    expect(resolveMeshTopologyEditDefinitionTarget(makeMesh(), definition)).toEqual({
+      ok: false,
+      reason: "Vertex 8 is outside source mesh version mesh:Box:v4:f2.",
+    });
   });
 });
