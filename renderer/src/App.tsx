@@ -467,11 +467,13 @@ import {
 } from "./mesh/topologyEditDefinition";
 import {
   applyGeometryTopologyEditDefinition,
+  createGeometryTopologyRetargetTarget,
   createGeometryTopologyEditDefinition,
   createGeometryTopologyEdgeTarget,
   createGeometryTopologyFaceTarget,
   createGeometryTopologySourceVersionFromMesh,
   createGeometryTopologyVertexTarget,
+  describeGeometryTopologyEditDefinition,
   resolveGeometryTopologyEditDefinitionTarget,
   retargetGeometryTopologyEditDefinition,
   updateGeometryTopologyEditDefinitionParameters,
@@ -1411,6 +1413,7 @@ type GeometryObjectPreset = {
   name: string;
   createdAt: number;
   snapshot: GeometryObject | GeometryDatasetMeshObject;
+  history?: GeometryObjectHistoryStep[];
   source?: {
     kind: "round-trip-demo";
     label: string;
@@ -1420,8 +1423,9 @@ type GeometryObjectPreset = {
     resultLabel: string;
   } | null;
 };
-type StoredGeometryObjectPreset = Omit<GeometryObjectPreset, "snapshot"> & {
+type StoredGeometryObjectPreset = Omit<GeometryObjectPreset, "snapshot" | "history"> & {
   snapshot: GeometryObject | WorkbookGeometryDatasetMeshObject;
+  history?: StoredGeometryObjectHistoryStep[];
 };
 type GeometryOperationPreset = {
   id: string;
@@ -1438,6 +1442,7 @@ type WorkbookWorkspaceState = {
     mode: GeometryMode;
     objects: GeometryObject[];
     datasetMeshObjects?: WorkbookGeometryDatasetMeshObject[];
+    historyById?: StoredGeometryObjectHistoryById;
     variantSets?: WorkbookGeometryVariantSet[];
     showGhostedVariants?: boolean;
     selectedVariantId?: string | null;
@@ -4336,6 +4341,14 @@ type GeometryObjectHistoryStep = {
   topologyDefinitionSourceSnapshot?: SurfaceMeshData | null;
   snapshot: GeometryObject | GeometryDatasetMeshObject;
 };
+type StoredGeometryObjectHistoryStep = Omit<
+  GeometryObjectHistoryStep,
+  "snapshot" | "topologyDefinitionSourceSnapshot"
+> & {
+  snapshot: GeometryObject | WorkbookGeometryDatasetMeshObject;
+  topologyDefinitionSourceSnapshot?: TopologySerializedSurfaceMeshData | null;
+};
+type StoredGeometryObjectHistoryById = Record<string, StoredGeometryObjectHistoryStep[]>;
 type GeometryRecentActionHistoryEntry =
   | {
       kind: "object";
@@ -6173,6 +6186,22 @@ const isStoredMeshTopologyEditDefinition = (value: unknown): value is MeshTopolo
   );
 };
 
+const isStoredGeometryTopologyEditDefinition = (value: unknown): value is GeometryTopologyEditDefinition => {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<GeometryTopologyEditDefinition>;
+  return (
+    typeof candidate.operation === "string" &&
+    !!candidate.sourceObjectVersion &&
+    typeof candidate.sourceObjectVersion.key === "string" &&
+    typeof candidate.sourceObjectVersion.objectId === "string" &&
+    !!candidate.target &&
+    typeof candidate.target.key === "string" &&
+    !!candidate.parameters &&
+    typeof candidate.selectionKey === "string" &&
+    typeof candidate.replayLabel === "string"
+  );
+};
+
 const serializeTopologySurfaceMeshData = (mesh: SurfaceMeshData): TopologySerializedSurfaceMeshData => ({
   label: mesh.label,
   positions: Array.from(mesh.positions),
@@ -6258,6 +6287,134 @@ const deserializeSurfaceMeshTopologyHistoryEntry = (
     snapshot,
   };
 };
+
+const serializeGeometryObjectHistoryStep = (step: GeometryObjectHistoryStep): StoredGeometryObjectHistoryStep => ({
+  ...step,
+  topologyDefinition: step.topologyDefinition ?? null,
+  topologyDefinitionSourceSnapshot: step.topologyDefinitionSourceSnapshot
+    ? serializeTopologySurfaceMeshData(step.topologyDefinitionSourceSnapshot)
+    : null,
+  snapshot: serializeVariantSnapshot(step.snapshot),
+});
+
+const serializeGeometryObjectHistoryById = (
+  historyById: Record<string, GeometryObjectHistoryStep[]>,
+  limitPerObject = 24
+): StoredGeometryObjectHistoryById => {
+  const stored: StoredGeometryObjectHistoryById = {};
+  for (const [objectId, history] of Object.entries(historyById)) {
+    if (!Array.isArray(history) || !history.length) continue;
+    stored[objectId] = history.slice(0, limitPerObject).map(serializeGeometryObjectHistoryStep);
+  }
+  return stored;
+};
+
+const deserializeGeometryObjectHistoryStep = (
+  entry: StoredGeometryObjectHistoryStep | null | undefined
+): GeometryObjectHistoryStep | null => {
+  if (!entry || typeof entry.id !== "string") return null;
+  if (!entry.snapshot || typeof entry.snapshot !== "object") return null;
+  let snapshot: GeometryObject | GeometryDatasetMeshObject;
+  try {
+    snapshot = deserializeVariantSnapshot(entry.snapshot);
+  } catch {
+    return null;
+  }
+  const sourceSnapshot = deserializeTopologySurfaceMeshData(entry.topologyDefinitionSourceSnapshot);
+  return {
+    id: entry.id,
+    at: Number.isFinite(entry.at) ? entry.at : Date.now(),
+    action: typeof entry.action === "string" ? entry.action : "history",
+    label: typeof entry.label === "string" ? entry.label : "Geometry edit",
+    operationType: typeof entry.operationType === "string" ? entry.operationType : "History",
+    operationTarget: typeof entry.operationTarget === "string" ? entry.operationTarget : null,
+    operationParameters: typeof entry.operationParameters === "string" ? entry.operationParameters : null,
+    destructive: Boolean(entry.destructive),
+    warning: typeof entry.warning === "string" ? entry.warning : null,
+    objectId: typeof entry.objectId === "string" ? entry.objectId : snapshot.id,
+    objectName: typeof entry.objectName === "string" ? entry.objectName : snapshot.name,
+    sourceObjectId: typeof entry.sourceObjectId === "string" ? entry.sourceObjectId : null,
+    sourceObjectName: typeof entry.sourceObjectName === "string" ? entry.sourceObjectName : null,
+    beforeVertexCount: typeof entry.beforeVertexCount === "number" ? entry.beforeVertexCount : null,
+    afterVertexCount: typeof entry.afterVertexCount === "number" ? entry.afterVertexCount : null,
+    beforeFaceCount: typeof entry.beforeFaceCount === "number" ? entry.beforeFaceCount : null,
+    afterFaceCount: typeof entry.afterFaceCount === "number" ? entry.afterFaceCount : null,
+    beforeSummary: typeof entry.beforeSummary === "string" ? entry.beforeSummary : null,
+    afterSummary: typeof entry.afterSummary === "string" ? entry.afterSummary : summarizeGeometryHistorySnapshot(snapshot),
+    changeSummary: typeof entry.changeSummary === "string" ? entry.changeSummary : "Restored history step",
+    topologySummary: typeof entry.topologySummary === "string" ? entry.topologySummary : null,
+    retainedSelection: entry.retainedSelection ?? null,
+    topologyDefinition: isStoredGeometryTopologyEditDefinition(entry.topologyDefinition) ? entry.topologyDefinition : null,
+    topologyDefinitionSourceSnapshot: sourceSnapshot,
+    snapshot,
+  };
+};
+
+const deserializeGeometryObjectHistoryById = (stored: unknown): Record<string, GeometryObjectHistoryStep[]> => {
+  const result: Record<string, GeometryObjectHistoryStep[]> = {};
+  if (!stored || typeof stored !== "object") return result;
+  for (const [objectId, history] of Object.entries(stored as StoredGeometryObjectHistoryById)) {
+    if (!Array.isArray(history)) continue;
+    const restored = history
+      .map(deserializeGeometryObjectHistoryStep)
+      .filter((entry): entry is GeometryObjectHistoryStep => !!entry)
+      .slice(0, 24);
+    if (restored.length) result[objectId] = restored;
+  }
+  return result;
+};
+
+const remapGeometryTopologyDefinitionForObject = (
+  definition: GeometryTopologyEditDefinition | null | undefined,
+  objectId: string,
+  objectName: string,
+  sourceSnapshot: SurfaceMeshData | null | undefined
+): GeometryTopologyEditDefinition | null => {
+  if (!definition) return null;
+  if (!sourceSnapshot) return definition;
+  return createGeometryTopologyEditDefinition({
+    operation: definition.operation,
+    sourceObjectVersion: createGeometryTopologySourceVersionFromMesh({
+      objectId,
+      label: objectName,
+      revision: definition.sourceObjectVersion.revision,
+      mesh: sourceSnapshot,
+    }),
+    target: definition.target,
+    parameters: definition.parameters,
+  });
+};
+
+const remapGeometryObjectHistoryForObject = (
+  history: readonly GeometryObjectHistoryStep[] | null | undefined,
+  objectId: string,
+  objectName: string
+): GeometryObjectHistoryStep[] =>
+  (history ?? []).slice(0, 24).map((step) => {
+    const snapshot = cloneGeometrySceneObjectSnapshot(step.snapshot);
+    snapshot.id = objectId;
+    snapshot.name = objectName;
+    const sourceSnapshot = step.topologyDefinitionSourceSnapshot
+      ? cloneSurfaceMeshData(step.topologyDefinitionSourceSnapshot, step.topologyDefinitionSourceSnapshot.label)
+      : null;
+    const topologyDefinition = remapGeometryTopologyDefinitionForObject(
+      step.topologyDefinition,
+      objectId,
+      objectName,
+      sourceSnapshot
+    );
+    return {
+      ...step,
+      id: makeId(),
+      objectId,
+      objectName,
+      operationTarget: topologyDefinition?.target.label ?? step.operationTarget,
+      operationParameters: topologyDefinition?.paramsLabel ?? step.operationParameters,
+      topologyDefinition,
+      topologyDefinitionSourceSnapshot: sourceSnapshot,
+      snapshot,
+    };
+  });
 
 const readStoredSurfaceMeshTopologySession = (): RestoredSurfaceMeshTopologySession | null => {
   if (typeof window === "undefined") return null;
@@ -12904,6 +13061,14 @@ const App: React.FC = () => {
         : -1,
     [geometrySelectedHistoryStepId, geometrySelectedObjectHistory]
   );
+  const geometrySelectedReplayableDefinitionHistory = useMemo(
+    () =>
+      geometrySelectedObjectHistory
+        .filter((entry) => entry.topologyDefinition && entry.topologyDefinitionSourceSnapshot)
+        .sort((a, b) => a.at - b.at),
+    [geometrySelectedObjectHistory]
+  );
+  const geometryCanReplayDefinitionChain = geometrySelectedReplayableDefinitionHistory.length > 1;
   const geometrySelectedHistoryPreviousStep = useMemo(
     () =>
       geometrySelectedHistoryStepIndex >= 0
@@ -13218,6 +13383,12 @@ const App: React.FC = () => {
             .map((entry) => ({
               ...entry,
               snapshot: deserializeVariantSnapshot(entry.snapshot),
+              history: Array.isArray(entry.history)
+                ? entry.history
+                    .map(deserializeGeometryObjectHistoryStep)
+                    .filter((historyStep): historyStep is GeometryObjectHistoryStep => !!historyStep)
+                    .slice(0, 24)
+                : [],
             }))
             .slice(0, 40)
         );
@@ -13233,6 +13404,7 @@ const App: React.FC = () => {
         (entry): StoredGeometryObjectPreset => ({
           ...entry,
           snapshot: serializeVariantSnapshot(entry.snapshot),
+          history: (entry.history ?? []).slice(0, 24).map(serializeGeometryObjectHistoryStep),
         })
       );
       window.localStorage.setItem(GEOMETRY_OBJECT_PRESETS_KEY, JSON.stringify(stored));
@@ -13244,11 +13416,12 @@ const App: React.FC = () => {
     if (!geometrySelectedSceneObject) return;
     const name = `${geometrySelectedSceneObject.name} preset`;
     const snapshot = cloneGeometrySceneObjectSnapshot(geometrySelectedSceneObject);
+    const history = (geometryObjectHistoryById[geometrySelectedSceneObject.id] ?? []).slice(0, 24);
     setGeometryObjectPresets((prev) =>
-      [{ id: makeId(), name, createdAt: Date.now(), snapshot }, ...prev].slice(0, 40)
+      [{ id: makeId(), name, createdAt: Date.now(), snapshot, history }, ...prev].slice(0, 40)
     );
     setGeometryCreateActionStatus(`Saved preset: ${name}.`);
-  }, [geometrySelectedSceneObject]);
+  }, [geometryObjectHistoryById, geometrySelectedSceneObject]);
   const handleApplyGeometryObjectPreset = useCallback(
     (presetId: string) => {
       const preset = geometryObjectPresets.find((entry) => entry.id === presetId);
@@ -13281,29 +13454,54 @@ const App: React.FC = () => {
         copy.name = `${preset.name}`;
         copy.restoredGeometryPreset = restoredPresetMetadata;
         restoredObject = copy;
-        queueGeometryHistoryIntent(id, {
-          action: "preset-apply",
-          label: "Apply object preset",
-          operationType: "Preset",
-          target: preset.name,
-          parameters: "snapshot preset applied",
-          destructive: false,
-        });
+        suppressGeometryHistoryCapture();
         setGeometryDatasetMeshObjects((prev) => [copy, ...prev]);
       } else {
         const copy = cloneGeometryObject(snapshot);
         copy.id = id;
         copy.name = `${preset.name}`;
         restoredObject = copy;
-        queueGeometryHistoryIntent(id, {
+        suppressGeometryHistoryCapture();
+        setGeometryObjects((prev) => [copy, ...prev]);
+      }
+      if (restoredObject) {
+        const remappedHistory = remapGeometryObjectHistoryForObject(preset.history, id, restoredObject.name);
+        const topology = countGeometrySnapshotTopology(restoredObject);
+        const presetStep: GeometryObjectHistoryStep = {
+          id: makeId(),
+          at: Date.now(),
           action: "preset-apply",
           label: "Apply object preset",
           operationType: "Preset",
-          target: preset.name,
-          parameters: "snapshot preset applied",
+          operationTarget: preset.name,
+          operationParameters: remappedHistory.some((step) => step.topologyDefinition)
+            ? "snapshot preset applied; replayable history restored"
+            : "snapshot preset applied",
           destructive: false,
-        });
-        setGeometryObjects((prev) => [copy, ...prev]);
+          warning: null,
+          objectId: id,
+          objectName: restoredObject.name,
+          sourceObjectId: null,
+          sourceObjectName: null,
+          beforeVertexCount: null,
+          afterVertexCount: topology?.vertexCount ?? null,
+          beforeFaceCount: null,
+          afterFaceCount: topology?.faceCount ?? null,
+          beforeSummary: null,
+          afterSummary: summarizeGeometryHistorySnapshot(restoredObject),
+          changeSummary: "Restored object preset",
+          topologySummary: remappedHistory.some((step) => step.topologyDefinition)
+            ? "Replayable topology history restored"
+            : null,
+          retainedSelection: null,
+          topologyDefinition: null,
+          topologyDefinitionSourceSnapshot: null,
+          snapshot: cloneGeometrySceneObjectSnapshot(restoredObject),
+        };
+        setGeometryObjectHistoryById((prev) => ({
+          ...prev,
+          [id]: [presetStep, ...remappedHistory].slice(0, 24),
+        }));
       }
       setGeometrySelectedObjectId(id);
       setGeometryRightPanelTab("selection");
@@ -13317,7 +13515,7 @@ const App: React.FC = () => {
         setGeometryRestoredObjectPresetFeedback(null);
       }
     },
-    [allocateUniqueGeometryObjectId, geometryObjectPresets, queueGeometryHistoryIntent]
+    [allocateUniqueGeometryObjectId, geometryObjectPresets, suppressGeometryHistoryCapture]
   );
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -18427,6 +18625,66 @@ const App: React.FC = () => {
       handleReplayGeometryTopologyDefinition(historyStep, historyStep.topologyDefinition ?? undefined, "edited-definition"),
     [handleReplayGeometryTopologyDefinition]
   );
+  const handleReplayGeometryTopologyDefinitionChain = useCallback(() => {
+    if (!geometrySelectedObjectId) {
+      setGeometryCreateActionStatus("Replay chain blocked: select an object first.");
+      return false;
+    }
+    const chain = geometrySelectedReplayableDefinitionHistory;
+    if (chain.length < 2) {
+      setGeometryCreateActionStatus("Replay chain needs at least two replayable definition nodes.");
+      return false;
+    }
+    const firstSource = chain[0].topologyDefinitionSourceSnapshot;
+    if (!firstSource) {
+      setGeometryCreateActionStatus("Replay chain blocked: first source mesh snapshot is missing.");
+      return false;
+    }
+    try {
+      let replayed = cloneSurfaceMeshData(firstSource, firstSource.label ?? "Geometry source");
+      for (const step of chain) {
+        const definition = step.topologyDefinition;
+        if (!definition) {
+          setGeometryCreateActionStatus(`Replay chain blocked: ${step.label} has no saved definition.`);
+          return false;
+        }
+        const resolved = resolveGeometryTopologyEditDefinitionTarget(replayed, definition);
+        if (!resolved.ok) {
+          setGeometryCreateActionStatus(`Replay chain blocked at ${step.label}: ${resolved.reason}`);
+          return false;
+        }
+        replayed = applyGeometryTopologyEditDefinition(replayed, definition);
+      }
+      const applied = applyMeshEditToObject(
+        geometrySelectedObjectId,
+        "Replayed definition chain",
+        () => replayed,
+        {
+          action: "definition-chain-replay",
+          label: "Replay definition chain",
+          operationType: "Definition replay",
+          target: `${chain.length} topology nodes`,
+          parameters: `${chain.length} replayable definitions`,
+          destructive: true,
+          topologySummaryOverride: `Replayed ${chain.length} topology definitions in order.`,
+        },
+        firstSource
+      );
+      if (applied) {
+        setGeometryProceduralPanelTab("history");
+        setGeometryCreateActionStatus(`Replayed ${chain.length} Geometry topology definitions in order.`);
+      }
+      return applied;
+    } catch (err: any) {
+      setGeometryCreateActionStatus(err?.message ?? "Replay chain failed.");
+      return false;
+    }
+  }, [
+    applyMeshEditToObject,
+    geometrySelectedObjectId,
+    geometrySelectedReplayableDefinitionHistory,
+    setGeometryCreateActionStatus,
+  ]);
   const handleRetargetGeometryTopologyDefinition = useCallback(
     (historyStep: GeometryObjectHistoryStep) => {
       const definition = historyStep.topologyDefinition ?? null;
@@ -18439,42 +18697,45 @@ const App: React.FC = () => {
         setGeometryCreateActionStatus("Retarget blocked: source mesh snapshot is missing.");
         return false;
       }
-      let nextTarget: GeometryTopologyEditTarget | null = null;
-      let nextPickObjectId: string | null = null;
-      if (
+      const activeRetargetPick =
         definition.operation === "Face Subdivide" ||
         definition.operation === "Extrude Face" ||
         definition.operation === "Inset Face"
-      ) {
-        if (geometryFaceOperationPick?.faceIndex == null) {
-          setGeometryCreateActionStatus("Retarget blocked: choose a face slot first.");
-          return false;
-        }
-        nextTarget = createGeometryTopologyFaceTarget(geometryFaceOperationPick.faceIndex);
-        nextPickObjectId = geometryFaceOperationPick.meshKey ?? geometryFaceOperationPick.objectId ?? null;
-      } else if (definition.operation === "Move Vertex") {
-        if (geometryVertexOperationPick?.vertexIndex == null) {
-          setGeometryCreateActionStatus("Retarget blocked: choose a vertex slot first.");
-          return false;
-        }
-        nextTarget = createGeometryTopologyVertexTarget(geometryVertexOperationPick.vertexIndex);
-        nextPickObjectId = geometryVertexOperationPick.meshKey ?? geometryVertexOperationPick.objectId ?? null;
-      } else {
-        if (!geometryEdgeOperationPick?.edgeVertices) {
-          setGeometryCreateActionStatus("Retarget blocked: choose an edge slot first.");
-          return false;
-        }
-        nextTarget = createGeometryTopologyEdgeTarget(
-          geometryEdgeOperationPick.edgeVertices[0],
-          geometryEdgeOperationPick.edgeVertices[1]
-        );
-        nextPickObjectId = geometryEdgeOperationPick.meshKey ?? geometryEdgeOperationPick.objectId ?? null;
+          ? geometryFaceOperationPick?.faceIndex == null
+            ? null
+            : {
+                kind: "face" as const,
+                faceIndex: geometryFaceOperationPick.faceIndex,
+                meshKey: geometryFaceOperationPick.meshKey,
+                objectId: geometryFaceOperationPick.objectId,
+              }
+          : definition.operation === "Move Vertex"
+            ? geometryVertexOperationPick?.vertexIndex == null
+              ? null
+              : {
+                  kind: "vertex" as const,
+                  vertexIndex: geometryVertexOperationPick.vertexIndex,
+                  meshKey: geometryVertexOperationPick.meshKey,
+                  objectId: geometryVertexOperationPick.objectId,
+                }
+            : geometryEdgeOperationPick?.edgeVertices
+              ? {
+                  kind: "edge" as const,
+                  edgeVertices: geometryEdgeOperationPick.edgeVertices,
+                  meshKey: geometryEdgeOperationPick.meshKey,
+                  objectId: geometryEdgeOperationPick.objectId,
+                }
+              : null;
+      const retargetTarget = createGeometryTopologyRetargetTarget(definition, activeRetargetPick);
+      if (!retargetTarget.ok) {
+        setGeometryCreateActionStatus(`Retarget blocked: ${retargetTarget.reason}`);
+        return false;
       }
-      if (nextPickObjectId && nextPickObjectId !== historyStep.objectId) {
+      if (retargetTarget.objectId && retargetTarget.objectId !== historyStep.objectId) {
         setGeometryCreateActionStatus("Retarget blocked: choose the new target on the same object.");
         return false;
       }
-      const nextDefinition = retargetGeometryTopologyEditDefinition(definition, nextTarget);
+      const nextDefinition = retargetGeometryTopologyEditDefinition(definition, retargetTarget.target);
       const resolved = resolveGeometryTopologyEditDefinitionTarget(sourceMesh, nextDefinition);
       if (!resolved.ok) {
         setGeometryCreateActionStatus(`Retarget blocked: ${resolved.reason}`);
@@ -45259,6 +45520,7 @@ case "mobius":
           group: obj.group,
         })),
         datasetMeshObjects: geometryDatasetMeshObjects.map((obj) => serializeGeometryDatasetMeshObject(obj)),
+        historyById: serializeGeometryObjectHistoryById(geometryObjectHistoryById),
         variantSets: serializeGeometryVariantSets(geometryVariantSets),
         showGhostedVariants: geometryShowAllVariantsGhosted,
         selectedVariantId: geometrySelectedVariantId,
@@ -45415,6 +45677,7 @@ case "mobius":
       geometryMode,
       geometryObjects,
       geometryDatasetMeshObjects,
+      geometryObjectHistoryById,
       geometryVariantSets,
       geometryShowAllVariantsGhosted,
       geometrySelectedVariantId,
@@ -45593,6 +45856,12 @@ case "mobius":
       const normalizedDatasetMeshObjects = datasetMeshObjectsRaw
         .filter((entry) => entry && typeof entry.id === "string" && entry.mesh && typeof entry.mesh === "object")
         .map((entry) => deserializeGeometryDatasetMeshObject(entry));
+      const restoredHistoryById = deserializeGeometryObjectHistoryById((geometry as any).historyById);
+      const restoredObjectIds = new Set([
+        ...normalized.map((entry) => entry.id),
+        ...normalizedDatasetMeshObjects.map((entry) => entry.id),
+      ]);
+      const filteredHistoryById = filterGeometryRecordByObjectIds(restoredHistoryById, restoredObjectIds);
       setGeometryObjects(normalized);
       if (normalized.length) {
         setGeometrySelectedObjectId(geometry.selectedObjectId ?? normalized[0].id);
@@ -45608,6 +45877,7 @@ case "mobius":
         setGeometrySelectedObjectId(null);
       }
       setGeometryDatasetMeshObjects(normalizedDatasetMeshObjects);
+      setGeometryObjectHistoryById(filteredHistoryById);
       const promotedFrozenIds = normalizedDatasetMeshObjects
         .filter((entry) => entry.promotion?.promotionMode === "frozen_baked_object")
         .map((entry) => entry.id);
@@ -49162,11 +49432,13 @@ case "mobius":
       const objectName = geometrySelectedSceneObject.name.trim() || feedback.presetLabel;
       const name = `${objectName} Geometry preset`;
       const snapshot = cloneGeometrySceneObjectSnapshot(geometrySelectedSceneObject);
+      const history = (geometryObjectHistoryById[geometrySelectedSceneObject.id] ?? []).slice(0, 24);
       const preset: GeometryObjectPreset = {
         id: makeId(),
         name,
         createdAt: Date.now(),
         snapshot,
+        history,
         source: {
           kind: "round-trip-demo",
           label: feedback.presetLabel,
@@ -49187,7 +49459,7 @@ case "mobius":
       const msg = err instanceof Error ? err.message : "Save as Geometry preset failed.";
       setGeometryCreateActionStatus(msg);
     }
-  }, [geometryRoundTripDemoFeedback, geometrySelectedSceneObject]);
+  }, [geometryObjectHistoryById, geometryRoundTripDemoFeedback, geometrySelectedSceneObject]);
 
   const meshGeometryRoundTripTarget = useMemo(
     () =>
@@ -81610,6 +81882,15 @@ case "mobius":
                                   >
                                     Open
                                   </button>
+                                  <button
+                                    type="button"
+                                    data-testid="geometry-actions-history-replay-definition-chain"
+                                    onClick={handleReplayGeometryTopologyDefinitionChain}
+                                    disabled={!geometryCanReplayDefinitionChain || (geometrySelectedObjectId ? geometryLockedObjectIds.has(geometrySelectedObjectId) : true)}
+                                    style={{ ...geometryOperationButtonStyle, width: "auto", padding: "3px 8px", fontSize: 10.5 }}
+                                  >
+                                    Replay chain
+                                  </button>
                                 </span>
                               </div>
                               {geometryHistoryPreviewStep && (
@@ -81643,6 +81924,12 @@ case "mobius":
                                             ? operationNode.parameterEdits.filter((parameter) => parameter.key in historyStepParams)
                                             : [];
                                         const topologyDefinitionOperation = historyStep.topologyDefinition?.operation ?? null;
+                                        const topologyDefinitionDescription = historyStep.topologyDefinition
+                                          ? describeGeometryTopologyEditDefinition(
+                                              historyStep.topologyDefinition,
+                                              Boolean(historyStep.topologyDefinitionSourceSnapshot)
+                                            )
+                                          : null;
                                         return (
                                           <CommandHistoryCard
                                             key={`geometry-actions-history-${entry.id}`}
@@ -81676,6 +81963,24 @@ case "mobius":
                                                       {isTopologyDefinitionNode ? "definition params" : "editable params"}
                                                     </span>
                                                   </div>
+                                                  {topologyDefinitionDescription ? (
+                                                    <div
+                                                      data-testid="geometry-operation-node-definition-label"
+                                                      style={{
+                                                        border: "1px solid #bae6fd",
+                                                        borderRadius: 6,
+                                                        background: "#f0f9ff",
+                                                        color: "#075985",
+                                                        padding: "4px 6px",
+                                                        display: "grid",
+                                                        gap: 2,
+                                                      }}
+                                                    >
+                                                      <strong>{topologyDefinitionDescription.badge}</strong>
+                                                      <span>{topologyDefinitionDescription.sourceRevisionLabel}</span>
+                                                      <span>{topologyDefinitionDescription.replayStatusLabel}</span>
+                                                    </div>
+                                                  ) : null}
                                                   {renderUnifiedOperationNodeSnapshotSummary(operationNode)}
                                                   {editableParameterEdits.map((parameter) => {
                                                     const draftValue = resolveUnifiedCommandParameterDraftValue(

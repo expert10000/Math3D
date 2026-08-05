@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 import {
   applyGeometryTopologyEditDefinition,
+  createGeometryTopologyRetargetTarget,
   createGeometryTopologyEditDefinition,
   createGeometryTopologyEdgeTarget,
   createGeometryTopologyFaceTarget,
   createGeometryTopologySourceVersion,
   createGeometryTopologyVertexTarget,
+  describeGeometryTopologyEditDefinition,
   resolveGeometryTopologyEditDefinitionTarget,
   retargetGeometryTopologyEditDefinition,
   updateGeometryTopologyEditDefinitionParameters,
@@ -80,6 +82,30 @@ describe("geometry topology edit definitions", () => {
     expect(definition.paramsLabel).toBe("distance=0.2");
   });
 
+  it("describes replayable definitions with source revision labels", () => {
+    const definition = createGeometryTopologyEditDefinition({
+      operation: "Inset Face",
+      sourceObjectVersion: createGeometryTopologySourceVersion({
+        objectId: "box-1",
+        label: "Box",
+        revision: 7,
+        vertexCount: 4,
+        faceCount: 2,
+      }),
+      target: createGeometryTopologyFaceTarget(1),
+      parameters: { ratio: 0.25 },
+    });
+
+    expect(describeGeometryTopologyEditDefinition(definition)).toEqual({
+      badge: "Replayable definition",
+      sourceRevisionLabel: "Source revision 7 (4V / 2F)",
+      replayStatusLabel: "Replayable from geometry:box-1:r7:v4:f2",
+    });
+    expect(describeGeometryTopologyEditDefinition(definition, false).replayStatusLabel).toBe(
+      "Source snapshot missing for geometry:box-1:r7:v4:f2"
+    );
+  });
+
   it("updates edited params directly on the definition", () => {
     const definition = createGeometryTopologyEditDefinition({
       operation: "Bevel Edge",
@@ -118,6 +144,44 @@ describe("geometry topology edit definitions", () => {
 
     expect(retargeted.selectionKey).toBe("geometry:box-1:r2:v4:f2|Move Vertex|vertex:2");
     expect(retargeted.paramsLabel).toBe("amount=0.25, dirX=1, dirY=0, dirZ=0");
+  });
+
+  it("chooses the correct active slot target for retargeting", () => {
+    const sourceObjectVersion = createGeometryTopologySourceVersion({
+      objectId: "box-1",
+      label: "Box",
+      revision: 2,
+      vertexCount: 4,
+      faceCount: 2,
+    });
+    const edgeDefinition = createGeometryTopologyEditDefinition({
+      operation: "Bevel Edge",
+      sourceObjectVersion,
+      target: createGeometryTopologyEdgeTarget(1, 2),
+      parameters: { amount: 0.08 },
+    });
+    const faceDefinition = createGeometryTopologyEditDefinition({
+      operation: "Extrude Face",
+      sourceObjectVersion,
+      target: createGeometryTopologyFaceTarget(0),
+      parameters: { distance: 0.1 },
+    });
+
+    expect(
+      createGeometryTopologyRetargetTarget(edgeDefinition, {
+        kind: "edge",
+        edgeVertices: [3, 1],
+        objectId: "box-1",
+      })
+    ).toEqual({
+      ok: true,
+      target: createGeometryTopologyEdgeTarget(1, 3),
+      objectId: "box-1",
+    });
+    expect(createGeometryTopologyRetargetTarget(faceDefinition, { kind: "edge", edgeVertices: [0, 1] })).toEqual({
+      ok: false,
+      reason: "choose a face slot first.",
+    });
   });
 
   it("reports missing targets before replay", () => {

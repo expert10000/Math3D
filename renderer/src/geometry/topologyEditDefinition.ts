@@ -57,6 +57,20 @@ export type GeometryTopologyDefinitionResolveResult =
   | { readonly ok: true; readonly target: GeometryTopologyEditTarget }
   | { readonly ok: false; readonly reason: string };
 
+export type GeometryTopologyRetargetPick =
+  | { readonly kind: "face"; readonly faceIndex: number; readonly objectId?: string | null; readonly meshKey?: string | null }
+  | {
+      readonly kind: "edge";
+      readonly edgeVertices: readonly [number, number];
+      readonly objectId?: string | null;
+      readonly meshKey?: string | null;
+    }
+  | { readonly kind: "vertex"; readonly vertexIndex: number; readonly objectId?: string | null; readonly meshKey?: string | null };
+
+export type GeometryTopologyRetargetTargetResult =
+  | { readonly ok: true; readonly target: GeometryTopologyEditTarget; readonly objectId: string | null }
+  | { readonly ok: false; readonly reason: string };
+
 const normalizeDefinitionPart = (value: string): string =>
   value.trim().replace(/\s+/g, " ").replace(/[|;]/g, "-");
 
@@ -199,6 +213,46 @@ export function retargetGeometryTopologyEditDefinition(
     target,
     parameters: definition.parameters,
   });
+}
+
+export function describeGeometryTopologyEditDefinition(
+  definition: GeometryTopologyEditDefinition,
+  hasSourceSnapshot = true
+): { readonly badge: string; readonly sourceRevisionLabel: string; readonly replayStatusLabel: string } {
+  return {
+    badge: "Replayable definition",
+    sourceRevisionLabel: `Source revision ${definition.sourceObjectVersion.revision} (${definition.sourceObjectVersion.vertexCount}V / ${definition.sourceObjectVersion.faceCount}F)`,
+    replayStatusLabel: hasSourceSnapshot
+      ? `Replayable from ${definition.sourceObjectVersion.key}`
+      : `Source snapshot missing for ${definition.sourceObjectVersion.key}`,
+  };
+}
+
+export function createGeometryTopologyRetargetTarget(
+  definition: GeometryTopologyEditDefinition,
+  pick: GeometryTopologyRetargetPick | null | undefined
+): GeometryTopologyRetargetTargetResult {
+  const objectId = pick?.meshKey ?? pick?.objectId ?? null;
+  if (
+    definition.operation === "Face Subdivide" ||
+    definition.operation === "Extrude Face" ||
+    definition.operation === "Inset Face"
+  ) {
+    if (!pick || pick.kind !== "face") return { ok: false, reason: "choose a face slot first." };
+    return { ok: true, target: createGeometryTopologyFaceTarget(pick.faceIndex), objectId };
+  }
+
+  if (definition.operation === "Move Vertex") {
+    if (!pick || pick.kind !== "vertex") return { ok: false, reason: "choose a vertex slot first." };
+    return { ok: true, target: createGeometryTopologyVertexTarget(pick.vertexIndex), objectId };
+  }
+
+  if (!pick || pick.kind !== "edge") return { ok: false, reason: "choose an edge slot first." };
+  return {
+    ok: true,
+    target: createGeometryTopologyEdgeTarget(pick.edgeVertices[0], pick.edgeVertices[1]),
+    objectId,
+  };
 }
 
 export function resolveGeometryTopologyEditDefinitionTarget(
