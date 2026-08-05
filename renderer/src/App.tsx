@@ -483,6 +483,10 @@ import {
   type GeometryTopologyEditTarget,
 } from "./geometry/topologyEditDefinition";
 import {
+  buildGeometryTopologyOperationTree,
+  replayGeometryTopologyOperationTreeFromNode,
+} from "./geometry/topologyOperationTree";
+import {
   computeMeshTopologyInspector,
   type MeshTopologyInspectorDetails,
   type MeshTopologyListRow,
@@ -4339,6 +4343,7 @@ type GeometryObjectHistoryStep = {
   retainedSelection?: GeometryTopologyRetainedSelectionTarget | null;
   topologyDefinition?: GeometryTopologyEditDefinition | null;
   topologyDefinitionSourceSnapshot?: SurfaceMeshData | null;
+  topologyDefinitionEnabled?: boolean;
   snapshot: GeometryObject | GeometryDatasetMeshObject;
 };
 type StoredGeometryObjectHistoryStep = Omit<
@@ -6346,6 +6351,8 @@ const deserializeGeometryObjectHistoryStep = (
     retainedSelection: entry.retainedSelection ?? null,
     topologyDefinition: isStoredGeometryTopologyEditDefinition(entry.topologyDefinition) ? entry.topologyDefinition : null,
     topologyDefinitionSourceSnapshot: sourceSnapshot,
+    topologyDefinitionEnabled:
+      isStoredGeometryTopologyEditDefinition(entry.topologyDefinition) ? entry.topologyDefinitionEnabled !== false : undefined,
     snapshot,
   };
 };
@@ -6412,6 +6419,7 @@ const remapGeometryObjectHistoryForObject = (
       operationParameters: topologyDefinition?.paramsLabel ?? step.operationParameters,
       topologyDefinition,
       topologyDefinitionSourceSnapshot: sourceSnapshot,
+      topologyDefinitionEnabled: topologyDefinition ? step.topologyDefinitionEnabled !== false : undefined,
       snapshot,
     };
   });
@@ -13061,14 +13069,22 @@ const App: React.FC = () => {
         : -1,
     [geometrySelectedHistoryStepId, geometrySelectedObjectHistory]
   );
-  const geometrySelectedReplayableDefinitionHistory = useMemo(
+  const geometrySelectedTopologyOperationTree = useMemo(
     () =>
-      geometrySelectedObjectHistory
-        .filter((entry) => entry.topologyDefinition && entry.topologyDefinitionSourceSnapshot)
-        .sort((a, b) => a.at - b.at),
-    [geometrySelectedObjectHistory]
+      buildGeometryTopologyOperationTree(
+        geometrySelectedObjectHistory.map((entry) => ({
+          id: entry.id,
+          label: entry.label,
+          at: entry.at,
+          definition: entry.topologyDefinition,
+          sourceMesh: entry.topologyDefinitionSourceSnapshot,
+          enabled: entry.topologyDefinitionEnabled ?? true,
+        })),
+        geometrySelectedSceneObject?.name ?? "Result"
+      ),
+    [geometrySelectedObjectHistory, geometrySelectedSceneObject?.name]
   );
-  const geometryCanReplayDefinitionChain = geometrySelectedReplayableDefinitionHistory.length > 1;
+  const geometryCanReplayDefinitionChain = geometrySelectedTopologyOperationTree.nodes.length > 1;
   const geometrySelectedHistoryPreviousStep = useMemo(
     () =>
       geometrySelectedHistoryStepIndex >= 0
@@ -17954,6 +17970,7 @@ const App: React.FC = () => {
           topologyDefinitionSourceSnapshot: topologyDefinition
             ? cloneSurfaceMeshData(sourceMesh, sourceMesh.label ?? target.mesh.label)
             : null,
+          topologyDefinitionEnabled: topologyDefinition ? true : undefined,
           snapshot: afterSnapshot,
         };
         const geometryActionPulseId = `geometry:${resolvedIntent.action}`;
@@ -18625,64 +18642,67 @@ const App: React.FC = () => {
       handleReplayGeometryTopologyDefinition(historyStep, historyStep.topologyDefinition ?? undefined, "edited-definition"),
     [handleReplayGeometryTopologyDefinition]
   );
-  const handleReplayGeometryTopologyDefinitionChain = useCallback(() => {
+  const handleReplayGeometryTopologyOperationTreeFromNode = useCallback((nodeId: string) => {
     if (!geometrySelectedObjectId) {
-      setGeometryCreateActionStatus("Replay chain blocked: select an object first.");
+      setGeometryCreateActionStatus("Replay from tree blocked: select an object first.");
       return false;
     }
-    const chain = geometrySelectedReplayableDefinitionHistory;
-    if (chain.length < 2) {
-      setGeometryCreateActionStatus("Replay chain needs at least two replayable definition nodes.");
+    const node = geometrySelectedTopologyOperationTree.nodes.find((candidate) => candidate.id === nodeId) ?? null;
+    if (!node) {
+      setGeometryCreateActionStatus("Replay from tree blocked: operation node not found.");
       return false;
     }
-    const firstSource = chain[0].topologyDefinitionSourceSnapshot;
-    if (!firstSource) {
-      setGeometryCreateActionStatus("Replay chain blocked: first source mesh snapshot is missing.");
+    const replayed = replayGeometryTopologyOperationTreeFromNode(geometrySelectedTopologyOperationTree, nodeId);
+    if (!replayed.ok) {
+      setGeometryCreateActionStatus(replayed.reason);
       return false;
     }
     try {
-      let replayed = cloneSurfaceMeshData(firstSource, firstSource.label ?? "Geometry source");
-      for (const step of chain) {
-        const definition = step.topologyDefinition;
-        if (!definition) {
-          setGeometryCreateActionStatus(`Replay chain blocked: ${step.label} has no saved definition.`);
-          return false;
-        }
-        const resolved = resolveGeometryTopologyEditDefinitionTarget(replayed, definition);
-        if (!resolved.ok) {
-          setGeometryCreateActionStatus(`Replay chain blocked at ${step.label}: ${resolved.reason}`);
-          return false;
-        }
-        replayed = applyGeometryTopologyEditDefinition(replayed, definition);
-      }
       const applied = applyMeshEditToObject(
         geometrySelectedObjectId,
-        "Replayed definition chain",
-        () => replayed,
+        "Replayed operation tree",
+        () => replayed.mesh,
         {
-          action: "definition-chain-replay",
-          label: "Replay definition chain",
+          action: "definition-tree-replay",
+          label: "Replay operation tree",
           operationType: "Definition replay",
-          target: `${chain.length} topology nodes`,
-          parameters: `${chain.length} replayable definitions`,
+          target: `from ${node.operationLabel}`,
+          parameters: `${replayed.appliedNodeIds.length} enabled definitions`,
           destructive: true,
-          topologySummaryOverride: `Replayed ${chain.length} topology definitions in order.`,
+          topologySummaryOverride: `Replayed ${replayed.appliedNodeIds.length} enabled topology definitions from ${node.operationLabel}.`,
         },
-        firstSource
+        node.sourceMesh
       );
       if (applied) {
         setGeometryProceduralPanelTab("history");
-        setGeometryCreateActionStatus(`Replayed ${chain.length} Geometry topology definitions in order.`);
+        setGeometrySelectedHistoryStepId(nodeId);
+        setGeometryCreateActionStatus(
+          `Replayed from ${node.operationLabel}: ${replayed.appliedNodeIds.length} enabled definition${
+            replayed.appliedNodeIds.length === 1 ? "" : "s"
+          }.`
+        );
       }
       return applied;
     } catch (err: any) {
-      setGeometryCreateActionStatus(err?.message ?? "Replay chain failed.");
+      setGeometryCreateActionStatus(err?.message ?? "Replay from tree failed.");
       return false;
     }
   }, [
     applyMeshEditToObject,
     geometrySelectedObjectId,
-    geometrySelectedReplayableDefinitionHistory,
+    geometrySelectedTopologyOperationTree,
+    setGeometryCreateActionStatus,
+  ]);
+  const handleReplayGeometryTopologyDefinitionChain = useCallback(() => {
+    const firstNodeId = geometrySelectedTopologyOperationTree.nodes[0]?.id ?? null;
+    if (!firstNodeId || geometrySelectedTopologyOperationTree.nodes.length < 2) {
+      setGeometryCreateActionStatus("Replay chain needs at least two replayable definition nodes.");
+      return false;
+    }
+    return handleReplayGeometryTopologyOperationTreeFromNode(firstNodeId);
+  }, [
+    geometrySelectedTopologyOperationTree.nodes,
+    handleReplayGeometryTopologyOperationTreeFromNode,
     setGeometryCreateActionStatus,
   ]);
   const handleRetargetGeometryTopologyDefinition = useCallback(
@@ -75887,6 +75907,113 @@ case "mobius":
                                 gap: 8,
                               }}
                             >
+                              <div
+                                data-testid="geometry-operation-tree-chain"
+                                style={{
+                                  border: "1px solid #bae6fd",
+                                  borderRadius: 8,
+                                  background: "#f0f9ff",
+                                  padding: "8px 10px",
+                                  display: "grid",
+                                  gap: 7,
+                                  fontSize: 10.5,
+                                  color: "#0f172a",
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                  <strong>Operation tree</strong>
+                                  <span style={{ color: "#075985", fontWeight: 700 }}>
+                                    {geometrySelectedTopologyOperationTree.nodes.length
+                                      ? `${geometrySelectedTopologyOperationTree.nodes.length} definition node${
+                                          geometrySelectedTopologyOperationTree.nodes.length === 1 ? "" : "s"
+                                        }`
+                                      : "No replayable definitions"}
+                                  </span>
+                                </div>
+                                {geometrySelectedTopologyOperationTree.nodes.length ? (
+                                  <div style={{ display: "grid", gap: 5 }}>
+                                    <div
+                                      style={{
+                                        border: "1px solid #e0f2fe",
+                                        borderRadius: 7,
+                                        background: "#ffffff",
+                                        padding: "5px 7px",
+                                        fontWeight: 800,
+                                      }}
+                                    >
+                                      Source mesh: {geometrySelectedTopologyOperationTree.sourceLabel}
+                                    </div>
+                                    {geometrySelectedTopologyOperationTree.nodes.map((node, index) => (
+                                      <div
+                                        key={`geometry-operation-tree-node-${node.id}`}
+                                        data-testid="geometry-operation-tree-node"
+                                        style={{
+                                          border: "1px solid " + (geometrySelectedHistoryStepId === node.id ? "#0ea5e9" : "#cbd5e1"),
+                                          borderRadius: 7,
+                                          background: geometrySelectedHistoryStepId === node.id ? "#e0f2fe" : "#ffffff",
+                                          padding: "6px 7px",
+                                          display: "grid",
+                                          gap: 4,
+                                        }}
+                                      >
+                                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                          <strong>
+                                            {index + 1}. {node.operationLabel}
+                                          </strong>
+                                          <span
+                                            style={{
+                                              border: "1px solid " + (node.enabled ? "#86efac" : "#cbd5e1"),
+                                              borderRadius: 999,
+                                              background: node.enabled ? "#dcfce7" : "#f8fafc",
+                                              color: node.enabled ? "#166534" : "#475569",
+                                              padding: "1px 7px",
+                                              fontWeight: 800,
+                                            }}
+                                          >
+                                            {node.enabled ? "Enabled" : "Disabled"}
+                                          </span>
+                                        </div>
+                                        <div style={{ display: "grid", gap: 2, color: "#334155" }}>
+                                          <span>Target: {node.targetLabel}</span>
+                                          <span>Params: {node.paramsLabel}</span>
+                                          <span>{node.sourceRevisionLabel}</span>
+                                        </div>
+                                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                                          <button
+                                            type="button"
+                                            data-testid="geometry-operation-tree-replay-from-node"
+                                            onClick={() => handleReplayGeometryTopologyOperationTreeFromNode(node.id)}
+                                            disabled={geometrySelectedObjectId ? geometryLockedObjectIds.has(geometrySelectedObjectId) : true}
+                                            style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                          >
+                                            Replay from here
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setGeometrySelectedHistoryStepId(node.id)}
+                                            style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                          >
+                                            Select node
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                    <div
+                                      style={{
+                                        border: "1px solid #e0f2fe",
+                                        borderRadius: 7,
+                                        background: "#ffffff",
+                                        padding: "5px 7px",
+                                        fontWeight: 800,
+                                      }}
+                                    >
+                                      Result: {geometrySelectedTopologyOperationTree.resultLabel}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div style={{ color: "#475569" }}>Make a replayable face, edge, or vertex edit to build this tree.</div>
+                                )}
+                              </div>
                               <div style={{ fontSize: 12, fontWeight: 700 }}>Selected step</div>
                               {geometrySelectedHistoryStep ? (
                                 <>
@@ -81909,6 +82036,82 @@ case "mobius":
                                   {geometryHistoryPreviewStep.topologySummary ? ` - ${geometryHistoryPreviewStep.topologySummary}` : ""}
                                 </div>
                               )}
+                              {geometrySelectedTopologyOperationTree.nodes.length ? (
+                                <div
+                                  data-testid="geometry-actions-operation-tree-chain"
+                                  style={{
+                                    border: "1px solid #bae6fd",
+                                    borderRadius: 8,
+                                    background: "#f0f9ff",
+                                    padding: "6px 7px",
+                                    display: "grid",
+                                    gap: 5,
+                                    fontSize: 10,
+                                    color: "#0f172a",
+                                  }}
+                                >
+                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                    <strong>Operation tree</strong>
+                                    <span style={{ color: "#075985", fontWeight: 800 }}>
+                                      {geometrySelectedTopologyOperationTree.nodes.length} node
+                                      {geometrySelectedTopologyOperationTree.nodes.length === 1 ? "" : "s"}
+                                    </span>
+                                  </div>
+                                  <div style={{ color: "#334155", fontWeight: 800 }}>
+                                    Source mesh: {geometrySelectedTopologyOperationTree.sourceLabel}
+                                  </div>
+                                  <div style={{ display: "grid", gap: 4 }}>
+                                    {geometrySelectedTopologyOperationTree.nodes.map((node, index) => (
+                                      <div
+                                        key={`geometry-actions-operation-tree-node-${node.id}`}
+                                        data-testid="geometry-actions-operation-tree-node"
+                                        style={{
+                                          border: "1px solid " + (geometrySelectedHistoryStepId === node.id ? "#0ea5e9" : "#dbeafe"),
+                                          borderRadius: 7,
+                                          background: geometrySelectedHistoryStepId === node.id ? "#e0f2fe" : "#ffffff",
+                                          padding: "5px 6px",
+                                          display: "grid",
+                                          gap: 3,
+                                        }}
+                                      >
+                                        <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center" }}>
+                                          <strong>
+                                            {index + 1}. {node.operationLabel}
+                                          </strong>
+                                          <span style={{ color: node.enabled ? "#166534" : "#64748b", fontWeight: 800 }}>
+                                            {node.enabled ? "Enabled" : "Disabled"}
+                                          </span>
+                                        </div>
+                                        <div style={{ color: "#475569" }}>
+                                          {node.targetLabel} · {node.paramsLabel}
+                                        </div>
+                                        <div style={{ color: "#64748b" }}>{node.sourceRevisionLabel}</div>
+                                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                          <button
+                                            type="button"
+                                            data-testid="geometry-actions-operation-tree-replay-from-node"
+                                            onClick={() => handleReplayGeometryTopologyOperationTreeFromNode(node.id)}
+                                            disabled={geometrySelectedObjectId ? geometryLockedObjectIds.has(geometrySelectedObjectId) : true}
+                                            style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                          >
+                                            Replay from here
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setGeometrySelectedHistoryStepId(node.id)}
+                                            style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                          >
+                                            Select
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div style={{ color: "#334155", fontWeight: 800 }}>
+                                    Result: {geometrySelectedTopologyOperationTree.resultLabel}
+                                  </div>
+                                </div>
+                              ) : null}
                               {geometryRecentActionHistory.length ? (
                                   <div style={{ display: "grid", gap: 5 }}>
                                     {geometryRecentActionHistory.slice(0, 5).map((entry) => {
