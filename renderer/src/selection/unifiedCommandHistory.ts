@@ -105,6 +105,8 @@ export type GeometryObjectCommandHistorySource = {
   readonly action?: string | null;
   readonly changeSummary?: string | null;
   readonly topologySummary?: string | null;
+  readonly definitionLabel?: string | null;
+  readonly topologyDefinition?: { readonly replayLabel?: string | null } | null;
   readonly beforeVertexCount?: number | null;
   readonly afterVertexCount?: number | null;
   readonly beforeFaceCount?: number | null;
@@ -419,6 +421,7 @@ export function buildGeometryObjectCommandHistoryEntry(
     targetLabel: entry.operationTarget,
     resultLabel,
     parametersLabel: entry.operationParameters,
+    definitionLabel: entry.definitionLabel ?? entry.topologyDefinition?.replayLabel ?? null,
     beforeCounts,
     afterCounts,
     countsLabel,

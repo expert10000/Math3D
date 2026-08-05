@@ -466,6 +466,21 @@ import {
   type MeshTopologyEditTarget,
 } from "./mesh/topologyEditDefinition";
 import {
+  applyGeometryTopologyEditDefinition,
+  createGeometryTopologyEditDefinition,
+  createGeometryTopologyEdgeTarget,
+  createGeometryTopologyFaceTarget,
+  createGeometryTopologySourceVersionFromMesh,
+  createGeometryTopologyVertexTarget,
+  resolveGeometryTopologyEditDefinitionTarget,
+  retargetGeometryTopologyEditDefinition,
+  updateGeometryTopologyEditDefinitionParameters,
+  type GeometryTopologyEditDefinition,
+  type GeometryTopologyEditOperation,
+  type GeometryTopologyEditParameters,
+  type GeometryTopologyEditTarget,
+} from "./geometry/topologyEditDefinition";
+import {
   computeMeshTopologyInspector,
   type MeshTopologyInspectorDetails,
   type MeshTopologyListRow,
@@ -2573,6 +2588,13 @@ type GeometryMeshEditIntent = Partial<GeometryHistoryIntent> & {
   retainSelection?: GeometryTopologyRetainSelectionResolver;
   sourceSelectionOverlay?: (context: GeometryTopologyEditContext) => MeshSourceSelectionOverlay | null;
   topologySummaryOverride?: string;
+  topologyDefinition?:
+    | GeometryTopologyEditDefinition
+    | {
+        operation: GeometryTopologyEditOperation;
+        target: GeometryTopologyEditTarget;
+        parameters: GeometryTopologyEditParameters;
+      };
 };
 type GeometryActionContinuityStatus = {
   label: string;
@@ -4310,6 +4332,8 @@ type GeometryObjectHistoryStep = {
   changeSummary: string;
   topologySummary?: string | null;
   retainedSelection?: GeometryTopologyRetainedSelectionTarget | null;
+  topologyDefinition?: GeometryTopologyEditDefinition | null;
+  topologyDefinitionSourceSnapshot?: SurfaceMeshData | null;
   snapshot: GeometryObject | GeometryDatasetMeshObject;
 };
 type GeometryRecentActionHistoryEntry =
@@ -5911,6 +5935,115 @@ const updateSurfaceMeshTopologyDefinitionParameter = (
     return updateMeshTopologyEditDefinitionParameters(definition, {
       amount: Math.max(0.001, Number.isFinite(amount) ? Math.abs(amount) : 0.06),
       direction,
+    });
+  }
+  return definition;
+};
+const geometryTopologyActionLabelFromDefinition = (definition: GeometryTopologyEditDefinition): string =>
+  definition.operation === "Face Subdivide"
+    ? "Face subdivide"
+    : definition.operation === "Extrude Face"
+      ? "Face extrude"
+      : definition.operation === "Inset Face"
+        ? "Face inset"
+        : definition.operation === "Split Edge"
+          ? "Split edge"
+          : definition.operation === "Collapse Edge"
+            ? "Collapse edge"
+            : definition.operation === "Move Vertex"
+              ? "Move vertex"
+              : "Bevel edge";
+const geometryTopologyTraceActionFromDefinition = (definition: GeometryTopologyEditDefinition): string =>
+  definition.operation === "Face Subdivide"
+    ? "face-subdivide"
+    : definition.operation === "Extrude Face"
+      ? "face-extrude"
+      : definition.operation === "Inset Face"
+        ? "face-inset"
+        : definition.operation === "Split Edge"
+          ? "edge-split"
+          : definition.operation === "Collapse Edge"
+            ? "edge-collapse"
+            : definition.operation === "Move Vertex"
+              ? "vertex-move"
+              : "edge-bevel";
+const geometryTopologySelectedResultLabelFromDefinition = (definition: GeometryTopologyEditDefinition): string => {
+  if (definition.operation === "Face Subdivide") {
+    return "mode" in definition.parameters && definition.parameters.mode === "four-triangles"
+      ? "four-triangle split"
+      : "center fan triangles";
+  }
+  if (definition.operation === "Extrude Face") return `extruded ${definition.target.label}`;
+  if (definition.operation === "Inset Face") return `inset ${definition.target.label}`;
+  if (definition.operation === "Move Vertex") return `moved ${definition.target.label}`;
+  if (definition.target.kind !== "edge") return definition.target.label;
+  if (definition.operation === "Split Edge") return `split vertex on ${definition.target.label}`;
+  if (definition.operation === "Collapse Edge") {
+    const mode = "mode" in definition.parameters ? definition.parameters.mode : "midpoint";
+    return mode === "keep-a"
+      ? `merged vertex ${definition.target.edge[0]}`
+      : mode === "keep-b"
+        ? `merged vertex ${definition.target.edge[1]}`
+        : "midpoint vertex";
+  }
+  return `bevel band from ${definition.target.label}`;
+};
+const updateGeometryTopologyDefinitionParameter = (
+  definition: GeometryTopologyEditDefinition,
+  key: string,
+  value: UnifiedCommandParameterValue
+): GeometryTopologyEditDefinition => {
+  if (definition.operation === "Face Subdivide" && key === "mode") {
+    const mode: FaceSubdivideMode = value === "four-triangles" ? "four-triangles" : "center-fan";
+    return updateGeometryTopologyEditDefinitionParameters(definition, { mode });
+  }
+  if (definition.operation === "Extrude Face" && key === "distance") {
+    const distance = typeof value === "number" ? value : Number(value);
+    return updateGeometryTopologyEditDefinitionParameters(definition, {
+      distance: Number.isFinite(distance) ? distance : 0.08,
+    });
+  }
+  if (definition.operation === "Inset Face" && key === "ratio") {
+    const ratio = typeof value === "number" ? value : Number(value);
+    return updateGeometryTopologyEditDefinitionParameters(definition, {
+      ratio: clampNumber(Number.isFinite(ratio) ? ratio : 0.2, 0.02, 0.92),
+    });
+  }
+  if (definition.operation === "Split Edge" && key === "ratio") {
+    const ratio = typeof value === "number" ? value : Number(value);
+    return updateGeometryTopologyEditDefinitionParameters(definition, {
+      ratio: clampNumber(Number.isFinite(ratio) ? ratio : 0.5, 0.01, 0.99),
+    });
+  }
+  if (definition.operation === "Collapse Edge" && key === "mode") {
+    const mode: EdgeCollapseMode = value === "keep-a" || value === "keep-b" || value === "midpoint" ? value : "midpoint";
+    return updateGeometryTopologyEditDefinitionParameters(definition, { mode });
+  }
+  if (definition.operation === "Bevel Edge" && key === "amount") {
+    const amount = typeof value === "number" ? value : Number(value);
+    return updateGeometryTopologyEditDefinitionParameters(definition, {
+      amount: Math.max(0.001, Number.isFinite(amount) ? amount : 0.06),
+    });
+  }
+  if (definition.operation === "Move Vertex" && key === "amount") {
+    const amount = typeof value === "number" ? value : Number(value);
+    const direction = "amount" in definition.parameters ? definition.parameters.direction : null;
+    return updateGeometryTopologyEditDefinitionParameters(definition, {
+      amount: Math.max(0.001, Number.isFinite(amount) ? Math.abs(amount) : 0.06),
+      direction,
+    });
+  }
+  if (definition.operation === "Move Vertex" && (key === "dirX" || key === "dirY" || key === "dirZ")) {
+    const numeric = typeof value === "number" ? value : Number(value);
+    const currentDirection = "amount" in definition.parameters ? definition.parameters.direction : null;
+    const amount = "amount" in definition.parameters ? definition.parameters.amount : 0.06;
+    return updateGeometryTopologyEditDefinitionParameters(definition, {
+      amount,
+      direction: {
+        x: key === "dirX" && Number.isFinite(numeric) ? numeric : currentDirection?.x ?? 0,
+        y: key === "dirY" && Number.isFinite(numeric) ? numeric : currentDirection?.y ?? 1,
+        z: key === "dirZ" && Number.isFinite(numeric) ? numeric : currentDirection?.z ?? 0,
+      },
     });
   }
   return definition;
@@ -17426,7 +17559,8 @@ const App: React.FC = () => {
       objectId: string,
       actionLabel: string,
       edit: (mesh: SurfaceMeshData) => SurfaceMeshData,
-      intent?: GeometryMeshEditIntent
+      intent?: GeometryMeshEditIntent,
+      sourceMeshOverride?: SurfaceMeshData | null
     ): boolean => {
       if (!objectId) {
         setGeometryCreateActionStatus("Select an object first.");
@@ -17479,18 +17613,40 @@ const App: React.FC = () => {
             mesh.indices && mesh.indices.length >= 3 ? Math.floor(mesh.indices.length / 3) : Math.floor(vertexCount / 3);
           return { vertexCount, faceCount };
         };
-        const beforeCounts = countMeshTopology(target.mesh);
+        const sourceMesh = sourceMeshOverride
+          ? cloneSurfaceMeshData(sourceMeshOverride, sourceMeshOverride.label ?? target.mesh.label)
+          : target.mesh;
+        const beforeCounts = countMeshTopology(sourceMesh);
+        const topologyDefinition =
+          intent?.topologyDefinition && "selectionKey" in intent.topologyDefinition
+            ? intent.topologyDefinition
+            : intent?.topologyDefinition
+              ? createGeometryTopologyEditDefinition({
+                  operation: intent.topologyDefinition.operation,
+                  sourceObjectVersion: createGeometryTopologySourceVersionFromMesh({
+                    objectId,
+                    label: target.name,
+                    revision: geometryObjectRevisionById[objectId] ?? 0,
+                    mesh: sourceMesh,
+                  }),
+                  target: intent.topologyDefinition.target,
+                  parameters: intent.topologyDefinition.parameters,
+                })
+              : null;
         const resolvedIntent: GeometryHistoryIntent = {
           action: intent?.action ?? "mesh-edit",
           label: intent?.label ?? actionLabel,
           operationType: intent?.operationType ?? "Mesh edit",
           target: intent?.target ?? null,
-          parameters: intent?.parameters ?? null,
+          parameters: topologyDefinition?.paramsLabel ?? intent?.parameters ?? null,
           destructive: intent?.destructive ?? true,
           warning: intent?.warning ?? null,
         };
-        const beforeSnapshot = cloneGeometrySceneObjectSnapshot(target);
-        const edited = applySurfaceMeshOps(edit(cloneSurfaceMeshData(target.mesh, target.mesh.label)));
+        const beforeTarget: GeometryDatasetMeshObject = sourceMeshOverride
+          ? { ...target, mesh: cloneSurfaceMeshData(sourceMesh, sourceMesh.label ?? target.mesh.label) }
+          : target;
+        const beforeSnapshot = cloneGeometrySceneObjectSnapshot(beforeTarget);
+        const edited = applySurfaceMeshOps(edit(cloneSurfaceMeshData(sourceMesh, sourceMesh.label ?? target.mesh.label)));
         const afterCounts = countMeshTopology(edited);
         const sourceGeometryId =
           target.promotion?.sourceGeometryId ??
@@ -17505,8 +17661,8 @@ const App: React.FC = () => {
           previousTraceMap = buildTraceMapForPromotion({
             sourceGeometryId,
             meshId: previousMeshId,
-            sourceMesh: target.mesh,
-            promotedMesh: target.mesh,
+            sourceMesh,
+            promotedMesh: sourceMesh,
             sourceOperationHistory: target.promotion?.sourceOperationHistory ?? ["manual edit baseline"],
             promotionMode: target.promotion?.promotionMode ?? "editable_mesh_object",
             createdAt: target.promotion?.createdAt ?? Date.now(),
@@ -17516,7 +17672,7 @@ const App: React.FC = () => {
           previousTraceMap,
           previousMeshId,
           nextMeshId,
-          previousMesh: target.mesh,
+          previousMesh: sourceMesh,
           nextMesh: edited,
           operation: `manual-mesh-edit:${actionLabel}`,
           fallbackGeometryIds: sourceGeometryId ? [sourceGeometryId] : [],
@@ -17538,7 +17694,7 @@ const App: React.FC = () => {
         };
         const transformedEdited = transformSurfaceMeshByGeometryTransform(edited, updatedTarget.transform);
         const editContext: GeometryTopologyEditContext = {
-          beforeMesh: target.mesh,
+          beforeMesh: sourceMesh,
           afterMesh: edited,
           transformedAfterMesh: transformedEdited,
           beforeCounts,
@@ -17556,7 +17712,7 @@ const App: React.FC = () => {
           objectId,
           resolvedIntent.action,
           resolvedIntent.target,
-          target.mesh,
+          sourceMesh,
           edited,
           transformedEdited
         );
@@ -17596,6 +17752,10 @@ const App: React.FC = () => {
           changeSummary: topologyFeedback.summary || summarizeGeometryHistoryChange(beforeSnapshot, afterSnapshot),
           topologySummary: topologyFeedback.summary,
           retainedSelection: retainedSelectionTarget,
+          topologyDefinition,
+          topologyDefinitionSourceSnapshot: topologyDefinition
+            ? cloneSurfaceMeshData(sourceMesh, sourceMesh.label ?? target.mesh.label)
+            : null,
           snapshot: afterSnapshot,
         };
         const geometryActionPulseId = `geometry:${resolvedIntent.action}`;
@@ -17731,6 +17891,7 @@ const App: React.FC = () => {
       geometryDatasetMeshObjects,
       geometryObjects,
       geometryLockedObjectIds,
+      geometryObjectRevisionById,
         geometrySelectedObjectId,
         proceduralMeshSet.meshes,
         setGeometryCreateActionStatus,
@@ -17752,15 +17913,21 @@ const App: React.FC = () => {
     const objectId = geometryFaceOperationPick.meshKey ?? geometryFaceOperationPick.objectId ?? geometrySelectedObjectId ?? "";
     const faceIndex = geometryFaceOperationPick.faceIndex;
     const distance = distanceOverride ?? geometryFaceExtrudeDistance;
+    const definitionTarget = createGeometryTopologyFaceTarget(faceIndex);
     applyMeshEditToObject(objectId, "Extruded face", (mesh) =>
       extrudeFace(mesh, faceIndex, distance)
     , {
       action: "face-extrude",
       label: "Face extrude",
       operationType: "Face edit",
-      target: `Face ${faceIndex}`,
+      target: definitionTarget.label,
       parameters: `distance=${formatHistoryNumber(distance)}`,
       destructive: true,
+      topologyDefinition: {
+        operation: "Extrude Face",
+        target: definitionTarget,
+        parameters: { distance },
+      },
       retainSelection: ({ beforeCounts }) => ({
         kind: "face",
         faceIndex: beforeCounts.faceCount,
@@ -17783,15 +17950,21 @@ const App: React.FC = () => {
     const objectId = geometryFaceOperationPick.meshKey ?? geometryFaceOperationPick.objectId ?? geometrySelectedObjectId ?? "";
     const faceIndex = geometryFaceOperationPick.faceIndex;
     const ratio = clampNumber(ratioOverride ?? geometryFaceInsetRatio, 0.02, 0.92);
+    const definitionTarget = createGeometryTopologyFaceTarget(faceIndex);
     applyMeshEditToObject(objectId, "Inset face applied", (mesh) =>
       insetFace(mesh, faceIndex, ratio)
     , {
       action: "face-inset",
       label: "Face inset",
       operationType: "Face edit",
-      target: `Face ${faceIndex}`,
+      target: definitionTarget.label,
       parameters: `ratio=${formatHistoryNumber(ratio)}`,
       destructive: true,
+      topologyDefinition: {
+        operation: "Inset Face",
+        target: definitionTarget,
+        parameters: { ratio },
+      },
       retainSelection: ({ beforeCounts }) => ({
         kind: "face",
         faceIndex: Math.max(0, beforeCounts.faceCount - 1),
@@ -17845,14 +18018,19 @@ const App: React.FC = () => {
     }
     const objectId = geometryFaceOperationPick.meshKey ?? geometryFaceOperationPick.objectId ?? geometrySelectedObjectId ?? "";
     const faceIndex = geometryFaceOperationPick.faceIndex;
-    const subdivideLabel = geometryFaceSubdivideMode === "center-fan" ? "center fan" : "4 triangles";
+    const definitionTarget = createGeometryTopologyFaceTarget(faceIndex);
     applyMeshEditToObject(objectId, "Subdivided face", (mesh) => subdivideFace(mesh, faceIndex, geometryFaceSubdivideMode), {
       action: "face-subdivide",
       label: "Face subdivide",
       operationType: "Face edit",
-      target: `Face ${faceIndex}`,
-      parameters: `mode=${subdivideLabel}`,
+      target: definitionTarget.label,
+      parameters: `mode=${geometryFaceSubdivideMode}`,
       destructive: true,
+      topologyDefinition: {
+        operation: "Face Subdivide",
+        target: definitionTarget,
+        parameters: { mode: geometryFaceSubdivideMode },
+      },
       retainSelection: ({ afterCounts }) => {
         const retainedFaceIndex = Math.max(0, afterCounts.faceCount - 1);
         return {
@@ -17896,13 +18074,19 @@ const App: React.FC = () => {
     );
     const splitPercent = Math.round(splitRatio * 100);
     const isMidpointSplit = Math.abs(splitRatio - 0.5) < 0.001;
+    const definitionTarget = createGeometryTopologyEdgeTarget(a, b);
     applyMeshEditToObject(objectId, "Split edge applied", (mesh) => splitEdge(mesh, a, b, splitRatio), {
       action: "edge-split",
       label: "Split edge",
       operationType: "Edge edit",
-      target: `Edge ${Math.min(a, b)}-${Math.max(a, b)}`,
-      parameters: `ratio=${formatHistoryNumber(splitRatio)} (${splitPercent}%)`,
+      target: definitionTarget.label,
+      parameters: `ratio=${formatHistoryNumber(splitRatio)}`,
       destructive: true,
+      topologyDefinition: {
+        operation: "Split Edge",
+        target: definitionTarget,
+        parameters: { ratio: splitRatio },
+      },
       retainSelection: ({ beforeCounts }) => ({
         kind: "vertex",
         vertexIndex: beforeCounts.vertexCount,
@@ -17943,15 +18127,19 @@ const App: React.FC = () => {
     }
     const [a, b] = geometryEdgeOperationPick.edgeVertices;
     const objectId = geometryEdgeOperationPick.meshKey ?? geometryEdgeOperationPick.objectId;
-    const collapseModeLabel =
-      geometryEdgeCollapseMode === "keep-a" ? "keep A" : geometryEdgeCollapseMode === "keep-b" ? "keep B" : "midpoint";
+    const definitionTarget = createGeometryTopologyEdgeTarget(a, b);
     applyMeshEditToObject(objectId, "Collapsed edge", (mesh) => collapseEdge(mesh, a, b, geometryEdgeCollapseMode), {
       action: "edge-collapse",
       label: "Collapse edge",
       operationType: "Edge edit",
-      target: `Edge ${Math.min(a, b)}-${Math.max(a, b)}`,
-      parameters: `mode=${collapseModeLabel}`,
+      target: definitionTarget.label,
+      parameters: `mode=${geometryEdgeCollapseMode}`,
       destructive: true,
+      topologyDefinition: {
+        operation: "Collapse Edge",
+        target: definitionTarget,
+        parameters: { mode: geometryEdgeCollapseMode },
+      },
       retainSelection: ({ beforeMesh, afterMesh }) => {
         const pa = readMeshPoint(beforeMesh, a);
         const pb = readMeshPoint(beforeMesh, b);
@@ -17999,15 +18187,21 @@ const App: React.FC = () => {
     const [a, b] = geometryEdgeOperationPick.edgeVertices;
     const objectId = geometryEdgeOperationPick.meshKey ?? geometryEdgeOperationPick.objectId;
     const amount = Math.max(0.001, amountOverride ?? geometryEdgeBevelAmount);
+    const definitionTarget = createGeometryTopologyEdgeTarget(a, b);
     applyMeshEditToObject(objectId, "Bevel edge applied", (mesh) =>
       bevelEdge(mesh, a, b, amount)
     , {
       action: "edge-bevel",
       label: "Bevel edge",
       operationType: "Edge edit",
-      target: `Edge ${Math.min(a, b)}-${Math.max(a, b)}`,
+      target: definitionTarget.label,
       parameters: `amount=${formatHistoryNumber(amount)}`,
       destructive: true,
+      topologyDefinition: {
+        operation: "Bevel Edge",
+        target: definitionTarget,
+        parameters: { amount },
+      },
       retainSelection: () => ({
         kind: "edge",
         edgeVertices: [a, b],
@@ -18037,6 +18231,7 @@ const App: React.FC = () => {
         geometryVertexOperationPick.faceNormal ??
         ([0, 1, 0] as [number, number, number]);
     const amount = amountOverride ?? geometryVertexMoveAmount;
+    const definitionTarget = createGeometryTopologyVertexTarget(vertexIndex);
     applyMeshEditToObject(objectId, "Moved vertex", (mesh) =>
       moveVertex(
         mesh,
@@ -18048,9 +18243,14 @@ const App: React.FC = () => {
       action: "vertex-move",
       label: "Move vertex",
       operationType: "Vertex edit",
-      target: `Vertex ${vertexIndex}`,
-      parameters: `distance=${formatHistoryNumber(amount)}`,
+      target: definitionTarget.label,
+      parameters: `amount=${formatHistoryNumber(amount)}, dirX=${formatHistoryNumber(moveNormal[0])}, dirY=${formatHistoryNumber(moveNormal[1])}, dirZ=${formatHistoryNumber(moveNormal[2])}`,
       destructive: true,
+      topologyDefinition: {
+        operation: "Move Vertex",
+        target: definitionTarget,
+        parameters: { amount, direction: { x: moveNormal[0], y: moveNormal[1], z: moveNormal[2] } },
+      },
       retainSelection: () => ({
         kind: "vertex",
         vertexIndex,
@@ -18137,6 +18337,179 @@ const App: React.FC = () => {
     geometryVertexWeldDistance,
     setGeometryCreateActionStatus,
   ]);
+  const handleReplayGeometryTopologyDefinition = useCallback(
+    (historyStep: GeometryObjectHistoryStep, definitionOverride?: GeometryTopologyEditDefinition, traceSuffix = "replay-definition") => {
+      const definition = definitionOverride ?? historyStep.topologyDefinition ?? null;
+      if (!definition) {
+        setGeometryCreateActionStatus("Replay definition blocked: this history item has no saved topology definition.");
+        return false;
+      }
+      const sourceMesh = historyStep.topologyDefinitionSourceSnapshot ?? null;
+      if (!sourceMesh) {
+        setGeometryCreateActionStatus("Replay definition blocked: source mesh snapshot is missing.");
+        return false;
+      }
+      const resolved = resolveGeometryTopologyEditDefinitionTarget(sourceMesh, definition);
+      if (!resolved.ok) {
+        setGeometryCreateActionStatus(`Replay definition blocked: ${resolved.reason}`);
+        return false;
+      }
+      const actionLabel = geometryTopologyActionLabelFromDefinition(definition);
+      const traceAction = geometryTopologyTraceActionFromDefinition(definition);
+      const applied = applyMeshEditToObject(
+        historyStep.objectId,
+        `${actionLabel} replayed`,
+        (mesh) => applyGeometryTopologyEditDefinition(mesh, definition),
+        {
+          action: `${traceAction}-${traceSuffix}`,
+          label: `${actionLabel} replay`,
+          operationType: "Definition replay",
+          target: definition.target.label,
+          parameters: definition.paramsLabel,
+          destructive: true,
+          topologyDefinition: definition,
+          topologySummaryOverride: `${geometryTopologySelectedResultLabelFromDefinition(definition)} replayed from saved source.`,
+        },
+        sourceMesh
+      );
+      if (applied) {
+        setGeometrySelectedHistoryStepId(historyStep.id);
+        setGeometryProceduralPanelTab("history");
+        setGeometryCreateActionStatus(`Replayed definition: ${definition.replayLabel}.`);
+      }
+      return applied;
+    },
+    [applyMeshEditToObject, setGeometryCreateActionStatus]
+  );
+  const handleUpdateGeometryTopologyDefinitionParameter = useCallback(
+    (historyStep: GeometryObjectHistoryStep, parameter: UnifiedCommandParameterEdit, rawValue: string) => {
+      const definition = historyStep.topologyDefinition ?? null;
+      if (!definition) {
+        setGeometryCreateActionStatus("This operation node has no saved Geometry topology definition.");
+        return;
+      }
+      const command = buildGeometryObjectCommandHistoryEntry(historyStep);
+      const node = buildUnifiedOperationTreeNode(command);
+      const value = coerceUnifiedCommandParameterDraftValue(parameter, rawValue);
+      const nextDefinition = updateGeometryTopologyDefinitionParameter(definition, parameter.key, value);
+      setGeometryOperationNodeParameterDrafts((prev) => ({
+        ...prev,
+        [node.id]: {
+          ...(prev[node.id] ?? {}),
+          [parameter.key]: rawValue,
+        },
+      }));
+      setGeometryObjectHistoryById((prev) => {
+        const history = prev[historyStep.objectId] ?? [];
+        return {
+          ...prev,
+          [historyStep.objectId]: history.map((candidate) =>
+            candidate.id === historyStep.id
+              ? {
+                  ...candidate,
+                  operationTarget: nextDefinition.target.label,
+                  operationParameters: nextDefinition.paramsLabel,
+                  topologyDefinition: nextDefinition,
+                  changeSummary: geometryTopologySelectedResultLabelFromDefinition(nextDefinition),
+                }
+              : candidate
+          ),
+        };
+      });
+      setGeometrySelectedHistoryStepId(historyStep.id);
+      setGeometryProceduralPanelTab("history");
+      setGeometryCreateActionStatus(`Updated definition: ${nextDefinition.replayLabel}.`);
+    },
+    [setGeometryCreateActionStatus]
+  );
+  const handleApplyEditedGeometryTopologyDefinition = useCallback(
+    (historyStep: GeometryObjectHistoryStep) =>
+      handleReplayGeometryTopologyDefinition(historyStep, historyStep.topologyDefinition ?? undefined, "edited-definition"),
+    [handleReplayGeometryTopologyDefinition]
+  );
+  const handleRetargetGeometryTopologyDefinition = useCallback(
+    (historyStep: GeometryObjectHistoryStep) => {
+      const definition = historyStep.topologyDefinition ?? null;
+      if (!definition) {
+        setGeometryCreateActionStatus("Retarget blocked: this history item has no saved topology definition.");
+        return false;
+      }
+      const sourceMesh = historyStep.topologyDefinitionSourceSnapshot ?? null;
+      if (!sourceMesh) {
+        setGeometryCreateActionStatus("Retarget blocked: source mesh snapshot is missing.");
+        return false;
+      }
+      let nextTarget: GeometryTopologyEditTarget | null = null;
+      let nextPickObjectId: string | null = null;
+      if (
+        definition.operation === "Face Subdivide" ||
+        definition.operation === "Extrude Face" ||
+        definition.operation === "Inset Face"
+      ) {
+        if (geometryFaceOperationPick?.faceIndex == null) {
+          setGeometryCreateActionStatus("Retarget blocked: choose a face slot first.");
+          return false;
+        }
+        nextTarget = createGeometryTopologyFaceTarget(geometryFaceOperationPick.faceIndex);
+        nextPickObjectId = geometryFaceOperationPick.meshKey ?? geometryFaceOperationPick.objectId ?? null;
+      } else if (definition.operation === "Move Vertex") {
+        if (geometryVertexOperationPick?.vertexIndex == null) {
+          setGeometryCreateActionStatus("Retarget blocked: choose a vertex slot first.");
+          return false;
+        }
+        nextTarget = createGeometryTopologyVertexTarget(geometryVertexOperationPick.vertexIndex);
+        nextPickObjectId = geometryVertexOperationPick.meshKey ?? geometryVertexOperationPick.objectId ?? null;
+      } else {
+        if (!geometryEdgeOperationPick?.edgeVertices) {
+          setGeometryCreateActionStatus("Retarget blocked: choose an edge slot first.");
+          return false;
+        }
+        nextTarget = createGeometryTopologyEdgeTarget(
+          geometryEdgeOperationPick.edgeVertices[0],
+          geometryEdgeOperationPick.edgeVertices[1]
+        );
+        nextPickObjectId = geometryEdgeOperationPick.meshKey ?? geometryEdgeOperationPick.objectId ?? null;
+      }
+      if (nextPickObjectId && nextPickObjectId !== historyStep.objectId) {
+        setGeometryCreateActionStatus("Retarget blocked: choose the new target on the same object.");
+        return false;
+      }
+      const nextDefinition = retargetGeometryTopologyEditDefinition(definition, nextTarget);
+      const resolved = resolveGeometryTopologyEditDefinitionTarget(sourceMesh, nextDefinition);
+      if (!resolved.ok) {
+        setGeometryCreateActionStatus(`Retarget blocked: ${resolved.reason}`);
+        return false;
+      }
+      setGeometryObjectHistoryById((prev) => {
+        const history = prev[historyStep.objectId] ?? [];
+        return {
+          ...prev,
+          [historyStep.objectId]: history.map((candidate) =>
+            candidate.id === historyStep.id
+              ? {
+                  ...candidate,
+                  operationTarget: nextDefinition.target.label,
+                  operationParameters: nextDefinition.paramsLabel,
+                  topologyDefinition: nextDefinition,
+                  changeSummary: geometryTopologySelectedResultLabelFromDefinition(nextDefinition),
+                }
+              : candidate
+          ),
+        };
+      });
+      setGeometrySelectedObjectId(historyStep.objectId);
+      setGeometrySelectedHistoryStepId(historyStep.id);
+      setGeometryProceduralPanelTab("history");
+      setGeometryCreateActionStatus(`Retargeted definition to ${nextDefinition.target.label}.`);
+      return true;
+    },
+    [
+      geometryEdgeOperationPick,
+      geometryFaceOperationPick,
+      geometryVertexOperationPick,
+      setGeometryCreateActionStatus,
+    ]
+  );
   const rememberGeometryLinePairCandidate = useCallback(
     (entry: Pick<GeometryDerivedConstructionObject, "id" | "type">) => {
       if (!geometryDerivedConstructionCanActAsLinePairSource(entry)) return;
@@ -81263,9 +81636,13 @@ case "mobius":
                                         const operationNode = buildUnifiedOperationTreeNode(entry.command);
                                         const historyStepParams =
                                           "params" in historyStep.snapshot ? historyStep.snapshot.params : null;
-                                        const editableParameterEdits = historyStepParams
-                                          ? operationNode.parameterEdits.filter((parameter) => parameter.key in historyStepParams)
-                                          : [];
+                                        const isTopologyDefinitionNode = Boolean(historyStep.topologyDefinition);
+                                        const editableParameterEdits = isTopologyDefinitionNode
+                                          ? operationNode.parameterEdits
+                                          : historyStepParams
+                                            ? operationNode.parameterEdits.filter((parameter) => parameter.key in historyStepParams)
+                                            : [];
+                                        const topologyDefinitionOperation = historyStep.topologyDefinition?.operation ?? null;
                                         return (
                                           <CommandHistoryCard
                                             key={`geometry-actions-history-${entry.id}`}
@@ -81295,7 +81672,9 @@ case "mobius":
                                                 >
                                                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                                                     <strong>Operation node</strong>
-                                                    <span style={{ color: "#475569" }}>editable params</span>
+                                                    <span style={{ color: "#475569" }}>
+                                                      {isTopologyDefinitionNode ? "definition params" : "editable params"}
+                                                    </span>
                                                   </div>
                                                   {renderUnifiedOperationNodeSnapshotSummary(operationNode)}
                                                   {editableParameterEdits.map((parameter) => {
@@ -81304,6 +81683,19 @@ case "mobius":
                                                       geometryOperationNodeParameterDrafts,
                                                       parameter
                                                     );
+                                                    const modeOptions =
+                                                      topologyDefinitionOperation === "Face Subdivide" && parameter.key === "mode"
+                                                        ? [
+                                                            { value: "center-fan", label: "Center fan" },
+                                                            { value: "four-triangles", label: "Four triangles" },
+                                                          ]
+                                                        : topologyDefinitionOperation === "Collapse Edge" && parameter.key === "mode"
+                                                          ? [
+                                                              { value: "midpoint", label: "Midpoint" },
+                                                              { value: "keep-a", label: "Keep A" },
+                                                              { value: "keep-b", label: "Keep B" },
+                                                            ]
+                                                          : null;
                                                     return (
                                                       <label
                                                         key={`${operationNode.id}:${parameter.key}`}
@@ -81315,12 +81707,42 @@ case "mobius":
                                                         }}
                                                       >
                                                         <span style={{ color: "#334155", fontWeight: 800 }}>{parameter.label}</span>
-                                                        {parameter.valueType === "boolean" ? (
+                                                        {modeOptions ? (
                                                           <select
                                                             aria-label={`Edit ${parameter.label} for ${historyStep.label}`}
                                                             value={draftValue}
                                                             onChange={(event) => {
                                                               const value = event.currentTarget.value;
+                                                              if (isTopologyDefinitionNode) {
+                                                                handleUpdateGeometryTopologyDefinitionParameter(historyStep, parameter, value);
+                                                                return;
+                                                              }
+                                                              setGeometryOperationNodeParameterDrafts((prev) => ({
+                                                                ...prev,
+                                                                [operationNode.id]: {
+                                                                  ...(prev[operationNode.id] ?? {}),
+                                                                  [parameter.key]: value,
+                                                                },
+                                                              }));
+                                                            }}
+                                                            style={{ minWidth: 0, width: "100%" }}
+                                                          >
+                                                            {modeOptions.map((option) => (
+                                                              <option key={`${operationNode.id}:${parameter.key}:${option.value}`} value={option.value}>
+                                                                {option.label}
+                                                              </option>
+                                                            ))}
+                                                          </select>
+                                                        ) : parameter.valueType === "boolean" ? (
+                                                          <select
+                                                            aria-label={`Edit ${parameter.label} for ${historyStep.label}`}
+                                                            value={draftValue}
+                                                            onChange={(event) => {
+                                                              const value = event.currentTarget.value;
+                                                              if (isTopologyDefinitionNode) {
+                                                                handleUpdateGeometryTopologyDefinitionParameter(historyStep, parameter, value);
+                                                                return;
+                                                              }
                                                               setGeometryOperationNodeParameterDrafts((prev) => ({
                                                                 ...prev,
                                                                 [operationNode.id]: {
@@ -81338,10 +81760,16 @@ case "mobius":
                                                           <input
                                                             aria-label={`Edit ${parameter.label} for ${historyStep.label}`}
                                                             type={parameter.valueType === "number" ? "number" : "text"}
-                                                            step={parameter.valueType === "number" ? "any" : undefined}
+                                                            min={parameter.key === "ratio" ? 0.01 : parameter.key === "amount" ? 0.001 : undefined}
+                                                            max={parameter.key === "ratio" ? 0.99 : undefined}
+                                                            step={parameter.key === "ratio" ? 0.01 : parameter.key === "amount" ? 0.001 : "any"}
                                                             value={draftValue}
                                                             onChange={(event) => {
                                                               const value = event.currentTarget.value;
+                                                              if (isTopologyDefinitionNode) {
+                                                                handleUpdateGeometryTopologyDefinitionParameter(historyStep, parameter, value);
+                                                                return;
+                                                              }
                                                               setGeometryOperationNodeParameterDrafts((prev) => ({
                                                                 ...prev,
                                                                 [operationNode.id]: {
@@ -81357,24 +81785,58 @@ case "mobius":
                                                     );
                                                   })}
                                                   <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                                                    <button
-                                                      type="button"
-                                                      data-testid="geometry-operation-node-restore-params"
-                                                      onClick={() => applyGeometryOperationNodeParameters(historyStep, false)}
-                                                      disabled={geometryLockedObjectIds.has(historyStep.objectId)}
-                                                      style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
-                                                    >
-                                                      Restore params
-                                                    </button>
-                                                    <button
-                                                      type="button"
-                                                      data-testid="geometry-operation-node-apply-edited"
-                                                      onClick={() => applyGeometryOperationNodeParameters(historyStep, true)}
-                                                      disabled={geometryLockedObjectIds.has(historyStep.objectId)}
-                                                      style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
-                                                    >
-                                                      Apply edited
-                                                    </button>
+                                                    {isTopologyDefinitionNode ? (
+                                                      <>
+                                                        <button
+                                                          type="button"
+                                                          data-testid="geometry-operation-node-replay-definition"
+                                                          onClick={() => handleReplayGeometryTopologyDefinition(historyStep)}
+                                                          disabled={geometryLockedObjectIds.has(historyStep.objectId)}
+                                                          style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                                        >
+                                                          Replay definition
+                                                        </button>
+                                                        <button
+                                                          type="button"
+                                                          data-testid="geometry-operation-node-apply-edited"
+                                                          onClick={() => handleApplyEditedGeometryTopologyDefinition(historyStep)}
+                                                          disabled={geometryLockedObjectIds.has(historyStep.objectId)}
+                                                          style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                                        >
+                                                          Apply edited
+                                                        </button>
+                                                        <button
+                                                          type="button"
+                                                          data-testid="geometry-operation-node-retarget"
+                                                          onClick={() => handleRetargetGeometryTopologyDefinition(historyStep)}
+                                                          disabled={geometryLockedObjectIds.has(historyStep.objectId)}
+                                                          style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                                        >
+                                                          Retarget
+                                                        </button>
+                                                      </>
+                                                    ) : (
+                                                      <>
+                                                        <button
+                                                          type="button"
+                                                          data-testid="geometry-operation-node-restore-params"
+                                                          onClick={() => applyGeometryOperationNodeParameters(historyStep, false)}
+                                                          disabled={geometryLockedObjectIds.has(historyStep.objectId)}
+                                                          style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                                        >
+                                                          Restore params
+                                                        </button>
+                                                        <button
+                                                          type="button"
+                                                          data-testid="geometry-operation-node-apply-edited"
+                                                          onClick={() => applyGeometryOperationNodeParameters(historyStep, true)}
+                                                          disabled={geometryLockedObjectIds.has(historyStep.objectId)}
+                                                          style={{ ...geometryOperationButtonStyle, width: "auto", padding: "2px 7px", fontSize: 10 }}
+                                                        >
+                                                          Apply edited
+                                                        </button>
+                                                      </>
+                                                    )}
                                                   </div>
                                                 </div>
                                               ) : null
