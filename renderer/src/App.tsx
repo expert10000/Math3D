@@ -83,6 +83,12 @@ import {
   mapTopologyGizmoDragToParams,
   type AdaptiveTopologyGizmoDragParams,
 } from "./selection/adaptiveTopologyGizmo";
+import {
+  buildGeometryTopologyGizmoTarget,
+  geometryTopologyGizmoReleaseAction,
+  mapGeometryTopologyGizmoDragToParams,
+  type GeometryTopologyGizmoEdgeMode,
+} from "./selection/geometryTopologyGizmo";
 import { buildContextualSelectionState } from "./selection/contextualSelectionState";
 import {
   applyContextualViewportPreviewAccessibility,
@@ -11178,6 +11184,8 @@ const App: React.FC = () => {
   const [geometryFaceSubdivideMode, setGeometryFaceSubdivideMode] = useState<FaceSubdivideMode>("four-triangles");
   const [geometryEdgeSplitRatio, setGeometryEdgeSplitRatio] = useState(0.5);
   const [geometryEdgeBevelAmount, setGeometryEdgeBevelAmount] = useState(0.06);
+  const [geometryTopologyGizmoEdgeMode, setGeometryTopologyGizmoEdgeMode] =
+    useState<GeometryTopologyGizmoEdgeMode>("split");
   const [geometryEdgeCollapseMode, setGeometryEdgeCollapseMode] = useState<EdgeCollapseMode>("midpoint");
   const [geometryVertexMoveAmount, setGeometryVertexMoveAmount] = useState(0.06);
   const [geometryVertexWeldDistance, setGeometryVertexWeldDistance] = useState(0.05);
@@ -16607,6 +16615,38 @@ const App: React.FC = () => {
     if (!geometryLatestRecentAction) return null;
     return geometryLatestRecentAction.command.lastCommandLabel;
   }, [geometryLatestRecentAction]);
+  const geometryTopologyGizmoParameterStatusLabel = useMemo(() => {
+    if (geometryActiveSelectionCardEmptyState) return null;
+    if (geometryProbeSelectionMode === "face") {
+      return `Handle: Extrude ${formatCompactReal(geometryFaceExtrudeDistance)} | Inset ${formatCompactReal(
+        geometryFaceInsetRatio
+      )}`;
+    }
+    if (geometryProbeSelectionMode === "edge") {
+      return geometryTopologyGizmoEdgeMode === "bevel"
+        ? `Handle: Bevel ${formatCompactReal(geometryEdgeBevelAmount)}`
+        : `Handle: Split ${formatCompactReal(geometryEdgeSplitRatio)}`;
+    }
+    if (geometryProbeSelectionMode === "vertex") {
+      return `Handle: Move ${formatCompactReal(geometryVertexMoveAmount)}`;
+    }
+    return null;
+  }, [
+    geometryActiveSelectionCardEmptyState,
+    geometryEdgeBevelAmount,
+    geometryEdgeSplitRatio,
+    geometryFaceExtrudeDistance,
+    geometryFaceInsetRatio,
+    geometryProbeSelectionMode,
+    geometryTopologyGizmoEdgeMode,
+    geometryVertexMoveAmount,
+  ]);
+  const geometryActiveSelectionCardLastCommandLabel = useMemo(() => {
+    const labels = [geometryContextToolbarLastCommandLabel, geometryTopologyGizmoParameterStatusLabel].filter(
+      (label): label is string => typeof label === "string" && label.length > 0
+    );
+    return labels.length ? labels.join(" | ") : null;
+  }, [geometryContextToolbarLastCommandLabel, geometryTopologyGizmoParameterStatusLabel]);
   const geometryContextToolbarPreviewLabel = geometryContextSelectionState.previewLabel;
   const geometryViewportCommandPreviewLabel = useMemo(
     () => geometryContextToolbarPreviewLabel?.replace(/^Preview:\s*/i, "") ?? null,
@@ -16788,6 +16828,52 @@ const App: React.FC = () => {
     () => resolveGeometryOperationVertexTarget(geometryVertexOperationPick),
     [geometryVertexOperationPick, resolveGeometryOperationVertexTarget]
   );
+  const geometryTopologyGizmoDragParamsRef = useRef<AdaptiveTopologyGizmoDragParams | null>(null);
+  const geometryTopologyGizmoReferenceLength = useMemo(() => {
+    if (geometryProbeSelectionMode === "edge" && geometryEdgeOperationTarget?.edgeLength) {
+      return Math.max(0.001, geometryEdgeOperationTarget.edgeLength);
+    }
+    const objectId =
+      geometrySourceFaceOperationTarget?.objectId ??
+      geometryEdgeOperationTarget?.objectId ??
+      geometryVertexOperationTarget?.objectId ??
+      geometrySelectedSceneObject?.id ??
+      null;
+    const resolved = objectId ? resolveGeometrySceneMeshById(objectId) : null;
+    const bounds = resolved ? boundsFromPositions(resolved.mesh.positions) : null;
+    if (!bounds) return 1;
+    return Math.max(
+      geometryDistance(
+        { x: bounds.min[0], y: bounds.min[1], z: bounds.min[2] },
+        { x: bounds.max[0], y: bounds.max[1], z: bounds.max[2] }
+      ) * 0.12,
+      0.001
+    );
+  }, [
+    geometryEdgeOperationTarget,
+    geometryProbeSelectionMode,
+    geometrySelectedSceneObject?.id,
+    geometrySourceFaceOperationTarget,
+    geometryVertexOperationTarget,
+    resolveGeometrySceneMeshById,
+  ]);
+  const geometryTopologyGizmoTarget = useMemo<SurfaceTopologyGizmoTarget | null>(() => {
+    return buildGeometryTopologyGizmoTarget({
+      geometryMode,
+      selectionMode: geometryProbeSelectionMode,
+      faceTarget: geometrySourceFaceOperationTarget,
+      edgeTarget: geometryEdgeOperationTarget,
+      vertexTarget: geometryVertexOperationTarget,
+      referenceLength: geometryTopologyGizmoReferenceLength,
+    });
+  }, [
+    geometryEdgeOperationTarget,
+    geometryMode,
+    geometryProbeSelectionMode,
+    geometrySourceFaceOperationTarget,
+    geometryTopologyGizmoReferenceLength,
+    geometryVertexOperationTarget,
+  ]);
   const previewGeometryMeshEdit = useCallback(
     (
       objectId: string | null | undefined,
@@ -17613,7 +17699,7 @@ const App: React.FC = () => {
         suppressGeometryHistoryCapture,
       ]
   );
-  const handleExtrudeSelectedFace = useCallback(() => {
+  const handleExtrudeSelectedFace = useCallback((distanceOverride?: number) => {
     if (!geometryFaceOperationPick || geometryFaceOperationPick.faceIndex == null) {
       setGeometryCreateActionStatus("Select a source face slot first.");
       return;
@@ -17624,14 +17710,15 @@ const App: React.FC = () => {
     }
     const objectId = geometryFaceOperationPick.meshKey ?? geometryFaceOperationPick.objectId ?? geometrySelectedObjectId ?? "";
     const faceIndex = geometryFaceOperationPick.faceIndex;
+    const distance = distanceOverride ?? geometryFaceExtrudeDistance;
     applyMeshEditToObject(objectId, "Extruded face", (mesh) =>
-      extrudeFace(mesh, faceIndex, geometryFaceExtrudeDistance)
+      extrudeFace(mesh, faceIndex, distance)
     , {
       action: "face-extrude",
       label: "Face extrude",
       operationType: "Face edit",
       target: `Face ${faceIndex}`,
-      parameters: `distance=${formatHistoryNumber(geometryFaceExtrudeDistance)}`,
+      parameters: `distance=${formatHistoryNumber(distance)}`,
       destructive: true,
       retainSelection: ({ beforeCounts }) => ({
         kind: "face",
@@ -17647,21 +17734,22 @@ const App: React.FC = () => {
     geometrySelectedObjectId,
     setGeometryCreateActionStatus,
   ]);
-  const handleInsetSelectedFace = useCallback(() => {
+  const handleInsetSelectedFace = useCallback((ratioOverride?: number) => {
     if (!geometryFaceOperationPick || geometryFaceOperationPick.faceIndex == null) {
       setGeometryCreateActionStatus("Select a source face slot first.");
       return;
     }
     const objectId = geometryFaceOperationPick.meshKey ?? geometryFaceOperationPick.objectId ?? geometrySelectedObjectId ?? "";
     const faceIndex = geometryFaceOperationPick.faceIndex;
+    const ratio = clampNumber(ratioOverride ?? geometryFaceInsetRatio, 0.02, 0.92);
     applyMeshEditToObject(objectId, "Inset face applied", (mesh) =>
-      insetFace(mesh, faceIndex, geometryFaceInsetRatio)
+      insetFace(mesh, faceIndex, ratio)
     , {
       action: "face-inset",
       label: "Face inset",
       operationType: "Face edit",
       target: `Face ${faceIndex}`,
-      parameters: `ratio=${formatHistoryNumber(geometryFaceInsetRatio)}`,
+      parameters: `ratio=${formatHistoryNumber(ratio)}`,
       destructive: true,
       retainSelection: ({ beforeCounts }) => ({
         kind: "face",
@@ -17749,7 +17837,7 @@ const App: React.FC = () => {
     geometrySelectedObjectId,
     setGeometryCreateActionStatus,
   ]);
-  const handleSplitSelectedProbeEdge = useCallback(() => {
+  const handleSplitSelectedProbeEdge = useCallback((ratioOverride?: number) => {
     if (!geometryEdgeOperationPick?.edgeVertices) {
       setGeometryCreateActionStatus("Select an edge slot first.");
       return;
@@ -17760,7 +17848,11 @@ const App: React.FC = () => {
     }
     const [a, b] = geometryEdgeOperationPick.edgeVertices;
     const objectId = geometryEdgeOperationPick.meshKey ?? geometryEdgeOperationPick.objectId;
-    const splitRatio = clampNumber(Number.isFinite(geometryEdgeSplitRatio) ? geometryEdgeSplitRatio : 0.5, 0.02, 0.98);
+    const splitRatio = clampNumber(
+      Number.isFinite(ratioOverride ?? geometryEdgeSplitRatio) ? Number(ratioOverride ?? geometryEdgeSplitRatio) : 0.5,
+      0.02,
+      0.98
+    );
     const splitPercent = Math.round(splitRatio * 100);
     const isMidpointSplit = Math.abs(splitRatio - 0.5) < 0.001;
     applyMeshEditToObject(objectId, "Split edge applied", (mesh) => splitEdge(mesh, a, b, splitRatio), {
@@ -17842,7 +17934,7 @@ const App: React.FC = () => {
     geometryEdgeOperationPick,
     setGeometryCreateActionStatus,
   ]);
-  const handleBevelSelectedProbeEdge = useCallback(() => {
+  const handleBevelSelectedProbeEdge = useCallback((amountOverride?: number) => {
     if (!geometryEdgeOperationPick?.edgeVertices) {
       setGeometryCreateActionStatus("Select an edge slot first.");
       return;
@@ -17853,14 +17945,15 @@ const App: React.FC = () => {
     }
     const [a, b] = geometryEdgeOperationPick.edgeVertices;
     const objectId = geometryEdgeOperationPick.meshKey ?? geometryEdgeOperationPick.objectId;
+    const amount = Math.max(0.001, amountOverride ?? geometryEdgeBevelAmount);
     applyMeshEditToObject(objectId, "Bevel edge applied", (mesh) =>
-      bevelEdge(mesh, a, b, geometryEdgeBevelAmount)
+      bevelEdge(mesh, a, b, amount)
     , {
       action: "edge-bevel",
       label: "Bevel edge",
       operationType: "Edge edit",
       target: `Edge ${Math.min(a, b)}-${Math.max(a, b)}`,
-      parameters: `amount=${formatHistoryNumber(geometryEdgeBevelAmount)}`,
+      parameters: `amount=${formatHistoryNumber(amount)}`,
       destructive: true,
       retainSelection: () => ({
         kind: "edge",
@@ -17876,23 +17969,26 @@ const App: React.FC = () => {
     geometryEdgeOperationPick,
     setGeometryCreateActionStatus,
   ]);
-  const handleMoveSelectedVertex = useCallback(() => {
+  const handleMoveSelectedVertex = useCallback(
+    (amountOverride?: number, directionOverride?: GeometryProbePoint | null) => {
     if (!geometryVertexOperationPick || geometryVertexOperationPick.vertexIndex == null) {
       setGeometryCreateActionStatus("Select a vertex slot first.");
       return;
     }
     const objectId = geometryVertexOperationPick.meshKey ?? geometryVertexOperationPick.objectId ?? geometrySelectedObjectId ?? "";
     const vertexIndex = geometryVertexOperationPick.vertexIndex;
-    const moveNormal =
-      geometryVertexOperationPick.vertexNormal ??
-      geometryVertexOperationPick.normal ??
-      geometryVertexOperationPick.faceNormal ??
-      ([0, 1, 0] as [number, number, number]);
+    const moveNormal = directionOverride
+      ? ([directionOverride.x, directionOverride.y, directionOverride.z] as [number, number, number])
+      : geometryVertexOperationPick.vertexNormal ??
+        geometryVertexOperationPick.normal ??
+        geometryVertexOperationPick.faceNormal ??
+        ([0, 1, 0] as [number, number, number]);
+    const amount = amountOverride ?? geometryVertexMoveAmount;
     applyMeshEditToObject(objectId, "Moved vertex", (mesh) =>
       moveVertex(
         mesh,
         vertexIndex,
-        geometryVertexMoveAmount,
+        amount,
         { x: moveNormal[0], y: moveNormal[1], z: moveNormal[2] }
       )
     , {
@@ -17900,7 +17996,7 @@ const App: React.FC = () => {
       label: "Move vertex",
       operationType: "Vertex edit",
       target: `Vertex ${vertexIndex}`,
-      parameters: `distance=${formatHistoryNumber(geometryVertexMoveAmount)}`,
+      parameters: `distance=${formatHistoryNumber(amount)}`,
       destructive: true,
       retainSelection: () => ({
         kind: "vertex",
@@ -17909,13 +18005,15 @@ const App: React.FC = () => {
         message: "Kept the moved vertex selected.",
       }),
     });
-  }, [
-    applyMeshEditToObject,
-    geometrySelectedObjectId,
-    geometryVertexOperationPick,
-    geometryVertexMoveAmount,
-    setGeometryCreateActionStatus,
-  ]);
+    },
+    [
+      applyMeshEditToObject,
+      geometrySelectedObjectId,
+      geometryVertexOperationPick,
+      geometryVertexMoveAmount,
+      setGeometryCreateActionStatus,
+    ]
+  );
   const handleWeldVertices = useCallback(() => {
     if (geometryEdgeOperationPick?.edgeVertices) {
       const [a, b] = geometryEdgeOperationPick.edgeVertices;
@@ -28358,6 +28456,79 @@ const App: React.FC = () => {
     handleMoveSelectedVertex,
     handleSplitSelectedProbeEdge,
   ]);
+  const handleGeometryTopologyGizmoDrag = useCallback(
+    (info: SurfaceTopologyGizmoDragInfo) => {
+      const params = mapGeometryTopologyGizmoDragToParams(info, {
+        edgeMode: geometryTopologyGizmoEdgeMode,
+        faceInsetRatio: geometryFaceInsetRatio,
+        faceExtrudeDistance: geometryFaceExtrudeDistance,
+        edgeSplitRatio: geometryEdgeSplitRatio,
+        edgeBevelAmount: geometryEdgeBevelAmount,
+        vertexMoveAmount: geometryVertexMoveAmount,
+        referenceLength: geometryTopologyGizmoReferenceLength,
+      });
+      geometryTopologyGizmoDragParamsRef.current = params;
+      if (!params) return;
+      if (params.operation === "Extrude Face") {
+        setGeometryFaceExtrudeDistance(params.distance);
+        setGeometryCreateActionStatus(`Face handle: Extrude ${params.label}.`);
+      } else if (params.operation === "Inset Face") {
+        setGeometryFaceInsetRatio(params.ratio);
+        setGeometryCreateActionStatus(`Face handle: Inset ${params.label}.`);
+      } else if (params.operation === "Split Edge") {
+        setGeometryEdgeSplitRatio(params.ratio);
+        setGeometryCreateActionStatus(`Edge handle: Split ${params.label}.`);
+      } else if (params.operation === "Bevel Edge") {
+        setGeometryEdgeBevelAmount(params.amount);
+        setGeometryCreateActionStatus(`Edge handle: Bevel ${params.label}.`);
+      } else if (params.operation === "Move Vertex") {
+        const direction = geometryNormalizeVec(geometryScale(info.axis, params.directionSign)) ?? info.axis;
+        setGeometryVertexMoveAmount(params.amount);
+        setGeometryCreateActionStatus(
+          `Vertex handle: Move ${params.label}, direction ${formatHistoryVec3(direction)}.`
+        );
+      }
+    },
+    [
+      geometryEdgeBevelAmount,
+      geometryEdgeSplitRatio,
+      geometryFaceExtrudeDistance,
+      geometryFaceInsetRatio,
+      geometryTopologyGizmoEdgeMode,
+      geometryTopologyGizmoReferenceLength,
+      geometryVertexMoveAmount,
+      setGeometryCreateActionStatus,
+    ]
+  );
+  const handleGeometryTopologyGizmoDragEnd = useCallback(
+    (info: SurfaceTopologyGizmoDragInfo) => {
+      handleGeometryTopologyGizmoDrag(info);
+      const params = geometryTopologyGizmoDragParamsRef.current;
+      geometryTopologyGizmoDragParamsRef.current = null;
+      if (!params) return;
+      const releaseAction = geometryTopologyGizmoReleaseAction(params);
+      if (params.operation === "Extrude Face" && releaseAction === "extrude-face") {
+        handleExtrudeSelectedFace(params.distance);
+      } else if (params.operation === "Inset Face" && releaseAction === "inset-face") {
+        handleInsetSelectedFace(params.ratio);
+      } else if (params.operation === "Split Edge" && releaseAction === "split-edge") {
+        handleSplitSelectedProbeEdge(params.ratio);
+      } else if (params.operation === "Bevel Edge" && releaseAction === "bevel-edge") {
+        handleBevelSelectedProbeEdge(params.amount);
+      } else if (params.operation === "Move Vertex" && releaseAction === "move-vertex") {
+        const direction = geometryNormalizeVec(geometryScale(info.axis, params.directionSign)) ?? info.axis;
+        handleMoveSelectedVertex(params.amount, direction);
+      }
+    },
+    [
+      handleBevelSelectedProbeEdge,
+      handleExtrudeSelectedFace,
+      handleGeometryTopologyGizmoDrag,
+      handleInsetSelectedFace,
+      handleMoveSelectedVertex,
+      handleSplitSelectedProbeEdge,
+    ]
+  );
   const geometryContextCanRunPrimaryAction = geometryContextSelectionState.canRunPrimaryAction;
   const geometryContextualActionBindings: ContextualActionBindingMap = {
     face: [
@@ -28475,6 +28646,25 @@ const App: React.FC = () => {
             disabledReason: "Select an object to open its history.",
           },
         ]
+      : geometryProbeSelectionMode === "edge"
+        ? [
+            ...geometryActiveSelectionEntityActionButtons,
+            {
+              label: geometryTopologyGizmoEdgeMode === "bevel" ? "Handle: Bevel" : "Handle: Split",
+              testId: "geometry-active-selection-action-edge-handle-mode",
+              onClick: () => {
+                const nextMode = geometryTopologyGizmoEdgeMode === "bevel" ? "split" : "bevel";
+                setGeometryTopologyGizmoEdgeMode(nextMode);
+                setGeometryCreateActionStatus(
+                  nextMode === "bevel"
+                    ? "Geometry edge handle now drives Bevel amount."
+                    : "Geometry edge handle now drives Split ratio."
+                );
+              },
+              disabled: !geometryHasEdgeOperationPick,
+              disabledReason: "Choose an edge before changing the edge handle mode.",
+            },
+          ]
       : geometryActiveSelectionEntityActionButtons;
   const geometrySelectionBreadcrumb = useMemo(
     () =>
@@ -75413,14 +75603,14 @@ case "mobius":
                               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                                 <button
                                   type="button"
-                                  onClick={handleExtrudeSelectedFace}
+                                  onClick={() => handleExtrudeSelectedFace()}
                                   disabled={!geometryHasFaceOperationPick}
                                 >
                                   Extrude face
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={handleInsetSelectedFace}
+                                  onClick={() => handleInsetSelectedFace()}
                                   disabled={!geometryHasFaceOperationPick}
                                 >
                                   Inset face
@@ -75477,7 +75667,7 @@ case "mobius":
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={handleBevelSelectedProbeEdge}
+                                  onClick={() => handleBevelSelectedProbeEdge()}
                                   disabled={!geometryHasEdgeOperationPick || !geometryEdgeTopologyActionPreview.bevel.ready}
                                   title={geometryProbeSelectionMode !== "edge" ? "Set selection mode to Edge." : "Bevel selected edge"}
                                 >
@@ -75485,7 +75675,7 @@ case "mobius":
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={handleSplitSelectedProbeEdge}
+                                  onClick={() => handleSplitSelectedProbeEdge()}
                                   disabled={!geometryHasEdgeOperationPick || !geometryEdgeTopologyActionPreview.split.ready}
                                   title={geometryProbeSelectionMode !== "edge" ? "Set selection mode to Edge." : "Split selected edge"}
                                 >
@@ -75513,7 +75703,7 @@ case "mobius":
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={handleMoveSelectedVertex}
+                                  onClick={() => handleMoveSelectedVertex()}
                                   disabled={!geometryHasVertexOperationPick}
                                   title={geometryProbeSelectionMode !== "vertex" ? "Set selection mode to Vertex." : "Move selected vertex"}
                                 >
@@ -78787,7 +78977,7 @@ case "mobius":
                   applyPreviewTestId="geometry-context-apply-preview"
                   confirmationLabel={geometryContextToolbarConfirmationLabel}
                   confirmationTestId="geometry-context-confirmation"
-                  lastCommandLabel={geometryContextToolbarLastCommandLabel}
+                  lastCommandLabel={geometryActiveSelectionCardLastCommandLabel}
                   lastCommandTestId="geometry-context-last-command"
                   canUndoLast={geometryCanUndoLatestAction}
                   onUndoLast={handleUndoLatestGeometryHistoryStep}
@@ -79939,6 +80129,15 @@ case "mobius":
                   gizmoRotationSnapDeg={geometrySnapRotateEnabled ? geometrySnapRotateStepDeg : null}
                   gizmoScaleSnap={geometrySnapScaleEnabled ? geometrySnapScaleStep : null}
                   onGizmoTransform={geometryMode === "procedural" ? handleProceduralGizmoTransform : undefined}
+                  topologyGizmo={
+                    geometryMode === "procedural" && !geometryTransformGizmoActive ? geometryTopologyGizmoTarget : null
+                  }
+                  onTopologyGizmoDrag={
+                    geometryMode === "procedural" ? handleGeometryTopologyGizmoDrag : undefined
+                  }
+                  onTopologyGizmoDragEnd={
+                    geometryMode === "procedural" ? handleGeometryTopologyGizmoDragEnd : undefined
+                  }
                   pickEnabled={
                     geometryMode === "procedural"
                       ? geometryProceduralPanelTab !== "demonstrations"
@@ -80299,7 +80498,7 @@ case "mobius":
                               emptyState={geometryActiveSelectionSummary.emptyState}
                               confirmationLabel={geometryContextToolbarConfirmationLabel}
                               confirmationTestId="geometry-active-selection-confirmation"
-                              lastCommandLabel={geometryContextToolbarLastCommandLabel}
+                              lastCommandLabel={geometryActiveSelectionCardLastCommandLabel}
                               lastCommandTestId="geometry-active-selection-last-command"
                               canUndoLast={geometryCanUndoLatestAction}
                               onUndoLast={handleUndoLatestGeometryHistoryStep}
@@ -80938,7 +81137,7 @@ case "mobius":
                                 <button type="button" onClick={handleTrimSelectedConstructionOperation} style={geometryOperationButtonStyle}>
                                   Trim
                                 </button>
-                                <button type="button" onClick={handleSplitSelectedProbeEdge} style={geometryOperationButtonStyle}>
+                                <button type="button" onClick={() => handleSplitSelectedProbeEdge()} style={geometryOperationButtonStyle}>
                                   Split
                                 </button>
                               </div>
@@ -81395,7 +81594,7 @@ case "mobius":
                                   <button
                                     type="button"
                                     data-testid="geometry-direct-edit-face-extrude"
-                                    onClick={handleExtrudeSelectedFace}
+                                    onClick={() => handleExtrudeSelectedFace()}
                                     style={geometryOperationButtonStyle}
                                   >
                                     Extrude Face
@@ -81417,7 +81616,7 @@ case "mobius":
                                     <button
                                       type="button"
                                       data-testid="geometry-direct-edit-face-inset"
-                                      onClick={handleInsetSelectedFace}
+                                      onClick={() => handleInsetSelectedFace()}
                                       style={geometryOperationButtonStyle}
                                     >
                                       Inset Face
@@ -81534,7 +81733,7 @@ case "mobius":
                                     <button
                                       type="button"
                                       data-testid="geometry-direct-edit-edge-split"
-                                      onClick={handleSplitSelectedProbeEdge}
+                                      onClick={() => handleSplitSelectedProbeEdge()}
                                       disabled={!geometryEdgeTopologyActionPreview.split.ready}
                                       style={{
                                         ...geometryOperationButtonStyle,
@@ -81546,7 +81745,7 @@ case "mobius":
                                     <button
                                       type="button"
                                       data-testid="geometry-direct-edit-edge-bevel"
-                                      onClick={handleBevelSelectedProbeEdge}
+                                      onClick={() => handleBevelSelectedProbeEdge()}
                                       disabled={!geometryEdgeTopologyActionPreview.bevel.ready}
                                       style={{
                                         ...geometryOperationButtonStyle,
@@ -81606,7 +81805,7 @@ case "mobius":
                                     <button
                                       type="button"
                                       data-testid="geometry-direct-edit-vertex-move"
-                                      onClick={handleMoveSelectedVertex}
+                                      onClick={() => handleMoveSelectedVertex()}
                                       style={geometryOperationButtonStyle}
                                     >
                                       Move Vertex

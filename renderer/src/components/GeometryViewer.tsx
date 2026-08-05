@@ -12,6 +12,8 @@ import {
   type OverlayMeshGroup,
   type OverlayPointSet,
   type OverlayPolylineGroup,
+  type SurfaceTopologyGizmoDragInfo,
+  type SurfaceTopologyGizmoTarget,
   type SurfaceViewerPickModifiers,
 } from "./SurfaceViewer";
 import type { GeometryScene, Polygon3 } from "../geometry/types";
@@ -129,6 +131,10 @@ export type GeometryViewerProps = {
     rotation: { x: number; y: number; z: number };
     scale: { x: number; y: number; z: number };
   }) => void;
+  topologyGizmo?: SurfaceTopologyGizmoTarget | null;
+  onTopologyGizmoDragStart?: (info: SurfaceTopologyGizmoDragInfo) => void;
+  onTopologyGizmoDrag?: (info: SurfaceTopologyGizmoDragInfo) => void;
+  onTopologyGizmoDragEnd?: (info: SurfaceTopologyGizmoDragInfo) => void;
   lineRadiusScale?: number;
   segmentRadiusScale?: number;
   edgeRadiusScale?: number;
@@ -192,6 +198,10 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   gizmoRotationSnapDeg = null,
   gizmoScaleSnap = null,
   onGizmoTransform,
+  topologyGizmo = null,
+  onTopologyGizmoDragStart,
+  onTopologyGizmoDrag,
+  onTopologyGizmoDragEnd,
   lineRadiusScale = 1,
   segmentRadiusScale = 1,
   edgeRadiusScale = 1,
@@ -378,6 +388,10 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
       gizmoRotationSnapDeg={gizmoRotationSnapDeg}
       gizmoScaleSnap={gizmoScaleSnap}
       onGizmoTransform={onGizmoTransform}
+      topologyGizmo={topologyGizmo}
+      onTopologyGizmoDragStart={onTopologyGizmoDragStart}
+      onTopologyGizmoDrag={onTopologyGizmoDrag}
+      onTopologyGizmoDragEnd={onTopologyGizmoDragEnd}
       inspectEnabled={pickEnabled}
       onInspectPick={
         pickEnabled && onPick
