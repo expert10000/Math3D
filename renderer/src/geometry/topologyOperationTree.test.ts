@@ -10,6 +10,7 @@ import {
 import {
   buildGeometryTopologyOperationTree,
   replayGeometryTopologyOperationTreeFromNode,
+  reorderGeometryTopologyOperationTreeNodeIds,
   type GeometryTopologyOperationTreeInputNode,
 } from "./topologyOperationTree";
 
@@ -85,6 +86,46 @@ describe("geometry topology operation tree", () => {
       enabled: true,
     });
     expect(tree.nodes[1].enabled).toBe(false);
+  });
+
+  it("orders nodes by explicit operation-tree order before falling back to time", () => {
+    const mesh = makeMesh();
+    const tree = buildGeometryTopologyOperationTree([
+      {
+        id: "first-by-time",
+        label: "First by time",
+        at: 10,
+        order: 2,
+        sourceMesh: mesh,
+        definition: createGeometryTopologyEditDefinition({
+          operation: "Split Edge",
+          sourceObjectVersion: sourceVersion,
+          target: createGeometryTopologyEdgeTarget(1, 2),
+          parameters: { ratio: 0.5 },
+        }),
+      },
+      {
+        id: "first-by-order",
+        label: "First by order",
+        at: 20,
+        order: 0,
+        sourceMesh: mesh,
+        definition: createGeometryTopologyEditDefinition({
+          operation: "Move Vertex",
+          sourceObjectVersion: sourceVersion,
+          target: createGeometryTopologyVertexTarget(1),
+          parameters: { amount: 0.1, direction: { x: 1, y: 0, z: 0 } },
+        }),
+      },
+    ]);
+
+    expect(tree.nodes.map((node) => node.id)).toEqual(["first-by-order", "first-by-time"]);
+  });
+
+  it("reorders node ids up and down without losing ids", () => {
+    expect(reorderGeometryTopologyOperationTreeNodeIds(["a", "b", "c"], "b", "up")).toEqual(["b", "a", "c"]);
+    expect(reorderGeometryTopologyOperationTreeNodeIds(["a", "b", "c"], "b", "down")).toEqual(["a", "c", "b"]);
+    expect(reorderGeometryTopologyOperationTreeNodeIds(["a", "b", "c"], "a", "up")).toEqual(["a", "b", "c"]);
   });
 
   it("replays from the chosen node onward and skips disabled later nodes", () => {
@@ -183,6 +224,44 @@ describe("geometry topology operation tree", () => {
     expect(replayGeometryTopologyOperationTreeFromNode(tree, "missing")).toEqual({
       ok: false,
       reason: "Replay blocked at Split missing edge: Edge 0-3 is missing in source object revision geometry:box-1:r1:v4:f2.",
+      nodeId: "missing",
+    });
+  });
+
+  it("reports the reordered later node that blocks replay", () => {
+    const mesh = makeMesh();
+    const tree = buildGeometryTopologyOperationTree([
+      {
+        id: "move",
+        label: "Move after reorder",
+        at: 20,
+        order: 0,
+        sourceMesh: mesh,
+        definition: createGeometryTopologyEditDefinition({
+          operation: "Move Vertex",
+          sourceObjectVersion: sourceVersion,
+          target: createGeometryTopologyVertexTarget(1),
+          parameters: { amount: 0.2, direction: { x: 1, y: 0, z: 0 } },
+        }),
+      },
+      {
+        id: "missing",
+        label: "Missing after reorder",
+        at: 10,
+        order: 1,
+        sourceMesh: mesh,
+        definition: createGeometryTopologyEditDefinition({
+          operation: "Split Edge",
+          sourceObjectVersion: sourceVersion,
+          target: createGeometryTopologyEdgeTarget(0, 3),
+          parameters: { ratio: 0.5 },
+        }),
+      },
+    ]);
+
+    expect(replayGeometryTopologyOperationTreeFromNode(tree, "move")).toEqual({
+      ok: false,
+      reason: "Replay blocked at Missing after reorder: Edge 0-3 is missing in source object revision geometry:box-1:r1:v4:f2.",
       nodeId: "missing",
     });
   });

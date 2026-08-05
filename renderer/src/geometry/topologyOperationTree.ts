@@ -13,6 +13,7 @@ export type GeometryTopologyOperationTreeInputNode = {
   readonly definition: GeometryTopologyEditDefinition | null | undefined;
   readonly sourceMesh: SurfaceMeshData | null | undefined;
   readonly enabled?: boolean;
+  readonly order?: number | null;
 };
 
 export type GeometryTopologyOperationTreeNode = {
@@ -27,6 +28,7 @@ export type GeometryTopologyOperationTreeNode = {
   readonly sourceRevisionLabel: string;
   readonly replayStatusLabel: string;
   readonly enabled: boolean;
+  readonly order: number;
 };
 
 export type GeometryTopologyOperationTree = {
@@ -44,6 +46,22 @@ export type GeometryTopologyOperationTreeReplayResult =
       readonly startNodeId: string;
     }
   | { readonly ok: false; readonly reason: string; readonly nodeId?: string | null };
+
+export function reorderGeometryTopologyOperationTreeNodeIds(
+  orderedNodeIds: readonly string[],
+  nodeId: string,
+  direction: "up" | "down"
+): string[] {
+  const next = orderedNodeIds.slice();
+  const index = next.indexOf(nodeId);
+  if (index < 0) return next;
+  const targetIndex = direction === "up" ? index - 1 : index + 1;
+  if (targetIndex < 0 || targetIndex >= next.length) return next;
+  const current = next[index];
+  next[index] = next[targetIndex];
+  next[targetIndex] = current;
+  return next;
+}
 
 const cloneSurfaceMeshForReplay = (mesh: SurfaceMeshData, labelOverride?: string): SurfaceMeshData => ({
   label: labelOverride ?? mesh.label,
@@ -74,8 +92,15 @@ export function buildGeometryTopologyOperationTree(
       readonly sourceMesh: SurfaceMeshData;
     } => !!node.definition && !!node.sourceMesh)
     .slice()
-    .sort((a, b) => a.at - b.at)
-    .map((node): GeometryTopologyOperationTreeNode => {
+    .sort((a, b) => {
+      const orderA = Number.isFinite(a.order) ? Number(a.order) : null;
+      const orderB = Number.isFinite(b.order) ? Number(b.order) : null;
+      if (orderA != null && orderB != null && orderA !== orderB) return orderA - orderB;
+      if (orderA != null && orderB == null) return -1;
+      if (orderA == null && orderB != null) return 1;
+      return a.at - b.at;
+    })
+    .map((node, index): GeometryTopologyOperationTreeNode => {
       const description = describeGeometryTopologyEditDefinition(node.definition, true);
       return {
         id: node.id,
@@ -89,6 +114,7 @@ export function buildGeometryTopologyOperationTree(
         sourceRevisionLabel: description.sourceRevisionLabel,
         replayStatusLabel: description.replayStatusLabel,
         enabled: node.enabled ?? true,
+        order: Number.isFinite(node.order) ? Number(node.order) : index,
       };
     });
 
