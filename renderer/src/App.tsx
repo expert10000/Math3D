@@ -448,6 +448,7 @@ import {
 } from "./mesh/meshEditOps";
 import {
   selectMeshEdgesByTool,
+  type MeshEdgePair,
   type MeshEdgeSelectionResult,
   type MeshEdgeSelectionTool,
 } from "./mesh/edgeSelection";
@@ -5207,6 +5208,64 @@ const computeTriangleMeshEdgeTopology = (mesh: {
   const manifold = nonManifoldEdgeCount === 0;
   const watertight = manifold && boundaryEdgeCount === 0;
   return { boundaryEdgeCount, nonManifoldEdgeCount, manifold, watertight };
+};
+
+const collectTriangleMeshBoundaryEdges = (mesh: {
+  positions: ArrayLike<number>;
+  indices?: ArrayLike<number> | null;
+}): MeshEdgePair[] => {
+  const vertexCount = Math.floor((mesh.positions?.length ?? 0) / 3);
+  if (vertexCount <= 0) return [];
+  const indices = mesh.indices ?? null;
+  const triCount = indices && indices.length >= 3 ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
+  const edgeIncidence = new Map<string, { edge: MeshEdgePair; count: number }>();
+  const bumpEdge = (a: number, b: number) => {
+    const i0 = Math.min(a, b);
+    const i1 = Math.max(a, b);
+    const key = `${i0}|${i1}`;
+    const current = edgeIncidence.get(key);
+    edgeIncidence.set(key, { edge: [i0, i1], count: (current?.count ?? 0) + 1 });
+  };
+  for (let t = 0; t < triCount; t += 1) {
+    const base = t * 3;
+    const ia = indices ? Number(indices[base]) : base;
+    const ib = indices ? Number(indices[base + 1]) : base + 1;
+    const ic = indices ? Number(indices[base + 2]) : base + 2;
+    const allFinite = Number.isInteger(ia) && Number.isInteger(ib) && Number.isInteger(ic);
+    const inRange =
+      ia >= 0 && ib >= 0 && ic >= 0 && ia < vertexCount && ib < vertexCount && ic < vertexCount;
+    const distinct = ia !== ib && ib !== ic && ia !== ic;
+    if (!allFinite || !inRange || !distinct) continue;
+    bumpEdge(ia, ib);
+    bumpEdge(ib, ic);
+    bumpEdge(ic, ia);
+  }
+  return [...edgeIncidence.values()]
+    .filter((entry) => entry.count === 1)
+    .map((entry) => entry.edge);
+};
+
+const findCoincidentMeshVertexGroups = (
+  mesh: { positions: ArrayLike<number> },
+  tolerance: number,
+  maxGroups = 8
+): number[][] => {
+  const vertexCount = Math.floor((mesh.positions?.length ?? 0) / 3);
+  const tol = Number.isFinite(tolerance) && tolerance > 0 ? tolerance : 1e-8;
+  const inv = 1 / tol;
+  const buckets = new Map<string, number[]>();
+  for (let i = 0; i < vertexCount; i += 1) {
+    const base = i * 3;
+    const x = Number(mesh.positions[base]);
+    const y = Number(mesh.positions[base + 1]);
+    const z = Number(mesh.positions[base + 2]);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+    const key = `${Math.round(x * inv)}|${Math.round(y * inv)}|${Math.round(z * inv)}`;
+    const group = buckets.get(key);
+    if (group) group.push(i);
+    else buckets.set(key, [i]);
+  }
+  return [...buckets.values()].filter((group) => group.length > 1).slice(0, maxGroups);
 };
 
 type TriangleMeshGeometricMetrics = {
@@ -32442,6 +32501,7 @@ const App: React.FC = () => {
   const [surfaceMeshWeldTolerance, setSurfaceMeshWeldTolerance] = useState(1e-4);
   const [surfaceMeshWeldBusy, setSurfaceMeshWeldBusy] = useState(false);
   const [surfaceMeshWeldError, setSurfaceMeshWeldError] = useState<string | null>(null);
+  const [meshAnalyzeDiagnosticsNonce, setMeshAnalyzeDiagnosticsNonce] = useState(0);
   const [surfaceMeshSubdivideIterations, setSurfaceMeshSubdivideIterations] = useState(1);
   const [surfaceMeshNormalizeDiag, setSurfaceMeshNormalizeDiag] = useState(2);
   const [surfaceMeshOpsError, setSurfaceMeshOpsError] = useState<string | null>(null);
@@ -52453,6 +52513,49 @@ case "mobius":
     () => computeMeshTopologyInspector(surfaceInspectorTopologyMesh, { rowLimit: 18, itemLimit: 12 }),
     [surfaceInspectorTopologyMesh]
   );
+  const surfaceMeshAnalyzeDiagnostics = useMemo(() => {
+    if (!surfaceMeshData?.positions?.length) return null;
+    const readiness = evaluateGeometryMeshReadiness(surfaceMeshData);
+    const topology = computeMeshTopologyInspector(surfaceMeshData, { rowLimit: 6, itemLimit: 8 });
+    const sourceNames =
+      surfaceMeshData.source.kind === "geometryObject"
+        ? [
+            surfaceMeshData.source.objectName,
+            ...(surfaceMeshData.source.objects?.map((object) => object.objectName) ?? []),
+          ].filter((name): name is string => !!name)
+        : [];
+    if (meshPromotionTrace?.sourceGeometryObjectName) sourceNames.push(meshPromotionTrace.sourceGeometryObjectName);
+    const sphereLike = sourceNames.some((name) => /\bsphere\b/i.test(name)) || /\bsphere\b/i.test(surfaceMeshLabel);
+    const trianglesValid =
+      readiness.stats.invalidFaceCount === 0 &&
+      readiness.stats.degenerateTriangleCount === 0 &&
+      readiness.stats.faceCount > 0;
+    const duplicateVertexGroups = findCoincidentMeshVertexGroups(
+      surfaceMeshData,
+      readiness.suggestions.dedupeTolerance,
+      6
+    );
+    return {
+      trianglesValid,
+      invalidFaceCount: readiness.stats.invalidFaceCount,
+      degenerateTriangleCount: readiness.stats.degenerateTriangleCount,
+      boundaryEdgeCount: readiness.stats.boundaryEdgeCount,
+      nonManifoldEdgeCount: readiness.stats.nonManifoldEdgeCount,
+      duplicateVertexCount: readiness.stats.duplicateVertexCount,
+      duplicateVertexGroups,
+      eulerCharacteristic: topology?.eulerCharacteristic ?? null,
+      watertight: topology?.watertight ?? null,
+      boundaryLoopCount: topology?.boundaryLoops.length ?? 0,
+      weldTolerance: readiness.suggestions.weldTolerance,
+      cleanMesh:
+        trianglesValid &&
+        readiness.stats.boundaryEdgeCount === 0 &&
+        readiness.stats.nonManifoldEdgeCount === 0 &&
+        readiness.stats.duplicateVertexCount === 0 &&
+        topology?.watertight === true,
+      sphereSeamWarning: sphereLike && readiness.stats.boundaryEdgeCount > 0,
+    };
+  }, [meshAnalyzeDiagnosticsNonce, meshPromotionTrace?.sourceGeometryObjectName, surfaceMeshData, surfaceMeshLabel]);
   const surfaceInspectorMeshStats = useMemo(
     () => ({
       vertexCount:
@@ -52480,6 +52583,70 @@ case "mobius":
       surfaceMeshStats,
     ]
   );
+  const handleHighlightMeshAnalyzeBoundary = useCallback(() => {
+    if (!surfaceMeshData?.positions?.length) {
+      setSurfaceMeshTopologyStatus("Surface mesh not ready yet.");
+      return;
+    }
+    const boundaryEdges = collectTriangleMeshBoundaryEdges(surfaceMeshData);
+    if (!boundaryEdges.length) {
+      setSurfaceMeshEdgeSelection(null);
+      surfaceMeshEdgeSelectionRef.current = null;
+      setSurfaceMeshTopologyStatus("Diagnostics: no boundary edges found.");
+      return;
+    }
+    const selection: MeshEdgeSelectionResult = {
+      tool: "boundary",
+      seed: boundaryEdges[0],
+      edges: boundaryEdges,
+      label: "Boundary",
+      status: `Diagnostics: highlighted ${boundaryEdges.length.toLocaleString()} boundary ${
+        boundaryEdges.length === 1 ? "edge" : "edges"
+      }.`,
+    };
+    setSurfaceMeshTopologyPickMode("edge");
+    setSurfaceMeshTopologySelectionCleared(false);
+    surfaceMeshEdgeSelectionRef.current = selection;
+    setSurfaceMeshEdgeSelection(selection);
+    setContextualActionPulseId("mesh:boundary-select");
+    setSurfaceMeshTopologyStatus(selection.status);
+    showSelectionEventStatus("Mesh", selection.status, `mesh-diagnostics-boundary:${boundaryEdges.length}`);
+  }, [showSelectionEventStatus, surfaceMeshData]);
+  const handleHighlightMeshAnalyzeDuplicates = useCallback(() => {
+    if (!surfaceMeshData?.positions?.length || !surfaceMeshAnalyzeDiagnostics) {
+      setSurfaceMeshTopologyStatus("Surface mesh not ready yet.");
+      return;
+    }
+    const firstGroup = surfaceMeshAnalyzeDiagnostics.duplicateVertexGroups[0];
+    if (!firstGroup?.length) {
+      setSurfaceMeshTopologyStatus("Diagnostics: no duplicated/coincident vertices found.");
+      return;
+    }
+    const listed = firstGroup.slice(0, 6).map((vertex) => `v${vertex}`).join(", ");
+    setSurfaceMeshTopologyPickMode("vertex");
+    setSurfaceMeshTopologySelectionCleared(false);
+    setSurfaceMeshTopologyVertexIndex(firstGroup[0]);
+    setSurfaceMeshTopologyStatus(
+      `Diagnostics: duplicate vertex group loaded (${listed}${
+        firstGroup.length > 6 ? "..." : ""
+      }); ${surfaceMeshAnalyzeDiagnostics.duplicateVertexCount.toLocaleString()} duplicated/coincident vertices detected.`
+    );
+  }, [surfaceMeshAnalyzeDiagnostics, surfaceMeshData]);
+  const handlePreviewMeshAnalyzeWeld = useCallback(() => {
+    if (!surfaceMeshData?.positions?.length || !surfaceMeshAnalyzeDiagnostics) {
+      setSurfaceMeshTopologyStatus("Surface mesh not ready yet.");
+      return;
+    }
+    const tol = Math.max(1e-8, surfaceMeshAnalyzeDiagnostics.weldTolerance);
+    setSurfaceMeshWeldTolerance(tol);
+    setSurfaceMeshTopologyStatus(
+      `Diagnostics: weld preview tolerance set to ${tol.toExponential(2)}. Open Mesh Edit tools and apply Weld vertices to repair.`
+    );
+  }, [surfaceMeshAnalyzeDiagnostics, surfaceMeshData]);
+  const handleRecomputeMeshAnalyzeDiagnostics = useCallback(() => {
+    setMeshAnalyzeDiagnosticsNonce((value) => value + 1);
+    setSurfaceMeshTopologyStatus("Diagnostics recomputed.");
+  }, []);
   const readFiniteRange = (values: Float32Array | null | undefined): { min: number; max: number } | null => {
     if (!values?.length) return null;
     let min = Number.POSITIVE_INFINITY;
@@ -63615,6 +63782,158 @@ case "mobius":
                           Frame object
                         </button>
                       </div>
+                      <div
+                        style={{
+                          border: "1px solid #cbd5e1",
+                          borderRadius: 8,
+                          background: "#ffffff",
+                          padding: "8px 9px",
+                          display: "grid",
+                          gap: 7,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: "#0f172a" }}>Diagnostics</div>
+                          <div
+                            style={{
+                              fontSize: 10,
+                              color: surfaceMeshAnalyzeDiagnostics?.cleanMesh ? "#166534" : "#b45309",
+                              fontWeight: 800,
+                            }}
+                          >
+                            {surfaceMeshAnalyzeDiagnostics
+                              ? surfaceMeshAnalyzeDiagnostics.cleanMesh
+                                ? "clean mesh"
+                                : "needs review"
+                              : "not ready"}
+                          </div>
+                        </div>
+                        {surfaceMeshAnalyzeDiagnostics?.cleanMesh && (
+                          <div
+                            style={{
+                              border: "1px solid #bbf7d0",
+                              borderRadius: 7,
+                              background: "#f0fdf4",
+                              color: "#166534",
+                              padding: "6px 7px",
+                              fontSize: 10.5,
+                              fontWeight: 800,
+                            }}
+                          >
+                            Clean mesh: closed, manifold, watertight.
+                          </div>
+                        )}
+                        {surfaceMeshAnalyzeDiagnostics?.sphereSeamWarning && (
+                          <div
+                            style={{
+                              border: "1px solid #fed7aa",
+                              borderRadius: 7,
+                              background: "#fff7ed",
+                              color: "#9a3412",
+                              padding: "6px 7px",
+                              fontSize: 10.5,
+                              fontWeight: 700,
+                            }}
+                          >
+                            Sphere mesh has open boundary/seam; curvature/topology results may be unreliable.
+                          </div>
+                        )}
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr",
+                            gap: "4px 8px",
+                            fontSize: 10.5,
+                            color: "#334155",
+                          }}
+                        >
+                          <div>
+                            <strong>Triangles:</strong>{" "}
+                            {surfaceMeshAnalyzeDiagnostics
+                              ? surfaceMeshAnalyzeDiagnostics.trianglesValid
+                                ? "valid"
+                                : `${surfaceMeshAnalyzeDiagnostics.invalidFaceCount.toLocaleString()} invalid, ${surfaceMeshAnalyzeDiagnostics.degenerateTriangleCount.toLocaleString()} degenerate`
+                              : "unknown"}
+                          </div>
+                          <div>
+                            <strong>Boundary:</strong>{" "}
+                            {surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount.toLocaleString() ?? "unknown"}
+                          </div>
+                          <div>
+                            <strong>Non-manifold:</strong>{" "}
+                            {surfaceMeshAnalyzeDiagnostics?.nonManifoldEdgeCount.toLocaleString() ?? "unknown"}
+                          </div>
+                          <div>
+                            <strong>Coincident:</strong>{" "}
+                            {surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount.toLocaleString() ?? "unknown"}
+                          </div>
+                          <div>
+                            <strong>Euler chi:</strong>{" "}
+                            {surfaceMeshAnalyzeDiagnostics?.eulerCharacteristic?.toLocaleString() ?? "unknown"}
+                          </div>
+                          <div>
+                            <strong>Watertight:</strong>{" "}
+                            {surfaceMeshAnalyzeDiagnostics?.watertight == null
+                              ? "unknown"
+                              : surfaceMeshAnalyzeDiagnostics.watertight
+                                ? "yes"
+                                : "no"}
+                          </div>
+                        </div>
+                        {surfaceMeshAnalyzeDiagnostics?.cleanMesh ? (
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 8,
+                              flexWrap: "wrap",
+                              fontSize: 10.5,
+                              color: "#166534",
+                              fontWeight: 750,
+                            }}
+                          >
+                            <span>No repair actions needed.</span>
+                            <button type="button" onClick={handleRecomputeMeshAnalyzeDiagnostics} style={{ fontSize: 11 }}>
+                              Recompute diagnostics
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={handleHighlightMeshAnalyzeBoundary}
+                              disabled={!surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount}
+                              style={{ fontSize: 11 }}
+                            >
+                              Highlight boundary
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleHighlightMeshAnalyzeDuplicates}
+                              disabled={!surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount}
+                              style={{ fontSize: 11 }}
+                            >
+                              Highlight duplicates
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handlePreviewMeshAnalyzeWeld}
+                              disabled={
+                                !surfaceMeshAnalyzeDiagnostics ||
+                                (surfaceMeshAnalyzeDiagnostics.boundaryEdgeCount <= 0 &&
+                                  surfaceMeshAnalyzeDiagnostics.duplicateVertexCount <= 0)
+                              }
+                              style={{ fontSize: 11 }}
+                            >
+                              Weld preview
+                            </button>
+                            <button type="button" onClick={handleRecomputeMeshAnalyzeDiagnostics} style={{ fontSize: 11 }}>
+                              Recompute diagnostics
+                            </button>
+                          </div>
+                        )}
+                      </div>
                       <div style={{ display: "grid", gap: 5 }}>
                         <div style={{ fontSize: 11, fontWeight: 800, color: "#0f172a" }}>Display</div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -63625,6 +63944,7 @@ case "mobius":
                             { id: "k1", label: "k1", color: "k1" as ColorMode, section: "differential-geometry" as AnalysisFocusedSection },
                             { id: "k2", label: "k2", color: "k2" as ColorMode, section: "differential-geometry" as AnalysisFocusedSection },
                             { id: "quality", label: "Quality", color: null, section: "mesh-quality" as AnalysisFocusedSection },
+                            { id: "diagnostics", label: "Diagnostics", color: null, section: "diagnostics" as AnalysisFocusedSection },
                           ] as const).map((option) => (
                             <button
                               key={`mesh-analysis-display-${option.id}`}
@@ -63632,7 +63952,7 @@ case "mobius":
                               onClick={() => {
                                 if (option.color) setColorMode(option.color);
                                 setAnalysisFocusedSection(option.section);
-                                if (option.id === "quality") setShowInViewportOverlayControls(true);
+                                if (option.id === "quality" || option.id === "diagnostics") setShowInViewportOverlayControls(true);
                               }}
                               aria-pressed={option.color ? colorMode === option.color : analysisFocusedSection === option.section}
                               style={pill(option.color ? colorMode === option.color : analysisFocusedSection === option.section)}
@@ -65599,6 +65919,17 @@ case "mobius":
                               style={viewerControlButtonStyle(analysisFocusedSection === "mesh-quality", meshViewerControlsDensity)}
                             >
                               Quality
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAnalysisFocusedSection("diagnostics");
+                                setShowInViewportOverlayControls(true);
+                              }}
+                              aria-pressed={analysisFocusedSection === "diagnostics"}
+                              style={viewerControlButtonStyle(analysisFocusedSection === "diagnostics", meshViewerControlsDensity)}
+                            >
+                              Diagnostics
                             </button>
                             <span style={{ width: 1, height: 20, background: "#cbd5e1", margin: "0 2px" }} />
                             <button
@@ -67577,8 +67908,8 @@ case "mobius":
                   {showSurfaceSideCompanions && (
                     <div
                       style={{
-                        minWidth: 240,
-                        maxWidth: 340,
+                        minWidth: showGaussMap ? 220 : 240,
+                        maxWidth: showGaussMap ? 270 : 340,
                         display: "flex",
                         flexDirection: "column",
                         gap: 10,
@@ -67595,7 +67926,7 @@ case "mobius":
                           probeNormal={probeInfo?.normal ?? null}
                           inspectDir={inspectNormal}
                           onPointHover={(idx) => setGaussHoverIndex(idx)}
-                          height={surfaceViewerKind === "complex" && complexMapShowSphere ? 220 : 280}
+                          height={surfaceViewerKind === "complex" && complexMapShowSphere ? 200 : 220}
                           selectionMask={selectionMask}
                           onGaussSelection={handleGaussSelection}
                           densityNormals={selectionBaseArrays?.normals ?? null}

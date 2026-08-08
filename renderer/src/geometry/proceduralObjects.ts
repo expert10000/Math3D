@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { Vec3 } from "./types";
 
 export type GeometryObjectType = "sphere" | "box" | "polygon" | "cylinder" | "cone" | "torus" | "plane" | "polyhedron";
@@ -332,12 +333,18 @@ export const GEOMETRY_OBJECT_REGISTRY: Record<GeometryObjectType, GeometryObject
       { id: "widthSegments", label: "Width segments", kind: "number", min: 3, max: 128, step: 1 },
       { id: "heightSegments", label: "Height segments", kind: "number", min: 2, max: 128, step: 1 },
     ],
-    build: (params) =>
-      new THREE.SphereGeometry(
+    build: (params) => {
+      const geometry = new THREE.SphereGeometry(
         Number(params.radius ?? 1),
         Math.max(3, Math.round(Number(params.widthSegments ?? 32))),
         Math.max(2, Math.round(Number(params.heightSegments ?? 20)))
-      ),
+      );
+      geometry.deleteAttribute("normal");
+      geometry.deleteAttribute("uv");
+      const welded = mergeVertices(geometry, 1e-8);
+      welded.computeVertexNormals();
+      return welded;
+    },
   },
   box: {
     type: "box",
