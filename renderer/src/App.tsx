@@ -8321,6 +8321,9 @@ const colorModesForSurfaceViewer = (
   if (viewerKind === "graph") {
     return ["solid", "height", "radius", "curvature"];
   }
+  if (viewerKind === "mesh") {
+    return ["solid", "height", "radius", ...PARAM_CURVATURE_COLOR_MODES];
+  }
   if (phaseAllowed) {
     return ["solid", "height", "radius", "phase"];
   }
@@ -59492,15 +59495,25 @@ case "mobius":
     isGeometryStackedLayout;
   const compactGeometryCreatePanel =
     geometryMode === "procedural" && geometryProceduralPanelTab === "create" && compactGeometryPanel;
+  const geometryDenseToolPanelActive =
+    geometryMode === "procedural" &&
+    (geometryProceduralPanelTab === "analysis" ||
+      geometryProceduralPanelTab === "euler" ||
+      geometryProceduralPanelTab === "theory" ||
+      geometryProceduralPanelTab === "demonstrations" ||
+      geometryProceduralPanelTab === "history");
   const geometryWideToolPanelActive =
     geometryMode === "procedural" &&
     (geometryProceduralPanelTab === "transform" ||
       geometryProceduralPanelTab === "view" ||
       geometryProceduralPanelTab === "object" ||
       geometryProceduralPanelTab === "analysis" ||
+      geometryProceduralPanelTab === "euler" ||
+      geometryProceduralPanelTab === "theory" ||
+      geometryProceduralPanelTab === "demonstrations" ||
       geometryProceduralPanelTab === "history");
-  const geometryLeftPanelMaxWidth = Math.max(400, Math.min(560, Math.round(viewportSize.width * 0.28)));
-  const geometryLeftPanelPreferredWidth = geometryWideToolPanelActive ? 460 : 380;
+  const geometryLeftPanelMaxWidth = Math.max(420, Math.min(620, Math.round(viewportSize.width * 0.32)));
+  const geometryLeftPanelPreferredWidth = geometryDenseToolPanelActive ? 500 : geometryWideToolPanelActive ? 460 : 400;
   const geometryCreateLeftPanelWidth = Math.min(
     geometryLeftPanelMaxWidth,
     Math.max(leftWidth, geometryLeftPanelPreferredWidth)
@@ -62492,7 +62505,9 @@ case "mobius":
                 <button
                   type="button"
                   onClick={() => setGeometryViewerControlsOpen((v) => !v)}
+                  aria-label={geometryViewerControlsOpen ? "Hide viewer controls" : "Show viewer controls"}
                   aria-pressed={geometryViewerControlsOpen}
+                  title={geometryViewerControlsOpen ? "Hide the viewer controls strip." : "Show the viewer controls strip."}
                   style={{
                     ...pill(geometryViewerControlsOpen),
                     marginLeft: "auto",
@@ -62507,7 +62522,7 @@ case "mobius":
                     boxShadow: geometryViewerControlsOpen ? "0 4px 10px rgba(13, 148, 136, 0.2)" : "none",
                   }}
                 >
-                  {geometryViewerControlsOpen ? "Hide viewer bar" : "Show viewer bar"}
+                  {geometryViewerControlsOpen ? "Hide controls" : "Show controls"}
                 </button>
               </div>
               {showGeometryWorkflowStrip && !isPhoneViewerPriorityLayout && (
@@ -63546,17 +63561,131 @@ case "mobius":
                 <div style={{ marginTop: 10 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Display & analysis</div>
                   {isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "mesh" && (
+                    <>
                     <div
                       style={{
-                        border: "1px solid #dbe2ea",
+                        border: "1px solid #bfdbfe",
                         borderRadius: 10,
                         padding: "10px 12px",
                         background: "#f8fbff",
                         display: "grid",
-                        gap: 8,
+                        gap: 10,
                         marginBottom: 10,
                       }}
                     >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                        <div>
+                          <div style={{ fontSize: 10, color: "#2563eb", fontWeight: 800 }}>MESH / ANALYZE</div>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a" }}>
+                            {meshPromotionTrace?.snapshotLabel ?? surfaceMeshLabel}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 10, color: "#475467", fontWeight: 700 }}>
+                          {surfaceMeshStats
+                            ? `${surfaceMeshStats.vertCount.toLocaleString()} V / ${surfaceMeshStats.triCount.toLocaleString()} F`
+                            : "No mesh"}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 11, color: "#475467" }}>
+                        Source:{" "}
+                        {meshPromotionTrace
+                          ? `Geometry > Procedural > ${meshPromotionTrace.sourceGeometryObjectName}`
+                          : surfaceMeshSourceLabel ?? "Mesh dataset"}
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={meshGeometryRoundTripSource ? handleOpenMeshRoundTripGeometryObject : handleOpenMeshPromotionSourceGeometryObject}
+                          disabled={!meshGeometryRoundTripSource && !meshPromotionTrace}
+                          style={{ fontSize: 11 }}
+                        >
+                          Return to Geometry
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            applySurfaceViewportPreset("analysis");
+                            setShowInViewportOverlayControls(true);
+                            setInspectEnabled(true);
+                            setCameraResetToken((t) => t + 1);
+                          }}
+                          disabled={!surfaceMeshStats}
+                          style={{ fontSize: 11 }}
+                        >
+                          Frame object
+                        </button>
+                      </div>
+                      <div style={{ display: "grid", gap: 5 }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: "#0f172a" }}>Display</div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {([
+                            { id: "none", label: "None", color: "solid" as ColorMode, section: "differential-geometry" as AnalysisFocusedSection },
+                            { id: "mean", label: "H", color: "mean" as ColorMode, section: "differential-geometry" as AnalysisFocusedSection },
+                            { id: "gaussian", label: "K", color: "gaussian" as ColorMode, section: "differential-geometry" as AnalysisFocusedSection },
+                            { id: "k1", label: "k1", color: "k1" as ColorMode, section: "differential-geometry" as AnalysisFocusedSection },
+                            { id: "k2", label: "k2", color: "k2" as ColorMode, section: "differential-geometry" as AnalysisFocusedSection },
+                            { id: "quality", label: "Quality", color: null, section: "mesh-quality" as AnalysisFocusedSection },
+                          ] as const).map((option) => (
+                            <button
+                              key={`mesh-analysis-display-${option.id}`}
+                              type="button"
+                              onClick={() => {
+                                if (option.color) setColorMode(option.color);
+                                setAnalysisFocusedSection(option.section);
+                                if (option.id === "quality") setShowInViewportOverlayControls(true);
+                              }}
+                              aria-pressed={option.color ? colorMode === option.color : analysisFocusedSection === option.section}
+                              style={pill(option.color ? colorMode === option.color : analysisFocusedSection === option.section)}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{ display: "grid", gap: 5 }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: "#0f172a" }}>Analysis</div>
+                        <div style={{ display: "grid", gap: 4 }}>
+                          {([
+                            ["differential-geometry", "Overview"],
+                            ["differential-geometry", "Differential Geometry"],
+                            ["vector-calculus", "Vector Calculus"],
+                            ["curvature-lines", "Curvature Lines"],
+                            ["ridges-valleys", "Ridges / Valleys"],
+                            ["chart-analysis", "Surface Charts"],
+                            ["mesh-quality", "Mesh Quality"],
+                            ["geodesics", "Geodesics"],
+                            ["diagnostics", "Diagnostics"],
+                          ] as const).map(([section, label]) => (
+                            <button
+                              key={`mesh-analysis-nav-${label}`}
+                              type="button"
+                              onClick={() => setAnalysisFocusedSection(section)}
+                              aria-pressed={analysisFocusedSection === section && label !== "Overview"}
+                              style={{
+                                ...pill(analysisFocusedSection === section && label !== "Overview"),
+                                justifyContent: "flex-start",
+                                textAlign: "left",
+                              }}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <details
+                      style={{
+                        border: "1px solid #dbe2ea",
+                        borderRadius: 10,
+                        padding: "10px 12px",
+                        background: "#fff",
+                        marginBottom: 10,
+                      }}
+                    >
+                      <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 800 }}>
+                        Mesh Edit tools
+                      </summary>
+                      <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
                         <div style={{ fontSize: 12, fontWeight: 700 }}>Mesh topology editing</div>
                         <div style={{ fontSize: 10, color: "#475467" }}>
@@ -64626,7 +64755,9 @@ case "mobius":
                       {surfaceMeshTopologyStatus && (
                         <div style={{ fontSize: 11, color: "#05603a" }}>{surfaceMeshTopologyStatus}</div>
                       )}
-                    </div>
+                      </div>
+                    </details>
+                    </>
                   )}
                   <div style={{ marginBottom: 10 }}>
                     <SageSymbolicPanel compact />
@@ -65394,6 +65525,125 @@ case "mobius":
                           boxSizing: "border-box",
                         }}
                       >
+                        {surfacesLeftTab === "analysis" ? (
+                          <div
+                            data-testid="mesh-analysis-context-toolbar"
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              flexWrap: "wrap",
+                              padding: "6px 8px",
+                              borderBottom: "1px solid #c7d7ee",
+                              background: "linear-gradient(180deg, #f8fbff 0%, #eef6ff 100%)",
+                              fontSize: 11,
+                              position: "relative",
+                              zIndex: 17,
+                            }}
+                          >
+                            <span style={{ fontWeight: 800, color: "#1e3a8a" }}>Pick:</span>
+                            {SURFACE_MESH_TOPOLOGY_PICK_MODES.map((pickMode) => (
+                              <button
+                                key={`mesh-analysis-pick-${pickMode}`}
+                                type="button"
+                                onClick={() => {
+                                  handleChangeSurfaceMeshTopologyPickMode(pickMode);
+                                  if (pickMode !== "object" && !probeEnabled) setProbeEnabled(true);
+                                }}
+                                disabled={!unifiedSelectionKindFilters[pickMode]}
+                                aria-pressed={surfaceMeshTopologyPickMode === pickMode}
+                                style={viewerControlButtonStyle(surfaceMeshTopologyPickMode === pickMode, meshViewerControlsDensity)}
+                              >
+                                {pickMode === "object" ? "Object" : pickMode[0].toUpperCase() + pickMode.slice(1)}
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProbeEnabled((value) => !value);
+                                if (!inspectEnabled) setInspectEnabled(true);
+                              }}
+                              aria-pressed={probeEnabled}
+                              style={viewerControlButtonStyle(probeEnabled, meshViewerControlsDensity)}
+                            >
+                              Probe
+                            </button>
+                            <span style={{ fontWeight: 800, color: "#1e3a8a", marginLeft: 4 }}>Result:</span>
+                            {([
+                              ["solid", "None", "differential-geometry"],
+                              ["mean", "H", "differential-geometry"],
+                              ["gaussian", "K", "differential-geometry"],
+                              ["k1", "k1", "differential-geometry"],
+                              ["k2", "k2", "differential-geometry"],
+                            ] as const).map(([resultMode, label, section]) => (
+                              <button
+                                key={`mesh-analysis-result-${resultMode}`}
+                                type="button"
+                                onClick={() => {
+                                  setColorMode(resultMode);
+                                  setAnalysisFocusedSection(section);
+                                }}
+                                aria-pressed={colorMode === resultMode}
+                                style={viewerControlButtonStyle(colorMode === resultMode, meshViewerControlsDensity)}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAnalysisFocusedSection("mesh-quality");
+                                setShowInViewportOverlayControls(true);
+                              }}
+                              aria-pressed={analysisFocusedSection === "mesh-quality"}
+                              style={viewerControlButtonStyle(analysisFocusedSection === "mesh-quality", meshViewerControlsDensity)}
+                            >
+                              Quality
+                            </button>
+                            <span style={{ width: 1, height: 20, background: "#cbd5e1", margin: "0 2px" }} />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowInViewportOverlayControls(true);
+                                setCommandPreviewOverlaysVisible(true);
+                              }}
+                              style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
+                            >
+                              Legend
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowPrincipalDirections((value) => !value)}
+                              aria-pressed={showPrincipalDirections}
+                              style={viewerControlButtonStyle(showPrincipalDirections, meshViewerControlsDensity)}
+                            >
+                              Directions
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowGaussMap((value) => !value)}
+                              aria-pressed={showGaussMap}
+                              style={viewerControlButtonStyle(showGaussMap, meshViewerControlsDensity)}
+                            >
+                              Gauss map
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setColorMode("solid");
+                                setShowGaussMap(false);
+                                setShowPrincipalDirections(false);
+                                setShowPrincipalLines(false);
+                                setShowCurvatureLines(false);
+                                setAnalysisFocusedSection("differential-geometry");
+                                setCameraResetToken((token) => token + 1);
+                              }}
+                              style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
+                            >
+                              Reset
+                            </button>
+                          </div>
+                        ) : (
                         <ContextualActionStrip
                           testId="mesh-context-toolbar"
                           placement="inline"
@@ -65504,6 +65754,7 @@ case "mobius":
                             Advanced
                           </ContextualActionStripAction>
                         </ContextualActionStrip>
+                        )}
                       </div>
                     )}
                     {isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "mesh" && meshGeometryRoundTripSource && (
@@ -68950,6 +69201,8 @@ case "mobius":
               style={{
                 ...styles.panelLeft,
                 width: isGeometryStackedLayout ? "100%" : geometryCreateLeftPanelWidth,
+                minWidth: isGeometryStackedLayout ? "100%" : geometryCreateLeftPanelWidth,
+                flex: isGeometryStackedLayout ? undefined : `0 0 ${geometryCreateLeftPanelWidth}px`,
                 maxWidth: isGeometryStackedLayout ? "100%" : undefined,
                 maxHeight: isGeometryStackedLayout ? geometryStackedLeftPanelMaxHeight : undefined,
                 overflowY: compactGeometryCreatePanel ? "hidden" : undefined,
