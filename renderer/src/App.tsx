@@ -39301,7 +39301,7 @@ const App: React.FC = () => {
       };
       appendGeometryQuickAnalysisResult(entry);
       openGeometryAnalysisSnapshotInSurfaces(prepared.snapshot, enableGaussMap);
-      setGeometryCreateActionStatus(`Sent analysis-ready mesh (${prepared.snapshot.id}) to Surfaces.`);
+      setGeometryCreateActionStatus(`Opened analysis-ready mesh (${prepared.snapshot.id}) in Mesh Analyze.`);
     },
     [appendGeometryQuickAnalysisResult, createSelectedGeometryAnalysisSnapshot, openGeometryAnalysisSnapshotInSurfaces]
   );
@@ -39321,7 +39321,7 @@ const App: React.FC = () => {
       geometrySelectedQuickAnalysisResult.kind === "differential-geometry"
     );
     setGeometryCreateActionStatus(
-      `Opened ${geometrySelectedQuickAnalysisResult.snapshot.id} in Surfaces analysis.`
+      `Opened ${geometrySelectedQuickAnalysisResult.snapshot.id} in Mesh Analyze.`
     );
   }, [geometrySelectedQuickAnalysisResult, openGeometryAnalysisSnapshotInSurfaces]);
   const handleSaveSelectedGeometryQuickAnalysisResult = useCallback(() => {
@@ -77377,9 +77377,10 @@ case "mobius":
                             fontSize: 11,
                           }}
                         >
-                          <div style={{ fontSize: 12, fontWeight: 700 }}>Analysis tools / mesh quality</div>
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>Geometry Analyze</div>
                           <div style={{ color: "#475467" }}>
-                            Measurement and computation actions live here. See Inspector &gt; Selection for live picked entity details.
+                            Quick object checks live here. For curvature, principal curves, Gauss map, and full mesh-quality tools,
+                            open the selected object in Mesh Analyze.
                           </div>
                           <div style={{ marginTop: 4 }}>
                             <strong>Pick Mode</strong>
@@ -77447,12 +77448,15 @@ case "mobius":
                                   </div>
                                   <div style={{ display: "grid", gap: 4 }}>
                                     <div style={{ fontSize: 10.5, fontWeight: 700 }}>Differential geometry</div>
+                                    <div style={{ fontSize: 10, color: "#667085" }}>
+                                      Opens Mesh Analyze with this Geometry object converted to an analysis mesh.
+                                    </div>
                                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                                       <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
-                                        Send analysis-ready mesh
+                                        Open Mesh Analyze
                                       </button>
                                       <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(true)} style={{ fontSize: 11 }}>
-                                        Send + Gauss map workflow
+                                        Open Mesh Analyze + Gauss map
                                       </button>
                                     </div>
                                   </div>
@@ -77510,7 +77514,7 @@ case "mobius":
                                     )}
                                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
                                     <button type="button" onClick={handleOpenSelectedGeometryQuickAnalysisResult} style={{ fontSize: 11 }}>
-                                      Open in Analysis
+                                      Open in Mesh Analyze
                                     </button>
                                     <button type="button" onClick={handleSaveSelectedGeometryQuickAnalysisResult} style={{ fontSize: 11 }}>
                                       Save result
@@ -94643,7 +94647,9 @@ onChangeImplicitExpr,
       ? "implicit surface"
       : "parametric surface";
   const differentialInputLabel = isMeshViewer
-    ? "detached mesh"
+    ? surfaceMeshSource
+      ? formatSurfaceMeshSource(surfaceMeshSource)
+      : "detached mesh"
     : viewerKind === "implicit"
       ? "VTK preview mesh / CGAL robust mesh"
       : "analytic surface";
@@ -98547,10 +98553,11 @@ onChangeImplicitExpr,
 
       {leftTab === "analysis" && (
       <div style={{ ...cardStyle, marginTop: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>Analysis</div>
+        <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>Surface / Mesh Analyze</div>
         <div style={{ marginTop: 0, fontSize: 12 }}>
           <div style={{ fontSize: 11, color: "#475467", marginBottom: 10 }}>
-            Run computation workflows here. Keep viewer interaction in the View tab.
+            Full curvature, principal-curve, Gauss map, region-stat, and mesh-quality workflows live here.
+            Keep display-only viewer controls in the View tab.
           </div>
 
           <details
