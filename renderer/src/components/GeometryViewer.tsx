@@ -103,7 +103,12 @@ export type GeometryViewerProps = {
     sourceTriangleScreen?: [[number, number], [number, number], [number, number]];
     modifiers?: SurfaceViewerPickModifiers;
   }) => void;
-  onPickMiss?: () => void;
+  onPickMiss?: (info?: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    screenPoint?: [number, number];
+    modifiers?: SurfaceViewerPickModifiers;
+  }) => void;
   onPickHover?: (info: {
     point: { x: number; y: number; z: number };
     normal: { x: number; y: number; z: number };

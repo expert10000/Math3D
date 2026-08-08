@@ -1,5 +1,115 @@
 # TODO
 
+## Checked backlog from August 8, 2026
+
+### Verification before next release
+1. Run the full fast verification pass:
+   - `npm run typecheck:noemit`
+   - `npm run test:app:startup:smoke`
+   - `npm run test:app:e2e:fast`
+2. Confirm Electron still launches cleanly after verification.
+3. Review untracked local files and decide what should be committed, ignored, archived, or removed.
+
+### Release notes and version hygiene
+1. Update `RELEASE_NOTES.md` for `1.4.9`; the package version is already `1.4.9` while the current release notes still start at `1.4.8`.
+2. Add current known limitations:
+   - renderer memory spike during Surfaces gallery warmup,
+   - remaining Three.js viewer lifetime cleanup,
+   - mobile Phase 5 device matrix still pending.
+
+### Renderer size and startup performance
+1. Split heavy mode-specific code out of `renderer/src/App.tsx`.
+2. Lazy-load major modes with `React.lazy` and `Suspense`.
+3. Compare production build chunks before and after the split.
+4. Keep mode switching behavior unchanged.
+
+### Three.js memory and viewer lifetime cleanup
+1. Audit scene/viewer transitions for undisposed geometry, materials, textures, controls, workers, timers, and listeners.
+2. Re-run Surfaces gallery memory profile after cleanup.
+3. Reduce peak renderer RSS during early gallery warmup.
+4. Add regression coverage for repeated open/render/close cycles.
+
+### Differential geometry feature completion
+1. Finish principal curvatures `k1` and `k2`.
+2. Finish principal direction fields `d1` and `d2`.
+3. Add shape index and curvedness.
+4. Add feature detection:
+   - parabolic lines,
+   - ridges / crests,
+   - umbilic points,
+   - high-curvature, flat, and saddle zones.
+5. Improve outputs:
+   - heatmap,
+   - isolines,
+   - glyphs,
+   - labels,
+   - save analysis result,
+   - export CSV / JSON / vertex attributes.
+
+### Vector calculus panel
+1. Add scalar source choices:
+   - height x/y/z,
+   - radius,
+   - distance from point,
+   - Gaussian curvature,
+   - mean curvature,
+   - custom scalar field,
+   - sampled texture/value,
+   - signed distance / implicit function,
+   - geodesic distance.
+2. Add operations:
+   - gradient,
+   - divergence,
+   - curl,
+   - Laplacian.
+3. Add vector source choices:
+   - surface gradient field,
+   - principal directions,
+   - projected world vector,
+   - normal field,
+   - custom vector field,
+   - previous result.
+4. Add displays:
+   - vector field overlay,
+   - magnitude heatmap,
+   - critical points,
+   - flow lines,
+   - normalized arrows,
+   - tangent-plane projection.
+
+### Construction object operations
+1. Add an explicit Operations group inside Construction Objects.
+2. Enable it for selected construction objects, faces, edges, or geometry objects.
+3. Include actions:
+   - rename,
+   - duplicate,
+   - convert,
+   - project,
+   - extend,
+   - trim,
+   - offset,
+   - align,
+   - mirror,
+   - copy.
+4. Keep these discoverable instead of scattering them across Object, Transform, and Construct panels.
+
+### Mobile Phase 5 release readiness
+1. Run the full Android/iOS device smoke matrix in `docs/mobile-phase5-stability-checklist.md`.
+2. Archive logcat and iOS crash logs from the full matrix run.
+3. Verify no blocker crashes in launch/viewer flow.
+4. Verify backend failure retry paths and actionable diagnostics on device.
+5. Confirm Android GL fallback is only used when explicitly configured.
+6. Get engineering and QA signoff before external distribution.
+
+### Backend/proxy diagnostics polish
+1. Improve UI handling when worker diagnostics proxy is not running.
+2. Make the backend/proxy status less noisy in dev logs.
+3. Ensure users see a clear recovery path for:
+   - backend not running,
+   - wrong backend URL,
+   - worker timeout,
+   - incompatible worker protocol.
+
 ## Tiny: Surface <-> Mesh representation map
 
 Keep a short map of places where the app shows both dataset and mesh-object forms of the same surface.

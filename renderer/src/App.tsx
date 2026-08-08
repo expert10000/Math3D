@@ -1325,11 +1325,11 @@ const GEOMETRY_WORKFLOW_STEPS: Array<{ id: GeometryWorkflowStepId; label: string
   { id: "export", label: "Export" },
 ];
 const GEOMETRY_CREATE_PLACEMENT_TARGET_OPTIONS: Array<{ id: GeometryCreatePlacementTarget; label: string }> = [
-  { id: "click-viewer", label: "Click in viewer" },
-  { id: "on-grid", label: "On grid" },
-  { id: "on-selected-face", label: "On selected face" },
-  { id: "on-selected-vertex", label: "On selected vertex" },
-  { id: "along-selected-edge", label: "Along selected edge" },
+  { id: "click-viewer", label: "Place by click" },
+  { id: "on-grid", label: "Place on grid" },
+  { id: "on-selected-face", label: "Place on face" },
+  { id: "on-selected-vertex", label: "Place on vertex" },
+  { id: "along-selected-edge", label: "Place on edge" },
 ];
 type WorkbookReplayPayload = {
   workbooks: Workbook[];
@@ -11908,14 +11908,33 @@ const App: React.FC = () => {
     geometryProceduralPanelTab,
     geometryObjectRevisionById,
   ]);
-  const handleProceduralPickMiss = useCallback(() => {
+  const handleProceduralPickMiss = useCallback((info?: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    screenPoint?: [number, number];
+    modifiers?: SurfaceViewerPickModifiers;
+  }) => {
+    if (geometryCreatePlacementModeActive && geometryPendingPlacementObjectId && info) {
+      setGeometryProceduralPick({
+        point: info.point,
+        normal: info.normal,
+        screenPoint: info.screenPoint,
+        modifiers: info.modifiers,
+      });
+      setGeometryProceduralHoverPick(null);
+      return;
+    }
     setGeometryProceduralPick(null);
     setGeometryProceduralHoverPick(null);
+    if (geometryCreatePlacementModeActive && geometryPendingPlacementObjectId) {
+      setGeometryCreatePlacementStatus("Click a mesh, helper plane, or visible ground-plane area to place the pending object.");
+      return;
+    }
     if (geometryArmedLineOperation) {
       setGeometryArmedLineOperation(null);
       setGeometryCreateActionStatus("Extend preview cancelled.");
     }
-  }, [geometryArmedLineOperation]);
+  }, [geometryArmedLineOperation, geometryCreatePlacementModeActive, geometryPendingPlacementObjectId]);
   const geometryFocusAfterAddRef = useRef<(() => void) | null>(null);
   const [geometryProceduralScriptText, setGeometryProceduralScriptText] = useState(PROCEDURAL_SCENE_SCRIPT_STARTER);
   const [geometryProceduralScriptError, setGeometryProceduralScriptError] = useState<string | null>(null);
@@ -14279,7 +14298,7 @@ const App: React.FC = () => {
     },
     [handleAddGeometryObject, markGeometryGalleryCardUsed]
   );
-  const handleAddGeometryGallerySelectedAtOrigin = useCallback((openPlacementMode: boolean) => {
+  const handleAddGeometryGallerySelectedAtOrigin = useCallback((openPlacementMode: boolean, placementTarget = geometryCreatePlacementTarget) => {
     if (!geometryGallerySelectedCard?.supported) return;
     const recipe = resolveGeometryGallerySelectedRecipe();
     if (!recipe) return;
@@ -14287,14 +14306,16 @@ const App: React.FC = () => {
     markGeometryGalleryCardUsed(geometryGallerySelectedCard.id);
     if (openPlacementMode) {
       const placementLabel =
-        GEOMETRY_CREATE_PLACEMENT_TARGET_OPTIONS.find((opt) => opt.id === geometryCreatePlacementTarget)?.label ??
-        "Click in viewer";
+        GEOMETRY_CREATE_PLACEMENT_TARGET_OPTIONS.find((opt) => opt.id === placementTarget)?.label ??
+        "Place by click";
+      setGeometryCreatePlacementTarget(placementTarget);
+      setGeometryCreatePlacementSnapToGrid(placementTarget === "on-grid");
       setGeometryProceduralPick(null);
       setGeometryProceduralHoverPick(null);
       setGeometryPendingPlacementObjectId(createdId);
       setGeometryCreatePlacementModeActive(true);
       setGeometryCreatePlacementStatus(
-        `Object added. Click in viewer to place using "${placementLabel}".`
+        `Object added. Click in the viewer to finish: ${placementLabel}.`
       );
     } else {
       setGeometryPendingPlacementObjectId(null);
@@ -58395,6 +58416,7 @@ case "mobius":
         { key: "mesh", label: "Mesh", panel: "object", onClick: openProceduralPanel("object") },
         { key: "script", label: "Script", panel: "script", onClick: openProceduralPanel("script") },
         { key: "presets", label: "Presets", panel: "debug", onClick: openProceduralPanel("debug") },
+        { key: "view", label: "View", panel: "view", onClick: openProceduralPanel("view") },
       ];
     }
     if (geometryWorkflowActiveStepId === "place") {
@@ -58403,7 +58425,7 @@ case "mobius":
         { key: "construct", label: "Construct", panel: "construct", onClick: openProceduralPanel("construct") },
         {
           key: "click-viewer",
-          label: "Click viewer",
+          label: "Place by click",
           active: geometryProceduralPanelTab === "create" && geometryAddEnterPlacementMode && geometryCreatePlacementTarget === "click-viewer",
           onClick: openPlacementTarget("click-viewer"),
         },
@@ -58440,6 +58462,7 @@ case "mobius":
             geometryCreatePlacementTarget === "along-selected-edge",
           onClick: openPlacementTarget("along-selected-edge"),
         },
+        { key: "view", label: "View", panel: "view", onClick: openProceduralPanel("view") },
       ];
     }
     if (geometryWorkflowActiveStepId === "transform") {
@@ -58468,6 +58491,7 @@ case "mobius":
         { key: "mirror", label: "Mirror", panel: "transform", onClick: openProceduralPanel("transform") },
         { key: "align", label: "Align", panel: "transform", onClick: openProceduralPanel("transform") },
         { key: "boolean", label: "Boolean", panel: "transform", onClick: openProceduralPanel("transform") },
+        { key: "view", label: "View", panel: "view", onClick: openProceduralPanel("view") },
       ];
     }
     if (geometryWorkflowActiveStepId === "analyze") {
@@ -58485,6 +58509,7 @@ case "mobius":
         { key: "curvature", label: "Curvature", panel: "analysis", onClick: openProceduralPanel("analysis", { compare: true }) },
         { key: "topology", label: "Topology", panel: "euler", onClick: openProceduralPanel("euler") },
         { key: "reports", label: "Reports", panel: "history", onClick: openProceduralPanel("history") },
+        { key: "view", label: "View", panel: "view", onClick: openProceduralPanel("view") },
       ];
     }
     return [
@@ -58506,6 +58531,7 @@ case "mobius":
       { key: "glb", label: "GLB", onClick: () => void handleExportAllVisibleGeometryObjectsGlb() },
       { key: "snapshot", label: "Snapshot", onClick: handleSaveWorkbook },
       { key: "reports", label: "Reports", panel: "history", onClick: openProceduralPanel("history") },
+      { key: "view", label: "View", panel: "view", onClick: openProceduralPanel("view") },
     ];
   }, [
     handleToggleGeometryGizmoMode,
@@ -59466,8 +59492,20 @@ case "mobius":
     isGeometryStackedLayout;
   const compactGeometryCreatePanel =
     geometryMode === "procedural" && geometryProceduralPanelTab === "create" && compactGeometryPanel;
-  const geometrySidePanelWidth = Math.max(260, Math.min(360, Math.round(viewportSize.width * 0.2)));
-  const geometryCreateLeftPanelWidth = Math.min(leftWidth, geometrySidePanelWidth);
+  const geometryWideToolPanelActive =
+    geometryMode === "procedural" &&
+    (geometryProceduralPanelTab === "transform" ||
+      geometryProceduralPanelTab === "view" ||
+      geometryProceduralPanelTab === "object" ||
+      geometryProceduralPanelTab === "analysis" ||
+      geometryProceduralPanelTab === "history");
+  const geometryLeftPanelMaxWidth = Math.max(400, Math.min(560, Math.round(viewportSize.width * 0.28)));
+  const geometryLeftPanelPreferredWidth = geometryWideToolPanelActive ? 460 : 380;
+  const geometryCreateLeftPanelWidth = Math.min(
+    geometryLeftPanelMaxWidth,
+    Math.max(leftWidth, geometryLeftPanelPreferredWidth)
+  );
+  const geometryRightSidePanelWidth = Math.max(300, Math.min(380, Math.round(viewportSize.width * 0.2)));
   const geometryStackedLeftPanelMaxHeight = isPhoneLandscapeLayout
     ? Math.max(170, Math.floor(viewportSize.height * 0.38))
     : Math.max(220, Math.floor(viewportSize.height * 0.42));
@@ -59490,7 +59528,7 @@ case "mobius":
     mode === "geometry" && geometryMode === "procedural" && showRightPanel && !isPresentDisplayMode && !isPhoneLandscapeLayout;
   const surfaceLeftPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(leftWidth, 280) : leftWidth;
   const surfaceRightPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(rightWidth, 280) : rightWidth;
-  const geometryRightPanelWidth = Math.min(rightWidth, geometrySidePanelWidth);
+  const geometryRightPanelWidth = Math.min(rightWidth, geometryRightSidePanelWidth);
   const geometryViewerControlsAvailableWidth =
     viewportSize.width -
     (isGeometryStackedLayout ? 0 : geometryCreateLeftPanelWidth) -
@@ -69081,16 +69119,16 @@ case "mobius":
                             }}
                             title={geometryGallerySelectedCard.name}
                           >
-                            Selected: {geometryGallerySelectedCard.name}
+                            Gallery selection: {geometryGallerySelectedCard.name}
                           </div>
                           <button
                             type="button"
                             data-testid="geometry-add-object"
-                            onClick={handleAddGeometryGallerySelected}
+                            onClick={() => handleAddGeometryGallerySelectedAtOrigin(false)}
                             disabled={!geometryGallerySelectedCard.supported}
                             style={{ fontSize: 11, fontWeight: 800, padding: "4px 10px" }}
                           >
-                            Add selected
+                            Add now
                           </button>
                           <button
                             type="button"
@@ -69100,6 +69138,35 @@ case "mobius":
                           >
                             Add preset
                           </button>
+                          <div
+                            style={{
+                              flex: "1 1 100%",
+                              display: "flex",
+                              gap: 6,
+                              flexWrap: "wrap",
+                              alignItems: "center",
+                            }}
+                          >
+                            <span style={{ fontSize: 10.5, color: "#475569", fontWeight: 800 }}>Place</span>
+                            {GEOMETRY_CREATE_PLACEMENT_TARGET_OPTIONS.map((option) => {
+                              const active = geometryAddEnterPlacementMode && geometryCreatePlacementTarget === option.id;
+                              return (
+                                <button
+                                  key={`geometry-create-selected-placement-${option.id}`}
+                                  type="button"
+                                  aria-pressed={active}
+                                  onClick={() => {
+                                    setGeometryAddEnterPlacementMode(true);
+                                    handleAddGeometryGallerySelectedAtOrigin(true, option.id);
+                                  }}
+                                  disabled={!geometryGallerySelectedCard.supported}
+                                  style={{ ...pill(active), fontSize: 10.5, padding: "2px 8px" }}
+                                >
+                                  {option.label}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                       {(geometrySelectedSceneObject || geometryObjectPresets.length > 0) && (
@@ -69129,7 +69196,7 @@ case "mobius":
                                 }}
                                 title={geometrySelectedSceneObject.name}
                               >
-                                Active object: {geometrySelectedSceneObject.name}
+                                Active scene object: {geometrySelectedSceneObject.name}
                               </div>
                               <button
                                 type="button"
@@ -69143,10 +69210,28 @@ case "mobius":
                                 }}
                                 style={{ fontSize: 10, padding: "3px 8px", fontWeight: 800 }}
                               >
-                                Open Selected Object Details
+                                Open Active Object Details
                               </button>
                             </div>
                           )}
+                          {geometryGallerySelectedCard &&
+                            geometrySelectedSceneObject &&
+                            geometryGallerySelectedCard.name !== geometrySelectedSceneObject.name && (
+                              <div
+                                style={{
+                                  border: "1px solid #fed7aa",
+                                  borderRadius: 7,
+                                  padding: "5px 7px",
+                                  background: "#fff7ed",
+                                  color: "#9a3412",
+                                  fontSize: 10.5,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                Gallery selection is not active yet. Use Add now or a placement button to create a{" "}
+                                {geometryGallerySelectedCard.name}.
+                              </div>
+                            )}
                           <div style={{ display: "grid", gap: 5 }}>
                             <div style={{ color: "#0f3557", fontWeight: 800 }}>Saved Geometry object presets</div>
                             {geometryObjectPresets.length ? (
@@ -69622,7 +69707,7 @@ case "mobius":
                             onClick={handleAddGeometryGallerySelected}
                             disabled={!geometryGallerySelectedCard.supported}
                           >
-                            Add selected
+                            Add now
                           </button>
                           <button
                             type="button"
@@ -72514,7 +72599,7 @@ case "mobius":
                           gap: 8,
                         }}
                       >
-                        <div style={{ fontSize: 12, fontWeight: 700 }}>Display</div>
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Display overlays</div>
                         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
                           <input
                             type="checkbox"
@@ -72579,8 +72664,68 @@ case "mobius":
                           />
                           Grid labels
                         </label>
+                        <label
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            fontSize: 11,
+                            opacity: geometryShowPlanes && planeGridSettings.showLabels ? 1 : 0.6,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={planeGridSettings.showAxisLabels}
+                            disabled={!geometryShowPlanes || !planeGridSettings.showLabels}
+                            onChange={(e) => setPlaneGridSettings((prev) => ({ ...prev, showAxisLabels: e.target.checked }))}
+                          />
+                          Axis labels
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={geometryShowViewportBadges}
+                            onChange={(e) => setGeometryShowViewportBadges(e.target.checked)}
+                          />
+                          Viewport badges
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={geometryTimelineShowAnnotations}
+                            onChange={(e) => setGeometryTimelineShowAnnotations(e.target.checked)}
+                          />
+                          Annotations and measurements
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={showGeometryDependencyOverlay}
+                            onChange={(e) => setShowGeometryDependencyOverlay(e.target.checked)}
+                          />
+                          Dependency overlay
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={geometryCreateActionsOverlayOpen}
+                            onChange={(e) => setGeometryCreateActionsOverlayOpen(e.target.checked)}
+                          />
+                          Create overlay
+                        </label>
+                        <label
+                          title="Show or hide viewport command preview badges and ghost overlays. Strip preview text remains visible."
+                          style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={commandPreviewOverlaysVisible}
+                            onChange={(e) => setCommandPreviewOverlaysVisible(e.target.checked)}
+                          />
+                          Command preview overlays
+                        </label>
                         <label style={{ fontSize: 11, display: "grid", gap: 4 }}>
-                          Opacity
+                          Scene opacity
                           <input
                             type="range"
                             min={0.2}
@@ -72590,6 +72735,194 @@ case "mobius":
                             onChange={(e) => setGeometryOpacity(Math.max(0.2, Math.min(1, Number(e.target.value))))}
                           />
                         </label>
+                      </div>
+
+                      <div
+                        style={{
+                          border: "1px solid #dbe2ea",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          background: "#fbfdff",
+                          display: "grid",
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Analysis display</div>
+                        <div style={{ fontSize: 10.5, color: "#475569" }}>
+                          Compute results in Analysis; control their viewport visibility here.
+                        </div>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={geometrySectionShowCurve}
+                            disabled={!geometrySectionPreview}
+                            onChange={(e) => setGeometrySectionShowCurve(e.target.checked)}
+                          />
+                          Section curve
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={geometrySectionShowCap}
+                            disabled={!geometrySectionPreview}
+                            onChange={(e) => setGeometrySectionShowCap(e.target.checked)}
+                          />
+                          Section cap
+                        </label>
+                        <div style={{ fontSize: 10.5, color: "#475569" }}>
+                          {geometrySectionPreview
+                            ? `Current section: ${geometrySectionPreview.section.segmentCount.toLocaleString()} segments, length ${fmt(
+                                geometrySectionPreview.section.curveLength
+                              )}, area ${fmt(geometrySectionPreview.section.area)}.`
+                            : "No live section result yet."}
+                        </div>
+                        <div style={{ fontSize: 10.5, color: "#475569" }}>
+                          Saved section curves: {geometrySavedSectionCurves.length.toLocaleString()}
+                        </div>
+                        {geometrySelectedObject?.type === "polyhedron" && (
+                          <>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                              <input
+                                type="checkbox"
+                                checked={geometryPolySharpEdgesEnabled}
+                                onChange={(e) => setGeometryPolySharpEdgesEnabled(e.target.checked)}
+                              />
+                              Sharp edges
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                              <input
+                                type="checkbox"
+                                checked={geometryPolyAngleDefectEnabled}
+                                onChange={(e) => setGeometryPolyAngleDefectEnabled(e.target.checked)}
+                              />
+                              Vertex angle defect
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                              <input
+                                type="checkbox"
+                                checked={geometryPolyFaceNormalsEnabled}
+                                onChange={(e) => setGeometryPolyFaceNormalsEnabled(e.target.checked)}
+                              />
+                              Face normals
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                              <input
+                                type="checkbox"
+                                checked={geometryPolyDihedralReadoutsEnabled}
+                                onChange={(e) => setGeometryPolyDihedralReadoutsEnabled(e.target.checked)}
+                              />
+                              Dihedral readouts
+                            </label>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setGeometryProceduralPanelTab("analysis")}
+                          style={{ justifySelf: "start", fontSize: 11 }}
+                        >
+                          Open Analysis tools
+                        </button>
+                      </div>
+
+                      <div
+                        style={{
+                          border: "1px solid #dbe2ea",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          background: "#fbfdff",
+                          display: "grid",
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Selected object material</div>
+                        {geometrySelectedObject || geometrySelectedDatasetMeshObject ? (() => {
+                          const selectedMaterialObject = geometrySelectedObject ?? geometrySelectedDatasetMeshObject!;
+                          const selectedMaterial = normalizeGeometryMaterial(
+                            (selectedMaterialObject as { material?: unknown }).material
+                          );
+                          return (
+                            <>
+                              <div style={{ fontSize: 10.5, color: "#475569" }}>
+                                {selectedMaterialObject.name}
+                              </div>
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "80px minmax(0, 1fr)",
+                                  gap: "6px 8px",
+                                  alignItems: "center",
+                                }}
+                              >
+                                <div style={{ fontSize: 11 }}>Color</div>
+                                <input
+                                  type="color"
+                                  value={toHexColorString(selectedMaterial.color, 0x8aa4ff)}
+                                  onChange={(e) =>
+                                    handleUpdateGeometryMaterial(selectedMaterialObject.id, {
+                                      color: fromHexColorString(e.target.value, 0x8aa4ff),
+                                    })
+                                  }
+                                />
+                                <div style={{ fontSize: 11 }}>Opacity</div>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={1}
+                                  step={0.05}
+                                  value={Number(selectedMaterial.opacity ?? 1)}
+                                  onChange={(e) => {
+                                    const raw = Number(e.target.value);
+                                    if (!Number.isFinite(raw)) return;
+                                    handleUpdateGeometryMaterial(selectedMaterialObject.id, {
+                                      opacity: clampNumber(raw, 0, 1),
+                                    });
+                                  }}
+                                />
+                                <div style={{ fontSize: 11 }}>Roughness</div>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={1}
+                                  step={0.05}
+                                  value={Number(selectedMaterial.roughness ?? DEFAULT_GEOMETRY_MATERIAL_ROUGHNESS)}
+                                  onChange={(e) => {
+                                    const raw = Number(e.target.value);
+                                    if (!Number.isFinite(raw)) return;
+                                    handleUpdateGeometryMaterial(selectedMaterialObject.id, {
+                                      roughness: clampNumber(raw, 0, 1),
+                                    });
+                                  }}
+                                />
+                                <div style={{ fontSize: 11 }}>Metalness</div>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={1}
+                                  step={0.05}
+                                  value={Number(selectedMaterial.metalness ?? DEFAULT_GEOMETRY_MATERIAL_METALNESS)}
+                                  onChange={(e) => {
+                                    const raw = Number(e.target.value);
+                                    if (!Number.isFinite(raw)) return;
+                                    handleUpdateGeometryMaterial(selectedMaterialObject.id, {
+                                      metalness: clampNumber(raw, 0, 1),
+                                    });
+                                  }}
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setGeometryProceduralPanelTab("object")}
+                                style={{ justifySelf: "start", fontSize: 11 }}
+                              >
+                                Open Object details
+                              </button>
+                            </>
+                          );
+                        })() : (
+                          <div style={{ fontSize: 10.5, color: "#475569" }}>
+                            Select an object in the Scene tab to edit material.
+                          </div>
+                        )}
                       </div>
                     </div>
                     )}
@@ -81101,7 +81434,7 @@ case "mobius":
                                 aria-pressed={active}
                                 onClick={() => {
                                   setGeometryCreatePlacementTarget(option.id);
-                                  setGeometryAddEnterPlacementMode(option.id !== "click-viewer");
+                                  setGeometryAddEnterPlacementMode(true);
                                   setGeometryCreatePlacementSnapToGrid(option.id === "on-grid");
                                 }}
                                 style={{ ...pill(active), fontSize: 10, padding: "2px 7px" }}

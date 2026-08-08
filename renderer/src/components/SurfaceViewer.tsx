@@ -1505,7 +1505,12 @@ type Props = {
     xy?: { x: number; y: number };
     modifiers?: SurfaceViewerPickModifiers;
   }) => void;
-  onInspectPickMiss?: () => void;
+  onInspectPickMiss?: (info?: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    screenPoint?: [number, number];
+    modifiers?: SurfaceViewerPickModifiers;
+  }) => void;
   onInspectHover?: (info: {
     index: number;
     point: { x: number; y: number; z: number };
@@ -5118,7 +5123,19 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           if (controls) controls.enabled = false;
         }
         if (!dragStateRef.current && inspectEnabledRef.current && event.button === 0) {
-          onInspectPickMissRef.current?.();
+          const fallbackPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+          const fallbackPoint = new THREE.Vector3();
+          const hasFallbackPoint = raycaster.ray.intersectPlane(fallbackPlane, fallbackPoint) != null;
+          onInspectPickMissRef.current?.(
+            hasFallbackPoint
+              ? {
+                  point: { x: fallbackPoint.x, y: fallbackPoint.y, z: fallbackPoint.z },
+                  normal: { x: 0, y: 1, z: 0 },
+                  screenPoint: [event.clientX - rect.left, event.clientY - rect.top],
+                  modifiers: pickModifiers,
+                }
+              : undefined
+          );
         }
         return;
       }
