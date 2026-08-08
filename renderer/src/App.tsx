@@ -52660,6 +52660,38 @@ case "mobius":
     if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
     return { min, max };
   };
+  const readFiniteStats = (
+    values: Float32Array | null | undefined
+  ): { min: number; max: number; mean: number; std: number; count: number } | null => {
+    if (!values?.length) return null;
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
+    let sum = 0;
+    let sumSq = 0;
+    let count = 0;
+    for (let i = 0; i < values.length; i += 1) {
+      const v = values[i];
+      if (!Number.isFinite(v)) continue;
+      if (v < min) min = v;
+      if (v > max) max = v;
+      sum += v;
+      sumSq += v * v;
+      count += 1;
+    }
+    if (!count || !Number.isFinite(min) || !Number.isFinite(max)) return null;
+    const mean = sum / count;
+    const variance = Math.max(0, sumSq / count - mean * mean);
+    return { min, max, mean, std: Math.sqrt(variance), count };
+  };
+  const surfaceScienceCurvatureStats = useMemo(
+    () => ({
+      K: readFiniteStats(selectionCurvatures?.K),
+      H: readFiniteStats(selectionCurvatures?.H),
+      k1: readFiniteStats(selectionCurvatures?.k1),
+      k2: readFiniteStats(selectionCurvatures?.k2),
+    }),
+    [selectionCurvatures]
+  );
   const surfaceInspectorCurvatureRanges = useMemo(
     () => ({
       K: readFiniteRange(selectionCurvatures?.K),
@@ -52669,6 +52701,48 @@ case "mobius":
     }),
     [selectionCurvatures]
   );
+  const meshAnalyzeCurvatureField =
+    primaryOverlay.colorMode === "gaussian"
+      ? "K"
+      : primaryOverlay.colorMode === "mean"
+        ? "H"
+        : primaryOverlay.colorMode === "k1"
+          ? "k1"
+          : primaryOverlay.colorMode === "k2"
+            ? "k2"
+            : null;
+  const meshAnalyzeCurvatureFieldLabel =
+    meshAnalyzeCurvatureField === "K"
+      ? "Gaussian curvature K"
+      : meshAnalyzeCurvatureField === "H"
+        ? "Mean curvature H"
+        : meshAnalyzeCurvatureField === "k1"
+          ? "Principal curvature k1"
+          : meshAnalyzeCurvatureField === "k2"
+            ? "Principal curvature k2"
+            : null;
+  const meshAnalyzeCurvatureStats = meshAnalyzeCurvatureField
+    ? surfaceScienceCurvatureStats[meshAnalyzeCurvatureField]
+    : null;
+  const meshAnalyzeProbeCurvature =
+    surfaceViewerKind === "graph" && probeCurv
+      ? { K: probeCurv.K, H: probeCurv.H, k1: probeCurv.k1, k2: probeCurv.k2 }
+      : (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") && paramProbeCurv
+        ? { K: paramProbeCurv.K, H: paramProbeCurv.H, k1: paramProbeCurv.k1, k2: paramProbeCurv.k2 }
+        : inspectMetrics;
+  const meshAnalyzeScienceOverlayReady =
+    surfaceViewerKind === "mesh" &&
+    surfacesLeftTab === "analysis" &&
+    !!surfaceMeshStats &&
+    (meshAnalyzeCurvatureField != null || probeEnabled || !!meshAnalyzeProbeCurvature);
+  const meshAnalyzePaletteGradient =
+    primaryOverlay.colorPalette === "grayscale"
+      ? "linear-gradient(90deg, #111827 0%, #f8fafc 100%)"
+      : primaryOverlay.colorPalette === "redYellow"
+        ? "linear-gradient(90deg, #dc2626 0%, #facc15 100%)"
+        : primaryOverlay.colorPalette === "rainbow"
+          ? "linear-gradient(90deg, #dc2626 0%, #f97316 20%, #facc15 40%, #22c55e 60%, #2563eb 80%, #7c3aed 100%)"
+          : "linear-gradient(90deg, #1d4ed8 0%, #22c55e 50%, #dc2626 100%)";
   const surfaceInspectorActiveVectorMagnitudeRange = useMemo(() => {
     const field = surfaceVectorFields.get(calculusActiveVectorField) ?? null;
     if (!field?.values?.length) return null;
@@ -66621,6 +66695,118 @@ case "mobius":
                         zoomToRegionToken={zoomNowToken}
                         suspendPointerInteractions={surfaceFormulaEditorOpen}
                       />
+                        )}
+                        {meshAnalyzeScienceOverlayReady && !cleanScreenshotSurfaceActive && (
+                          <div
+                            data-testid="mesh-analyze-science-overlay"
+                            style={{
+                              position: "absolute",
+                              top: 12,
+                              left: 12,
+                              width: "min(310px, calc(100% - 24px))",
+                              border: "1px solid rgba(125, 172, 223, 0.75)",
+                              borderRadius: 8,
+                              background: "rgba(248, 251, 255, 0.94)",
+                              boxShadow: "0 12px 28px rgba(15, 23, 42, 0.12)",
+                              padding: "9px 10px",
+                              display: "grid",
+                              gap: 8,
+                              fontSize: 11,
+                              color: "#0f172a",
+                              zIndex: 18,
+                              pointerEvents: "none",
+                              backdropFilter: "blur(4px)",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+                              <div style={{ fontSize: 10, fontWeight: 850, color: "#1d4ed8" }}>MESH ANALYZE</div>
+                              <div style={{ fontSize: 10, color: "#475569", fontWeight: 700 }}>
+                                {surfaceMeshStats.vertCount.toLocaleString()} V / {surfaceMeshStats.triCount.toLocaleString()} F
+                              </div>
+                            </div>
+                            {meshAnalyzeCurvatureField && meshAnalyzeCurvatureFieldLabel ? (
+                              <div style={{ display: "grid", gap: 5 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                  <strong>{meshAnalyzeCurvatureFieldLabel}</strong>
+                                  <span style={{ color: "#475569" }}>
+                                    {meshAnalyzeCurvatureStats
+                                      ? `${meshAnalyzeCurvatureStats.count.toLocaleString()} samples`
+                                      : "range pending"}
+                                  </span>
+                                </div>
+                                <div
+                                  style={{
+                                    height: 10,
+                                    borderRadius: 999,
+                                    border: "1px solid rgba(15, 23, 42, 0.18)",
+                                    background: meshAnalyzePaletteGradient,
+                                  }}
+                                />
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: "#334155" }}>
+                                  <span>min {meshAnalyzeCurvatureStats ? fmt(meshAnalyzeCurvatureStats.min) : "n/a"}</span>
+                                  <span>max {meshAnalyzeCurvatureStats ? fmt(meshAnalyzeCurvatureStats.max) : "n/a"}</span>
+                                </div>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, color: "#334155" }}>
+                                  <span>mean {meshAnalyzeCurvatureStats ? fmt(meshAnalyzeCurvatureStats.mean) : "n/a"}</span>
+                                  <span>std {meshAnalyzeCurvatureStats ? fmt(meshAnalyzeCurvatureStats.std) : "n/a"}</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ color: "#475569" }}>Result: none. Choose K, H, k1, or k2 for a curvature range.</div>
+                            )}
+                            <div
+                              style={{
+                                borderTop: "1px solid rgba(148, 163, 184, 0.45)",
+                                paddingTop: 7,
+                                display: "grid",
+                                gap: 5,
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                <strong>Probe readout</strong>
+                                <span style={{ color: probeEnabled ? "#166534" : "#64748b", fontWeight: 750 }}>
+                                  {probeEnabled ? "active" : "off"}
+                                </span>
+                              </div>
+                              {meshAnalyzeProbeCurvature ? (
+                                <>
+                                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 5 }}>
+                                    {([
+                                      ["K", meshAnalyzeProbeCurvature.K],
+                                      ["H", meshAnalyzeProbeCurvature.H],
+                                      ["k1", meshAnalyzeProbeCurvature.k1],
+                                      ["k2", meshAnalyzeProbeCurvature.k2],
+                                    ] as const).map(([key, value]) => (
+                                      <div
+                                        key={`mesh-science-probe-${key}`}
+                                        style={{
+                                          border: "1px solid #dbeafe",
+                                          borderRadius: 7,
+                                          background: meshAnalyzeCurvatureField === key ? "#dbeafe" : "#ffffff",
+                                          padding: "4px 5px",
+                                          minWidth: 0,
+                                        }}
+                                      >
+                                        <div style={{ color: "#475569", fontSize: 10, fontWeight: 800 }}>{key}</div>
+                                        <div style={{ fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis" }}>
+                                          {typeof value === "number" && Number.isFinite(value) ? fmt(value) : "n/a"}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {inspectPos && (
+                                    <div style={{ color: "#64748b", fontSize: 10 }}>
+                                      point ({fmt(inspectPos.x)}, {fmt(inspectPos.y)}, {fmt(inspectPos.z)})
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <div style={{ color: "#64748b" }}>
+                                  {probeEnabled ? "Click the mesh to read local K/H/k1/k2." : "Enable Probe to read local K/H/k1/k2."}
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         )}
                         {!cleanScreenshotSurfaceActive && surfaceViewerKind === "mesh" && surfaceMeshStats && (
                           <div
