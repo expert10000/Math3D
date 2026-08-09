@@ -5268,6 +5268,169 @@ const findCoincidentMeshVertexGroups = (
   return [...buckets.values()].filter((group) => group.length > 1).slice(0, maxGroups);
 };
 
+const computeTriangleMeshCurvatureScalars = (
+  mesh: SurfaceMeshData
+): { K: Float32Array; H: Float32Array; k1: Float32Array; k2: Float32Array } | null => {
+  const positions = mesh.positions;
+  const vertexCount = Math.floor((positions?.length ?? 0) / 3);
+  if (vertexCount <= 0) return null;
+  const indices = mesh.indices ?? null;
+  const triCount = indices && indices.length >= 3 ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
+  if (triCount <= 0) return null;
+
+  const area = new Float64Array(vertexCount);
+  const angleSum = new Float64Array(vertexCount);
+  const meanX = new Float64Array(vertexCount);
+  const meanY = new Float64Array(vertexCount);
+  const meanZ = new Float64Array(vertexCount);
+  const edgeIncidence = new Map<string, number>();
+  const centroid = [0, 0, 0];
+  for (let i = 0; i < vertexCount; i += 1) {
+    const base = i * 3;
+    centroid[0] += Number(positions[base] ?? 0);
+    centroid[1] += Number(positions[base + 1] ?? 0);
+    centroid[2] += Number(positions[base + 2] ?? 0);
+  }
+  centroid[0] /= vertexCount;
+  centroid[1] /= vertexCount;
+  centroid[2] /= vertexCount;
+
+  const readVertex = (i: number) => {
+    const base = i * 3;
+    return [Number(positions[base]), Number(positions[base + 1]), Number(positions[base + 2])] as const;
+  };
+  const addEdge = (a: number, b: number) => {
+    const i0 = Math.min(a, b);
+    const i1 = Math.max(a, b);
+    const key = `${i0}|${i1}`;
+    edgeIncidence.set(key, (edgeIncidence.get(key) ?? 0) + 1);
+  };
+  const addMeanContribution = (i: number, j: number, weight: number) => {
+    const ib = i * 3;
+    const jb = j * 3;
+    meanX[i] += weight * (Number(positions[jb]) - Number(positions[ib]));
+    meanY[i] += weight * (Number(positions[jb + 1]) - Number(positions[ib + 1]));
+    meanZ[i] += weight * (Number(positions[jb + 2]) - Number(positions[ib + 2]));
+  };
+  const angleBetween = (ux: number, uy: number, uz: number, vx: number, vy: number, vz: number) => {
+    const uLen = Math.hypot(ux, uy, uz);
+    const vLen = Math.hypot(vx, vy, vz);
+    if (uLen <= 1e-12 || vLen <= 1e-12) return Number.NaN;
+    const dot = (ux * vx + uy * vy + uz * vz) / (uLen * vLen);
+    return Math.acos(Math.max(-1, Math.min(1, dot)));
+  };
+  const cotFromAngle = (angle: number) => {
+    const s = Math.sin(angle);
+    if (!Number.isFinite(s) || Math.abs(s) <= 1e-8) return 0;
+    return Math.cos(angle) / s;
+  };
+
+  for (let t = 0; t < triCount; t += 1) {
+    const base = t * 3;
+    const ia = indices ? Number(indices[base]) : base;
+    const ib = indices ? Number(indices[base + 1]) : base + 1;
+    const ic = indices ? Number(indices[base + 2]) : base + 2;
+    const valid =
+      Number.isInteger(ia) &&
+      Number.isInteger(ib) &&
+      Number.isInteger(ic) &&
+      ia >= 0 &&
+      ib >= 0 &&
+      ic >= 0 &&
+      ia < vertexCount &&
+      ib < vertexCount &&
+      ic < vertexCount &&
+      ia !== ib &&
+      ib !== ic &&
+      ia !== ic;
+    if (!valid) continue;
+    const [ax, ay, az] = readVertex(ia);
+    const [bx, by, bz] = readVertex(ib);
+    const [cx, cy, cz] = readVertex(ic);
+    if (![ax, ay, az, bx, by, bz, cx, cy, cz].every(Number.isFinite)) continue;
+    const abx = bx - ax;
+    const aby = by - ay;
+    const abz = bz - az;
+    const acx = cx - ax;
+    const acy = cy - ay;
+    const acz = cz - az;
+    const bcx = cx - bx;
+    const bcy = cy - by;
+    const bcz = cz - bz;
+    const crossX = aby * acz - abz * acy;
+    const crossY = abz * acx - abx * acz;
+    const crossZ = abx * acy - aby * acx;
+    const triArea = Math.hypot(crossX, crossY, crossZ) * 0.5;
+    if (!Number.isFinite(triArea) || triArea <= 1e-14) continue;
+
+    const angleA = angleBetween(abx, aby, abz, acx, acy, acz);
+    const angleB = angleBetween(-abx, -aby, -abz, bcx, bcy, bcz);
+    const angleC = angleBetween(-acx, -acy, -acz, -bcx, -bcy, -bcz);
+    if (![angleA, angleB, angleC].every(Number.isFinite)) continue;
+
+    area[ia] += triArea / 3;
+    area[ib] += triArea / 3;
+    area[ic] += triArea / 3;
+    angleSum[ia] += angleA;
+    angleSum[ib] += angleB;
+    angleSum[ic] += angleC;
+    addEdge(ia, ib);
+    addEdge(ib, ic);
+    addEdge(ic, ia);
+
+    const cotA = cotFromAngle(angleA);
+    const cotB = cotFromAngle(angleB);
+    const cotC = cotFromAngle(angleC);
+    addMeanContribution(ia, ib, cotC);
+    addMeanContribution(ib, ia, cotC);
+    addMeanContribution(ib, ic, cotA);
+    addMeanContribution(ic, ib, cotA);
+    addMeanContribution(ic, ia, cotB);
+    addMeanContribution(ia, ic, cotB);
+  }
+
+  const boundaryVertices = new Set<number>();
+  for (const [key, count] of edgeIncidence.entries()) {
+    if (count !== 1) continue;
+    const [a, b] = key.split("|").map((part) => Number(part));
+    if (Number.isInteger(a)) boundaryVertices.add(a);
+    if (Number.isInteger(b)) boundaryVertices.add(b);
+  }
+
+  const K = new Float32Array(vertexCount);
+  const H = new Float32Array(vertexCount);
+  const k1 = new Float32Array(vertexCount);
+  const k2 = new Float32Array(vertexCount);
+  for (let i = 0; i < vertexCount; i += 1) {
+    const a = area[i];
+    if (!Number.isFinite(a) || a <= 1e-14) {
+      K[i] = Number.NaN;
+      H[i] = Number.NaN;
+      k1[i] = Number.NaN;
+      k2[i] = Number.NaN;
+      continue;
+    }
+    const targetAngle = boundaryVertices.has(i) ? Math.PI : Math.PI * 2;
+    const gaussian = (targetAngle - angleSum[i]) / a;
+    const lx = meanX[i] / (2 * a);
+    const ly = meanY[i] / (2 * a);
+    const lz = meanZ[i] / (2 * a);
+    const ib = i * 3;
+    const rx = Number(positions[ib]) - centroid[0];
+    const ry = Number(positions[ib + 1]) - centroid[1];
+    const rz = Number(positions[ib + 2]) - centroid[2];
+    const sign = lx * rx + ly * ry + lz * rz <= 0 ? 1 : -1;
+    const mean = sign * Math.hypot(lx, ly, lz) * 0.5;
+    const disc = Math.max(0, mean * mean - gaussian);
+    const root = Math.sqrt(disc);
+    K[i] = gaussian;
+    H[i] = mean;
+    k1[i] = mean + root;
+    k2[i] = mean - root;
+  }
+  return { K, H, k1, k2 };
+};
+
 type TriangleMeshGeometricMetrics = {
   vertexCount: number;
   faceCount: number;
@@ -33608,6 +33771,11 @@ const App: React.FC = () => {
     if (latestTopologyEdit) {
       setGeometryWireframe(true);
     }
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => handleGeometryFit("scene"), 0);
+    } else {
+      handleGeometryFit("scene");
+    }
     queueGeometryHistoryIntent(id, {
       action: "pipeline-mesh-handoff",
       label: latestTopologyEdit ? `Mesh handoff after ${latestTopologyEdit.actionLabel}` : "Mesh handoff",
@@ -43282,6 +43450,11 @@ case "mobius":
     }
     return { K, H, k1, k2 };
   }, [surfaceSampleSet, surfaceViewerKind, activeEqSurfaceId, graphExpr]);
+  const surfaceMeshCurvatures = useMemo(() => {
+    if (surfaceViewerKind !== "mesh" && surfaceViewerKind !== "complex") return null;
+    if (!surfaceMeshData?.positions?.length) return null;
+    return computeTriangleMeshCurvatureScalars(surfaceMeshData);
+  }, [surfaceMeshData, surfaceViewerKind]);
 
   const sampleNeighbors = useMemo(() => buildSampleNeighbors(surfaceSampleSet), [surfaceSampleSet]);
 
@@ -43316,7 +43489,7 @@ case "mobius":
     if (meshScalars?.length) {
       meshScalars.forEach((field) => map.set(field.name, field));
     }
-    const curvatures = surfaceSampleSet?.curvatures ?? graphCurvatures;
+    const curvatures = surfaceSampleSet?.curvatures ?? graphCurvatures ?? surfaceMeshCurvatures;
     if (curvatures) {
       map.set("K", { name: "K", values: curvatures.K });
       map.set("H", { name: "H", values: curvatures.H });
@@ -43334,6 +43507,7 @@ case "mobius":
     calculusScalarFields,
     graphCurvatures,
     meshDataset?.fields?.scalars,
+    surfaceMeshCurvatures,
     surfaceSampleSet,
     surfaceSampleSet?.curvatures,
     workbookScalarFields,
@@ -49916,6 +50090,52 @@ case "mobius":
     setGeometryCreateActionStatus(`Returned to promoted Geometry object: ${target.name}.`);
   }, [accentGeometryMeshInfo, meshGeometryRoundTripSource, resolveGeometrySceneObjectById]);
 
+  const handleReturnMeshAnalyzeToGeometry = useCallback(() => {
+    if (meshGeometryRoundTripSource) {
+      const target = resolveGeometrySceneObjectById(meshGeometryRoundTripSource.objectId);
+      if (target) {
+        setGeometrySelectedObjectId(target.id);
+        setGeometryProceduralPanelTab("object");
+        setGeometryRightPanelTab("selection");
+        setGeometryMode("procedural");
+        setMode("geometry");
+        accentGeometryMeshInfo(target.id);
+        handleGeometryFit("scene");
+        setGeometryCreateActionStatus(`Returned to Geometry: ${target.name}.`);
+        return;
+      }
+      setSurfaceMeshTopologyStatus("Geometry source is unavailable; opening this mesh as a new Geometry object.");
+    }
+
+    if (meshPromotionTrace) {
+      const source = resolveGeometrySceneObjectById(meshPromotionTrace.sourceGeometryObjectId);
+      if (source) {
+        setGeometrySelectedObjectId(source.id);
+        setGeometryProceduralPanelTab("object");
+        setGeometryRightPanelTab("selection");
+        setGeometryMode("procedural");
+        setMode("geometry");
+        accentGeometryMeshInfo(source.id);
+        handleGeometryFit("scene");
+        setMeshPromotionStatus(`Returned to source Geometry object: ${source.name}.`);
+        setGeometryCreateActionStatus(`Returned to Geometry: ${source.name}.`);
+        return;
+      }
+      setMeshPromotionStatus("Source Geometry object is unavailable; opening this mesh as a new Geometry object.");
+    }
+
+    handleDatasetToGeometryScene();
+    setGeometryCreateActionStatus(`Returned to Geometry: ${surfaceMeshLabel ?? "mesh"}.`);
+  }, [
+    accentGeometryMeshInfo,
+    handleGeometryFit,
+    handleDatasetToGeometryScene,
+    meshGeometryRoundTripSource,
+    meshPromotionTrace,
+    resolveGeometrySceneObjectById,
+    surfaceMeshLabel,
+  ]);
+
   const handleUpdateOriginalGeometryFromMeshRoundTrip = useCallback(() => {
     if (!meshGeometryRoundTripSource) {
       setSurfaceMeshTopologyStatus("No Geometry source is attached to this Mesh session.");
@@ -52661,15 +52881,18 @@ case "mobius":
     return { min, max };
   };
   const readFiniteStats = (
-    values: Float32Array | null | undefined
+    values: Float32Array | null | undefined,
+    mask?: SelectionMask | null
   ): { min: number; max: number; mean: number; std: number; count: number } | null => {
     if (!values?.length) return null;
+    const useMask = !!mask?.count && mask.selected.length === values.length;
     let min = Number.POSITIVE_INFINITY;
     let max = Number.NEGATIVE_INFINITY;
     let sum = 0;
     let sumSq = 0;
     let count = 0;
     for (let i = 0; i < values.length; i += 1) {
+      if (useMask && !mask.selected[i]) continue;
       const v = values[i];
       if (!Number.isFinite(v)) continue;
       if (v < min) min = v;
@@ -52683,14 +52906,19 @@ case "mobius":
     const variance = Math.max(0, sumSq / count - mean * mean);
     return { min, max, mean, std: Math.sqrt(variance), count };
   };
+  const surfaceScienceCurvatureMask =
+    selectionMask?.count && selectionCurvatures?.K && selectionMask.selected.length === selectionCurvatures.K.length
+      ? selectionMask
+      : null;
+  const surfaceScienceCurvatureRangeSource = surfaceScienceCurvatureMask ? "selected region" : "whole mesh";
   const surfaceScienceCurvatureStats = useMemo(
     () => ({
-      K: readFiniteStats(selectionCurvatures?.K),
-      H: readFiniteStats(selectionCurvatures?.H),
-      k1: readFiniteStats(selectionCurvatures?.k1),
-      k2: readFiniteStats(selectionCurvatures?.k2),
+      K: readFiniteStats(selectionCurvatures?.K, surfaceScienceCurvatureMask),
+      H: readFiniteStats(selectionCurvatures?.H, surfaceScienceCurvatureMask),
+      k1: readFiniteStats(selectionCurvatures?.k1, surfaceScienceCurvatureMask),
+      k2: readFiniteStats(selectionCurvatures?.k2, surfaceScienceCurvatureMask),
     }),
-    [selectionCurvatures]
+    [selectionCurvatures, surfaceScienceCurvatureMask]
   );
   const surfaceInspectorCurvatureRanges = useMemo(
     () => ({
@@ -63836,8 +64064,9 @@ case "mobius":
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <button
                           type="button"
-                          onClick={meshGeometryRoundTripSource ? handleOpenMeshRoundTripGeometryObject : handleOpenMeshPromotionSourceGeometryObject}
-                          disabled={!meshGeometryRoundTripSource && !meshPromotionTrace}
+                          data-testid="mesh-analyze-return-geometry"
+                          onClick={handleReturnMeshAnalyzeToGeometry}
+                          disabled={!meshGeometryRoundTripSource && !meshPromotionTrace && !meshObjectPromoteReady}
                           style={{ fontSize: 11 }}
                         >
                           Return to Geometry
@@ -65953,10 +66182,18 @@ case "mobius":
                             ))}
                             <button
                               type="button"
+                              data-testid="mesh-analyze-probe-toggle"
                               onClick={() => {
-                                setProbeEnabled((value) => !value);
+                                const nextProbeEnabled = !probeEnabled;
+                                setProbeEnabled(nextProbeEnabled);
+                                setSurfaceMeshTopologyStatus(
+                                  nextProbeEnabled
+                                    ? `Probe measurement active; ${surfaceMeshTopologyPickMode} pick stays available. Click the mesh to read K/H/k1/k2.`
+                                    : "Probe measurement off."
+                                );
                                 if (!inspectEnabled) setInspectEnabled(true);
                               }}
+                              title="Toggle curvature measurement clicks. This is independent from Object/Face/Edge/Vertex pick mode."
                               aria-pressed={probeEnabled}
                               style={viewerControlButtonStyle(probeEnabled, meshViewerControlsDensity)}
                             >
@@ -66701,16 +66938,16 @@ case "mobius":
                             data-testid="mesh-analyze-science-overlay"
                             style={{
                               position: "absolute",
-                              top: 12,
-                              left: 12,
-                              width: "min(310px, calc(100% - 24px))",
+                              top: 10,
+                              left: 10,
+                              width: "min(286px, calc(100% - 20px))",
                               border: "1px solid rgba(125, 172, 223, 0.75)",
                               borderRadius: 8,
                               background: "rgba(248, 251, 255, 0.94)",
                               boxShadow: "0 12px 28px rgba(15, 23, 42, 0.12)",
-                              padding: "9px 10px",
+                              padding: "8px 9px",
                               display: "grid",
-                              gap: 8,
+                              gap: 6,
                               fontSize: 11,
                               color: "#0f172a",
                               zIndex: 18,
@@ -66742,13 +66979,27 @@ case "mobius":
                                     background: meshAnalyzePaletteGradient,
                                   }}
                                 />
+                                <div
+                                  data-testid="mesh-analyze-range-source"
+                                  style={{ color: "#64748b", fontSize: 10, fontWeight: 750 }}
+                                >
+                                  Range: {surfaceScienceCurvatureRangeSource}
+                                </div>
                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: "#334155" }}>
-                                  <span>min {meshAnalyzeCurvatureStats ? fmt(meshAnalyzeCurvatureStats.min) : "n/a"}</span>
-                                  <span>max {meshAnalyzeCurvatureStats ? fmt(meshAnalyzeCurvatureStats.max) : "n/a"}</span>
+                                  <span data-testid="mesh-analyze-curvature-min">
+                                    min {meshAnalyzeCurvatureStats ? fmt(meshAnalyzeCurvatureStats.min) : "n/a"}
+                                  </span>
+                                  <span data-testid="mesh-analyze-curvature-max">
+                                    max {meshAnalyzeCurvatureStats ? fmt(meshAnalyzeCurvatureStats.max) : "n/a"}
+                                  </span>
                                 </div>
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, color: "#334155" }}>
-                                  <span>mean {meshAnalyzeCurvatureStats ? fmt(meshAnalyzeCurvatureStats.mean) : "n/a"}</span>
-                                  <span>std {meshAnalyzeCurvatureStats ? fmt(meshAnalyzeCurvatureStats.std) : "n/a"}</span>
+                                  <span data-testid="mesh-analyze-curvature-mean">
+                                    mean {meshAnalyzeCurvatureStats ? fmt(meshAnalyzeCurvatureStats.mean) : "n/a"}
+                                  </span>
+                                  <span data-testid="mesh-analyze-curvature-std">
+                                    std {meshAnalyzeCurvatureStats ? fmt(meshAnalyzeCurvatureStats.std) : "n/a"}
+                                  </span>
                                 </div>
                               </div>
                             ) : (
@@ -66801,8 +67052,10 @@ case "mobius":
                                   )}
                                 </>
                               ) : (
-                                <div style={{ color: "#64748b" }}>
-                                  {probeEnabled ? "Click the mesh to read local K/H/k1/k2." : "Enable Probe to read local K/H/k1/k2."}
+                                <div data-testid="mesh-analyze-probe-help" style={{ color: "#64748b" }}>
+                                  {probeEnabled
+                                    ? `Measurement click is independent of ${surfaceMeshTopologyPickMode} pick. Click the mesh for K/H/k1/k2.`
+                                    : "Enable Probe for measurement clicks without changing Object/Face/Edge/Vertex pick."}
                                 </div>
                               )}
                             </div>
@@ -74859,6 +75112,14 @@ case "mobius":
                             geometrySelectedSceneMeshInfo ? "Mesh ready" : "Mesh pending",
                           ].join(" · ")}
                         </div>
+                        {geometryCreateActionStatus && (
+                          <div
+                            data-testid="geometry-object-action-status"
+                            style={{ marginTop: 6, fontSize: 10.5, color: "#0f3557", fontWeight: 700 }}
+                          >
+                            {geometryCreateActionStatus}
+                          </div>
+                        )}
                         <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
                           <div
                             style={{
@@ -76337,6 +76598,14 @@ case "mobius":
                         <div style={{ marginTop: 3, fontSize: 10.5, opacity: 0.75 }}>
                           Dataset mesh object · {geometrySelectedSceneMeshInfo ? "Mesh ready" : "Mesh pending"}
                         </div>
+                        {geometryCreateActionStatus && (
+                          <div
+                            data-testid="geometry-object-action-status"
+                            style={{ marginTop: 6, fontSize: 10.5, color: "#0f3557", fontWeight: 700 }}
+                          >
+                            {geometryCreateActionStatus}
+                          </div>
+                        )}
                         <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
                           <div
                             style={{
@@ -78222,10 +78491,20 @@ case "mobius":
                                       Opens Mesh Analyze with this Geometry object converted to an analysis mesh.
                                     </div>
                                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                      <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
+                                      <button
+                                        type="button"
+                                        data-testid="geometry-analysis-open-mesh-analyze"
+                                        onClick={() => openSelectedGeometryMeshAnalysis(false)}
+                                        style={{ fontSize: 11 }}
+                                      >
                                         Open Mesh Analyze
                                       </button>
-                                      <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(true)} style={{ fontSize: 11 }}>
+                                      <button
+                                        type="button"
+                                        data-testid="geometry-analysis-open-mesh-analyze-gauss"
+                                        onClick={() => openSelectedGeometryMeshAnalysis(true)}
+                                        style={{ fontSize: 11 }}
+                                      >
                                         Open Mesh Analyze + Gauss map
                                       </button>
                                     </div>

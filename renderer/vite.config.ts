@@ -1,6 +1,8 @@
 import { defineConfig } from "vite";
+import type { ProxyOptions } from "vite";
 import react from "@vitejs/plugin-react";
 import fs from "node:fs";
+import type { ServerResponse } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,11 +15,48 @@ const publicHosts = String(process.env.MATH3D_PUBLIC_HOSTS ?? "")
   .split(",")
   .map((host) => host.trim())
   .filter(Boolean);
-const workerProxy = proxyEnabled
+
+const sendJson = (res: ServerResponse, statusCode: number, payload: Record<string, unknown>) => {
+  if (res.headersSent || res.writableEnded) return;
+  res.statusCode = statusCode;
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify(payload));
+};
+
+const workerDiagnosticsUnavailableSnapshot = (message: string) => ({
+  startupChecked: true,
+  available: false,
+  statusMessage: message,
+  logPath: "",
+  lastCheckAt: Date.now(),
+  lastError: {
+    category: "unknown",
+    code: "WEB_WORKER_PROXY_UNAVAILABLE",
+    message,
+    detail: message,
+    context: "renderer-dev-proxy",
+    fatal: false,
+    at: Date.now(),
+  },
+});
+
+const workerProxy: Record<string, ProxyOptions> | undefined = proxyEnabled
   ? {
       "/api/worker": {
         target: proxyTarget,
         changeOrigin: true,
+        configure(proxy) {
+          proxy.on("error", (_error, req, res) => {
+            const pathname = req.url?.split("?")[0] ?? "";
+            if (pathname === "/api/worker/diagnostics" && res && "setHeader" in res) {
+              sendJson(
+                res as ServerResponse,
+                200,
+                workerDiagnosticsUnavailableSnapshot("Worker proxy diagnostics unavailable; desktop IPC remains available.")
+              );
+            }
+          });
+        },
       },
     }
   : undefined;
