@@ -5,6 +5,7 @@ import {
   resetSurfaceAppState,
   type LaunchedSurfaceApp,
 } from "./helpers/surfaceAppHarness";
+import { clickSurfaceViewerCanvas } from "./helpers/viewerPicking";
 
 const sectionLabels = ["Surfaces", "Mesh", "Volume", "Curves", "Topology", "Geometry"] as const;
 
@@ -61,6 +62,7 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
   try {
     ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
     const { page } = ctx;
+    await page.setViewportSize({ width: 1920, height: 1080 });
     page.on("response", (response) => {
       if (response.url().includes("/api/worker/diagnostics") && response.status() >= 400) {
         diagnosticsFailures.push(`${response.status()} ${response.url()}`);
@@ -75,6 +77,15 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-curvature-max")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analyze-curvature-mean")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analyze-curvature-std")).not.toContainText("n/a");
+    await expect(page.getByTestId("mesh-analyze-sphere-sanity")).toContainText(/Expected K/i);
+    await page.getByTestId("mesh-analyze-invert-palette").click();
+    await expect(page.getByTestId("mesh-analyze-invert-palette")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("mesh-analyze-clamp-min").fill("0.5");
+    await page.getByTestId("mesh-analyze-clamp-max").fill("1.5");
+    await page.getByTestId("mesh-analyze-clamp-toggle").check();
+    await expect(page.getByTestId("mesh-analyze-range-source")).toContainText(/clamped/i);
+    await page.getByTestId("mesh-analyze-reset-range").click();
+    await expect(page.getByTestId("mesh-analyze-range-source")).not.toContainText(/clamped/i);
 
     const toolbar = page.getByTestId("mesh-analysis-context-toolbar");
     await toolbar.getByRole("button", { name: "Edge", exact: true }).click();
@@ -85,6 +96,12 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     }
     await expect(probe).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("mesh-analyze-probe-help")).toContainText(/independent of edge pick/i);
+    await expect(toolbar.getByRole("button", { name: "Edge", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await clickSurfaceViewerCanvas(page, 0.5, 0.52);
+    await expect(page.getByTestId("mesh-analyze-probe-K")).not.toContainText("n/a", { timeout: 15_000 });
+    await expect(page.getByTestId("mesh-analyze-probe-H")).not.toContainText("n/a");
+    await expect(page.getByTestId("mesh-analyze-probe-k1")).not.toContainText("n/a");
+    await expect(page.getByTestId("mesh-analyze-probe-k2")).not.toContainText("n/a");
     await expect(toolbar.getByRole("button", { name: "Edge", exact: true })).toHaveAttribute("aria-pressed", "true");
 
     await page.getByTestId("mesh-analyze-return-geometry").click();

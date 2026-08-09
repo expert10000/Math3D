@@ -37943,6 +37943,13 @@ const App: React.FC = () => {
   const [curvatureMaxSteps, setCurvatureMaxSteps] = useState(400);
   const [curvatureMaxLines, setCurvatureMaxLines] = useState(200);
   const [curvatureRebuildToken, setCurvatureRebuildToken] = useState(0);
+  const [meshAnalyzeRangeMode, setMeshAnalyzeRangeMode] = useState<"whole" | "selected">("whole");
+  const [meshAnalyzeClampEnabled, setMeshAnalyzeClampEnabled] = useState(false);
+  const [meshAnalyzeClampMin, setMeshAnalyzeClampMin] = useState("");
+  const [meshAnalyzeClampMax, setMeshAnalyzeClampMax] = useState("");
+  const [meshAnalyzePaletteInverted, setMeshAnalyzePaletteInverted] = useState(false);
+  const [meshAnalyzeDiagnosticOverlayMode, setMeshAnalyzeDiagnosticOverlayMode] =
+    useState<"none" | "boundary" | "duplicates">("none");
   const [showRidges, setShowRidges] = useState(false);
   const [showValleys, setShowValleys] = useState(false);
   const [ridgeValleySelectionOnly, setRidgeValleySelectionOnly] = useState(false);
@@ -38837,7 +38844,7 @@ const App: React.FC = () => {
   const compareDiffHeatmapActive = !!compareDiffHeatmapValues?.length;
   const workbookHeatmapActive = !!workbookHeatmapEnabled && !!workbookHeatmapValues?.length;
   const calculusHeatmapActive = !!calculusHeatmapEnabled && !!calculusHeatmapValues?.length;
-  const overlayHeatmapValues = compareDiffHeatmapActive
+  const baseOverlayHeatmapValues = compareDiffHeatmapActive
     ? compareDiffHeatmapValues
     : complexMapHeatmapActive
       ? complexMapDistortionValues3d
@@ -38846,7 +38853,6 @@ const App: React.FC = () => {
       : !compareIgnoreWorkbookOverlays && workbookHeatmapActive
         ? workbookHeatmapValues
         : null;
-  const overlayHeatmapEnabled = !!overlayHeatmapValues?.length;
 
   useEffect(() => {
     if (compareDiffHeatmapEnabled && !compareDiffHeatmapAvailable) {
@@ -52812,6 +52818,7 @@ case "mobius":
     if (!boundaryEdges.length) {
       setSurfaceMeshEdgeSelection(null);
       surfaceMeshEdgeSelectionRef.current = null;
+      setMeshAnalyzeDiagnosticOverlayMode("none");
       setSurfaceMeshTopologyStatus("Diagnostics: no boundary edges found.");
       return;
     }
@@ -52828,6 +52835,7 @@ case "mobius":
     setSurfaceMeshTopologySelectionCleared(false);
     surfaceMeshEdgeSelectionRef.current = selection;
     setSurfaceMeshEdgeSelection(selection);
+    setMeshAnalyzeDiagnosticOverlayMode("boundary");
     setContextualActionPulseId("mesh:boundary-select");
     setSurfaceMeshTopologyStatus(selection.status);
     showSelectionEventStatus("Mesh", selection.status, `mesh-diagnostics-boundary:${boundaryEdges.length}`);
@@ -52846,6 +52854,7 @@ case "mobius":
     setSurfaceMeshTopologyPickMode("vertex");
     setSurfaceMeshTopologySelectionCleared(false);
     setSurfaceMeshTopologyVertexIndex(firstGroup[0]);
+    setMeshAnalyzeDiagnosticOverlayMode("duplicates");
     setSurfaceMeshTopologyStatus(
       `Diagnostics: duplicate vertex group loaded (${listed}${
         firstGroup.length > 6 ? "..." : ""
@@ -52865,8 +52874,105 @@ case "mobius":
   }, [surfaceMeshAnalyzeDiagnostics, surfaceMeshData]);
   const handleRecomputeMeshAnalyzeDiagnostics = useCallback(() => {
     setMeshAnalyzeDiagnosticsNonce((value) => value + 1);
+    setMeshAnalyzeDiagnosticOverlayMode("none");
     setSurfaceMeshTopologyStatus("Diagnostics recomputed.");
   }, []);
+  const meshAnalyzeDiagnosticViewportOverlays = useMemo<{
+    pointSets: OverlayPointSet[] | null;
+    polylineGroups: OverlayPolylineGroup[] | null;
+    labelSets: OverlayLabelSet[] | null;
+    label: string | null;
+  }>(() => {
+    if (surfaceViewerKind !== "mesh" || surfacesLeftTab !== "analysis" || !surfaceMeshData?.positions?.length) {
+      return { pointSets: null, polylineGroups: null, labelSets: null, label: null };
+    }
+    if (meshAnalyzeDiagnosticOverlayMode === "boundary") {
+      const boundaryEdges = collectTriangleMeshBoundaryEdges(surfaceMeshData);
+      if (!boundaryEdges.length) return { pointSets: null, polylineGroups: null, labelSets: null, label: null };
+      const lines = boundaryEdges
+        .slice(0, 1200)
+        .map(([aIndex, bIndex]) => {
+          const a = readMeshPoint(surfaceMeshData, aIndex);
+          const b = readMeshPoint(surfaceMeshData, bIndex);
+          return a && b ? [a, b] : null;
+        })
+        .filter((line): line is [{ x: number; y: number; z: number }, { x: number; y: number; z: number }] => !!line);
+      const first = lines[0];
+      const labelPosition = first
+        ? {
+            x: (first[0].x + first[1].x) * 0.5,
+            y: (first[0].y + first[1].y) * 0.5,
+            z: (first[0].z + first[1].z) * 0.5,
+          }
+        : null;
+      const label = `${boundaryEdges.length.toLocaleString()} boundary ${
+        boundaryEdges.length === 1 ? "edge" : "edges"
+      }`;
+      return {
+        pointSets: null,
+        polylineGroups: lines.length
+          ? [{ lines, color: 0xef4444, opacity: 0.98, radiusWorld: 0.032 }]
+          : null,
+        labelSets: labelPosition
+          ? [{ size: 0.8, labels: [{ text: label, position: labelPosition, color: 0xb91c1c, opacity: 0.98 }] }]
+          : null,
+        label,
+      };
+    }
+    if (meshAnalyzeDiagnosticOverlayMode === "duplicates") {
+      const groups =
+        surfaceMeshAnalyzeDiagnostics?.duplicateVertexGroups ??
+        findCoincidentMeshVertexGroups(surfaceMeshData, 1e-8, 8);
+      const points = groups
+        .flatMap((group) => group)
+        .slice(0, 300)
+        .map((vertexIndex) => readMeshPoint(surfaceMeshData, vertexIndex))
+        .filter((point): point is { x: number; y: number; z: number } => !!point);
+      if (!points.length) return { pointSets: null, polylineGroups: null, labelSets: null, label: null };
+      const duplicateCount = surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount ?? points.length;
+      const label = `${duplicateCount.toLocaleString()} coincident ${
+        duplicateCount === 1 ? "vertex" : "vertices"
+      }`;
+      return {
+        pointSets: [{ points, color: 0xd946ef, size: 0.105, opacity: 0.98 }],
+        polylineGroups: null,
+        labelSets: [{ size: 0.8, labels: [{ text: label, position: points[0], color: 0xa21caf, opacity: 0.98 }] }],
+        label,
+      };
+    }
+    return { pointSets: null, polylineGroups: null, labelSets: null, label: null };
+  }, [
+    meshAnalyzeDiagnosticOverlayMode,
+    surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount,
+    surfaceMeshAnalyzeDiagnostics?.duplicateVertexGroups,
+    surfaceMeshData,
+    surfaceViewerKind,
+    surfacesLeftTab,
+  ]);
+  const meshViewerOverlayPointSetsWithDiagnostics = useMemo<OverlayPointSet[] | null>(() => {
+    const sets: OverlayPointSet[] = [];
+    if (meshViewerOverlayPointSets?.length) sets.push(...meshViewerOverlayPointSets);
+    if (meshAnalyzeDiagnosticViewportOverlays.pointSets?.length) {
+      sets.push(...meshAnalyzeDiagnosticViewportOverlays.pointSets);
+    }
+    return sets.length ? sets : null;
+  }, [meshAnalyzeDiagnosticViewportOverlays.pointSets, meshViewerOverlayPointSets]);
+  const meshViewerOverlayPolylineGroupsWithDiagnostics = useMemo<OverlayPolylineGroup[] | null>(() => {
+    const groups: OverlayPolylineGroup[] = [];
+    if (meshViewerOverlayPolylineGroups?.length) groups.push(...meshViewerOverlayPolylineGroups);
+    if (meshAnalyzeDiagnosticViewportOverlays.polylineGroups?.length) {
+      groups.push(...meshAnalyzeDiagnosticViewportOverlays.polylineGroups);
+    }
+    return groups.length ? groups : null;
+  }, [meshAnalyzeDiagnosticViewportOverlays.polylineGroups, meshViewerOverlayPolylineGroups]);
+  const combinedOverlayLabelSetsWithDiagnostics = useMemo<OverlayLabelSet[] | null>(() => {
+    const labels: OverlayLabelSet[] = [];
+    if (combinedOverlayLabelSets?.length) labels.push(...combinedOverlayLabelSets);
+    if (meshAnalyzeDiagnosticViewportOverlays.labelSets?.length) {
+      labels.push(...meshAnalyzeDiagnosticViewportOverlays.labelSets);
+    }
+    return labels.length ? labels : null;
+  }, [combinedOverlayLabelSets, meshAnalyzeDiagnosticViewportOverlays.labelSets]);
   const readFiniteRange = (values: Float32Array | null | undefined): { min: number; max: number } | null => {
     if (!values?.length) return null;
     let min = Number.POSITIVE_INFINITY;
@@ -52907,7 +53013,10 @@ case "mobius":
     return { min, max, mean, std: Math.sqrt(variance), count };
   };
   const surfaceScienceCurvatureMask =
-    selectionMask?.count && selectionCurvatures?.K && selectionMask.selected.length === selectionCurvatures.K.length
+    meshAnalyzeRangeMode === "selected" &&
+    selectionMask?.count &&
+    selectionCurvatures?.K &&
+    selectionMask.selected.length === selectionCurvatures.K.length
       ? selectionMask
       : null;
   const surfaceScienceCurvatureRangeSource = surfaceScienceCurvatureMask ? "selected region" : "whole mesh";
@@ -52952,12 +53061,176 @@ case "mobius":
   const meshAnalyzeCurvatureStats = meshAnalyzeCurvatureField
     ? surfaceScienceCurvatureStats[meshAnalyzeCurvatureField]
     : null;
+  const meshAnalyzeClampRange = useMemo(() => {
+    if (!meshAnalyzeClampEnabled) return null;
+    const min = Number(meshAnalyzeClampMin);
+    const max = Number(meshAnalyzeClampMax);
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) return null;
+    return { min, max };
+  }, [meshAnalyzeClampEnabled, meshAnalyzeClampMax, meshAnalyzeClampMin]);
+  const meshAnalyzeDisplayedCurvatureStats =
+    meshAnalyzeCurvatureStats && meshAnalyzeClampRange
+      ? {
+          ...meshAnalyzeCurvatureStats,
+          min: meshAnalyzeClampRange.min,
+          max: meshAnalyzeClampRange.max,
+        }
+      : meshAnalyzeCurvatureStats;
+  const meshAnalyzeCurvatureHeatmapValues = useMemo(() => {
+    if (surfaceViewerKind !== "mesh" || surfacesLeftTab !== "analysis") return null;
+    if (!meshAnalyzeCurvatureField || !meshAnalyzeDisplayedCurvatureStats) return null;
+    const values = selectionCurvatures?.[meshAnalyzeCurvatureField];
+    if (!values?.length) return null;
+    const min = meshAnalyzeDisplayedCurvatureStats.min;
+    const max = meshAnalyzeDisplayedCurvatureStats.max;
+    const range = max - min;
+    if (!Number.isFinite(min) || !Number.isFinite(max) || range <= 0) return null;
+    const normalized = new Float32Array(values.length);
+    for (let i = 0; i < values.length; i += 1) {
+      const value = Number(values[i]);
+      if (!Number.isFinite(value)) {
+        normalized[i] = 0.5;
+        continue;
+      }
+      const clamped = Math.min(max, Math.max(min, value));
+      const t = (clamped - min) / range;
+      normalized[i] = meshAnalyzePaletteInverted ? 1 - t : t;
+    }
+    return normalized;
+  }, [
+    meshAnalyzeCurvatureField,
+    meshAnalyzeDisplayedCurvatureStats,
+    meshAnalyzePaletteInverted,
+    selectionCurvatures,
+    surfaceViewerKind,
+    surfacesLeftTab,
+  ]);
+  const overlayHeatmapValues = meshAnalyzeCurvatureHeatmapValues ?? baseOverlayHeatmapValues;
+  const overlayHeatmapEnabled = !!overlayHeatmapValues?.length;
+  const meshAnalyzeSelectedRangeAvailable =
+    !!selectionMask?.count && !!selectionCurvatures?.K && selectionMask.selected.length === selectionCurvatures.K.length;
+  const meshAnalyzeResetClampRange = useCallback(() => {
+    if (meshAnalyzeCurvatureStats) {
+      setMeshAnalyzeClampMin(fmt(meshAnalyzeCurvatureStats.min));
+      setMeshAnalyzeClampMax(fmt(meshAnalyzeCurvatureStats.max));
+    } else {
+      setMeshAnalyzeClampMin("");
+      setMeshAnalyzeClampMax("");
+    }
+    setMeshAnalyzeClampEnabled(false);
+  }, [meshAnalyzeCurvatureStats]);
+  const meshAnalyzeSphereSanity = useMemo(() => {
+    const sphereLike =
+      surfaceMeshAnalyzeDiagnostics?.sphereSeamWarning ||
+      /\bsphere\b/i.test(surfaceMeshLabel) ||
+      /\bsphere\b/i.test(meshPromotionTrace?.sourceGeometryObjectName ?? "");
+    if (!sphereLike || !surfaceMeshData?.positions?.length) return null;
+    const vertexCount = Math.floor(surfaceMeshData.positions.length / 3);
+    if (vertexCount <= 0) return null;
+    let cx = 0;
+    let cy = 0;
+    let cz = 0;
+    for (let i = 0; i < vertexCount; i += 1) {
+      const base = i * 3;
+      cx += Number(surfaceMeshData.positions[base] ?? 0);
+      cy += Number(surfaceMeshData.positions[base + 1] ?? 0);
+      cz += Number(surfaceMeshData.positions[base + 2] ?? 0);
+    }
+    cx /= vertexCount;
+    cy /= vertexCount;
+    cz /= vertexCount;
+    let radiusSum = 0;
+    let radiusCount = 0;
+    for (let i = 0; i < vertexCount; i += 1) {
+      const base = i * 3;
+      const r = Math.hypot(
+        Number(surfaceMeshData.positions[base] ?? 0) - cx,
+        Number(surfaceMeshData.positions[base + 1] ?? 0) - cy,
+        Number(surfaceMeshData.positions[base + 2] ?? 0) - cz
+      );
+      if (!Number.isFinite(r) || r <= 1e-9) continue;
+      radiusSum += r;
+      radiusCount += 1;
+    }
+    if (!radiusCount) return null;
+    const radius = radiusSum / radiusCount;
+    const expectedK = 1 / (radius * radius);
+    const expectedH = 1 / radius;
+    const kStats = surfaceScienceCurvatureStats.K;
+    const hStats = surfaceScienceCurvatureStats.H;
+    const rel = (actual: number, expected: number) => Math.abs(actual - expected) / Math.max(1e-9, Math.abs(expected));
+    const kDrift = kStats ? rel(kStats.mean, expectedK) : null;
+    const hDrift = hStats ? rel(Math.abs(hStats.mean), expectedH) : null;
+    const drift = Math.max(kDrift ?? 0, hDrift ?? 0);
+    return {
+      radius,
+      expectedK,
+      expectedH,
+      kDrift,
+      hDrift,
+      ok: drift <= 0.2 && !surfaceMeshAnalyzeDiagnostics?.sphereSeamWarning,
+      warning:
+        surfaceMeshAnalyzeDiagnostics?.sphereSeamWarning
+          ? "Sphere mesh has open boundary/seam; curvature/topology results may be unreliable."
+          : drift > 0.2
+            ? "Sphere curvature drifts from expected values; inspect mesh quality or resolution."
+            : null,
+    };
+  }, [
+    meshPromotionTrace?.sourceGeometryObjectName,
+    surfaceMeshAnalyzeDiagnostics?.sphereSeamWarning,
+    surfaceMeshData,
+    surfaceMeshLabel,
+    surfaceScienceCurvatureStats.H,
+    surfaceScienceCurvatureStats.K,
+  ]);
+  const meshAnalyzeTopologyProbeCurvature = useMemo(() => {
+    if (surfaceViewerKind !== "mesh" || !probeEnabled || !surfaceMeshCurvatures) return null;
+    const pick = surfaceMeshTopologyPick;
+    if (!pick && probeStamp <= 0) return null;
+    let vertexIndex: number | null =
+      pick?.vertexIndex ??
+      (surfaceMeshTopologyPickMode === "vertex" ? selectedSurfaceMeshTopologyVertexId : null);
+    if (vertexIndex == null && surfaceMeshTopologyPickMode === "edge") {
+      vertexIndex = Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0));
+    }
+    if (vertexIndex == null && surfaceMeshTopologyPickMode === "face" && surfaceMeshData) {
+      const tri = readMeshFaceVertexIndices(surfaceMeshData, selectedSurfaceMeshTopologyFaceId);
+      vertexIndex = tri?.[0] ?? null;
+    }
+    if (vertexIndex == null || vertexIndex < 0 || vertexIndex >= surfaceMeshCurvatures.K.length) return null;
+    const read = (values: Float32Array) => {
+      const value = values[vertexIndex];
+      return Number.isFinite(value) ? value : Number.NaN;
+    };
+    const point = surfaceMeshData ? readMeshPoint(surfaceMeshData, vertexIndex) : null;
+    return {
+      K: read(surfaceMeshCurvatures.K),
+      H: read(surfaceMeshCurvatures.H),
+      k1: read(surfaceMeshCurvatures.k1),
+      k2: read(surfaceMeshCurvatures.k2),
+      vertexIndex,
+      point,
+    };
+  }, [
+    probeEnabled,
+    probeStamp,
+    selectedSurfaceMeshTopologyVertexId,
+    selectedSurfaceMeshTopologyFaceId,
+    surfaceMeshCurvatures,
+    surfaceMeshData,
+    surfaceMeshTopologyEdgeA,
+    surfaceMeshTopologyPick,
+    surfaceMeshTopologyPickMode,
+    surfaceViewerKind,
+  ]);
   const meshAnalyzeProbeCurvature =
     surfaceViewerKind === "graph" && probeCurv
       ? { K: probeCurv.K, H: probeCurv.H, k1: probeCurv.k1, k2: probeCurv.k2 }
       : (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") && paramProbeCurv
         ? { K: paramProbeCurv.K, H: paramProbeCurv.H, k1: paramProbeCurv.k1, k2: paramProbeCurv.k2 }
-        : inspectMetrics;
+        : meshAnalyzeTopologyProbeCurvature ?? inspectMetrics;
+  const meshAnalyzeProbePoint = inspectPos ?? meshAnalyzeTopologyProbeCurvature?.point ?? null;
   const meshAnalyzeScienceOverlayReady =
     surfaceViewerKind === "mesh" &&
     surfacesLeftTab === "analysis" &&
@@ -52965,12 +53238,20 @@ case "mobius":
     (meshAnalyzeCurvatureField != null || probeEnabled || !!meshAnalyzeProbeCurvature);
   const meshAnalyzePaletteGradient =
     primaryOverlay.colorPalette === "grayscale"
-      ? "linear-gradient(90deg, #111827 0%, #f8fafc 100%)"
+      ? meshAnalyzePaletteInverted
+        ? "linear-gradient(90deg, #f8fafc 0%, #111827 100%)"
+        : "linear-gradient(90deg, #111827 0%, #f8fafc 100%)"
       : primaryOverlay.colorPalette === "redYellow"
-        ? "linear-gradient(90deg, #dc2626 0%, #facc15 100%)"
+        ? meshAnalyzePaletteInverted
+          ? "linear-gradient(90deg, #facc15 0%, #dc2626 100%)"
+          : "linear-gradient(90deg, #dc2626 0%, #facc15 100%)"
         : primaryOverlay.colorPalette === "rainbow"
-          ? "linear-gradient(90deg, #dc2626 0%, #f97316 20%, #facc15 40%, #22c55e 60%, #2563eb 80%, #7c3aed 100%)"
-          : "linear-gradient(90deg, #1d4ed8 0%, #22c55e 50%, #dc2626 100%)";
+          ? meshAnalyzePaletteInverted
+            ? "linear-gradient(90deg, #7c3aed 0%, #2563eb 20%, #22c55e 40%, #facc15 60%, #f97316 80%, #dc2626 100%)"
+            : "linear-gradient(90deg, #dc2626 0%, #f97316 20%, #facc15 40%, #22c55e 60%, #2563eb 80%, #7c3aed 100%)"
+          : meshAnalyzePaletteInverted
+            ? "linear-gradient(90deg, #dc2626 0%, #22c55e 50%, #1d4ed8 100%)"
+            : "linear-gradient(90deg, #1d4ed8 0%, #22c55e 50%, #dc2626 100%)";
   const surfaceInspectorActiveVectorMagnitudeRange = useMemo(() => {
     const field = surfaceVectorFields.get(calculusActiveVectorField) ?? null;
     if (!field?.values?.length) return null;
@@ -62129,7 +62410,9 @@ case "mobius":
                           setSurfacesLeftTab("scene");
                           setSurfacesWorkGalleryOpen(true);
                         }}
-                        style={headerFamilyButtonStyle(surfacesPanelState === "work" && surfacesLeftTab === "scene")}
+                        style={headerFamilyButtonStyle(
+                          surfacesPanelState === "work" && surfacesLeftTab === "scene" && surfacesWorkGalleryOpen
+                        )}
                       >
                         Mesh presets
                       </button>
@@ -62137,10 +62420,12 @@ case "mobius":
                         type="button"
                         onClick={() => {
                           setSurfacesPanelState("work");
-                          setSurfacesLeftTab("analysis");
+                          setSurfacesLeftTab("scene");
                           setSurfacesWorkGalleryOpen(false);
                         }}
-                        style={headerFamilyButtonStyle(surfacesPanelState === "work" && surfacesLeftTab === "analysis")}
+                        style={headerFamilyButtonStyle(
+                          surfacesPanelState === "work" && surfacesLeftTab === "scene" && !surfacesWorkGalleryOpen
+                        )}
                       >
                         Mesh tools
                       </button>
@@ -63691,6 +63976,447 @@ case "mobius":
               )}
               {(surfacesLayoutVariant === "layout2" || (surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "scene")) && (
                 <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%", flex: 1 }}>
+                  {surfaceViewerKind === "mesh" && !surfacesWorkGalleryOpen && (
+                    <div
+                      style={{
+                        border: "1px solid #bfdbfe",
+                        borderRadius: 10,
+                        background: "#eff6ff",
+                        padding: "8px 10px",
+                        marginBottom: 10,
+                        display: "grid",
+                        gap: 7,
+                        fontSize: 11,
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                        <strong>Mesh topology editing</strong>
+                        <span style={{ color: "#475569", fontWeight: 700 }}>
+                          {surfaceMeshStats
+                            ? `${surfaceMeshStats.vertCount.toLocaleString()} V / ${surfaceMeshStats.triCount.toLocaleString()} F`
+                            : "No mesh"}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <span data-testid="mesh-topology-selected-face">{selectedSurfaceMeshTopologyFaceLabel}</span>
+                        <span data-testid="mesh-topology-selected-edge">{selectedSurfaceMeshTopologyEdgeLabel}</span>
+                        <span data-testid="mesh-topology-selected-vertex">{selectedSurfaceMeshTopologyVertexLabel}</span>
+                      </div>
+                      {surfaceMeshEdgeSelection && (
+                        <span data-testid="mesh-edge-selection-summary" style={{ color: "#0f766e", fontWeight: 800 }}>
+                          {surfaceMeshEdgeSelection.status}
+                        </span>
+                      )}
+                      <div style={{ display: "grid", gap: 5, borderTop: "1px solid #dbeafe", paddingTop: 6 }}>
+                        <div style={{ fontWeight: 700, color: "#0f172a" }}>Selection filters</div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {SURFACE_MESH_TOPOLOGY_PICK_MODES.map((pickMode) => {
+                            const enabledCount = SURFACE_MESH_TOPOLOGY_PICK_MODES.filter(
+                              (mode) => unifiedSelectionKindFilters[mode]
+                            ).length;
+                            return (
+                              <button
+                                key={`mesh-scene-selection-filter-kind-${pickMode}`}
+                                type="button"
+                                data-testid={`mesh-selection-filter-kind-${pickMode}`}
+                                onClick={() => handleToggleUnifiedSelectionKindFilter(pickMode)}
+                                disabled={unifiedSelectionKindFilters[pickMode] && enabledCount <= 1}
+                                aria-pressed={unifiedSelectionKindFilters[pickMode]}
+                                style={pill(unifiedSelectionKindFilters[pickMode])}
+                              >
+                                {pickMode[0].toUpperCase() + pickMode.slice(1)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {(["all", "boundary", "interior", "non-manifold"] as UnifiedSelectionTopologyFilterMode[]).map(
+                            (filterMode) => (
+                              <button
+                                key={`mesh-scene-selection-filter-topology-${filterMode}`}
+                                type="button"
+                                data-testid={`mesh-selection-filter-topology-${filterMode}`}
+                                onClick={() => setUnifiedSelectionTopologyFilter(filterMode)}
+                                aria-pressed={unifiedSelectionTopologyFilter === filterMode}
+                                style={pill(unifiedSelectionTopologyFilter === filterMode)}
+                              >
+                                {filterMode === "all"
+                                  ? "All topology"
+                                  : filterMode === "non-manifold"
+                                    ? "Non-manifold"
+                                    : filterMode[0].toUpperCase() + filterMode.slice(1)}
+                              </button>
+                            )
+                          )}
+                        </div>
+                        <div
+                          data-testid="mesh-selection-filter-summary"
+                          style={{ color: meshUnifiedSelectionFilterStatus ? "#b42318" : "#475467" }}
+                        >
+                          {meshUnifiedSelectionFilterStatus ?? unifiedSelectionFilterLabel}
+                        </div>
+                      </div>
+                      <details
+                        data-testid="mesh-topology-advanced-ids"
+                        style={{
+                          border: "1px solid #dbe2ea",
+                          borderRadius: 8,
+                          background: "#fff",
+                          padding: "6px 8px",
+                        }}
+                      >
+                        <summary style={{ cursor: "pointer", fontWeight: 700 }}>Advanced IDs</summary>
+                        <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
+                          <label>
+                            Face
+                            <input
+                              aria-label="Advanced face id"
+                              type="number"
+                              min={0}
+                              max={Math.max(0, (surfaceMeshStats?.triCount ?? 1) - 1)}
+                              step={1}
+                              value={surfaceMeshTopologyFaceIndex}
+                              onChange={(event) => {
+                                const value = Number(event.target.value);
+                                if (Number.isFinite(value)) {
+                                  setSurfaceMeshTopologyFaceIndex(
+                                    clampNumber(Math.round(value), 0, Math.max(0, (surfaceMeshStats?.triCount ?? 1) - 1))
+                                  );
+                                }
+                              }}
+                              style={{ width: 76, marginLeft: 6 }}
+                            />
+                          </label>
+                          <label>
+                            Vertex
+                            <input
+                              aria-label="Advanced vertex id"
+                              type="number"
+                              min={0}
+                              max={Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1)}
+                              step={1}
+                              value={surfaceMeshTopologyVertexIndex}
+                              onChange={(event) => {
+                                const value = Number(event.target.value);
+                                if (Number.isFinite(value)) {
+                                  setSurfaceMeshTopologyVertexIndex(
+                                    clampNumber(Math.round(value), 0, Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1))
+                                  );
+                                }
+                              }}
+                              style={{ width: 76, marginLeft: 6 }}
+                            />
+                          </label>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                            <label>
+                              Edge A
+                              <input
+                                aria-label="Advanced edge A id"
+                                type="number"
+                                min={0}
+                                max={Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1)}
+                                step={1}
+                                value={surfaceMeshTopologyEdgeA}
+                                onChange={(event) => {
+                                  const value = Number(event.target.value);
+                                  if (Number.isFinite(value)) {
+                                    setSurfaceMeshTopologyEdgeA(
+                                      clampNumber(Math.round(value), 0, Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1))
+                                    );
+                                  }
+                                }}
+                                style={{ width: 76, marginLeft: 6 }}
+                              />
+                            </label>
+                            <label>
+                              Edge B
+                              <input
+                                aria-label="Advanced edge B id"
+                                type="number"
+                                min={0}
+                                max={Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1)}
+                                step={1}
+                                value={surfaceMeshTopologyEdgeB}
+                                onChange={(event) => {
+                                  const value = Number(event.target.value);
+                                  if (Number.isFinite(value)) {
+                                    setSurfaceMeshTopologyEdgeB(
+                                      clampNumber(Math.round(value), 0, Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1))
+                                    );
+                                  }
+                                }}
+                                style={{ width: 76, marginLeft: 6 }}
+                              />
+                            </label>
+                          </div>
+                          <div
+                            style={{
+                              color: surfaceMeshTopologyFieldValidation.faceValid ? "#047857" : "#b42318",
+                            }}
+                          >
+                            {surfaceMeshTopologyFieldValidation.faceLabel}
+                          </div>
+                          <div
+                            style={{
+                              color: surfaceMeshTopologyFieldValidation.edgeValid ? "#047857" : "#b42318",
+                            }}
+                          >
+                            {surfaceMeshTopologyFieldValidation.edgeLabel}
+                          </div>
+                          <div
+                            style={{
+                              color: surfaceMeshTopologyFieldValidation.vertexValid ? "#047857" : "#b42318",
+                            }}
+                          >
+                            {surfaceMeshTopologyFieldValidation.vertexLabel}
+                          </div>
+                        </div>
+                      </details>
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 6,
+                          borderTop: "1px solid #dbeafe",
+                          paddingTop: 6,
+                        }}
+                      >
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                          <span style={{ fontWeight: 700 }}>Operations</span>
+                          <button
+                            type="button"
+                            onClick={handleSurfaceMeshFaceSubdivide}
+                            disabled={
+                              surfaceMeshTopologyPickMode !== "face" ||
+                              !surfaceMeshStats ||
+                              meshUnifiedSelectionFiltered ||
+                              !surfaceMeshTopologyFieldValidation.faceValid
+                            }
+                          >
+                            Subdivide Face
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSurfaceMeshSplitEdge()}
+                            disabled={
+                              surfaceMeshTopologyPickMode !== "edge" ||
+                              !surfaceMeshStats ||
+                              meshUnifiedSelectionFiltered ||
+                              !surfaceMeshTopologyFieldValidation.edgeValid
+                            }
+                          >
+                            Split Edge
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSurfaceMeshCollapseEdge}
+                            disabled={
+                              surfaceMeshTopologyPickMode !== "edge" ||
+                              !surfaceMeshStats ||
+                              meshUnifiedSelectionFiltered ||
+                              !surfaceMeshTopologyFieldValidation.edgeValid
+                            }
+                          >
+                            Collapse Edge
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSurfaceMeshBevelEdge()}
+                            disabled={
+                              surfaceMeshTopologyPickMode !== "edge" ||
+                              !surfaceMeshStats ||
+                              meshUnifiedSelectionFiltered ||
+                              !surfaceMeshTopologyFieldValidation.edgeValid
+                            }
+                          >
+                            Bevel Edge
+                          </button>
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                          <span style={{ fontWeight: 700 }}>Edge sets</span>
+                          <button
+                            type="button"
+                            data-testid="mesh-topology-select-edge-loop"
+                            onClick={() => handleSelectSurfaceMeshEdgeSet("loop")}
+                            disabled={
+                              surfaceMeshTopologyPickMode !== "edge" ||
+                              !surfaceMeshStats ||
+                              meshUnifiedSelectionFiltered ||
+                              !surfaceMeshTopologyFieldValidation.edgeValid
+                            }
+                          >
+                            Loop
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="mesh-topology-select-edge-ring"
+                            onClick={() => handleSelectSurfaceMeshEdgeSet("ring")}
+                            disabled={
+                              surfaceMeshTopologyPickMode !== "edge" ||
+                              !surfaceMeshStats ||
+                              meshUnifiedSelectionFiltered ||
+                              !surfaceMeshTopologyFieldValidation.edgeValid
+                            }
+                          >
+                            Ring
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="mesh-topology-select-boundary"
+                            onClick={() => handleSelectSurfaceMeshEdgeSet("boundary")}
+                            disabled={
+                              surfaceMeshTopologyPickMode !== "edge" ||
+                              !surfaceMeshStats ||
+                              meshUnifiedSelectionFiltered ||
+                              !surfaceMeshTopologyFieldValidation.edgeValid
+                            }
+                          >
+                            Boundary
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="mesh-topology-select-sharp"
+                            onClick={() => handleSelectSurfaceMeshEdgeSet("sharp")}
+                            disabled={
+                              surfaceMeshTopologyPickMode !== "edge" ||
+                              !surfaceMeshStats ||
+                              meshUnifiedSelectionFiltered ||
+                              !surfaceMeshTopologyFieldValidation.edgeValid
+                            }
+                          >
+                            Sharp
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="mesh-topology-select-feature"
+                            onClick={() => handleSelectSurfaceMeshEdgeSet("feature")}
+                            disabled={
+                              surfaceMeshTopologyPickMode !== "edge" ||
+                              !surfaceMeshStats ||
+                              meshUnifiedSelectionFiltered ||
+                              !surfaceMeshTopologyFieldValidation.edgeValid
+                            }
+                          >
+                            Feature
+                          </button>
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          border: "1px solid #dbe2ea",
+                          borderRadius: 8,
+                          background: "#fff",
+                          padding: "7px 8px",
+                          display: "grid",
+                          gap: 6,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                          <strong>Topology history</strong>
+                          <span style={{ color: "#475569", fontWeight: 700 }}>
+                            {surfaceMeshTopologyHistory.length} steps
+                          </span>
+                        </div>
+                        <div style={{ color: "#475569" }}>
+                          {surfaceMeshTopologyHistory.length
+                            ? surfaceMeshTopologyHistory[0]?.actionLabel
+                            : "No Mesh topology edits yet"}
+                        </div>
+                        <div style={{ color: "#475569" }}>
+                          Last result: {surfaceMeshTopologyHistory[0]?.selectedResultLabel ?? "none"}
+                        </div>
+                        {surfaceMeshTopologyStatus && (
+                          <div style={{ color: "#05603a", fontWeight: 800 }}>{surfaceMeshTopologyStatus}</div>
+                        )}
+                        <div
+                          style={{
+                            border: "1px solid #dbeafe",
+                            borderRadius: 6,
+                            background: "#eff6ff",
+                            color: "#1e3a8a",
+                            padding: "3px 6px",
+                            fontWeight: 800,
+                            overflowWrap: "anywhere",
+                          }}
+                        >
+                          {surfaceMeshTopologyBreadcrumb}
+                        </div>
+                        {surfaceMeshTopologyHistory[0] && (
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onMouseEnter={() => {
+                                setSurfaceMeshTopologyHistoryPreviewMode("before");
+                                setSurfaceMeshTopologyHistoryPreviewId(surfaceMeshTopologyHistory[0].id);
+                              }}
+                              onFocus={() => {
+                                setSurfaceMeshTopologyHistoryPreviewMode("before");
+                                setSurfaceMeshTopologyHistoryPreviewId(surfaceMeshTopologyHistory[0].id);
+                              }}
+                              onClick={() => {
+                                setSurfaceMeshTopologyHistoryPreviewMode("before");
+                                setSurfaceMeshTopologyHistoryPreviewId(surfaceMeshTopologyHistory[0].id);
+                              }}
+                            >
+                              Preview Before
+                            </button>
+                            <button
+                              type="button"
+                              onMouseEnter={() => {
+                                setSurfaceMeshTopologyHistoryPreviewMode("after");
+                                setSurfaceMeshTopologyHistoryPreviewId(surfaceMeshTopologyHistory[0].id);
+                              }}
+                              onFocus={() => {
+                                setSurfaceMeshTopologyHistoryPreviewMode("after");
+                                setSurfaceMeshTopologyHistoryPreviewId(surfaceMeshTopologyHistory[0].id);
+                              }}
+                              onClick={() => {
+                                setSurfaceMeshTopologyHistoryPreviewMode("after");
+                                setSurfaceMeshTopologyHistoryPreviewId(surfaceMeshTopologyHistory[0].id);
+                              }}
+                            >
+                              Preview After
+                            </button>
+                          </div>
+                        )}
+                        <label style={{ display: "grid", gap: 3, color: "#475569" }}>
+                          Example name
+                          <input
+                            aria-label="Mesh topology example name"
+                            value={surfaceMeshTopologySaveName}
+                            onChange={(event) => setSurfaceMeshTopologySaveName(event.currentTarget.value)}
+                            placeholder={surfaceMeshTopologyHistory[0]?.actionLabel ?? "Edited mesh"}
+                            disabled={!surfaceMeshData?.positions?.length || !surfaceMeshTopologyHistory.length}
+                            style={{ minWidth: 0, width: "100%" }}
+                          />
+                        </label>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={undoLatestSurfaceMeshTopologyEdit}
+                            disabled={!surfaceMeshTopologyHistory.length}
+                          >
+                            Undo Last
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="mesh-topology-save-edited"
+                            onClick={handleSaveSurfaceMeshTopologyEditedPreset}
+                            disabled={!surfaceMeshData?.positions?.length || !surfaceMeshTopologyHistory.length}
+                          >
+                            Save edited
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="mesh-topology-save-open-geometry"
+                            onClick={handleSaveAndOpenGeometrySurfaceMeshTopologyEditedPreset}
+                            disabled={!surfaceMeshData?.positions?.length || !surfaceMeshTopologyHistory.length}
+                          >
+                            Save + Open Geometry
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <UnifiedObjectTreePanel
                     title={isInspectDisplayMode ? "Scene roles / pipeline" : "Scene contents"}
                     nodes={unifiedObjectNodes}
@@ -64061,6 +64787,11 @@ case "mobius":
                           ? `Geometry > Procedural > ${meshPromotionTrace.sourceGeometryObjectName}`
                           : surfaceMeshSourceLabel ?? "Mesh dataset"}
                       </div>
+                      {surfaceMeshTopologyStatus && (
+                        <div style={{ color: "#05603a", fontSize: 11, fontWeight: 800 }}>
+                          {surfaceMeshTopologyStatus}
+                        </div>
+                      )}
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <button
                           type="button"
@@ -66253,6 +66984,72 @@ case "mobius":
                             >
                               Legend
                             </button>
+                            <span style={{ fontWeight: 800, color: "#1e3a8a" }}>Range:</span>
+                            <button
+                              type="button"
+                              data-testid="mesh-analyze-range-mode-whole"
+                              onClick={() => setMeshAnalyzeRangeMode("whole")}
+                              aria-pressed={meshAnalyzeRangeMode === "whole"}
+                              style={viewerControlButtonStyle(meshAnalyzeRangeMode === "whole", meshViewerControlsDensity)}
+                            >
+                              Whole
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="mesh-analyze-range-mode-selected"
+                              onClick={() => setMeshAnalyzeRangeMode("selected")}
+                              disabled={!meshAnalyzeSelectedRangeAvailable}
+                              aria-pressed={meshAnalyzeRangeMode === "selected"}
+                              title={meshAnalyzeSelectedRangeAvailable ? "Use selected region range" : "No selected region yet"}
+                              style={{
+                                ...viewerControlButtonStyle(meshAnalyzeRangeMode === "selected", meshViewerControlsDensity),
+                                opacity: meshAnalyzeSelectedRangeAvailable ? 1 : 0.55,
+                              }}
+                            >
+                              Selected
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="mesh-analyze-invert-palette"
+                              onClick={() => setMeshAnalyzePaletteInverted((value) => !value)}
+                              aria-pressed={meshAnalyzePaletteInverted}
+                              style={viewerControlButtonStyle(meshAnalyzePaletteInverted, meshViewerControlsDensity)}
+                            >
+                              Invert
+                            </button>
+                            <label style={viewerControlCheckStyle}>
+                              <input
+                                type="checkbox"
+                                data-testid="mesh-analyze-clamp-toggle"
+                                checked={meshAnalyzeClampEnabled}
+                                onChange={(event) => setMeshAnalyzeClampEnabled(event.target.checked)}
+                              />
+                              Clamp
+                            </label>
+                            <input
+                              aria-label="Clamp minimum"
+                              data-testid="mesh-analyze-clamp-min"
+                              value={meshAnalyzeClampMin}
+                              onChange={(event) => setMeshAnalyzeClampMin(event.target.value)}
+                              placeholder="min"
+                              style={{ width: 58, fontSize: 11, padding: "2px 5px" }}
+                            />
+                            <input
+                              aria-label="Clamp maximum"
+                              data-testid="mesh-analyze-clamp-max"
+                              value={meshAnalyzeClampMax}
+                              onChange={(event) => setMeshAnalyzeClampMax(event.target.value)}
+                              placeholder="max"
+                              style={{ width: 58, fontSize: 11, padding: "2px 5px" }}
+                            />
+                            <button
+                              type="button"
+                              data-testid="mesh-analyze-reset-range"
+                              onClick={meshAnalyzeResetClampRange}
+                              style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
+                            >
+                              Reset range
+                            </button>
                             <button
                               type="button"
                               onClick={() => setShowPrincipalDirections((value) => !value)}
@@ -66277,6 +67074,10 @@ case "mobius":
                                 setShowPrincipalDirections(false);
                                 setShowPrincipalLines(false);
                                 setShowCurvatureLines(false);
+                                setMeshAnalyzeDiagnosticOverlayMode("none");
+                                setMeshAnalyzePaletteInverted(false);
+                                setMeshAnalyzeClampEnabled(false);
+                                setMeshAnalyzeRangeMode("whole");
                                 setAnalysisFocusedSection("differential-geometry");
                                 setCameraResetToken((token) => token + 1);
                               }}
@@ -66758,9 +67559,9 @@ case "mobius":
                             geodesicHeatPolylines={geodesicHeatPolylines}
                             geodesicHeatmapValues={geodesicHeatHeatmapValues}
                             geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
-                            overlayPolylineGroups={meshViewerOverlayPolylineGroups}
-                            overlayPointSets={meshViewerOverlayPointSets}
-                            overlayLabelSets={combinedOverlayLabelSets}
+                            overlayPolylineGroups={meshViewerOverlayPolylineGroupsWithDiagnostics}
+                            overlayPointSets={meshViewerOverlayPointSetsWithDiagnostics}
+                            overlayLabelSets={combinedOverlayLabelSetsWithDiagnostics}
                             overlayMeshGroups={meshViewerOverlayMeshGroups}
                             geodesicDiskEnabled={geodesicDiskEnabled}
                             geodesicDiskPickEnabled={geodesicDiskEnabled && geodesicDiskPickMode}
@@ -66917,9 +67718,9 @@ case "mobius":
                         onTopologyGizmoDragEnd={
                           surfaceViewerKind === "mesh" ? handleSurfaceMeshTopologyGizmoDragEnd : undefined
                         }
-                        overlayPolylineGroups={meshViewerOverlayPolylineGroups}
-                        overlayPointSets={meshViewerOverlayPointSets}
-                        overlayLabelSets={combinedOverlayLabelSets}
+                        overlayPolylineGroups={meshViewerOverlayPolylineGroupsWithDiagnostics}
+                        overlayPointSets={meshViewerOverlayPointSetsWithDiagnostics}
+                        overlayLabelSets={combinedOverlayLabelSetsWithDiagnostics}
                         overlayMeshGroups={meshViewerOverlayMeshGroups}
                         geodesicDiskEnabled={geodesicDiskEnabled}
                         geodesicDiskPickEnabled={geodesicDiskEnabled && geodesicDiskPickMode}
@@ -66938,9 +67739,9 @@ case "mobius":
                             data-testid="mesh-analyze-science-overlay"
                             style={{
                               position: "absolute",
-                              top: 10,
+                              top: 48,
                               left: 10,
-                              width: "min(286px, calc(100% - 20px))",
+                              width: "min(270px, calc(100% - 20px))",
                               border: "1px solid rgba(125, 172, 223, 0.75)",
                               borderRadius: 8,
                               background: "rgba(248, 251, 255, 0.94)",
@@ -66950,8 +67751,8 @@ case "mobius":
                               gap: 6,
                               fontSize: 11,
                               color: "#0f172a",
-                              zIndex: 18,
-                              pointerEvents: "none",
+                              zIndex: 80,
+                              pointerEvents: "auto",
                               backdropFilter: "blur(4px)",
                             }}
                           >
@@ -66966,8 +67767,8 @@ case "mobius":
                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                                   <strong>{meshAnalyzeCurvatureFieldLabel}</strong>
                                   <span style={{ color: "#475569" }}>
-                                    {meshAnalyzeCurvatureStats
-                                      ? `${meshAnalyzeCurvatureStats.count.toLocaleString()} samples`
+                                    {meshAnalyzeDisplayedCurvatureStats
+                                      ? `${meshAnalyzeDisplayedCurvatureStats.count.toLocaleString()} samples`
                                       : "range pending"}
                                   </span>
                                 </div>
@@ -66984,13 +67785,14 @@ case "mobius":
                                   style={{ color: "#64748b", fontSize: 10, fontWeight: 750 }}
                                 >
                                   Range: {surfaceScienceCurvatureRangeSource}
+                                  {meshAnalyzeClampRange ? " (clamped)" : ""}
                                 </div>
                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: "#334155" }}>
                                   <span data-testid="mesh-analyze-curvature-min">
-                                    min {meshAnalyzeCurvatureStats ? fmt(meshAnalyzeCurvatureStats.min) : "n/a"}
+                                    min {meshAnalyzeDisplayedCurvatureStats ? fmt(meshAnalyzeDisplayedCurvatureStats.min) : "n/a"}
                                   </span>
                                   <span data-testid="mesh-analyze-curvature-max">
-                                    max {meshAnalyzeCurvatureStats ? fmt(meshAnalyzeCurvatureStats.max) : "n/a"}
+                                    max {meshAnalyzeDisplayedCurvatureStats ? fmt(meshAnalyzeDisplayedCurvatureStats.max) : "n/a"}
                                   </span>
                                 </div>
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, color: "#334155" }}>
@@ -67001,6 +67803,109 @@ case "mobius":
                                     std {meshAnalyzeCurvatureStats ? fmt(meshAnalyzeCurvatureStats.std) : "n/a"}
                                   </span>
                                 </div>
+                                <div style={{ display: "grid", gap: 5, paddingTop: 2 }}>
+                                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                                    <button
+                                      type="button"
+                                      data-testid="mesh-analyze-overlay-range-mode-whole"
+                                      onClick={() => setMeshAnalyzeRangeMode("whole")}
+                                      aria-pressed={meshAnalyzeRangeMode === "whole"}
+                                      style={{ ...viewerControlButtonStyle(meshAnalyzeRangeMode === "whole", "compact"), fontSize: 10 }}
+                                    >
+                                      Whole
+                                    </button>
+                                    <button
+                                      type="button"
+                                      data-testid="mesh-analyze-overlay-range-mode-selected"
+                                      onClick={() => setMeshAnalyzeRangeMode("selected")}
+                                      disabled={!meshAnalyzeSelectedRangeAvailable}
+                                      aria-pressed={meshAnalyzeRangeMode === "selected"}
+                                      title={meshAnalyzeSelectedRangeAvailable ? "Use selected region range" : "No selected region yet"}
+                                      style={{
+                                        ...viewerControlButtonStyle(meshAnalyzeRangeMode === "selected", "compact"),
+                                        fontSize: 10,
+                                        opacity: meshAnalyzeSelectedRangeAvailable ? 1 : 0.55,
+                                      }}
+                                    >
+                                      Selected
+                                    </button>
+                                    <button
+                                      type="button"
+                                      data-testid="mesh-analyze-overlay-invert-palette"
+                                      onClick={() => setMeshAnalyzePaletteInverted((value) => !value)}
+                                      aria-pressed={meshAnalyzePaletteInverted}
+                                      style={{ ...viewerControlButtonStyle(meshAnalyzePaletteInverted, "compact"), fontSize: 10 }}
+                                    >
+                                      Invert
+                                    </button>
+                                    <button
+                                      type="button"
+                                      data-testid="mesh-analyze-overlay-reset-range"
+                                      onClick={meshAnalyzeResetClampRange}
+                                      style={{ ...viewerControlButtonStyle(false, "compact"), fontSize: 10 }}
+                                    >
+                                      Reset range
+                                    </button>
+                                  </div>
+                                  <label
+                                    style={{
+                                      display: "grid",
+                                      gridTemplateColumns: "auto 1fr 1fr",
+                                      alignItems: "center",
+                                      gap: 5,
+                                      color: "#334155",
+                                      fontSize: 10,
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      data-testid="mesh-analyze-overlay-clamp-toggle"
+                                      checked={meshAnalyzeClampEnabled}
+                                      onChange={(event) => setMeshAnalyzeClampEnabled(event.target.checked)}
+                                      style={{ margin: 0 }}
+                                    />
+                                    <input
+                                      aria-label="Clamp minimum"
+                                      data-testid="mesh-analyze-overlay-clamp-min"
+                                      value={meshAnalyzeClampMin}
+                                      onChange={(event) => setMeshAnalyzeClampMin(event.target.value)}
+                                      placeholder="min"
+                                      style={{ minWidth: 0, fontSize: 10, padding: "2px 4px" }}
+                                    />
+                                    <input
+                                      aria-label="Clamp maximum"
+                                      data-testid="mesh-analyze-overlay-clamp-max"
+                                      value={meshAnalyzeClampMax}
+                                      onChange={(event) => setMeshAnalyzeClampMax(event.target.value)}
+                                      placeholder="max"
+                                      style={{ minWidth: 0, fontSize: 10, padding: "2px 4px" }}
+                                    />
+                                  </label>
+                                </div>
+                                {meshAnalyzeSphereSanity && (
+                                  <div
+                                    data-testid="mesh-analyze-sphere-sanity"
+                                    style={{
+                                      border: `1px solid ${meshAnalyzeSphereSanity.ok ? "#bbf7d0" : "#fed7aa"}`,
+                                      borderRadius: 7,
+                                      background: meshAnalyzeSphereSanity.ok ? "#f0fdf4" : "#fff7ed",
+                                      color: meshAnalyzeSphereSanity.ok ? "#166534" : "#9a3412",
+                                      padding: "5px 6px",
+                                      display: "grid",
+                                      gap: 2,
+                                      fontSize: 10,
+                                      fontWeight: 750,
+                                    }}
+                                  >
+                                    <div>
+                                      Sphere expected K≈{fmt(meshAnalyzeSphereSanity.expectedK)}, H≈
+                                      {fmt(meshAnalyzeSphereSanity.expectedH)}
+                                    </div>
+                                    <div>
+                                      {meshAnalyzeSphereSanity.warning ?? "Sphere curvature is within expected range."}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             ) : (
                               <div style={{ color: "#475569" }}>Result: none. Choose K, H, k1, or k2 for a curvature range.</div>
@@ -67030,6 +67935,7 @@ case "mobius":
                                     ] as const).map(([key, value]) => (
                                       <div
                                         key={`mesh-science-probe-${key}`}
+                                        data-testid={`mesh-analyze-probe-${key}`}
                                         style={{
                                           border: "1px solid #dbeafe",
                                           borderRadius: 7,
@@ -67045,9 +67951,10 @@ case "mobius":
                                       </div>
                                     ))}
                                   </div>
-                                  {inspectPos && (
+                                  {meshAnalyzeProbePoint && (
                                     <div style={{ color: "#64748b", fontSize: 10 }}>
-                                      point ({fmt(inspectPos.x)}, {fmt(inspectPos.y)}, {fmt(inspectPos.z)})
+                                      measured point ({fmt(meshAnalyzeProbePoint.x)}, {fmt(meshAnalyzeProbePoint.y)},{" "}
+                                      {fmt(meshAnalyzeProbePoint.z)})
                                     </div>
                                   )}
                                 </>
@@ -67061,6 +67968,31 @@ case "mobius":
                             </div>
                           </div>
                         )}
+                        {!cleanScreenshotSurfaceActive &&
+                          surfaceViewerKind === "mesh" &&
+                          surfacesLeftTab === "analysis" &&
+                          meshAnalyzeDiagnosticViewportOverlays.label && (
+                            <div
+                              data-testid="mesh-analyze-diagnostic-overlay-label"
+                              style={{
+                                position: "absolute",
+                                top: 48,
+                                right: 12,
+                                zIndex: 80,
+                                border: "1px solid rgba(248, 113, 113, 0.55)",
+                                borderRadius: 8,
+                                background: "rgba(255, 247, 237, 0.94)",
+                                color: "#9a3412",
+                                boxShadow: "0 10px 24px rgba(15, 23, 42, 0.12)",
+                                padding: "6px 8px",
+                                fontSize: 11,
+                                fontWeight: 850,
+                                pointerEvents: "none",
+                              }}
+                            >
+                              {meshAnalyzeDiagnosticViewportOverlays.label}
+                            </div>
+                          )}
                         {!cleanScreenshotSurfaceActive && surfaceViewerKind === "mesh" && surfaceMeshStats && (
                           <div
                             data-testid="mesh-viewport-selection-breadcrumb"
