@@ -77,12 +77,16 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-curvature-max")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analyze-curvature-mean")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analyze-curvature-std")).not.toContainText("n/a");
-    await expect(page.getByTestId("mesh-analyze-sphere-sanity")).toContainText(/Expected K/i);
+    await expect(page.getByTestId("mesh-analyze-sphere-sanity")).toContainText(/K expected/i);
+    await expect(page.getByTestId("mesh-analyze-sphere-sanity")).toContainText(/measured/i);
     await page.getByTestId("mesh-analyze-invert-palette").click();
     await expect(page.getByTestId("mesh-analyze-invert-palette")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("mesh-analyze-palette-direction")).toContainText(/high -> low/i);
+    await expect(page.getByTestId("mesh-analyze-auto-range")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("mesh-analyze-clamp-toggle").check();
+    await expect(page.getByTestId("mesh-analyze-auto-range")).toHaveAttribute("aria-pressed", "false");
     await page.getByTestId("mesh-analyze-clamp-min").fill("0.5");
     await page.getByTestId("mesh-analyze-clamp-max").fill("1.5");
-    await page.getByTestId("mesh-analyze-clamp-toggle").check();
     await expect(page.getByTestId("mesh-analyze-range-source")).toContainText(/clamped/i);
     await page.getByTestId("mesh-analyze-reset-range").click();
     await expect(page.getByTestId("mesh-analyze-range-source")).not.toContainText(/clamped/i);
@@ -102,6 +106,7 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-probe-H")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analyze-probe-k1")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analyze-probe-k2")).not.toContainText("n/a");
+    await expect(page.getByTestId("mesh-analyze-probe-label")).toContainText(/Probe: vertex \d+ at/i);
     await expect(toolbar.getByRole("button", { name: "Edge", exact: true })).toHaveAttribute("aria-pressed", "true");
 
     await page.getByTestId("mesh-analyze-return-geometry").click();

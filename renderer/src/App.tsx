@@ -52898,6 +52898,7 @@ case "mobius":
         })
         .filter((line): line is [{ x: number; y: number; z: number }, { x: number; y: number; z: number }] => !!line);
       const first = lines[0];
+      const boundaryPoints = lines.flatMap((line) => line).slice(0, 600);
       const labelPosition = first
         ? {
             x: (first[0].x + first[1].x) * 0.5,
@@ -52909,14 +52910,22 @@ case "mobius":
         boundaryEdges.length === 1 ? "edge" : "edges"
       }`;
       return {
-        pointSets: null,
+        pointSets: boundaryPoints.length
+          ? [
+              { points: boundaryPoints, color: 0xfee2e2, size: 0.16, opacity: 0.68 },
+              { points: boundaryPoints, color: 0xdc2626, size: 0.095, opacity: 0.98 },
+            ]
+          : null,
         polylineGroups: lines.length
-          ? [{ lines, color: 0xef4444, opacity: 0.98, radiusWorld: 0.032 }]
+          ? [
+              { lines, color: 0x7f1d1d, opacity: 0.52, radiusWorld: 0.052 },
+              { lines, color: 0xef4444, opacity: 0.98, radiusWorld: 0.026 },
+            ]
           : null,
         labelSets: labelPosition
-          ? [{ size: 0.8, labels: [{ text: label, position: labelPosition, color: 0xb91c1c, opacity: 0.98 }] }]
+          ? [{ size: 0.9, labels: [{ text: `Boundary highlight: ${label}`, position: labelPosition, color: 0xb91c1c, opacity: 0.98 }] }]
           : null,
-        label,
+        label: `Boundary highlight: ${label}`,
       };
     }
     if (meshAnalyzeDiagnosticOverlayMode === "duplicates") {
@@ -52934,10 +52943,13 @@ case "mobius":
         duplicateCount === 1 ? "vertex" : "vertices"
       }`;
       return {
-        pointSets: [{ points, color: 0xd946ef, size: 0.105, opacity: 0.98 }],
+        pointSets: [
+          { points, color: 0xfae8ff, size: 0.22, opacity: 0.78 },
+          { points, color: 0xd946ef, size: 0.12, opacity: 0.98 },
+        ],
         polylineGroups: null,
-        labelSets: [{ size: 0.8, labels: [{ text: label, position: points[0], color: 0xa21caf, opacity: 0.98 }] }],
-        label,
+        labelSets: [{ size: 0.9, labels: [{ text: `Duplicate highlight: ${label}`, position: points[0], color: 0xa21caf, opacity: 0.98 }] }],
+        label: `Duplicate highlight: ${label}`,
       };
     }
     return { pointSets: null, polylineGroups: null, labelSets: null, label: null };
@@ -52949,30 +52961,106 @@ case "mobius":
     surfaceViewerKind,
     surfacesLeftTab,
   ]);
+  const meshAnalyzeProbeViewportOverlays = useMemo<{
+    pointSets: OverlayPointSet[] | null;
+    polylineGroups: OverlayPolylineGroup[] | null;
+    labelSets: OverlayLabelSet[] | null;
+  }>(() => {
+    if (
+      surfaceViewerKind !== "mesh" ||
+      surfacesLeftTab !== "analysis" ||
+      !probeEnabled ||
+      probeStamp <= 0 ||
+      !surfaceMeshTopologyPick ||
+      !surfaceMeshData?.positions?.length
+    ) {
+      return { pointSets: null, polylineGroups: null, labelSets: null };
+    }
+    const point = readMeshPoint(surfaceMeshData, surfaceMeshTopologyPick.vertexIndex);
+    if (!point) return { pointSets: null, polylineGroups: null, labelSets: null };
+    const diag = surfaceMeshBounds ? Math.max(bboxDiag(surfaceMeshBounds), 1) : 1;
+    const r = Math.max(0.035, diag * 0.018);
+    const lines: PolylineSet = [
+      [
+        { x: point.x - r, y: point.y, z: point.z },
+        { x: point.x + r, y: point.y, z: point.z },
+      ],
+      [
+        { x: point.x, y: point.y - r, z: point.z },
+        { x: point.x, y: point.y + r, z: point.z },
+      ],
+      [
+        { x: point.x, y: point.y, z: point.z - r },
+        { x: point.x, y: point.y, z: point.z + r },
+      ],
+    ];
+    const label = `Probe: vertex ${surfaceMeshTopologyPick.vertexIndex} at ${fmt3(point)}`;
+    return {
+      pointSets: [
+        { points: [point], color: 0xfef9c3, size: 0.28, opacity: 0.82 },
+        { points: [point], color: 0x0f172a, size: 0.13, opacity: 0.98 },
+      ],
+      polylineGroups: [{ lines, color: 0x0f172a, opacity: 0.95, radiusWorld: Math.max(0.008, r * 0.08) }],
+      labelSets: [
+        {
+          size: 0.86,
+          labels: [
+            {
+              text: label,
+              position: { x: point.x, y: point.y + r * 1.35, z: point.z },
+              color: 0x0f172a,
+              opacity: 0.98,
+            },
+          ],
+        },
+      ],
+    };
+  }, [
+    probeEnabled,
+    probeStamp,
+    surfaceMeshBounds,
+    surfaceMeshData,
+    surfaceMeshTopologyPick,
+    surfaceViewerKind,
+    surfacesLeftTab,
+  ]);
   const meshViewerOverlayPointSetsWithDiagnostics = useMemo<OverlayPointSet[] | null>(() => {
     const sets: OverlayPointSet[] = [];
     if (meshViewerOverlayPointSets?.length) sets.push(...meshViewerOverlayPointSets);
+    if (meshAnalyzeProbeViewportOverlays.pointSets?.length) {
+      sets.push(...meshAnalyzeProbeViewportOverlays.pointSets);
+    }
     if (meshAnalyzeDiagnosticViewportOverlays.pointSets?.length) {
       sets.push(...meshAnalyzeDiagnosticViewportOverlays.pointSets);
     }
     return sets.length ? sets : null;
-  }, [meshAnalyzeDiagnosticViewportOverlays.pointSets, meshViewerOverlayPointSets]);
+  }, [meshAnalyzeDiagnosticViewportOverlays.pointSets, meshAnalyzeProbeViewportOverlays.pointSets, meshViewerOverlayPointSets]);
   const meshViewerOverlayPolylineGroupsWithDiagnostics = useMemo<OverlayPolylineGroup[] | null>(() => {
     const groups: OverlayPolylineGroup[] = [];
     if (meshViewerOverlayPolylineGroups?.length) groups.push(...meshViewerOverlayPolylineGroups);
+    if (meshAnalyzeProbeViewportOverlays.polylineGroups?.length) {
+      groups.push(...meshAnalyzeProbeViewportOverlays.polylineGroups);
+    }
     if (meshAnalyzeDiagnosticViewportOverlays.polylineGroups?.length) {
       groups.push(...meshAnalyzeDiagnosticViewportOverlays.polylineGroups);
     }
     return groups.length ? groups : null;
-  }, [meshAnalyzeDiagnosticViewportOverlays.polylineGroups, meshViewerOverlayPolylineGroups]);
+  }, [
+    meshAnalyzeDiagnosticViewportOverlays.polylineGroups,
+    meshAnalyzeProbeViewportOverlays.polylineGroups,
+    meshViewerOverlayPolylineGroups,
+  ]);
   const combinedOverlayLabelSetsWithDiagnostics = useMemo<OverlayLabelSet[] | null>(() => {
     const labels: OverlayLabelSet[] = [];
     if (combinedOverlayLabelSets?.length) labels.push(...combinedOverlayLabelSets);
+    if (meshAnalyzeProbeViewportOverlays.labelSets?.length) {
+      labels.push(...meshAnalyzeProbeViewportOverlays.labelSets);
+    }
     if (meshAnalyzeDiagnosticViewportOverlays.labelSets?.length) {
       labels.push(...meshAnalyzeDiagnosticViewportOverlays.labelSets);
     }
     return labels.length ? labels : null;
-  }, [combinedOverlayLabelSets, meshAnalyzeDiagnosticViewportOverlays.labelSets]);
+  }, [combinedOverlayLabelSets, meshAnalyzeDiagnosticViewportOverlays.labelSets, meshAnalyzeProbeViewportOverlays.labelSets]);
   const readFiniteRange = (values: Float32Array | null | undefined): { min: number; max: number } | null => {
     if (!values?.length) return null;
     let min = Number.POSITIVE_INFINITY;
@@ -53158,17 +53246,22 @@ case "mobius":
     const expectedH = 1 / radius;
     const kStats = surfaceScienceCurvatureStats.K;
     const hStats = surfaceScienceCurvatureStats.H;
+    const measuredK = kStats?.mean ?? null;
+    const measuredH = hStats ? Math.abs(hStats.mean) : null;
     const rel = (actual: number, expected: number) => Math.abs(actual - expected) / Math.max(1e-9, Math.abs(expected));
-    const kDrift = kStats ? rel(kStats.mean, expectedK) : null;
-    const hDrift = hStats ? rel(Math.abs(hStats.mean), expectedH) : null;
+    const kDrift = measuredK != null ? rel(measuredK, expectedK) : null;
+    const hDrift = measuredH != null ? rel(measuredH, expectedH) : null;
     const drift = Math.max(kDrift ?? 0, hDrift ?? 0);
     return {
       radius,
       expectedK,
       expectedH,
+      measuredK,
+      measuredH,
       kDrift,
       hDrift,
       ok: drift <= 0.2 && !surfaceMeshAnalyzeDiagnostics?.sphereSeamWarning,
+      tone: drift <= 0.2 && !surfaceMeshAnalyzeDiagnostics?.sphereSeamWarning ? "green" : "yellow",
       warning:
         surfaceMeshAnalyzeDiagnostics?.sphereSeamWarning
           ? "Sphere mesh has open boundary/seam; curvature/topology results may be unreliable."
@@ -53230,7 +53323,14 @@ case "mobius":
       : (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") && paramProbeCurv
         ? { K: paramProbeCurv.K, H: paramProbeCurv.H, k1: paramProbeCurv.k1, k2: paramProbeCurv.k2 }
         : meshAnalyzeTopologyProbeCurvature ?? inspectMetrics;
-  const meshAnalyzeProbePoint = inspectPos ?? meshAnalyzeTopologyProbeCurvature?.point ?? null;
+  const meshAnalyzeProbePoint = meshAnalyzeTopologyProbeCurvature?.point ?? inspectPos ?? null;
+  const meshAnalyzeProbeLabel =
+    meshAnalyzeTopologyProbeCurvature?.point && meshAnalyzeTopologyProbeCurvature.vertexIndex != null
+      ? `Probe: vertex ${meshAnalyzeTopologyProbeCurvature.vertexIndex} at ${fmt3(meshAnalyzeTopologyProbeCurvature.point)}`
+      : meshAnalyzeProbePoint
+        ? `Probe: point ${fmt3(meshAnalyzeProbePoint)}`
+        : null;
+  const meshAnalyzePaletteDirectionLabel = meshAnalyzePaletteInverted ? "Palette: high -> low" : "Palette: low -> high";
   const meshAnalyzeScienceOverlayReady =
     surfaceViewerKind === "mesh" &&
     surfacesLeftTab === "analysis" &&
@@ -66987,6 +67087,31 @@ case "mobius":
                             <span style={{ fontWeight: 800, color: "#1e3a8a" }}>Range:</span>
                             <button
                               type="button"
+                              data-testid="mesh-analyze-auto-range"
+                              onClick={() => setMeshAnalyzeClampEnabled(false)}
+                              aria-pressed={!meshAnalyzeClampEnabled}
+                              style={viewerControlButtonStyle(!meshAnalyzeClampEnabled, meshViewerControlsDensity)}
+                            >
+                              Auto range
+                            </button>
+                            <label style={viewerControlCheckStyle}>
+                              <input
+                                type="checkbox"
+                                data-testid="mesh-analyze-clamp-toggle"
+                                checked={meshAnalyzeClampEnabled}
+                                onChange={(event) => {
+                                  const enabled = event.target.checked;
+                                  if (enabled && !meshAnalyzeClampEnabled && meshAnalyzeCurvatureStats) {
+                                    setMeshAnalyzeClampMin(fmt(meshAnalyzeCurvatureStats.min));
+                                    setMeshAnalyzeClampMax(fmt(meshAnalyzeCurvatureStats.max));
+                                  }
+                                  setMeshAnalyzeClampEnabled(enabled);
+                                }}
+                              />
+                              Manual range
+                            </label>
+                            <button
+                              type="button"
                               data-testid="mesh-analyze-range-mode-whole"
                               onClick={() => setMeshAnalyzeRangeMode("whole")}
                               aria-pressed={meshAnalyzeRangeMode === "whole"}
@@ -67017,21 +67142,19 @@ case "mobius":
                             >
                               Invert
                             </button>
-                            <label style={viewerControlCheckStyle}>
-                              <input
-                                type="checkbox"
-                                data-testid="mesh-analyze-clamp-toggle"
-                                checked={meshAnalyzeClampEnabled}
-                                onChange={(event) => setMeshAnalyzeClampEnabled(event.target.checked)}
-                              />
-                              Clamp
-                            </label>
+                            <span
+                              data-testid="mesh-analyze-palette-direction"
+                              style={{ color: "#475569", fontWeight: 750 }}
+                            >
+                              {meshAnalyzePaletteDirectionLabel}
+                            </span>
                             <input
                               aria-label="Clamp minimum"
                               data-testid="mesh-analyze-clamp-min"
                               value={meshAnalyzeClampMin}
                               onChange={(event) => setMeshAnalyzeClampMin(event.target.value)}
                               placeholder="min"
+                              disabled={!meshAnalyzeClampEnabled}
                               style={{ width: 58, fontSize: 11, padding: "2px 5px" }}
                             />
                             <input
@@ -67040,6 +67163,7 @@ case "mobius":
                               value={meshAnalyzeClampMax}
                               onChange={(event) => setMeshAnalyzeClampMax(event.target.value)}
                               placeholder="max"
+                              disabled={!meshAnalyzeClampEnabled}
                               style={{ width: 58, fontSize: 11, padding: "2px 5px" }}
                             />
                             <button
@@ -67784,8 +67908,8 @@ case "mobius":
                                   data-testid="mesh-analyze-range-source"
                                   style={{ color: "#64748b", fontSize: 10, fontWeight: 750 }}
                                 >
-                                  Range: {surfaceScienceCurvatureRangeSource}
-                                  {meshAnalyzeClampRange ? " (clamped)" : ""}
+                                  {meshAnalyzeClampRange ? "Manual range" : "Auto range"} · {surfaceScienceCurvatureRangeSource}
+                                  {meshAnalyzeClampRange ? " (clamped)" : ""} · {meshAnalyzePaletteDirectionLabel}
                                 </div>
                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: "#334155" }}>
                                   <span data-testid="mesh-analyze-curvature-min">
@@ -67803,8 +67927,50 @@ case "mobius":
                                     std {meshAnalyzeCurvatureStats ? fmt(meshAnalyzeCurvatureStats.std) : "n/a"}
                                   </span>
                                 </div>
-                                <div style={{ display: "grid", gap: 5, paddingTop: 2 }}>
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gap: 6,
+                                    padding: "6px",
+                                    border: "1px solid #dbeafe",
+                                    borderRadius: 7,
+                                    background: "#ffffff",
+                                  }}
+                                >
+                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                    <strong style={{ fontSize: 10 }}>Legend range</strong>
+                                    <span
+                                      data-testid="mesh-analyze-overlay-palette-direction"
+                                      style={{ color: "#64748b", fontSize: 10, fontWeight: 750 }}
+                                    >
+                                      {meshAnalyzePaletteInverted ? "high -> low" : "low -> high"}
+                                    </span>
+                                  </div>
                                   <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                                    <button
+                                      type="button"
+                                      data-testid="mesh-analyze-overlay-auto-range"
+                                      onClick={() => setMeshAnalyzeClampEnabled(false)}
+                                      aria-pressed={!meshAnalyzeClampEnabled}
+                                      style={{ ...viewerControlButtonStyle(!meshAnalyzeClampEnabled, "compact"), fontSize: 10 }}
+                                    >
+                                      Auto range
+                                    </button>
+                                    <button
+                                      type="button"
+                                      data-testid="mesh-analyze-overlay-manual-range"
+                                      onClick={() => {
+                                        if (!meshAnalyzeClampEnabled && meshAnalyzeCurvatureStats) {
+                                          setMeshAnalyzeClampMin(fmt(meshAnalyzeCurvatureStats.min));
+                                          setMeshAnalyzeClampMax(fmt(meshAnalyzeCurvatureStats.max));
+                                        }
+                                        setMeshAnalyzeClampEnabled(true);
+                                      }}
+                                      aria-pressed={meshAnalyzeClampEnabled}
+                                      style={{ ...viewerControlButtonStyle(meshAnalyzeClampEnabled, "compact"), fontSize: 10 }}
+                                    >
+                                      Manual range
+                                    </button>
                                     <button
                                       type="button"
                                       data-testid="mesh-analyze-overlay-range-mode-whole"
@@ -67861,7 +68027,14 @@ case "mobius":
                                       type="checkbox"
                                       data-testid="mesh-analyze-overlay-clamp-toggle"
                                       checked={meshAnalyzeClampEnabled}
-                                      onChange={(event) => setMeshAnalyzeClampEnabled(event.target.checked)}
+                                      onChange={(event) => {
+                                        const enabled = event.target.checked;
+                                        if (enabled && !meshAnalyzeClampEnabled && meshAnalyzeCurvatureStats) {
+                                          setMeshAnalyzeClampMin(fmt(meshAnalyzeCurvatureStats.min));
+                                          setMeshAnalyzeClampMax(fmt(meshAnalyzeCurvatureStats.max));
+                                        }
+                                        setMeshAnalyzeClampEnabled(enabled);
+                                      }}
                                       style={{ margin: 0 }}
                                     />
                                     <input
@@ -67898,8 +68071,16 @@ case "mobius":
                                     }}
                                   >
                                     <div>
-                                      Sphere expected K≈{fmt(meshAnalyzeSphereSanity.expectedK)}, H≈
-                                      {fmt(meshAnalyzeSphereSanity.expectedH)}
+                                      K expected {fmt(meshAnalyzeSphereSanity.expectedK)}, measured{" "}
+                                      {meshAnalyzeSphereSanity.measuredK == null
+                                        ? "n/a"
+                                        : fmt(meshAnalyzeSphereSanity.measuredK)}
+                                    </div>
+                                    <div>
+                                      H expected {fmt(meshAnalyzeSphereSanity.expectedH)}, measured{" "}
+                                      {meshAnalyzeSphereSanity.measuredH == null
+                                        ? "n/a"
+                                        : fmt(meshAnalyzeSphereSanity.measuredH)}
                                     </div>
                                     <div>
                                       {meshAnalyzeSphereSanity.warning ?? "Sphere curvature is within expected range."}
@@ -67951,10 +68132,12 @@ case "mobius":
                                       </div>
                                     ))}
                                   </div>
-                                  {meshAnalyzeProbePoint && (
-                                    <div style={{ color: "#64748b", fontSize: 10 }}>
-                                      measured point ({fmt(meshAnalyzeProbePoint.x)}, {fmt(meshAnalyzeProbePoint.y)},{" "}
-                                      {fmt(meshAnalyzeProbePoint.z)})
+                                  {meshAnalyzeProbeLabel && (
+                                    <div
+                                      data-testid="mesh-analyze-probe-label"
+                                      style={{ color: "#0f172a", fontSize: 10, fontWeight: 800 }}
+                                    >
+                                      {meshAnalyzeProbeLabel}
                                     </div>
                                   )}
                                 </>
