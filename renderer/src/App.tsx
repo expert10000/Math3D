@@ -67524,8 +67524,8 @@ case "mobius":
                             </button>
                             <button
                               type="button"
+                              data-testid="mesh-analyze-reset"
                               onClick={() => {
-                                setColorMode("solid");
                                 setShowGaussMap(false);
                                 setShowPrincipalDirections(false);
                                 setShowPrincipalLines(false);
@@ -67536,6 +67536,7 @@ case "mobius":
                                 setMeshAnalyzeRangeMode("whole");
                                 setAnalysisFocusedSection("differential-geometry");
                                 setCameraResetToken((token) => token + 1);
+                                setSurfaceMeshTopologyStatus("Analysis view reset; curvature result kept.");
                               }}
                               style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
                             >
