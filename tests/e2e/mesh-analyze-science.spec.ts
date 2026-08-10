@@ -167,17 +167,23 @@ test("Mesh Analyze diagnostics highlight boundary and coincident issues in the v
     await expect(boundaryCount).toBeVisible({ timeout: 15_000 });
     await expect(boundaryCount).not.toContainText(/Boundary:\s*0 clean/i);
     await boundaryCount.click();
-    await expect(page.getByTestId("mesh-analyze-diagnostic-overlay-label")).toContainText(
-      /Highlighting:\s*\d+ boundary edge/i
+    await expect(page.getByTestId("mesh-analyze-diagnostic-focus-strip")).toContainText(
+      /Diagnostics focus:\s*\d+ boundary edge/i
     );
+    await expect(page.getByTestId("mesh-analyze-diagnostic-keep-visible")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("mesh-analyze-diagnostic-keep-visible").click();
+    await expect(page.getByTestId("mesh-analyze-diagnostic-keep-visible")).toHaveAttribute("aria-pressed", "false");
 
     const coincidentCount = page.getByTestId("mesh-analyze-diagnostics-coincident-count");
     await expect(coincidentCount).toBeVisible();
     await expect(coincidentCount).not.toContainText(/Coincident:\s*0 clean/i);
     await coincidentCount.click();
-    await expect(page.getByTestId("mesh-analyze-diagnostic-overlay-label")).toContainText(
-      /Highlighting:\s*\d+ coincident vert/i
+    await expect(page.getByTestId("mesh-analyze-diagnostic-focus-strip")).toContainText(
+      /Diagnostics focus:\s*\d+ coincident vert/i
     );
+    await expect(page.getByTestId("mesh-analyze-diagnostic-keep-visible")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("mesh-analyze-diagnostic-clear").click();
+    await expect(page.getByTestId("mesh-analyze-diagnostic-focus-strip")).toHaveCount(0);
   } finally {
     await closeSurfaceApp(ctx);
   }

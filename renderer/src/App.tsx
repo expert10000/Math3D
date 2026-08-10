@@ -37962,6 +37962,7 @@ const App: React.FC = () => {
   const [meshAnalyzeDiagnosticOverlayMode, setMeshAnalyzeDiagnosticOverlayMode] =
     useState<MeshAnalyzeDiagnosticOverlayMode>("none");
   const [meshAnalyzeDiagnosticPulseId, setMeshAnalyzeDiagnosticPulseId] = useState(0);
+  const [meshAnalyzeDiagnosticKeepVisible, setMeshAnalyzeDiagnosticKeepVisible] = useState(true);
   const [meshAnalyzeProbeHistory, setMeshAnalyzeProbeHistory] = useState<MeshAnalyzeProbeHistoryEntry[]>([]);
   const [showRidges, setShowRidges] = useState(false);
   const [showValleys, setShowValleys] = useState(false);
@@ -52854,6 +52855,7 @@ case "mobius":
     surfaceMeshEdgeSelectionRef.current = selection;
     setSurfaceMeshEdgeSelection(selection);
     setMeshAnalyzeDiagnosticOverlayMode("boundary");
+    setMeshAnalyzeDiagnosticKeepVisible(true);
     setMeshAnalyzeDiagnosticPulseId((value) => value + 1);
     setContextualActionPulseId("mesh:boundary-select");
     setZoomToRegion(true);
@@ -52879,6 +52881,7 @@ case "mobius":
     setSurfaceMeshTopologySelectionCleared(false);
     setSurfaceMeshTopologyVertexIndex(firstGroup[0]);
     setMeshAnalyzeDiagnosticOverlayMode("duplicates");
+    setMeshAnalyzeDiagnosticKeepVisible(true);
     setMeshAnalyzeDiagnosticPulseId((value) => value + 1);
     setZoomToRegion(true);
     setZoomNowToken((value) => value + 1);
@@ -52909,6 +52912,24 @@ case "mobius":
     setMeshAnalyzeDiagnosticOverlayMode("none");
     setSurfaceMeshTopologyStatus("Diagnostics recomputed.");
   }, []);
+  const meshAnalyzeDiagnosticFocusActive =
+    surfaceViewerKind === "mesh" &&
+    surfacesLeftTab === "analysis" &&
+    (meshAnalyzeDiagnosticOverlayMode === "boundary" || meshAnalyzeDiagnosticOverlayMode === "duplicates");
+  const meshAnalyzeDiagnosticVisualVisible =
+    meshAnalyzeDiagnosticKeepVisible &&
+    (meshAnalyzeDiagnosticFocusActive ||
+      meshAnalyzeDiagnosticOverlayMode === "boundary-clean" ||
+      meshAnalyzeDiagnosticOverlayMode === "duplicates-clean");
+  const handleClearMeshAnalyzeDiagnosticFocus = useCallback(() => {
+    if (surfaceMeshEdgeSelectionRef.current?.tool === "boundary") {
+      surfaceMeshEdgeSelectionRef.current = null;
+      setSurfaceMeshEdgeSelection(null);
+    }
+    setMeshAnalyzeDiagnosticOverlayMode("none");
+    setMeshAnalyzeDiagnosticPulseId((value) => value + 1);
+    setSurfaceMeshTopologyStatus("Diagnostics focus cleared.");
+  }, []);
   const meshAnalyzeDiagnosticViewportOverlays = useMemo<{
     pointSets: OverlayPointSet[] | null;
     polylineGroups: OverlayPolylineGroup[] | null;
@@ -52925,19 +52946,10 @@ case "mobius":
         meshAnalyzeDiagnosticOverlayMode === "boundary-clean"
           ? "No boundary edges: mesh is closed."
           : "No coincident vertices found.";
-      const center = surfaceMeshBounds
-        ? {
-            x: (surfaceMeshBounds.min[0] + surfaceMeshBounds.max[0]) * 0.5,
-            y: surfaceMeshBounds.max[1],
-            z: (surfaceMeshBounds.min[2] + surfaceMeshBounds.max[2]) * 0.5,
-          }
-        : readMeshPoint(surfaceMeshData, 0);
       return {
         pointSets: null,
         polylineGroups: null,
-        labelSets: center
-          ? [{ size: 0.85, labels: [{ text: message, position: center, color: 0x15803d, opacity: 0.98 }] }]
-          : null,
+        labelSets: null,
         label: message,
         tone: "clean",
       };
@@ -53085,41 +53097,57 @@ case "mobius":
   ]);
   const meshViewerOverlayPointSetsWithDiagnostics = useMemo<OverlayPointSet[] | null>(() => {
     const sets: OverlayPointSet[] = [];
-    if (meshViewerOverlayPointSets?.length) sets.push(...meshViewerOverlayPointSets);
-    if (meshAnalyzeProbeViewportOverlays.pointSets?.length) {
+    if (!meshAnalyzeDiagnosticFocusActive && meshViewerOverlayPointSets?.length) sets.push(...meshViewerOverlayPointSets);
+    if (!meshAnalyzeDiagnosticFocusActive && meshAnalyzeProbeViewportOverlays.pointSets?.length) {
       sets.push(...meshAnalyzeProbeViewportOverlays.pointSets);
     }
-    if (meshAnalyzeDiagnosticViewportOverlays.pointSets?.length) {
+    if (meshAnalyzeDiagnosticVisualVisible && meshAnalyzeDiagnosticViewportOverlays.pointSets?.length) {
       sets.push(...meshAnalyzeDiagnosticViewportOverlays.pointSets);
     }
     return sets.length ? sets : null;
-  }, [meshAnalyzeDiagnosticViewportOverlays.pointSets, meshAnalyzeProbeViewportOverlays.pointSets, meshViewerOverlayPointSets]);
+  }, [
+    meshAnalyzeDiagnosticFocusActive,
+    meshAnalyzeDiagnosticViewportOverlays.pointSets,
+    meshAnalyzeDiagnosticVisualVisible,
+    meshAnalyzeProbeViewportOverlays.pointSets,
+    meshViewerOverlayPointSets,
+  ]);
   const meshViewerOverlayPolylineGroupsWithDiagnostics = useMemo<OverlayPolylineGroup[] | null>(() => {
     const groups: OverlayPolylineGroup[] = [];
-    if (meshViewerOverlayPolylineGroups?.length) groups.push(...meshViewerOverlayPolylineGroups);
-    if (meshAnalyzeProbeViewportOverlays.polylineGroups?.length) {
+    if (!meshAnalyzeDiagnosticFocusActive && meshViewerOverlayPolylineGroups?.length) {
+      groups.push(...meshViewerOverlayPolylineGroups);
+    }
+    if (!meshAnalyzeDiagnosticFocusActive && meshAnalyzeProbeViewportOverlays.polylineGroups?.length) {
       groups.push(...meshAnalyzeProbeViewportOverlays.polylineGroups);
     }
-    if (meshAnalyzeDiagnosticViewportOverlays.polylineGroups?.length) {
+    if (meshAnalyzeDiagnosticVisualVisible && meshAnalyzeDiagnosticViewportOverlays.polylineGroups?.length) {
       groups.push(...meshAnalyzeDiagnosticViewportOverlays.polylineGroups);
     }
     return groups.length ? groups : null;
   }, [
+    meshAnalyzeDiagnosticFocusActive,
     meshAnalyzeDiagnosticViewportOverlays.polylineGroups,
+    meshAnalyzeDiagnosticVisualVisible,
     meshAnalyzeProbeViewportOverlays.polylineGroups,
     meshViewerOverlayPolylineGroups,
   ]);
   const combinedOverlayLabelSetsWithDiagnostics = useMemo<OverlayLabelSet[] | null>(() => {
     const labels: OverlayLabelSet[] = [];
-    if (combinedOverlayLabelSets?.length) labels.push(...combinedOverlayLabelSets);
-    if (meshAnalyzeProbeViewportOverlays.labelSets?.length) {
+    if (!meshAnalyzeDiagnosticFocusActive && combinedOverlayLabelSets?.length) labels.push(...combinedOverlayLabelSets);
+    if (!meshAnalyzeDiagnosticFocusActive && meshAnalyzeProbeViewportOverlays.labelSets?.length) {
       labels.push(...meshAnalyzeProbeViewportOverlays.labelSets);
     }
-    if (meshAnalyzeDiagnosticViewportOverlays.labelSets?.length) {
+    if (meshAnalyzeDiagnosticVisualVisible && meshAnalyzeDiagnosticViewportOverlays.labelSets?.length) {
       labels.push(...meshAnalyzeDiagnosticViewportOverlays.labelSets);
     }
     return labels.length ? labels : null;
-  }, [combinedOverlayLabelSets, meshAnalyzeDiagnosticViewportOverlays.labelSets, meshAnalyzeProbeViewportOverlays.labelSets]);
+  }, [
+    combinedOverlayLabelSets,
+    meshAnalyzeDiagnosticFocusActive,
+    meshAnalyzeDiagnosticViewportOverlays.labelSets,
+    meshAnalyzeDiagnosticVisualVisible,
+    meshAnalyzeProbeViewportOverlays.labelSets,
+  ]);
   const readFiniteRange = (values: Float32Array | null | undefined): { min: number; max: number } | null => {
     if (!values?.length) return null;
     let min = Number.POSITIVE_INFINITY;
@@ -67876,7 +67904,7 @@ case "mobius":
                             paramResolution={activeParamLikeResolution}
                             colorMode={primaryOverlay.colorMode}
                             colorPalette={primaryOverlay.colorPalette}
-                            showChartGrid={cleanScreenshotSurfaceActive ? false : primaryOverlay.showChartGrid}
+                            showChartGrid={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : primaryOverlay.showChartGrid}
                             chartGridMode={meshChartGridMode === "meshFace" ? "mesh-face" : "local"}
                             onSurfaceCellSelectionEnabledChange={handleSurfaceCellSelectionEnabledChange}
                             showOverlayControls={cleanScreenshotSurfaceActive ? false : showInViewportOverlayControls}
@@ -67922,7 +67950,7 @@ case "mobius":
                             ridgeValleyDecimate={ridgeValleyDecimate}
                             ridgeValleyMaxCurves={ridgeValleyMaxCurves}
                             ridgeValleyMinConf={ridgeValleyMinConf}
-                            showBoundingBox={cleanScreenshotSurfaceActive ? false : primaryOverlay.showBoundingBox}
+                            showBoundingBox={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : primaryOverlay.showBoundingBox}
                             resetToken={cameraResetToken}
                             windowReframeToken={windowReframeToken}
                             reframePaddingFactor={surfacePreviewReframePaddingFactor}
@@ -68037,14 +68065,14 @@ case "mobius":
                             implicitDomainSize={implicitDomainSizeFor(primarySurfaceId)}
                             colorMode={primaryOverlay.colorMode}
                             colorPalette={primaryOverlay.colorPalette}
-                            showChartGrid={cleanScreenshotSurfaceActive ? false : primaryOverlay.showChartGrid}
+                            showChartGrid={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : primaryOverlay.showChartGrid}
                             chartGridMode={meshChartGridMode === "meshFace" ? "mesh-face" : "local"}
                             showOverlayControls={cleanScreenshotSurfaceActive ? false : showInViewportOverlayControls}
                             chartGridCountU={chartGridCountU}
                             chartGridCountV={chartGridCountV}
                             implicitOverlay={implicitOverlay}
                             graphDomain={activeGraphDomain}
-                            showBoundingBox={cleanScreenshotSurfaceActive ? false : primaryOverlay.showBoundingBox}
+                            showBoundingBox={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : primaryOverlay.showBoundingBox}
                             resetToken={cameraResetToken}
                             windowReframeToken={windowReframeToken}
                             reframePaddingFactor={surfacePreviewReframePaddingFactor}
@@ -68056,17 +68084,17 @@ case "mobius":
                             implicitProbeXYZ={implicitProbeXYZ}
                             implicitProbeToken={implicitProbeToken}
                             probeEnabled={cleanScreenshotSurfaceActive ? false : probeEnabled}
-                            showProbeNormal={cleanScreenshotSurfaceActive ? false : showProbeNormal}
-                            showProbeTangentPlane={cleanScreenshotSurfaceActive ? false : showProbeTangentPlane}
-                            showProbeTangents={cleanScreenshotSurfaceActive ? false : showProbeTangents}
-                            showPrincipalDirections={cleanScreenshotSurfaceActive ? false : showPrincipalDirections}
-                            showPrincipalNormalPlanes={cleanScreenshotSurfaceActive ? false : showPrincipalNormalPlanes}
-                            showPrincipalLines={cleanScreenshotSurfaceActive ? false : showPrincipalLines}
-                            showPrincipalGlyphs={cleanScreenshotSurfaceActive ? false : showPrincipalGlyphs}
+                            showProbeNormal={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showProbeNormal}
+                            showProbeTangentPlane={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showProbeTangentPlane}
+                            showProbeTangents={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showProbeTangents}
+                            showPrincipalDirections={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showPrincipalDirections}
+                            showPrincipalNormalPlanes={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showPrincipalNormalPlanes}
+                            showPrincipalLines={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showPrincipalLines}
+                            showPrincipalGlyphs={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showPrincipalGlyphs}
                             principalGlyphDensity={principalGlyphDensity}
                             principalGlyphLength={principalGlyphLength}
                             principalGlyphMode={principalGlyphMode}
-                            showCurvatureLines={cleanScreenshotSurfaceActive ? false : showCurvatureLines}
+                            showCurvatureLines={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showCurvatureLines}
                             curvatureLineField={curvatureLineField}
                             curvatureSeedSource={curvatureSeedSource}
                             curvatureSeedDensity={curvatureSeedDensity}
@@ -68074,8 +68102,8 @@ case "mobius":
                             curvatureMaxSteps={curvatureMaxSteps}
                             curvatureMaxLines={curvatureMaxLines}
                             curvatureRebuildToken={curvatureRebuildToken}
-                            showRidges={cleanScreenshotSurfaceActive ? false : showRidges}
-                            showValleys={cleanScreenshotSurfaceActive ? false : showValleys}
+                            showRidges={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showRidges}
+                            showValleys={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showValleys}
                             ridgeValleySelectionOnly={ridgeValleySelectionOnly}
                             ridgeValleyMagMin={ridgeValleyMagMin}
                             ridgeValleyContrast={ridgeValleyContrast}
@@ -68113,7 +68141,7 @@ case "mobius":
                         onInspectHover={surfaceViewerKind === "mesh" ? handleSurfaceMeshInspectHover : undefined}
                         onInspectHoverMiss={surfaceViewerKind === "mesh" ? handleSurfaceMeshInspectHoverMiss : undefined}
                         inspectPoint={inspectPos}
-                        selectionOverlayVisible={selectionOverlayVisible}
+                        selectionOverlayVisible={meshAnalyzeDiagnosticFocusActive ? false : selectionOverlayVisible}
                         selectionOverlayOnTop={selectionOverlayOnTop}
                         selectionSphere={selectionSphere}
                         geodesicPathEnabled={geodesicPathEnabled}
@@ -68132,10 +68160,16 @@ case "mobius":
                         overlayHeatmapEnabled={overlayHeatmapEnabled}
                         overlayPolylines={complexMapOverlayPolylines}
                         overlayPolylinesColor={0xffd400}
-                        topologyGizmo={surfaceViewerKind === "mesh" ? surfaceMeshTopologyGizmoTarget : null}
-                        onTopologyGizmoDrag={surfaceViewerKind === "mesh" ? handleSurfaceMeshTopologyGizmoDrag : undefined}
+                        topologyGizmo={surfaceViewerKind === "mesh" && !meshAnalyzeDiagnosticFocusActive ? surfaceMeshTopologyGizmoTarget : null}
+                        onTopologyGizmoDrag={
+                          surfaceViewerKind === "mesh" && !meshAnalyzeDiagnosticFocusActive
+                            ? handleSurfaceMeshTopologyGizmoDrag
+                            : undefined
+                        }
                         onTopologyGizmoDragEnd={
-                          surfaceViewerKind === "mesh" ? handleSurfaceMeshTopologyGizmoDragEnd : undefined
+                          surfaceViewerKind === "mesh" && !meshAnalyzeDiagnosticFocusActive
+                            ? handleSurfaceMeshTopologyGizmoDragEnd
+                            : undefined
                         }
                         overlayPolylineGroups={meshViewerOverlayPolylineGroupsWithDiagnostics}
                         overlayPointSets={meshViewerOverlayPointSetsWithDiagnostics}
@@ -68616,12 +68650,54 @@ case "mobius":
                                 padding: "6px 8px",
                                 fontSize: 11,
                                 fontWeight: 850,
-                                pointerEvents: "none",
+                                pointerEvents: meshAnalyzeDiagnosticFocusActive ? "auto" : "none",
                               }}
                             >
-                              {meshAnalyzeDiagnosticViewportOverlays.tone === "clean"
-                                ? meshAnalyzeDiagnosticViewportOverlays.label
-                                : `Highlighting: ${meshAnalyzeDiagnosticViewportOverlays.label}`}
+                              {meshAnalyzeDiagnosticFocusActive ? (
+                                <div
+                                  data-testid="mesh-analyze-diagnostic-focus-strip"
+                                  style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}
+                                >
+                                  <span>Diagnostics focus: {meshAnalyzeDiagnosticViewportOverlays.label}</span>
+                                  <button
+                                    type="button"
+                                    data-testid="mesh-analyze-diagnostic-clear"
+                                    onClick={handleClearMeshAnalyzeDiagnosticFocus}
+                                    style={{
+                                      border: "1px solid rgba(148, 163, 184, 0.65)",
+                                      borderRadius: 999,
+                                      background: "#ffffff",
+                                      color: "#334155",
+                                      padding: "2px 7px",
+                                      fontSize: 10,
+                                      fontWeight: 850,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    Clear
+                                  </button>
+                                  <button
+                                    type="button"
+                                    data-testid="mesh-analyze-diagnostic-keep-visible"
+                                    onClick={() => setMeshAnalyzeDiagnosticKeepVisible((value) => !value)}
+                                    aria-pressed={meshAnalyzeDiagnosticKeepVisible}
+                                    style={{
+                                      border: `1px solid ${meshAnalyzeDiagnosticKeepVisible ? "#60a5fa" : "rgba(148, 163, 184, 0.65)"}`,
+                                      borderRadius: 999,
+                                      background: meshAnalyzeDiagnosticKeepVisible ? "#dbeafe" : "#ffffff",
+                                      color: meshAnalyzeDiagnosticKeepVisible ? "#1d4ed8" : "#334155",
+                                      padding: "2px 7px",
+                                      fontSize: 10,
+                                      fontWeight: 850,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    Keep visible
+                                  </button>
+                                </div>
+                              ) : (
+                                meshAnalyzeDiagnosticViewportOverlays.label
+                              )}
                             </div>
                           )}
                         {!cleanScreenshotSurfaceActive && surfaceViewerKind === "mesh" && surfaceMeshStats && (
