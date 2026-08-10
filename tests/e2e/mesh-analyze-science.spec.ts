@@ -58,6 +58,17 @@ async function openGeometrySphereInMeshAnalyze(page: Page): Promise<void> {
   await openGeometryPrimitiveInMeshAnalyze(page, "sphere");
 }
 
+async function openMeshPresetInAnalyze(page: Page, presetId: string): Promise<void> {
+  await resetSurfaceAppState(page);
+  await selectSection(page, "Mesh");
+  await firstVisible(page.getByRole("button", { name: "Mesh presets", exact: true })).then((button) => button.click());
+  await expect(page.getByTestId("mesh-preset-grid")).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId(`mesh-preset-card-${presetId}`).click();
+  await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true })).then((button) => button.click());
+  await page.getByTestId("surfaces-left-tab-analysis").click();
+  await expect(page.getByText(/MESH \/ ANALYZE/i).first()).toBeVisible({ timeout: 15_000 });
+}
+
 test("Mesh Analyze shows curvature range, independent Probe, and returns to Geometry", async () => {
   test.setTimeout(120_000);
   let ctx: LaunchedSurfaceApp | null = null;
@@ -102,8 +113,8 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await page.getByTestId("mesh-analyze-range-preset-full").click();
     await expect(page.getByTestId("mesh-analyze-range-source")).not.toContainText(/clamped/i);
     await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Clean counts/i);
-    await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Boundary 0/i);
-    await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Coincident 0/i);
+    await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Boundary:\s*0/i);
+    await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Coincident:\s*0/i);
     await expect(page.getByTestId("mesh-analyze-diagnostics-boundary-count")).toBeVisible();
     await expect(page.getByTestId("mesh-analyze-diagnostics-boundary-count")).toContainText(/Boundary:\s*0 clean/i);
     await page.getByTestId("mesh-analyze-diagnostics-boundary-count").click();
@@ -147,6 +158,32 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("geometry-object-action-status")).toContainText(/Returned to Geometry:/i);
     await expect(page.getByTestId("geometry-active-selection-card")).toContainText(/Sphere/i);
     expect(diagnosticsFailures).toEqual([]);
+  } finally {
+    await closeSurfaceApp(ctx);
+  }
+});
+
+test("Mesh Analyze populates curvature range for torus knot preset", async () => {
+  test.setTimeout(120_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+
+  try {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await page.setViewportSize({ width: 1920, height: 1080 });
+
+    await openMeshPresetInAnalyze(page, "mesh_knot");
+    const toolbar = page.getByTestId("mesh-analysis-context-toolbar");
+    await toolbar.getByRole("button", { name: "K", exact: true }).click();
+
+    await expect(page.getByTestId("mesh-analyze-science-overlay")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("mesh-analyze-range-source")).toContainText(/whole mesh/i);
+    await expect(page.getByTestId("mesh-analyze-curvature-min")).not.toContainText("n/a");
+    await expect(page.getByTestId("mesh-analyze-curvature-max")).not.toContainText("n/a");
+    await expect(page.getByTestId("mesh-analyze-curvature-mean")).not.toContainText("n/a");
+    await expect(page.getByTestId("mesh-analyze-curvature-std")).not.toContainText("n/a");
+    await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Boundary:\s*0/i);
+    await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Coincident:\s*0/i);
   } finally {
     await closeSurfaceApp(ctx);
   }

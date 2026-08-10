@@ -53206,22 +53206,24 @@ case "mobius":
     const at = (p: number) => finite[Math.max(0, Math.min(finite.length - 1, Math.round((finite.length - 1) * p)))];
     return { min: at(low), max: at(high), count: finite.length };
   };
+  const meshAnalyzeCurvatureArrays =
+    surfaceViewerKind === "mesh" && surfaceMeshCurvatures ? surfaceMeshCurvatures : selectionCurvatures;
   const surfaceScienceCurvatureMask =
     meshAnalyzeRangeMode === "selected" &&
     selectionMask?.count &&
-    selectionCurvatures?.K &&
-    selectionMask.selected.length === selectionCurvatures.K.length
+    meshAnalyzeCurvatureArrays?.K &&
+    selectionMask.selected.length === meshAnalyzeCurvatureArrays.K.length
       ? selectionMask
       : null;
   const surfaceScienceCurvatureRangeSource = surfaceScienceCurvatureMask ? "selected region" : "whole mesh";
   const surfaceScienceCurvatureStats = useMemo(
     () => ({
-      K: readFiniteStats(selectionCurvatures?.K, surfaceScienceCurvatureMask),
-      H: readFiniteStats(selectionCurvatures?.H, surfaceScienceCurvatureMask),
-      k1: readFiniteStats(selectionCurvatures?.k1, surfaceScienceCurvatureMask),
-      k2: readFiniteStats(selectionCurvatures?.k2, surfaceScienceCurvatureMask),
+      K: readFiniteStats(meshAnalyzeCurvatureArrays?.K, surfaceScienceCurvatureMask),
+      H: readFiniteStats(meshAnalyzeCurvatureArrays?.H, surfaceScienceCurvatureMask),
+      k1: readFiniteStats(meshAnalyzeCurvatureArrays?.k1, surfaceScienceCurvatureMask),
+      k2: readFiniteStats(meshAnalyzeCurvatureArrays?.k2, surfaceScienceCurvatureMask),
     }),
-    [selectionCurvatures, surfaceScienceCurvatureMask]
+    [meshAnalyzeCurvatureArrays, surfaceScienceCurvatureMask]
   );
   const surfaceInspectorCurvatureRanges = useMemo(
     () => ({
@@ -53273,7 +53275,7 @@ case "mobius":
   const meshAnalyzeCurvatureHeatmapValues = useMemo(() => {
     if (surfaceViewerKind !== "mesh" || surfacesLeftTab !== "analysis") return null;
     if (!meshAnalyzeCurvatureField || !meshAnalyzeDisplayedCurvatureStats) return null;
-    const values = selectionCurvatures?.[meshAnalyzeCurvatureField];
+    const values = meshAnalyzeCurvatureArrays?.[meshAnalyzeCurvatureField];
     if (!values?.length) return null;
     const min = meshAnalyzeDisplayedCurvatureStats.min;
     const max = meshAnalyzeDisplayedCurvatureStats.max;
@@ -53295,14 +53297,16 @@ case "mobius":
     meshAnalyzeCurvatureField,
     meshAnalyzeDisplayedCurvatureStats,
     meshAnalyzePaletteInverted,
-    selectionCurvatures,
+    meshAnalyzeCurvatureArrays,
     surfaceViewerKind,
     surfacesLeftTab,
   ]);
   const overlayHeatmapValues = meshAnalyzeCurvatureHeatmapValues ?? baseOverlayHeatmapValues;
   const overlayHeatmapEnabled = !!overlayHeatmapValues?.length;
   const meshAnalyzeSelectedRangeAvailable =
-    !!selectionMask?.count && !!selectionCurvatures?.K && selectionMask.selected.length === selectionCurvatures.K.length;
+    !!selectionMask?.count &&
+    !!meshAnalyzeCurvatureArrays?.K &&
+    selectionMask.selected.length === meshAnalyzeCurvatureArrays.K.length;
   const meshAnalyzeResetClampRange = useCallback(() => {
     if (meshAnalyzeCurvatureStats) {
       setMeshAnalyzeClampMin(fmt(meshAnalyzeCurvatureStats.min));
@@ -53316,7 +53320,7 @@ case "mobius":
   const applyMeshAnalyzeRangePreset = useCallback(
     (preset: "symmetric" | "percentile" | "full") => {
       if (!meshAnalyzeCurvatureField) return;
-      const values = selectionCurvatures?.[meshAnalyzeCurvatureField];
+      const values = meshAnalyzeCurvatureArrays?.[meshAnalyzeCurvatureField];
       if (!values?.length) return;
       if (preset === "full") {
         const stats = readFiniteStats(values, surfaceScienceCurvatureMask);
@@ -53348,7 +53352,7 @@ case "mobius":
     },
     [
       meshAnalyzeCurvatureField,
-      selectionCurvatures,
+      meshAnalyzeCurvatureArrays,
       surfaceScienceCurvatureMask,
       surfaceScienceCurvatureRangeSource,
     ]
@@ -62874,6 +62878,7 @@ case "mobius":
                         <button
                           key={`surface-nav-tab-${tab}`}
                           type="button"
+                          data-testid={`surfaces-left-tab-${tab}`}
                           onClick={() => {
                             if (disabled) return;
                             setSurfacesPanelState("work");
@@ -65153,18 +65158,18 @@ case "mobius":
                             data-testid="mesh-analyze-clean-counts"
                             style={{
                               display: "grid",
-                              gridTemplateColumns: "auto 1fr 1fr",
+                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
                               alignItems: "center",
                               gap: 5,
                               border: "1px solid #bbf7d0",
                               borderRadius: 7,
                               background: "#f8fff9",
                               padding: "5px 6px",
-                              fontSize: 10.5,
+                              fontSize: 10,
                               color: "#166534",
                             }}
                           >
-                            <strong>Clean counts</strong>
+                            <strong style={{ gridColumn: "1 / -1" }}>Clean counts</strong>
                             <button
                               type="button"
                               onClick={handleHighlightMeshAnalyzeBoundary}
@@ -65174,13 +65179,15 @@ case "mobius":
                                 borderRadius: 999,
                                 background: "#dcfce7",
                                 color: "#166534",
-                                padding: "2px 7px",
+                                padding: "3px 5px",
                                 font: "inherit",
                                 fontWeight: 850,
                                 cursor: "pointer",
+                                minWidth: 0,
+                                whiteSpace: "nowrap",
                               }}
                             >
-                              Boundary 0
+                              Boundary: 0
                             </button>
                             <button
                               type="button"
@@ -65191,13 +65198,15 @@ case "mobius":
                                 borderRadius: 999,
                                 background: "#dcfce7",
                                 color: "#166534",
-                                padding: "2px 7px",
+                                padding: "3px 5px",
                                 font: "inherit",
                                 fontWeight: 850,
                                 cursor: "pointer",
+                                minWidth: 0,
+                                whiteSpace: "nowrap",
                               }}
                             >
-                              Coincident 0
+                              Coincident: 0
                             </button>
                           </div>
                         )}
