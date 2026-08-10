@@ -52833,7 +52833,7 @@ case "mobius":
       setSurfaceMeshEdgeSelection(null);
       surfaceMeshEdgeSelectionRef.current = null;
       setMeshAnalyzeDiagnosticOverlayMode("none");
-      setSurfaceMeshTopologyStatus("Diagnostics: no boundary edges found.");
+      setSurfaceMeshTopologyStatus("No boundary edges: mesh is closed.");
       return;
     }
     const selection: MeshEdgeSelectionResult = {
@@ -52861,7 +52861,8 @@ case "mobius":
     }
     const firstGroup = surfaceMeshAnalyzeDiagnostics.duplicateVertexGroups[0];
     if (!firstGroup?.length) {
-      setSurfaceMeshTopologyStatus("Diagnostics: no duplicated/coincident vertices found.");
+      setMeshAnalyzeDiagnosticOverlayMode("none");
+      setSurfaceMeshTopologyStatus("No coincident vertices found.");
       return;
     }
     const listed = firstGroup.slice(0, 6).map((vertex) => `v${vertex}`).join(", ");
@@ -65111,11 +65112,11 @@ case "mobius":
                             type="button"
                             data-testid="mesh-analyze-diagnostics-boundary-count"
                             onClick={handleHighlightMeshAnalyzeBoundary}
-                            disabled={!surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount}
+                            disabled={!surfaceMeshAnalyzeDiagnostics}
                             title={
                               surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount
                                 ? "Highlight boundary edges in the viewport"
-                                : "No boundary edges to highlight"
+                                : "No boundary edges: mesh is closed"
                             }
                             style={{
                               border: "1px solid transparent",
@@ -65129,7 +65130,11 @@ case "mobius":
                             }}
                           >
                             <strong>Boundary:</strong>{" "}
-                            {surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount.toLocaleString() ?? "unknown"}
+                            {surfaceMeshAnalyzeDiagnostics
+                              ? surfaceMeshAnalyzeDiagnostics.boundaryEdgeCount === 0
+                                ? "0 clean"
+                                : surfaceMeshAnalyzeDiagnostics.boundaryEdgeCount.toLocaleString()
+                              : "unknown"}
                           </button>
                           <div>
                             <strong>Non-manifold:</strong>{" "}
@@ -65139,11 +65144,11 @@ case "mobius":
                             type="button"
                             data-testid="mesh-analyze-diagnostics-coincident-count"
                             onClick={handleHighlightMeshAnalyzeDuplicates}
-                            disabled={!surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount}
+                            disabled={!surfaceMeshAnalyzeDiagnostics}
                             title={
                               surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount
                                 ? "Highlight coincident vertices in the viewport"
-                                : "No coincident vertices to highlight"
+                                : "No coincident vertices found"
                             }
                             style={{
                               border: "1px solid transparent",
@@ -65157,7 +65162,11 @@ case "mobius":
                             }}
                           >
                             <strong>Coincident:</strong>{" "}
-                            {surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount.toLocaleString() ?? "unknown"}
+                            {surfaceMeshAnalyzeDiagnostics
+                              ? surfaceMeshAnalyzeDiagnostics.duplicateVertexCount === 0
+                                ? "0 clean"
+                                : surfaceMeshAnalyzeDiagnostics.duplicateVertexCount.toLocaleString()
+                              : "unknown"}
                           </button>
                           <div>
                             <strong>Euler chi:</strong>{" "}
@@ -68096,6 +68105,22 @@ case "mobius":
                                   {meshAnalyzeClampRange ? "Manual range" : "Auto range"} · {surfaceScienceCurvatureRangeSource}
                                   {meshAnalyzeClampRange ? " (clamped)" : ""} · {meshAnalyzePaletteDirectionLabel}
                                 </div>
+                                {meshAnalyzeClampEnabled && (
+                                  <div
+                                    data-testid="mesh-analyze-manual-clamp-hint"
+                                    style={{
+                                      border: "1px solid #fed7aa",
+                                      borderRadius: 6,
+                                      background: "#fff7ed",
+                                      color: "#9a3412",
+                                      padding: "3px 5px",
+                                      fontSize: 10,
+                                      fontWeight: 800,
+                                    }}
+                                  >
+                                    Manual clamp active.
+                                  </div>
+                                )}
                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: "#334155" }}>
                                   <span data-testid="mesh-analyze-curvature-min">
                                     min {meshAnalyzeDisplayedCurvatureStats ? fmt(meshAnalyzeDisplayedCurvatureStats.min) : "n/a"}
@@ -68361,7 +68386,43 @@ case "mobius":
                                         paddingTop: 2,
                                       }}
                                     >
-                                      <div style={{ color: "#475569", fontSize: 10, fontWeight: 850 }}>Recent probes</div>
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          justifyContent: "space-between",
+                                          gap: 8,
+                                          alignItems: "center",
+                                        }}
+                                      >
+                                        <div style={{ color: "#475569", fontSize: 10, fontWeight: 850 }}>Recent probes</div>
+                                        <button
+                                          type="button"
+                                          data-testid="mesh-analyze-clear-probes"
+                                          onClick={() => {
+                                            setMeshAnalyzeProbeHistory([]);
+                                            setSurfaceMeshTopologyStatus("Probe history cleared.");
+                                          }}
+                                          style={{ fontSize: 10, padding: "1px 6px" }}
+                                        >
+                                          Clear probes
+                                        </button>
+                                      </div>
+                                      <div
+                                        style={{
+                                          display: "grid",
+                                          gridTemplateColumns: "44px 1fr 1fr",
+                                          gap: 5,
+                                          color: "#64748b",
+                                          fontSize: 9,
+                                          fontWeight: 850,
+                                          padding: "0 5px",
+                                          textTransform: "uppercase",
+                                        }}
+                                      >
+                                        <span>vertex</span>
+                                        <span>K</span>
+                                        <span>H</span>
+                                      </div>
                                       {meshAnalyzeProbeHistory.map((entry) => (
                                         <button
                                           key={entry.id}
@@ -68373,14 +68434,20 @@ case "mobius":
                                             gridTemplateColumns: "44px 1fr 1fr",
                                             gap: 5,
                                             alignItems: "center",
-                                            border: "1px solid #dbeafe",
+                                            border:
+                                              meshAnalyzeTopologyProbeCurvature?.vertexIndex === entry.vertexIndex
+                                                ? "2px solid #2563eb"
+                                                : "1px solid #dbeafe",
                                             borderRadius: 6,
                                             background:
                                               meshAnalyzeTopologyProbeCurvature?.vertexIndex === entry.vertexIndex
                                                 ? "#dbeafe"
                                                 : "#ffffff",
                                             color: "#0f172a",
-                                            padding: "3px 5px",
+                                            padding:
+                                              meshAnalyzeTopologyProbeCurvature?.vertexIndex === entry.vertexIndex
+                                                ? "2px 4px"
+                                                : "3px 5px",
                                             fontSize: 10,
                                             textAlign: "left",
                                           }}
@@ -68397,7 +68464,9 @@ case "mobius":
                               ) : (
                                 <div data-testid="mesh-analyze-probe-help" style={{ color: "#64748b" }}>
                                   {probeEnabled
-                                    ? `Measurement click is independent of ${surfaceMeshTopologyPickMode} pick. Click the mesh for K/H/k1/k2.`
+                                    ? meshAnalyzeProbeHistory.length === 0
+                                      ? "Click mesh to record probe."
+                                      : `Measurement click is independent of ${surfaceMeshTopologyPickMode} pick. Click the mesh for K/H/k1/k2.`
                                     : "Enable Probe for measurement clicks without changing Object/Face/Edge/Vertex pick."}
                                 </div>
                               )}

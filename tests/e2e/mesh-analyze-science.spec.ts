@@ -85,6 +85,7 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-auto-range")).toHaveAttribute("aria-pressed", "true");
     await page.getByTestId("mesh-analyze-clamp-toggle").check();
     await expect(page.getByTestId("mesh-analyze-auto-range")).toHaveAttribute("aria-pressed", "false");
+    await expect(page.getByTestId("mesh-analyze-manual-clamp-hint")).toContainText(/Manual clamp active/i);
     await page.getByTestId("mesh-analyze-clamp-min").fill("0.5");
     await page.getByTestId("mesh-analyze-clamp-max").fill("1.5");
     await expect(page.getByTestId("mesh-analyze-range-source")).toContainText(/clamped/i);
@@ -97,7 +98,13 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await page.getByTestId("mesh-analyze-range-preset-full").click();
     await expect(page.getByTestId("mesh-analyze-range-source")).not.toContainText(/clamped/i);
     await expect(page.getByTestId("mesh-analyze-diagnostics-boundary-count")).toBeVisible();
+    await expect(page.getByTestId("mesh-analyze-diagnostics-boundary-count")).toContainText(/Boundary:\s*0 clean/i);
+    await page.getByTestId("mesh-analyze-diagnostics-boundary-count").click();
+    await expect(page.getByText(/No boundary edges: mesh is closed/i).first()).toBeVisible();
     await expect(page.getByTestId("mesh-analyze-diagnostics-coincident-count")).toBeVisible();
+    await expect(page.getByTestId("mesh-analyze-diagnostics-coincident-count")).toContainText(/Coincident:\s*0 clean/i);
+    await page.getByTestId("mesh-analyze-diagnostics-coincident-count").click();
+    await expect(page.getByText(/No coincident vertices found/i).first()).toBeVisible();
 
     const toolbar = page.getByTestId("mesh-analysis-context-toolbar");
     await toolbar.getByRole("button", { name: "Edge", exact: true }).click();
@@ -107,7 +114,7 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
       await probe.click();
     }
     await expect(probe).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByTestId("mesh-analyze-probe-help")).toContainText(/independent of edge pick/i);
+    await expect(page.getByTestId("mesh-analyze-probe-help")).toContainText(/Click mesh to record probe/i);
     await expect(toolbar.getByRole("button", { name: "Edge", exact: true })).toHaveAttribute("aria-pressed", "true");
     await clickSurfaceViewerCanvas(page, 0.5, 0.52);
     await expect(page.getByTestId("mesh-analyze-probe-K")).not.toContainText("n/a", { timeout: 15_000 });
@@ -116,9 +123,12 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-probe-k2")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analyze-probe-label")).toContainText(/Probe: vertex \d+ at/i);
     await expect(page.getByTestId("mesh-analyze-probe-history")).toBeVisible();
+    await expect(page.getByTestId("mesh-analyze-probe-history")).toContainText(/vertex/i);
     await expect(page.getByTestId("mesh-analyze-probe-history-row").first()).toContainText(/v\d+/);
     await page.getByTestId("mesh-analyze-probe-history-row").first().click();
     await expect(page.getByTestId("mesh-analyze-probe-label")).toContainText(/Probe: vertex \d+ at/i);
+    await page.getByTestId("mesh-analyze-clear-probes").click();
+    await expect(page.getByTestId("mesh-analyze-probe-history")).toHaveCount(0);
     await expect(toolbar.getByRole("button", { name: "Edge", exact: true })).toHaveAttribute("aria-pressed", "true");
 
     await page.getByTestId("mesh-analyze-return-geometry").click();
