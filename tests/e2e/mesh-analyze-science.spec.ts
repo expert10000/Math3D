@@ -90,6 +90,14 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-range-source")).toContainText(/clamped/i);
     await page.getByTestId("mesh-analyze-reset-range").click();
     await expect(page.getByTestId("mesh-analyze-range-source")).not.toContainText(/clamped/i);
+    await page.getByTestId("mesh-analyze-range-preset-percentile").click();
+    await expect(page.getByTestId("mesh-analyze-range-source")).toContainText(/clamped/i);
+    await page.getByTestId("mesh-analyze-range-preset-symmetric").click();
+    await expect(page.getByTestId("mesh-analyze-clamp-toggle")).toBeChecked();
+    await page.getByTestId("mesh-analyze-range-preset-full").click();
+    await expect(page.getByTestId("mesh-analyze-range-source")).not.toContainText(/clamped/i);
+    await expect(page.getByTestId("mesh-analyze-diagnostics-boundary-count")).toBeVisible();
+    await expect(page.getByTestId("mesh-analyze-diagnostics-coincident-count")).toBeVisible();
 
     const toolbar = page.getByTestId("mesh-analysis-context-toolbar");
     await toolbar.getByRole("button", { name: "Edge", exact: true }).click();
@@ -106,6 +114,10 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-probe-H")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analyze-probe-k1")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analyze-probe-k2")).not.toContainText("n/a");
+    await expect(page.getByTestId("mesh-analyze-probe-label")).toContainText(/Probe: vertex \d+ at/i);
+    await expect(page.getByTestId("mesh-analyze-probe-history")).toBeVisible();
+    await expect(page.getByTestId("mesh-analyze-probe-history-row").first()).toContainText(/v\d+/);
+    await page.getByTestId("mesh-analyze-probe-history-row").first().click();
     await expect(page.getByTestId("mesh-analyze-probe-label")).toContainText(/Probe: vertex \d+ at/i);
     await expect(toolbar.getByRole("button", { name: "Edge", exact: true })).toHaveAttribute("aria-pressed", "true");
 

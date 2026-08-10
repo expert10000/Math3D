@@ -5834,6 +5834,16 @@ type SurfaceMeshTopologyPick = {
   vertexIndex: number;
 };
 type SurfaceMeshTopologyPickMode = "object" | "face" | "edge" | "vertex";
+type MeshAnalyzeProbeHistoryEntry = {
+  id: string;
+  stamp: number;
+  vertexIndex: number;
+  point: GeometryProbePoint;
+  K: number;
+  H: number;
+  k1: number;
+  k2: number;
+};
 type UnifiedSelectionTopologyFilterMode = "all" | "boundary" | "interior" | "non-manifold";
 type UnifiedSelectionKindFilterState = Record<SurfaceMeshTopologyPickMode, boolean>;
 const SURFACE_MESH_TOPOLOGY_PICK_MODES: readonly SurfaceMeshTopologyPickMode[] = ["object", "face", "edge", "vertex"];
@@ -37950,6 +37960,7 @@ const App: React.FC = () => {
   const [meshAnalyzePaletteInverted, setMeshAnalyzePaletteInverted] = useState(false);
   const [meshAnalyzeDiagnosticOverlayMode, setMeshAnalyzeDiagnosticOverlayMode] =
     useState<"none" | "boundary" | "duplicates">("none");
+  const [meshAnalyzeProbeHistory, setMeshAnalyzeProbeHistory] = useState<MeshAnalyzeProbeHistoryEntry[]>([]);
   const [showRidges, setShowRidges] = useState(false);
   const [showValleys, setShowValleys] = useState(false);
   const [ridgeValleySelectionOnly, setRidgeValleySelectionOnly] = useState(false);
@@ -38297,6 +38308,9 @@ const App: React.FC = () => {
     return { vertCount, triCount };
   }, [surfaceMeshData]);
   const surfaceMeshBounds = useMemo(() => boundsFromPositions(surfaceMeshData?.positions), [surfaceMeshData]);
+  useEffect(() => {
+    setMeshAnalyzeProbeHistory([]);
+  }, [surfaceMeshData, surfaceViewerKind]);
   const surfaceMeshTopologyPick = useMemo(
     () =>
       surfaceViewerKind === "mesh"
@@ -53100,6 +53114,25 @@ case "mobius":
     const variance = Math.max(0, sumSq / count - mean * mean);
     return { min, max, mean, std: Math.sqrt(variance), count };
   };
+  const readFinitePercentileRange = (
+    values: Float32Array | null | undefined,
+    mask?: SelectionMask | null,
+    low = 0.02,
+    high = 0.98
+  ): { min: number; max: number; count: number } | null => {
+    if (!values?.length) return null;
+    const useMask = !!mask?.count && mask.selected.length === values.length;
+    const finite: number[] = [];
+    for (let i = 0; i < values.length; i += 1) {
+      if (useMask && !mask.selected[i]) continue;
+      const value = values[i];
+      if (Number.isFinite(value)) finite.push(value);
+    }
+    if (!finite.length) return null;
+    finite.sort((a, b) => a - b);
+    const at = (p: number) => finite[Math.max(0, Math.min(finite.length - 1, Math.round((finite.length - 1) * p)))];
+    return { min: at(low), max: at(high), count: finite.length };
+  };
   const surfaceScienceCurvatureMask =
     meshAnalyzeRangeMode === "selected" &&
     selectionMask?.count &&
@@ -53207,6 +53240,46 @@ case "mobius":
     }
     setMeshAnalyzeClampEnabled(false);
   }, [meshAnalyzeCurvatureStats]);
+  const applyMeshAnalyzeRangePreset = useCallback(
+    (preset: "symmetric" | "percentile" | "full") => {
+      if (!meshAnalyzeCurvatureField) return;
+      const values = selectionCurvatures?.[meshAnalyzeCurvatureField];
+      if (!values?.length) return;
+      if (preset === "full") {
+        const stats = readFiniteStats(values, surfaceScienceCurvatureMask);
+        if (!stats) return;
+        setMeshAnalyzeClampMin(fmt(stats.min));
+        setMeshAnalyzeClampMax(fmt(stats.max));
+        setMeshAnalyzeClampEnabled(false);
+        setSurfaceMeshTopologyStatus(`Legend range preset: full ${surfaceScienceCurvatureRangeSource}.`);
+        return;
+      }
+      if (preset === "symmetric") {
+        const stats = readFiniteStats(values, surfaceScienceCurvatureMask);
+        if (!stats) return;
+        const limit = Math.max(Math.abs(stats.min), Math.abs(stats.max), 1e-9);
+        setMeshAnalyzeClampMin(fmt(-limit));
+        setMeshAnalyzeClampMax(fmt(limit));
+        setMeshAnalyzeClampEnabled(true);
+        setSurfaceMeshTopologyStatus(`Legend range preset: symmetric ±${fmt(limit)}.`);
+        return;
+      }
+      const range = readFinitePercentileRange(values, surfaceScienceCurvatureMask, 0.02, 0.98);
+      if (!range || range.min >= range.max) return;
+      setMeshAnalyzeClampMin(fmt(range.min));
+      setMeshAnalyzeClampMax(fmt(range.max));
+      setMeshAnalyzeClampEnabled(true);
+      setSurfaceMeshTopologyStatus(
+        `Legend range preset: percentile 2-98% from ${range.count.toLocaleString()} samples.`
+      );
+    },
+    [
+      meshAnalyzeCurvatureField,
+      selectionCurvatures,
+      surfaceScienceCurvatureMask,
+      surfaceScienceCurvatureRangeSource,
+    ]
+  );
   const meshAnalyzeSphereSanity = useMemo(() => {
     const sphereLike =
       surfaceMeshAnalyzeDiagnostics?.sphereSeamWarning ||
@@ -53317,6 +53390,51 @@ case "mobius":
     surfaceMeshTopologyPickMode,
     surfaceViewerKind,
   ]);
+  useEffect(() => {
+    if (
+      surfaceViewerKind !== "mesh" ||
+      surfacesLeftTab !== "analysis" ||
+      !probeEnabled ||
+      probeStamp <= 0 ||
+      !meshAnalyzeTopologyProbeCurvature?.point
+    ) {
+      return;
+    }
+    const probePoint = meshAnalyzeTopologyProbeCurvature.point;
+    setMeshAnalyzeProbeHistory((previous) => {
+      if (previous[0]?.stamp === probeStamp) return previous;
+      const nextEntry: MeshAnalyzeProbeHistoryEntry = {
+        id: `probe-${probeStamp}-${meshAnalyzeTopologyProbeCurvature.vertexIndex}`,
+        stamp: probeStamp,
+        vertexIndex: meshAnalyzeTopologyProbeCurvature.vertexIndex,
+        point: {
+          x: probePoint.x,
+          y: probePoint.y,
+          z: probePoint.z,
+        },
+        K: meshAnalyzeTopologyProbeCurvature.K,
+        H: meshAnalyzeTopologyProbeCurvature.H,
+        k1: meshAnalyzeTopologyProbeCurvature.k1,
+        k2: meshAnalyzeTopologyProbeCurvature.k2,
+      };
+      const withoutSameVertex = previous.filter((entry) => entry.vertexIndex !== nextEntry.vertexIndex);
+      return [nextEntry, ...withoutSameVertex].slice(0, 5);
+    });
+  }, [
+    meshAnalyzeTopologyProbeCurvature,
+    probeEnabled,
+    probeStamp,
+    surfaceViewerKind,
+    surfacesLeftTab,
+  ]);
+  const replayMeshAnalyzeProbeHistoryEntry = useCallback((entry: MeshAnalyzeProbeHistoryEntry) => {
+    setProbeEnabled(true);
+    setInspectEnabled(true);
+    setProbeInfo({ point: { ...entry.point }, normal: { x: 0, y: 1, z: 0 } });
+    setProbeCurv(null);
+    setProbeStamp((value) => value + 1);
+    setSurfaceMeshTopologyStatus(`Probe restored: vertex ${entry.vertexIndex} at ${fmt3(entry.point)}.`);
+  }, []);
   const meshAnalyzeProbeCurvature =
     surfaceViewerKind === "graph" && probeCurv
       ? { K: probeCurv.K, H: probeCurv.H, k1: probeCurv.k1, k2: probeCurv.k2 }
@@ -64989,18 +65107,58 @@ case "mobius":
                                 : `${surfaceMeshAnalyzeDiagnostics.invalidFaceCount.toLocaleString()} invalid, ${surfaceMeshAnalyzeDiagnostics.degenerateTriangleCount.toLocaleString()} degenerate`
                               : "unknown"}
                           </div>
-                          <div>
+                          <button
+                            type="button"
+                            data-testid="mesh-analyze-diagnostics-boundary-count"
+                            onClick={handleHighlightMeshAnalyzeBoundary}
+                            disabled={!surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount}
+                            title={
+                              surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount
+                                ? "Highlight boundary edges in the viewport"
+                                : "No boundary edges to highlight"
+                            }
+                            style={{
+                              border: "1px solid transparent",
+                              borderRadius: 6,
+                              background: surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount ? "#fff7ed" : "transparent",
+                              color: surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount ? "#9a3412" : "#334155",
+                              padding: "2px 4px",
+                              textAlign: "left",
+                              font: "inherit",
+                              cursor: surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount ? "pointer" : "default",
+                            }}
+                          >
                             <strong>Boundary:</strong>{" "}
                             {surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount.toLocaleString() ?? "unknown"}
-                          </div>
+                          </button>
                           <div>
                             <strong>Non-manifold:</strong>{" "}
                             {surfaceMeshAnalyzeDiagnostics?.nonManifoldEdgeCount.toLocaleString() ?? "unknown"}
                           </div>
-                          <div>
+                          <button
+                            type="button"
+                            data-testid="mesh-analyze-diagnostics-coincident-count"
+                            onClick={handleHighlightMeshAnalyzeDuplicates}
+                            disabled={!surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount}
+                            title={
+                              surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount
+                                ? "Highlight coincident vertices in the viewport"
+                                : "No coincident vertices to highlight"
+                            }
+                            style={{
+                              border: "1px solid transparent",
+                              borderRadius: 6,
+                              background: surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount ? "#fdf4ff" : "transparent",
+                              color: surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount ? "#86198f" : "#334155",
+                              padding: "2px 4px",
+                              textAlign: "left",
+                              font: "inherit",
+                              cursor: surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount ? "pointer" : "default",
+                            }}
+                          >
                             <strong>Coincident:</strong>{" "}
                             {surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount.toLocaleString() ?? "unknown"}
-                          </div>
+                          </button>
                           <div>
                             <strong>Euler chi:</strong>{" "}
                             {surfaceMeshAnalyzeDiagnostics?.eulerCharacteristic?.toLocaleString() ?? "unknown"}
@@ -67176,6 +67334,33 @@ case "mobius":
                             </button>
                             <button
                               type="button"
+                              data-testid="mesh-analyze-range-preset-symmetric"
+                              onClick={() => applyMeshAnalyzeRangePreset("symmetric")}
+                              disabled={!meshAnalyzeCurvatureField}
+                              style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
+                            >
+                              Symmetric
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="mesh-analyze-range-preset-percentile"
+                              onClick={() => applyMeshAnalyzeRangePreset("percentile")}
+                              disabled={!meshAnalyzeCurvatureField}
+                              style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
+                            >
+                              Percentile
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="mesh-analyze-range-preset-full"
+                              onClick={() => applyMeshAnalyzeRangePreset("full")}
+                              disabled={!meshAnalyzeCurvatureField}
+                              style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
+                            >
+                              Full
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => setShowPrincipalDirections((value) => !value)}
                               aria-pressed={showPrincipalDirections}
                               style={viewerControlButtonStyle(showPrincipalDirections, meshViewerControlsDensity)}
@@ -68012,6 +68197,33 @@ case "mobius":
                                     >
                                       Reset range
                                     </button>
+                                    <button
+                                      type="button"
+                                      data-testid="mesh-analyze-overlay-range-preset-symmetric"
+                                      onClick={() => applyMeshAnalyzeRangePreset("symmetric")}
+                                      disabled={!meshAnalyzeCurvatureField}
+                                      style={{ ...viewerControlButtonStyle(false, "compact"), fontSize: 10 }}
+                                    >
+                                      Symmetric
+                                    </button>
+                                    <button
+                                      type="button"
+                                      data-testid="mesh-analyze-overlay-range-preset-percentile"
+                                      onClick={() => applyMeshAnalyzeRangePreset("percentile")}
+                                      disabled={!meshAnalyzeCurvatureField}
+                                      style={{ ...viewerControlButtonStyle(false, "compact"), fontSize: 10 }}
+                                    >
+                                      Percentile
+                                    </button>
+                                    <button
+                                      type="button"
+                                      data-testid="mesh-analyze-overlay-range-preset-full"
+                                      onClick={() => applyMeshAnalyzeRangePreset("full")}
+                                      disabled={!meshAnalyzeCurvatureField}
+                                      style={{ ...viewerControlButtonStyle(false, "compact"), fontSize: 10 }}
+                                    >
+                                      Full
+                                    </button>
                                   </div>
                                   <label
                                     style={{
@@ -68138,6 +68350,47 @@ case "mobius":
                                       style={{ color: "#0f172a", fontSize: 10, fontWeight: 800 }}
                                     >
                                       {meshAnalyzeProbeLabel}
+                                    </div>
+                                  )}
+                                  {meshAnalyzeProbeHistory.length > 0 && (
+                                    <div
+                                      data-testid="mesh-analyze-probe-history"
+                                      style={{
+                                        display: "grid",
+                                        gap: 3,
+                                        paddingTop: 2,
+                                      }}
+                                    >
+                                      <div style={{ color: "#475569", fontSize: 10, fontWeight: 850 }}>Recent probes</div>
+                                      {meshAnalyzeProbeHistory.map((entry) => (
+                                        <button
+                                          key={entry.id}
+                                          type="button"
+                                          data-testid="mesh-analyze-probe-history-row"
+                                          onClick={() => replayMeshAnalyzeProbeHistoryEntry(entry)}
+                                          style={{
+                                            display: "grid",
+                                            gridTemplateColumns: "44px 1fr 1fr",
+                                            gap: 5,
+                                            alignItems: "center",
+                                            border: "1px solid #dbeafe",
+                                            borderRadius: 6,
+                                            background:
+                                              meshAnalyzeTopologyProbeCurvature?.vertexIndex === entry.vertexIndex
+                                                ? "#dbeafe"
+                                                : "#ffffff",
+                                            color: "#0f172a",
+                                            padding: "3px 5px",
+                                            fontSize: 10,
+                                            textAlign: "left",
+                                          }}
+                                          title={`Probe vertex ${entry.vertexIndex} at ${fmt3(entry.point)}`}
+                                        >
+                                          <strong>v{entry.vertexIndex}</strong>
+                                          <span>K {fmt(entry.K)}</span>
+                                          <span>H {fmt(entry.H)}</span>
+                                        </button>
+                                      ))}
                                     </div>
                                   )}
                                 </>
