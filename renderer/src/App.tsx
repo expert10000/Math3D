@@ -5844,6 +5844,7 @@ type MeshAnalyzeProbeHistoryEntry = {
   k1: number;
   k2: number;
 };
+type MeshAnalyzeDiagnosticOverlayMode = "none" | "boundary" | "duplicates" | "boundary-clean" | "duplicates-clean";
 type UnifiedSelectionTopologyFilterMode = "all" | "boundary" | "interior" | "non-manifold";
 type UnifiedSelectionKindFilterState = Record<SurfaceMeshTopologyPickMode, boolean>;
 const SURFACE_MESH_TOPOLOGY_PICK_MODES: readonly SurfaceMeshTopologyPickMode[] = ["object", "face", "edge", "vertex"];
@@ -37959,7 +37960,8 @@ const App: React.FC = () => {
   const [meshAnalyzeClampMax, setMeshAnalyzeClampMax] = useState("");
   const [meshAnalyzePaletteInverted, setMeshAnalyzePaletteInverted] = useState(false);
   const [meshAnalyzeDiagnosticOverlayMode, setMeshAnalyzeDiagnosticOverlayMode] =
-    useState<"none" | "boundary" | "duplicates">("none");
+    useState<MeshAnalyzeDiagnosticOverlayMode>("none");
+  const [meshAnalyzeDiagnosticPulseId, setMeshAnalyzeDiagnosticPulseId] = useState(0);
   const [meshAnalyzeProbeHistory, setMeshAnalyzeProbeHistory] = useState<MeshAnalyzeProbeHistoryEntry[]>([]);
   const [showRidges, setShowRidges] = useState(false);
   const [showValleys, setShowValleys] = useState(false);
@@ -52832,8 +52834,10 @@ case "mobius":
     if (!boundaryEdges.length) {
       setSurfaceMeshEdgeSelection(null);
       surfaceMeshEdgeSelectionRef.current = null;
-      setMeshAnalyzeDiagnosticOverlayMode("none");
+      setMeshAnalyzeDiagnosticOverlayMode("boundary-clean");
+      setMeshAnalyzeDiagnosticPulseId((value) => value + 1);
       setSurfaceMeshTopologyStatus("No boundary edges: mesh is closed.");
+      showSelectionEventStatus("Mesh", "No boundary edges: mesh is closed.", "mesh-diagnostics-boundary-clean");
       return;
     }
     const selection: MeshEdgeSelectionResult = {
@@ -52850,7 +52854,10 @@ case "mobius":
     surfaceMeshEdgeSelectionRef.current = selection;
     setSurfaceMeshEdgeSelection(selection);
     setMeshAnalyzeDiagnosticOverlayMode("boundary");
+    setMeshAnalyzeDiagnosticPulseId((value) => value + 1);
     setContextualActionPulseId("mesh:boundary-select");
+    setZoomToRegion(true);
+    setZoomNowToken((value) => value + 1);
     setSurfaceMeshTopologyStatus(selection.status);
     showSelectionEventStatus("Mesh", selection.status, `mesh-diagnostics-boundary:${boundaryEdges.length}`);
   }, [showSelectionEventStatus, surfaceMeshData]);
@@ -52861,8 +52868,10 @@ case "mobius":
     }
     const firstGroup = surfaceMeshAnalyzeDiagnostics.duplicateVertexGroups[0];
     if (!firstGroup?.length) {
-      setMeshAnalyzeDiagnosticOverlayMode("none");
+      setMeshAnalyzeDiagnosticOverlayMode("duplicates-clean");
+      setMeshAnalyzeDiagnosticPulseId((value) => value + 1);
       setSurfaceMeshTopologyStatus("No coincident vertices found.");
+      showSelectionEventStatus("Mesh", "No coincident vertices found.", "mesh-diagnostics-duplicates-clean");
       return;
     }
     const listed = firstGroup.slice(0, 6).map((vertex) => `v${vertex}`).join(", ");
@@ -52870,12 +52879,20 @@ case "mobius":
     setSurfaceMeshTopologySelectionCleared(false);
     setSurfaceMeshTopologyVertexIndex(firstGroup[0]);
     setMeshAnalyzeDiagnosticOverlayMode("duplicates");
+    setMeshAnalyzeDiagnosticPulseId((value) => value + 1);
+    setZoomToRegion(true);
+    setZoomNowToken((value) => value + 1);
     setSurfaceMeshTopologyStatus(
       `Diagnostics: duplicate vertex group loaded (${listed}${
         firstGroup.length > 6 ? "..." : ""
       }); ${surfaceMeshAnalyzeDiagnostics.duplicateVertexCount.toLocaleString()} duplicated/coincident vertices detected.`
     );
-  }, [surfaceMeshAnalyzeDiagnostics, surfaceMeshData]);
+    showSelectionEventStatus(
+      "Mesh",
+      `${surfaceMeshAnalyzeDiagnostics.duplicateVertexCount.toLocaleString()} coincident vertices highlighted.`,
+      `mesh-diagnostics-duplicates:${surfaceMeshAnalyzeDiagnostics.duplicateVertexCount}`
+    );
+  }, [showSelectionEventStatus, surfaceMeshAnalyzeDiagnostics, surfaceMeshData]);
   const handlePreviewMeshAnalyzeWeld = useCallback(() => {
     if (!surfaceMeshData?.positions?.length || !surfaceMeshAnalyzeDiagnostics) {
       setSurfaceMeshTopologyStatus("Surface mesh not ready yet.");
@@ -52897,13 +52914,37 @@ case "mobius":
     polylineGroups: OverlayPolylineGroup[] | null;
     labelSets: OverlayLabelSet[] | null;
     label: string | null;
+    tone: "boundary" | "duplicates" | "clean" | null;
   }>(() => {
+    const empty = { pointSets: null, polylineGroups: null, labelSets: null, label: null, tone: null };
     if (surfaceViewerKind !== "mesh" || surfacesLeftTab !== "analysis" || !surfaceMeshData?.positions?.length) {
-      return { pointSets: null, polylineGroups: null, labelSets: null, label: null };
+      return empty;
+    }
+    if (meshAnalyzeDiagnosticOverlayMode === "boundary-clean" || meshAnalyzeDiagnosticOverlayMode === "duplicates-clean") {
+      const message =
+        meshAnalyzeDiagnosticOverlayMode === "boundary-clean"
+          ? "No boundary edges: mesh is closed."
+          : "No coincident vertices found.";
+      const center = surfaceMeshBounds
+        ? {
+            x: (surfaceMeshBounds.min[0] + surfaceMeshBounds.max[0]) * 0.5,
+            y: surfaceMeshBounds.max[1],
+            z: (surfaceMeshBounds.min[2] + surfaceMeshBounds.max[2]) * 0.5,
+          }
+        : readMeshPoint(surfaceMeshData, 0);
+      return {
+        pointSets: null,
+        polylineGroups: null,
+        labelSets: center
+          ? [{ size: 0.85, labels: [{ text: message, position: center, color: 0x15803d, opacity: 0.98 }] }]
+          : null,
+        label: message,
+        tone: "clean",
+      };
     }
     if (meshAnalyzeDiagnosticOverlayMode === "boundary") {
       const boundaryEdges = collectTriangleMeshBoundaryEdges(surfaceMeshData);
-      if (!boundaryEdges.length) return { pointSets: null, polylineGroups: null, labelSets: null, label: null };
+      if (!boundaryEdges.length) return empty;
       const lines = boundaryEdges
         .slice(0, 1200)
         .map(([aIndex, bIndex]) => {
@@ -52927,20 +52968,21 @@ case "mobius":
       return {
         pointSets: boundaryPoints.length
           ? [
-              { points: boundaryPoints, color: 0xfee2e2, size: 0.16, opacity: 0.68 },
-              { points: boundaryPoints, color: 0xdc2626, size: 0.095, opacity: 0.98 },
+              { points: boundaryPoints, color: 0xfef3c7, size: 0.24, opacity: 0.74 },
+              { points: boundaryPoints, color: 0xff2d55, size: 0.14, opacity: 1 },
             ]
           : null,
         polylineGroups: lines.length
           ? [
-              { lines, color: 0x7f1d1d, opacity: 0.52, radiusWorld: 0.052 },
-              { lines, color: 0xef4444, opacity: 0.98, radiusWorld: 0.026 },
+              { lines, color: 0xf97316, opacity: 0.82, radiusWorld: 0.082 },
+              { lines, color: 0xff1744, opacity: 1, radiusWorld: 0.038 },
             ]
           : null,
         labelSets: labelPosition
-          ? [{ size: 0.9, labels: [{ text: `Boundary highlight: ${label}`, position: labelPosition, color: 0xb91c1c, opacity: 0.98 }] }]
+          ? [{ size: 1.05, labels: [{ text: label, position: labelPosition, color: 0xb91c1c, opacity: 1 }] }]
           : null,
-        label: `Boundary highlight: ${label}`,
+        label,
+        tone: "boundary",
       };
     }
     if (meshAnalyzeDiagnosticOverlayMode === "duplicates") {
@@ -52952,26 +52994,28 @@ case "mobius":
         .slice(0, 300)
         .map((vertexIndex) => readMeshPoint(surfaceMeshData, vertexIndex))
         .filter((point): point is { x: number; y: number; z: number } => !!point);
-      if (!points.length) return { pointSets: null, polylineGroups: null, labelSets: null, label: null };
+      if (!points.length) return empty;
       const duplicateCount = surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount ?? points.length;
       const label = `${duplicateCount.toLocaleString()} coincident ${
         duplicateCount === 1 ? "vertex" : "vertices"
       }`;
       return {
         pointSets: [
-          { points, color: 0xfae8ff, size: 0.22, opacity: 0.78 },
-          { points, color: 0xd946ef, size: 0.12, opacity: 0.98 },
+          { points, color: 0xf5d0fe, size: 0.3, opacity: 0.76 },
+          { points, color: 0xc026d3, size: 0.17, opacity: 1 },
         ],
         polylineGroups: null,
-        labelSets: [{ size: 0.9, labels: [{ text: `Duplicate highlight: ${label}`, position: points[0], color: 0xa21caf, opacity: 0.98 }] }],
-        label: `Duplicate highlight: ${label}`,
+        labelSets: [{ size: 1.05, labels: [{ text: label, position: points[0], color: 0xa21caf, opacity: 1 }] }],
+        label,
+        tone: "duplicates",
       };
     }
-    return { pointSets: null, polylineGroups: null, labelSets: null, label: null };
+    return empty;
   }, [
     meshAnalyzeDiagnosticOverlayMode,
     surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount,
     surfaceMeshAnalyzeDiagnostics?.duplicateVertexGroups,
+    surfaceMeshBounds,
     surfaceMeshData,
     surfaceViewerKind,
     surfacesLeftTab,
@@ -65076,6 +65120,59 @@ case "mobius":
                             Clean mesh: closed, manifold, watertight.
                           </div>
                         )}
+                        {surfaceMeshAnalyzeDiagnostics?.cleanMesh && (
+                          <div
+                            data-testid="mesh-analyze-clean-counts"
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "auto 1fr 1fr",
+                              alignItems: "center",
+                              gap: 5,
+                              border: "1px solid #bbf7d0",
+                              borderRadius: 7,
+                              background: "#f8fff9",
+                              padding: "5px 6px",
+                              fontSize: 10.5,
+                              color: "#166534",
+                            }}
+                          >
+                            <strong>Clean counts</strong>
+                            <button
+                              type="button"
+                              onClick={handleHighlightMeshAnalyzeBoundary}
+                              title="No boundary edges: mesh is closed"
+                              style={{
+                                border: "1px solid #86efac",
+                                borderRadius: 999,
+                                background: "#dcfce7",
+                                color: "#166534",
+                                padding: "2px 7px",
+                                font: "inherit",
+                                fontWeight: 850,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Boundary 0
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleHighlightMeshAnalyzeDuplicates}
+                              title="No coincident vertices found"
+                              style={{
+                                border: "1px solid #86efac",
+                                borderRadius: 999,
+                                background: "#dcfce7",
+                                color: "#166534",
+                                padding: "2px 7px",
+                                font: "inherit",
+                                fontWeight: 850,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Coincident 0
+                            </button>
+                          </div>
+                        )}
                         {surfaceMeshAnalyzeDiagnostics?.sphereSeamWarning && (
                           <div
                             style={{
@@ -65119,14 +65216,16 @@ case "mobius":
                                 : "No boundary edges: mesh is closed"
                             }
                             style={{
-                              border: "1px solid transparent",
+                              border: surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount
+                                ? "1px solid #fed7aa"
+                                : "1px solid #bbf7d0",
                               borderRadius: 6,
-                              background: surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount ? "#fff7ed" : "transparent",
-                              color: surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount ? "#9a3412" : "#334155",
+                              background: surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount ? "#fff7ed" : "#f0fdf4",
+                              color: surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount ? "#9a3412" : "#166534",
                               padding: "2px 4px",
                               textAlign: "left",
                               font: "inherit",
-                              cursor: surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount ? "pointer" : "default",
+                              cursor: surfaceMeshAnalyzeDiagnostics ? "pointer" : "default",
                             }}
                           >
                             <strong>Boundary:</strong>{" "}
@@ -65151,14 +65250,16 @@ case "mobius":
                                 : "No coincident vertices found"
                             }
                             style={{
-                              border: "1px solid transparent",
+                              border: surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount
+                                ? "1px solid #f5d0fe"
+                                : "1px solid #bbf7d0",
                               borderRadius: 6,
-                              background: surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount ? "#fdf4ff" : "transparent",
-                              color: surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount ? "#86198f" : "#334155",
+                              background: surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount ? "#fdf4ff" : "#f0fdf4",
+                              color: surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount ? "#86198f" : "#166534",
                               padding: "2px 4px",
                               textAlign: "left",
                               font: "inherit",
-                              cursor: surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount ? "pointer" : "default",
+                              cursor: surfaceMeshAnalyzeDiagnostics ? "pointer" : "default",
                             }}
                           >
                             <strong>Coincident:</strong>{" "}
@@ -68484,16 +68585,33 @@ case "mobius":
                           surfacesLeftTab === "analysis" &&
                           meshAnalyzeDiagnosticViewportOverlays.label && (
                             <div
+                              key={`mesh-analyze-diagnostic-label-${meshAnalyzeDiagnosticOverlayMode}-${meshAnalyzeDiagnosticPulseId}`}
                               data-testid="mesh-analyze-diagnostic-overlay-label"
+                              className="mesh-analyze-diagnostic-pulse"
                               style={{
                                 position: "absolute",
                                 top: 48,
                                 right: 12,
                                 zIndex: 80,
-                                border: "1px solid rgba(248, 113, 113, 0.55)",
+                                border:
+                                  meshAnalyzeDiagnosticViewportOverlays.tone === "duplicates"
+                                    ? "1px solid rgba(216, 70, 239, 0.55)"
+                                    : meshAnalyzeDiagnosticViewportOverlays.tone === "clean"
+                                      ? "1px solid rgba(34, 197, 94, 0.55)"
+                                      : "1px solid rgba(248, 113, 113, 0.55)",
                                 borderRadius: 8,
-                                background: "rgba(255, 247, 237, 0.94)",
-                                color: "#9a3412",
+                                background:
+                                  meshAnalyzeDiagnosticViewportOverlays.tone === "duplicates"
+                                    ? "rgba(253, 244, 255, 0.96)"
+                                    : meshAnalyzeDiagnosticViewportOverlays.tone === "clean"
+                                      ? "rgba(240, 253, 244, 0.96)"
+                                      : "rgba(255, 247, 237, 0.96)",
+                                color:
+                                  meshAnalyzeDiagnosticViewportOverlays.tone === "duplicates"
+                                    ? "#86198f"
+                                    : meshAnalyzeDiagnosticViewportOverlays.tone === "clean"
+                                      ? "#166534"
+                                      : "#9a3412",
                                 boxShadow: "0 10px 24px rgba(15, 23, 42, 0.12)",
                                 padding: "6px 8px",
                                 fontSize: 11,
@@ -68501,7 +68619,9 @@ case "mobius":
                                 pointerEvents: "none",
                               }}
                             >
-                              {meshAnalyzeDiagnosticViewportOverlays.label}
+                              {meshAnalyzeDiagnosticViewportOverlays.tone === "clean"
+                                ? meshAnalyzeDiagnosticViewportOverlays.label
+                                : `Highlighting: ${meshAnalyzeDiagnosticViewportOverlays.label}`}
                             </div>
                           )}
                         {!cleanScreenshotSurfaceActive && surfaceViewerKind === "mesh" && surfaceMeshStats && (

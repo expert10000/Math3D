@@ -27,6 +27,25 @@
   }
 }
 
+@keyframes mesh-analyze-diagnostic-pulse {
+  0% {
+    transform: translateY(-2px) scale(0.98);
+    opacity: 0.78;
+  }
+  45% {
+    transform: translateY(0) scale(1.04);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.mesh-analyze-diagnostic-pulse {
+  animation: mesh-analyze-diagnostic-pulse 520ms ease-out;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   a:nth-of-type(2) .logo {
     animation: logo-spin infinite 20s linear;

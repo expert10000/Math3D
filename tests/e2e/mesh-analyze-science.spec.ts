@@ -36,14 +36,14 @@ async function selectSection(page: Page, label: (typeof sectionLabels)[number]):
   await expect(button).toHaveAttribute("aria-pressed", "true");
 }
 
-async function openGeometrySphereInMeshAnalyze(page: Page): Promise<void> {
+async function openGeometryPrimitiveInMeshAnalyze(page: Page, primitive: "sphere" | "box"): Promise<void> {
   await resetSurfaceAppState(page);
   await selectSection(page, "Geometry");
   await expect(page.getByRole("heading", { name: "Geometry Viewer", exact: true })).toBeVisible({ timeout: 15_000 });
 
   await firstVisible(page.getByTestId("geometry-workflow-step-create")).then((button) => button.click());
   await firstVisible(page.getByRole("button", { name: "Primitive", exact: true })).then((button) => button.click());
-  await page.getByTestId("geometry-gallery-quick-add-sphere").click();
+  await page.getByTestId(`geometry-gallery-quick-add-${primitive}`).click();
   await expect(page.getByTestId("geometry-pick-committed")).toBeVisible({ timeout: 15_000 });
 
   await firstVisible(page.getByTestId("geometry-workflow-step-analyze")).then((button) => button.click());
@@ -52,6 +52,10 @@ async function openGeometrySphereInMeshAnalyze(page: Page): Promise<void> {
 
   await expect(page.getByText(/Mesh \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/MESH \/ ANALYZE/i).first()).toBeVisible({ timeout: 15_000 });
+}
+
+async function openGeometrySphereInMeshAnalyze(page: Page): Promise<void> {
+  await openGeometryPrimitiveInMeshAnalyze(page, "sphere");
 }
 
 test("Mesh Analyze shows curvature range, independent Probe, and returns to Geometry", async () => {
@@ -97,14 +101,19 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-clamp-toggle")).toBeChecked();
     await page.getByTestId("mesh-analyze-range-preset-full").click();
     await expect(page.getByTestId("mesh-analyze-range-source")).not.toContainText(/clamped/i);
+    await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Clean counts/i);
+    await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Boundary 0/i);
+    await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Coincident 0/i);
     await expect(page.getByTestId("mesh-analyze-diagnostics-boundary-count")).toBeVisible();
     await expect(page.getByTestId("mesh-analyze-diagnostics-boundary-count")).toContainText(/Boundary:\s*0 clean/i);
     await page.getByTestId("mesh-analyze-diagnostics-boundary-count").click();
     await expect(page.getByText(/No boundary edges: mesh is closed/i).first()).toBeVisible();
+    await expect(page.getByTestId("mesh-analyze-diagnostic-overlay-label")).toContainText(/No boundary edges: mesh is closed/i);
     await expect(page.getByTestId("mesh-analyze-diagnostics-coincident-count")).toBeVisible();
     await expect(page.getByTestId("mesh-analyze-diagnostics-coincident-count")).toContainText(/Coincident:\s*0 clean/i);
     await page.getByTestId("mesh-analyze-diagnostics-coincident-count").click();
     await expect(page.getByText(/No coincident vertices found/i).first()).toBeVisible();
+    await expect(page.getByTestId("mesh-analyze-diagnostic-overlay-label")).toContainText(/No coincident vertices found/i);
 
     const toolbar = page.getByTestId("mesh-analysis-context-toolbar");
     await toolbar.getByRole("button", { name: "Edge", exact: true }).click();
@@ -138,6 +147,37 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("geometry-object-action-status")).toContainText(/Returned to Geometry:/i);
     await expect(page.getByTestId("geometry-active-selection-card")).toContainText(/Sphere/i);
     expect(diagnosticsFailures).toEqual([]);
+  } finally {
+    await closeSurfaceApp(ctx);
+  }
+});
+
+test("Mesh Analyze diagnostics highlight boundary and coincident issues in the viewport", async () => {
+  test.setTimeout(120_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+
+  try {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await page.setViewportSize({ width: 1920, height: 1080 });
+
+    await openGeometryPrimitiveInMeshAnalyze(page, "box");
+
+    const boundaryCount = page.getByTestId("mesh-analyze-diagnostics-boundary-count");
+    await expect(boundaryCount).toBeVisible({ timeout: 15_000 });
+    await expect(boundaryCount).not.toContainText(/Boundary:\s*0 clean/i);
+    await boundaryCount.click();
+    await expect(page.getByTestId("mesh-analyze-diagnostic-overlay-label")).toContainText(
+      /Highlighting:\s*\d+ boundary edge/i
+    );
+
+    const coincidentCount = page.getByTestId("mesh-analyze-diagnostics-coincident-count");
+    await expect(coincidentCount).toBeVisible();
+    await expect(coincidentCount).not.toContainText(/Coincident:\s*0 clean/i);
+    await coincidentCount.click();
+    await expect(page.getByTestId("mesh-analyze-diagnostic-overlay-label")).toContainText(
+      /Highlighting:\s*\d+ coincident vert/i
+    );
   } finally {
     await closeSurfaceApp(ctx);
   }
