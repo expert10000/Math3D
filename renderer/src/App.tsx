@@ -68059,7 +68059,8 @@ case "mobius":
                               position: "absolute",
                               top: 48,
                               left: 10,
-                              width: "min(270px, calc(100% - 20px))",
+                              width: "min(300px, calc(100% - 20px))",
+                              maxHeight: "calc(100% - 72px)",
                               border: "1px solid rgba(125, 172, 223, 0.75)",
                               borderRadius: 8,
                               background: "rgba(248, 251, 255, 0.94)",
@@ -68071,6 +68072,8 @@ case "mobius":
                               color: "#0f172a",
                               zIndex: 80,
                               pointerEvents: "auto",
+                              overflowY: "auto",
+                              overscrollBehavior: "contain",
                               backdropFilter: "blur(4px)",
                             }}
                           >
@@ -68384,6 +68387,9 @@ case "mobius":
                                         display: "grid",
                                         gap: 3,
                                         paddingTop: 2,
+                                        maxHeight: 112,
+                                        overflowY: "auto",
+                                        overscrollBehavior: "contain",
                                       }}
                                     >
                                       <div

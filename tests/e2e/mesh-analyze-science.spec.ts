@@ -124,6 +124,7 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-probe-label")).toContainText(/Probe: vertex \d+ at/i);
     await expect(page.getByTestId("mesh-analyze-probe-history")).toBeVisible();
     await expect(page.getByTestId("mesh-analyze-probe-history")).toContainText(/vertex/i);
+    await expect(page.getByTestId("mesh-analyze-science-overlay")).toHaveCSS("overflow-y", "auto");
     await expect(page.getByTestId("mesh-analyze-probe-history-row").first()).toContainText(/v\d+/);
     await page.getByTestId("mesh-analyze-probe-history-row").first().click();
     await expect(page.getByTestId("mesh-analyze-probe-label")).toContainText(/Probe: vertex \d+ at/i);
