@@ -87,6 +87,9 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await openGeometrySphereInMeshAnalyze(page);
 
     await expect(page.getByTestId("mesh-analyze-science-overlay")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("mesh-analyze-mode-status")).toContainText(/Mode:\s*Clean/i);
+    await page.getByTestId("mesh-analyze-mode-curvature").click();
+    await expect(page.getByTestId("mesh-analyze-mode-status")).toContainText(/Mode:\s*Curvature/i);
     await expect(page.getByTestId("mesh-analyze-range-source")).toContainText(/whole mesh/i);
     await expect(page.getByTestId("mesh-analyze-curvature-min")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analyze-curvature-max")).not.toContainText("n/a");
@@ -118,6 +121,8 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Coincident:\s*0/i);
     await expect(page.getByTestId("mesh-analyze-diagnostics-boundary-count")).toBeVisible();
     await expect(page.getByTestId("mesh-analyze-diagnostics-boundary-count")).toContainText(/Boundary:\s*0 clean/i);
+    await page.getByTestId("mesh-analyze-mode-diagnostics").click();
+    await expect(page.getByTestId("mesh-analyze-mode-status")).toContainText(/Mode:\s*Diagnostics/i);
     await page.getByTestId("mesh-analyze-diagnostics-boundary-count").click();
     await expect(page.getByText(/No boundary edges: mesh is closed/i).first()).toBeVisible();
     await expect(page.getByTestId("mesh-analyze-diagnostic-overlay-label")).toContainText(/No boundary edges: mesh is closed/i);
@@ -131,10 +136,9 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await toolbar.getByRole("button", { name: "Edge", exact: true }).click();
     await expect(toolbar.getByRole("button", { name: "Edge", exact: true })).toHaveAttribute("aria-pressed", "true");
     const probe = page.getByTestId("mesh-analyze-probe-toggle");
-    if ((await probe.getAttribute("aria-pressed")) !== "true") {
-      await probe.click();
-    }
+    await page.getByTestId("mesh-analyze-mode-probe").click();
     await expect(probe).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("mesh-analyze-mode-status")).toContainText(/Mode:\s*Probe/i);
     await expect(page.getByTestId("mesh-analyze-probe-help")).toContainText(/Click mesh to record probe/i);
     await expect(toolbar.getByRole("button", { name: "Edge", exact: true })).toHaveAttribute("aria-pressed", "true");
     await clickSurfaceViewerCanvas(page, 0.5, 0.52);

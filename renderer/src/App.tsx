@@ -745,6 +745,7 @@ type GallerySortPreset = "name" | "family" | "complexity" | "demoReady";
 type AppTheme = "light" | "dark" | "dot";
 type DisplayMode = "workspace" | "present" | "inspect";
 type ViewportPreset = "minimal" | "study" | "analysis" | "debug";
+type MeshAnalyzeMode = "clean" | "curvature" | "quality" | "diagnostics" | "probe";
 type MeshAnalyzeViewPreset = "clean" | "directions" | "gauss" | "custom";
 type GeometryViewportQualityMode = "auto" | "fast-preview" | "full";
 type GeometryCameraViewPreset = "3d" | "planar";
@@ -37960,6 +37961,7 @@ const App: React.FC = () => {
   const [meshAnalyzeClampMin, setMeshAnalyzeClampMin] = useState("");
   const [meshAnalyzeClampMax, setMeshAnalyzeClampMax] = useState("");
   const [meshAnalyzePaletteInverted, setMeshAnalyzePaletteInverted] = useState(false);
+  const [meshAnalyzeMode, setMeshAnalyzeMode] = useState<MeshAnalyzeMode>("clean");
   const [meshAnalyzeViewPreset, setMeshAnalyzeViewPreset] = useState<MeshAnalyzeViewPreset>("clean");
   const [meshAnalyzeDiagnosticOverlayMode, setMeshAnalyzeDiagnosticOverlayMode] =
     useState<MeshAnalyzeDiagnosticOverlayMode>("none");
@@ -53214,6 +53216,7 @@ case "mobius":
   const meshAnalyzeCanShowCurvature = !!meshAnalyzeCurvatureArrays?.K?.length;
   const applyMeshAnalyzeViewPreset = useCallback(
     (preset: MeshAnalyzeViewPreset) => {
+      setMeshAnalyzeMode(preset === "clean" ? "clean" : "curvature");
       setMeshAnalyzeViewPreset(preset);
       setShowInViewportOverlayControls(true);
       setShowChartGrid(false);
@@ -53276,6 +53279,7 @@ case "mobius":
     setShowRidges(false);
     setShowValleys(false);
     setAnalysisFocusedSection("differential-geometry");
+    setMeshAnalyzeMode("clean");
     setSurfaceMeshTopologyStatus("Mesh Analyze opened with clean Gaussian curvature K.");
   }, [
     colorMode,
@@ -53608,6 +53612,85 @@ case "mobius":
         ? `Probe: point ${fmt3(meshAnalyzeProbePoint)}`
         : null;
   const meshAnalyzePaletteDirectionLabel = meshAnalyzePaletteInverted ? "Palette: high -> low" : "Palette: low -> high";
+  const handleApplyMeshAnalyzeMode = useCallback(
+    (mode: MeshAnalyzeMode) => {
+      setMeshAnalyzeMode(mode);
+      if (mode === "clean") {
+        applyMeshAnalyzeViewPreset("clean");
+        setSurfaceMeshTopologyStatus("Mode: Clean view. Curvature result is kept; extra overlays are off.");
+        return;
+      }
+      if (mode === "curvature") {
+        if (!meshAnalyzeCurvatureField) setColorMode("gaussian");
+        setShowInViewportOverlayControls(true);
+        setMeshAnalyzeDiagnosticOverlayMode("none");
+        setAnalysisFocusedSection("differential-geometry");
+        setMeshAnalyzeViewPreset("clean");
+        setSurfaceMeshTopologyStatus("Mode: Curvature. Range and palette controls are active.");
+        return;
+      }
+      if (mode === "quality") {
+        setShowInViewportOverlayControls(true);
+        setMeshAnalyzeDiagnosticOverlayMode("none");
+        setAnalysisFocusedSection("mesh-quality");
+        setSurfaceMeshTopologyStatus("Mode: Quality. Mesh quality details are active.");
+        return;
+      }
+      if (mode === "diagnostics") {
+        setShowInViewportOverlayControls(true);
+        setAnalysisFocusedSection("diagnostics");
+        setMeshAnalyzeDiagnosticKeepVisible(true);
+        if ((surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount ?? 0) > 0) {
+          handleHighlightMeshAnalyzeBoundary();
+        } else if ((surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount ?? 0) > 0) {
+          handleHighlightMeshAnalyzeDuplicates();
+        } else {
+          handleHighlightMeshAnalyzeBoundary();
+        }
+        return;
+      }
+      setProbeEnabled(true);
+      setInspectEnabled(true);
+      setShowInViewportOverlayControls(true);
+      setMeshAnalyzeDiagnosticOverlayMode("none");
+      setAnalysisFocusedSection("differential-geometry");
+      setSurfaceMeshTopologyStatus("Mode: Probe. Click the mesh to read K/H/k1/k2.");
+    },
+    [
+      applyMeshAnalyzeViewPreset,
+      handleHighlightMeshAnalyzeBoundary,
+      handleHighlightMeshAnalyzeDuplicates,
+      meshAnalyzeCurvatureField,
+      surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount,
+      surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount,
+    ]
+  );
+  const meshAnalyzeModeLabel =
+    meshAnalyzeMode === "clean"
+      ? "Clean"
+      : meshAnalyzeMode === "curvature"
+        ? "Curvature"
+        : meshAnalyzeMode === "quality"
+          ? "Quality"
+          : meshAnalyzeMode === "diagnostics"
+            ? "Diagnostics"
+            : "Probe";
+  const meshAnalyzeModeDetail =
+    meshAnalyzeMode === "diagnostics"
+      ? surfaceMeshAnalyzeDiagnostics
+        ? `${surfaceMeshAnalyzeDiagnostics.boundaryEdgeCount.toLocaleString()} boundary edges | ${surfaceMeshAnalyzeDiagnostics.duplicateVertexCount.toLocaleString()} coincident vertices`
+        : "Diagnostics not ready"
+      : meshAnalyzeMode === "quality"
+        ? surfaceMeshAnalyzeDiagnostics
+          ? `Euler chi ${surfaceMeshAnalyzeDiagnostics.eulerCharacteristic?.toLocaleString() ?? "unknown"} | ${
+              surfaceMeshAnalyzeDiagnostics.nonManifoldEdgeCount?.toLocaleString() ?? "unknown"
+            } non-manifold edges`
+          : "Quality not ready"
+        : meshAnalyzeMode === "probe"
+          ? meshAnalyzeProbeLabel ?? "Click mesh to record probe"
+          : meshAnalyzeCurvatureFieldLabel
+            ? `${meshAnalyzeCurvatureFieldLabel}${meshAnalyzeClampRange ? " clamped" : ""} | ${surfaceScienceCurvatureRangeSource}`
+            : "No curvature result selected";
   const meshAnalyzeScienceOverlayReady =
     surfaceViewerKind === "mesh" &&
     surfacesLeftTab === "analysis" &&
@@ -67194,6 +67277,40 @@ case "mobius":
                               zIndex: 17,
                             }}
                           >
+                            <span style={{ fontWeight: 850, color: "#0f172a" }}>Mode:</span>
+                            {([
+                              ["clean", "Clean"],
+                              ["curvature", "Curvature"],
+                              ["quality", "Quality"],
+                              ["diagnostics", "Diagnostics"],
+                              ["probe", "Probe"],
+                            ] as const).map(([mode, label]) => (
+                              <button
+                                key={`mesh-analyze-mode-${mode}`}
+                                type="button"
+                                data-testid={`mesh-analyze-mode-${mode}`}
+                                onClick={() => handleApplyMeshAnalyzeMode(mode)}
+                                aria-pressed={meshAnalyzeMode === mode}
+                                style={viewerControlButtonStyle(meshAnalyzeMode === mode, meshViewerControlsDensity)}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                            <span
+                              data-testid="mesh-analyze-mode-status"
+                              style={{
+                                border: "1px solid #bfdbfe",
+                                borderRadius: 999,
+                                background: "#ffffff",
+                                color: "#334155",
+                                padding: "2px 8px",
+                                fontSize: 10.5,
+                                fontWeight: 800,
+                              }}
+                            >
+                              Mode: {meshAnalyzeModeLabel} | {meshAnalyzeModeDetail}
+                            </span>
+                            <span style={{ width: 1, height: 20, background: "#cbd5e1", margin: "0 2px" }} />
                             <span style={{ fontWeight: 800, color: "#1e3a8a" }}>Pick:</span>
                             {SURFACE_MESH_TOPOLOGY_PICK_MODES.map((pickMode) => (
                               <button
@@ -67215,6 +67332,7 @@ case "mobius":
                               data-testid="mesh-analyze-probe-toggle"
                               onClick={() => {
                                 const nextProbeEnabled = !probeEnabled;
+                                setMeshAnalyzeMode(nextProbeEnabled ? "probe" : "clean");
                                 setProbeEnabled(nextProbeEnabled);
                                 setSurfaceMeshTopologyStatus(
                                   nextProbeEnabled
@@ -67243,6 +67361,7 @@ case "mobius":
                                 data-testid={`mesh-analysis-result-${resultMode}`}
                                 onClick={() => {
                                   setColorMode(resultMode);
+                                  setMeshAnalyzeMode(resultMode === "solid" ? "clean" : "curvature");
                                   if (resultMode === "solid") {
                                     setShowGaussMap(false);
                                     setShowPrincipalDirections(false);
@@ -67261,6 +67380,7 @@ case "mobius":
                             <button
                               type="button"
                               onClick={() => {
+                                setMeshAnalyzeMode("quality");
                                 setAnalysisFocusedSection("mesh-quality");
                                 setShowInViewportOverlayControls(true);
                               }}
@@ -67272,6 +67392,7 @@ case "mobius":
                             <button
                               type="button"
                               onClick={() => {
+                                setMeshAnalyzeMode("diagnostics");
                                 setAnalysisFocusedSection("diagnostics");
                                 setShowInViewportOverlayControls(true);
                               }}
@@ -67446,8 +67567,12 @@ case "mobius":
                               onClick={() => {
                                 setShowPrincipalDirections((value) => {
                                   const next = !value;
-                                  if (next) setMeshAnalyzeViewPreset("directions");
-                                  else if (!showGaussMap && !showChartGrid) setMeshAnalyzeViewPreset("clean");
+                                  if (next) {
+                                    setMeshAnalyzeMode("curvature");
+                                    setMeshAnalyzeViewPreset("directions");
+                                  } else if (!showGaussMap && !showChartGrid) {
+                                    setMeshAnalyzeViewPreset("clean");
+                                  }
                                   return next;
                                 });
                               }}
@@ -67477,8 +67602,12 @@ case "mobius":
                               onClick={() => {
                                 setShowGaussMap((value) => {
                                   const next = !value;
-                                  if (next) setMeshAnalyzeViewPreset("gauss");
-                                  else if (!showPrincipalDirections && !showChartGrid) setMeshAnalyzeViewPreset("clean");
+                                  if (next) {
+                                    setMeshAnalyzeMode("curvature");
+                                    setMeshAnalyzeViewPreset("gauss");
+                                  } else if (!showPrincipalDirections && !showChartGrid) {
+                                    setMeshAnalyzeViewPreset("clean");
+                                  }
                                   return next;
                                 });
                               }}
@@ -67506,6 +67635,7 @@ case "mobius":
                                 setShowBoundingBox(false);
                                 setCommandPreviewOverlaysVisible(false);
                                 setMeshAnalyzeViewPreset("clean");
+                                setMeshAnalyzeMode("clean");
                                 setMeshAnalyzeDiagnosticOverlayMode("none");
                                 setMeshAnalyzePaletteInverted(false);
                                 setMeshAnalyzeClampEnabled(false);
