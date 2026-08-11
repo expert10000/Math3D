@@ -65296,34 +65296,6 @@ case "mobius":
                         )}
                       </div>
                       <div style={{ display: "grid", gap: 5 }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, color: "#0f172a" }}>Display</div>
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          {([
-                            { id: "none", label: "None", color: "solid" as ColorMode, section: "differential-geometry" as AnalysisFocusedSection },
-                            { id: "mean", label: "H", color: "mean" as ColorMode, section: "differential-geometry" as AnalysisFocusedSection },
-                            { id: "gaussian", label: "K", color: "gaussian" as ColorMode, section: "differential-geometry" as AnalysisFocusedSection },
-                            { id: "k1", label: "k1", color: "k1" as ColorMode, section: "differential-geometry" as AnalysisFocusedSection },
-                            { id: "k2", label: "k2", color: "k2" as ColorMode, section: "differential-geometry" as AnalysisFocusedSection },
-                            { id: "quality", label: "Quality", color: null, section: "mesh-quality" as AnalysisFocusedSection },
-                            { id: "diagnostics", label: "Diagnostics", color: null, section: "diagnostics" as AnalysisFocusedSection },
-                          ] as const).map((option) => (
-                            <button
-                              key={`mesh-analysis-display-${option.id}`}
-                              type="button"
-                              onClick={() => {
-                                if (option.color) setColorMode(option.color);
-                                setAnalysisFocusedSection(option.section);
-                                if (option.id === "quality" || option.id === "diagnostics") setShowInViewportOverlayControls(true);
-                              }}
-                              aria-pressed={option.color ? colorMode === option.color : analysisFocusedSection === option.section}
-                              style={pill(option.color ? colorMode === option.color : analysisFocusedSection === option.section)}
-                            >
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div style={{ display: "grid", gap: 5 }}>
                         <div style={{ fontSize: 11, fontWeight: 800, color: "#0f172a" }}>Analysis</div>
                         <div style={{ display: "grid", gap: 4 }}>
                           {([
