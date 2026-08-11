@@ -53221,7 +53221,6 @@ case "mobius":
       setShowInViewportOverlayControls(true);
       setShowChartGrid(false);
       setShowBoundingBox(false);
-      setCommandPreviewOverlaysVisible(false);
       setShowGaussMap(false);
       setShowPrincipalDirections(false);
       setShowPrincipalNormalPlanes(false);
@@ -53269,7 +53268,6 @@ case "mobius":
     setShowInViewportOverlayControls(true);
     setShowChartGrid(false);
     setShowBoundingBox(false);
-    setCommandPreviewOverlaysVisible(false);
     setShowGaussMap(false);
     setShowPrincipalDirections(false);
     setShowPrincipalNormalPlanes(false);
@@ -67633,7 +67631,6 @@ case "mobius":
                                 setShowCurvatureLines(false);
                                 setShowChartGrid(false);
                                 setShowBoundingBox(false);
-                                setCommandPreviewOverlaysVisible(false);
                                 setMeshAnalyzeViewPreset("clean");
                                 setMeshAnalyzeMode("clean");
                                 setMeshAnalyzeDiagnosticOverlayMode("none");

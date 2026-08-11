@@ -611,7 +611,7 @@ test.describe("Mesh topology persistence and handoff", () => {
       await openMeshGallery(page);
       await expect(page.getByRole("button", { name: /Saved Split Demo/i }).first()).toBeVisible({ timeout: 15_000 });
       await page.getByRole("button", { name: /Saved Split Demo/i }).first().click();
-      await expect(page.getByText(/Opened saved Mesh example: Saved Split Demo/i).first()).toBeVisible();
+      await expect(page.getByTestId("app-status-bar")).toContainText(/Saved Split Demo/i);
 
       await openMeshGallery(page);
       await page.getByTestId("mesh-preset-card-mesh_knot").click();
