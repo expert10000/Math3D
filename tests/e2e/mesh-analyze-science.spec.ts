@@ -112,6 +112,7 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-clamp-toggle")).toBeChecked();
     await page.getByTestId("mesh-analyze-range-preset-full").click();
     await expect(page.getByTestId("mesh-analyze-range-source")).not.toContainText(/clamped/i);
+    await page.getByTestId("mesh-inspector-tab-diagnostics").click();
     await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Clean counts/i);
     await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Boundary:\s*0/i);
     await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Coincident:\s*0/i);
@@ -188,6 +189,7 @@ test("Mesh Analyze populates curvature range for torus knot preset", async () =>
     await expect(page.getByTestId("mesh-analyze-curvature-max")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analyze-curvature-mean")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analyze-curvature-std")).not.toContainText("n/a");
+    await page.getByTestId("mesh-inspector-tab-diagnostics").click();
     await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Boundary:\s*0/i);
     await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Coincident:\s*0/i);
     await expect(page.getByTestId("mesh-analyze-reset")).toContainText(/Reset view/i);
@@ -228,6 +230,7 @@ test("Mesh Analyze diagnostics highlight boundary and coincident issues in the v
     await page.setViewportSize({ width: 1920, height: 1080 });
 
     await openGeometryPrimitiveInMeshAnalyze(page, "box");
+    await page.getByTestId("mesh-inspector-tab-diagnostics").click();
 
     const boundaryCount = page.getByTestId("mesh-analyze-diagnostics-boundary-count");
     await expect(boundaryCount).toBeVisible({ timeout: 15_000 });

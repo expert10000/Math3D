@@ -65254,63 +65254,6 @@ case "mobius":
                             Clean mesh: closed, manifold, watertight.
                           </div>
                         )}
-                        {surfaceMeshAnalyzeDiagnostics?.cleanMesh && (
-                          <div
-                            data-testid="mesh-analyze-clean-counts"
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                              alignItems: "center",
-                              gap: 5,
-                              border: "1px solid #bbf7d0",
-                              borderRadius: 7,
-                              background: "#f8fff9",
-                              padding: "5px 6px",
-                              fontSize: 10,
-                              color: "#166534",
-                            }}
-                          >
-                            <strong style={{ gridColumn: "1 / -1" }}>Clean counts</strong>
-                            <button
-                              type="button"
-                              onClick={handleHighlightMeshAnalyzeBoundary}
-                              title="No boundary edges: mesh is closed"
-                              style={{
-                                border: "1px solid #86efac",
-                                borderRadius: 999,
-                                background: "#dcfce7",
-                                color: "#166534",
-                                padding: "3px 5px",
-                                font: "inherit",
-                                fontWeight: 850,
-                                cursor: "pointer",
-                                minWidth: 0,
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              Boundary: 0
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleHighlightMeshAnalyzeDuplicates}
-                              title="No coincident vertices found"
-                              style={{
-                                border: "1px solid #86efac",
-                                borderRadius: 999,
-                                background: "#dcfce7",
-                                color: "#166534",
-                                padding: "3px 5px",
-                                font: "inherit",
-                                fontWeight: 850,
-                                cursor: "pointer",
-                                minWidth: 0,
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              Coincident: 0
-                            </button>
-                          </div>
-                        )}
                         {surfaceMeshAnalyzeDiagnostics?.sphereSeamWarning && (
                           <div
                             style={{
@@ -65326,151 +65269,29 @@ case "mobius":
                             Sphere mesh has open boundary/seam; curvature/topology results may be unreliable.
                           </div>
                         )}
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "1fr 1fr",
-                            gap: "4px 8px",
-                            fontSize: 10.5,
-                            color: "#334155",
-                          }}
-                        >
-                          <div>
-                            <strong>Triangles:</strong>{" "}
-                            {surfaceMeshAnalyzeDiagnostics
-                              ? surfaceMeshAnalyzeDiagnostics.trianglesValid
-                                ? "valid"
-                                : `${surfaceMeshAnalyzeDiagnostics.invalidFaceCount.toLocaleString()} invalid, ${surfaceMeshAnalyzeDiagnostics.degenerateTriangleCount.toLocaleString()} degenerate`
-                              : "unknown"}
-                          </div>
-                          <button
-                            type="button"
-                            data-testid="mesh-analyze-diagnostics-boundary-count"
-                            onClick={handleHighlightMeshAnalyzeBoundary}
-                            disabled={!surfaceMeshAnalyzeDiagnostics}
-                            title={
-                              surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount
-                                ? "Highlight boundary edges in the viewport"
-                                : "No boundary edges: mesh is closed"
-                            }
-                            style={{
-                              border: surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount
-                                ? "1px solid #fed7aa"
-                                : "1px solid #bbf7d0",
-                              borderRadius: 6,
-                              background: surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount ? "#fff7ed" : "#f0fdf4",
-                              color: surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount ? "#9a3412" : "#166534",
-                              padding: "2px 4px",
-                              textAlign: "left",
-                              font: "inherit",
-                              cursor: surfaceMeshAnalyzeDiagnostics ? "pointer" : "default",
-                            }}
-                          >
-                            <strong>Boundary:</strong>{" "}
-                            {surfaceMeshAnalyzeDiagnostics
-                              ? surfaceMeshAnalyzeDiagnostics.boundaryEdgeCount === 0
-                                ? "0 clean"
-                                : surfaceMeshAnalyzeDiagnostics.boundaryEdgeCount.toLocaleString()
-                              : "unknown"}
-                          </button>
-                          <div>
-                            <strong>Non-manifold:</strong>{" "}
-                            {surfaceMeshAnalyzeDiagnostics?.nonManifoldEdgeCount.toLocaleString() ?? "unknown"}
-                          </div>
-                          <button
-                            type="button"
-                            data-testid="mesh-analyze-diagnostics-coincident-count"
-                            onClick={handleHighlightMeshAnalyzeDuplicates}
-                            disabled={!surfaceMeshAnalyzeDiagnostics}
-                            title={
-                              surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount
-                                ? "Highlight coincident vertices in the viewport"
-                                : "No coincident vertices found"
-                            }
-                            style={{
-                              border: surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount
-                                ? "1px solid #f5d0fe"
-                                : "1px solid #bbf7d0",
-                              borderRadius: 6,
-                              background: surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount ? "#fdf4ff" : "#f0fdf4",
-                              color: surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount ? "#86198f" : "#166534",
-                              padding: "2px 4px",
-                              textAlign: "left",
-                              font: "inherit",
-                              cursor: surfaceMeshAnalyzeDiagnostics ? "pointer" : "default",
-                            }}
-                          >
-                            <strong>Coincident:</strong>{" "}
-                            {surfaceMeshAnalyzeDiagnostics
-                              ? surfaceMeshAnalyzeDiagnostics.duplicateVertexCount === 0
-                                ? "0 clean"
-                                : surfaceMeshAnalyzeDiagnostics.duplicateVertexCount.toLocaleString()
-                              : "unknown"}
-                          </button>
-                          <div>
-                            <strong>Euler chi:</strong>{" "}
-                            {surfaceMeshAnalyzeDiagnostics?.eulerCharacteristic?.toLocaleString() ?? "unknown"}
-                          </div>
-                          <div>
-                            <strong>Watertight:</strong>{" "}
-                            {surfaceMeshAnalyzeDiagnostics?.watertight == null
-                              ? "unknown"
-                              : surfaceMeshAnalyzeDiagnostics.watertight
-                                ? "yes"
-                                : "no"}
-                          </div>
-                        </div>
                         {surfaceMeshAnalyzeDiagnostics?.cleanMesh ? (
                           <div
                             style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: 8,
-                              flexWrap: "wrap",
+                              display: "grid",
+                              gap: 6,
                               fontSize: 10.5,
                               color: "#166534",
                               fontWeight: 750,
                             }}
                           >
-                            <span>No repair actions needed.</span>
+                            <span>No repair actions needed. Details are in Inspector &gt; Diagnostics.</span>
                             <button type="button" onClick={handleRecomputeMeshAnalyzeDiagnostics} style={{ fontSize: 11 }}>
                               Recompute diagnostics
                             </button>
                           </div>
                         ) : (
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                            <button
-                              type="button"
-                              onClick={handleHighlightMeshAnalyzeBoundary}
-                              disabled={!surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount}
-                              style={{ fontSize: 11 }}
-                            >
-                              Highlight boundary
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleHighlightMeshAnalyzeDuplicates}
-                              disabled={!surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount}
-                              style={{ fontSize: 11 }}
-                            >
-                              Highlight duplicates
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handlePreviewMeshAnalyzeWeld}
-                              disabled={
-                                !surfaceMeshAnalyzeDiagnostics ||
-                                (surfaceMeshAnalyzeDiagnostics.boundaryEdgeCount <= 0 &&
-                                  surfaceMeshAnalyzeDiagnostics.duplicateVertexCount <= 0)
-                              }
-                              style={{ fontSize: 11 }}
-                            >
-                              Weld preview
-                            </button>
                             <button type="button" onClick={handleRecomputeMeshAnalyzeDiagnostics} style={{ fontSize: 11 }}>
                               Recompute diagnostics
                             </button>
+                            <span style={{ fontSize: 10.5, color: "#475569", fontWeight: 650 }}>
+                              Repair actions are in Inspector &gt; Diagnostics.
+                            </span>
                           </div>
                         )}
                       </div>
@@ -70489,6 +70310,11 @@ case "mobius":
                       onChangeMeshInteractionHideWireframe={setMeshInteractionHideWireframe}
                       meshInspectorStats={surfaceInspectorMeshStats}
                       meshTopologyDetails={surfaceInspectorTopologyDetails}
+                      meshAnalyzeDiagnostics={surfaceMeshAnalyzeDiagnostics}
+                      onHighlightMeshAnalyzeBoundary={handleHighlightMeshAnalyzeBoundary}
+                      onHighlightMeshAnalyzeDuplicates={handleHighlightMeshAnalyzeDuplicates}
+                      onPreviewMeshAnalyzeWeld={handlePreviewMeshAnalyzeWeld}
+                      onRecomputeMeshAnalyzeDiagnostics={handleRecomputeMeshAnalyzeDiagnostics}
                       badTriangleCount={surfaceInspectorBadTriangleCount}
                       geodesicPathLength={geodesicHeatLength}
                       curvatureRanges={surfaceInspectorCurvatureRanges}
@@ -104490,6 +104316,21 @@ onChangeImplicitExpr,
 
 /* ---------------- Right Panel (domain previews) ---------------- */
 
+type MeshAnalyzeDiagnosticsSummary = {
+  trianglesValid: boolean;
+  invalidFaceCount: number;
+  degenerateTriangleCount: number;
+  boundaryEdgeCount: number;
+  nonManifoldEdgeCount: number;
+  duplicateVertexCount: number;
+  eulerCharacteristic: number | null;
+  watertight: boolean | null;
+  boundaryLoopCount: number;
+  weldTolerance: number;
+  cleanMesh: boolean;
+  sphereSeamWarning: boolean;
+};
+
 type SurfacesRightPanelProps = {
   viewerKind: SurfaceViewerKind;
   surfaceId: SurfaceId;
@@ -104640,6 +104481,11 @@ type SurfacesRightPanelProps = {
     connectedComponentCount: number | null;
   };
   meshTopologyDetails: MeshTopologyInspectorDetails | null;
+  meshAnalyzeDiagnostics: MeshAnalyzeDiagnosticsSummary | null;
+  onHighlightMeshAnalyzeBoundary: () => void;
+  onHighlightMeshAnalyzeDuplicates: () => void;
+  onPreviewMeshAnalyzeWeld: () => void;
+  onRecomputeMeshAnalyzeDiagnostics: () => void;
   badTriangleCount: number | null;
   geodesicPathLength: number | null;
   curvatureRanges: {
@@ -104713,7 +104559,7 @@ type SurfacesRightPanelProps = {
   onRemoveImplicitDomainPreset: (id: string) => void;
 };
 
-type InspectorPanelTab = "object" | "selection" | "probe" | "analysis" | "warnings";
+type InspectorPanelTab = "object" | "selection" | "probe" | "analysis" | "diagnostics" | "warnings";
 type AnalysisResultsView = "show-all" | "current-screen";
 
 const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
@@ -104859,6 +104705,11 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   onChangeMeshInteractionHideWireframe,
   meshInspectorStats,
   meshTopologyDetails,
+  meshAnalyzeDiagnostics,
+  onHighlightMeshAnalyzeBoundary,
+  onHighlightMeshAnalyzeDuplicates,
+  onPreviewMeshAnalyzeWeld,
+  onRecomputeMeshAnalyzeDiagnostics,
   badTriangleCount,
   geodesicPathLength,
   curvatureRanges,
@@ -105623,6 +105474,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     { id: "selection", label: "Selection" },
     { id: "probe", label: "Probe" },
     { id: "analysis", label: "Results" },
+    { id: "diagnostics", label: "Diagnostics" },
     { id: "warnings", label: "Warnings" },
   ];
   const stickyPickPoint = probeInfo?.point ?? inspectPos;
@@ -106145,6 +105997,239 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               </>
             )}
           </>
+        )}
+
+        {inspectorPanelTab === "diagnostics" && (
+          <div data-testid="mesh-inspector-diagnostics-card" style={inspectorSectionCard}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8 }}>
+              <div style={inspectorSectionTitle}>Diagnostics</div>
+              <span
+                style={{
+                  border: `1px solid ${meshAnalyzeDiagnostics?.cleanMesh ? "#bbf7d0" : "#fed7aa"}`,
+                  borderRadius: 999,
+                  background: meshAnalyzeDiagnostics?.cleanMesh ? "#f0fdf4" : "#fff7ed",
+                  color: meshAnalyzeDiagnostics?.cleanMesh ? "#166534" : "#9a3412",
+                  padding: "2px 8px",
+                  fontSize: 10,
+                  fontWeight: 850,
+                }}
+              >
+                {meshAnalyzeDiagnostics ? (meshAnalyzeDiagnostics.cleanMesh ? "clean mesh" : "needs review") : "not ready"}
+              </span>
+            </div>
+            {meshAnalyzeDiagnostics?.cleanMesh && (
+              <div
+                style={{
+                  border: "1px solid #bbf7d0",
+                  borderRadius: 7,
+                  background: "#f0fdf4",
+                  color: "#166534",
+                  padding: "6px 7px",
+                  fontSize: 11,
+                  fontWeight: 800,
+                  marginBottom: 8,
+                }}
+              >
+                Clean mesh: closed, manifold, watertight.
+              </div>
+            )}
+            {meshAnalyzeDiagnostics?.sphereSeamWarning && (
+              <div
+                style={{
+                  border: "1px solid #fed7aa",
+                  borderRadius: 7,
+                  background: "#fff7ed",
+                  color: "#9a3412",
+                  padding: "6px 7px",
+                  fontSize: 11,
+                  fontWeight: 750,
+                  marginBottom: 8,
+                }}
+              >
+                Sphere mesh has open boundary/seam; curvature/topology results may be unreliable.
+              </div>
+            )}
+            {meshAnalyzeDiagnostics?.cleanMesh && (
+              <div
+                data-testid="mesh-analyze-clean-counts"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 6,
+                  border: "1px solid #bbf7d0",
+                  borderRadius: 7,
+                  background: "#f8fff9",
+                  padding: "7px",
+                  fontSize: 11,
+                  color: "#166534",
+                  marginBottom: 9,
+                }}
+              >
+                <strong style={{ gridColumn: "1 / -1" }}>Clean counts</strong>
+                <button
+                  type="button"
+                  onClick={onHighlightMeshAnalyzeBoundary}
+                  title="No boundary edges: mesh is closed"
+                  style={{
+                    border: "1px solid #86efac",
+                    borderRadius: 999,
+                    background: "#dcfce7",
+                    color: "#166534",
+                    padding: "4px 6px",
+                    font: "inherit",
+                    fontWeight: 850,
+                    cursor: "pointer",
+                  }}
+                >
+                  Boundary: 0
+                </button>
+                <button
+                  type="button"
+                  onClick={onHighlightMeshAnalyzeDuplicates}
+                  title="No coincident vertices found"
+                  style={{
+                    border: "1px solid #86efac",
+                    borderRadius: 999,
+                    background: "#dcfce7",
+                    color: "#166534",
+                    padding: "4px 6px",
+                    font: "inherit",
+                    fontWeight: 850,
+                    cursor: "pointer",
+                  }}
+                >
+                  Coincident: 0
+                </button>
+              </div>
+            )}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "6px 8px",
+                fontSize: 11,
+                color: "#334155",
+                marginBottom: 10,
+              }}
+            >
+              <div>
+                <strong>Triangles:</strong>{" "}
+                {meshAnalyzeDiagnostics
+                  ? meshAnalyzeDiagnostics.trianglesValid
+                    ? "valid"
+                    : `${meshAnalyzeDiagnostics.invalidFaceCount.toLocaleString()} invalid, ${meshAnalyzeDiagnostics.degenerateTriangleCount.toLocaleString()} degenerate`
+                  : "unknown"}
+              </div>
+              <button
+                type="button"
+                data-testid="mesh-analyze-diagnostics-boundary-count"
+                onClick={onHighlightMeshAnalyzeBoundary}
+                disabled={!meshAnalyzeDiagnostics}
+                title={
+                  meshAnalyzeDiagnostics?.boundaryEdgeCount
+                    ? "Highlight boundary edges in the viewport"
+                    : "No boundary edges: mesh is closed"
+                }
+                style={{
+                  border: meshAnalyzeDiagnostics?.boundaryEdgeCount ? "1px solid #fed7aa" : "1px solid #bbf7d0",
+                  borderRadius: 6,
+                  background: meshAnalyzeDiagnostics?.boundaryEdgeCount ? "#fff7ed" : "#f0fdf4",
+                  color: meshAnalyzeDiagnostics?.boundaryEdgeCount ? "#9a3412" : "#166534",
+                  padding: "3px 5px",
+                  textAlign: "left",
+                  font: "inherit",
+                  cursor: meshAnalyzeDiagnostics ? "pointer" : "default",
+                }}
+              >
+                <strong>Boundary:</strong>{" "}
+                {meshAnalyzeDiagnostics
+                  ? meshAnalyzeDiagnostics.boundaryEdgeCount === 0
+                    ? "0 clean"
+                    : meshAnalyzeDiagnostics.boundaryEdgeCount.toLocaleString()
+                  : "unknown"}
+              </button>
+              <div>
+                <strong>Non-manifold:</strong>{" "}
+                {meshAnalyzeDiagnostics?.nonManifoldEdgeCount.toLocaleString() ?? "unknown"}
+              </div>
+              <button
+                type="button"
+                data-testid="mesh-analyze-diagnostics-coincident-count"
+                onClick={onHighlightMeshAnalyzeDuplicates}
+                disabled={!meshAnalyzeDiagnostics}
+                title={
+                  meshAnalyzeDiagnostics?.duplicateVertexCount
+                    ? "Highlight coincident vertices in the viewport"
+                    : "No coincident vertices found"
+                }
+                style={{
+                  border: meshAnalyzeDiagnostics?.duplicateVertexCount ? "1px solid #f5d0fe" : "1px solid #bbf7d0",
+                  borderRadius: 6,
+                  background: meshAnalyzeDiagnostics?.duplicateVertexCount ? "#fdf4ff" : "#f0fdf4",
+                  color: meshAnalyzeDiagnostics?.duplicateVertexCount ? "#86198f" : "#166534",
+                  padding: "3px 5px",
+                  textAlign: "left",
+                  font: "inherit",
+                  cursor: meshAnalyzeDiagnostics ? "pointer" : "default",
+                }}
+              >
+                <strong>Coincident:</strong>{" "}
+                {meshAnalyzeDiagnostics
+                  ? meshAnalyzeDiagnostics.duplicateVertexCount === 0
+                    ? "0 clean"
+                    : meshAnalyzeDiagnostics.duplicateVertexCount.toLocaleString()
+                  : "unknown"}
+              </button>
+              <div>
+                <strong>Euler chi:</strong> {meshAnalyzeDiagnostics?.eulerCharacteristic?.toLocaleString() ?? "unknown"}
+              </div>
+              <div>
+                <strong>Watertight:</strong>{" "}
+                {meshAnalyzeDiagnostics?.watertight == null ? "unknown" : meshAnalyzeDiagnostics.watertight ? "yes" : "no"}
+              </div>
+            </div>
+            {meshAnalyzeDiagnostics?.cleanMesh ? (
+              <div style={{ fontSize: 11, color: "#166534", fontWeight: 750, display: "grid", gap: 8 }}>
+                <span>No repair actions needed.</span>
+                <button type="button" onClick={onRecomputeMeshAnalyzeDiagnostics} style={{ fontSize: 11 }}>
+                  Recompute diagnostics
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={onHighlightMeshAnalyzeBoundary}
+                  disabled={!meshAnalyzeDiagnostics?.boundaryEdgeCount}
+                  style={{ fontSize: 11 }}
+                >
+                  Highlight boundary
+                </button>
+                <button
+                  type="button"
+                  onClick={onHighlightMeshAnalyzeDuplicates}
+                  disabled={!meshAnalyzeDiagnostics?.duplicateVertexCount}
+                  style={{ fontSize: 11 }}
+                >
+                  Highlight duplicates
+                </button>
+                <button
+                  type="button"
+                  onClick={onPreviewMeshAnalyzeWeld}
+                  disabled={
+                    !meshAnalyzeDiagnostics ||
+                    (meshAnalyzeDiagnostics.boundaryEdgeCount <= 0 && meshAnalyzeDiagnostics.duplicateVertexCount <= 0)
+                  }
+                  style={{ fontSize: 11 }}
+                >
+                  Weld preview
+                </button>
+                <button type="button" onClick={onRecomputeMeshAnalyzeDiagnostics} style={{ fontSize: 11 }}>
+                  Recompute diagnostics
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         {inspectorPanelTab === "warnings" && (
