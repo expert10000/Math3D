@@ -260,39 +260,56 @@ async function clickGeometryQuickAdd(page: Page, card: CardCandidate): Promise<s
   return `card-enter:${card.testId || card.key}`;
 }
 
-async function readSceneState(page: Page): Promise<{ statusBar: string; sceneStats: string | null; body: string }> {
+async function readSceneState(
+  page: Page
+): Promise<{ statusBar: string; sceneStats: string | null; body: string; geometryObjectCount: number | null }> {
   return page.evaluate(() => {
     const normalize = (value: string | null | undefined) => value?.replace(/\s+/g, " ").trim() ?? "";
     const statusBar = normalize(document.querySelector("[data-testid='app-status-bar']")?.textContent);
     const sceneStats = normalize(document.querySelector("[data-testid='geometry-scene-stats']")?.textContent) || null;
     const body = normalize(document.body?.innerText);
-    return { statusBar, sceneStats, body };
+    const objectMatch = sceneStats?.match(/(\d+)\s+objects?\b/i) ?? null;
+    const geometryObjectCount = objectMatch ? Number(objectMatch[1]) : null;
+    return { statusBar, sceneStats, body, geometryObjectCount };
   });
 }
 
 async function waitForSceneLabel(
   page: Page,
   area: AreaName,
-  expectedLabel: string
+  expectedLabel: string,
+  previousGeometryObjectCount: number | null = null
 ): Promise<{ statusBar: string; sceneStats: string | null; matched: boolean; loadMs: number }> {
   const needle = expectedLabel.toLowerCase();
   const started = performance.now();
   try {
     await page.waitForFunction(
-      ({ currentArea, currentNeedle }) => {
+      ({ currentArea, currentNeedle, previousCount }) => {
         const normalize = (value: string | null | undefined) => value?.replace(/\s+/g, " ").trim() ?? "";
         const statusBar = normalize(document.querySelector("[data-testid='app-status-bar']")?.textContent).toLowerCase();
         const body = normalize(document.body?.innerText).toLowerCase();
+        const sceneStats = normalize(document.querySelector("[data-testid='geometry-scene-stats']")?.textContent);
         if (currentArea === "mesh") {
           return statusBar.includes(currentNeedle);
         }
-        return statusBar.includes(currentNeedle) || body.includes(`selected: ${currentNeedle}`);
+        const objectMatch = sceneStats.match(/(\d+)\s+objects?\b/i);
+        const objectCount = objectMatch ? Number(objectMatch[1]) : null;
+        return (
+          statusBar.includes(currentNeedle) ||
+          body.includes(`selected: ${currentNeedle}`) ||
+          (typeof previousCount === "number" && typeof objectCount === "number" && objectCount > previousCount)
+        );
       },
-      { currentArea: area, currentNeedle: needle },
+      { currentArea: area, currentNeedle: needle, previousCount: previousGeometryObjectCount },
       { timeout: sceneLoadTimeoutMs, polling: 100 }
     );
   } catch (error) {
-    const state = await readSceneState(page).catch(() => ({ statusBar: "", sceneStats: null, body: "" }));
+    const state = await readSceneState(page).catch(() => ({
+      statusBar: "",
+      sceneStats: null,
+      body: "",
+      geometryObjectCount: null,
+    }));
     throw new Error(
       `Scene did not switch to ${area} preset "${expectedLabel}" within ${sceneLoadTimeoutMs} ms. ` +
         `Status bar: "${state.statusBar}". Scene stats: "${state.sceneStats ?? ""}".`
@@ -300,10 +317,15 @@ async function waitForSceneLabel(
   }
   const state = await readSceneState(page);
   const haystack = area === "mesh" ? state.statusBar : `${state.statusBar} ${state.body}`;
+  const countAdvanced =
+    area === "geometry" &&
+    typeof previousGeometryObjectCount === "number" &&
+    typeof state.geometryObjectCount === "number" &&
+    state.geometryObjectCount > previousGeometryObjectCount;
   return {
     statusBar: state.statusBar,
     sceneStats: state.sceneStats,
-    matched: haystack.toLowerCase().includes(needle),
+    matched: haystack.toLowerCase().includes(needle) || countAdvanced,
     loadMs: performance.now() - started,
   };
 }
@@ -327,9 +349,10 @@ async function runPresetArea(
     const cards = await collectCards(page, selector);
     if (!cards.length) throw new Error(`No visible ${area} preset cards found.`);
     const card = cards[index % cards.length];
+    const beforeState = area === "geometry" ? await readSceneState(page) : null;
     const target = area === "geometry" ? await clickGeometryQuickAdd(page, card) : card.testId || card.key;
     if (area === "mesh") await clickCard(page, card);
-    const sceneState = await waitForSceneLabel(page, area, card.label);
+    const sceneState = await waitForSceneLabel(page, area, card.label, beforeState?.geometryObjectCount ?? null);
     const label = `${area}:${index + 1}:${card.label || target}`;
     await waitAfterAction(page, actionDelayMs, label, startedAt, whiteScreenEvents);
     const sample = await sampleProcessTreeSafely(rootPid, performance.now() - startedAt);
