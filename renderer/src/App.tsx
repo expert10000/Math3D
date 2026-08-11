@@ -37963,6 +37963,7 @@ const App: React.FC = () => {
     useState<MeshAnalyzeDiagnosticOverlayMode>("none");
   const [meshAnalyzeDiagnosticPulseId, setMeshAnalyzeDiagnosticPulseId] = useState(0);
   const [meshAnalyzeDiagnosticKeepVisible, setMeshAnalyzeDiagnosticKeepVisible] = useState(true);
+  const meshAnalyzeAutoDefaultKeyRef = useRef<string | null>(null);
   const [meshAnalyzeProbeHistory, setMeshAnalyzeProbeHistory] = useState<MeshAnalyzeProbeHistoryEntry[]>([]);
   const [showRidges, setShowRidges] = useState(false);
   const [showValleys, setShowValleys] = useState(false);
@@ -53208,6 +53209,26 @@ case "mobius":
   };
   const meshAnalyzeCurvatureArrays =
     surfaceViewerKind === "mesh" && surfaceMeshCurvatures ? surfaceMeshCurvatures : selectionCurvatures;
+  useEffect(() => {
+    if (surfaceViewerKind !== "mesh" || surfacesLeftTab !== "analysis" || !surfaceMeshData) return;
+    if (!meshAnalyzeCurvatureArrays?.K?.length) return;
+    const autoDefaultKey = `${surfaceMeshData.label}:${surfaceMeshData.positions.length}:${surfaceMeshData.indices?.length ?? 0}`;
+    if (colorMode !== "solid") {
+      meshAnalyzeAutoDefaultKeyRef.current = autoDefaultKey;
+      return;
+    }
+    if (meshAnalyzeAutoDefaultKeyRef.current === autoDefaultKey) return;
+    meshAnalyzeAutoDefaultKeyRef.current = autoDefaultKey;
+    setColorMode("gaussian");
+    setAnalysisFocusedSection("differential-geometry");
+    setSurfaceMeshTopologyStatus("Mesh Analyze opened with Gaussian curvature K.");
+  }, [
+    colorMode,
+    meshAnalyzeCurvatureArrays?.K,
+    surfaceMeshData,
+    surfaceViewerKind,
+    surfacesLeftTab,
+  ]);
   const surfaceScienceCurvatureMask =
     meshAnalyzeRangeMode === "selected" &&
     selectionMask?.count &&
@@ -53244,6 +53265,12 @@ case "mobius":
           : primaryOverlay.colorMode === "k2"
             ? "k2"
             : null;
+  useEffect(() => {
+    if (surfaceViewerKind !== "mesh" || surfacesLeftTab !== "analysis") return;
+    if (meshAnalyzeCurvatureField || !showGaussMap) return;
+    setShowGaussMap(false);
+    setSurfaceMeshTopologyStatus("Gauss map hidden because no curvature result is selected.");
+  }, [meshAnalyzeCurvatureField, showGaussMap, surfaceViewerKind, surfacesLeftTab]);
   const meshAnalyzeCurvatureFieldLabel =
     meshAnalyzeCurvatureField === "K"
       ? "Gaussian curvature K"
@@ -67346,8 +67373,15 @@ case "mobius":
                               <button
                                 key={`mesh-analysis-result-${resultMode}`}
                                 type="button"
+                                data-testid={`mesh-analysis-result-${resultMode}`}
                                 onClick={() => {
                                   setColorMode(resultMode);
+                                  if (resultMode === "solid") {
+                                    setShowGaussMap(false);
+                                    setShowPrincipalDirections(false);
+                                    setShowPrincipalLines(false);
+                                    setShowCurvatureLines(false);
+                                  }
                                   setAnalysisFocusedSection(section);
                                 }}
                                 aria-pressed={colorMode === resultMode}
@@ -67517,8 +67551,13 @@ case "mobius":
                             <button
                               type="button"
                               onClick={() => setShowGaussMap((value) => !value)}
+                              disabled={!meshAnalyzeCurvatureField}
+                              title={meshAnalyzeCurvatureField ? "Toggle Gauss map" : "Select K, H, k1, or k2 before showing Gauss map"}
                               aria-pressed={showGaussMap}
-                              style={viewerControlButtonStyle(showGaussMap, meshViewerControlsDensity)}
+                              style={{
+                                ...viewerControlButtonStyle(showGaussMap, meshViewerControlsDensity),
+                                opacity: meshAnalyzeCurvatureField ? 1 : 0.55,
+                              }}
                             >
                               Gauss map
                             </button>
@@ -67540,7 +67579,7 @@ case "mobius":
                               }}
                               style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
                             >
-                              Reset
+                              Reset view
                             </button>
                           </div>
                         ) : (
@@ -68474,7 +68513,47 @@ case "mobius":
                                 )}
                               </div>
                             ) : (
-                              <div style={{ color: "#475569" }}>Result: none. Choose K, H, k1, or k2 for a curvature range.</div>
+                              <div
+                                data-testid="mesh-analyze-result-off"
+                                style={{
+                                  border: "1px solid #dbeafe",
+                                  borderRadius: 7,
+                                  background: "#f8fbff",
+                                  color: "#334155",
+                                  padding: "7px",
+                                  display: "grid",
+                                  gap: 6,
+                                }}
+                              >
+                                <strong style={{ color: "#0f172a" }}>No curvature result selected</strong>
+                                <div style={{ color: "#64748b", fontSize: 10 }}>
+                                  Select K or H to restore curvature coloring and range statistics.
+                                </div>
+                                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                  <button
+                                    type="button"
+                                    data-testid="mesh-analyze-show-k"
+                                    onClick={() => {
+                                      setColorMode("gaussian");
+                                      setAnalysisFocusedSection("differential-geometry");
+                                    }}
+                                    style={{ ...viewerControlButtonStyle(false, "compact"), fontSize: 10 }}
+                                  >
+                                    Show K
+                                  </button>
+                                  <button
+                                    type="button"
+                                    data-testid="mesh-analyze-show-h"
+                                    onClick={() => {
+                                      setColorMode("mean");
+                                      setAnalysisFocusedSection("differential-geometry");
+                                    }}
+                                    style={{ ...viewerControlButtonStyle(false, "compact"), fontSize: 10 }}
+                                  >
+                                    Show H
+                                  </button>
+                                </div>
+                              </div>
                             )}
                             <div
                               style={{
