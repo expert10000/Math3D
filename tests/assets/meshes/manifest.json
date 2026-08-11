@@ -1,0 +1,303 @@
+{
+  "downloads": [
+    {
+      "bytes": 49137,
+      "dest": "standard/06_suzanne.obj",
+      "name": "Suzanne",
+      "role": "small organic / selection / subdivision",
+      "sha256": "d8684326f9bd8cfc24d3d302c1042fa16f63d2e66e49ed56b413fa20bed271e6",
+      "source": "alecjacobson/common-3d-test-models",
+      "status": "ok",
+      "url": "https://raw.githubusercontent.com/alecjacobson/common-3d-test-models/master/data/suzanne.obj"
+    },
+    {
+      "bytes": 379559,
+      "dest": "standard/07_fandisk.obj",
+      "name": "Fandisk",
+      "role": "CAD-like sharp/smooth feature testing",
+      "sha256": "ea5bab2fbf545b1915f0d9faf6cc61ff8c18e0d8174ad61f8e35de15d8f6e3f8",
+      "source": "alecjacobson/common-3d-test-models",
+      "status": "ok",
+      "url": "https://raw.githubusercontent.com/alecjacobson/common-3d-test-models/master/data/fandisk.obj"
+    },
+    {
+      "bytes": 2408417,
+      "dest": "standard/08_stanford_bunny.obj",
+      "name": "Stanford Bunny",
+      "role": "general organic triangular mesh",
+      "sha256": "1eb35d1e21ce99e5ce911353b6be278990713448dd9e8f5c9387f9de39b32205",
+      "source": "alecjacobson/common-3d-test-models / Stanford",
+      "status": "ok",
+      "url": "https://raw.githubusercontent.com/alecjacobson/common-3d-test-models/master/data/stanford-bunny.obj"
+    },
+    {
+      "bytes": 330624,
+      "dest": "standard/09_spot_cow.obj",
+      "name": "Spot",
+      "role": "medium organic surface",
+      "sha256": "0738b5e8608fed74e5e8c7aa8dd0af97b4b74f9f6cbf7aac84cd7e40b2e44a75",
+      "source": "alecjacobson/common-3d-test-models / Keenan Crane",
+      "status": "ok",
+      "url": "https://raw.githubusercontent.com/alecjacobson/common-3d-test-models/master/data/spot.obj"
+    },
+    {
+      "bytes": 11285384,
+      "dest": "standard/10_3dbenchy.stl",
+      "name": "3DBenchy",
+      "role": "real-world engineering-style STL",
+      "sha256": "6ab57f1c3f8e86bc3cbd302c6fa6270acf06277c6335454e922419c25d42e97e",
+      "source": "CreativeTools/3DBenchy",
+      "status": "ok",
+      "url": "https://raw.githubusercontent.com/CreativeTools/3DBenchy/master/Single-part/3DBenchy.stl"
+    },
+    {
+      "bytes": 4634780,
+      "dest": "standard/11_armadillo.obj",
+      "name": "Armadillo",
+      "role": "large organic mesh",
+      "sha256": "d2fd040334c12b16804fbcb9962391232cc24708244617f931baaa871210563e",
+      "source": "alecjacobson/common-3d-test-models / Stanford",
+      "status": "ok",
+      "url": "https://raw.githubusercontent.com/alecjacobson/common-3d-test-models/master/data/armadillo.obj"
+    },
+    {
+      "bytes": 11817802,
+      "dest": "stress/12_dragon_medium.obj",
+      "name": "XYZ Dragon",
+      "role": "medium stress mesh",
+      "sha256": "5d7106b58f2ac0d017758480fe607c5b6bf7d6201d930d2dd1ba7022c4d281c0",
+      "source": "alecjacobson/common-3d-test-models / Stanford",
+      "status": "ok",
+      "url": "https://raw.githubusercontent.com/alecjacobson/common-3d-test-models/master/data/xyzrgb_dragon.obj"
+    }
+  ],
+  "generated": [
+    {
+      "computedReference": {
+        "boundaryEdges": 0,
+        "closedByEdgeIncidence": true,
+        "components": 1,
+        "edges": 6,
+        "eulerCharacteristic": 2,
+        "faces": 4,
+        "nonManifoldEdges": 0,
+        "vertices": 4
+      },
+      "expected": {
+        "boundaryEdges": 0,
+        "components": 1,
+        "edges": 6,
+        "eulerCharacteristic": 2,
+        "faces": 4,
+        "nonManifoldEdges": 0,
+        "vertices": 4
+      },
+      "file": "basic/01_tetrahedron.obj",
+      "generated": true,
+      "purpose": "minimal closed triangular manifold"
+    },
+    {
+      "computedReference": {
+        "boundaryEdges": 0,
+        "closedByEdgeIncidence": true,
+        "components": 1,
+        "edges": 18,
+        "eulerCharacteristic": 2,
+        "faces": 12,
+        "nonManifoldEdges": 0,
+        "vertices": 8
+      },
+      "expected": {
+        "boundaryEdges": 0,
+        "components": 1,
+        "edges": 18,
+        "eulerCharacteristic": 2,
+        "faces": 12,
+        "nonManifoldEdges": 0,
+        "vertices": 8
+      },
+      "file": "basic/02_cube.obj",
+      "generated": true,
+      "purpose": "sharp triangulated manifold"
+    },
+    {
+      "computedReference": {
+        "boundaryEdges": 0,
+        "closedByEdgeIncidence": true,
+        "components": 1,
+        "edges": 192,
+        "eulerCharacteristic": 2,
+        "faces": 128,
+        "nonManifoldEdges": 0,
+        "vertices": 66
+      },
+      "file": "basic/04_cylinder.obj",
+      "generated": true,
+      "purpose": "mixed flat/curved geometry and edge loops"
+    },
+    {
+      "computedReference": {
+        "boundaryEdges": 0,
+        "closedByEdgeIncidence": true,
+        "components": 1,
+        "edges": 1536,
+        "eulerCharacteristic": 0,
+        "faces": 1024,
+        "nonManifoldEdges": 0,
+        "vertices": 512
+      },
+      "expected": {
+        "boundaryEdges": 0,
+        "components": 1,
+        "edges": 1536,
+        "eulerCharacteristic": 0,
+        "faces": 1024,
+        "genus": 1,
+        "nonManifoldEdges": 0,
+        "vertices": 512
+      },
+      "file": "basic/05_torus.obj",
+      "generated": true,
+      "purpose": "closed genus-1 topology"
+    },
+    {
+      "computedReference": {
+        "boundaryEdges": 4,
+        "closedByEdgeIncidence": false,
+        "components": 1,
+        "edges": 17,
+        "eulerCharacteristic": 1,
+        "faces": 10,
+        "nonManifoldEdges": 0,
+        "vertices": 8
+      },
+      "expected": {
+        "boundaryEdges": 4,
+        "boundaryLoops": 1,
+        "closed": false,
+        "components": 1,
+        "faces": 10,
+        "nonManifoldEdges": 0,
+        "vertices": 8
+      },
+      "file": "problematic/15_open_boundary.obj",
+      "generated": true,
+      "purpose": "one square boundary loop"
+    },
+    {
+      "computedReference": {
+        "boundaryEdges": 6,
+        "closedByEdgeIncidence": false,
+        "components": 1,
+        "edges": 7,
+        "eulerCharacteristic": 1,
+        "faces": 3,
+        "nonManifoldEdges": 1,
+        "vertices": 5
+      },
+      "expected": {
+        "closed": false,
+        "components": 1,
+        "faces": 3,
+        "nonManifoldEdges": 1,
+        "vertices": 5
+      },
+      "file": "problematic/16_non_manifold_edge.obj",
+      "generated": true,
+      "purpose": "exactly three faces share one edge"
+    },
+    {
+      "computedReference": {
+        "boundaryEdges": 0,
+        "closedByEdgeIncidence": true,
+        "components": 3,
+        "edges": 42,
+        "eulerCharacteristic": 6,
+        "faces": 28,
+        "nonManifoldEdges": 0,
+        "vertices": 20
+      },
+      "expected": {
+        "components": 3
+      },
+      "file": "problematic/17_disconnected_components.obj",
+      "generated": true,
+      "purpose": "three disconnected components"
+    },
+    {
+      "computedReference": {
+        "boundaryEdges": 7,
+        "closedByEdgeIncidence": false,
+        "components": 1,
+        "edges": 8,
+        "eulerCharacteristic": 2,
+        "faces": 4,
+        "nonManifoldEdges": 1,
+        "vertices": 6
+      },
+      "expected": {
+        "degenerateFacesAtLeast": 3
+      },
+      "file": "problematic/18_degenerate_faces.obj",
+      "generated": true,
+      "purpose": "repeated-vertex, zero-area, and near-zero-area faces"
+    },
+    {
+      "computedReference": {
+        "boundaryEdges": 0,
+        "closedByEdgeIncidence": true,
+        "components": 1,
+        "edges": 18,
+        "eulerCharacteristic": 2,
+        "faces": 12,
+        "nonManifoldEdges": 0,
+        "vertices": 8
+      },
+      "expected": {
+        "boundaryEdges": 0,
+        "components": 1,
+        "faces": 12,
+        "flippedFaces": 1,
+        "orientationConsistent": false,
+        "vertices": 8
+      },
+      "file": "problematic/19_inconsistent_normals.obj",
+      "generated": true,
+      "purpose": "closed cube with one triangle reversed"
+    },
+    {
+      "computedReference": {
+        "boundaryEdges": 6,
+        "closedByEdgeIncidence": false,
+        "components": 2,
+        "edges": 6,
+        "eulerCharacteristic": 2,
+        "faces": 2,
+        "nonManifoldEdges": 0,
+        "vertices": 6
+      },
+      "expected": {
+        "selfIntersectionPairsAtLeast": 1
+      },
+      "file": "problematic/20_self_intersection.obj",
+      "generated": true,
+      "purpose": "minimal positive triangle-triangle self-intersection case"
+    },
+    {
+      "expectedAfterSpatialWeld": {
+        "boundaryEdges": 0,
+        "edges": 18,
+        "eulerCharacteristic": 2,
+        "faces": 12,
+        "uniqueVertices": 8
+      },
+      "file": "basic/03_cube_ascii.stl",
+      "generated": true,
+      "purpose": "ASCII STL import + topology reconstruction",
+      "rawTriangleCornerCount": 36
+    }
+  ],
+  "heavy": [],
+  "suite": "Math3D Mesh Benchmark Suite",
+  "version": 1
+}

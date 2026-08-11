@@ -1,0 +1,22 @@
+{
+  "computedReference": {
+    "boundaryEdges": 6,
+    "closedByEdgeIncidence": false,
+    "components": 1,
+    "edges": 7,
+    "eulerCharacteristic": 1,
+    "faces": 3,
+    "nonManifoldEdges": 1,
+    "vertices": 5
+  },
+  "expected": {
+    "closed": false,
+    "components": 1,
+    "faces": 3,
+    "nonManifoldEdges": 1,
+    "vertices": 5
+  },
+  "file": "problematic/16_non_manifold_edge.obj",
+  "generated": true,
+  "purpose": "exactly three faces share one edge"
+}

@@ -1,0 +1,25 @@
+{
+  "computedReference": {
+    "boundaryEdges": 0,
+    "closedByEdgeIncidence": true,
+    "components": 1,
+    "edges": 1536,
+    "eulerCharacteristic": 0,
+    "faces": 1024,
+    "nonManifoldEdges": 0,
+    "vertices": 512
+  },
+  "expected": {
+    "boundaryEdges": 0,
+    "components": 1,
+    "edges": 1536,
+    "eulerCharacteristic": 0,
+    "faces": 1024,
+    "genus": 1,
+    "nonManifoldEdges": 0,
+    "vertices": 512
+  },
+  "file": "basic/05_torus.obj",
+  "generated": true,
+  "purpose": "closed genus-1 topology"
+}

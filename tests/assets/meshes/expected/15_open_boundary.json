@@ -1,0 +1,24 @@
+{
+  "computedReference": {
+    "boundaryEdges": 4,
+    "closedByEdgeIncidence": false,
+    "components": 1,
+    "edges": 17,
+    "eulerCharacteristic": 1,
+    "faces": 10,
+    "nonManifoldEdges": 0,
+    "vertices": 8
+  },
+  "expected": {
+    "boundaryEdges": 4,
+    "boundaryLoops": 1,
+    "closed": false,
+    "components": 1,
+    "faces": 10,
+    "nonManifoldEdges": 0,
+    "vertices": 8
+  },
+  "file": "problematic/15_open_boundary.obj",
+  "generated": true,
+  "purpose": "one square boundary loop"
+}

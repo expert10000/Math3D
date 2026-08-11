@@ -1,0 +1,15 @@
+{
+  "computedReference": {
+    "boundaryEdges": 0,
+    "closedByEdgeIncidence": true,
+    "components": 1,
+    "edges": 192,
+    "eulerCharacteristic": 2,
+    "faces": 128,
+    "nonManifoldEdges": 0,
+    "vertices": 66
+  },
+  "file": "basic/04_cylinder.obj",
+  "generated": true,
+  "purpose": "mixed flat/curved geometry and edge loops"
+}

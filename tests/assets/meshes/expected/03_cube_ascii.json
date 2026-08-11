@@ -1,0 +1,13 @@
+{
+  "expectedAfterSpatialWeld": {
+    "boundaryEdges": 0,
+    "edges": 18,
+    "eulerCharacteristic": 2,
+    "faces": 12,
+    "uniqueVertices": 8
+  },
+  "file": "basic/03_cube_ascii.stl",
+  "generated": true,
+  "purpose": "ASCII STL import + topology reconstruction",
+  "rawTriangleCornerCount": 36
+}

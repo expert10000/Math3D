@@ -1,0 +1,18 @@
+{
+  "computedReference": {
+    "boundaryEdges": 7,
+    "closedByEdgeIncidence": false,
+    "components": 1,
+    "edges": 8,
+    "eulerCharacteristic": 2,
+    "faces": 4,
+    "nonManifoldEdges": 1,
+    "vertices": 6
+  },
+  "expected": {
+    "degenerateFacesAtLeast": 3
+  },
+  "file": "problematic/18_degenerate_faces.obj",
+  "generated": true,
+  "purpose": "repeated-vertex, zero-area, and near-zero-area faces"
+}

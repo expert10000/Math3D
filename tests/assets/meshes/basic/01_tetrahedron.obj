@@ -1,0 +1,10 @@
+# Math3D generated benchmark mesh
+# minimal closed triangular manifold
+v 1 1 1
+v -1 -1 1
+v -1 1 -1
+v 1 -1 -1
+f 1 3 2
+f 1 2 4
+f 1 4 3
+f 2 3 4

@@ -1,0 +1,10 @@
+# Math3D generated benchmark mesh
+# minimal positive triangle-triangle self-intersection case
+v -1 -1 0
+v 1 -1 0
+v 0 1 0
+v 0 -0.5 -1
+v 0 -0.5 1
+v 0 0.8 0
+f 1 2 3
+f 4 5 6

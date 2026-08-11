@@ -1,0 +1,18 @@
+{
+  "computedReference": {
+    "boundaryEdges": 6,
+    "closedByEdgeIncidence": false,
+    "components": 2,
+    "edges": 6,
+    "eulerCharacteristic": 2,
+    "faces": 2,
+    "nonManifoldEdges": 0,
+    "vertices": 6
+  },
+  "expected": {
+    "selfIntersectionPairsAtLeast": 1
+  },
+  "file": "problematic/20_self_intersection.obj",
+  "generated": true,
+  "purpose": "minimal positive triangle-triangle self-intersection case"
+}

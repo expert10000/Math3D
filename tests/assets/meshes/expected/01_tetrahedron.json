@@ -1,0 +1,24 @@
+{
+  "computedReference": {
+    "boundaryEdges": 0,
+    "closedByEdgeIncidence": true,
+    "components": 1,
+    "edges": 6,
+    "eulerCharacteristic": 2,
+    "faces": 4,
+    "nonManifoldEdges": 0,
+    "vertices": 4
+  },
+  "expected": {
+    "boundaryEdges": 0,
+    "components": 1,
+    "edges": 6,
+    "eulerCharacteristic": 2,
+    "faces": 4,
+    "nonManifoldEdges": 0,
+    "vertices": 4
+  },
+  "file": "basic/01_tetrahedron.obj",
+  "generated": true,
+  "purpose": "minimal closed triangular manifold"
+}

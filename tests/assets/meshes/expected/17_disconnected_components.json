@@ -1,0 +1,18 @@
+{
+  "computedReference": {
+    "boundaryEdges": 0,
+    "closedByEdgeIncidence": true,
+    "components": 3,
+    "edges": 42,
+    "eulerCharacteristic": 6,
+    "faces": 28,
+    "nonManifoldEdges": 0,
+    "vertices": 20
+  },
+  "expected": {
+    "components": 3
+  },
+  "file": "problematic/17_disconnected_components.obj",
+  "generated": true,
+  "purpose": "three disconnected components"
+}

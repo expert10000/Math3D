@@ -1,0 +1,10 @@
+# Math3D generated benchmark mesh
+# exactly three faces share one edge
+v -1 0 0
+v 1 0 0
+v 0 1 0
+v 0 -1 0
+v 0 0 1
+f 1 2 3
+f 2 1 4
+f 1 2 5
