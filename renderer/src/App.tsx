@@ -745,6 +745,7 @@ type GallerySortPreset = "name" | "family" | "complexity" | "demoReady";
 type AppTheme = "light" | "dark" | "dot";
 type DisplayMode = "workspace" | "present" | "inspect";
 type ViewportPreset = "minimal" | "study" | "analysis" | "debug";
+type MeshAnalyzeViewPreset = "clean" | "directions" | "gauss" | "custom";
 type GeometryViewportQualityMode = "auto" | "fast-preview" | "full";
 type GeometryCameraViewPreset = "3d" | "planar";
 type GeometryViewportSettings = {
@@ -37959,6 +37960,7 @@ const App: React.FC = () => {
   const [meshAnalyzeClampMin, setMeshAnalyzeClampMin] = useState("");
   const [meshAnalyzeClampMax, setMeshAnalyzeClampMax] = useState("");
   const [meshAnalyzePaletteInverted, setMeshAnalyzePaletteInverted] = useState(false);
+  const [meshAnalyzeViewPreset, setMeshAnalyzeViewPreset] = useState<MeshAnalyzeViewPreset>("clean");
   const [meshAnalyzeDiagnosticOverlayMode, setMeshAnalyzeDiagnosticOverlayMode] =
     useState<MeshAnalyzeDiagnosticOverlayMode>("none");
   const [meshAnalyzeDiagnosticPulseId, setMeshAnalyzeDiagnosticPulseId] = useState(0);
@@ -53209,6 +53211,46 @@ case "mobius":
   };
   const meshAnalyzeCurvatureArrays =
     surfaceViewerKind === "mesh" && surfaceMeshCurvatures ? surfaceMeshCurvatures : selectionCurvatures;
+  const meshAnalyzeCanShowCurvature = !!meshAnalyzeCurvatureArrays?.K?.length;
+  const applyMeshAnalyzeViewPreset = useCallback(
+    (preset: MeshAnalyzeViewPreset) => {
+      setMeshAnalyzeViewPreset(preset);
+      setShowInViewportOverlayControls(true);
+      setShowChartGrid(false);
+      setShowBoundingBox(false);
+      setCommandPreviewOverlaysVisible(false);
+      setShowGaussMap(false);
+      setShowPrincipalDirections(false);
+      setShowPrincipalNormalPlanes(false);
+      setShowPrincipalLines(false);
+      setShowPrincipalGlyphs(false);
+      setShowCurvatureLines(false);
+      setShowRidges(false);
+      setShowValleys(false);
+      setMeshAnalyzeDiagnosticOverlayMode("none");
+      if (meshAnalyzeCanShowCurvature && colorMode === "solid") setColorMode("gaussian");
+      if (preset === "directions") {
+        setShowPrincipalDirections(true);
+        setShowPrincipalGlyphs(true);
+        setAnalysisFocusedSection("differential-geometry");
+        setSurfaceMeshTopologyStatus("Analysis view: curvature with principal directions.");
+        return;
+      }
+      if (preset === "gauss") {
+        setShowGaussMap(meshAnalyzeCanShowCurvature);
+        setAnalysisFocusedSection("vector-calculus");
+        setSurfaceMeshTopologyStatus(
+          meshAnalyzeCanShowCurvature
+            ? "Analysis view: curvature with Gauss map."
+            : "Select a curvature result before showing the Gauss map."
+        );
+        return;
+      }
+      setAnalysisFocusedSection("differential-geometry");
+      setSurfaceMeshTopologyStatus("Analysis view: clean curvature.");
+    },
+    [colorMode, meshAnalyzeCanShowCurvature]
+  );
   useEffect(() => {
     if (surfaceViewerKind !== "mesh" || surfacesLeftTab !== "analysis" || !surfaceMeshData) return;
     if (!meshAnalyzeCurvatureArrays?.K?.length) return;
@@ -53220,8 +53262,21 @@ case "mobius":
     if (meshAnalyzeAutoDefaultKeyRef.current === autoDefaultKey) return;
     meshAnalyzeAutoDefaultKeyRef.current = autoDefaultKey;
     setColorMode("gaussian");
+    setMeshAnalyzeViewPreset("clean");
+    setShowInViewportOverlayControls(true);
+    setShowChartGrid(false);
+    setShowBoundingBox(false);
+    setCommandPreviewOverlaysVisible(false);
+    setShowGaussMap(false);
+    setShowPrincipalDirections(false);
+    setShowPrincipalNormalPlanes(false);
+    setShowPrincipalLines(false);
+    setShowPrincipalGlyphs(false);
+    setShowCurvatureLines(false);
+    setShowRidges(false);
+    setShowValleys(false);
     setAnalysisFocusedSection("differential-geometry");
-    setSurfaceMeshTopologyStatus("Mesh Analyze opened with Gaussian curvature K.");
+    setSurfaceMeshTopologyStatus("Mesh Analyze opened with clean Gaussian curvature K.");
   }, [
     colorMode,
     meshAnalyzeCurvatureArrays?.K,
@@ -53558,6 +53613,25 @@ case "mobius":
     surfacesLeftTab === "analysis" &&
     !!surfaceMeshStats &&
     (meshAnalyzeCurvatureField != null || probeEnabled || !!meshAnalyzeProbeCurvature);
+  const meshAnalyzeHeavyOverlayLabels = [
+    showBoundingBox ? "bounding box" : null,
+    showChartGrid ? "chart grid" : null,
+    commandPreviewOverlaysVisible ? "command preview" : null,
+    showGaussMap ? "Gauss map" : null,
+    showPrincipalDirections ||
+    showPrincipalGlyphs ||
+    showPrincipalLines ||
+    showCurvatureLines ||
+    showRidges ||
+    showValleys
+      ? "directions"
+      : null,
+  ].filter(Boolean) as string[];
+  const meshAnalyzeManyOverlaysActive =
+    surfaceViewerKind === "mesh" &&
+    surfacesLeftTab === "analysis" &&
+    !meshAnalyzeDiagnosticFocusActive &&
+    meshAnalyzeHeavyOverlayLabels.length >= 3;
   const meshAnalyzePaletteGradient =
     primaryOverlay.colorPalette === "grayscale"
       ? meshAnalyzePaletteInverted
@@ -67381,6 +67455,7 @@ case "mobius":
                                     setShowPrincipalDirections(false);
                                     setShowPrincipalLines(false);
                                     setShowCurvatureLines(false);
+                                    setMeshAnalyzeViewPreset("clean");
                                   }
                                   setAnalysisFocusedSection(section);
                                 }}
@@ -67413,11 +67488,43 @@ case "mobius":
                               Diagnostics
                             </button>
                             <span style={{ width: 1, height: 20, background: "#cbd5e1", margin: "0 2px" }} />
+                            <span style={{ fontWeight: 800, color: "#1e3a8a" }}>View:</span>
+                            <button
+                              type="button"
+                              data-testid="mesh-analyze-view-clean"
+                              onClick={() => applyMeshAnalyzeViewPreset("clean")}
+                              aria-pressed={meshAnalyzeViewPreset === "clean"}
+                              style={viewerControlButtonStyle(meshAnalyzeViewPreset === "clean", meshViewerControlsDensity)}
+                            >
+                              Clean curvature
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="mesh-analyze-view-directions"
+                              onClick={() => applyMeshAnalyzeViewPreset("directions")}
+                              aria-pressed={meshAnalyzeViewPreset === "directions"}
+                              style={viewerControlButtonStyle(meshAnalyzeViewPreset === "directions", meshViewerControlsDensity)}
+                            >
+                              Curvature + directions
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="mesh-analyze-view-gauss"
+                              onClick={() => applyMeshAnalyzeViewPreset("gauss")}
+                              disabled={!meshAnalyzeCanShowCurvature}
+                              aria-pressed={meshAnalyzeViewPreset === "gauss"}
+                              style={{
+                                ...viewerControlButtonStyle(meshAnalyzeViewPreset === "gauss", meshViewerControlsDensity),
+                                opacity: meshAnalyzeCanShowCurvature ? 1 : 0.55,
+                              }}
+                            >
+                              Curvature + Gauss map
+                            </button>
+                            <span style={{ width: 1, height: 20, background: "#cbd5e1", margin: "0 2px" }} />
                             <button
                               type="button"
                               onClick={() => {
                                 setShowInViewportOverlayControls(true);
-                                setCommandPreviewOverlaysVisible(true);
                               }}
                               style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
                             >
@@ -67542,7 +67649,15 @@ case "mobius":
                             </button>
                             <button
                               type="button"
-                              onClick={() => setShowPrincipalDirections((value) => !value)}
+                              data-testid="mesh-analyze-toggle-directions"
+                              onClick={() => {
+                                setShowPrincipalDirections((value) => {
+                                  const next = !value;
+                                  if (next) setMeshAnalyzeViewPreset("directions");
+                                  else if (!showGaussMap && !showChartGrid) setMeshAnalyzeViewPreset("clean");
+                                  return next;
+                                });
+                              }}
                               aria-pressed={showPrincipalDirections}
                               style={viewerControlButtonStyle(showPrincipalDirections, meshViewerControlsDensity)}
                             >
@@ -67550,7 +67665,30 @@ case "mobius":
                             </button>
                             <button
                               type="button"
-                              onClick={() => setShowGaussMap((value) => !value)}
+                              data-testid="mesh-analyze-toggle-chart-grid"
+                              onClick={() => {
+                                setShowChartGrid((value) => {
+                                  const next = !value;
+                                  if (next) setMeshAnalyzeViewPreset("custom");
+                                  else if (!showGaussMap && !showPrincipalDirections) setMeshAnalyzeViewPreset("clean");
+                                  return next;
+                                });
+                              }}
+                              aria-pressed={showChartGrid}
+                              style={viewerControlButtonStyle(showChartGrid, meshViewerControlsDensity)}
+                            >
+                              Chart grid
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowGaussMap((value) => {
+                                  const next = !value;
+                                  if (next) setMeshAnalyzeViewPreset("gauss");
+                                  else if (!showPrincipalDirections && !showChartGrid) setMeshAnalyzeViewPreset("clean");
+                                  return next;
+                                });
+                              }}
                               disabled={!meshAnalyzeCurvatureField}
                               title={meshAnalyzeCurvatureField ? "Toggle Gauss map" : "Select K, H, k1, or k2 before showing Gauss map"}
                               aria-pressed={showGaussMap}
@@ -67567,8 +67705,14 @@ case "mobius":
                               onClick={() => {
                                 setShowGaussMap(false);
                                 setShowPrincipalDirections(false);
+                                setShowPrincipalNormalPlanes(false);
                                 setShowPrincipalLines(false);
+                                setShowPrincipalGlyphs(false);
                                 setShowCurvatureLines(false);
+                                setShowChartGrid(false);
+                                setShowBoundingBox(false);
+                                setCommandPreviewOverlaysVisible(false);
+                                setMeshAnalyzeViewPreset("clean");
                                 setMeshAnalyzeDiagnosticOverlayMode("none");
                                 setMeshAnalyzePaletteInverted(false);
                                 setMeshAnalyzeClampEnabled(false);
@@ -68267,6 +68411,23 @@ case "mobius":
                                 {surfaceMeshStats.vertCount.toLocaleString()} V / {surfaceMeshStats.triCount.toLocaleString()} F
                               </div>
                             </div>
+                            {meshAnalyzeManyOverlaysActive && (
+                              <div
+                                data-testid="mesh-analyze-overlay-crowd-hint"
+                                style={{
+                                  border: "1px solid #fed7aa",
+                                  borderRadius: 6,
+                                  background: "#fff7ed",
+                                  color: "#9a3412",
+                                  padding: "4px 6px",
+                                  fontSize: 10,
+                                  fontWeight: 800,
+                                  lineHeight: 1.25,
+                                }}
+                              >
+                                Many overlays active; use Clean curvature for a clearer view.
+                              </div>
+                            )}
                             {meshAnalyzeCurvatureField && meshAnalyzeCurvatureFieldLabel ? (
                               <div style={{ display: "grid", gap: 5 }}>
                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
