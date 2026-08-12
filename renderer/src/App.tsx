@@ -48203,7 +48203,13 @@ case "mobius":
     [appendMeshPromotionOperation, clearSurfaceMeshTopologySessionState, focusSurfaceMeshViewport, setMeshDataset]
   );
 
-  const prepareLargeSurfaceMeshInteractiveLoad = useCallback((status?: string) => {
+  const prepareLargeSurfaceMeshInteractiveLoad = useCallback((status?: string, options?: { clearCurrentMesh?: boolean }) => {
+    if (options?.clearCurrentMesh) {
+      setMeshDataset(null);
+      setDatasetKind("mesh");
+      setSurfaceViewerKind("mesh");
+      setSurfaceMeshBenchmarkVerification(null);
+    }
     setSurfaceRenderQuality("performance");
     setMeshInteractionQualityMode("fast-preview");
     setSurfaceMeshTopologyPickMode("object");
@@ -48225,18 +48231,29 @@ case "mobius":
         if (!resp.ok) throw new Error(`Failed to fetch ${preset.label} (${resp.status})`);
         const blob = await resp.blob();
         const file = new File([blob], preset.fileName, { type: blob.type || "application/octet-stream" });
-        const base = await loadSurfaceMeshFromFile([file], { mergeVertices: surfaceMeshMergeVertices });
+        const largeFileHint = blob.size >= LARGE_MESH_FAST_LOAD_FILE_BYTES;
+        if (largeFileHint) {
+          prepareLargeSurfaceMeshInteractiveLoad("Large mesh loading in fast preview mode.", { clearCurrentMesh: true });
+        }
+        const mergeVerticesForLoad = surfaceMeshMergeVertices && !largeFileHint;
+        const base = await loadSurfaceMeshFromFile([file], { mergeVertices: mergeVerticesForLoad });
         const meshReady = { ...applySurfaceMeshOps(base, { fastLargeMesh: true }), label: preset.label };
         const isLargeMesh = surfaceMeshTriangleCount(meshReady) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD;
         clearSurfaceMeshTopologySessionState();
         if (isLargeMesh) {
           prepareLargeSurfaceMeshInteractiveLoad(
-            "Large mesh loaded in fast mode; topology adjacency will be computed by analysis tools when needed."
+            mergeVerticesForLoad
+              ? "Large mesh loaded in fast mode; topology adjacency will be computed by analysis tools when needed."
+              : "Large mesh loaded in fast preview mode without interactive vertex weld; run Analyse or the performance suite for exact topology metrics."
           );
         }
         setMeshDataset(meshReady);
         if (!meshReady.adjacency && isLargeMesh) {
-          setSurfaceMeshTopologyStatus("Large mesh loaded in fast mode; topology adjacency will be computed by analysis tools when needed.");
+          setSurfaceMeshTopologyStatus(
+            mergeVerticesForLoad
+              ? "Large mesh loaded in fast mode; topology adjacency will be computed by analysis tools when needed."
+              : "Large mesh loaded in fast preview mode without interactive vertex weld; run Analyse or the performance suite for exact topology metrics."
+          );
         }
         setSurfaceMeshBenchmarkVerification(null);
         setDatasetKind("mesh");
@@ -48256,24 +48273,32 @@ case "mobius":
     async (files: FileList | File[] | null) => {
       if (!files || (files as FileList).length === 0) return null;
       const firstFile = Array.from(files as ArrayLike<File>)[0] ?? null;
-      if ((firstFile?.size ?? 0) >= LARGE_MESH_FAST_LOAD_FILE_BYTES) {
-        prepareLargeSurfaceMeshInteractiveLoad("Large mesh loading in fast mode.");
+      const largeFileHint = (firstFile?.size ?? 0) >= LARGE_MESH_FAST_LOAD_FILE_BYTES;
+      if (largeFileHint) {
+        prepareLargeSurfaceMeshInteractiveLoad("Large mesh loading in fast preview mode.", { clearCurrentMesh: true });
       }
       setSurfaceMeshImportBusy(true);
       setSurfaceMeshImportError(null);
       try {
-        const base = await loadSurfaceMeshFromFile(files, { mergeVertices: surfaceMeshMergeVertices });
+        const mergeVerticesForLoad = surfaceMeshMergeVertices && !largeFileHint;
+        const base = await loadSurfaceMeshFromFile(files, { mergeVertices: mergeVerticesForLoad });
         const meshReady = applySurfaceMeshOps(base, { fastLargeMesh: true });
         const isLargeMesh = surfaceMeshTriangleCount(meshReady) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD;
         clearSurfaceMeshTopologySessionState();
         if (isLargeMesh) {
           prepareLargeSurfaceMeshInteractiveLoad(
-            "Large mesh loaded in fast mode; topology adjacency will be computed by analysis tools when needed."
+            mergeVerticesForLoad
+              ? "Large mesh loaded in fast mode; topology adjacency will be computed by analysis tools when needed."
+              : "Large mesh loaded in fast preview mode without interactive vertex weld; run Analyse or the performance suite for exact topology metrics."
           );
         }
         setMeshDataset(meshReady);
         if (!meshReady.adjacency && isLargeMesh) {
-          setSurfaceMeshTopologyStatus("Large mesh loaded in fast mode; topology adjacency will be computed by analysis tools when needed.");
+          setSurfaceMeshTopologyStatus(
+            mergeVerticesForLoad
+              ? "Large mesh loaded in fast mode; topology adjacency will be computed by analysis tools when needed."
+              : "Large mesh loaded in fast preview mode without interactive vertex weld; run Analyse or the performance suite for exact topology metrics."
+          );
         }
         if (firstFile) {
           try {
@@ -48356,7 +48381,9 @@ case "mobius":
         const bytes = new Uint8Array(response.bytes.byteLength);
         bytes.set(response.bytes);
         if (bytes.byteLength >= LARGE_MESH_FAST_LOAD_FILE_BYTES) {
-          prepareLargeSurfaceMeshInteractiveLoad(`Loading benchmark model: ${response.entry.label} in fast mode.`);
+          prepareLargeSurfaceMeshInteractiveLoad(`Loading benchmark model: ${response.entry.label} in fast preview mode.`, {
+            clearCurrentMesh: true,
+          });
         }
         const file = new File([bytes.buffer], response.entry.fileName, {
           type: response.entry.fileName.toLowerCase().endsWith(".stl") ? "model/stl" : "text/plain",
