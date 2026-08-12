@@ -390,6 +390,35 @@ declare global {
       onModeChange: (handler: (mode: string) => void) => () => void;
       onCommand: (handler: (command: string, payload?: unknown) => void) => () => void;
     };
+    meshBenchmarks?: {
+      list: () => Promise<
+        | {
+            ok: true;
+            entries: Array<{
+              id: string;
+              label: string;
+              category: "basic" | "standard" | "problematic" | "stress";
+              relativePath: string;
+              fileName: string;
+            }>;
+          }
+        | { ok: false; error: string }
+      >;
+      load: (id: string) => Promise<
+        | {
+            ok: true;
+            entry: {
+              id: string;
+              label: string;
+              category: "basic" | "standard" | "problematic" | "stress";
+              relativePath: string;
+              fileName: string;
+            };
+            bytes: Uint8Array;
+          }
+        | { ok: false; error: string }
+      >;
+    };
     appCapture?: {
       captureScreenshot: (req: AppCaptureScreenshotRequest) => Promise<AppCaptureScreenshotResponse>;
       listScreenshots: (req?: AppCaptureListRequest) => Promise<AppCaptureListResponse>;

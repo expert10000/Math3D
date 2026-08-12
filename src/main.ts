@@ -161,6 +161,46 @@ type TopologyDocOpenResponse =
   | { ok: true; canceled: false; path: string; content: string }
   | { ok: false; canceled: true }
   | { ok: false; canceled: false; error: string };
+type MeshBenchmarkCategory = "basic" | "standard" | "problematic" | "stress";
+type MeshBenchmarkModel = {
+  id: string;
+  label: string;
+  category: MeshBenchmarkCategory;
+  relativePath: string;
+  fileName: string;
+};
+type MeshBenchmarkListResponse =
+  | { ok: true; entries: MeshBenchmarkModel[] }
+  | { ok: false; error: string };
+type MeshBenchmarkLoadResponse =
+  | { ok: true; entry: MeshBenchmarkModel; bytes: Uint8Array }
+  | { ok: false; error: string };
+
+const MESH_BENCHMARK_MODELS: MeshBenchmarkModel[] = [
+  { id: "basic-tetrahedron", label: "Tetrahedron", category: "basic", relativePath: "basic/01_tetrahedron.obj", fileName: "01_tetrahedron.obj" },
+  { id: "basic-cube", label: "Cube", category: "basic", relativePath: "basic/02_cube.obj", fileName: "02_cube.obj" },
+  { id: "basic-cube-ascii-stl", label: "Cube - ASCII STL", category: "basic", relativePath: "basic/03_cube_ascii.stl", fileName: "03_cube_ascii.stl" },
+  { id: "basic-cylinder", label: "Cylinder", category: "basic", relativePath: "basic/04_cylinder.obj", fileName: "04_cylinder.obj" },
+  { id: "basic-torus", label: "Torus", category: "basic", relativePath: "basic/05_torus.obj", fileName: "05_torus.obj" },
+  { id: "standard-suzanne", label: "Suzanne", category: "standard", relativePath: "standard/06_suzanne.obj", fileName: "06_suzanne.obj" },
+  { id: "standard-fandisk", label: "Fandisk", category: "standard", relativePath: "standard/07_fandisk.obj", fileName: "07_fandisk.obj" },
+  { id: "standard-bunny", label: "Stanford Bunny", category: "standard", relativePath: "standard/08_stanford_bunny.obj", fileName: "08_stanford_bunny.obj" },
+  { id: "standard-spot-cow", label: "Spot Cow", category: "standard", relativePath: "standard/09_spot_cow.obj", fileName: "09_spot_cow.obj" },
+  { id: "standard-3dbenchy", label: "3DBenchy", category: "standard", relativePath: "standard/10_3dbenchy.stl", fileName: "10_3dbenchy.stl" },
+  { id: "standard-armadillo", label: "Armadillo", category: "standard", relativePath: "standard/11_armadillo.obj", fileName: "11_armadillo.obj" },
+  { id: "problematic-open-boundary", label: "Open Boundary", category: "problematic", relativePath: "problematic/15_open_boundary.obj", fileName: "15_open_boundary.obj" },
+  { id: "problematic-non-manifold-edge", label: "Non-Manifold Edge", category: "problematic", relativePath: "problematic/16_non_manifold_edge.obj", fileName: "16_non_manifold_edge.obj" },
+  { id: "problematic-disconnected-components", label: "Disconnected Components", category: "problematic", relativePath: "problematic/17_disconnected_components.obj", fileName: "17_disconnected_components.obj" },
+  { id: "problematic-degenerate-faces", label: "Degenerate Faces", category: "problematic", relativePath: "problematic/18_degenerate_faces.obj", fileName: "18_degenerate_faces.obj" },
+  { id: "problematic-inconsistent-normals", label: "Inconsistent Normals", category: "problematic", relativePath: "problematic/19_inconsistent_normals.obj", fileName: "19_inconsistent_normals.obj" },
+  { id: "problematic-self-intersection", label: "Self Intersection", category: "problematic", relativePath: "problematic/20_self_intersection.obj", fileName: "20_self_intersection.obj" },
+  { id: "stress-dragon-medium", label: "Dragon Medium", category: "stress", relativePath: "stress/12_dragon_medium.obj", fileName: "12_dragon_medium.obj" },
+];
+
+const meshBenchmarkRoot = () => path.resolve(process.cwd(), "tests", "assets", "meshes");
+
+const resolveMeshBenchmarkModel = (id: unknown): MeshBenchmarkModel | null =>
+  MESH_BENCHMARK_MODELS.find((entry) => entry.id === String(id ?? "")) ?? null;
 
 const toCaptureRect = (value: CaptureRect | null | undefined): CaptureRect | null => {
   if (!value) return null;
@@ -797,6 +837,29 @@ app.whenReady().then(async () => {
     }
   });
 
+  ipcMain.handle("meshBenchmark:list", async (): Promise<MeshBenchmarkListResponse> => {
+    if (!isDev) return { ok: false, error: "Benchmark models are only available in development builds." };
+    return { ok: true, entries: MESH_BENCHMARK_MODELS };
+  });
+
+  ipcMain.handle("meshBenchmark:load", async (_evt, id: string): Promise<MeshBenchmarkLoadResponse> => {
+    if (!isDev) return { ok: false, error: "Benchmark models are only available in development builds." };
+    const entry = resolveMeshBenchmarkModel(id);
+    if (!entry) return { ok: false, error: "Unknown benchmark model." };
+
+    try {
+      const root = meshBenchmarkRoot();
+      const filePath = path.resolve(root, entry.relativePath);
+      if (filePath !== root && !filePath.startsWith(`${root}${path.sep}`)) {
+        return { ok: false, error: "Benchmark path escaped the mesh asset root." };
+      }
+      const bytes = await fs.promises.readFile(filePath);
+      return { ok: true, entry, bytes: new Uint8Array(bytes) };
+    } catch (error: any) {
+      return { ok: false, error: String(error?.message ?? error) };
+    }
+  });
+
 try {
     listPresets("graph");
   } catch (e: any) {
@@ -875,6 +938,16 @@ function buildAppMenu(win: BrowserWindow) {
     accelerator,
     click: () => sendCommand(command),
   });
+  const meshMenu: MenuItemConstructorOptions[] = [
+    {
+      label: "Open",
+      submenu: [
+        action("File...", "file:import-mesh"),
+        { label: "Recent...", enabled: false },
+        ...(isDev ? [action("Benchmark Model... [DEV]", "mesh:open-benchmark-models")] : []),
+      ],
+    },
+  ];
 
   const template: MenuItemConstructorOptions[] = [
     {
@@ -898,6 +971,10 @@ function buildAppMenu(win: BrowserWindow) {
         { type: "separator" },
         { label: "Exit", role: "quit" },
       ],
+    },
+    {
+      label: "Mesh",
+      submenu: meshMenu,
     },
     {
       label: "Edit",

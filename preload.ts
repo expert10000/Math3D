@@ -41,6 +41,24 @@ export type GeodesicHeatRequest = {
   };
 };
 
+export type MeshBenchmarkCategory = "basic" | "standard" | "problematic" | "stress";
+
+export type MeshBenchmarkModel = {
+  id: string;
+  label: string;
+  category: MeshBenchmarkCategory;
+  relativePath: string;
+  fileName: string;
+};
+
+export type MeshBenchmarkListResponse =
+  | { ok: true; entries: MeshBenchmarkModel[] }
+  | { ok: false; error: string };
+
+export type MeshBenchmarkLoadResponse =
+  | { ok: true; entry: MeshBenchmarkModel; bytes: Uint8Array }
+  | { ok: false; error: string };
+
 contextBridge.exposeInMainWorld("surfacePresets", {
   list: (kind: PresetKind): Promise<SurfacePresetRecord[]> =>
     ipcRenderer.invoke("surfacePresets:list", kind),
@@ -67,4 +85,18 @@ contextBridge.exposeInMainWorld("appMenu", {
     ipcRenderer.on("app:mode", listener);
     return () => ipcRenderer.removeListener("app:mode", listener);
   },
+  onCommand: (handler: (command: string, payload?: unknown) => void) => {
+    const listener = (_evt: Electron.IpcRendererEvent, packet: { command?: string; payload?: unknown }) => {
+      if (packet?.command) handler(packet.command, packet.payload);
+    };
+    ipcRenderer.on("app:menu-command", listener);
+    return () => ipcRenderer.removeListener("app:menu-command", listener);
+  },
+});
+
+contextBridge.exposeInMainWorld("meshBenchmarks", {
+  list: (): Promise<MeshBenchmarkListResponse> =>
+    ipcRenderer.invoke("meshBenchmark:list"),
+  load: (id: string): Promise<MeshBenchmarkLoadResponse> =>
+    ipcRenderer.invoke("meshBenchmark:load", id),
 });

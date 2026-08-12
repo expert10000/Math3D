@@ -625,6 +625,21 @@ type SurfaceMeshAssetPreset = {
   assetUrl: string;
   fileName: string;
 };
+type MeshBenchmarkCategory = "basic" | "standard" | "problematic" | "stress";
+type MeshBenchmarkModel = {
+  id: string;
+  label: string;
+  category: MeshBenchmarkCategory;
+  relativePath: string;
+  fileName: string;
+};
+const MESH_BENCHMARK_CATEGORY_LABELS: Record<MeshBenchmarkCategory, string> = {
+  basic: "Basic",
+  standard: "Standard",
+  problematic: "Problematic",
+  stress: "Stress",
+};
+const MESH_BENCHMARK_CATEGORY_ORDER: MeshBenchmarkCategory[] = ["basic", "standard", "problematic", "stress"];
 type SurfaceMeshTopologyDemoPreset = {
   id: string;
   label: string;
@@ -32671,6 +32686,9 @@ const App: React.FC = () => {
   }, [volumeScalarRange, volumeIsoValue]);
   const [surfaceMeshImportBusy, setSurfaceMeshImportBusy] = useState(false);
   const [surfaceMeshImportError, setSurfaceMeshImportError] = useState<string | null>(null);
+  const [surfaceMeshBenchmarkBrowserOpen, setSurfaceMeshBenchmarkBrowserOpen] = useState(false);
+  const [surfaceMeshBenchmarkModels, setSurfaceMeshBenchmarkModels] = useState<MeshBenchmarkModel[]>([]);
+  const [surfaceMeshBenchmarkError, setSurfaceMeshBenchmarkError] = useState<string | null>(null);
   const [surfaceMeshMergeVertices, setSurfaceMeshMergeVertices] = useState(true);
   const [surfaceMeshExportBusy, setSurfaceMeshExportBusy] = useState(false);
   const [surfaceMeshExportError, setSurfaceMeshExportError] = useState<string | null>(null);
@@ -32922,6 +32940,27 @@ const App: React.FC = () => {
   const [vtkPreviewError, setVtkPreviewError] = useState<string | null>(null);
   const [vtkPreviewTargetFaces, setVtkPreviewTargetFaces] = useState(20000);
   const [vtkPreviewUseDecimate, setVtkPreviewUseDecimate] = useState(true);
+  useEffect(() => {
+    if (!isDev || typeof window === "undefined" || !window.meshBenchmarks?.list) return;
+    let canceled = false;
+    void window.meshBenchmarks
+      .list()
+      .then((response) => {
+        if (canceled) return;
+        if (response.ok) {
+          setSurfaceMeshBenchmarkModels(response.entries);
+          setSurfaceMeshBenchmarkError(null);
+        } else {
+          setSurfaceMeshBenchmarkError(response.error);
+        }
+      })
+      .catch((error) => {
+        if (!canceled) setSurfaceMeshBenchmarkError(String((error as any)?.message ?? error));
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [isDev]);
   useEffect(() => {
     if (!geometryBooleanObjectOptions.length) {
       if (vtkBooleanOperandObjectId !== null) setVtkBooleanOperandObjectId(null);
@@ -47940,6 +47979,38 @@ case "mobius":
     [clearSurfaceMeshTopologySessionState, focusSurfaceMeshViewport, surfaceMeshMergeVertices]
   );
 
+  const handleLoadSurfaceMeshBenchmarkModel = useCallback(
+    async (modelId: string) => {
+      const api = typeof window !== "undefined" ? window.meshBenchmarks : undefined;
+      if (!isDev || !api?.load) {
+        setSurfaceMeshBenchmarkError("Benchmark models are only available in development builds.");
+        return;
+      }
+      setSurfaceMeshImportBusy(true);
+      setSurfaceMeshImportError(null);
+      setSurfaceMeshBenchmarkError(null);
+      try {
+        const response = await api.load(modelId);
+        if (!response.ok) throw new Error(response.error);
+        const bytes = new Uint8Array(response.bytes.byteLength);
+        bytes.set(response.bytes);
+        const file = new File([bytes.buffer], response.entry.fileName, {
+          type: response.entry.fileName.toLowerCase().endsWith(".stl") ? "model/stl" : "text/plain",
+        });
+        await handleLoadSurfaceMeshFile([file]);
+        setSurfaceMeshBenchmarkBrowserOpen(false);
+        setSurfaceMeshTopologyStatus(`Loaded benchmark model: ${response.entry.label}.`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to load benchmark model.";
+        setSurfaceMeshBenchmarkError(msg);
+        setSurfaceMeshImportError(msg);
+      } finally {
+        setSurfaceMeshImportBusy(false);
+      }
+    },
+    [handleLoadSurfaceMeshFile, isDev]
+  );
+
   const handleExportSurfaceMeshObj = useCallback(() => {
     if (surfaceMeshExportBusy) return;
     if (!surfaceMeshData?.positions?.length) {
@@ -57127,6 +57198,13 @@ case "mobius":
             void handleLoadSurfaceMeshFile(files);
           });
           return;
+        case "mesh:open-benchmark-models":
+          setMode("surfaces");
+          setDatasetKind("mesh");
+          setSurfaceViewerKind("mesh");
+          setSurfacesLeftTab("object");
+          setSurfaceMeshBenchmarkBrowserOpen(true);
+          return;
         case "file:export-mesh":
           handleExportSurfaceMeshObj();
           return;
@@ -57398,6 +57476,7 @@ case "mobius":
       setSurfaceChartGridVisible,
       setCoordinatePlanesVisible,
       setSurfaceViewerKind,
+      setSurfaceMeshBenchmarkBrowserOpen,
       setVolumeContourEnabled,
       setVolumeViewMode,
       surfaceMeshTopologyHistory.length,
@@ -61823,6 +61902,9 @@ case "mobius":
                   meshPromotionStatus={meshPromotionStatus}
                   surfaceMeshImportBusy={surfaceMeshImportBusy}
                   surfaceMeshImportError={surfaceMeshImportError}
+                  surfaceMeshBenchmarkBrowserOpen={surfaceMeshBenchmarkBrowserOpen}
+                  surfaceMeshBenchmarkModels={surfaceMeshBenchmarkModels}
+                  surfaceMeshBenchmarkError={surfaceMeshBenchmarkError}
                   surfaceMeshMergeVertices={surfaceMeshMergeVertices}
                   surfaceMeshPresets={SURFACE_MESH_PRESETS}
                   surfaceMeshAssetPresets={SURFACE_MESH_ASSET_PRESETS}
@@ -61910,8 +61992,10 @@ case "mobius":
                   onUseImplicitBakeDomain={handleUseImplicitBakeDomain}
                   onResetImplicitBakeBounds={handleResetImplicitBakeBounds}
                   onToggleSurfaceMeshMergeVertices={setSurfaceMeshMergeVertices}
+                  onToggleSurfaceMeshBenchmarkBrowser={setSurfaceMeshBenchmarkBrowserOpen}
                   onGenerateSurfaceMeshPreset={handleGenerateSurfaceMeshPreset}
                   onGenerateSurfaceMeshAssetPreset={handleGenerateSurfaceMeshAssetPreset}
+                  onLoadSurfaceMeshBenchmarkModel={handleLoadSurfaceMeshBenchmarkModel}
                   onApplySurfaceMeshTopologyDemoPreset={handleApplySurfaceMeshTopologyDemoPreset}
                   surfaceMeshTopologySavedPresets={surfaceMeshTopologySavedPresets}
                   onApplySurfaceMeshTopologySavedPreset={handleApplySurfaceMeshTopologySavedPreset}
@@ -95954,6 +96038,9 @@ type SurfacesLeftPanelProps = {
   meshPromotionStatus: string | null;
   surfaceMeshImportBusy: boolean;
   surfaceMeshImportError: string | null;
+  surfaceMeshBenchmarkBrowserOpen: boolean;
+  surfaceMeshBenchmarkModels: MeshBenchmarkModel[];
+  surfaceMeshBenchmarkError: string | null;
   surfaceMeshMergeVertices: boolean;
   surfaceMeshPresets: SurfaceMeshPreset[];
   surfaceMeshAssetPresets: SurfaceMeshAssetPreset[];
@@ -96055,8 +96142,10 @@ type SurfacesLeftPanelProps = {
   onUseImplicitBakeDomain: () => void;
   onResetImplicitBakeBounds: () => void;
   onToggleSurfaceMeshMergeVertices: (v: boolean) => void;
+  onToggleSurfaceMeshBenchmarkBrowser: (open: boolean) => void;
   onGenerateSurfaceMeshPreset: (id: string) => void;
   onGenerateSurfaceMeshAssetPreset: (id: string) => void;
+  onLoadSurfaceMeshBenchmarkModel: (id: string) => void;
   onApplySurfaceMeshTopologyDemoPreset: (id: string) => void;
   onApplySurfaceMeshTopologySavedPreset: (id: string) => void;
   onRunSurfaceMeshTopologyDemoPreset: (id: string) => void;
@@ -96673,6 +96762,9 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   meshPromotionStatus,
   surfaceMeshImportBusy,
   surfaceMeshImportError,
+  surfaceMeshBenchmarkBrowserOpen,
+  surfaceMeshBenchmarkModels,
+  surfaceMeshBenchmarkError,
   surfaceMeshMergeVertices,
   surfaceMeshPresets,
   surfaceMeshAssetPresets,
@@ -96758,8 +96850,10 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onUseImplicitBakeDomain,
   onResetImplicitBakeBounds,
   onToggleSurfaceMeshMergeVertices,
+  onToggleSurfaceMeshBenchmarkBrowser,
   onGenerateSurfaceMeshPreset,
   onGenerateSurfaceMeshAssetPreset,
+  onLoadSurfaceMeshBenchmarkModel,
   onApplySurfaceMeshTopologyDemoPreset,
   onApplySurfaceMeshTopologySavedPreset,
   onRunSurfaceMeshTopologyDemoPreset,
@@ -97236,6 +97330,16 @@ onChangeImplicitExpr,
   onRecomputeDiagnostics,
 }) => {
   const meshReady = !!surfaceMeshStats;
+  const surfaceMeshBenchmarkModelsByCategory = useMemo(
+    () =>
+      MESH_BENCHMARK_CATEGORY_ORDER.map((category) => ({
+        category,
+        label: MESH_BENCHMARK_CATEGORY_LABELS[category],
+        models: surfaceMeshBenchmarkModels.filter((model) => model.category === category),
+      })).filter((group) => group.models.length > 0),
+    [surfaceMeshBenchmarkModels]
+  );
+  const surfaceMeshBenchmarkAvailable = surfaceMeshBenchmarkModelsByCategory.length > 0;
   const maxSurfaceMeshTopologyFaceIndex = Math.max(0, (surfaceMeshStats?.triCount ?? 1) - 1);
   const maxSurfaceMeshTopologyVertexIndex = Math.max(0, (surfaceMeshStats?.vertCount ?? 1) - 1);
   const selectedSurfaceMeshTopologyFaceId = Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
@@ -97398,6 +97502,9 @@ onChangeImplicitExpr,
   const [leftTab, setLeftTab] = useState<SurfacesLeftTab>(() => normalizeLeftTab(initialLeftTab));
   const meshFileInputRef = useRef<HTMLInputElement | null>(null);
   const [meshToolsTab, setMeshToolsTab] = useState<"surface_mesh" | "vtk" | "volume">("surface_mesh");
+  useEffect(() => {
+    if (surfaceMeshBenchmarkBrowserOpen) setMeshToolsTab("surface_mesh");
+  }, [surfaceMeshBenchmarkBrowserOpen]);
   const vtkOpsDisabled = vtkBusy || !pythonWorkerAvailable;
   const vtkBooleanDisabled = vtkOpsDisabled || !meshReady;
   const zPlaneRef = useRef<PlanePlotHandle | null>(null);
@@ -100255,6 +100362,53 @@ onChangeImplicitExpr,
             <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
               For .gltf with external .bin/textures, select all related files together.
             </div>
+            {(surfaceMeshBenchmarkAvailable || surfaceMeshBenchmarkError) && (
+              <div style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => onToggleSurfaceMeshBenchmarkBrowser(!surfaceMeshBenchmarkBrowserOpen)}
+                  disabled={surfaceMeshImportBusy || !surfaceMeshBenchmarkAvailable}
+                  data-testid="mesh-benchmark-browser-toggle"
+                >
+                  Benchmark Model... [DEV]
+                </button>
+                {surfaceMeshBenchmarkError && (
+                  <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{surfaceMeshBenchmarkError}</div>
+                )}
+                {surfaceMeshBenchmarkBrowserOpen && surfaceMeshBenchmarkAvailable && (
+                  <div
+                    data-testid="mesh-benchmark-browser"
+                    style={{
+                      display: "grid",
+                      gap: 10,
+                      marginTop: 8,
+                      paddingTop: 8,
+                      borderTop: "1px dashed #d5dbe5",
+                    }}
+                  >
+                    {surfaceMeshBenchmarkModelsByCategory.map((group) => (
+                      <div key={`mesh-benchmark-group-${group.category}`}>
+                        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>{group.label}</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {group.models.map((model) => (
+                            <button
+                              key={model.id}
+                              type="button"
+                              onClick={() => onLoadSurfaceMeshBenchmarkModel(model.id)}
+                              disabled={surfaceMeshImportBusy}
+                              title={model.relativePath}
+                              data-testid={`mesh-benchmark-model-${model.id}`}
+                            >
+                              {model.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {surfaceMeshImportError && (
               <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{surfaceMeshImportError}</div>
             )}
