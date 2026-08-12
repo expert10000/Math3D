@@ -494,6 +494,13 @@ import {
   type MeshTopologyInspectorDetails,
   type MeshTopologyListRow,
 } from "./mesh/topologyInspector";
+import {
+  buildMeshBenchmarkVerificationRows,
+  hasMeshBenchmarkExpectedMetrics,
+  meshBenchmarkVerificationPasses,
+  type MeshBenchmarkExpected,
+  type MeshBenchmarkVerificationRow,
+} from "./mesh/meshBenchmarkVerification";
 import type { MeshQualityReport, MeshQualityReportPhase } from "./mesh/meshQualityReport";
 import type {
   DatasetKind,
@@ -632,6 +639,10 @@ type MeshBenchmarkModel = {
   category: MeshBenchmarkCategory;
   relativePath: string;
   fileName: string;
+  expected?: MeshBenchmarkExpected;
+};
+type MeshBenchmarkVerificationContext = {
+  model: MeshBenchmarkModel;
 };
 const MESH_BENCHMARK_CATEGORY_LABELS: Record<MeshBenchmarkCategory, string> = {
   basic: "Basic",
@@ -32689,6 +32700,8 @@ const App: React.FC = () => {
   const [surfaceMeshBenchmarkBrowserOpen, setSurfaceMeshBenchmarkBrowserOpen] = useState(false);
   const [surfaceMeshBenchmarkModels, setSurfaceMeshBenchmarkModels] = useState<MeshBenchmarkModel[]>([]);
   const [surfaceMeshBenchmarkError, setSurfaceMeshBenchmarkError] = useState<string | null>(null);
+  const [surfaceMeshBenchmarkVerification, setSurfaceMeshBenchmarkVerification] =
+    useState<MeshBenchmarkVerificationContext | null>(null);
   const [surfaceMeshMergeVertices, setSurfaceMeshMergeVertices] = useState(true);
   const [surfaceMeshExportBusy, setSurfaceMeshExportBusy] = useState(false);
   const [surfaceMeshExportError, setSurfaceMeshExportError] = useState<string | null>(null);
@@ -32961,6 +32974,23 @@ const App: React.FC = () => {
       canceled = true;
     };
   }, [isDev]);
+  const resolveSurfaceMeshBenchmarkVerificationForFile = useCallback(
+    async (fileName: string): Promise<MeshBenchmarkVerificationContext | null> => {
+      if (!isDev || !fileName.trim()) return null;
+      const localMatch =
+        surfaceMeshBenchmarkModels.find((model) => model.fileName.toLowerCase() === fileName.toLowerCase()) ??
+        null;
+      const api = typeof window !== "undefined" ? window.meshBenchmarks : undefined;
+      if (!api?.match) {
+        return localMatch && hasMeshBenchmarkExpectedMetrics(localMatch.expected) ? { model: localMatch } : null;
+      }
+      const response = await api.match(fileName);
+      if (!response.ok) throw new Error(response.error);
+      const model = (response.entry ?? localMatch) as MeshBenchmarkModel | null;
+      return model && hasMeshBenchmarkExpectedMetrics(model.expected) ? { model } : null;
+    },
+    [isDev, surfaceMeshBenchmarkModels]
+  );
   useEffect(() => {
     if (!geometryBooleanObjectOptions.length) {
       if (vtkBooleanOperandObjectId !== null) setVtkBooleanOperandObjectId(null);
@@ -47942,6 +47972,7 @@ case "mobius":
         const base = await loadSurfaceMeshFromFile([file], { mergeVertices: surfaceMeshMergeVertices });
         const meshReady = { ...applySurfaceMeshOps(base), label: preset.label };
         setMeshDataset(meshReady);
+        setSurfaceMeshBenchmarkVerification(null);
         clearSurfaceMeshTopologySessionState();
         setDatasetKind("mesh");
         setSurfaceViewerKind("mesh");
@@ -47959,12 +47990,23 @@ case "mobius":
   const handleLoadSurfaceMeshFile = useCallback(
     async (files: FileList | File[] | null) => {
       if (!files || (files as FileList).length === 0) return;
+      const firstFile = Array.from(files as ArrayLike<File>)[0] ?? null;
       setSurfaceMeshImportBusy(true);
       setSurfaceMeshImportError(null);
       try {
         const base = await loadSurfaceMeshFromFile(files, { mergeVertices: surfaceMeshMergeVertices });
         const meshReady = applySurfaceMeshOps(base);
         setMeshDataset(meshReady);
+        if (firstFile) {
+          try {
+            setSurfaceMeshBenchmarkVerification(await resolveSurfaceMeshBenchmarkVerificationForFile(firstFile.name));
+          } catch (benchmarkError) {
+            setSurfaceMeshBenchmarkVerification(null);
+            setSurfaceMeshBenchmarkError(String((benchmarkError as any)?.message ?? benchmarkError));
+          }
+        } else {
+          setSurfaceMeshBenchmarkVerification(null);
+        }
         clearSurfaceMeshTopologySessionState();
         setDatasetKind("mesh");
         setSurfaceViewerKind("mesh");
@@ -47976,7 +48018,7 @@ case "mobius":
         setSurfaceMeshImportBusy(false);
       }
     },
-    [clearSurfaceMeshTopologySessionState, focusSurfaceMeshViewport, surfaceMeshMergeVertices]
+    [clearSurfaceMeshTopologySessionState, focusSurfaceMeshViewport, resolveSurfaceMeshBenchmarkVerificationForFile, surfaceMeshMergeVertices]
   );
 
   const handleLoadSurfaceMeshBenchmarkModel = useCallback(
@@ -47998,6 +48040,9 @@ case "mobius":
           type: response.entry.fileName.toLowerCase().endsWith(".stl") ? "model/stl" : "text/plain",
         });
         await handleLoadSurfaceMeshFile([file]);
+        setSurfaceMeshBenchmarkVerification(
+          hasMeshBenchmarkExpectedMetrics(response.entry.expected) ? { model: response.entry } : null
+        );
         setSurfaceMeshBenchmarkBrowserOpen(false);
         setSurfaceMeshTopologyStatus(`Loaded benchmark model: ${response.entry.label}.`);
       } catch (err) {
@@ -52832,6 +52877,12 @@ case "mobius":
     () => computeMeshTopologyInspector(surfaceInspectorTopologyMesh, { rowLimit: 18, itemLimit: 12 }),
     [surfaceInspectorTopologyMesh]
   );
+  const activeSurfaceMeshBenchmarkVerification = useMemo(() => {
+    if (!isDev || !surfaceMeshBenchmarkVerification || surfaceMeshData?.source.kind !== "import") return null;
+    const activeFileName = surfaceMeshData.source.filename?.toLowerCase() ?? "";
+    const benchmarkFileName = surfaceMeshBenchmarkVerification.model.fileName.toLowerCase();
+    return activeFileName === benchmarkFileName ? surfaceMeshBenchmarkVerification : null;
+  }, [isDev, surfaceMeshBenchmarkVerification, surfaceMeshData?.source]);
   const surfaceMeshAnalyzeDiagnostics = useMemo(() => {
     if (!surfaceMeshData?.positions?.length) return null;
     const readiness = evaluateGeometryMeshReadiness(surfaceMeshData);
@@ -52860,6 +52911,7 @@ case "mobius":
       degenerateTriangleCount: readiness.stats.degenerateTriangleCount,
       boundaryEdgeCount: readiness.stats.boundaryEdgeCount,
       nonManifoldEdgeCount: readiness.stats.nonManifoldEdgeCount,
+      selfIntersectionPairs: readiness.stats.suspectedSelfIntersectionPairs,
       duplicateVertexCount: readiness.stats.duplicateVertexCount,
       duplicateVertexGroups,
       eulerCharacteristic: topology?.eulerCharacteristic ?? null,
@@ -70494,6 +70546,7 @@ case "mobius":
                       meshInspectorStats={surfaceInspectorMeshStats}
                       meshTopologyDetails={surfaceInspectorTopologyDetails}
                       meshAnalyzeDiagnostics={surfaceMeshAnalyzeDiagnostics}
+                      meshBenchmarkVerification={activeSurfaceMeshBenchmarkVerification}
                       onHighlightMeshAnalyzeBoundary={handleHighlightMeshAnalyzeBoundary}
                       onHighlightMeshAnalyzeDuplicates={handleHighlightMeshAnalyzeDuplicates}
                       onPreviewMeshAnalyzeWeld={handlePreviewMeshAnalyzeWeld}
@@ -104575,6 +104628,7 @@ type MeshAnalyzeDiagnosticsSummary = {
   degenerateTriangleCount: number;
   boundaryEdgeCount: number;
   nonManifoldEdgeCount: number;
+  selfIntersectionPairs: number;
   duplicateVertexCount: number;
   eulerCharacteristic: number | null;
   watertight: boolean | null;
@@ -104735,6 +104789,7 @@ type SurfacesRightPanelProps = {
   };
   meshTopologyDetails: MeshTopologyInspectorDetails | null;
   meshAnalyzeDiagnostics: MeshAnalyzeDiagnosticsSummary | null;
+  meshBenchmarkVerification: MeshBenchmarkVerificationContext | null;
   onHighlightMeshAnalyzeBoundary: () => void;
   onHighlightMeshAnalyzeDuplicates: () => void;
   onPreviewMeshAnalyzeWeld: () => void;
@@ -104959,6 +105014,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   meshInspectorStats,
   meshTopologyDetails,
   meshAnalyzeDiagnostics,
+  meshBenchmarkVerification,
   onHighlightMeshAnalyzeBoundary,
   onHighlightMeshAnalyzeDuplicates,
   onPreviewMeshAnalyzeWeld,
@@ -105511,6 +105567,35 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   })();
   const topologyNonManifoldEdgeCount =
     meshQualityReport?.topology.nonManifoldEdgeCount ?? meshTopologyDetails?.nonManifoldEdgeCount ?? null;
+  const meshBenchmarkRows = useMemo(
+    () =>
+      buildMeshBenchmarkVerificationRows(meshBenchmarkVerification?.model.expected, {
+        boundaryEdges: meshInspectorStats.boundaryEdgeCount,
+        boundaryLoops: meshTopologyDetails?.boundaryLoops.length ?? null,
+        closed: meshTopologyDetails?.closed ?? null,
+        components: meshInspectorStats.connectedComponentCount,
+        degenerateFaces: badTriangleCount,
+        edges: meshTopologyDetails?.edgeCount ?? null,
+        eulerCharacteristic: meshTopologyDetails?.eulerCharacteristic ?? null,
+        faces: meshInspectorStats.faceCount,
+        nonManifoldEdges: topologyNonManifoldEdgeCount,
+        orientationConsistent: meshTopologyDetails?.orientationConsistent ?? null,
+        selfIntersectionPairs: meshAnalyzeDiagnostics?.selfIntersectionPairs ?? null,
+        vertices: meshInspectorStats.vertexCount,
+      }),
+    [
+      badTriangleCount,
+      meshAnalyzeDiagnostics?.selfIntersectionPairs,
+      meshBenchmarkVerification?.model.expected,
+      meshInspectorStats.boundaryEdgeCount,
+      meshInspectorStats.connectedComponentCount,
+      meshInspectorStats.faceCount,
+      meshInspectorStats.vertexCount,
+      meshTopologyDetails,
+      topologyNonManifoldEdgeCount,
+    ]
+  );
+  const meshBenchmarkPass = meshBenchmarkVerificationPasses(meshBenchmarkRows);
   const showDetailedResultsCards = showDomainPicker;
   const showAllResultsCards = showDetailedResultsCards && analysisResultsView === "show-all";
   const showFocusedResultCard = showDetailedResultsCards && analysisResultsView === "current-screen";
@@ -105617,6 +105702,85 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         };
     }
   })();
+  const formatBenchmarkValue = (
+    value: MeshBenchmarkVerificationRow["actual"] | MeshBenchmarkVerificationRow["expected"],
+    comparator?: MeshBenchmarkVerificationRow["comparator"]
+  ): string => {
+    if (value == null) return "n/a";
+    const prefix = comparator === "atLeast" ? ">= " : "";
+    if (typeof value === "boolean") return value ? "Yes" : "No";
+    return `${prefix}${Math.round(value).toLocaleString()}`;
+  };
+  const handleBenchmarkRowClick = (row: MeshBenchmarkVerificationRow) => {
+    if (row.highlightKind === "boundary") onHighlightMeshAnalyzeBoundary();
+  };
+  const renderMeshBenchmarkVerification = () => {
+    if (!isDevMode || !meshBenchmarkVerification || meshBenchmarkRows.length === 0) return null;
+    return (
+      <div data-testid="mesh-benchmark-verification" style={inspectorSectionCard}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8 }}>
+          <div>
+            <div style={{ fontSize: 10, color: "#475467", fontWeight: 850, letterSpacing: 0.4 }}>
+              BENCHMARK
+            </div>
+            <div style={inspectorSectionTitle}>{meshBenchmarkVerification.model.label}</div>
+          </div>
+          <span
+            data-testid="mesh-benchmark-result"
+            style={{
+              border: `1px solid ${meshBenchmarkPass ? "#86efac" : "#fecaca"}`,
+              borderRadius: 999,
+              background: meshBenchmarkPass ? "#dcfce7" : "#fef2f2",
+              color: meshBenchmarkPass ? "#166534" : "#b42318",
+              padding: "2px 8px",
+              fontSize: 10,
+              fontWeight: 900,
+            }}
+          >
+            {meshBenchmarkPass ? "PASS" : "FAIL"}
+          </span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1.35fr 0.8fr 0.8fr 0.65fr", gap: "5px 7px", fontSize: 11 }}>
+          <strong>Metric</strong>
+          <strong>Expected</strong>
+          <strong>Actual</strong>
+          <strong>Result</strong>
+          {meshBenchmarkRows.map((row) => {
+            const clickable = !row.passes && row.highlightKind === "boundary";
+            const contents = (
+              <>
+                <span>{row.label}</span>
+                <span>{formatBenchmarkValue(row.expected, row.comparator)}</span>
+                <span>{formatBenchmarkValue(row.actual)}</span>
+                <strong style={{ color: row.passes ? "#166534" : "#b42318" }}>{row.passes ? "OK" : "FAIL"}</strong>
+              </>
+            );
+            return clickable ? (
+              <button
+                key={row.id}
+                type="button"
+                onClick={() => handleBenchmarkRowClick(row)}
+                title="Highlight the related boundary geometry"
+                style={{
+                  display: "contents",
+                  color: "inherit",
+                  font: "inherit",
+                  cursor: "pointer",
+                }}
+              >
+                {contents}
+              </button>
+            ) : (
+              <React.Fragment key={row.id}>{contents}</React.Fragment>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 8, fontSize: 11, color: meshBenchmarkPass ? "#166534" : "#b42318", fontWeight: 800 }}>
+          Benchmark result: {meshBenchmarkPass ? "PASS" : "FAIL"}
+        </div>
+      </div>
+    );
+  };
   const inspectorTabs: Array<{ id: InspectorPanelTab; label: string }> = [
     { id: "object", label: "Object" },
     { id: "selection", label: "Selection" },
@@ -106106,6 +106270,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
         {inspectorPanelTab === "analysis" && (
           <>
+            {renderMeshBenchmarkVerification()}
+
             <div style={inspectorSectionCard}>
               <div style={inspectorSectionTitle}>Results</div>
               {showDetailedResultsCards && (
@@ -107077,6 +107243,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
       {inspectorPanelTab === "analysis" && (
         <>
+      {renderMeshBenchmarkVerification()}
+
       <div style={inspectorSectionCard}>
         <div style={inspectorSectionTitle}>Results</div>
         {showDetailedResultsCards && (

@@ -168,12 +168,40 @@ type MeshBenchmarkModel = {
   category: MeshBenchmarkCategory;
   relativePath: string;
   fileName: string;
+  expected?: MeshBenchmarkExpected;
+};
+type MeshBenchmarkExpectedMetrics = {
+  boundaryEdges?: number;
+  boundaryLoops?: number;
+  closed?: boolean;
+  components?: number;
+  degenerateFacesAtLeast?: number;
+  edges?: number;
+  eulerCharacteristic?: number;
+  faces?: number;
+  genus?: number;
+  nonManifoldEdges?: number;
+  orientationConsistent?: boolean;
+  selfIntersectionPairsAtLeast?: number;
+  vertices?: number;
+};
+type MeshBenchmarkExpected = {
+  computedReference?: MeshBenchmarkExpectedMetrics & { closedByEdgeIncidence?: boolean };
+  expected?: MeshBenchmarkExpectedMetrics;
+  expectedAfterSpatialWeld?: MeshBenchmarkExpectedMetrics & { uniqueVertices?: number };
+  file?: string;
+  generated?: boolean;
+  purpose?: string;
+  rawTriangleCornerCount?: number;
 };
 type MeshBenchmarkListResponse =
   | { ok: true; entries: MeshBenchmarkModel[] }
   | { ok: false; error: string };
 type MeshBenchmarkLoadResponse =
   | { ok: true; entry: MeshBenchmarkModel; bytes: Uint8Array }
+  | { ok: false; error: string };
+type MeshBenchmarkMatchResponse =
+  | { ok: true; entry: MeshBenchmarkModel | null }
   | { ok: false; error: string };
 
 const MESH_BENCHMARK_MODELS: MeshBenchmarkModel[] = [
@@ -201,6 +229,38 @@ const meshBenchmarkRoot = () => path.resolve(process.cwd(), "tests", "assets", "
 
 const resolveMeshBenchmarkModel = (id: unknown): MeshBenchmarkModel | null =>
   MESH_BENCHMARK_MODELS.find((entry) => entry.id === String(id ?? "")) ?? null;
+
+const readMeshBenchmarkExpected = async (entry: MeshBenchmarkModel): Promise<MeshBenchmarkExpected | undefined> => {
+  const parsed = path.parse(entry.relativePath);
+  const expectedPath = path.join(meshBenchmarkRoot(), "expected", `${parsed.name}.json`);
+  try {
+    return JSON.parse(await fs.promises.readFile(expectedPath, "utf8")) as MeshBenchmarkExpected;
+  } catch (error: any) {
+    if (error?.code === "ENOENT") return undefined;
+    throw error;
+  }
+};
+
+const withMeshBenchmarkExpected = async (entry: MeshBenchmarkModel): Promise<MeshBenchmarkModel> => ({
+  ...entry,
+  expected: await readMeshBenchmarkExpected(entry),
+});
+
+const listMeshBenchmarkModelsWithExpected = async (): Promise<MeshBenchmarkModel[]> =>
+  Promise.all(MESH_BENCHMARK_MODELS.map((entry) => withMeshBenchmarkExpected(entry)));
+
+const normalizeMeshBenchmarkFileName = (value: unknown): string =>
+  path.basename(String(value ?? "").trim()).toLowerCase();
+
+const resolveMeshBenchmarkModelByFileName = (fileName: unknown): MeshBenchmarkModel | null => {
+  const normalized = normalizeMeshBenchmarkFileName(fileName);
+  if (!normalized) return null;
+  return (
+    MESH_BENCHMARK_MODELS.find((entry) => normalizeMeshBenchmarkFileName(entry.fileName) === normalized) ??
+    MESH_BENCHMARK_MODELS.find((entry) => normalizeMeshBenchmarkFileName(entry.relativePath) === normalized) ??
+    null
+  );
+};
 
 const toCaptureRect = (value: CaptureRect | null | undefined): CaptureRect | null => {
   if (!value) return null;
@@ -839,7 +899,11 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("meshBenchmark:list", async (): Promise<MeshBenchmarkListResponse> => {
     if (!isDev) return { ok: false, error: "Benchmark models are only available in development builds." };
-    return { ok: true, entries: MESH_BENCHMARK_MODELS };
+    try {
+      return { ok: true, entries: await listMeshBenchmarkModelsWithExpected() };
+    } catch (error: any) {
+      return { ok: false, error: String(error?.message ?? error) };
+    }
   });
 
   ipcMain.handle("meshBenchmark:load", async (_evt, id: string): Promise<MeshBenchmarkLoadResponse> => {
@@ -854,7 +918,18 @@ app.whenReady().then(async () => {
         return { ok: false, error: "Benchmark path escaped the mesh asset root." };
       }
       const bytes = await fs.promises.readFile(filePath);
-      return { ok: true, entry, bytes: new Uint8Array(bytes) };
+      return { ok: true, entry: await withMeshBenchmarkExpected(entry), bytes: new Uint8Array(bytes) };
+    } catch (error: any) {
+      return { ok: false, error: String(error?.message ?? error) };
+    }
+  });
+
+  ipcMain.handle("meshBenchmark:match", async (_evt, fileName: string): Promise<MeshBenchmarkMatchResponse> => {
+    if (!isDev) return { ok: false, error: "Benchmark models are only available in development builds." };
+    const entry = resolveMeshBenchmarkModelByFileName(fileName);
+    if (!entry) return { ok: true, entry: null };
+    try {
+      return { ok: true, entry: await withMeshBenchmarkExpected(entry) };
     } catch (error: any) {
       return { ok: false, error: String(error?.message ?? error) };
     }

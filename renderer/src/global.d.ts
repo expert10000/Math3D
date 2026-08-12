@@ -202,6 +202,49 @@ declare global {
     | { ok: true; folder: string; paths: string[] }
     | { ok: false; error: string };
 
+  type MeshBenchmarkCategory = "basic" | "standard" | "problematic" | "stress";
+  type MeshBenchmarkExpectedMetrics = {
+    boundaryEdges?: number;
+    boundaryLoops?: number;
+    closed?: boolean;
+    components?: number;
+    degenerateFacesAtLeast?: number;
+    edges?: number;
+    eulerCharacteristic?: number;
+    faces?: number;
+    genus?: number;
+    nonManifoldEdges?: number;
+    orientationConsistent?: boolean;
+    selfIntersectionPairsAtLeast?: number;
+    vertices?: number;
+  };
+  type MeshBenchmarkExpected = {
+    computedReference?: MeshBenchmarkExpectedMetrics & { closedByEdgeIncidence?: boolean };
+    expected?: MeshBenchmarkExpectedMetrics;
+    expectedAfterSpatialWeld?: MeshBenchmarkExpectedMetrics & { uniqueVertices?: number };
+    file?: string;
+    generated?: boolean;
+    purpose?: string;
+    rawTriangleCornerCount?: number;
+  };
+  type MeshBenchmarkModelRecord = {
+    id: string;
+    label: string;
+    category: MeshBenchmarkCategory;
+    relativePath: string;
+    fileName: string;
+    expected?: MeshBenchmarkExpected;
+  };
+  type MeshBenchmarkListResponse =
+    | { ok: true; entries: MeshBenchmarkModelRecord[] }
+    | { ok: false; error: string };
+  type MeshBenchmarkLoadResponse =
+    | { ok: true; entry: MeshBenchmarkModelRecord; bytes: Uint8Array }
+    | { ok: false; error: string };
+  type MeshBenchmarkMatchResponse =
+    | { ok: true; entry: MeshBenchmarkModelRecord | null }
+    | { ok: false; error: string };
+
   type TopologyDocumentSaveRequest = {
     suggestedName?: string;
     defaultPath?: string;
@@ -391,33 +434,9 @@ declare global {
       onCommand: (handler: (command: string, payload?: unknown) => void) => () => void;
     };
     meshBenchmarks?: {
-      list: () => Promise<
-        | {
-            ok: true;
-            entries: Array<{
-              id: string;
-              label: string;
-              category: "basic" | "standard" | "problematic" | "stress";
-              relativePath: string;
-              fileName: string;
-            }>;
-          }
-        | { ok: false; error: string }
-      >;
-      load: (id: string) => Promise<
-        | {
-            ok: true;
-            entry: {
-              id: string;
-              label: string;
-              category: "basic" | "standard" | "problematic" | "stress";
-              relativePath: string;
-              fileName: string;
-            };
-            bytes: Uint8Array;
-          }
-        | { ok: false; error: string }
-      >;
+      list: () => Promise<MeshBenchmarkListResponse>;
+      load: (id: string) => Promise<MeshBenchmarkLoadResponse>;
+      match: (fileName: string) => Promise<MeshBenchmarkMatchResponse>;
     };
     appCapture?: {
       captureScreenshot: (req: AppCaptureScreenshotRequest) => Promise<AppCaptureScreenshotResponse>;

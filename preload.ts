@@ -49,6 +49,31 @@ export type MeshBenchmarkModel = {
   category: MeshBenchmarkCategory;
   relativePath: string;
   fileName: string;
+  expected?: MeshBenchmarkExpected;
+};
+export type MeshBenchmarkExpectedMetrics = {
+  boundaryEdges?: number;
+  boundaryLoops?: number;
+  closed?: boolean;
+  components?: number;
+  degenerateFacesAtLeast?: number;
+  edges?: number;
+  eulerCharacteristic?: number;
+  faces?: number;
+  genus?: number;
+  nonManifoldEdges?: number;
+  orientationConsistent?: boolean;
+  selfIntersectionPairsAtLeast?: number;
+  vertices?: number;
+};
+export type MeshBenchmarkExpected = {
+  computedReference?: MeshBenchmarkExpectedMetrics & { closedByEdgeIncidence?: boolean };
+  expected?: MeshBenchmarkExpectedMetrics;
+  expectedAfterSpatialWeld?: MeshBenchmarkExpectedMetrics & { uniqueVertices?: number };
+  file?: string;
+  generated?: boolean;
+  purpose?: string;
+  rawTriangleCornerCount?: number;
 };
 
 export type MeshBenchmarkListResponse =
@@ -57,6 +82,10 @@ export type MeshBenchmarkListResponse =
 
 export type MeshBenchmarkLoadResponse =
   | { ok: true; entry: MeshBenchmarkModel; bytes: Uint8Array }
+  | { ok: false; error: string };
+
+export type MeshBenchmarkMatchResponse =
+  | { ok: true; entry: MeshBenchmarkModel | null }
   | { ok: false; error: string };
 
 contextBridge.exposeInMainWorld("surfacePresets", {
@@ -99,4 +128,6 @@ contextBridge.exposeInMainWorld("meshBenchmarks", {
     ipcRenderer.invoke("meshBenchmark:list"),
   load: (id: string): Promise<MeshBenchmarkLoadResponse> =>
     ipcRenderer.invoke("meshBenchmark:load", id),
+  match: (fileName: string): Promise<MeshBenchmarkMatchResponse> =>
+    ipcRenderer.invoke("meshBenchmark:match", fileName),
 });
