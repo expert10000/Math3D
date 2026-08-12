@@ -240,7 +240,7 @@ const computeMeshPreviewTriangleTarget = (
       fullTriangles < 50_000
         ? Math.round(fullTriangles * 0.55)
         : fullTriangles < 250_000
-          ? Math.round(fullTriangles * 0.35)
+          ? Math.round(fullTriangles * 0.22)
             : fullTriangles <= 1_000_000
               ? Math.round(fullTriangles * 0.2)
               : Math.min(previewTriangleTarget, 80_000);

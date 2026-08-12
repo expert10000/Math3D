@@ -152,29 +152,37 @@ const weldGeometryPositions = (geom: THREE.BufferGeometry, tolerance: number): T
   const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
   if (!posAttr) return stripToPositions(geom);
   const scale = 1 / Math.max(1e-12, tolerance);
-  const weldedPositions: number[] = [];
-  const indices: number[] = [];
+  const source = posAttr.array as ArrayLike<number>;
+  const itemSize = Math.max(3, posAttr.itemSize || 3);
+  const weldedPositions = new Float32Array(posAttr.count * 3);
+  const indices = new Uint32Array(posAttr.count);
   const indexByKey = new Map<string, number>();
+  let weldedCount = 0;
 
   for (let i = 0; i < posAttr.count; i += 1) {
-    const x = posAttr.getX(i);
-    const y = posAttr.getY(i);
-    const z = posAttr.getZ(i);
+    const base = i * itemSize;
+    const x = Number(source[base] ?? 0);
+    const y = Number(source[base + 1] ?? 0);
+    const z = Number(source[base + 2] ?? 0);
     const key = `${Math.round(x * scale)},${Math.round(y * scale)},${Math.round(z * scale)}`;
     const existing = indexByKey.get(key);
     if (existing != null) {
-      indices.push(existing);
+      indices[i] = existing;
       continue;
     }
-    const nextIndex = weldedPositions.length / 3;
+    const nextIndex = weldedCount;
     indexByKey.set(key, nextIndex);
-    weldedPositions.push(x, y, z);
-    indices.push(nextIndex);
+    const outBase = weldedCount * 3;
+    weldedPositions[outBase] = x;
+    weldedPositions[outBase + 1] = y;
+    weldedPositions[outBase + 2] = z;
+    indices[i] = nextIndex;
+    weldedCount += 1;
   }
 
   const out = new THREE.BufferGeometry();
-  out.setAttribute("position", new THREE.Float32BufferAttribute(weldedPositions, 3));
-  out.setIndex(indices);
+  out.setAttribute("position", new THREE.Float32BufferAttribute(weldedPositions.slice(0, weldedCount * 3), 3));
+  out.setIndex(new THREE.BufferAttribute(indices, 1));
   return out;
 };
 

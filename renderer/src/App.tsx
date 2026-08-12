@@ -1835,6 +1835,7 @@ const formatBenchmarkBytes = (bytes: number | null | undefined): string => {
 };
 
 const LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD = 100_000;
+const LARGE_MESH_FAST_LOAD_FILE_BYTES = 5 * 1024 * 1024;
 
 const DETERMINISTIC_IMPLICIT_SAMPLE_EXPR = "x*x + y*y + z*z - 1";
 
@@ -48202,6 +48203,17 @@ case "mobius":
     [appendMeshPromotionOperation, clearSurfaceMeshTopologySessionState, focusSurfaceMeshViewport, setMeshDataset]
   );
 
+  const prepareLargeSurfaceMeshInteractiveLoad = useCallback((status?: string) => {
+    setSurfaceRenderQuality("performance");
+    setMeshInteractionQualityMode("fast-preview");
+    setSurfaceMeshTopologyPickMode("object");
+    setSurfaceMeshTopologySelectionCleared(true);
+    setMeshMultiSelectionSet(createUnifiedSelectionSet([]));
+    setCommandPreviewOverlaysVisible(false);
+    setShowChartGrid(false);
+    if (status) setSurfaceMeshTopologyStatus(status);
+  }, []);
+
   const handleGenerateSurfaceMeshAssetPreset = useCallback(
     async (presetId: string) => {
       const preset = SURFACE_MESH_ASSET_PRESETS.find((entry) => entry.id === presetId);
@@ -48215,12 +48227,18 @@ case "mobius":
         const file = new File([blob], preset.fileName, { type: blob.type || "application/octet-stream" });
         const base = await loadSurfaceMeshFromFile([file], { mergeVertices: surfaceMeshMergeVertices });
         const meshReady = { ...applySurfaceMeshOps(base, { fastLargeMesh: true }), label: preset.label };
+        const isLargeMesh = surfaceMeshTriangleCount(meshReady) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD;
+        clearSurfaceMeshTopologySessionState();
+        if (isLargeMesh) {
+          prepareLargeSurfaceMeshInteractiveLoad(
+            "Large mesh loaded in fast mode; topology adjacency will be computed by analysis tools when needed."
+          );
+        }
         setMeshDataset(meshReady);
-        if (!meshReady.adjacency && surfaceMeshTriangleCount(meshReady) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD) {
+        if (!meshReady.adjacency && isLargeMesh) {
           setSurfaceMeshTopologyStatus("Large mesh loaded in fast mode; topology adjacency will be computed by analysis tools when needed.");
         }
         setSurfaceMeshBenchmarkVerification(null);
-        clearSurfaceMeshTopologySessionState();
         setDatasetKind("mesh");
         setSurfaceViewerKind("mesh");
         focusSurfaceMeshViewport(meshReady);
@@ -48231,20 +48249,30 @@ case "mobius":
         setSurfaceMeshImportBusy(false);
       }
     },
-    [clearSurfaceMeshTopologySessionState, focusSurfaceMeshViewport, surfaceMeshMergeVertices]
+    [clearSurfaceMeshTopologySessionState, focusSurfaceMeshViewport, prepareLargeSurfaceMeshInteractiveLoad, surfaceMeshMergeVertices]
   );
 
   const handleLoadSurfaceMeshFile = useCallback(
     async (files: FileList | File[] | null) => {
-      if (!files || (files as FileList).length === 0) return;
+      if (!files || (files as FileList).length === 0) return null;
       const firstFile = Array.from(files as ArrayLike<File>)[0] ?? null;
+      if ((firstFile?.size ?? 0) >= LARGE_MESH_FAST_LOAD_FILE_BYTES) {
+        prepareLargeSurfaceMeshInteractiveLoad("Large mesh loading in fast mode.");
+      }
       setSurfaceMeshImportBusy(true);
       setSurfaceMeshImportError(null);
       try {
         const base = await loadSurfaceMeshFromFile(files, { mergeVertices: surfaceMeshMergeVertices });
         const meshReady = applySurfaceMeshOps(base, { fastLargeMesh: true });
+        const isLargeMesh = surfaceMeshTriangleCount(meshReady) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD;
+        clearSurfaceMeshTopologySessionState();
+        if (isLargeMesh) {
+          prepareLargeSurfaceMeshInteractiveLoad(
+            "Large mesh loaded in fast mode; topology adjacency will be computed by analysis tools when needed."
+          );
+        }
         setMeshDataset(meshReady);
-        if (!meshReady.adjacency && surfaceMeshTriangleCount(meshReady) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD) {
+        if (!meshReady.adjacency && isLargeMesh) {
           setSurfaceMeshTopologyStatus("Large mesh loaded in fast mode; topology adjacency will be computed by analysis tools when needed.");
         }
         if (firstFile) {
@@ -48257,18 +48285,25 @@ case "mobius":
         } else {
           setSurfaceMeshBenchmarkVerification(null);
         }
-        clearSurfaceMeshTopologySessionState();
         setDatasetKind("mesh");
         setSurfaceViewerKind("mesh");
         focusSurfaceMeshViewport(meshReady);
+        return meshReady;
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to load mesh file.";
         setSurfaceMeshImportError(msg);
+        return null;
       } finally {
         setSurfaceMeshImportBusy(false);
       }
     },
-    [clearSurfaceMeshTopologySessionState, focusSurfaceMeshViewport, resolveSurfaceMeshBenchmarkVerificationForFile, surfaceMeshMergeVertices]
+    [
+      clearSurfaceMeshTopologySessionState,
+      focusSurfaceMeshViewport,
+      prepareLargeSurfaceMeshInteractiveLoad,
+      resolveSurfaceMeshBenchmarkVerificationForFile,
+      surfaceMeshMergeVertices,
+    ]
   );
 
   const handleOpenSurfaceMeshFileDialog = useCallback(async () => {
@@ -48312,19 +48347,31 @@ case "mobius":
       setSurfaceMeshImportError(null);
       setSurfaceMeshBenchmarkError(null);
       try {
+        const hintedModel = surfaceMeshBenchmarkModels.find((model) => model.id === modelId) ?? null;
+        if (hintedModel?.category === "stress" || hintedModel?.tests.includes("performance")) {
+          prepareLargeSurfaceMeshInteractiveLoad(`Loading benchmark model: ${hintedModel.label} in fast mode.`);
+        }
         const response = await api.load(modelId);
         if (!response.ok) throw new Error(response.error);
         const bytes = new Uint8Array(response.bytes.byteLength);
         bytes.set(response.bytes);
+        if (bytes.byteLength >= LARGE_MESH_FAST_LOAD_FILE_BYTES) {
+          prepareLargeSurfaceMeshInteractiveLoad(`Loading benchmark model: ${response.entry.label} in fast mode.`);
+        }
         const file = new File([bytes.buffer], response.entry.fileName, {
           type: response.entry.fileName.toLowerCase().endsWith(".stl") ? "model/stl" : "text/plain",
         });
-        await handleLoadSurfaceMeshFile([file]);
+        const loadedMesh = await handleLoadSurfaceMeshFile([file]);
+        const isLargeMesh = loadedMesh ? surfaceMeshTriangleCount(loadedMesh) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD : false;
         setSurfaceMeshBenchmarkVerification(
           hasMeshBenchmarkExpectedMetrics(response.entry.expected) ? { model: response.entry } : null
         );
         setSurfaceMeshBenchmarkBrowserOpen(false);
-        setSurfaceMeshTopologyStatus(`Loaded benchmark model: ${response.entry.label}.`);
+        setSurfaceMeshTopologyStatus(
+          isLargeMesh
+            ? `Loaded benchmark model: ${response.entry.label}. Fast preview mode is active for this large mesh.`
+            : `Loaded benchmark model: ${response.entry.label}.`
+        );
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to load benchmark model.";
         setSurfaceMeshBenchmarkError(msg);
@@ -48333,7 +48380,7 @@ case "mobius":
         setSurfaceMeshImportBusy(false);
       }
     },
-    [handleLoadSurfaceMeshFile, isDev]
+    [handleLoadSurfaceMeshFile, isDev, prepareLargeSurfaceMeshInteractiveLoad, surfaceMeshBenchmarkModels]
   );
 
   const handleExportSurfaceMeshObj = useCallback(() => {
