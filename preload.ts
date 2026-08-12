@@ -90,6 +90,15 @@ export type MeshBenchmarkMatchResponse =
   | { ok: true; entry: MeshBenchmarkModel | null }
   | { ok: false; error: string };
 
+export type MeshFileDialogEntry = {
+  fileName: string;
+  bytes: Uint8Array;
+};
+export type MeshFileOpenResponse =
+  | { ok: true; canceled: false; files: MeshFileDialogEntry[] }
+  | { ok: false; canceled: true }
+  | { ok: false; canceled: false; error: string };
+
 contextBridge.exposeInMainWorld("surfacePresets", {
   list: (kind: PresetKind): Promise<SurfacePresetRecord[]> =>
     ipcRenderer.invoke("surfacePresets:list", kind),
@@ -132,4 +141,9 @@ contextBridge.exposeInMainWorld("meshBenchmarks", {
     ipcRenderer.invoke("meshBenchmark:load", id),
   match: (fileName: string): Promise<MeshBenchmarkMatchResponse> =>
     ipcRenderer.invoke("meshBenchmark:match", fileName),
+});
+
+contextBridge.exposeInMainWorld("meshFiles", {
+  open: (): Promise<MeshFileOpenResponse> =>
+    ipcRenderer.invoke("meshFiles:open"),
 });

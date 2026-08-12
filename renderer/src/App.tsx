@@ -48236,6 +48236,36 @@ case "mobius":
     [clearSurfaceMeshTopologySessionState, focusSurfaceMeshViewport, resolveSurfaceMeshBenchmarkVerificationForFile, surfaceMeshMergeVertices]
   );
 
+  const handleOpenSurfaceMeshFileDialog = useCallback(async () => {
+    const api = typeof window !== "undefined" ? window.meshFiles : undefined;
+    if (!api?.open) {
+      meshWorkspaceFileInputRef.current?.click();
+      return;
+    }
+    setSurfaceMeshImportError(null);
+    try {
+      const response = await api.open();
+      if (!response.ok) {
+        if (!response.canceled) setSurfaceMeshImportError(response.error);
+        return;
+      }
+      const files = response.files.map((entry) => {
+        const bytes = new Uint8Array(entry.bytes.byteLength);
+        bytes.set(entry.bytes);
+        const lowerName = entry.fileName.toLowerCase();
+        const type = lowerName.endsWith(".stl")
+          ? "model/stl"
+          : lowerName.endsWith(".obj") || lowerName.endsWith(".ply") || lowerName.endsWith(".gltf")
+            ? "text/plain"
+            : "application/octet-stream";
+        return new File([bytes.buffer], entry.fileName, { type });
+      });
+      await handleLoadSurfaceMeshFile(files);
+    } catch (err) {
+      setSurfaceMeshImportError(err instanceof Error ? err.message : "Failed to open mesh file.");
+    }
+  }, [handleLoadSurfaceMeshFile]);
+
   const handleLoadSurfaceMeshBenchmarkModel = useCallback(
     async (modelId: string) => {
       const api = typeof window !== "undefined" ? window.meshBenchmarks : undefined;
@@ -64858,7 +64888,9 @@ case "mobius":
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                           <button
                             type="button"
-                            onClick={() => meshWorkspaceFileInputRef.current?.click()}
+                            onClick={() => {
+                              void handleOpenSurfaceMeshFileDialog();
+                            }}
                             disabled={surfaceMeshImportBusy}
                           >
                             {surfaceMeshImportBusy ? "Loading..." : "Load STL/OBJ/PLY/GLTF"}
@@ -64893,6 +64925,9 @@ case "mobius":
                         </div>
                         {surfaceMeshBenchmarkError && (
                           <div style={{ color: "#b42318", fontSize: 11 }}>{surfaceMeshBenchmarkError}</div>
+                        )}
+                        {surfaceMeshImportError && (
+                          <div style={{ color: "#b42318", fontSize: 11 }}>{surfaceMeshImportError}</div>
                         )}
                         {surfaceMeshBenchmarkBrowserOpen && surfaceMeshBenchmarkModels.length > 0 && (
                           <div style={{ display: "grid", gap: 8 }}>

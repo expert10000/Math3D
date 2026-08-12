@@ -246,6 +246,14 @@ declare global {
   type MeshBenchmarkMatchResponse =
     | { ok: true; entry: MeshBenchmarkModelRecord | null }
     | { ok: false; error: string };
+  type MeshFileDialogEntry = {
+    fileName: string;
+    bytes: Uint8Array;
+  };
+  type MeshFileOpenResponse =
+    | { ok: true; canceled: false; files: MeshFileDialogEntry[] }
+    | { ok: false; canceled: true }
+    | { ok: false; canceled: false; error: string };
 
   type TopologyDocumentSaveRequest = {
     suggestedName?: string;
@@ -439,6 +447,9 @@ declare global {
       list: () => Promise<MeshBenchmarkListResponse>;
       load: (id: string) => Promise<MeshBenchmarkLoadResponse>;
       match: (fileName: string) => Promise<MeshBenchmarkMatchResponse>;
+    };
+    meshFiles?: {
+      open: () => Promise<MeshFileOpenResponse>;
     };
     appCapture?: {
       captureScreenshot: (req: AppCaptureScreenshotRequest) => Promise<AppCaptureScreenshotResponse>;

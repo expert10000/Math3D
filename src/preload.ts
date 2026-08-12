@@ -226,6 +226,64 @@ export type TopologyDocumentOpenResponse =
   | { ok: false; canceled: true }
   | { ok: false; canceled: false; error: string };
 
+export type MeshFileDialogEntry = {
+  fileName: string;
+  bytes: Uint8Array;
+};
+export type MeshFileOpenResponse =
+  | { ok: true; canceled: false; files: MeshFileDialogEntry[] }
+  | { ok: false; canceled: true }
+  | { ok: false; canceled: false; error: string };
+
+export type MeshBenchmarkCategory = "basic" | "standard" | "mathematical" | "problematic" | "stress";
+export type MeshBenchmarkTestKind = "import" | "topology" | "boundary" | "selection" | "analysis" | "performance";
+
+export type MeshBenchmarkModel = {
+  id: string;
+  label: string;
+  category: MeshBenchmarkCategory;
+  relativePath: string;
+  fileName: string;
+  tests: MeshBenchmarkTestKind[];
+  expected?: MeshBenchmarkExpected;
+};
+export type MeshBenchmarkExpectedMetrics = {
+  boundaryEdges?: number;
+  boundaryLoops?: number;
+  closed?: boolean;
+  components?: number;
+  degenerateFacesAtLeast?: number;
+  edges?: number;
+  eulerCharacteristic?: number;
+  faces?: number;
+  genus?: number;
+  nonManifoldEdges?: number;
+  orientationConsistent?: boolean;
+  selfIntersectionPairsAtLeast?: number;
+  vertices?: number;
+};
+export type MeshBenchmarkExpected = {
+  computedReference?: MeshBenchmarkExpectedMetrics & { closedByEdgeIncidence?: boolean };
+  expected?: MeshBenchmarkExpectedMetrics;
+  expectedAfterSpatialWeld?: MeshBenchmarkExpectedMetrics & { uniqueVertices?: number };
+  file?: string;
+  generated?: boolean;
+  purpose?: string;
+  rawTriangleCornerCount?: number;
+};
+
+export type MeshBenchmarkListResponse =
+  | { ok: true; entries: MeshBenchmarkModel[] }
+  | { ok: false; error: string };
+
+export type MeshBenchmarkLoadResponse =
+  | { ok: true; entry: MeshBenchmarkModel; bytes: Uint8Array }
+  | { ok: false; error: string };
+
+export type MeshBenchmarkMatchResponse =
+  | { ok: true; entry: MeshBenchmarkModel | null }
+  | { ok: false; error: string };
+
 export type AppWindowStatePacket = {
   reason?: string;
   maximized: boolean;
@@ -367,6 +425,20 @@ contextBridge.exposeInMainWorld("topologyDocuments", {
     ipcRenderer.invoke("topology:document:save", req),
   open: (): Promise<TopologyDocumentOpenResponse> =>
     ipcRenderer.invoke("topology:document:open"),
+});
+
+contextBridge.exposeInMainWorld("meshFiles", {
+  open: (): Promise<MeshFileOpenResponse> =>
+    ipcRenderer.invoke("meshFiles:open"),
+});
+
+contextBridge.exposeInMainWorld("meshBenchmarks", {
+  list: (): Promise<MeshBenchmarkListResponse> =>
+    ipcRenderer.invoke("meshBenchmark:list"),
+  load: (id: string): Promise<MeshBenchmarkLoadResponse> =>
+    ipcRenderer.invoke("meshBenchmark:load", id),
+  match: (fileName: string): Promise<MeshBenchmarkMatchResponse> =>
+    ipcRenderer.invoke("meshBenchmark:match", fileName),
 });
 
 contextBridge.exposeInMainWorld("appWindow", {

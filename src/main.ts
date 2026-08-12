@@ -161,6 +161,14 @@ type TopologyDocOpenResponse =
   | { ok: true; canceled: false; path: string; content: string }
   | { ok: false; canceled: true }
   | { ok: false; canceled: false; error: string };
+type MeshFileDialogEntry = {
+  fileName: string;
+  bytes: Uint8Array;
+};
+type MeshFileOpenResponse =
+  | { ok: true; canceled: false; files: MeshFileDialogEntry[] }
+  | { ok: false; canceled: true }
+  | { ok: false; canceled: false; error: string };
 type MeshBenchmarkCategory = "basic" | "standard" | "mathematical" | "problematic" | "stress";
 type MeshBenchmarkTestKind = "import" | "topology" | "boundary" | "selection" | "analysis" | "performance";
 type MeshBenchmarkModel = {
@@ -934,6 +942,35 @@ app.whenReady().then(async () => {
       }
       const content = await fs.promises.readFile(filePath, "utf8");
       return { ok: true, canceled: false, path: filePath, content };
+    } catch (error: any) {
+      return { ok: false, canceled: false, error: String(error?.message ?? error) };
+    }
+  });
+
+  ipcMain.handle("meshFiles:open", async (evt): Promise<MeshFileOpenResponse> => {
+    try {
+      const win = BrowserWindow.fromWebContents(evt.sender);
+      if (!win || win.isDestroyed()) {
+        return { ok: false, canceled: false, error: "Window not available." };
+      }
+      const dialogResult = await dialog.showOpenDialog(win, {
+        title: "Open Mesh File",
+        filters: [
+          { name: "Mesh files", extensions: ["obj", "stl", "ply", "gltf", "glb", "bin", "png", "jpg", "jpeg", "webp"] },
+          { name: "All files", extensions: ["*"] },
+        ],
+        properties: ["openFile", "multiSelections"],
+      });
+      if (dialogResult.canceled || dialogResult.filePaths.length === 0) {
+        return { ok: false, canceled: true };
+      }
+      const files = await Promise.all(
+        dialogResult.filePaths.map(async (filePath) => ({
+          fileName: path.basename(filePath),
+          bytes: new Uint8Array(await fs.promises.readFile(filePath)),
+        }))
+      );
+      return { ok: true, canceled: false, files };
     } catch (error: any) {
       return { ok: false, canceled: false, error: String(error?.message ?? error) };
     }
