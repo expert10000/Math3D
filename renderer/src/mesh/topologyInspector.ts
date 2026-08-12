@@ -34,7 +34,9 @@ export type MeshTopologyInspectorDetails = {
   readonly closed: boolean;
   readonly open: boolean;
   readonly orientable: boolean | null;
+  readonly orientationConsistent: boolean | null;
   readonly orientabilityLabel: "orientable" | "unknown" | "non-orientable";
+  readonly orientationLabel: "consistent" | "unknown" | "inconsistent";
   readonly topologyTypeLabel: "closed mesh" | "open mesh" | "non-manifold mesh";
   readonly isolatedVertexCount: number;
   readonly rowLimit: number;
@@ -317,10 +319,16 @@ export const computeMeshTopologyInspector = (
   const orientable = computeOrientable(faceCount, edgeMap, faceEdges);
   const hasBoundary = boundaryKeys.length > 0;
   const manifold = nonManifoldEdgeCount === 0;
+  const orientationConsistent =
+    !manifold || faceCount <= 0
+      ? null
+      : edgeRows.every((edge) => edge.orientedFaces.length !== 2 || edge.orientedFaces[0].direction !== edge.orientedFaces[1].direction);
   const watertight = !hasBoundary && manifold;
   const closed = watertight;
   const open = hasBoundary && manifold;
   const orientabilityLabel = orientable == null ? "unknown" : orientable ? "orientable" : "non-orientable";
+  const orientationLabel =
+    orientationConsistent == null ? "unknown" : orientationConsistent ? "consistent" : "inconsistent";
   const topologyTypeLabel = !manifold ? "non-manifold mesh" : closed ? "closed mesh" : "open mesh";
   const eulerCharacteristic = vertexCount - edgeRows.length + faceCount;
 
@@ -377,6 +385,11 @@ export const computeMeshTopologyInspector = (
       tone: orientable === false ? "warn" : orientable === true ? "good" : "neutral",
     },
     {
+      label: "Orientation",
+      value: orientationLabel,
+      tone: orientationConsistent === false ? "warn" : orientationConsistent === true ? "good" : "neutral",
+    },
+    {
       label: "Isolated vertices",
       value: String(isolatedVertexCount),
       tone: isolatedVertexCount === 0 ? "good" : "warn",
@@ -397,7 +410,9 @@ export const computeMeshTopologyInspector = (
     closed,
     open,
     orientable,
+    orientationConsistent,
     orientabilityLabel,
+    orientationLabel,
     topologyTypeLabel,
     isolatedVertexCount,
     rowLimit,
