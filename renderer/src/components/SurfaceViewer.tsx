@@ -65,6 +65,19 @@ export type ViewportDebugSnapshot = {
     target: { x: number; y: number; z: number };
   };
 };
+
+const updatePerspectiveCameraClipping = (
+  camera: THREE.PerspectiveCamera,
+  target: THREE.Vector3,
+  radiusHint?: number | null
+) => {
+  const distance = camera.position.distanceTo(target);
+  const radius = Number.isFinite(radiusHint) && (radiusHint ?? 0) > 0 ? Number(radiusHint) : 0;
+  const span = Math.max(1, distance, radius);
+  camera.near = Math.max(0.001, Math.min(0.1, span / 10000));
+  camera.far = Math.max(100, distance + radius * 4 + 10, span * 4);
+  camera.updateProjectionMatrix();
+};
 export type SurfacePerformanceSnapshot = {
   ts: number;
   fps: number;
@@ -2246,6 +2259,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
       cam.up.set(0, 1, 0);
       controls.target.copy(center);
       cam.lookAt(center);
+      updatePerspectiveCameraClipping(cam, controls.target, radius);
       controls.update();
     };
 
@@ -2590,7 +2604,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     cam.position.copy(target).add(frame.n.clone().multiplyScalar(dist));
     cam.up.copy(frame.e2);
     cam.lookAt(target);
-    cam.updateProjectionMatrix();
+    updatePerspectiveCameraClipping(cam, controls.target, radiusRef.current);
     controls.update();
   }, [
     lockToSlicePlane,
@@ -3666,6 +3680,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const camera = new THREE.PerspectiveCamera(35, width / height, 0.1, 100);
     camera.position.set(3, 3, 4);
     camera.lookAt(0, 0, 0);
+    updatePerspectiveCameraClipping(camera, new THREE.Vector3(0, 0, 0), radiusRef.current);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -3686,6 +3701,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         preservedCameraView.target.z
       );
       camera.lookAt(controls.target);
+      updatePerspectiveCameraClipping(camera, controls.target, radiusRef.current);
       controls.update();
     }
 
@@ -5662,7 +5678,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const nextTargetPixelRatio = nextDevicePixelRatio * qualityScale;
       renderer.setPixelRatio(Math.min(nextTargetPixelRatio, maxPixelRatio));
       camera.aspect = w / h;
-      camera.updateProjectionMatrix();
+      updatePerspectiveCameraClipping(camera, controls.target, radiusRef.current);
       renderer.setSize(w, h, false);
       renderResizeFrame();
 
@@ -5687,6 +5703,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       camera.position.copy(center).addScaledVector(viewDir, nextDist);
       controls.target.copy(center);
       camera.lookAt(center);
+      updatePerspectiveCameraClipping(camera, controls.target, radius);
       controls.update();
       renderResizeFrame();
     };
@@ -6800,7 +6817,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           } else {
             cam.lookAt(endTarget);
           }
-          cam.updateProjectionMatrix();
+          updatePerspectiveCameraClipping(cam, controls?.target ?? endTarget, radiusRef.current);
           if (t < 1) {
             zoomAnimRef.current = requestAnimationFrame(animate);
           }
@@ -6873,7 +6890,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         } else {
           cam.lookAt(center);
         }
-        cam.updateProjectionMatrix();
+        updatePerspectiveCameraClipping(cam, controls?.target ?? center, radiusRef.current);
         if (t < 1) {
           zoomAnimRef.current = requestAnimationFrame(animate);
         }
@@ -6927,7 +6944,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           } else {
             cam.lookAt(endTarget);
           }
-          cam.updateProjectionMatrix();
+          updatePerspectiveCameraClipping(cam, controls?.target ?? endTarget, radiusRef.current);
           if (t < 1) {
             zoomAnimRef.current = requestAnimationFrame(animate);
           }
@@ -9515,7 +9532,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     cam.position.set(cameraSync.position.x, cameraSync.position.y, cameraSync.position.z);
     cam.up.set(cameraSync.up.x, cameraSync.up.y, cameraSync.up.z);
     ctrls.target.set(cameraSync.target.x, cameraSync.target.y, cameraSync.target.z);
-    cam.updateProjectionMatrix();
+    updatePerspectiveCameraClipping(cam, ctrls.target, radiusRef.current);
     ctrls.update();
   }, [
     cameraSync?.position.x,
@@ -9539,7 +9556,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     cam.position.set(cameraOverride.position.x, cameraOverride.position.y, cameraOverride.position.z);
     cam.up.set(cameraOverride.up.x, cameraOverride.up.y, cameraOverride.up.z);
     ctrls.target.set(cameraOverride.target.x, cameraOverride.target.y, cameraOverride.target.z);
-    cam.updateProjectionMatrix();
+    cam.lookAt(ctrls.target);
+    updatePerspectiveCameraClipping(cam, ctrls.target, radiusRef.current);
     ctrls.update();
   }, [cameraOverrideToken]);
 
@@ -9573,6 +9591,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     cam.position.copy(targetCenter).addScaledVector(viewDir, requiredDist);
     ctrls.target.copy(targetCenter);
     cam.lookAt(targetCenter);
+    updatePerspectiveCameraClipping(cam, ctrls.target, targetRadius);
     ctrls.update();
 
     centerRef.current.copy(targetCenter);
@@ -9954,7 +9973,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       cam.up.set(0, 1, 0);
       ctrls.target.copy(target);
       cam.lookAt(target);
-      cam.updateProjectionMatrix();
+      updatePerspectiveCameraClipping(cam, ctrls.target, radiusRef.current);
       ctrls.update();
     };
 
