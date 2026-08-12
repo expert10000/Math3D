@@ -199,6 +199,16 @@ const triangleCountFromBuffers = (positions: ArrayLike<number>, indices?: ArrayL
   return Math.floor((positions.length ?? 0) / 9);
 };
 
+const resolveMeshRuntimeQualityForViewport = (
+  renderQuality: RenderQuality,
+  runtimeQuality: MeshRuntimeQuality
+): MeshRuntimeQuality => {
+  if (runtimeQuality !== "accurate") return runtimeQuality;
+  if (renderQuality === "performance") return "interactive-preview";
+  if (renderQuality === "balanced") return "balanced";
+  return "accurate";
+};
+
 const geometryPickPolicyFromObject = (object: THREE.Object3D | null | undefined): GeometryPickPolicy => {
   let current: THREE.Object3D | null | undefined = object;
   while (current) {
@@ -244,7 +254,8 @@ const computeMeshPreviewTriangleTarget = (
   if (runtimeQuality === "accurate") return fullTriangles;
 
   if (runtimeQuality === "balanced") {
-    if (fullTriangles < 250_000) return fullTriangles;
+    if (fullTriangles < 120_000) return fullTriangles;
+    if (fullTriangles < 250_000) return Math.max(1, Math.round(fullTriangles * 0.68));
     if (fullTriangles <= 1_000_000) return Math.max(1, Math.round(fullTriangles * 0.6));
     return Math.max(1, Math.min(fullTriangles, Math.max(previewTriangleTarget * 2, Math.round(fullTriangles * 0.35))));
   }
@@ -384,6 +395,7 @@ export type OverlayPolylineGroup = {
   radiusScale?: number;
   radiusWorld?: number;
 };
+const DENSE_OVERLAY_POLYLINE_SEGMENT_THRESHOLD = 384;
 export type OverlayLabel = {
   text: string;
   position: { x: number; y: number; z: number };
@@ -4076,30 +4088,34 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const makeSurfaceMeshOverrideMesh = (override: SurfaceMeshOverride) => {
       const geom = new THREE.BufferGeometry();
-      const positions = override.positions ?? [];
-      const normals = override.normals ?? null;
-      const uvs = override.uvs ?? null;
-      const indices = override.indices ?? null;
+      const lodBuffers = buildSurfaceMeshLodBuffers(
+        override,
+        canUseMeshInteractionLod
+          ? resolveMeshRuntimeQualityForViewport(renderQuality, meshRuntimeQualityRef.current)
+          : "accurate",
+        meshInteractionQualityMode,
+        normalizedMeshPreviewTriangleTarget
+      );
+      const positions = lodBuffers.positions;
+      const normals = lodBuffers.normals;
+      const uvs = lodBuffers.uvs;
+      const indices = lodBuffers.indices;
       const validation = override.validation ?? null;
       const nanNormals = validation?.stats?.nanNormals ?? 0;
 
-      const posArray = positions instanceof Float32Array ? positions : Float32Array.from(positions);
-      geom.setAttribute("position", new THREE.Float32BufferAttribute(posArray, 3));
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
 
       if (indices && indices.length >= 3) {
-        const idxArray = indices instanceof Uint32Array ? indices : Uint32Array.from(indices);
-        geom.setIndex(new THREE.BufferAttribute(idxArray, 1));
+        geom.setIndex(new THREE.BufferAttribute(indices, 1));
       }
 
       if (uvs && uvs.length >= 2) {
-        const uvArray = uvs instanceof Float32Array ? uvs : Float32Array.from(uvs);
-        geom.setAttribute("uv", new THREE.Float32BufferAttribute(uvArray, 2));
+        geom.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
       }
 
-      const normalsOk = !!normals && normals.length >= posArray.length && nanNormals === 0;
+      const normalsOk = !!normals && normals.length >= positions.length && nanNormals === 0;
       if (normalsOk) {
-        const nArray = normals instanceof Float32Array ? normals : Float32Array.from(normals);
-        geom.setAttribute("normal", new THREE.Float32BufferAttribute(nArray, 3));
+        geom.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
       } else {
         geom.computeVertexNormals();
       }
@@ -4120,6 +4136,13 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         opacity: override.opacity,
         wireframe: override.wireframe,
         flatShading: override.flatShading,
+      };
+      (mesh as any).userData.__surfaceMeshLod = {
+        runtimeQuality: canUseMeshInteractionLod
+          ? resolveMeshRuntimeQualityForViewport(renderQuality, meshRuntimeQualityRef.current)
+          : "accurate",
+        fullTriangleCount: lodBuffers.fullTriangleCount,
+        activeTriangleCount: lodBuffers.activeTriangleCount,
       };
       applySurfaceMeshOverrideTransform(mesh, override.transform);
       return mesh;
@@ -5997,6 +6020,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     planeGridDensity,
     planeGridOpacity,
     renderQuality,
+    canUseMeshInteractionLod,
+    meshInteractionQualityMode,
+    normalizedMeshPreviewTriangleTarget,
     reframePaddingFactor,
     probeEnabled,
     graphResolution,
@@ -6233,7 +6259,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const useOverrides = hasOverrides;
     const useOverride = !useOverrides && !!surfaceMeshOverride?.positions?.length;
     if (!useOverrides && !useOverride) return;
-    const runtimeQualityForMesh = canUseMeshInteractionLod ? meshRuntimeQuality : "accurate";
+    const runtimeQualityForMesh = canUseMeshInteractionLod
+      ? resolveMeshRuntimeQualityForViewport(renderQuality, meshRuntimeQuality)
+      : "accurate";
 
     const makeMaterial = (override?: SurfaceMeshOverride) =>
       new THREE.MeshStandardMaterial({
@@ -6618,6 +6646,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     materialOpacity,
     materialMetalness,
     materialRoughness,
+    renderQuality,
     canUseMeshInteractionLod,
     meshRuntimeQuality,
     meshInteractionQualityMode,
@@ -7745,11 +7774,46 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     for (const entry of effectiveOverlayPolylineGroups) {
       if (!entry?.lines?.length) continue;
+      const segmentCount = entry.lines.reduce((count, line) => count + Math.max(0, (line?.length ?? 0) - 1), 0);
+      if (segmentCount <= 0) continue;
+      const opacity = entry.opacity ?? 1;
+
+      if (segmentCount > DENSE_OVERLAY_POLYLINE_SEGMENT_THRESHOLD) {
+        const positions = new Float32Array(segmentCount * 6);
+        let ptr = 0;
+        for (const line of entry.lines) {
+          if (!line || line.length < 2) continue;
+          for (let i = 0; i + 1 < line.length; i += 1) {
+            const a = line[i];
+            const b = line[i + 1];
+            positions[ptr++] = a.x;
+            positions[ptr++] = a.y;
+            positions[ptr++] = a.z;
+            positions[ptr++] = b.x;
+            positions[ptr++] = b.y;
+            positions[ptr++] = b.z;
+          }
+        }
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+        const mat = new THREE.LineBasicMaterial({
+          color: entry.color,
+          transparent: opacity < 1,
+          opacity,
+          depthTest: false,
+          depthWrite: false,
+        });
+        const segments = new THREE.LineSegments(geom, mat);
+        segments.renderOrder = 300;
+        segments.frustumCulled = false;
+        group.add(segments);
+        continue;
+      }
+
       const tubeRadius =
         typeof entry.radiusWorld === "number" && Number.isFinite(entry.radiusWorld)
           ? Math.max(0.001, entry.radiusWorld)
           : baseRadius * (entry.radiusScale ?? 1);
-      const opacity = entry.opacity ?? 1;
       const mat = new THREE.MeshBasicMaterial({
         color: entry.color,
         transparent: opacity < 1,
