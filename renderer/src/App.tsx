@@ -1834,6 +1834,8 @@ const formatBenchmarkBytes = (bytes: number | null | undefined): string => {
   return `${Math.round(bytes)} B`;
 };
 
+const LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD = 100_000;
+
 const DETERMINISTIC_IMPLICIT_SAMPLE_EXPR = "x*x + y*y + z*z - 1";
 
 const toCgalHealthState = (status: PythonWorkerDiagnosticsSnapshot): CgalHealthState => ({
@@ -1848,12 +1850,26 @@ const toCgalHealthState = (status: PythonWorkerDiagnosticsSnapshot): CgalHealthS
   errorCategory: status.lastError?.category,
 });
 
-const applySurfaceMeshOps = (mesh: SurfaceMeshData): SurfaceMeshData => {
+const surfaceMeshTriangleCount = (mesh: Pick<SurfaceMeshData, "positions" | "indices">): number => {
+  const vertexCount = Math.floor((mesh.positions?.length ?? 0) / 3);
+  return mesh.indices?.length ? Math.floor(mesh.indices.length / 3) : Math.floor(vertexCount / 3);
+};
+
+const shouldDeferLargeSurfaceMeshAnalysis = (mesh: SurfaceMeshData | null | undefined): boolean =>
+  !!mesh &&
+  surfaceMeshTriangleCount(mesh) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD &&
+  (!mesh.adjacency || mesh.adjacency.length === 0);
+
+const applySurfaceMeshOps = (mesh: SurfaceMeshData, options?: { fastLargeMesh?: boolean }): SurfaceMeshData => {
   let next = mesh;
   if (!mesh.normals || mesh.normals.length < mesh.positions.length) {
     next = computeVertexNormals(next);
   }
-  next = computeAdjacency(next);
+  const shouldDeferAdjacency =
+    options?.fastLargeMesh === true && surfaceMeshTriangleCount(next) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD;
+  if (!shouldDeferAdjacency) {
+    next = computeAdjacency(next);
+  }
   next = computeMeanEdgeLength(next);
   next = validateMesh(next);
   return next;
@@ -35914,6 +35930,18 @@ const App: React.FC = () => {
       setMeshQualityCacheHit(false);
       return;
     }
+    if (shouldDeferLargeSurfaceMeshAnalysis(surfaceMeshData) && meshAnalyzeDiagnosticsNonce === 0) {
+      meshQualityJobRef.current = null;
+      meshQualityCacheKeyRef.current = null;
+      terminateMeshQualityWorker();
+      setMeshQualityReport(null);
+      setMeshQualityError("Large mesh quality analysis is deferred. Use Recompute diagnostics when you need full topology checks.");
+      setMeshQualityBusy(false);
+      setMeshQualityProgress(0);
+      setMeshQualityPhase("idle");
+      setMeshQualityCacheHit(false);
+      return;
+    }
     const positions = surfaceMeshData.positions;
     const indices = surfaceMeshData.indices ?? null;
     const cacheKey = buildMeshQualityCacheKey(
@@ -35996,6 +36024,7 @@ const App: React.FC = () => {
     surfaceMeshData,
     meshQualityHighAspectThreshold,
     meshQualityMaxListedDefects,
+    meshAnalyzeDiagnosticsNonce,
     buildMeshQualityCacheKey,
     storeMeshQualityCache,
     terminateMeshQualityWorker,
@@ -48185,8 +48214,11 @@ case "mobius":
         const blob = await resp.blob();
         const file = new File([blob], preset.fileName, { type: blob.type || "application/octet-stream" });
         const base = await loadSurfaceMeshFromFile([file], { mergeVertices: surfaceMeshMergeVertices });
-        const meshReady = { ...applySurfaceMeshOps(base), label: preset.label };
+        const meshReady = { ...applySurfaceMeshOps(base, { fastLargeMesh: true }), label: preset.label };
         setMeshDataset(meshReady);
+        if (!meshReady.adjacency && surfaceMeshTriangleCount(meshReady) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD) {
+          setSurfaceMeshTopologyStatus("Large mesh loaded in fast mode; topology adjacency will be computed by analysis tools when needed.");
+        }
         setSurfaceMeshBenchmarkVerification(null);
         clearSurfaceMeshTopologySessionState();
         setDatasetKind("mesh");
@@ -48210,8 +48242,11 @@ case "mobius":
       setSurfaceMeshImportError(null);
       try {
         const base = await loadSurfaceMeshFromFile(files, { mergeVertices: surfaceMeshMergeVertices });
-        const meshReady = applySurfaceMeshOps(base);
+        const meshReady = applySurfaceMeshOps(base, { fastLargeMesh: true });
         setMeshDataset(meshReady);
+        if (!meshReady.adjacency && surfaceMeshTriangleCount(meshReady) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD) {
+          setSurfaceMeshTopologyStatus("Large mesh loaded in fast mode; topology adjacency will be computed by analysis tools when needed.");
+        }
         if (firstFile) {
           try {
             setSurfaceMeshBenchmarkVerification(await resolveSurfaceMeshBenchmarkVerificationForFile(firstFile.name));
@@ -53118,9 +53153,14 @@ case "mobius":
     };
   }, [activeCgalMesh]);
   const surfaceInspectorTopologyMesh = surfaceViewerKind === "implicit" ? activeCgalMeshData : surfaceMeshData;
+  const surfaceInspectorTopologyDeferred =
+    surfaceViewerKind !== "implicit" && shouldDeferLargeSurfaceMeshAnalysis(surfaceInspectorTopologyMesh);
   const surfaceInspectorTopologyDetails = useMemo(
-    () => computeMeshTopologyInspector(surfaceInspectorTopologyMesh, { rowLimit: 18, itemLimit: 12 }),
-    [surfaceInspectorTopologyMesh]
+    () =>
+      surfaceInspectorTopologyDeferred
+        ? null
+        : computeMeshTopologyInspector(surfaceInspectorTopologyMesh, { rowLimit: 18, itemLimit: 12 }),
+    [surfaceInspectorTopologyDeferred, surfaceInspectorTopologyMesh]
   );
   const activeSurfaceMeshBenchmarkVerification = useMemo(() => {
     if (!isDev || !surfaceMeshBenchmarkVerification || surfaceMeshData?.source.kind !== "import") return null;
@@ -53130,6 +53170,7 @@ case "mobius":
   }, [isDev, surfaceMeshBenchmarkVerification, surfaceMeshData?.source]);
   const surfaceMeshAnalyzeDiagnostics = useMemo(() => {
     if (!surfaceMeshData?.positions?.length) return null;
+    if (shouldDeferLargeSurfaceMeshAnalysis(surfaceMeshData) && meshAnalyzeDiagnosticsNonce === 0) return null;
     const readiness = evaluateGeometryMeshReadiness(surfaceMeshData);
     const topology = computeMeshTopologyInspector(surfaceMeshData, { rowLimit: 6, itemLimit: 8 });
     const sourceNames =

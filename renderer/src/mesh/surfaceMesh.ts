@@ -148,6 +148,36 @@ const stripToPositions = (geom: THREE.BufferGeometry): THREE.BufferGeometry => {
   return out;
 };
 
+const weldGeometryPositions = (geom: THREE.BufferGeometry, tolerance: number): THREE.BufferGeometry => {
+  const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
+  if (!posAttr) return stripToPositions(geom);
+  const scale = 1 / Math.max(1e-12, tolerance);
+  const weldedPositions: number[] = [];
+  const indices: number[] = [];
+  const indexByKey = new Map<string, number>();
+
+  for (let i = 0; i < posAttr.count; i += 1) {
+    const x = posAttr.getX(i);
+    const y = posAttr.getY(i);
+    const z = posAttr.getZ(i);
+    const key = `${Math.round(x * scale)},${Math.round(y * scale)},${Math.round(z * scale)}`;
+    const existing = indexByKey.get(key);
+    if (existing != null) {
+      indices.push(existing);
+      continue;
+    }
+    const nextIndex = weldedPositions.length / 3;
+    indexByKey.set(key, nextIndex);
+    weldedPositions.push(x, y, z);
+    indices.push(nextIndex);
+  }
+
+  const out = new THREE.BufferGeometry();
+  out.setAttribute("position", new THREE.Float32BufferAttribute(weldedPositions, 3));
+  out.setIndex(indices);
+  return out;
+};
+
 const getFileBaseUrl = (file: File): string | null => {
   const filePath = (file as File & { path?: string }).path;
   if (!filePath) return null;
@@ -211,7 +241,7 @@ const normalizeGeometry = (geom: THREE.BufferGeometry, opts: SurfaceMeshImportOp
     g = stripToPositions(g);
     recordStage(opts, "normalize", normalizeStart);
     const weldStart = nowMs();
-    g = mergeVertices(g, opts.mergeTolerance ?? 1e-4);
+    g = weldGeometryPositions(g, opts.mergeTolerance ?? 1e-4);
     recordStage(opts, "vertexWeld", weldStart);
   } else {
     const normalizeStart = nowMs();
