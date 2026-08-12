@@ -36718,6 +36718,7 @@ const App: React.FC = () => {
       surfaceMeshTopologySelectionCleared ||
       surfaceMeshTopologyHistoryPreviewId ||
       surfaceMeshTopologyPickMode === "object" ||
+      shouldDeferLargeSurfaceMeshAnalysis(surfaceMeshTopologyViewerMesh) ||
       !surfaceMeshTopologyViewerMesh?.positions?.length
     ) {
       return empty;
@@ -38481,32 +38482,35 @@ const App: React.FC = () => {
       : Math.floor(vertCount / 3);
     return { vertCount, triCount };
   }, [surfaceMeshData]);
+  const surfaceMeshLargeAnalysisDeferred = shouldDeferLargeSurfaceMeshAnalysis(surfaceMeshData);
   const surfaceMeshBounds = useMemo(() => boundsFromPositions(surfaceMeshData?.positions), [surfaceMeshData]);
   useEffect(() => {
     setMeshAnalyzeProbeHistory([]);
   }, [surfaceMeshData, surfaceViewerKind]);
   const surfaceMeshTopologyPick = useMemo(
     () =>
-      surfaceViewerKind === "mesh"
+      surfaceViewerKind === "mesh" && !surfaceMeshLargeAnalysisDeferred
         ? resolveSurfaceMeshTopologyPick(surfaceMeshData, probeInfo?.point ?? null)
         : null,
     [
       probeInfo?.point?.x,
       probeInfo?.point?.y,
       probeInfo?.point?.z,
+      surfaceMeshLargeAnalysisDeferred,
       surfaceMeshData,
       surfaceViewerKind,
     ]
   );
   const surfaceMeshTopologyHoverPick = useMemo(
     () =>
-      surfaceViewerKind === "mesh"
+      surfaceViewerKind === "mesh" && !surfaceMeshLargeAnalysisDeferred
         ? resolveSurfaceMeshTopologyPick(surfaceMeshData, surfaceMeshHoverPick?.point ?? null)
         : null,
     [
       surfaceMeshHoverPick?.point?.x,
       surfaceMeshHoverPick?.point?.y,
       surfaceMeshHoverPick?.point?.z,
+      surfaceMeshLargeAnalysisDeferred,
       surfaceMeshData,
       surfaceViewerKind,
     ]
@@ -38526,6 +38530,19 @@ const App: React.FC = () => {
     const edgeA = Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0));
     const edgeB = Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0));
     const vertexIndex = Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0));
+    if (surfaceMeshLargeAnalysisDeferred) {
+      return {
+        faceValid: false,
+        faceLabel: "deferred for large fast-preview mesh",
+        edgeValid: false,
+        edgeLabel: "deferred for large fast-preview mesh",
+        vertexValid: vertexIndex < Math.floor((surfaceMeshData?.positions?.length ?? 0) / 3),
+        vertexLabel: "large fast-preview mesh; topology validation deferred",
+        effectiveEdgeA: edgeA,
+        effectiveEdgeB: edgeB,
+        edgeFallbackActive: false,
+      };
+    }
     const topology = surfaceMeshData?.positions?.length
       ? countTriangleMeshTopology(surfaceMeshData)
       : { vertexCount: 0, faceCount: 0 };
@@ -38583,6 +38600,7 @@ const App: React.FC = () => {
       edgeFallbackActive: !!fallbackEdge,
     };
   }, [
+    surfaceMeshLargeAnalysisDeferred,
     surfaceMeshData,
     surfaceMeshTopologyEdgeA,
     surfaceMeshTopologyEdgeB,
@@ -38665,8 +38683,8 @@ const App: React.FC = () => {
     showSelectionEventStatus("Mesh", "Selection cleared", `Mesh:clear:${Date.now()}`);
   }, [clearInspect, showSelectionEventStatus]);
   const surfaceMeshConnectedComponentCount = useMemo(
-    () => countMeshConnectedComponents(surfaceMeshData),
-    [surfaceMeshData]
+    () => (surfaceMeshLargeAnalysisDeferred ? null : countMeshConnectedComponents(surfaceMeshData)),
+    [surfaceMeshData, surfaceMeshLargeAnalysisDeferred]
   );
   const surfaceMeshSourceLabel = useMemo(
     () => (surfaceMeshData?.source ? formatSurfaceMeshSource(surfaceMeshData.source) : null),
