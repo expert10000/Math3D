@@ -1,0 +1,150 @@
+{
+  "suite": "Math3D Mesh Benchmark Suite",
+  "version": 1,
+  "categories": [
+    { "id": "basic", "name": "Basic" },
+    { "id": "standard", "name": "Standard" },
+    { "id": "mathematical", "name": "Mathematical" },
+    { "id": "problematic", "name": "Problematic" },
+    { "id": "stress", "name": "Stress" }
+  ],
+  "models": [
+    {
+      "id": "tetrahedron",
+      "name": "Tetrahedron",
+      "category": "basic",
+      "file": "basic/01_tetrahedron.obj",
+      "expected": "expected/01_tetrahedron.json",
+      "tests": ["import", "topology", "analysis"]
+    },
+    {
+      "id": "cube-obj",
+      "name": "Cube",
+      "category": "basic",
+      "file": "basic/02_cube.obj",
+      "expected": "expected/02_cube.json",
+      "tests": ["import", "topology", "selection", "analysis"]
+    },
+    {
+      "id": "cube-ascii-stl",
+      "name": "Cube - ASCII STL",
+      "category": "basic",
+      "file": "basic/03_cube_ascii.stl",
+      "expected": "expected/03_cube_ascii.json",
+      "tests": ["import", "topology", "analysis"]
+    },
+    {
+      "id": "cylinder",
+      "name": "Cylinder",
+      "category": "basic",
+      "file": "basic/04_cylinder.obj",
+      "expected": "expected/04_cylinder.json",
+      "tests": ["import", "topology", "selection", "analysis"]
+    },
+    {
+      "id": "torus",
+      "name": "Torus",
+      "category": "mathematical",
+      "file": "basic/05_torus.obj",
+      "expected": "expected/05_torus.json",
+      "tests": ["import", "topology", "selection", "analysis"]
+    },
+    {
+      "id": "suzanne",
+      "name": "Suzanne",
+      "category": "standard",
+      "file": "standard/06_suzanne.obj",
+      "tests": ["import", "selection", "analysis"]
+    },
+    {
+      "id": "fandisk",
+      "name": "Fandisk",
+      "category": "standard",
+      "file": "standard/07_fandisk.obj",
+      "tests": ["import", "selection", "analysis"]
+    },
+    {
+      "id": "stanford-bunny",
+      "name": "Stanford Bunny",
+      "category": "standard",
+      "file": "standard/08_stanford_bunny.obj",
+      "tests": ["import", "selection", "analysis", "performance"]
+    },
+    {
+      "id": "spot-cow",
+      "name": "Spot Cow",
+      "category": "standard",
+      "file": "standard/09_spot_cow.obj",
+      "tests": ["import", "selection", "analysis"]
+    },
+    {
+      "id": "3dbenchy",
+      "name": "3DBenchy",
+      "category": "standard",
+      "file": "standard/10_3dbenchy.stl",
+      "tests": ["import", "selection", "analysis", "performance"]
+    },
+    {
+      "id": "armadillo",
+      "name": "Armadillo",
+      "category": "standard",
+      "file": "standard/11_armadillo.obj",
+      "tests": ["import", "selection", "analysis", "performance"]
+    },
+    {
+      "id": "open-boundary",
+      "name": "Open Boundary",
+      "category": "problematic",
+      "file": "problematic/15_open_boundary.obj",
+      "expected": "expected/15_open_boundary.json",
+      "tests": ["import", "topology", "boundary", "selection", "analysis"]
+    },
+    {
+      "id": "non-manifold-edge",
+      "name": "Non-Manifold Edge",
+      "category": "problematic",
+      "file": "problematic/16_non_manifold_edge.obj",
+      "expected": "expected/16_non_manifold_edge.json",
+      "tests": ["import", "topology", "selection", "analysis"]
+    },
+    {
+      "id": "disconnected-components",
+      "name": "Disconnected Components",
+      "category": "problematic",
+      "file": "problematic/17_disconnected_components.obj",
+      "expected": "expected/17_disconnected_components.json",
+      "tests": ["import", "topology", "analysis"]
+    },
+    {
+      "id": "degenerate-faces",
+      "name": "Degenerate Faces",
+      "category": "problematic",
+      "file": "problematic/18_degenerate_faces.obj",
+      "expected": "expected/18_degenerate_faces.json",
+      "tests": ["import", "topology", "analysis"]
+    },
+    {
+      "id": "inconsistent-normals",
+      "name": "Inconsistent Normals",
+      "category": "problematic",
+      "file": "problematic/19_inconsistent_normals.obj",
+      "expected": "expected/19_inconsistent_normals.json",
+      "tests": ["import", "topology", "analysis"]
+    },
+    {
+      "id": "self-intersection",
+      "name": "Self Intersection",
+      "category": "problematic",
+      "file": "problematic/20_self_intersection.obj",
+      "expected": "expected/20_self_intersection.json",
+      "tests": ["import", "topology", "analysis"]
+    },
+    {
+      "id": "dragon-medium",
+      "name": "Dragon Medium",
+      "category": "stress",
+      "file": "stress/12_dragon_medium.obj",
+      "tests": ["import", "selection", "analysis", "performance"]
+    }
+  ]
+}

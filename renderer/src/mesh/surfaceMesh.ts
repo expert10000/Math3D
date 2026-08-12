@@ -116,6 +116,21 @@ export type SurfaceMeshPreset = {
 };
 
 type GeometryOpts = { mergeVertices: boolean; mergeTolerance?: number };
+export type SurfaceMeshImportStage =
+  | "fileRead"
+  | "parse"
+  | "normalize"
+  | "vertexWeld"
+  | "normalCompute"
+  | "meshExtract";
+export type SurfaceMeshImportTelemetry = {
+  readonly stage: SurfaceMeshImportStage;
+  readonly ms: number;
+};
+type SurfaceMeshImportTimingSink = (entry: SurfaceMeshImportTelemetry) => void;
+type SurfaceMeshImportOptions = GeometryOpts & {
+  onStage?: SurfaceMeshImportTimingSink;
+};
 
 type FileLikeList = File[] | FileList;
 
@@ -179,15 +194,27 @@ const createUrlModifier = (files: File[], urlCache: Map<string, string>) => {
   };
 };
 
-const normalizeGeometry = (geom: THREE.BufferGeometry, opts: GeometryOpts): THREE.BufferGeometry => {
+const nowMs = (): number =>
+  typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+
+const recordStage = (opts: SurfaceMeshImportOptions, stage: SurfaceMeshImportStage, startAt: number) => {
+  opts.onStage?.({ stage, ms: Math.max(0, nowMs() - startAt) });
+};
+
+const normalizeGeometry = (geom: THREE.BufferGeometry, opts: SurfaceMeshImportOptions): THREE.BufferGeometry => {
   let g = geom;
   if (opts.mergeVertices) {
+    const normalizeStart = nowMs();
     if (g.index) {
       g = g.toNonIndexed();
     }
     g = stripToPositions(g);
+    recordStage(opts, "normalize", normalizeStart);
+    const weldStart = nowMs();
     g = mergeVertices(g, opts.mergeTolerance ?? 1e-4);
+    recordStage(opts, "vertexWeld", weldStart);
   } else {
+    const normalizeStart = nowMs();
     const posAttr = g.getAttribute("position") as THREE.BufferAttribute | null;
     const normalAttr = g.getAttribute("normal") as THREE.BufferAttribute | null;
     const uvAttr = g.getAttribute("uv") as THREE.BufferAttribute | null;
@@ -205,9 +232,12 @@ const normalizeGeometry = (geom: THREE.BufferGeometry, opts: GeometryOpts): THRE
       out.setIndex((g.index as THREE.BufferAttribute).clone());
     }
     g = out;
+    recordStage(opts, "normalize", normalizeStart);
   }
   if (!g.getAttribute("normal")) {
+    const normalStart = nowMs();
     g.computeVertexNormals();
+    recordStage(opts, "normalCompute", normalStart);
   }
   return g;
 };
@@ -262,10 +292,13 @@ export function buildSurfaceMeshFromGeometry(
   geometry: THREE.BufferGeometry,
   label: string,
   source: SurfaceMeshSource,
-  opts: GeometryOpts = { mergeVertices: false }
+  opts: SurfaceMeshImportOptions = { mergeVertices: false }
 ): SurfaceMeshData {
   const geom = normalizeGeometry(geometry, opts);
-  return surfaceMeshFromGeometry(geom, label, source);
+  const extractStart = nowMs();
+  const mesh = surfaceMeshFromGeometry(geom, label, source);
+  recordStage(opts, "meshExtract", extractStart);
+  return mesh;
 }
 
 export function weldSurfaceMeshVertices(
@@ -341,7 +374,7 @@ const mergeObjectGeometries = (root: THREE.Object3D): THREE.BufferGeometry => {
 
 export async function loadSurfaceMeshFromFile(
   files: FileLikeList,
-  opts: GeometryOpts = { mergeVertices: true }
+  opts: SurfaceMeshImportOptions = { mergeVertices: true }
 ): Promise<SurfaceMeshData> {
   const fileList = toFileList(files);
   const file =
@@ -354,7 +387,9 @@ export async function loadSurfaceMeshFromFile(
   }
   const name = file.name || "mesh";
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  const readStart = nowMs();
   const buffer = await file.arrayBuffer();
+  recordStage(opts, "fileRead", readStart);
   const importSource: SurfaceMeshSource = {
     kind: "import",
     format: ext as MeshImportFormat,
@@ -363,21 +398,27 @@ export async function loadSurfaceMeshFromFile(
 
   if (ext === "stl") {
     const loader = new STLLoader();
+    const parseStart = nowMs();
     const geometry = loader.parse(buffer);
+    recordStage(opts, "parse", parseStart);
     return buildSurfaceMeshFromGeometry(geometry, name, importSource, opts);
   }
 
   if (ext === "ply") {
     const loader = new PLYLoader();
+    const parseStart = nowMs();
     const geometry = loader.parse(buffer);
+    recordStage(opts, "parse", parseStart);
     return buildSurfaceMeshFromGeometry(geometry, name, importSource, opts);
   }
 
   if (ext === "obj") {
+    const parseStart = nowMs();
     const text = new TextDecoder().decode(buffer);
     const loader = new OBJLoader();
     const obj = loader.parse(text);
     const merged = mergeObjectGeometries(obj);
+    recordStage(opts, "parse", parseStart);
     return buildSurfaceMeshFromGeometry(merged, name, importSource, opts);
   }
 
@@ -392,6 +433,7 @@ export async function loadSurfaceMeshFromFile(
     const loader = new GLTFLoader(manager);
     let gltf: GLTF;
     try {
+      const parseStart = nowMs();
       gltf = await new Promise<GLTF>((resolve, reject) => {
         if (ext === "gltf") {
           const text = new TextDecoder().decode(buffer);
@@ -400,6 +442,7 @@ export async function loadSurfaceMeshFromFile(
           loader.parse(buffer, resourcePath, resolve, reject);
         }
       });
+      recordStage(opts, "parse", parseStart);
     } finally {
       for (const url of urlCache.values()) {
         URL.revokeObjectURL(url);

@@ -421,6 +421,7 @@ import {
   mergeMeshData,
   surfaceMeshToGeometry,
   weldSurfaceMeshVertices,
+  type SurfaceMeshImportTelemetry,
   type SurfaceMeshData,
   type SurfaceMeshSource,
   type SurfaceMeshPreset,
@@ -501,7 +502,7 @@ import {
   type MeshBenchmarkExpected,
   type MeshBenchmarkVerificationRow,
 } from "./mesh/meshBenchmarkVerification";
-import type { MeshQualityReport, MeshQualityReportPhase } from "./mesh/meshQualityReport";
+import { computeMeshQualityReport, type MeshQualityReport, type MeshQualityReportPhase } from "./mesh/meshQualityReport";
 import type {
   DatasetKind,
   MeshDataset,
@@ -632,25 +633,52 @@ type SurfaceMeshAssetPreset = {
   assetUrl: string;
   fileName: string;
 };
-type MeshBenchmarkCategory = "basic" | "standard" | "problematic" | "stress";
+type MeshBenchmarkCategory = "basic" | "standard" | "mathematical" | "problematic" | "stress";
+type MeshBenchmarkTestKind = "import" | "topology" | "boundary" | "selection" | "analysis" | "performance";
 type MeshBenchmarkModel = {
   id: string;
   label: string;
   category: MeshBenchmarkCategory;
   relativePath: string;
   fileName: string;
+  tests: MeshBenchmarkTestKind[];
   expected?: MeshBenchmarkExpected;
 };
 type MeshBenchmarkVerificationContext = {
   model: MeshBenchmarkModel;
 };
+type MeshBenchmarkPerformanceResult = {
+  id: string;
+  label: string;
+  fileName: string;
+  status: "passed" | "failed";
+  error?: string;
+  fileReadMs: number | null;
+  importMs: number | null;
+  vertexWeldMs: number | null;
+  normalComputeMs: number | null;
+  adjacencyMs: number | null;
+  meshAnalyzeMs: number | null;
+  meshBuildMs: number | null;
+  memoryBytes: number | null;
+  vertices: number | null;
+  triangles: number | null;
+};
+type MeshBenchmarkPerformanceSuiteState = {
+  running: boolean;
+  status: string | null;
+  results: MeshBenchmarkPerformanceResult[];
+  startedAt: number | null;
+  completedAt: number | null;
+};
 const MESH_BENCHMARK_CATEGORY_LABELS: Record<MeshBenchmarkCategory, string> = {
   basic: "Basic",
   standard: "Standard",
+  mathematical: "Mathematical",
   problematic: "Problematic",
   stress: "Stress",
 };
-const MESH_BENCHMARK_CATEGORY_ORDER: MeshBenchmarkCategory[] = ["basic", "standard", "problematic", "stress"];
+const MESH_BENCHMARK_CATEGORY_ORDER: MeshBenchmarkCategory[] = ["basic", "standard", "mathematical", "problematic", "stress"];
 type SurfaceMeshTopologyDemoPreset = {
   id: string;
   label: string;
@@ -1766,6 +1794,44 @@ const buildMeshPerformanceBenchmark = (preset: MeshPerfBenchmarkPreset): Surface
     normals,
     source: { kind: "bakedFromImplicit" },
   };
+};
+
+const benchmarkNowMs = (): number =>
+  typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+
+const sumMeshImportStages = (
+  entries: readonly SurfaceMeshImportTelemetry[],
+  stages: readonly SurfaceMeshImportTelemetry["stage"][]
+): number | null => {
+  const total = entries
+    .filter((entry) => stages.includes(entry.stage))
+    .reduce((acc, entry) => acc + entry.ms, 0);
+  return Number.isFinite(total) && total > 0 ? total : null;
+};
+
+const estimateSurfaceMeshDataBytes = (mesh: SurfaceMeshData | null): number | null => {
+  if (!mesh) return null;
+  const typedBytes = (value: ArrayLike<number> | null | undefined): number => {
+    const byteLength = (value as { byteLength?: number } | null | undefined)?.byteLength;
+    return Number.isFinite(byteLength) ? Number(byteLength) : 0;
+  };
+  const adjacencyBytes =
+    mesh.adjacency?.reduce((total, neighbors) => total + neighbors.length * 4, 0) ?? 0;
+  return (
+    typedBytes(mesh.positions) +
+    typedBytes(mesh.indices) +
+    typedBytes(mesh.normals) +
+    typedBytes(mesh.uvs) +
+    adjacencyBytes
+  );
+};
+
+const formatBenchmarkBytes = (bytes: number | null | undefined): string => {
+  if (bytes == null || !Number.isFinite(bytes)) return "n/a";
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${Math.round(bytes)} B`;
 };
 
 const DETERMINISTIC_IMPLICIT_SAMPLE_EXPR = "x*x + y*y + z*z - 1";
@@ -39405,6 +39471,14 @@ const App: React.FC = () => {
   const surfacePerformanceSnapshotUpdatedAtRef = useRef(0);
   const [meshPerformanceLastBuildMs, setMeshPerformanceLastBuildMs] = useState<number | null>(null);
   const [meshPerfBenchmarkId, setMeshPerfBenchmarkId] = useState<MeshPerfBenchmarkId | null>(null);
+  const [meshBenchmarkPerformanceSuite, setMeshBenchmarkPerformanceSuite] =
+    useState<MeshBenchmarkPerformanceSuiteState>({
+      running: false,
+      status: null,
+      results: [],
+      startedAt: null,
+      completedAt: null,
+    });
   const meshPerfBaselineRef = useRef<{
     mesh: SurfaceMeshData | null;
     viewerKind: SurfaceViewerKind;
@@ -39423,6 +39497,146 @@ const App: React.FC = () => {
     surfacePerformanceSnapshotUpdatedAtRef.current = snapshot.ts;
     setSurfacePerformanceSnapshot(snapshot);
   }, []);
+  const handleRunMeshBenchmarkPerformanceSuite = useCallback(async () => {
+    const api = typeof window !== "undefined" ? window.meshBenchmarks : undefined;
+    if (!isDev || !api?.load) {
+      setMeshBenchmarkPerformanceSuite((prev) => ({
+        ...prev,
+        running: false,
+        status: "Benchmark performance suite is only available in development builds.",
+      }));
+      return;
+    }
+    const candidates = surfaceMeshBenchmarkModels.filter((model) => model.tests.includes("performance"));
+    if (!candidates.length) {
+      setMeshBenchmarkPerformanceSuite((prev) => ({
+        ...prev,
+        running: false,
+        status: "No performance benchmark models found in registry.json.",
+      }));
+      return;
+    }
+
+    setMeshBenchmarkPerformanceSuite({
+      running: true,
+      status: `Running performance suite: 0 / ${candidates.length}`,
+      results: [],
+      startedAt: Date.now(),
+      completedAt: null,
+    });
+
+    let lastReadyMesh: SurfaceMeshData | null = null;
+    let lastModel: MeshBenchmarkModel | null = null;
+    const results: MeshBenchmarkPerformanceResult[] = [];
+    for (const [index, model] of candidates.entries()) {
+      setMeshBenchmarkPerformanceSuite((prev) => ({
+        ...prev,
+        running: true,
+        status: `Running performance suite: ${index + 1} / ${candidates.length} - ${model.label}`,
+      }));
+      try {
+        const response = await api.load(model.id);
+        if (!response.ok) throw new Error(response.error);
+        const bytes = new Uint8Array(response.bytes.byteLength);
+        bytes.set(response.bytes);
+        const importStages: SurfaceMeshImportTelemetry[] = [];
+        const file = new File([bytes.buffer], response.entry.fileName, {
+          type: response.entry.fileName.toLowerCase().endsWith(".stl") ? "model/stl" : "text/plain",
+        });
+        const base = await loadSurfaceMeshFromFile([file], {
+          mergeVertices: surfaceMeshMergeVertices,
+          onStage: (entry) => importStages.push(entry),
+        });
+
+        const buildStart = benchmarkNowMs();
+        let ready = base;
+        if (!ready.normals || ready.normals.length < ready.positions.length) {
+          ready = computeVertexNormals(ready);
+        }
+        const adjacencyStart = benchmarkNowMs();
+        ready = computeAdjacency(ready);
+        const adjacencyMs = Math.max(0, benchmarkNowMs() - adjacencyStart);
+        ready = computeMeanEdgeLength(ready);
+        ready = validateMesh(ready);
+        const meshBuildMs = Math.max(0, benchmarkNowMs() - buildStart);
+
+        const analyzeStart = benchmarkNowMs();
+        computeMeshTopologyInspector(ready, { rowLimit: 16, itemLimit: 16 });
+        computeMeshQualityReport(ready, { maxListedDefects: 256 });
+        evaluateGeometryMeshReadiness(ready);
+        const meshAnalyzeMs = Math.max(0, benchmarkNowMs() - analyzeStart);
+
+        lastReadyMesh = ready;
+        lastModel = response.entry;
+        results.push({
+          id: model.id,
+          label: model.label,
+          fileName: model.fileName,
+          status: "passed",
+          fileReadMs: sumMeshImportStages(importStages, ["fileRead"]),
+          importMs: sumMeshImportStages(importStages, ["parse", "normalize", "meshExtract"]),
+          vertexWeldMs: sumMeshImportStages(importStages, ["vertexWeld"]),
+          normalComputeMs: sumMeshImportStages(importStages, ["normalCompute"]),
+          adjacencyMs,
+          meshAnalyzeMs,
+          meshBuildMs,
+          memoryBytes: estimateSurfaceMeshDataBytes(ready),
+          vertices: Math.floor(ready.positions.length / 3),
+          triangles: ready.indices ? Math.floor(ready.indices.length / 3) : Math.floor(ready.positions.length / 9),
+        });
+      } catch (error) {
+        results.push({
+          id: model.id,
+          label: model.label,
+          fileName: model.fileName,
+          status: "failed",
+          error: String((error as any)?.message ?? error),
+          fileReadMs: null,
+          importMs: null,
+          vertexWeldMs: null,
+          normalComputeMs: null,
+          adjacencyMs: null,
+          meshAnalyzeMs: null,
+          meshBuildMs: null,
+          memoryBytes: null,
+          vertices: null,
+          triangles: null,
+        });
+      }
+      setMeshBenchmarkPerformanceSuite((prev) => ({
+        ...prev,
+        results: [...results],
+      }));
+    }
+
+    if (lastReadyMesh) {
+      setMeshDataset(lastReadyMesh, "mesh-benchmark:performance-suite");
+      setDatasetKind("mesh");
+      setSurfaceViewerKind("mesh");
+      setMeshPerformanceLastBuildMs(results[results.length - 1]?.meshBuildMs ?? null);
+      setMeshPerfBenchmarkId(null);
+      setSurfaceMeshBenchmarkVerification(
+        lastModel && hasMeshBenchmarkExpectedMetrics(lastModel.expected) ? { model: lastModel } : null
+      );
+      focusSurfaceMeshViewport(lastReadyMesh);
+    }
+
+    const passed = results.filter((result) => result.status === "passed").length;
+    setMeshBenchmarkPerformanceSuite({
+      running: false,
+      status: `Performance suite complete: ${passed} / ${results.length} loaded`,
+      results: [...results],
+      startedAt: null,
+      completedAt: Date.now(),
+    });
+  }, [
+    focusSurfaceMeshViewport,
+    isDev,
+    setMeshDataset,
+    setSurfaceViewerKind,
+    surfaceMeshBenchmarkModels,
+    surfaceMeshMergeVertices,
+  ]);
   const handleRunMeshPerformanceBenchmark = useCallback(
     (benchmarkId: MeshPerfBenchmarkId) => {
       const preset = MESH_PERF_BENCHMARK_PRESETS.find((entry) => entry.id === benchmarkId);
@@ -57257,6 +57471,30 @@ case "mobius":
           setSurfacesLeftTab("object");
           setSurfaceMeshBenchmarkBrowserOpen(true);
           return;
+        case "mesh-benchmark:run-standard-suite":
+          setMode("surfaces");
+          setDatasetKind("mesh");
+          setSurfaceViewerKind("mesh");
+          setSurfacesLeftTab("object");
+          setSurfaceMeshBenchmarkBrowserOpen(true);
+          setRightPanelTab("inspector");
+          notify("Standard mesh benchmarks are available from the Benchmark Models browser.");
+          return;
+        case "mesh-benchmark:run-analyse-suite":
+          setMode("surfaces");
+          setDatasetKind("mesh");
+          setSurfaceViewerKind("mesh");
+          setSurfacesLeftTab("analysis");
+          setRightPanelTab("inspector");
+          notify("Load a registry benchmark to see Analyse verification results.");
+          return;
+        case "mesh-benchmark:run-performance-suite":
+          setMode("surfaces");
+          setDatasetKind("mesh");
+          setSurfaceViewerKind("mesh");
+          setRightPanelTab("inspector");
+          void handleRunMeshBenchmarkPerformanceSuite();
+          return;
         case "file:export-mesh":
           handleExportSurfaceMeshObj();
           return;
@@ -57502,6 +57740,7 @@ case "mobius":
       handleImportWorkbooks,
       handleLoadSurfaceMeshFile,
       handleRemoveGeometryObject,
+      handleRunMeshBenchmarkPerformanceSuite,
       handleSaveWorkbook,
       handleSaveWorkbookAs,
       handleScreenshot,
@@ -70529,6 +70768,10 @@ case "mobius":
                       meshPerformanceLastBuildMs={meshPerformanceLastBuildMs}
                       onRunMeshPerformanceBenchmark={handleRunMeshPerformanceBenchmark}
                       onRestoreMeshPerformanceBaseline={handleRestoreMeshPerformanceBaseline}
+                      meshBenchmarkPerformanceSuite={meshBenchmarkPerformanceSuite}
+                      onRunMeshBenchmarkPerformanceSuite={() => {
+                        void handleRunMeshBenchmarkPerformanceSuite();
+                      }}
                       meshInteractionQualityMode={meshInteractionQualityMode}
                       onChangeMeshInteractionQualityMode={setMeshInteractionQualityMode}
                       meshInteractionRestoreDelayMs={meshInteractionRestoreDelayMs}
@@ -104767,6 +105010,8 @@ type SurfacesRightPanelProps = {
   meshPerformanceLastBuildMs: number | null;
   onRunMeshPerformanceBenchmark: (id: MeshPerfBenchmarkId) => void;
   onRestoreMeshPerformanceBaseline: () => void;
+  meshBenchmarkPerformanceSuite: MeshBenchmarkPerformanceSuiteState;
+  onRunMeshBenchmarkPerformanceSuite: () => void;
   meshInteractionQualityMode: MeshInteractionQualityMode;
   onChangeMeshInteractionQualityMode: (mode: MeshInteractionQualityMode) => void;
   meshInteractionRestoreDelayMs: number;
@@ -104997,6 +105242,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   meshPerformanceLastBuildMs,
   onRunMeshPerformanceBenchmark,
   onRestoreMeshPerformanceBaseline,
+  meshBenchmarkPerformanceSuite,
+  onRunMeshBenchmarkPerformanceSuite,
   meshInteractionQualityMode,
   onChangeMeshInteractionQualityMode,
   meshInteractionRestoreDelayMs,
@@ -106192,6 +106439,13 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                     >
                       Restore baseline
                     </button>
+                    <button
+                      type="button"
+                      onClick={onRunMeshBenchmarkPerformanceSuite}
+                      disabled={meshBenchmarkPerformanceSuite.running}
+                    >
+                      Run Performance Suite
+                    </button>
                   </div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
                     {MESH_PERF_BENCHMARK_PRESETS.map((preset) => (
@@ -106206,6 +106460,51 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                       </button>
                     ))}
                   </div>
+                  {(meshBenchmarkPerformanceSuite.status || meshBenchmarkPerformanceSuite.results.length > 0) && (
+                    <div style={{ display: "grid", gap: 6, marginTop: 4 }} data-testid="mesh-benchmark-performance-suite">
+                      {meshBenchmarkPerformanceSuite.status && (
+                        <div style={{ fontWeight: 800, color: meshBenchmarkPerformanceSuite.running ? "#1e3a5f" : "#334155" }}>
+                          {meshBenchmarkPerformanceSuite.status}
+                        </div>
+                      )}
+                      {meshBenchmarkPerformanceSuite.results.length > 0 && (
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1.1fr repeat(7, minmax(54px, 1fr))",
+                            gap: "5px 6px",
+                            overflowX: "auto",
+                            fontSize: 10,
+                            alignItems: "baseline",
+                          }}
+                        >
+                          <strong>Model</strong>
+                          <strong>Import</strong>
+                          <strong>Weld</strong>
+                          <strong>Adj</strong>
+                          <strong>Analyse</strong>
+                          <strong>Build</strong>
+                          <strong>Tris</strong>
+                          <strong>Memory</strong>
+                          {meshBenchmarkPerformanceSuite.results.map((result) => (
+                            <React.Fragment key={`mesh-benchmark-perf-${result.id}`}>
+                              <span title={result.error ?? result.fileName} style={{ color: result.status === "passed" ? "#334155" : "#b42318" }}>
+                                {result.status === "passed" ? "" : "FAIL "}
+                                {result.label}
+                              </span>
+                              <span>{formatPerfMetric(result.importMs, 1)}</span>
+                              <span>{formatPerfMetric(result.vertexWeldMs, 1)}</span>
+                              <span>{formatPerfMetric(result.adjacencyMs, 1)}</span>
+                              <span>{formatPerfMetric(result.meshAnalyzeMs, 1)}</span>
+                              <span>{formatPerfMetric(result.meshBuildMs, 1)}</span>
+                              <span>{formatInspectorCount(result.triangles)}</span>
+                              <span>{formatBenchmarkBytes(result.memoryBytes)}</span>
+                            </React.Fragment>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

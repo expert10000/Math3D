@@ -26,6 +26,17 @@ type BenchmarkExpected = {
   };
 };
 
+type BenchmarkRegistry = {
+  models?: Array<{
+    id?: string;
+    name?: string;
+    category?: string;
+    file?: string;
+    expected?: string;
+    tests?: string[];
+  }>;
+};
+
 type MeshBenchmarkAnalysis = {
   boundaryEdges: number;
   boundaryLoops: number;
@@ -97,6 +108,26 @@ const expectExpectedFields = (analysis: MeshBenchmarkAnalysis, expected: Benchma
 };
 
 describe("Math3D mesh benchmark fixtures", () => {
+  it("keeps registry.json aligned with fixture files and expected metadata", async () => {
+    const registry = JSON.parse(await readFile(path.join(meshRoot, "registry.json"), "utf8")) as BenchmarkRegistry;
+    expect(registry.models?.length).toBeGreaterThanOrEqual(12);
+    const ids = new Set<string>();
+    for (const model of registry.models ?? []) {
+      expect(model.id).toBeTruthy();
+      expect(model.name).toBeTruthy();
+      expect(model.category).toMatch(/^(basic|standard|mathematical|problematic|stress)$/);
+      expect(model.file).toBeTruthy();
+      expect(model.tests?.length).toBeGreaterThan(0);
+      expect(ids.has(model.id ?? "")).toBe(false);
+      ids.add(model.id ?? "");
+      await expect(readFile(path.join(meshRoot, model.file ?? ""))).resolves.toBeInstanceOf(Buffer);
+      if (model.expected) {
+        await expect(readFile(path.join(meshRoot, model.expected))).resolves.toBeInstanceOf(Buffer);
+      }
+    }
+    expect(registry.models?.some((model) => model.tests?.includes("performance"))).toBe(true);
+  });
+
   it("detects the open boundary benchmark through the production OBJ importer", async () => {
     const mesh = await loadMeshFixture("problematic/15_open_boundary.obj");
     const analysis = analyzeBenchmarkMesh(mesh);

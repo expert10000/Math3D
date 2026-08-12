@@ -41,7 +41,8 @@ export type GeodesicHeatRequest = {
   };
 };
 
-export type MeshBenchmarkCategory = "basic" | "standard" | "problematic" | "stress";
+export type MeshBenchmarkCategory = "basic" | "standard" | "mathematical" | "problematic" | "stress";
+export type MeshBenchmarkTestKind = "import" | "topology" | "boundary" | "selection" | "analysis" | "performance";
 
 export type MeshBenchmarkModel = {
   id: string;
@@ -49,6 +50,7 @@ export type MeshBenchmarkModel = {
   category: MeshBenchmarkCategory;
   relativePath: string;
   fileName: string;
+  tests: MeshBenchmarkTestKind[];
   expected?: MeshBenchmarkExpected;
 };
 export type MeshBenchmarkExpectedMetrics = {

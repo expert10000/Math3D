@@ -161,13 +161,15 @@ type TopologyDocOpenResponse =
   | { ok: true; canceled: false; path: string; content: string }
   | { ok: false; canceled: true }
   | { ok: false; canceled: false; error: string };
-type MeshBenchmarkCategory = "basic" | "standard" | "problematic" | "stress";
+type MeshBenchmarkCategory = "basic" | "standard" | "mathematical" | "problematic" | "stress";
+type MeshBenchmarkTestKind = "import" | "topology" | "boundary" | "selection" | "analysis" | "performance";
 type MeshBenchmarkModel = {
   id: string;
   label: string;
   category: MeshBenchmarkCategory;
   relativePath: string;
   fileName: string;
+  tests: MeshBenchmarkTestKind[];
   expected?: MeshBenchmarkExpected;
 };
 type MeshBenchmarkExpectedMetrics = {
@@ -203,36 +205,73 @@ type MeshBenchmarkLoadResponse =
 type MeshBenchmarkMatchResponse =
   | { ok: true; entry: MeshBenchmarkModel | null }
   | { ok: false; error: string };
-
-const MESH_BENCHMARK_MODELS: MeshBenchmarkModel[] = [
-  { id: "basic-tetrahedron", label: "Tetrahedron", category: "basic", relativePath: "basic/01_tetrahedron.obj", fileName: "01_tetrahedron.obj" },
-  { id: "basic-cube", label: "Cube", category: "basic", relativePath: "basic/02_cube.obj", fileName: "02_cube.obj" },
-  { id: "basic-cube-ascii-stl", label: "Cube - ASCII STL", category: "basic", relativePath: "basic/03_cube_ascii.stl", fileName: "03_cube_ascii.stl" },
-  { id: "basic-cylinder", label: "Cylinder", category: "basic", relativePath: "basic/04_cylinder.obj", fileName: "04_cylinder.obj" },
-  { id: "basic-torus", label: "Torus", category: "basic", relativePath: "basic/05_torus.obj", fileName: "05_torus.obj" },
-  { id: "standard-suzanne", label: "Suzanne", category: "standard", relativePath: "standard/06_suzanne.obj", fileName: "06_suzanne.obj" },
-  { id: "standard-fandisk", label: "Fandisk", category: "standard", relativePath: "standard/07_fandisk.obj", fileName: "07_fandisk.obj" },
-  { id: "standard-bunny", label: "Stanford Bunny", category: "standard", relativePath: "standard/08_stanford_bunny.obj", fileName: "08_stanford_bunny.obj" },
-  { id: "standard-spot-cow", label: "Spot Cow", category: "standard", relativePath: "standard/09_spot_cow.obj", fileName: "09_spot_cow.obj" },
-  { id: "standard-3dbenchy", label: "3DBenchy", category: "standard", relativePath: "standard/10_3dbenchy.stl", fileName: "10_3dbenchy.stl" },
-  { id: "standard-armadillo", label: "Armadillo", category: "standard", relativePath: "standard/11_armadillo.obj", fileName: "11_armadillo.obj" },
-  { id: "problematic-open-boundary", label: "Open Boundary", category: "problematic", relativePath: "problematic/15_open_boundary.obj", fileName: "15_open_boundary.obj" },
-  { id: "problematic-non-manifold-edge", label: "Non-Manifold Edge", category: "problematic", relativePath: "problematic/16_non_manifold_edge.obj", fileName: "16_non_manifold_edge.obj" },
-  { id: "problematic-disconnected-components", label: "Disconnected Components", category: "problematic", relativePath: "problematic/17_disconnected_components.obj", fileName: "17_disconnected_components.obj" },
-  { id: "problematic-degenerate-faces", label: "Degenerate Faces", category: "problematic", relativePath: "problematic/18_degenerate_faces.obj", fileName: "18_degenerate_faces.obj" },
-  { id: "problematic-inconsistent-normals", label: "Inconsistent Normals", category: "problematic", relativePath: "problematic/19_inconsistent_normals.obj", fileName: "19_inconsistent_normals.obj" },
-  { id: "problematic-self-intersection", label: "Self Intersection", category: "problematic", relativePath: "problematic/20_self_intersection.obj", fileName: "20_self_intersection.obj" },
-  { id: "stress-dragon-medium", label: "Dragon Medium", category: "stress", relativePath: "stress/12_dragon_medium.obj", fileName: "12_dragon_medium.obj" },
-];
+type MeshBenchmarkRegistryModel = {
+  id?: unknown;
+  name?: unknown;
+  category?: unknown;
+  file?: unknown;
+  expected?: unknown;
+  tests?: unknown;
+};
+type MeshBenchmarkRegistry = {
+  models?: MeshBenchmarkRegistryModel[];
+};
 
 const meshBenchmarkRoot = () => path.resolve(process.cwd(), "tests", "assets", "meshes");
 
-const resolveMeshBenchmarkModel = (id: unknown): MeshBenchmarkModel | null =>
-  MESH_BENCHMARK_MODELS.find((entry) => entry.id === String(id ?? "")) ?? null;
+const isMeshBenchmarkCategory = (value: unknown): value is MeshBenchmarkCategory =>
+  value === "basic" ||
+  value === "standard" ||
+  value === "mathematical" ||
+  value === "problematic" ||
+  value === "stress";
 
-const readMeshBenchmarkExpected = async (entry: MeshBenchmarkModel): Promise<MeshBenchmarkExpected | undefined> => {
-  const parsed = path.parse(entry.relativePath);
-  const expectedPath = path.join(meshBenchmarkRoot(), "expected", `${parsed.name}.json`);
+const isMeshBenchmarkTestKind = (value: unknown): value is MeshBenchmarkTestKind =>
+  value === "import" ||
+  value === "topology" ||
+  value === "boundary" ||
+  value === "selection" ||
+  value === "analysis" ||
+  value === "performance";
+
+const readMeshBenchmarkRegistryModels = async (): Promise<Array<MeshBenchmarkModel & { expectedPath?: string }>> => {
+  const root = meshBenchmarkRoot();
+  const registryPath = path.join(root, "registry.json");
+  const registry = JSON.parse(await fs.promises.readFile(registryPath, "utf8")) as MeshBenchmarkRegistry;
+  return (registry.models ?? [])
+    .map((entry): (MeshBenchmarkModel & { expectedPath?: string }) | null => {
+      const id = String(entry.id ?? "").trim();
+      const label = String(entry.name ?? "").trim();
+      const category = String(entry.category ?? "").trim();
+      const relativePath = String(entry.file ?? "").trim().replace(/\\/g, "/");
+      if (!id || !label || !isMeshBenchmarkCategory(category) || !relativePath) return null;
+      const tests = Array.isArray(entry.tests) ? entry.tests.filter(isMeshBenchmarkTestKind) : [];
+      const expectedPath = typeof entry.expected === "string" ? entry.expected.trim().replace(/\\/g, "/") : undefined;
+      return {
+        id,
+        label,
+        category,
+        relativePath,
+        fileName: path.basename(relativePath),
+        tests,
+        expectedPath: expectedPath || undefined,
+      };
+    })
+    .filter((entry): entry is MeshBenchmarkModel & { expectedPath?: string } => !!entry);
+};
+
+const resolveMeshBenchmarkModel = async (id: unknown): Promise<(MeshBenchmarkModel & { expectedPath?: string }) | null> =>
+  (await readMeshBenchmarkRegistryModels()).find((entry) => entry.id === String(id ?? "")) ?? null;
+
+const readMeshBenchmarkExpected = async (
+  entry: MeshBenchmarkModel & { expectedPath?: string }
+): Promise<MeshBenchmarkExpected | undefined> => {
+  if (!entry.expectedPath) return undefined;
+  const expectedPath = path.resolve(meshBenchmarkRoot(), entry.expectedPath);
+  const root = meshBenchmarkRoot();
+  if (expectedPath !== root && !expectedPath.startsWith(`${root}${path.sep}`)) {
+    throw new Error("Benchmark expected path escaped the mesh asset root.");
+  }
   try {
     return JSON.parse(await fs.promises.readFile(expectedPath, "utf8")) as MeshBenchmarkExpected;
   } catch (error: any) {
@@ -241,23 +280,26 @@ const readMeshBenchmarkExpected = async (entry: MeshBenchmarkModel): Promise<Mes
   }
 };
 
-const withMeshBenchmarkExpected = async (entry: MeshBenchmarkModel): Promise<MeshBenchmarkModel> => ({
+const withMeshBenchmarkExpected = async (entry: MeshBenchmarkModel & { expectedPath?: string }): Promise<MeshBenchmarkModel> => ({
   ...entry,
   expected: await readMeshBenchmarkExpected(entry),
 });
 
 const listMeshBenchmarkModelsWithExpected = async (): Promise<MeshBenchmarkModel[]> =>
-  Promise.all(MESH_BENCHMARK_MODELS.map((entry) => withMeshBenchmarkExpected(entry)));
+  Promise.all((await readMeshBenchmarkRegistryModels()).map((entry) => withMeshBenchmarkExpected(entry)));
 
 const normalizeMeshBenchmarkFileName = (value: unknown): string =>
   path.basename(String(value ?? "").trim()).toLowerCase();
 
-const resolveMeshBenchmarkModelByFileName = (fileName: unknown): MeshBenchmarkModel | null => {
+const resolveMeshBenchmarkModelByFileName = async (
+  fileName: unknown
+): Promise<(MeshBenchmarkModel & { expectedPath?: string }) | null> => {
   const normalized = normalizeMeshBenchmarkFileName(fileName);
   if (!normalized) return null;
+  const models = await readMeshBenchmarkRegistryModels();
   return (
-    MESH_BENCHMARK_MODELS.find((entry) => normalizeMeshBenchmarkFileName(entry.fileName) === normalized) ??
-    MESH_BENCHMARK_MODELS.find((entry) => normalizeMeshBenchmarkFileName(entry.relativePath) === normalized) ??
+    models.find((entry) => normalizeMeshBenchmarkFileName(entry.fileName) === normalized) ??
+    models.find((entry) => normalizeMeshBenchmarkFileName(entry.relativePath) === normalized) ??
     null
   );
 };
@@ -908,7 +950,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("meshBenchmark:load", async (_evt, id: string): Promise<MeshBenchmarkLoadResponse> => {
     if (!isDev) return { ok: false, error: "Benchmark models are only available in development builds." };
-    const entry = resolveMeshBenchmarkModel(id);
+    const entry = await resolveMeshBenchmarkModel(id);
     if (!entry) return { ok: false, error: "Unknown benchmark model." };
 
     try {
@@ -926,7 +968,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("meshBenchmark:match", async (_evt, fileName: string): Promise<MeshBenchmarkMatchResponse> => {
     if (!isDev) return { ok: false, error: "Benchmark models are only available in development builds." };
-    const entry = resolveMeshBenchmarkModelByFileName(fileName);
+    const entry = await resolveMeshBenchmarkModelByFileName(fileName);
     if (!entry) return { ok: true, entry: null };
     try {
       return { ok: true, entry: await withMeshBenchmarkExpected(entry) };
@@ -1108,6 +1150,23 @@ function buildAppMenu(win: BrowserWindow) {
         action("Compare mode", "analysis:compare-mode"),
       ],
     },
+    ...(isDev
+      ? [
+          {
+            label: "Developer",
+            submenu: [
+              {
+                label: "Mesh Benchmark",
+                submenu: [
+                  action("Run Standard Suite", "mesh-benchmark:run-standard-suite"),
+                  action("Run Analyse Suite", "mesh-benchmark:run-analyse-suite"),
+                  action("Run Performance Suite", "mesh-benchmark:run-performance-suite"),
+                ],
+              },
+            ],
+          } satisfies MenuItemConstructorOptions,
+        ]
+      : []),
     {
       label: "Window",
       submenu: [

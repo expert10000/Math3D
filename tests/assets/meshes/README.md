@@ -9,6 +9,7 @@ Generated/downloaded by `math3d_mesh_benchmark.py`.
 - `stress/` - performance-oriented models.
 - `problematic/` - deterministic meshes with known mesh problems.
 - `expected/` - expected/reference metadata for deterministic regression tests.
+- `registry.json` - UI-facing benchmark catalog consumed by Math3D dev tools.
 
 ## Recommended test tiers
 
@@ -34,6 +35,21 @@ Generated/downloaded by `math3d_mesh_benchmark.py`.
 - Dragon Medium
 - optional Dragon High
 - optional dense binary STL
+
+## Registry
+
+`registry.json` describes what Math3D exposes in developer-only benchmark UI.
+Each model declares:
+
+- `id` - stable UI/API id.
+- `name` - display name.
+- `category` - one of `basic`, `standard`, `mathematical`, `problematic`, or `stress`.
+- `file` - OBJ/STL path relative to this folder.
+- `expected` - optional expected JSON path relative to this folder.
+- `tests` - capabilities/suites such as `import`, `topology`, `boundary`, `selection`, `analysis`, and `performance`.
+
+The application reads this registry at runtime in development builds, so adding a
+benchmark model should not require editing the Math3D UI catalog.
 
 ## Notes
 

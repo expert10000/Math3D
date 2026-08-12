@@ -202,7 +202,8 @@ declare global {
     | { ok: true; folder: string; paths: string[] }
     | { ok: false; error: string };
 
-  type MeshBenchmarkCategory = "basic" | "standard" | "problematic" | "stress";
+  type MeshBenchmarkCategory = "basic" | "standard" | "mathematical" | "problematic" | "stress";
+  type MeshBenchmarkTestKind = "import" | "topology" | "boundary" | "selection" | "analysis" | "performance";
   type MeshBenchmarkExpectedMetrics = {
     boundaryEdges?: number;
     boundaryLoops?: number;
@@ -233,6 +234,7 @@ declare global {
     category: MeshBenchmarkCategory;
     relativePath: string;
     fileName: string;
+    tests: MeshBenchmarkTestKind[];
     expected?: MeshBenchmarkExpected;
   };
   type MeshBenchmarkListResponse =
