@@ -97797,6 +97797,7 @@ onChangeImplicitExpr,
   }, []);
   const [leftTab, setLeftTab] = useState<SurfacesLeftTab>(() => normalizeLeftTab(initialLeftTab));
   const meshFileInputRef = useRef<HTMLInputElement | null>(null);
+  const meshQuickFileInputRef = useRef<HTMLInputElement | null>(null);
   const [meshToolsTab, setMeshToolsTab] = useState<"surface_mesh" | "vtk" | "volume">("surface_mesh");
   useEffect(() => {
     if (surfaceMeshBenchmarkBrowserOpen) setMeshToolsTab("surface_mesh");
@@ -100154,6 +100155,83 @@ onChangeImplicitExpr,
       </div>
       {meshToolsTab === "surface_mesh" && (
       <div style={{ ...cardStyle, marginTop: 0 }}>
+        <div
+          style={{
+            display: "grid",
+            gap: 8,
+            padding: 10,
+            border: "1px solid #bfdbfe",
+            borderRadius: 8,
+            background: "#eff6ff",
+            marginBottom: 10,
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 800 }}>Open mesh file</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => meshQuickFileInputRef.current?.click()}
+              disabled={surfaceMeshImportBusy}
+            >
+              {surfaceMeshImportBusy ? "Loading..." : "Load STL/OBJ/PLY/GLTF"}
+            </button>
+            <button
+              type="button"
+              onClick={() => onToggleSurfaceMeshBenchmarkBrowser(!surfaceMeshBenchmarkBrowserOpen)}
+              disabled={surfaceMeshImportBusy || !surfaceMeshBenchmarkAvailable}
+            >
+              Benchmark Model... [DEV]
+            </button>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+              <input
+                type="checkbox"
+                checked={surfaceMeshMergeVertices}
+                onChange={(e) => onToggleSurfaceMeshMergeVertices(e.target.checked)}
+              />
+              merge vertices
+            </label>
+            <input
+              ref={meshQuickFileInputRef}
+              type="file"
+              multiple
+              accept=".stl,.obj,.ply,.gltf,.glb"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const files = e.currentTarget.files ?? null;
+                onLoadSurfaceMeshFile(files);
+                e.currentTarget.value = "";
+              }}
+            />
+          </div>
+          {surfaceMeshBenchmarkError && (
+            <div style={{ fontSize: 11, color: "#b42318" }}>{surfaceMeshBenchmarkError}</div>
+          )}
+          {surfaceMeshBenchmarkBrowserOpen && surfaceMeshBenchmarkAvailable && (
+            <div style={{ display: "grid", gap: 8, paddingTop: 4 }}>
+              {surfaceMeshBenchmarkModelsByCategory.map((group) => (
+                <div key={`mesh-benchmark-quick-group-${group.category}`}>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 5 }}>{group.label}</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {group.models.map((model) => (
+                      <button
+                        key={`mesh-benchmark-quick-${model.id}`}
+                        type="button"
+                        onClick={() => onLoadSurfaceMeshBenchmarkModel(model.id)}
+                        disabled={surfaceMeshImportBusy}
+                        title={model.relativePath}
+                      >
+                        {model.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: "#475467" }}>
+            For GLTF with external resources, select the .gltf plus related .bin/textures together.
+          </div>
+        </div>
         <div style={{ marginTop: 0 }}>
         {viewerKind !== "mesh" ? (
           <>
