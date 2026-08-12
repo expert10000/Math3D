@@ -32769,6 +32769,7 @@ const App: React.FC = () => {
   const [surfaceMeshBenchmarkVerification, setSurfaceMeshBenchmarkVerification] =
     useState<MeshBenchmarkVerificationContext | null>(null);
   const [surfaceMeshMergeVertices, setSurfaceMeshMergeVertices] = useState(true);
+  const meshWorkspaceFileInputRef = useRef<HTMLInputElement | null>(null);
   const [surfaceMeshExportBusy, setSurfaceMeshExportBusy] = useState(false);
   const [surfaceMeshExportError, setSurfaceMeshExportError] = useState<string | null>(null);
   const [surfaceMeshWeldTolerance, setSurfaceMeshWeldTolerance] = useState(1e-4);
@@ -64842,6 +64843,88 @@ case "mobius":
                         fontSize: 11,
                       }}
                     >
+                      <div
+                        data-testid="mesh-workspace-open-mesh-file"
+                        style={{
+                          border: "1px solid #93c5fd",
+                          borderRadius: 8,
+                          background: "#dbeafe",
+                          padding: "8px 9px",
+                          display: "grid",
+                          gap: 7,
+                        }}
+                      >
+                        <strong style={{ color: "#0f172a" }}>Open mesh file</strong>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                          <button
+                            type="button"
+                            onClick={() => meshWorkspaceFileInputRef.current?.click()}
+                            disabled={surfaceMeshImportBusy}
+                          >
+                            {surfaceMeshImportBusy ? "Loading..." : "Load STL/OBJ/PLY/GLTF"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSurfaceMeshBenchmarkBrowserOpen((open) => !open)}
+                            disabled={surfaceMeshImportBusy || surfaceMeshBenchmarkModels.length === 0}
+                          >
+                            Benchmark Model... [DEV]
+                          </button>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={surfaceMeshMergeVertices}
+                              onChange={(event) => setSurfaceMeshMergeVertices(event.target.checked)}
+                            />
+                            merge vertices
+                          </label>
+                          <input
+                            ref={meshWorkspaceFileInputRef}
+                            type="file"
+                            multiple
+                            accept=".stl,.obj,.ply,.gltf,.glb"
+                            style={{ display: "none" }}
+                            onChange={(event) => {
+                              const files = event.currentTarget.files ?? null;
+                              void handleLoadSurfaceMeshFile(files);
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                        </div>
+                        {surfaceMeshBenchmarkError && (
+                          <div style={{ color: "#b42318", fontSize: 11 }}>{surfaceMeshBenchmarkError}</div>
+                        )}
+                        {surfaceMeshBenchmarkBrowserOpen && surfaceMeshBenchmarkModels.length > 0 && (
+                          <div style={{ display: "grid", gap: 8 }}>
+                            {MESH_BENCHMARK_CATEGORY_ORDER.map((category) => {
+                              const models = surfaceMeshBenchmarkModels.filter((model) => model.category === category);
+                              if (!models.length) return null;
+                              return (
+                                <div key={`mesh-workspace-benchmark-${category}`}>
+                                  <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 4 }}>
+                                    {MESH_BENCHMARK_CATEGORY_LABELS[category]}
+                                  </div>
+                                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                    {models.map((model) => (
+                                      <button
+                                        key={`mesh-workspace-benchmark-${model.id}`}
+                                        type="button"
+                                        onClick={() => {
+                                          void handleLoadSurfaceMeshBenchmarkModel(model.id);
+                                        }}
+                                        disabled={surfaceMeshImportBusy}
+                                        title={model.relativePath}
+                                      >
+                                        {model.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
                         <strong>Mesh topology editing</strong>
                         <span style={{ color: "#475569", fontWeight: 700 }}>
