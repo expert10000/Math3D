@@ -1933,6 +1933,13 @@ const shouldDeferLargeSurfaceMeshAnalysis = (mesh: SurfaceMeshData | null | unde
 const shouldSkipStartupSurfaceMeshRestore = (mesh: SurfaceMeshData | null | undefined): boolean =>
   !!mesh && surfaceMeshTriangleCount(mesh) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD;
 
+type LargeSurfaceMeshResolutionCache = {
+  label: string;
+  fullMesh: SurfaceMeshData;
+  previewMesh: SurfaceMeshData;
+  active: "preview" | "full";
+};
+
 const buildLargeSurfaceMeshDisplayProxy = (mesh: SurfaceMeshData, targetTriangles: number): SurfaceMeshData => {
   const fullTriangles = surfaceMeshTriangleCount(mesh);
   const sampleTriangles = Math.max(1, Math.min(Math.floor(targetTriangles), fullTriangles));
@@ -21860,12 +21867,18 @@ const App: React.FC = () => {
   const surfaceMeshTraceStateRef = useRef<{ meshId: string; mesh: SurfaceMeshData; traceMap: GeometryMeshTraceMap } | null>(
     null
   );
+  const largeSurfaceMeshResolutionCacheRef = useRef<LargeSurfaceMeshResolutionCache | null>(null);
   const setMeshDataset = useCallback((mesh: SurfaceMeshData | null, traceOperation = "mesh-dataset:set") => {
     if (!mesh) {
+      largeSurfaceMeshResolutionCacheRef.current = null;
       surfaceMeshTraceStateRef.current = null;
       setMeshDatasetState(null);
       setDatasetKind("surface");
       return;
+    }
+    const largeMeshCache = largeSurfaceMeshResolutionCacheRef.current;
+    if (largeMeshCache && mesh !== largeMeshCache.previewMesh && mesh !== largeMeshCache.fullMesh) {
+      largeSurfaceMeshResolutionCacheRef.current = null;
     }
     const traceTimestamp = Date.now();
     surfaceMeshTraceCounterRef.current += 1;
@@ -48637,9 +48650,61 @@ case "mobius":
     if (status) setSurfaceMeshTopologyStatus(status);
   }, [clearInspect]);
 
+  const handleSurfaceRenderQualityChange = useCallback(
+    (quality: RenderQuality) => {
+      setSurfaceRenderQuality(quality);
+      const cache = largeSurfaceMeshResolutionCacheRef.current;
+      if (!cache) {
+        if (quality === "sharp") setMeshInteractionQualityMode("full");
+        return;
+      }
+
+      if (quality === "sharp") {
+        cache.active = "full";
+        setMeshInteractionQualityMode("full");
+        setSurfaceMeshImportBusy(true);
+        setSurfaceMeshTopologyStatus(
+          `Loading full resolution ${cache.label}: ${surfaceMeshTriangleCount(cache.fullMesh).toLocaleString()} triangles.`
+        );
+        const restoreFull = () => {
+          setMeshDataset(cache.fullMesh, "mesh-large:restore-full");
+          focusSurfaceMeshViewport(cache.fullMesh);
+          setSurfaceMeshImportBusy(false);
+          setSurfaceMeshTopologyStatus(
+            `Full resolution loaded: ${cache.label} (${Math.floor(
+              cache.fullMesh.positions.length / 3
+            ).toLocaleString()} vertices / ${surfaceMeshTriangleCount(cache.fullMesh).toLocaleString()} triangles).`
+          );
+        };
+        if (typeof window !== "undefined") {
+          window.requestAnimationFrame(() => window.requestAnimationFrame(restoreFull));
+        } else {
+          restoreFull();
+        }
+        return;
+      }
+
+      if (cache.active === "full" && surfaceMeshData === cache.fullMesh) {
+        cache.active = "preview";
+        setMeshInteractionQualityMode("fast-preview");
+        setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
+        setMeshDataset(cache.previewMesh, "mesh-large:restore-preview");
+        focusSurfaceMeshViewport(cache.previewMesh);
+        setSurfaceMeshTopologyStatus(`Fast preview restored for ${cache.label}.`);
+        return;
+      }
+
+      setMeshInteractionQualityMode("fast-preview");
+      setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
+    },
+    [focusSurfaceMeshViewport, setMeshDataset, surfaceMeshData]
+  );
+
   useEffect(() => {
     if (!surfaceMeshData?.positions?.length) return;
     if (surfaceMeshTriangleCount(surfaceMeshData) < LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD) return;
+    const largeMeshCache = largeSurfaceMeshResolutionCacheRef.current;
+    if (largeMeshCache?.active === "full" && surfaceMeshData === largeMeshCache.fullMesh) return;
     if (surfaceRenderQuality !== "performance") setSurfaceRenderQuality("performance");
     if (meshInteractionQualityMode !== "fast-preview") setMeshInteractionQualityMode("fast-preview");
     if (meshInteractionPreviewTriangleTarget !== LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET) {
@@ -48757,6 +48822,9 @@ case "mobius":
         const meshForApp = isLargeMesh
           ? buildLargeSurfaceMeshDisplayProxy(meshReady, LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET)
           : meshReady;
+        largeSurfaceMeshResolutionCacheRef.current = isLargeMesh
+          ? { label: meshReady.label, fullMesh: meshReady, previewMesh: meshForApp, active: "preview" }
+          : null;
         let appStageStart = benchmarkNowMs();
         clearSurfaceMeshTopologySessionState();
         recordMeshPipelineProfilePhase(profileId, "app:clearTopologyState", benchmarkNowMs() - appStageStart);
@@ -48849,6 +48917,9 @@ case "mobius":
         const meshForApp = isLargeMesh
           ? buildLargeSurfaceMeshDisplayProxy(meshReady, LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET)
           : meshReady;
+        largeSurfaceMeshResolutionCacheRef.current = isLargeMesh
+          ? { label: meshReady.label, fullMesh: meshReady, previewMesh: meshForApp, active: "preview" }
+          : null;
         let appStageStart = benchmarkNowMs();
         clearSurfaceMeshTopologySessionState();
         recordMeshPipelineProfilePhase(profileId, "app:clearTopologyState", benchmarkNowMs() - appStageStart);
@@ -66283,7 +66354,7 @@ case "mobius":
                             <button
                               key={`surface-tour-quality-${quality}`}
                               type="button"
-                              onClick={() => setSurfaceRenderQuality(quality)}
+                              onClick={() => handleSurfaceRenderQualityChange(quality)}
                               style={pill(surfaceRenderQuality === quality)}
                               aria-pressed={surfaceRenderQuality === quality}
                             >
@@ -66415,7 +66486,7 @@ case "mobius":
                   <SurfacesViewPanel
                     viewerKind={surfaceViewerKind}
                     renderQuality={surfaceRenderQuality}
-                    onChangeRenderQuality={setSurfaceRenderQuality}
+                    onChangeRenderQuality={handleSurfaceRenderQualityChange}
                     colorModes={viewColorModes}
                     colorMode={colorMode}
                     onChangeColorMode={setColorMode}
@@ -68497,7 +68568,7 @@ case "mobius":
                             <button
                               key={`mesh-viewer-quality-${quality}`}
                               type="button"
-                              onClick={() => setSurfaceRenderQuality(quality)}
+                              onClick={() => handleSurfaceRenderQualityChange(quality)}
                               aria-pressed={surfaceRenderQuality === quality}
                               style={viewerControlButtonStyle(surfaceRenderQuality === quality, meshViewerControlsDensity)}
                             >
