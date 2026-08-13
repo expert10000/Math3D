@@ -1324,6 +1324,7 @@ const WORKBOOK_MANUAL_SAVE_HASH_KEY = "math3d.workbook.manualSaveHash.v1";
 const WORKBOOK_MANUAL_SAVE_AT_KEY = "math3d.workbook.manualSaveAt.v1";
 const WORKBOOK_MANUAL_SAVE_NAME_KEY = "math3d.workbook.manualSaveName.v1";
 const SURFACE_MESH_TOPOLOGY_SESSION_KEY = "math3d.mesh.topologySession.v1";
+const SURFACE_MESH_TOPOLOGY_SESSION_SKIPPED_RESTORE_KEY = "math3d.mesh.topologySession.skippedRestore.v1";
 const SURFACE_MESH_TOPOLOGY_SAVED_PRESETS_KEY = "math3d.mesh.topologySavedPresets.v1";
 const SURFACE_MESH_TOPOLOGY_SESSION_MAX_CHARS = 3_400_000;
 const SURFACE_MESH_TOPOLOGY_PERSIST_HISTORY_LIMIT = 4;
@@ -1901,8 +1902,9 @@ const formatBenchmarkBytes = (bytes: number | null | undefined): string => {
   return `${Math.round(bytes)} B`;
 };
 
-const LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD = 100_000;
+const LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD = 50_000;
 const LARGE_MESH_FAST_LOAD_FILE_BYTES = 5 * 1024 * 1024;
+const LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET = 1_000;
 
 const DETERMINISTIC_IMPLICIT_SAMPLE_EXPR = "x*x + y*y + z*z - 1";
 
@@ -1930,6 +1932,56 @@ const shouldDeferLargeSurfaceMeshAnalysis = (mesh: SurfaceMeshData | null | unde
 
 const shouldSkipStartupSurfaceMeshRestore = (mesh: SurfaceMeshData | null | undefined): boolean =>
   !!mesh && surfaceMeshTriangleCount(mesh) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD;
+
+const buildLargeSurfaceMeshDisplayProxy = (mesh: SurfaceMeshData, targetTriangles: number): SurfaceMeshData => {
+  const fullTriangles = surfaceMeshTriangleCount(mesh);
+  const sampleTriangles = Math.max(1, Math.min(Math.floor(targetTriangles), fullTriangles));
+  if (sampleTriangles >= fullTriangles) return mesh;
+
+  const positions = new Float32Array(sampleTriangles * 9);
+  const normals =
+    mesh.normals && mesh.normals.length >= mesh.positions.length ? new Float32Array(sampleTriangles * 9) : null;
+  const uvs = mesh.uvs && mesh.uvs.length >= Math.floor(mesh.positions.length / 3) * 2
+    ? new Float32Array(sampleTriangles * 6)
+    : null;
+  const indices = mesh.indices;
+
+  for (let outTri = 0; outTri < sampleTriangles; outTri += 1) {
+    const tri = Math.min(fullTriangles - 1, Math.floor(((outTri + 0.5) * fullTriangles) / sampleTriangles));
+    for (let corner = 0; corner < 3; corner += 1) {
+      const sourceVertex = indices?.length
+        ? indices[tri * 3 + corner]
+        : tri * 3 + corner;
+      const srcPos = sourceVertex * 3;
+      const dstPos = outTri * 9 + corner * 3;
+      positions[dstPos] = mesh.positions[srcPos] ?? 0;
+      positions[dstPos + 1] = mesh.positions[srcPos + 1] ?? 0;
+      positions[dstPos + 2] = mesh.positions[srcPos + 2] ?? 0;
+      if (normals && mesh.normals) {
+        normals[dstPos] = mesh.normals[srcPos] ?? 0;
+        normals[dstPos + 1] = mesh.normals[srcPos + 1] ?? 0;
+        normals[dstPos + 2] = mesh.normals[srcPos + 2] ?? 1;
+      }
+      if (uvs && mesh.uvs) {
+        const srcUv = sourceVertex * 2;
+        const dstUv = outTri * 6 + corner * 2;
+        uvs[dstUv] = mesh.uvs[srcUv] ?? 0;
+        uvs[dstUv + 1] = mesh.uvs[srcUv + 1] ?? 0;
+      }
+    }
+  }
+
+  return {
+    label: mesh.label,
+    positions,
+    indices: null,
+    normals,
+    uvs,
+    source: mesh.source,
+    meanEdgeLength: mesh.meanEdgeLength ?? null,
+    validation: null,
+  };
+};
 
 const applySurfaceMeshOps = (
   mesh: SurfaceMeshData,
@@ -2178,6 +2230,12 @@ const deserializeSurfaceMeshData = (mesh: WorkbookEmbeddedMesh): SurfaceMeshData
   uvs: mesh.uvs ? Float32Array.from(mesh.uvs) : null,
   source: mesh.source,
 });
+
+const workbookEmbeddedMeshTriangleCount = (mesh: WorkbookEmbeddedMesh | null | undefined): number => {
+  if (!mesh?.positions?.length) return 0;
+  const vertexCount = Math.floor(mesh.positions.length / 3);
+  return mesh.indices?.length ? Math.floor(mesh.indices.length / 3) : Math.floor(vertexCount / 3);
+};
 
 const cloneMeshSourceSelectionOverlay = (
   overlay:
@@ -6870,6 +6928,18 @@ const readStoredSurfaceMeshTopologySession = (): RestoredSurfaceMeshTopologySess
     const activeMesh = deserializeTopologySurfaceMeshData(stored.activeMesh);
     if (!activeMesh) return null;
     if (shouldSkipStartupSurfaceMeshRestore(activeMesh)) {
+      try {
+        window.localStorage.setItem(
+          SURFACE_MESH_TOPOLOGY_SESSION_SKIPPED_RESTORE_KEY,
+          JSON.stringify({
+            label: activeMesh.label ?? "previous mesh",
+            triangles: surfaceMeshTriangleCount(activeMesh),
+            skippedAt: Date.now(),
+          })
+        );
+      } catch {
+        // Startup restore messages are best-effort.
+      }
       window.localStorage.removeItem(SURFACE_MESH_TOPOLOGY_SESSION_KEY);
       return null;
     }
@@ -33096,6 +33166,26 @@ const App: React.FC = () => {
       `Restored Mesh topology session: ${initialSurfaceMeshTopologySession.history.length} history step(s).`
     );
   }, [initialSurfaceMeshTopologySession]);
+  useEffect(() => {
+    if (typeof window === "undefined" || initialSurfaceMeshTopologySession) return;
+    try {
+      const raw = window.localStorage.getItem(SURFACE_MESH_TOPOLOGY_SESSION_SKIPPED_RESTORE_KEY);
+      if (!raw) return;
+      window.localStorage.removeItem(SURFACE_MESH_TOPOLOGY_SESSION_SKIPPED_RESTORE_KEY);
+      const skipped = safeParseObject<{ label?: unknown; triangles?: unknown }>(raw);
+      const label = typeof skipped?.label === "string" && skipped.label.trim() ? skipped.label.trim() : "previous large mesh";
+      const triangles = Number(skipped?.triangles);
+      setDatasetKind("mesh");
+      setSurfaceViewerKind("mesh");
+      setSurfaceMeshTopologyStatus(
+        Number.isFinite(triangles)
+          ? `Skipped startup restore for ${label} (${Math.round(triangles).toLocaleString()} triangles). Use Benchmark Model to reload it with loading/profiling.`
+          : `Skipped startup restore for ${label}. Use Benchmark Model to reload it with loading/profiling.`
+      );
+    } catch {
+      // Startup restore notices are best-effort.
+    }
+  }, [initialSurfaceMeshTopologySession]);
   const clearSurfaceMeshTopologySessionState = useCallback(() => {
     setMeshGeometryRoundTripSource(null);
     setSurfaceMeshTopologyHistory([]);
@@ -36331,7 +36421,15 @@ const App: React.FC = () => {
       ? surfaceMeshTopologyHistoryPreviewEntry.beforeSnapshot
       : surfaceMeshTopologyHistoryPreviewEntry.snapshot;
   }, [surfaceMeshTopologyHistoryPreviewEntry, surfaceMeshTopologyHistoryPreviewMode]);
-  const surfaceMeshTopologyViewerMesh = surfaceMeshTopologyHistoryDisplayMesh ?? surfaceMeshData;
+  const largeSurfaceMeshDisplayProxy = useMemo(
+    () =>
+      surfaceMeshData && shouldDeferLargeSurfaceMeshAnalysis(surfaceMeshData)
+        ? buildLargeSurfaceMeshDisplayProxy(surfaceMeshData, LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET)
+        : null,
+    [surfaceMeshData]
+  );
+  const surfaceMeshTopologyViewerMesh =
+    surfaceMeshTopologyHistoryDisplayMesh ?? largeSurfaceMeshDisplayProxy ?? surfaceMeshData;
   const surfaceMeshTopologyGizmoDragParamsRef = useRef<AdaptiveTopologyGizmoDragParams | null>(null);
   const surfaceMeshTopologyGizmoReferenceLength = useMemo(() => {
     if (!surfaceMeshTopologyViewerMesh?.positions?.length) return 1;
@@ -39634,17 +39732,18 @@ const App: React.FC = () => {
   const handleSecondaryViewportDebug = useCallback((snapshot: ViewportDebugSnapshot) => {
     setViewportDebugSecondary(snapshot);
   }, []);
-  const beginMeshPipelineProfile = useCallback((label: string, fileName: string | null) => {
+  const beginMeshPipelineProfile = useCallback((label: string, fileName: string | null, options?: { startedAt?: number }) => {
     meshPipelineProfileCounterRef.current += 1;
     const id = `mesh-profile:${meshPipelineProfileCounterRef.current}`;
+    const startedAt = options?.startedAt ?? Date.now();
     meshPipelineProfileActiveIdRef.current = null;
     setMeshPipelineProfile({
       id,
       label,
       fileName,
       status: "loading",
-      startedAt: Date.now(),
-      updatedAt: Date.now(),
+      startedAt,
+      updatedAt: startedAt,
       completedAt: null,
       vertices: null,
       triangles: null,
@@ -43981,8 +44080,9 @@ case "mobius":
   const surfaceMeshCurvatures = useMemo(() => {
     if (surfaceViewerKind !== "mesh" && surfaceViewerKind !== "complex") return null;
     if (!surfaceMeshData?.positions?.length) return null;
+    if (surfaceMeshLargeAnalysisDeferred) return null;
     return computeTriangleMeshCurvatureScalars(surfaceMeshData);
-  }, [surfaceMeshData, surfaceViewerKind]);
+  }, [surfaceMeshData, surfaceMeshLargeAnalysisDeferred, surfaceViewerKind]);
 
   const sampleNeighbors = useMemo(() => buildSampleNeighbors(surfaceSampleSet), [surfaceSampleSet]);
 
@@ -46527,6 +46627,7 @@ case "mobius":
 
     if (meshDataset?.mesh) {
       const source = meshDataset.mesh.source;
+      const largeMeshAutosaveSkipped = shouldSkipStartupSurfaceMeshRestore(meshDataset.mesh);
       const linkedObjectIds =
         source.kind === "geometryObject"
           ? [
@@ -46538,11 +46639,13 @@ case "mobius":
         id: "surface:mesh",
         kind: "mesh",
         source: source.kind,
-        recipe: {
-          label: meshDataset.mesh.label,
-          source,
-        },
-        mesh: embedAssets ? serializeSurfaceMeshData(meshDataset.mesh) : null,
+          recipe: {
+            label: meshDataset.mesh.label,
+            source,
+            largeMeshAutosaveSkipped,
+            triangles: surfaceMeshTriangleCount(meshDataset.mesh),
+          },
+        mesh: embedAssets && !largeMeshAutosaveSkipped ? serializeSurfaceMeshData(meshDataset.mesh) : null,
         provenance: {
           source: source.kind,
           linkedObjectIds,
@@ -47109,10 +47212,95 @@ case "mobius":
 
     const meshItem = byId.get("surface:mesh");
     if (meshItem?.mesh) {
-      const mesh = applySurfaceMeshOps(deserializeSurfaceMeshData(meshItem.mesh));
-      setMeshDataset(mesh);
+      const embeddedTriangles = workbookEmbeddedMeshTriangleCount(meshItem.mesh);
+      if (embeddedTriangles >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD) {
+        setMeshDataset(null);
+        setDatasetKind("mesh");
+        setSurfaceViewerKind("mesh");
+        setSurfaceRenderQuality("performance");
+        setMeshInteractionQualityMode("fast-preview");
+        setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
+        setSurfaceMeshTopologyPickMode("object");
+        setColorMode("solid");
+        setShowInViewportOverlayControls(false);
+        setShowSurfaceViewGizmo(false);
+        setShowWireframe(false);
+        setShowChartGrid(false);
+        setShowPlanes(false);
+        setPlaneGridSettings((prev) => ({
+          ...prev,
+          showGrid: false,
+          showMinorGrid: false,
+          showLabels: false,
+          showAxisLabels: false,
+          showXY: false,
+          showXZ: false,
+          showYZ: false,
+        }));
+        setShowBoundingBox(false);
+        setShowContours(false);
+        setShowGaussMap(false);
+        setShowPrincipalProjections(false);
+        setProbeEnabled(false);
+        setShowPrincipalDirections(false);
+        setShowPrincipalNormalPlanes(false);
+        setShowPrincipalLines(false);
+        setShowPrincipalGlyphs(false);
+        setShowCurvatureLines(false);
+        setShowRidges(false);
+        setShowValleys(false);
+        setGeodesicPathEnabled(false);
+        setGeodesicHeatEnabled(false);
+        setGeodesicDiskEnabled(false);
+        setSurfaceMeshTopologyStatus(
+          `Skipped startup workspace restore for ${
+            meshItem.mesh.label || "previous large mesh"
+          } (${embeddedTriangles.toLocaleString()} triangles). Use Benchmark Model to reload it with loading/profiling.`
+        );
+      } else {
+        const mesh = applySurfaceMeshOps(deserializeSurfaceMeshData(meshItem.mesh));
+        setMeshDataset(mesh);
+        setDatasetKind("mesh");
+        setSurfaceViewerKind("mesh");
+      }
+    } else if (meshItem?.recipe?.largeMeshAutosaveSkipped) {
+      const label =
+        typeof meshItem.recipe.label === "string" && meshItem.recipe.label.trim()
+          ? meshItem.recipe.label.trim()
+          : "previous large mesh";
+      const triangles = Number(meshItem.recipe.triangles);
+      setMeshDataset(null);
       setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
+      setSurfaceRenderQuality("performance");
+      setMeshInteractionQualityMode("fast-preview");
+      setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
+      setSurfaceMeshTopologyPickMode("object");
+      setColorMode("solid");
+      setShowInViewportOverlayControls(false);
+      setShowSurfaceViewGizmo(false);
+      setShowWireframe(false);
+      setShowChartGrid(false);
+      setShowPlanes(false);
+      setPlaneGridSettings((prev) => ({
+        ...prev,
+        showGrid: false,
+        showMinorGrid: false,
+        showLabels: false,
+        showAxisLabels: false,
+        showXY: false,
+        showXZ: false,
+        showYZ: false,
+      }));
+      setShowBoundingBox(false);
+      setShowContours(false);
+      setShowGaussMap(false);
+      setShowPrincipalProjections(false);
+      setSurfaceMeshTopologyStatus(
+        Number.isFinite(triangles)
+          ? `Skipped startup workspace restore for ${label} (${Math.round(triangles).toLocaleString()} triangles). Use Benchmark Model to reload it with loading/profiling.`
+          : `Skipped startup workspace restore for ${label}. Use Benchmark Model to reload it with loading/profiling.`
+      );
     }
 
     const volumeRecipe = byId.get("volume:active")?.recipe as any;
@@ -48398,14 +48586,34 @@ case "mobius":
     }
     setSurfaceRenderQuality("performance");
     setMeshInteractionQualityMode("fast-preview");
+    setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
     setSurfaceMeshTopologyPickMode("object");
     setSurfaceMeshTopologySelectionCleared(true);
     setMeshMultiSelectionSet(createUnifiedSelectionSet([]));
+    clearInspect();
+    setInspectEnabled(false);
+    setSelection(null);
     setCommandPreviewOverlaysVisible(false);
+    setShowInViewportOverlayControls(false);
+    setShowSurfaceViewGizmo(false);
+    setShowWireframe(false);
+    setColorMode("solid");
     setShowChartGrid(false);
     setShowPlanes(false);
+    setPlaneGridSettings((prev) => ({
+      ...prev,
+      showGrid: false,
+      showMinorGrid: false,
+      showLabels: false,
+      showAxisLabels: false,
+      showXY: false,
+      showXZ: false,
+      showYZ: false,
+    }));
     setShowBoundingBox(false);
+    setShowContours(false);
     setShowGaussMap(false);
+    setShowPrincipalProjections(false);
     setProbeEnabled(false);
     setShowProbeNormal(false);
     setShowProbeTangentPlane(false);
@@ -48427,7 +48635,93 @@ case "mobius":
     setWorkbookVectorFieldOverlay(null);
     setWorkbookHeatmapEnabled(false);
     if (status) setSurfaceMeshTopologyStatus(status);
-  }, []);
+  }, [clearInspect]);
+
+  useEffect(() => {
+    if (!surfaceMeshData?.positions?.length) return;
+    if (surfaceMeshTriangleCount(surfaceMeshData) < LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD) return;
+    if (surfaceRenderQuality !== "performance") setSurfaceRenderQuality("performance");
+    if (meshInteractionQualityMode !== "fast-preview") setMeshInteractionQualityMode("fast-preview");
+    if (meshInteractionPreviewTriangleTarget !== LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET) {
+      setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
+    }
+    if (surfaceMeshTopologyPickMode !== "object") setSurfaceMeshTopologyPickMode("object");
+    if (colorMode !== "solid") setColorMode("solid");
+    if (showInViewportOverlayControls) setShowInViewportOverlayControls(false);
+    if (showSurfaceViewGizmo) setShowSurfaceViewGizmo(false);
+    if (showWireframe) setShowWireframe(false);
+    if (showChartGrid) setShowChartGrid(false);
+    if (showPlanes) setShowPlanes(false);
+    if (
+      planeGridSettings.showGrid ||
+      planeGridSettings.showMinorGrid ||
+      planeGridSettings.showLabels ||
+      planeGridSettings.showAxisLabels ||
+      planeGridSettings.showXY ||
+      planeGridSettings.showXZ ||
+      planeGridSettings.showYZ
+    ) {
+      setPlaneGridSettings((prev) => ({
+        ...prev,
+        showGrid: false,
+        showMinorGrid: false,
+        showLabels: false,
+        showAxisLabels: false,
+        showXY: false,
+        showXZ: false,
+        showYZ: false,
+      }));
+    }
+    if (showBoundingBox) setShowBoundingBox(false);
+    if (showContours) setShowContours(false);
+    if (showGaussMap) setShowGaussMap(false);
+    if (showPrincipalProjections) setShowPrincipalProjections(false);
+    if (probeEnabled) setProbeEnabled(false);
+    if (showProbeNormal) setShowProbeNormal(false);
+    if (showProbeTangentPlane) setShowProbeTangentPlane(false);
+    if (showProbeTangents) setShowProbeTangents(false);
+    if (showPrincipalDirections) setShowPrincipalDirections(false);
+    if (showPrincipalNormalPlanes) setShowPrincipalNormalPlanes(false);
+    if (showPrincipalLines) setShowPrincipalLines(false);
+    if (showPrincipalGlyphs) setShowPrincipalGlyphs(false);
+    if (showCurvatureLines) setShowCurvatureLines(false);
+    if (showRidges) setShowRidges(false);
+    if (showValleys) setShowValleys(false);
+    if (geodesicPathEnabled) setGeodesicPathEnabled(false);
+    if (geodesicHeatEnabled) setGeodesicHeatEnabled(false);
+    if (geodesicDiskEnabled) setGeodesicDiskEnabled(false);
+  }, [
+    geodesicDiskEnabled,
+    geodesicHeatEnabled,
+    geodesicPathEnabled,
+    meshInteractionQualityMode,
+    meshInteractionPreviewTriangleTarget,
+    colorMode,
+    probeEnabled,
+    planeGridSettings,
+    showBoundingBox,
+    showChartGrid,
+    showContours,
+    showCurvatureLines,
+    showGaussMap,
+    showInViewportOverlayControls,
+    showPlanes,
+    showPrincipalDirections,
+    showPrincipalGlyphs,
+    showPrincipalLines,
+    showPrincipalNormalPlanes,
+    showPrincipalProjections,
+    showProbeNormal,
+    showProbeTangentPlane,
+    showProbeTangents,
+    showRidges,
+    showSurfaceViewGizmo,
+    showValleys,
+    showWireframe,
+    surfaceMeshData,
+    surfaceMeshTopologyPickMode,
+    surfaceRenderQuality,
+  ]);
 
   const handleGenerateSurfaceMeshAssetPreset = useCallback(
     async (presetId: string) => {
@@ -48460,6 +48754,9 @@ case "mobius":
         };
         recordMeshPipelineProfilePhase(profileId, "prep:total", benchmarkNowMs() - meshBuildStart);
         const isLargeMesh = surfaceMeshTriangleCount(meshReady) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD;
+        const meshForApp = isLargeMesh
+          ? buildLargeSurfaceMeshDisplayProxy(meshReady, LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET)
+          : meshReady;
         let appStageStart = benchmarkNowMs();
         clearSurfaceMeshTopologySessionState();
         recordMeshPipelineProfilePhase(profileId, "app:clearTopologyState", benchmarkNowMs() - appStageStart);
@@ -48473,7 +48770,7 @@ case "mobius":
           recordMeshPipelineProfilePhase(profileId, "app:largeMeshMode", benchmarkNowMs() - appStageStart);
         }
         appStageStart = benchmarkNowMs();
-        setMeshDataset(meshReady);
+        setMeshDataset(meshForApp);
         recordMeshPipelineProfilePhase(profileId, "app:publishDataset", benchmarkNowMs() - appStageStart);
         if (!meshReady.adjacency && isLargeMesh) {
           setSurfaceMeshTopologyStatus(
@@ -48488,7 +48785,7 @@ case "mobius":
         setSurfaceViewerKind("mesh");
         recordMeshPipelineProfilePhase(profileId, "app:viewState", benchmarkNowMs() - appStageStart);
         appStageStart = benchmarkNowMs();
-        focusSurfaceMeshViewport(meshReady);
+        focusSurfaceMeshViewport(meshForApp);
         recordMeshPipelineProfilePhase(profileId, "app:focusViewport", benchmarkNowMs() - appStageStart);
         finishMeshPipelineProfile(profileId, { mesh: meshReady });
       } catch (err) {
@@ -48511,10 +48808,25 @@ case "mobius":
   );
 
   const handleLoadSurfaceMeshFile = useCallback(
-    async (files: FileList | File[] | null, options?: { profileLabel?: string; benchmarkModel?: MeshBenchmarkModel | null }) => {
+    async (
+      files: FileList | File[] | null,
+      options?: {
+        profileLabel?: string;
+        benchmarkModel?: MeshBenchmarkModel | null;
+        profileStartedAt?: number;
+        preStages?: Array<{ phase: string; ms: number }>;
+      }
+    ) => {
       if (!files || (files as FileList).length === 0) return null;
       const firstFile = Array.from(files as ArrayLike<File>)[0] ?? null;
-      const profileId = beginMeshPipelineProfile(options?.profileLabel ?? firstFile?.name ?? "Mesh file", firstFile?.name ?? null);
+      const profileId = beginMeshPipelineProfile(
+        options?.profileLabel ?? firstFile?.name ?? "Mesh file",
+        firstFile?.name ?? null,
+        { startedAt: options?.profileStartedAt }
+      );
+      for (const entry of options?.preStages ?? []) {
+        recordMeshPipelineProfilePhase(profileId, entry.phase, entry.ms);
+      }
       const largeFileHint = (firstFile?.size ?? 0) >= LARGE_MESH_FAST_LOAD_FILE_BYTES;
       setSurfaceMeshImportBusy(true);
       setSurfaceMeshImportError(null);
@@ -48534,6 +48846,9 @@ case "mobius":
         });
         recordMeshPipelineProfilePhase(profileId, "prep:total", benchmarkNowMs() - meshBuildStart);
         const isLargeMesh = surfaceMeshTriangleCount(meshReady) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD;
+        const meshForApp = isLargeMesh
+          ? buildLargeSurfaceMeshDisplayProxy(meshReady, LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET)
+          : meshReady;
         let appStageStart = benchmarkNowMs();
         clearSurfaceMeshTopologySessionState();
         recordMeshPipelineProfilePhase(profileId, "app:clearTopologyState", benchmarkNowMs() - appStageStart);
@@ -48547,7 +48862,7 @@ case "mobius":
           recordMeshPipelineProfilePhase(profileId, "app:largeMeshMode", benchmarkNowMs() - appStageStart);
         }
         appStageStart = benchmarkNowMs();
-        setMeshDataset(meshReady);
+        setMeshDataset(meshForApp);
         recordMeshPipelineProfilePhase(profileId, "app:publishDataset", benchmarkNowMs() - appStageStart);
         if (!meshReady.adjacency && isLargeMesh) {
           setSurfaceMeshTopologyStatus(
@@ -48577,7 +48892,7 @@ case "mobius":
         setSurfaceViewerKind("mesh");
         recordMeshPipelineProfilePhase(profileId, "app:viewState", benchmarkNowMs() - appStageStart);
         appStageStart = benchmarkNowMs();
-        focusSurfaceMeshViewport(meshReady);
+        focusSurfaceMeshViewport(meshForApp);
         recordMeshPipelineProfilePhase(profileId, "app:focusViewport", benchmarkNowMs() - appStageStart);
         finishMeshPipelineProfile(profileId, { mesh: meshReady });
         return meshReady;
@@ -48643,13 +48958,16 @@ case "mobius":
       setSurfaceMeshImportError(null);
       setSurfaceMeshBenchmarkError(null);
       try {
+        const profileStartedAt = Date.now();
         const hintedModel = surfaceMeshBenchmarkModels.find((model) => model.id === modelId) ?? null;
         if (hintedModel?.category === "stress" || hintedModel?.tests.includes("performance")) {
           prepareLargeSurfaceMeshInteractiveLoad(`Loading benchmark model: ${hintedModel.label} in fast preview mode.`, {
             clearCurrentMesh: true,
           });
         }
+        const benchmarkAssetLoadStart = benchmarkNowMs();
         const response = await api.load(modelId);
+        const benchmarkAssetLoadMs = benchmarkNowMs() - benchmarkAssetLoadStart;
         if (!response.ok) throw new Error(response.error);
         const bytes = new Uint8Array(response.bytes.byteLength);
         bytes.set(response.bytes);
@@ -48664,6 +48982,8 @@ case "mobius":
         const loadedMesh = await handleLoadSurfaceMeshFile([file], {
           profileLabel: response.entry.label,
           benchmarkModel: response.entry,
+          profileStartedAt,
+          preStages: [{ phase: "benchmark:loadAsset", ms: benchmarkAssetLoadMs }],
         });
         const isLargeMesh = loadedMesh ? surfaceMeshTriangleCount(loadedMesh) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD : false;
         setSurfaceMeshBenchmarkVerification(
@@ -65337,6 +65657,58 @@ case "mobius":
                         )}
                         {surfaceMeshImportError && (
                           <div style={{ color: "#b42318", fontSize: 11 }}>{surfaceMeshImportError}</div>
+                        )}
+                        {meshPipelineProfile && (
+                          <div
+                            data-testid="mesh-load-profile-summary"
+                            style={{
+                              border: "1px solid #93c5fd",
+                              borderRadius: 7,
+                              background: "#eff6ff",
+                              padding: "6px 7px",
+                              display: "grid",
+                              gap: 4,
+                              color: "#0f3557",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                              <strong>Last mesh load profile</strong>
+                              <span style={{ fontWeight: 800 }}>{meshPipelineProfile.status}</span>
+                            </div>
+                            <div>
+                              {meshPipelineProfile.label}:{" "}
+                              {Math.max(
+                                0,
+                                (meshPipelineProfile.completedAt ?? meshPipelineProfile.updatedAt) -
+                                  meshPipelineProfile.startedAt
+                              ).toFixed(0)}
+                              {" ms"}
+                              {meshPipelineProfile.firstFrameMs != null
+                                ? ` | first frame ${meshPipelineProfile.firstFrameMs.toFixed(0)} ms`
+                                : ""}
+                            </div>
+                            <div>
+                              {(meshPipelineProfile.vertices ?? 0).toLocaleString()} vertices /{" "}
+                              {(meshPipelineProfile.triangles ?? 0).toLocaleString()} triangles
+                            </div>
+                            {meshPipelineProfile.phases.length > 0 && (
+                              <div style={{ display: "grid", gap: 2, fontSize: 10 }}>
+                                {meshPipelineProfile.phases
+                                  .slice()
+                                  .sort((a, b) => b.totalMs - a.totalMs)
+                                  .slice(0, 5)
+                                  .map((phase) => (
+                                    <div
+                                      key={`mesh-load-profile-summary-${phase.phase}`}
+                                      style={{ display: "flex", justifyContent: "space-between", gap: 8 }}
+                                    >
+                                      <span>{phase.phase}</span>
+                                      <span>{phase.totalMs.toFixed(1)} ms</span>
+                                    </div>
+                                  ))}
+                              </div>
+                            )}
+                          </div>
                         )}
                         {surfaceMeshBenchmarkBrowserOpen && surfaceMeshBenchmarkModels.length > 0 && (
                           <div style={{ display: "grid", gap: 8 }}>

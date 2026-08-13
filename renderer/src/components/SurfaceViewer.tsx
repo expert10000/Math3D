@@ -1834,10 +1834,11 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const normalizedMeshPreviewTriangleTarget = normalizePositiveInt(
     meshInteractionPreviewTriangleTarget,
     DEFAULT_MESH_PREVIEW_TRIANGLE_TARGET,
-    5_000,
+    500,
     5_000_000
   );
   const canUseMeshInteractionLod = surfaceId === "surface_mesh" && meshInteractionQualityMode !== "full";
+  const fastPreviewHelpersHidden = surfaceId === "surface_mesh" && meshInteractionQualityMode === "fast-preview";
   const suppressInteractionOverlays = canUseMeshInteractionLod && meshRuntimeQuality !== "accurate";
   const effectiveWireframe = wireframe && !(suppressInteractionOverlays && meshInteractionHideWireframe);
   const effectiveShowPrincipalGlyphs =
@@ -1850,10 +1851,11 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
       : implicitOverlay;
   const hideSceneOverlaysDuringInteraction =
     suppressInteractionOverlays && meshInteractionHideSceneOverlays;
-  const effectiveOverlayMeshGroups = hideSceneOverlaysDuringInteraction ? null : overlayMeshGroups;
-  const effectiveOverlayLabelSets = hideSceneOverlaysDuringInteraction ? null : overlayLabelSets;
-  const effectiveOverlayPolylineGroups = hideSceneOverlaysDuringInteraction ? null : overlayPolylineGroups;
-  const effectiveOverlayPointSets = hideSceneOverlaysDuringInteraction ? null : overlayPointSets;
+  const effectiveOverlayMeshGroups = hideSceneOverlaysDuringInteraction || fastPreviewHelpersHidden ? null : overlayMeshGroups;
+  const effectiveOverlayLabelSets = hideSceneOverlaysDuringInteraction || fastPreviewHelpersHidden ? null : overlayLabelSets;
+  const effectiveOverlayPolylineGroups =
+    hideSceneOverlaysDuringInteraction || fastPreviewHelpersHidden ? null : overlayPolylineGroups;
+  const effectiveOverlayPointSets = hideSceneOverlaysDuringInteraction || fastPreviewHelpersHidden ? null : overlayPointSets;
 
   const mountRef = useRef<HTMLDivElement | null>(null);
 
@@ -2096,11 +2098,6 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const beginMeshInteraction = useCallback(() => {
     if (!canUseMeshInteractionLod) return;
     if (meshInteractionQualityMode === "fast-preview") {
-      meshInteractionActiveRef.current = false;
-      clearMeshInteractionIdleTimer();
-      if (meshRuntimeQualityRef.current !== "interactive-preview") {
-        setMeshRuntimeQuality("interactive-preview");
-      }
       return;
     }
     meshInteractionActiveRef.current = true;
@@ -2114,11 +2111,6 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
       return;
     }
     if (meshInteractionQualityMode === "fast-preview") {
-      meshInteractionActiveRef.current = false;
-      clearMeshInteractionIdleTimer();
-      if (meshRuntimeQualityRef.current !== "interactive-preview") {
-        setMeshRuntimeQuality("interactive-preview");
-      }
       return;
     }
     meshInteractionActiveRef.current = false;
@@ -3170,6 +3162,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
         lineMat.dispose();
       }
     }
+
   }, [
     surfaceId,
     graphExpr,
@@ -3826,6 +3819,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       stats.samples += 1;
       stats.emaMs = stats.samples <= 1 ? elapsed : stats.emaMs * 0.82 + elapsed * 0.18;
     };
+    let renderDirty = true;
+    const markRenderDirty = () => {
+      renderDirty = true;
+    };
     const estimateGpuBytes = (root: THREE.Object3D): number => {
       const seen = new Set<string>();
       let total = 0;
@@ -3926,6 +3923,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       });
     };
     const handleControlsChangeDebug = () => {
+      markRenderDirty();
       emitViewportDebugThrottled("controls");
     };
     controls.addEventListener("change", handleControlsChangeDebug);
@@ -4535,6 +4533,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
     });
 
+    const skipSampleSetBuild = fastPreviewHelpersHidden;
     const aggregatedSamples: SurfaceSampleSet["samples"] = [];
     const meshData: SurfaceSampleSet["meshData"] = [];
     let nextId = 0;
@@ -4557,18 +4556,20 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           indices: indexAttr ? indexAttr.array : null,
         });
       }
-      const { samples: chunk } = buildSurfaceSampleSetFromViewer({
-        geometry: mesh.geometry as THREE.BufferGeometry,
-        worldMatrix: mesh.matrixWorld,
-        maxSamples: remainingSamples,
-        includeUV: includeSamplesUV,
-        startId: nextId,
-        meshKey: (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid,
-      });
-      if (!chunk.length) continue;
-      aggregatedSamples.push(...chunk);
-      nextId += chunk.length;
-      remainingSamples -= chunk.length;
+      if (!skipSampleSetBuild) {
+        const { samples: chunk } = buildSurfaceSampleSetFromViewer({
+          geometry: mesh.geometry as THREE.BufferGeometry,
+          worldMatrix: mesh.matrixWorld,
+          maxSamples: remainingSamples,
+          includeUV: includeSamplesUV,
+          startId: nextId,
+          meshKey: (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid,
+        });
+        if (!chunk.length) continue;
+        aggregatedSamples.push(...chunk);
+        nextId += chunk.length;
+        remainingSamples -= chunk.length;
+      }
     }
 
     let nextSampleSet: SurfaceSampleSet;
@@ -4646,7 +4647,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     box.getSize(sizeVec);
     radiusRef.current = sizeVec.length() * 0.5 || 3;
 
-    if (showBoundingBox) {
+    if (showBoundingBox && !fastPreviewHelpersHidden) {
       const boxHelper = new THREE.Box3Helper(box, 0x999999);
       scene.add(boxHelper);
       bboxHelperRef.current = boxHelper;
@@ -4654,7 +4655,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const viewGizmo = new THREE.Group();
     viewGizmo.position.copy(center);
-    viewGizmo.visible = showViewGizmo && showOverlayControls && !gizmoEnabled;
+    viewGizmo.visible = showViewGizmo && showOverlayControls && !gizmoEnabled && !fastPreviewHelpersHidden;
     viewGizmoRef.current = viewGizmo;
     scene.add(viewGizmo);
 
@@ -4722,7 +4723,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     viewGizmo.add(originSphere);
 
     let referenceGridOverlay: ReturnType<typeof createLayeredReferenceGrid> | null = null;
-    if (showPlanes) {
+    if (showPlanes && !fastPreviewHelpersHidden) {
       const halfSize = Math.max(3, Math.min(28, (radiusRef.current || 3) * 1.35));
       referenceGridOverlay = createLayeredReferenceGrid({
         halfSize,
@@ -5652,6 +5653,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const handleWheel = (event: WheelEvent) => {
       interruptCameraTour();
+      markRenderDirty();
       beginMeshInteraction();
       endMeshInteraction();
       if (!event.shiftKey) return;
@@ -5686,8 +5688,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const renderResizeFrame = () => {
       if (suspendRenderingRef.current) return;
       const now = performance.now();
+      markRenderDirty();
       controls.update();
       lastRenderedAtRef.current = now;
+      renderDirty = false;
       renderer.render(scene, camera);
     };
 
@@ -5774,12 +5778,18 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         meshInteractionActiveRef.current ||
         cameraTourFrameRef.current != null ||
         zoomAnimRef.current != null;
-      if (!hasContinuousMotion && now - lastRenderedAtRef.current < IDLE_RENDER_MIN_FRAME_MS) {
+      const staticFastPreview =
+        canUseMeshInteractionLod && meshInteractionQualityMode === "fast-preview";
+      if (!hasContinuousMotion && staticFastPreview && !renderDirty) {
+        return;
+      }
+      if (!hasContinuousMotion && !staticFastPreview && now - lastRenderedAtRef.current < IDLE_RENDER_MIN_FRAME_MS) {
         return;
       }
       if (hasContinuousMotion) {
         controls.update();
       }
+      renderDirty = false;
 
       const perfFrame = perfFrameRef.current;
       if (perfFrame.lastFrameAt > 0) {
@@ -6142,7 +6152,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     topologyGizmoConeRef.current = null;
     topologyGizmoHandleRef.current = null;
     const target = topologyGizmo;
-    if (!target?.enabled) {
+    if (fastPreviewHelpersHidden || !target?.enabled) {
       group.visible = false;
       return;
     }
@@ -6593,7 +6603,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (viewGizmo) viewGizmo.position.copy(center);
 
     const existingBoxHelper = bboxHelperRef.current;
-    if (showBoundingBox) {
+    if (showBoundingBox && !fastPreviewHelpersHidden) {
       if (existingBoxHelper) {
         existingBoxHelper.box.copy(box);
       } else {
@@ -6635,6 +6645,73 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           if (helper) helper.visible = true;
         }
       }
+    }
+
+    const renderer = rendererRef.current;
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (renderer && camera && controls && !suspendRenderingRef.current) {
+      controls.update();
+      const now = performance.now();
+      renderer.render(scene, camera);
+      const perfFrame = perfFrameRef.current;
+      if (perfFrame.lastFrameAt > 0) {
+        const dt = Math.max(0.0001, now - perfFrame.lastFrameAt);
+        perfFrame.frameTimeMs = perfFrame.frameTimeMs === 0 ? dt : perfFrame.frameTimeMs * 0.82 + dt * 0.18;
+        const fps = 1000 / dt;
+        perfFrame.fps = perfFrame.fps === 0 ? fps : perfFrame.fps * 0.82 + fps * 0.18;
+      }
+      perfFrame.lastFrameAt = now;
+      perfFrame.lastEmitAt = now;
+      lastRenderedAtRef.current = now;
+      const renderInfo = renderer.info.render;
+      let gpuBytes = 0;
+      const seen = new Set<string>();
+      for (const mesh of meshList) {
+        const geom = mesh.geometry as THREE.BufferGeometry;
+        if (!geom || seen.has(geom.uuid)) continue;
+        seen.add(geom.uuid);
+        for (const key of Object.keys(geom.attributes)) {
+          const array = (geom.attributes[key] as THREE.BufferAttribute | undefined)?.array as
+            | { byteLength?: number }
+            | undefined;
+          if (Number.isFinite(array?.byteLength)) gpuBytes += Number(array?.byteLength);
+        }
+        const indexArray = geom.index?.array as { byteLength?: number } | undefined;
+        if (Number.isFinite(indexArray?.byteLength)) gpuBytes += Number(indexArray?.byteLength);
+      }
+      onPerformanceSnapshotRef.current?.({
+        ts: Date.now(),
+        fps: perfFrame.fps,
+        frameTimeMs: perfFrame.frameTimeMs,
+        drawCalls: Math.max(0, Math.round(renderInfo.calls ?? 0)),
+        triangles: Math.max(0, Math.round(renderInfo.triangles ?? 0)),
+        vertices: Math.max(
+          0,
+          Math.round((renderInfo.triangles ?? 0) * 3 + (renderInfo.lines ?? 0) * 2 + (renderInfo.points ?? 0))
+        ),
+        meshObjects: meshList.length,
+        overlayObjects: 0,
+        raycastTimeMs: raycastPerfRef.current.emaMs,
+        lastMeshBuildMs: lastMeshBuildMsRef.current,
+        lodLevel:
+          canUseMeshInteractionLod && meshRuntimeQualityRef.current !== "accurate"
+            ? meshRuntimeQualityRef.current === "interactive-preview"
+              ? "Performance"
+              : "Balanced"
+            : renderQuality === "performance"
+              ? "Performance"
+              : renderQuality === "sharp"
+                ? "Full"
+                : "Balanced",
+        bvhStatus: "Off",
+        gpuMemoryEstimateBytes: gpuBytes,
+        gpuMemoryEstimateLabel: formatBytes(gpuBytes),
+        rendererMemory: {
+          geometries: renderer.info.memory.geometries ?? 0,
+          textures: renderer.info.memory.textures ?? 0,
+        },
+      });
     }
   }, [
     surfaceId,
@@ -7559,7 +7636,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       principalProjectionGroupRef.current = null;
     }
 
-    if (!showPrincipalProjections) return;
+    if (fastPreviewHelpersHidden || !showPrincipalProjections) return;
     const root = surfaceObjRef.current;
     if (!root) return;
 
@@ -8595,7 +8672,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       curvatureLinesRef.current = null;
     }
 
-    if (!showCurvatureLines) return;
+    if (fastPreviewHelpersHidden || !showCurvatureLines) return;
 
     const isImplicitSurface = isImplicitId(surfaceId);
     const isMeshSurface = surfaceId === "surface_mesh";
@@ -9006,7 +9083,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     clearLines(ridgeLinesRef);
     clearLines(valleyLinesRef);
 
-    if (!showRidges && !showValleys) return;
+    if (fastPreviewHelpersHidden || (!showRidges && !showValleys)) return;
 
     const isMeshSurface = surfaceId === "surface_mesh";
     const field = getPrincipalField();
@@ -9231,7 +9308,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const isGraphSurface = isGraphId(surfaceId);
     const isImplicitSurface = isImplicitId(surfaceId);
     if (!isGraphSurface && !isImplicitSurface) return;
-    if (!showPrincipalDirections && !showPrincipalNormalPlanes && !showPrincipalLines) return;
+    if (fastPreviewHelpersHidden || (!showPrincipalDirections && !showPrincipalNormalPlanes && !showPrincipalLines)) return;
 
     if (isGraphSurface) {
       if (!probeXY) return;
@@ -10108,7 +10185,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     chartGridRenderableCellIndicesRef.current = [];
     chartGridCellFaceFactorRef.current = 1;
 
-    if (!showChartGrid) return;
+    if (fastPreviewHelpersHidden || !showChartGrid) return;
 
     const uCount = Math.max(2, Math.round(chartGridCountU));
     const vCount = Math.max(2, Math.round(chartGridCountV));
@@ -10771,8 +10848,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
   useEffect(() => {
     const gizmo = viewGizmoRef.current;
-    if (gizmo) gizmo.visible = showViewGizmo && showOverlayControls && !gizmoEnabled;
-  }, [gizmoEnabled, showViewGizmo, showOverlayControls]);
+    if (gizmo) gizmo.visible = showViewGizmo && showOverlayControls && !gizmoEnabled && !fastPreviewHelpersHidden;
+  }, [fastPreviewHelpersHidden, gizmoEnabled, showViewGizmo, showOverlayControls]);
 
   /* ---------------- presets storage UI (unchanged logic) ---------------- */
 
