@@ -210,6 +210,41 @@ const normalizeResourceKey = (url: string) => {
   return clean.replace(/^(\.?\/)+/, "");
 };
 
+const parseBinaryStlGeometryIfExact = (buffer: ArrayBuffer): THREE.BufferGeometry | null => {
+  if (buffer.byteLength < 84) return null;
+  const reader = new DataView(buffer);
+  const faces = reader.getUint32(80, true);
+  const expectedBytes = 84 + faces * 50;
+  if (expectedBytes !== buffer.byteLength || faces <= 0) return null;
+
+  const positions = new Float32Array(faces * 9);
+  const normals = new Float32Array(faces * 9);
+  let out = 0;
+  let offset = 84;
+  for (let face = 0; face < faces; face += 1) {
+    const nx = reader.getFloat32(offset, true);
+    const ny = reader.getFloat32(offset + 4, true);
+    const nz = reader.getFloat32(offset + 8, true);
+    offset += 12;
+    for (let vertex = 0; vertex < 3; vertex += 1) {
+      positions[out] = reader.getFloat32(offset, true);
+      positions[out + 1] = reader.getFloat32(offset + 4, true);
+      positions[out + 2] = reader.getFloat32(offset + 8, true);
+      normals[out] = nx;
+      normals[out + 1] = ny;
+      normals[out + 2] = nz;
+      out += 3;
+      offset += 12;
+    }
+    offset += 2;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+  return geometry;
+};
+
 const createUrlModifier = (files: File[], urlCache: Map<string, string>) => {
   if (!files.length) return null;
   const fileMap = new Map<string, File>();
@@ -435,9 +470,8 @@ export async function loadSurfaceMeshFromFile(
   };
 
   if (ext === "stl") {
-    const loader = new STLLoader();
     const parseStart = nowMs();
-    const geometry = loader.parse(buffer);
+    const geometry = parseBinaryStlGeometryIfExact(buffer) ?? new STLLoader().parse(buffer);
     recordStage(opts, "parse", parseStart);
     return buildSurfaceMeshFromGeometry(geometry, name, importSource, opts);
   }

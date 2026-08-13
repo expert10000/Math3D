@@ -502,6 +502,12 @@ declare global {
         vertexIndex?: number;
       };
     };
+    __MATH3D_E2E_MESH_BENCHMARK__?: {
+      loadBenchmarkModel: (id: string) => Promise<{
+        ok: boolean;
+        error?: string;
+      }>;
+    };
     __MATH3D_GEOMETRY_SMOKE_TRIGGER__?: boolean;
   }
 }

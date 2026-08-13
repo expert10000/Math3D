@@ -671,6 +671,29 @@ type MeshBenchmarkPerformanceSuiteState = {
   startedAt: number | null;
   completedAt: number | null;
 };
+type MeshPipelineProfilePhase = {
+  phase: string;
+  count: number;
+  totalMs: number;
+  maxMs: number;
+  lastMs: number;
+};
+type MeshPipelineProfileRun = {
+  id: string;
+  label: string;
+  fileName: string | null;
+  status: "loading" | "ready" | "failed";
+  startedAt: number;
+  updatedAt: number;
+  completedAt: number | null;
+  error?: string;
+  vertices: number | null;
+  triangles: number | null;
+  memoryBytes: number | null;
+  firstFrameMs: number | null;
+  firstFrameSnapshot: SurfacePerformanceSnapshot | null;
+  phases: MeshPipelineProfilePhase[];
+};
 const MESH_BENCHMARK_CATEGORY_LABELS: Record<MeshBenchmarkCategory, string> = {
   basic: "Basic",
   standard: "Standard",
@@ -1809,6 +1832,50 @@ const sumMeshImportStages = (
   return Number.isFinite(total) && total > 0 ? total : null;
 };
 
+const appendMeshPipelineProfilePhase = (
+  phases: readonly MeshPipelineProfilePhase[],
+  phase: string,
+  ms: number
+): MeshPipelineProfilePhase[] => {
+  const safeMs = Number.isFinite(ms) ? Math.max(0, ms) : 0;
+  const index = phases.findIndex((entry) => entry.phase === phase);
+  if (index < 0) {
+    return [...phases, { phase, count: 1, totalMs: safeMs, maxMs: safeMs, lastMs: safeMs }];
+  }
+  return phases.map((entry, entryIndex) =>
+    entryIndex === index
+      ? {
+          ...entry,
+          count: entry.count + 1,
+          totalMs: entry.totalMs + safeMs,
+          maxMs: Math.max(entry.maxMs, safeMs),
+          lastMs: safeMs,
+        }
+      : entry
+  );
+};
+
+const serializeMeshPipelineProfileRun = (run: MeshPipelineProfileRun) => ({
+  id: run.id,
+  label: run.label,
+  fileName: run.fileName,
+  status: run.status,
+  elapsedMs: Math.max(0, (run.completedAt ?? run.updatedAt) - run.startedAt),
+  vertices: run.vertices,
+  triangles: run.triangles,
+  memoryBytes: run.memoryBytes,
+  firstFrameMs: run.firstFrameMs,
+  firstFrameSnapshot: run.firstFrameSnapshot,
+  phases: run.phases.map((phase) => ({
+    phase: phase.phase,
+    count: phase.count,
+    totalMs: Number(phase.totalMs.toFixed(2)),
+    maxMs: Number(phase.maxMs.toFixed(2)),
+    lastMs: Number(phase.lastMs.toFixed(2)),
+  })),
+  error: run.error,
+});
+
 const estimateSurfaceMeshDataBytes = (mesh: SurfaceMeshData | null): number | null => {
   if (!mesh) return null;
   const typedBytes = (value: ArrayLike<number> | null | undefined): number => {
@@ -1861,18 +1928,31 @@ const shouldDeferLargeSurfaceMeshAnalysis = (mesh: SurfaceMeshData | null | unde
   surfaceMeshTriangleCount(mesh) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD &&
   (!mesh.adjacency || mesh.adjacency.length === 0);
 
-const applySurfaceMeshOps = (mesh: SurfaceMeshData, options?: { fastLargeMesh?: boolean }): SurfaceMeshData => {
+const applySurfaceMeshOps = (
+  mesh: SurfaceMeshData,
+  options?: { fastLargeMesh?: boolean; onStage?: (phase: string, ms: number) => void }
+): SurfaceMeshData => {
   let next = mesh;
   if (!mesh.normals || mesh.normals.length < mesh.positions.length) {
+    const normalStart = benchmarkNowMs();
     next = computeVertexNormals(next);
+    options?.onStage?.("prep:vertexNormals", benchmarkNowMs() - normalStart);
   }
   const shouldDeferAdjacency =
     options?.fastLargeMesh === true && surfaceMeshTriangleCount(next) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD;
   if (!shouldDeferAdjacency) {
+    const adjacencyStart = benchmarkNowMs();
     next = computeAdjacency(next);
+    options?.onStage?.("prep:adjacency", benchmarkNowMs() - adjacencyStart);
+  } else {
+    options?.onStage?.("prep:adjacencySkipped", 0);
   }
+  const meanEdgeStart = benchmarkNowMs();
   next = computeMeanEdgeLength(next);
+  options?.onStage?.("prep:meanEdge", benchmarkNowMs() - meanEdgeStart);
+  const validateStart = benchmarkNowMs();
   next = validateMesh(next);
+  options?.onStage?.("prep:validate", benchmarkNowMs() - validateStart);
   return next;
 };
 
@@ -33064,13 +33144,16 @@ const App: React.FC = () => {
       const localMatch =
         surfaceMeshBenchmarkModels.find((model) => model.fileName.toLowerCase() === fileName.toLowerCase()) ??
         null;
+      if (localMatch) {
+        return hasMeshBenchmarkExpectedMetrics(localMatch.expected) ? { model: localMatch } : null;
+      }
       const api = typeof window !== "undefined" ? window.meshBenchmarks : undefined;
       if (!api?.match) {
-        return localMatch && hasMeshBenchmarkExpectedMetrics(localMatch.expected) ? { model: localMatch } : null;
+        return null;
       }
       const response = await api.match(fileName);
       if (!response.ok) throw new Error(response.error);
-      const model = (response.entry ?? localMatch) as MeshBenchmarkModel | null;
+      const model = response.entry ?? null;
       return model && hasMeshBenchmarkExpectedMetrics(model.expected) ? { model } : null;
     },
     [isDev, surfaceMeshBenchmarkModels]
@@ -39519,6 +39602,9 @@ const App: React.FC = () => {
   const [surfacePerformanceSnapshot, setSurfacePerformanceSnapshot] = useState<SurfacePerformanceSnapshot | null>(null);
   const surfacePerformanceSnapshotUpdatedAtRef = useRef(0);
   const [meshPerformanceLastBuildMs, setMeshPerformanceLastBuildMs] = useState<number | null>(null);
+  const [meshPipelineProfile, setMeshPipelineProfile] = useState<MeshPipelineProfileRun | null>(null);
+  const meshPipelineProfileCounterRef = useRef(0);
+  const meshPipelineProfileActiveIdRef = useRef<string | null>(null);
   const [meshPerfBenchmarkId, setMeshPerfBenchmarkId] = useState<MeshPerfBenchmarkId | null>(null);
   const [meshBenchmarkPerformanceSuite, setMeshBenchmarkPerformanceSuite] =
     useState<MeshBenchmarkPerformanceSuiteState>({
@@ -39541,7 +39627,82 @@ const App: React.FC = () => {
   const handleSecondaryViewportDebug = useCallback((snapshot: ViewportDebugSnapshot) => {
     setViewportDebugSecondary(snapshot);
   }, []);
+  const beginMeshPipelineProfile = useCallback((label: string, fileName: string | null) => {
+    meshPipelineProfileCounterRef.current += 1;
+    const id = `mesh-profile:${meshPipelineProfileCounterRef.current}`;
+    meshPipelineProfileActiveIdRef.current = null;
+    setMeshPipelineProfile({
+      id,
+      label,
+      fileName,
+      status: "loading",
+      startedAt: Date.now(),
+      updatedAt: Date.now(),
+      completedAt: null,
+      vertices: null,
+      triangles: null,
+      memoryBytes: null,
+      firstFrameMs: null,
+      firstFrameSnapshot: null,
+      phases: [],
+    });
+    return id;
+  }, []);
+  const recordMeshPipelineProfilePhase = useCallback((profileId: string | null, phase: string, ms: number) => {
+    if (!profileId) return;
+    setMeshPipelineProfile((current) => {
+      if (!current || current.id !== profileId) return current;
+      return {
+        ...current,
+        updatedAt: Date.now(),
+        phases: appendMeshPipelineProfilePhase(current.phases, phase, ms),
+      };
+    });
+  }, []);
+  const finishMeshPipelineProfile = useCallback(
+    (profileId: string | null, result: { mesh?: SurfaceMeshData | null; error?: string }) => {
+      if (!profileId) return;
+      const completedAt = Date.now();
+      meshPipelineProfileActiveIdRef.current = result.error ? null : profileId;
+      setMeshPipelineProfile((current) => {
+        if (!current || current.id !== profileId) return current;
+        const mesh = result.mesh ?? null;
+        const next: MeshPipelineProfileRun = {
+          ...current,
+          status: result.error ? "failed" : "ready",
+          completedAt,
+          updatedAt: completedAt,
+          error: result.error,
+          vertices: mesh ? Math.floor(mesh.positions.length / 3) : current.vertices,
+          triangles: mesh ? surfaceMeshTriangleCount(mesh) : current.triangles,
+          memoryBytes: mesh ? estimateSurfaceMeshDataBytes(mesh) : current.memoryBytes,
+        };
+        if (typeof console !== "undefined") {
+          console.info("[mesh-profile]", JSON.stringify(serializeMeshPipelineProfileRun(next)));
+        }
+        return next;
+      });
+    },
+    []
+  );
   const handleSurfacePerformanceSnapshot = useCallback((snapshot: SurfacePerformanceSnapshot) => {
+    const activeProfileId = meshPipelineProfileActiveIdRef.current;
+    if (activeProfileId) {
+      setMeshPipelineProfile((current) => {
+        if (!current || current.id !== activeProfileId || current.firstFrameMs != null) return current;
+        const next: MeshPipelineProfileRun = {
+          ...current,
+          updatedAt: Date.now(),
+          firstFrameMs: Math.max(0, snapshot.ts - current.startedAt),
+          firstFrameSnapshot: snapshot,
+        };
+        if (typeof console !== "undefined") {
+          console.info("[mesh-profile:first-frame]", JSON.stringify(serializeMeshPipelineProfileRun(next)));
+        }
+        return next;
+      });
+      meshPipelineProfileActiveIdRef.current = null;
+    }
     if (snapshot.ts - surfacePerformanceSnapshotUpdatedAtRef.current < 2000) return;
     surfacePerformanceSnapshotUpdatedAtRef.current = snapshot.ts;
     setSurfacePerformanceSnapshot(snapshot);
@@ -48244,6 +48405,7 @@ case "mobius":
       if (!preset) return;
       setSurfaceMeshImportBusy(true);
       setSurfaceMeshImportError(null);
+      const profileId = beginMeshPipelineProfile(preset.label, preset.fileName);
       try {
         const resp = await fetch(new URL(preset.assetUrl, window.location.href));
         if (!resp.ok) throw new Error(`Failed to fetch ${preset.label} (${resp.status})`);
@@ -48254,18 +48416,35 @@ case "mobius":
           prepareLargeSurfaceMeshInteractiveLoad("Large mesh loading in fast preview mode.", { clearCurrentMesh: true });
         }
         const mergeVerticesForLoad = surfaceMeshMergeVertices && !largeFileHint;
-        const base = await loadSurfaceMeshFromFile([file], { mergeVertices: mergeVerticesForLoad });
-        const meshReady = { ...applySurfaceMeshOps(base, { fastLargeMesh: true }), label: preset.label };
+        const base = await loadSurfaceMeshFromFile([file], {
+          mergeVertices: mergeVerticesForLoad,
+          onStage: (entry) => recordMeshPipelineProfilePhase(profileId, `import:${entry.stage}`, entry.ms),
+        });
+        const meshBuildStart = benchmarkNowMs();
+        const meshReady = {
+          ...applySurfaceMeshOps(base, {
+            fastLargeMesh: true,
+            onStage: (phase, ms) => recordMeshPipelineProfilePhase(profileId, phase, ms),
+          }),
+          label: preset.label,
+        };
+        recordMeshPipelineProfilePhase(profileId, "prep:total", benchmarkNowMs() - meshBuildStart);
         const isLargeMesh = surfaceMeshTriangleCount(meshReady) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD;
+        let appStageStart = benchmarkNowMs();
         clearSurfaceMeshTopologySessionState();
+        recordMeshPipelineProfilePhase(profileId, "app:clearTopologyState", benchmarkNowMs() - appStageStart);
         if (isLargeMesh) {
+          appStageStart = benchmarkNowMs();
           prepareLargeSurfaceMeshInteractiveLoad(
             mergeVerticesForLoad
               ? "Large mesh loaded in fast mode; topology adjacency will be computed by analysis tools when needed."
               : "Large mesh loaded in fast preview mode without interactive vertex weld; run Analyse or the performance suite for exact topology metrics."
           );
+          recordMeshPipelineProfilePhase(profileId, "app:largeMeshMode", benchmarkNowMs() - appStageStart);
         }
+        appStageStart = benchmarkNowMs();
         setMeshDataset(meshReady);
+        recordMeshPipelineProfilePhase(profileId, "app:publishDataset", benchmarkNowMs() - appStageStart);
         if (!meshReady.adjacency && isLargeMesh) {
           setSurfaceMeshTopologyStatus(
             mergeVerticesForLoad
@@ -48273,24 +48452,39 @@ case "mobius":
               : "Large mesh loaded in fast preview mode without interactive vertex weld; run Analyse or the performance suite for exact topology metrics."
           );
         }
+        appStageStart = benchmarkNowMs();
         setSurfaceMeshBenchmarkVerification(null);
         setDatasetKind("mesh");
         setSurfaceViewerKind("mesh");
+        recordMeshPipelineProfilePhase(profileId, "app:viewState", benchmarkNowMs() - appStageStart);
+        appStageStart = benchmarkNowMs();
         focusSurfaceMeshViewport(meshReady);
+        recordMeshPipelineProfilePhase(profileId, "app:focusViewport", benchmarkNowMs() - appStageStart);
+        finishMeshPipelineProfile(profileId, { mesh: meshReady });
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to load bundled mesh preset.";
         setSurfaceMeshImportError(msg);
+        finishMeshPipelineProfile(profileId, { error: msg });
       } finally {
         setSurfaceMeshImportBusy(false);
       }
     },
-    [clearSurfaceMeshTopologySessionState, focusSurfaceMeshViewport, prepareLargeSurfaceMeshInteractiveLoad, surfaceMeshMergeVertices]
+    [
+      beginMeshPipelineProfile,
+      clearSurfaceMeshTopologySessionState,
+      finishMeshPipelineProfile,
+      focusSurfaceMeshViewport,
+      prepareLargeSurfaceMeshInteractiveLoad,
+      recordMeshPipelineProfilePhase,
+      surfaceMeshMergeVertices,
+    ]
   );
 
   const handleLoadSurfaceMeshFile = useCallback(
-    async (files: FileList | File[] | null) => {
+    async (files: FileList | File[] | null, options?: { profileLabel?: string; benchmarkModel?: MeshBenchmarkModel | null }) => {
       if (!files || (files as FileList).length === 0) return null;
       const firstFile = Array.from(files as ArrayLike<File>)[0] ?? null;
+      const profileId = beginMeshPipelineProfile(options?.profileLabel ?? firstFile?.name ?? "Mesh file", firstFile?.name ?? null);
       const largeFileHint = (firstFile?.size ?? 0) >= LARGE_MESH_FAST_LOAD_FILE_BYTES;
       if (largeFileHint) {
         prepareLargeSurfaceMeshInteractiveLoad("Large mesh loading in fast preview mode.", { clearCurrentMesh: true });
@@ -48299,18 +48493,32 @@ case "mobius":
       setSurfaceMeshImportError(null);
       try {
         const mergeVerticesForLoad = surfaceMeshMergeVertices && !largeFileHint;
-        const base = await loadSurfaceMeshFromFile(files, { mergeVertices: mergeVerticesForLoad });
-        const meshReady = applySurfaceMeshOps(base, { fastLargeMesh: true });
+        const base = await loadSurfaceMeshFromFile(files, {
+          mergeVertices: mergeVerticesForLoad,
+          onStage: (entry) => recordMeshPipelineProfilePhase(profileId, `import:${entry.stage}`, entry.ms),
+        });
+        const meshBuildStart = benchmarkNowMs();
+        const meshReady = applySurfaceMeshOps(base, {
+          fastLargeMesh: true,
+          onStage: (phase, ms) => recordMeshPipelineProfilePhase(profileId, phase, ms),
+        });
+        recordMeshPipelineProfilePhase(profileId, "prep:total", benchmarkNowMs() - meshBuildStart);
         const isLargeMesh = surfaceMeshTriangleCount(meshReady) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD;
+        let appStageStart = benchmarkNowMs();
         clearSurfaceMeshTopologySessionState();
+        recordMeshPipelineProfilePhase(profileId, "app:clearTopologyState", benchmarkNowMs() - appStageStart);
         if (isLargeMesh) {
+          appStageStart = benchmarkNowMs();
           prepareLargeSurfaceMeshInteractiveLoad(
             mergeVerticesForLoad
               ? "Large mesh loaded in fast mode; topology adjacency will be computed by analysis tools when needed."
               : "Large mesh loaded in fast preview mode without interactive vertex weld; run Analyse or the performance suite for exact topology metrics."
           );
+          recordMeshPipelineProfilePhase(profileId, "app:largeMeshMode", benchmarkNowMs() - appStageStart);
         }
+        appStageStart = benchmarkNowMs();
         setMeshDataset(meshReady);
+        recordMeshPipelineProfilePhase(profileId, "app:publishDataset", benchmarkNowMs() - appStageStart);
         if (!meshReady.adjacency && isLargeMesh) {
           setSurfaceMeshTopologyStatus(
             mergeVerticesForLoad
@@ -48318,7 +48526,12 @@ case "mobius":
               : "Large mesh loaded in fast preview mode without interactive vertex weld; run Analyse or the performance suite for exact topology metrics."
           );
         }
-        if (firstFile) {
+        appStageStart = benchmarkNowMs();
+        if (options?.benchmarkModel) {
+          setSurfaceMeshBenchmarkVerification(
+            hasMeshBenchmarkExpectedMetrics(options.benchmarkModel.expected) ? { model: options.benchmarkModel } : null
+          );
+        } else if (firstFile) {
           try {
             setSurfaceMeshBenchmarkVerification(await resolveSurfaceMeshBenchmarkVerificationForFile(firstFile.name));
           } catch (benchmarkError) {
@@ -48328,22 +48541,32 @@ case "mobius":
         } else {
           setSurfaceMeshBenchmarkVerification(null);
         }
+        recordMeshPipelineProfilePhase(profileId, "app:benchmarkMatch", benchmarkNowMs() - appStageStart);
+        appStageStart = benchmarkNowMs();
         setDatasetKind("mesh");
         setSurfaceViewerKind("mesh");
+        recordMeshPipelineProfilePhase(profileId, "app:viewState", benchmarkNowMs() - appStageStart);
+        appStageStart = benchmarkNowMs();
         focusSurfaceMeshViewport(meshReady);
+        recordMeshPipelineProfilePhase(profileId, "app:focusViewport", benchmarkNowMs() - appStageStart);
+        finishMeshPipelineProfile(profileId, { mesh: meshReady });
         return meshReady;
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to load mesh file.";
         setSurfaceMeshImportError(msg);
+        finishMeshPipelineProfile(profileId, { error: msg });
         return null;
       } finally {
         setSurfaceMeshImportBusy(false);
       }
     },
     [
+      beginMeshPipelineProfile,
       clearSurfaceMeshTopologySessionState,
+      finishMeshPipelineProfile,
       focusSurfaceMeshViewport,
       prepareLargeSurfaceMeshInteractiveLoad,
+      recordMeshPipelineProfilePhase,
       resolveSurfaceMeshBenchmarkVerificationForFile,
       surfaceMeshMergeVertices,
     ]
@@ -48406,7 +48629,10 @@ case "mobius":
         const file = new File([bytes.buffer], response.entry.fileName, {
           type: response.entry.fileName.toLowerCase().endsWith(".stl") ? "model/stl" : "text/plain",
         });
-        const loadedMesh = await handleLoadSurfaceMeshFile([file]);
+        const loadedMesh = await handleLoadSurfaceMeshFile([file], {
+          profileLabel: response.entry.label,
+          benchmarkModel: response.entry,
+        });
         const isLargeMesh = loadedMesh ? surfaceMeshTriangleCount(loadedMesh) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD : false;
         setSurfaceMeshBenchmarkVerification(
           hasMeshBenchmarkExpectedMetrics(response.entry.expected) ? { model: response.entry } : null
@@ -48427,6 +48653,24 @@ case "mobius":
     },
     [handleLoadSurfaceMeshFile, isDev, prepareLargeSurfaceMeshInteractiveLoad, surfaceMeshBenchmarkModels]
   );
+  useEffect(() => {
+    if (typeof window === "undefined" || (!isDev && !window.appRuntime?.e2e)) return;
+    window.__MATH3D_E2E_MESH_BENCHMARK__ = {
+      loadBenchmarkModel: async (id: string) => {
+        try {
+          await handleLoadSurfaceMeshBenchmarkModel(id);
+          return { ok: true };
+        } catch (error) {
+          return { ok: false, error: String((error as any)?.message ?? error) };
+        }
+      },
+    };
+    return () => {
+      if (window.__MATH3D_E2E_MESH_BENCHMARK__?.loadBenchmarkModel) {
+        delete window.__MATH3D_E2E_MESH_BENCHMARK__;
+      }
+    };
+  }, [handleLoadSurfaceMeshBenchmarkModel, isDev]);
 
   const handleExportSurfaceMeshObj = useCallback(() => {
     if (surfaceMeshExportBusy) return;
@@ -71017,6 +71261,7 @@ case "mobius":
                       surfacePerformanceSnapshot={surfacePerformanceSnapshot}
                       meshPerformanceBenchmarkId={meshPerfBenchmarkId}
                       meshPerformanceLastBuildMs={meshPerformanceLastBuildMs}
+                      meshPipelineProfile={meshPipelineProfile}
                       onRunMeshPerformanceBenchmark={handleRunMeshPerformanceBenchmark}
                       onRestoreMeshPerformanceBaseline={handleRestoreMeshPerformanceBaseline}
                       meshBenchmarkPerformanceSuite={meshBenchmarkPerformanceSuite}
@@ -105337,6 +105582,7 @@ type SurfacesRightPanelProps = {
   surfacePerformanceSnapshot: SurfacePerformanceSnapshot | null;
   meshPerformanceBenchmarkId: MeshPerfBenchmarkId | null;
   meshPerformanceLastBuildMs: number | null;
+  meshPipelineProfile: MeshPipelineProfileRun | null;
   onRunMeshPerformanceBenchmark: (id: MeshPerfBenchmarkId) => void;
   onRestoreMeshPerformanceBaseline: () => void;
   meshBenchmarkPerformanceSuite: MeshBenchmarkPerformanceSuiteState;
@@ -105569,6 +105815,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   surfacePerformanceSnapshot,
   meshPerformanceBenchmarkId,
   meshPerformanceLastBuildMs,
+  meshPipelineProfile,
   onRunMeshPerformanceBenchmark,
   onRestoreMeshPerformanceBaseline,
   meshBenchmarkPerformanceSuite,
@@ -106479,6 +106726,22 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     MESH_PERF_BENCHMARK_PRESETS.find((entry) => entry.id === meshPerformanceBenchmarkId)?.label ?? null;
   const formatPerfMetric = (value: number | null | undefined, digits = 1) =>
     value == null || !Number.isFinite(value) ? "n/a" : Number(value).toFixed(digits);
+  const meshPipelineProfileElapsedMs = meshPipelineProfile
+    ? Math.max(0, (meshPipelineProfile.completedAt ?? meshPipelineProfile.updatedAt) - meshPipelineProfile.startedAt)
+    : null;
+  const meshPipelineProfilePhaseRows =
+    meshPipelineProfile?.phases
+      .slice()
+      .sort((a, b) => b.totalMs - a.totalMs)
+      .slice(0, 12) ?? [];
+  const copyMeshPipelineProfile = () => {
+    if (!meshPipelineProfile) return;
+    const text = JSON.stringify(serializeMeshPipelineProfileRun(meshPipelineProfile), null, 2);
+    const clipboard = typeof navigator !== "undefined" ? navigator.clipboard : undefined;
+    if (clipboard?.writeText) {
+      void clipboard.writeText(text);
+    }
+  };
 
   const resultsOnlyInspector = true;
   if (resultsOnlyInspector) {
@@ -106742,7 +107005,68 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                       ? `geometries ${formatInspectorCount(surfacePerformanceSnapshot.rendererMemory.geometries)} · textures ${formatInspectorCount(surfacePerformanceSnapshot.rendererMemory.textures)}`
                       : "n/a"}
                   </div>
+                  {meshPipelineProfile && (
+                    <div
+                      style={{ display: "grid", gap: 6, borderTop: "1px solid #dbe4ee", paddingTop: 8, marginTop: 2 }}
+                      data-testid="mesh-pipeline-profile"
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                        <strong>Pipeline trace</strong>
+                        <span style={{ color: meshPipelineProfile.status === "failed" ? "#b42318" : "#475467", fontWeight: 800 }}>
+                          {meshPipelineProfile.status}
+                        </span>
+                      </div>
+                      <div><strong>Model:</strong> {meshPipelineProfile.label}</div>
+                      <div>
+                        <strong>Total:</strong> {formatPerfMetric(meshPipelineProfileElapsedMs, 1)} ms
+                        {" | "}
+                        <strong>First frame:</strong> {formatPerfMetric(meshPipelineProfile.firstFrameMs, 1)} ms
+                      </div>
+                      <div>
+                        <strong>Mesh:</strong> {formatInspectorCount(meshPipelineProfile.vertices)} vertices /{" "}
+                        {formatInspectorCount(meshPipelineProfile.triangles)} triangles
+                      </div>
+                      <div><strong>Memory:</strong> {formatBenchmarkBytes(meshPipelineProfile.memoryBytes)}</div>
+                      {meshPipelineProfile.error && (
+                        <div style={{ color: "#b42318", fontWeight: 700 }}>{meshPipelineProfile.error}</div>
+                      )}
+                      {meshPipelineProfilePhaseRows.length > 0 && (
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1.35fr repeat(4, minmax(46px, 1fr))",
+                            gap: "4px 6px",
+                            overflowX: "auto",
+                            fontSize: 10,
+                            alignItems: "baseline",
+                          }}
+                        >
+                          <strong>Phase</strong>
+                          <strong>Total</strong>
+                          <strong>Calls</strong>
+                          <strong>Max</strong>
+                          <strong>Last</strong>
+                          {meshPipelineProfilePhaseRows.map((phase) => (
+                            <React.Fragment key={`mesh-profile-phase-${phase.phase}`}>
+                              <span title={phase.phase}>{phase.phase}</span>
+                              <span>{formatPerfMetric(phase.totalMs, 1)}</span>
+                              <span>{phase.count.toLocaleString()}</span>
+                              <span>{formatPerfMetric(phase.maxMs, 1)}</span>
+                              <span>{formatPerfMetric(phase.lastMs, 1)}</span>
+                            </React.Fragment>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+                    <button
+                      type="button"
+                      onClick={copyMeshPipelineProfile}
+                      disabled={!meshPipelineProfile}
+                    >
+                      Copy pipeline trace
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
