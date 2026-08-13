@@ -1928,6 +1928,9 @@ const shouldDeferLargeSurfaceMeshAnalysis = (mesh: SurfaceMeshData | null | unde
   surfaceMeshTriangleCount(mesh) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD &&
   (!mesh.adjacency || mesh.adjacency.length === 0);
 
+const shouldSkipStartupSurfaceMeshRestore = (mesh: SurfaceMeshData | null | undefined): boolean =>
+  !!mesh && surfaceMeshTriangleCount(mesh) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD;
+
 const applySurfaceMeshOps = (
   mesh: SurfaceMeshData,
   options?: { fastLargeMesh?: boolean; onStage?: (phase: string, ms: number) => void }
@@ -6866,6 +6869,10 @@ const readStoredSurfaceMeshTopologySession = (): RestoredSurfaceMeshTopologySess
     if (Date.now() - stored.savedAt > 1000 * 60 * 60 * 24 * 14) return null;
     const activeMesh = deserializeTopologySurfaceMeshData(stored.activeMesh);
     if (!activeMesh) return null;
+    if (shouldSkipStartupSurfaceMeshRestore(activeMesh)) {
+      window.localStorage.removeItem(SURFACE_MESH_TOPOLOGY_SESSION_KEY);
+      return null;
+    }
     const history = (Array.isArray(stored.history) ? stored.history : [])
       .map(deserializeSurfaceMeshTopologyHistoryEntry)
       .filter((entry): entry is SurfaceMeshTopologyHistoryEntry => !!entry)
@@ -48396,6 +48403,29 @@ case "mobius":
     setMeshMultiSelectionSet(createUnifiedSelectionSet([]));
     setCommandPreviewOverlaysVisible(false);
     setShowChartGrid(false);
+    setShowPlanes(false);
+    setShowBoundingBox(false);
+    setShowGaussMap(false);
+    setProbeEnabled(false);
+    setShowProbeNormal(false);
+    setShowProbeTangentPlane(false);
+    setShowProbeTangents(false);
+    setShowPrincipalDirections(false);
+    setShowPrincipalNormalPlanes(false);
+    setShowPrincipalLines(false);
+    setShowPrincipalGlyphs(false);
+    setShowCurvatureLines(false);
+    setShowRidges(false);
+    setShowValleys(false);
+    setGeodesicPathEnabled(false);
+    setGeodesicHeatEnabled(false);
+    setGeodesicDiskEnabled(false);
+    setGeodesicPathIndices(null);
+    setGeodesicHeatPolylines(null);
+    setCalculusVectorOverlayEnabled(false);
+    setCalculusHeatmapEnabled(false);
+    setWorkbookVectorFieldOverlay(null);
+    setWorkbookHeatmapEnabled(false);
     if (status) setSurfaceMeshTopologyStatus(status);
   }, []);
 
@@ -48486,11 +48516,11 @@ case "mobius":
       const firstFile = Array.from(files as ArrayLike<File>)[0] ?? null;
       const profileId = beginMeshPipelineProfile(options?.profileLabel ?? firstFile?.name ?? "Mesh file", firstFile?.name ?? null);
       const largeFileHint = (firstFile?.size ?? 0) >= LARGE_MESH_FAST_LOAD_FILE_BYTES;
+      setSurfaceMeshImportBusy(true);
+      setSurfaceMeshImportError(null);
       if (largeFileHint) {
         prepareLargeSurfaceMeshInteractiveLoad("Large mesh loading in fast preview mode.", { clearCurrentMesh: true });
       }
-      setSurfaceMeshImportBusy(true);
-      setSurfaceMeshImportError(null);
       try {
         const mergeVerticesForLoad = surfaceMeshMergeVertices && !largeFileHint;
         const base = await loadSurfaceMeshFromFile(files, {
@@ -48615,7 +48645,9 @@ case "mobius":
       try {
         const hintedModel = surfaceMeshBenchmarkModels.find((model) => model.id === modelId) ?? null;
         if (hintedModel?.category === "stress" || hintedModel?.tests.includes("performance")) {
-          prepareLargeSurfaceMeshInteractiveLoad(`Loading benchmark model: ${hintedModel.label} in fast mode.`);
+          prepareLargeSurfaceMeshInteractiveLoad(`Loading benchmark model: ${hintedModel.label} in fast preview mode.`, {
+            clearCurrentMesh: true,
+          });
         }
         const response = await api.load(modelId);
         if (!response.ok) throw new Error(response.error);
@@ -68855,6 +68887,39 @@ case "mobius":
                                 </button>
                               </div>
                             )}
+                          </div>
+                        )}
+                        {surfaceViewerKind === "mesh" && surfaceMeshImportBusy && !cleanScreenshotSurfaceActive && (
+                          <div
+                            data-testid="mesh-loading-overlay"
+                            style={{
+                              position: "absolute",
+                              inset: 0,
+                              zIndex: 40,
+                              display: "grid",
+                              placeItems: "center",
+                              pointerEvents: "none",
+                              background: "rgba(248, 251, 255, 0.72)",
+                              backdropFilter: "blur(1px)",
+                            }}
+                          >
+                            <div
+                              style={{
+                                border: "1px solid #bfdbfe",
+                                borderRadius: 8,
+                                background: "rgba(255,255,255,0.96)",
+                                boxShadow: "0 12px 28px rgba(15, 23, 42, 0.12)",
+                                padding: "10px 14px",
+                                minWidth: 220,
+                                maxWidth: 360,
+                                textAlign: "center",
+                                color: "#0f3557",
+                                fontSize: 12,
+                              }}
+                            >
+                              <div style={{ fontWeight: 800, marginBottom: 4 }}>Loading mesh</div>
+                              <div>{surfaceMeshTopologyStatus || "Preparing fast preview..."}</div>
+                            </div>
                           </div>
                         )}
                         {surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? (
