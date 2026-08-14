@@ -1864,7 +1864,7 @@ const benchmarkNowMs = (): number =>
 const MESH_DEBUG_EVENT_LIMIT = 220;
 const MESH_DEBUG_STALL_THRESHOLD_MS = 180;
 const MESH_DEBUG_MEMORY_WARN_GB = 4.0;
-const MESH_DEBUG_MEMORY_FULL_FALLBACK_GB = 4.0;
+const MESH_DEBUG_MEMORY_FULL_FALLBACK_GB = 3.2;
 
 const formatMeshDebugEventTime = (ts: number): string =>
   new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });

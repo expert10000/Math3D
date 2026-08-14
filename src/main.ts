@@ -40,14 +40,14 @@ const parsePositiveIntegerEnv = (name: string, fallback: number): number => {
 const isRendererMemoryAutoReloadEnabled = !["0", "false", "no", "off", "n"].includes(
   String(process.env.MATH3D_RENDERER_MEMORY_AUTO_RELOAD ?? "1").toLowerCase()
 );
-const rendererMemorySampleMs = Math.max(500, parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_SAMPLE_MS", 1000));
-const rendererMemoryWarmupMs = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_WARMUP_MS", 30000);
-const rendererMemoryWarnBytes = parsePositiveNumberEnv("MATH3D_RENDERER_MEMORY_WARN_GB", 4.5) * GIB;
-const rendererMemoryReloadBytes = parsePositiveNumberEnv("MATH3D_RENDERER_MEMORY_RELOAD_GB", 5.5) * GIB;
+const rendererMemorySampleMs = Math.max(250, parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_SAMPLE_MS", 500));
+const rendererMemoryWarmupMs = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_WARMUP_MS", 0);
+const rendererMemoryWarnBytes = parsePositiveNumberEnv("MATH3D_RENDERER_MEMORY_WARN_GB", 3.6) * GIB;
+const rendererMemoryReloadBytes = parsePositiveNumberEnv("MATH3D_RENDERER_MEMORY_RELOAD_GB", 4.1) * GIB;
 const rendererMemoryEmergencyBytes = parsePositiveNumberEnv("MATH3D_RENDERER_MEMORY_EMERGENCY_GB", 11) * GIB;
 const rendererMemoryResetBytes = parsePositiveNumberEnv("MATH3D_RENDERER_MEMORY_RESET_GB", 3) * GIB;
-const rendererMemoryWarnSamples = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_WARN_SAMPLES", 3);
-const rendererMemoryReloadSamples = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_RELOAD_SAMPLES", 15);
+const rendererMemoryWarnSamples = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_WARN_SAMPLES", 1);
+const rendererMemoryReloadSamples = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_RELOAD_SAMPLES", 1);
 const rendererMemoryEmergencySamples = parsePositiveIntegerEnv("MATH3D_RENDERER_MEMORY_EMERGENCY_SAMPLES", 2);
 const rendererGpuMode = String(process.env.MATH3D_GPU_MODE ?? (isGeometrySmoke ? "swiftshader" : isE2e ? "software" : "hardware")).toLowerCase();
 const rendererV8Mode = String(process.env.MATH3D_V8_MODE ?? (process.platform === "win32" ? "jitless" : "default")).toLowerCase();
@@ -696,13 +696,17 @@ function createWindow(options: MainWindowOptions = {}) {
   });
 
   const sendWindowState = (reason: string) => {
-    if (win.isDestroyed()) return;
-    win.webContents.send("app:window-state", {
-      reason,
-      maximized: win.isMaximized(),
-      fullscreen: win.isFullScreen(),
-      bounds: win.getContentBounds(),
-    });
+    if (win.isDestroyed() || win.webContents.isDestroyed()) return;
+    try {
+      win.webContents.send("app:window-state", {
+        reason,
+        maximized: win.isMaximized(),
+        fullscreen: win.isFullScreen(),
+        bounds: win.getContentBounds(),
+      });
+    } catch {
+      // The renderer may already be gone while the memory guard is replacing the window.
+    }
   };
   let repaintTimer: ReturnType<typeof setTimeout> | null = null;
   const forceWindowRepaint = (reason: string) => {
@@ -713,13 +717,17 @@ function createWindow(options: MainWindowOptions = {}) {
     }
     const repaint = (phase: "now" | "settled") => {
       if (win.isDestroyed() || win.webContents.isDestroyed()) return;
-      win.webContents.invalidate();
-      win.webContents
-        .executeJavaScript(
-          "window.dispatchEvent(new Event('resize')); requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));",
-          true
-        )
-        .catch(() => undefined);
+      try {
+        win.webContents.invalidate();
+        win.webContents
+          .executeJavaScript(
+            "window.dispatchEvent(new Event('resize')); requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));",
+            true
+          )
+          .catch(() => undefined);
+      } catch {
+        // The renderer may already be gone while the memory guard is replacing the window.
+      }
       if (phase === "settled") {
         sendWindowState(`${reason}:repaint`);
       }
