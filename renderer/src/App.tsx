@@ -39856,6 +39856,14 @@ const App: React.FC = () => {
       worstStallMs: 0,
     }));
   }, []);
+  const [meshDebugDrawerOpen, setMeshDebugDrawerOpen] = useState(false);
+  const copyMeshDebugTraceToClipboard = useCallback(() => {
+    const text = JSON.stringify(serializeMeshDebugMonitorState(meshDebugMonitor, meshPipelineProfile), null, 2);
+    const clipboard = typeof navigator !== "undefined" ? navigator.clipboard : undefined;
+    if (clipboard?.writeText) {
+      void clipboard.writeText(text);
+    }
+  }, [meshDebugMonitor, meshPipelineProfile]);
   const [meshPerfBenchmarkId, setMeshPerfBenchmarkId] = useState<MeshPerfBenchmarkId | null>(null);
   const [meshBenchmarkPerformanceSuite, setMeshBenchmarkPerformanceSuite] =
     useState<MeshBenchmarkPerformanceSuiteState>({
@@ -66214,6 +66222,16 @@ case "mobius":
                           >
                             Benchmark Model... [DEV]
                           </button>
+                          {isDev && (
+                            <button
+                              type="button"
+                              onClick={() => setMeshDebugDrawerOpen((open) => !open)}
+                              style={pill(meshDebugDrawerOpen)}
+                              aria-pressed={meshDebugDrawerOpen}
+                            >
+                              Mesh Debug
+                            </button>
+                          )}
                           <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <input
                               type="checkbox"
@@ -66291,6 +66309,231 @@ case "mobius":
                                   ))}
                               </div>
                             )}
+                          </div>
+                        )}
+                        {isDev && (
+                          <div
+                            data-testid="mesh-debug-summary"
+                            style={{
+                              border: "1px solid #60a5fa",
+                              borderRadius: 7,
+                              background: "#f8fbff",
+                              padding: "6px 7px",
+                              display: "grid",
+                              gap: 5,
+                              color: "#0f3557",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                              <strong>Mesh Debug Monitor</strong>
+                              <span
+                                style={{
+                                  color: meshDebugMonitor.memory?.warning ? "#b42318" : "#047857",
+                                  fontWeight: 800,
+                                }}
+                              >
+                                {meshDebugMonitor.memory?.warning ? "memory warning" : "recording"}
+                              </span>
+                            </div>
+                            <div style={{ display: "grid", gap: 2, fontSize: 10 }}>
+                              <div>
+                                RSS:{" "}
+                                {meshDebugMonitor.memory?.workingSetGb != null
+                                  ? `${meshDebugMonitor.memory.workingSetGb.toFixed(2)} GB`
+                                  : "n/a"}
+                                {" | "}
+                                events: {meshDebugMonitor.events.length.toLocaleString()}
+                              </div>
+                              <div>
+                                stalls: {meshDebugMonitor.stallCount.toLocaleString()}
+                                {" | "}
+                                worst:{" "}
+                                {meshDebugMonitor.worstStallMs > 0 ? `${meshDebugMonitor.worstStallMs.toFixed(0)} ms` : "n/a"}
+                                {" | "}
+                                GPU: {formatBenchmarkBytes(meshDebugMonitor.memory?.gpuEstimateBytes)}
+                              </div>
+                              {meshDebugMonitor.events.length > 0 && (
+                                <div title={meshDebugMonitor.events[meshDebugMonitor.events.length - 1]?.label}>
+                                  last: {meshDebugMonitor.events[meshDebugMonitor.events.length - 1]?.label}
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button type="button" onClick={() => setMeshDebugDrawerOpen(true)}>
+                                Open Debug Monitor
+                              </button>
+                              <button type="button" onClick={copyMeshDebugTraceToClipboard}>
+                                Copy Trace
+                              </button>
+                              <button type="button" onClick={clearMeshDebugMonitor}>
+                                Clear
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        {isDev && meshDebugDrawerOpen && (
+                          <div
+                            data-testid="mesh-debug-drawer"
+                            style={{
+                              position: "fixed",
+                              right: 18,
+                              bottom: 18,
+                              width: "min(560px, calc(100vw - 36px))",
+                              maxHeight: "min(620px, calc(100vh - 92px))",
+                              overflow: "auto",
+                              zIndex: 80,
+                              border: "1px solid #2563eb",
+                              borderRadius: 8,
+                              background: "#f8fbff",
+                              boxShadow: "0 18px 44px rgba(15, 23, 42, 0.22)",
+                              padding: 12,
+                              display: "grid",
+                              gap: 10,
+                              color: "#0f172a",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                              <div>
+                                <div style={{ fontWeight: 800 }}>Mesh Debug Monitor</div>
+                                <div style={{ fontSize: 11, color: "#475569" }}>
+                                  Load, Full/Fast, memory, stalls, and viewer-frame trace
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                                <button type="button" onClick={copyMeshDebugTraceToClipboard}>
+                                  Copy Trace
+                                </button>
+                                <button type="button" onClick={clearMeshDebugMonitor}>
+                                  Clear
+                                </button>
+                                <button type="button" onClick={() => setMeshDebugDrawerOpen(false)}>
+                                  Close
+                                </button>
+                              </div>
+                            </div>
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "repeat(4, minmax(92px, 1fr))",
+                                gap: 8,
+                                fontSize: 11,
+                              }}
+                            >
+                              <div>
+                                <strong>RSS</strong>
+                                <br />
+                                {meshDebugMonitor.memory?.workingSetGb != null
+                                  ? `${meshDebugMonitor.memory.workingSetGb.toFixed(2)} GB`
+                                  : "n/a"}
+                              </div>
+                              <div>
+                                <strong>JS heap</strong>
+                                <br />
+                                {meshDebugMonitor.memory?.jsHeapUsedBytes != null
+                                  ? formatBenchmarkBytes(meshDebugMonitor.memory.jsHeapUsedBytes)
+                                  : "n/a"}
+                              </div>
+                              <div>
+                                <strong>Stalls</strong>
+                                <br />
+                                {meshDebugMonitor.stallCount.toLocaleString()} /{" "}
+                                {meshDebugMonitor.worstStallMs > 0 ? `${meshDebugMonitor.worstStallMs.toFixed(0)} ms` : "n/a"}
+                              </div>
+                              <div>
+                                <strong>Events</strong>
+                                <br />
+                                {meshDebugMonitor.events.length.toLocaleString()}
+                              </div>
+                            </div>
+                            {meshDebugMonitor.memory?.warning && (
+                              <div
+                                style={{
+                                  border: "1px solid #fda29b",
+                                  borderRadius: 6,
+                                  background: "#fff1f0",
+                                  color: "#b42318",
+                                  padding: "7px 8px",
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {meshDebugMonitor.memory.warning}
+                              </div>
+                            )}
+                            {meshPipelineProfile && (
+                              <div
+                                style={{
+                                  border: "1px solid #bfdbfe",
+                                  borderRadius: 6,
+                                  background: "#eff6ff",
+                                  padding: "7px 8px",
+                                  display: "grid",
+                                  gap: 4,
+                                  fontSize: 11,
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                  <strong>{meshPipelineProfile.label}</strong>
+                                  <span style={{ fontWeight: 800 }}>{meshPipelineProfile.status}</span>
+                                </div>
+                                <div>
+                                  {meshPipelineProfile.vertices == null ? "n/a" : meshPipelineProfile.vertices.toLocaleString()} vertices /{" "}
+                                  {meshPipelineProfile.triangles == null ? "n/a" : meshPipelineProfile.triangles.toLocaleString()} triangles
+                                  {" | "}
+                                  first frame{" "}
+                                  {meshPipelineProfile.firstFrameMs == null
+                                    ? "n/a"
+                                    : `${meshPipelineProfile.firstFrameMs.toFixed(0)} ms`}
+                                </div>
+                                {meshPipelineProfile.phases.length > 0 && (
+                                  <div style={{ display: "grid", gap: 2 }}>
+                                    {meshPipelineProfile.phases
+                                      .slice()
+                                      .sort((a, b) => b.totalMs - a.totalMs)
+                                      .slice(0, 8)
+                                      .map((phase) => (
+                                        <div
+                                          key={`mesh-debug-drawer-phase-${phase.phase}`}
+                                          style={{
+                                            display: "grid",
+                                            gridTemplateColumns: "minmax(160px, 1fr) 78px 44px",
+                                            gap: 6,
+                                          }}
+                                        >
+                                          <span title={phase.phase}>{phase.phase}</span>
+                                          <span>{phase.totalMs.toFixed(1)} ms</span>
+                                          <span>x{phase.count}</span>
+                                        </div>
+                                      ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "64px 62px minmax(180px, 1fr) 58px",
+                                gap: "4px 7px",
+                                fontSize: 10,
+                                alignItems: "baseline",
+                              }}
+                            >
+                              <strong>Time</strong>
+                              <strong>Kind</strong>
+                              <strong>Event</strong>
+                              <strong>ms</strong>
+                              {meshDebugMonitor.events
+                                .slice(-32)
+                                .reverse()
+                                .map((event) => (
+                                  <React.Fragment key={`mesh-debug-drawer-event-${event.id}`}>
+                                    <span>{formatMeshDebugEventTime(event.ts)}</span>
+                                    <span>{event.kind}</span>
+                                    <span title={event.details ? JSON.stringify(event.details) : undefined}>{event.label}</span>
+                                    <span>{event.ms == null ? "" : event.ms.toFixed(1)}</span>
+                                  </React.Fragment>
+                                ))}
+                            </div>
                           </div>
                         )}
                         {surfaceMeshBenchmarkBrowserOpen && surfaceMeshBenchmarkModels.length > 0 && (
