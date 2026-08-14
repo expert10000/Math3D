@@ -474,6 +474,16 @@ declare global {
         emergencyThresholdBytes?: number;
         error?: string;
       }>;
+      onRendererMemoryPressure?: (handler: (packet: {
+        level?: "warning" | "recovery" | "emergency";
+        sampledAt?: number;
+        rendererPid?: number;
+        workingSetBytes?: number;
+        workingSetGb?: number;
+        thresholdBytes?: number;
+        thresholdGb?: number;
+        samples?: number;
+      }) => void) => () => void;
     };
     pythonWorkerDiagnostics?: {
       getStatus: () => Promise<PythonWorkerDiagnosticsSnapshot>;

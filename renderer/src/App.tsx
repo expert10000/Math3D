@@ -1864,6 +1864,7 @@ const benchmarkNowMs = (): number =>
 const MESH_DEBUG_EVENT_LIMIT = 220;
 const MESH_DEBUG_STALL_THRESHOLD_MS = 180;
 const MESH_DEBUG_MEMORY_WARN_GB = 4.0;
+const MESH_DEBUG_MEMORY_FULL_FALLBACK_GB = 4.0;
 
 const formatMeshDebugEventTime = (ts: number): string =>
   new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -39864,6 +39865,42 @@ const App: React.FC = () => {
       void clipboard.writeText(text);
     }
   }, [meshDebugMonitor, meshPipelineProfile]);
+  const abortLargeMeshFullForMemoryPressure = useCallback(
+    (reason: string, memory?: { workingSetGb?: number | null; workingSetBytes?: number | null; rendererPid?: number | null }) => {
+      const cache = largeSurfaceMeshResolutionCacheRef.current;
+      if (!cache || (cache.active !== "full" && !largeSurfaceMeshFullRestorePendingRef.current)) return false;
+      const pendingFullRestore = meshFullRestoreFrameProfileRef.current;
+      if (pendingFullRestore?.timeoutId != null && typeof window !== "undefined") {
+        window.clearTimeout(pendingFullRestore.timeoutId);
+      }
+      meshFullRestoreFrameProfileRef.current = null;
+      largeSurfaceMeshFullRestorePendingRef.current = false;
+      cache.active = "preview";
+      setSurfaceRenderQuality("performance");
+      setMeshInteractionQualityMode("fast-preview");
+      setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
+      setSurfaceMeshImportBusy(false);
+      setMeshDataset(cache.previewMesh, "mesh-large:memory-pressure-preview");
+      focusSurfaceMeshViewport(cache.previewMesh);
+      largeSurfaceMeshResolutionCacheRef.current = null;
+      recordMeshDebugEvent({
+        kind: "memory",
+        label: `Full aborted: ${reason}`,
+        details: {
+          rendererPid: memory?.rendererPid ?? null,
+          workingSetGb: memory?.workingSetGb ?? null,
+          workingSetBytes: memory?.workingSetBytes ?? null,
+          previewTriangles: surfaceMeshTriangleCount(cache.previewMesh),
+          releasedFullCache: true,
+        },
+      });
+      setSurfaceMeshTopologyStatus(
+        `Full resolution aborted for ${cache.label}; renderer memory pressure detected and fast preview restored.`
+      );
+      return true;
+    },
+    [focusSurfaceMeshViewport, recordMeshDebugEvent, setMeshDataset]
+  );
   const [meshPerfBenchmarkId, setMeshPerfBenchmarkId] = useState<MeshPerfBenchmarkId | null>(null);
   const [meshBenchmarkPerformanceSuite, setMeshBenchmarkPerformanceSuite] =
     useState<MeshBenchmarkPerformanceSuiteState>({
@@ -39950,6 +39987,20 @@ const App: React.FC = () => {
               : null,
       };
       setMeshDebugMonitor((current) => ({ ...current, memory: snapshot }));
+      if (
+        workingSetGb != null &&
+        workingSetGb >= MESH_DEBUG_MEMORY_FULL_FALLBACK_GB &&
+        abortLargeMeshFullForMemoryPressure(`renderer RSS ${workingSetGb.toFixed(2)} GB`, snapshot)
+      ) {
+        recordMeshDebugEvent({
+          kind: "memory",
+          label: `Renderer memory fallback at ${workingSetGb.toFixed(2)} GB`,
+          details: {
+            fallbackGb: MESH_DEBUG_MEMORY_FULL_FALLBACK_GB,
+            rendererPid: snapshot.rendererPid,
+          },
+        });
+      }
       if (snapshot.warning) {
         recordMeshDebugEvent({
           kind: "memory",
@@ -39966,12 +40017,40 @@ const App: React.FC = () => {
     void sampleMemory();
     const interval = window.setInterval(() => {
       void sampleMemory();
-    }, 2500);
+    }, 750);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [meshDebugMonitor.enabled, recordMeshDebugEvent, surfacePerformanceSnapshot]);
+  }, [abortLargeMeshFullForMemoryPressure, meshDebugMonitor.enabled, recordMeshDebugEvent, surfacePerformanceSnapshot]);
+  useEffect(() => {
+    if (!meshDebugMonitor.enabled || typeof window === "undefined") return;
+    const unsubscribe = window.appDiagnostics?.onRendererMemoryPressure?.((packet) => {
+      const workingSetGb = Number(packet?.workingSetGb);
+      const workingSetBytes = Number(packet?.workingSetBytes);
+      const rendererPid = Number(packet?.rendererPid);
+      const level = packet?.level ?? "warning";
+      recordMeshDebugEvent({
+        kind: "memory",
+        label: `Main memory guard ${level}`,
+        details: {
+          rendererPid: Number.isFinite(rendererPid) ? rendererPid : null,
+          workingSetGb: Number.isFinite(workingSetGb) ? workingSetGb : null,
+          workingSetBytes: Number.isFinite(workingSetBytes) ? workingSetBytes : null,
+          thresholdGb: packet?.thresholdGb ?? null,
+          samples: packet?.samples ?? null,
+        },
+      });
+      abortLargeMeshFullForMemoryPressure(`main guard ${level}`, {
+        rendererPid: Number.isFinite(rendererPid) ? rendererPid : null,
+        workingSetGb: Number.isFinite(workingSetGb) ? workingSetGb : null,
+        workingSetBytes: Number.isFinite(workingSetBytes) ? workingSetBytes : null,
+      });
+    });
+    return () => {
+      unsubscribe?.();
+    };
+  }, [abortLargeMeshFullForMemoryPressure, meshDebugMonitor.enabled, recordMeshDebugEvent]);
   const beginMeshPipelineProfile = useCallback((label: string, fileName: string | null, options?: { startedAt?: number }) => {
     meshPipelineProfileCounterRef.current += 1;
     const id = `mesh-profile:${meshPipelineProfileCounterRef.current}`;

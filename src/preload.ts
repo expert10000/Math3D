@@ -455,6 +455,11 @@ contextBridge.exposeInMainWorld("appWindow", {
 contextBridge.exposeInMainWorld("appDiagnostics", {
   getRendererMemory: (): Promise<unknown> =>
     ipcRenderer.invoke("app:renderer-memory"),
+  onRendererMemoryPressure: (handler: (packet: unknown) => void) => {
+    const listener = (_evt: Electron.IpcRendererEvent, packet: unknown) => handler(packet);
+    ipcRenderer.on("app:renderer-memory-pressure", listener);
+    return () => ipcRenderer.removeListener("app:renderer-memory-pressure", listener);
+  },
 });
 
 contextBridge.exposeInMainWorld("pythonWorkerDiagnostics", {

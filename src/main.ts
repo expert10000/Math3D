@@ -577,6 +577,25 @@ const installRendererMemoryGuard = (win: BrowserWindow): void => {
       reloading = false;
     }
   };
+  const sendMemoryPressure = (
+    level: "warning" | "recovery" | "emergency",
+    bytes: number,
+    thresholdBytes: number,
+    pid: number,
+    samples: number
+  ) => {
+    if (win.isDestroyed() || win.webContents.isDestroyed()) return;
+    win.webContents.send("app:renderer-memory-pressure", {
+      level,
+      sampledAt: Date.now(),
+      rendererPid: pid,
+      workingSetBytes: bytes,
+      workingSetGb: formatGb(bytes),
+      thresholdBytes,
+      thresholdGb: formatGb(thresholdBytes),
+      samples,
+    });
+  };
 
   const sample = () => {
     if (sampling) return;
@@ -618,17 +637,20 @@ const installRendererMemoryGuard = (win: BrowserWindow): void => {
           samples: warningSamples,
           requiredSamples: rendererMemoryWarnSamples,
         });
+        sendMemoryPressure("warning", bytes, rendererMemoryWarnBytes, pid, warningSamples);
       }
 
       if (reloading) return;
 
       if (emergencySamples >= rendererMemoryEmergencySamples) {
+        sendMemoryPressure("emergency", bytes, rendererMemoryEmergencyBytes, pid, emergencySamples);
         reloadWindow("emergency", bytes, rendererMemoryEmergencyBytes, pid);
         return;
       }
 
       const pastWarmup = now - rendererStartedAt >= rendererMemoryWarmupMs;
       if (recoverySamples >= rendererMemoryReloadSamples && pastWarmup) {
+        sendMemoryPressure("recovery", bytes, rendererMemoryReloadBytes, pid, recoverySamples);
         reloadWindow("recovery", bytes, rendererMemoryReloadBytes, pid);
       }
     } finally {
