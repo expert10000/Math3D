@@ -39740,6 +39740,12 @@ const App: React.FC = () => {
   const meshPipelineProfileCounterRef = useRef(0);
   const meshPipelineProfileActiveIdRef = useRef<string | null>(null);
   const meshPipelineProfileLatestIdRef = useRef<string | null>(null);
+  const meshFullRestoreFrameProfileRef = useRef<{
+    profileId: string | null;
+    label: string;
+    requestedAt: number;
+    expectedTriangles: number;
+  } | null>(null);
   const [meshPerfBenchmarkId, setMeshPerfBenchmarkId] = useState<MeshPerfBenchmarkId | null>(null);
   const [meshBenchmarkPerformanceSuite, setMeshBenchmarkPerformanceSuite] =
     useState<MeshBenchmarkPerformanceSuiteState>({
@@ -39851,10 +39857,41 @@ const App: React.FC = () => {
       });
       meshPipelineProfileActiveIdRef.current = null;
     }
+    const pendingFullRestore = meshFullRestoreFrameProfileRef.current;
+    if (pendingFullRestore && snapshot.triangles >= pendingFullRestore.expectedTriangles) {
+      meshFullRestoreFrameProfileRef.current = null;
+      const clickToFrameMs = Math.max(0, snapshot.ts - pendingFullRestore.requestedAt);
+      recordMeshPipelineProfilePhase(pendingFullRestore.profileId, "full:firstFullFrame", clickToFrameMs);
+      if (snapshot.trace) {
+        recordMeshPipelineProfilePhase(
+          pendingFullRestore.profileId,
+          "full:viewerMeshRebuild",
+          snapshot.trace.meshRebuildTotalMs ?? 0
+        );
+        recordMeshPipelineProfilePhase(
+          pendingFullRestore.profileId,
+          "full:viewerGeometryUpdate",
+          snapshot.trace.geometryUpdateMs ?? 0
+        );
+        recordMeshPipelineProfilePhase(pendingFullRestore.profileId, "full:viewerRender", snapshot.trace.renderMs ?? 0);
+      }
+      if (typeof console !== "undefined") {
+        console.info(
+          "[mesh-full-frame-profile]",
+          JSON.stringify({
+            label: pendingFullRestore.label,
+            clickToFrameMs,
+            expectedTriangles: pendingFullRestore.expectedTriangles,
+            visibleTriangles: snapshot.triangles,
+            trace: snapshot.trace ?? null,
+          })
+        );
+      }
+    }
     if (snapshot.ts - surfacePerformanceSnapshotUpdatedAtRef.current < 2000) return;
     surfacePerformanceSnapshotUpdatedAtRef.current = snapshot.ts;
     setSurfacePerformanceSnapshot(snapshot);
-  }, []);
+  }, [recordMeshPipelineProfilePhase]);
   const handleRunMeshBenchmarkPerformanceSuite = useCallback(async () => {
     const api = typeof window !== "undefined" ? window.meshBenchmarks : undefined;
     if (!isDev || !api?.load) {
@@ -48691,10 +48728,17 @@ case "mobius":
       if (quality === "sharp") {
         cache.active = "full";
         const fullRestoreRequestedAt = benchmarkNowMs();
+        const expectedFullTriangles = surfaceMeshTriangleCount(cache.fullMesh);
+        meshFullRestoreFrameProfileRef.current = {
+          profileId: meshPipelineProfileLatestIdRef.current,
+          label: cache.label,
+          requestedAt: Date.now(),
+          expectedTriangles: expectedFullTriangles,
+        };
         setMeshInteractionQualityMode("full");
         setSurfaceMeshImportBusy(true);
         setSurfaceMeshTopologyStatus(
-          `Loading full resolution ${cache.label}: ${surfaceMeshTriangleCount(cache.fullMesh).toLocaleString()} triangles.`
+          `Loading full resolution ${cache.label}: ${expectedFullTriangles.toLocaleString()} triangles.`
         );
         const restoreFull = () => {
           const restoreStart = benchmarkNowMs();
