@@ -1925,6 +1925,9 @@ const surfaceMeshTriangleCount = (mesh: Pick<SurfaceMeshData, "positions" | "ind
   return mesh.indices?.length ? Math.floor(mesh.indices.length / 3) : Math.floor(vertexCount / 3);
 };
 
+const shouldUseLightweightTraceForSurfaceMesh = (mesh: SurfaceMeshData, sourceGeometryIds: readonly string[]): boolean =>
+  mesh.source.kind === "import" && sourceGeometryIds.length === 0;
+
 const shouldDeferLargeSurfaceMeshAnalysis = (mesh: SurfaceMeshData | null | undefined): boolean =>
   !!mesh &&
   surfaceMeshTriangleCount(mesh) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD &&
@@ -21889,6 +21892,16 @@ const App: React.FC = () => {
             (id): id is string => typeof id === "string" && id.trim().length > 0
           )
         : [];
+    if (shouldUseLightweightTraceForSurfaceMesh(mesh, sourceGeometryIds)) {
+      surfaceMeshTraceStateRef.current = {
+        meshId: nextMeshId,
+        mesh,
+        traceMap: new GeometryMeshTraceMap(),
+      };
+      setMeshDatasetState(toMeshDataset(mesh));
+      setDatasetKind("surface");
+      return;
+    }
     const previousTraceState = surfaceMeshTraceStateRef.current;
     let nextTraceMap: GeometryMeshTraceMap;
     if (!previousTraceState) {
