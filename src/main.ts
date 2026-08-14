@@ -661,12 +661,44 @@ function createWindow(options: MainWindowOptions = {}) {
       bounds: win.getContentBounds(),
     });
   };
-  win.on("maximize", () => sendWindowState("maximize"));
-  win.on("unmaximize", () => sendWindowState("unmaximize"));
-  win.on("enter-full-screen", () => sendWindowState("enter-full-screen"));
-  win.on("leave-full-screen", () => sendWindowState("leave-full-screen"));
-  win.on("resize", () => sendWindowState("resize"));
-  win.webContents.on("did-finish-load", () => sendWindowState("initial"));
+  let repaintTimer: ReturnType<typeof setTimeout> | null = null;
+  const forceWindowRepaint = (reason: string) => {
+    if (win.isDestroyed() || win.webContents.isDestroyed()) return;
+    if (repaintTimer) {
+      clearTimeout(repaintTimer);
+      repaintTimer = null;
+    }
+    const repaint = (phase: "now" | "settled") => {
+      if (win.isDestroyed() || win.webContents.isDestroyed()) return;
+      win.webContents.invalidate();
+      win.webContents
+        .executeJavaScript(
+          "window.dispatchEvent(new Event('resize')); requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));",
+          true
+        )
+        .catch(() => undefined);
+      if (phase === "settled") {
+        sendWindowState(`${reason}:repaint`);
+      }
+    };
+    repaint("now");
+    repaintTimer = setTimeout(() => {
+      repaintTimer = null;
+      repaint("settled");
+    }, 180);
+  };
+  const sendWindowStateAndRepaint = (reason: string) => {
+    sendWindowState(reason);
+    forceWindowRepaint(reason);
+  };
+  win.on("maximize", () => sendWindowStateAndRepaint("maximize"));
+  win.on("unmaximize", () => sendWindowStateAndRepaint("unmaximize"));
+  win.on("restore", () => sendWindowStateAndRepaint("restore"));
+  win.on("show", () => sendWindowStateAndRepaint("show"));
+  win.on("enter-full-screen", () => sendWindowStateAndRepaint("enter-full-screen"));
+  win.on("leave-full-screen", () => sendWindowStateAndRepaint("leave-full-screen"));
+  win.on("resize", () => sendWindowStateAndRepaint("resize"));
+  win.webContents.on("did-finish-load", () => sendWindowStateAndRepaint("initial"));
   win.webContents.on("before-input-event", (event, input) => {
     const key = String(input.key ?? "").toLowerCase();
     if (input.type !== "keyDown" || key !== "z" || !(input.control || input.meta) || input.alt) return;

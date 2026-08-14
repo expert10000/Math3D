@@ -21871,6 +21871,7 @@ const App: React.FC = () => {
     null
   );
   const largeSurfaceMeshResolutionCacheRef = useRef<LargeSurfaceMeshResolutionCache | null>(null);
+  const largeSurfaceMeshFullRestorePendingRef = useRef(false);
   const setMeshDataset = useCallback((mesh: SurfaceMeshData | null, traceOperation = "mesh-dataset:set") => {
     if (!mesh) {
       largeSurfaceMeshResolutionCacheRef.current = null;
@@ -39749,6 +39750,7 @@ const App: React.FC = () => {
     label: string;
     requestedAt: number;
     expectedTriangles: number;
+    timeoutId: number | null;
   } | null>(null);
   const [meshPerfBenchmarkId, setMeshPerfBenchmarkId] = useState<MeshPerfBenchmarkId | null>(null);
   const [meshBenchmarkPerformanceSuite, setMeshBenchmarkPerformanceSuite] =
@@ -39864,6 +39866,9 @@ const App: React.FC = () => {
     const pendingFullRestore = meshFullRestoreFrameProfileRef.current;
     if (pendingFullRestore && snapshot.triangles >= pendingFullRestore.expectedTriangles) {
       meshFullRestoreFrameProfileRef.current = null;
+      if (pendingFullRestore.timeoutId != null && typeof window !== "undefined") {
+        window.clearTimeout(pendingFullRestore.timeoutId);
+      }
       const clickToFrameMs = Math.max(0, snapshot.ts - pendingFullRestore.requestedAt);
       recordMeshPipelineProfilePhase(pendingFullRestore.profileId, "full:firstFullFrame", clickToFrameMs);
       if (snapshot.trace) {
@@ -48730,14 +48735,18 @@ case "mobius":
       }
 
       if (quality === "sharp") {
-        cache.active = "full";
+        largeSurfaceMeshFullRestorePendingRef.current = true;
         const fullRestoreRequestedAt = benchmarkNowMs();
         const expectedFullTriangles = surfaceMeshTriangleCount(cache.fullMesh);
+        if (meshFullRestoreFrameProfileRef.current?.timeoutId != null && typeof window !== "undefined") {
+          window.clearTimeout(meshFullRestoreFrameProfileRef.current.timeoutId);
+        }
         meshFullRestoreFrameProfileRef.current = {
           profileId: meshPipelineProfileLatestIdRef.current,
           label: cache.label,
           requestedAt: Date.now(),
           expectedTriangles: expectedFullTriangles,
+          timeoutId: null,
         };
         setMeshInteractionQualityMode("full");
         setSurfaceMeshImportBusy(true);
@@ -48746,42 +48755,83 @@ case "mobius":
         );
         const restoreFull = () => {
           const restoreStart = benchmarkNowMs();
-          const publishStart = benchmarkNowMs();
-          setMeshDataset(cache.fullMesh, "mesh-large:restore-full");
-          const publishMs = benchmarkNowMs() - publishStart;
-          recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, "full:publishDataset", publishMs);
-          const focusStart = benchmarkNowMs();
-          focusSurfaceMeshViewport(cache.fullMesh);
-          const focusMs = benchmarkNowMs() - focusStart;
-          recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, "full:focusViewport", focusMs);
-          recordMeshPipelineProfilePhase(
-            meshPipelineProfileLatestIdRef.current,
-            "full:handlerTotal",
-            benchmarkNowMs() - restoreStart
-          );
-          setSurfaceMeshImportBusy(false);
-          setSurfaceMeshTopologyStatus(
-            `Full resolution loaded: ${cache.label} (${Math.floor(
-              cache.fullMesh.positions.length / 3
-            ).toLocaleString()} vertices / ${surfaceMeshTriangleCount(cache.fullMesh).toLocaleString()} triangles).`
-          );
-          if (typeof console !== "undefined") {
-            console.info(
-              "[mesh-full-restore-profile]",
-              JSON.stringify({
-                label: cache.label,
-                vertices: Math.floor(cache.fullMesh.positions.length / 3),
-                triangles: surfaceMeshTriangleCount(cache.fullMesh),
-                queuedMs: restoreStart - fullRestoreRequestedAt,
-                publishMs,
-                focusMs,
-                totalHandlerMs: benchmarkNowMs() - restoreStart,
-              })
+          let publishMs = 0;
+          let focusMs = 0;
+          try {
+            cache.active = "full";
+            setMeshInteractionQualityMode("full");
+            const publishStart = benchmarkNowMs();
+            setMeshDataset(cache.fullMesh, "mesh-large:restore-full");
+            publishMs = benchmarkNowMs() - publishStart;
+            recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, "full:publishDataset", publishMs);
+            const focusStart = benchmarkNowMs();
+            focusSurfaceMeshViewport(cache.fullMesh);
+            focusMs = benchmarkNowMs() - focusStart;
+            recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, "full:focusViewport", focusMs);
+            recordMeshPipelineProfilePhase(
+              meshPipelineProfileLatestIdRef.current,
+              "full:handlerTotal",
+              benchmarkNowMs() - restoreStart
             );
+            if (typeof window !== "undefined") {
+              const timeoutId = window.setTimeout(() => {
+                const pendingFullRestore = meshFullRestoreFrameProfileRef.current;
+                if (!pendingFullRestore || pendingFullRestore.label !== cache.label) return;
+                meshFullRestoreFrameProfileRef.current = null;
+                largeSurfaceMeshFullRestorePendingRef.current = false;
+                cache.active = "preview";
+                setSurfaceRenderQuality("performance");
+                setMeshInteractionQualityMode("fast-preview");
+                setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
+                setMeshDataset(cache.previewMesh, "mesh-large:full-timeout-preview");
+                focusSurfaceMeshViewport(cache.previewMesh);
+                setSurfaceMeshImportBusy(false);
+                recordMeshPipelineProfilePhase(
+                  pendingFullRestore.profileId,
+                  "full:timeoutFallback",
+                  Math.max(0, Date.now() - pendingFullRestore.requestedAt)
+                );
+                setSurfaceMeshTopologyStatus(
+                  `Full resolution timed out for ${cache.label}; restored fast preview.`
+                );
+              }, 15_000);
+              if (meshFullRestoreFrameProfileRef.current?.label === cache.label) {
+                meshFullRestoreFrameProfileRef.current.timeoutId = timeoutId;
+              }
+            }
+            setSurfaceMeshTopologyStatus(
+              `Full resolution loaded: ${cache.label} (${Math.floor(
+                cache.fullMesh.positions.length / 3
+              ).toLocaleString()} vertices / ${surfaceMeshTriangleCount(cache.fullMesh).toLocaleString()} triangles).`
+            );
+            if (typeof console !== "undefined") {
+              console.info(
+                "[mesh-full-restore-profile]",
+                JSON.stringify({
+                  label: cache.label,
+                  vertices: Math.floor(cache.fullMesh.positions.length / 3),
+                  triangles: surfaceMeshTriangleCount(cache.fullMesh),
+                  queuedMs: restoreStart - fullRestoreRequestedAt,
+                  publishMs,
+                  focusMs,
+                  totalHandlerMs: benchmarkNowMs() - restoreStart,
+                })
+              );
+            }
+          } catch (error) {
+            cache.active = "preview";
+            setSurfaceRenderQuality("performance");
+            setMeshInteractionQualityMode("fast-preview");
+            setSurfaceMeshTopologyStatus(
+              `Full resolution failed for ${cache.label}: ${error instanceof Error ? error.message : String(error)}`
+            );
+          } finally {
+            largeSurfaceMeshFullRestorePendingRef.current = false;
+            setSurfaceMeshImportBusy(false);
           }
         };
         if (typeof window !== "undefined") {
-          window.requestAnimationFrame(() => window.requestAnimationFrame(restoreFull));
+          window.setTimeout(restoreFull, 0);
         } else {
           restoreFull();
         }
@@ -48789,6 +48839,11 @@ case "mobius":
       }
 
       if (cache.active === "full" && surfaceMeshData === cache.fullMesh) {
+        largeSurfaceMeshFullRestorePendingRef.current = false;
+        if (meshFullRestoreFrameProfileRef.current?.timeoutId != null && typeof window !== "undefined") {
+          window.clearTimeout(meshFullRestoreFrameProfileRef.current.timeoutId);
+        }
+        meshFullRestoreFrameProfileRef.current = null;
         cache.active = "preview";
         setMeshInteractionQualityMode("fast-preview");
         setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
@@ -48798,6 +48853,11 @@ case "mobius":
         return;
       }
 
+      largeSurfaceMeshFullRestorePendingRef.current = false;
+      if (meshFullRestoreFrameProfileRef.current?.timeoutId != null && typeof window !== "undefined") {
+        window.clearTimeout(meshFullRestoreFrameProfileRef.current.timeoutId);
+      }
+      meshFullRestoreFrameProfileRef.current = null;
       setMeshInteractionQualityMode("fast-preview");
       setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
     },
@@ -48808,6 +48868,7 @@ case "mobius":
     if (!surfaceMeshData?.positions?.length) return;
     if (surfaceMeshTriangleCount(surfaceMeshData) < LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD) return;
     const largeMeshCache = largeSurfaceMeshResolutionCacheRef.current;
+    if (largeSurfaceMeshFullRestorePendingRef.current) return;
     if (largeMeshCache?.active === "full") return;
     if (surfaceRenderQuality !== "performance") setSurfaceRenderQuality("performance");
     if (meshInteractionQualityMode !== "fast-preview") setMeshInteractionQualityMode("fast-preview");
