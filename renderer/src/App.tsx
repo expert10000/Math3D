@@ -36447,10 +36447,14 @@ const App: React.FC = () => {
       ? surfaceMeshTopologyHistoryPreviewEntry.beforeSnapshot
       : surfaceMeshTopologyHistoryPreviewEntry.snapshot;
   }, [surfaceMeshTopologyHistoryPreviewEntry, surfaceMeshTopologyHistoryPreviewMode]);
+  const activeLargeSurfaceMeshFullMesh =
+    largeSurfaceMeshResolutionCacheRef.current?.active === "full"
+      ? largeSurfaceMeshResolutionCacheRef.current.fullMesh
+      : null;
   const largeSurfaceMeshDisplayProxy = useMemo(
     () => {
       const largeMeshCache = largeSurfaceMeshResolutionCacheRef.current;
-      const proxyModeActive = !(largeMeshCache?.active === "full" && surfaceMeshData === largeMeshCache.fullMesh);
+      const proxyModeActive = largeMeshCache?.active !== "full";
       return proxyModeActive && surfaceMeshData && shouldDeferLargeSurfaceMeshAnalysis(surfaceMeshData)
         ? buildLargeSurfaceMeshDisplayProxy(surfaceMeshData, LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET)
         : null;
@@ -36458,7 +36462,7 @@ const App: React.FC = () => {
     [surfaceMeshData]
   );
   const surfaceMeshTopologyViewerMesh =
-    surfaceMeshTopologyHistoryDisplayMesh ?? largeSurfaceMeshDisplayProxy ?? surfaceMeshData;
+    surfaceMeshTopologyHistoryDisplayMesh ?? activeLargeSurfaceMeshFullMesh ?? largeSurfaceMeshDisplayProxy ?? surfaceMeshData;
   const surfaceMeshTopologyGizmoDragParamsRef = useRef<AdaptiveTopologyGizmoDragParams | null>(null);
   const surfaceMeshTopologyGizmoReferenceLength = useMemo(() => {
     if (!surfaceMeshTopologyViewerMesh?.positions?.length) return 1;
@@ -48804,7 +48808,7 @@ case "mobius":
     if (!surfaceMeshData?.positions?.length) return;
     if (surfaceMeshTriangleCount(surfaceMeshData) < LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD) return;
     const largeMeshCache = largeSurfaceMeshResolutionCacheRef.current;
-    if (largeMeshCache?.active === "full" && surfaceMeshData === largeMeshCache.fullMesh) return;
+    if (largeMeshCache?.active === "full") return;
     if (surfaceRenderQuality !== "performance") setSurfaceRenderQuality("performance");
     if (meshInteractionQualityMode !== "fast-preview") setMeshInteractionQualityMode("fast-preview");
     if (meshInteractionPreviewTriangleTarget !== LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET) {
@@ -69630,7 +69634,7 @@ case "mobius":
                         <SurfaceViewer
                               surfaceId={primarySurfaceId}
                               renderQuality={surfaceRenderQuality}
-                              meshInteractionQualityMode={meshInteractionQualityMode}
+                              meshInteractionQualityMode={activeLargeSurfaceMeshFullMesh ? "full" : meshInteractionQualityMode}
                               meshInteractionRestoreDelayMs={meshInteractionRestoreDelayMs}
                               meshInteractionPreviewTriangleTarget={meshInteractionPreviewTriangleTarget}
                               meshInteractionHideVertexMarkers={meshInteractionHideVertexMarkers}
@@ -71567,7 +71571,7 @@ case "mobius":
                             <SurfaceViewer
                               surfaceId={secondarySurfaceId}
                               renderQuality={surfaceRenderQuality}
-                              meshInteractionQualityMode={meshInteractionQualityMode}
+                              meshInteractionQualityMode={activeLargeSurfaceMeshFullMesh ? "full" : meshInteractionQualityMode}
                               meshInteractionRestoreDelayMs={meshInteractionRestoreDelayMs}
                               meshInteractionPreviewTriangleTarget={meshInteractionPreviewTriangleTarget}
                               meshInteractionHideVertexMarkers={meshInteractionHideVertexMarkers}
@@ -71884,7 +71888,7 @@ case "mobius":
                       onRunMeshBenchmarkPerformanceSuite={() => {
                         void handleRunMeshBenchmarkPerformanceSuite();
                       }}
-                      meshInteractionQualityMode={meshInteractionQualityMode}
+                      meshInteractionQualityMode={activeLargeSurfaceMeshFullMesh ? "full" : meshInteractionQualityMode}
                       onChangeMeshInteractionQualityMode={setMeshInteractionQualityMode}
                       meshInteractionRestoreDelayMs={meshInteractionRestoreDelayMs}
                       onChangeMeshInteractionRestoreDelayMs={setMeshInteractionRestoreDelayMs}
