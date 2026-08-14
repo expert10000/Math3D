@@ -488,6 +488,27 @@ const getRendererWorkingSetBytes = (win: BrowserWindow): { pid: number; bytes: n
   return { pid, bytes: workingSetKb * 1024 };
 };
 
+const getRendererMemorySnapshot = (win: BrowserWindow) => {
+  const workingSet = getRendererWorkingSetBytes(win);
+  if (!workingSet) {
+    return {
+      ok: false,
+      sampledAt: Date.now(),
+      error: "Renderer process memory is unavailable.",
+    };
+  }
+  return {
+    ok: true,
+    sampledAt: Date.now(),
+    rendererPid: workingSet.pid,
+    workingSetBytes: workingSet.bytes,
+    workingSetGb: formatGb(workingSet.bytes),
+    warnThresholdBytes: rendererMemoryWarnBytes,
+    reloadThresholdBytes: rendererMemoryReloadBytes,
+    emergencyThresholdBytes: rendererMemoryEmergencyBytes,
+  };
+};
+
 const installRendererMemoryGuard = (win: BrowserWindow): void => {
   if (!isRendererMemoryAutoReloadEnabled) {
     console.info("[memory-guard] renderer auto reload disabled");
@@ -878,6 +899,18 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("surfacePresets:remove", (_evt, id: string) => {
     removePreset(id);
+  });
+
+  ipcMain.handle("app:renderer-memory", (evt) => {
+    const win = BrowserWindow.fromWebContents(evt.sender);
+    if (!win) {
+      return {
+        ok: false,
+        sampledAt: Date.now(),
+        error: "No BrowserWindow for renderer.",
+      };
+    }
+    return getRendererMemorySnapshot(win);
   });
 
   registerCgalMeshIpc();

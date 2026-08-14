@@ -694,6 +694,44 @@ type MeshPipelineProfileRun = {
   firstFrameSnapshot: SurfacePerformanceSnapshot | null;
   phases: MeshPipelineProfilePhase[];
 };
+type MeshDebugMemorySnapshot = {
+  sampledAt: number;
+  rendererPid: number | null;
+  workingSetBytes: number | null;
+  workingSetGb: number | null;
+  jsHeapUsedBytes: number | null;
+  jsHeapTotalBytes: number | null;
+  gpuEstimateBytes: number | null;
+  rendererGeometries: number | null;
+  rendererTextures: number | null;
+  warning: string | null;
+};
+type MeshDebugEvent = {
+  id: number;
+  ts: number;
+  kind:
+    | "load"
+    | "phase"
+    | "viewer"
+    | "quality"
+    | "stall"
+    | "memory"
+    | "full"
+    | "window"
+    | "error";
+  label: string;
+  ms?: number;
+  details?: Record<string, unknown>;
+};
+type MeshDebugMonitorState = {
+  enabled: boolean;
+  startedAt: number;
+  events: MeshDebugEvent[];
+  memory: MeshDebugMemorySnapshot | null;
+  lastSnapshot: SurfacePerformanceSnapshot | null;
+  stallCount: number;
+  worstStallMs: number;
+};
 const MESH_BENCHMARK_CATEGORY_LABELS: Record<MeshBenchmarkCategory, string> = {
   basic: "Basic",
   standard: "Standard",
@@ -1823,6 +1861,13 @@ const buildMeshPerformanceBenchmark = (preset: MeshPerfBenchmarkPreset): Surface
 const benchmarkNowMs = (): number =>
   typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
 
+const MESH_DEBUG_EVENT_LIMIT = 220;
+const MESH_DEBUG_STALL_THRESHOLD_MS = 180;
+const MESH_DEBUG_MEMORY_WARN_GB = 4.0;
+
+const formatMeshDebugEventTime = (ts: number): string =>
+  new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
 const sumMeshImportStages = (
   entries: readonly SurfaceMeshImportTelemetry[],
   stages: readonly SurfaceMeshImportTelemetry["stage"][]
@@ -1875,6 +1920,20 @@ const serializeMeshPipelineProfileRun = (run: MeshPipelineProfileRun) => ({
     lastMs: Number(phase.lastMs.toFixed(2)),
   })),
   error: run.error,
+});
+
+const serializeMeshDebugMonitorState = (state: MeshDebugMonitorState, profile: MeshPipelineProfileRun | null) => ({
+  capturedAt: new Date().toISOString(),
+  monitor: {
+    enabled: state.enabled,
+    startedAt: new Date(state.startedAt).toISOString(),
+    stallCount: state.stallCount,
+    worstStallMs: Number(state.worstStallMs.toFixed(2)),
+    memory: state.memory,
+    lastSnapshot: state.lastSnapshot,
+    events: state.events,
+  },
+  pipelineProfile: profile ? serializeMeshPipelineProfileRun(profile) : null,
 });
 
 const estimateSurfaceMeshDataBytes = (mesh: SurfaceMeshData | null): number | null => {
@@ -39752,6 +39811,51 @@ const App: React.FC = () => {
     expectedTriangles: number;
     timeoutId: number | null;
   } | null>(null);
+  const meshDebugEventCounterRef = useRef(0);
+  const [meshDebugMonitor, setMeshDebugMonitor] = useState<MeshDebugMonitorState>(() => ({
+    enabled: true,
+    startedAt: Date.now(),
+    events: [],
+    memory: null,
+    lastSnapshot: null,
+    stallCount: 0,
+    worstStallMs: 0,
+  }));
+  const recordMeshDebugEvent = useCallback((event: Omit<MeshDebugEvent, "id" | "ts"> & { ts?: number }) => {
+    meshDebugEventCounterRef.current += 1;
+    const nextEvent: MeshDebugEvent = {
+      id: meshDebugEventCounterRef.current,
+      ts: event.ts ?? Date.now(),
+      kind: event.kind,
+      label: event.label,
+      ms: event.ms,
+      details: event.details,
+    };
+    setMeshDebugMonitor((current) => {
+      if (!current.enabled) return current;
+      const events = [...current.events, nextEvent].slice(-MESH_DEBUG_EVENT_LIMIT);
+      return {
+        ...current,
+        events,
+        stallCount: nextEvent.kind === "stall" ? current.stallCount + 1 : current.stallCount,
+        worstStallMs:
+          nextEvent.kind === "stall" && Number.isFinite(nextEvent.ms)
+            ? Math.max(current.worstStallMs, Number(nextEvent.ms))
+            : current.worstStallMs,
+      };
+    });
+  }, []);
+  const clearMeshDebugMonitor = useCallback(() => {
+    setMeshDebugMonitor((current) => ({
+      ...current,
+      startedAt: Date.now(),
+      events: [],
+      memory: null,
+      lastSnapshot: null,
+      stallCount: 0,
+      worstStallMs: 0,
+    }));
+  }, []);
   const [meshPerfBenchmarkId, setMeshPerfBenchmarkId] = useState<MeshPerfBenchmarkId | null>(null);
   const [meshBenchmarkPerformanceSuite, setMeshBenchmarkPerformanceSuite] =
     useState<MeshBenchmarkPerformanceSuiteState>({
@@ -39774,12 +39878,103 @@ const App: React.FC = () => {
   const handleSecondaryViewportDebug = useCallback((snapshot: ViewportDebugSnapshot) => {
     setViewportDebugSecondary(snapshot);
   }, []);
+  useEffect(() => {
+    if (!meshDebugMonitor.enabled || typeof window === "undefined") return;
+    let expected = benchmarkNowMs() + 500;
+    const interval = window.setInterval(() => {
+      const now = benchmarkNowMs();
+      const driftMs = now - expected;
+      expected = now + 500;
+      if (driftMs < MESH_DEBUG_STALL_THRESHOLD_MS) return;
+      recordMeshDebugEvent({
+        kind: "stall",
+        label: "Renderer main thread stalled",
+        ms: driftMs,
+        details: {
+          thresholdMs: MESH_DEBUG_STALL_THRESHOLD_MS,
+          mode,
+          viewerKind: surfaceViewerKind,
+          renderQuality: surfaceRenderQuality,
+          meshInteractionQualityMode,
+          meshLabel: surfaceMeshData?.label ?? null,
+          triangles: surfaceMeshData ? surfaceMeshTriangleCount(surfaceMeshData) : null,
+        },
+      });
+    }, 500);
+    return () => window.clearInterval(interval);
+  }, [
+    meshDebugMonitor.enabled,
+    meshInteractionQualityMode,
+    mode,
+    recordMeshDebugEvent,
+    surfaceMeshData,
+    surfaceRenderQuality,
+    surfaceViewerKind,
+  ]);
+  useEffect(() => {
+    if (!meshDebugMonitor.enabled || typeof window === "undefined") return;
+    let cancelled = false;
+    const sampleMemory = async () => {
+      const bridge = window.appDiagnostics;
+      const response = bridge?.getRendererMemory ? await bridge.getRendererMemory().catch(() => null) : null;
+      if (cancelled) return;
+      const jsMemory = (performance as unknown as {
+        memory?: { usedJSHeapSize?: number; totalJSHeapSize?: number };
+      }).memory;
+      const workingSetGb =
+        response?.ok && Number.isFinite(response.workingSetGb) ? Number(response.workingSetGb) : null;
+      const snapshot: MeshDebugMemorySnapshot = {
+        sampledAt: Date.now(),
+        rendererPid: response?.ok && Number.isFinite(response.rendererPid) ? Number(response.rendererPid) : null,
+        workingSetBytes:
+          response?.ok && Number.isFinite(response.workingSetBytes) ? Number(response.workingSetBytes) : null,
+        workingSetGb,
+        jsHeapUsedBytes: Number.isFinite(jsMemory?.usedJSHeapSize) ? Number(jsMemory?.usedJSHeapSize) : null,
+        jsHeapTotalBytes: Number.isFinite(jsMemory?.totalJSHeapSize) ? Number(jsMemory?.totalJSHeapSize) : null,
+        gpuEstimateBytes: surfacePerformanceSnapshot?.gpuMemoryEstimateBytes ?? null,
+        rendererGeometries: surfacePerformanceSnapshot?.rendererMemory.geometries ?? null,
+        rendererTextures: surfacePerformanceSnapshot?.rendererMemory.textures ?? null,
+        warning:
+          workingSetGb != null && workingSetGb >= MESH_DEBUG_MEMORY_WARN_GB
+            ? `Renderer RSS is ${workingSetGb.toFixed(2)} GB`
+            : response && !response.ok
+              ? response.error ?? "Renderer memory unavailable"
+              : null,
+      };
+      setMeshDebugMonitor((current) => ({ ...current, memory: snapshot }));
+      if (snapshot.warning) {
+        recordMeshDebugEvent({
+          kind: "memory",
+          label: snapshot.warning,
+          details: {
+            rendererPid: snapshot.rendererPid,
+            workingSetBytes: snapshot.workingSetBytes,
+            gpuEstimateBytes: snapshot.gpuEstimateBytes,
+            jsHeapUsedBytes: snapshot.jsHeapUsedBytes,
+          },
+        });
+      }
+    };
+    void sampleMemory();
+    const interval = window.setInterval(() => {
+      void sampleMemory();
+    }, 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [meshDebugMonitor.enabled, recordMeshDebugEvent, surfacePerformanceSnapshot]);
   const beginMeshPipelineProfile = useCallback((label: string, fileName: string | null, options?: { startedAt?: number }) => {
     meshPipelineProfileCounterRef.current += 1;
     const id = `mesh-profile:${meshPipelineProfileCounterRef.current}`;
     const startedAt = options?.startedAt ?? Date.now();
     meshPipelineProfileActiveIdRef.current = null;
     meshPipelineProfileLatestIdRef.current = id;
+    recordMeshDebugEvent({
+      kind: "load",
+      label: `Load started: ${label}`,
+      details: { profileId: id, fileName },
+    });
     setMeshPipelineProfile({
       id,
       label,
@@ -39796,9 +39991,15 @@ const App: React.FC = () => {
       phases: [],
     });
     return id;
-  }, []);
+  }, [recordMeshDebugEvent]);
   const recordMeshPipelineProfilePhase = useCallback((profileId: string | null, phase: string, ms: number) => {
     if (!profileId) return;
+    recordMeshDebugEvent({
+      kind: "phase",
+      label: phase,
+      ms,
+      details: { profileId },
+    });
     setMeshPipelineProfile((current) => {
       if (!current || current.id !== profileId) return current;
       return {
@@ -39807,7 +40008,7 @@ const App: React.FC = () => {
         phases: appendMeshPipelineProfilePhase(current.phases, phase, ms),
       };
     });
-  }, []);
+  }, [recordMeshDebugEvent]);
   const finishMeshPipelineProfile = useCallback(
     (profileId: string | null, result: { mesh?: SurfaceMeshData | null; error?: string }) => {
       if (!profileId) return;
@@ -39827,15 +40028,44 @@ const App: React.FC = () => {
           triangles: mesh ? surfaceMeshTriangleCount(mesh) : current.triangles,
           memoryBytes: mesh ? estimateSurfaceMeshDataBytes(mesh) : current.memoryBytes,
         };
+        recordMeshDebugEvent({
+          kind: result.error ? "error" : "load",
+          label: result.error ? `Load failed: ${current.label}` : `Load ready: ${current.label}`,
+          ms: completedAt - current.startedAt,
+          details: {
+            profileId,
+            vertices: next.vertices,
+            triangles: next.triangles,
+            memoryBytes: next.memoryBytes,
+            error: result.error,
+          },
+        });
         if (typeof console !== "undefined") {
           console.info("[mesh-profile]", JSON.stringify(serializeMeshPipelineProfileRun(next)));
         }
         return next;
       });
     },
-    []
+    [recordMeshDebugEvent]
   );
   const handleSurfacePerformanceSnapshot = useCallback((snapshot: SurfacePerformanceSnapshot) => {
+    setMeshDebugMonitor((current) => ({ ...current, lastSnapshot: snapshot }));
+    if (
+      snapshot.frameGapMs != null &&
+      Number.isFinite(snapshot.frameGapMs) &&
+      snapshot.frameGapMs >= MESH_DEBUG_STALL_THRESHOLD_MS
+    ) {
+      recordMeshDebugEvent({
+        kind: "stall",
+        label: "Viewer frame gap",
+        ms: snapshot.frameGapMs,
+        details: {
+          triangles: snapshot.triangles,
+          lodLevel: snapshot.lodLevel,
+          traceReason: snapshot.trace?.reason,
+        },
+      });
+    }
     const activeProfileId = meshPipelineProfileActiveIdRef.current;
     if (activeProfileId) {
       setMeshPipelineProfile((current) => {
@@ -39856,6 +40086,19 @@ const App: React.FC = () => {
           firstFrameSnapshot: snapshot,
           phases,
         };
+        recordMeshDebugEvent({
+          kind: "viewer",
+          label: `First visible frame: ${current.label}`,
+          ms: next.firstFrameMs ?? undefined,
+          details: {
+            profileId: activeProfileId,
+            triangles: snapshot.triangles,
+            vertices: snapshot.vertices,
+            fps: snapshot.fps,
+            frameTimeMs: snapshot.frameTimeMs,
+            trace: snapshot.trace ?? null,
+          },
+        });
         if (typeof console !== "undefined") {
           console.info("[mesh-profile:first-frame]", JSON.stringify(serializeMeshPipelineProfileRun(next)));
         }
@@ -39871,6 +40114,16 @@ const App: React.FC = () => {
       }
       const clickToFrameMs = Math.max(0, snapshot.ts - pendingFullRestore.requestedAt);
       recordMeshPipelineProfilePhase(pendingFullRestore.profileId, "full:firstFullFrame", clickToFrameMs);
+      recordMeshDebugEvent({
+        kind: "full",
+        label: `Full first frame: ${pendingFullRestore.label}`,
+        ms: clickToFrameMs,
+        details: {
+          expectedTriangles: pendingFullRestore.expectedTriangles,
+          visibleTriangles: snapshot.triangles,
+          trace: snapshot.trace ?? null,
+        },
+      });
       if (snapshot.trace) {
         recordMeshPipelineProfilePhase(
           pendingFullRestore.profileId,
@@ -39900,7 +40153,22 @@ const App: React.FC = () => {
     if (snapshot.ts - surfacePerformanceSnapshotUpdatedAtRef.current < 2000) return;
     surfacePerformanceSnapshotUpdatedAtRef.current = snapshot.ts;
     setSurfacePerformanceSnapshot(snapshot);
-  }, [recordMeshPipelineProfilePhase]);
+    recordMeshDebugEvent({
+      kind: "viewer",
+      label: `Viewport ${snapshot.lodLevel}`,
+      ms: snapshot.frameTimeMs,
+      details: {
+        fps: snapshot.fps,
+        frameGapMs: snapshot.frameGapMs,
+        triangles: snapshot.triangles,
+        vertices: snapshot.vertices,
+        drawCalls: snapshot.drawCalls,
+        raycastTimeMs: snapshot.raycastTimeMs,
+        gpuMemoryEstimateBytes: snapshot.gpuMemoryEstimateBytes,
+        trace: snapshot.trace ?? null,
+      },
+    });
+  }, [recordMeshDebugEvent, recordMeshPipelineProfilePhase]);
   const handleRunMeshBenchmarkPerformanceSuite = useCallback(async () => {
     const api = typeof window !== "undefined" ? window.meshBenchmarks : undefined;
     if (!isDev || !api?.load) {
@@ -48722,12 +48990,30 @@ case "mobius":
     setCalculusHeatmapEnabled(false);
     setWorkbookVectorFieldOverlay(null);
     setWorkbookHeatmapEnabled(false);
+    recordMeshDebugEvent({
+      kind: "quality",
+      label: "Large mesh fast-load preparation",
+      details: {
+        status: status ?? null,
+        clearCurrentMesh: !!options?.clearCurrentMesh,
+        targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET,
+      },
+    });
     if (status) setSurfaceMeshTopologyStatus(status);
-  }, [clearInspect]);
+  }, [clearInspect, recordMeshDebugEvent]);
 
   const handleSurfaceRenderQualityChange = useCallback(
     (quality: RenderQuality) => {
       setSurfaceRenderQuality(quality);
+      recordMeshDebugEvent({
+        kind: "quality",
+        label: `Render quality -> ${quality}`,
+        details: {
+          hasLargeMeshCache: !!largeSurfaceMeshResolutionCacheRef.current,
+          meshLabel: surfaceMeshData?.label ?? null,
+          triangles: surfaceMeshData ? surfaceMeshTriangleCount(surfaceMeshData) : null,
+        },
+      });
       const cache = largeSurfaceMeshResolutionCacheRef.current;
       if (!cache) {
         if (quality === "sharp") setMeshInteractionQualityMode("full");
@@ -48738,6 +49024,14 @@ case "mobius":
         largeSurfaceMeshFullRestorePendingRef.current = true;
         const fullRestoreRequestedAt = benchmarkNowMs();
         const expectedFullTriangles = surfaceMeshTriangleCount(cache.fullMesh);
+        recordMeshDebugEvent({
+          kind: "full",
+          label: `Full requested: ${cache.label}`,
+          details: {
+            expectedTriangles: expectedFullTriangles,
+            previewTriangles: surfaceMeshTriangleCount(cache.previewMesh),
+          },
+        });
         if (meshFullRestoreFrameProfileRef.current?.timeoutId != null && typeof window !== "undefined") {
           window.clearTimeout(meshFullRestoreFrameProfileRef.current.timeoutId);
         }
@@ -48773,6 +49067,17 @@ case "mobius":
               "full:handlerTotal",
               benchmarkNowMs() - restoreStart
             );
+            recordMeshDebugEvent({
+              kind: "full",
+              label: `Full published: ${cache.label}`,
+              ms: benchmarkNowMs() - restoreStart,
+              details: {
+                publishMs,
+                focusMs,
+                vertices: Math.floor(cache.fullMesh.positions.length / 3),
+                triangles: surfaceMeshTriangleCount(cache.fullMesh),
+              },
+            });
             if (typeof window !== "undefined") {
               const timeoutId = window.setTimeout(() => {
                 const pendingFullRestore = meshFullRestoreFrameProfileRef.current;
@@ -48791,6 +49096,15 @@ case "mobius":
                   "full:timeoutFallback",
                   Math.max(0, Date.now() - pendingFullRestore.requestedAt)
                 );
+                recordMeshDebugEvent({
+                  kind: "full",
+                  label: `Full timeout fallback: ${cache.label}`,
+                  ms: Math.max(0, Date.now() - pendingFullRestore.requestedAt),
+                  details: {
+                    restoredTriangles: surfaceMeshTriangleCount(cache.previewMesh),
+                    expectedTriangles: pendingFullRestore.expectedTriangles,
+                  },
+                });
                 setSurfaceMeshTopologyStatus(
                   `Full resolution timed out for ${cache.label}; restored fast preview.`
                 );
@@ -48822,6 +49136,11 @@ case "mobius":
             cache.active = "preview";
             setSurfaceRenderQuality("performance");
             setMeshInteractionQualityMode("fast-preview");
+            recordMeshDebugEvent({
+              kind: "error",
+              label: `Full failed: ${cache.label}`,
+              details: { error: error instanceof Error ? error.message : String(error) },
+            });
             setSurfaceMeshTopologyStatus(
               `Full resolution failed for ${cache.label}: ${error instanceof Error ? error.message : String(error)}`
             );
@@ -48849,6 +49168,11 @@ case "mobius":
         setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
         setMeshDataset(cache.previewMesh, "mesh-large:restore-preview");
         focusSurfaceMeshViewport(cache.previewMesh);
+        recordMeshDebugEvent({
+          kind: "quality",
+          label: `Fast preview restored: ${cache.label}`,
+          details: { triangles: surfaceMeshTriangleCount(cache.previewMesh) },
+        });
         setSurfaceMeshTopologyStatus(`Fast preview restored for ${cache.label}.`);
         return;
       }
@@ -48860,8 +49184,13 @@ case "mobius":
       meshFullRestoreFrameProfileRef.current = null;
       setMeshInteractionQualityMode("fast-preview");
       setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
+      recordMeshDebugEvent({
+        kind: "quality",
+        label: "Fast preview requested",
+        details: { targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET },
+      });
     },
-    [focusSurfaceMeshViewport, recordMeshPipelineProfilePhase, setMeshDataset, surfaceMeshData]
+    [focusSurfaceMeshViewport, recordMeshDebugEvent, recordMeshPipelineProfilePhase, setMeshDataset, surfaceMeshData]
   );
 
   useEffect(() => {
@@ -48870,6 +49199,15 @@ case "mobius":
     const largeMeshCache = largeSurfaceMeshResolutionCacheRef.current;
     if (largeSurfaceMeshFullRestorePendingRef.current) return;
     if (largeMeshCache?.active === "full") return;
+    recordMeshDebugEvent({
+      kind: "quality",
+      label: "Large mesh safety forced Fast",
+      details: {
+        meshLabel: surfaceMeshData.label ?? null,
+        triangles: surfaceMeshTriangleCount(surfaceMeshData),
+        targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET,
+      },
+    });
     if (surfaceRenderQuality !== "performance") setSurfaceRenderQuality("performance");
     if (meshInteractionQualityMode !== "fast-preview") setMeshInteractionQualityMode("fast-preview");
     if (meshInteractionPreviewTriangleTarget !== LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET) {
@@ -48924,6 +49262,7 @@ case "mobius":
     geodesicDiskEnabled,
     geodesicHeatEnabled,
     geodesicPathEnabled,
+    recordMeshDebugEvent,
     meshInteractionQualityMode,
     meshInteractionPreviewTriangleTarget,
     colorMode,
@@ -71943,6 +72282,8 @@ case "mobius":
                       meshPerformanceBenchmarkId={meshPerfBenchmarkId}
                       meshPerformanceLastBuildMs={meshPerformanceLastBuildMs}
                       meshPipelineProfile={meshPipelineProfile}
+                      meshDebugMonitor={meshDebugMonitor}
+                      onClearMeshDebugMonitor={clearMeshDebugMonitor}
                       onRunMeshPerformanceBenchmark={handleRunMeshPerformanceBenchmark}
                       onRestoreMeshPerformanceBaseline={handleRestoreMeshPerformanceBaseline}
                       meshBenchmarkPerformanceSuite={meshBenchmarkPerformanceSuite}
@@ -106264,6 +106605,8 @@ type SurfacesRightPanelProps = {
   meshPerformanceBenchmarkId: MeshPerfBenchmarkId | null;
   meshPerformanceLastBuildMs: number | null;
   meshPipelineProfile: MeshPipelineProfileRun | null;
+  meshDebugMonitor: MeshDebugMonitorState;
+  onClearMeshDebugMonitor: () => void;
   onRunMeshPerformanceBenchmark: (id: MeshPerfBenchmarkId) => void;
   onRestoreMeshPerformanceBaseline: () => void;
   meshBenchmarkPerformanceSuite: MeshBenchmarkPerformanceSuiteState;
@@ -106497,6 +106840,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   meshPerformanceBenchmarkId,
   meshPerformanceLastBuildMs,
   meshPipelineProfile,
+  meshDebugMonitor,
+  onClearMeshDebugMonitor,
   onRunMeshPerformanceBenchmark,
   onRestoreMeshPerformanceBaseline,
   meshBenchmarkPerformanceSuite,
@@ -107416,9 +107761,18 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       .slice()
       .sort((a, b) => b.totalMs - a.totalMs)
       .slice(0, 12) ?? [];
+  const meshDebugRecentEvents = meshDebugMonitor.events.slice(-18).reverse();
+  const meshDebugMemory = meshDebugMonitor.memory;
   const copyMeshPipelineProfile = () => {
     if (!meshPipelineProfile) return;
     const text = JSON.stringify(serializeMeshPipelineProfileRun(meshPipelineProfile), null, 2);
+    const clipboard = typeof navigator !== "undefined" ? navigator.clipboard : undefined;
+    if (clipboard?.writeText) {
+      void clipboard.writeText(text);
+    }
+  };
+  const copyMeshDebugTrace = () => {
+    const text = JSON.stringify(serializeMeshDebugMonitorState(meshDebugMonitor, meshPipelineProfile), null, 2);
     const clipboard = typeof navigator !== "undefined" ? navigator.clipboard : undefined;
     if (clipboard?.writeText) {
       void clipboard.writeText(text);
@@ -107702,6 +108056,64 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                       ? `geometries ${formatInspectorCount(surfacePerformanceSnapshot.rendererMemory.geometries)} · textures ${formatInspectorCount(surfacePerformanceSnapshot.rendererMemory.textures)}`
                       : "n/a"}
                   </div>
+                  <div
+                    style={{ display: "grid", gap: 6, borderTop: "1px solid #dbe4ee", paddingTop: 8, marginTop: 2 }}
+                    data-testid="mesh-debug-monitor"
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                      <strong>Mesh Debug Monitor</strong>
+                      <span style={{ color: meshDebugMemory?.warning ? "#b42318" : "#475467", fontWeight: 800 }}>
+                        {meshDebugMemory?.warning ?? "recording"}
+                      </span>
+                    </div>
+                    <div>
+                      <strong>Renderer RSS:</strong>{" "}
+                      {meshDebugMemory?.workingSetGb != null ? `${meshDebugMemory.workingSetGb.toFixed(2)} GB` : "n/a"}
+                      {" | "}
+                      <strong>JS heap:</strong>{" "}
+                      {meshDebugMemory?.jsHeapUsedBytes != null
+                        ? `${formatBenchmarkBytes(meshDebugMemory.jsHeapUsedBytes)} / ${formatBenchmarkBytes(meshDebugMemory.jsHeapTotalBytes)}`
+                        : "n/a"}
+                    </div>
+                    <div>
+                      <strong>Stalls:</strong> {meshDebugMonitor.stallCount.toLocaleString()}
+                      {" | "}
+                      <strong>Worst:</strong> {formatPerfMetric(meshDebugMonitor.worstStallMs, 1)} ms
+                      {" | "}
+                      <strong>Events:</strong> {meshDebugMonitor.events.length.toLocaleString()}
+                    </div>
+                    <div>
+                      <strong>Frame gap:</strong> {formatPerfMetric(surfacePerformanceSnapshot?.frameGapMs ?? null, 1)} ms
+                      {" | "}
+                      <strong>GPU estimate:</strong> {formatBenchmarkBytes(meshDebugMemory?.gpuEstimateBytes)}
+                    </div>
+                    {meshDebugRecentEvents.length > 0 && (
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "58px 58px minmax(160px, 1fr) 54px",
+                          gap: "3px 6px",
+                          maxHeight: 150,
+                          overflow: "auto",
+                          fontSize: 10,
+                          alignItems: "baseline",
+                        }}
+                      >
+                        <strong>Time</strong>
+                        <strong>Kind</strong>
+                        <strong>Event</strong>
+                        <strong>ms</strong>
+                        {meshDebugRecentEvents.map((event) => (
+                          <React.Fragment key={`mesh-debug-event-${event.id}`}>
+                            <span>{formatMeshDebugEventTime(event.ts)}</span>
+                            <span>{event.kind}</span>
+                            <span title={event.details ? JSON.stringify(event.details) : undefined}>{event.label}</span>
+                            <span>{event.ms == null ? "" : formatPerfMetric(event.ms, 1)}</span>
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   {meshPipelineProfile && (
                     <div
                       style={{ display: "grid", gap: 6, borderTop: "1px solid #dbe4ee", paddingTop: 8, marginTop: 2 }}
@@ -107763,6 +108175,18 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                       disabled={!meshPipelineProfile}
                     >
                       Copy pipeline trace
+                    </button>
+                    <button
+                      type="button"
+                      onClick={copyMeshDebugTrace}
+                    >
+                      Copy debug trace
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onClearMeshDebugMonitor}
+                    >
+                      Clear debug trace
                     </button>
                     <button
                       type="button"

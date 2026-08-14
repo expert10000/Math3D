@@ -462,6 +462,19 @@ declare global {
     appWindow?: {
       onStateChange: (handler: (packet: AppWindowStatePacket) => void) => () => void;
     };
+    appDiagnostics?: {
+      getRendererMemory: () => Promise<{
+        ok: boolean;
+        sampledAt: number;
+        rendererPid?: number;
+        workingSetBytes?: number;
+        workingSetGb?: number;
+        warnThresholdBytes?: number;
+        reloadThresholdBytes?: number;
+        emergencyThresholdBytes?: number;
+        error?: string;
+      }>;
+    };
     pythonWorkerDiagnostics?: {
       getStatus: () => Promise<PythonWorkerDiagnosticsSnapshot>;
     };

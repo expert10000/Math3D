@@ -452,6 +452,11 @@ contextBridge.exposeInMainWorld("appWindow", {
   },
 });
 
+contextBridge.exposeInMainWorld("appDiagnostics", {
+  getRendererMemory: (): Promise<unknown> =>
+    ipcRenderer.invoke("app:renderer-memory"),
+});
+
 contextBridge.exposeInMainWorld("pythonWorkerDiagnostics", {
   getStatus: (): Promise<PythonWorkerDiagnosticsSnapshot> =>
     ipcRenderer.invoke("python-worker:diagnostics:get"),

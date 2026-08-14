@@ -82,6 +82,7 @@ export type SurfacePerformanceSnapshot = {
   ts: number;
   fps: number;
   frameTimeMs: number;
+  frameGapMs: number | null;
   drawCalls: number;
   triangles: number;
   vertices: number;
@@ -3909,6 +3910,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         ts: Date.now(),
         fps: perfFrame.fps,
         frameTimeMs: perfFrame.frameTimeMs,
+        frameGapMs: null,
         drawCalls,
         triangles,
         vertices,
@@ -6723,6 +6725,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         ts: Date.now(),
         fps: perfFrame.fps,
         frameTimeMs: perfFrame.frameTimeMs,
+        frameGapMs,
         drawCalls: Math.max(0, Math.round(renderInfo.calls ?? 0)),
         triangles: Math.max(0, Math.round(renderInfo.triangles ?? 0)),
         vertices: Math.max(
