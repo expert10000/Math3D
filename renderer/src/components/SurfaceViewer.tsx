@@ -97,6 +97,18 @@ export type SurfacePerformanceSnapshot = {
     geometries: number;
     textures: number;
   };
+  trace?: {
+    meshRebuildTotalMs?: number;
+    geometryUpdateMs?: number;
+    sampleSetMs?: number;
+    boundsMs?: number;
+    renderMs?: number;
+    meshCount?: number;
+    sampleCount?: number;
+    meshDataCount?: number;
+    frameGapMs?: number;
+    reason?: string;
+  };
 };
 export type RenderQuality = "performance" | "balanced" | "sharp";
 export type MeshRuntimeQuality = "interactive-preview" | "balanced" | "accurate";
@@ -2068,6 +2080,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const onPerformanceSnapshotRef = useRef<Props["onPerformanceSnapshot"] | undefined>(undefined);
   const onMeshInteractionStateChangeRef = useRef<Props["onMeshInteractionStateChange"] | undefined>(undefined);
   const lastMeshBuildMsRef = useRef<number | null>(lastMeshBuildMs);
+  const meshPerformanceTraceRef = useRef<NonNullable<SurfacePerformanceSnapshot["trace"]> | null>(null);
   const perfFrameRef = useRef<{ lastFrameAt: number; fps: number; frameTimeMs: number; lastEmitAt: number }>({
     lastFrameAt: 0,
     fps: 0,
@@ -3920,6 +3933,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           geometries: renderer.info.memory.geometries ?? 0,
           textures: renderer.info.memory.textures ?? 0,
         },
+        trace: meshPerformanceTraceRef.current ?? undefined,
       });
     };
     const handleControlsChangeDebug = () => {
@@ -6263,6 +6277,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const scene = sceneRef.current;
     const surfaceObj = surfaceObjRef.current;
     if (!scene || !surfaceObj) return;
+    const meshRebuildStart = performance.now();
+    const previousFrameAt = lastRenderedAtRef.current;
 
     const hasOverrides =
       !!surfaceMeshOverrides?.some((override) => (override.positions?.length ?? 0) >= 3);
@@ -6515,6 +6531,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (!surfaceObj || !(surfaceObj as any).isMesh) needsRebuild = true;
     }
 
+    const geometryStart = performance.now();
     if (needsRebuild) {
       rebuildSurfaceObject();
     } else if (useOverrides && surfaceMeshOverrides && !patchedOverrideGroup) {
@@ -6526,6 +6543,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     } else if (useOverride && surfaceMeshOverride && (surfaceObj as any)?.isMesh) {
       updateGeometryFromOverride(surfaceObj as THREE.Mesh, surfaceMeshOverride);
     }
+    const geometryUpdateMs = performance.now() - geometryStart;
 
     const activeSurfaceObj = surfaceObjRef.current;
     if (!activeSurfaceObj) return;
@@ -6539,6 +6557,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
     });
 
+    const sampleSetStart = performance.now();
     const aggregatedSamples: SurfaceSampleSet["samples"] = [];
     const meshData: SurfaceSampleSet["meshData"] = [];
     let nextId = 0;
@@ -6589,7 +6608,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     }
     sampleSetRef.current = nextSampleSet;
     onSampleSet?.(nextSampleSet);
+    const sampleSetMs = performance.now() - sampleSetStart;
 
+    const boundsStart = performance.now();
     const box = new THREE.Box3().setFromObject(activeSurfaceObj);
     const center = new THREE.Vector3();
     box.getCenter(center);
@@ -6601,6 +6622,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const viewGizmo = viewGizmoRef.current;
     if (viewGizmo) viewGizmo.position.copy(center);
+    const boundsMs = performance.now() - boundsStart;
 
     const existingBoxHelper = bboxHelperRef.current;
     if (showBoundingBox && !fastPreviewHelpersHidden) {
@@ -6653,7 +6675,11 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (renderer && camera && controls && !suspendRenderingRef.current) {
       controls.update();
       const now = performance.now();
+      const renderStart = performance.now();
       renderer.render(scene, camera);
+      const renderMs = performance.now() - renderStart;
+      const meshRebuildTotalMs = performance.now() - meshRebuildStart;
+      const frameGapMs = previousFrameAt > 0 ? meshRebuildStart - previousFrameAt : null;
       const perfFrame = perfFrameRef.current;
       if (perfFrame.lastFrameAt > 0) {
         const dt = Math.max(0.0001, now - perfFrame.lastFrameAt);
@@ -6680,6 +6706,19 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         const indexArray = geom.index?.array as { byteLength?: number } | undefined;
         if (Number.isFinite(indexArray?.byteLength)) gpuBytes += Number(indexArray?.byteLength);
       }
+      const trace = {
+        meshRebuildTotalMs,
+        geometryUpdateMs,
+        sampleSetMs,
+        boundsMs,
+        renderMs,
+        meshCount: meshList.length,
+        sampleCount: nextSampleSet.samples.length,
+        meshDataCount: nextSampleSet.meshData?.length ?? 0,
+        frameGapMs: frameGapMs ?? undefined,
+        reason: "mesh-rebuild",
+      };
+      meshPerformanceTraceRef.current = trace;
       onPerformanceSnapshotRef.current?.({
         ts: Date.now(),
         fps: perfFrame.fps,
@@ -6711,7 +6750,11 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           geometries: renderer.info.memory.geometries ?? 0,
           textures: renderer.info.memory.textures ?? 0,
         },
+        trace,
       });
+      if (typeof console !== "undefined") {
+        console.info("[mesh-viewer-profile]", JSON.stringify(trace));
+      }
     }
   }, [
     surfaceId,

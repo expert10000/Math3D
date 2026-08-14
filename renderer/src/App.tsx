@@ -36435,10 +36435,13 @@ const App: React.FC = () => {
       : surfaceMeshTopologyHistoryPreviewEntry.snapshot;
   }, [surfaceMeshTopologyHistoryPreviewEntry, surfaceMeshTopologyHistoryPreviewMode]);
   const largeSurfaceMeshDisplayProxy = useMemo(
-    () =>
-      surfaceMeshData && shouldDeferLargeSurfaceMeshAnalysis(surfaceMeshData)
+    () => {
+      const largeMeshCache = largeSurfaceMeshResolutionCacheRef.current;
+      const proxyModeActive = !(largeMeshCache?.active === "full" && surfaceMeshData === largeMeshCache.fullMesh);
+      return proxyModeActive && surfaceMeshData && shouldDeferLargeSurfaceMeshAnalysis(surfaceMeshData)
         ? buildLargeSurfaceMeshDisplayProxy(surfaceMeshData, LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET)
-        : null,
+        : null;
+    },
     [surfaceMeshData]
   );
   const surfaceMeshTopologyViewerMesh =
@@ -39723,6 +39726,7 @@ const App: React.FC = () => {
   const [meshPipelineProfile, setMeshPipelineProfile] = useState<MeshPipelineProfileRun | null>(null);
   const meshPipelineProfileCounterRef = useRef(0);
   const meshPipelineProfileActiveIdRef = useRef<string | null>(null);
+  const meshPipelineProfileLatestIdRef = useRef<string | null>(null);
   const [meshPerfBenchmarkId, setMeshPerfBenchmarkId] = useState<MeshPerfBenchmarkId | null>(null);
   const [meshBenchmarkPerformanceSuite, setMeshBenchmarkPerformanceSuite] =
     useState<MeshBenchmarkPerformanceSuiteState>({
@@ -39750,6 +39754,7 @@ const App: React.FC = () => {
     const id = `mesh-profile:${meshPipelineProfileCounterRef.current}`;
     const startedAt = options?.startedAt ?? Date.now();
     meshPipelineProfileActiveIdRef.current = null;
+    meshPipelineProfileLatestIdRef.current = id;
     setMeshPipelineProfile({
       id,
       label,
@@ -39782,6 +39787,7 @@ const App: React.FC = () => {
     (profileId: string | null, result: { mesh?: SurfaceMeshData | null; error?: string }) => {
       if (!profileId) return;
       const completedAt = Date.now();
+      meshPipelineProfileLatestIdRef.current = profileId;
       meshPipelineProfileActiveIdRef.current = result.error ? null : profileId;
       setMeshPipelineProfile((current) => {
         if (!current || current.id !== profileId) return current;
@@ -39809,11 +39815,21 @@ const App: React.FC = () => {
     if (activeProfileId) {
       setMeshPipelineProfile((current) => {
         if (!current || current.id !== activeProfileId || current.firstFrameMs != null) return current;
+        const trace = snapshot.trace;
+        let phases = current.phases;
+        if (trace) {
+          phases = appendMeshPipelineProfilePhase(phases, "viewer:meshRebuild", trace.meshRebuildTotalMs ?? 0);
+          phases = appendMeshPipelineProfilePhase(phases, "viewer:geometryUpdate", trace.geometryUpdateMs ?? 0);
+          phases = appendMeshPipelineProfilePhase(phases, "viewer:sampleSet", trace.sampleSetMs ?? 0);
+          phases = appendMeshPipelineProfilePhase(phases, "viewer:bounds", trace.boundsMs ?? 0);
+          phases = appendMeshPipelineProfilePhase(phases, "viewer:render", trace.renderMs ?? 0);
+        }
         const next: MeshPipelineProfileRun = {
           ...current,
           updatedAt: Date.now(),
           firstFrameMs: Math.max(0, snapshot.ts - current.startedAt),
           firstFrameSnapshot: snapshot,
+          phases,
         };
         if (typeof console !== "undefined") {
           console.info("[mesh-profile:first-frame]", JSON.stringify(serializeMeshPipelineProfileRun(next)));
@@ -48661,20 +48677,47 @@ case "mobius":
 
       if (quality === "sharp") {
         cache.active = "full";
+        const fullRestoreRequestedAt = benchmarkNowMs();
         setMeshInteractionQualityMode("full");
         setSurfaceMeshImportBusy(true);
         setSurfaceMeshTopologyStatus(
           `Loading full resolution ${cache.label}: ${surfaceMeshTriangleCount(cache.fullMesh).toLocaleString()} triangles.`
         );
         const restoreFull = () => {
+          const restoreStart = benchmarkNowMs();
+          const publishStart = benchmarkNowMs();
           setMeshDataset(cache.fullMesh, "mesh-large:restore-full");
+          const publishMs = benchmarkNowMs() - publishStart;
+          recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, "full:publishDataset", publishMs);
+          const focusStart = benchmarkNowMs();
           focusSurfaceMeshViewport(cache.fullMesh);
+          const focusMs = benchmarkNowMs() - focusStart;
+          recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, "full:focusViewport", focusMs);
+          recordMeshPipelineProfilePhase(
+            meshPipelineProfileLatestIdRef.current,
+            "full:handlerTotal",
+            benchmarkNowMs() - restoreStart
+          );
           setSurfaceMeshImportBusy(false);
           setSurfaceMeshTopologyStatus(
             `Full resolution loaded: ${cache.label} (${Math.floor(
               cache.fullMesh.positions.length / 3
             ).toLocaleString()} vertices / ${surfaceMeshTriangleCount(cache.fullMesh).toLocaleString()} triangles).`
           );
+          if (typeof console !== "undefined") {
+            console.info(
+              "[mesh-full-restore-profile]",
+              JSON.stringify({
+                label: cache.label,
+                vertices: Math.floor(cache.fullMesh.positions.length / 3),
+                triangles: surfaceMeshTriangleCount(cache.fullMesh),
+                queuedMs: restoreStart - fullRestoreRequestedAt,
+                publishMs,
+                focusMs,
+                totalHandlerMs: benchmarkNowMs() - restoreStart,
+              })
+            );
+          }
         };
         if (typeof window !== "undefined") {
           window.requestAnimationFrame(() => window.requestAnimationFrame(restoreFull));
@@ -48697,7 +48740,7 @@ case "mobius":
       setMeshInteractionQualityMode("fast-preview");
       setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
     },
-    [focusSurfaceMeshViewport, setMeshDataset, surfaceMeshData]
+    [focusSurfaceMeshViewport, recordMeshPipelineProfilePhase, setMeshDataset, surfaceMeshData]
   );
 
   useEffect(() => {
@@ -48819,9 +48862,13 @@ case "mobius":
         };
         recordMeshPipelineProfilePhase(profileId, "prep:total", benchmarkNowMs() - meshBuildStart);
         const isLargeMesh = surfaceMeshTriangleCount(meshReady) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD;
+        const displayProxyStart = benchmarkNowMs();
         const meshForApp = isLargeMesh
           ? buildLargeSurfaceMeshDisplayProxy(meshReady, LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET)
           : meshReady;
+        if (isLargeMesh) {
+          recordMeshPipelineProfilePhase(profileId, "app:displayProxy", benchmarkNowMs() - displayProxyStart);
+        }
         largeSurfaceMeshResolutionCacheRef.current = isLargeMesh
           ? { label: meshReady.label, fullMesh: meshReady, previewMesh: meshForApp, active: "preview" }
           : null;
@@ -48914,9 +48961,13 @@ case "mobius":
         });
         recordMeshPipelineProfilePhase(profileId, "prep:total", benchmarkNowMs() - meshBuildStart);
         const isLargeMesh = surfaceMeshTriangleCount(meshReady) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD;
+        const displayProxyStart = benchmarkNowMs();
         const meshForApp = isLargeMesh
           ? buildLargeSurfaceMeshDisplayProxy(meshReady, LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET)
           : meshReady;
+        if (isLargeMesh) {
+          recordMeshPipelineProfilePhase(profileId, "app:displayProxy", benchmarkNowMs() - displayProxyStart);
+        }
         largeSurfaceMeshResolutionCacheRef.current = isLargeMesh
           ? { label: meshReady.label, fullMesh: meshReady, previewMesh: meshForApp, active: "preview" }
           : null;
@@ -107234,6 +107285,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     MESH_PERF_BENCHMARK_PRESETS.find((entry) => entry.id === meshPerformanceBenchmarkId)?.label ?? null;
   const formatPerfMetric = (value: number | null | undefined, digits = 1) =>
     value == null || !Number.isFinite(value) ? "n/a" : Number(value).toFixed(digits);
+  const meshViewerTrace = surfacePerformanceSnapshot?.trace ?? meshPipelineProfile?.firstFrameSnapshot?.trace ?? null;
   const meshPipelineProfileElapsedMs = meshPipelineProfile
     ? Math.max(0, (meshPipelineProfile.completedAt ?? meshPipelineProfile.updatedAt) - meshPipelineProfile.startedAt)
     : null;
@@ -107504,6 +107556,21 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                     <strong>Last mesh build:</strong>{" "}
                     {formatPerfMetric(surfacePerformanceSnapshot?.lastMeshBuildMs ?? meshPerformanceLastBuildMs, 1)} ms
                   </div>
+                  {meshViewerTrace && (
+                    <div style={{ display: "grid", gap: 3, borderTop: "1px solid #dbe4ee", paddingTop: 8, marginTop: 2 }}>
+                      <div style={{ fontWeight: 700 }}>Viewer trace</div>
+                      <div><strong>Rebuild:</strong> {formatPerfMetric(meshViewerTrace.meshRebuildTotalMs, 1)} ms</div>
+                      <div><strong>Geometry update:</strong> {formatPerfMetric(meshViewerTrace.geometryUpdateMs, 1)} ms</div>
+                      <div><strong>Sample set:</strong> {formatPerfMetric(meshViewerTrace.sampleSetMs, 1)} ms</div>
+                      <div><strong>Bounds:</strong> {formatPerfMetric(meshViewerTrace.boundsMs, 1)} ms</div>
+                      <div><strong>Render call:</strong> {formatPerfMetric(meshViewerTrace.renderMs, 1)} ms</div>
+                      <div>
+                        <strong>Samples:</strong> {formatInspectorCount(meshViewerTrace.sampleCount ?? null)}
+                        {" | "}
+                        <strong>Meshes:</strong> {formatInspectorCount(meshViewerTrace.meshCount ?? null)}
+                      </div>
+                    </div>
+                  )}
                   <div><strong>LOD level:</strong> {surfacePerformanceSnapshot?.lodLevel ?? "n/a"}</div>
                   <div><strong>BVH status:</strong> {surfacePerformanceSnapshot?.bvhStatus ?? "n/a"}</div>
                   <div><strong>GPU memory estimate:</strong> {surfacePerformanceSnapshot?.gpuMemoryEstimateLabel ?? "n/a"}</div>
