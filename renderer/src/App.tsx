@@ -39938,6 +39938,33 @@ const App: React.FC = () => {
     meshFullPreviewWorkerRef.current = null;
   }, []);
   useEffect(() => () => clearLargeSurfaceMeshFullPreviewAsyncWork(), [clearLargeSurfaceMeshFullPreviewAsyncWork]);
+  const resetLargeSurfaceMeshFullPreviewForNewLoad = useCallback(
+    (label: string) => {
+      clearLargeSurfaceMeshFullPreviewAsyncWork();
+      largeSurfaceMeshFullRestorePendingRef.current = false;
+      if (meshFullRestoreFrameProfileRef.current?.timeoutId != null && typeof window !== "undefined") {
+        window.clearTimeout(meshFullRestoreFrameProfileRef.current.timeoutId);
+      }
+      meshFullRestoreFrameProfileRef.current = null;
+      setLargeSurfaceMeshFullPreviewJob((current) => {
+        releaseFullMeshPreviewBuffer(current?.bufferKey);
+        if (current) {
+          recordMeshDebugEvent({
+            kind: "full",
+            label: `Dedicated Full viewer reset before loading ${label}`,
+            details: {
+              previousLabel: current.label,
+              previousStatus: current.status,
+              previousTriangles: current.expectedTriangles,
+            },
+          });
+        }
+        return null;
+      });
+      largeSurfaceMeshResolutionCacheRef.current = null;
+    },
+    [clearLargeSurfaceMeshFullPreviewAsyncWork, recordMeshDebugEvent]
+  );
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handler = (event: Event) => {
@@ -49874,6 +49901,7 @@ case "mobius":
     async (presetId: string) => {
       const preset = SURFACE_MESH_ASSET_PRESETS.find((entry) => entry.id === presetId);
       if (!preset) return;
+      resetLargeSurfaceMeshFullPreviewForNewLoad(preset.label);
       setSurfaceMeshImportBusy(true);
       setSurfaceMeshImportError(null);
       const profileId = beginMeshPipelineProfile(preset.label, preset.fileName);
@@ -49957,6 +49985,7 @@ case "mobius":
       focusSurfaceMeshViewport,
       prepareLargeSurfaceMeshInteractiveLoad,
       recordMeshPipelineProfilePhase,
+      resetLargeSurfaceMeshFullPreviewForNewLoad,
       surfaceMeshMergeVertices,
     ]
   );
@@ -49973,6 +50002,7 @@ case "mobius":
     ) => {
       if (!files || (files as FileList).length === 0) return null;
       const firstFile = Array.from(files as ArrayLike<File>)[0] ?? null;
+      resetLargeSurfaceMeshFullPreviewForNewLoad(firstFile?.name ?? options?.profileLabel ?? "mesh file");
       const profileId = beginMeshPipelineProfile(
         options?.profileLabel ?? firstFile?.name ?? "Mesh file",
         firstFile?.name ?? null,
@@ -50073,6 +50103,7 @@ case "mobius":
       focusSurfaceMeshViewport,
       prepareLargeSurfaceMeshInteractiveLoad,
       recordMeshPipelineProfilePhase,
+      resetLargeSurfaceMeshFullPreviewForNewLoad,
       resolveSurfaceMeshBenchmarkVerificationForFile,
       surfaceMeshMergeVertices,
     ]
@@ -50116,12 +50147,13 @@ case "mobius":
         setSurfaceMeshBenchmarkError("Benchmark models are only available in development builds.");
         return;
       }
+      const hintedModel = surfaceMeshBenchmarkModels.find((model) => model.id === modelId) ?? null;
+      resetLargeSurfaceMeshFullPreviewForNewLoad(hintedModel?.label ?? modelId);
       setSurfaceMeshImportBusy(true);
       setSurfaceMeshImportError(null);
       setSurfaceMeshBenchmarkError(null);
       try {
         const profileStartedAt = Date.now();
-        const hintedModel = surfaceMeshBenchmarkModels.find((model) => model.id === modelId) ?? null;
         if (hintedModel?.category === "stress" || hintedModel?.tests.includes("performance")) {
           prepareLargeSurfaceMeshInteractiveLoad(`Loading benchmark model: ${hintedModel.label} in fast preview mode.`, {
             clearCurrentMesh: true,
@@ -50165,7 +50197,13 @@ case "mobius":
         setSurfaceMeshImportBusy(false);
       }
     },
-    [handleLoadSurfaceMeshFile, isDev, prepareLargeSurfaceMeshInteractiveLoad, surfaceMeshBenchmarkModels]
+    [
+      handleLoadSurfaceMeshFile,
+      isDev,
+      prepareLargeSurfaceMeshInteractiveLoad,
+      resetLargeSurfaceMeshFullPreviewForNewLoad,
+      surfaceMeshBenchmarkModels,
+    ]
   );
   useEffect(() => {
     if (typeof window === "undefined" || (!isDev && !window.appRuntime?.e2e)) return;
