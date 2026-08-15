@@ -113,6 +113,9 @@ export type SurfacePerformanceSnapshot = {
     geometryBufferBytes?: number;
     sampleMeshDataBytes?: number;
     disposedGeometryBytes?: number;
+    chunkUploadMs?: number;
+    chunkUploadChunks?: number;
+    chunkUploadMaxMs?: number;
     frameGapMs?: number;
     reason?: string;
   };
@@ -181,6 +184,12 @@ type SurfaceMeshOverride = {
   metalness?: number;
   wireframe?: boolean;
   flatShading?: boolean;
+  fullPreviewBounds?: {
+    min: [number, number, number];
+    max: [number, number, number];
+    center: [number, number, number];
+    radius: number;
+  } | null;
   pickPolicy?: GeometryPickPolicy;
   renderableMetadata?: GeometryRenderableMetadata;
   transform?: {
@@ -537,6 +546,31 @@ const estimateObjectGeometryBytes = (root: THREE.Object3D | null | undefined): n
     total += estimateGeometryBufferBytes(geom);
   });
   return total;
+};
+
+const markBufferAttributeUpdateRange = (attribute: THREE.BufferAttribute, start: number, count: number) => {
+  const anyAttribute = attribute as THREE.BufferAttribute & {
+    addUpdateRange?: (start: number, count: number) => void;
+    clearUpdateRanges?: () => void;
+    updateRange?: { offset: number; count: number };
+  };
+  if (typeof anyAttribute.addUpdateRange === "function") {
+    anyAttribute.addUpdateRange(start, count);
+  } else if (anyAttribute.updateRange) {
+    anyAttribute.updateRange.offset = start;
+    anyAttribute.updateRange.count = count;
+  }
+  attribute.needsUpdate = true;
+};
+
+const applySurfaceMeshOverrideBounds = (geometry: THREE.BufferGeometry, bounds: SurfaceMeshOverride["fullPreviewBounds"]) => {
+  if (!bounds) return false;
+  const min = new THREE.Vector3(bounds.min[0], bounds.min[1], bounds.min[2]);
+  const max = new THREE.Vector3(bounds.max[0], bounds.max[1], bounds.max[2]);
+  const center = new THREE.Vector3(bounds.center[0], bounds.center[1], bounds.center[2]);
+  geometry.boundingBox = new THREE.Box3(min, max);
+  geometry.boundingSphere = new THREE.Sphere(center, Math.max(0.001, bounds.radius));
+  return true;
 };
 
 const emitMeshViewerAllocTrace = (
@@ -1538,6 +1572,7 @@ type Props = {
   gaussHighlightPoint?: { x: number; y: number; z: number } | null;
   sampleMaxPoints?: number;
   includeSamplesUV?: boolean;
+  retainSampleMeshData?: boolean;
   onSampleSet?: (set: SurfaceSampleSet | null) => void;
   selectionMask?: SelectionMask | null;
   selectRegionEnabled?: boolean;
@@ -1645,6 +1680,8 @@ type Props = {
   reframePaddingFactor?: number;
   onViewportDebug?: (snapshot: ViewportDebugSnapshot) => void;
   onPerformanceSnapshot?: (snapshot: SurfacePerformanceSnapshot) => void;
+  chunkedFullMeshUpload?: boolean;
+  chunkedFullMeshUploadChunkFloats?: number;
   lastMeshBuildMs?: number | null;
 
   dragEnabled?: boolean;
@@ -1816,6 +1853,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     gaussHighlightPoint = null,
     sampleMaxPoints = 900,
     includeSamplesUV = true,
+    retainSampleMeshData = true,
     onSampleSet,
     selectionMask = null,
     selectRegionEnabled = false,
@@ -1863,6 +1901,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     reframePaddingFactor = 1.08,
     onViewportDebug,
     onPerformanceSnapshot,
+    chunkedFullMeshUpload = false,
+    chunkedFullMeshUploadChunkFloats = 180_000,
     lastMeshBuildMs = null,
     dragEnabled = false,
     onDragStart,
@@ -2155,6 +2195,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   onMeshInteractionStateChangeRef.current = onMeshInteractionStateChange;
   const lastMeshBuildMsRef = useRef<number | null>(lastMeshBuildMs);
   const meshPerformanceTraceRef = useRef<NonNullable<SurfacePerformanceSnapshot["trace"]> | null>(null);
+  const chunkedFullMeshUploadRunRef = useRef(0);
   const perfFrameRef = useRef<{ lastFrameAt: number; fps: number; frameTimeMs: number; lastEmitAt: number }>({
     lastFrameAt: 0,
     fps: 0,
@@ -2167,6 +2208,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     emaMs: 0,
     samples: 0,
   });
+  useEffect(() => () => {
+    chunkedFullMeshUploadRunRef.current += 1;
+  }, []);
   useEffect(() => {
     meshRuntimeQualityRef.current = meshRuntimeQuality;
   }, [meshRuntimeQuality]);
@@ -4631,7 +4675,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (!mesh.geometry || remainingSamples <= 0) continue;
       mesh.updateMatrixWorld(true);
       const posAttr = mesh.geometry.getAttribute("position") as THREE.BufferAttribute | null;
-      if (posAttr) {
+      if (posAttr && retainSampleMeshData) {
         const indexAttr = mesh.geometry.getIndex();
         const drawCount = getNonIndexedDrawCount(mesh.geometry as THREE.BufferGeometry, posAttr);
         const positions =
@@ -6378,6 +6422,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     let latestLodBufferBytes = 0;
     let latestGeometryBufferBytes = 0;
     let disposedGeometryBytes = 0;
+    let chunkedUploadScheduled = false;
     const traceContext = {
       surfaceId,
       renderQuality,
@@ -6570,9 +6615,276 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const indices = lodBuffers.indices;
       const validation = override.validation ?? null;
       const nanNormals = validation?.stats?.nanNormals ?? 0;
+      const normalsOk = !!normals && normals.length >= positions.length && nanNormals === 0;
+
+      const scheduleChunkedFullUpload = () => {
+        if (!chunkedFullMeshUpload || !fullAllocationTraceEnabled || colorMode !== "solid") return false;
+        if (!rendererRef.current || !cameraRef.current || !controlsRef.current) return false;
+        if (!positions.length || !normalsOk) return false;
+        if (!applySurfaceMeshOverrideBounds(geom, override.fullPreviewBounds ?? null)) return false;
+
+        const runId = ++chunkedFullMeshUploadRunRef.current;
+        const attrStart = performance.now();
+        const positionArray = new Float32Array(positions.length);
+        const positionAttr = new THREE.BufferAttribute(positionArray, 3);
+        positionAttr.setUsage(THREE.DynamicDrawUsage);
+        geom.setAttribute("position", positionAttr);
+
+        let normalAttr: THREE.BufferAttribute | null = null;
+        if (normals) {
+          const normalArray = new Float32Array(normals.length);
+          normalAttr = new THREE.BufferAttribute(normalArray, 3);
+          normalAttr.setUsage(THREE.DynamicDrawUsage);
+          geom.setAttribute("normal", normalAttr);
+        }
+
+        let uvAttr: THREE.BufferAttribute | null = null;
+        if (uvs && uvs.length >= 2) {
+          const uvArray = new Float32Array(uvs.length);
+          uvAttr = new THREE.BufferAttribute(uvArray, 2);
+          uvAttr.setUsage(THREE.DynamicDrawUsage);
+          geom.setAttribute("uv", uvAttr);
+        } else if (geom.getAttribute("uv")) {
+          geom.deleteAttribute("uv");
+        }
+
+        let indexAttr: THREE.BufferAttribute | null = null;
+        if (indices && indices.length >= 3) {
+          const indexArray = new Uint32Array(indices.length);
+          indexAttr = new THREE.BufferAttribute(indexArray, 1);
+          indexAttr.setUsage(THREE.DynamicDrawUsage);
+          geom.setIndex(indexAttr);
+          // Indexed meshes usually have small shared vertex buffers here; copy them once and stream the index draw range.
+          positionArray.set(positions);
+          markBufferAttributeUpdateRange(positionAttr, 0, positionArray.length);
+          if (normalAttr && normals) {
+            (normalAttr.array as Float32Array).set(normals);
+            markBufferAttributeUpdateRange(normalAttr, 0, normalAttr.array.length);
+          }
+          if (uvAttr && uvs) {
+            (uvAttr.array as Float32Array).set(uvs);
+            markBufferAttributeUpdateRange(uvAttr, 0, uvAttr.array.length);
+          }
+        } else if (geom.getIndex()) {
+          geom.setIndex(null);
+        }
+
+        geom.setDrawRange(0, 0);
+        const attrMs = performance.now() - attrStart;
+        attributeUpdateMsTotal += attrMs;
+        latestGeometryBufferBytes = estimateGeometryBufferBytes(geom);
+        if (fullAllocationTraceEnabled) {
+          emitMeshViewerAllocTrace("alloc", "After BufferGeometry attributes:update", {
+            ...traceContext,
+            overrideId: override.id ?? null,
+            chunkedUpload: true,
+            geometryBufferBytes: latestGeometryBufferBytes,
+            positionBytes: typedArrayBytes(positionAttr.array),
+            normalBytes: typedArrayBytes(normalAttr?.array),
+            colorBytes: typedArrayBytes((geom.getAttribute("color") as THREE.BufferAttribute | undefined)?.array),
+            indexBytes: typedArrayBytes(indexAttr?.array),
+            normalsComputed: false,
+            vertexColors: false,
+          }, attrMs);
+        }
+
+        let positionOffset = 0;
+        let indexOffset = 0;
+        let chunkCount = 0;
+        let totalChunkMs = 0;
+        let maxChunkMs = 0;
+        const startedAt = performance.now();
+        const baseChunkFloats = Math.max(9_000, Math.floor(chunkedFullMeshUploadChunkFloats / 3) * 3);
+        const indexChunkCount = Math.max(3_000, Math.floor(chunkedFullMeshUploadChunkFloats / 3) * 3);
+
+        const renderChunk = () => {
+          if (chunkedFullMeshUploadRunRef.current !== runId) return;
+          const renderer = rendererRef.current;
+          const camera = cameraRef.current;
+          const controls = controlsRef.current;
+          if (!renderer || !camera || !controls) return;
+          const chunkStart = performance.now();
+          let copied = 0;
+          let total = 0;
+          if (indexAttr && indices) {
+            const end = Math.min(indices.length, indexOffset + indexChunkCount);
+            (indexAttr.array as Uint32Array).set(indices.subarray(indexOffset, end), indexOffset);
+            markBufferAttributeUpdateRange(indexAttr, indexOffset, end - indexOffset);
+            indexOffset = end;
+            copied = indexOffset;
+            total = indices.length;
+            geom.setDrawRange(0, Math.floor(indexOffset / 3) * 3);
+          } else {
+            const end = Math.min(positions.length, positionOffset + baseChunkFloats);
+            positionArray.set(positions.subarray(positionOffset, end), positionOffset);
+            markBufferAttributeUpdateRange(positionAttr, positionOffset, end - positionOffset);
+            if (normalAttr && normals) {
+              (normalAttr.array as Float32Array).set(normals.subarray(positionOffset, end), positionOffset);
+              markBufferAttributeUpdateRange(normalAttr, positionOffset, end - positionOffset);
+            }
+            if (uvAttr && uvs) {
+              const uvStart = Math.floor(positionOffset / 3) * 2;
+              const uvEnd = Math.min(uvs.length, Math.floor(end / 3) * 2);
+              (uvAttr.array as Float32Array).set(uvs.subarray(uvStart, uvEnd), uvStart);
+              markBufferAttributeUpdateRange(uvAttr, uvStart, uvEnd - uvStart);
+            }
+            positionOffset = end;
+            copied = positionOffset;
+            total = positions.length;
+            geom.setDrawRange(0, Math.floor(positionOffset / 3));
+          }
+          controls.update();
+          const renderStart = performance.now();
+          renderer.render(scene, camera);
+          const renderMs = performance.now() - renderStart;
+          const chunkMs = performance.now() - chunkStart;
+          chunkCount += 1;
+          totalChunkMs += chunkMs;
+          maxChunkMs = Math.max(maxChunkMs, chunkMs);
+          const complete = copied >= total;
+          if (fullAllocationTraceEnabled) {
+            emitMeshViewerAllocTrace("alloc", "full:gpuChunkUpload", {
+              ...traceContext,
+              overrideId: override.id ?? null,
+              chunkIndex: chunkCount,
+              copied,
+              total,
+              complete,
+              renderMs,
+              totalChunkMs,
+              maxChunkMs,
+              geometryBufferBytes: latestGeometryBufferBytes,
+              drawRangeCount: geom.drawRange.count,
+            }, chunkMs);
+          }
+          if (!complete) {
+            window.requestAnimationFrame(renderChunk);
+            return;
+          }
+          geom.setDrawRange(0, indexAttr && indices ? indices.length : Math.floor(positions.length / 3));
+          latestGeometryBufferBytes = estimateGeometryBufferBytes(geom);
+          const renderInfo = renderer.info.render;
+          if (fullAllocationTraceEnabled) {
+            emitMeshViewerAllocTrace("alloc", "After first renderer.render after Full geometry", {
+              ...traceContext,
+              renderInfoCalls: Math.max(0, Math.round(renderInfo.calls ?? 0)),
+              renderInfoTriangles: Math.max(0, Math.round(renderInfo.triangles ?? 0)),
+              rendererGeometries: renderer.info.memory.geometries ?? null,
+              rendererTextures: renderer.info.memory.textures ?? null,
+              gpuMemoryEstimateBytes: latestGeometryBufferBytes,
+              lodBufferBytes: latestLodBufferBytes,
+              geometryBufferBytes: latestGeometryBufferBytes,
+              sampleMeshDataBytes: 0,
+              chunkUploadMs: totalChunkMs,
+              chunkUploadChunks: chunkCount,
+              chunkUploadMaxMs: maxChunkMs,
+            }, renderMs);
+            window.setTimeout(() => {
+              renderer.renderLists?.dispose?.();
+              emitMeshViewerAllocTrace("alloc", "Full idle after clearing old render lists", {
+                ...traceContext,
+                rendererGeometries: renderer.info.memory.geometries ?? null,
+                rendererTextures: renderer.info.memory.textures ?? null,
+                gpuMemoryEstimateBytes: estimateObjectGeometryBytes(surfaceObjRef.current),
+                disposedGeometryBytes,
+                gcAvailable: typeof (window as unknown as { gc?: unknown }).gc === "function",
+              });
+            }, 1000);
+          }
+          const elapsedMs = performance.now() - startedAt;
+          meshPerformanceTraceRef.current = {
+            ...(meshPerformanceTraceRef.current ?? {}),
+            chunkUploadMs: totalChunkMs,
+            chunkUploadChunks: chunkCount,
+            chunkUploadMaxMs: maxChunkMs,
+            geometryBufferBytes: latestGeometryBufferBytes,
+            reason: "chunked-full-upload",
+          };
+          onPerformanceSnapshotRef.current?.({
+            ts: Date.now(),
+            fps: perfFrameRef.current.fps,
+            frameTimeMs: perfFrameRef.current.frameTimeMs,
+            frameGapMs: null,
+            drawCalls: Math.max(0, Math.round(renderInfo.calls ?? 0)),
+            triangles: lodBuffers.fullTriangleCount,
+            vertices: Math.floor(positions.length / 3),
+            meshObjects: 1,
+            overlayObjects: 0,
+            raycastTimeMs: raycastPerfRef.current.emaMs,
+            lastMeshBuildMs: lastMeshBuildMsRef.current,
+            lodLevel: "Full",
+            bvhStatus: "Off",
+            gpuMemoryEstimateBytes: latestGeometryBufferBytes,
+            gpuMemoryEstimateLabel: formatBytes(latestGeometryBufferBytes),
+            rendererMemory: {
+              geometries: renderer.info.memory.geometries ?? 0,
+              textures: renderer.info.memory.textures ?? 0,
+            },
+            trace: {
+              ...(meshPerformanceTraceRef.current ?? {}),
+              meshRebuildTotalMs: elapsedMs,
+              lodBuildMs: lodBuildMsTotal,
+              attributeUpdateMs: attributeUpdateMsTotal,
+              geometryUpdateMs: elapsedMs,
+              sampleSetMs: 0,
+              boundsMs: 0,
+              renderMs,
+              meshCount: 1,
+              sampleCount: 0,
+              meshDataCount: 0,
+              lodBufferBytes: latestLodBufferBytes,
+              geometryBufferBytes: latestGeometryBufferBytes,
+              sampleMeshDataBytes: 0,
+              disposedGeometryBytes,
+              chunkUploadMs: totalChunkMs,
+              chunkUploadChunks: chunkCount,
+              chunkUploadMaxMs: maxChunkMs,
+              reason: "chunked-full-upload",
+            },
+          });
+        };
+
+        window.requestAnimationFrame(renderChunk);
+        return true;
+      };
 
       const attrStart = performance.now();
       const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
+      if (scheduleChunkedFullUpload()) {
+        chunkedUploadScheduled = true;
+        latestGeometryBufferBytes = estimateGeometryBufferBytes(geom);
+        const style = {
+          color: override.color,
+          opacity: override.opacity,
+          roughness: override.roughness,
+          metalness: override.metalness,
+          wireframe: override.wireframe,
+          flatShading: override.flatShading,
+        };
+        (mesh as any).userData.__surfaceMeshLod = {
+          runtimeQuality: runtimeQualityForMesh,
+          fullTriangleCount: lodBuffers.fullTriangleCount,
+          activeTriangleCount: 0,
+        };
+        (mesh as any).userData.__surfaceMeshOverrideStyle = style;
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const m of mats) {
+          if (!m) continue;
+          (m as any).wireframe = style.wireframe ?? !!effectiveWireframe;
+          (m as any).flatShading = !!style.flatShading;
+          (m as any).roughness = clamp01(style.roughness ?? materialRoughness);
+          (m as any).metalness = clamp01(style.metalness ?? materialMetalness);
+          const styleOpacity = clamp01((style.opacity ?? 1) * materialOpacity);
+          (m as any).transparent = styleOpacity < 1;
+          (m as any).opacity = styleOpacity;
+          if (colorMode === "solid") {
+            (m as any).color?.set(style.color ?? solidColorForPalette(colorPalette));
+          }
+          m.needsUpdate = true;
+        }
+        applySurfaceMeshOverrideTransform(mesh, override.transform);
+        return;
+      }
       if (!posAttr || posAttr.array.length !== positions.length) {
         geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
       } else {
@@ -6604,7 +6916,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         geom.deleteAttribute("uv");
       }
 
-      const normalsOk = !!normals && normals.length >= positions.length && nanNormals === 0;
       if (normalsOk) {
         const nAttr = geom.getAttribute("normal") as THREE.BufferAttribute | null;
         if (!nAttr || nAttr.array.length !== normals.length) {
@@ -6617,8 +6928,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         geom.computeVertexNormals();
       }
 
-      geom.computeBoundingBox();
-      geom.computeBoundingSphere();
+      if (!applySurfaceMeshOverrideBounds(geom, override.fullPreviewBounds ?? null)) {
+        geom.computeBoundingBox();
+        geom.computeBoundingSphere();
+      }
       const attrMs = performance.now() - attrStart;
       attributeUpdateMsTotal += attrMs;
       latestGeometryBufferBytes = estimateGeometryBufferBytes(geom);
@@ -6750,7 +7063,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (!mesh.geometry || remainingSamples <= 0) continue;
       mesh.updateMatrixWorld(true);
       const posAttr = mesh.geometry.getAttribute("position") as THREE.BufferAttribute | null;
-      if (posAttr) {
+      if (posAttr && retainSampleMeshData) {
         const indexAttr = mesh.geometry.getIndex();
         const drawCount = getNonIndexedDrawCount(mesh.geometry as THREE.BufferGeometry, posAttr);
         const positions =
@@ -6879,7 +7192,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (renderer && camera && controls && !suspendRenderingRef.current) {
       controls.update();
       const now = performance.now();
-      if (fullAllocationTraceEnabled) {
+      if (fullAllocationTraceEnabled && !chunkedUploadScheduled) {
         emitMeshViewerAllocTrace("alloc", "Before first renderer.render after Full geometry", {
           ...traceContext,
           rendererGeometries: renderer.info.memory.geometries ?? null,
@@ -6920,7 +7233,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         const indexArray = geom.index?.array as { byteLength?: number } | undefined;
         if (Number.isFinite(indexArray?.byteLength)) gpuBytes += Number(indexArray?.byteLength);
       }
-      if (fullAllocationTraceEnabled) {
+      if (fullAllocationTraceEnabled && !chunkedUploadScheduled) {
         emitMeshViewerAllocTrace("alloc", "After first renderer.render after Full geometry", {
           ...traceContext,
           renderInfoCalls: Math.max(0, Math.round(renderInfo.calls ?? 0)),
@@ -7016,7 +7329,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     meshRuntimeQuality,
     meshInteractionQualityMode,
     normalizedMeshPreviewTriangleTarget,
+    chunkedFullMeshUpload,
+    chunkedFullMeshUploadChunkFloats,
     includeSamplesUV,
+    retainSampleMeshData,
     sampleMaxPoints,
     showBoundingBox,
     onSampleSet,

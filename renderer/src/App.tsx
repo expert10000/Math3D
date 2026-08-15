@@ -1976,7 +1976,6 @@ const formatBenchmarkBytes = (bytes: number | null | undefined): string => {
 const LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD = 50_000;
 const LARGE_MESH_FAST_LOAD_FILE_BYTES = 5 * 1024 * 1024;
 const LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET = 1_000;
-const LARGE_MESH_FULL_PREVIEW_STAGE_DELAY_MS = 80;
 
 const DETERMINISTIC_IMPLICIT_SAMPLE_EXPR = "x*x + y*y + z*z - 1";
 
@@ -2023,6 +2022,12 @@ type MeshFullPreviewWorkerResponse = {
   normals: Float32Array | null;
   indices: Uint32Array | null;
   uvs: Float32Array | null;
+  bounds: {
+    min: [number, number, number];
+    max: [number, number, number];
+    center: [number, number, number];
+    radius: number;
+  };
   vertexCount: number;
   triangleCount: number;
   geometryBytes: number;
@@ -2043,7 +2048,7 @@ type LargeSurfaceMeshFullPreviewJob = {
   requestedAt: number;
   expectedTriangles: number;
   expectedGeometryBytes: number | null;
-  status: "preparing" | "previewing" | "rendering" | "ready" | "failed";
+  status: "preparing" | "rendering" | "ready" | "failed";
   stageTriangles: number | null;
   stageIndex: number;
   stageCount: number;
@@ -2101,48 +2106,6 @@ const buildLargeSurfaceMeshDisplayProxy = (mesh: SurfaceMeshData, targetTriangle
     uvs,
     source: mesh.source,
     meanEdgeLength: mesh.meanEdgeLength ?? null,
-    validation: null,
-  };
-};
-
-const buildLargeSurfaceMeshFullPreviewStageTargets = (fullTriangles: number): number[] => {
-  if (fullTriangles <= 0) return [];
-  const requested = [
-    Math.min(fullTriangles, LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET),
-    Math.min(fullTriangles, Math.max(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET * 6, Math.ceil(fullTriangles * 0.08))),
-    Math.min(fullTriangles, Math.max(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET * 25, Math.ceil(fullTriangles * 0.35))),
-    fullTriangles,
-  ];
-  const unique: number[] = [];
-  for (const value of requested) {
-    const triangles = Math.max(1, Math.min(fullTriangles, Math.floor(value)));
-    if (unique[unique.length - 1] !== triangles) unique.push(triangles);
-  }
-  return unique;
-};
-
-const buildLargeSurfaceMeshFullPreviewStage = (mesh: SurfaceMeshData, targetTriangles: number): SurfaceMeshData => {
-  const fullTriangles = surfaceMeshTriangleCount(mesh);
-  const stageTriangles = Math.max(1, Math.min(fullTriangles, Math.floor(targetTriangles)));
-  if (stageTriangles >= fullTriangles) return mesh;
-  if (mesh.indices?.length) {
-    return {
-      ...mesh,
-      label: mesh.label,
-      indices: mesh.indices.subarray(0, stageTriangles * 3),
-      adjacency: null,
-      validation: null,
-    };
-  }
-  const positionLength = stageTriangles * 9;
-  const uvLength = stageTriangles * 6;
-  return {
-    ...mesh,
-    label: mesh.label,
-    positions: mesh.positions.subarray(0, Math.min(mesh.positions.length, positionLength)),
-    normals: mesh.normals ? mesh.normals.subarray(0, Math.min(mesh.normals.length, positionLength)) : null,
-    uvs: mesh.uvs ? mesh.uvs.subarray(0, Math.min(mesh.uvs.length, uvLength)) : null,
-    adjacency: null,
     validation: null,
   };
 };
@@ -39901,7 +39864,6 @@ const App: React.FC = () => {
   const meshPipelineProfileLatestIdRef = useRef<string | null>(null);
   const largeSurfaceMeshFullPreviewJobCounterRef = useRef(0);
   const largeSurfaceMeshFullPreviewTimerRef = useRef<number | null>(null);
-  const largeSurfaceMeshFullPreviewStageTimerRef = useRef<number | null>(null);
   const meshFullPreviewWorkerRef = useRef<Worker | null>(null);
   const meshFullPreviewWorkerJobIdRef = useRef<number | null>(null);
   const [largeSurfaceMeshFullPreviewJob, setLargeSurfaceMeshFullPreviewJob] =
@@ -39972,10 +39934,6 @@ const App: React.FC = () => {
       window.clearTimeout(largeSurfaceMeshFullPreviewTimerRef.current);
     }
     largeSurfaceMeshFullPreviewTimerRef.current = null;
-    if (typeof window !== "undefined" && largeSurfaceMeshFullPreviewStageTimerRef.current != null) {
-      window.clearTimeout(largeSurfaceMeshFullPreviewStageTimerRef.current);
-    }
-    largeSurfaceMeshFullPreviewStageTimerRef.current = null;
     meshFullPreviewWorkerJobIdRef.current = null;
     meshFullPreviewWorkerRef.current?.terminate();
     meshFullPreviewWorkerRef.current = null;
@@ -40014,19 +39972,19 @@ const App: React.FC = () => {
               : null;
         setLargeSurfaceMeshFullPreviewJob((current) => {
           if (!current || current.status === "ready" || current.status === "failed") return current;
+          const chunkedFullUploadReady =
+            typeof traceDetails.chunkUploadChunks === "number" &&
+            Number.isFinite(traceDetails.chunkUploadChunks) &&
+            traceDetails.chunkUploadChunks > 0;
           const trianglesReady = fullTriangleCount == null || fullTriangleCount >= current.expectedTriangles;
           const geometryReady =
             current.expectedGeometryBytes == null ||
             (geometryBufferBytes != null && geometryBufferBytes >= current.expectedGeometryBytes * 0.95);
-          if (!trianglesReady || !geometryReady) return current;
+          if (!trianglesReady || !geometryReady || !chunkedFullUploadReady) return current;
           if (typeof window !== "undefined" && largeSurfaceMeshFullPreviewTimerRef.current != null) {
             window.clearTimeout(largeSurfaceMeshFullPreviewTimerRef.current);
           }
           largeSurfaceMeshFullPreviewTimerRef.current = null;
-          if (typeof window !== "undefined" && largeSurfaceMeshFullPreviewStageTimerRef.current != null) {
-            window.clearTimeout(largeSurfaceMeshFullPreviewStageTimerRef.current);
-          }
-          largeSurfaceMeshFullPreviewStageTimerRef.current = null;
           largeSurfaceMeshFullRestorePendingRef.current = false;
           const elapsedMs = Math.max(0, (detail.ts ?? Date.now()) - current.requestedAt);
           recordMeshDebugEvent({
@@ -49432,52 +49390,6 @@ case "mobius":
       });
       if (typeof window === "undefined") return;
 
-      const publishStage = (fullMesh: SurfaceMeshData, stages: number[], stageIndex: number) => {
-        const stageTriangles = stages[stageIndex] ?? expectedTriangles;
-        const finalStage = stageTriangles >= expectedTriangles || stageIndex >= stages.length - 1;
-        const stageStart = benchmarkNowMs();
-        const stageMesh = buildLargeSurfaceMeshFullPreviewStage(fullMesh, stageTriangles);
-        const stageBuildMs = benchmarkNowMs() - stageStart;
-        recordMeshPipelineProfilePhase(
-          meshPipelineProfileLatestIdRef.current,
-          finalStage ? "full:progressiveFinalStage" : "full:progressivePreviewStage",
-          stageBuildMs
-        );
-        recordMeshDebugEvent({
-          kind: "full",
-          label: finalStage ? "Full progressive final stage" : "Full progressive preview stage",
-          ms: stageBuildMs,
-          details: {
-            label: cache.label,
-            jobId,
-            stageIndex: stageIndex + 1,
-            stageCount: stages.length,
-            stageTriangles,
-            expectedTriangles,
-            stageMeshBytes: estimateSurfaceMeshDataBytes(stageMesh),
-            fullMeshBytes: estimateSurfaceMeshDataBytes(fullMesh),
-          },
-        });
-        setLargeSurfaceMeshFullPreviewJob((current) => {
-          if (!current || current.id !== jobId || current.status === "failed" || current.status === "ready") {
-            return current;
-          }
-          return {
-            ...current,
-            mesh: stageMesh,
-            fullMesh,
-            status: finalStage ? "rendering" : "previewing",
-            stageTriangles,
-            stageIndex: stageIndex + 1,
-            stageCount: stages.length,
-          };
-        });
-        if (finalStage) return;
-        largeSurfaceMeshFullPreviewStageTimerRef.current = window.setTimeout(() => {
-          window.requestAnimationFrame(() => publishStage(fullMesh, stages, stageIndex + 1));
-        }, LARGE_MESH_FULL_PREVIEW_STAGE_DELAY_MS);
-      };
-
       const cloneStart = benchmarkNowMs();
       let positions: Float32Array;
       let normals: Float32Array | null;
@@ -49537,7 +49449,7 @@ case "mobius":
         if (meshFullPreviewWorkerRef.current === worker) meshFullPreviewWorkerRef.current = null;
         meshFullPreviewWorkerJobIdRef.current = null;
         const transferRoundTripMs = benchmarkNowMs() - data.sentAt;
-        const fullMesh: SurfaceMeshData = {
+        const fullMesh = {
           ...cache.fullMesh,
           positions: data.positions,
           normals: data.normals,
@@ -49545,8 +49457,8 @@ case "mobius":
           uvs: data.uvs,
           adjacency: null,
           validation: cache.fullMesh.validation ?? null,
-        };
-        const stages = buildLargeSurfaceMeshFullPreviewStageTargets(data.triangleCount);
+          fullPreviewBounds: data.bounds,
+        } as SurfaceMeshData & { fullPreviewBounds: MeshFullPreviewWorkerResponse["bounds"] };
         recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, "full:workerBuild", data.timings.totalMs);
         recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, "full:workerTransferRoundTrip", transferRoundTripMs);
         recordMeshDebugEvent({
@@ -49560,25 +49472,28 @@ case "mobius":
             vertexCount: data.vertexCount,
             triangleCount: data.triangleCount,
             geometryBytes: data.geometryBytes,
-            stageCount: stages.length,
+            bounds: data.bounds,
           },
         });
         setLargeSurfaceMeshFullPreviewJob((current) =>
           current?.id === jobId
             ? {
                 ...current,
+                mesh: fullMesh,
                 fullMesh,
+                status: "rendering",
                 workerMs: data.timings.totalMs,
                 transferMs: transferRoundTripMs,
-                stageCount: stages.length,
+                stageTriangles: data.triangleCount,
+                stageIndex: 1,
+                stageCount: 1,
                 error: null,
               }
             : current
         );
         setSurfaceMeshTopologyStatus(
-          `Streaming dedicated Full viewer for ${cache.label}: ${data.triangleCount.toLocaleString()} triangles.`
+          `Uploading dedicated Full viewer for ${cache.label}: ${data.triangleCount.toLocaleString()} triangles.`
         );
-        window.requestAnimationFrame(() => publishStage(fullMesh, stages, 0));
       };
       worker.onerror = (event) => {
         worker.terminate();
@@ -49588,10 +49503,6 @@ case "mobius":
           window.clearTimeout(largeSurfaceMeshFullPreviewTimerRef.current);
         }
         largeSurfaceMeshFullPreviewTimerRef.current = null;
-        if (largeSurfaceMeshFullPreviewStageTimerRef.current != null) {
-          window.clearTimeout(largeSurfaceMeshFullPreviewStageTimerRef.current);
-        }
-        largeSurfaceMeshFullPreviewStageTimerRef.current = null;
         largeSurfaceMeshFullRestorePendingRef.current = false;
         const message = event.message || "Full preview worker failed";
         recordMeshDebugEvent({
@@ -49643,10 +49554,6 @@ case "mobius":
         setLargeSurfaceMeshFullPreviewJob((current) => {
           if (!current || current.id !== jobId || current.status === "ready") return current;
           largeSurfaceMeshFullRestorePendingRef.current = false;
-          if (largeSurfaceMeshFullPreviewStageTimerRef.current != null) {
-            window.clearTimeout(largeSurfaceMeshFullPreviewStageTimerRef.current);
-          }
-          largeSurfaceMeshFullPreviewStageTimerRef.current = null;
           meshFullPreviewWorkerRef.current?.terminate();
           meshFullPreviewWorkerRef.current = null;
           meshFullPreviewWorkerJobIdRef.current = null;
@@ -49692,15 +49599,15 @@ case "mobius":
         const geometryReady =
           current.expectedGeometryBytes == null ||
           (geometryBufferBytes != null && geometryBufferBytes >= current.expectedGeometryBytes * 0.95);
-        if (snapshot.triangles < current.expectedTriangles || !geometryReady) return current;
+        const chunkedFullUploadReady =
+          snapshot.trace?.reason === "chunked-full-upload" &&
+          typeof snapshot.trace.chunkUploadChunks === "number" &&
+          snapshot.trace.chunkUploadChunks > 0;
+        if (snapshot.triangles < current.expectedTriangles || !geometryReady || !chunkedFullUploadReady) return current;
         if (typeof window !== "undefined" && largeSurfaceMeshFullPreviewTimerRef.current != null) {
           window.clearTimeout(largeSurfaceMeshFullPreviewTimerRef.current);
         }
         largeSurfaceMeshFullPreviewTimerRef.current = null;
-        if (typeof window !== "undefined" && largeSurfaceMeshFullPreviewStageTimerRef.current != null) {
-          window.clearTimeout(largeSurfaceMeshFullPreviewStageTimerRef.current);
-        }
-        largeSurfaceMeshFullPreviewStageTimerRef.current = null;
         largeSurfaceMeshFullRestorePendingRef.current = false;
         const elapsedMs = Math.max(0, snapshot.ts - current.requestedAt);
         recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, "full:dedicatedViewerReady", elapsedMs);
@@ -70834,10 +70741,6 @@ case "mobius":
                                   {largeSurfaceMeshFullPreviewJob.expectedTriangles.toLocaleString()} triangles
                                   {largeSurfaceMeshFullPreviewJob.status === "preparing"
                                     ? " · preparing in worker"
-                                    : largeSurfaceMeshFullPreviewJob.status === "previewing"
-                                      ? ` · streaming ${(
-                                          largeSurfaceMeshFullPreviewJob.stageTriangles ?? 0
-                                        ).toLocaleString()}`
                                     : largeSurfaceMeshFullPreviewJob.status === "rendering"
                                       ? " · uploading full buffers"
                                       : largeSurfaceMeshFullPreviewJob.status === "ready"
@@ -70933,6 +70836,9 @@ case "mobius":
                                   windowReframeToken={windowReframeToken}
                                   reframePaddingFactor={surfacePreviewReframePaddingFactor}
                                   onPerformanceSnapshot={handleLargeSurfaceMeshFullPreviewSnapshot}
+                                  chunkedFullMeshUpload={true}
+                                  chunkedFullMeshUploadChunkFloats={180_000}
+                                  retainSampleMeshData={false}
                                   probeEnabled={false}
                                   showProbeNormal={false}
                                   showProbeTangentPlane={false}
