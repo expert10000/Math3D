@@ -426,6 +426,11 @@ import {
   type SurfaceMeshSource,
   type SurfaceMeshPreset,
 } from "./mesh/surfaceMesh";
+import {
+  releaseFullMeshPreviewBuffer,
+  storeFullMeshPreviewBuffer,
+  type FullMeshPreviewBounds,
+} from "./mesh/fullMeshPreviewBufferStore";
 import { exportMeshToGLB, exportMeshToOBJ, exportMeshToPLY } from "./mesh/meshExport";
 import {
   computeAdjacency,
@@ -2022,12 +2027,7 @@ type MeshFullPreviewWorkerResponse = {
   normals: Float32Array | null;
   indices: Uint32Array | null;
   uvs: Float32Array | null;
-  bounds: {
-    min: [number, number, number];
-    max: [number, number, number];
-    center: [number, number, number];
-    radius: number;
-  };
+  bounds: FullMeshPreviewBounds;
   vertexCount: number;
   triangleCount: number;
   geometryBytes: number;
@@ -2043,8 +2043,7 @@ type MeshFullPreviewWorkerResponse = {
 type LargeSurfaceMeshFullPreviewJob = {
   id: number;
   label: string;
-  mesh: SurfaceMeshData | null;
-  fullMesh: SurfaceMeshData | null;
+  bufferKey: string | null;
   requestedAt: number;
   expectedTriangles: number;
   expectedGeometryBytes: number | null;
@@ -40037,7 +40036,10 @@ const App: React.FC = () => {
       meshFullRestoreFrameProfileRef.current = null;
       largeSurfaceMeshFullRestorePendingRef.current = false;
       clearLargeSurfaceMeshFullPreviewAsyncWork();
-      setLargeSurfaceMeshFullPreviewJob(null);
+      setLargeSurfaceMeshFullPreviewJob((current) => {
+        releaseFullMeshPreviewBuffer(current?.bufferKey);
+        return null;
+      });
       cache.active = "preview";
       setSurfaceRenderQuality("performance");
       setMeshInteractionQualityMode("fast-preview");
@@ -49319,6 +49321,7 @@ case "mobius":
       clearLargeSurfaceMeshFullPreviewAsyncWork();
       largeSurfaceMeshFullRestorePendingRef.current = false;
       setLargeSurfaceMeshFullPreviewJob((current) => {
+        releaseFullMeshPreviewBuffer(current?.bufferKey);
         if (current && reason !== "closed") {
           recordMeshDebugEvent({
             kind: "full",
@@ -49369,24 +49372,26 @@ case "mobius":
           previewTriangles: surfaceMeshTriangleCount(cache.previewMesh),
         },
       });
-      setLargeSurfaceMeshFullPreviewJob({
-        id: jobId,
-        label: cache.label,
-        mesh: null,
-        fullMesh: null,
-        requestedAt,
-        expectedTriangles,
-        expectedGeometryBytes,
-        status: "preparing",
-        stageTriangles: null,
-        stageIndex: 0,
-        stageCount: 0,
-        workerMs: null,
-        transferMs: null,
-        elapsedMs: null,
-        geometryBufferBytes: null,
-        error: null,
-        trace: null,
+      setLargeSurfaceMeshFullPreviewJob((current) => {
+        releaseFullMeshPreviewBuffer(current?.bufferKey);
+        return {
+          id: jobId,
+          label: cache.label,
+          bufferKey: null,
+          requestedAt,
+          expectedTriangles,
+          expectedGeometryBytes,
+          status: "preparing",
+          stageTriangles: null,
+          stageIndex: 0,
+          stageCount: 0,
+          workerMs: null,
+          transferMs: null,
+          elapsedMs: null,
+          geometryBufferBytes: null,
+          error: null,
+          trace: null,
+        };
       });
       if (typeof window === "undefined") return;
 
@@ -49418,6 +49423,7 @@ case "mobius":
               }
             : current
         );
+        setSurfaceMeshTopologyStatus(`Full viewer failed for ${cache.label}; Fast preview remains active.`);
         return;
       }
       const cloneMs = benchmarkNowMs() - cloneStart;
@@ -49449,18 +49455,26 @@ case "mobius":
         if (meshFullPreviewWorkerRef.current === worker) meshFullPreviewWorkerRef.current = null;
         meshFullPreviewWorkerJobIdRef.current = null;
         const transferRoundTripMs = benchmarkNowMs() - data.sentAt;
-        const fullMesh = {
-          ...cache.fullMesh,
-          positions: data.positions,
-          normals: data.normals,
-          indices: data.indices,
-          uvs: data.uvs,
-          adjacency: null,
-          validation: cache.fullMesh.validation ?? null,
-          fullPreviewBounds: data.bounds,
-        } as SurfaceMeshData & { fullPreviewBounds: MeshFullPreviewWorkerResponse["bounds"] };
+        const bufferStoreStart = benchmarkNowMs();
+        const bufferKey = storeFullMeshPreviewBuffer(
+          {
+            id: `full-preview:${jobId}`,
+            label: cache.label,
+            positions: data.positions,
+            normals: data.normals,
+            indices: data.indices,
+            uvs: data.uvs,
+            meanEdgeLength: cache.fullMesh.meanEdgeLength ?? null,
+            validation: cache.fullMesh.validation ?? null,
+            fullPreviewBounds: data.bounds,
+            pickPolicy: "never",
+          },
+          `full-preview:${jobId}`
+        );
+        const bufferStoreMs = benchmarkNowMs() - bufferStoreStart;
         recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, "full:workerBuild", data.timings.totalMs);
         recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, "full:workerTransferRoundTrip", transferRoundTripMs);
+        recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, "full:bufferStorePublish", bufferStoreMs);
         recordMeshDebugEvent({
           kind: "full",
           label: `Full worker ready: ${cache.label}`,
@@ -49473,14 +49487,15 @@ case "mobius":
             triangleCount: data.triangleCount,
             geometryBytes: data.geometryBytes,
             bounds: data.bounds,
+            bufferKey,
+            bufferStoreMs,
           },
         });
         setLargeSurfaceMeshFullPreviewJob((current) =>
           current?.id === jobId
             ? {
                 ...current,
-                mesh: fullMesh,
-                fullMesh,
+                bufferKey,
                 status: "rendering",
                 workerMs: data.timings.totalMs,
                 transferMs: transferRoundTripMs,
@@ -49514,6 +49529,7 @@ case "mobius":
           current?.id === jobId
             ? {
                 ...current,
+                bufferKey: null,
                 status: "failed",
                 elapsedMs: Math.max(0, Date.now() - requestedAt),
                 error: message,
@@ -49557,6 +49573,7 @@ case "mobius":
           meshFullPreviewWorkerRef.current?.terminate();
           meshFullPreviewWorkerRef.current = null;
           meshFullPreviewWorkerJobIdRef.current = null;
+          releaseFullMeshPreviewBuffer(current.bufferKey);
           const elapsedMs = Math.max(0, Date.now() - current.requestedAt);
           recordMeshDebugEvent({
             kind: "full",
@@ -49574,6 +49591,7 @@ case "mobius":
           setSurfaceMeshTopologyStatus(`Full viewer timed out for ${current.label}; Fast preview remains active.`);
           return {
             ...current,
+            bufferKey: null,
             status: "failed",
             elapsedMs,
             error: "Full viewer timed out; Fast preview remains active.",
@@ -70770,7 +70788,7 @@ case "mobius":
                             <div style={{ position: "relative", flex: 1, minHeight: 0 }}>
                               {largeSurfaceMeshFullPreviewJob.status === "preparing" ||
                               largeSurfaceMeshFullPreviewJob.status === "failed" ||
-                              !largeSurfaceMeshFullPreviewJob.mesh ? (
+                              !largeSurfaceMeshFullPreviewJob.bufferKey ? (
                                 <div
                                   style={{
                                     position: "absolute",
@@ -70818,7 +70836,7 @@ case "mobius":
                                   meshInteractionQualityMode="full"
                                   meshInteractionPreviewTriangleTarget={LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET}
                                   sceneBackgroundMode={cleanScreenshotSceneBackgroundMode}
-                                  surfaceMeshOverride={largeSurfaceMeshFullPreviewJob.mesh}
+                                  surfaceMeshOverrideBufferKey={largeSurfaceMeshFullPreviewJob.bufferKey}
                                   wireframe={false}
                                   showPlanes={false}
                                   showPrincipalProjections={false}

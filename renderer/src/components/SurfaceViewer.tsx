@@ -1,5 +1,5 @@
 // src/components/SurfaceViewer.tsx
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
@@ -37,6 +37,7 @@ import {
 } from "@math3d/renderer-web";
 import { debugLog } from "../utils/debugLog";
 import { configureOrbitControlsForTouch, installViewerTouchGestures } from "../utils/viewerTouchGestures";
+import { readFullMeshPreviewBuffer } from "../mesh/fullMeshPreviewBufferStore";
 
 export type ColorMode = CoreColorMode;
 
@@ -1472,6 +1473,7 @@ type Props = {
   implicitExpr?: string;
   implicitMeshOverride?: ImplicitMeshOverride | null;
   surfaceMeshOverride?: SurfaceMeshOverride | null;
+  surfaceMeshOverrideBufferKey?: string | null;
   surfaceMeshOverrides?: SurfaceMeshOverride[] | null;
   implicitMeshToken?: number;
 
@@ -1752,7 +1754,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     graphExpr,
     implicitExpr,
     implicitMeshOverride = null,
-    surfaceMeshOverride = null,
+    surfaceMeshOverride: surfaceMeshOverrideProp = null,
+    surfaceMeshOverrideBufferKey = null,
     surfaceMeshOverrides = null,
     implicitMeshToken,
 
@@ -1932,6 +1935,11 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     suspendRendering = false,
     surfaceMeshFallbackMode = "sphere",
   } = props;
+  const storedSurfaceMeshOverride = useMemo(
+    () => readFullMeshPreviewBuffer(surfaceMeshOverrideBufferKey),
+    [surfaceMeshOverrideBufferKey]
+  );
+  const surfaceMeshOverride = storedSurfaceMeshOverride ?? surfaceMeshOverrideProp;
   const planeGridShowGrid = planeGridSettings.showGrid;
   const planeGridShowMinor = planeGridSettings.showMinorGrid;
   const planeGridShowLabels = planeGridSettings.showLabels;
