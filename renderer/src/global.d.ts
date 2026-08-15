@@ -474,6 +474,7 @@ declare global {
         emergencyThresholdBytes?: number;
         error?: string;
       }>;
+      traceMeshEvent?: (packet: unknown) => void;
       onRendererMemoryPressure?: (handler: (packet: {
         level?: "warning" | "recovery" | "emergency";
         sampledAt?: number;
@@ -527,6 +528,10 @@ declare global {
     };
     __MATH3D_E2E_MESH_BENCHMARK__?: {
       loadBenchmarkModel: (id: string) => Promise<{
+        ok: boolean;
+        error?: string;
+      }>;
+      runFullTrace: (id: string) => Promise<{
         ok: boolean;
         error?: string;
       }>;

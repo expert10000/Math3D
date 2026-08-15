@@ -54,6 +54,7 @@ const rendererV8Mode = String(process.env.MATH3D_V8_MODE ?? (process.platform ==
 type MainWindowOptions = {
   memoryGuardRecovery?: boolean;
 };
+const lastMeshDebugTraceByWebContentsId = new Map<number, unknown>();
 const shouldStartMaximized = ["1", "true", "yes", "on", "y"].includes(
   String(process.env.MATH3D_START_MAXIMIZED ?? "").toLowerCase()
 );
@@ -759,7 +760,10 @@ function createWindow(options: MainWindowOptions = {}) {
     });
   });
   win.webContents.on("render-process-gone", (_event, details) => {
-    console.error("[window] render-process-gone", details);
+    console.error("[window] render-process-gone", {
+      ...details,
+      lastMeshDebugTrace: lastMeshDebugTraceByWebContentsId.get(win.webContents.id) ?? null,
+    });
   });
   installRendererMemoryGuard(win);
 
@@ -910,6 +914,23 @@ ipcMain.on("app:runtime:get-flags", (event) => {
   event.returnValue = {
     geometrySmoke: isGeometrySmoke,
   };
+});
+
+ipcMain.on("app:mesh-debug-trace", (event, packet: unknown) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const memory = win && !win.isDestroyed() ? getRendererMemorySnapshot(win) : null;
+  const payload = {
+    mainTs: Date.now(),
+    rendererUrl: event.sender.getURL(),
+    memory,
+    packet,
+  };
+  lastMeshDebugTraceByWebContentsId.set(event.sender.id, payload);
+  try {
+    console.info("[mesh-debug-trace]", JSON.stringify(payload));
+  } catch {
+    console.info("[mesh-debug-trace]", payload);
+  }
 });
 
 app.whenReady().then(async () => {
@@ -1072,7 +1093,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("meshBenchmark:list", async (): Promise<MeshBenchmarkListResponse> => {
-    if (!isDev) return { ok: false, error: "Benchmark models are only available in development builds." };
+    if (!isDev && !isE2e) return { ok: false, error: "Benchmark models are only available in development builds." };
     try {
       return { ok: true, entries: await listMeshBenchmarkModelsWithExpected() };
     } catch (error: any) {
@@ -1081,7 +1102,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("meshBenchmark:load", async (_evt, id: string): Promise<MeshBenchmarkLoadResponse> => {
-    if (!isDev) return { ok: false, error: "Benchmark models are only available in development builds." };
+    if (!isDev && !isE2e) return { ok: false, error: "Benchmark models are only available in development builds." };
     const entry = await resolveMeshBenchmarkModel(id);
     if (!entry) return { ok: false, error: "Unknown benchmark model." };
 
@@ -1099,7 +1120,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("meshBenchmark:match", async (_evt, fileName: string): Promise<MeshBenchmarkMatchResponse> => {
-    if (!isDev) return { ok: false, error: "Benchmark models are only available in development builds." };
+    if (!isDev && !isE2e) return { ok: false, error: "Benchmark models are only available in development builds." };
     const entry = await resolveMeshBenchmarkModelByFileName(fileName);
     if (!entry) return { ok: true, entry: null };
     try {

@@ -100,6 +100,8 @@ export type SurfacePerformanceSnapshot = {
   };
   trace?: {
     meshRebuildTotalMs?: number;
+    lodBuildMs?: number;
+    attributeUpdateMs?: number;
     geometryUpdateMs?: number;
     sampleSetMs?: number;
     boundsMs?: number;
@@ -107,6 +109,10 @@ export type SurfacePerformanceSnapshot = {
     meshCount?: number;
     sampleCount?: number;
     meshDataCount?: number;
+    lodBufferBytes?: number;
+    geometryBufferBytes?: number;
+    sampleMeshDataBytes?: number;
+    disposedGeometryBytes?: number;
     frameGapMs?: number;
     reason?: string;
   };
@@ -496,6 +502,70 @@ const formatBytes = (value: number): string => {
   if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(2)} MB`;
   if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${Math.round(value)} B`;
+};
+
+const typedArrayBytes = (value: ArrayLike<number> | null | undefined): number => {
+  const byteLength = (value as { byteLength?: number } | null | undefined)?.byteLength;
+  return Number.isFinite(byteLength) ? Number(byteLength) : 0;
+};
+
+const estimateLodBufferBytes = (buffers: SurfaceMeshLodBuffers | null | undefined): number =>
+  buffers
+    ? typedArrayBytes(buffers.positions) +
+      typedArrayBytes(buffers.indices) +
+      typedArrayBytes(buffers.normals) +
+      typedArrayBytes(buffers.uvs)
+    : 0;
+
+const estimateGeometryBufferBytes = (geometry: THREE.BufferGeometry | null | undefined): number => {
+  if (!geometry) return 0;
+  let total = typedArrayBytes(geometry.index?.array);
+  for (const key of Object.keys(geometry.attributes)) {
+    total += typedArrayBytes((geometry.attributes[key] as THREE.BufferAttribute | undefined)?.array);
+  }
+  return total;
+};
+
+const estimateObjectGeometryBytes = (root: THREE.Object3D | null | undefined): number => {
+  if (!root) return 0;
+  const seen = new Set<string>();
+  let total = 0;
+  root.traverse((obj) => {
+    const geom = (obj as THREE.Mesh).geometry;
+    if (!(geom instanceof THREE.BufferGeometry) || seen.has(geom.uuid)) return;
+    seen.add(geom.uuid);
+    total += estimateGeometryBufferBytes(geom);
+  });
+  return total;
+};
+
+const emitMeshViewerAllocTrace = (
+  kind: "alloc" | "viewer" | "full" | "memory" | "error",
+  label: string,
+  details?: Record<string, unknown>,
+  ms?: number
+) => {
+  if (typeof window === "undefined") return;
+  const event = {
+    source: "surface-viewer",
+    kind,
+    label,
+    ms,
+    ts: Date.now(),
+    details: {
+      ...(details ?? {}),
+      jsHeapUsedBytes: Number.isFinite(
+        (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory?.usedJSHeapSize
+      )
+        ? Number((performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory?.usedJSHeapSize)
+        : null,
+    },
+  };
+  window.appDiagnostics?.traceMeshEvent?.({
+    source: "surface-viewer",
+    event,
+  });
+  window.dispatchEvent(new CustomEvent("math3d:mesh-debug-event", { detail: event }));
 };
 
 function isImplicitMeshObj(obj: THREE.Object3D) {
@@ -2080,6 +2150,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const onCameraTourEventRef = useRef<Props["onCameraTourEvent"] | undefined>(undefined);
   const onPerformanceSnapshotRef = useRef<Props["onPerformanceSnapshot"] | undefined>(undefined);
   const onMeshInteractionStateChangeRef = useRef<Props["onMeshInteractionStateChange"] | undefined>(undefined);
+  onCameraTourEventRef.current = onCameraTourEvent;
+  onPerformanceSnapshotRef.current = onPerformanceSnapshot;
+  onMeshInteractionStateChangeRef.current = onMeshInteractionStateChange;
   const lastMeshBuildMsRef = useRef<number | null>(lastMeshBuildMs);
   const meshPerformanceTraceRef = useRef<NonNullable<SurfacePerformanceSnapshot["trace"]> | null>(null);
   const perfFrameRef = useRef<{ lastFrameAt: number; fps: number; frameTimeMs: number; lastEmitAt: number }>({
@@ -6290,6 +6363,74 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const runtimeQualityForMesh = canUseMeshInteractionLod
       ? resolveMeshRuntimeQualityForViewport(renderQuality, meshRuntimeQuality)
       : "accurate";
+    const traceFullTriangleCount = useOverrides
+      ? surfaceMeshOverrides?.reduce(
+          (total, override) => total + triangleCountFromBuffers(override.positions ?? [], override.indices),
+          0
+        ) ?? 0
+      : surfaceMeshOverride
+        ? triangleCountFromBuffers(surfaceMeshOverride.positions, surfaceMeshOverride.indices)
+        : 0;
+    const fullAllocationTraceEnabled =
+      (meshInteractionQualityMode === "full" || renderQuality === "sharp") && traceFullTriangleCount >= 12_000;
+    let lodBuildMsTotal = 0;
+    let attributeUpdateMsTotal = 0;
+    let latestLodBufferBytes = 0;
+    let latestGeometryBufferBytes = 0;
+    let disposedGeometryBytes = 0;
+    const traceContext = {
+      surfaceId,
+      renderQuality,
+      runtimeQuality: runtimeQualityForMesh,
+      meshInteractionQualityMode,
+      colorMode,
+      wireframe: !!effectiveWireframe,
+      fullTriangleCount: traceFullTriangleCount,
+    };
+    if (fullAllocationTraceEnabled) {
+      emitMeshViewerAllocTrace("viewer", "Full SurfaceViewer rebuild start", {
+        ...traceContext,
+        hasOverrides: useOverrides,
+        hasOverride: useOverride,
+      });
+    }
+    const buildLodBuffersWithTrace = (override: SurfaceMeshOverride, phase: string) => {
+      if (fullAllocationTraceEnabled) {
+        emitMeshViewerAllocTrace("alloc", `Before buildSurfaceMeshLodBuffers:${phase}`, {
+          ...traceContext,
+          overrideId: override.id ?? null,
+          rawPositionsBytes: typedArrayBytes(override.positions),
+          rawNormalsBytes: typedArrayBytes(override.normals),
+          rawIndicesBytes: typedArrayBytes(override.indices),
+          rawUvsBytes: typedArrayBytes(override.uvs),
+          rawTriangles: triangleCountFromBuffers(override.positions, override.indices),
+        });
+      }
+      const lodStart = performance.now();
+      const lodBuffers = buildSurfaceMeshLodBuffers(
+        override,
+        runtimeQualityForMesh,
+        meshInteractionQualityMode,
+        normalizedMeshPreviewTriangleTarget
+      );
+      const lodMs = performance.now() - lodStart;
+      lodBuildMsTotal += lodMs;
+      latestLodBufferBytes = estimateLodBufferBytes(lodBuffers);
+      if (fullAllocationTraceEnabled) {
+        emitMeshViewerAllocTrace("alloc", `After buildSurfaceMeshLodBuffers:${phase}`, {
+          ...traceContext,
+          overrideId: override.id ?? null,
+          lodBufferBytes: latestLodBufferBytes,
+          positionsBytes: typedArrayBytes(lodBuffers.positions),
+          normalsBytes: typedArrayBytes(lodBuffers.normals),
+          indicesBytes: typedArrayBytes(lodBuffers.indices),
+          uvsBytes: typedArrayBytes(lodBuffers.uvs),
+          fullTriangleCount: lodBuffers.fullTriangleCount,
+          activeTriangleCount: lodBuffers.activeTriangleCount,
+        }, lodMs);
+      }
+      return lodBuffers;
+    };
 
     const makeMaterial = (override?: SurfaceMeshOverride) =>
       new THREE.MeshStandardMaterial({
@@ -6309,12 +6450,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const makeSurfaceMeshOverrideMesh = (override: SurfaceMeshOverride) => {
       const geom = new THREE.BufferGeometry();
-      const lodBuffers = buildSurfaceMeshLodBuffers(
-        override,
-        runtimeQualityForMesh,
-        meshInteractionQualityMode,
-        normalizedMeshPreviewTriangleTarget
-      );
+      const lodBuffers = buildLodBuffersWithTrace(override, "create");
       const positions = lodBuffers.positions;
       const normals = lodBuffers.normals;
       const uvs = lodBuffers.uvs;
@@ -6322,6 +6458,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const validation = override.validation ?? null;
       const nanNormals = validation?.stats?.nanNormals ?? 0;
 
+      const attrStart = performance.now();
       geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
 
       if (indices && indices.length >= 3) {
@@ -6340,6 +6477,22 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
 
       if (colorMode !== "solid") applyVertexColors(geom, colorMode, colorPalette);
+      const attrMs = performance.now() - attrStart;
+      attributeUpdateMsTotal += attrMs;
+      latestGeometryBufferBytes = estimateGeometryBufferBytes(geom);
+      if (fullAllocationTraceEnabled) {
+        emitMeshViewerAllocTrace("alloc", "After BufferGeometry attributes:create", {
+          ...traceContext,
+          overrideId: override.id ?? null,
+          geometryBufferBytes: latestGeometryBufferBytes,
+          positionBytes: typedArrayBytes((geom.getAttribute("position") as THREE.BufferAttribute | undefined)?.array),
+          normalBytes: typedArrayBytes((geom.getAttribute("normal") as THREE.BufferAttribute | undefined)?.array),
+          colorBytes: typedArrayBytes((geom.getAttribute("color") as THREE.BufferAttribute | undefined)?.array),
+          indexBytes: typedArrayBytes(geom.index?.array),
+          normalsComputed: !normalsOk,
+          vertexColors: colorMode !== "solid",
+        }, attrMs);
+      }
       const mesh = new THREE.Mesh(geom, makeMaterial(override));
       const pickPolicy = override.renderableMetadata?.pickPolicy ?? override.pickPolicy ?? "topology";
       if (override.id) {
@@ -6369,9 +6522,26 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const rebuildSurfaceObject = () => {
       if (surfaceObjRef.current) {
+        const previousGeometryBytes = estimateObjectGeometryBytes(surfaceObjRef.current);
+        disposedGeometryBytes += previousGeometryBytes;
+        if (fullAllocationTraceEnabled) {
+          emitMeshViewerAllocTrace("alloc", "Before disposing previous SurfaceViewer geometry", {
+            ...traceContext,
+            previousGeometryBytes,
+          });
+        }
         scene.remove(surfaceObjRef.current);
         surfaceObjRef.current.traverse(disposeObject3D);
         surfaceObjRef.current = null;
+        rendererRef.current?.renderLists?.dispose?.();
+        if (fullAllocationTraceEnabled) {
+          emitMeshViewerAllocTrace("alloc", "After disposing previous SurfaceViewer geometry", {
+            ...traceContext,
+            disposedGeometryBytes,
+            rendererGeometries: rendererRef.current?.info.memory.geometries ?? null,
+            rendererTextures: rendererRef.current?.info.memory.textures ?? null,
+          });
+        }
       }
 
       let nextObj: THREE.Object3D | null = null;
@@ -6393,12 +6563,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const updateGeometryFromOverride = (mesh: THREE.Mesh, override: SurfaceMeshOverride) => {
       const geom = mesh.geometry as THREE.BufferGeometry;
-      const lodBuffers = buildSurfaceMeshLodBuffers(
-        override,
-        runtimeQualityForMesh,
-        meshInteractionQualityMode,
-        normalizedMeshPreviewTriangleTarget
-      );
+      const lodBuffers = buildLodBuffersWithTrace(override, "update");
       const positions = lodBuffers.positions;
       const normals = lodBuffers.normals;
       const uvs = lodBuffers.uvs;
@@ -6406,6 +6571,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const validation = override.validation ?? null;
       const nanNormals = validation?.stats?.nanNormals ?? 0;
 
+      const attrStart = performance.now();
       const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
       if (!posAttr || posAttr.array.length !== positions.length) {
         geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
@@ -6453,6 +6619,22 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       geom.computeBoundingBox();
       geom.computeBoundingSphere();
+      const attrMs = performance.now() - attrStart;
+      attributeUpdateMsTotal += attrMs;
+      latestGeometryBufferBytes = estimateGeometryBufferBytes(geom);
+      if (fullAllocationTraceEnabled) {
+        emitMeshViewerAllocTrace("alloc", "After BufferGeometry attributes:update", {
+          ...traceContext,
+          overrideId: override.id ?? null,
+          geometryBufferBytes: latestGeometryBufferBytes,
+          positionBytes: typedArrayBytes((geom.getAttribute("position") as THREE.BufferAttribute | undefined)?.array),
+          normalBytes: typedArrayBytes((geom.getAttribute("normal") as THREE.BufferAttribute | undefined)?.array),
+          colorBytes: typedArrayBytes((geom.getAttribute("color") as THREE.BufferAttribute | undefined)?.array),
+          indexBytes: typedArrayBytes(geom.index?.array),
+          normalsComputed: !normalsOk,
+          vertexColors: colorMode !== "solid",
+        }, attrMs);
+      }
       const style = {
         color: override.color,
         opacity: override.opacity,
@@ -6608,9 +6790,29 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     } else {
       nextSampleSet = { samples: [], meshData };
     }
+    const sampleMeshDataBytes = (nextSampleSet.meshData ?? []).reduce(
+      (total, mesh) => total + typedArrayBytes(mesh.positions) + typedArrayBytes(mesh.indices),
+      0
+    );
+    if (fullAllocationTraceEnabled) {
+      emitMeshViewerAllocTrace("alloc", "Before onSampleSet emits meshData", {
+        ...traceContext,
+        sampleCount: nextSampleSet.samples.length,
+        meshDataCount: nextSampleSet.meshData?.length ?? 0,
+        sampleMeshDataBytes,
+      });
+    }
     sampleSetRef.current = nextSampleSet;
     onSampleSet?.(nextSampleSet);
     const sampleSetMs = performance.now() - sampleSetStart;
+    if (fullAllocationTraceEnabled) {
+      emitMeshViewerAllocTrace("alloc", "After onSampleSet emits meshData", {
+        ...traceContext,
+        sampleCount: nextSampleSet.samples.length,
+        meshDataCount: nextSampleSet.meshData?.length ?? 0,
+        sampleMeshDataBytes,
+      }, sampleSetMs);
+    }
 
     const boundsStart = performance.now();
     const box = new THREE.Box3().setFromObject(activeSurfaceObj);
@@ -6677,6 +6879,16 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (renderer && camera && controls && !suspendRenderingRef.current) {
       controls.update();
       const now = performance.now();
+      if (fullAllocationTraceEnabled) {
+        emitMeshViewerAllocTrace("alloc", "Before first renderer.render after Full geometry", {
+          ...traceContext,
+          rendererGeometries: renderer.info.memory.geometries ?? null,
+          rendererTextures: renderer.info.memory.textures ?? null,
+          lodBufferBytes: latestLodBufferBytes,
+          geometryBufferBytes: latestGeometryBufferBytes,
+          sampleMeshDataBytes,
+        });
+      }
       const renderStart = performance.now();
       renderer.render(scene, camera);
       const renderMs = performance.now() - renderStart;
@@ -6708,8 +6920,34 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         const indexArray = geom.index?.array as { byteLength?: number } | undefined;
         if (Number.isFinite(indexArray?.byteLength)) gpuBytes += Number(indexArray?.byteLength);
       }
+      if (fullAllocationTraceEnabled) {
+        emitMeshViewerAllocTrace("alloc", "After first renderer.render after Full geometry", {
+          ...traceContext,
+          renderInfoCalls: Math.max(0, Math.round(renderInfo.calls ?? 0)),
+          renderInfoTriangles: Math.max(0, Math.round(renderInfo.triangles ?? 0)),
+          rendererGeometries: renderer.info.memory.geometries ?? null,
+          rendererTextures: renderer.info.memory.textures ?? null,
+          gpuMemoryEstimateBytes: gpuBytes,
+          lodBufferBytes: latestLodBufferBytes,
+          geometryBufferBytes: latestGeometryBufferBytes,
+          sampleMeshDataBytes,
+        }, renderMs);
+        window.setTimeout(() => {
+          renderer.renderLists?.dispose?.();
+          emitMeshViewerAllocTrace("alloc", "Full idle after clearing old render lists", {
+            ...traceContext,
+            rendererGeometries: renderer.info.memory.geometries ?? null,
+            rendererTextures: renderer.info.memory.textures ?? null,
+            gpuMemoryEstimateBytes: estimateObjectGeometryBytes(surfaceObjRef.current),
+            disposedGeometryBytes,
+            gcAvailable: typeof (window as unknown as { gc?: unknown }).gc === "function",
+          });
+        }, 1000);
+      }
       const trace = {
         meshRebuildTotalMs,
+        lodBuildMs: lodBuildMsTotal,
+        attributeUpdateMs: attributeUpdateMsTotal,
         geometryUpdateMs,
         sampleSetMs,
         boundsMs,
@@ -6717,6 +6955,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         meshCount: meshList.length,
         sampleCount: nextSampleSet.samples.length,
         meshDataCount: nextSampleSet.meshData?.length ?? 0,
+        lodBufferBytes: latestLodBufferBytes,
+        geometryBufferBytes: latestGeometryBufferBytes || gpuBytes,
+        sampleMeshDataBytes,
+        disposedGeometryBytes,
         frameGapMs: frameGapMs ?? undefined,
         reason: "mesh-rebuild",
       };

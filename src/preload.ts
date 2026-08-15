@@ -455,6 +455,9 @@ contextBridge.exposeInMainWorld("appWindow", {
 contextBridge.exposeInMainWorld("appDiagnostics", {
   getRendererMemory: (): Promise<unknown> =>
     ipcRenderer.invoke("app:renderer-memory"),
+  traceMeshEvent: (packet: unknown): void => {
+    ipcRenderer.send("app:mesh-debug-trace", packet);
+  },
   onRendererMemoryPressure: (handler: (packet: unknown) => void) => {
     const listener = (_evt: Electron.IpcRendererEvent, packet: unknown) => handler(packet);
     ipcRenderer.on("app:renderer-memory-pressure", listener);

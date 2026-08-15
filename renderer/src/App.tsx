@@ -712,6 +712,7 @@ type MeshDebugEvent = {
   kind:
     | "load"
     | "phase"
+    | "alloc"
     | "viewer"
     | "quality"
     | "stall"
@@ -1954,6 +1955,16 @@ const estimateSurfaceMeshDataBytes = (mesh: SurfaceMeshData | null): number | nu
   );
 };
 
+const estimateSurfaceSampleSetMeshDataBytes = (set: SurfaceSampleSet | null): number | null => {
+  if (!set?.meshData?.length) return set ? 0 : null;
+  return set.meshData.reduce((total, mesh) => {
+    const positionsBytes = (mesh.positions as { byteLength?: number } | null | undefined)?.byteLength ?? 0;
+    const indicesBytes = (mesh.indices as { byteLength?: number } | null | undefined)?.byteLength ?? 0;
+    return total + (Number.isFinite(positionsBytes) ? Number(positionsBytes) : 0) +
+      (Number.isFinite(indicesBytes) ? Number(indicesBytes) : 0);
+  }, 0);
+};
+
 const formatBenchmarkBytes = (bytes: number | null | undefined): string => {
   if (bytes == null || !Number.isFinite(bytes)) return "n/a";
   if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
@@ -2001,6 +2012,20 @@ type LargeSurfaceMeshResolutionCache = {
   fullMesh: SurfaceMeshData;
   previewMesh: SurfaceMeshData;
   active: "preview" | "full";
+};
+
+type LargeSurfaceMeshFullPreviewJob = {
+  id: number;
+  label: string;
+  mesh: SurfaceMeshData;
+  requestedAt: number;
+  expectedTriangles: number;
+  expectedGeometryBytes: number | null;
+  status: "preparing" | "rendering" | "ready" | "failed";
+  elapsedMs: number | null;
+  geometryBufferBytes: number | null;
+  error: string | null;
+  trace: SurfacePerformanceSnapshot["trace"] | null;
 };
 
 const buildLargeSurfaceMeshDisplayProxy = (mesh: SurfaceMeshData, targetTriangles: number): SurfaceMeshData => {
@@ -36508,10 +36533,6 @@ const App: React.FC = () => {
       ? surfaceMeshTopologyHistoryPreviewEntry.beforeSnapshot
       : surfaceMeshTopologyHistoryPreviewEntry.snapshot;
   }, [surfaceMeshTopologyHistoryPreviewEntry, surfaceMeshTopologyHistoryPreviewMode]);
-  const activeLargeSurfaceMeshFullMesh =
-    largeSurfaceMeshResolutionCacheRef.current?.active === "full"
-      ? largeSurfaceMeshResolutionCacheRef.current.fullMesh
-      : null;
   const largeSurfaceMeshDisplayProxy = useMemo(
     () => {
       const largeMeshCache = largeSurfaceMeshResolutionCacheRef.current;
@@ -36523,7 +36544,7 @@ const App: React.FC = () => {
     [surfaceMeshData]
   );
   const surfaceMeshTopologyViewerMesh =
-    surfaceMeshTopologyHistoryDisplayMesh ?? activeLargeSurfaceMeshFullMesh ?? largeSurfaceMeshDisplayProxy ?? surfaceMeshData;
+    surfaceMeshTopologyHistoryDisplayMesh ?? largeSurfaceMeshDisplayProxy ?? surfaceMeshData;
   const surfaceMeshTopologyGizmoDragParamsRef = useRef<AdaptiveTopologyGizmoDragParams | null>(null);
   const surfaceMeshTopologyGizmoReferenceLength = useMemo(() => {
     if (!surfaceMeshTopologyViewerMesh?.positions?.length) return 1;
@@ -37833,6 +37854,10 @@ const App: React.FC = () => {
   }, [datasetKind]);
   const [gaussHoverIndex, setGaussHoverIndex] = useState<number | null>(null);
   const [surfaceSampleSet, setSurfaceSampleSet] = useState<SurfaceSampleSet | null>(null);
+  const surfaceSampleSetMeshDataBytesRef = useRef<number | null>(null);
+  useEffect(() => {
+    surfaceSampleSetMeshDataBytesRef.current = estimateSurfaceSampleSetMeshDataBytes(surfaceSampleSet);
+  }, [surfaceSampleSet]);
   useEffect(() => {
     workbookScalarFieldByBlockRef.current.clear();
     workbookVectorFieldByBlockRef.current.clear();
@@ -39805,13 +39830,19 @@ const App: React.FC = () => {
   const meshPipelineProfileCounterRef = useRef(0);
   const meshPipelineProfileActiveIdRef = useRef<string | null>(null);
   const meshPipelineProfileLatestIdRef = useRef<string | null>(null);
+  const largeSurfaceMeshFullPreviewJobCounterRef = useRef(0);
+  const largeSurfaceMeshFullPreviewTimerRef = useRef<number | null>(null);
+  const [largeSurfaceMeshFullPreviewJob, setLargeSurfaceMeshFullPreviewJob] =
+    useState<LargeSurfaceMeshFullPreviewJob | null>(null);
   const meshFullRestoreFrameProfileRef = useRef<{
     profileId: string | null;
     label: string;
     requestedAt: number;
     expectedTriangles: number;
+    expectedGeometryBytes: number | null;
     timeoutId: number | null;
   } | null>(null);
+  const meshFullReactCommitLoggedRef = useRef<string | null>(null);
   const meshDebugEventCounterRef = useRef(0);
   const [meshDebugMonitor, setMeshDebugMonitor] = useState<MeshDebugMonitorState>(() => ({
     enabled: true,
@@ -39832,6 +39863,13 @@ const App: React.FC = () => {
       ms: event.ms,
       details: event.details,
     };
+    const alreadySentToMain = !!(nextEvent.details as { __mainTraceSent?: unknown } | undefined)?.__mainTraceSent;
+    if (!alreadySentToMain && typeof window !== "undefined") {
+      window.appDiagnostics?.traceMeshEvent?.({
+        source: "app",
+        event: nextEvent,
+      });
+    }
     setMeshDebugMonitor((current) => {
       if (!current.enabled) return current;
       const events = [...current.events, nextEvent].slice(-MESH_DEBUG_EVENT_LIMIT);
@@ -39857,6 +39895,81 @@ const App: React.FC = () => {
       worstStallMs: 0,
     }));
   }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail as
+        | (Omit<MeshDebugEvent, "id" | "ts"> & { ts?: number; source?: string })
+        | null
+        | undefined;
+      if (!detail?.label || !detail.kind) return;
+      recordMeshDebugEvent({
+        kind: detail.kind,
+        label: detail.label,
+        ms: detail.ms,
+        ts: detail.ts,
+        details: {
+          ...(detail.details ?? {}),
+          source: detail.source ?? "surface-viewer",
+          __mainTraceSent: true,
+        },
+      });
+      if (detail.kind === "alloc" && detail.label === "After first renderer.render after Full geometry") {
+        const traceDetails = (detail.details ?? {}) as Record<string, unknown>;
+        const fullTriangleCount =
+          typeof traceDetails.fullTriangleCount === "number" && Number.isFinite(traceDetails.fullTriangleCount)
+            ? traceDetails.fullTriangleCount
+            : null;
+        const geometryBufferBytes =
+          typeof traceDetails.geometryBufferBytes === "number" && Number.isFinite(traceDetails.geometryBufferBytes)
+            ? traceDetails.geometryBufferBytes
+            : typeof traceDetails.gpuMemoryEstimateBytes === "number" && Number.isFinite(traceDetails.gpuMemoryEstimateBytes)
+              ? traceDetails.gpuMemoryEstimateBytes
+              : null;
+        setLargeSurfaceMeshFullPreviewJob((current) => {
+          if (!current || current.status === "ready" || current.status === "failed") return current;
+          const trianglesReady = fullTriangleCount == null || fullTriangleCount >= current.expectedTriangles;
+          const geometryReady =
+            current.expectedGeometryBytes == null ||
+            (geometryBufferBytes != null && geometryBufferBytes >= current.expectedGeometryBytes * 0.95);
+          if (!trianglesReady || !geometryReady) return current;
+          if (typeof window !== "undefined" && largeSurfaceMeshFullPreviewTimerRef.current != null) {
+            window.clearTimeout(largeSurfaceMeshFullPreviewTimerRef.current);
+          }
+          largeSurfaceMeshFullPreviewTimerRef.current = null;
+          largeSurfaceMeshFullRestorePendingRef.current = false;
+          const elapsedMs = Math.max(0, (detail.ts ?? Date.now()) - current.requestedAt);
+          recordMeshDebugEvent({
+            kind: "full",
+            label: `Dedicated Full viewer ready: ${current.label}`,
+            ms: elapsedMs,
+            details: {
+              expectedTriangles: current.expectedTriangles,
+              visibleTriangles: fullTriangleCount,
+              expectedGeometryBytes: current.expectedGeometryBytes,
+              geometryBufferBytes,
+              traceDetails,
+            },
+          });
+          setSurfaceMeshTopologyStatus(
+            `Dedicated Full viewer ready: ${current.label} (${(fullTriangleCount ?? current.expectedTriangles).toLocaleString()} triangles).`
+          );
+          return {
+            ...current,
+            status: "ready",
+            elapsedMs,
+            geometryBufferBytes,
+            trace: {
+              renderMs: detail.ms,
+              geometryBufferBytes: geometryBufferBytes ?? undefined,
+            },
+          };
+        });
+      }
+    };
+    window.addEventListener("math3d:mesh-debug-event", handler);
+    return () => window.removeEventListener("math3d:mesh-debug-event", handler);
+  }, [recordMeshDebugEvent]);
   const [meshDebugDrawerOpen, setMeshDebugDrawerOpen] = useState(false);
   const copyMeshDebugTraceToClipboard = useCallback(() => {
     const text = JSON.stringify(serializeMeshDebugMonitorState(meshDebugMonitor, meshPipelineProfile), null, 2);
@@ -39875,6 +39988,11 @@ const App: React.FC = () => {
       }
       meshFullRestoreFrameProfileRef.current = null;
       largeSurfaceMeshFullRestorePendingRef.current = false;
+      if (typeof window !== "undefined" && largeSurfaceMeshFullPreviewTimerRef.current != null) {
+        window.clearTimeout(largeSurfaceMeshFullPreviewTimerRef.current);
+      }
+      largeSurfaceMeshFullPreviewTimerRef.current = null;
+      setLargeSurfaceMeshFullPreviewJob(null);
       cache.active = "preview";
       setSurfaceRenderQuality("performance");
       setMeshInteractionQualityMode("fast-preview");
@@ -40161,6 +40279,8 @@ const App: React.FC = () => {
         let phases = current.phases;
         if (trace) {
           phases = appendMeshPipelineProfilePhase(phases, "viewer:meshRebuild", trace.meshRebuildTotalMs ?? 0);
+          phases = appendMeshPipelineProfilePhase(phases, "viewer:lodBuild", trace.lodBuildMs ?? 0);
+          phases = appendMeshPipelineProfilePhase(phases, "viewer:attributeUpdate", trace.attributeUpdateMs ?? 0);
           phases = appendMeshPipelineProfilePhase(phases, "viewer:geometryUpdate", trace.geometryUpdateMs ?? 0);
           phases = appendMeshPipelineProfilePhase(phases, "viewer:sampleSet", trace.sampleSetMs ?? 0);
           phases = appendMeshPipelineProfilePhase(phases, "viewer:bounds", trace.boundsMs ?? 0);
@@ -40194,7 +40314,13 @@ const App: React.FC = () => {
       meshPipelineProfileActiveIdRef.current = null;
     }
     const pendingFullRestore = meshFullRestoreFrameProfileRef.current;
-    if (pendingFullRestore && snapshot.triangles >= pendingFullRestore.expectedTriangles) {
+    const snapshotGeometryBytes = snapshot.trace?.geometryBufferBytes ?? snapshot.gpuMemoryEstimateBytes ?? null;
+    const fullGeometryReady =
+      pendingFullRestore &&
+      snapshot.triangles >= pendingFullRestore.expectedTriangles &&
+      (pendingFullRestore.expectedGeometryBytes == null ||
+        (snapshotGeometryBytes != null && snapshotGeometryBytes >= pendingFullRestore.expectedGeometryBytes * 0.95));
+    if (pendingFullRestore && fullGeometryReady) {
       meshFullRestoreFrameProfileRef.current = null;
       if (pendingFullRestore.timeoutId != null && typeof window !== "undefined") {
         window.clearTimeout(pendingFullRestore.timeoutId);
@@ -40208,6 +40334,8 @@ const App: React.FC = () => {
         details: {
           expectedTriangles: pendingFullRestore.expectedTriangles,
           visibleTriangles: snapshot.triangles,
+          expectedGeometryBytes: pendingFullRestore.expectedGeometryBytes,
+          geometryBufferBytes: snapshotGeometryBytes,
           trace: snapshot.trace ?? null,
         },
       });
@@ -40222,6 +40350,21 @@ const App: React.FC = () => {
           "full:viewerGeometryUpdate",
           snapshot.trace.geometryUpdateMs ?? 0
         );
+        recordMeshPipelineProfilePhase(
+          pendingFullRestore.profileId,
+          "full:viewerLodBuild",
+          snapshot.trace.lodBuildMs ?? 0
+        );
+        recordMeshPipelineProfilePhase(
+          pendingFullRestore.profileId,
+          "full:viewerAttributeUpdate",
+          snapshot.trace.attributeUpdateMs ?? 0
+        );
+        recordMeshPipelineProfilePhase(
+          pendingFullRestore.profileId,
+          "full:viewerSampleSet",
+          snapshot.trace.sampleSetMs ?? 0
+        );
         recordMeshPipelineProfilePhase(pendingFullRestore.profileId, "full:viewerRender", snapshot.trace.renderMs ?? 0);
       }
       if (typeof console !== "undefined") {
@@ -40232,6 +40375,8 @@ const App: React.FC = () => {
             clickToFrameMs,
             expectedTriangles: pendingFullRestore.expectedTriangles,
             visibleTriangles: snapshot.triangles,
+            expectedGeometryBytes: pendingFullRestore.expectedGeometryBytes,
+            geometryBufferBytes: snapshotGeometryBytes,
             trace: snapshot.trace ?? null,
           })
         );
@@ -48384,9 +48529,44 @@ case "mobius":
     [showGaussMap]
   );
 
-  const handleSampleSet = useCallback((set: SurfaceSampleSet | null) => {
-    setSurfaceSampleSet(set);
-  }, []);
+  const handleSampleSet = useCallback(
+    (set: SurfaceSampleSet | null) => {
+      const nextMeshDataBytes = estimateSurfaceSampleSetMeshDataBytes(set);
+      const shouldTraceSampleSet = nextMeshDataBytes != null && nextMeshDataBytes >= 1024 * 1024;
+      if (shouldTraceSampleSet) {
+        recordMeshDebugEvent({
+          kind: "alloc",
+          label: "Before onSampleSet stores meshData",
+          details: {
+            nextSampleCount: set?.samples.length ?? null,
+            nextMeshDataCount: set?.meshData?.length ?? null,
+            nextMeshDataBytes,
+            currentMeshDataBytes: surfaceSampleSetMeshDataBytesRef.current,
+          },
+        });
+      }
+      setSurfaceSampleSet(set);
+      if (shouldTraceSampleSet && typeof window !== "undefined") {
+        window.setTimeout(() => {
+          recordMeshDebugEvent({
+            kind: "alloc",
+            label: "After onSampleSet stores meshData",
+            details: {
+              storedSampleCount: set?.samples.length ?? null,
+              storedMeshDataCount: set?.meshData?.length ?? null,
+              storedMeshDataBytes: nextMeshDataBytes,
+              jsHeapUsedBytes: Number.isFinite(
+                (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory?.usedJSHeapSize
+              )
+                ? Number((performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory?.usedJSHeapSize)
+                : null,
+            },
+          });
+        }, 0);
+      }
+    },
+    [recordMeshDebugEvent]
+  );
 
   const complexMapOverlayPolylines = useMemo<PolylineSet | null>(() => {
     if (!isMeshLikeViewer) return null;
@@ -49089,158 +49269,196 @@ case "mobius":
     if (status) setSurfaceMeshTopologyStatus(status);
   }, [clearInspect, recordMeshDebugEvent]);
 
+  const closeLargeSurfaceMeshFullPreviewJob = useCallback(
+    (reason: "cancelled" | "closed" | "failed" = "closed", nextQuality: RenderQuality = "performance") => {
+      if (typeof window !== "undefined" && largeSurfaceMeshFullPreviewTimerRef.current != null) {
+        window.clearTimeout(largeSurfaceMeshFullPreviewTimerRef.current);
+      }
+      largeSurfaceMeshFullPreviewTimerRef.current = null;
+      largeSurfaceMeshFullRestorePendingRef.current = false;
+      setLargeSurfaceMeshFullPreviewJob((current) => {
+        if (current && reason !== "closed") {
+          recordMeshDebugEvent({
+            kind: "full",
+            label: `Dedicated Full viewer ${reason}: ${current.label}`,
+            details: {
+              status: current.status,
+              expectedTriangles: current.expectedTriangles,
+              expectedGeometryBytes: current.expectedGeometryBytes,
+            },
+          });
+        }
+        return null;
+      });
+      setSurfaceRenderQuality(nextQuality);
+      setMeshInteractionQualityMode("fast-preview");
+      setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
+    },
+    [recordMeshDebugEvent]
+  );
+
+  const startLargeSurfaceMeshFullPreviewJob = useCallback(
+    (cache: LargeSurfaceMeshResolutionCache) => {
+      if (typeof window !== "undefined" && largeSurfaceMeshFullPreviewTimerRef.current != null) {
+        window.clearTimeout(largeSurfaceMeshFullPreviewTimerRef.current);
+      }
+      largeSurfaceMeshFullPreviewTimerRef.current = null;
+      const expectedTriangles = surfaceMeshTriangleCount(cache.fullMesh);
+      const expectedGeometryBytes = estimateSurfaceMeshDataBytes(cache.fullMesh);
+      const jobId = ++largeSurfaceMeshFullPreviewJobCounterRef.current;
+      const requestedAt = Date.now();
+      cache.active = "preview";
+      largeSurfaceMeshFullRestorePendingRef.current = true;
+      if (surfaceMeshData !== cache.previewMesh) {
+        setMeshDataset(cache.previewMesh, "mesh-large:dedicated-full-keep-preview");
+        focusSurfaceMeshViewport(cache.previewMesh);
+      }
+      setSurfaceRenderQuality("performance");
+      setMeshInteractionQualityMode("fast-preview");
+      setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
+      setSurfaceMeshImportBusy(false);
+      setSurfaceMeshTopologyStatus(
+        `Preparing dedicated Full viewer for ${cache.label}: ${expectedTriangles.toLocaleString()} triangles.`
+      );
+      recordMeshDebugEvent({
+        kind: "full",
+        label: `Dedicated Full viewer requested: ${cache.label}`,
+        details: {
+          expectedTriangles,
+          expectedGeometryBytes,
+          previewTriangles: surfaceMeshTriangleCount(cache.previewMesh),
+        },
+      });
+      setLargeSurfaceMeshFullPreviewJob({
+        id: jobId,
+        label: cache.label,
+        mesh: cache.fullMesh,
+        requestedAt,
+        expectedTriangles,
+        expectedGeometryBytes,
+        status: "preparing",
+        elapsedMs: null,
+        geometryBufferBytes: null,
+        error: null,
+        trace: null,
+      });
+      if (typeof window === "undefined") return;
+      largeSurfaceMeshFullPreviewTimerRef.current = window.setTimeout(() => {
+        setLargeSurfaceMeshFullPreviewJob((current) =>
+          current?.id === jobId && current.status === "preparing"
+            ? { ...current, status: "rendering" }
+            : current
+        );
+        recordMeshDebugEvent({
+          kind: "full",
+          label: `Dedicated Full viewer rendering: ${cache.label}`,
+          details: {
+            expectedTriangles,
+            expectedGeometryBytes,
+          },
+        });
+        largeSurfaceMeshFullPreviewTimerRef.current = window.setTimeout(() => {
+          setLargeSurfaceMeshFullPreviewJob((current) => {
+            if (!current || current.id !== jobId || current.status === "ready") return current;
+            largeSurfaceMeshFullRestorePendingRef.current = false;
+            const elapsedMs = Math.max(0, Date.now() - current.requestedAt);
+            recordMeshDebugEvent({
+              kind: "full",
+              label: `Dedicated Full viewer timeout: ${current.label}`,
+              ms: elapsedMs,
+              details: {
+                expectedTriangles: current.expectedTriangles,
+                expectedGeometryBytes: current.expectedGeometryBytes,
+              },
+            });
+            setSurfaceMeshTopologyStatus(
+              `Full viewer timed out for ${current.label}; Fast preview remains active.`
+            );
+            return {
+              ...current,
+              status: "failed",
+              elapsedMs,
+              error: "Full viewer timed out; Fast preview remains active.",
+            };
+          });
+        }, 12_000);
+      }, 80);
+    },
+    [focusSurfaceMeshViewport, recordMeshDebugEvent, setMeshDataset, surfaceMeshData]
+  );
+
+  const handleLargeSurfaceMeshFullPreviewSnapshot = useCallback(
+    (snapshot: SurfacePerformanceSnapshot) => {
+      setLargeSurfaceMeshFullPreviewJob((current) => {
+        if (!current || current.status === "ready" || current.status === "failed") return current;
+        const geometryBufferBytes = snapshot.trace?.geometryBufferBytes ?? snapshot.gpuMemoryEstimateBytes ?? null;
+        const geometryReady =
+          current.expectedGeometryBytes == null ||
+          (geometryBufferBytes != null && geometryBufferBytes >= current.expectedGeometryBytes * 0.95);
+        if (snapshot.triangles < current.expectedTriangles || !geometryReady) return current;
+        if (typeof window !== "undefined" && largeSurfaceMeshFullPreviewTimerRef.current != null) {
+          window.clearTimeout(largeSurfaceMeshFullPreviewTimerRef.current);
+        }
+        largeSurfaceMeshFullPreviewTimerRef.current = null;
+        largeSurfaceMeshFullRestorePendingRef.current = false;
+        const elapsedMs = Math.max(0, snapshot.ts - current.requestedAt);
+        recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, "full:dedicatedViewerReady", elapsedMs);
+        recordMeshDebugEvent({
+          kind: "full",
+          label: `Dedicated Full viewer ready: ${current.label}`,
+          ms: elapsedMs,
+          details: {
+            expectedTriangles: current.expectedTriangles,
+            visibleTriangles: snapshot.triangles,
+            expectedGeometryBytes: current.expectedGeometryBytes,
+            geometryBufferBytes,
+            trace: snapshot.trace ?? null,
+          },
+        });
+        setSurfaceMeshTopologyStatus(
+          `Dedicated Full viewer ready: ${current.label} (${snapshot.triangles.toLocaleString()} triangles).`
+        );
+        return {
+          ...current,
+          status: "ready",
+          elapsedMs,
+          geometryBufferBytes,
+          trace: snapshot.trace ?? null,
+        };
+      });
+    },
+    [recordMeshDebugEvent, recordMeshPipelineProfilePhase]
+  );
+
   const handleSurfaceRenderQualityChange = useCallback(
     (quality: RenderQuality) => {
-      setSurfaceRenderQuality(quality);
+      if (largeSurfaceMeshFullPreviewJob && quality === "sharp") {
+        closeLargeSurfaceMeshFullPreviewJob("closed");
+        return;
+      }
+      if (largeSurfaceMeshFullPreviewJob && quality !== "sharp") {
+        closeLargeSurfaceMeshFullPreviewJob("closed", quality);
+      }
+      const cache = largeSurfaceMeshResolutionCacheRef.current;
+      const useDedicatedFullViewer = !!cache && quality === "sharp";
+      setSurfaceRenderQuality(useDedicatedFullViewer ? "performance" : quality);
       recordMeshDebugEvent({
         kind: "quality",
         label: `Render quality -> ${quality}`,
         details: {
-          hasLargeMeshCache: !!largeSurfaceMeshResolutionCacheRef.current,
+          hasLargeMeshCache: !!cache,
+          dedicatedFullViewer: useDedicatedFullViewer,
           meshLabel: surfaceMeshData?.label ?? null,
           triangles: surfaceMeshData ? surfaceMeshTriangleCount(surfaceMeshData) : null,
         },
       });
-      const cache = largeSurfaceMeshResolutionCacheRef.current;
       if (!cache) {
         if (quality === "sharp") setMeshInteractionQualityMode("full");
         return;
       }
 
       if (quality === "sharp") {
-        largeSurfaceMeshFullRestorePendingRef.current = true;
-        const fullRestoreRequestedAt = benchmarkNowMs();
-        const expectedFullTriangles = surfaceMeshTriangleCount(cache.fullMesh);
-        recordMeshDebugEvent({
-          kind: "full",
-          label: `Full requested: ${cache.label}`,
-          details: {
-            expectedTriangles: expectedFullTriangles,
-            previewTriangles: surfaceMeshTriangleCount(cache.previewMesh),
-          },
-        });
-        if (meshFullRestoreFrameProfileRef.current?.timeoutId != null && typeof window !== "undefined") {
-          window.clearTimeout(meshFullRestoreFrameProfileRef.current.timeoutId);
-        }
-        meshFullRestoreFrameProfileRef.current = {
-          profileId: meshPipelineProfileLatestIdRef.current,
-          label: cache.label,
-          requestedAt: Date.now(),
-          expectedTriangles: expectedFullTriangles,
-          timeoutId: null,
-        };
-        setMeshInteractionQualityMode("full");
-        setSurfaceMeshImportBusy(true);
-        setSurfaceMeshTopologyStatus(
-          `Loading full resolution ${cache.label}: ${expectedFullTriangles.toLocaleString()} triangles.`
-        );
-        const restoreFull = () => {
-          const restoreStart = benchmarkNowMs();
-          let publishMs = 0;
-          let focusMs = 0;
-          try {
-            cache.active = "full";
-            setMeshInteractionQualityMode("full");
-            const publishStart = benchmarkNowMs();
-            setMeshDataset(cache.fullMesh, "mesh-large:restore-full");
-            publishMs = benchmarkNowMs() - publishStart;
-            recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, "full:publishDataset", publishMs);
-            const focusStart = benchmarkNowMs();
-            focusSurfaceMeshViewport(cache.fullMesh);
-            focusMs = benchmarkNowMs() - focusStart;
-            recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, "full:focusViewport", focusMs);
-            recordMeshPipelineProfilePhase(
-              meshPipelineProfileLatestIdRef.current,
-              "full:handlerTotal",
-              benchmarkNowMs() - restoreStart
-            );
-            recordMeshDebugEvent({
-              kind: "full",
-              label: `Full published: ${cache.label}`,
-              ms: benchmarkNowMs() - restoreStart,
-              details: {
-                publishMs,
-                focusMs,
-                vertices: Math.floor(cache.fullMesh.positions.length / 3),
-                triangles: surfaceMeshTriangleCount(cache.fullMesh),
-              },
-            });
-            if (typeof window !== "undefined") {
-              const timeoutId = window.setTimeout(() => {
-                const pendingFullRestore = meshFullRestoreFrameProfileRef.current;
-                if (!pendingFullRestore || pendingFullRestore.label !== cache.label) return;
-                meshFullRestoreFrameProfileRef.current = null;
-                largeSurfaceMeshFullRestorePendingRef.current = false;
-                cache.active = "preview";
-                setSurfaceRenderQuality("performance");
-                setMeshInteractionQualityMode("fast-preview");
-                setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
-                setMeshDataset(cache.previewMesh, "mesh-large:full-timeout-preview");
-                focusSurfaceMeshViewport(cache.previewMesh);
-                setSurfaceMeshImportBusy(false);
-                recordMeshPipelineProfilePhase(
-                  pendingFullRestore.profileId,
-                  "full:timeoutFallback",
-                  Math.max(0, Date.now() - pendingFullRestore.requestedAt)
-                );
-                recordMeshDebugEvent({
-                  kind: "full",
-                  label: `Full timeout fallback: ${cache.label}`,
-                  ms: Math.max(0, Date.now() - pendingFullRestore.requestedAt),
-                  details: {
-                    restoredTriangles: surfaceMeshTriangleCount(cache.previewMesh),
-                    expectedTriangles: pendingFullRestore.expectedTriangles,
-                  },
-                });
-                setSurfaceMeshTopologyStatus(
-                  `Full resolution timed out for ${cache.label}; restored fast preview.`
-                );
-              }, 15_000);
-              if (meshFullRestoreFrameProfileRef.current?.label === cache.label) {
-                meshFullRestoreFrameProfileRef.current.timeoutId = timeoutId;
-              }
-            }
-            setSurfaceMeshTopologyStatus(
-              `Full resolution loaded: ${cache.label} (${Math.floor(
-                cache.fullMesh.positions.length / 3
-              ).toLocaleString()} vertices / ${surfaceMeshTriangleCount(cache.fullMesh).toLocaleString()} triangles).`
-            );
-            if (typeof console !== "undefined") {
-              console.info(
-                "[mesh-full-restore-profile]",
-                JSON.stringify({
-                  label: cache.label,
-                  vertices: Math.floor(cache.fullMesh.positions.length / 3),
-                  triangles: surfaceMeshTriangleCount(cache.fullMesh),
-                  queuedMs: restoreStart - fullRestoreRequestedAt,
-                  publishMs,
-                  focusMs,
-                  totalHandlerMs: benchmarkNowMs() - restoreStart,
-                })
-              );
-            }
-          } catch (error) {
-            cache.active = "preview";
-            setSurfaceRenderQuality("performance");
-            setMeshInteractionQualityMode("fast-preview");
-            recordMeshDebugEvent({
-              kind: "error",
-              label: `Full failed: ${cache.label}`,
-              details: { error: error instanceof Error ? error.message : String(error) },
-            });
-            setSurfaceMeshTopologyStatus(
-              `Full resolution failed for ${cache.label}: ${error instanceof Error ? error.message : String(error)}`
-            );
-          } finally {
-            largeSurfaceMeshFullRestorePendingRef.current = false;
-            setSurfaceMeshImportBusy(false);
-          }
-        };
-        if (typeof window !== "undefined") {
-          window.setTimeout(restoreFull, 0);
-        } else {
-          restoreFull();
-        }
+        startLargeSurfaceMeshFullPreviewJob(cache);
         return;
       }
 
@@ -49277,8 +49495,55 @@ case "mobius":
         details: { targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET },
       });
     },
-    [focusSurfaceMeshViewport, recordMeshDebugEvent, recordMeshPipelineProfilePhase, setMeshDataset, surfaceMeshData]
+    [
+      focusSurfaceMeshViewport,
+      closeLargeSurfaceMeshFullPreviewJob,
+      largeSurfaceMeshFullPreviewJob,
+      recordMeshDebugEvent,
+      setMeshDataset,
+      startLargeSurfaceMeshFullPreviewJob,
+      surfaceMeshData,
+    ]
   );
+
+  useEffect(() => {
+    const cache = largeSurfaceMeshResolutionCacheRef.current;
+    if (!cache || cache.active !== "full" || surfaceMeshData !== cache.fullMesh) return;
+    if (meshFullReactCommitLoggedRef.current === cache.label) return;
+    meshFullReactCommitLoggedRef.current = cache.label;
+    recordMeshDebugEvent({
+      kind: "alloc",
+      label: "Full after React commit",
+      details: {
+        label: cache.label,
+        fullMeshBytes: estimateSurfaceMeshDataBytes(cache.fullMesh),
+        previewMeshBytes: estimateSurfaceMeshDataBytes(cache.previewMesh),
+        activeSampleMeshDataBytes: estimateSurfaceSampleSetMeshDataBytes(surfaceSampleSet),
+        fullVertices: Math.floor(cache.fullMesh.positions.length / 3),
+        fullTriangles: surfaceMeshTriangleCount(cache.fullMesh),
+      },
+    });
+    if (typeof window === "undefined") return;
+    window.setTimeout(() => {
+      const activeCache = largeSurfaceMeshResolutionCacheRef.current;
+      recordMeshDebugEvent({
+        kind: "alloc",
+        label: "Full idle retention checkpoint",
+        details: {
+          label: cache.label,
+          cacheStillFull: activeCache?.active === "full",
+          activeSampleMeshDataBytes: estimateSurfaceSampleSetMeshDataBytes(surfaceSampleSet),
+          sampleCount: surfaceSampleSet?.samples.length ?? null,
+          sampleMeshDataCount: surfaceSampleSet?.meshData?.length ?? null,
+          jsHeapUsedBytes: Number.isFinite(
+            (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory?.usedJSHeapSize
+          )
+            ? Number((performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory?.usedJSHeapSize)
+            : null,
+        },
+      });
+    }, 1500);
+  }, [recordMeshDebugEvent, surfaceMeshData, surfaceSampleSet]);
 
   useEffect(() => {
     if (!surfaceMeshData?.positions?.length) return;
@@ -49620,7 +49885,8 @@ case "mobius":
   const handleLoadSurfaceMeshBenchmarkModel = useCallback(
     async (modelId: string) => {
       const api = typeof window !== "undefined" ? window.meshBenchmarks : undefined;
-      if (!isDev || !api?.load) {
+      const benchmarkLoadingAllowed = isDev || !!window.appRuntime?.e2e;
+      if (!benchmarkLoadingAllowed || !api?.load) {
         setSurfaceMeshBenchmarkError("Benchmark models are only available in development builds.");
         return;
       }
@@ -49686,13 +49952,35 @@ case "mobius":
           return { ok: false, error: String((error as any)?.message ?? error) };
         }
       },
+      runFullTrace: async (id: string) => {
+        try {
+          recordMeshDebugEvent({
+            kind: "full",
+            label: `E2E full trace requested: ${id}`,
+          });
+          await handleLoadSurfaceMeshBenchmarkModel(id);
+          const cache = largeSurfaceMeshResolutionCacheRef.current;
+          if (!cache) {
+            return { ok: false, error: `Benchmark ${id} did not create a large mesh cache.` };
+          }
+          await new Promise<void>((resolve) => {
+            window.requestAnimationFrame(() => {
+              window.requestAnimationFrame(() => resolve());
+            });
+          });
+          handleSurfaceRenderQualityChange("sharp");
+          return { ok: true };
+        } catch (error) {
+          return { ok: false, error: String((error as any)?.message ?? error) };
+        }
+      },
     };
     return () => {
       if (window.__MATH3D_E2E_MESH_BENCHMARK__?.loadBenchmarkModel) {
         delete window.__MATH3D_E2E_MESH_BENCHMARK__;
       }
     };
-  }, [handleLoadSurfaceMeshBenchmarkModel, isDev]);
+  }, [handleLoadSurfaceMeshBenchmarkModel, handleSurfaceRenderQualityChange, isDev, recordMeshDebugEvent]);
 
   const handleExportSurfaceMeshObj = useCallback(() => {
     if (surfaceMeshExportBusy) return;
@@ -49843,6 +50131,7 @@ case "mobius":
   const buildSurfaceMeshTopologyPreview = useCallback(
     (actionLabel: string, edit: (mesh: SurfaceMeshData) => SurfaceMeshData): string | null => {
       if (!surfaceMeshData?.positions?.length) return null;
+      if (shouldDeferLargeSurfaceMeshAnalysis(surfaceMeshData)) return "Preview deferred for large mesh";
       try {
         const beforeCounts = countTriangleMeshTopology(surfaceMeshData);
         const edited = applySurfaceMeshOps(edit(cloneSurfaceMeshData(surfaceMeshData, surfaceMeshData.label)));
@@ -49857,6 +50146,7 @@ case "mobius":
   const buildSurfaceMeshTopologyPreviewCountDetail = useCallback(
     (_actionLabel: string, edit: (mesh: SurfaceMeshData) => SurfaceMeshData): string | null => {
       if (!surfaceMeshData?.positions?.length) return null;
+      if (shouldDeferLargeSurfaceMeshAnalysis(surfaceMeshData)) return null;
       try {
         const beforeCounts = countTriangleMeshTopology(surfaceMeshData);
         const edited = applySurfaceMeshOps(edit(cloneSurfaceMeshData(surfaceMeshData, surfaceMeshData.label)));
@@ -69399,15 +69689,23 @@ case "mobius":
                               ["sharp", "Full"],
                             ] as const
                           ).map(([quality, label]) => (
-                            <button
-                              key={`mesh-viewer-quality-${quality}`}
-                              type="button"
-                              onClick={() => handleSurfaceRenderQualityChange(quality)}
-                              aria-pressed={surfaceRenderQuality === quality}
-                              style={viewerControlButtonStyle(surfaceRenderQuality === quality, meshViewerControlsDensity)}
-                            >
-                              {label}
-                            </button>
+                            (() => {
+                              const qualityActive =
+                                quality === "sharp"
+                                  ? !!largeSurfaceMeshFullPreviewJob
+                                  : surfaceRenderQuality === quality && !largeSurfaceMeshFullPreviewJob;
+                              return (
+                                <button
+                                  key={`mesh-viewer-quality-${quality}`}
+                                  type="button"
+                                  onClick={() => handleSurfaceRenderQualityChange(quality)}
+                                  aria-pressed={qualityActive}
+                                  style={viewerControlButtonStyle(qualityActive, meshViewerControlsDensity)}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })()
                           ))}
                           <span style={{ ...viewerControlLabelStyle, marginLeft: 4 }}>
                             {meshViewerControlsDensity === "compact" ? "Cam" : "Camera"}
@@ -70199,6 +70497,151 @@ case "mobius":
                             </div>
                           </div>
                         )}
+                        {surfaceViewerKind === "mesh" && largeSurfaceMeshFullPreviewJob && !cleanScreenshotSurfaceActive && (
+                          <div
+                            data-testid="mesh-dedicated-full-viewer"
+                            style={{
+                              position: "absolute",
+                              inset: 0,
+                              zIndex: 46,
+                              display: "flex",
+                              flexDirection: "column",
+                              background: "#f8fbff",
+                              border: "1px solid #bfdbfe",
+                              borderRadius: 8,
+                              overflow: "hidden",
+                              boxShadow: "0 18px 36px rgba(15, 23, 42, 0.18)",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 12,
+                                padding: "8px 10px",
+                                borderBottom: "1px solid #cfe3ff",
+                                background: "rgba(255,255,255,0.96)",
+                                color: "#0f3557",
+                                fontSize: 12,
+                              }}
+                            >
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontWeight: 900 }}>Full preview</div>
+                                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {largeSurfaceMeshFullPreviewJob.label} ·{" "}
+                                  {largeSurfaceMeshFullPreviewJob.expectedTriangles.toLocaleString()} triangles
+                                  {largeSurfaceMeshFullPreviewJob.status === "preparing"
+                                    ? " · preparing"
+                                    : largeSurfaceMeshFullPreviewJob.status === "rendering"
+                                      ? " · building full buffers"
+                                      : largeSurfaceMeshFullPreviewJob.status === "ready"
+                                        ? ` · ready in ${Math.round(largeSurfaceMeshFullPreviewJob.elapsedMs ?? 0)} ms`
+                                        : ` · ${largeSurfaceMeshFullPreviewJob.error ?? "failed"}`}
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+                                {largeSurfaceMeshFullPreviewJob.status !== "ready" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => closeLargeSurfaceMeshFullPreviewJob("cancelled")}
+                                    style={floatingToolButtonStyle(false)}
+                                  >
+                                    Cancel
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => closeLargeSurfaceMeshFullPreviewJob("closed")}
+                                  style={floatingToolButtonStyle(false)}
+                                >
+                                  Back to Fast
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{ position: "relative", flex: 1, minHeight: 0 }}>
+                              {largeSurfaceMeshFullPreviewJob.status === "preparing" ||
+                              largeSurfaceMeshFullPreviewJob.status === "failed" ? (
+                                <div
+                                  style={{
+                                    position: "absolute",
+                                    inset: 0,
+                                    display: "grid",
+                                    placeItems: "center",
+                                    color: "#0f3557",
+                                    fontSize: 13,
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      border: "1px solid #bfdbfe",
+                                      borderRadius: 8,
+                                      background: "rgba(255,255,255,0.96)",
+                                      padding: "12px 16px",
+                                      textAlign: "center",
+                                      boxShadow: "0 12px 28px rgba(15, 23, 42, 0.12)",
+                                    }}
+                                  >
+                                    <div style={{ fontWeight: 900, marginBottom: 4 }}>
+                                      {largeSurfaceMeshFullPreviewJob.status === "failed"
+                                        ? "Full viewer did not complete"
+                                        : "Preparing full mesh..."}
+                                    </div>
+                                    <div>
+                                      {largeSurfaceMeshFullPreviewJob.status === "failed"
+                                        ? largeSurfaceMeshFullPreviewJob.error
+                                        : "Fast preview remains active underneath."}
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <SurfaceViewer
+                                  surfaceId="surface_mesh"
+                                  renderQuality="sharp"
+                                  meshInteractionQualityMode="full"
+                                  meshInteractionPreviewTriangleTarget={LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET}
+                                  sceneBackgroundMode={cleanScreenshotSceneBackgroundMode}
+                                  surfaceMeshOverride={largeSurfaceMeshFullPreviewJob.mesh}
+                                  wireframe={false}
+                                  showPlanes={false}
+                                  showPrincipalProjections={false}
+                                  planeGridSettings={planeGridSettings}
+                                  lightPreset={lightPreset}
+                                  materialRoughness={materialRoughness}
+                                  materialMetalness={materialMetalness}
+                                  materialOpacity={materialOpacity}
+                                  colorMode="solid"
+                                  showChartGrid={false}
+                                  showBoundingBox={true}
+                                  showOverlayControls={false}
+                                  showViewGizmo={true}
+                                  resetToken={cameraResetToken}
+                                  windowReframeToken={windowReframeToken}
+                                  reframePaddingFactor={surfacePreviewReframePaddingFactor}
+                                  onPerformanceSnapshot={handleLargeSurfaceMeshFullPreviewSnapshot}
+                                  probeEnabled={false}
+                                  showProbeNormal={false}
+                                  showProbeTangentPlane={false}
+                                  showProbeTangents={false}
+                                  showPrincipalDirections={false}
+                                  showPrincipalNormalPlanes={false}
+                                  showPrincipalLines={false}
+                                  showPrincipalGlyphs={false}
+                                  showCurvatureLines={false}
+                                  showRidges={false}
+                                  showValleys={false}
+                                  showContours={false}
+                                  gaussMapEnabled={false}
+                                  selectionOverlayVisible={false}
+                                  geodesicPathEnabled={false}
+                                  geodesicHeatEnabled={false}
+                                  geodesicDiskEnabled={false}
+                                  inspectEnabled={false}
+                                />
+                              )}
+                            </div>
+                          </div>
+                        )}
                         {surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? (
                         <ParamSurfaceViewer
                             surfaceId={primaryParamId}
@@ -70356,7 +70799,7 @@ case "mobius":
                         <SurfaceViewer
                               surfaceId={primarySurfaceId}
                               renderQuality={surfaceRenderQuality}
-                              meshInteractionQualityMode={activeLargeSurfaceMeshFullMesh ? "full" : meshInteractionQualityMode}
+                              meshInteractionQualityMode={meshInteractionQualityMode}
                               meshInteractionRestoreDelayMs={meshInteractionRestoreDelayMs}
                               meshInteractionPreviewTriangleTarget={meshInteractionPreviewTriangleTarget}
                               meshInteractionHideVertexMarkers={meshInteractionHideVertexMarkers}
@@ -72293,7 +72736,7 @@ case "mobius":
                             <SurfaceViewer
                               surfaceId={secondarySurfaceId}
                               renderQuality={surfaceRenderQuality}
-                              meshInteractionQualityMode={activeLargeSurfaceMeshFullMesh ? "full" : meshInteractionQualityMode}
+                              meshInteractionQualityMode={meshInteractionQualityMode}
                               meshInteractionRestoreDelayMs={meshInteractionRestoreDelayMs}
                               meshInteractionPreviewTriangleTarget={meshInteractionPreviewTriangleTarget}
                               meshInteractionHideVertexMarkers={meshInteractionHideVertexMarkers}
@@ -72612,7 +73055,7 @@ case "mobius":
                       onRunMeshBenchmarkPerformanceSuite={() => {
                         void handleRunMeshBenchmarkPerformanceSuite();
                       }}
-                      meshInteractionQualityMode={activeLargeSurfaceMeshFullMesh ? "full" : meshInteractionQualityMode}
+                      meshInteractionQualityMode={meshInteractionQualityMode}
                       onChangeMeshInteractionQualityMode={setMeshInteractionQualityMode}
                       meshInteractionRestoreDelayMs={meshInteractionRestoreDelayMs}
                       onChangeMeshInteractionRestoreDelayMs={setMeshInteractionRestoreDelayMs}
