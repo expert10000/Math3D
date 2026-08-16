@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
 import { ADDITION, Brush, Evaluator, INTERSECTION, REVERSE_SUBTRACTION, SUBTRACTION } from "three-bvh-csg";
@@ -2131,9 +2131,14 @@ const applySurfaceMeshOps = (
   const meanEdgeStart = benchmarkNowMs();
   next = computeMeanEdgeLength(next);
   options?.onStage?.("prep:meanEdge", benchmarkNowMs() - meanEdgeStart);
-  const validateStart = benchmarkNowMs();
-  next = validateMesh(next);
-  options?.onStage?.("prep:validate", benchmarkNowMs() - validateStart);
+  if (shouldDeferAdjacency) {
+    next = { ...next, validation: null };
+    options?.onStage?.("prep:validateDeferred", 0);
+  } else {
+    const validateStart = benchmarkNowMs();
+    next = validateMesh(next);
+    options?.onStage?.("prep:validate", benchmarkNowMs() - validateStart);
+  }
   return next;
 };
 
@@ -21986,16 +21991,50 @@ const App: React.FC = () => {
   const surfaceMeshTraceStateRef = useRef<{ meshId: string; mesh: SurfaceMeshData; traceMap: GeometryMeshTraceMap } | null>(
     null
   );
+  const meshDatasetPublishTraceRef = useRef<{
+    token: number;
+    operation: string;
+    label: string | null;
+    triangles: number | null;
+    vertices: number | null;
+    startedAt: number;
+    publishMs: number;
+    tracePrepMs: number | null;
+    datasetConvertMs: number | null;
+    datasetKindMs: number | null;
+    commitLogged: boolean;
+  } | null>(null);
+  const meshDatasetPublishTraceCounterRef = useRef(0);
   const largeSurfaceMeshResolutionCacheRef = useRef<LargeSurfaceMeshResolutionCache | null>(null);
   const largeSurfaceMeshFullRestorePendingRef = useRef(false);
   const setMeshDataset = useCallback((mesh: SurfaceMeshData | null, traceOperation = "mesh-dataset:set") => {
+    const publishStart = benchmarkNowMs();
+    const token = ++meshDatasetPublishTraceCounterRef.current;
     if (!mesh) {
       largeSurfaceMeshResolutionCacheRef.current = null;
       surfaceMeshTraceStateRef.current = null;
+      meshDatasetPublishTraceRef.current = {
+        token,
+        operation: traceOperation,
+        label: null,
+        triangles: null,
+        vertices: null,
+        startedAt: publishStart,
+        publishMs: 0,
+        tracePrepMs: null,
+        datasetConvertMs: null,
+        datasetKindMs: null,
+        commitLogged: false,
+      };
       setMeshDatasetState(null);
       setDatasetKind("surface");
+      const publishEnd = benchmarkNowMs();
+      meshDatasetPublishTraceRef.current.publishMs = publishEnd - publishStart;
+      meshDatasetPublishTraceRef.current.datasetKindMs = publishEnd - publishStart;
       return;
     }
+    const triangles = surfaceMeshTriangleCount(mesh);
+    const vertices = Math.floor(mesh.positions.length / 3);
     const largeMeshCache = largeSurfaceMeshResolutionCacheRef.current;
     if (largeMeshCache && mesh !== largeMeshCache.previewMesh && mesh !== largeMeshCache.fullMesh) {
       largeSurfaceMeshResolutionCacheRef.current = null;
@@ -22010,15 +22049,35 @@ const App: React.FC = () => {
           )
         : [];
     if (shouldUseLightweightTraceForSurfaceMesh(mesh, sourceGeometryIds)) {
+      const tracePrepMs = benchmarkNowMs() - publishStart;
+      const datasetConvertStart = benchmarkNowMs();
+      const dataset = toMeshDataset(mesh);
+      const datasetConvertMs = benchmarkNowMs() - datasetConvertStart;
+      const datasetKindStart = benchmarkNowMs();
       surfaceMeshTraceStateRef.current = {
         meshId: nextMeshId,
         mesh,
         traceMap: new GeometryMeshTraceMap(),
       };
-      setMeshDatasetState(toMeshDataset(mesh));
+      setMeshDatasetState(dataset);
       setDatasetKind("surface");
+      const publishEnd = benchmarkNowMs();
+      meshDatasetPublishTraceRef.current = {
+        token,
+        operation: traceOperation,
+        label: mesh.label ?? null,
+        triangles,
+        vertices,
+        startedAt: publishStart,
+        publishMs: publishEnd - publishStart,
+        tracePrepMs,
+        datasetConvertMs,
+        datasetKindMs: publishEnd - datasetKindStart,
+        commitLogged: false,
+      };
       return;
     }
+    const tracePrepStart = benchmarkNowMs();
     const previousTraceState = surfaceMeshTraceStateRef.current;
     let nextTraceMap: GeometryMeshTraceMap;
     if (!previousTraceState) {
@@ -22062,13 +22121,32 @@ const App: React.FC = () => {
       });
     }
     mergeIntoGlobalGeometryMeshTraceMap(nextTraceMap);
+    const tracePrepMs = benchmarkNowMs() - tracePrepStart;
+    const datasetConvertStart = benchmarkNowMs();
+    const dataset = toMeshDataset(mesh);
+    const datasetConvertMs = benchmarkNowMs() - datasetConvertStart;
+    const datasetKindStart = benchmarkNowMs();
     surfaceMeshTraceStateRef.current = {
       meshId: nextMeshId,
       mesh: cloneSurfaceMeshData(mesh, mesh.label),
       traceMap: nextTraceMap,
     };
-    setMeshDatasetState(toMeshDataset(mesh));
+    setMeshDatasetState(dataset);
     setDatasetKind("surface");
+    const publishEnd = benchmarkNowMs();
+    meshDatasetPublishTraceRef.current = {
+      token,
+      operation: traceOperation,
+      label: mesh.label ?? null,
+      triangles,
+      vertices,
+      startedAt: publishStart,
+      publishMs: publishEnd - publishStart,
+      tracePrepMs,
+      datasetConvertMs,
+      datasetKindMs: publishEnd - datasetKindStart,
+      commitLogged: false,
+    };
   }, []);
   const runGeometryBooleanOperation = useCallback(
     (previewOnly: boolean) => {
@@ -39942,6 +40020,7 @@ const App: React.FC = () => {
     (label: string) => {
       clearLargeSurfaceMeshFullPreviewAsyncWork();
       largeSurfaceMeshFullRestorePendingRef.current = false;
+      setSurfaceSampleSet(null);
       if (meshFullRestoreFrameProfileRef.current?.timeoutId != null && typeof window !== "undefined") {
         window.clearTimeout(meshFullRestoreFrameProfileRef.current.timeoutId);
       }
@@ -40288,6 +40367,75 @@ const App: React.FC = () => {
       };
     });
   }, [recordMeshDebugEvent]);
+  useLayoutEffect(() => {
+    const trace = meshDatasetPublishTraceRef.current;
+    if (!trace || trace.commitLogged) return;
+    trace.commitLogged = true;
+    const commitMs = benchmarkNowMs() - trace.startedAt;
+    const profileId = meshPipelineProfileLatestIdRef.current;
+    const appendProfilePhase = (phase: string, ms: number | null | undefined) => {
+      if (!profileId || ms == null || !Number.isFinite(ms)) return;
+      setMeshPipelineProfile((current) => {
+        if (!current || current.id !== profileId) return current;
+        return {
+          ...current,
+          updatedAt: Date.now(),
+          phases: appendMeshPipelineProfilePhase(current.phases, phase, ms),
+        };
+      });
+    };
+    recordMeshDebugEvent({
+      kind: "phase",
+      label: "app:reactCommit",
+      ms: commitMs,
+      details: {
+        profileId,
+        token: trace.token,
+        operation: trace.operation,
+        label: trace.label,
+        triangles: trace.triangles,
+        vertices: trace.vertices,
+        publishMs: trace.publishMs,
+        tracePrepMs: trace.tracePrepMs,
+        datasetConvertMs: trace.datasetConvertMs,
+        datasetKindMs: trace.datasetKindMs,
+        surfaceViewerKind,
+        statsTriangles: surfaceMeshStats?.triCount ?? null,
+      },
+    });
+    appendProfilePhase("app:setMeshDatasetPublish", trace.publishMs);
+    appendProfilePhase("app:setMeshDatasetTracePrep", trace.tracePrepMs);
+    appendProfilePhase("app:setMeshDatasetConvert", trace.datasetConvertMs);
+    appendProfilePhase("app:reactCommit", commitMs);
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => {
+        const postCommitMs = benchmarkNowMs() - trace.startedAt;
+        recordMeshDebugEvent({
+          kind: "phase",
+          label: "app:postCommitInspectorState",
+          ms: postCommitMs,
+          details: {
+            profileId,
+            token: trace.token,
+            operation: trace.operation,
+            label: trace.label,
+            triangles: trace.triangles,
+            statsTriangles: surfaceMeshStats?.triCount ?? null,
+            sampleCount: surfaceSampleSet?.samples.length ?? null,
+            sampleMeshDataBytes: estimateSurfaceSampleSetMeshDataBytes(surfaceSampleSet),
+          },
+        });
+        appendProfilePhase("app:postCommitInspectorState", postCommitMs);
+      }, 0);
+    }
+  }, [
+    meshDataset,
+    recordMeshDebugEvent,
+    recordMeshPipelineProfilePhase,
+    surfaceMeshStats?.triCount,
+    surfaceSampleSet,
+    surfaceViewerKind,
+  ]);
   const finishMeshPipelineProfile = useCallback(
     (profileId: string | null, result: { mesh?: SurfaceMeshData | null; error?: string }) => {
       if (!profileId) return;
@@ -50149,6 +50297,7 @@ case "mobius":
       }
       const hintedModel = surfaceMeshBenchmarkModels.find((model) => model.id === modelId) ?? null;
       resetLargeSurfaceMeshFullPreviewForNewLoad(hintedModel?.label ?? modelId);
+      setSurfaceMeshBenchmarkBrowserOpen(false);
       setSurfaceMeshImportBusy(true);
       setSurfaceMeshImportError(null);
       setSurfaceMeshBenchmarkError(null);
