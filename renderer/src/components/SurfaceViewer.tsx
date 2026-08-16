@@ -1935,6 +1935,24 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     suspendRendering = false,
     surfaceMeshFallbackMode = "sphere",
   } = props;
+  useEffect(() => {
+    emitMeshViewerAllocTrace("viewer", "SurfaceViewer mounted", {
+      surfaceId,
+      renderQuality,
+      meshInteractionQualityMode,
+      hasSurfaceMeshOverride: !!surfaceMeshOverrideProp || !!surfaceMeshOverrideBufferKey,
+      suspendRendering,
+      suspendPointerInteractions,
+    });
+    return () => {
+      emitMeshViewerAllocTrace("viewer", "SurfaceViewer unmounted", {
+        surfaceId,
+        renderQuality,
+        meshInteractionQualityMode,
+        hadSurfaceMeshOverride: !!surfaceMeshOverrideProp || !!surfaceMeshOverrideBufferKey,
+      });
+    };
+  }, []);
   const storedSurfaceMeshOverride = useMemo(
     () => readFullMeshPreviewBuffer(surfaceMeshOverrideBufferKey),
     [surfaceMeshOverrideBufferKey]
@@ -7126,6 +7144,16 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     sampleSetRef.current = nextSampleSet;
     onSampleSet?.(nextSampleSet);
     const sampleSetMs = performance.now() - sampleSetStart;
+    if (sampleSetMs >= 8 || surfaceId === "surface_mesh") {
+      emitMeshViewerAllocTrace("viewer", "viewer:sampleSetBuilt", {
+        ...traceContext,
+        surfaceId,
+        sampleCount: nextSampleSet.samples.length,
+        meshDataCount: nextSampleSet.meshData?.length ?? 0,
+        sampleMeshDataBytes,
+        retainSampleMeshData,
+      }, sampleSetMs);
+    }
     if (fullAllocationTraceEnabled) {
       emitMeshViewerAllocTrace("alloc", "After onSampleSet emits meshData", {
         ...traceContext,

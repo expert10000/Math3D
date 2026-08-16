@@ -22004,6 +22004,11 @@ const App: React.FC = () => {
     datasetKindMs: number | null;
     commitLogged: boolean;
   } | null>(null);
+  const meshDebugActiveScopeRef = useRef<{
+    name: string;
+    startedAt: number;
+    details?: Record<string, unknown>;
+  } | null>(null);
   const meshDatasetPublishTraceCounterRef = useRef(0);
   const largeSurfaceMeshResolutionCacheRef = useRef<LargeSurfaceMeshResolutionCache | null>(null);
   const largeSurfaceMeshFullRestorePendingRef = useRef(false);
@@ -22011,6 +22016,11 @@ const App: React.FC = () => {
     const publishStart = benchmarkNowMs();
     const token = ++meshDatasetPublishTraceCounterRef.current;
     if (!mesh) {
+      meshDebugActiveScopeRef.current = {
+        name: `setMeshDataset:${traceOperation}`,
+        startedAt: publishStart,
+        details: { label: null, triangles: null, vertices: null },
+      };
       largeSurfaceMeshResolutionCacheRef.current = null;
       surfaceMeshTraceStateRef.current = null;
       meshDatasetPublishTraceRef.current = {
@@ -22035,6 +22045,11 @@ const App: React.FC = () => {
     }
     const triangles = surfaceMeshTriangleCount(mesh);
     const vertices = Math.floor(mesh.positions.length / 3);
+    meshDebugActiveScopeRef.current = {
+      name: `setMeshDataset:${traceOperation}`,
+      startedAt: publishStart,
+      details: { label: mesh.label ?? null, triangles, vertices },
+    };
     const largeMeshCache = largeSurfaceMeshResolutionCacheRef.current;
     if (largeMeshCache && mesh !== largeMeshCache.previewMesh && mesh !== largeMeshCache.fullMesh) {
       largeSurfaceMeshResolutionCacheRef.current = null;
@@ -37964,6 +37979,7 @@ const App: React.FC = () => {
   const [gaussHoverIndex, setGaussHoverIndex] = useState<number | null>(null);
   const [surfaceSampleSet, setSurfaceSampleSet] = useState<SurfaceSampleSet | null>(null);
   const surfaceSampleSetMeshDataBytesRef = useRef<number | null>(null);
+  const surfaceSampleSetDeferredTokenRef = useRef(0);
   useEffect(() => {
     surfaceSampleSetMeshDataBytesRef.current = estimateSurfaceSampleSetMeshDataBytes(surfaceSampleSet);
   }, [surfaceSampleSet]);
@@ -40202,12 +40218,16 @@ const App: React.FC = () => {
       const driftMs = now - expected;
       expected = now + 500;
       if (driftMs < MESH_DEBUG_STALL_THRESHOLD_MS) return;
+      const activeScope = meshDebugActiveScopeRef.current;
       recordMeshDebugEvent({
         kind: "stall",
         label: "Renderer main thread stalled",
         ms: driftMs,
         details: {
           thresholdMs: MESH_DEBUG_STALL_THRESHOLD_MS,
+          activeScope: activeScope?.name ?? null,
+          activeScopeMs: activeScope ? now - activeScope.startedAt : null,
+          activeScopeDetails: activeScope?.details ?? null,
           mode,
           viewerKind: surfaceViewerKind,
           renderQuality: surfaceRenderQuality,
@@ -40371,6 +40391,16 @@ const App: React.FC = () => {
     const trace = meshDatasetPublishTraceRef.current;
     if (!trace || trace.commitLogged) return;
     trace.commitLogged = true;
+    meshDebugActiveScopeRef.current = {
+      name: "app:reactCommit",
+      startedAt: benchmarkNowMs(),
+      details: {
+        operation: trace.operation,
+        label: trace.label,
+        triangles: trace.triangles,
+        vertices: trace.vertices,
+      },
+    };
     const commitMs = benchmarkNowMs() - trace.startedAt;
     const profileId = meshPipelineProfileLatestIdRef.current;
     const appendProfilePhase = (phase: string, ms: number | null | undefined) => {
@@ -40409,6 +40439,16 @@ const App: React.FC = () => {
     appendProfilePhase("app:reactCommit", commitMs);
     if (typeof window !== "undefined") {
       window.setTimeout(() => {
+        meshDebugActiveScopeRef.current = {
+          name: "app:postCommitInspectorState",
+          startedAt: benchmarkNowMs(),
+          details: {
+            operation: trace.operation,
+            label: trace.label,
+            triangles: trace.triangles,
+            vertices: trace.vertices,
+          },
+        };
         const postCommitMs = benchmarkNowMs() - trace.startedAt;
         recordMeshDebugEvent({
           kind: "phase",
@@ -40426,6 +40466,12 @@ const App: React.FC = () => {
           },
         });
         appendProfilePhase("app:postCommitInspectorState", postCommitMs);
+        const committedScope = meshDebugActiveScopeRef.current;
+        window.setTimeout(() => {
+          if (meshDebugActiveScopeRef.current === committedScope) {
+            meshDebugActiveScopeRef.current = null;
+          }
+        }, 1000);
       }, 0);
     }
   }, [
@@ -48755,39 +48801,79 @@ case "mobius":
     (set: SurfaceSampleSet | null) => {
       const nextMeshDataBytes = estimateSurfaceSampleSetMeshDataBytes(set);
       const shouldTraceSampleSet = nextMeshDataBytes != null && nextMeshDataBytes >= 1024 * 1024;
-      if (shouldTraceSampleSet) {
-        recordMeshDebugEvent({
-          kind: "alloc",
-          label: "Before onSampleSet stores meshData",
+      const largeMeshCache = largeSurfaceMeshResolutionCacheRef.current;
+      const shouldDeferFastPreviewSampleSet =
+        surfaceViewerKind === "mesh" &&
+        meshInteractionQualityMode === "fast-preview" &&
+        !!largeMeshCache &&
+        surfaceMeshData === largeMeshCache.previewMesh &&
+        typeof window !== "undefined";
+      const publishSampleSet = () => {
+        meshDebugActiveScopeRef.current = {
+          name: "app:onSampleSet",
+          startedAt: benchmarkNowMs(),
           details: {
+            deferred: shouldDeferFastPreviewSampleSet,
             nextSampleCount: set?.samples.length ?? null,
-            nextMeshDataCount: set?.meshData?.length ?? null,
             nextMeshDataBytes,
-            currentMeshDataBytes: surfaceSampleSetMeshDataBytesRef.current,
           },
-        });
-      }
-      setSurfaceSampleSet(set);
-      if (shouldTraceSampleSet && typeof window !== "undefined") {
-        window.setTimeout(() => {
+        };
+        if (shouldTraceSampleSet) {
           recordMeshDebugEvent({
             kind: "alloc",
-            label: "After onSampleSet stores meshData",
+            label: "Before onSampleSet stores meshData",
             details: {
-              storedSampleCount: set?.samples.length ?? null,
-              storedMeshDataCount: set?.meshData?.length ?? null,
-              storedMeshDataBytes: nextMeshDataBytes,
-              jsHeapUsedBytes: Number.isFinite(
-                (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory?.usedJSHeapSize
-              )
-                ? Number((performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory?.usedJSHeapSize)
-                : null,
+              nextSampleCount: set?.samples.length ?? null,
+              nextMeshDataCount: set?.meshData?.length ?? null,
+              nextMeshDataBytes,
+              currentMeshDataBytes: surfaceSampleSetMeshDataBytesRef.current,
+              deferred: shouldDeferFastPreviewSampleSet,
             },
           });
+        }
+        setSurfaceSampleSet(set);
+        if (shouldTraceSampleSet && typeof window !== "undefined") {
+          window.setTimeout(() => {
+            recordMeshDebugEvent({
+              kind: "alloc",
+              label: "After onSampleSet stores meshData",
+              details: {
+                storedSampleCount: set?.samples.length ?? null,
+                storedMeshDataCount: set?.meshData?.length ?? null,
+                storedMeshDataBytes: nextMeshDataBytes,
+                deferred: shouldDeferFastPreviewSampleSet,
+                jsHeapUsedBytes: Number.isFinite(
+                  (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory?.usedJSHeapSize
+                )
+                  ? Number((performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory?.usedJSHeapSize)
+                  : null,
+              },
+            });
+          }, 0);
+        }
+      };
+      if (shouldDeferFastPreviewSampleSet) {
+        const deferredToken = ++surfaceSampleSetDeferredTokenRef.current;
+        recordMeshDebugEvent({
+          kind: "phase",
+          label: "app:onSampleSetDeferred",
+          details: {
+            label: surfaceMeshData?.label ?? null,
+            triangles: surfaceMeshData ? surfaceMeshTriangleCount(surfaceMeshData) : null,
+            nextSampleCount: set?.samples.length ?? null,
+          },
+        });
+        window.setTimeout(() => {
+          if (surfaceSampleSetDeferredTokenRef.current === deferredToken) {
+            publishSampleSet();
+          }
         }, 0);
+        return;
       }
+      surfaceSampleSetDeferredTokenRef.current += 1;
+      publishSampleSet();
     },
-    [recordMeshDebugEvent]
+    [meshInteractionQualityMode, recordMeshDebugEvent, surfaceMeshData, surfaceViewerKind]
   );
 
   const complexMapOverlayPolylines = useMemo<PolylineSet | null>(() => {
@@ -71377,7 +71463,8 @@ case "mobius":
                         geodesicDiskShowBoundary={geodesicDiskShowBoundary}
                         zoomToRegion={zoomToRegion}
                         zoomToRegionToken={zoomNowToken}
-                        suspendPointerInteractions={surfaceFormulaEditorOpen}
+                        suspendPointerInteractions={surfaceFormulaEditorOpen || !!largeSurfaceMeshFullPreviewJob}
+                        suspendRendering={!!largeSurfaceMeshFullPreviewJob}
                       />
                         )}
                         {meshAnalyzeScienceOverlayReady && !cleanScreenshotSurfaceActive && (
