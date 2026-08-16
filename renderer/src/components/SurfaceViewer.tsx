@@ -37,7 +37,7 @@ import {
 } from "@math3d/renderer-web";
 import { debugLog } from "../utils/debugLog";
 import { configureOrbitControlsForTouch, installViewerTouchGestures } from "../utils/viewerTouchGestures";
-import { readFullMeshPreviewBuffer } from "../mesh/fullMeshPreviewBufferStore";
+import { readFullMeshPreviewBuffer, type FullMeshPreviewBufferPayload } from "../mesh/fullMeshPreviewBufferStore";
 
 export type ColorMode = CoreColorMode;
 
@@ -198,6 +198,13 @@ type SurfaceMeshOverride = {
     rotation?: { x: number; y: number; z: number };
     scale?: { x: number; y: number; z: number };
   };
+};
+
+const getSurfaceMeshOverrideAdjacency = (
+  override: SurfaceMeshOverride | FullMeshPreviewBufferPayload | null | undefined
+): number[][] | null => {
+  if (!override || !("adjacency" in override)) return null;
+  return override.adjacency ?? null;
 };
 
 const DEG_TO_RAD = Math.PI / 180;
@@ -9077,7 +9084,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
     } else if (isMeshSurface) {
       const index = geometry.getIndex() ? (geometry.getIndex()!.array as ArrayLike<number>) : null;
-      const meshAdjacency = surfaceMeshOverride?.adjacency ?? null;
+      const meshAdjacency = getSurfaceMeshOverrideAdjacency(surfaceMeshOverride);
       const neighbors =
         meshAdjacency && meshAdjacency.length === vertexCount
           ? meshAdjacency
@@ -9547,7 +9554,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     };
     let neighbors: number[][];
     let neighborSpacing = 0;
-    const meshAdjacency = isMeshSurface ? surfaceMeshOverride?.adjacency ?? null : null;
+    const meshAdjacency = isMeshSurface ? getSurfaceMeshOverrideAdjacency(surfaceMeshOverride) : null;
     const meshMeanEdge = isMeshSurface ? surfaceMeshOverride?.meanEdgeLength ?? 0 : 0;
     if (isImplicitSurface && !index) {
       const built = buildSpatialAdjacency(positions, vertexCount);
@@ -9730,7 +9737,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (!field) return;
 
     const { positions, k1, k2, d1, d2, vertexCount, index } = field;
-    const meshAdjacency = isMeshSurface ? surfaceMeshOverride?.adjacency ?? null : null;
+    const meshAdjacency = isMeshSurface ? getSurfaceMeshOverrideAdjacency(surfaceMeshOverride) : null;
     const neighbors =
       meshAdjacency && meshAdjacency.length === vertexCount
         ? meshAdjacency
