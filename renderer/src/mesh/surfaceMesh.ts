@@ -148,6 +148,29 @@ const stripToPositions = (geom: THREE.BufferGeometry): THREE.BufferGeometry => {
   return out;
 };
 
+const stripToMergeableSurfaceMeshAttributes = (
+  geom: THREE.BufferGeometry,
+  options: { normals: boolean; uvs: boolean }
+): THREE.BufferGeometry => {
+  const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
+  const out = new THREE.BufferGeometry();
+  if (!posAttr) return out;
+  out.setAttribute("position", posAttr.clone());
+  if (options.normals) {
+    const normalAttr = geom.getAttribute("normal") as THREE.BufferAttribute | null;
+    if (normalAttr && normalAttr.count === posAttr.count) {
+      out.setAttribute("normal", normalAttr.clone());
+    }
+  }
+  if (options.uvs) {
+    const uvAttr = geom.getAttribute("uv") as THREE.BufferAttribute | null;
+    if (uvAttr && uvAttr.count === posAttr.count) {
+      out.setAttribute("uv", uvAttr.clone());
+    }
+  }
+  return out;
+};
+
 const weldGeometryPositions = (geom: THREE.BufferGeometry, tolerance: number): THREE.BufferGeometry => {
   const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
   if (!posAttr) return stripToPositions(geom);
@@ -425,7 +448,7 @@ export function mergeMeshData(meshes: { positions: ArrayLike<number>; indices: A
 }
 
 const mergeObjectGeometries = (root: THREE.Object3D): THREE.BufferGeometry => {
-  const geometries: THREE.BufferGeometry[] = [];
+  const sourceGeometries: THREE.BufferGeometry[] = [];
   root.updateMatrixWorld(true);
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
@@ -433,11 +456,24 @@ const mergeObjectGeometries = (root: THREE.Object3D): THREE.BufferGeometry => {
     const geom = (mesh.geometry as THREE.BufferGeometry).clone();
     geom.applyMatrix4(mesh.matrixWorld);
     const base = geom.index ? geom.toNonIndexed() : geom;
-    geometries.push(stripToPositions(base));
+    sourceGeometries.push(base);
   });
-  if (!geometries.length) {
+  if (!sourceGeometries.length) {
     throw new Error("No mesh geometry found in file.");
   }
+  const canPreserveNormals = sourceGeometries.every((geom) => {
+    const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
+    const normalAttr = geom.getAttribute("normal") as THREE.BufferAttribute | null;
+    return !!posAttr && !!normalAttr && normalAttr.count === posAttr.count;
+  });
+  const canPreserveUvs = sourceGeometries.every((geom) => {
+    const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
+    const uvAttr = geom.getAttribute("uv") as THREE.BufferAttribute | null;
+    return !!posAttr && !!uvAttr && uvAttr.count === posAttr.count;
+  });
+  const geometries = sourceGeometries.map((geom) =>
+    stripToMergeableSurfaceMeshAttributes(geom, { normals: canPreserveNormals, uvs: canPreserveUvs })
+  );
   const merged = mergeGeometries(geometries, false);
   if (!merged) {
     throw new Error("Failed to merge mesh geometry.");
