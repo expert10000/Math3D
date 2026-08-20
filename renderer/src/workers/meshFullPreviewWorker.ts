@@ -35,6 +35,7 @@ type MeshFullPreviewWorkerResponse = {
   workerFinishedAt: number;
   timings: {
     boundsMs: number;
+    normalMs: number;
     totalMs: number;
   };
 };
@@ -87,6 +88,73 @@ const computeBounds = (positions: Float32Array): MeshFullPreviewBounds => {
   };
 };
 
+const computePreviewNormals = (positions: Float32Array, indices: Uint32Array | null): Float32Array => {
+  const vertexCount = Math.floor(positions.length / 3);
+  const normals = new Float32Array(vertexCount * 3);
+  const faceCount = indices?.length ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
+
+  for (let face = 0; face < faceCount; face += 1) {
+    let ia = face * 3;
+    let ib = ia + 1;
+    let ic = ia + 2;
+    if (indices) {
+      const base = face * 3;
+      ia = indices[base] ?? -1;
+      ib = indices[base + 1] ?? -1;
+      ic = indices[base + 2] ?? -1;
+    }
+    if (ia < 0 || ib < 0 || ic < 0 || ia >= vertexCount || ib >= vertexCount || ic >= vertexCount) continue;
+
+    const ax = positions[ia * 3] ?? 0;
+    const ay = positions[ia * 3 + 1] ?? 0;
+    const az = positions[ia * 3 + 2] ?? 0;
+    const bx = positions[ib * 3] ?? 0;
+    const by = positions[ib * 3 + 1] ?? 0;
+    const bz = positions[ib * 3 + 2] ?? 0;
+    const cx = positions[ic * 3] ?? 0;
+    const cy = positions[ic * 3 + 1] ?? 0;
+    const cz = positions[ic * 3 + 2] ?? 0;
+
+    const abx = bx - ax;
+    const aby = by - ay;
+    const abz = bz - az;
+    const acx = cx - ax;
+    const acy = cy - ay;
+    const acz = cz - az;
+    const nx = aby * acz - abz * acy;
+    const ny = abz * acx - abx * acz;
+    const nz = abx * acy - aby * acx;
+
+    normals[ia * 3] += nx;
+    normals[ia * 3 + 1] += ny;
+    normals[ia * 3 + 2] += nz;
+    normals[ib * 3] += nx;
+    normals[ib * 3 + 1] += ny;
+    normals[ib * 3 + 2] += nz;
+    normals[ic * 3] += nx;
+    normals[ic * 3 + 1] += ny;
+    normals[ic * 3 + 2] += nz;
+  }
+
+  for (let i = 0; i + 2 < normals.length; i += 3) {
+    const nx = normals[i] ?? 0;
+    const ny = normals[i + 1] ?? 0;
+    const nz = normals[i + 2] ?? 0;
+    const length = Math.hypot(nx, ny, nz);
+    if (length > 1e-12) {
+      normals[i] = nx / length;
+      normals[i + 1] = ny / length;
+      normals[i + 2] = nz / length;
+    } else {
+      normals[i] = 0;
+      normals[i + 1] = 0;
+      normals[i + 2] = 1;
+    }
+  }
+
+  return normals;
+};
+
 ctx.onmessage = (event: MessageEvent<MeshFullPreviewWorkerRequest>) => {
   const message = event.data;
   if (!message || message.type !== "prepare-full-preview") return;
@@ -94,13 +162,19 @@ ctx.onmessage = (event: MessageEvent<MeshFullPreviewWorkerRequest>) => {
   const boundsStart = performance.now();
   const bounds = computeBounds(message.positions);
   const boundsMs = performance.now() - boundsStart;
+  const normalStart = performance.now();
+  const normals =
+    message.normals && message.normals.length >= message.positions.length
+      ? message.normals
+      : computePreviewNormals(message.positions, message.indices);
+  const normalMs = performance.now() - normalStart;
   const vertexCount = Math.floor(message.positions.length / 3);
   const triangleCount = message.indices?.length
     ? Math.floor(message.indices.length / 3)
     : Math.floor(message.positions.length / 9);
   const geometryBytes =
     byteLengthOf(message.positions) +
-    byteLengthOf(message.normals) +
+    byteLengthOf(normals) +
     byteLengthOf(message.indices) +
     byteLengthOf(message.uvs);
   const workerFinishedAt = performance.now();
@@ -109,7 +183,7 @@ ctx.onmessage = (event: MessageEvent<MeshFullPreviewWorkerRequest>) => {
     jobId: message.jobId,
     label: message.label,
     positions: message.positions,
-    normals: message.normals,
+    normals,
     indices: message.indices,
     uvs: message.uvs,
     bounds,
@@ -121,6 +195,7 @@ ctx.onmessage = (event: MessageEvent<MeshFullPreviewWorkerRequest>) => {
     workerFinishedAt,
     timings: {
       boundsMs,
+      normalMs,
       totalMs: workerFinishedAt - workerStartedAt,
     },
   };

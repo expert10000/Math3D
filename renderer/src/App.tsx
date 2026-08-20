@@ -2036,6 +2036,7 @@ type MeshFullPreviewWorkerResponse = {
   workerFinishedAt: number;
   timings: {
     boundsMs: number;
+    normalMs: number;
     totalMs: number;
   };
 };
@@ -2114,13 +2115,19 @@ const applySurfaceMeshOps = (
   options?: { fastLargeMesh?: boolean; onStage?: (phase: string, ms: number) => void }
 ): SurfaceMeshData => {
   let next = mesh;
+  const triangleCount = surfaceMeshTriangleCount(next);
+  const shouldDeferLargeMeshPrep =
+    options?.fastLargeMesh === true && triangleCount >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD;
   if (!mesh.normals || mesh.normals.length < mesh.positions.length) {
-    const normalStart = benchmarkNowMs();
-    next = computeVertexNormals(next);
-    options?.onStage?.("prep:vertexNormals", benchmarkNowMs() - normalStart);
+    if (shouldDeferLargeMeshPrep) {
+      options?.onStage?.("prep:vertexNormalsDeferred", 0);
+    } else {
+      const normalStart = benchmarkNowMs();
+      next = computeVertexNormals(next);
+      options?.onStage?.("prep:vertexNormals", benchmarkNowMs() - normalStart);
+    }
   }
-  const shouldDeferAdjacency =
-    options?.fastLargeMesh === true && surfaceMeshTriangleCount(next) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD;
+  const shouldDeferAdjacency = shouldDeferLargeMeshPrep;
   if (!shouldDeferAdjacency) {
     const adjacencyStart = benchmarkNowMs();
     next = computeAdjacency(next);
@@ -49781,6 +49788,11 @@ case "mobius":
         );
         const bufferStoreMs = benchmarkNowMs() - bufferStoreStart;
         recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, "full:workerBuild", data.timings.totalMs);
+        recordMeshPipelineProfilePhase(
+          meshPipelineProfileLatestIdRef.current,
+          "full:workerNormalCompute",
+          data.timings.normalMs
+        );
         recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, "full:workerTransferRoundTrip", transferRoundTripMs);
         recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, "full:bufferStorePublish", bufferStoreMs);
         recordMeshDebugEvent({
@@ -49790,6 +49802,7 @@ case "mobius":
           details: {
             jobId,
             workerBoundsMs: data.timings.boundsMs,
+            workerNormalMs: data.timings.normalMs,
             transferRoundTripMs,
             vertexCount: data.vertexCount,
             triangleCount: data.triangleCount,

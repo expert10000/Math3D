@@ -268,6 +268,68 @@ const parseBinaryStlGeometryIfExact = (buffer: ArrayBuffer): THREE.BufferGeometr
   return geometry;
 };
 
+const parseObjIndex = (raw: string, vertexCount: number): number | null => {
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed === 0) return null;
+  const index = parsed < 0 ? vertexCount + parsed : parsed - 1;
+  return index >= 0 && index < vertexCount ? index : null;
+};
+
+const parseSimpleObjSurfaceMesh = (text: string, label: string, source: SurfaceMeshSource): SurfaceMeshData | null => {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  let sawFace = false;
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const commentAt = rawLine.indexOf("#");
+    const line = (commentAt >= 0 ? rawLine.slice(0, commentAt) : rawLine).trim();
+    if (!line) continue;
+
+    if (line.startsWith("v ")) {
+      const parts = line.split(/\s+/);
+      if (parts.length < 4) return null;
+      const x = Number.parseFloat(parts[1] ?? "");
+      const y = Number.parseFloat(parts[2] ?? "");
+      const z = Number.parseFloat(parts[3] ?? "");
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
+      positions.push(x, y, z);
+      continue;
+    }
+
+    if (line.startsWith("vt ") || line.startsWith("vn ")) {
+      return null;
+    }
+
+    if (line.startsWith("f ")) {
+      sawFace = true;
+      const vertexCount = Math.floor(positions.length / 3);
+      const tokens = line.split(/\s+/).slice(1);
+      if (tokens.length < 3) return null;
+      const face: number[] = [];
+      for (const token of tokens) {
+        if (!token || token.includes("/")) return null;
+        const index = parseObjIndex(token, vertexCount);
+        if (index == null) return null;
+        face.push(index);
+      }
+      for (let i = 1; i + 1 < face.length; i += 1) {
+        indices.push(face[0] as number, face[i] as number, face[i + 1] as number);
+      }
+    }
+  }
+
+  if (!sawFace || positions.length < 9 || indices.length < 3) return null;
+
+  return {
+    label,
+    positions: Float32Array.from(positions),
+    indices: Uint32Array.from(indices),
+    normals: null,
+    uvs: null,
+    source,
+  };
+};
+
 const createUrlModifier = (files: File[], urlCache: Map<string, string>) => {
   if (!files.length) return null;
   const fileMap = new Map<string, File>();
@@ -523,6 +585,18 @@ export async function loadSurfaceMeshFromFile(
   if (ext === "obj") {
     const parseStart = nowMs();
     const text = new TextDecoder().decode(buffer);
+    const simpleMesh = parseSimpleObjSurfaceMesh(text, name, importSource);
+    if (simpleMesh) {
+      recordStage(opts, "parse", parseStart);
+      if (!opts.mergeVertices) {
+        const normalizeStart = nowMs();
+        recordStage(opts, "normalize", normalizeStart);
+        const extractStart = nowMs();
+        recordStage(opts, "meshExtract", extractStart);
+        return simpleMesh;
+      }
+      return buildSurfaceMeshFromGeometry(surfaceMeshToGeometry(simpleMesh), name, importSource, opts);
+    }
     const loader = new OBJLoader();
     const obj = loader.parse(text);
     const merged = mergeObjectGeometries(obj);
