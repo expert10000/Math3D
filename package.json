@@ -76,6 +76,8 @@
     "benchmark:mesh:test": "npm --prefix renderer run test -- src/mesh/meshBenchmarkRegression.test.ts",
     "benchmark:mesh:full-trace": "node scripts/mesh-full-trace.mjs",
     "benchmark:mesh:sequential-load": "node scripts/mesh-sequential-load-regression.mjs",
+    "benchmark:mesh:cancellation": "node scripts/mesh-cancellation-regression.mjs",
+    "benchmark:mesh:profile-suite": "node scripts/mesh-profile-suite.mjs",
     "analyze:deps:prepare": "node -e \"const fs=require('node:fs');['analysis/dependency/arkit','analysis/dependency/dependency-cruiser'].forEach((d)=>fs.mkdirSync(d,{recursive:true}));\"",
     "analyze:deps:depcruise:err": "npm run analyze:deps:prepare && depcruise --config analysis/dependency/dependency-cruiser.cjs apps packages renderer src scripts --output-type err-long > analysis/dependency/dependency-cruiser/report.err.txt",
     "analyze:deps:depcruise:json": "npm run analyze:deps:prepare && depcruise --config analysis/dependency/dependency-cruiser.cjs apps packages renderer src scripts --output-type json > analysis/dependency/dependency-cruiser/report.json",

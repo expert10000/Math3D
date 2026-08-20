@@ -8,7 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 const outDir = path.join(repoRoot, "output");
-const outFile = path.join(outDir, "mesh-sequential-load-regression.json");
+const outFile = path.join(outDir, "mesh-cancellation-regression.json");
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -32,7 +32,7 @@ function terminateProcessTree(child) {
 }
 
 function createIsolatedElectronProfile() {
-  const profileRoot = mkdtempSync(path.join(os.tmpdir(), "math3d-mesh-sequential-"));
+  const profileRoot = mkdtempSync(path.join(os.tmpdir(), "math3d-mesh-cancel-"));
   const userDataDir = path.join(profileRoot, "user-data");
   mkdirSync(userDataDir, { recursive: true });
   return { profileRoot, userDataDir };
@@ -122,10 +122,10 @@ async function main() {
     ...process.env,
     MATH3D_E2E: "1",
     MATH3D_SKIP_AUTOSAVE_RECOVERY: "1",
-    MATH3D_RENDERER_MEMORY_AUTO_RELOAD: "0",
+    MATH3D_RENDERER_MEMORY_AUTO_RELOAD: process.env.MATH3D_RENDERER_MEMORY_AUTO_RELOAD ?? "0",
     MATH3D_GPU_MODE: process.env.MATH3D_GPU_MODE ?? "software",
     MATH3D_E2E_USER_DATA_DIR: profile.userDataDir,
-    MATH3D_MESH_TRACE_AUTORUN: "sequential",
+    MATH3D_MESH_TRACE_AUTORUN: "cancellation",
   };
   delete env.ELECTRON_RUN_AS_NODE;
 
@@ -144,10 +144,10 @@ async function main() {
   };
   writeFileSync(outFile, JSON.stringify(artifact, null, 2));
   if (!artifact.ok) {
-    console.error(`[mesh-sequential-load-regression] FAIL ${outFile}`);
+    console.error(`[mesh-cancellation-regression] FAIL ${outFile}`);
     throw new Error(finishPacket?.error || `Electron autorun failed with code ${exit.code}`);
   }
-  console.log(`[mesh-sequential-load-regression] PASS ${outFile}`);
+  console.log(`[mesh-cancellation-regression] PASS ${outFile}`);
 }
 
 main().catch((error) => {

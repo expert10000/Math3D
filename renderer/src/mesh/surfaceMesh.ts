@@ -119,7 +119,11 @@ type GeometryOpts = { mergeVertices: boolean; mergeTolerance?: number };
 export type SurfaceMeshImportStage =
   | "fileRead"
   | "parse"
+  | "fastObjDetect"
   | "fastObjParse"
+  | "vertexParse"
+  | "faceParse"
+  | "indexBuild"
   | "objLoaderFallback"
   | "normalize"
   | "vertexWeld"
@@ -278,18 +282,38 @@ const parseObjIndex = (raw: string, vertexCount: number): number | null => {
   return index >= 0 && index < vertexCount ? index : null;
 };
 
-const parseSimpleObjSurfaceMesh = (text: string, label: string, source: SurfaceMeshSource): SurfaceMeshData | null => {
+type SimpleObjParseResult = {
+  mesh: SurfaceMeshData;
+  timings: {
+    detectMs: number;
+    vertexParseMs: number;
+    faceParseMs: number;
+    indexBuildMs: number;
+  };
+};
+
+const parseSimpleObjSurfaceMesh = (text: string, label: string, source: SurfaceMeshSource): SimpleObjParseResult | null => {
   const positions: number[] = [];
   const indices: number[] = [];
   let sawFace = false;
+  let detectMs = 0;
+  let vertexParseMs = 0;
+  let faceParseMs = 0;
+  let indexBuildMs = 0;
 
   for (const rawLine of text.split(/\r?\n/)) {
+    const detectStart = nowMs();
     const commentAt = rawLine.indexOf("#");
     const line = (commentAt >= 0 ? rawLine.slice(0, commentAt) : rawLine).trim();
-    if (!line) continue;
+    if (!line) {
+      detectMs += nowMs() - detectStart;
+      continue;
+    }
     const recordType = line.split(/\s+/, 1)[0] ?? "";
+    detectMs += nowMs() - detectStart;
 
     if (recordType === "v") {
+      const vertexStart = nowMs();
       const parts = line.split(/\s+/);
       if (parts.length < 4) return null;
       const x = Number.parseFloat(parts[1] ?? "");
@@ -297,10 +321,12 @@ const parseSimpleObjSurfaceMesh = (text: string, label: string, source: SurfaceM
       const z = Number.parseFloat(parts[3] ?? "");
       if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
       positions.push(x, y, z);
+      vertexParseMs += nowMs() - vertexStart;
       continue;
     }
 
     if (recordType === "f") {
+      const faceStart = nowMs();
       sawFace = true;
       const vertexCount = Math.floor(positions.length / 3);
       const tokens = line.split(/\s+/).slice(1);
@@ -312,9 +338,12 @@ const parseSimpleObjSurfaceMesh = (text: string, label: string, source: SurfaceM
         if (index == null) return null;
         face.push(index);
       }
+      faceParseMs += nowMs() - faceStart;
+      const indexStart = nowMs();
       for (let i = 1; i + 1 < face.length; i += 1) {
         indices.push(face[0] as number, face[i] as number, face[i + 1] as number);
       }
+      indexBuildMs += nowMs() - indexStart;
       continue;
     }
 
@@ -327,7 +356,7 @@ const parseSimpleObjSurfaceMesh = (text: string, label: string, source: SurfaceM
 
   if (!sawFace || positions.length < 9 || indices.length < 3) return null;
 
-  return {
+  const mesh = {
     label,
     positions: Float32Array.from(positions),
     indices: Uint32Array.from(indices),
@@ -335,6 +364,7 @@ const parseSimpleObjSurfaceMesh = (text: string, label: string, source: SurfaceM
     uvs: null,
     source,
   };
+  return { mesh, timings: { detectMs, vertexParseMs, faceParseMs, indexBuildMs } };
 };
 
 const createUrlModifier = (files: File[], urlCache: Map<string, string>) => {
@@ -592,18 +622,22 @@ export async function loadSurfaceMeshFromFile(
   if (ext === "obj") {
     const parseStart = nowMs();
     const text = new TextDecoder().decode(buffer);
-    const simpleMesh = parseSimpleObjSurfaceMesh(text, name, importSource);
-    if (simpleMesh) {
+    const simpleObj = parseSimpleObjSurfaceMesh(text, name, importSource);
+    if (simpleObj) {
       recordStage(opts, "parse", parseStart);
+      opts.onStage?.({ stage: "fastObjDetect", ms: Math.max(0, simpleObj.timings.detectMs) });
       recordStage(opts, "fastObjParse", parseStart);
+      opts.onStage?.({ stage: "vertexParse", ms: Math.max(0, simpleObj.timings.vertexParseMs) });
+      opts.onStage?.({ stage: "faceParse", ms: Math.max(0, simpleObj.timings.faceParseMs) });
+      opts.onStage?.({ stage: "indexBuild", ms: Math.max(0, simpleObj.timings.indexBuildMs) });
       if (!opts.mergeVertices) {
         const normalizeStart = nowMs();
         recordStage(opts, "normalize", normalizeStart);
         const extractStart = nowMs();
         recordStage(opts, "meshExtract", extractStart);
-        return simpleMesh;
+        return simpleObj.mesh;
       }
-      return buildSurfaceMeshFromGeometry(surfaceMeshToGeometry(simpleMesh), name, importSource, opts);
+      return buildSurfaceMeshFromGeometry(surfaceMeshToGeometry(simpleObj.mesh), name, importSource, opts);
     }
     const fallbackStart = nowMs();
     recordStage(opts, "objLoaderFallback", fallbackStart);

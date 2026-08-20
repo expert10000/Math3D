@@ -660,9 +660,18 @@ type MeshBenchmarkPerformanceResult = {
   error?: string;
   fileReadMs: number | null;
   importMs: number | null;
+  fastObjDetectMs: number | null;
+  fastObjParseMs: number | null;
+  vertexParseMs: number | null;
+  faceParseMs: number | null;
+  indexBuildMs: number | null;
   vertexWeldMs: number | null;
   normalComputeMs: number | null;
   adjacencyMs: number | null;
+  topologyMs: number | null;
+  qualityMs: number | null;
+  diagnosticsMs: number | null;
+  curvatureMs: number | null;
   meshAnalyzeMs: number | null;
   meshBuildMs: number | null;
   memoryBytes: number | null;
@@ -723,6 +732,7 @@ type MeshDebugEvent = {
     | "stall"
     | "memory"
     | "full"
+    | "interaction"
     | "window"
     | "error";
   label: string;
@@ -39992,6 +40002,7 @@ const App: React.FC = () => {
   } | null>(null);
   const meshFullReactCommitLoggedRef = useRef<string | null>(null);
   const meshDebugEventCounterRef = useRef(0);
+  const meshTraceFullReadyLabelsRef = useRef<Map<string, number>>(new Map());
   const [meshDebugMonitor, setMeshDebugMonitor] = useState<MeshDebugMonitorState>(() => ({
     enabled: true,
     startedAt: Date.now(),
@@ -40011,6 +40022,9 @@ const App: React.FC = () => {
       ms: event.ms,
       details: event.details,
     };
+    if (nextEvent.kind === "full" && nextEvent.label.startsWith("Dedicated Full viewer ready:")) {
+      meshTraceFullReadyLabelsRef.current.set(nextEvent.label, nextEvent.ts);
+    }
     const alreadySentToMain = !!(nextEvent.details as { __mainTraceSent?: unknown } | undefined)?.__mainTraceSent;
     if (!alreadySentToMain && typeof window !== "undefined") {
       window.appDiagnostics?.traceMeshEvent?.({
@@ -40771,9 +40785,15 @@ const App: React.FC = () => {
         const meshBuildMs = Math.max(0, benchmarkNowMs() - buildStart);
 
         const analyzeStart = benchmarkNowMs();
+        const topologyStart = benchmarkNowMs();
         computeMeshTopologyInspector(ready, { rowLimit: 16, itemLimit: 16 });
+        const topologyMs = Math.max(0, benchmarkNowMs() - topologyStart);
+        const qualityStart = benchmarkNowMs();
         computeMeshQualityReport(ready, { maxListedDefects: 256 });
+        const qualityMs = Math.max(0, benchmarkNowMs() - qualityStart);
+        const diagnosticsStart = benchmarkNowMs();
         evaluateGeometryMeshReadiness(ready);
+        const diagnosticsMs = Math.max(0, benchmarkNowMs() - diagnosticsStart);
         const meshAnalyzeMs = Math.max(0, benchmarkNowMs() - analyzeStart);
 
         lastReadyMesh = ready;
@@ -40785,9 +40805,18 @@ const App: React.FC = () => {
           status: "passed",
           fileReadMs: sumMeshImportStages(importStages, ["fileRead"]),
           importMs: sumMeshImportStages(importStages, ["parse", "normalize", "meshExtract"]),
+          fastObjDetectMs: sumMeshImportStages(importStages, ["fastObjDetect"]),
+          fastObjParseMs: sumMeshImportStages(importStages, ["fastObjParse"]),
+          vertexParseMs: sumMeshImportStages(importStages, ["vertexParse"]),
+          faceParseMs: sumMeshImportStages(importStages, ["faceParse"]),
+          indexBuildMs: sumMeshImportStages(importStages, ["indexBuild"]),
           vertexWeldMs: sumMeshImportStages(importStages, ["vertexWeld"]),
           normalComputeMs: sumMeshImportStages(importStages, ["normalCompute"]),
           adjacencyMs,
+          topologyMs,
+          qualityMs,
+          diagnosticsMs,
+          curvatureMs: null,
           meshAnalyzeMs,
           meshBuildMs,
           memoryBytes: estimateSurfaceMeshDataBytes(ready),
@@ -40803,9 +40832,18 @@ const App: React.FC = () => {
           error: String((error as any)?.message ?? error),
           fileReadMs: null,
           importMs: null,
+          fastObjDetectMs: null,
+          fastObjParseMs: null,
+          vertexParseMs: null,
+          faceParseMs: null,
+          indexBuildMs: null,
           vertexWeldMs: null,
           normalComputeMs: null,
           adjacencyMs: null,
+          topologyMs: null,
+          qualityMs: null,
+          diagnosticsMs: null,
+          curvatureMs: null,
           meshAnalyzeMs: null,
           meshBuildMs: null,
           memoryBytes: null,
@@ -50564,6 +50602,44 @@ case "mobius":
       }
       throw new Error(`Timed out waiting for ${label}`);
     };
+    const waitForFullReadyEvent = async (labelPattern: RegExp, timeoutMs: number, label: string) => {
+      const startedAt = benchmarkNowMs();
+      while (!cancelled && benchmarkNowMs() - startedAt < timeoutMs) {
+        for (const readyLabel of meshTraceFullReadyLabelsRef.current.keys()) {
+          if (labelPattern.test(readyLabel)) return;
+        }
+        await waitMs(100);
+      }
+      throw new Error(`Timed out waiting for ${label}`);
+    };
+    const probeInteraction = async (label: string) => {
+      const startedAt = benchmarkNowMs();
+      const target = document.querySelector("canvas") ?? document.body;
+      target?.dispatchEvent(
+        new WheelEvent("wheel", {
+          deltaY: -24,
+          bubbles: true,
+          cancelable: true,
+        })
+      );
+      await new Promise<void>((resolve) => {
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => resolve());
+        });
+      });
+      const ms = benchmarkNowMs() - startedAt;
+      recordMeshDebugEvent({
+        kind: "interaction",
+        label: `interaction:${label}`,
+        ms,
+        details: {
+          meshId: window.appRuntime?.meshTraceId ?? null,
+          autoRun,
+        },
+      });
+      recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, `interaction:${label}`, ms);
+      return ms;
+    };
     const finish = (packet: Record<string, unknown>) => {
       window.appRuntime?.finishMeshTrace?.({
         mode: autoRun,
@@ -50585,15 +50661,19 @@ case "mobius":
           let result = await api.loadBenchmarkModel("armadillo");
           if (!result.ok) throw new Error(result.error ?? "Failed to load Armadillo");
           await waitForBodyText(/Armadillo|11_armadillo\.obj/i, 30_000, "Armadillo load");
+          await probeInteraction("after-armadillo-load");
           result = await api.loadBenchmarkModel("3dbenchy");
           if (!result.ok) throw new Error(result.error ?? "Failed to load 3DBenchy after Armadillo");
           await waitForBodyText(/3DBenchy|10_3dbenchy\.stl/i, 30_000, "3DBenchy after Armadillo");
+          await probeInteraction("after-3dbenchy-load");
           result = await api.runFullTrace("armadillo");
           if (!result.ok) throw new Error(result.error ?? "Failed to run Armadillo Full");
-          await waitForBodyText(/Dedicated Full viewer[\s\S]*(ready in|ready:)|Dedicated Full viewer ready/i, 45_000, "Armadillo Full ready");
+          await probeInteraction("during-armadillo-full");
+          await waitForFullReadyEvent(/Armadillo|11_armadillo\.obj/i, 45_000, "Armadillo Full ready");
           result = await api.loadBenchmarkModel("3dbenchy");
           if (!result.ok) throw new Error(result.error ?? "Failed to load 3DBenchy after Armadillo Full");
           await waitForBodyText(/3DBenchy|10_3dbenchy\.stl/i, 30_000, "3DBenchy after Armadillo Full");
+          await probeInteraction("after-full-supersession");
           await waitMs(750);
           const body = document.body?.innerText ?? "";
           if (/Dedicated Full viewer/i.test(body)) {
@@ -50606,9 +50686,28 @@ case "mobius":
           const meshId = String(window.appRuntime?.meshTraceId ?? "3dbenchy").trim() || "3dbenchy";
           const result = await api.runFullTrace(meshId);
           if (!result.ok) throw new Error(result.error ?? `Failed to run Full trace for ${meshId}`);
-          await waitForBodyText(/Dedicated Full viewer[\s\S]*(ready in|ready:)|Dedicated Full viewer ready/i, 60_000, `${meshId} Full ready`);
+          await probeInteraction(`during-full:${meshId}`);
+          await waitForFullReadyEvent(/Dedicated Full viewer ready:/i, 60_000, `${meshId} Full ready`);
+          await probeInteraction(`after-full:${meshId}`);
           await waitMs(1_000);
           finish({ ok: true, checks: [`full:${meshId}`] });
+          return;
+        }
+        if (autoRun === "cancellation") {
+          const result = await api.runFullTrace("dragon-medium");
+          if (!result.ok) throw new Error(result.error ?? "Failed to start Dragon Full trace");
+          await waitMs(100);
+          await probeInteraction("during-dragon-full-before-cancel");
+          const next = await api.loadBenchmarkModel("stanford-bunny");
+          if (!next.ok) throw new Error(next.error ?? "Failed to load Bunny after Dragon Full start");
+          await waitForBodyText(/Stanford Bunny|08_stanford_bunny\.obj/i, 30_000, "Bunny after Dragon cancellation");
+          await waitMs(1500);
+          const body = document.body?.innerText ?? "";
+          if (/Dragon Medium|12_dragon_medium\.obj|Dedicated Full viewer/i.test(body)) {
+            throw new Error("Stale Dragon Full state remained visible after Bunny superseded it.");
+          }
+          await probeInteraction("after-cancellation-bunny");
+          finish({ ok: true, checks: ["dragon-full-cancelled-by-bunny"] });
           return;
         }
         throw new Error(`Unknown mesh trace autorun mode: ${autoRun}`);
@@ -109689,10 +109788,30 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                                 {result.status === "passed" ? "" : "FAIL "}
                                 {result.label}
                               </span>
-                              <span>{formatPerfMetric(result.importMs, 1)}</span>
+                              <span
+                                title={[
+                                  `fileRead ${formatPerfMetric(result.fileReadMs, 1)} ms`,
+                                  `fastObjDetect ${formatPerfMetric(result.fastObjDetectMs, 1)} ms`,
+                                  `fastObjParse ${formatPerfMetric(result.fastObjParseMs, 1)} ms`,
+                                  `vertexParse ${formatPerfMetric(result.vertexParseMs, 1)} ms`,
+                                  `faceParse ${formatPerfMetric(result.faceParseMs, 1)} ms`,
+                                  `indexBuild ${formatPerfMetric(result.indexBuildMs, 1)} ms`,
+                                ].join("\n")}
+                              >
+                                {formatPerfMetric(result.importMs, 1)}
+                              </span>
                               <span>{formatPerfMetric(result.vertexWeldMs, 1)}</span>
                               <span>{formatPerfMetric(result.adjacencyMs, 1)}</span>
-                              <span>{formatPerfMetric(result.meshAnalyzeMs, 1)}</span>
+                              <span
+                                title={[
+                                  `topology ${formatPerfMetric(result.topologyMs, 1)} ms`,
+                                  `quality ${formatPerfMetric(result.qualityMs, 1)} ms`,
+                                  `diagnostics ${formatPerfMetric(result.diagnosticsMs, 1)} ms`,
+                                  `curvature ${formatPerfMetric(result.curvatureMs, 1)} ms`,
+                                ].join("\n")}
+                              >
+                                {formatPerfMetric(result.meshAnalyzeMs, 1)}
+                              </span>
                               <span>{formatPerfMetric(result.meshBuildMs, 1)}</span>
                               <span>{formatInspectorCount(result.triangles)}</span>
                               <span>{formatBenchmarkBytes(result.memoryBytes)}</span>

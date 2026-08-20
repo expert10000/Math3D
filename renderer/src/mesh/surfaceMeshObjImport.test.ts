@@ -31,7 +31,11 @@ describe("surface mesh OBJ import", () => {
     expect(stages.map((entry) => entry.stage)).toEqual([
       "fileRead",
       "parse",
+      "fastObjDetect",
       "fastObjParse",
+      "vertexParse",
+      "faceParse",
+      "indexBuild",
       "normalize",
       "meshExtract",
     ]);
