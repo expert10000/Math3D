@@ -115,7 +115,7 @@ describe("Math3D mesh benchmark fixtures", () => {
     for (const model of registry.models ?? []) {
       expect(model.id).toBeTruthy();
       expect(model.name).toBeTruthy();
-      expect(model.category).toMatch(/^(basic|standard|mathematical|problematic|stress)$/);
+      expect(model.category).toMatch(/^(basic|standard|mathematical|problematic|stress|libigl)$/);
       expect(model.file).toBeTruthy();
       expect(model.tests?.length).toBeGreaterThan(0);
       expect(ids.has(model.id ?? "")).toBe(false);
@@ -126,6 +126,18 @@ describe("Math3D mesh benchmark fixtures", () => {
       }
     }
     expect(registry.models?.some((model) => model.tests?.includes("performance"))).toBe(true);
+  });
+
+  it("loads every libigl OBJ benchmark through the production importer", async () => {
+    const registry = JSON.parse(await readFile(path.join(meshRoot, "registry.json"), "utf8")) as BenchmarkRegistry;
+    const libiglModels = (registry.models ?? []).filter((model) => model.category === "libigl");
+    expect(libiglModels.length).toBeGreaterThan(0);
+
+    for (const model of libiglModels) {
+      const mesh = await loadSurfaceMeshFromFile([await readFixtureFile(model.file ?? "")], { mergeVertices: false });
+      expect(mesh.positions.length, model.file).toBeGreaterThan(0);
+      expect(mesh.indices?.length ?? mesh.positions.length, model.file).toBeGreaterThanOrEqual(3);
+    }
   });
 
   it("detects the open boundary benchmark through the production OBJ importer", async () => {

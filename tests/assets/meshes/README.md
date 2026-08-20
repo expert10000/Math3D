@@ -7,6 +7,7 @@ Generated/downloaded by `math3d_mesh_benchmark.py`.
 - `basic/` - deterministic small geometry.
 - `standard/` - standard OBJ/STL test models.
 - `stress/` - performance-oriented models.
+- `libigl/` - OBJ models extracted from the libigl tutorial data set.
 - `problematic/` - deterministic meshes with known mesh problems.
 - `expected/` - expected/reference metadata for deterministic regression tests.
 - `registry.json` - UI-facing benchmark catalog consumed by Math3D dev tools.
@@ -33,6 +34,7 @@ Generated/downloaded by `math3d_mesh_benchmark.py`.
 ### Performance
 - Armadillo
 - Dragon Medium
+- libigl Armadillo / Face / Cube 40k
 - optional Dragon High
 - optional dense binary STL
 
@@ -43,7 +45,7 @@ Each model declares:
 
 - `id` - stable UI/API id.
 - `name` - display name.
-- `category` - one of `basic`, `standard`, `mathematical`, `problematic`, or `stress`.
+- `category` - one of `basic`, `standard`, `mathematical`, `problematic`, `stress`, or `libigl`.
 - `file` - OBJ/STL path relative to this folder.
 - `expected` - optional expected JSON path relative to this folder.
 - `tests` - capabilities/suites such as `import`, `topology`, `boundary`, `selection`, `analysis`, and `performance`.
@@ -53,9 +55,10 @@ benchmark model should not require editing the Math3D UI catalog.
 
 ## Notes
 
-Downloaded model files remain subject to their upstream source/license terms.
+Downloaded and bundled model files remain subject to their upstream source/license terms.
 The generated deterministic meshes in `basic/` and `problematic/` are produced
 by the bootstrap script specifically for Math3D testing.
 
 `manifest.json` records exact source URLs and SHA-256 hashes of files downloaded
-during the current run.
+during the current run, plus bundled libigl OBJ files integrated from the local
+`libigl-tutorial-data-master.zip` archive.

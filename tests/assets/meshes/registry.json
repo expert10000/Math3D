@@ -2,11 +2,30 @@
   "suite": "Math3D Mesh Benchmark Suite",
   "version": 1,
   "categories": [
-    { "id": "basic", "name": "Basic" },
-    { "id": "standard", "name": "Standard" },
-    { "id": "mathematical", "name": "Mathematical" },
-    { "id": "problematic", "name": "Problematic" },
-    { "id": "stress", "name": "Stress" }
+    {
+      "id": "basic",
+      "name": "Basic"
+    },
+    {
+      "id": "standard",
+      "name": "Standard"
+    },
+    {
+      "id": "mathematical",
+      "name": "Mathematical"
+    },
+    {
+      "id": "problematic",
+      "name": "Problematic"
+    },
+    {
+      "id": "stress",
+      "name": "Stress"
+    },
+    {
+      "id": "libigl",
+      "name": "Libigl"
+    }
   ],
   "models": [
     {
@@ -15,7 +34,11 @@
       "category": "basic",
       "file": "basic/01_tetrahedron.obj",
       "expected": "expected/01_tetrahedron.json",
-      "tests": ["import", "topology", "analysis"]
+      "tests": [
+        "import",
+        "topology",
+        "analysis"
+      ]
     },
     {
       "id": "cube-obj",
@@ -23,7 +46,12 @@
       "category": "basic",
       "file": "basic/02_cube.obj",
       "expected": "expected/02_cube.json",
-      "tests": ["import", "topology", "selection", "analysis"]
+      "tests": [
+        "import",
+        "topology",
+        "selection",
+        "analysis"
+      ]
     },
     {
       "id": "cube-ascii-stl",
@@ -31,7 +59,11 @@
       "category": "basic",
       "file": "basic/03_cube_ascii.stl",
       "expected": "expected/03_cube_ascii.json",
-      "tests": ["import", "topology", "analysis"]
+      "tests": [
+        "import",
+        "topology",
+        "analysis"
+      ]
     },
     {
       "id": "cylinder",
@@ -39,7 +71,12 @@
       "category": "basic",
       "file": "basic/04_cylinder.obj",
       "expected": "expected/04_cylinder.json",
-      "tests": ["import", "topology", "selection", "analysis"]
+      "tests": [
+        "import",
+        "topology",
+        "selection",
+        "analysis"
+      ]
     },
     {
       "id": "torus",
@@ -47,49 +84,81 @@
       "category": "mathematical",
       "file": "basic/05_torus.obj",
       "expected": "expected/05_torus.json",
-      "tests": ["import", "topology", "selection", "analysis"]
+      "tests": [
+        "import",
+        "topology",
+        "selection",
+        "analysis"
+      ]
     },
     {
       "id": "suzanne",
       "name": "Suzanne",
       "category": "standard",
       "file": "standard/06_suzanne.obj",
-      "tests": ["import", "selection", "analysis"]
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
     },
     {
       "id": "fandisk",
       "name": "Fandisk",
       "category": "standard",
       "file": "standard/07_fandisk.obj",
-      "tests": ["import", "selection", "analysis"]
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
     },
     {
       "id": "stanford-bunny",
       "name": "Stanford Bunny",
       "category": "standard",
       "file": "standard/08_stanford_bunny.obj",
-      "tests": ["import", "selection", "analysis", "performance"]
+      "tests": [
+        "import",
+        "selection",
+        "analysis",
+        "performance"
+      ]
     },
     {
       "id": "spot-cow",
       "name": "Spot Cow",
       "category": "standard",
       "file": "standard/09_spot_cow.obj",
-      "tests": ["import", "selection", "analysis"]
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
     },
     {
       "id": "3dbenchy",
       "name": "3DBenchy",
       "category": "standard",
       "file": "standard/10_3dbenchy.stl",
-      "tests": ["import", "selection", "analysis", "performance"]
+      "tests": [
+        "import",
+        "selection",
+        "analysis",
+        "performance"
+      ]
     },
     {
       "id": "armadillo",
       "name": "Armadillo",
       "category": "standard",
       "file": "standard/11_armadillo.obj",
-      "tests": ["import", "selection", "analysis", "performance"]
+      "tests": [
+        "import",
+        "selection",
+        "analysis",
+        "performance"
+      ]
     },
     {
       "id": "open-boundary",
@@ -97,7 +166,13 @@
       "category": "problematic",
       "file": "problematic/15_open_boundary.obj",
       "expected": "expected/15_open_boundary.json",
-      "tests": ["import", "topology", "boundary", "selection", "analysis"]
+      "tests": [
+        "import",
+        "topology",
+        "boundary",
+        "selection",
+        "analysis"
+      ]
     },
     {
       "id": "non-manifold-edge",
@@ -105,7 +180,12 @@
       "category": "problematic",
       "file": "problematic/16_non_manifold_edge.obj",
       "expected": "expected/16_non_manifold_edge.json",
-      "tests": ["import", "topology", "selection", "analysis"]
+      "tests": [
+        "import",
+        "topology",
+        "selection",
+        "analysis"
+      ]
     },
     {
       "id": "disconnected-components",
@@ -113,7 +193,11 @@
       "category": "problematic",
       "file": "problematic/17_disconnected_components.obj",
       "expected": "expected/17_disconnected_components.json",
-      "tests": ["import", "topology", "analysis"]
+      "tests": [
+        "import",
+        "topology",
+        "analysis"
+      ]
     },
     {
       "id": "degenerate-faces",
@@ -121,7 +205,11 @@
       "category": "problematic",
       "file": "problematic/18_degenerate_faces.obj",
       "expected": "expected/18_degenerate_faces.json",
-      "tests": ["import", "topology", "analysis"]
+      "tests": [
+        "import",
+        "topology",
+        "analysis"
+      ]
     },
     {
       "id": "inconsistent-normals",
@@ -129,7 +217,11 @@
       "category": "problematic",
       "file": "problematic/19_inconsistent_normals.obj",
       "expected": "expected/19_inconsistent_normals.json",
-      "tests": ["import", "topology", "analysis"]
+      "tests": [
+        "import",
+        "topology",
+        "analysis"
+      ]
     },
     {
       "id": "self-intersection",
@@ -137,14 +229,254 @@
       "category": "problematic",
       "file": "problematic/20_self_intersection.obj",
       "expected": "expected/20_self_intersection.json",
-      "tests": ["import", "topology", "analysis"]
+      "tests": [
+        "import",
+        "topology",
+        "analysis"
+      ]
     },
     {
       "id": "dragon-medium",
       "name": "Dragon Medium",
       "category": "stress",
       "file": "stress/12_dragon_medium.obj",
-      "tests": ["import", "selection", "analysis", "performance"]
+      "tests": [
+        "import",
+        "selection",
+        "analysis",
+        "performance"
+      ]
+    },
+    {
+      "id": "libigl-arm",
+      "name": "Libigl Arm",
+      "category": "libigl",
+      "file": "libigl/arm.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-armadillo",
+      "name": "Libigl Armadillo",
+      "category": "libigl",
+      "file": "libigl/armadillo.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-bump-domain",
+      "name": "Libigl Bump Domain",
+      "category": "libigl",
+      "file": "libigl/bump-domain.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-bumpy-cube",
+      "name": "Libigl Bumpy Cube",
+      "category": "libigl",
+      "file": "libigl/bumpy-cube.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-camel-b",
+      "name": "Libigl Camel B",
+      "category": "libigl",
+      "file": "libigl/camel_b.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-circle",
+      "name": "Libigl Circle",
+      "category": "libigl",
+      "file": "libigl/circle.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-cube",
+      "name": "Libigl Cube",
+      "category": "libigl",
+      "file": "libigl/cube.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-cube-40k",
+      "name": "Libigl Cube 40k",
+      "category": "libigl",
+      "file": "libigl/cube_40k.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-cylinder",
+      "name": "Libigl Cylinder",
+      "category": "libigl",
+      "file": "libigl/cylinder.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-decimated-max",
+      "name": "Libigl Decimated Max",
+      "category": "libigl",
+      "file": "libigl/decimated-max.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-elephant",
+      "name": "Libigl Elephant",
+      "category": "libigl",
+      "file": "libigl/elephant.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-face",
+      "name": "Libigl Face",
+      "category": "libigl",
+      "file": "libigl/face.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-horse-quad",
+      "name": "Libigl Horse Quad",
+      "category": "libigl",
+      "file": "libigl/horse_quad.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-inspired-mesh",
+      "name": "Libigl Inspired Mesh",
+      "category": "libigl",
+      "file": "libigl/inspired_mesh.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-lilium",
+      "name": "Libigl Lilium",
+      "category": "libigl",
+      "file": "libigl/lilium.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-snail",
+      "name": "Libigl Snail",
+      "category": "libigl",
+      "file": "libigl/snail.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-sphere",
+      "name": "Libigl Sphere",
+      "category": "libigl",
+      "file": "libigl/sphere.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-truck",
+      "name": "Libigl Truck",
+      "category": "libigl",
+      "file": "libigl/truck.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-xcylinder",
+      "name": "Libigl Xcylinder",
+      "category": "libigl",
+      "file": "libigl/xcylinder.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-ycylinder",
+      "name": "Libigl Ycylinder",
+      "category": "libigl",
+      "file": "libigl/ycylinder.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
+    },
+    {
+      "id": "libigl-zcylinder",
+      "name": "Libigl Zcylinder",
+      "category": "libigl",
+      "file": "libigl/zcylinder.obj",
+      "tests": [
+        "import",
+        "selection",
+        "analysis"
+      ]
     }
   ]
 }

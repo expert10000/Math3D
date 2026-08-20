@@ -237,7 +237,7 @@ export type MeshFileOpenResponse =
   | { ok: false; canceled: true }
   | { ok: false; canceled: false; error: string };
 
-export type MeshBenchmarkCategory = "basic" | "standard" | "mathematical" | "problematic" | "stress";
+export type MeshBenchmarkCategory = "basic" | "standard" | "mathematical" | "problematic" | "stress" | "libigl";
 export type MeshBenchmarkTestKind = "import" | "topology" | "boundary" | "selection" | "analysis" | "performance";
 
 export type MeshBenchmarkModel = {

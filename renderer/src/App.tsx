@@ -638,7 +638,7 @@ type SurfaceMeshAssetPreset = {
   assetUrl: string;
   fileName: string;
 };
-type MeshBenchmarkCategory = "basic" | "standard" | "mathematical" | "problematic" | "stress";
+type MeshBenchmarkCategory = "basic" | "standard" | "mathematical" | "problematic" | "stress" | "libigl";
 type MeshBenchmarkTestKind = "import" | "topology" | "boundary" | "selection" | "analysis" | "performance";
 type MeshBenchmarkModel = {
   id: string;
@@ -744,8 +744,16 @@ const MESH_BENCHMARK_CATEGORY_LABELS: Record<MeshBenchmarkCategory, string> = {
   mathematical: "Mathematical",
   problematic: "Problematic",
   stress: "Stress",
+  libigl: "Libigl",
 };
-const MESH_BENCHMARK_CATEGORY_ORDER: MeshBenchmarkCategory[] = ["basic", "standard", "mathematical", "problematic", "stress"];
+const MESH_BENCHMARK_CATEGORY_ORDER: MeshBenchmarkCategory[] = [
+  "basic",
+  "standard",
+  "mathematical",
+  "problematic",
+  "stress",
+  "libigl",
+];
 type SurfaceMeshTopologyDemoPreset = {
   id: string;
   label: string;

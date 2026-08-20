@@ -119,6 +119,8 @@ type GeometryOpts = { mergeVertices: boolean; mergeTolerance?: number };
 export type SurfaceMeshImportStage =
   | "fileRead"
   | "parse"
+  | "fastObjParse"
+  | "objLoaderFallback"
   | "normalize"
   | "vertexWeld"
   | "normalCompute"
@@ -269,6 +271,7 @@ const parseBinaryStlGeometryIfExact = (buffer: ArrayBuffer): THREE.BufferGeometr
 };
 
 const parseObjIndex = (raw: string, vertexCount: number): number | null => {
+  if (raw.trim().startsWith("-")) return null;
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed === 0) return null;
   const index = parsed < 0 ? vertexCount + parsed : parsed - 1;
@@ -284,8 +287,9 @@ const parseSimpleObjSurfaceMesh = (text: string, label: string, source: SurfaceM
     const commentAt = rawLine.indexOf("#");
     const line = (commentAt >= 0 ? rawLine.slice(0, commentAt) : rawLine).trim();
     if (!line) continue;
+    const recordType = line.split(/\s+/, 1)[0] ?? "";
 
-    if (line.startsWith("v ")) {
+    if (recordType === "v") {
       const parts = line.split(/\s+/);
       if (parts.length < 4) return null;
       const x = Number.parseFloat(parts[1] ?? "");
@@ -296,11 +300,7 @@ const parseSimpleObjSurfaceMesh = (text: string, label: string, source: SurfaceM
       continue;
     }
 
-    if (line.startsWith("vt ") || line.startsWith("vn ")) {
-      return null;
-    }
-
-    if (line.startsWith("f ")) {
+    if (recordType === "f") {
       sawFace = true;
       const vertexCount = Math.floor(positions.length / 3);
       const tokens = line.split(/\s+/).slice(1);
@@ -315,7 +315,14 @@ const parseSimpleObjSurfaceMesh = (text: string, label: string, source: SurfaceM
       for (let i = 1; i + 1 < face.length; i += 1) {
         indices.push(face[0] as number, face[i] as number, face[i + 1] as number);
       }
+      continue;
     }
+
+    if (recordType === "vt" || recordType === "vn") {
+      return null;
+    }
+
+    return null;
   }
 
   if (!sawFace || positions.length < 9 || indices.length < 3) return null;
@@ -588,6 +595,7 @@ export async function loadSurfaceMeshFromFile(
     const simpleMesh = parseSimpleObjSurfaceMesh(text, name, importSource);
     if (simpleMesh) {
       recordStage(opts, "parse", parseStart);
+      recordStage(opts, "fastObjParse", parseStart);
       if (!opts.mergeVertices) {
         const normalizeStart = nowMs();
         recordStage(opts, "normalize", normalizeStart);
@@ -597,6 +605,8 @@ export async function loadSurfaceMeshFromFile(
       }
       return buildSurfaceMeshFromGeometry(surfaceMeshToGeometry(simpleMesh), name, importSource, opts);
     }
+    const fallbackStart = nowMs();
+    recordStage(opts, "objLoaderFallback", fallbackStart);
     const loader = new OBJLoader();
     const obj = loader.parse(text);
     const merged = mergeObjectGeometries(obj);

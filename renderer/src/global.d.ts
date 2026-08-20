@@ -202,7 +202,7 @@ declare global {
     | { ok: true; folder: string; paths: string[] }
     | { ok: false; error: string };
 
-  type MeshBenchmarkCategory = "basic" | "standard" | "mathematical" | "problematic" | "stress";
+  type MeshBenchmarkCategory = "basic" | "standard" | "mathematical" | "problematic" | "stress" | "libigl";
   type MeshBenchmarkTestKind = "import" | "topology" | "boundary" | "selection" | "analysis" | "performance";
   type MeshBenchmarkExpectedMetrics = {
     boundaryEdges?: number;

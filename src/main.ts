@@ -172,7 +172,7 @@ type MeshFileOpenResponse =
   | { ok: true; canceled: false; files: MeshFileDialogEntry[] }
   | { ok: false; canceled: true }
   | { ok: false; canceled: false; error: string };
-type MeshBenchmarkCategory = "basic" | "standard" | "mathematical" | "problematic" | "stress";
+type MeshBenchmarkCategory = "basic" | "standard" | "mathematical" | "problematic" | "stress" | "libigl";
 type MeshBenchmarkTestKind = "import" | "topology" | "boundary" | "selection" | "analysis" | "performance";
 type MeshBenchmarkModel = {
   id: string;
@@ -235,7 +235,8 @@ const isMeshBenchmarkCategory = (value: unknown): value is MeshBenchmarkCategory
   value === "standard" ||
   value === "mathematical" ||
   value === "problematic" ||
-  value === "stress";
+  value === "stress" ||
+  value === "libigl";
 
 const isMeshBenchmarkTestKind = (value: unknown): value is MeshBenchmarkTestKind =>
   value === "import" ||

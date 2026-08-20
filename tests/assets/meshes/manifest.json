@@ -299,5 +299,196 @@
   ],
   "heavy": [],
   "suite": "Math3D Mesh Benchmark Suite",
-  "version": 1
+  "version": 1,
+  "libigl": [
+    {
+      "bytes": 532887,
+      "dest": "libigl/arm.obj",
+      "name": "Libigl Arm",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "b7493c060434374a443501b2b5acb71288cbcaf6a3c42a52fcfc09f4dc5ef57c",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 4036311,
+      "dest": "libigl/armadillo.obj",
+      "name": "Libigl Armadillo",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "c007ebd11e541a2b1ab86a4c376653579281265f2c6c786a4a7bf47ba84d6879",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 317682,
+      "dest": "libigl/bump-domain.obj",
+      "name": "Libigl Bump Domain",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "7d54236fbd604c758951cb8a0665f9bad7acf2c4fc0289655cd5c4a848afbfd4",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 1292447,
+      "dest": "libigl/bumpy-cube.obj",
+      "name": "Libigl Bumpy Cube",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "73810360133b680ac2c545fe973ab4003ae0d1aba7d6d29f49e0c7a2e79f2466",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 215553,
+      "dest": "libigl/camel_b.obj",
+      "name": "Libigl Camel B",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "91f7a9a22a273e3dc4c9eab85674ac2a04355f21699a18032f2d5f1f7a7f62c4",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 393018,
+      "dest": "libigl/circle.obj",
+      "name": "Libigl Circle",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "22d4aab4a8db99fb15eaaa98eb4384549c9c13a3fa5a22af13944912f912b97c",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 784,
+      "dest": "libigl/cube.obj",
+      "name": "Libigl Cube",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "51bcd6ca642a677a5f132fc90a1e2df2886c20c7da1daeaa9b65bf1bd91230dd",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 1532840,
+      "dest": "libigl/cube_40k.obj",
+      "name": "Libigl Cube 40k",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "f4d61b75ecea06d858d10aec02a9468bc5d912170df5a6bd1251f3417649696f",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 30011,
+      "dest": "libigl/cylinder.obj",
+      "name": "Libigl Cylinder",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "4f23fd743b6bad577e57f4d1cf21d858f13642616f594627069cfc7e90f1a81f",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 451796,
+      "dest": "libigl/decimated-max.obj",
+      "name": "Libigl Decimated Max",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "e7489f9987a384f582c632ba19d8e6185e749909ef197215eb0c768597678532",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 508488,
+      "dest": "libigl/elephant.obj",
+      "name": "Libigl Elephant",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "f1038147fa61efd8b3213d119c682279ffea3cf06cc1713ae2a8ff81e68ba671",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 1658656,
+      "dest": "libigl/face.obj",
+      "name": "Libigl Face",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "4817c60799fb7f5ae7f46d27fc48e8c6cbd6b5c7dec7f8197fb794802665a826",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 121525,
+      "dest": "libigl/horse_quad.obj",
+      "name": "Libigl Horse Quad",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "f266409b006dd339125dab91c3ca6aefe7289a03c7cf5848b985fcb19ae3de93",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 124394,
+      "dest": "libigl/inspired_mesh.obj",
+      "name": "Libigl Inspired Mesh",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "badf23768f7f9b8e804c0d0d8f1c5c930ffd4881070efa477e6312d7fdb116b4",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 210917,
+      "dest": "libigl/lilium.obj",
+      "name": "Libigl Lilium",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "4f62ff741b41bd629ccbeaeb0bb2e44ac060cdff88f090129911bede790e8ab3",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 90188,
+      "dest": "libigl/snail.obj",
+      "name": "Libigl Snail",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "4e525b729e858e52799a0e73eb4b89c5895e2dc004ca14e03c18801907463500",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 39462,
+      "dest": "libigl/sphere.obj",
+      "name": "Libigl Sphere",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "c6c8ee3eee518e9e1d1c155099e16e2f4e568da99ea22ab1d23d45909ae5ef39",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 166665,
+      "dest": "libigl/truck.obj",
+      "name": "Libigl Truck",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "c3aeca508490cbb8a0d58131619685b6cee82eb51c0af4ded984dac5ee9f3c11",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 4650,
+      "dest": "libigl/xcylinder.obj",
+      "name": "Libigl Xcylinder",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "641a983e1cd9cba00d237e35452c93574f3c54eaa3fa9e121bd5a5fd7f3bd9a9",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 4650,
+      "dest": "libigl/ycylinder.obj",
+      "name": "Libigl Ycylinder",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "02379c4ddf5a5855c8ef6c9e7f1e459dcd4590ae4a3de7da0948fce15aa69ee5",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    },
+    {
+      "bytes": 4653,
+      "dest": "libigl/zcylinder.obj",
+      "name": "Libigl Zcylinder",
+      "role": "libigl tutorial OBJ benchmark model",
+      "sha256": "88b861ff16e48a3cdf8bc4f9685b075d4775e3ccf88630239b2b35792e4b6500",
+      "source": "libigl/libigl-tutorial-data",
+      "status": "bundled from local libigl-tutorial-data-master.zip"
+    }
+  ]
 }
