@@ -508,6 +508,9 @@ declare global {
     appRuntime?: {
       geometrySmoke?: boolean;
       e2e?: boolean;
+      meshTraceAutoRun?: string | null;
+      meshTraceId?: string | null;
+      finishMeshTrace?: (packet: unknown) => void;
     };
     __MATH3D_E2E_GEOMETRY_PICK__?: {
       commitGeometryPick: (request: {

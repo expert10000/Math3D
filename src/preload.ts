@@ -19,6 +19,8 @@ const readGeometrySmokeFlag = (): boolean => {
 
 const geometrySmokeEnabled = readGeometrySmokeFlag();
 const e2eRuntimeEnabled = asFlag(process.env.MATH3D_E2E);
+const meshTraceAutoRun = String(process.env.MATH3D_MESH_TRACE_AUTORUN ?? "").trim();
+const meshTraceId = String(process.env.MATH3D_MESH_TRACE_ID ?? "").trim();
 if (geometrySmokeEnabled) {
   console.log("[preload] GEOMETRY_SMOKE=1");
 }
@@ -490,5 +492,10 @@ contextBridge.exposeInMainWorld("computeEngines", {
 
 contextBridge.exposeInMainWorld("appRuntime", {
   geometrySmoke: geometrySmokeEnabled,
-  e2e: e2eRuntimeEnabled,
+  e2e: e2eRuntimeEnabled || meshTraceAutoRun.length > 0,
+  meshTraceAutoRun: meshTraceAutoRun || null,
+  meshTraceId: meshTraceId || null,
+  finishMeshTrace: (packet: unknown): void => {
+    ipcRenderer.send("app:mesh-trace-finished", packet);
+  },
 });

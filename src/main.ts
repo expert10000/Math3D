@@ -17,6 +17,8 @@ import * as fs from "node:fs";
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 const isE2e = ["1", "true", "yes", "on", "y"].includes(String(process.env.MATH3D_E2E || "").toLowerCase());
+const meshTraceAutoRun = String(process.env.MATH3D_MESH_TRACE_AUTORUN ?? "").trim();
+const isMeshTraceRun = meshTraceAutoRun.length > 0;
 const isStartupSmoke = ["1", "true", "yes", "on", "y"].includes(String(process.env.MATH3D_STARTUP_SMOKE || "").toLowerCase());
 const isGeometrySmoke = ["1", "true", "yes", "on", "y"].includes(String(process.env.MATH3D_GEOMETRY_SMOKE || "").toLowerCase());
 const geometrySmokeTimeoutMs = Math.max(
@@ -63,14 +65,14 @@ const shouldSkipAutosaveRecovery = ["1", "true", "yes", "on", "y"].includes(
 );
 
 const configureDevProfilePaths = () => {
-  if (!isDev && !isE2e && !isStartupSmoke && !isGeometrySmoke) return;
+  if (!isDev && !isE2e && !isStartupSmoke && !isGeometrySmoke && !isMeshTraceRun) return;
 
   const explicitRoot = process.env.MATH3D_DEV_USER_DATA_DIR?.trim() || process.env.MATH3D_E2E_USER_DATA_DIR?.trim();
   const workspaceKey = process.cwd().replace(/[^a-zA-Z0-9._-]+/g, "_").slice(-80) || "workspace";
   const e2eRoot = process.env.LOCALAPPDATA?.trim() || process.env.APPDATA?.trim();
   const profileRoot = path.resolve(
     explicitRoot ||
-      ((isE2e || isStartupSmoke || isGeometrySmoke) && e2eRoot
+      ((isE2e || isStartupSmoke || isGeometrySmoke || isMeshTraceRun) && e2eRoot
         ? path.join(e2eRoot, "math3d-e2e-profile")
         : path.join(os.tmpdir(), "math3d-electron-dev", workspaceKey))
   );
@@ -100,7 +102,7 @@ if (rendererGpuMode === "swiftshader") {
   app.disableHardwareAcceleration();
 }
 
-if (isE2e) {
+if (isE2e && rendererGpuMode !== "hardware" && rendererGpuMode !== "swiftshader") {
   app.commandLine.appendSwitch("disable-gpu");
   app.commandLine.appendSwitch("disable-gpu-compositing");
   app.commandLine.appendSwitch("disable-gpu-sandbox");
@@ -914,6 +916,18 @@ ipcMain.on("app:runtime:get-flags", (event) => {
   event.returnValue = {
     geometrySmoke: isGeometrySmoke,
   };
+});
+
+ipcMain.on("app:mesh-trace-finished", (_event, packet: unknown) => {
+  try {
+    console.info("[mesh-trace-finished]", JSON.stringify(packet));
+  } catch {
+    console.info("[mesh-trace-finished]", packet);
+  }
+  if (isMeshTraceRun) {
+    const ok = typeof packet === "object" && packet !== null && (packet as { ok?: unknown }).ok === true;
+    app.exit(ok ? 0 : 1);
+  }
 });
 
 ipcMain.on("app:mesh-debug-trace", (event, packet: unknown) => {

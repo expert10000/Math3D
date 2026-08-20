@@ -37980,6 +37980,12 @@ const App: React.FC = () => {
   const [surfaceSampleSet, setSurfaceSampleSet] = useState<SurfaceSampleSet | null>(null);
   const surfaceSampleSetMeshDataBytesRef = useRef<number | null>(null);
   const surfaceSampleSetDeferredTokenRef = useRef(0);
+  const pendingFastPreviewSampleSetRef = useRef<{
+    token: number;
+    label: string | null;
+    timeoutId: number | null;
+    publish: (releaseReason: "first-frame" | "timeout") => void;
+  } | null>(null);
   useEffect(() => {
     surfaceSampleSetMeshDataBytesRef.current = estimateSurfaceSampleSetMeshDataBytes(surfaceSampleSet);
   }, [surfaceSampleSet]);
@@ -40580,6 +40586,23 @@ const App: React.FC = () => {
         return next;
       });
       meshPipelineProfileActiveIdRef.current = null;
+    }
+    const pendingFastPreviewSampleSet = pendingFastPreviewSampleSetRef.current;
+    if (pendingFastPreviewSampleSet && snapshot.trace?.reason === "mesh-rebuild") {
+      pendingFastPreviewSampleSetRef.current = null;
+      if (pendingFastPreviewSampleSet.timeoutId != null && typeof window !== "undefined") {
+        window.clearTimeout(pendingFastPreviewSampleSet.timeoutId);
+      }
+      recordMeshDebugEvent({
+        kind: "phase",
+        label: "app:onSampleSetFlushAfterFirstFrame",
+        details: {
+          label: pendingFastPreviewSampleSet.label,
+          snapshotTriangles: snapshot.triangles,
+          snapshotTraceReason: snapshot.trace.reason,
+        },
+      });
+      pendingFastPreviewSampleSet.publish("first-frame");
     }
     const pendingFullRestore = meshFullRestoreFrameProfileRef.current;
     const snapshotGeometryBytes = snapshot.trace?.geometryBufferBytes ?? snapshot.gpuMemoryEstimateBytes ?? null;
@@ -48808,12 +48831,13 @@ case "mobius":
         !!largeMeshCache &&
         surfaceMeshData === largeMeshCache.previewMesh &&
         typeof window !== "undefined";
-      const publishSampleSet = () => {
+      const publishSampleSet = (releaseReason: "immediate" | "first-frame" | "timeout" = "immediate") => {
         meshDebugActiveScopeRef.current = {
           name: "app:onSampleSet",
           startedAt: benchmarkNowMs(),
           details: {
             deferred: shouldDeferFastPreviewSampleSet,
+            releaseReason,
             nextSampleCount: set?.samples.length ?? null,
             nextMeshDataBytes,
           },
@@ -48828,6 +48852,7 @@ case "mobius":
               nextMeshDataBytes,
               currentMeshDataBytes: surfaceSampleSetMeshDataBytesRef.current,
               deferred: shouldDeferFastPreviewSampleSet,
+              releaseReason,
             },
           });
         }
@@ -48842,6 +48867,7 @@ case "mobius":
                 storedMeshDataCount: set?.meshData?.length ?? null,
                 storedMeshDataBytes: nextMeshDataBytes,
                 deferred: shouldDeferFastPreviewSampleSet,
+                releaseReason,
                 jsHeapUsedBytes: Number.isFinite(
                   (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory?.usedJSHeapSize
                 )
@@ -48854,6 +48880,10 @@ case "mobius":
       };
       if (shouldDeferFastPreviewSampleSet) {
         const deferredToken = ++surfaceSampleSetDeferredTokenRef.current;
+        const previousPending = pendingFastPreviewSampleSetRef.current;
+        if (previousPending?.timeoutId != null) {
+          window.clearTimeout(previousPending.timeoutId);
+        }
         recordMeshDebugEvent({
           kind: "phase",
           label: "app:onSampleSetDeferred",
@@ -48861,16 +48891,33 @@ case "mobius":
             label: surfaceMeshData?.label ?? null,
             triangles: surfaceMeshData ? surfaceMeshTriangleCount(surfaceMeshData) : null,
             nextSampleCount: set?.samples.length ?? null,
+            release: "first-frame-or-timeout",
           },
         });
-        window.setTimeout(() => {
+        const timeoutId = window.setTimeout(() => {
           if (surfaceSampleSetDeferredTokenRef.current === deferredToken) {
-            publishSampleSet();
+            const pending = pendingFastPreviewSampleSetRef.current;
+            pendingFastPreviewSampleSetRef.current = null;
+            pending?.publish("timeout");
           }
-        }, 0);
+        }, 1500);
+        pendingFastPreviewSampleSetRef.current = {
+          token: deferredToken,
+          label: surfaceMeshData?.label ?? null,
+          timeoutId,
+          publish: (releaseReason) => {
+            if (surfaceSampleSetDeferredTokenRef.current !== deferredToken) return;
+            publishSampleSet(releaseReason);
+          },
+        };
         return;
       }
       surfaceSampleSetDeferredTokenRef.current += 1;
+      const previousPending = pendingFastPreviewSampleSetRef.current;
+      if (previousPending?.timeoutId != null && typeof window !== "undefined") {
+        window.clearTimeout(previousPending.timeoutId);
+      }
+      pendingFastPreviewSampleSetRef.current = null;
       publishSampleSet();
     },
     [meshInteractionQualityMode, recordMeshDebugEvent, surfaceMeshData, surfaceViewerKind]
@@ -50480,6 +50527,84 @@ case "mobius":
       }
     };
   }, [handleLoadSurfaceMeshBenchmarkModel, handleSurfaceRenderQualityChange, isDev, recordMeshDebugEvent]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.appRuntime?.e2e) return;
+    const autoRun = String(window.appRuntime.meshTraceAutoRun ?? "").trim().toLowerCase();
+    if (!autoRun) return;
+    let cancelled = false;
+    const waitMs = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+    const waitForBodyText = async (pattern: RegExp, timeoutMs: number, label: string) => {
+      const startedAt = benchmarkNowMs();
+      while (!cancelled && benchmarkNowMs() - startedAt < timeoutMs) {
+        const text = document.body?.innerText ?? "";
+        if (pattern.test(text)) return;
+        await waitMs(250);
+      }
+      throw new Error(`Timed out waiting for ${label}`);
+    };
+    const finish = (packet: Record<string, unknown>) => {
+      window.appRuntime?.finishMeshTrace?.({
+        mode: autoRun,
+        meshId: window.appRuntime?.meshTraceId ?? null,
+        ...packet,
+      });
+    };
+    const run = async () => {
+      try {
+        await waitMs(250);
+        recordMeshDebugEvent({
+          kind: "load",
+          label: `Mesh trace autorun started: ${autoRun}`,
+          details: { meshId: window.appRuntime?.meshTraceId ?? null },
+        });
+        const api = window.__MATH3D_E2E_MESH_BENCHMARK__;
+        if (!api) throw new Error("Mesh benchmark E2E hook is not ready.");
+        if (autoRun === "sequential") {
+          let result = await api.loadBenchmarkModel("armadillo");
+          if (!result.ok) throw new Error(result.error ?? "Failed to load Armadillo");
+          await waitForBodyText(/Armadillo|11_armadillo\.obj/i, 30_000, "Armadillo load");
+          result = await api.loadBenchmarkModel("3dbenchy");
+          if (!result.ok) throw new Error(result.error ?? "Failed to load 3DBenchy after Armadillo");
+          await waitForBodyText(/3DBenchy|10_3dbenchy\.stl/i, 30_000, "3DBenchy after Armadillo");
+          result = await api.runFullTrace("armadillo");
+          if (!result.ok) throw new Error(result.error ?? "Failed to run Armadillo Full");
+          await waitForBodyText(/Dedicated Full viewer[\s\S]*(ready in|ready:)|Dedicated Full viewer ready/i, 45_000, "Armadillo Full ready");
+          result = await api.loadBenchmarkModel("3dbenchy");
+          if (!result.ok) throw new Error(result.error ?? "Failed to load 3DBenchy after Armadillo Full");
+          await waitForBodyText(/3DBenchy|10_3dbenchy\.stl/i, 30_000, "3DBenchy after Armadillo Full");
+          await waitMs(750);
+          const body = document.body?.innerText ?? "";
+          if (/Dedicated Full viewer/i.test(body)) {
+            throw new Error("Dedicated Full viewer remained mounted after loading 3DBenchy.");
+          }
+          finish({ ok: true, checks: ["armadillo-load", "3dbenchy-after-armadillo", "armadillo-full", "3dbenchy-after-armadillo-full"] });
+          return;
+        }
+        if (autoRun === "full") {
+          const meshId = String(window.appRuntime?.meshTraceId ?? "3dbenchy").trim() || "3dbenchy";
+          const result = await api.runFullTrace(meshId);
+          if (!result.ok) throw new Error(result.error ?? `Failed to run Full trace for ${meshId}`);
+          await waitForBodyText(/Dedicated Full viewer[\s\S]*(ready in|ready:)|Dedicated Full viewer ready/i, 60_000, `${meshId} Full ready`);
+          await waitMs(1_000);
+          finish({ ok: true, checks: [`full:${meshId}`] });
+          return;
+        }
+        throw new Error(`Unknown mesh trace autorun mode: ${autoRun}`);
+      } catch (error) {
+        recordMeshDebugEvent({
+          kind: "error",
+          label: `Mesh trace autorun failed: ${autoRun}`,
+          details: { error: String((error as Error)?.message ?? error) },
+        });
+        finish({ ok: false, error: String((error as Error)?.message ?? error) });
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [isDev, recordMeshDebugEvent]);
 
   const handleExportSurfaceMeshObj = useCallback(() => {
     if (surfaceMeshExportBusy) return;
