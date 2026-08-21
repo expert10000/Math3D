@@ -63932,6 +63932,35 @@ case "mobius":
     geodesicHeatBusy ||
     geodesicDiskBusy ||
     volumeDistanceBusy;
+  const meshFooterAnalysisStatus = useMemo(() => {
+    if (mode !== "surfaces" || !isMeshLikeViewer || !surfaceInspectorMeshStats.faceCount) {
+      return analysisRunning ? "analysis running" : "analysis ready";
+    }
+    const readyCount =
+      (surfaceInspectorMeshStats.vertexCount != null ? 1 : 0) +
+      (surfaceInspectorTopologyDetails ? 3 : 0) +
+      (meshQualityReport ? 1 : 0) +
+      (surfaceMeshAnalyzeDiagnostics ? 1 : 0) +
+      (showGaussMap ? 1 : 0) +
+      (showPrincipalDirections ? 1 : 0);
+    const totalCount = 8;
+    if (analysisRunning || meshQualityBusy) return `analysis ${readyCount}/${totalCount} running`;
+    if (deferredSurfaceSampleSetInfo) return `analysis ${readyCount}/${totalCount} deferred`;
+    return `analysis ${readyCount}/${totalCount} ready`;
+  }, [
+    analysisRunning,
+    deferredSurfaceSampleSetInfo,
+    isMeshLikeViewer,
+    meshQualityBusy,
+    meshQualityReport,
+    mode,
+    showGaussMap,
+    showPrincipalDirections,
+    surfaceInspectorMeshStats.faceCount,
+    surfaceInspectorMeshStats.vertexCount,
+    surfaceInspectorTopologyDetails,
+    surfaceMeshAnalyzeDiagnostics,
+  ]);
   const statusItems = useMemo(() => {
     const items: string[] = [];
     items.push(statusViewerLabel);
@@ -63947,7 +63976,7 @@ case "mobius":
     if (mode === "surfaces") items.push(`${lightPreset} lighting`);
     if (statusPickedPointLabel) items.push(statusPickedPointLabel);
     items.push(`display ${displayMode}`);
-    items.push(analysisRunning ? "analysis running" : "analysis ready");
+    items.push(meshFooterAnalysisStatus);
     if (mode === "surfaces") {
       items.push(compareLayoutEnabled ? "compare mode active" : "compare mode off");
       if (IS_REPLAY_MODE) {
@@ -63965,6 +63994,7 @@ case "mobius":
     displayMode,
     IS_REPLAY_MODE,
     lightPreset,
+    meshFooterAnalysisStatus,
     mode,
     geometryViewerSourceLabel,
     screenshotBusy,
@@ -73969,6 +73999,9 @@ case "mobius":
                       curvatureRanges={surfaceInspectorCurvatureRanges}
                       analysisFocusedSection={analysisFocusedSection}
                       meshQualityReport={meshQualityReport}
+                      meshQualityBusy={meshQualityBusy}
+                      meshQualityProgress={meshQualityProgress}
+                      meshQualityPhase={meshQualityPhase}
                       calculusScalarSource={calculusScalarSource}
                       calculusVectorSource={calculusVectorSource}
                       calculusActiveVectorField={calculusActiveVectorField}
@@ -108302,6 +108335,9 @@ type SurfacesRightPanelProps = {
   };
   analysisFocusedSection: AnalysisFocusedSection;
   meshQualityReport: MeshQualityReport | null;
+  meshQualityBusy: boolean;
+  meshQualityProgress: number;
+  meshQualityPhase: MeshQualityReportPhase | "idle";
   calculusScalarSource: string;
   calculusVectorSource: string;
   calculusActiveVectorField: string;
@@ -108367,6 +108403,17 @@ type SurfacesRightPanelProps = {
 
 type InspectorPanelTab = "object" | "selection" | "probe" | "analysis" | "diagnostics" | "warnings";
 type AnalysisResultsView = "show-all" | "current-screen";
+type MeshAnalysisFeatureState = "ready" | "running" | "deferred" | "not-requested" | "missing" | "unavailable";
+type MeshAnalysisFeatureRow = {
+  id: string;
+  group: "Surface" | "Topology" | "Quality";
+  label: string;
+  state: MeshAnalysisFeatureState;
+  detail?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  disabled?: boolean;
+};
 
 const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   viewerKind,
@@ -108529,6 +108576,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   curvatureRanges,
   analysisFocusedSection,
   meshQualityReport,
+  meshQualityBusy,
+  meshQualityProgress,
+  meshQualityPhase,
   calculusScalarSource,
   calculusVectorSource,
   calculusActiveVectorField,
@@ -109029,7 +109079,13 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const curvatureLinesStatus: "ready" | "stale" | "missing" =
     showCurvatureLines ? "ready" : probeEnabled ? "stale" : "missing";
   const vectorCalculusStatus = showGaussMap || showContours || showPlanes ? "ready" : "not computed";
-  const meshQualityStatus = meshInspectorStats.faceCount != null ? "ready" : "not computed";
+  const meshQualityStatus = meshQualityBusy
+    ? "running"
+    : meshQualityReport
+      ? "ready"
+      : deferredSurfaceSampleSetInfo
+        ? "deferred"
+        : "not requested";
   const chartAnalysisStatus = isImplicitViewer ? "unavailable for implicit surface" : "ready";
   const topologyDiagnosticsStatus = meshInspectorStats.boundaryEdgeCount != null || badTriangleCount != null ? "ready" : "missing";
   const resultsIssueCount =
@@ -109072,6 +109128,236 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   })();
   const topologyNonManifoldEdgeCount =
     meshQualityReport?.topology.nonManifoldEdgeCount ?? meshTopologyDetails?.nonManifoldEdgeCount ?? null;
+  const meshFeatureHasMesh = meshInspectorStats.vertexCount != null || meshInspectorStats.faceCount != null;
+  const meshQualityProgressLabel = meshQualityBusy
+    ? `${meshQualityPhase === "idle" ? "quality" : meshQualityPhase} ${Math.round(Math.max(0, Math.min(1, meshQualityProgress)) * 100)}%`
+    : undefined;
+  const meshAnalysisFeatureRows = useMemo<MeshAnalysisFeatureRow[]>(() => {
+    const topologyState: MeshAnalysisFeatureState = meshTopologyDetails
+      ? "ready"
+      : deferredSurfaceSampleSetInfo
+        ? "deferred"
+        : meshFeatureHasMesh
+          ? "not-requested"
+          : "missing";
+    const topologyAction =
+      topologyState === "deferred"
+        ? { actionLabel: "Prepare", onAction: onPrepareDeferredSurfaceAnalysisData }
+        : topologyState === "not-requested"
+          ? { actionLabel: "Run", onAction: onRecomputeMeshAnalyzeDiagnostics }
+          : {};
+    const curvatureState = (range: { min: number; max: number } | null): MeshAnalysisFeatureState =>
+      range ? "ready" : meshFeatureHasMesh ? "not-requested" : "missing";
+    const diagnosticsState: MeshAnalysisFeatureState = meshAnalyzeDiagnostics
+      ? "ready"
+      : deferredSurfaceSampleSetInfo
+        ? "deferred"
+        : meshFeatureHasMesh
+          ? "not-requested"
+          : "missing";
+    const diagnosticsAction =
+      diagnosticsState === "deferred" || diagnosticsState === "not-requested"
+        ? { actionLabel: diagnosticsState === "deferred" ? "Prepare" : "Run", onAction: onRecomputeMeshAnalyzeDiagnostics }
+        : {};
+    const qualityState: MeshAnalysisFeatureState = meshQualityBusy
+      ? "running"
+      : meshQualityReport
+        ? "ready"
+        : deferredSurfaceSampleSetInfo
+          ? "deferred"
+          : meshFeatureHasMesh
+            ? "not-requested"
+            : "missing";
+    const qualityAction =
+      qualityState === "deferred" || qualityState === "not-requested"
+        ? { actionLabel: qualityState === "deferred" ? "Prepare" : "Run", onAction: onRecomputeMeshAnalyzeDiagnostics }
+        : {};
+    return [
+      {
+        id: "normals",
+        group: "Surface",
+        label: "Normals",
+        state: meshFeatureHasMesh ? "ready" : "missing",
+        detail: hasUnstableNormals ? "probe normal unstable" : "viewer normals available",
+      },
+      {
+        id: "mean-curvature",
+        group: "Surface",
+        label: "Mean curvature",
+        state: curvatureState(curvatureRanges.H),
+        detail: formatRange(curvatureRanges.H),
+        actionLabel: curvatureRanges.H ? undefined : "Run",
+        onAction: curvatureRanges.H ? undefined : onRebuildCurvatureLines,
+      },
+      {
+        id: "gaussian-curvature",
+        group: "Surface",
+        label: "Gaussian curvature",
+        state: curvatureState(curvatureRanges.K),
+        detail: formatRange(curvatureRanges.K),
+        actionLabel: curvatureRanges.K ? undefined : "Run",
+        onAction: curvatureRanges.K ? undefined : onToggleGaussMap,
+      },
+      {
+        id: "principal-directions",
+        group: "Surface",
+        label: "Principal directions",
+        state: showPrincipalDirections ? "ready" : meshFeatureHasMesh ? "not-requested" : "missing",
+        detail: principalDirectionsStatus,
+        actionLabel: showPrincipalDirections ? undefined : "Run",
+        onAction: showPrincipalDirections ? undefined : onTogglePrincipalDirections,
+      },
+      {
+        id: "gauss-map",
+        group: "Surface",
+        label: "Gauss map",
+        state: showGaussMap ? "ready" : meshFeatureHasMesh ? "not-requested" : "missing",
+        detail: showGaussMap ? "visible" : "overlay off",
+        actionLabel: showGaussMap ? undefined : "Run",
+        onAction: showGaussMap ? undefined : onToggleGaussMap,
+      },
+      {
+        id: "adjacency",
+        group: "Topology",
+        label: "Adjacency",
+        state: topologyState,
+        detail: meshTopologyDetails ? `${meshTopologyDetails.edgeCount.toLocaleString()} edges` : undefined,
+        ...topologyAction,
+      },
+      {
+        id: "components",
+        group: "Topology",
+        label: "Components",
+        state: topologyState,
+        detail: formatInspectorCount(meshInspectorStats.connectedComponentCount),
+        ...topologyAction,
+      },
+      {
+        id: "boundaries",
+        group: "Topology",
+        label: "Boundaries",
+        state: topologyState,
+        detail: `edges ${formatInspectorCount(meshInspectorStats.boundaryEdgeCount)}, loops ${topologyBoundaryLoopsLabel}`,
+        ...topologyAction,
+      },
+      {
+        id: "manifoldness",
+        group: "Topology",
+        label: "Manifoldness",
+        state: topologyState,
+        detail: topologyNonManifoldEdgeCount == null ? undefined : `${topologyNonManifoldEdgeCount.toLocaleString()} non-manifold edges`,
+        ...topologyAction,
+      },
+      {
+        id: "self-intersections",
+        group: "Topology",
+        label: "Self intersections",
+        state: diagnosticsState,
+        detail: meshAnalyzeDiagnostics ? `${meshAnalyzeDiagnostics.selfIntersectionPairs.toLocaleString()} pairs` : undefined,
+        ...diagnosticsAction,
+      },
+      {
+        id: "triangle-quality",
+        group: "Quality",
+        label: "Triangle quality",
+        state: qualityState,
+        detail: meshQualityProgressLabel ?? (badTriangleCount == null ? undefined : `${badTriangleCount.toLocaleString()} bad triangles`),
+        ...qualityAction,
+      },
+    ];
+  }, [
+    badTriangleCount,
+    curvatureRanges.H,
+    curvatureRanges.K,
+    deferredSurfaceSampleSetInfo,
+    formatRange,
+    hasUnstableNormals,
+    meshAnalyzeDiagnostics,
+    meshFeatureHasMesh,
+    meshInspectorStats.boundaryEdgeCount,
+    meshInspectorStats.connectedComponentCount,
+    meshQualityBusy,
+    meshQualityProgressLabel,
+    meshQualityReport,
+    meshTopologyDetails,
+    onPrepareDeferredSurfaceAnalysisData,
+    onRecomputeMeshAnalyzeDiagnostics,
+    onRebuildCurvatureLines,
+    onToggleGaussMap,
+    onTogglePrincipalDirections,
+    principalDirectionsStatus,
+    showGaussMap,
+    showPrincipalDirections,
+    topologyBoundaryLoopsLabel,
+    topologyNonManifoldEdgeCount,
+  ]);
+  const meshAnalysisReadyCount = meshAnalysisFeatureRows.filter((row) => row.state === "ready").length;
+  const meshAnalysisRequestedCount = meshAnalysisFeatureRows.filter((row) => row.state !== "not-requested" && row.state !== "missing").length;
+  const featureStateTone: Record<MeshAnalysisFeatureState, { label: string; bg: string; border: string; color: string }> = {
+    ready: { label: "ready", bg: "#ecfdf3", border: "#abefc6", color: "#067647" },
+    running: { label: "running", bg: "#eff8ff", border: "#b2ddff", color: "#175cd3" },
+    deferred: { label: "deferred", bg: "#fffaeb", border: "#fedf89", color: "#b54708" },
+    "not-requested": { label: "not requested", bg: "#f8fafc", border: "#dbe4ee", color: "#475467" },
+    missing: { label: "missing", bg: "#fff1f3", border: "#fecdd6", color: "#b42318" },
+    unavailable: { label: "unavailable", bg: "#f8fafc", border: "#dbe4ee", color: "#64748b" },
+  };
+  const renderMeshAnalysisFeatureStatus = (testId: string) => (
+    <div data-testid={testId} style={{ display: "grid", gap: 10 }}>
+      {(["Surface", "Topology", "Quality"] as const).map((group) => (
+        <div key={`${testId}-${group}`} style={{ display: "grid", gap: 5 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#334155" }}>{group}</div>
+          {meshAnalysisFeatureRows
+            .filter((row) => row.group === group)
+            .map((row) => {
+              const tone = featureStateTone[row.state];
+              return (
+                <div
+                  key={`${testId}-${row.id}`}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(120px, 1fr) auto",
+                    gap: 6,
+                    alignItems: "center",
+                    fontSize: 11,
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700 }}>{row.label}</div>
+                    {row.detail && <div style={{ color: "#64748b" }}>{row.detail}</div>}
+                  </div>
+                  <div style={{ display: "flex", gap: 5, justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap" }}>
+                    <span
+                      style={{
+                        border: `1px solid ${tone.border}`,
+                        borderRadius: 999,
+                        background: tone.bg,
+                        color: tone.color,
+                        padding: "2px 7px",
+                        fontSize: 10,
+                        fontWeight: 800,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {tone.label}
+                    </span>
+                    {row.actionLabel && row.onAction && (
+                      <button
+                        type="button"
+                        onClick={row.onAction}
+                        disabled={row.disabled}
+                        style={{ padding: "2px 7px", fontSize: 10 }}
+                      >
+                        {row.actionLabel}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      ))}
+    </div>
+  );
   const meshBenchmarkRows = useMemo(
     () =>
       buildMeshBenchmarkVerificationRows(meshBenchmarkVerification?.model.expected, {
@@ -110252,7 +110538,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             {renderMeshBenchmarkVerification()}
 
             <div style={inspectorSectionCard}>
-              <div style={inspectorSectionTitle}>Results</div>
+              <div style={inspectorSectionTitle}>Analyze by feature</div>
               {showDetailedResultsCards && (
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
                   <button
@@ -110273,13 +110559,14 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                   </button>
                 </div>
               )}
-              <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
-                <div><strong>Global computed analysis</strong></div>
-                <div><strong>Differential geometry summary:</strong> {differentialGeometryStatus}</div>
-                <div><strong>Vector calculus summary:</strong> {vectorCalculusStatus}</div>
-                <div><strong>Mesh quality summary:</strong> {meshQualityStatus}</div>
-                <div><strong>Chart analysis summary:</strong> {chartAnalysisStatus}</div>
-                <div><strong>Topology diagnostics summary:</strong> {topologyDiagnosticsStatus}</div>
+              <div style={{ fontSize: 11, display: "grid", gap: 8 }}>
+                <div>
+                  <strong>Computed:</strong> {meshAnalysisReadyCount} ready / {meshAnalysisFeatureRows.length} features
+                  {meshAnalysisRequestedCount < meshAnalysisFeatureRows.length
+                    ? `, ${meshAnalysisFeatureRows.length - meshAnalysisRequestedCount} on demand`
+                    : ""}
+                </div>
+                {renderMeshAnalysisFeatureStatus("mesh-analysis-feature-status")}
                 <div><strong>Warnings:</strong> {diagnosticsWarningCount}</div>
               </div>
             </div>
@@ -111147,13 +111434,11 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
       <div style={inspectorSectionCard}>
         <div style={inspectorSectionTitle}>Analysis status</div>
-        <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
-          <div><strong>Differential geometry:</strong> {differentialGeometryStatus}</div>
-          <div><strong>Curvature lines:</strong> {curvatureLinesStatus}</div>
-          <div><strong>Vector calculus:</strong> {vectorCalculusStatus}</div>
-          <div><strong>Mesh quality:</strong> {meshQualityStatus}</div>
-          <div><strong>Chart analysis:</strong> {chartAnalysisStatus}</div>
-          <div><strong>Topology diagnostics:</strong> {topologyDiagnosticsStatus}</div>
+        <div style={{ fontSize: 11, display: "grid", gap: 8 }}>
+          <div>
+            <strong>Computed:</strong> {meshAnalysisReadyCount} ready / {meshAnalysisFeatureRows.length} features
+          </div>
+          {renderMeshAnalysisFeatureStatus("mesh-object-analysis-feature-status")}
           <div><strong>Diagnostics:</strong> {diagnosticsWarningCount} warnings</div>
         </div>
       </div>
@@ -111225,7 +111510,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       {renderMeshBenchmarkVerification()}
 
       <div style={inspectorSectionCard}>
-        <div style={inspectorSectionTitle}>Results</div>
+        <div style={inspectorSectionTitle}>Analyze by feature</div>
         {showDetailedResultsCards && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
             <button
@@ -111246,12 +111531,14 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             </button>
           </div>
         )}
-        <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
-          <div><strong>Global computed analysis</strong></div>
-          <div><strong>Differential geometry summary:</strong> {differentialGeometryStatus}</div>
-          <div><strong>Vector calculus summary:</strong> {vectorCalculusStatus}</div>
-          <div><strong>Mesh quality summary:</strong> {meshQualityStatus}</div>
-          <div><strong>Chart analysis summary:</strong> {chartAnalysisStatus}</div>
+        <div style={{ fontSize: 11, display: "grid", gap: 8 }}>
+          <div>
+            <strong>Computed:</strong> {meshAnalysisReadyCount} ready / {meshAnalysisFeatureRows.length} features
+            {meshAnalysisRequestedCount < meshAnalysisFeatureRows.length
+              ? `, ${meshAnalysisFeatureRows.length - meshAnalysisRequestedCount} on demand`
+              : ""}
+          </div>
+          {renderMeshAnalysisFeatureStatus("mesh-analysis-feature-status-alt")}
           <div><strong>Topology diagnostics summary:</strong> {topologyDiagnosticsStatus}</div>
           <div><strong>Warnings:</strong> {diagnosticsWarningCount}</div>
         </div>
