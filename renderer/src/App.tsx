@@ -2037,6 +2037,16 @@ type LargeSurfaceMeshResolutionCache = {
   active: "preview" | "full";
 };
 
+type DeferredSurfaceSampleSetInfo = {
+  label: string | null;
+  triangles: number | null;
+  sampleCount: number;
+  meshDataBytes: number | null;
+  storedAt: number;
+  firstFrameSeen: boolean;
+  releaseReason: "manual";
+};
+
 type MeshFullPreviewWorkerResponse = {
   type: "full-preview-ready";
   jobId: number;
@@ -38003,6 +38013,8 @@ const App: React.FC = () => {
   }, [datasetKind]);
   const [gaussHoverIndex, setGaussHoverIndex] = useState<number | null>(null);
   const [surfaceSampleSet, setSurfaceSampleSet] = useState<SurfaceSampleSet | null>(null);
+  const [deferredSurfaceSampleSetInfo, setDeferredSurfaceSampleSetInfo] = useState<DeferredSurfaceSampleSetInfo | null>(null);
+  const deferredSurfaceSampleSetRef = useRef<SurfaceSampleSet | null>(null);
   const surfaceSampleSetMeshDataBytesRef = useRef<number | null>(null);
   const surfaceSampleSetDeferredTokenRef = useRef(0);
   const pendingFastPreviewSampleSetRef = useRef<{
@@ -38012,6 +38024,10 @@ const App: React.FC = () => {
     releaseScheduled: boolean;
     publish: (releaseReason: "first-frame" | "timeout") => void;
   } | null>(null);
+  useEffect(() => {
+    deferredSurfaceSampleSetRef.current = null;
+    setDeferredSurfaceSampleSetInfo(null);
+  }, [surfaceMeshData]);
   useEffect(() => {
     surfaceSampleSetMeshDataBytesRef.current = estimateSurfaceSampleSetMeshDataBytes(surfaceSampleSet);
   }, [surfaceSampleSet]);
@@ -40004,6 +40020,7 @@ const App: React.FC = () => {
   const meshFullReactCommitLoggedRef = useRef<string | null>(null);
   const meshDebugEventCounterRef = useRef(0);
   const meshTraceFullReadyLabelsRef = useRef<Map<string, number>>(new Map());
+  const meshTraceDebugEventsRef = useRef<MeshDebugEvent[]>([]);
   const [meshDebugMonitor, setMeshDebugMonitor] = useState<MeshDebugMonitorState>(() => ({
     enabled: true,
     startedAt: Date.now(),
@@ -40026,6 +40043,7 @@ const App: React.FC = () => {
     if (nextEvent.kind === "full" && nextEvent.label.startsWith("Dedicated Full viewer ready:")) {
       meshTraceFullReadyLabelsRef.current.set(nextEvent.label, nextEvent.ts);
     }
+    meshTraceDebugEventsRef.current = [...meshTraceDebugEventsRef.current, nextEvent].slice(-MESH_DEBUG_EVENT_LIMIT);
     const alreadySentToMain = !!(nextEvent.details as { __mainTraceSent?: unknown } | undefined)?.__mainTraceSent;
     if (!alreadySentToMain && typeof window !== "undefined") {
       window.appDiagnostics?.traceMeshEvent?.({
@@ -40048,6 +40066,7 @@ const App: React.FC = () => {
     });
   }, []);
   const clearMeshDebugMonitor = useCallback(() => {
+    meshTraceDebugEventsRef.current = [];
     setMeshDebugMonitor((current) => ({
       ...current,
       startedAt: Date.now(),
@@ -40623,21 +40642,21 @@ const App: React.FC = () => {
         window.clearTimeout(pendingFastPreviewSampleSet.timeoutId);
       }
       pendingFastPreviewSampleSet.releaseScheduled = true;
+      setDeferredSurfaceSampleSetInfo((current) =>
+        current && current.label === pendingFastPreviewSampleSet.label
+          ? { ...current, firstFrameSeen: true }
+          : current
+      );
       recordMeshDebugEvent({
         kind: "phase",
-        label: "app:onSampleSetIdleAfterFirstFrameScheduled",
+        label: "app:onSampleSetDeferredPastFirstFrame",
         details: {
           label: pendingFastPreviewSampleSet.label,
           snapshotTriangles: snapshot.triangles,
           snapshotTraceReason: snapshot.trace.reason,
-          delayMs: 250,
+          publish: "manual",
         },
       });
-      pendingFastPreviewSampleSet.timeoutId = window.setTimeout(() => {
-        if (pendingFastPreviewSampleSetRef.current !== pendingFastPreviewSampleSet) return;
-        pendingFastPreviewSampleSetRef.current = null;
-        pendingFastPreviewSampleSet.publish("first-frame");
-      }, 250);
     }
     const pendingFullRestore = meshFullRestoreFrameProfileRef.current;
     const snapshotGeometryBytes = snapshot.trace?.geometryBufferBytes ?? snapshot.gpuMemoryEstimateBytes ?? null;
@@ -48943,27 +48962,32 @@ case "mobius":
         if (previousPending?.timeoutId != null) {
           window.clearTimeout(previousPending.timeoutId);
         }
+        deferredSurfaceSampleSetRef.current = set;
+        setDeferredSurfaceSampleSetInfo({
+          label: surfaceMeshData?.label ?? null,
+          triangles: surfaceMeshData ? surfaceMeshTriangleCount(surfaceMeshData) : null,
+          sampleCount: set?.samples.length ?? 0,
+          meshDataBytes: nextMeshDataBytes,
+          storedAt: Date.now(),
+          firstFrameSeen: false,
+          releaseReason: "manual",
+        });
+        setSurfaceSampleSet(null);
         recordMeshDebugEvent({
           kind: "phase",
-          label: "app:onSampleSetDeferred",
+          label: "app:onSampleSetDeferredForManualAnalysis",
           details: {
             label: surfaceMeshData?.label ?? null,
             triangles: surfaceMeshData ? surfaceMeshTriangleCount(surfaceMeshData) : null,
             nextSampleCount: set?.samples.length ?? null,
-            release: "first-frame-or-timeout",
+            nextMeshDataBytes,
+            release: "manual",
           },
         });
-        const timeoutId = window.setTimeout(() => {
-          if (surfaceSampleSetDeferredTokenRef.current === deferredToken) {
-            const pending = pendingFastPreviewSampleSetRef.current;
-            pendingFastPreviewSampleSetRef.current = null;
-            pending?.publish("timeout");
-          }
-        }, 1500);
         pendingFastPreviewSampleSetRef.current = {
           token: deferredToken,
           label: surfaceMeshData?.label ?? null,
-          timeoutId,
+          timeoutId: null,
           releaseScheduled: false,
           publish: (releaseReason) => {
             if (surfaceSampleSetDeferredTokenRef.current !== deferredToken) return;
@@ -48978,10 +49002,69 @@ case "mobius":
         window.clearTimeout(previousPending.timeoutId);
       }
       pendingFastPreviewSampleSetRef.current = null;
+      deferredSurfaceSampleSetRef.current = null;
+      setDeferredSurfaceSampleSetInfo(null);
       publishSampleSet();
     },
     [meshInteractionQualityMode, recordMeshDebugEvent, surfaceMeshData, surfaceViewerKind]
   );
+
+  const handlePrepareDeferredSurfaceAnalysisData = useCallback(() => {
+    const deferredSet = deferredSurfaceSampleSetRef.current;
+    if (!deferredSet) return;
+    const pending = pendingFastPreviewSampleSetRef.current;
+    if (pending?.timeoutId != null && typeof window !== "undefined") {
+      window.clearTimeout(pending.timeoutId);
+    }
+    pendingFastPreviewSampleSetRef.current = null;
+    surfaceSampleSetDeferredTokenRef.current += 1;
+    const nextMeshDataBytes = estimateSurfaceSampleSetMeshDataBytes(deferredSet);
+    const startedAt = benchmarkNowMs();
+    meshDebugActiveScopeRef.current = {
+      name: "app:onSampleSet",
+      startedAt,
+      details: {
+        deferred: true,
+        releaseReason: "manual",
+        nextSampleCount: deferredSet.samples.length,
+        nextMeshDataBytes,
+      },
+    };
+    recordMeshDebugEvent({
+      kind: "phase",
+      label: "app:onSampleSetManualAnalysisPublish",
+      details: {
+        label: deferredSurfaceSampleSetInfo?.label ?? null,
+        triangles: deferredSurfaceSampleSetInfo?.triangles ?? null,
+        nextSampleCount: deferredSet.samples.length,
+        nextMeshDataBytes,
+        firstFrameSeen: deferredSurfaceSampleSetInfo?.firstFrameSeen ?? false,
+      },
+    });
+    deferredSurfaceSampleSetRef.current = null;
+    setDeferredSurfaceSampleSetInfo(null);
+    setSurfaceSampleSet(deferredSet);
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => {
+        const publishMs = benchmarkNowMs() - startedAt;
+        recordMeshDebugEvent({
+          kind: "phase",
+          label: "app:onSampleSetManualAnalysisReady",
+          ms: publishMs,
+          details: {
+            nextSampleCount: deferredSet.samples.length,
+            nextMeshDataBytes,
+          },
+        });
+        const committedScope = meshDebugActiveScopeRef.current;
+        window.setTimeout(() => {
+          if (meshDebugActiveScopeRef.current === committedScope) {
+            meshDebugActiveScopeRef.current = null;
+          }
+        }, 1000);
+      }, 0);
+    }
+  }, [deferredSurfaceSampleSetInfo, recordMeshDebugEvent]);
 
   const complexMapOverlayPolylines = useMemo<PolylineSet | null>(() => {
     if (!isMeshLikeViewer) return null;
@@ -50619,6 +50702,18 @@ case "mobius":
       }
       throw new Error(`Timed out waiting for ${label}`);
     };
+    const waitForDebugEvent = async (
+      predicate: (event: MeshDebugEvent) => boolean,
+      timeoutMs: number,
+      label: string
+    ) => {
+      const startedAt = benchmarkNowMs();
+      while (!cancelled && benchmarkNowMs() - startedAt < timeoutMs) {
+        if (meshTraceDebugEventsRef.current.some(predicate)) return;
+        await waitMs(100);
+      }
+      throw new Error(`Timed out waiting for ${label}`);
+    };
     const probeInteraction = async (label: string) => {
       const startedAt = benchmarkNowMs();
       const target = document.querySelector("canvas") ?? document.body;
@@ -50698,6 +50793,31 @@ case "mobius":
           await probeInteraction(`after-full:${meshId}`);
           await waitMs(1_000);
           finish({ ok: true, checks: [`full:${meshId}`] });
+          return;
+        }
+        if (autoRun === "deferred-analysis") {
+          const checkedMeshes = ["armadillo", "dragon-medium"];
+          for (const meshId of checkedMeshes) {
+            const result = await api.loadBenchmarkModel(meshId);
+            if (!result.ok) throw new Error(result.error ?? `Failed to load ${meshId}`);
+            const labelPattern =
+              meshId === "armadillo" ? /Armadillo|11_armadillo\.obj/i : /Dragon Medium|12_dragon_medium\.obj/i;
+            await waitForBodyText(labelPattern, 45_000, `${meshId} load`);
+            const meshFilePattern = meshId === "armadillo" ? /11_armadillo\.obj/i : /12_dragon_medium\.obj/i;
+            await waitForDebugEvent(
+              (event) =>
+                event.label === "app:onSampleSetDeferredForManualAnalysis" &&
+                meshFilePattern.test(String((event.details as { label?: unknown } | undefined)?.label ?? "")),
+              30_000,
+              `${meshId} deferred analysis event`
+            );
+            await probeInteraction(`after-deferred-load:${meshId}`);
+            const body = document.body?.innerText ?? "";
+            if (/Dedicated Full viewer/i.test(body)) {
+              throw new Error(`Dedicated Full viewer mounted during deferred-analysis load for ${meshId}.`);
+            }
+          }
+          finish({ ok: true, checks: checkedMeshes.map((meshId) => `deferred-analysis:${meshId}`) });
           return;
         }
         if (autoRun === "cancellation") {
@@ -73834,6 +73954,8 @@ case "mobius":
                       meshInteractionHideWireframe={meshInteractionHideWireframe}
                       onChangeMeshInteractionHideWireframe={setMeshInteractionHideWireframe}
                       meshInspectorStats={surfaceInspectorMeshStats}
+                      deferredSurfaceSampleSetInfo={deferredSurfaceSampleSetInfo}
+                      onPrepareDeferredSurfaceAnalysisData={handlePrepareDeferredSurfaceAnalysisData}
                       meshTopologyDetails={surfaceInspectorTopologyDetails}
                       meshAnalyzeDiagnostics={surfaceMeshAnalyzeDiagnostics}
                       meshBenchmarkVerification={activeSurfaceMeshBenchmarkVerification}
@@ -108160,6 +108282,8 @@ type SurfacesRightPanelProps = {
     boundaryEdgeCount: number | null;
     connectedComponentCount: number | null;
   };
+  deferredSurfaceSampleSetInfo: DeferredSurfaceSampleSetInfo | null;
+  onPrepareDeferredSurfaceAnalysisData: () => void;
   meshTopologyDetails: MeshTopologyInspectorDetails | null;
   meshAnalyzeDiagnostics: MeshAnalyzeDiagnosticsSummary | null;
   meshBenchmarkVerification: MeshBenchmarkVerificationContext | null;
@@ -108390,6 +108514,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   meshInteractionHideWireframe,
   onChangeMeshInteractionHideWireframe,
   meshInspectorStats,
+  deferredSurfaceSampleSetInfo,
+  onPrepareDeferredSurfaceAnalysisData,
   meshTopologyDetails,
   meshAnalyzeDiagnostics,
   meshBenchmarkVerification,
@@ -109393,6 +109519,39 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 <div><strong>Vertices:</strong> {formatInspectorCount(meshInspectorStats.vertexCount)}</div>
                 <div><strong>Faces:</strong> {formatInspectorCount(meshInspectorStats.faceCount)}</div>
                 <div><strong>Edges:</strong> {formatInspectorCount(meshTopologyDetails?.edgeCount ?? null)}</div>
+                {deferredSurfaceSampleSetInfo && (
+                  <div
+                    data-testid="mesh-analysis-deferred-status"
+                    style={{
+                      border: "1px solid #93c5fd",
+                      borderRadius: 7,
+                      background: "#eff6ff",
+                      padding: "6px 7px",
+                      display: "grid",
+                      gap: 5,
+                    }}
+                  >
+                    <div>
+                      <strong>Analysis data:</strong> deferred
+                    </div>
+                    <div>
+                      Mesh loaded; diagnostics deferred until requested.
+                      {deferredSurfaceSampleSetInfo.firstFrameSeen ? " First frame is visible." : ""}
+                    </div>
+                    <div>
+                      <strong>Deferred samples:</strong> {formatInspectorCount(deferredSurfaceSampleSetInfo.sampleCount)}
+                      {" | "}
+                      <strong>Payload:</strong> {formatBenchmarkBytes(deferredSurfaceSampleSetInfo.meshDataBytes)}
+                    </div>
+                    <button
+                      type="button"
+                      data-testid="mesh-prepare-analysis-data"
+                      onClick={onPrepareDeferredSurfaceAnalysisData}
+                    >
+                      Prepare analysis data
+                    </button>
+                  </div>
+                )}
                 <div>
                   <strong>Bounds:</strong>{" "}
                   {surfaceMeshBounds
