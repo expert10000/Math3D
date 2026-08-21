@@ -356,7 +356,14 @@ import {
   type PythonWorkerDiagnosticsSnapshot,
 } from "./services/pythonWorkerDiagnosticsClient";
 import { runGeodesicHeat } from "./services/geodesicHeatClient";
-import { runMeshOperation } from "./services/meshOperations";
+import {
+  MESH_OPERATION_CAPABILITIES,
+  runMeshOperation,
+  type MeshOperationId,
+  type MeshOperationResult,
+  type MeshOperationStatus,
+  type ResolvedMeshOperationEngine,
+} from "./services/meshOperations";
 import { supportsVtkVolumeDistance, vtkVolumeDistance } from "./services/vtkVolumeClient";
 import { getMeshBackendCapabilities } from "./services/meshBackend";
 import { solveContinuousGraphGeodesic } from "./math/graphGeodesicContinuous";
@@ -1802,6 +1809,54 @@ type VtkResultSummary = {
   durationMs?: number;
   timestamp: number;
 };
+type MeshOperationUiId = MeshOperationId | "boolean-split";
+type MeshOperationResultSummary = {
+  operation: MeshOperationUiId;
+  label: string;
+  status: MeshOperationStatus;
+  engine: ResolvedMeshOperationEngine;
+  sourceIds: string[];
+  beforeFaces: number;
+  afterFaces: number | null;
+  durationMs: number;
+  outputMode: "new-object" | "replace" | "preview";
+  warnings: string[];
+  errors: string[];
+  timestamp: number;
+};
+
+const MESH_OPERATION_LABELS: Record<MeshOperationUiId, string> = {
+  "clean-normals": "Clean normals",
+  decimate: "Decimate",
+  smooth: "Smooth",
+  "implicit-preview": "Implicit preview",
+  "implicit-mesh": "Implicit mesh",
+  "boolean-union": "Boolean union",
+  "boolean-difference": "Boolean difference",
+  "boolean-intersection": "Boolean intersection",
+  "boolean-imprint": "Boolean imprint",
+  "boolean-split": "Boolean split",
+};
+
+function summarizeMeshOperationResult(
+  result: MeshOperationResult,
+  outputMode: MeshOperationResultSummary["outputMode"]
+): MeshOperationResultSummary {
+  return {
+    operation: result.operation,
+    label: MESH_OPERATION_LABELS[result.operation] ?? result.operation,
+    status: result.status,
+    engine: result.engine,
+    sourceIds: result.sourceIds,
+    beforeFaces: result.before.faceCount,
+    afterFaces: result.after?.faceCount ?? null,
+    durationMs: result.durationMs,
+    outputMode,
+    warnings: result.warnings.map((warning) => warning.message),
+    errors: result.errors.map((error) => error.message),
+    timestamp: Date.now(),
+  };
+}
 
 type MeshPerfBenchmarkId =
   | "tri-50k"
@@ -33496,6 +33551,7 @@ const App: React.FC = () => {
   const [vtkBooleanStatus, setVtkBooleanStatus] = useState<string | null>(null);
   const [vtkOutputMode, setVtkOutputMode] = useState<"replace" | "derived">("derived");
   const [vtkLastResult, setVtkLastResult] = useState<VtkResultSummary | null>(null);
+  const [meshOperationLastResult, setMeshOperationLastResult] = useState<MeshOperationResultSummary | null>(null);
   const [vtkPreviewBusy, setVtkPreviewBusy] = useState(false);
   const [vtkPreviewError, setVtkPreviewError] = useState<string | null>(null);
   const [vtkPreviewTargetFaces, setVtkPreviewTargetFaces] = useState(20000);
@@ -53720,6 +53776,7 @@ case "mobius":
         },
         { primaryMesh: mesh }
       );
+      setMeshOperationLastResult(summarizeMeshOperationResult(res, vtkOutputMode === "replace" ? "replace" : "new-object"));
       if (res.status === "error" || !res.resultMesh) {
         setVtkError(res.errors[0]?.message ?? "VTK clean failed.");
         return;
@@ -53770,6 +53827,7 @@ case "mobius":
         },
         { primaryMesh: mesh }
       );
+      setMeshOperationLastResult(summarizeMeshOperationResult(res, vtkOutputMode === "replace" ? "replace" : "new-object"));
       if (res.status === "error" || !res.resultMesh) {
         setVtkError(res.errors[0]?.message ?? "VTK decimate failed.");
         return;
@@ -53833,6 +53891,7 @@ case "mobius":
         },
         { primaryMesh: mesh }
       );
+      setMeshOperationLastResult(summarizeMeshOperationResult(res, vtkOutputMode === "replace" ? "replace" : "new-object"));
       if (res.status === "error" || !res.resultMesh) {
         setVtkError(res.errors[0]?.message ?? "VTK smooth failed.");
         return;
@@ -53925,6 +53984,7 @@ case "mobius":
           },
           { primaryMesh: meshA, secondaryMesh: meshB }
         );
+        setMeshOperationLastResult(summarizeMeshOperationResult(aMinusB, vtkOutputMode === "replace" ? "replace" : "new-object"));
         if (aMinusB.status === "error" || !aMinusB.resultMesh?.indices) {
           setVtkError(aMinusB.errors[0]?.message ?? "Boolean split failed.");
           setVtkBooleanStatus("Split failed.");
@@ -53941,6 +54001,7 @@ case "mobius":
           },
           { primaryMesh: meshA, secondaryMesh: meshB }
         );
+        setMeshOperationLastResult(summarizeMeshOperationResult(aIntersectB, vtkOutputMode === "replace" ? "replace" : "new-object"));
         if (aIntersectB.status === "error" || !aIntersectB.resultMesh?.indices) {
           setVtkError(aIntersectB.errors[0]?.message ?? "Boolean split failed.");
           setVtkBooleanStatus("Split failed.");
@@ -53957,6 +54018,7 @@ case "mobius":
           },
           { primaryMesh: meshB, secondaryMesh: meshA }
         );
+        setMeshOperationLastResult(summarizeMeshOperationResult(bMinusA, vtkOutputMode === "replace" ? "replace" : "new-object"));
         if (bMinusA.status === "error" || !bMinusA.resultMesh?.indices) {
           setVtkError(bMinusA.errors[0]?.message ?? "Boolean split failed.");
           setVtkBooleanStatus("Split failed.");
@@ -53996,6 +54058,25 @@ case "mobius":
             durationMs: aMinusB.durationMs + aIntersectB.durationMs + bMinusA.durationMs,
           }
         );
+        setMeshOperationLastResult({
+          operation: "boolean-split",
+          label: MESH_OPERATION_LABELS["boolean-split"],
+          status: "success",
+          engine: "vtk",
+          sourceIds: [meshA.label, meshB.label],
+          beforeFaces,
+          afterFaces: Math.max(0, Math.round((splitMesh.indices?.length ?? 0) / 3)),
+          durationMs: aMinusB.durationMs + aIntersectB.durationMs + bMinusA.durationMs,
+          outputMode: vtkOutputMode === "replace" ? "replace" : "new-object",
+          warnings: [
+            "Split merged A-B, A intersect B, and B-A into one editable mesh.",
+            ...aMinusB.warnings.map((warning) => warning.message),
+            ...aIntersectB.warnings.map((warning) => warning.message),
+            ...bMinusA.warnings.map((warning) => warning.message),
+          ],
+          errors: [],
+          timestamp: Date.now(),
+        });
         setVtkBooleanStatus("Split completed.");
         return;
       }
@@ -54019,6 +54100,7 @@ case "mobius":
         },
         { primaryMesh: meshA, secondaryMesh: meshB }
       );
+      setMeshOperationLastResult(summarizeMeshOperationResult(result, vtkOutputMode === "replace" ? "replace" : "new-object"));
       if (result.status === "error" || !result.resultMesh) {
         setVtkError(result.errors[0]?.message ?? "VTK boolean failed.");
         setVtkBooleanStatus(`${vtkBooleanOperation} failed.`);
@@ -59297,6 +59379,7 @@ case "mobius":
           },
         }
       );
+      setMeshOperationLastResult(summarizeMeshOperationResult(res, vtkOutputMode === "replace" ? "replace" : "new-object"));
       if (res.status === "error" || !res.resultMesh) {
         setMeshPerformanceLastBuildMs(performance.now() - startedAt);
         const message = res.errors[0]?.message ?? "VTK preview failed.";
@@ -59430,6 +59513,7 @@ case "mobius":
           },
         }
       );
+      setMeshOperationLastResult(summarizeMeshOperationResult(res, "preview"));
 
       console.log("[CGAL] mesh response", {
         ok: res.status !== "error",
@@ -65127,6 +65211,7 @@ case "mobius":
                   onToggleMeshPromotionFreeze={handleToggleMeshPromotionFreeze}
                   onToggleVolumeDistanceSigned={setVolumeDistanceSigned}
                   onToggleVolumeDistanceAutoBounds={setVolumeDistanceAutoBounds}
+                  meshOperationLastResult={meshOperationLastResult}
                   vtkAvailable={vtkMeshAvailable}
                   pythonWorkerAvailable={cgalHealthState?.ok === true}
                   pythonWorkerStatusMessage={cgalHealthState?.error ?? cgalHealthState?.statusMessage ?? null}
@@ -74243,6 +74328,7 @@ case "mobius":
                       vtkPreviewTargetFaces={vtkPreviewTargetFaces}
                       vtkPreviewUseDecimate={vtkPreviewUseDecimate}
                       vtkLastResult={vtkLastResult}
+                      meshOperationLastResult={meshOperationLastResult}
                       vtkError={vtkError}
                       onSaveVtkOperationPreset={handleSaveGeometryOperationPreset}
                       onChangeVtkPreviewTargetFaces={setVtkPreviewTargetFaces}
@@ -99981,6 +100067,7 @@ type SurfacesLeftPanelProps = {
   onToggleMeshPromotionFreeze: () => void;
   onToggleVolumeDistanceSigned: (v: boolean) => void;
   onToggleVolumeDistanceAutoBounds: (v: boolean) => void;
+  meshOperationLastResult: MeshOperationResultSummary | null;
   vtkAvailable: boolean;
   pythonWorkerAvailable: boolean;
   pythonWorkerStatusMessage: string | null;
@@ -100689,6 +100776,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleMeshPromotionFreeze,
   onToggleVolumeDistanceSigned,
   onToggleVolumeDistanceAutoBounds,
+  meshOperationLastResult,
   vtkAvailable,
   pythonWorkerAvailable,
   pythonWorkerStatusMessage,
@@ -101281,6 +101369,23 @@ onChangeImplicitExpr,
   const generateStatusText = vtkPreviewBusy ? "generate running..." : generateSurfaceStatus.message;
   const generateStatusColor =
     generateStateLabel === "success" ? "#1f894f" : generateStateLabel === "error" ? "#b42318" : "#556";
+  const meshOperationEngineReady = (engine: ResolvedMeshOperationEngine) =>
+    engine === "vtk" ? vtkAvailable && pythonWorkerAvailable : cgalReady;
+  const meshOperationFormatTime = (value: number | null | undefined) =>
+    value == null || !Number.isFinite(value) ? "n/a" : value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${Math.round(value)} ms`;
+  const meshOperationRows = MESH_OPERATION_CAPABILITIES.map((capability) => ({
+    ...capability,
+    label: MESH_OPERATION_LABELS[capability.operation] ?? capability.operation,
+    ready: capability.engines.some(meshOperationEngineReady),
+  }));
+  const meshOperationStatusColor =
+    meshOperationLastResult?.status === "error"
+      ? "#b42318"
+      : meshOperationLastResult?.status === "warning"
+        ? "#b45309"
+        : meshOperationLastResult
+          ? "#166534"
+          : "#64748b";
   const fmtTriEstimate = (value: number) => {
     if (!Number.isFinite(value) || value <= 0) return "0";
     if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
@@ -105248,6 +105353,103 @@ onChangeImplicitExpr,
             )}
           </div>
 
+          <div
+            style={{
+              marginTop: 10,
+              padding: "8px 9px",
+              border: "1px solid #c7d7ea",
+              borderRadius: 8,
+              background: "#f8fbff",
+              display: "grid",
+              gap: 8,
+            }}
+            data-testid="mesh-operation-registry"
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+              <div style={{ fontSize: 12, fontWeight: 800 }}>Operation registry</div>
+              <div style={{ fontSize: 10, color: pythonWorkerAvailable ? "#166534" : "#b42318", fontWeight: 700 }}>
+                {pythonWorkerAvailable ? "worker ready" : "worker unavailable"}
+              </div>
+            </div>
+            <div style={{ display: "grid", gap: 4, fontSize: 11 }}>
+              {meshOperationRows.map((row) => (
+                <div
+                  key={`mesh-operation-capability-${row.operation}`}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto",
+                    gap: 8,
+                    alignItems: "center",
+                    opacity: row.ready ? 1 : 0.58,
+                  }}
+                >
+                  <span>{row.label}</span>
+                  <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    {row.engines.map((engine) => (
+                      <span
+                        key={`${row.operation}-${engine}`}
+                        style={{
+                          border: `1px solid ${meshOperationEngineReady(engine) ? "#86efac" : "#e2e8f0"}`,
+                          background: meshOperationEngineReady(engine) ? "#f0fdf4" : "#f8fafc",
+                          color: meshOperationEngineReady(engine) ? "#166534" : "#64748b",
+                          borderRadius: 999,
+                          padding: "1px 6px",
+                          fontSize: 10,
+                          fontWeight: 800,
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        {engine}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div
+              style={{
+                borderTop: "1px solid #dbe4ee",
+                paddingTop: 7,
+                display: "grid",
+                gap: 4,
+                fontSize: 11,
+              }}
+              data-testid="mesh-operation-last-result"
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <strong>Last operation</strong>
+                <strong style={{ color: meshOperationStatusColor }}>
+                  {meshOperationLastResult ? meshOperationLastResult.status : "none"}
+                </strong>
+              </div>
+              {meshOperationLastResult ? (
+                <>
+                  <div>
+                    {meshOperationLastResult.label} · {meshOperationLastResult.engine.toUpperCase()} ·{" "}
+                    {meshOperationFormatTime(meshOperationLastResult.durationMs)}
+                  </div>
+                  <div>
+                    Faces: {meshOperationLastResult.beforeFaces.toLocaleString()} {"->"}{" "}
+                    {meshOperationLastResult.afterFaces == null
+                      ? "n/a"
+                      : meshOperationLastResult.afterFaces.toLocaleString()}
+                  </div>
+                  <div>Output: {meshOperationLastResult.outputMode}</div>
+                  {meshOperationLastResult.warnings.length > 0 && (
+                    <div style={{ color: "#b45309" }}>
+                      {meshOperationLastResult.warnings.slice(0, 2).join("; ")}
+                    </div>
+                  )}
+                  {meshOperationLastResult.errors.length > 0 && (
+                    <div style={{ color: "#b42318" }}>{meshOperationLastResult.errors[0]}</div>
+                  )}
+                </>
+              ) : (
+                <div style={{ color: "#64748b" }}>Run any mesh operation to record engine, status, and timing.</div>
+              )}
+            </div>
+          </div>
+
           <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Repair</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
             <button type="button" onClick={onVtkCleanNormals} disabled={!meshReady || vtkOpsDisabled}>
@@ -105284,7 +105486,7 @@ onChangeImplicitExpr,
             </button>
           </div>
 
-          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Robust boolean (Mesh engine)</div>
+          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Robust boolean</div>
           <div style={{ display: "grid", gap: 6, marginTop: 6, fontSize: 11 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
               Operation
@@ -105457,7 +105659,7 @@ onChangeImplicitExpr,
             ))}
           </div>
           <div style={{ marginTop: 4, fontSize: 10, opacity: 0.72 }}>
-            Result details appear in the right Inspector under VTK result. Presets persist after reload.
+            Result details appear in the right Inspector under Operation result. Presets persist after reload.
           </div>
         {vtkError && <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{vtkError}</div>}
         </div>
@@ -108571,6 +108773,7 @@ type SurfacesRightPanelProps = {
   vtkPreviewTargetFaces: number;
   vtkPreviewUseDecimate: boolean;
   vtkLastResult: VtkResultSummary | null;
+  meshOperationLastResult: MeshOperationResultSummary | null;
   vtkError: string | null;
   onSaveVtkOperationPreset: () => void;
   onChangeVtkPreviewTargetFaces: (v: number) => void;
@@ -108822,6 +109025,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   vtkPreviewTargetFaces,
   vtkPreviewUseDecimate,
   vtkLastResult,
+  meshOperationLastResult,
   vtkError,
   onSaveVtkOperationPreset,
   onChangeVtkPreviewTargetFaces,
@@ -109966,7 +110170,15 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     </div>
   );
 
-  const meshBackendLabel = cgalMeshInfo ? "CGAL" : vtkLastResult ? "VTK" : isImplicitViewer ? "VTK / CGAL" : "SurfaceMesh";
+  const meshBackendLabel = cgalMeshInfo
+    ? "CGAL"
+    : meshOperationLastResult
+      ? meshOperationLastResult.engine.toUpperCase()
+      : vtkLastResult
+        ? "VTK"
+        : isImplicitViewer
+          ? "VTK / CGAL"
+          : "SurfaceMesh";
   const watertight =
     meshTopologyDetails?.watertight ??
     (meshQualityReport?.topology?.boundaryEdgeCount != null && meshQualityReport?.topology?.nonManifoldEdgeCount != null
@@ -109974,18 +110186,19 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       : null);
   const normalStatus =
     normalMagnitude == null ? "unknown" : hasUnstableNormals ? "unstable" : vtkLastResult?.normalsRecomputed ? "recomputed" : "valid";
-  const operationBeforeFaces = vtkLastResult?.beforeFaces ?? null;
-  const operationAfterFaces = vtkLastResult?.afterFaces ?? null;
+  const operationBeforeFaces = meshOperationLastResult?.beforeFaces ?? vtkLastResult?.beforeFaces ?? null;
+  const operationAfterFaces = meshOperationLastResult?.afterFaces ?? vtkLastResult?.afterFaces ?? null;
   const operationReductionPct =
     operationBeforeFaces && operationAfterFaces && operationBeforeFaces > 0
       ? ((operationBeforeFaces - operationAfterFaces) / operationBeforeFaces) * 100
       : null;
   const topologyChangedLabel =
-    vtkLastResult == null
+    meshOperationLastResult == null && vtkLastResult == null
       ? "n/a"
-      : vtkLastResult.warnings.some((w) => w.toLowerCase().includes("topology"))
+      : (meshOperationLastResult?.warnings ?? vtkLastResult?.warnings ?? []).some((w) => w.toLowerCase().includes("topology"))
         ? "yes"
-        : vtkLastResult.operation.toLowerCase().includes("decimate") || vtkLastResult.operation.toLowerCase().includes("clean")
+        : (meshOperationLastResult?.operation ?? vtkLastResult?.operation ?? "").toLowerCase().includes("decimate") ||
+            (meshOperationLastResult?.operation ?? vtkLastResult?.operation ?? "").toLowerCase().includes("clean")
           ? "maybe"
           : "unlikely";
   const overlayLegend = [
@@ -111321,12 +111534,35 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         )}
       </div>
 
-      {(vtkLastResult || vtkError) && (
+      {(meshOperationLastResult || vtkLastResult || vtkError) && (
         <div style={inspectorSectionCard}>
-          <div style={inspectorSectionTitle}>VTK result</div>
-          {vtkLastResult ? (
+          <div style={inspectorSectionTitle}>Operation result</div>
+          {meshOperationLastResult ? (
+            <div style={{ fontSize: 11, display: "grid", gap: 5 }}>
+              <div><strong>Operation:</strong> {meshOperationLastResult.label}</div>
+              <div><strong>Engine:</strong> {meshOperationLastResult.engine.toUpperCase()}</div>
+              <div><strong>Status:</strong> {meshOperationLastResult.status}</div>
+              <div><strong>Before:</strong> {meshOperationLastResult.beforeFaces.toLocaleString()} faces</div>
+              <div>
+                <strong>After:</strong>{" "}
+                {meshOperationLastResult.afterFaces == null ? "n/a" : `${meshOperationLastResult.afterFaces.toLocaleString()} faces`}
+              </div>
+              <div><strong>Duration:</strong> {formatSummaryTime(meshOperationLastResult.durationMs)}</div>
+              <div><strong>Output:</strong> {meshOperationLastResult.outputMode}</div>
+              <div>
+                <strong>Warnings:</strong>{" "}
+                {meshOperationLastResult.warnings.length > 0 ? meshOperationLastResult.warnings.join("; ") : "none"}
+              </div>
+              {meshOperationLastResult.errors.length > 0 && (
+                <div style={{ color: "#b42318" }}>
+                  <strong>Errors:</strong> {meshOperationLastResult.errors.join("; ")}
+                </div>
+              )}
+            </div>
+          ) : vtkLastResult ? (
             <div style={{ fontSize: 11, display: "grid", gap: 5 }}>
               <div><strong>Operation:</strong> {vtkLastResult.operation}</div>
+              <div><strong>Engine:</strong> VTK</div>
               <div><strong>Before:</strong> {vtkLastResult.beforeFaces.toLocaleString()} faces</div>
               <div>
                 <strong>After:</strong>{" "}
@@ -111345,11 +111581,11 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               </div>
             </div>
           ) : (
-            <div style={{ fontSize: 11, opacity: 0.75 }}>No VTK operation has completed yet.</div>
+            <div style={{ fontSize: 11, opacity: 0.75 }}>No mesh operation has completed yet.</div>
           )}
           {vtkError && (
             <div style={{ marginTop: 7, fontSize: 11, color: "#b42318" }}>
-              Last VTK error: {vtkError}
+              Last operation error: {vtkError}
             </div>
           )}
         </div>
