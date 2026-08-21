@@ -68888,6 +68888,13 @@ case "mobius":
                     canBakeAsPrimaryObject={unifiedCanConvertToMeshObject}
                     onBakeAsPrimaryObject={handleDatasetToGeometryScene}
                     onOpenAnalysis={() => setSurfacesLeftTab("analysis")}
+                    meshOperationLastResult={meshOperationLastResult}
+                    meshOperationWorkerReady={vtkServiceReady}
+                    meshOperationWorkerStatusText={vtkServiceStatusText}
+                    meshOperationBusy={vtkBusy}
+                    onMeshOperationClean={handleVtkCleanNormals}
+                    onMeshOperationSmooth={handleVtkSmooth}
+                    onMeshOperationDecimate={handleVtkDecimate}
                     onRegenerateStaleSelected={() => handleRegenerateDerivedProducts("selected")}
                     onRegenerateStaleAll={() => handleRegenerateDerivedProducts("all")}
                   />
@@ -98424,6 +98431,13 @@ type SurfacesObjectPanelProps = {
   canBakeAsPrimaryObject: boolean;
   onBakeAsPrimaryObject: () => void;
   onOpenAnalysis: () => void;
+  meshOperationLastResult: MeshOperationResultSummary | null;
+  meshOperationWorkerReady: boolean;
+  meshOperationWorkerStatusText: string;
+  meshOperationBusy: boolean;
+  onMeshOperationClean: () => void;
+  onMeshOperationSmooth: () => void;
+  onMeshOperationDecimate: () => void;
   onRegenerateStaleSelected: () => void;
   onRegenerateStaleAll: () => void;
 };
@@ -98508,6 +98522,13 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   canBakeAsPrimaryObject,
   onBakeAsPrimaryObject,
   onOpenAnalysis,
+  meshOperationLastResult,
+  meshOperationWorkerReady,
+  meshOperationWorkerStatusText,
+  meshOperationBusy,
+  onMeshOperationClean,
+  onMeshOperationSmooth,
+  onMeshOperationDecimate,
   onRegenerateStaleSelected,
   onRegenerateStaleAll,
 }) => {
@@ -98796,6 +98817,139 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
         )}
         <div style={{ fontSize: 10, color: "#64748b", marginTop: 4 }}>Family: {currentFamilyLabel}</div>
       </div>
+
+      {selectedIsDerivedSurfaceMesh && (
+        <div
+          data-testid="mesh-object-operation-registry"
+          style={{
+            padding: 10,
+            border: "1px solid #a7f3d0",
+            borderRadius: 10,
+            background: "#f0fdf4",
+            display: "grid",
+            gap: 7,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+            <div style={{ fontSize: 12, fontWeight: 800 }}>Mesh Operations</div>
+            <span
+              style={{
+                color: meshOperationWorkerReady ? "#166534" : "#b42318",
+                fontSize: 10,
+                fontWeight: 800,
+              }}
+            >
+              {meshOperationWorkerReady ? "worker ready" : meshOperationWorkerStatusText}
+            </span>
+          </div>
+          <div style={{ display: "grid", gap: 3, fontSize: 10 }}>
+            {MESH_OPERATION_CAPABILITIES.map((capability) => {
+              const operationReady = capability.engines.some((engine) =>
+                engine === "vtk" ? meshOperationWorkerReady : meshOperationWorkerReady
+              );
+              return (
+                <div
+                  key={`mesh-object-operation-${capability.operation}`}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(100px, 1fr) auto",
+                    gap: 6,
+                    alignItems: "center",
+                    opacity: operationReady ? 1 : 0.58,
+                  }}
+                >
+                  <span>{MESH_OPERATION_LABELS[capability.operation] ?? capability.operation}</span>
+                  <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    {capability.engines.map((engine) => (
+                      <span
+                        key={`mesh-object-operation-${capability.operation}-${engine}`}
+                        style={{
+                          border: `1px solid ${meshOperationWorkerReady ? "#86efac" : "#e2e8f0"}`,
+                          background: meshOperationWorkerReady ? "#f0fdf4" : "#f8fafc",
+                          color: meshOperationWorkerReady ? "#166534" : "#64748b",
+                          borderRadius: 999,
+                          padding: "1px 6px",
+                          fontSize: 9,
+                          fontWeight: 800,
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        {engine}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={onMeshOperationClean}
+              disabled={!activeSurfaceMeshStats || meshOperationBusy || !meshOperationWorkerReady}
+            >
+              {meshOperationBusy ? "Working..." : "Clean"}
+            </button>
+            <button
+              type="button"
+              onClick={onMeshOperationSmooth}
+              disabled={!activeSurfaceMeshStats || meshOperationBusy || !meshOperationWorkerReady}
+            >
+              Smooth
+            </button>
+            <button
+              type="button"
+              onClick={onMeshOperationDecimate}
+              disabled={!activeSurfaceMeshStats || meshOperationBusy || !meshOperationWorkerReady}
+            >
+              Decimate
+            </button>
+          </div>
+          <div
+            data-testid="mesh-object-operation-last-result"
+            style={{ borderTop: "1px solid #bbf7d0", paddingTop: 5, display: "grid", gap: 3, fontSize: 10 }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+              <strong>Last operation</strong>
+              <strong
+                style={{
+                  color:
+                    meshOperationLastResult?.status === "error"
+                      ? "#b42318"
+                      : meshOperationLastResult?.status === "warning"
+                        ? "#b45309"
+                        : meshOperationLastResult
+                          ? "#166534"
+                          : "#64748b",
+                }}
+              >
+                {meshOperationLastResult ? meshOperationLastResult.status : "none"}
+              </strong>
+            </div>
+            {meshOperationLastResult ? (
+              <>
+                <div>
+                  {meshOperationLastResult.label} · {meshOperationLastResult.engine.toUpperCase()} ·{" "}
+                  {meshOperationLastResult.durationMs >= 1000
+                    ? `${(meshOperationLastResult.durationMs / 1000).toFixed(2)} s`
+                    : `${Math.round(meshOperationLastResult.durationMs)} ms`}
+                </div>
+                <div>
+                  Faces: {meshOperationLastResult.beforeFaces.toLocaleString()} {"->"}{" "}
+                  {meshOperationLastResult.afterFaces == null
+                    ? "n/a"
+                    : meshOperationLastResult.afterFaces.toLocaleString()}
+                </div>
+                {meshOperationLastResult.errors.length > 0 && (
+                  <div style={{ color: "#b42318" }}>{meshOperationLastResult.errors[0]}</div>
+                )}
+              </>
+            ) : (
+              <div style={{ color: "#64748b" }}>Clean, Smooth, or Decimate records engine, status, and timing here.</div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
         <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Identity</div>
