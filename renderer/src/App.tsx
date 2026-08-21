@@ -109575,7 +109575,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const inspectorTabs: Array<{ id: InspectorPanelTab; label: string }> = [
     { id: "object", label: "Object" },
     { id: "selection", label: "Selection" },
-    { id: "analysis", label: "Results" },
+    { id: "analysis", label: "Analysis" },
     { id: "warnings", label: "Warnings" },
   ];
   const pointPickSection = (
@@ -109681,7 +109681,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     { id: "object", label: "Object" },
     { id: "selection", label: "Selection" },
     { id: "probe", label: "Probe" },
-    { id: "analysis", label: "Results" },
+    { id: "analysis", label: "Analysis" },
     { id: "diagnostics", label: "Diagnostics" },
     { id: "warnings", label: "Warnings" },
   ];
