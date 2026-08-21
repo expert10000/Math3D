@@ -68215,6 +68215,138 @@ case "mobius":
                             </div>
                           </div>
                         )}
+                        <div
+                          data-testid="mesh-workspace-operation-registry"
+                          style={{
+                            border: "1px solid #a7f3d0",
+                            borderRadius: 7,
+                            background: "#f0fdf4",
+                            padding: "7px 8px",
+                            display: "grid",
+                            gap: 6,
+                            color: "#0f3557",
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                            <strong>Mesh Operations</strong>
+                            <span
+                              style={{
+                                color: vtkServiceReady ? "#166534" : "#b42318",
+                                fontSize: 10,
+                                fontWeight: 800,
+                              }}
+                            >
+                              {vtkServiceReady ? "worker ready" : vtkServiceStatusText}
+                            </span>
+                          </div>
+                          <div style={{ display: "grid", gap: 3, fontSize: 10 }}>
+                            {MESH_OPERATION_CAPABILITIES.map((capability) => {
+                              const operationReady = capability.engines.some((engine) =>
+                                engine === "vtk" ? vtkServiceReady : cgalServiceReady
+                              );
+                              return (
+                                <div
+                                  key={`mesh-workspace-operation-${capability.operation}`}
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "minmax(100px, 1fr) auto",
+                                    gap: 6,
+                                    alignItems: "center",
+                                    opacity: operationReady ? 1 : 0.58,
+                                  }}
+                                >
+                                  <span>{MESH_OPERATION_LABELS[capability.operation] ?? capability.operation}</span>
+                                  <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                                    {capability.engines.map((engine) => {
+                                      const engineReady = engine === "vtk" ? vtkServiceReady : cgalServiceReady;
+                                      return (
+                                        <span
+                                          key={`mesh-workspace-operation-${capability.operation}-${engine}`}
+                                          style={{
+                                            border: `1px solid ${engineReady ? "#86efac" : "#e2e8f0"}`,
+                                            background: engineReady ? "#f0fdf4" : "#f8fafc",
+                                            color: engineReady ? "#166534" : "#64748b",
+                                            borderRadius: 999,
+                                            padding: "1px 6px",
+                                            fontSize: 9,
+                                            fontWeight: 800,
+                                            textTransform: "uppercase",
+                                          }}
+                                        >
+                                          {engine}
+                                        </span>
+                                      );
+                                    })}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={handleVtkCleanNormals}
+                              disabled={!surfaceMeshStats || vtkBusy || !cgalServiceReady}
+                            >
+                              {vtkBusy ? "Working..." : "Clean"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleVtkSmooth}
+                              disabled={!surfaceMeshStats || vtkBusy || !cgalServiceReady}
+                            >
+                              Smooth
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleVtkDecimate}
+                              disabled={!surfaceMeshStats || vtkBusy || !cgalServiceReady}
+                            >
+                              Decimate
+                            </button>
+                          </div>
+                          <div
+                            data-testid="mesh-workspace-operation-last-result"
+                            style={{ borderTop: "1px solid #bbf7d0", paddingTop: 5, display: "grid", gap: 3, fontSize: 10 }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                              <strong>Last operation</strong>
+                              <strong
+                                style={{
+                                  color:
+                                    meshOperationLastResult?.status === "error"
+                                      ? "#b42318"
+                                      : meshOperationLastResult?.status === "warning"
+                                        ? "#b45309"
+                                        : meshOperationLastResult
+                                          ? "#166534"
+                                          : "#64748b",
+                                }}
+                              >
+                                {meshOperationLastResult ? meshOperationLastResult.status : "none"}
+                              </strong>
+                            </div>
+                            {meshOperationLastResult ? (
+                              <>
+                                <div>
+                                  {meshOperationLastResult.label} · {meshOperationLastResult.engine.toUpperCase()} ·{" "}
+                                  {formatBenchmarkDuration(meshOperationLastResult.durationMs)}
+                                </div>
+                                <div>
+                                  Faces: {meshOperationLastResult.beforeFaces.toLocaleString()} {"->"}{" "}
+                                  {meshOperationLastResult.afterFaces == null
+                                    ? "n/a"
+                                    : meshOperationLastResult.afterFaces.toLocaleString()}
+                                </div>
+                                {meshOperationLastResult.errors.length > 0 && (
+                                  <div style={{ color: "#b42318" }}>{meshOperationLastResult.errors[0]}</div>
+                                )}
+                              </>
+                            ) : (
+                              <div style={{ color: "#64748b" }}>Clean, Smooth, or Decimate records engine, status, and timing here.</div>
+                            )}
+                          </div>
+                        </div>
                         {surfaceMeshBenchmarkBrowserOpen && surfaceMeshBenchmarkModels.length > 0 && (
                           <div style={{ display: "grid", gap: 8 }}>
                             {MESH_BENCHMARK_CATEGORY_ORDER.map((category) => {
