@@ -1996,6 +1996,19 @@ const formatBenchmarkBytes = (bytes: number | null | undefined): string => {
   return `${Math.round(bytes)} B`;
 };
 
+const formatBenchmarkDuration = (ms: number | null | undefined): string => {
+  if (ms == null || !Number.isFinite(ms)) return "n/a";
+  return ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms).toLocaleString()} ms`;
+};
+
+const formatBenchmarkCountShort = (value: number | null | undefined): string => {
+  if (value == null || !Number.isFinite(value)) return "n/a";
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+  return `${Math.round(value).toLocaleString()}`;
+};
+
 const LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD = 50_000;
 const LARGE_MESH_FAST_LOAD_FILE_BYTES = 5 * 1024 * 1024;
 const LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET = 1_000;
@@ -40202,6 +40215,60 @@ const App: React.FC = () => {
       void clipboard.writeText(text);
     }
   }, [meshDebugMonitor, meshPipelineProfile]);
+  const largeMeshPerformanceHud = useMemo(() => {
+    const vertices = meshPipelineProfile?.vertices ?? surfaceMeshStats?.vertCount ?? null;
+    const triangles = meshPipelineProfile?.triangles ?? surfaceMeshStats?.triCount ?? null;
+    if (!meshPipelineProfile && !surfacePerformanceSnapshot && vertices == null && triangles == null) return null;
+    const fullPhaseMs = meshPipelineProfile?.phases.find((phase) => phase.phase === "full:dedicatedViewerReady")?.lastMs ?? null;
+    const fullEventMs =
+      meshDebugMonitor.events
+        .slice()
+        .reverse()
+        .find((event) => event.kind === "full" && event.label.startsWith("Dedicated Full viewer ready:"))?.ms ?? null;
+    const fullJobMs =
+      largeSurfaceMeshFullPreviewJob?.status === "ready" || largeSurfaceMeshFullPreviewJob?.status === "failed"
+        ? largeSurfaceMeshFullPreviewJob.elapsedMs
+        : null;
+    const fullMs = fullPhaseMs ?? fullJobMs ?? fullEventMs;
+    const viewerTrace = surfacePerformanceSnapshot?.trace ?? meshPipelineProfile?.firstFrameSnapshot?.trace ?? null;
+    const cpuFrameMs = surfacePerformanceSnapshot?.frameTimeMs ?? null;
+    const renderMs = viewerTrace?.renderMs ?? null;
+    const fps = surfacePerformanceSnapshot?.fps ?? null;
+    const gpuBytes =
+      viewerTrace?.geometryBufferBytes ??
+      surfacePerformanceSnapshot?.gpuMemoryEstimateBytes ??
+      meshDebugMonitor.memory?.gpuEstimateBytes ??
+      meshPipelineProfile?.memoryBytes ??
+      null;
+    const label = (meshPipelineProfile?.label || surfaceMeshLabel || "Mesh").toUpperCase();
+    return {
+      label,
+      vertices,
+      triangles,
+      firstFrameMs: meshPipelineProfile?.firstFrameMs ?? null,
+      fullMs,
+      fullStatus: largeSurfaceMeshFullPreviewJob?.status ?? null,
+      cpuFrameMs,
+      renderMs,
+      fps,
+      gpuBytes,
+      rssGb: meshDebugMonitor.memory?.workingSetGb ?? null,
+      stalls: meshDebugMonitor.stallCount,
+      worstStallMs: meshDebugMonitor.worstStallMs > 0 ? meshDebugMonitor.worstStallMs : null,
+    };
+  }, [
+    largeSurfaceMeshFullPreviewJob,
+    meshDebugMonitor.events,
+    meshDebugMonitor.memory?.gpuEstimateBytes,
+    meshDebugMonitor.memory?.workingSetGb,
+    meshDebugMonitor.stallCount,
+    meshDebugMonitor.worstStallMs,
+    meshPipelineProfile,
+    surfaceMeshLabel,
+    surfaceMeshStats?.triCount,
+    surfaceMeshStats?.vertCount,
+    surfacePerformanceSnapshot,
+  ]);
   const abortLargeMeshFullForMemoryPressure = useCallback(
     (reason: string, memory?: { workingSetGb?: number | null; workingSetBytes?: number | null; rendererPid?: number | null }) => {
       const cache = largeSurfaceMeshResolutionCacheRef.current;
@@ -67530,6 +67597,73 @@ case "mobius":
                         {surfaceMeshImportError && (
                           <div style={{ color: "#b42318", fontSize: 11 }}>{surfaceMeshImportError}</div>
                         )}
+                        {isDev && largeMeshPerformanceHud && (
+                          <div
+                            data-testid="mesh-large-performance-hud"
+                            style={{
+                              border: "1px solid #7dd3fc",
+                              borderRadius: 7,
+                              background: "#ecfeff",
+                              padding: "7px 8px",
+                              display: "grid",
+                              gap: 5,
+                              color: "#0f3557",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                              <strong title={largeMeshPerformanceHud.label}>
+                                {largeMeshPerformanceHud.label.length > 22
+                                  ? `${largeMeshPerformanceHud.label.slice(0, 21)}...`
+                                  : largeMeshPerformanceHud.label}
+                              </strong>
+                              <span style={{ fontSize: 10, fontWeight: 800, color: "#0e7490" }}>PERF HUD</span>
+                            </div>
+                            <div style={{ fontWeight: 800 }}>
+                              {formatBenchmarkCountShort(largeMeshPerformanceHud.vertices)} V /{" "}
+                              {formatBenchmarkCountShort(largeMeshPerformanceHud.triangles)} F
+                            </div>
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "minmax(88px, 1fr) auto",
+                                gap: "2px 8px",
+                                fontSize: 10,
+                                alignItems: "baseline",
+                              }}
+                            >
+                              <span>FIRST FRAME</span>
+                              <strong>{formatBenchmarkDuration(largeMeshPerformanceHud.firstFrameMs)}</strong>
+                              <span>FULL</span>
+                              <strong>
+                                {largeMeshPerformanceHud.fullStatus === "preparing" || largeMeshPerformanceHud.fullStatus === "rendering"
+                                  ? "preparing..."
+                                  : formatBenchmarkDuration(largeMeshPerformanceHud.fullMs)}
+                              </strong>
+                              <span>CPU/frame</span>
+                              <strong>{formatBenchmarkDuration(largeMeshPerformanceHud.cpuFrameMs)}</strong>
+                              <span>Render call</span>
+                              <strong>{formatBenchmarkDuration(largeMeshPerformanceHud.renderMs)}</strong>
+                              <span>FPS</span>
+                              <strong>
+                                {largeMeshPerformanceHud.fps == null || !Number.isFinite(largeMeshPerformanceHud.fps)
+                                  ? "n/a"
+                                  : largeMeshPerformanceHud.fps.toFixed(0)}
+                              </strong>
+                              <span>GPU est</span>
+                              <strong>{formatBenchmarkBytes(largeMeshPerformanceHud.gpuBytes)}</strong>
+                            </div>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 10, color: "#475569" }}>
+                              <span>
+                                RSS{" "}
+                                {largeMeshPerformanceHud.rssGb == null || !Number.isFinite(largeMeshPerformanceHud.rssGb)
+                                  ? "n/a"
+                                  : `${largeMeshPerformanceHud.rssGb.toFixed(2)} GB`}
+                              </span>
+                              <span>stalls {largeMeshPerformanceHud.stalls.toLocaleString()}</span>
+                              <span>worst {formatBenchmarkDuration(largeMeshPerformanceHud.worstStallMs)}</span>
+                            </div>
+                          </div>
+                        )}
                         {meshPipelineProfile && (
                           <div
                             data-testid="mesh-load-profile-summary"
@@ -67716,6 +67850,58 @@ case "mobius":
                                 {meshDebugMonitor.events.length.toLocaleString()}
                               </div>
                             </div>
+                            {largeMeshPerformanceHud && (
+                              <div
+                                data-testid="mesh-debug-performance-hud"
+                                style={{
+                                  border: "1px solid #7dd3fc",
+                                  borderRadius: 6,
+                                  background: "#ecfeff",
+                                  padding: "7px 8px",
+                                  display: "grid",
+                                  gap: 5,
+                                  fontSize: 11,
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                                  <strong>{largeMeshPerformanceHud.label}</strong>
+                                  <span style={{ color: "#0e7490", fontWeight: 800 }}>
+                                    {formatBenchmarkCountShort(largeMeshPerformanceHud.vertices)} V /{" "}
+                                    {formatBenchmarkCountShort(largeMeshPerformanceHud.triangles)} F
+                                  </span>
+                                </div>
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "repeat(4, minmax(92px, 1fr))",
+                                    gap: 8,
+                                  }}
+                                >
+                                  <div>
+                                    <strong>First frame</strong>
+                                    <br />
+                                    {formatBenchmarkDuration(largeMeshPerformanceHud.firstFrameMs)}
+                                  </div>
+                                  <div>
+                                    <strong>Full</strong>
+                                    <br />
+                                    {largeMeshPerformanceHud.fullStatus === "preparing" || largeMeshPerformanceHud.fullStatus === "rendering"
+                                      ? "preparing..."
+                                      : formatBenchmarkDuration(largeMeshPerformanceHud.fullMs)}
+                                  </div>
+                                  <div>
+                                    <strong>CPU/frame</strong>
+                                    <br />
+                                    {formatBenchmarkDuration(largeMeshPerformanceHud.cpuFrameMs)}
+                                  </div>
+                                  <div>
+                                    <strong>Render call</strong>
+                                    <br />
+                                    {formatBenchmarkDuration(largeMeshPerformanceHud.renderMs)}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                             {meshDebugMonitor.memory?.warning && (
                               <div
                                 style={{
