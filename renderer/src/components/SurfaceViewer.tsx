@@ -79,6 +79,60 @@ const updatePerspectiveCameraClipping = (
   camera.far = Math.max(100, distance + radius * 4 + 10, span * 4);
   camera.updateProjectionMatrix();
 };
+
+const DEFAULT_VIEWPORT_MODEL_FILL = 0.76;
+
+const projectedBoxFitDistance = (
+  camera: THREE.PerspectiveCamera,
+  box: THREE.Box3 | null,
+  viewDirFromTarget: THREE.Vector3,
+  paddingFactor: number
+) => {
+  if (!box || box.isEmpty()) return null;
+  const size = box.getSize(new THREE.Vector3());
+  const half = size.multiplyScalar(0.5);
+  if (!Number.isFinite(half.x) || !Number.isFinite(half.y) || !Number.isFinite(half.z)) return null;
+  if (half.lengthSq() <= 1e-12) return null;
+
+  const viewDir = viewDirFromTarget.clone();
+  if (viewDir.lengthSq() < 1e-10) viewDir.set(0, 0, 1);
+  viewDir.normalize();
+
+  const up = camera.up.clone();
+  if (up.lengthSq() < 1e-10) up.set(0, 1, 0);
+  up.normalize();
+
+  let right = new THREE.Vector3().crossVectors(viewDir.clone().negate(), up);
+  if (right.lengthSq() < 1e-10) right = new THREE.Vector3(1, 0, 0);
+  right.normalize();
+
+  const projectedHalfWidth = Math.abs(right.x) * half.x + Math.abs(right.y) * half.y + Math.abs(right.z) * half.z;
+  const projectedHalfHeight = Math.abs(up.x) * half.x + Math.abs(up.y) * half.y + Math.abs(up.z) * half.z;
+  const projectedHalfDepth = Math.abs(viewDir.x) * half.x + Math.abs(viewDir.y) * half.y + Math.abs(viewDir.z) * half.z;
+
+  const fovY = THREE.MathUtils.degToRad(camera.fov);
+  const tanHalfFovY = Math.tan(Math.max(1e-3, fovY * 0.5));
+  const aspect = Number.isFinite(camera.aspect) && camera.aspect > 0 ? camera.aspect : 1;
+  const targetFill = Math.max(0.62, Math.min(0.82, DEFAULT_VIEWPORT_MODEL_FILL / paddingFactor));
+  const verticalDistance = projectedHalfHeight / (tanHalfFovY * targetFill);
+  const horizontalDistance = projectedHalfWidth / (tanHalfFovY * aspect * targetFill);
+  const distance = Math.max(verticalDistance, horizontalDistance) + projectedHalfDepth * 0.25;
+  return Number.isFinite(distance) && distance > 0 ? distance : null;
+};
+
+const tuneBoundingBoxHelper = (helper: THREE.Box3Helper) => {
+  const materials = Array.isArray(helper.material) ? helper.material : [helper.material];
+  for (const material of materials) {
+    if (!material) continue;
+    if ("color" in material && material.color instanceof THREE.Color) {
+      material.color.setHex(0x7fb6ad);
+    }
+    material.transparent = true;
+    material.opacity = 0.42;
+    material.depthWrite = false;
+  }
+  helper.renderOrder = 160;
+};
 export type SurfacePerformanceSnapshot = {
   ts: number;
   fps: number;
@@ -2219,6 +2273,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const gaussHighlightRef = useRef<THREE.Mesh | null>(null);
   const centerRef = useRef(new THREE.Vector3(0, 0, 0));
   const radiusRef = useRef<number>(3);
+  const boundsBoxRef = useRef<THREE.Box3 | null>(null);
   const forceReframeRef = useRef<(() => void) | null>(null);
   const onCameraTourEventRef = useRef<Props["onCameraTourEvent"] | undefined>(undefined);
   const onPerformanceSnapshotRef = useRef<Props["onPerformanceSnapshot"] | undefined>(undefined);
@@ -4812,9 +4867,11 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const sizeVec = new THREE.Vector3();
     box.getSize(sizeVec);
     radiusRef.current = sizeVec.length() * 0.5 || 3;
+    boundsBoxRef.current = box.clone();
 
     if (showBoundingBox && !fastPreviewHelpersHidden) {
       const boxHelper = new THREE.Box3Helper(box, 0x999999);
+      tuneBoundingBoxHelper(boxHelper);
       scene.add(boxHelper);
       bboxHelperRef.current = boxHelper;
     }
@@ -5881,18 +5938,19 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (!Number.isFinite(radius) || radius <= 0) return;
 
       const center = centerRef.current;
-      const fovY = THREE.MathUtils.degToRad(camera.fov);
-      const fovX = 2 * Math.atan(Math.tan(fovY * 0.5) * camera.aspect);
-      const minFov = Math.max(1e-3, Math.min(fovY, fovX));
-      const fitPadding = Math.max(0.88, Math.min(1.35, reframePaddingFactor));
-      const requiredDist = (radius * fitPadding) / Math.sin(minFov * 0.5);
-      if (!Number.isFinite(requiredDist) || requiredDist <= 0) return;
-
-      const currentDist = camera.position.distanceTo(center);
       const viewDir = camera.position.clone().sub(controls.target);
       if (viewDir.lengthSq() < 1e-8) viewDir.set(0, 0, 1);
       viewDir.normalize();
-      const nextDist = Math.max(requiredDist, currentDist);
+      const fovY = THREE.MathUtils.degToRad(camera.fov);
+      const fovX = 2 * Math.atan(Math.tan(fovY * 0.5) * camera.aspect);
+      const minFov = Math.max(1e-3, Math.min(fovY, fovX));
+      const fitPadding = Math.max(0.9, Math.min(1.35, reframePaddingFactor));
+      const sphereDist = (radius * fitPadding) / Math.sin(minFov * 0.5);
+      const boxDist = projectedBoxFitDistance(camera, boundsBoxRef.current, viewDir, fitPadding);
+      const requiredDist = boxDist ?? sphereDist;
+      if (!Number.isFinite(requiredDist) || requiredDist <= 0) return;
+
+      const nextDist = requiredDist;
       camera.position.copy(center).addScaledVector(viewDir, nextDist);
       controls.target.copy(center);
       camera.lookAt(center);
@@ -7188,8 +7246,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (showBoundingBox && !fastPreviewHelpersHidden) {
       if (existingBoxHelper) {
         existingBoxHelper.box.copy(box);
+        tuneBoundingBoxHelper(existingBoxHelper);
       } else {
         const helper = new THREE.Box3Helper(box, 0x999999);
+        tuneBoundingBoxHelper(helper);
         scene.add(helper);
         bboxHelperRef.current = helper;
       }

@@ -33573,7 +33573,7 @@ const App: React.FC = () => {
     const focus = computeSurfaceMeshFocus(mesh);
     if (!focus) return;
     const dir = new THREE.Vector3(1, 0.68, 1.18).normalize();
-    const dist = Math.max(2.2, focus.radius * 3.2);
+    const dist = Math.max(1.6, focus.radius * 2.45);
     setCameraOverride({
       position: {
         x: focus.center.x + dir.x * dist,
@@ -63121,7 +63121,8 @@ case "mobius":
     !isPresentDisplayMode &&
     !cleanScreenshotSurfaceActive &&
     !isSurfacePreviewMode;
-  const surfacePreviewReframePaddingFactor = isSurfacePreviewMode ? 0.92 : 1.08;
+  const surfacePreviewReframePaddingFactor =
+    surfaceViewerKind === "mesh" ? 1.0 : isSurfacePreviewMode ? 0.92 : 1.08;
   const showSurfaceFormulaEditorLauncher =
     mode === "surfaces" &&
     isSurfaceDatasetKind(datasetKind) &&
@@ -71492,7 +71493,7 @@ case "mobius":
                                   materialOpacity={materialOpacity}
                                   colorMode="solid"
                                   showChartGrid={false}
-                                  showBoundingBox={true}
+                                  showBoundingBox={showBoundingBox}
                                   showOverlayControls={false}
                                   showViewGizmo={true}
                                   resetToken={cameraResetToken}
