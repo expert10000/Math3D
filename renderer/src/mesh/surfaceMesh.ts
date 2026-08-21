@@ -4,6 +4,7 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { PLYLoader } from "three/examples/jsm/loaders/PLYLoader.js";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
+import type { MeshObjImportWorkerResponse } from "../workers/meshObjImportTypes";
 
 export type MeshImportFormat = "stl" | "obj" | "ply" | "gltf" | "glb";
 
@@ -119,6 +120,9 @@ type GeometryOpts = { mergeVertices: boolean; mergeTolerance?: number };
 export type SurfaceMeshImportStage =
   | "fileRead"
   | "parse"
+  | "objWorkerRoundTrip"
+  | "objWorkerDecode"
+  | "objWorkerResultIntegrate"
   | "fastObjDetect"
   | "fastObjParse"
   | "vertexParse"
@@ -136,9 +140,14 @@ export type SurfaceMeshImportTelemetry = {
 type SurfaceMeshImportTimingSink = (entry: SurfaceMeshImportTelemetry) => void;
 type SurfaceMeshImportOptions = GeometryOpts & {
   onStage?: SurfaceMeshImportTimingSink;
+  useObjWorker?: boolean | "auto";
+  objWorkerThresholdBytes?: number;
 };
 
 type FileLikeList = File[] | FileList;
+
+const OBJ_WORKER_PARSE_THRESHOLD_BYTES = 1024 * 1024;
+let objWorkerJobCounter = 0;
 
 const toFloat32 = (arr: ArrayLike<number>) =>
   arr instanceof Float32Array ? arr.slice() : Float32Array.from(arr);
@@ -483,6 +492,79 @@ const surfaceMeshFromGeometry = (
   };
 };
 
+const shouldUseObjImportWorker = (buffer: ArrayBuffer, opts: SurfaceMeshImportOptions): boolean => {
+  if (opts.useObjWorker === false) return false;
+  if (typeof Worker === "undefined") return false;
+  const threshold = Math.max(0, opts.objWorkerThresholdBytes ?? OBJ_WORKER_PARSE_THRESHOLD_BYTES);
+  return buffer.byteLength >= threshold;
+};
+
+const parseSimpleObjSurfaceMeshInWorker = async (
+  buffer: ArrayBuffer,
+  label: string,
+  source: SurfaceMeshSource,
+  opts: SurfaceMeshImportOptions
+): Promise<{ mesh: SurfaceMeshData; response: MeshObjImportWorkerResponse } | { mesh: null; response: MeshObjImportWorkerResponse }> => {
+  const jobId = ++objWorkerJobCounter;
+  const sentAt = nowMs();
+  const worker = new Worker(new URL("../workers/meshObjImportWorker.ts", import.meta.url), { type: "module" });
+  try {
+    const response = await new Promise<MeshObjImportWorkerResponse>((resolve, reject) => {
+      const cleanup = () => {
+        worker.onmessage = null;
+        worker.onerror = null;
+        worker.onmessageerror = null;
+      };
+      worker.onmessage = (event: MessageEvent<MeshObjImportWorkerResponse>) => {
+        const packet = event.data;
+        if (!packet || packet.jobId !== jobId) return;
+        cleanup();
+        resolve(packet);
+      };
+      worker.onerror = (event) => {
+        cleanup();
+        reject(new Error(event.message || "OBJ import worker failed."));
+      };
+      worker.onmessageerror = () => {
+        cleanup();
+        reject(new Error("OBJ import worker returned an unreadable message."));
+      };
+      worker.postMessage(
+        {
+          type: "parse-simple-obj",
+          jobId,
+          label,
+          buffer,
+          sentAt,
+        },
+        [buffer]
+      );
+    });
+    opts.onStage?.({ stage: "objWorkerRoundTrip", ms: Math.max(0, nowMs() - sentAt) });
+    opts.onStage?.({ stage: "objWorkerDecode", ms: Math.max(0, response.timings.decodeMs) });
+    opts.onStage?.({ stage: "fastObjDetect", ms: Math.max(0, response.timings.detectMs) });
+    opts.onStage?.({ stage: "vertexParse", ms: Math.max(0, response.timings.vertexParseMs) });
+    opts.onStage?.({ stage: "faceParse", ms: Math.max(0, response.timings.faceParseMs) });
+    opts.onStage?.({ stage: "indexBuild", ms: Math.max(0, response.timings.indexBuildMs) });
+    if (response.type !== "simple-obj-ready") {
+      return { mesh: null, response };
+    }
+    const integrateStart = nowMs();
+    const mesh: SurfaceMeshData = {
+      label,
+      positions: response.positions,
+      indices: response.indices,
+      normals: null,
+      uvs: null,
+      source,
+    };
+    recordStage(opts, "objWorkerResultIntegrate", integrateStart);
+    return { mesh, response };
+  } finally {
+    worker.terminate();
+  }
+};
+
 export function buildSurfaceMeshFromGeometry(
   geometry: THREE.BufferGeometry,
   label: string,
@@ -621,26 +703,49 @@ export async function loadSurfaceMeshFromFile(
 
   if (ext === "obj") {
     const parseStart = nowMs();
-    const text = new TextDecoder().decode(buffer);
-    const simpleObj = parseSimpleObjSurfaceMesh(text, name, importSource);
-    if (simpleObj) {
-      recordStage(opts, "parse", parseStart);
-      opts.onStage?.({ stage: "fastObjDetect", ms: Math.max(0, simpleObj.timings.detectMs) });
-      recordStage(opts, "fastObjParse", parseStart);
-      opts.onStage?.({ stage: "vertexParse", ms: Math.max(0, simpleObj.timings.vertexParseMs) });
-      opts.onStage?.({ stage: "faceParse", ms: Math.max(0, simpleObj.timings.faceParseMs) });
-      opts.onStage?.({ stage: "indexBuild", ms: Math.max(0, simpleObj.timings.indexBuildMs) });
-      if (!opts.mergeVertices) {
-        const normalizeStart = nowMs();
-        recordStage(opts, "normalize", normalizeStart);
-        const extractStart = nowMs();
-        recordStage(opts, "meshExtract", extractStart);
-        return simpleObj.mesh;
+    let workerRequestedGeneralLoader = false;
+    if (shouldUseObjImportWorker(buffer, opts)) {
+      const workerResult = await parseSimpleObjSurfaceMeshInWorker(buffer, name, importSource, opts);
+      if (workerResult.mesh) {
+        recordStage(opts, "parse", parseStart);
+        recordStage(opts, "fastObjParse", parseStart);
+        if (!opts.mergeVertices) {
+          const normalizeStart = nowMs();
+          recordStage(opts, "normalize", normalizeStart);
+          const extractStart = nowMs();
+          recordStage(opts, "meshExtract", extractStart);
+          return workerResult.mesh;
+        }
+        return buildSurfaceMeshFromGeometry(surfaceMeshToGeometry(workerResult.mesh), name, importSource, opts);
       }
-      return buildSurfaceMeshFromGeometry(surfaceMeshToGeometry(simpleObj.mesh), name, importSource, opts);
+      const fallbackStart = nowMs();
+      recordStage(opts, "objLoaderFallback", fallbackStart);
+      workerRequestedGeneralLoader = true;
     }
-    const fallbackStart = nowMs();
-    recordStage(opts, "objLoaderFallback", fallbackStart);
+
+    const fallbackBuffer = buffer.byteLength > 0 ? buffer : await file.arrayBuffer();
+    const text = new TextDecoder().decode(fallbackBuffer);
+    if (!workerRequestedGeneralLoader) {
+      const simpleObj = parseSimpleObjSurfaceMesh(text, name, importSource);
+      if (simpleObj) {
+        recordStage(opts, "parse", parseStart);
+        opts.onStage?.({ stage: "fastObjDetect", ms: Math.max(0, simpleObj.timings.detectMs) });
+        recordStage(opts, "fastObjParse", parseStart);
+        opts.onStage?.({ stage: "vertexParse", ms: Math.max(0, simpleObj.timings.vertexParseMs) });
+        opts.onStage?.({ stage: "faceParse", ms: Math.max(0, simpleObj.timings.faceParseMs) });
+        opts.onStage?.({ stage: "indexBuild", ms: Math.max(0, simpleObj.timings.indexBuildMs) });
+        if (!opts.mergeVertices) {
+          const normalizeStart = nowMs();
+          recordStage(opts, "normalize", normalizeStart);
+          const extractStart = nowMs();
+          recordStage(opts, "meshExtract", extractStart);
+          return simpleObj.mesh;
+        }
+        return buildSurfaceMeshFromGeometry(surfaceMeshToGeometry(simpleObj.mesh), name, importSource, opts);
+      }
+      const fallbackStart = nowMs();
+      recordStage(opts, "objLoaderFallback", fallbackStart);
+    }
     const loader = new OBJLoader();
     const obj = loader.parse(text);
     const merged = mergeObjectGeometries(obj);

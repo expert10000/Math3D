@@ -38009,6 +38009,7 @@ const App: React.FC = () => {
     token: number;
     label: string | null;
     timeoutId: number | null;
+    releaseScheduled: boolean;
     publish: (releaseReason: "first-frame" | "timeout") => void;
   } | null>(null);
   useEffect(() => {
@@ -40617,21 +40618,26 @@ const App: React.FC = () => {
       meshPipelineProfileActiveIdRef.current = null;
     }
     const pendingFastPreviewSampleSet = pendingFastPreviewSampleSetRef.current;
-    if (pendingFastPreviewSampleSet && snapshot.trace?.reason === "mesh-rebuild") {
-      pendingFastPreviewSampleSetRef.current = null;
+    if (pendingFastPreviewSampleSet && !pendingFastPreviewSampleSet.releaseScheduled && snapshot.trace?.reason === "mesh-rebuild") {
       if (pendingFastPreviewSampleSet.timeoutId != null && typeof window !== "undefined") {
         window.clearTimeout(pendingFastPreviewSampleSet.timeoutId);
       }
+      pendingFastPreviewSampleSet.releaseScheduled = true;
       recordMeshDebugEvent({
         kind: "phase",
-        label: "app:onSampleSetFlushAfterFirstFrame",
+        label: "app:onSampleSetIdleAfterFirstFrameScheduled",
         details: {
           label: pendingFastPreviewSampleSet.label,
           snapshotTriangles: snapshot.triangles,
           snapshotTraceReason: snapshot.trace.reason,
+          delayMs: 250,
         },
       });
-      pendingFastPreviewSampleSet.publish("first-frame");
+      pendingFastPreviewSampleSet.timeoutId = window.setTimeout(() => {
+        if (pendingFastPreviewSampleSetRef.current !== pendingFastPreviewSampleSet) return;
+        pendingFastPreviewSampleSetRef.current = null;
+        pendingFastPreviewSampleSet.publish("first-frame");
+      }, 250);
     }
     const pendingFullRestore = meshFullRestoreFrameProfileRef.current;
     const snapshotGeometryBytes = snapshot.trace?.geometryBufferBytes ?? snapshot.gpuMemoryEstimateBytes ?? null;
@@ -48958,6 +48964,7 @@ case "mobius":
           token: deferredToken,
           label: surfaceMeshData?.label ?? null,
           timeoutId,
+          releaseScheduled: false,
           publish: (releaseReason) => {
             if (surfaceSampleSetDeferredTokenRef.current !== deferredToken) return;
             publishSampleSet(releaseReason);

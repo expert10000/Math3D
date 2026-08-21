@@ -153,6 +153,8 @@ async function main() {
     throw new Error(finishPacket?.error || `Electron autorun failed with code ${exit.code}`);
   }
   console.log(`[trace] wrote ${outFile}`);
+  process.exitCode = 0;
+  setTimeout(() => process.exit(0), 0);
 }
 
 main().catch((error) => {
