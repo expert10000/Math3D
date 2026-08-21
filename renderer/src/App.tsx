@@ -356,7 +356,8 @@ import {
   type PythonWorkerDiagnosticsSnapshot,
 } from "./services/pythonWorkerDiagnosticsClient";
 import { runGeodesicHeat } from "./services/geodesicHeatClient";
-import { vtkBoolean, vtkCleanNormals, vtkDecimate, vtkPreviewImplicit, vtkSmooth } from "./services/vtkMeshClient";
+import { runMeshOperation } from "./services/meshOperations";
+import { vtkBoolean } from "./services/vtkMeshClient";
 import { supportsVtkVolumeDistance, vtkVolumeDistance } from "./services/vtkVolumeClient";
 import { getMeshBackendCapabilities } from "./services/meshBackend";
 import { solveContinuousGraphGeodesic } from "./math/graphGeodesicContinuous";
@@ -1798,6 +1799,8 @@ type VtkResultSummary = {
   normalsRecomputed: boolean;
   warnings: string[];
   outputMode: "replace" | "derived";
+  engine?: "vtk" | "cgal";
+  durationMs?: number;
   timestamp: number;
 };
 
@@ -53557,13 +53560,15 @@ case "mobius":
   const applyVtkResultToSurfaceMesh = useCallback(
     (
       labelSuffix: string,
-      res: { positions: Float32Array; indices: Uint32Array; normals?: Float32Array },
+      res: { positions: Float32Array; indices: Uint32Array | null; normals?: Float32Array | null },
       meta: {
         operation: string;
         beforeFaces: number;
         requestedFaces?: number | null;
         normalsRecomputed?: boolean;
         warnings?: string[];
+        engine?: "vtk" | "cgal";
+        durationMs?: number;
       }
     ) => {
       const baseLabel = buildActiveMeshLabel();
@@ -53583,7 +53588,7 @@ case "mobius":
       setVtkLastResult({
         operation: meta.operation,
         beforeFaces: Math.max(0, Math.round(meta.beforeFaces)),
-        afterFaces: Math.max(0, Math.round(res.indices.length / 3)),
+        afterFaces: Math.max(0, Math.round((res.indices?.length ?? 0) / 3)),
         requestedFaces:
           meta.requestedFaces == null || !Number.isFinite(meta.requestedFaces)
             ? null
@@ -53591,6 +53596,8 @@ case "mobius":
         normalsRecomputed: meta.normalsRecomputed !== false,
         warnings: meta.warnings ?? [],
         outputMode: vtkOutputMode,
+        engine: meta.engine,
+        durationMs: meta.durationMs,
         timestamp: Date.now(),
       });
       appendMeshPromotionOperation(meta.operation);
@@ -53698,16 +53705,29 @@ case "mobius":
     setVtkBusy(true);
     setVtkError(null);
     try {
-      const res = await vtkCleanNormals(mesh.positions, mesh.indices, { computeNormals: true });
-      if (!res.ok) {
-        setVtkError(res.error);
+      const res = await runMeshOperation(
+        {
+          operation: "clean-normals",
+          inputs: [mesh.label],
+          engine: "auto",
+          parameters: { computeNormals: true },
+          outputMode: vtkOutputMode === "replace" ? "replace" : "new-object",
+          quality: "balanced",
+        },
+        { primaryMesh: mesh }
+      );
+      if (res.status === "error" || !res.resultMesh) {
+        setVtkError(res.errors[0]?.message ?? "VTK clean failed.");
         return;
       }
-      applyVtkResultToSurfaceMesh("VTK clean", res, {
+      applyVtkResultToSurfaceMesh("VTK clean", res.resultMesh, {
         operation: "Clean mesh",
-        beforeFaces: Math.round(mesh.indices.length / 3),
+        beforeFaces: res.before.faceCount,
         requestedFaces: null,
         normalsRecomputed: true,
+        warnings: res.warnings.map((warning) => warning.message),
+        engine: res.engine,
+        durationMs: res.durationMs,
       });
     } catch (err: any) {
       setVtkError(err?.message ?? "VTK clean failed.");
@@ -53715,7 +53735,7 @@ case "mobius":
       setVtkBusy(false);
       refreshCgalHealthAfterWorkerAction();
     }
-  }, [vtkBusy, cgalHealthState, getMeshForVtk, applyVtkResultToSurfaceMesh, refreshCgalHealthAfterWorkerAction]);
+  }, [vtkBusy, cgalHealthState, getMeshForVtk, vtkOutputMode, applyVtkResultToSurfaceMesh, refreshCgalHealthAfterWorkerAction]);
 
   const handleVtkDecimate = useCallback(async () => {
     if (vtkBusy) return;
@@ -53735,19 +53755,32 @@ case "mobius":
       const options = vtkUseTargetFaces
         ? { targetFaces: vtkDecimateTargetFaces, computeNormals: true }
         : { targetReduction: vtkDecimateReduction, computeNormals: true };
-      const res = await vtkDecimate(mesh.positions, mesh.indices, options);
-      if (!res.ok) {
-        setVtkError(res.error);
+      const res = await runMeshOperation(
+        {
+          operation: "decimate",
+          inputs: [mesh.label],
+          engine: "auto",
+          parameters: options,
+          outputMode: vtkOutputMode === "replace" ? "replace" : "new-object",
+          quality: "balanced",
+        },
+        { primaryMesh: mesh }
+      );
+      if (res.status === "error" || !res.resultMesh) {
+        setVtkError(res.errors[0]?.message ?? "VTK decimate failed.");
         return;
       }
       const requestedFaces = vtkUseTargetFaces
         ? Math.max(100, Math.round(vtkDecimateTargetFaces))
         : Math.max(1, Math.round(beforeFaces * (1 - vtkDecimateReduction)));
-      applyVtkResultToSurfaceMesh("VTK decimate", res, {
+      applyVtkResultToSurfaceMesh("VTK decimate", res.resultMesh, {
         operation: "Decimate",
-        beforeFaces,
+        beforeFaces: res.before.faceCount,
         requestedFaces,
         normalsRecomputed: true,
+        warnings: res.warnings.map((warning) => warning.message),
+        engine: res.engine,
+        durationMs: res.durationMs,
       });
     } catch (err: any) {
       setVtkError(err?.message ?? "VTK decimate failed.");
@@ -53762,6 +53795,7 @@ case "mobius":
     vtkUseTargetFaces,
     vtkDecimateTargetFaces,
     vtkDecimateReduction,
+    vtkOutputMode,
     applyVtkResultToSurfaceMesh,
     refreshCgalHealthAfterWorkerAction,
   ]);
@@ -53780,21 +53814,33 @@ case "mobius":
     setVtkBusy(true);
     setVtkError(null);
     try {
-      const beforeFaces = Math.round(mesh.indices.length / 3);
-      const res = await vtkSmooth(mesh.positions, mesh.indices, {
-        iterations: vtkSmoothIterations,
-        passband: vtkSmoothPassband,
-        computeNormals: true,
-      });
-      if (!res.ok) {
-        setVtkError(res.error);
+      const res = await runMeshOperation(
+        {
+          operation: "smooth",
+          inputs: [mesh.label],
+          engine: "auto",
+          parameters: {
+            iterations: vtkSmoothIterations,
+            passband: vtkSmoothPassband,
+            computeNormals: true,
+          },
+          outputMode: vtkOutputMode === "replace" ? "replace" : "new-object",
+          quality: "balanced",
+        },
+        { primaryMesh: mesh }
+      );
+      if (res.status === "error" || !res.resultMesh) {
+        setVtkError(res.errors[0]?.message ?? "VTK smooth failed.");
         return;
       }
-      applyVtkResultToSurfaceMesh("VTK smooth", res, {
+      applyVtkResultToSurfaceMesh("VTK smooth", res.resultMesh, {
         operation: "Smooth",
-        beforeFaces,
+        beforeFaces: res.before.faceCount,
         requestedFaces: null,
         normalsRecomputed: true,
+        warnings: res.warnings.map((warning) => warning.message),
+        engine: res.engine,
+        durationMs: res.durationMs,
       });
     } catch (err: any) {
       setVtkError(err?.message ?? "VTK smooth failed.");
@@ -53808,6 +53854,7 @@ case "mobius":
     getMeshForVtk,
     vtkSmoothIterations,
     vtkSmoothPassband,
+    vtkOutputMode,
     applyVtkResultToSurfaceMesh,
     refreshCgalHealthAfterWorkerAction,
   ]);
@@ -59180,29 +59227,50 @@ case "mobius":
     setVtkPreviewError(null);
     const startedAt = performance.now();
     try {
-      const res = await vtkPreviewImplicit({
-        expr,
-        iso: 0,
-        domain: cgalDomainPreview,
-        resolution,
-        targetFaces: vtkPreviewUseDecimate ? targetFaces : undefined,
-      });
-      if (!res.ok) {
+      const res = await runMeshOperation(
+        {
+          operation: "implicit-preview",
+          inputs: [activeImplicitExpr || "implicit preview"],
+          engine: "auto",
+          parameters: {
+            expr,
+            iso: 0,
+            resolution,
+            targetFaces: vtkPreviewUseDecimate ? targetFaces : undefined,
+          },
+          outputMode: vtkOutputMode === "replace" ? "replace" : "new-object",
+          quality: "fast",
+        },
+        {
+          implicit: {
+            expr,
+            iso: 0,
+            domain: cgalDomainPreview,
+            resolution,
+            targetFaces: vtkPreviewUseDecimate ? targetFaces : undefined,
+          },
+        }
+      );
+      if (res.status === "error" || !res.resultMesh) {
         setMeshPerformanceLastBuildMs(performance.now() - startedAt);
-        setVtkPreviewError(res.error);
-        setGenerateSurfaceStatus({ state: "error", message: res.error, at: Date.now() });
+        const message = res.errors[0]?.message ?? "VTK preview failed.";
+        setVtkPreviewError(message);
+        setGenerateSurfaceStatus({ state: "error", message, at: Date.now() });
         return;
       }
       setMeshPerformanceLastBuildMs(performance.now() - startedAt);
-      applyVtkResultToSurfaceMesh("VTK preview", res, {
+      applyVtkResultToSurfaceMesh("VTK preview", res.resultMesh, {
         operation: "VTK preview",
         beforeFaces: surfaceMeshStats?.triCount ?? 0,
         requestedFaces: vtkPreviewUseDecimate ? targetFaces : null,
         normalsRecomputed: true,
+        warnings: res.warnings.map((warning) => warning.message),
+        engine: res.engine,
+        durationMs: res.durationMs,
       });
       setGenerateSurfaceStatus({
         state: "success",
-        message: `Generated mesh (${res.vertexCount.toLocaleString()} verts, ${res.triCount.toLocaleString()} tris).`,
+        message: `Generated mesh (${(res.after?.vertexCount ?? 0).toLocaleString()} verts, ${(res.after?.faceCount ?? 0).toLocaleString()} tris).`,
         at: Date.now(),
       });
     } catch (err: any) {
@@ -59223,6 +59291,7 @@ case "mobius":
     implicitResolution,
     vtkPreviewTargetFaces,
     vtkPreviewUseDecimate,
+    vtkOutputMode,
     surfaceMeshStats?.triCount,
     cgalDomainPreview,
     applyVtkResultToSurfaceMesh,
