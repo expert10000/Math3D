@@ -4,8 +4,10 @@ import type { SurfaceMeshData, SurfaceMeshSource } from "../mesh/surfaceMesh";
 import {
   vtkCleanNormals,
   vtkDecimate,
+  vtkBoolean,
   vtkPreviewImplicit,
   vtkSmooth,
+  type VtkBooleanRequest,
   type VtkMeshRequest,
   type VtkPreviewRequest,
 } from "./vtkMeshClient";
@@ -80,6 +82,7 @@ export type MeshOperationMeshInput = {
 
 export type MeshOperationContext = {
   primaryMesh?: MeshOperationMeshInput;
+  secondaryMesh?: MeshOperationMeshInput;
   implicit?: {
     expr: string;
     iso?: number;
@@ -90,6 +93,7 @@ export type MeshOperationContext = {
     quality?: CgalMeshRequest["quality"];
     scalars?: string[];
     preflightSamples?: number;
+    verbose?: boolean;
   };
 };
 
@@ -101,6 +105,12 @@ export type MeshOperationCapability = {
 
 const VTK_MESH_OPERATIONS = new Set<MeshOperationId>(["clean-normals", "decimate", "smooth"]);
 const VTK_IMPLICIT_OPERATIONS = new Set<MeshOperationId>(["implicit-preview"]);
+const VTK_BOOLEAN_OPERATIONS = new Set<MeshOperationId>([
+  "boolean-union",
+  "boolean-difference",
+  "boolean-intersection",
+  "boolean-imprint",
+]);
 const CGAL_OPERATIONS = new Set<MeshOperationId>(["implicit-mesh"]);
 
 export const MESH_OPERATION_CAPABILITIES: MeshOperationCapability[] = [
@@ -212,6 +222,21 @@ function vtkOptionsFromParameters(parameters: Record<string, unknown>): VtkMeshR
   };
 }
 
+function vtkBooleanOperationFromId(operation: MeshOperationId): VtkBooleanRequest["operation"] | null {
+  switch (operation) {
+    case "boolean-union":
+      return "union";
+    case "boolean-difference":
+      return "difference";
+    case "boolean-intersection":
+      return "intersection";
+    case "boolean-imprint":
+      return "imprint";
+    default:
+      return null;
+  }
+}
+
 export async function runMeshOperation(
   request: MeshOperationRequest,
   context: MeshOperationContext
@@ -263,6 +288,38 @@ export async function runMeshOperation(
     );
   }
 
+  if (VTK_BOOLEAN_OPERATIONS.has(request.operation)) {
+    if (engine !== "vtk") {
+      return operationError(request, engine, before, startedAt, `${request.operation} is not supported by ${engine}.`, "unsupported-engine");
+    }
+    const meshA = context.primaryMesh;
+    const meshB = context.secondaryMesh;
+    if (!meshA?.positions?.length || !meshA.indices?.length || !meshB?.positions?.length || !meshB.indices?.length) {
+      return operationError(request, engine, before, startedAt, "Boolean operation requires two indexed mesh inputs.", "missing-input");
+    }
+    const operation = vtkBooleanOperationFromId(request.operation);
+    if (!operation) return operationError(request, engine, before, startedAt, `${request.operation} is not registered.`, "unsupported-operation");
+    const res = await vtkBoolean({
+      positionsA: meshA.positions,
+      indicesA: meshA.indices,
+      positionsB: meshB.positions,
+      indicesB: meshB.indices,
+      operation,
+      options: {
+        computeNormals: booleanParam(request.parameters, "computeNormals"),
+        curveRadius: numericParam(request.parameters, "curveRadius"),
+      },
+    });
+    if (!res.ok) return operationError(request, engine, before, startedAt, res.error);
+    return resultSuccess(
+      request,
+      engine,
+      before,
+      startedAt,
+      meshFromBuffers(`${meshA.label} ${operation} ${meshB.label}`, meshA.source ?? { kind: "csg" }, res)
+    );
+  }
+
   if (CGAL_OPERATIONS.has(request.operation)) {
     if (engine !== "cgal") {
       return operationError(request, engine, before, startedAt, `${request.operation} is not supported by ${engine}.`, "unsupported-engine");
@@ -276,6 +333,7 @@ export async function runMeshOperation(
       quality: implicit.quality ?? { target_edge: 0.2 },
       scalars: implicit.scalars,
       preflightSamples: implicit.preflightSamples,
+      verbose: implicit.verbose,
     });
     if (!res.ok) return operationError(request, engine, before, startedAt, res.error);
     return resultSuccess(

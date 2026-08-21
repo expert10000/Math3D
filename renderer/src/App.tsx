@@ -350,14 +350,13 @@ import {
   type SelectionStats,
 } from "./math/selection/selectionStats";
 import { buildGeodesicDisk } from "./math/geodesicDisk";
-import { cgalHealth, cgalVersion, runCgalMesh, stopCgalWorker } from "./services/cgalMeshClient";
+import { cgalHealth, cgalVersion, stopCgalWorker } from "./services/cgalMeshClient";
 import {
   getPythonWorkerDiagnostics,
   type PythonWorkerDiagnosticsSnapshot,
 } from "./services/pythonWorkerDiagnosticsClient";
 import { runGeodesicHeat } from "./services/geodesicHeatClient";
 import { runMeshOperation } from "./services/meshOperations";
-import { vtkBoolean } from "./services/vtkMeshClient";
 import { supportsVtkVolumeDistance, vtkVolumeDistance } from "./services/vtkVolumeClient";
 import { getMeshBackendCapabilities } from "./services/meshBackend";
 import { solveContinuousGraphGeodesic } from "./math/graphGeodesicContinuous";
@@ -53554,8 +53553,13 @@ case "mobius":
     if (!meshData.length) return null;
     const merged = mergeMeshData(meshData);
     if (!merged.positions.length || !merged.indices.length) return null;
-    return { positions: merged.positions, indices: merged.indices, label: buildActiveMeshLabel() };
-  }, [surfaceSampleSet, buildActiveMeshLabel]);
+    return {
+      positions: merged.positions,
+      indices: merged.indices,
+      label: buildActiveMeshLabel(),
+      source: surfaceMeshData?.source,
+    };
+  }, [surfaceSampleSet, buildActiveMeshLabel, surfaceMeshData?.source]);
 
   const applyVtkResultToSurfaceMesh = useCallback(
     (
@@ -53898,52 +53902,71 @@ case "mobius":
         computeNormals: true,
         curveRadius: vtkBooleanCurveRadius > 0 ? vtkBooleanCurveRadius : undefined,
       };
+      const meshB = {
+        label: resolvedB.object.name,
+        positions: resolvedB.mesh.positions,
+        indices: meshBIndices,
+        source: {
+          kind: "geometryObject" as const,
+          objectId: resolvedB.object.id,
+          objectName: resolvedB.object.name,
+        },
+      };
 
       if (vtkBooleanOperation === "split") {
-        const aMinusB = await vtkBoolean({
-          positionsA: meshA.positions,
-          indicesA: meshA.indices,
-          positionsB: resolvedB.mesh.positions,
-          indicesB: meshBIndices,
-          operation: "difference",
-          options,
-        });
-        if (!aMinusB.ok) {
-          setVtkError(aMinusB.error);
+        const aMinusB = await runMeshOperation(
+          {
+            operation: "boolean-difference",
+            inputs: [meshA.label, meshB.label],
+            engine: "auto",
+            parameters: options,
+            outputMode: vtkOutputMode === "replace" ? "replace" : "new-object",
+            quality: "robust",
+          },
+          { primaryMesh: meshA, secondaryMesh: meshB }
+        );
+        if (aMinusB.status === "error" || !aMinusB.resultMesh?.indices) {
+          setVtkError(aMinusB.errors[0]?.message ?? "Boolean split failed.");
           setVtkBooleanStatus("Split failed.");
           return;
         }
-        const aIntersectB = await vtkBoolean({
-          positionsA: meshA.positions,
-          indicesA: meshA.indices,
-          positionsB: resolvedB.mesh.positions,
-          indicesB: meshBIndices,
-          operation: "intersection",
-          options,
-        });
-        if (!aIntersectB.ok) {
-          setVtkError(aIntersectB.error);
+        const aIntersectB = await runMeshOperation(
+          {
+            operation: "boolean-intersection",
+            inputs: [meshA.label, meshB.label],
+            engine: "auto",
+            parameters: options,
+            outputMode: vtkOutputMode === "replace" ? "replace" : "new-object",
+            quality: "robust",
+          },
+          { primaryMesh: meshA, secondaryMesh: meshB }
+        );
+        if (aIntersectB.status === "error" || !aIntersectB.resultMesh?.indices) {
+          setVtkError(aIntersectB.errors[0]?.message ?? "Boolean split failed.");
           setVtkBooleanStatus("Split failed.");
           return;
         }
-        const bMinusA = await vtkBoolean({
-          positionsA: resolvedB.mesh.positions,
-          indicesA: meshBIndices,
-          positionsB: meshA.positions,
-          indicesB: meshA.indices,
-          operation: "difference",
-          options,
-        });
-        if (!bMinusA.ok) {
-          setVtkError(bMinusA.error);
+        const bMinusA = await runMeshOperation(
+          {
+            operation: "boolean-difference",
+            inputs: [meshB.label, meshA.label],
+            engine: "auto",
+            parameters: options,
+            outputMode: vtkOutputMode === "replace" ? "replace" : "new-object",
+            quality: "robust",
+          },
+          { primaryMesh: meshB, secondaryMesh: meshA }
+        );
+        if (bMinusA.status === "error" || !bMinusA.resultMesh?.indices) {
+          setVtkError(bMinusA.errors[0]?.message ?? "Boolean split failed.");
           setVtkBooleanStatus("Split failed.");
           return;
         }
 
         const merged = mergeMeshData([
-          { positions: aMinusB.positions, indices: aMinusB.indices },
-          { positions: aIntersectB.positions, indices: aIntersectB.indices },
-          { positions: bMinusA.positions, indices: bMinusA.indices },
+          { positions: aMinusB.resultMesh.positions, indices: aMinusB.resultMesh.indices },
+          { positions: aIntersectB.resultMesh.positions, indices: aIntersectB.resultMesh.indices },
+          { positions: bMinusA.resultMesh.positions, indices: bMinusA.resultMesh.indices },
         ]);
         const splitMesh = applySurfaceMeshOps({
           label: `${meshA.label} split ${resolvedB.object.name}`,
@@ -53963,37 +53986,59 @@ case "mobius":
             beforeFaces,
             requestedFaces: null,
             normalsRecomputed: true,
-            warnings: ["Split merged A-B, A intersect B, and B-A into one editable mesh."],
+            warnings: [
+              "Split merged A-B, A intersect B, and B-A into one editable mesh.",
+              ...aMinusB.warnings.map((warning) => warning.message),
+              ...aIntersectB.warnings.map((warning) => warning.message),
+              ...bMinusA.warnings.map((warning) => warning.message),
+            ],
+            engine: "vtk",
+            durationMs: aMinusB.durationMs + aIntersectB.durationMs + bMinusA.durationMs,
           }
         );
         setVtkBooleanStatus("Split completed.");
         return;
       }
 
-      const operation = vtkBooleanOperation === "imprint" ? "imprint" : vtkBooleanOperation;
-      const result = await vtkBoolean({
-        positionsA: meshA.positions,
-        indicesA: meshA.indices,
-        positionsB: resolvedB.mesh.positions,
-        indicesB: meshBIndices,
-        operation,
-        options,
-      });
-      if (!result.ok) {
-        setVtkError(result.error);
+      const operation =
+        vtkBooleanOperation === "union"
+          ? "boolean-union"
+          : vtkBooleanOperation === "difference"
+            ? "boolean-difference"
+            : vtkBooleanOperation === "intersection"
+              ? "boolean-intersection"
+              : "boolean-imprint";
+      const result = await runMeshOperation(
+        {
+          operation,
+          inputs: [meshA.label, meshB.label],
+          engine: "auto",
+          parameters: options,
+          outputMode: vtkOutputMode === "replace" ? "replace" : "new-object",
+          quality: "robust",
+        },
+        { primaryMesh: meshA, secondaryMesh: meshB }
+      );
+      if (result.status === "error" || !result.resultMesh) {
+        setVtkError(result.errors[0]?.message ?? "VTK boolean failed.");
         setVtkBooleanStatus(`${vtkBooleanOperation} failed.`);
         return;
       }
 
       applyVtkResultToSurfaceMesh(
         `VTK boolean ${vtkBooleanOperation}`,
-        result,
+        result.resultMesh,
         {
           operation: `Boolean ${vtkBooleanOperation}`,
-          beforeFaces,
+          beforeFaces: result.before.faceCount,
           requestedFaces: null,
           normalsRecomputed: true,
-          warnings: vtkBooleanOperation === "imprint" ? ["Imprint returns an intersection-curve mesh."] : [],
+          warnings: [
+            ...(vtkBooleanOperation === "imprint" ? ["Imprint returns an intersection-curve mesh."] : []),
+            ...result.warnings.map((warning) => warning.message),
+          ],
+          engine: result.engine,
+          durationMs: result.durationMs,
         }
       );
       setVtkBooleanStatus(`${vtkBooleanOperation} completed.`);
@@ -54012,6 +54057,7 @@ case "mobius":
     resolveGeometrySceneMeshById,
     vtkBooleanOperation,
     vtkBooleanCurveRadius,
+    vtkOutputMode,
     surfaceMeshData?.source,
     applyVtkResultToSurfaceMesh,
     refreshCgalHealthAfterWorkerAction,
@@ -59356,25 +59402,47 @@ case "mobius":
         domainDiag: diag,
       });
 
-      const res = await runCgalMesh({
-        f: expr,
-        iso: 0,
-        domain,
-        quality: { target_edge: targetEdge, radiusBound: cgalRadiusBound },
-        verbose: cgalVerbose,
-        preflightSamples: cgalPreflightSamples,
-      });
+      const res = await runMeshOperation(
+        {
+          operation: "implicit-mesh",
+          inputs: [expr],
+          engine: "auto",
+          parameters: {
+            expr,
+            iso: 0,
+            domain,
+            targetEdge,
+            radiusBound: cgalRadiusBound,
+            verbose: cgalVerbose,
+            preflightSamples: cgalPreflightSamples,
+          },
+          outputMode: "preview",
+          quality: cgalAutoTargetEdge || cgalTriBudgetEnabled ? "fast" : "balanced",
+        },
+        {
+          implicit: {
+            expr,
+            iso: 0,
+            domain,
+            quality: { target_edge: targetEdge, radiusBound: cgalRadiusBound },
+            verbose: cgalVerbose,
+            preflightSamples: cgalPreflightSamples,
+          },
+        }
+      );
 
       console.log("[CGAL] mesh response", {
-        ok: res.ok,
-        positions: res.ok ? res.positions.length : undefined,
-        indices: res.ok ? res.indices.length : undefined,
-        error: res.ok ? undefined : res.error,
+        ok: res.status !== "error",
+        positions: res.resultMesh?.positions.length,
+        indices: res.resultMesh?.indices?.length,
+        error: res.errors[0]?.message,
+        engine: res.engine,
+        durationMs: res.durationMs,
       });
 
-      if (!res.ok) {
+      if (res.status === "error" || !res.resultMesh?.indices) {
         setMeshPerformanceLastBuildMs(performance.now() - startedAt);
-        setCgalError(res.error);
+        setCgalError(res.errors[0]?.message ?? "CGAL meshing failed.");
         return;
       }
       setMeshPerformanceLastBuildMs(performance.now() - startedAt);
@@ -59382,8 +59450,8 @@ case "mobius":
       setCgalMeshState({
         surfaceId: activeEqSurfaceId,
         expr,
-        positions: res.positions,
-        indices: res.indices,
+        positions: Array.from(res.resultMesh.positions),
+        indices: Array.from(res.resultMesh.indices),
         createdAt: Date.now(),
       });
       setCgalMeshToken((t) => t + 1);
