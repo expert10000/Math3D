@@ -109408,6 +109408,10 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     MESH_PERF_BENCHMARK_PRESETS.find((entry) => entry.id === meshPerformanceBenchmarkId)?.label ?? null;
   const formatPerfMetric = (value: number | null | undefined, digits = 1) =>
     value == null || !Number.isFinite(value) ? "n/a" : Number(value).toFixed(digits);
+  const formatSummaryTime = (value: number | null | undefined) => {
+    if (value == null || !Number.isFinite(value)) return "n/a";
+    return value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${Math.round(value).toLocaleString()} ms`;
+  };
   const meshViewerTrace = surfacePerformanceSnapshot?.trace ?? meshPipelineProfile?.firstFrameSnapshot?.trace ?? null;
   const meshPipelineProfileElapsedMs = meshPipelineProfile
     ? Math.max(0, (meshPipelineProfile.completedAt ?? meshPipelineProfile.updatedAt) - meshPipelineProfile.startedAt)
@@ -109419,6 +109423,64 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       .slice(0, 12) ?? [];
   const meshDebugRecentEvents = meshDebugMonitor.events.slice(-18).reverse();
   const meshDebugMemory = meshDebugMonitor.memory;
+  const meshSummaryTitle = (() => {
+    const filename = surfaceMeshSource?.kind === "import" ? surfaceMeshSource.filename : null;
+    const raw = filename?.trim() || surfaceMeshLabel || "Mesh";
+    return raw.toUpperCase();
+  })();
+  const meshSummarySourceLabel = surfaceMeshSource
+    ? surfaceMeshSource.kind === "import" && surfaceMeshSource.filename
+      ? formatSurfaceMeshSource(surfaceMeshSource)
+      : sourceEquation
+    : sourceEquation;
+  const meshSummaryDimensions = surfaceMeshBounds
+    ? {
+        x: Math.abs(surfaceMeshBounds.max[0] - surfaceMeshBounds.min[0]),
+        y: Math.abs(surfaceMeshBounds.max[1] - surfaceMeshBounds.min[1]),
+        z: Math.abs(surfaceMeshBounds.max[2] - surfaceMeshBounds.min[2]),
+      }
+    : null;
+  const meshSummaryMaxDimension = meshSummaryDimensions
+    ? Math.max(meshSummaryDimensions.x, meshSummaryDimensions.y, meshSummaryDimensions.z)
+    : 0;
+  const meshSummaryDimensionRows =
+    meshSummaryDimensions && meshSummaryMaxDimension > 0
+      ? ([
+          ["X", meshSummaryDimensions.x],
+          ["Y", meshSummaryDimensions.y],
+          ["Z", meshSummaryDimensions.z],
+        ] as const).map(([axis, value]) => ({
+          axis,
+          value,
+          normalized: value / meshSummaryMaxDimension,
+        }))
+      : [];
+  const meshSummaryGenus =
+    meshTopologyDetails?.closed && meshTopologyDetails.orientable
+      ? (2 * Math.max(1, meshTopologyDetails.connectedComponentCount) - meshTopologyDetails.eulerCharacteristic) / 2
+      : null;
+  const meshSummaryFullReadyMs =
+    meshPipelineProfile?.phases.find((phase) => phase.phase === "full:dedicatedViewerReady")?.lastMs ??
+    meshDebugMonitor.events
+      .slice()
+      .reverse()
+      .find((event) => event.kind === "full" && event.label.startsWith("Dedicated Full viewer ready:"))?.ms ??
+    null;
+  const meshSummaryVisibleMs = meshPipelineProfile?.firstFrameMs ?? meshPipelineProfileElapsedMs;
+  const meshSummaryFullAnalysisLabel =
+    meshSummaryFullReadyMs != null
+      ? formatSummaryTime(meshSummaryFullReadyMs)
+      : deferredSurfaceSampleSetInfo
+        ? "deferred"
+        : "n/a";
+  const meshSummaryTopologyDeferred = isMeshViewer && !meshTopologyDetails && !!deferredSurfaceSampleSetInfo;
+  const meshSummaryTopologyMuted = meshSummaryTopologyDeferred ? "deferred" : "unknown";
+  const meshSummaryComponentLabel =
+    meshInspectorStats.connectedComponentCount == null
+      ? meshSummaryTopologyMuted
+      : formatInspectorCount(meshInspectorStats.connectedComponentCount);
+  const meshSummaryEdgeLabel =
+    meshTopologyDetails?.edgeCount == null ? meshSummaryTopologyMuted : formatInspectorCount(meshTopologyDetails.edgeCount);
   const copyMeshPipelineProfile = () => {
     if (!meshPipelineProfile) return;
     const text = JSON.stringify(serializeMeshPipelineProfileRun(meshPipelineProfile), null, 2);
@@ -109513,6 +109575,141 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
         {inspectorPanelTab === "object" && (
           <>
+            {isMeshViewer && (
+              <div
+                style={{
+                  ...inspectorSectionCard,
+                  background: "#ffffff",
+                  border: "1px solid #c7d7ea",
+                  boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
+                }}
+                data-testid="mesh-summary-card"
+              >
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div style={{ display: "grid", gap: 2 }}>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 900,
+                        color: "#0f172a",
+                        overflowWrap: "anywhere",
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      {meshSummaryTitle}
+                    </div>
+                    <div style={{ fontSize: 10, color: "#64748b", overflowWrap: "anywhere" }}>
+                      {meshSummarySourceLabel}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gap: 4, fontSize: 11 }}>
+                    <div style={{ fontSize: 10, fontWeight: 900, color: "#475467", textTransform: "uppercase" }}>
+                      Geometry
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <span>Vertices</span>
+                      <strong>{formatInspectorCount(meshInspectorStats.vertexCount)}</strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <span>Triangles</span>
+                      <strong>{formatInspectorCount(meshInspectorStats.faceCount)}</strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <span>Edges</span>
+                      <strong>{meshSummaryEdgeLabel}</strong>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gap: 4, fontSize: 11 }}>
+                    <div style={{ fontSize: 10, fontWeight: 900, color: "#475467", textTransform: "uppercase" }}>
+                      Topology
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <span>Components</span>
+                      <strong>{meshSummaryComponentLabel}</strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <span>Boundary</span>
+                      <strong>
+                        {meshTopologyDetails
+                          ? meshTopologyDetails.closed
+                            ? "Closed"
+                            : "Open"
+                          : meshSummaryTopologyMuted}
+                      </strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <span>Manifold</span>
+                      <strong>
+                        {topologyNonManifoldEdgeCount == null
+                          ? meshSummaryTopologyMuted
+                          : topologyNonManifoldEdgeCount === 0
+                            ? "Manifold"
+                            : `Non-manifold (${topologyNonManifoldEdgeCount.toLocaleString()})`}
+                      </strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <span>Orientable</span>
+                      <strong>
+                        {meshTopologyDetails?.orientable == null
+                          ? meshSummaryTopologyMuted
+                          : meshTopologyDetails.orientable
+                            ? "Orientable"
+                            : "Non-orientable"}
+                      </strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <span>Genus</span>
+                      <strong>
+                        {meshSummaryGenus == null
+                          ? meshTopologyDetails
+                            ? "n/a"
+                            : meshSummaryTopologyMuted
+                          : Math.abs(meshSummaryGenus - Math.round(meshSummaryGenus)) < 1e-6
+                            ? Math.round(meshSummaryGenus).toLocaleString()
+                            : meshSummaryGenus.toFixed(2)}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gap: 4, fontSize: 11 }}>
+                    <div style={{ fontSize: 10, fontWeight: 900, color: "#475467", textTransform: "uppercase" }}>
+                      Size
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <span>Payload</span>
+                      <strong>{formatBenchmarkBytes(meshPipelineProfile?.memoryBytes)}</strong>
+                    </div>
+                    {meshSummaryDimensionRows.length ? (
+                      meshSummaryDimensionRows.map((row) => (
+                        <div key={`mesh-summary-size-${row.axis}`} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                          <span>{row.axis}</span>
+                          <strong title={`extent ${fmt(row.value)}`}>{row.normalized.toFixed(2)}</strong>
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ color: "#64748b" }}>Bounds n/a</div>
+                    )}
+                  </div>
+
+                  <div style={{ display: "grid", gap: 4, fontSize: 11 }}>
+                    <div style={{ fontSize: 10, fontWeight: 900, color: "#475467", textTransform: "uppercase" }}>
+                      Load
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <span>Visible</span>
+                      <strong>{formatSummaryTime(meshSummaryVisibleMs)}</strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <span>Full analysis</span>
+                      <strong>{meshSummaryFullAnalysisLabel}</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div style={inspectorSectionCard}>
               <div style={inspectorSectionTitle}>Mesh Result</div>
               <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
