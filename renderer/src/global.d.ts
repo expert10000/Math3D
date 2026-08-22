@@ -539,6 +539,12 @@ declare global {
         error?: string;
       }>;
     };
+    __MATH3D_E2E_MESH_OPERATION__?: {
+      run: (operation: "clean-normals" | "decimate" | "smooth") => Promise<{
+        ok: boolean;
+        error?: string;
+      }>;
+    };
     __MATH3D_GEOMETRY_SMOKE_TRIGGER__?: boolean;
   }
 }

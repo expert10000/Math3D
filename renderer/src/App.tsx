@@ -9100,6 +9100,9 @@ const BOOLEAN_OPERATION_BY_MESH_OPERATION: Partial<Record<MeshOperationUiId, Mes
 const formatMeshOperationDuration = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value) ? "n/a" : value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${Math.round(value)} ms`;
 
+const getMeshOperationRunLabel = (operation: MeshOperationUiId | null) =>
+  operation ? `Run ${MESH_OPERATION_LABELS[operation] ?? operation}` : "Run operation";
+
 const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
   testId,
   meshReady,
@@ -9239,29 +9242,50 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
         {MESH_OPERATION_CAPABILITIES.map((capability) => {
           const operation = capability.operation as MeshOperationUiId;
           const operationReady = capability.engines.some((engine) => (engine === "cgal" ? cgalReady : workerReady));
+          const needsImplicit = operation === "implicit-preview" || operation === "implicit-mesh";
+          const operationUsable = operationReady && (!needsImplicit || implicitAvailable);
           const expanded = expandedOperation === operation;
           return (
             <div key={`${testId}-${operation}`} style={{ display: "grid", gap: 4 }}>
               <button
+                data-testid={`${testId}-row-${operation}`}
                 type="button"
                 onClick={() => selectOperation(operation)}
                 aria-expanded={expanded}
+                title={needsImplicit && !implicitAvailable ? "Open an implicit surface first" : undefined}
                 style={{
-                  border: "0",
-                  background: expanded ? "#dcfce7" : "transparent",
-                  padding: "2px 3px",
+                  border: `1px solid ${expanded ? "#16a34a" : "transparent"}`,
+                  background: expanded ? "#bbf7d0" : "transparent",
+                  boxShadow: expanded ? "inset 3px 0 0 #16a34a, 0 1px 3px rgba(22, 101, 52, 0.15)" : "none",
+                  padding: "3px 5px 3px 7px",
                   display: "grid",
                   gridTemplateColumns: "minmax(100px, 1fr) auto",
                   gap: 6,
                   alignItems: "center",
                   textAlign: "left",
-                  opacity: operationReady ? 1 : 0.58,
+                  opacity: operationUsable ? 1 : 0.58,
                   cursor: "pointer",
                   borderRadius: 5,
                 }}
               >
-                <span>{MESH_OPERATION_LABELS[operation] ?? operation}</span>
+                <span style={{ fontWeight: expanded ? 800 : 600 }}>{MESH_OPERATION_LABELS[operation] ?? operation}</span>
                 <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  {expanded && (
+                    <span
+                      style={{
+                        border: "1px solid #16a34a",
+                        background: "#dcfce7",
+                        color: "#166534",
+                        borderRadius: 999,
+                        padding: "1px 6px",
+                        fontSize: 9,
+                        fontWeight: 900,
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      active
+                    </span>
+                  )}
                   {capability.engines.map((engine) => {
                     const engineReady = engine === "cgal" ? cgalReady : workerReady;
                     return (
@@ -9309,6 +9333,7 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
                     <>
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input
+                          data-testid={`${testId}-decimate-use-target-faces`}
                           type="checkbox"
                           checked={decimateUseTargetFaces}
                           onChange={(event) => onChangeDecimateUseTargetFaces(event.target.checked)}
@@ -9318,6 +9343,7 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
                       <label style={{ display: "grid", gap: 3 }}>
                         <span>reduction {decimateReduction.toFixed(2)}</span>
                         <input
+                          data-testid={`${testId}-decimate-reduction`}
                           type="range"
                           min={0}
                           max={0.95}
@@ -9330,6 +9356,7 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         target faces
                         <input
+                          data-testid={`${testId}-decimate-target-faces`}
                           type="number"
                           min={100}
                           max={1000000}
@@ -9347,6 +9374,7 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
                       <label style={{ display: "flex", alignItems: "center", gap: 5 }}>
                         iterations
                         <input
+                          data-testid={`${testId}-smooth-iterations`}
                           type="number"
                           min={1}
                           max={200}
@@ -9359,6 +9387,7 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
                       <label style={{ display: "flex", alignItems: "center", gap: 5 }}>
                         passband
                         <input
+                          data-testid={`${testId}-smooth-passband`}
                           type="number"
                           min={0.001}
                           max={1}
@@ -9370,11 +9399,34 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
                       </label>
                     </div>
                   )}
+                  {(operation === "clean-normals" || operation === "decimate" || operation === "smooth") && (
+                    <div style={{ display: "grid", gap: 3 }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input
+                          type="radio"
+                          name={`${testId}-${operation}-output-mode`}
+                          checked={outputMode === "derived"}
+                          onChange={() => onChangeOutputMode("derived")}
+                        />
+                        New object
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input
+                          type="radio"
+                          name={`${testId}-${operation}-output-mode`}
+                          checked={outputMode === "replace"}
+                          onChange={() => onChangeOutputMode("replace")}
+                        />
+                        Replace
+                      </label>
+                    </div>
+                  )}
                   {expandedIsBoolean && (
                     <>
                       <label style={{ display: "grid", gap: 3 }}>
                         Operand B
                         <select
+                          data-testid={`${testId}-boolean-operand`}
                           value={booleanOperandObjectId ?? ""}
                           onChange={(event) => onChangeBooleanOperandObjectId(event.target.value || null)}
                           disabled={booleanOperandOptions.length === 0 || operationBusy}
@@ -9394,6 +9446,7 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
                         <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           curve radius
                           <input
+                            data-testid={`${testId}-boolean-curve-radius`}
                             type="number"
                             min={0}
                             max={10}
@@ -9432,10 +9485,14 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
                   )}
                   {operation === "implicit-preview" && (
                     <>
-                      <div>Source: {implicitAvailable ? implicitExpr : "No active implicit surface"}</div>
+                      <div>Source: {implicitAvailable ? implicitExpr : "Open an implicit surface first"}</div>
+                      {!implicitAvailable && (
+                        <div style={{ color: "#b45309", fontWeight: 800 }}>Open an implicit surface first.</div>
+                      )}
                       <div>Resolution: {previewResolution}^3</div>
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input
+                          data-testid={`${testId}-implicit-preview-use-decimate`}
                           type="checkbox"
                           checked={previewUseDecimate}
                           disabled={previewBusy}
@@ -9446,6 +9503,7 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         target faces
                         <input
+                          data-testid={`${testId}-implicit-preview-target-faces`}
                           type="number"
                           min={200}
                           max={500000}
@@ -9464,10 +9522,14 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
                   )}
                   {operation === "implicit-mesh" && (
                     <>
-                      <div>Source: {implicitAvailable ? implicitExpr : "No active implicit surface"}</div>
+                      <div>Source: {implicitAvailable ? implicitExpr : "Open an implicit surface first"}</div>
+                      {!implicitAvailable && (
+                        <div style={{ color: "#b45309", fontWeight: 800 }}>Open an implicit surface first.</div>
+                      )}
                       <div>Worker: {cgalStatusText}</div>
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input
+                          data-testid={`${testId}-implicit-auto-edge`}
                           type="checkbox"
                           checked={cgalAutoTargetEdge}
                           onChange={(event) => onChangeCgalAutoTargetEdge(event.target.checked)}
@@ -9477,6 +9539,7 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         target edge
                         <input
+                          data-testid={`${testId}-implicit-target-edge`}
                           type="number"
                           min={0.01}
                           max={10}
@@ -9489,6 +9552,7 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
                       </label>
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input
+                          data-testid={`${testId}-implicit-triangle-budget-enabled`}
                           type="checkbox"
                           checked={cgalTriBudgetEnabled}
                           onChange={(event) => onChangeCgalTriBudgetEnabled(event.target.checked)}
@@ -9498,6 +9562,7 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         budget
                         <input
+                          data-testid={`${testId}-implicit-triangle-budget`}
                           type="number"
                           min={1000}
                           max={5000000}
@@ -9514,8 +9579,14 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
                       {cgalError && <div style={{ color: "#b42318" }}>{cgalError}</div>}
                     </>
                   )}
-                  <button type="button" onClick={runExpandedOperation} disabled={!expandedCanRun} style={{ justifySelf: "start" }}>
-                    {operationBusy ? "Working..." : "Run"}
+                  <button
+                    data-testid={`${testId}-run-${operation}`}
+                    type="button"
+                    onClick={runExpandedOperation}
+                    disabled={!expandedCanRun}
+                    style={{ justifySelf: "start", fontWeight: 800 }}
+                  >
+                    {operationBusy ? "Working..." : getMeshOperationRunLabel(expandedOperation)}
                   </button>
                 </div>
               )}
@@ -54140,6 +54211,33 @@ case "mobius":
   }, []);
 
   const getMeshForVtk = useCallback(() => {
+    const toVtkMeshInput = (mesh: SurfaceMeshData | null | undefined) => {
+      if (!mesh?.positions.length) return null;
+      const vertexCount = Math.floor(mesh.positions.length / 3);
+      const indices =
+        mesh.indices?.length
+          ? mesh.indices
+          : vertexCount >= 3
+            ? (() => {
+                const sequential = new Uint32Array(vertexCount);
+                for (let i = 0; i < vertexCount; i += 1) sequential[i] = i;
+                return sequential;
+              })()
+            : null;
+      if (!indices?.length) return null;
+      return {
+        positions: mesh.positions,
+        indices,
+        normals: mesh.normals ?? null,
+        label: mesh.label ?? buildActiveMeshLabel(),
+        source: mesh.source,
+      };
+    };
+    const cachedFullMesh = largeSurfaceMeshResolutionCacheRef.current?.fullMesh ?? null;
+    const cachedMesh = toVtkMeshInput(cachedFullMesh);
+    if (cachedMesh) return cachedMesh;
+    const activeMesh = toVtkMeshInput(surfaceMeshData);
+    if (activeMesh) return { ...activeMesh, label: buildActiveMeshLabel() };
     const meshData = surfaceSampleSet?.meshData ?? [];
     if (!meshData.length) return null;
     const merged = mergeMeshData(meshData);
@@ -54150,7 +54248,7 @@ case "mobius":
       label: buildActiveMeshLabel(),
       source: surfaceMeshData?.source,
     };
-  }, [surfaceSampleSet, buildActiveMeshLabel, surfaceMeshData?.source]);
+  }, [surfaceMeshData, surfaceSampleSet, buildActiveMeshLabel]);
 
   const applyVtkResultToSurfaceMesh = useCallback(
     (
@@ -54463,6 +54561,73 @@ case "mobius":
     vtkOutputMode,
     applyVtkResultToSurfaceMesh,
     refreshCgalHealthAfterWorkerAction,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || (!isDev && !window.appRuntime?.e2e)) return;
+    window.__MATH3D_E2E_MESH_OPERATION__ = {
+      run: async (operation) => {
+        try {
+          const mesh = getMeshForVtk();
+          if (!mesh) {
+            const cached = largeSurfaceMeshResolutionCacheRef.current?.fullMesh ?? null;
+            const sampleMeshData = surfaceSampleSet?.meshData ?? [];
+            return {
+              ok: false,
+              error: `Surface mesh not ready yet. cacheV=${cached ? Math.floor(cached.positions.length / 3) : 0} surfaceV=${
+                surfaceMeshData ? Math.floor(surfaceMeshData.positions.length / 3) : 0
+              } sampleParts=${sampleMeshData.length}`,
+            };
+          }
+          const parameters =
+            operation === "clean-normals"
+              ? { computeNormals: vtkCleanComputeNormals }
+              : operation === "decimate"
+                ? vtkUseTargetFaces
+                  ? { targetFaces: vtkDecimateTargetFaces, computeNormals: true }
+                  : { targetReduction: vtkDecimateReduction, computeNormals: true }
+                : operation === "smooth"
+                  ? { iterations: vtkSmoothIterations, passband: vtkSmoothPassband, computeNormals: true }
+                  : null;
+          if (!parameters) return { ok: false, error: `Unsupported mesh operation: ${operation}` };
+          const result = await runMeshOperation(
+            {
+              operation,
+              inputs: [mesh.label],
+              engine: "auto",
+              parameters,
+              outputMode: vtkOutputMode === "replace" ? "replace" : "new-object",
+              quality: "balanced",
+            },
+            { primaryMesh: mesh }
+          );
+          setMeshOperationLastResult(summarizeMeshOperationResult(result, vtkOutputMode === "replace" ? "replace" : "new-object"));
+          if (result.status === "error") {
+            return { ok: false, error: result.errors[0]?.message ?? `${operation} failed.` };
+          }
+          return { ok: true };
+        } catch (error) {
+          return { ok: false, error: String((error as any)?.message ?? error) };
+        }
+      },
+    };
+    return () => {
+      if (window.__MATH3D_E2E_MESH_OPERATION__?.run) {
+        delete window.__MATH3D_E2E_MESH_OPERATION__;
+      }
+    };
+  }, [
+    getMeshForVtk,
+    isDev,
+    vtkCleanComputeNormals,
+    vtkDecimateReduction,
+    vtkDecimateTargetFaces,
+    vtkOutputMode,
+    vtkSmoothIterations,
+    vtkSmoothPassband,
+    vtkUseTargetFaces,
+    surfaceMeshData,
+    surfaceSampleSet,
   ]);
 
   const handleVtkBoolean = useCallback(async () => {
@@ -65761,6 +65926,8 @@ case "mobius":
                   pythonWorkerLogPath={cgalHealthState?.logsPath ?? null}
                   vtkBusy={vtkBusy}
                   vtkError={vtkError}
+                  vtkCleanComputeNormals={vtkCleanComputeNormals}
+                  onChangeVtkCleanComputeNormals={setVtkCleanComputeNormals}
                   vtkDecimateReduction={vtkDecimateReduction}
                   onChangeVtkDecimateReduction={setVtkDecimateReduction}
                   vtkDecimateTargetFaces={vtkDecimateTargetFaces}
@@ -65785,9 +65952,6 @@ case "mobius":
                   onRunVtkBoolean={handleVtkBoolean}
                   vtkOutputMode={vtkOutputMode}
                   onChangeVtkOutputMode={setVtkOutputMode}
-                  vtkOperationPresets={geometryOperationPresets}
-                  onSaveVtkOperationPreset={handleSaveGeometryOperationPreset}
-                  onApplyVtkOperationPreset={handleApplyGeometryOperationPreset}
                   generateSurfaceStatus={generateSurfaceStatus}
                   vtkPreviewBusy={vtkPreviewBusy}
                   vtkPreviewError={vtkPreviewError}
@@ -100912,6 +101076,8 @@ type SurfacesLeftPanelProps = {
   pythonWorkerLogPath: string | null;
   vtkBusy: boolean;
   vtkError: string | null;
+  vtkCleanComputeNormals: boolean;
+  onChangeVtkCleanComputeNormals: (v: boolean) => void;
   vtkDecimateReduction: number;
   onChangeVtkDecimateReduction: (v: number) => void;
   vtkDecimateTargetFaces: number;
@@ -100936,9 +101102,6 @@ type SurfacesLeftPanelProps = {
   onRunVtkBoolean: () => void | Promise<void>;
   vtkOutputMode: "replace" | "derived";
   onChangeVtkOutputMode: (mode: "replace" | "derived") => void;
-  vtkOperationPresets: GeometryOperationPreset[];
-  onSaveVtkOperationPreset: () => void;
-  onApplyVtkOperationPreset: (presetId: string) => void;
   generateSurfaceStatus: GenerateSurfaceStatus;
   vtkPreviewBusy: boolean;
   vtkPreviewError: string | null;
@@ -101621,6 +101784,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   pythonWorkerLogPath,
   vtkBusy,
   vtkError,
+  vtkCleanComputeNormals,
+  onChangeVtkCleanComputeNormals,
   vtkDecimateReduction,
   onChangeVtkDecimateReduction,
   vtkDecimateTargetFaces,
@@ -101645,9 +101810,6 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onRunVtkBoolean,
   vtkOutputMode,
   onChangeVtkOutputMode,
-  vtkOperationPresets,
-  onSaveVtkOperationPreset,
-  onApplyVtkOperationPreset,
   generateSurfaceStatus,
   vtkPreviewBusy,
   vtkPreviewError,
@@ -102207,23 +102369,6 @@ onChangeImplicitExpr,
   const generateStatusText = vtkPreviewBusy ? "generate running..." : generateSurfaceStatus.message;
   const generateStatusColor =
     generateStateLabel === "success" ? "#1f894f" : generateStateLabel === "error" ? "#b42318" : "#556";
-  const meshOperationEngineReady = (engine: ResolvedMeshOperationEngine) =>
-    engine === "vtk" ? vtkAvailable && pythonWorkerAvailable : cgalReady;
-  const meshOperationFormatTime = (value: number | null | undefined) =>
-    value == null || !Number.isFinite(value) ? "n/a" : value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${Math.round(value)} ms`;
-  const meshOperationRows = MESH_OPERATION_CAPABILITIES.map((capability) => ({
-    ...capability,
-    label: MESH_OPERATION_LABELS[capability.operation] ?? capability.operation,
-    ready: capability.engines.some(meshOperationEngineReady),
-  }));
-  const meshOperationStatusColor =
-    meshOperationLastResult?.status === "error"
-      ? "#b42318"
-      : meshOperationLastResult?.status === "warning"
-        ? "#b45309"
-        : meshOperationLastResult
-          ? "#166534"
-          : "#64748b";
   const fmtTriEstimate = (value: number) => {
     if (!Number.isFinite(value) || value <= 0) return "0";
     if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
@@ -102271,8 +102416,6 @@ onChangeImplicitExpr,
   useEffect(() => {
     if (surfaceMeshBenchmarkBrowserOpen) setMeshToolsTab("surface_mesh");
   }, [surfaceMeshBenchmarkBrowserOpen]);
-  const vtkOpsDisabled = vtkBusy || !pythonWorkerAvailable;
-  const vtkBooleanDisabled = vtkOpsDisabled || !meshReady;
   const zPlaneRef = useRef<PlanePlotHandle | null>(null);
   const wPlaneRef = useRef<PlanePlotHandle | null>(null);
   const scalarRePlaneRef = useRef<PlanePlotHandle | null>(null);
@@ -106191,315 +106334,74 @@ onChangeImplicitExpr,
             )}
           </div>
 
-          <div
-            style={{
-              marginTop: 10,
-              padding: "8px 9px",
-              border: "1px solid #c7d7ea",
-              borderRadius: 8,
-              background: "#f8fbff",
-              display: "grid",
-              gap: 8,
-            }}
-            data-testid="mesh-operation-registry"
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-              <div style={{ fontSize: 12, fontWeight: 800 }}>Operation registry</div>
-              <div style={{ fontSize: 10, color: pythonWorkerAvailable ? "#166534" : "#b42318", fontWeight: 700 }}>
-                {pythonWorkerAvailable ? "worker ready" : "worker unavailable"}
-              </div>
-            </div>
-            <div style={{ display: "grid", gap: 4, fontSize: 11 }}>
-              {meshOperationRows.map((row) => (
-                <div
-                  key={`mesh-operation-capability-${row.operation}`}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr auto",
-                    gap: 8,
-                    alignItems: "center",
-                    opacity: row.ready ? 1 : 0.58,
-                  }}
-                >
-                  <span>{row.label}</span>
-                  <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    {row.engines.map((engine) => (
-                      <span
-                        key={`${row.operation}-${engine}`}
-                        style={{
-                          border: `1px solid ${meshOperationEngineReady(engine) ? "#86efac" : "#e2e8f0"}`,
-                          background: meshOperationEngineReady(engine) ? "#f0fdf4" : "#f8fafc",
-                          color: meshOperationEngineReady(engine) ? "#166534" : "#64748b",
-                          borderRadius: 999,
-                          padding: "1px 6px",
-                          fontSize: 10,
-                          fontWeight: 800,
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        {engine}
-                      </span>
-                    ))}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <div
-              style={{
-                borderTop: "1px solid #dbe4ee",
-                paddingTop: 7,
-                display: "grid",
-                gap: 4,
-                fontSize: 11,
-              }}
-              data-testid="mesh-operation-last-result"
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                <strong>Last operation</strong>
-                <strong style={{ color: meshOperationStatusColor }}>
-                  {meshOperationLastResult ? meshOperationLastResult.status : "none"}
-                </strong>
-              </div>
-              {meshOperationLastResult ? (
-                <>
-                  <div>
-                    {meshOperationLastResult.label} · {meshOperationLastResult.engine.toUpperCase()} ·{" "}
-                    {meshOperationFormatTime(meshOperationLastResult.durationMs)}
-                  </div>
-                  <div>
-                    Faces: {meshOperationLastResult.beforeFaces.toLocaleString()} {"->"}{" "}
-                    {meshOperationLastResult.afterFaces == null
-                      ? "n/a"
-                      : meshOperationLastResult.afterFaces.toLocaleString()}
-                  </div>
-                  <div>Output: {meshOperationLastResult.outputMode}</div>
-                  {meshOperationLastResult.warnings.length > 0 && (
-                    <div style={{ color: "#b45309" }}>
-                      {meshOperationLastResult.warnings.slice(0, 2).join("; ")}
-                    </div>
-                  )}
-                  {meshOperationLastResult.errors.length > 0 && (
-                    <div style={{ color: "#b42318" }}>{meshOperationLastResult.errors[0]}</div>
-                  )}
-                </>
-              ) : (
-                <div style={{ color: "#64748b" }}>Run any mesh operation to record engine, status, and timing.</div>
-              )}
-            </div>
-          </div>
-
-          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Repair</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
-            <button type="button" onClick={onVtkCleanNormals} disabled={!meshReady || vtkOpsDisabled}>
-              {vtkBusy ? "Working..." : "Clean mesh"}
-            </button>
-            <button type="button" onClick={onRecomputeSurfaceMeshNormals} disabled={!meshReady || vtkBusy}>
-              Recompute normals
-            </button>
-            <button type="button" onClick={onTriangulateSurfaceMesh} disabled={!meshReady || vtkBusy}>
-              Triangulate
-            </button>
-          </div>
-
-          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Geometry processing</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
-            <button type="button" onClick={onVtkSmooth} disabled={!meshReady || vtkOpsDisabled}>
-              {vtkBusy ? "Working..." : "Smooth"}
-            </button>
-            <button type="button" onClick={onVtkDecimate} disabled={!meshReady || vtkOpsDisabled}>
-              {vtkBusy ? "Working..." : "Decimate"}
-            </button>
-            <button type="button" disabled title="Clip op is not wired yet.">
-              Clip
-            </button>
-          </div>
-
-          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Extraction</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
-            <button type="button" disabled title="Slice op is not wired yet.">
-              Slice
-            </button>
-            <button type="button" disabled title="Contour extraction is not wired yet.">
-              Extract contours
-            </button>
-          </div>
-
-          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Robust boolean</div>
-          <div style={{ display: "grid", gap: 6, marginTop: 6, fontSize: 11 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              Operation
-              <select
-                value={vtkBooleanOperation}
-                onChange={(e) => onChangeVtkBooleanOperation(e.target.value as MeshBooleanOperation)}
-                disabled={vtkBooleanDisabled}
-                style={{ minWidth: 140 }}
-              >
-                <option value="union">union</option>
-                <option value="difference">difference</option>
-                <option value="intersection">intersection</option>
-                <option value="split">split</option>
-                <option value="imprint">imprint / intersection curve</option>
-              </select>
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              Operand B
-              <select
-                value={vtkBooleanOperandObjectId ?? ""}
-                onChange={(e) => onChangeVtkBooleanOperandObjectId(e.target.value || null)}
-                disabled={vtkBooleanDisabled || vtkBooleanOperandOptions.length === 0}
-                style={{ minWidth: 180 }}
-              >
-                {vtkBooleanOperandOptions.length === 0 ? (
-                  <option value="">No Geometry objects</option>
-                ) : (
-                  vtkBooleanOperandOptions.map((entry) => (
-                    <option key={entry.id} value={entry.id}>
-                      {entry.name}
-                    </option>
-                  ))
-                )}
-              </select>
-            </label>
-            {vtkBooleanOperation === "imprint" && (
-              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                Curve radius
-                <input
-                  type="number"
-                  min={0}
-                  max={10}
-                  step={0.01}
-                  value={vtkBooleanCurveRadius}
-                  onChange={(e) => {
-                    const value = Number(e.target.value);
-                    if (Number.isFinite(value)) onChangeVtkBooleanCurveRadius(Math.max(0, Math.min(10, value)));
-                  }}
-                  disabled={vtkBooleanDisabled}
-                  style={{ width: 90 }}
-                />
-              </label>
-            )}
-            <button
-              type="button"
-              onClick={() => void onRunVtkBoolean()}
-              disabled={vtkBooleanDisabled || !vtkBooleanOperandObjectId}
-              style={{ justifySelf: "start" }}
-            >
-              {vtkBusy ? "Working..." : "Run robust boolean"}
-            </button>
-            <div style={{ color: "#556" }}>
-              Source A: current SurfaceMesh. Source B: selected Geometry object. Output: SurfaceMesh result.
-            </div>
-            {vtkBooleanStatus && <div style={{ color: "#0a66c2" }}>{vtkBooleanStatus}</div>}
-          </div>
-
-          <div style={{ fontSize: 11, fontWeight: 600, marginTop: 10, marginBottom: 4 }}>Decimate</div>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-            <input
-              type="checkbox"
-              checked={vtkUseTargetFaces}
-              onChange={(e) => onToggleVtkUseTargetFaces(e.target.checked)}
-              disabled={vtkOpsDisabled}
+          <div style={{ marginTop: 10 }}>
+            <MeshOperationsCompactCard
+              testId="mesh-operation-registry"
+              meshReady={meshReady}
+              workerReady={vtkAvailable && pythonWorkerAvailable}
+              workerStatusText={pythonWorkerStatusMessage ?? "worker unavailable"}
+              cgalReady={cgalReady}
+              cgalStatusText={cgalStatusText}
+              busy={vtkBusy}
+              cgalBusy={cgalBusy}
+              lastResult={meshOperationLastResult}
+              cleanComputeNormals={vtkCleanComputeNormals}
+              onChangeCleanComputeNormals={onChangeVtkCleanComputeNormals}
+              onClean={onVtkCleanNormals}
+              decimateReduction={vtkDecimateReduction}
+              onChangeDecimateReduction={onChangeVtkDecimateReduction}
+              decimateTargetFaces={vtkDecimateTargetFaces}
+              onChangeDecimateTargetFaces={onChangeVtkDecimateTargetFaces}
+              decimateUseTargetFaces={vtkUseTargetFaces}
+              onChangeDecimateUseTargetFaces={onToggleVtkUseTargetFaces}
+              onDecimate={onVtkDecimate}
+              smoothIterations={vtkSmoothIterations}
+              onChangeSmoothIterations={onChangeVtkSmoothIterations}
+              smoothPassband={vtkSmoothPassband}
+              onChangeSmoothPassband={onChangeVtkSmoothPassband}
+              onSmooth={onVtkSmooth}
+              booleanOperation={vtkBooleanOperation}
+              onChangeBooleanOperation={onChangeVtkBooleanOperation}
+              booleanOperandObjectId={vtkBooleanOperandObjectId}
+              onChangeBooleanOperandObjectId={onChangeVtkBooleanOperandObjectId}
+              booleanOperandOptions={vtkBooleanOperandOptions}
+              booleanCurveRadius={vtkBooleanCurveRadius}
+              onChangeBooleanCurveRadius={onChangeVtkBooleanCurveRadius}
+              booleanStatus={vtkBooleanStatus}
+              onRunBoolean={onRunVtkBoolean}
+              outputMode={vtkOutputMode}
+              onChangeOutputMode={onChangeVtkOutputMode}
+              implicitAvailable={isImplicitAny}
+              implicitExpr={implicitExprTrimmed}
+              implicitResolution={implicitResolution}
+              previewBusy={vtkPreviewBusy}
+              previewError={vtkPreviewError}
+              previewTargetFaces={vtkPreviewTargetFaces}
+              previewUseDecimate={vtkPreviewUseDecimate}
+              onChangePreviewTargetFaces={onChangeVtkPreviewTargetFaces}
+              onChangePreviewUseDecimate={onChangeVtkPreviewUseDecimate}
+              onRunPreview={onRunVtkPreview}
+              cgalTargetEdge={cgalTargetEdge}
+              onChangeCgalTargetEdge={onChangeCgalTargetEdge}
+              cgalAutoTargetEdge={cgalAutoTargetEdge}
+              onChangeCgalAutoTargetEdge={onChangeCgalAutoTargetEdge}
+              cgalTriBudgetEnabled={cgalTriBudgetEnabled}
+              onChangeCgalTriBudgetEnabled={onChangeCgalTriBudgetEnabled}
+              cgalTriBudget={cgalTriBudget}
+              onChangeCgalTriBudget={onChangeCgalTriBudget}
+              cgalEffectiveEdge={cgalEffectiveEdge}
+              cgalEstimatedTris={cgalEstimatedTris}
+              cgalError={cgalError}
+              onRunCgalMesh={onRunCgalMesh}
+              onOpenResult={() => setMeshToolsTab("surface_mesh")}
+              canSendToGeometry={meshReady}
+              onSendToGeometry={onConvertToMesh}
             />
-            Use target faces
-          </label>
-          <div style={{ marginTop: 6 }}>
-            <div style={{ fontSize: 10, color: "#555" }}>
-              Reduction {vtkDecimateReduction.toFixed(2)}
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={0.95}
-              step={0.01}
-              value={vtkDecimateReduction}
-              onChange={(e) => onChangeVtkDecimateReduction(Number(e.target.value))}
-              disabled={vtkUseTargetFaces || vtkOpsDisabled}
-              style={{ width: 180 }}
-            />
-          </div>
-          <div style={{ marginTop: 6 }}>
-            <div style={{ fontSize: 10, color: "#555" }}>Target faces</div>
-            <input
-              type="number"
-              min={100}
-              max={1000000}
-              step={100}
-              value={vtkDecimateTargetFaces}
-              onChange={(e) => onChangeVtkDecimateTargetFaces(Number(e.target.value))}
-              disabled={!vtkUseTargetFaces || vtkOpsDisabled}
-              style={{ width: 120 }}
-            />
-          </div>
-
-          <div style={{ fontSize: 11, fontWeight: 600, marginTop: 10, marginBottom: 4 }}>Smooth</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              Iterations
-              <input
-                type="number"
-                min={1}
-                max={200}
-                step={1}
-                value={vtkSmoothIterations}
-                onChange={(e) => onChangeVtkSmoothIterations(Number(e.target.value))}
-                disabled={vtkOpsDisabled}
-                style={{ width: 60 }}
-              />
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              Passband
-              <input
-                type="number"
-                min={0.001}
-                max={1}
-                step={0.01}
-                value={vtkSmoothPassband}
-                onChange={(e) => onChangeVtkSmoothPassband(Number(e.target.value))}
-                disabled={vtkOpsDisabled}
-                style={{ width: 70 }}
-              />
-            </label>
-          </div>
-
-          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Output mode</div>
-          <div style={{ display: "grid", gap: 4, marginTop: 6, fontSize: 11 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input
-                type="radio"
-                name="vtk-output-mode"
-                checked={vtkOutputMode === "replace"}
-                onChange={() => onChangeVtkOutputMode("replace")}
-              />
-              Replace current mesh
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input
-                type="radio"
-                name="vtk-output-mode"
-                checked={vtkOutputMode === "derived"}
-                onChange={() => onChangeVtkOutputMode("derived")}
-              />
-              Create derived result
-            </label>
-            <button type="button" onClick={onSaveVtkOperationPreset} style={{ justifySelf: "start" }}>
-              Save operation preset
-            </button>
-            {vtkOperationPresets.slice(0, 4).map((preset) => (
-              <button
-                key={`vtk-operation-preset-${preset.id}`}
-                type="button"
-                onClick={() => onApplyVtkOperationPreset(preset.id)}
-                style={{ justifySelf: "start", fontSize: 11 }}
-                title={new Date(preset.createdAt).toLocaleString()}
-              >
-                Apply: {preset.name}
-              </button>
-            ))}
           </div>
           <div style={{ marginTop: 4, fontSize: 10, opacity: 0.72 }}>
-            Result details appear in the right Inspector under Operation result. Presets persist after reload.
+            Result details appear in the right Inspector under Operation result.
           </div>
-        {vtkError && <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{vtkError}</div>}
+          {vtkError && <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{vtkError}</div>}
         </div>
       </div>
       )}
