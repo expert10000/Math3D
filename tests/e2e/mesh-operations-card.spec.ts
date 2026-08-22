@@ -8,7 +8,24 @@ type MeshBenchmarkE2EHook = {
 };
 
 type MeshOperationE2EHook = {
-  run: (operation: "clean-normals" | "decimate" | "smooth") => Promise<{ ok: boolean; error?: string }>;
+  run: (
+    operation:
+      | "clean-normals"
+      | "decimate"
+      | "smooth"
+      | "implicit-preview"
+      | "implicit-mesh"
+      | "boolean-union"
+      | "boolean-difference"
+      | "boolean-intersection"
+      | "boolean-imprint",
+    options?: {
+      implicitExpr?: string;
+      resolution?: number;
+      targetFaces?: number;
+      targetEdge?: number;
+    }
+  ) => Promise<{ ok: boolean; error?: string }>;
 };
 
 async function firstVisible(locator: Locator): Promise<Locator> {
@@ -60,8 +77,31 @@ async function openWorkspaceOperationsCard(page: Page): Promise<Locator> {
   return card;
 }
 
+async function runMeshOperationHook(
+  page: Page,
+  operation: Parameters<MeshOperationE2EHook["run"]>[0],
+  options?: Parameters<MeshOperationE2EHook["run"]>[1]
+): Promise<{ ok: boolean; error?: string }> {
+  return page.evaluate(
+    async ({ operation: operationName, options: operationOptions }) => {
+      const hook = (window as Window & { __MATH3D_E2E_MESH_OPERATION__?: MeshOperationE2EHook }).__MATH3D_E2E_MESH_OPERATION__;
+      if (!hook) return { ok: false, error: "Mesh operation E2E hook unavailable." };
+      return hook.run(operationName, operationOptions);
+    },
+    { operation, options }
+  );
+}
+
+async function expectLastOperation(card: Locator, label: RegExp): Promise<void> {
+  const lastResult = card.getByTestId("mesh-workspace-operation-registry-last-result");
+  await expect(lastResult).toContainText(label, { timeout: 90_000 });
+  await expect(lastResult).toContainText(/success|warning/i, { timeout: 90_000 });
+  await expect(lastResult).toContainText(/Vertices:/i);
+  await expect(lastResult).toContainText(/Triangles:/i);
+}
+
 test.describe("Mesh Operations card", () => {
-  test.setTimeout(150_000);
+  test.setTimeout(240_000);
 
   let ctx: LaunchedSurfaceApp | null = null;
 
@@ -78,6 +118,11 @@ test.describe("Mesh Operations card", () => {
     await loadBenchmarkModel(page, "3dbenchy");
 
     const card = await openWorkspaceOperationsCard(page);
+
+    for (const preset of ["vtk-polish", "vtk-simplify", "vtk-smooth", "vtk-boolean", "cgal-implicit"]) {
+      await card.getByTestId(`mesh-workspace-operation-registry-preset-${preset}`).click();
+      await expect(card.locator("[aria-expanded=\"true\"]")).toBeVisible();
+    }
 
     await card.getByTestId("mesh-workspace-operation-registry-row-clean-normals").click();
     await expect(card.getByTestId("mesh-workspace-operation-registry-run-clean-normals")).toHaveText("Run Clean normals");
@@ -112,14 +157,73 @@ test.describe("Mesh Operations card", () => {
     if (!(await runDecimate.isEnabled())) {
       test.skip(true, "VTK worker is not available in this environment.");
     }
-    const runResult = await page.evaluate(async () => {
-      const hook = (window as Window & { __MATH3D_E2E_MESH_OPERATION__?: MeshOperationE2EHook }).__MATH3D_E2E_MESH_OPERATION__;
-      if (!hook) return { ok: false, error: "Mesh operation E2E hook unavailable." };
-      return hook.run("decimate");
-    });
+    const runResult = await runMeshOperationHook(page, "decimate");
     expect(runResult.ok, runResult.error).toBeTruthy();
-    const lastResult = card.getByTestId("mesh-workspace-operation-registry-last-result");
-    await expect(lastResult).toContainText(/Decimate/i, { timeout: 90_000 });
-    await expect(lastResult).toContainText(/success|warning/i, { timeout: 90_000 });
+    await expectLastOperation(card, /Decimate/i);
+  });
+
+  test("runs Smooth on Bunny and Armadillo through the shared operation layer", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+
+    const card = await openWorkspaceOperationsCard(page);
+    await card.getByTestId("mesh-workspace-operation-registry-row-smooth").click();
+    await card.getByTestId("mesh-workspace-operation-registry-smooth-iterations").fill("3");
+    await card.getByTestId("mesh-workspace-operation-registry-smooth-passband").fill("0.10");
+
+    for (const benchmark of ["stanford-bunny", "armadillo"]) {
+      await loadBenchmarkModel(page, benchmark);
+      const result = await runMeshOperationHook(page, "smooth");
+      expect(result.ok, `${benchmark}: ${result.error ?? "Smooth failed"}`).toBeTruthy();
+      await expectLastOperation(card, /Smooth/i);
+    }
+  });
+
+  test("runs Boolean and VTK implicit preview through the shared operation layer", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+    await loadBenchmarkModel(page, "cube-obj");
+
+    const card = await openWorkspaceOperationsCard(page);
+
+    for (const operation of ["boolean-union", "boolean-difference"] as const) {
+      await card.getByTestId(`mesh-workspace-operation-registry-row-${operation}`).click();
+      const result = await runMeshOperationHook(page, operation);
+      expect(result.ok, `${operation}: ${result.error ?? "Boolean failed"}`).toBeTruthy();
+      await expectLastOperation(card, new RegExp(operation === "boolean-union" ? "Boolean union" : "Boolean difference", "i"));
+    }
+
+    await card.getByTestId("mesh-workspace-operation-registry-row-implicit-preview").click();
+    const preview = await runMeshOperationHook(page, "implicit-preview", {
+      implicitExpr: "x*x + y*y + z*z - 1",
+      resolution: 20,
+      targetFaces: 1500,
+    });
+    expect(preview.ok, preview.error).toBeTruthy();
+    await expectLastOperation(card, /Implicit preview/i);
+  });
+
+  test("runs CGAL implicit mesh through the shared operation layer when available", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+
+    const card = await openWorkspaceOperationsCard(page);
+
+    await card.getByTestId("mesh-workspace-operation-registry-row-implicit-mesh").click();
+    const cgal = await runMeshOperationHook(page, "implicit-mesh", {
+      implicitExpr: "x*x + y*y + z*z - 1",
+      targetEdge: 0.45,
+    });
+    if (!cgal.ok && /unavailable|not available|Python worker|CGAL/i.test(cgal.error ?? "")) {
+      test.skip(true, `CGAL worker unavailable: ${cgal.error}`);
+    }
+    expect(cgal.ok, cgal.error).toBeTruthy();
+    await expectLastOperation(card, /Implicit mesh/i);
   });
 });

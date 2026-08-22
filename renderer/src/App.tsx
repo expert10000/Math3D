@@ -360,6 +360,7 @@ import {
   MESH_OPERATION_CAPABILITIES,
   runMeshOperation,
   type MeshOperationId,
+  type MeshOperationMeshInput,
   type MeshOperationResult,
   type MeshOperationStatus,
   type ResolvedMeshOperationEngine,
@@ -1816,7 +1817,9 @@ type MeshOperationResultSummary = {
   status: MeshOperationStatus;
   engine: ResolvedMeshOperationEngine;
   sourceIds: string[];
+  beforeVertices: number;
   beforeFaces: number;
+  afterVertices: number | null;
   afterFaces: number | null;
   durationMs: number;
   outputMode: "new-object" | "replace" | "preview";
@@ -1848,7 +1851,9 @@ function summarizeMeshOperationResult(
     status: result.status,
     engine: result.engine,
     sourceIds: result.sourceIds,
+    beforeVertices: result.before.vertexCount,
     beforeFaces: result.before.faceCount,
+    afterVertices: result.after?.vertexCount ?? null,
     afterFaces: result.after?.faceCount ?? null,
     durationMs: result.durationMs,
     outputMode,
@@ -9103,6 +9108,46 @@ const formatMeshOperationDuration = (value: number | null | undefined) =>
 const getMeshOperationRunLabel = (operation: MeshOperationUiId | null) =>
   operation ? `Run ${MESH_OPERATION_LABELS[operation] ?? operation}` : "Run operation";
 
+type MeshOperationPresetId = "vtk-polish" | "vtk-simplify" | "vtk-smooth" | "vtk-boolean" | "cgal-implicit";
+
+const MESH_OPERATION_PRESETS: Array<{
+  id: MeshOperationPresetId;
+  label: string;
+  description: string;
+  operation: MeshOperationUiId;
+}> = [
+  {
+    id: "vtk-polish",
+    label: "VTK polish",
+    description: "Clean normals into a new mesh object.",
+    operation: "clean-normals",
+  },
+  {
+    id: "vtk-simplify",
+    label: "VTK simplify",
+    description: "Decimate to a smaller editable mesh.",
+    operation: "decimate",
+  },
+  {
+    id: "vtk-smooth",
+    label: "VTK smooth",
+    description: "Smooth mesh surface while preserving topology.",
+    operation: "smooth",
+  },
+  {
+    id: "vtk-boolean",
+    label: "VTK boolean",
+    description: "Prepare a two-mesh union/difference workflow.",
+    operation: "boolean-union",
+  },
+  {
+    id: "cgal-implicit",
+    label: "CGAL implicit",
+    description: "Mesh an active implicit surface.",
+    operation: "implicit-mesh",
+  },
+];
+
 const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
   testId,
   meshReady,
@@ -9180,6 +9225,40 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
     if (booleanOperationForRow) onChangeBooleanOperation(booleanOperationForRow);
     setExpandedOperation((current) => (current === operation ? null : operation));
   };
+  const applyPreset = (preset: MeshOperationPresetId) => {
+    if (preset === "vtk-polish") {
+      onChangeCleanComputeNormals(true);
+      onChangeOutputMode("derived");
+      setExpandedOperation("clean-normals");
+      return;
+    }
+    if (preset === "vtk-simplify") {
+      onChangeDecimateUseTargetFaces(true);
+      onChangeDecimateTargetFaces(Math.max(500, Math.min(20000, decimateTargetFaces)));
+      onChangeOutputMode("derived");
+      setExpandedOperation("decimate");
+      return;
+    }
+    if (preset === "vtk-smooth") {
+      onChangeSmoothIterations(Math.max(3, smoothIterations));
+      onChangeSmoothPassband(Math.max(0.01, Math.min(0.2, smoothPassband)));
+      onChangeOutputMode("derived");
+      setExpandedOperation("smooth");
+      return;
+    }
+    if (preset === "vtk-boolean") {
+      onChangeBooleanOperation("union");
+      onChangeOutputMode("derived");
+      setExpandedOperation("boolean-union");
+      return;
+    }
+    if (preset === "cgal-implicit") {
+      onChangeCgalAutoTargetEdge(true);
+      onChangeCgalTriBudgetEnabled(true);
+      onChangeCgalTriBudget(Math.max(5000, Math.min(100000, cgalTriBudget)));
+      setExpandedOperation("implicit-mesh");
+    }
+  };
   const runExpandedOperation = () => {
     if (!expandedOperation) return;
     if (expandedOperation === "clean-normals") {
@@ -9237,6 +9316,31 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
         <span style={{ color: workerReady ? "#166534" : "#b42318", fontSize: 10, fontWeight: 800 }}>
           {workerReady ? "worker ready" : workerStatusText}
         </span>
+      </div>
+      <div style={{ display: "grid", gap: 4 }}>
+        <div style={{ fontSize: 10, fontWeight: 800, color: "#0f3557" }}>Presets</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+          {MESH_OPERATION_PRESETS.map((preset) => (
+            <button
+              key={`${testId}-preset-${preset.id}`}
+              data-testid={`${testId}-preset-${preset.id}`}
+              type="button"
+              onClick={() => applyPreset(preset.id)}
+              title={preset.description}
+              style={{
+                border: "1px solid #a7f3d0",
+                background: expandedOperation === preset.operation ? "#bbf7d0" : "#fff",
+                color: "#0f3557",
+                borderRadius: 999,
+                padding: "3px 8px",
+                fontSize: 10,
+                fontWeight: 800,
+              }}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
       </div>
       <div style={{ display: "grid", gap: 3, fontSize: 10 }}>
         {MESH_OPERATION_CAPABILITIES.map((capability) => {
@@ -9608,7 +9712,11 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
               {lastResult.label} · {lastResult.engine.toUpperCase()} · {formatMeshOperationDuration(lastResult.durationMs)}
             </div>
             <div>
-              Faces: {lastResult.beforeFaces.toLocaleString()} {"->"}{" "}
+              Vertices: {lastResult.beforeVertices.toLocaleString()} {"->"}{" "}
+              {lastResult.afterVertices == null ? "n/a" : lastResult.afterVertices.toLocaleString()}
+            </div>
+            <div>
+              Triangles: {lastResult.beforeFaces.toLocaleString()} {"->"}{" "}
               {lastResult.afterFaces == null ? "n/a" : lastResult.afterFaces.toLocaleString()}
             </div>
             <div>Output: {lastResult.outputMode}</div>
@@ -9616,10 +9724,10 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
             {lastResult.warnings.length > 0 && <div style={{ color: "#b45309" }}>Warnings: {lastResult.warnings.join("; ")}</div>}
             {lastResult.errors.length > 0 && <div style={{ color: "#b42318" }}>Errors: {lastResult.errors.join("; ")}</div>}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
-              <button type="button" onClick={onOpenResult}>
+              <button data-testid={`${testId}-open-result`} type="button" onClick={onOpenResult}>
                 Open result
               </button>
-              <button type="button" onClick={onSendToGeometry} disabled={!canSendToGeometry}>
+              <button data-testid={`${testId}-send-to-geometry`} type="button" onClick={onSendToGeometry} disabled={!canSendToGeometry}>
                 Send to Geometry
               </button>
             </div>
@@ -54566,8 +54674,147 @@ case "mobius":
   useEffect(() => {
     if (typeof window === "undefined" || (!isDev && !window.appRuntime?.e2e)) return;
     window.__MATH3D_E2E_MESH_OPERATION__ = {
-      run: async (operation) => {
+      run: async (operation, options) => {
         try {
+          const makeBoxMesh = (label: string, offsetX: number): MeshOperationMeshInput => ({
+            label,
+            positions: new Float32Array([
+              -0.5 + offsetX,
+              -0.5,
+              -0.5,
+              0.5 + offsetX,
+              -0.5,
+              -0.5,
+              0.5 + offsetX,
+              0.5,
+              -0.5,
+              -0.5 + offsetX,
+              0.5,
+              -0.5,
+              -0.5 + offsetX,
+              -0.5,
+              0.5,
+              0.5 + offsetX,
+              -0.5,
+              0.5,
+              0.5 + offsetX,
+              0.5,
+              0.5,
+              -0.5 + offsetX,
+              0.5,
+              0.5,
+            ]),
+            indices: new Uint32Array([
+              0,
+              2,
+              1,
+              0,
+              3,
+              2,
+              4,
+              5,
+              6,
+              4,
+              6,
+              7,
+              0,
+              1,
+              5,
+              0,
+              5,
+              4,
+              1,
+              2,
+              6,
+              1,
+              6,
+              5,
+              2,
+              3,
+              7,
+              2,
+              7,
+              6,
+              3,
+              0,
+              4,
+              3,
+              4,
+              7,
+            ]),
+            source: { kind: "csg" },
+          });
+          const outputMode = vtkOutputMode === "replace" ? "replace" : "new-object";
+          if (
+            operation === "boolean-union" ||
+            operation === "boolean-difference" ||
+            operation === "boolean-intersection" ||
+            operation === "boolean-imprint"
+          ) {
+            const meshA = makeBoxMesh("E2E box A", 0);
+            const meshB = makeBoxMesh("E2E box B", 0.35);
+            const result = await runMeshOperation(
+              {
+                operation,
+                inputs: [meshA.label, meshB.label],
+                engine: "auto",
+                parameters: { computeNormals: true, curveRadius: operation === "boolean-imprint" ? 0.02 : undefined },
+                outputMode,
+                quality: "robust",
+              },
+              { primaryMesh: meshA, secondaryMesh: meshB }
+            );
+            setMeshOperationLastResult(summarizeMeshOperationResult(result, outputMode));
+            if (result.status === "error") {
+              return { ok: false, error: result.errors[0]?.message ?? `${operation} failed.` };
+            }
+            return { ok: true };
+          }
+          if (operation === "implicit-preview" || operation === "implicit-mesh") {
+            const expr = options?.implicitExpr?.trim() || "x*x + y*y + z*z - 1";
+            const domain = {
+              min: [-1.4, -1.4, -1.4] as [number, number, number],
+              max: [1.4, 1.4, 1.4] as [number, number, number],
+            };
+            const result = await runMeshOperation(
+              {
+                operation,
+                inputs: [expr],
+                engine: "auto",
+                parameters: {
+                  expr,
+                  iso: 0,
+                  resolution: options?.resolution ?? 24,
+                  targetEdge: options?.targetEdge ?? 0.35,
+                },
+                outputMode: "preview",
+                quality: "fast",
+              },
+              {
+                implicit:
+                  operation === "implicit-preview"
+                    ? {
+                        expr,
+                        iso: 0,
+                        domain,
+                        resolution: options?.resolution ?? 24,
+                        targetFaces: options?.targetFaces ?? 2500,
+                      }
+                    : {
+                        expr,
+                        iso: 0,
+                        domain,
+                        quality: { target_edge: options?.targetEdge ?? 0.35 },
+                        preflightSamples: 3,
+                      },
+              }
+            );
+            setMeshOperationLastResult(summarizeMeshOperationResult(result, "preview"));
+            if (result.status === "error") {
+              return { ok: false, error: result.errors[0]?.message ?? `${operation} failed.` };
+            }
+            return { ok: true };
+          }
           const mesh = getMeshForVtk();
           if (!mesh) {
             const cached = largeSurfaceMeshResolutionCacheRef.current?.fullMesh ?? null;
@@ -54596,12 +54843,12 @@ case "mobius":
               inputs: [mesh.label],
               engine: "auto",
               parameters,
-              outputMode: vtkOutputMode === "replace" ? "replace" : "new-object",
+              outputMode,
               quality: "balanced",
             },
             { primaryMesh: mesh }
           );
-          setMeshOperationLastResult(summarizeMeshOperationResult(result, vtkOutputMode === "replace" ? "replace" : "new-object"));
+          setMeshOperationLastResult(summarizeMeshOperationResult(result, outputMode));
           if (result.status === "error") {
             return { ok: false, error: result.errors[0]?.message ?? `${operation} failed.` };
           }
@@ -54772,7 +55019,9 @@ case "mobius":
           status: "success",
           engine: "vtk",
           sourceIds: [meshA.label, meshB.label],
+          beforeVertices: Math.floor(meshA.positions.length / 3),
           beforeFaces,
+          afterVertices: Math.max(0, Math.round(splitMesh.positions.length / 3)),
           afterFaces: Math.max(0, Math.round((splitMesh.indices?.length ?? 0) / 3)),
           durationMs: aMinusB.durationMs + aIntersectB.durationMs + bMinusA.durationMs,
           outputMode: vtkOutputMode === "replace" ? "replace" : "new-object",

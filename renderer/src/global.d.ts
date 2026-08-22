@@ -540,7 +540,24 @@ declare global {
       }>;
     };
     __MATH3D_E2E_MESH_OPERATION__?: {
-      run: (operation: "clean-normals" | "decimate" | "smooth") => Promise<{
+      run: (
+        operation:
+          | "clean-normals"
+          | "decimate"
+          | "smooth"
+          | "implicit-preview"
+          | "implicit-mesh"
+          | "boolean-union"
+          | "boolean-difference"
+          | "boolean-intersection"
+          | "boolean-imprint",
+        options?: {
+          implicitExpr?: string;
+          resolution?: number;
+          targetFaces?: number;
+          targetEdge?: number;
+        }
+      ) => Promise<{
         ok: boolean;
         error?: string;
       }>;
