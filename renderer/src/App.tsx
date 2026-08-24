@@ -81203,17 +81203,21 @@ case "mobius":
                         </div>
                       </div>
 
-                      <div
+                      <details
                         style={{
                           border: "1px solid #dbe4f0",
                           borderRadius: 8,
                           padding: "8px 10px",
                           background: "#f8fbff",
-                          display: "grid",
-                          gap: 6,
                         }}
                       >
-                        <div style={{ fontSize: 11, fontWeight: 700 }}>Boolean Preview (PR21)</div>
+                        <summary style={{ cursor: "pointer", fontSize: 11, fontWeight: 800 }}>
+                          Advanced boolean preview (Geometry)
+                        </summary>
+                        <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+                        <div style={{ fontSize: 10, color: "#64748b" }}>
+                          Production boolean results should be run from Mesh Operations. This Geometry tool is a fast preview and handoff helper.
+                        </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
                           <label>
                             Object A
@@ -81281,7 +81285,8 @@ case "mobius":
                             ))}
                           </div>
                         )}
-                      </div>
+                        </div>
+                      </details>
 
                       <div
                         style={{
@@ -104149,7 +104154,7 @@ onChangeImplicitExpr,
                 checked={volumeIsoSmooth}
                 onChange={(e) => onToggleVolumeIsoSmooth(e.target.checked)}
               />
-              Smoothing
+              Smoothing (VTK)
             </label>
             {volumeIsoSmooth && (
               <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
@@ -105486,17 +105491,37 @@ onChangeImplicitExpr,
               </div>
             )}
             {viewerKind === "implicit" && (
-              <div
+              <details
                 style={{
                   marginTop: 12,
                   padding: 10,
                   borderRadius: 10,
                   border: "1px solid #e0e0e0",
                   background: "#fafafa",
-                  display: "grid",
-                  gap: 8,
                 }}
               >
+                <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 800 }}>
+                  Advanced backend meshing (VTK / CGAL)
+                </summary>
+                <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                <div
+                  style={{
+                    border: "1px solid #bfdbfe",
+                    borderRadius: 7,
+                    background: "#eff6ff",
+                    padding: "6px 7px",
+                    fontSize: 11,
+                    display: "grid",
+                    gap: 5,
+                  }}
+                >
+                  <div>
+                    Production mesh operations are in <strong>Mesh Operations</strong>. Use this advanced section only for direct backend diagnostics.
+                  </div>
+                  <button type="button" onClick={() => setMeshToolsTab("vtk")} style={{ justifySelf: "start" }}>
+                    Open Mesh Operations
+                  </button>
+                </div>
                 <div style={{ fontSize: 12, fontWeight: 700 }}>Generate</div>
                 <div style={{ display: "grid", gap: 3, fontSize: 11 }}>
                   <div>
@@ -105704,7 +105729,8 @@ onChangeImplicitExpr,
                     </button>
                   </div>
                 </div>
-              </div>
+                </div>
+              </details>
             )}
             {viewerKind === "implicit" && (
               <div
@@ -111957,7 +111983,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             </div>
 
             <div style={inspectorSectionCard}>
-              <div style={inspectorSectionTitle}>Operation Result</div>
+              <div style={inspectorSectionTitle}>Mesh Operation Result</div>
               {vtkLastResult ? (
                 <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
                   <div><strong>Operation:</strong> {vtkLastResult.operation}</div>
@@ -111972,8 +111998,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     <button type="button" disabled title="Apply action is not wired in right results panel.">Apply</button>
                     <button type="button" disabled title="Undo action is not wired in right results panel.">Undo</button>
-                    <button type="button" onClick={onSaveVtkOperationPreset} title="Save the current VTK settings as an operation preset.">
-                      Save operation preset
+                    <button type="button" onClick={onSaveVtkOperationPreset} title="Save the current mesh operation settings as a preset.">
+                      Save operation settings
                     </button>
                   </div>
                 </div>
