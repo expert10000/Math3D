@@ -22386,7 +22386,7 @@ const App: React.FC = () => {
           0
         );
         if (totalPreviewTris > 160_000) {
-          warnings.push("Heavy preview mesh size; run accurate operation in Mesh/CGAL for robust cleanup.");
+          warnings.push("Heavy preview mesh size; run a robust mesh operation for cleanup.");
         }
 
         setGeometryBooleanPreviewMeshes(previewMeshes);
@@ -34362,7 +34362,7 @@ const App: React.FC = () => {
 
     if (surfaceViewerKind === "implicit") {
       if (!activeCgalMesh?.positions?.length || !activeCgalMesh.indices?.length) {
-        setGeometryBakeError("Implicit mesh not ready. Run CGAL mesh first.");
+        setGeometryBakeError("Implicit mesh not ready. Run Mesh Operations -> Implicit mesh first.");
         return;
       }
       meshForConversion = applySurfaceMeshOps({
@@ -39036,7 +39036,7 @@ const App: React.FC = () => {
   const activeCgalMeshData = useMemo(() => {
     if (!activeCgalMesh?.positions?.length || !activeCgalMesh.indices?.length) return null;
     const mesh: SurfaceMeshData = {
-      label: "CGAL mesh",
+      label: "Implicit mesh",
       positions: Float32Array.from(activeCgalMesh.positions),
       indices: Uint32Array.from(activeCgalMesh.indices),
       normals: null,
@@ -46521,7 +46521,7 @@ case "mobius":
     setCgalError(null);
     setGenerateSurfaceStatus({
       state: "idle",
-      message: "Sample loaded. Click preview (VTK).",
+      message: "Sample loaded. Click preview.",
       at: Date.now(),
     });
   }, []);
@@ -54756,7 +54756,7 @@ case "mobius":
 
     if (surfaceViewerKind === "implicit") {
       if (!activeCgalMesh) {
-        setSurfaceMeshImportError("Run CGAL mesh first.");
+        setSurfaceMeshImportError("Run Mesh Operations -> Implicit mesh first.");
         return;
       }
       const positions = Float32Array.from(activeCgalMesh.positions);
@@ -57484,7 +57484,7 @@ case "mobius":
   const geodesicHeatHeatmapValues = geodesicHeatHeatmapActive ? geodesicHeatPhi : null;
   const geodesicHeatUnavailableReason = useMemo(() => {
     if (geodesicHeatAvailable) return "";
-    if (surfaceQuery.kind === "implicit") return "Run CGAL mesh first";
+    if (surfaceQuery.kind === "implicit") return "Run implicit meshing first";
     if (surfaceQuery.kind === "graph") {
       return "Graph mesh not ready";
     }
@@ -57504,7 +57504,7 @@ case "mobius":
   const geodesicDiskAvailable = geodesicHeatAvailable;
   const geodesicDiskUnavailableReason = useMemo(() => {
     if (geodesicDiskAvailable) return "";
-    if (surfaceQuery.kind === "implicit") return "Run CGAL mesh first";
+    if (surfaceQuery.kind === "implicit") return "Run implicit meshing first";
     if (surfaceQuery.kind === "graph") return "Graph mesh not ready";
     if (surfaceQuery.kind === "param" || surfaceQuery.kind === "weierstrass") {
       return "Param mesh not ready";
@@ -57565,7 +57565,7 @@ case "mobius":
       if (!start || !end) {
         const msg =
           kind === "implicit"
-            ? "Pick two points on the CGAL mesh."
+            ? "Pick two points on the implicit mesh."
             : kind === "graph"
               ? "Pick two points on the graph mesh."
               : kind === "param" || kind === "weierstrass"
@@ -59854,7 +59854,7 @@ case "mobius":
     }
 
     if (surfaceViewerKind !== "implicit") {
-      setCgalError("CGAL meshing is available only in the implicit viewer.");
+      setCgalError("Implicit meshing is available only in the implicit viewer.");
       return;
     }
 
@@ -59944,7 +59944,7 @@ case "mobius":
 
       if (res.status === "error" || !res.resultMesh?.indices) {
         setMeshPerformanceLastBuildMs(performance.now() - startedAt);
-        setCgalError(res.errors[0]?.message ?? "CGAL meshing failed.");
+        setCgalError(res.errors[0]?.message ?? "Implicit meshing failed.");
         return;
       }
       setMeshPerformanceLastBuildMs(performance.now() - startedAt);
@@ -64181,7 +64181,7 @@ case "mobius":
     const meshBehavior = [
       "Flow: Equation -> Parse -> Domain -> Preview -> Analyze -> Mesh -> Promote -> Save.",
       "Mesh step runs real mesh work.",
-      "Implicit viewer: runs CGAL mesh generation.",
+      "Implicit viewer: runs robust mesh generation.",
       "Other surface viewers: converts current surface into SurfaceMesh.",
     ];
     const promoteBehavior = [
@@ -64203,7 +64203,7 @@ case "mobius":
           return {
             title: "Mesh action",
             status: "running" as const,
-            summary: "Running CGAL meshing for the implicit surface.",
+            summary: "Running robust meshing for the implicit surface.",
             details: ["Sampling domain and extracting isosurface.", "This may take longer for dense domains."],
             behavior: meshBehavior,
           };
@@ -64212,7 +64212,7 @@ case "mobius":
           return {
             title: "Mesh action",
             status: "error" as const,
-            summary: "CGAL meshing failed.",
+            summary: "Robust meshing failed.",
             details: [cgalError],
             behavior: meshBehavior,
           };
@@ -70839,7 +70839,7 @@ case "mobius":
                     gap: 10,
                   }}
                 >
-                  <div style={{ fontSize: 12, fontWeight: 700 }}>Backend services</div>
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>Engine services</div>
                   <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                       <strong>CGAL</strong>
@@ -70859,7 +70859,7 @@ case "mobius":
                     </div>
                   </div>
                   <div style={{ fontSize: 10, color: "#667085", lineHeight: 1.5 }}>
-                    CGAL and VTK share the Python worker runtime.
+                    Mesh engines share the Python worker runtime.
                     {cgalHealthState?.logsPath ? (
                       <div style={{ marginTop: 4, wordBreak: "break-all" }}>
                         log: {cgalHealthState.logsPath}
@@ -74515,7 +74515,7 @@ case "mobius":
                                           </button>
                                           {surfaceViewerKind === "implicit" && !activeCgalMesh?.positions?.length ? (
                                             <span style={{ fontSize: 10, color: "#64748b" }}>
-                                              Run gcalc (CGAL) first, then promote.
+                                              Run robust meshing first, then promote.
                                             </span>
                                           ) : (
                                             <span style={{ fontSize: 10, color: "#64748b" }}>
@@ -80389,7 +80389,7 @@ case "mobius":
                             Preview (fast)
                           </button>
                           <button type="button" onClick={handleBakeGeometryBoolean}>
-                            Send to Mesh/CGAL
+                            Send to Mesh Operations
                           </button>
                         </div>
                         <div style={{ fontSize: 10, color: "#64748b" }}>
@@ -102151,7 +102151,7 @@ onChangeImplicitExpr,
   const [leftTab, setLeftTab] = useState<SurfacesLeftTab>(() => normalizeLeftTab(initialLeftTab));
   const meshFileInputRef = useRef<HTMLInputElement | null>(null);
   const meshQuickFileInputRef = useRef<HTMLInputElement | null>(null);
-  const [meshToolsTab, setMeshToolsTab] = useState<"surface_mesh" | "vtk" | "volume">("surface_mesh");
+  const [meshToolsTab, setMeshToolsTab] = useState<"surface_mesh" | "operations" | "volume">("surface_mesh");
   useEffect(() => {
     if (surfaceMeshBenchmarkBrowserOpen) setMeshToolsTab("surface_mesh");
   }, [surfaceMeshBenchmarkBrowserOpen]);
@@ -103274,7 +103274,7 @@ onChangeImplicitExpr,
                 checked={volumeIsoSmooth}
                 onChange={(e) => onToggleVolumeIsoSmooth(e.target.checked)}
               />
-              Smoothing (VTK)
+              Smooth isosurface
             </label>
             {volumeIsoSmooth && (
               <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
@@ -104489,9 +104489,9 @@ onChangeImplicitExpr,
         </button>
         <button
           type="button"
-          onClick={() => setMeshToolsTab("vtk")}
-          style={pill(meshToolsTab === "vtk")}
-          aria-pressed={meshToolsTab === "vtk"}
+          onClick={() => setMeshToolsTab("operations")}
+          style={pill(meshToolsTab === "operations")}
+          aria-pressed={meshToolsTab === "operations"}
         >
           Mesh Operations
         </button>
@@ -104600,7 +104600,7 @@ onChangeImplicitExpr,
                   ? "Promote the current complex-map surface into the SurfaceMesh viewer."
                   : "Promote the current surface into a SurfaceMesh dataset."
                 : viewerKind === "implicit"
-                  ? "Run CGAL mesh first to promote an implicit surface (or use the implicit baker below)."
+                  ? "Use Mesh Operations -> Implicit mesh first to promote an implicit surface."
                   : viewerKind === "complex"
                     ? "Build the complex map surface first."
                     : "SurfaceMesh promotion will enable once the surface is ready."}
@@ -104621,7 +104621,7 @@ onChangeImplicitExpr,
                 }}
               >
                 <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 800 }}>
-                  Advanced backend meshing (VTK / CGAL)
+                  Advanced engines
                 </summary>
                 <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
                 <div
@@ -104638,7 +104638,7 @@ onChangeImplicitExpr,
                   <div>
                     Production mesh operations are in <strong>Mesh Operations</strong>. Use this advanced section only for direct backend diagnostics.
                   </div>
-                  <button type="button" onClick={() => setMeshToolsTab("vtk")} style={{ justifySelf: "start" }}>
+                  <button type="button" onClick={() => setMeshToolsTab("operations")} style={{ justifySelf: "start" }}>
                     Open Mesh Operations
                   </button>
                 </div>
@@ -104653,7 +104653,7 @@ onChangeImplicitExpr,
 
                 <div style={{ display: "grid", gap: 6, fontSize: 11, borderTop: "1px dashed #d5dbe5", paddingTop: 8 }}>
                   <div style={{ fontWeight: 600 }}>Preview meshing</div>
-                  <div>Backend: VTK</div>
+                  <div>Engine: VTK</div>
                   <div>Resolution: {meshOperationPreviewResolution}^3</div>
                   <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <input
@@ -104690,7 +104690,7 @@ onChangeImplicitExpr,
                 <div style={{ display: "grid", gap: 6, fontSize: 11, borderTop: "1px dashed #d5dbe5", paddingTop: 8 }}>
                   <div style={{ fontWeight: 600 }}>Robust meshing</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span>Backend: CGAL</span>
+                    <span>Engine: CGAL</span>
                     <span
                       style={{
                         width: 8,
@@ -104818,7 +104818,7 @@ onChangeImplicitExpr,
                       disabled={cgalDisabled}
                       onChange={(e) => onChangeCgalVerbose(e.target.checked)}
                     />
-                    Verbose (CGAL)
+                    Verbose engine logs
                   </label>
                   <button type="button" onClick={() => void onStopCgalWorker()} disabled={cgalStopDisabled}>
                     Stop worker
@@ -106073,7 +106073,7 @@ onChangeImplicitExpr,
       </div>
       )}
 
-      {meshToolsTab === "vtk" && (
+      {meshToolsTab === "operations" && (
       <div style={{ ...cardStyle, marginTop: 0 }}>
         <div style={{ marginTop: 0 }}>
           <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Mesh Operations</div>
@@ -111046,7 +111046,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             <div style={inspectorSectionCard}>
               <div style={inspectorSectionTitle}>Mesh Result</div>
               <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
-                <div><strong>Backend:</strong> {meshBackendLabel}</div>
+                <div><strong>Engine/source:</strong> {meshBackendLabel}</div>
                 <div><strong>Vertices:</strong> {formatInspectorCount(meshInspectorStats.vertexCount)}</div>
                 <div><strong>Faces:</strong> {formatInspectorCount(meshInspectorStats.faceCount)}</div>
                 <div><strong>Edges:</strong> {formatInspectorCount(meshTopologyDetails?.edgeCount ?? null)}</div>
