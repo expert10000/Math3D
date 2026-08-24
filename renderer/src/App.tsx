@@ -34495,7 +34495,7 @@ const App: React.FC = () => {
   const [vtkBooleanStatus, setVtkBooleanStatus] = useState<string | null>(null);
   const [vtkOutputMode, setVtkOutputMode] = useState<"replace" | "derived">("derived");
   const [vtkLastResult, setVtkLastResult] = useState<VtkResultSummary | null>(null);
-  const [meshOperationLastResult, setMeshOperationLastResult] = useState<MeshOperationResultSummary | null>(null);
+  const [meshLastOperation, setMeshLastOperation] = useState<MeshOperationResultSummary | null>(null);
   const [vtkPreviewBusy, setVtkPreviewBusy] = useState(false);
   const [vtkPreviewError, setVtkPreviewError] = useState<string | null>(null);
   const [vtkPreviewTargetFaces, setVtkPreviewTargetFaces] = useState(20000);
@@ -54857,7 +54857,7 @@ case "mobius":
         },
         { primaryMesh: mesh }
       );
-      setMeshOperationLastResult(summarizeMeshOperationResult(res, vtkOutputMode === "replace" ? "replace" : "new-object"));
+      setMeshLastOperation(summarizeMeshOperationResult(res, vtkOutputMode === "replace" ? "replace" : "new-object"));
       if (res.status === "error" || !res.resultMesh) {
         setVtkError(res.errors[0]?.message ?? "VTK clean failed.");
         return;
@@ -54916,7 +54916,7 @@ case "mobius":
         },
         { primaryMesh: mesh }
       );
-      setMeshOperationLastResult(summarizeMeshOperationResult(res, vtkOutputMode === "replace" ? "replace" : "new-object"));
+      setMeshLastOperation(summarizeMeshOperationResult(res, vtkOutputMode === "replace" ? "replace" : "new-object"));
       if (res.status === "error" || !res.resultMesh) {
         setVtkError(res.errors[0]?.message ?? "VTK decimate failed.");
         return;
@@ -54980,7 +54980,7 @@ case "mobius":
         },
         { primaryMesh: mesh }
       );
-      setMeshOperationLastResult(summarizeMeshOperationResult(res, vtkOutputMode === "replace" ? "replace" : "new-object"));
+      setMeshLastOperation(summarizeMeshOperationResult(res, vtkOutputMode === "replace" ? "replace" : "new-object"));
       if (res.status === "error" || !res.resultMesh) {
         setVtkError(res.errors[0]?.message ?? "VTK smooth failed.");
         return;
@@ -55104,7 +55104,7 @@ case "mobius":
               },
               { primaryMesh: meshA, secondaryMesh: meshB }
             );
-            setMeshOperationLastResult(summarizeMeshOperationResult(result, outputMode));
+            setMeshLastOperation(summarizeMeshOperationResult(result, outputMode));
             if (result.status === "error") {
               return { ok: false, error: result.errors[0]?.message ?? `${operation} failed.` };
             }
@@ -55149,7 +55149,7 @@ case "mobius":
                       },
               }
             );
-            setMeshOperationLastResult(summarizeMeshOperationResult(result, "preview"));
+            setMeshLastOperation(summarizeMeshOperationResult(result, "preview"));
             if (result.status === "error") {
               return { ok: false, error: result.errors[0]?.message ?? `${operation} failed.` };
             }
@@ -55188,7 +55188,7 @@ case "mobius":
             },
             { primaryMesh: mesh }
           );
-          setMeshOperationLastResult(summarizeMeshOperationResult(result, outputMode));
+          setMeshLastOperation(summarizeMeshOperationResult(result, outputMode));
           if (result.status === "error") {
             return { ok: false, error: result.errors[0]?.message ?? `${operation} failed.` };
           }
@@ -55279,7 +55279,7 @@ case "mobius":
           },
           { primaryMesh: meshA, secondaryMesh: meshB }
         );
-        setMeshOperationLastResult(summarizeMeshOperationResult(aMinusB, vtkOutputMode === "replace" ? "replace" : "new-object"));
+        setMeshLastOperation(summarizeMeshOperationResult(aMinusB, vtkOutputMode === "replace" ? "replace" : "new-object"));
         if (aMinusB.status === "error" || !aMinusB.resultMesh?.indices) {
           setVtkError(aMinusB.errors[0]?.message ?? "Boolean split failed.");
           setVtkBooleanStatus("Split failed.");
@@ -55296,7 +55296,7 @@ case "mobius":
           },
           { primaryMesh: meshA, secondaryMesh: meshB }
         );
-        setMeshOperationLastResult(summarizeMeshOperationResult(aIntersectB, vtkOutputMode === "replace" ? "replace" : "new-object"));
+        setMeshLastOperation(summarizeMeshOperationResult(aIntersectB, vtkOutputMode === "replace" ? "replace" : "new-object"));
         if (aIntersectB.status === "error" || !aIntersectB.resultMesh?.indices) {
           setVtkError(aIntersectB.errors[0]?.message ?? "Boolean split failed.");
           setVtkBooleanStatus("Split failed.");
@@ -55313,7 +55313,7 @@ case "mobius":
           },
           { primaryMesh: meshB, secondaryMesh: meshA }
         );
-        setMeshOperationLastResult(summarizeMeshOperationResult(bMinusA, vtkOutputMode === "replace" ? "replace" : "new-object"));
+        setMeshLastOperation(summarizeMeshOperationResult(bMinusA, vtkOutputMode === "replace" ? "replace" : "new-object"));
         if (bMinusA.status === "error" || !bMinusA.resultMesh?.indices) {
           setVtkError(bMinusA.errors[0]?.message ?? "Boolean split failed.");
           setVtkBooleanStatus("Split failed.");
@@ -55353,7 +55353,7 @@ case "mobius":
             durationMs: aMinusB.durationMs + aIntersectB.durationMs + bMinusA.durationMs,
           }
         );
-        setMeshOperationLastResult({
+        setMeshLastOperation({
           operation: "boolean-split",
           label: MESH_OPERATION_LABELS["boolean-split"],
           status: "success",
@@ -55397,7 +55397,7 @@ case "mobius":
         },
         { primaryMesh: meshA, secondaryMesh: meshB }
       );
-      setMeshOperationLastResult(summarizeMeshOperationResult(result, vtkOutputMode === "replace" ? "replace" : "new-object"));
+      setMeshLastOperation(summarizeMeshOperationResult(result, vtkOutputMode === "replace" ? "replace" : "new-object"));
       if (result.status === "error" || !result.resultMesh) {
         setVtkError(result.errors[0]?.message ?? "VTK boolean failed.");
         setVtkBooleanStatus(`${vtkBooleanOperation} failed.`);
@@ -60676,7 +60676,7 @@ case "mobius":
           },
         }
       );
-      setMeshOperationLastResult(summarizeMeshOperationResult(res, vtkOutputMode === "replace" ? "replace" : "new-object"));
+      setMeshLastOperation(summarizeMeshOperationResult(res, vtkOutputMode === "replace" ? "replace" : "new-object"));
       if (res.status === "error" || !res.resultMesh) {
         setMeshPerformanceLastBuildMs(performance.now() - startedAt);
         const message = res.errors[0]?.message ?? "VTK preview failed.";
@@ -60810,7 +60810,7 @@ case "mobius":
           },
         }
       );
-      setMeshOperationLastResult(summarizeMeshOperationResult(res, "preview"));
+      setMeshLastOperation(summarizeMeshOperationResult(res, "preview"));
 
       console.log("[CGAL] mesh response", {
         ok: res.status !== "error",
@@ -66509,7 +66509,7 @@ case "mobius":
                   onToggleMeshPromotionFreeze={handleToggleMeshPromotionFreeze}
                   onToggleVolumeDistanceSigned={setVolumeDistanceSigned}
                   onToggleVolumeDistanceAutoBounds={setVolumeDistanceAutoBounds}
-                  meshOperationLastResult={meshOperationLastResult}
+                  meshLastOperation={meshLastOperation}
                   vtkAvailable={vtkMeshAvailable}
                   pythonWorkerAvailable={cgalHealthState?.ok === true}
                   pythonWorkerStatusMessage={cgalHealthState?.error ?? cgalHealthState?.statusMessage ?? null}
@@ -69524,7 +69524,7 @@ case "mobius":
                           cgalStatusText={cgalServiceStatusText}
                           busy={vtkBusy}
                           cgalBusy={cgalBusy}
-                          lastResult={meshOperationLastResult}
+                          lastResult={meshLastOperation}
                           cleanComputeNormals={vtkCleanComputeNormals}
                           onChangeCleanComputeNormals={setVtkCleanComputeNormals}
                           onClean={handleVtkCleanNormals}
@@ -70125,7 +70125,7 @@ case "mobius":
                     canBakeAsPrimaryObject={unifiedCanConvertToMeshObject}
                     onBakeAsPrimaryObject={handleDatasetToGeometryScene}
                     onOpenAnalysis={() => setSurfacesLeftTab("analysis")}
-                    meshOperationLastResult={meshOperationLastResult}
+                    meshLastOperation={meshLastOperation}
                     meshOperationWorkerReady={vtkServiceReady}
                     meshOperationWorkerStatusText={vtkServiceStatusText}
                     meshOperationCgalReady={cgalServiceReady}
@@ -75755,7 +75755,7 @@ case "mobius":
                       vtkPreviewTargetFaces={vtkPreviewTargetFaces}
                       vtkPreviewUseDecimate={vtkPreviewUseDecimate}
                       vtkLastResult={vtkLastResult}
-                      meshOperationLastResult={meshOperationLastResult}
+                      meshLastOperation={meshLastOperation}
                       vtkError={vtkError}
                       onSaveVtkOperationPreset={handleSaveGeometryOperationPreset}
                       onChangeVtkPreviewTargetFaces={setVtkPreviewTargetFaces}
@@ -99724,7 +99724,7 @@ type SurfacesObjectPanelProps = {
   canBakeAsPrimaryObject: boolean;
   onBakeAsPrimaryObject: () => void;
   onOpenAnalysis: () => void;
-  meshOperationLastResult: MeshOperationResultSummary | null;
+  meshLastOperation: MeshOperationResultSummary | null;
   meshOperationWorkerReady: boolean;
   meshOperationWorkerStatusText: string;
   meshOperationCgalReady: boolean;
@@ -99866,7 +99866,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   canBakeAsPrimaryObject,
   onBakeAsPrimaryObject,
   onOpenAnalysis,
-  meshOperationLastResult,
+  meshLastOperation,
   meshOperationWorkerReady,
   meshOperationWorkerStatusText,
   meshOperationCgalReady,
@@ -100223,7 +100223,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
           cgalStatusText={meshOperationCgalStatusText}
           busy={meshOperationBusy}
           cgalBusy={meshOperationCgalBusy}
-          lastResult={meshOperationLastResult}
+          lastResult={meshLastOperation}
           cleanComputeNormals={meshOperationCleanComputeNormals}
           onChangeCleanComputeNormals={onChangeMeshOperationCleanComputeNormals}
           onClean={onMeshOperationClean}
@@ -101683,7 +101683,7 @@ type SurfacesLeftPanelProps = {
   onToggleMeshPromotionFreeze: () => void;
   onToggleVolumeDistanceSigned: (v: boolean) => void;
   onToggleVolumeDistanceAutoBounds: (v: boolean) => void;
-  meshOperationLastResult: MeshOperationResultSummary | null;
+  meshLastOperation: MeshOperationResultSummary | null;
   vtkAvailable: boolean;
   pythonWorkerAvailable: boolean;
   pythonWorkerStatusMessage: string | null;
@@ -102394,7 +102394,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleMeshPromotionFreeze,
   onToggleVolumeDistanceSigned,
   onToggleVolumeDistanceAutoBounds,
-  meshOperationLastResult,
+  meshLastOperation,
   vtkAvailable,
   pythonWorkerAvailable,
   pythonWorkerStatusMessage,
@@ -106984,7 +106984,7 @@ onChangeImplicitExpr,
               cgalStatusText={cgalStatusText}
               busy={vtkBusy}
               cgalBusy={cgalBusy}
-              lastResult={meshOperationLastResult}
+              lastResult={meshLastOperation}
               cleanComputeNormals={vtkCleanComputeNormals}
               onChangeCleanComputeNormals={onChangeVtkCleanComputeNormals}
               onClean={onVtkCleanNormals}
@@ -107041,7 +107041,7 @@ onChangeImplicitExpr,
             />
           </div>
           <div style={{ marginTop: 4, fontSize: 10, opacity: 0.72 }}>
-            Result details appear in the right Inspector under Operation result.
+            Result details appear in the right Inspector under Mesh Operation Result.
           </div>
           {vtkError && <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{vtkError}</div>}
         </div>
@@ -110155,7 +110155,7 @@ type SurfacesRightPanelProps = {
   vtkPreviewTargetFaces: number;
   vtkPreviewUseDecimate: boolean;
   vtkLastResult: VtkResultSummary | null;
-  meshOperationLastResult: MeshOperationResultSummary | null;
+  meshLastOperation: MeshOperationResultSummary | null;
   vtkError: string | null;
   onSaveVtkOperationPreset: () => void;
   onChangeVtkPreviewTargetFaces: (v: number) => void;
@@ -110407,7 +110407,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   vtkPreviewTargetFaces,
   vtkPreviewUseDecimate,
   vtkLastResult,
-  meshOperationLastResult,
+  meshLastOperation,
   vtkError,
   onSaveVtkOperationPreset,
   onChangeVtkPreviewTargetFaces,
@@ -111552,14 +111552,15 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     </div>
   );
 
+  const legacyVtkOperation = vtkLastResult;
   const meshBackendLabel = cgalMeshInfo
     ? "CGAL"
-    : meshOperationLastResult
-      ? meshOperationLastResult.engine.toUpperCase()
-      : vtkLastResult
+    : meshLastOperation
+      ? meshLastOperation.engine.toUpperCase()
+      : legacyVtkOperation
         ? "VTK"
         : isImplicitViewer
-          ? "VTK / CGAL"
+          ? "Mesh engines"
           : "SurfaceMesh";
   const watertight =
     meshTopologyDetails?.watertight ??
@@ -111567,20 +111568,21 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       ? meshQualityReport.topology.boundaryEdgeCount === 0 && meshQualityReport.topology.nonManifoldEdgeCount === 0
       : null);
   const normalStatus =
-    normalMagnitude == null ? "unknown" : hasUnstableNormals ? "unstable" : vtkLastResult?.normalsRecomputed ? "recomputed" : "valid";
-  const operationBeforeFaces = meshOperationLastResult?.beforeFaces ?? vtkLastResult?.beforeFaces ?? null;
-  const operationAfterFaces = meshOperationLastResult?.afterFaces ?? vtkLastResult?.afterFaces ?? null;
+    normalMagnitude == null ? "unknown" : hasUnstableNormals ? "unstable" : legacyVtkOperation?.normalsRecomputed ? "recomputed" : "valid";
+  const operationBeforeFaces = meshLastOperation?.beforeFaces ?? legacyVtkOperation?.beforeFaces ?? null;
+  const operationAfterFaces = meshLastOperation?.afterFaces ?? legacyVtkOperation?.afterFaces ?? null;
+  const operationDisplayLabel = meshLastOperation?.label ?? legacyVtkOperation?.operation ?? "none";
   const operationReductionPct =
     operationBeforeFaces && operationAfterFaces && operationBeforeFaces > 0
       ? ((operationBeforeFaces - operationAfterFaces) / operationBeforeFaces) * 100
       : null;
   const topologyChangedLabel =
-    meshOperationLastResult == null && vtkLastResult == null
+    meshLastOperation == null && legacyVtkOperation == null
       ? "n/a"
-      : (meshOperationLastResult?.warnings ?? vtkLastResult?.warnings ?? []).some((w) => w.toLowerCase().includes("topology"))
+      : (meshLastOperation?.warnings ?? legacyVtkOperation?.warnings ?? []).some((w) => w.toLowerCase().includes("topology"))
         ? "yes"
-        : (meshOperationLastResult?.operation ?? vtkLastResult?.operation ?? "").toLowerCase().includes("decimate") ||
-            (meshOperationLastResult?.operation ?? vtkLastResult?.operation ?? "").toLowerCase().includes("clean")
+        : (meshLastOperation?.operation ?? legacyVtkOperation?.operation ?? "").toLowerCase().includes("decimate") ||
+            (meshLastOperation?.operation ?? legacyVtkOperation?.operation ?? "").toLowerCase().includes("clean")
           ? "maybe"
           : "unlikely";
   const overlayLegend = [
@@ -111962,7 +111964,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 </div>
                 <div><strong>Watertight:</strong> {watertight == null ? "unknown" : watertight ? "yes" : "no"}</div>
                 <div><strong>Normal status:</strong> {normalStatus}</div>
-                <div><strong>Last operation:</strong> {vtkLastResult?.operation ?? "none"}</div>
+                <div><strong>Last operation:</strong> {operationDisplayLabel}</div>
                 <div><strong>Warnings:</strong> {activeWarningRows.length ? activeWarningRows.map((row) => row.label).join(", ") : "none"}</div>
                 <div>
                   <strong>Log link:</strong>{" "}
@@ -111984,11 +111986,42 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
             <div style={inspectorSectionCard}>
               <div style={inspectorSectionTitle}>Mesh Operation Result</div>
-              {vtkLastResult ? (
+              {meshLastOperation ? (
                 <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
-                  <div><strong>Operation:</strong> {vtkLastResult.operation}</div>
-                  <div><strong>Before:</strong> {vtkLastResult.beforeFaces.toLocaleString()} faces</div>
-                  <div><strong>After:</strong> {vtkLastResult.afterFaces.toLocaleString()} faces</div>
+                  <div><strong>Operation:</strong> {meshLastOperation.label}</div>
+                  <div><strong>Engine:</strong> {meshLastOperation.engine.toUpperCase()}</div>
+                  <div><strong>Status:</strong> {meshLastOperation.status}</div>
+                  <div><strong>Before:</strong> {meshLastOperation.beforeFaces.toLocaleString()} faces</div>
+                  <div>
+                    <strong>After:</strong>{" "}
+                    {meshLastOperation.afterFaces == null ? "n/a" : `${meshLastOperation.afterFaces.toLocaleString()} faces`}
+                  </div>
+                  <div>
+                    <strong>Reduction:</strong>{" "}
+                    {operationReductionPct == null ? "n/a" : `${Math.max(0, operationReductionPct).toFixed(1)}%`}
+                  </div>
+                  <div><strong>Topology changed:</strong> {topologyChangedLabel}</div>
+                  <div><strong>Output:</strong> {meshLastOperation.outputMode}</div>
+                  <div><strong>Warnings:</strong> {meshLastOperation.warnings.length ? meshLastOperation.warnings.join("; ") : "none"}</div>
+                  {meshLastOperation.errors.length > 0 && (
+                    <div style={{ color: "#b42318" }}>
+                      <strong>Errors:</strong> {meshLastOperation.errors.join("; ")}
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button type="button" disabled title="Apply action is not wired in right results panel.">Apply</button>
+                    <button type="button" disabled title="Undo action is not wired in right results panel.">Undo</button>
+                    <button type="button" onClick={onSaveVtkOperationPreset} title="Save the current mesh operation settings as a preset.">
+                      Save operation settings
+                    </button>
+                  </div>
+                </div>
+              ) : legacyVtkOperation ? (
+                <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+                  <div><strong>Operation:</strong> {legacyVtkOperation.operation}</div>
+                  <div><strong>Engine:</strong> VTK</div>
+                  <div><strong>Before:</strong> {legacyVtkOperation.beforeFaces.toLocaleString()} faces</div>
+                  <div><strong>After:</strong> {legacyVtkOperation.afterFaces.toLocaleString()} faces</div>
                   <div>
                     <strong>Reduction:</strong>{" "}
                     {operationReductionPct == null ? "n/a" : `${Math.max(0, operationReductionPct).toFixed(1)}%`}
@@ -112916,28 +112949,28 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         )}
       </div>
 
-      {(meshOperationLastResult || vtkLastResult || vtkError) && (
+      {(meshLastOperation || vtkLastResult || vtkError) && (
         <div style={inspectorSectionCard}>
-          <div style={inspectorSectionTitle}>Operation result</div>
-          {meshOperationLastResult ? (
+          <div style={inspectorSectionTitle}>Mesh Operation Result</div>
+          {meshLastOperation ? (
             <div style={{ fontSize: 11, display: "grid", gap: 5 }}>
-              <div><strong>Operation:</strong> {meshOperationLastResult.label}</div>
-              <div><strong>Engine:</strong> {meshOperationLastResult.engine.toUpperCase()}</div>
-              <div><strong>Status:</strong> {meshOperationLastResult.status}</div>
-              <div><strong>Before:</strong> {meshOperationLastResult.beforeFaces.toLocaleString()} faces</div>
+              <div><strong>Operation:</strong> {meshLastOperation.label}</div>
+              <div><strong>Engine:</strong> {meshLastOperation.engine.toUpperCase()}</div>
+              <div><strong>Status:</strong> {meshLastOperation.status}</div>
+              <div><strong>Before:</strong> {meshLastOperation.beforeFaces.toLocaleString()} faces</div>
               <div>
                 <strong>After:</strong>{" "}
-                {meshOperationLastResult.afterFaces == null ? "n/a" : `${meshOperationLastResult.afterFaces.toLocaleString()} faces`}
+                {meshLastOperation.afterFaces == null ? "n/a" : `${meshLastOperation.afterFaces.toLocaleString()} faces`}
               </div>
-              <div><strong>Duration:</strong> {formatSummaryTime(meshOperationLastResult.durationMs)}</div>
-              <div><strong>Output:</strong> {meshOperationLastResult.outputMode}</div>
+              <div><strong>Duration:</strong> {formatSummaryTime(meshLastOperation.durationMs)}</div>
+              <div><strong>Output:</strong> {meshLastOperation.outputMode}</div>
               <div>
                 <strong>Warnings:</strong>{" "}
-                {meshOperationLastResult.warnings.length > 0 ? meshOperationLastResult.warnings.join("; ") : "none"}
+                {meshLastOperation.warnings.length > 0 ? meshLastOperation.warnings.join("; ") : "none"}
               </div>
-              {meshOperationLastResult.errors.length > 0 && (
+              {meshLastOperation.errors.length > 0 && (
                 <div style={{ color: "#b42318" }}>
-                  <strong>Errors:</strong> {meshOperationLastResult.errors.join("; ")}
+                  <strong>Errors:</strong> {meshLastOperation.errors.join("; ")}
                 </div>
               )}
             </div>
