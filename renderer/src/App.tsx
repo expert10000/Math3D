@@ -8726,6 +8726,24 @@ const buildTopologyDemoCubeMesh = (label = "Topology demo cube"): SurfaceMeshDat
     "mesh-topology-demo-cube"
   );
 
+const buildMeshOperationBooleanDemoCubeMesh = (label: string, offsetX: number): SurfaceMeshData => {
+  const base = buildTopologyDemoCubeMesh(label);
+  const positions = Float32Array.from(base.positions);
+  for (let i = 0; i + 2 < positions.length; i += 3) {
+    positions[i] += offsetX;
+  }
+  return applySurfaceMeshOps({
+    ...base,
+    label,
+    positions,
+    normals: null,
+    adjacency: null,
+    meanEdgeLength: null,
+    validation: null,
+    source: { kind: "polyhedronPreset", id: "mesh-operation-boolean-demo-cube", label },
+  });
+};
+
 const buildTopologyDemoPyramidMesh = (label = "Topology demo pyramid"): SurfaceMeshData =>
   createSurfaceMeshTopologyDemoMesh(
     label,
@@ -9066,10 +9084,12 @@ type MeshOperationsCompactCardProps = {
   onChangeBooleanCurveRadius: (value: number) => void;
   booleanStatus: string | null;
   onRunBoolean: () => void | Promise<void>;
+  onPrepareBooleanDemo: () => void;
   outputMode: "replace" | "derived";
   onChangeOutputMode: (mode: "replace" | "derived") => void;
   implicitAvailable: boolean;
   implicitExpr: string;
+  onOpenImplicitSpherePreset: () => void;
   implicitResolution: number;
   previewBusy: boolean;
   previewError: string | null;
@@ -9182,10 +9202,12 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
   onChangeBooleanCurveRadius,
   booleanStatus,
   onRunBoolean,
+  onPrepareBooleanDemo,
   outputMode,
   onChangeOutputMode,
   implicitAvailable,
   implicitExpr,
+  onOpenImplicitSpherePreset,
   implicitResolution,
   previewBusy,
   previewError,
@@ -9249,6 +9271,7 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
     if (preset === "vtk-boolean") {
       onChangeBooleanOperation("union");
       onChangeOutputMode("derived");
+      if (booleanOperandOptions.length === 0) onPrepareBooleanDemo();
       setExpandedOperation("boolean-union");
       return;
     }
@@ -9256,6 +9279,7 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
       onChangeCgalAutoTargetEdge(true);
       onChangeCgalTriBudgetEnabled(true);
       onChangeCgalTriBudget(Math.max(5000, Math.min(100000, cgalTriBudget)));
+      if (!implicitAvailable) onOpenImplicitSpherePreset();
       setExpandedOperation("implicit-mesh");
     }
   };
@@ -9284,6 +9308,11 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
     if (BOOLEAN_OPERATION_BY_MESH_OPERATION[expandedOperation]) {
       void onRunBoolean();
     }
+  };
+  const prepareBooleanDemoForExpandedOperation = () => {
+    onPrepareBooleanDemo();
+    const operation = expandedOperation ? BOOLEAN_OPERATION_BY_MESH_OPERATION[expandedOperation] : null;
+    if (operation) onChangeBooleanOperation(operation);
   };
   const expandedIsBoolean = !!(expandedOperation && BOOLEAN_OPERATION_BY_MESH_OPERATION[expandedOperation]);
   const expandedCanRun =
@@ -9546,6 +9575,46 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
                           )}
                         </select>
                       </label>
+                      {booleanOperandOptions.length === 0 ? (
+                        <div
+                          style={{
+                            border: "1px solid #fed7aa",
+                            background: "#fff7ed",
+                            borderRadius: 6,
+                            padding: "5px 6px",
+                            color: "#9a3412",
+                            display: "grid",
+                            gap: 5,
+                          }}
+                        >
+                          <strong>Boolean needs a second mesh object.</strong>
+                          <span>Create two overlapping mesh operands, with A loaded in Mesh and B selected here.</span>
+                          <button
+                            data-testid={`${testId}-prepare-boolean-demo`}
+                            type="button"
+                            onClick={prepareBooleanDemoForExpandedOperation}
+                            disabled={operationBusy}
+                            style={{ justifySelf: "start", fontWeight: 800 }}
+                          >
+                            Create Boolean demo operands
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: "grid", gap: 5 }}>
+                          <span style={{ color: "#475569" }}>
+                            Operand A is the active Mesh object. Operand B comes from Geometry.
+                          </span>
+                          <button
+                            data-testid={`${testId}-prepare-boolean-demo`}
+                            type="button"
+                            onClick={prepareBooleanDemoForExpandedOperation}
+                            disabled={operationBusy}
+                            style={{ justifySelf: "start", fontWeight: 800 }}
+                          >
+                            Use demo operands
+                          </button>
+                        </div>
+                      )}
                       {booleanOperation === "imprint" && (
                         <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           curve radius
@@ -9591,7 +9660,28 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
                     <>
                       <div>Source: {implicitAvailable ? implicitExpr : "Open an implicit surface first"}</div>
                       {!implicitAvailable && (
-                        <div style={{ color: "#b45309", fontWeight: 800 }}>Open an implicit surface first.</div>
+                        <div
+                          style={{
+                            border: "1px solid #fed7aa",
+                            background: "#fff7ed",
+                            borderRadius: 6,
+                            padding: "5px 6px",
+                            color: "#9a3412",
+                            display: "grid",
+                            gap: 5,
+                          }}
+                        >
+                          <strong>Open an implicit surface first.</strong>
+                          <button
+                            data-testid={`${testId}-open-implicit-sphere`}
+                            type="button"
+                            onClick={onOpenImplicitSpherePreset}
+                            disabled={operationBusy}
+                            style={{ justifySelf: "start", fontWeight: 800 }}
+                          >
+                            Open implicit sphere preset
+                          </button>
+                        </div>
                       )}
                       <div>Resolution: {previewResolution}^3</div>
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -9628,7 +9718,28 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
                     <>
                       <div>Source: {implicitAvailable ? implicitExpr : "Open an implicit surface first"}</div>
                       {!implicitAvailable && (
-                        <div style={{ color: "#b45309", fontWeight: 800 }}>Open an implicit surface first.</div>
+                        <div
+                          style={{
+                            border: "1px solid #fed7aa",
+                            background: "#fff7ed",
+                            borderRadius: 6,
+                            padding: "5px 6px",
+                            color: "#9a3412",
+                            display: "grid",
+                            gap: 5,
+                          }}
+                        >
+                          <strong>Open an implicit surface first.</strong>
+                          <button
+                            data-testid={`${testId}-open-implicit-sphere`}
+                            type="button"
+                            onClick={onOpenImplicitSpherePreset}
+                            disabled={operationBusy}
+                            style={{ justifySelf: "start", fontWeight: 800 }}
+                          >
+                            Open implicit sphere preset
+                          </button>
+                        </div>
                       )}
                       <div>Worker: {cgalStatusText}</div>
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -47219,6 +47330,23 @@ case "mobius":
     });
   }, []);
 
+  const handleOpenImplicitSpherePresetForMeshOperations = useCallback(() => {
+    setMode("surfaces");
+    setDatasetKind("surface");
+    setSurfaceViewerKind("implicit");
+    setImplicitSurfaceId("sphere");
+    setImplicitExpr("x*x + y*y + z*z - 1");
+    setImplicitExprDraft("x*x + y*y + z*z - 1");
+    setImplicitResolution((current) => Math.max(24, current));
+    setVtkPreviewError(null);
+    setCgalError(null);
+    setGenerateSurfaceStatus({
+      state: "idle",
+      message: "Implicit sphere ready for Mesh Operations.",
+      at: Date.now(),
+    });
+  }, []);
+
   const handleChangeViewerKind = useCallback((kind: SurfaceViewerKind) => {
     setSurfaceViewerKind(kind);
     setDatasetKind(kind === "mesh" ? "mesh" : "surface");
@@ -47227,6 +47355,58 @@ case "mobius":
       setCameraSync(null);
     }
   }, []);
+
+  const handlePrepareMeshOperationBooleanDemo = useCallback(() => {
+    const meshA = buildMeshOperationBooleanDemoCubeMesh("Boolean demo A", -0.35);
+    const meshB = buildMeshOperationBooleanDemoCubeMesh("Boolean demo B", 0.35);
+    const idA = makeId();
+    const idB = makeId();
+    const objA: GeometryDatasetMeshObject = {
+      id: idA,
+      name: "Boolean demo A",
+      mesh: toDetachedMeshData(meshA),
+      transform: {
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+      },
+      visible: true,
+      material: { color: 0x3b82f6, opacity: 0.68 },
+      promotion: null,
+      sourceSelectionOverlay: null,
+    };
+    const objB: GeometryDatasetMeshObject = {
+      id: idB,
+      name: "Boolean demo B",
+      mesh: toDetachedMeshData(meshB),
+      transform: {
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+      },
+      visible: true,
+      material: { color: 0xf97316, opacity: 0.68 },
+      promotion: null,
+      sourceSelectionOverlay: null,
+    };
+    setGeometryObjects((prev) => (prev.length === 1 && isSeedGeometryBoxObject(prev[0]) ? [] : prev));
+    setGeometryDatasetMeshObjects((prev) => [
+      objB,
+      objA,
+      ...prev.filter((entry) => entry.name !== "Boolean demo A" && entry.name !== "Boolean demo B"),
+    ]);
+    setMeshDataset(meshA, "mesh-operation:boolean-demo-a");
+    setMode("surfaces");
+    setDatasetKind("mesh");
+    setSurfaceViewerKind("mesh");
+    setVtkBooleanOperation("union");
+    setVtkOutputMode("derived");
+    setVtkBooleanOperandObjectId(idB);
+    setGeometrySelectedObjectId(idB);
+    setVtkError(null);
+    setVtkBooleanStatus("Boolean demo operands ready: active Mesh is A, operand B is selected.");
+    setGeometryCreateActionStatus("Boolean demo operands created for Mesh Operations.");
+  }, [setMeshDataset]);
 
   const applyDefaultPorts = useCallback((block: WorkbookBlock): WorkbookBlock => {
     const ports = resolveBlockPorts(block);
@@ -66161,6 +66341,7 @@ case "mobius":
                   onRunSurfaceMeshTopologyFullRoundTripDemoPreset={handleRunSurfaceMeshTopologyFullRoundTripDemoPreset}
                   onLoadSurfaceMeshFile={handleLoadSurfaceMeshFile}
                   onConvertToMesh={handleConvertToMesh}
+                  onConvertToMeshObject={handleDatasetToGeometryScene}
                   onOpenMeshPromotionSourceGeometryObject={handleOpenMeshPromotionSourceGeometryObject}
                   onOpenPromotedMeshObject={handleOpenPromotedMeshObject}
                   onCompareMeshPromotionWithSource={handleComparePromotionSourceVsMesh}
@@ -66199,6 +66380,7 @@ case "mobius":
                   onChangeVtkBooleanCurveRadius={setVtkBooleanCurveRadius}
                   vtkBooleanStatus={vtkBooleanStatus}
                   onRunVtkBoolean={handleVtkBoolean}
+                  onPrepareMeshOperationBooleanDemo={handlePrepareMeshOperationBooleanDemo}
                   vtkOutputMode={vtkOutputMode}
                   onChangeVtkOutputMode={setVtkOutputMode}
                   generateSurfaceStatus={generateSurfaceStatus}
@@ -66209,6 +66391,7 @@ case "mobius":
                   onChangeVtkPreviewTargetFaces={setVtkPreviewTargetFaces}
                   onChangeVtkPreviewUseDecimate={setVtkPreviewUseDecimate}
                   onRunVtkPreview={handleVtkPreviewImplicit}
+                  onOpenImplicitSpherePreset={handleOpenImplicitSpherePresetForMeshOperations}
                   cgalHealthState={cgalHealthState}
                   cgalBusy={cgalBusy}
                   cgalError={cgalError}
@@ -69205,10 +69388,12 @@ case "mobius":
                           onChangeBooleanCurveRadius={setVtkBooleanCurveRadius}
                           booleanStatus={vtkBooleanStatus}
                           onRunBoolean={handleVtkBoolean}
+                          onPrepareBooleanDemo={handlePrepareMeshOperationBooleanDemo}
                           outputMode={vtkOutputMode}
                           onChangeOutputMode={setVtkOutputMode}
                           implicitAvailable={false}
-                          implicitExpr=""
+                          implicitExpr={activeImplicitExpr ?? ""}
+                          onOpenImplicitSpherePreset={handleOpenImplicitSpherePresetForMeshOperations}
                           implicitResolution={implicitResolution}
                           previewBusy={vtkPreviewBusy}
                           previewError={vtkPreviewError}
@@ -69805,10 +69990,12 @@ case "mobius":
                     onChangeMeshOperationBooleanCurveRadius={setVtkBooleanCurveRadius}
                     meshOperationBooleanStatus={vtkBooleanStatus}
                     onRunMeshOperationBoolean={handleVtkBoolean}
+                    onPrepareMeshOperationBooleanDemo={handlePrepareMeshOperationBooleanDemo}
                     meshOperationOutputMode={vtkOutputMode}
                     onChangeMeshOperationOutputMode={setVtkOutputMode}
                     meshOperationImplicitAvailable={surfaceViewerKind === "implicit" && !!activeImplicitExpr}
                     meshOperationImplicitExpr={activeImplicitExpr ?? ""}
+                    onOpenImplicitSpherePreset={handleOpenImplicitSpherePresetForMeshOperations}
                     meshOperationImplicitResolution={implicitResolution}
                     meshOperationPreviewBusy={vtkPreviewBusy}
                     meshOperationPreviewError={vtkPreviewError}
@@ -99397,10 +99584,12 @@ type SurfacesObjectPanelProps = {
   onChangeMeshOperationBooleanCurveRadius: (value: number) => void;
   meshOperationBooleanStatus: string | null;
   onRunMeshOperationBoolean: () => void | Promise<void>;
+  onPrepareMeshOperationBooleanDemo: () => void;
   meshOperationOutputMode: "replace" | "derived";
   onChangeMeshOperationOutputMode: (mode: "replace" | "derived") => void;
   meshOperationImplicitAvailable: boolean;
   meshOperationImplicitExpr: string;
+  onOpenImplicitSpherePreset: () => void;
   meshOperationImplicitResolution: number;
   meshOperationPreviewBusy: boolean;
   meshOperationPreviewError: string | null;
@@ -99537,10 +99726,12 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   onChangeMeshOperationBooleanCurveRadius,
   meshOperationBooleanStatus,
   onRunMeshOperationBoolean,
+  onPrepareMeshOperationBooleanDemo,
   meshOperationOutputMode,
   onChangeMeshOperationOutputMode,
   meshOperationImplicitAvailable,
   meshOperationImplicitExpr,
+  onOpenImplicitSpherePreset,
   meshOperationImplicitResolution,
   meshOperationPreviewBusy,
   meshOperationPreviewError,
@@ -99886,10 +100077,12 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
           onChangeBooleanCurveRadius={onChangeMeshOperationBooleanCurveRadius}
           booleanStatus={meshOperationBooleanStatus}
           onRunBoolean={onRunMeshOperationBoolean}
+          onPrepareBooleanDemo={onPrepareMeshOperationBooleanDemo}
           outputMode={meshOperationOutputMode}
           onChangeOutputMode={onChangeMeshOperationOutputMode}
           implicitAvailable={meshOperationImplicitAvailable}
           implicitExpr={meshOperationImplicitExpr}
+          onOpenImplicitSpherePreset={onOpenImplicitSpherePreset}
           implicitResolution={meshOperationImplicitResolution}
           previewBusy={meshOperationPreviewBusy}
           previewError={meshOperationPreviewError}
@@ -101311,6 +101504,7 @@ type SurfacesLeftPanelProps = {
   onRunSurfaceMeshTopologyFullRoundTripDemoPreset: (id: string) => void;
   onLoadSurfaceMeshFile: (files: FileList | File[] | null) => void;
   onConvertToMesh: () => void;
+  onConvertToMeshObject: () => void;
   onOpenMeshPromotionSourceGeometryObject: () => void;
   onOpenPromotedMeshObject: () => void;
   onCompareMeshPromotionWithSource: () => void;
@@ -101349,6 +101543,7 @@ type SurfacesLeftPanelProps = {
   onChangeVtkBooleanCurveRadius: (v: number) => void;
   vtkBooleanStatus: string | null;
   onRunVtkBoolean: () => void | Promise<void>;
+  onPrepareMeshOperationBooleanDemo: () => void;
   vtkOutputMode: "replace" | "derived";
   onChangeVtkOutputMode: (mode: "replace" | "derived") => void;
   generateSurfaceStatus: GenerateSurfaceStatus;
@@ -101359,6 +101554,7 @@ type SurfacesLeftPanelProps = {
   onChangeVtkPreviewTargetFaces: (v: number) => void;
   onChangeVtkPreviewUseDecimate: (v: boolean) => void;
   onRunVtkPreview: () => void;
+  onOpenImplicitSpherePreset: () => void;
   cgalHealthState: CgalHealthState | null;
   cgalBusy: boolean;
   cgalError: string | null;
@@ -102019,6 +102215,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onRunSurfaceMeshTopologyFullRoundTripDemoPreset,
   onLoadSurfaceMeshFile,
   onConvertToMesh,
+  onConvertToMeshObject,
   onOpenMeshPromotionSourceGeometryObject,
   onOpenPromotedMeshObject,
   onCompareMeshPromotionWithSource,
@@ -102057,6 +102254,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeVtkBooleanCurveRadius,
   vtkBooleanStatus,
   onRunVtkBoolean,
+  onPrepareMeshOperationBooleanDemo,
   vtkOutputMode,
   onChangeVtkOutputMode,
   generateSurfaceStatus,
@@ -102067,6 +102265,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeVtkPreviewTargetFaces,
   onChangeVtkPreviewUseDecimate,
   onRunVtkPreview,
+  onOpenImplicitSpherePreset,
   cgalHealthState,
   cgalBusy,
   cgalError,
@@ -106618,10 +106817,12 @@ onChangeImplicitExpr,
               onChangeBooleanCurveRadius={onChangeVtkBooleanCurveRadius}
               booleanStatus={vtkBooleanStatus}
               onRunBoolean={onRunVtkBoolean}
+              onPrepareBooleanDemo={onPrepareMeshOperationBooleanDemo}
               outputMode={vtkOutputMode}
               onChangeOutputMode={onChangeVtkOutputMode}
               implicitAvailable={isImplicitAny}
               implicitExpr={implicitExprTrimmed}
+              onOpenImplicitSpherePreset={onOpenImplicitSpherePreset}
               implicitResolution={implicitResolution}
               previewBusy={vtkPreviewBusy}
               previewError={vtkPreviewError}
@@ -106644,7 +106845,7 @@ onChangeImplicitExpr,
               onRunCgalMesh={onRunCgalMesh}
               onOpenResult={() => setMeshToolsTab("surface_mesh")}
               canSendToGeometry={meshReady}
-              onSendToGeometry={onConvertToMesh}
+              onSendToGeometry={onConvertToMeshObject}
             />
           </div>
           <div style={{ marginTop: 4, fontSize: 10, opacity: 0.72 }}>

@@ -119,7 +119,7 @@ test.describe("Mesh Operations card", () => {
 
     const card = await openWorkspaceOperationsCard(page);
 
-    for (const preset of ["vtk-polish", "vtk-simplify", "vtk-smooth", "vtk-boolean", "cgal-implicit"]) {
+    for (const preset of ["vtk-polish", "vtk-simplify", "vtk-smooth", "vtk-boolean"]) {
       await card.getByTestId(`mesh-workspace-operation-registry-preset-${preset}`).click();
       await expect(card.locator("[aria-expanded=\"true\"]")).toBeVisible();
     }
@@ -205,6 +205,58 @@ test.describe("Mesh Operations card", () => {
     });
     expect(preview.ok, preview.error).toBeTruthy();
     await expectLastOperation(card, /Implicit preview/i);
+  });
+
+  test("prepares Boolean operands and routes the operation result from the real card", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+
+    const card = await openWorkspaceOperationsCard(page);
+    await card.getByTestId("mesh-workspace-operation-registry-row-boolean-union").click();
+    await card.getByTestId("mesh-workspace-operation-registry-prepare-boolean-demo").click();
+    await expect(card).toContainText("Boolean demo operands ready", { timeout: 15_000 });
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-operand")).toContainText("Boolean demo B");
+
+    const runUnion = card.getByTestId("mesh-workspace-operation-registry-run-boolean-union");
+    if (!(await runUnion.isEnabled())) {
+      test.skip(true, "VTK worker is not available in this environment.");
+    }
+    await runUnion.click();
+    await expectLastOperation(card, /Boolean union/i);
+
+    await card.getByTestId("mesh-workspace-operation-registry-send-to-geometry").click();
+    await selectSection(page, "Geometry");
+    await expect(page.getByText(/mesh sent to geometry/i)).toBeVisible({ timeout: 15_000 });
+
+    await selectSection(page, "Mesh");
+    const cardAgain = await openWorkspaceOperationsCard(page);
+    await cardAgain.getByTestId("mesh-workspace-operation-registry-row-boolean-difference").click();
+    await cardAgain.getByTestId("mesh-workspace-operation-registry-prepare-boolean-demo").click();
+    const runDifference = cardAgain.getByTestId("mesh-workspace-operation-registry-run-boolean-difference");
+    if (!(await runDifference.isEnabled())) {
+      test.skip(true, "VTK worker is not available in this environment.");
+    }
+    await runDifference.click();
+    await expectLastOperation(cardAgain, /Boolean difference/i);
+  });
+
+  test("opens the implicit sphere preset from Mesh Operations and runs preview from the real card", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+
+    const card = await openWorkspaceOperationsCard(page);
+    await card.getByTestId("mesh-workspace-operation-registry-row-implicit-preview").click();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-run-implicit-preview")).toBeDisabled();
+    await card.getByTestId("mesh-workspace-operation-registry-open-implicit-sphere").click();
+    await expect(page.getByText(/Surfaces \/ Implicit \/ Level Set \/ Sphere/i)).toBeVisible({ timeout: 15_000 });
+    const previewButton = await firstVisible(page.getByRole("button", { name: "Preview", exact: true }));
+    await expect(previewButton).toBeEnabled({ timeout: 15_000 });
+    await previewButton.click();
+    await expect(page.getByText(/generate running|preview|mesh/i).first()).toBeVisible({ timeout: 15_000 });
   });
 
   test("runs CGAL implicit mesh through the shared operation layer when available", async () => {
