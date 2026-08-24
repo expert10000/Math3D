@@ -1799,18 +1799,6 @@ type GenerateSurfaceStatus = {
   message: string;
   at: number;
 };
-type VtkResultSummary = {
-  operation: string;
-  beforeFaces: number;
-  afterFaces: number;
-  requestedFaces: number | null;
-  normalsRecomputed: boolean;
-  warnings: string[];
-  outputMode: "replace" | "derived";
-  engine?: "vtk" | "cgal";
-  durationMs?: number;
-  timestamp: number;
-};
 type MeshPerfBenchmarkId =
   | "tri-50k"
   | "tri-250k"
@@ -33529,7 +33517,6 @@ const App: React.FC = () => {
   const [meshOperationBooleanCurveRadius, setMeshOperationBooleanCurveRadius] = useState(0);
   const [meshOperationBooleanStatus, setMeshOperationBooleanStatus] = useState<string | null>(null);
   const [meshOperationOutputMode, setMeshOperationOutputMode] = useState<"replace" | "derived">("derived");
-  const [vtkLastResult, setVtkLastResult] = useState<VtkResultSummary | null>(null);
   const [meshLastOperation, setMeshLastOperation] = useState<MeshOperationResultSummary | null>(null);
   const [meshOperationPreviewBusy, setMeshOperationPreviewBusy] = useState(false);
   const [meshOperationPreviewError, setMeshOperationPreviewError] = useState<string | null>(null);
@@ -53691,8 +53678,8 @@ case "mobius":
     if (oldestKey) cache.delete(oldestKey);
   }, []);
 
-  const getMeshForVtk = useCallback(() => {
-    const toVtkMeshInput = (mesh: SurfaceMeshData | null | undefined) => {
+  const getMeshForMeshOperation = useCallback(() => {
+    const toMeshOperationInput = (mesh: SurfaceMeshData | null | undefined) => {
       if (!mesh?.positions.length) return null;
       const vertexCount = Math.floor(mesh.positions.length / 3);
       const indices =
@@ -53715,9 +53702,9 @@ case "mobius":
       };
     };
     const cachedFullMesh = largeSurfaceMeshResolutionCacheRef.current?.fullMesh ?? null;
-    const cachedMesh = toVtkMeshInput(cachedFullMesh);
+    const cachedMesh = toMeshOperationInput(cachedFullMesh);
     if (cachedMesh) return cachedMesh;
-    const activeMesh = toVtkMeshInput(surfaceMeshData);
+    const activeMesh = toMeshOperationInput(surfaceMeshData);
     if (activeMesh) return { ...activeMesh, label: buildActiveMeshLabel() };
     const meshData = surfaceSampleSet?.meshData ?? [];
     if (!meshData.length) return null;
@@ -53756,26 +53743,11 @@ case "mobius":
         source,
       };
       const processed = applySurfaceMeshOps(next);
-      setMeshDataset(processed, `vtk:${meta.operation}`);
+      setMeshDataset(processed, `mesh-operation:${meta.operation}`);
       setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
       focusSurfaceMeshViewport(processed);
       setSurfaceMeshImportError(null);
-      setVtkLastResult({
-        operation: meta.operation,
-        beforeFaces: Math.max(0, Math.round(meta.beforeFaces)),
-        afterFaces: Math.max(0, Math.round((res.indices?.length ?? 0) / 3)),
-        requestedFaces:
-          meta.requestedFaces == null || !Number.isFinite(meta.requestedFaces)
-            ? null
-            : Math.max(0, Math.round(meta.requestedFaces)),
-        normalsRecomputed: meta.normalsRecomputed !== false,
-        warnings: meta.warnings ?? [],
-        outputMode: meshOperationOutputMode,
-        engine: meta.engine,
-        durationMs: meta.durationMs,
-        timestamp: Date.now(),
-      });
       appendMeshPromotionOperation(meta.operation);
     },
     [appendMeshPromotionOperation, buildActiveMeshLabel, focusSurfaceMeshViewport, surfaceMeshData?.source, meshOperationOutputMode]
@@ -53873,7 +53845,7 @@ case "mobius":
       setMeshOperationError(cgalHealthState.error ?? "Python worker unavailable.");
       return;
     }
-    const mesh = getMeshForVtk();
+    const mesh = getMeshForMeshOperation();
     if (!mesh) {
       setMeshOperationError("Surface mesh not ready yet.");
       return;
@@ -53915,7 +53887,7 @@ case "mobius":
   }, [
     meshOperationBusy,
     cgalHealthState,
-    getMeshForVtk,
+    getMeshForMeshOperation,
     meshOperationCleanComputeNormals,
     meshOperationOutputMode,
     applyMeshOperationResultToSurfaceMesh,
@@ -53928,7 +53900,7 @@ case "mobius":
       setMeshOperationError(cgalHealthState.error ?? "Python worker unavailable.");
       return;
     }
-    const mesh = getMeshForVtk();
+    const mesh = getMeshForMeshOperation();
     if (!mesh) {
       setMeshOperationError("Surface mesh not ready yet.");
       return;
@@ -53977,7 +53949,7 @@ case "mobius":
   }, [
     meshOperationBusy,
     cgalHealthState,
-    getMeshForVtk,
+    getMeshForMeshOperation,
     meshOperationUseTargetFaces,
     meshOperationDecimateTargetFaces,
     meshOperationDecimateReduction,
@@ -53992,7 +53964,7 @@ case "mobius":
       setMeshOperationError(cgalHealthState.error ?? "Python worker unavailable.");
       return;
     }
-    const mesh = getMeshForVtk();
+    const mesh = getMeshForMeshOperation();
     if (!mesh) {
       setMeshOperationError("Surface mesh not ready yet.");
       return;
@@ -54038,7 +54010,7 @@ case "mobius":
   }, [
     meshOperationBusy,
     cgalHealthState,
-    getMeshForVtk,
+    getMeshForMeshOperation,
     meshOperationSmoothIterations,
     meshOperationSmoothPassband,
     meshOperationOutputMode,
@@ -54190,7 +54162,7 @@ case "mobius":
             }
             return { ok: true };
           }
-          const mesh = getMeshForVtk();
+          const mesh = getMeshForMeshOperation();
           if (!mesh) {
             const cached = largeSurfaceMeshResolutionCacheRef.current?.fullMesh ?? null;
             const sampleMeshData = surfaceSampleSet?.meshData ?? [];
@@ -54239,7 +54211,7 @@ case "mobius":
       }
     };
   }, [
-    getMeshForVtk,
+    getMeshForMeshOperation,
     isDev,
     meshOperationCleanComputeNormals,
     meshOperationDecimateReduction,
@@ -54259,7 +54231,7 @@ case "mobius":
       setMeshOperationError(cgalHealthState.error ?? "Python worker unavailable.");
       return;
     }
-    const meshA = getMeshForVtk();
+    const meshA = getMeshForMeshOperation();
     if (!meshA) {
       setMeshOperationError("Surface mesh not ready yet.");
       return;
@@ -54466,7 +54438,7 @@ case "mobius":
   }, [
     meshOperationBusy,
     cgalHealthState,
-    getMeshForVtk,
+    getMeshForMeshOperation,
     meshOperationBooleanOperandObjectId,
     resolveGeometrySceneMeshById,
     meshOperationBooleanOperation,
@@ -56236,7 +56208,7 @@ case "mobius":
         y: selectionContextMenu.y,
       }
     : null;
-  const vtkMeshAvailable = !!surfaceSampleSet?.meshData?.length;
+  const meshOperationMeshAvailable = !!surfaceSampleSet?.meshData?.length;
 
   const cgalMeshInfo = useMemo(() => {
     if (!activeCgalMesh) return null;
@@ -59666,7 +59638,7 @@ case "mobius":
       return;
     }
     if (surfaceViewerKind !== "implicit") {
-      const msg = "VTK preview is available only in the implicit viewer.";
+      const msg = "Implicit preview is available only in the implicit viewer.";
       setMeshOperationPreviewError(msg);
       setGenerateSurfaceStatus({ state: "error", message: msg, at: Date.now() });
       return;
@@ -59714,14 +59686,14 @@ case "mobius":
       setMeshLastOperation(summarizeMeshOperationResult(res, meshOperationOutputMode === "replace" ? "replace" : "new-object"));
       if (res.status === "error" || !res.resultMesh) {
         setMeshPerformanceLastBuildMs(performance.now() - startedAt);
-        const message = res.errors[0]?.message ?? "VTK preview failed.";
+        const message = res.errors[0]?.message ?? "Implicit preview failed.";
         setMeshOperationPreviewError(message);
         setGenerateSurfaceStatus({ state: "error", message, at: Date.now() });
         return;
       }
       setMeshPerformanceLastBuildMs(performance.now() - startedAt);
-      applyMeshOperationResultToSurfaceMesh("VTK preview", res.resultMesh, {
-        operation: "VTK preview",
+      applyMeshOperationResultToSurfaceMesh("Implicit preview", res.resultMesh, {
+        operation: "Implicit preview",
         beforeFaces: surfaceMeshStats?.triCount ?? 0,
         requestedFaces: meshOperationPreviewUseDecimate ? targetFaces : null,
         normalsRecomputed: true,
@@ -59736,7 +59708,7 @@ case "mobius":
       });
     } catch (err: any) {
       setMeshPerformanceLastBuildMs(performance.now() - startedAt);
-      const msg = err?.message ?? "VTK preview failed.";
+      const msg = err?.message ?? "Implicit preview failed.";
       setMeshOperationPreviewError(msg);
       setGenerateSurfaceStatus({ state: "error", message: msg, at: Date.now() });
     } finally {
@@ -59993,9 +59965,9 @@ case "mobius":
     cgalHealthState,
   ]);
 
-  const runVtkPreviewRef = useRef(handleMeshOperationPreviewImplicit);
+  const runMeshOperationPreviewRef = useRef(handleMeshOperationPreviewImplicit);
   useEffect(() => {
-    runVtkPreviewRef.current = handleMeshOperationPreviewImplicit;
+    runMeshOperationPreviewRef.current = handleMeshOperationPreviewImplicit;
   }, [handleMeshOperationPreviewImplicit]);
 
   const geometrySmokeRunRef = useRef(false);
@@ -60033,7 +60005,7 @@ case "mobius":
         await sleep(120);
 
         marker("CLICK_GENERATE");
-        await runVtkPreviewRef.current();
+        await runMeshOperationPreviewRef.current();
         try {
           await waitFor(() => {
             const s = geometrySmokeSnapshotRef.current;
@@ -65132,10 +65104,10 @@ case "mobius":
     : cgalServiceReady
       ? `available${cgalHealthState.version ? ` · v${cgalHealthState.version}` : ""}`
       : "unavailable";
-  const vtkServiceReady = vtkBridgeReady && cgalServiceReady;
-  const vtkServiceStatusText = !vtkBridgeReady
+  const meshOperationServiceReady = vtkBridgeReady && cgalServiceReady;
+  const meshOperationServiceStatusText = !vtkBridgeReady
     ? "bridge unavailable"
-    : vtkServiceReady
+    : meshOperationServiceReady
       ? "available"
       : "blocked by worker";
   const octaveServiceApi = window.octaveService;
@@ -65147,7 +65119,7 @@ case "mobius":
     !!sageServiceApi && (typeof sageServiceApi.getStatus === "function" || typeof sageServiceApi.health === "function");
   const sageServiceStatusText = sageBridgeReady ? "available" : "pending";
   const cgalServiceColor = cgalServiceReady ? "#1f894f" : "#b42318";
-  const vtkServiceColor = vtkServiceReady ? "#1f894f" : "#b42318";
+  const meshOperationServiceColor = meshOperationServiceReady ? "#1f894f" : "#b42318";
   const octaveServiceColor = octaveBridgeReady ? "#1f894f" : "#9a6700";
   const sageServiceColor = sageBridgeReady ? "#1f894f" : "#9a6700";
   const surfacesWorkspaceTabs: readonly SurfacesLeftTab[] = isPresentDisplayMode
@@ -65545,46 +65517,46 @@ case "mobius":
                   onToggleVolumeDistanceSigned={setVolumeDistanceSigned}
                   onToggleVolumeDistanceAutoBounds={setVolumeDistanceAutoBounds}
                   meshLastOperation={meshLastOperation}
-                  vtkAvailable={vtkMeshAvailable}
+                  meshOperationAvailable={meshOperationMeshAvailable}
                   pythonWorkerAvailable={cgalHealthState?.ok === true}
                   pythonWorkerStatusMessage={cgalHealthState?.error ?? cgalHealthState?.statusMessage ?? null}
                   pythonWorkerLogPath={cgalHealthState?.logsPath ?? null}
                   meshOperationBusy={meshOperationBusy}
                   meshOperationError={meshOperationError}
                   meshOperationCleanComputeNormals={meshOperationCleanComputeNormals}
-                  onChangeVtkCleanComputeNormals={setMeshOperationCleanComputeNormals}
+                  onChangeMeshOperationCleanComputeNormals={setMeshOperationCleanComputeNormals}
                   meshOperationDecimateReduction={meshOperationDecimateReduction}
-                  onChangeVtkDecimateReduction={setMeshOperationDecimateReduction}
+                  onChangeMeshOperationDecimateReduction={setMeshOperationDecimateReduction}
                   meshOperationDecimateTargetFaces={meshOperationDecimateTargetFaces}
-                  onChangeVtkDecimateTargetFaces={setMeshOperationDecimateTargetFaces}
+                  onChangeMeshOperationDecimateTargetFaces={setMeshOperationDecimateTargetFaces}
                   meshOperationUseTargetFaces={meshOperationUseTargetFaces}
-                  onToggleVtkUseTargetFaces={setMeshOperationUseTargetFaces}
+                  onToggleMeshOperationUseTargetFaces={setMeshOperationUseTargetFaces}
                   meshOperationSmoothIterations={meshOperationSmoothIterations}
-                  onChangeVtkSmoothIterations={setMeshOperationSmoothIterations}
+                  onChangeMeshOperationSmoothIterations={setMeshOperationSmoothIterations}
                   meshOperationSmoothPassband={meshOperationSmoothPassband}
-                  onChangeVtkSmoothPassband={setMeshOperationSmoothPassband}
-                  onVtkCleanNormals={handleMeshOperationCleanNormals}
-                  onVtkDecimate={handleMeshOperationDecimate}
-                  onVtkSmooth={handleMeshOperationSmooth}
+                  onChangeMeshOperationSmoothPassband={setMeshOperationSmoothPassband}
+                  onMeshOperationCleanNormals={handleMeshOperationCleanNormals}
+                  onMeshOperationDecimate={handleMeshOperationDecimate}
+                  onMeshOperationSmooth={handleMeshOperationSmooth}
                   meshOperationBooleanOperation={meshOperationBooleanOperation}
-                  onChangeVtkBooleanOperation={setMeshOperationBooleanOperation}
+                  onChangeMeshOperationBooleanOperation={setMeshOperationBooleanOperation}
                   meshOperationBooleanOperandObjectId={meshOperationBooleanOperandObjectId}
-                  onChangeVtkBooleanOperandObjectId={setMeshOperationBooleanOperandObjectId}
+                  onChangeMeshOperationBooleanOperandObjectId={setMeshOperationBooleanOperandObjectId}
                   meshOperationBooleanOperandOptions={geometryBooleanObjectOptions}
                   meshOperationBooleanCurveRadius={meshOperationBooleanCurveRadius}
-                  onChangeVtkBooleanCurveRadius={setMeshOperationBooleanCurveRadius}
+                  onChangeMeshOperationBooleanCurveRadius={setMeshOperationBooleanCurveRadius}
                   meshOperationBooleanStatus={meshOperationBooleanStatus}
                   onRunMeshOperationBoolean={handleMeshOperationBoolean}
                   onPrepareMeshOperationBooleanDemo={handlePrepareMeshOperationBooleanDemo}
                   meshOperationOutputMode={meshOperationOutputMode}
-                  onChangeVtkOutputMode={setMeshOperationOutputMode}
+                  onChangeMeshOperationOutputMode={setMeshOperationOutputMode}
                   generateSurfaceStatus={generateSurfaceStatus}
                   meshOperationPreviewBusy={meshOperationPreviewBusy}
                   meshOperationPreviewError={meshOperationPreviewError}
                   meshOperationPreviewTargetFaces={meshOperationPreviewTargetFaces}
                   meshOperationPreviewUseDecimate={meshOperationPreviewUseDecimate}
-                  onChangeVtkPreviewTargetFaces={setMeshOperationPreviewTargetFaces}
-                  onChangeVtkPreviewUseDecimate={setMeshOperationPreviewUseDecimate}
+                  onChangeMeshOperationPreviewTargetFaces={setMeshOperationPreviewTargetFaces}
+                  onChangeMeshOperationPreviewUseDecimate={setMeshOperationPreviewUseDecimate}
                   onRunMeshOperationPreview={handleMeshOperationPreviewImplicit}
                   onOpenImplicitSpherePreset={handleOpenImplicitSpherePresetForMeshOperations}
                   cgalHealthState={cgalHealthState}
@@ -68553,8 +68525,8 @@ case "mobius":
                           testId="mesh-workspace-operation-registry"
                           meshReady={!!surfaceMeshStats}
                           activeMeshLabel={buildActiveMeshLabel()}
-                          workerReady={vtkServiceReady}
-                          workerStatusText={vtkServiceStatusText}
+                          workerReady={meshOperationServiceReady}
+                          workerStatusText={meshOperationServiceStatusText}
                           cgalReady={cgalServiceReady}
                           cgalStatusText={cgalServiceStatusText}
                           busy={meshOperationBusy}
@@ -69161,8 +69133,8 @@ case "mobius":
                     onBakeAsPrimaryObject={handleDatasetToGeometryScene}
                     onOpenAnalysis={() => setSurfacesLeftTab("analysis")}
                     meshLastOperation={meshLastOperation}
-                    meshOperationWorkerReady={vtkServiceReady}
-                    meshOperationWorkerStatusText={vtkServiceStatusText}
+                    meshOperationWorkerReady={meshOperationServiceReady}
+                    meshOperationWorkerStatusText={meshOperationServiceStatusText}
                     meshOperationCgalReady={cgalServiceReady}
                     meshOperationCgalStatusText={cgalServiceStatusText}
                     meshOperationBusy={meshOperationBusy}
@@ -70761,7 +70733,7 @@ case "mobius":
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                       <strong>VTK</strong>
-                      <span style={{ color: vtkServiceColor }}>{vtkServiceStatusText}</span>
+                      <span style={{ color: meshOperationServiceColor }}>{meshOperationServiceStatusText}</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                       <strong>Octave</strong>
@@ -74789,12 +74761,11 @@ case "mobius":
                       generateSurfaceStatus={generateSurfaceStatus}
                       meshOperationPreviewTargetFaces={meshOperationPreviewTargetFaces}
                       meshOperationPreviewUseDecimate={meshOperationPreviewUseDecimate}
-                      vtkLastResult={vtkLastResult}
                       meshLastOperation={meshLastOperation}
                       meshOperationError={meshOperationError}
                       onSaveMeshOperationPreset={handleSaveMeshOperationPreset}
-                      onChangeVtkPreviewTargetFaces={setMeshOperationPreviewTargetFaces}
-                      onChangeVtkPreviewUseDecimate={setMeshOperationPreviewUseDecimate}
+                      onChangeMeshOperationPreviewTargetFaces={setMeshOperationPreviewTargetFaces}
+                      onChangeMeshOperationPreviewUseDecimate={setMeshOperationPreviewUseDecimate}
                       onRunMeshOperationPreview={handleMeshOperationPreviewImplicit}
                       cgalHealthState={cgalHealthState}
                       cgalBusy={cgalBusy}
@@ -100719,46 +100690,46 @@ type SurfacesLeftPanelProps = {
   onToggleVolumeDistanceSigned: (v: boolean) => void;
   onToggleVolumeDistanceAutoBounds: (v: boolean) => void;
   meshLastOperation: MeshOperationResultSummary | null;
-  vtkAvailable: boolean;
+  meshOperationAvailable: boolean;
   pythonWorkerAvailable: boolean;
   pythonWorkerStatusMessage: string | null;
   pythonWorkerLogPath: string | null;
   meshOperationBusy: boolean;
   meshOperationError: string | null;
   meshOperationCleanComputeNormals: boolean;
-  onChangeVtkCleanComputeNormals: (v: boolean) => void;
+  onChangeMeshOperationCleanComputeNormals: (v: boolean) => void;
   meshOperationDecimateReduction: number;
-  onChangeVtkDecimateReduction: (v: number) => void;
+  onChangeMeshOperationDecimateReduction: (v: number) => void;
   meshOperationDecimateTargetFaces: number;
-  onChangeVtkDecimateTargetFaces: (v: number) => void;
+  onChangeMeshOperationDecimateTargetFaces: (v: number) => void;
   meshOperationUseTargetFaces: boolean;
-  onToggleVtkUseTargetFaces: (v: boolean) => void;
+  onToggleMeshOperationUseTargetFaces: (v: boolean) => void;
   meshOperationSmoothIterations: number;
-  onChangeVtkSmoothIterations: (v: number) => void;
+  onChangeMeshOperationSmoothIterations: (v: number) => void;
   meshOperationSmoothPassband: number;
-  onChangeVtkSmoothPassband: (v: number) => void;
-  onVtkCleanNormals: () => void;
-  onVtkDecimate: () => void;
-  onVtkSmooth: () => void;
+  onChangeMeshOperationSmoothPassband: (v: number) => void;
+  onMeshOperationCleanNormals: () => void;
+  onMeshOperationDecimate: () => void;
+  onMeshOperationSmooth: () => void;
   meshOperationBooleanOperation: MeshBooleanOperation;
-  onChangeVtkBooleanOperation: (op: MeshBooleanOperation) => void;
+  onChangeMeshOperationBooleanOperation: (op: MeshBooleanOperation) => void;
   meshOperationBooleanOperandObjectId: string | null;
-  onChangeVtkBooleanOperandObjectId: (id: string | null) => void;
+  onChangeMeshOperationBooleanOperandObjectId: (id: string | null) => void;
   meshOperationBooleanOperandOptions: Array<{ id: string; name: string }>;
   meshOperationBooleanCurveRadius: number;
-  onChangeVtkBooleanCurveRadius: (v: number) => void;
+  onChangeMeshOperationBooleanCurveRadius: (v: number) => void;
   meshOperationBooleanStatus: string | null;
   onRunMeshOperationBoolean: () => void | Promise<void>;
   onPrepareMeshOperationBooleanDemo: () => void;
   meshOperationOutputMode: "replace" | "derived";
-  onChangeVtkOutputMode: (mode: "replace" | "derived") => void;
+  onChangeMeshOperationOutputMode: (mode: "replace" | "derived") => void;
   generateSurfaceStatus: GenerateSurfaceStatus;
   meshOperationPreviewBusy: boolean;
   meshOperationPreviewError: string | null;
   meshOperationPreviewTargetFaces: number;
   meshOperationPreviewUseDecimate: boolean;
-  onChangeVtkPreviewTargetFaces: (v: number) => void;
-  onChangeVtkPreviewUseDecimate: (v: boolean) => void;
+  onChangeMeshOperationPreviewTargetFaces: (v: number) => void;
+  onChangeMeshOperationPreviewUseDecimate: (v: boolean) => void;
   onRunMeshOperationPreview: () => void;
   onOpenImplicitSpherePreset: () => void;
   cgalHealthState: CgalHealthState | null;
@@ -101430,46 +101401,46 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleVolumeDistanceSigned,
   onToggleVolumeDistanceAutoBounds,
   meshLastOperation,
-  vtkAvailable,
+  meshOperationAvailable,
   pythonWorkerAvailable,
   pythonWorkerStatusMessage,
   pythonWorkerLogPath,
   meshOperationBusy,
   meshOperationError,
   meshOperationCleanComputeNormals,
-  onChangeVtkCleanComputeNormals,
+  onChangeMeshOperationCleanComputeNormals,
   meshOperationDecimateReduction,
-  onChangeVtkDecimateReduction,
+  onChangeMeshOperationDecimateReduction,
   meshOperationDecimateTargetFaces,
-  onChangeVtkDecimateTargetFaces,
+  onChangeMeshOperationDecimateTargetFaces,
   meshOperationUseTargetFaces,
-  onToggleVtkUseTargetFaces,
+  onToggleMeshOperationUseTargetFaces,
   meshOperationSmoothIterations,
-  onChangeVtkSmoothIterations,
+  onChangeMeshOperationSmoothIterations,
   meshOperationSmoothPassband,
-  onChangeVtkSmoothPassband,
-  onVtkCleanNormals,
-  onVtkDecimate,
-  onVtkSmooth,
+  onChangeMeshOperationSmoothPassband,
+  onMeshOperationCleanNormals,
+  onMeshOperationDecimate,
+  onMeshOperationSmooth,
   meshOperationBooleanOperation,
-  onChangeVtkBooleanOperation,
+  onChangeMeshOperationBooleanOperation,
   meshOperationBooleanOperandObjectId,
-  onChangeVtkBooleanOperandObjectId,
+  onChangeMeshOperationBooleanOperandObjectId,
   meshOperationBooleanOperandOptions,
   meshOperationBooleanCurveRadius,
-  onChangeVtkBooleanCurveRadius,
+  onChangeMeshOperationBooleanCurveRadius,
   meshOperationBooleanStatus,
   onRunMeshOperationBoolean,
   onPrepareMeshOperationBooleanDemo,
   meshOperationOutputMode,
-  onChangeVtkOutputMode,
+  onChangeMeshOperationOutputMode,
   generateSurfaceStatus,
   meshOperationPreviewBusy,
   meshOperationPreviewError,
   meshOperationPreviewTargetFaces,
   meshOperationPreviewUseDecimate,
-  onChangeVtkPreviewTargetFaces,
-  onChangeVtkPreviewUseDecimate,
+  onChangeMeshOperationPreviewTargetFaces,
+  onChangeMeshOperationPreviewUseDecimate,
   onRunMeshOperationPreview,
   onOpenImplicitSpherePreset,
   cgalHealthState,
@@ -102184,7 +102155,7 @@ onChangeImplicitExpr,
       ? formatSurfaceMeshSource(surfaceMeshSource)
       : "detached mesh"
     : viewerKind === "implicit"
-      ? "VTK preview mesh / CGAL robust mesh"
+      ? "Fast preview mesh / robust mesh"
       : "analytic surface";
   const handleComputeDifferentialGeometry = useCallback(() => {
     onChangeAnalysisFocusedSection?.("differential-geometry");
@@ -104575,7 +104546,7 @@ onChangeImplicitExpr,
                       type="checkbox"
                       checked={meshOperationPreviewUseDecimate}
                       disabled={meshOperationPreviewDisabled}
-                      onChange={(e) => onChangeVtkPreviewUseDecimate(e.target.checked)}
+                      onChange={(e) => onChangeMeshOperationPreviewUseDecimate(e.target.checked)}
                     />
                     Decimate preview
                   </label>
@@ -104590,7 +104561,7 @@ onChangeImplicitExpr,
                       disabled={!meshOperationPreviewUseDecimate || meshOperationPreviewDisabled}
                       onChange={(e) => {
                         const v = Number(e.target.value);
-                        if (Number.isFinite(v)) onChangeVtkPreviewTargetFaces(Math.min(500000, Math.max(200, v)));
+                        if (Number.isFinite(v)) onChangeMeshOperationPreviewTargetFaces(Math.min(500000, Math.max(200, v)));
                       }}
                       style={{ width: 110 }}
                     />
@@ -106013,7 +105984,7 @@ onChangeImplicitExpr,
             <MeshOperationsCompactCard
               testId="mesh-operation-registry"
               meshReady={meshReady}
-              workerReady={vtkAvailable && pythonWorkerAvailable}
+              workerReady={meshOperationAvailable && pythonWorkerAvailable}
               workerStatusText={pythonWorkerStatusMessage ?? "worker unavailable"}
               cgalReady={cgalReady}
               cgalStatusText={cgalStatusText}
@@ -106021,32 +105992,32 @@ onChangeImplicitExpr,
               cgalBusy={cgalBusy}
               lastResult={meshLastOperation}
               cleanComputeNormals={meshOperationCleanComputeNormals}
-              onChangeCleanComputeNormals={onChangeVtkCleanComputeNormals}
-              onClean={onVtkCleanNormals}
+              onChangeCleanComputeNormals={onChangeMeshOperationCleanComputeNormals}
+              onClean={onMeshOperationCleanNormals}
               decimateReduction={meshOperationDecimateReduction}
-              onChangeDecimateReduction={onChangeVtkDecimateReduction}
+              onChangeDecimateReduction={onChangeMeshOperationDecimateReduction}
               decimateTargetFaces={meshOperationDecimateTargetFaces}
-              onChangeDecimateTargetFaces={onChangeVtkDecimateTargetFaces}
+              onChangeDecimateTargetFaces={onChangeMeshOperationDecimateTargetFaces}
               decimateUseTargetFaces={meshOperationUseTargetFaces}
-              onChangeDecimateUseTargetFaces={onToggleVtkUseTargetFaces}
-              onDecimate={onVtkDecimate}
+              onChangeDecimateUseTargetFaces={onToggleMeshOperationUseTargetFaces}
+              onDecimate={onMeshOperationDecimate}
               smoothIterations={meshOperationSmoothIterations}
-              onChangeSmoothIterations={onChangeVtkSmoothIterations}
+              onChangeSmoothIterations={onChangeMeshOperationSmoothIterations}
               smoothPassband={meshOperationSmoothPassband}
-              onChangeSmoothPassband={onChangeVtkSmoothPassband}
-              onSmooth={onVtkSmooth}
+              onChangeSmoothPassband={onChangeMeshOperationSmoothPassband}
+              onSmooth={onMeshOperationSmooth}
               booleanOperation={meshOperationBooleanOperation}
-              onChangeBooleanOperation={onChangeVtkBooleanOperation}
+              onChangeBooleanOperation={onChangeMeshOperationBooleanOperation}
               booleanOperandObjectId={meshOperationBooleanOperandObjectId}
-              onChangeBooleanOperandObjectId={onChangeVtkBooleanOperandObjectId}
+              onChangeBooleanOperandObjectId={onChangeMeshOperationBooleanOperandObjectId}
               booleanOperandOptions={meshOperationBooleanOperandOptions}
               booleanCurveRadius={meshOperationBooleanCurveRadius}
-              onChangeBooleanCurveRadius={onChangeVtkBooleanCurveRadius}
+              onChangeBooleanCurveRadius={onChangeMeshOperationBooleanCurveRadius}
               booleanStatus={meshOperationBooleanStatus}
               onRunBoolean={onRunMeshOperationBoolean}
               onPrepareBooleanDemo={onPrepareMeshOperationBooleanDemo}
               outputMode={meshOperationOutputMode}
-              onChangeOutputMode={onChangeVtkOutputMode}
+              onChangeOutputMode={onChangeMeshOperationOutputMode}
               implicitAvailable={isImplicitAny}
               implicitExpr={implicitExprTrimmed}
               onOpenImplicitSpherePreset={onOpenImplicitSpherePreset}
@@ -106055,8 +106026,8 @@ onChangeImplicitExpr,
               previewError={meshOperationPreviewError}
               previewTargetFaces={meshOperationPreviewTargetFaces}
               previewUseDecimate={meshOperationPreviewUseDecimate}
-              onChangePreviewTargetFaces={onChangeVtkPreviewTargetFaces}
-              onChangePreviewUseDecimate={onChangeVtkPreviewUseDecimate}
+              onChangePreviewTargetFaces={onChangeMeshOperationPreviewTargetFaces}
+              onChangePreviewUseDecimate={onChangeMeshOperationPreviewUseDecimate}
               onRunPreview={onRunMeshOperationPreview}
               cgalTargetEdge={cgalTargetEdge}
               onChangeCgalTargetEdge={onChangeCgalTargetEdge}
@@ -109053,7 +109024,7 @@ onChangeImplicitExpr,
                   whiteSpace: "pre-wrap",
                 }}
               >
-                {"imported meshes\nimplicit CGAL surfaces\nVTK-generated meshes\nbaked surfaces"}
+                {"imported meshes\nimplicit surfaces\nengine-generated meshes\nbaked surfaces"}
               </pre>
               <div style={{ marginBottom: 8 }}>
                 Here the surface may not have natural <i>u, v</i> coordinates.
@@ -109189,12 +109160,11 @@ type SurfacesRightPanelProps = {
   generateSurfaceStatus: GenerateSurfaceStatus;
   meshOperationPreviewTargetFaces: number;
   meshOperationPreviewUseDecimate: boolean;
-  vtkLastResult: VtkResultSummary | null;
   meshLastOperation: MeshOperationResultSummary | null;
   meshOperationError: string | null;
   onSaveMeshOperationPreset: () => void;
-  onChangeVtkPreviewTargetFaces: (v: number) => void;
-  onChangeVtkPreviewUseDecimate: (v: boolean) => void;
+  onChangeMeshOperationPreviewTargetFaces: (v: number) => void;
+  onChangeMeshOperationPreviewUseDecimate: (v: boolean) => void;
   onRunMeshOperationPreview: () => void;
   cgalHealthState: CgalHealthState | null;
   cgalBusy: boolean;
@@ -109441,12 +109411,11 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   generateSurfaceStatus,
   meshOperationPreviewTargetFaces,
   meshOperationPreviewUseDecimate,
-  vtkLastResult,
   meshLastOperation,
   meshOperationError,
   onSaveMeshOperationPreset,
-  onChangeVtkPreviewTargetFaces,
-  onChangeVtkPreviewUseDecimate,
+  onChangeMeshOperationPreviewTargetFaces,
+  onChangeMeshOperationPreviewUseDecimate,
   onRunMeshOperationPreview,
   cgalHealthState,
   cgalBusy,
@@ -109934,7 +109903,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         ? paramResolution
         : implicitResolution;
   const previewResolutionLabel = isImplicitViewer
-    ? `${meshOperationPreviewResolution}^3 (VTK grid)`
+    ? `${meshOperationPreviewResolution}^3 preview grid`
     : `${Math.round(activeResolution)}`;
   const formatInspectorCount = (value: number | null): string =>
     value == null || !Number.isFinite(value) ? "n/a" : Math.round(value).toLocaleString();
@@ -110587,37 +110556,34 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     </div>
   );
 
-  const legacyVtkOperation = vtkLastResult;
   const meshBackendLabel = cgalMeshInfo
     ? "CGAL"
     : meshLastOperation
       ? meshLastOperation.engine.toUpperCase()
-      : legacyVtkOperation
-        ? "VTK"
-        : isImplicitViewer
-          ? "Mesh engines"
-          : "SurfaceMesh";
+      : isImplicitViewer
+        ? "Mesh engines"
+        : "SurfaceMesh";
   const watertight =
     meshTopologyDetails?.watertight ??
     (meshQualityReport?.topology?.boundaryEdgeCount != null && meshQualityReport?.topology?.nonManifoldEdgeCount != null
       ? meshQualityReport.topology.boundaryEdgeCount === 0 && meshQualityReport.topology.nonManifoldEdgeCount === 0
       : null);
   const normalStatus =
-    normalMagnitude == null ? "unknown" : hasUnstableNormals ? "unstable" : legacyVtkOperation?.normalsRecomputed ? "recomputed" : "valid";
-  const operationBeforeFaces = meshLastOperation?.beforeFaces ?? legacyVtkOperation?.beforeFaces ?? null;
-  const operationAfterFaces = meshLastOperation?.afterFaces ?? legacyVtkOperation?.afterFaces ?? null;
-  const operationDisplayLabel = meshLastOperation?.label ?? legacyVtkOperation?.operation ?? "none";
+    normalMagnitude == null ? "unknown" : hasUnstableNormals ? "unstable" : "valid";
+  const operationBeforeFaces = meshLastOperation?.beforeFaces ?? null;
+  const operationAfterFaces = meshLastOperation?.afterFaces ?? null;
+  const operationDisplayLabel = meshLastOperation?.label ?? "none";
   const operationReductionPct =
     operationBeforeFaces && operationAfterFaces && operationBeforeFaces > 0
       ? ((operationBeforeFaces - operationAfterFaces) / operationBeforeFaces) * 100
       : null;
   const topologyChangedLabel =
-    meshLastOperation == null && legacyVtkOperation == null
+    meshLastOperation == null
       ? "n/a"
-      : (meshLastOperation?.warnings ?? legacyVtkOperation?.warnings ?? []).some((w) => w.toLowerCase().includes("topology"))
+      : meshLastOperation.warnings.some((w) => w.toLowerCase().includes("topology"))
         ? "yes"
-        : (meshLastOperation?.operation ?? legacyVtkOperation?.operation ?? "").toLowerCase().includes("decimate") ||
-            (meshLastOperation?.operation ?? legacyVtkOperation?.operation ?? "").toLowerCase().includes("clean")
+        : meshLastOperation.operation.toLowerCase().includes("decimate") ||
+            meshLastOperation.operation.toLowerCase().includes("clean")
           ? "maybe"
           : "unlikely";
   const overlayLegend = [
@@ -111043,26 +111009,6 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                       <strong>Errors:</strong> {meshLastOperation.errors.join("; ")}
                     </div>
                   )}
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    <button type="button" disabled title="Apply action is not wired in right results panel.">Apply</button>
-                    <button type="button" disabled title="Undo action is not wired in right results panel.">Undo</button>
-                    <button type="button" onClick={onSaveMeshOperationPreset} title="Save the current mesh operation settings as a preset.">
-                      Save operation settings
-                    </button>
-                  </div>
-                </div>
-              ) : legacyVtkOperation ? (
-                <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
-                  <div><strong>Operation:</strong> {legacyVtkOperation.operation}</div>
-                  <div><strong>Engine:</strong> VTK</div>
-                  <div><strong>Before:</strong> {legacyVtkOperation.beforeFaces.toLocaleString()} faces</div>
-                  <div><strong>After:</strong> {legacyVtkOperation.afterFaces.toLocaleString()} faces</div>
-                  <div>
-                    <strong>Reduction:</strong>{" "}
-                    {operationReductionPct == null ? "n/a" : `${Math.max(0, operationReductionPct).toFixed(1)}%`}
-                  </div>
-                  <div><strong>Topology changed:</strong> {topologyChangedLabel}</div>
-                  <div><strong>Normals valid:</strong> {normalStatus === "unstable" ? "no" : "yes"}</div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     <button type="button" disabled title="Apply action is not wired in right results panel.">Apply</button>
                     <button type="button" disabled title="Undo action is not wired in right results panel.">Undo</button>
@@ -111984,7 +111930,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         )}
       </div>
 
-      {(meshLastOperation || vtkLastResult || meshOperationError) && (
+      {(meshLastOperation || meshOperationError) && (
         <div style={inspectorSectionCard}>
           <div style={inspectorSectionTitle}>Mesh Operation Result</div>
           {meshLastOperation ? (
@@ -112008,27 +111954,6 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                   <strong>Errors:</strong> {meshLastOperation.errors.join("; ")}
                 </div>
               )}
-            </div>
-          ) : vtkLastResult ? (
-            <div style={{ fontSize: 11, display: "grid", gap: 5 }}>
-              <div><strong>Operation:</strong> {vtkLastResult.operation}</div>
-              <div><strong>Engine:</strong> VTK</div>
-              <div><strong>Before:</strong> {vtkLastResult.beforeFaces.toLocaleString()} faces</div>
-              <div>
-                <strong>After:</strong>{" "}
-                {vtkLastResult.requestedFaces != null
-                  ? `${vtkLastResult.requestedFaces.toLocaleString()} target / ${vtkLastResult.afterFaces.toLocaleString()} actual`
-                  : `${vtkLastResult.afterFaces.toLocaleString()} faces`}
-              </div>
-              <div><strong>Normals:</strong> {vtkLastResult.normalsRecomputed ? "recomputed" : "unchanged"}</div>
-              <div>
-                <strong>Output:</strong>{" "}
-                {vtkLastResult.outputMode === "replace" ? "replace current mesh" : "create derived mesh"}
-              </div>
-              <div>
-                <strong>Warnings:</strong>{" "}
-                {vtkLastResult.warnings.length > 0 ? vtkLastResult.warnings.join("; ") : "none"}
-              </div>
             </div>
           ) : (
             <div style={{ fontSize: 11, opacity: 0.75 }}>No mesh operation has completed yet.</div>
@@ -112745,7 +112670,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             {renderWorkflowStatus("Mesh", "mesh")}
           </div>
           <div style={{ fontSize: 11, color: "#556", lineHeight: 1.5 }}>
-            Use <strong>Object → SurfaceMesh → Generate</strong> for VTK preview and robust CGAL meshing controls.
+            Use <strong>Object → SurfaceMesh → Generate</strong> for preview and robust meshing controls.
           </div>
         </div>
       )}
