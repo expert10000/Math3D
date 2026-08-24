@@ -54562,9 +54562,11 @@ case "mobius":
         normals: res.normals ?? null,
         source,
       };
-      setMeshDataset(applySurfaceMeshOps(next), `vtk:${meta.operation}`);
+      const processed = applySurfaceMeshOps(next);
+      setMeshDataset(processed, `vtk:${meta.operation}`);
       setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
+      focusSurfaceMeshViewport(processed);
       setSurfaceMeshImportError(null);
       setVtkLastResult({
         operation: meta.operation,
@@ -54583,7 +54585,7 @@ case "mobius":
       });
       appendMeshPromotionOperation(meta.operation);
     },
-    [appendMeshPromotionOperation, buildActiveMeshLabel, surfaceMeshData?.source, vtkOutputMode]
+    [appendMeshPromotionOperation, buildActiveMeshLabel, focusSurfaceMeshViewport, surfaceMeshData?.source, vtkOutputMode]
   );
 
   const getImplicitBakeWorker = useCallback(() => {
