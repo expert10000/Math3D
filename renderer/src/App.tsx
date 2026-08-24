@@ -40,6 +40,7 @@ import {
   MESH_OPERATION_LABELS,
   summarizeMeshOperationResult,
   type MeshBooleanOperation,
+  type MeshOperationUiId,
   type MeshOperationResultSummary,
 } from "./components/MeshOperationsCard";
 import {
@@ -849,6 +850,7 @@ type MeshPromotionOperationEntry = {
   id: string;
   label: string;
   at: number;
+  result?: MeshOperationResultSummary;
 };
 type MeshPromotionTraceState = {
   sourceGeometryObjectId: string;
@@ -1589,9 +1591,24 @@ type GeometryOperationPreset = {
   id: string;
   name: string;
   createdAt: number;
+  operation?: MeshOperationUiId | null;
   outputMode: "replace" | "derived";
+  cleanComputeNormals?: boolean;
+  decimateReduction?: number;
+  decimateTargetFaces?: number;
+  decimateUseTargetFaces?: boolean;
   smoothIterations: number;
   smoothPassband: number;
+  booleanOperation?: MeshBooleanOperation;
+  booleanOperandObjectId?: string | null;
+  booleanCurveRadius?: number;
+  previewTargetFaces?: number;
+  previewUseDecimate?: boolean;
+  cgalTargetEdge?: number;
+  cgalAutoTargetEdge?: boolean;
+  cgalTriBudgetEnabled?: boolean;
+  cgalTriBudget?: number;
+  lastResult?: MeshOperationResultSummary | null;
 };
 type WorkbookWorkspaceState = {
   version: 1 | 2;
@@ -32767,23 +32784,24 @@ const App: React.FC = () => {
     },
     []
   );
-  const appendMeshPromotionOperation = useCallback((label: string) => {
+  const appendMeshPromotionOperation = useCallback((label: string, result?: MeshOperationResultSummary) => {
     if (!label.trim()) return;
     setMeshPromotionTrace((prev) => {
       if (!prev) return prev;
       return {
         ...prev,
-        operationHistory: [{ id: makeId(), label: label.trim(), at: Date.now() }, ...prev.operationHistory].slice(0, 32),
+        operationHistory: [{ id: makeId(), label: label.trim(), at: Date.now(), result }, ...prev.operationHistory].slice(0, 32),
       };
     });
   }, []);
   const meshPromotionHasIndependentEdits = useMemo(() => {
     if (!meshPromotionTrace) return false;
-    const mutatingOperation = meshPromotionTrace.operationHistory.some((entry) =>
-      /remeshed|repaired normals|welded|centered|normalized scale|triangulated|subdivide|decimate|smooth|boolean/i.test(
+    const mutatingOperation = meshPromotionTrace.operationHistory.some((entry) => {
+      if (entry.result?.operation) return true;
+      return /remeshed|repaired normals|welded|centered|normalized scale|triangulated|subdivide|decimate|smooth|boolean/i.test(
         entry.label
-      )
-    );
+      );
+    });
     if (mutatingOperation) return true;
     if (!surfaceMeshData?.positions?.length) return false;
     const currentSignature = geometryMeshTopologySignature(surfaceMeshData);
@@ -33581,24 +33599,61 @@ const App: React.FC = () => {
     meshOperationBooleanOperandObjectId,
   ]);
   const handleSaveMeshOperationPreset = useCallback(() => {
-    const name = `Mesh operation preset ${geometryOperationPresets.length + 1}`;
+    const operationLabel = meshLastOperation?.label ?? "Mesh operation";
+    const name = `${operationLabel} preset ${geometryOperationPresets.length + 1}`;
     const preset: GeometryOperationPreset = {
       id: makeId(),
       name,
       createdAt: Date.now(),
+      operation: meshLastOperation?.operation ?? null,
       outputMode: meshOperationOutputMode,
+      cleanComputeNormals: meshOperationCleanComputeNormals,
+      decimateReduction: meshOperationDecimateReduction,
+      decimateTargetFaces: Math.max(100, Math.round(meshOperationDecimateTargetFaces)),
+      decimateUseTargetFaces: meshOperationUseTargetFaces,
       smoothIterations: Math.max(1, Math.round(meshOperationSmoothIterations)),
       smoothPassband: clampNumber(meshOperationSmoothPassband, 0.001, 1),
+      booleanOperation: meshOperationBooleanOperation,
+      booleanOperandObjectId: meshOperationBooleanOperandObjectId,
+      booleanCurveRadius: Math.max(0, meshOperationBooleanCurveRadius),
+      previewTargetFaces: Math.max(200, Math.round(meshOperationPreviewTargetFaces)),
+      previewUseDecimate: meshOperationPreviewUseDecimate,
+      lastResult: meshLastOperation,
     };
     setGeometryOperationPresets((prev) => [preset, ...prev].slice(0, 40));
     setGeometryCreateActionStatus(`Saved operation preset: ${name}.`);
-  }, [geometryOperationPresets.length, meshOperationOutputMode, meshOperationSmoothIterations, meshOperationSmoothPassband]);
+  }, [
+    geometryOperationPresets.length,
+    meshLastOperation,
+    meshOperationBooleanCurveRadius,
+    meshOperationBooleanOperandObjectId,
+    meshOperationBooleanOperation,
+    meshOperationCleanComputeNormals,
+    meshOperationDecimateReduction,
+    meshOperationDecimateTargetFaces,
+    meshOperationOutputMode,
+    meshOperationPreviewTargetFaces,
+    meshOperationPreviewUseDecimate,
+    meshOperationSmoothIterations,
+    meshOperationSmoothPassband,
+    meshOperationUseTargetFaces,
+  ]);
   const handleApplyGeometryOperationPreset = useCallback((presetId: string) => {
     const preset = geometryOperationPresets.find((entry) => entry.id === presetId);
     if (!preset) return;
     setMeshOperationOutputMode(preset.outputMode);
+    if (preset.cleanComputeNormals != null) setMeshOperationCleanComputeNormals(preset.cleanComputeNormals);
+    if (preset.decimateReduction != null) setMeshOperationDecimateReduction(clampNumber(preset.decimateReduction, 0, 0.95));
+    if (preset.decimateTargetFaces != null) setMeshOperationDecimateTargetFaces(Math.max(100, Math.round(preset.decimateTargetFaces)));
+    if (preset.decimateUseTargetFaces != null) setMeshOperationUseTargetFaces(preset.decimateUseTargetFaces);
     setMeshOperationSmoothIterations(Math.max(1, Math.round(preset.smoothIterations)));
     setMeshOperationSmoothPassband(clampNumber(preset.smoothPassband, 0.001, 1));
+    if (preset.booleanOperation) setMeshOperationBooleanOperation(preset.booleanOperation);
+    if ("booleanOperandObjectId" in preset) setMeshOperationBooleanOperandObjectId(preset.booleanOperandObjectId ?? null);
+    if (preset.booleanCurveRadius != null) setMeshOperationBooleanCurveRadius(Math.max(0, preset.booleanCurveRadius));
+    if (preset.previewTargetFaces != null) setMeshOperationPreviewTargetFaces(Math.max(200, Math.round(preset.previewTargetFaces)));
+    if (preset.previewUseDecimate != null) setMeshOperationPreviewUseDecimate(preset.previewUseDecimate);
+    if (preset.lastResult) setMeshLastOperation(preset.lastResult);
   }, [geometryOperationPresets]);
   const [generateSurfaceStatus, setGenerateSurfaceStatus] = useState<GenerateSurfaceStatus>({
     state: "idle",
@@ -52823,7 +52878,7 @@ case "mobius":
       latest.beforeSnapshot.label ?? `${latest.sourceLabel} (undo)`
     );
     setMeshDataset(restored, "mesh-topology:undo-last");
-    appendMeshPromotionOperation(`undo topology edit (${latest.actionLabel})`);
+    appendMeshPromotionOperation(`undo mesh operation (${latest.actionLabel})`);
     setSurfaceMeshTopologyHistory((prev) => prev.slice(1));
     setSelectedSurfaceMeshTopologyHistoryId(null);
     setSurfaceMeshTopologyHistoryPreviewId(null);
@@ -53730,6 +53785,7 @@ case "mobius":
         warnings?: string[];
         engine?: "vtk" | "cgal";
         durationMs?: number;
+        resultSummary?: MeshOperationResultSummary;
       }
     ) => {
       const baseLabel = buildActiveMeshLabel();
@@ -53743,12 +53799,58 @@ case "mobius":
         source,
       };
       const processed = applySurfaceMeshOps(next);
+      const sourceMesh = surfaceMeshData;
+      const beforeVertexCount = sourceMesh?.positions ? Math.floor(sourceMesh.positions.length / 3) : Math.max(0, meta.resultSummary?.beforeVertices ?? 0);
+      const beforeFaceCount =
+        sourceMesh?.indices?.length
+          ? Math.floor(sourceMesh.indices.length / 3)
+          : Math.max(0, meta.resultSummary?.beforeFaces ?? meta.beforeFaces);
+      const afterVertexCount = Math.max(0, Math.floor(processed.positions.length / 3));
+      const afterFaceCount =
+        processed.indices?.length
+          ? Math.floor(processed.indices.length / 3)
+          : Math.max(0, Math.floor(afterVertexCount / 3));
+      if (sourceMesh?.positions?.length) {
+        const historyEntry: SurfaceMeshTopologyHistoryEntry = {
+          id: makeId(),
+          at: Date.now(),
+          actionLabel: meta.resultSummary?.label ?? meta.operation,
+          sourceLabel: sourceMesh.label ?? baseLabel,
+          targetLabel: "whole mesh",
+          paramsLabel: meta.resultSummary
+            ? `${meta.resultSummary.engine.toUpperCase()} · ${meta.resultSummary.outputMode}`
+            : meta.engine
+              ? meta.engine.toUpperCase()
+              : "mesh operation",
+          definition: buildSurfaceMeshTopologyDefinition({
+            actionLabel: meta.resultSummary?.label ?? meta.operation,
+            sourceLabel: sourceMesh.label ?? baseLabel,
+            targetLabel: "whole mesh",
+            paramsLabel: meta.resultSummary
+              ? `${meta.resultSummary.engine.toUpperCase()} · ${meta.resultSummary.outputMode}`
+              : meta.engine
+                ? meta.engine.toUpperCase()
+                : "mesh operation",
+            beforeCounts: { vertexCount: beforeVertexCount, faceCount: beforeFaceCount },
+          }),
+          resultLabel: `${beforeFaceCount.toLocaleString()} -> ${afterFaceCount.toLocaleString()} faces`,
+          beforeCounts: { vertexCount: beforeVertexCount, faceCount: beforeFaceCount },
+          afterCounts: { vertexCount: afterVertexCount, faceCount: afterFaceCount },
+          selectedResultLabel: "whole mesh",
+          beforeSnapshot: cloneSurfaceMeshData(sourceMesh, sourceMesh.label),
+          snapshot: cloneSurfaceMeshData(processed, processed.label),
+        };
+        setSurfaceMeshTopologyHistory((prev) => [historyEntry, ...prev].slice(0, 24));
+        setSelectedSurfaceMeshTopologyHistoryId(historyEntry.id);
+        setSurfaceMeshTopologyHistoryPreviewId(null);
+        setSurfaceMeshTopologyHistoryPreviewMode("after");
+      }
       setMeshDataset(processed, `mesh-operation:${meta.operation}`);
       setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
       focusSurfaceMeshViewport(processed);
       setSurfaceMeshImportError(null);
-      appendMeshPromotionOperation(meta.operation);
+      appendMeshPromotionOperation(meta.operation, meta.resultSummary);
     },
     [appendMeshPromotionOperation, buildActiveMeshLabel, focusSurfaceMeshViewport, surfaceMeshData?.source, meshOperationOutputMode]
   );
@@ -53864,7 +53966,8 @@ case "mobius":
         },
         { primaryMesh: mesh }
       );
-      setMeshLastOperation(summarizeMeshOperationResult(res, meshOperationOutputMode === "replace" ? "replace" : "new-object"));
+      const resultSummary = summarizeMeshOperationResult(res, meshOperationOutputMode === "replace" ? "replace" : "new-object");
+      setMeshLastOperation(resultSummary);
       if (res.status === "error" || !res.resultMesh) {
         setMeshOperationError(res.errors[0]?.message ?? "Clean failed.");
         return;
@@ -53877,6 +53980,7 @@ case "mobius":
         warnings: res.warnings.map((warning) => warning.message),
         engine: res.engine,
         durationMs: res.durationMs,
+        resultSummary,
       });
     } catch (err: any) {
       setMeshOperationError(err?.message ?? "Clean failed.");
@@ -53923,7 +54027,8 @@ case "mobius":
         },
         { primaryMesh: mesh }
       );
-      setMeshLastOperation(summarizeMeshOperationResult(res, meshOperationOutputMode === "replace" ? "replace" : "new-object"));
+      const resultSummary = summarizeMeshOperationResult(res, meshOperationOutputMode === "replace" ? "replace" : "new-object");
+      setMeshLastOperation(resultSummary);
       if (res.status === "error" || !res.resultMesh) {
         setMeshOperationError(res.errors[0]?.message ?? "Decimate failed.");
         return;
@@ -53939,6 +54044,7 @@ case "mobius":
         warnings: res.warnings.map((warning) => warning.message),
         engine: res.engine,
         durationMs: res.durationMs,
+        resultSummary,
       });
     } catch (err: any) {
       setMeshOperationError(err?.message ?? "Decimate failed.");
@@ -53987,7 +54093,8 @@ case "mobius":
         },
         { primaryMesh: mesh }
       );
-      setMeshLastOperation(summarizeMeshOperationResult(res, meshOperationOutputMode === "replace" ? "replace" : "new-object"));
+      const resultSummary = summarizeMeshOperationResult(res, meshOperationOutputMode === "replace" ? "replace" : "new-object");
+      setMeshLastOperation(resultSummary);
       if (res.status === "error" || !res.resultMesh) {
         setMeshOperationError(res.errors[0]?.message ?? "Smooth failed.");
         return;
@@ -54000,6 +54107,7 @@ case "mobius":
         warnings: res.warnings.map((warning) => warning.message),
         engine: res.engine,
         durationMs: res.durationMs,
+        resultSummary,
       });
     } catch (err: any) {
       setMeshOperationError(err?.message ?? "Smooth failed.");
@@ -54338,6 +54446,27 @@ case "mobius":
           indices: merged.indices,
           source: surfaceMeshData?.source ?? { kind: "csg" },
         });
+        const splitResultSummary: MeshOperationResultSummary = {
+          operation: "boolean-split",
+          label: MESH_OPERATION_LABELS["boolean-split"],
+          status: "success",
+          engine: "vtk",
+          sourceIds: [meshA.label, meshB.label],
+          beforeVertices: Math.floor(meshA.positions.length / 3),
+          beforeFaces,
+          afterVertices: Math.max(0, Math.round(splitMesh.positions.length / 3)),
+          afterFaces: Math.max(0, Math.round((splitMesh.indices?.length ?? 0) / 3)),
+          durationMs: aMinusB.durationMs + aIntersectB.durationMs + bMinusA.durationMs,
+          outputMode: meshOperationOutputMode === "replace" ? "replace" : "new-object",
+          warnings: [
+            "Split merged A-B, A intersect B, and B-A into one editable mesh.",
+            ...aMinusB.warnings.map((warning) => warning.message),
+            ...aIntersectB.warnings.map((warning) => warning.message),
+            ...bMinusA.warnings.map((warning) => warning.message),
+          ],
+          errors: [],
+          timestamp: Date.now(),
+        };
         applyMeshOperationResultToSurfaceMesh(
           "Boolean split",
           {
@@ -54358,29 +54487,10 @@ case "mobius":
             ],
             engine: "vtk",
             durationMs: aMinusB.durationMs + aIntersectB.durationMs + bMinusA.durationMs,
+            resultSummary: splitResultSummary,
           }
         );
-        setMeshLastOperation({
-          operation: "boolean-split",
-          label: MESH_OPERATION_LABELS["boolean-split"],
-          status: "success",
-          engine: "vtk",
-          sourceIds: [meshA.label, meshB.label],
-          beforeVertices: Math.floor(meshA.positions.length / 3),
-          beforeFaces,
-          afterVertices: Math.max(0, Math.round(splitMesh.positions.length / 3)),
-          afterFaces: Math.max(0, Math.round((splitMesh.indices?.length ?? 0) / 3)),
-          durationMs: aMinusB.durationMs + aIntersectB.durationMs + bMinusA.durationMs,
-          outputMode: meshOperationOutputMode === "replace" ? "replace" : "new-object",
-          warnings: [
-            "Split merged A-B, A intersect B, and B-A into one editable mesh.",
-            ...aMinusB.warnings.map((warning) => warning.message),
-            ...aIntersectB.warnings.map((warning) => warning.message),
-            ...bMinusA.warnings.map((warning) => warning.message),
-          ],
-          errors: [],
-          timestamp: Date.now(),
-        });
+        setMeshLastOperation(splitResultSummary);
         setMeshOperationBooleanStatus("Split completed.");
         return;
       }
@@ -54404,7 +54514,8 @@ case "mobius":
         },
         { primaryMesh: meshA, secondaryMesh: meshB }
       );
-      setMeshLastOperation(summarizeMeshOperationResult(result, meshOperationOutputMode === "replace" ? "replace" : "new-object"));
+      const resultSummary = summarizeMeshOperationResult(result, meshOperationOutputMode === "replace" ? "replace" : "new-object");
+      setMeshLastOperation(resultSummary);
       if (result.status === "error" || !result.resultMesh) {
         setMeshOperationError(result.errors[0]?.message ?? "Boolean failed.");
         setMeshOperationBooleanStatus(`${meshOperationBooleanOperation} failed.`);
@@ -54425,6 +54536,7 @@ case "mobius":
           ],
           engine: result.engine,
           durationMs: result.durationMs,
+          resultSummary,
         }
       );
       setMeshOperationBooleanStatus(`${meshOperationBooleanOperation} completed.`);
@@ -59683,7 +59795,8 @@ case "mobius":
           },
         }
       );
-      setMeshLastOperation(summarizeMeshOperationResult(res, meshOperationOutputMode === "replace" ? "replace" : "new-object"));
+      const resultSummary = summarizeMeshOperationResult(res, meshOperationOutputMode === "replace" ? "replace" : "new-object");
+      setMeshLastOperation(resultSummary);
       if (res.status === "error" || !res.resultMesh) {
         setMeshPerformanceLastBuildMs(performance.now() - startedAt);
         const message = res.errors[0]?.message ?? "Implicit preview failed.";
@@ -59700,6 +59813,7 @@ case "mobius":
         warnings: res.warnings.map((warning) => warning.message),
         engine: res.engine,
         durationMs: res.durationMs,
+        resultSummary,
       });
       setGenerateSurfaceStatus({
         state: "success",
@@ -104896,8 +105010,20 @@ onChangeImplicitExpr,
                   <strong>Operations after promotion</strong>
                   <div style={{ marginTop: 3, display: "grid", gap: 2 }}>
                     {meshPromotionTrace.operationHistory.slice(0, 8).map((entry) => (
-                      <div key={`mesh-promotion-op-${entry.id}`} style={{ color: "#475467" }}>
-                        {new Date(entry.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} - {entry.label}
+                      <div key={`mesh-promotion-op-${entry.id}`} style={{ color: "#475467", display: "grid", gap: 1 }}>
+                        <div>
+                          {new Date(entry.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} - {entry.label}
+                        </div>
+                        {entry.result && (
+                          <div style={{ color: "#0f3557", fontSize: 10 }}>
+                            {entry.result.engine.toUpperCase()} · {entry.result.status} ·{" "}
+                            {entry.result.beforeFaces.toLocaleString()} {"->"}{" "}
+                            {entry.result.afterFaces == null ? "n/a" : entry.result.afterFaces.toLocaleString()} faces ·{" "}
+                            {entry.result.durationMs >= 1000
+                              ? `${(entry.result.durationMs / 1000).toFixed(2)} s`
+                              : `${Math.round(entry.result.durationMs)} ms`}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
