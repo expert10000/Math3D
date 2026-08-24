@@ -237,6 +237,77 @@ function vtkBooleanOperationFromId(operation: MeshOperationId): VtkBooleanReques
   }
 }
 
+type BooleanMeshPreflight = {
+  ok: boolean;
+  boundaryEdges: number;
+  nonManifoldEdges: number;
+  invalidFaces: number;
+  message?: string;
+};
+
+function booleanMeshPreflight(mesh: MeshOperationMeshInput, role: "A" | "B"): BooleanMeshPreflight {
+  const vertexCount = Math.floor(mesh.positions.length / 3);
+  if (vertexCount <= 0 || !mesh.indices.length) {
+    return {
+      ok: false,
+      boundaryEdges: 0,
+      nonManifoldEdges: 0,
+      invalidFaces: 0,
+      message: `Operand ${role} (${mesh.label}) is empty.`,
+    };
+  }
+
+  const edgeCounts = new Map<string, number>();
+  let invalidFaces = 0;
+  const addEdge = (a: number, b: number) => {
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    const key = `${lo}:${hi}`;
+    edgeCounts.set(key, (edgeCounts.get(key) ?? 0) + 1);
+  };
+
+  for (let i = 0; i + 2 < mesh.indices.length; i += 3) {
+    const a = mesh.indices[i]!;
+    const b = mesh.indices[i + 1]!;
+    const c = mesh.indices[i + 2]!;
+    if (
+      a >= vertexCount ||
+      b >= vertexCount ||
+      c >= vertexCount ||
+      a === b ||
+      b === c ||
+      c === a
+    ) {
+      invalidFaces += 1;
+      continue;
+    }
+    addEdge(a, b);
+    addEdge(b, c);
+    addEdge(c, a);
+  }
+
+  let boundaryEdges = 0;
+  let nonManifoldEdges = 0;
+  edgeCounts.forEach((count) => {
+    if (count === 1) boundaryEdges += 1;
+    else if (count > 2) nonManifoldEdges += 1;
+  });
+
+  const issues: string[] = [];
+  if (boundaryEdges > 0) issues.push(`${boundaryEdges.toLocaleString()} boundary edges`);
+  if (nonManifoldEdges > 0) issues.push(`${nonManifoldEdges.toLocaleString()} non-manifold edges`);
+  if (invalidFaces > 0) issues.push(`${invalidFaces.toLocaleString()} invalid faces`);
+  return {
+    ok: issues.length === 0,
+    boundaryEdges,
+    nonManifoldEdges,
+    invalidFaces,
+    message: issues.length
+      ? `Operand ${role} (${mesh.label}) is not a closed watertight manifold mesh: ${issues.join(", ")}. VTK boolean is skipped to avoid a native worker crash. Use closed solid operands, or click "Use demo operands" for the safe cube example.`
+      : undefined,
+  };
+}
+
 export async function runMeshOperation(
   request: MeshOperationRequest,
   context: MeshOperationContext
@@ -299,6 +370,14 @@ export async function runMeshOperation(
     }
     const operation = vtkBooleanOperationFromId(request.operation);
     if (!operation) return operationError(request, engine, before, startedAt, `${request.operation} is not registered.`, "unsupported-operation");
+    const preflightA = booleanMeshPreflight(meshA, "A");
+    if (!preflightA.ok) {
+      return operationError(request, engine, before, startedAt, preflightA.message ?? "Operand A is not valid for VTK boolean.", "unsafe-boolean-input");
+    }
+    const preflightB = booleanMeshPreflight(meshB, "B");
+    if (!preflightB.ok) {
+      return operationError(request, engine, before, startedAt, preflightB.message ?? "Operand B is not valid for VTK boolean.", "unsafe-boolean-input");
+    }
     const res = await vtkBoolean({
       positionsA: meshA.positions,
       indicesA: meshA.indices,
