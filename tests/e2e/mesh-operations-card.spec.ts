@@ -213,11 +213,24 @@ test.describe("Mesh Operations card", () => {
     await resetSurfaceAppState(page);
     await selectSection(page, "Mesh");
 
-    const card = await openWorkspaceOperationsCard(page);
+    let card = await openWorkspaceOperationsCard(page);
     await card.getByTestId("mesh-workspace-operation-registry-row-boolean-union").click();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-formula")).toContainText("Result = Active Mesh");
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-chip-a")).toContainText("A:");
+    await expect(card).toContainText("Needs closed watertight meshes");
+    const openPair = card.getByTestId("mesh-workspace-operation-registry-open-boolean-demo-pair-empty");
+    if (await openPair.isVisible().catch(() => false)) {
+      await openPair.click();
+      await expect(page.getByText(/Boolean demo pair opened in Geometry/i)).toBeVisible({ timeout: 15_000 });
+      await selectSection(page, "Mesh");
+      card = await openWorkspaceOperationsCard(page);
+      await card.getByTestId("mesh-workspace-operation-registry-row-boolean-union").click();
+    }
     await card.getByTestId("mesh-workspace-operation-registry-prepare-boolean-demo").click();
     await expect(card).toContainText("Boolean demo operands ready", { timeout: 15_000 });
     await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-operand")).toContainText("Boolean demo B");
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-chip-a")).toContainText("Boolean demo A");
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-chip-b")).toContainText("Boolean demo B");
 
     const runUnion = card.getByTestId("mesh-workspace-operation-registry-run-boolean-union");
     if (!(await runUnion.isEnabled())) {
@@ -233,13 +246,26 @@ test.describe("Mesh Operations card", () => {
     await selectSection(page, "Mesh");
     const cardAgain = await openWorkspaceOperationsCard(page);
     await cardAgain.getByTestId("mesh-workspace-operation-registry-row-boolean-difference").click();
+    await expect(cardAgain.getByTestId("mesh-workspace-operation-registry-boolean-formula")).toContainText(
+      "Result = Active Mesh - Operand B"
+    );
     await cardAgain.getByTestId("mesh-workspace-operation-registry-prepare-boolean-demo").click();
+    await expect(cardAgain).toContainText("Boolean demo operands ready", { timeout: 15_000 });
     const runDifference = cardAgain.getByTestId("mesh-workspace-operation-registry-run-boolean-difference");
     if (!(await runDifference.isEnabled())) {
       test.skip(true, "VTK worker is not available in this environment.");
     }
-    await runDifference.click();
+    await runDifference.scrollIntoViewIfNeeded();
+    await runDifference.click({ force: true });
     await expectLastOperation(cardAgain, /Boolean difference/i);
+    await expect(cardAgain.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/Triangles:/);
+    const operandToggle = cardAgain.getByTestId("mesh-workspace-operation-registry-toggle-boolean-operands");
+    if (await operandToggle.isVisible().catch(() => false)) {
+      await operandToggle.click();
+      await expect(operandToggle).toContainText(/Show operands|Hide operands/);
+    }
+    await cardAgain.getByTestId("mesh-workspace-operation-registry-open-result-in-geometry").click();
+    await expect(page.getByText(/mesh sent to geometry/i)).toBeVisible({ timeout: 15_000 });
   });
 
   test("opens the implicit sphere preset from Mesh Operations and runs preview from the real card", async () => {

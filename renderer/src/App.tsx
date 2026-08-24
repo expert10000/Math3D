@@ -9053,6 +9053,7 @@ const pill = (active: boolean): React.CSSProperties => ({
 type MeshOperationsCompactCardProps = {
   testId: string;
   meshReady: boolean;
+  activeMeshLabel?: string | null;
   workerReady: boolean;
   workerStatusText: string;
   cgalReady: boolean;
@@ -9085,6 +9086,10 @@ type MeshOperationsCompactCardProps = {
   booleanStatus: string | null;
   onRunBoolean: () => void | Promise<void>;
   onPrepareBooleanDemo: () => void;
+  onOpenBooleanDemoPair?: () => void;
+  booleanOperandsVisible?: boolean;
+  onShowBooleanOperands?: () => void;
+  onHideBooleanOperands?: () => void;
   outputMode: "replace" | "derived";
   onChangeOutputMode: (mode: "replace" | "derived") => void;
   implicitAvailable: boolean;
@@ -9113,6 +9118,7 @@ type MeshOperationsCompactCardProps = {
   onOpenResult: () => void;
   canSendToGeometry: boolean;
   onSendToGeometry: () => void;
+  onOpenResultInGeometry?: () => void;
 };
 
 const BOOLEAN_OPERATION_BY_MESH_OPERATION: Partial<Record<MeshOperationUiId, MeshBooleanOperation>> = {
@@ -9127,6 +9133,13 @@ const formatMeshOperationDuration = (value: number | null | undefined) =>
 
 const getMeshOperationRunLabel = (operation: MeshOperationUiId | null) =>
   operation ? `Run ${MESH_OPERATION_LABELS[operation] ?? operation}` : "Run operation";
+
+const getMeshBooleanFormulaText = (operation: MeshBooleanOperation) => {
+  if (operation === "union") return "Result = Active Mesh ∪ Operand B";
+  if (operation === "difference") return "Result = Active Mesh - Operand B";
+  if (operation === "intersection") return "Result = Active Mesh ∩ Operand B";
+  return "Result = imprint curves from Active Mesh and Operand B";
+};
 
 type MeshOperationPresetId = "vtk-polish" | "vtk-simplify" | "vtk-smooth" | "vtk-boolean" | "cgal-implicit";
 
@@ -9171,6 +9184,7 @@ const MESH_OPERATION_PRESETS: Array<{
 const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
   testId,
   meshReady,
+  activeMeshLabel,
   workerReady,
   workerStatusText,
   cgalReady,
@@ -9203,6 +9217,10 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
   booleanStatus,
   onRunBoolean,
   onPrepareBooleanDemo,
+  onOpenBooleanDemoPair,
+  booleanOperandsVisible,
+  onShowBooleanOperands,
+  onHideBooleanOperands,
   outputMode,
   onChangeOutputMode,
   implicitAvailable,
@@ -9231,6 +9249,7 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
   onOpenResult,
   canSendToGeometry,
   onSendToGeometry,
+  onOpenResultInGeometry,
 }) => {
   const [expandedOperation, setExpandedOperation] = useState<MeshOperationUiId | null>(null);
   const operationBusy = busy || cgalBusy || previewBusy;
@@ -9315,6 +9334,9 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
     if (operation) onChangeBooleanOperation(operation);
   };
   const expandedIsBoolean = !!(expandedOperation && BOOLEAN_OPERATION_BY_MESH_OPERATION[expandedOperation]);
+  const selectedBooleanOperand = booleanOperandOptions.find((entry) => entry.id === booleanOperandObjectId) ?? null;
+  const booleanActiveLabel = activeMeshLabel?.trim() || "Active Mesh";
+  const booleanOperandLabel = selectedBooleanOperand?.name?.trim() || "Operand B";
   const expandedCanRun =
     expandedOperation === "implicit-preview"
       ? implicitAvailable && workerReady && !operationBusy
@@ -9555,7 +9577,53 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
                     </div>
                   )}
                   {expandedIsBoolean && (
-                    <>
+          <>
+                      <div
+                        data-testid={`${testId}-boolean-formula`}
+                        style={{
+                          border: "1px solid #bbf7d0",
+                          background: "#ecfdf5",
+                          borderRadius: 6,
+                          padding: "5px 6px",
+                          display: "grid",
+                          gap: 5,
+                        }}
+                      >
+                        <strong>{getMeshBooleanFormulaText(booleanOperation)}</strong>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                          <span
+                            data-testid={`${testId}-boolean-chip-a`}
+                            style={{
+                              border: "1px solid #93c5fd",
+                              background: "#eff6ff",
+                              color: "#1d4ed8",
+                              borderRadius: 999,
+                              padding: "2px 7px",
+                              fontSize: 10,
+                              fontWeight: 800,
+                            }}
+                          >
+                            A: {booleanActiveLabel}
+                          </span>
+                          <span
+                            data-testid={`${testId}-boolean-chip-b`}
+                            style={{
+                              border: "1px solid #fdba74",
+                              background: "#fff7ed",
+                              color: "#9a3412",
+                              borderRadius: 999,
+                              padding: "2px 7px",
+                              fontSize: 10,
+                              fontWeight: 800,
+                            }}
+                          >
+                            B: {booleanOperandLabel}
+                          </span>
+                        </div>
+                        <div style={{ color: "#92400e", fontSize: 10, fontWeight: 700 }}>
+                          Needs closed watertight meshes before VTK boolean runs.
+                        </div>
+                      </div>
                       <label style={{ display: "grid", gap: 3 }}>
                         Operand B
                         <select
@@ -9604,14 +9672,50 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
                           <span style={{ color: "#475569" }}>
                             Operand A is the active Mesh object. Operand B comes from Geometry.
                           </span>
+                          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                            {onOpenBooleanDemoPair && (
+                              <button
+                                data-testid={`${testId}-open-boolean-demo-pair`}
+                                type="button"
+                                onClick={onOpenBooleanDemoPair}
+                                disabled={operationBusy}
+                                style={{ justifySelf: "start", fontWeight: 800 }}
+                              >
+                                Boolean demo pair
+                              </button>
+                            )}
+                            <button
+                              data-testid={`${testId}-prepare-boolean-demo`}
+                              type="button"
+                              onClick={prepareBooleanDemoForExpandedOperation}
+                              disabled={operationBusy}
+                              style={{ justifySelf: "start", fontWeight: 800 }}
+                            >
+                              Send A to Mesh + use B
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {booleanOperandOptions.length === 0 && onOpenBooleanDemoPair && (
+                        <button
+                          data-testid={`${testId}-open-boolean-demo-pair-empty`}
+                          type="button"
+                          onClick={onOpenBooleanDemoPair}
+                          disabled={operationBusy}
+                          style={{ justifySelf: "start", fontWeight: 800 }}
+                        >
+                          Open Boolean demo pair in Geometry
+                        </button>
+                      )}
+                      {booleanOperandOptions.length > 0 && (onShowBooleanOperands || onHideBooleanOperands) && (
+                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                           <button
-                            data-testid={`${testId}-prepare-boolean-demo`}
+                            data-testid={`${testId}-toggle-boolean-operands`}
                             type="button"
-                            onClick={prepareBooleanDemoForExpandedOperation}
-                            disabled={operationBusy}
+                            onClick={booleanOperandsVisible ? onHideBooleanOperands : onShowBooleanOperands}
                             style={{ justifySelf: "start", fontWeight: 800 }}
                           >
-                            Use demo operands
+                            {booleanOperandsVisible ? "Hide operands" : "Show operands"}
                           </button>
                         </div>
                       )}
@@ -9840,6 +9944,14 @@ const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
               </button>
               <button data-testid={`${testId}-send-to-geometry`} type="button" onClick={onSendToGeometry} disabled={!canSendToGeometry}>
                 Send to Geometry
+              </button>
+              <button
+                data-testid={`${testId}-open-result-in-geometry`}
+                type="button"
+                onClick={onOpenResultInGeometry ?? onSendToGeometry}
+                disabled={!canSendToGeometry}
+              >
+                Open result in Geometry
               </button>
             </div>
           </>
@@ -13955,6 +14067,13 @@ const App: React.FC = () => {
         name: obj.name,
       })),
     [geometryDatasetMeshObjects, geometryObjects]
+  );
+  const meshOperationBooleanDemoOperandsVisible = useMemo(
+    () =>
+      geometryDatasetMeshObjects.some(
+        (entry) => (entry.name === "Boolean demo A" || entry.name === "Boolean demo B") && entry.visible
+      ),
+    [geometryDatasetMeshObjects]
   );
   const geometryCompareObjectOptions = useMemo(
     () =>
@@ -47356,7 +47475,7 @@ case "mobius":
     }
   }, []);
 
-  const handlePrepareMeshOperationBooleanDemo = useCallback(() => {
+  const createMeshOperationBooleanDemoObjects = useCallback(() => {
     const meshA = buildMeshOperationBooleanDemoCubeMesh("Boolean demo A", -0.35);
     const meshB = buildMeshOperationBooleanDemoCubeMesh("Boolean demo B", 0.35);
     const idA = makeId();
@@ -47389,12 +47508,21 @@ case "mobius":
       promotion: null,
       sourceSelectionOverlay: null,
     };
+    return { meshA, meshB, idA, idB, objA, objB };
+  }, []);
+
+  const installMeshOperationBooleanDemoObjects = useCallback((objA: GeometryDatasetMeshObject, objB: GeometryDatasetMeshObject) => {
     setGeometryObjects((prev) => (prev.length === 1 && isSeedGeometryBoxObject(prev[0]) ? [] : prev));
     setGeometryDatasetMeshObjects((prev) => [
       objB,
       objA,
       ...prev.filter((entry) => entry.name !== "Boolean demo A" && entry.name !== "Boolean demo B"),
     ]);
+  }, []);
+
+  const handlePrepareMeshOperationBooleanDemo = useCallback(() => {
+    const { meshA, idB, objA, objB } = createMeshOperationBooleanDemoObjects();
+    installMeshOperationBooleanDemoObjects(objA, objB);
     setMeshDataset(meshA, "mesh-operation:boolean-demo-a");
     setMode("surfaces");
     setDatasetKind("mesh");
@@ -47406,7 +47534,37 @@ case "mobius":
     setVtkError(null);
     setVtkBooleanStatus("Boolean demo operands ready: active Mesh is A, operand B is selected.");
     setGeometryCreateActionStatus("Boolean demo operands created for Mesh Operations.");
-  }, [setMeshDataset]);
+  }, [createMeshOperationBooleanDemoObjects, installMeshOperationBooleanDemoObjects, setMeshDataset]);
+
+  const handleOpenMeshOperationBooleanDemoPairInGeometry = useCallback(() => {
+    const { idA, idB, objA, objB } = createMeshOperationBooleanDemoObjects();
+    installMeshOperationBooleanDemoObjects(objA, objB);
+    setMode("geometry");
+    setGeometryMode("procedural");
+    setGeometryProceduralPanelTab("scene");
+    setGeometryRightPanelTab("selection");
+    setGeometrySelectedObjectId(idA);
+    setVtkOutputMode("derived");
+    setVtkBooleanOperation("difference");
+    setVtkBooleanOperandObjectId(idB);
+    setVtkError(null);
+    setVtkBooleanStatus("Boolean demo pair is visible in Geometry. Blue A is selected; orange B is stored as operand.");
+    setGeometryCreateActionStatus("Boolean demo pair opened in Geometry: blue A overlaps orange B.");
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => handleGeometryFit("scene"), 0);
+    } else {
+      handleGeometryFit("scene");
+    }
+  }, [createMeshOperationBooleanDemoObjects, handleGeometryFit, installMeshOperationBooleanDemoObjects]);
+
+  const setMeshOperationBooleanDemoOperandsVisible = useCallback((visible: boolean) => {
+    setGeometryDatasetMeshObjects((prev) =>
+      prev.map((entry) =>
+        entry.name === "Boolean demo A" || entry.name === "Boolean demo B" ? { ...entry, visible } : entry
+      )
+    );
+    setGeometryCreateActionStatus(visible ? "Boolean demo operands shown." : "Boolean demo operands hidden.");
+  }, []);
 
   const applyDefaultPorts = useCallback((block: WorkbookBlock): WorkbookBlock => {
     const ports = resolveBlockPorts(block);
@@ -69359,6 +69517,7 @@ case "mobius":
                         <MeshOperationsCompactCard
                           testId="mesh-workspace-operation-registry"
                           meshReady={!!surfaceMeshStats}
+                          activeMeshLabel={buildActiveMeshLabel()}
                           workerReady={vtkServiceReady}
                           workerStatusText={vtkServiceStatusText}
                           cgalReady={cgalServiceReady}
@@ -69391,6 +69550,10 @@ case "mobius":
                           booleanStatus={vtkBooleanStatus}
                           onRunBoolean={handleVtkBoolean}
                           onPrepareBooleanDemo={handlePrepareMeshOperationBooleanDemo}
+                          onOpenBooleanDemoPair={handleOpenMeshOperationBooleanDemoPairInGeometry}
+                          booleanOperandsVisible={meshOperationBooleanDemoOperandsVisible}
+                          onShowBooleanOperands={() => setMeshOperationBooleanDemoOperandsVisible(true)}
+                          onHideBooleanOperands={() => setMeshOperationBooleanDemoOperandsVisible(false)}
                           outputMode={vtkOutputMode}
                           onChangeOutputMode={setVtkOutputMode}
                           implicitAvailable={false}
@@ -69419,6 +69582,7 @@ case "mobius":
                           onOpenResult={() => setSurfacesLeftTab("object")}
                           canSendToGeometry={unifiedCanConvertToMeshObject}
                           onSendToGeometry={handleDatasetToGeometryScene}
+                          onOpenResultInGeometry={handleDatasetToGeometryScene}
                         />
                         {surfaceMeshBenchmarkBrowserOpen && surfaceMeshBenchmarkModels.length > 0 && (
                           <div style={{ display: "grid", gap: 8 }}>
