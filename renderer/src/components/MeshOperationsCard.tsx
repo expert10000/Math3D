@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import {
   MESH_OPERATION_CAPABILITIES,
   type MeshOperationId,
+  type MeshOperationRequest,
   type MeshOperationResult,
   type MeshOperationStatus,
   type ResolvedMeshOperationEngine,
@@ -25,6 +26,15 @@ export type MeshOperationResultSummary = {
   warnings: string[];
   errors: string[];
   timestamp: number;
+};
+
+export type MeshOperationHistoryEntry = {
+  id: string;
+  at: number;
+  result: MeshOperationResultSummary;
+  request?: MeshOperationRequest;
+  topologyHistoryEntryId?: string | null;
+  undoneAt?: number | null;
 };
 
 export const MESH_OPERATION_LABELS: Record<MeshOperationUiId, string> = {
@@ -73,6 +83,10 @@ export type MeshOperationsCompactCardProps = {
   busy: boolean;
   cgalBusy: boolean;
   lastResult: MeshOperationResultSummary | null;
+  operationHistory?: MeshOperationHistoryEntry[];
+  onRestoreOperationHistoryEntry?: (entryId: string) => void;
+  onUndoLastOperation?: () => void;
+  canUndoLastOperation?: boolean;
   cleanComputeNormals: boolean;
   onChangeCleanComputeNormals: (value: boolean) => void;
   onClean: () => void;
@@ -131,6 +145,7 @@ export type MeshOperationsCompactCardProps = {
   canSendToGeometry: boolean;
   onSendToGeometry: () => void;
   onOpenResultInGeometry?: () => void;
+  onApplyOperationPreset?: (presetId: MeshOperationPresetId) => void | Promise<void>;
 };
 
 const BOOLEAN_OPERATION_BY_MESH_OPERATION: Partial<Record<MeshOperationUiId, MeshBooleanOperation>> = {
@@ -153,7 +168,12 @@ const getMeshBooleanFormulaText = (operation: MeshBooleanOperation) => {
   return "Result = imprint curves from Active Mesh and Operand B";
 };
 
-type MeshOperationPresetId = "vtk-polish" | "vtk-simplify" | "vtk-smooth" | "vtk-boolean" | "cgal-implicit";
+export type MeshOperationPresetId =
+  | "clean-normals"
+  | "decimate-3dbenchy"
+  | "smooth-bunny"
+  | "boolean-demo-pair"
+  | "implicit-sphere-mesh";
 
 const MESH_OPERATION_PRESETS: Array<{
   id: MeshOperationPresetId;
@@ -162,33 +182,33 @@ const MESH_OPERATION_PRESETS: Array<{
   operation: MeshOperationUiId;
 }> = [
   {
-    id: "vtk-polish",
+    id: "clean-normals",
     label: "Clean",
     description: "Clean normals into a new mesh object.",
     operation: "clean-normals",
   },
   {
-    id: "vtk-simplify",
-    label: "Simplify",
-    description: "Decimate to a smaller editable mesh.",
+    id: "decimate-3dbenchy",
+    label: "Decimate 3DBenchy",
+    description: "Load 3DBenchy and prepare a target-face decimation.",
     operation: "decimate",
   },
   {
-    id: "vtk-smooth",
-    label: "Smooth",
-    description: "Smooth mesh surface while preserving topology.",
+    id: "smooth-bunny",
+    label: "Smooth Bunny",
+    description: "Load Stanford Bunny and prepare a smoothing operation.",
     operation: "smooth",
   },
   {
-    id: "vtk-boolean",
-    label: "Boolean",
-    description: "Prepare a two-mesh union/difference workflow.",
+    id: "boolean-demo-pair",
+    label: "Boolean demo pair",
+    description: "Open two overlapping mesh operands for union/difference.",
     operation: "boolean-union",
   },
   {
-    id: "cgal-implicit",
+    id: "implicit-sphere-mesh",
     label: "Implicit mesh",
-    description: "Mesh an active implicit surface.",
+    description: "Open the implicit sphere and prepare robust meshing.",
     operation: "implicit-mesh",
   },
 ];
@@ -204,6 +224,10 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
   busy,
   cgalBusy,
   lastResult,
+  operationHistory = [],
+  onRestoreOperationHistoryEntry,
+  onUndoLastOperation,
+  canUndoLastOperation = false,
   cleanComputeNormals,
   onChangeCleanComputeNormals,
   onClean,
@@ -262,6 +286,7 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
   canSendToGeometry,
   onSendToGeometry,
   onOpenResultInGeometry,
+  onApplyOperationPreset,
 }) => {
   const [expandedOperation, setExpandedOperation] = useState<MeshOperationUiId | null>(null);
   const operationBusy = busy || cgalBusy || previewBusy;
@@ -279,34 +304,35 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
     setExpandedOperation((current) => (current === operation ? null : operation));
   };
   const applyPreset = (preset: MeshOperationPresetId) => {
-    if (preset === "vtk-polish") {
+    void onApplyOperationPreset?.(preset);
+    if (preset === "clean-normals") {
       onChangeCleanComputeNormals(true);
       onChangeOutputMode("derived");
       setExpandedOperation("clean-normals");
       return;
     }
-    if (preset === "vtk-simplify") {
+    if (preset === "decimate-3dbenchy") {
       onChangeDecimateUseTargetFaces(true);
       onChangeDecimateTargetFaces(Math.max(500, Math.min(20000, decimateTargetFaces)));
       onChangeOutputMode("derived");
       setExpandedOperation("decimate");
       return;
     }
-    if (preset === "vtk-smooth") {
+    if (preset === "smooth-bunny") {
       onChangeSmoothIterations(Math.max(3, smoothIterations));
       onChangeSmoothPassband(Math.max(0.01, Math.min(0.2, smoothPassband)));
       onChangeOutputMode("derived");
       setExpandedOperation("smooth");
       return;
     }
-    if (preset === "vtk-boolean") {
+    if (preset === "boolean-demo-pair") {
       onChangeBooleanOperation("union");
       onChangeOutputMode("derived");
-      if (booleanOperandOptions.length === 0) onPrepareBooleanDemo();
+      if (!onApplyOperationPreset && booleanOperandOptions.length === 0) onPrepareBooleanDemo();
       setExpandedOperation("boolean-union");
       return;
     }
-    if (preset === "cgal-implicit") {
+    if (preset === "implicit-sphere-mesh") {
       onChangeCgalAutoTargetEdge(true);
       onChangeCgalTriBudgetEnabled(true);
       onChangeCgalTriBudget(Math.max(5000, Math.min(100000, cgalTriBudget)));
@@ -969,6 +995,69 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
           </>
         ) : (
           <div style={{ color: "#64748b" }}>Click any row to set parameters, then Run.</div>
+        )}
+      </div>
+      <div
+        data-testid={`${testId}-history`}
+        style={{ borderTop: "1px solid #bbf7d0", paddingTop: 5, display: "grid", gap: 4, fontSize: 10 }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+          <strong>Operation history</strong>
+          <button
+            data-testid={`${testId}-undo-last-operation`}
+            type="button"
+            onClick={onUndoLastOperation}
+            disabled={!canUndoLastOperation}
+          >
+            Undo latest
+          </button>
+        </div>
+        {operationHistory.length > 0 ? (
+          <div style={{ display: "grid", gap: 4 }}>
+            {operationHistory.slice(0, 5).map((entry) => (
+              <div
+                key={`${testId}-history-${entry.id}`}
+                data-testid={`${testId}-history-entry`}
+                style={{
+                  border: "1px solid #bbf7d0",
+                  borderRadius: 6,
+                  background: entry.undoneAt ? "#f8fafc" : "#ffffff",
+                  padding: "4px 5px",
+                  display: "grid",
+                  gap: 3,
+                  opacity: entry.undoneAt ? 0.68 : 1,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
+                  <strong>{entry.result.label}</strong>
+                  <span>{entry.result.status}</span>
+                </div>
+                <div>
+                  {entry.result.engine.toUpperCase()} · {formatMeshOperationDuration(entry.result.durationMs)} ·{" "}
+                  {entry.result.beforeFaces.toLocaleString()} {"->"}{" "}
+                  {entry.result.afterFaces == null ? "n/a" : entry.result.afterFaces.toLocaleString()} F
+                </div>
+                {entry.request && (
+                  <div style={{ color: "#64748b" }}>
+                    Request: {entry.request.operation} · {entry.request.outputMode}
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    data-testid={`${testId}-restore-history-${entry.id}`}
+                    onClick={() => onRestoreOperationHistoryEntry?.(entry.id)}
+                    disabled={!entry.topologyHistoryEntryId || !!entry.undoneAt || !onRestoreOperationHistoryEntry}
+                  >
+                    Restore
+                  </button>
+                  {entry.undoneAt && <span style={{ color: "#64748b" }}>undone</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ color: "#64748b" }}>No operation history yet.</div>
         )}
       </div>
     </div>

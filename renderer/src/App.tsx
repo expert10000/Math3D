@@ -40,6 +40,8 @@ import {
   MESH_OPERATION_LABELS,
   summarizeMeshOperationResult,
   type MeshBooleanOperation,
+  type MeshOperationHistoryEntry,
+  type MeshOperationPresetId,
   type MeshOperationUiId,
   type MeshOperationResultSummary,
 } from "./components/MeshOperationsCard";
@@ -366,6 +368,7 @@ import {
 import { runGeodesicHeat } from "./services/geodesicHeatClient";
 import {
   runMeshOperation,
+  type MeshOperationRequest,
   type MeshOperationMeshInput,
 } from "./services/meshOperations";
 import { supportsVtkVolumeDistance, vtkVolumeDistance } from "./services/vtkVolumeClient";
@@ -1592,6 +1595,7 @@ type GeometryOperationPreset = {
   name: string;
   createdAt: number;
   operation?: MeshOperationUiId | null;
+  request?: MeshOperationRequest | null;
   outputMode: "replace" | "derived";
   cleanComputeNormals?: boolean;
   decimateReduction?: number;
@@ -33520,6 +33524,8 @@ const App: React.FC = () => {
     setSurfaceMeshTopologyFeedback(null);
     setSurfaceMeshTopologySaveName("");
     setMeshOperationNodeParameterDrafts({});
+    setMeshLastOperation(null);
+    setMeshOperationHistory([]);
   }, []);
   const surfaceMeshTopologyAutoPickStampRef = useRef(0);
   const [meshOperationBusy, setMeshOperationBusy] = useState(false);
@@ -33536,10 +33542,33 @@ const App: React.FC = () => {
   const [meshOperationBooleanStatus, setMeshOperationBooleanStatus] = useState<string | null>(null);
   const [meshOperationOutputMode, setMeshOperationOutputMode] = useState<"replace" | "derived">("derived");
   const [meshLastOperation, setMeshLastOperation] = useState<MeshOperationResultSummary | null>(null);
+  const [meshOperationHistory, setMeshOperationHistory] = useState<MeshOperationHistoryEntry[]>([]);
   const [meshOperationPreviewBusy, setMeshOperationPreviewBusy] = useState(false);
   const [meshOperationPreviewError, setMeshOperationPreviewError] = useState<string | null>(null);
   const [meshOperationPreviewTargetFaces, setMeshOperationPreviewTargetFaces] = useState(20000);
   const [meshOperationPreviewUseDecimate, setMeshOperationPreviewUseDecimate] = useState(true);
+  const meshOperationOutputModeForRequest = useMemo(
+    () => (meshOperationOutputMode === "replace" ? "replace" : "new-object"),
+    [meshOperationOutputMode]
+  );
+  const publishMeshOperationResult = useCallback(
+    (result: MeshOperationResultSummary, request?: MeshOperationRequest | null, topologyHistoryEntryId?: string | null) => {
+      setMeshLastOperation(result);
+      setMeshOperationHistory((prev) =>
+        [
+          {
+            id: makeId(),
+            at: Date.now(),
+            result,
+            request: request ?? undefined,
+            topologyHistoryEntryId: topologyHistoryEntryId ?? null,
+          },
+          ...prev,
+        ].slice(0, 32)
+      );
+    },
+    []
+  );
   useEffect(() => {
     if (!isDev || typeof window === "undefined" || !window.meshBenchmarks?.list) return;
     let canceled = false;
@@ -33598,49 +33627,10 @@ const App: React.FC = () => {
     geometrySelectedSceneObject?.id,
     meshOperationBooleanOperandObjectId,
   ]);
-  const handleSaveMeshOperationPreset = useCallback(() => {
-    const operationLabel = meshLastOperation?.label ?? "Mesh operation";
-    const name = `${operationLabel} preset ${geometryOperationPresets.length + 1}`;
-    const preset: GeometryOperationPreset = {
-      id: makeId(),
-      name,
-      createdAt: Date.now(),
-      operation: meshLastOperation?.operation ?? null,
-      outputMode: meshOperationOutputMode,
-      cleanComputeNormals: meshOperationCleanComputeNormals,
-      decimateReduction: meshOperationDecimateReduction,
-      decimateTargetFaces: Math.max(100, Math.round(meshOperationDecimateTargetFaces)),
-      decimateUseTargetFaces: meshOperationUseTargetFaces,
-      smoothIterations: Math.max(1, Math.round(meshOperationSmoothIterations)),
-      smoothPassband: clampNumber(meshOperationSmoothPassband, 0.001, 1),
-      booleanOperation: meshOperationBooleanOperation,
-      booleanOperandObjectId: meshOperationBooleanOperandObjectId,
-      booleanCurveRadius: Math.max(0, meshOperationBooleanCurveRadius),
-      previewTargetFaces: Math.max(200, Math.round(meshOperationPreviewTargetFaces)),
-      previewUseDecimate: meshOperationPreviewUseDecimate,
-      lastResult: meshLastOperation,
-    };
-    setGeometryOperationPresets((prev) => [preset, ...prev].slice(0, 40));
-    setGeometryCreateActionStatus(`Saved operation preset: ${name}.`);
-  }, [
-    geometryOperationPresets.length,
-    meshLastOperation,
-    meshOperationBooleanCurveRadius,
-    meshOperationBooleanOperandObjectId,
-    meshOperationBooleanOperation,
-    meshOperationCleanComputeNormals,
-    meshOperationDecimateReduction,
-    meshOperationDecimateTargetFaces,
-    meshOperationOutputMode,
-    meshOperationPreviewTargetFaces,
-    meshOperationPreviewUseDecimate,
-    meshOperationSmoothIterations,
-    meshOperationSmoothPassband,
-    meshOperationUseTargetFaces,
-  ]);
   const handleApplyGeometryOperationPreset = useCallback((presetId: string) => {
     const preset = geometryOperationPresets.find((entry) => entry.id === presetId);
     if (!preset) return;
+    const requestOperation = preset.request?.operation ?? preset.operation ?? null;
     setMeshOperationOutputMode(preset.outputMode);
     if (preset.cleanComputeNormals != null) setMeshOperationCleanComputeNormals(preset.cleanComputeNormals);
     if (preset.decimateReduction != null) setMeshOperationDecimateReduction(clampNumber(preset.decimateReduction, 0, 0.95));
@@ -33653,6 +33643,30 @@ const App: React.FC = () => {
     if (preset.booleanCurveRadius != null) setMeshOperationBooleanCurveRadius(Math.max(0, preset.booleanCurveRadius));
     if (preset.previewTargetFaces != null) setMeshOperationPreviewTargetFaces(Math.max(200, Math.round(preset.previewTargetFaces)));
     if (preset.previewUseDecimate != null) setMeshOperationPreviewUseDecimate(preset.previewUseDecimate);
+    if (requestOperation === "clean-normals" && preset.request?.parameters.computeNormals != null) {
+      setMeshOperationCleanComputeNormals(preset.request.parameters.computeNormals === true);
+    }
+    if (requestOperation === "decimate") {
+      const targetFaces = preset.request?.parameters.targetFaces;
+      const targetReduction = preset.request?.parameters.targetReduction;
+      if (typeof targetFaces === "number" && Number.isFinite(targetFaces)) {
+        setMeshOperationUseTargetFaces(true);
+        setMeshOperationDecimateTargetFaces(Math.max(100, Math.round(targetFaces)));
+      } else if (typeof targetReduction === "number" && Number.isFinite(targetReduction)) {
+        setMeshOperationUseTargetFaces(false);
+        setMeshOperationDecimateReduction(clampNumber(targetReduction, 0, 0.95));
+      }
+    }
+    if (requestOperation === "smooth") {
+      const iterations = preset.request?.parameters.iterations;
+      const passband = preset.request?.parameters.passband;
+      if (typeof iterations === "number" && Number.isFinite(iterations)) {
+        setMeshOperationSmoothIterations(Math.max(1, Math.round(iterations)));
+      }
+      if (typeof passband === "number" && Number.isFinite(passband)) {
+        setMeshOperationSmoothPassband(clampNumber(passband, 0.001, 1));
+      }
+    }
     if (preset.lastResult) setMeshLastOperation(preset.lastResult);
   }, [geometryOperationPresets]);
   const [generateSurfaceStatus, setGenerateSurfaceStatus] = useState<GenerateSurfaceStatus>({
@@ -50890,6 +50904,47 @@ case "mobius":
       surfaceMeshBenchmarkModels,
     ]
   );
+
+  const handleApplyMeshOperationPreset = useCallback(
+    async (presetId: MeshOperationPresetId) => {
+      setMeshOperationError(null);
+      setMeshOperationPreviewError(null);
+      setCgalError(null);
+      setMeshOperationOutputMode("derived");
+      if (presetId === "clean-normals") {
+        setMeshOperationCleanComputeNormals(true);
+        return;
+      }
+      if (presetId === "decimate-3dbenchy") {
+        setMeshOperationUseTargetFaces(true);
+        setMeshOperationDecimateTargetFaces(5000);
+        await handleLoadSurfaceMeshBenchmarkModel("3dbenchy");
+        return;
+      }
+      if (presetId === "smooth-bunny") {
+        setMeshOperationSmoothIterations(4);
+        setMeshOperationSmoothPassband(0.1);
+        await handleLoadSurfaceMeshBenchmarkModel("stanford-bunny");
+        return;
+      }
+      if (presetId === "boolean-demo-pair") {
+        handleOpenMeshOperationBooleanDemoPairInGeometry();
+        return;
+      }
+      if (presetId === "implicit-sphere-mesh") {
+        setCgalAutoTargetEdge(true);
+        setCgalTriBudgetEnabled(true);
+        setCgalTriBudget(50000);
+        handleOpenImplicitSpherePresetForMeshOperations();
+      }
+    },
+    [
+      handleLoadSurfaceMeshBenchmarkModel,
+      handleOpenImplicitSpherePresetForMeshOperations,
+      handleOpenMeshOperationBooleanDemoPairInGeometry,
+    ]
+  );
+
   useEffect(() => {
     if (typeof window === "undefined" || (!isDev && !window.appRuntime?.e2e)) return;
     window.__MATH3D_E2E_MESH_BENCHMARK__ = {
@@ -52916,6 +52971,70 @@ case "mobius":
     [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshTopologyHistory]
   );
 
+  const restoreMeshOperationHistoryEntry = useCallback(
+    (entryId: string) => {
+      const operationEntry = meshOperationHistory.find((candidate) => candidate.id === entryId);
+      if (!operationEntry?.topologyHistoryEntryId) {
+        setMeshOperationError("That operation has no restorable mesh snapshot.");
+        return;
+      }
+      const topologyEntry = surfaceMeshTopologyHistory.find(
+        (candidate) => candidate.id === operationEntry.topologyHistoryEntryId
+      );
+      if (!topologyEntry) {
+        setMeshOperationError("The mesh snapshot for that operation is no longer available.");
+        return;
+      }
+      const restored = cloneSurfaceMeshData(
+        topologyEntry.snapshot,
+        `${topologyEntry.snapshot.label ?? operationEntry.result.label} (restored)`
+      );
+      setMeshDataset(restored, "mesh-operation:history-restore");
+      setMeshLastOperation(operationEntry.result);
+      setSelectedSurfaceMeshTopologyHistoryId(topologyEntry.id);
+      setSurfaceMeshTopologyHistoryPreviewId(null);
+      setSurfaceMeshTopologyStatus(`Restored Mesh Operation: ${operationEntry.result.label}.`);
+      setMeshOperationError(null);
+      handleChangeViewerKind("mesh");
+    },
+    [handleChangeViewerKind, meshOperationHistory, setMeshDataset, surfaceMeshTopologyHistory]
+  );
+
+  const undoLatestMeshOperation = useCallback(() => {
+    const operationEntry = meshOperationHistory.find((entry) => entry.topologyHistoryEntryId && !entry.undoneAt);
+    if (!operationEntry?.topologyHistoryEntryId) {
+      setMeshOperationError("No undoable Mesh Operation result yet.");
+      return;
+    }
+    const topologyEntry = surfaceMeshTopologyHistory.find(
+      (candidate) => candidate.id === operationEntry.topologyHistoryEntryId
+    );
+    if (!topologyEntry) {
+      setMeshOperationError("The mesh snapshot for the latest operation is no longer available.");
+      return;
+    }
+    const restored = cloneSurfaceMeshData(
+      topologyEntry.beforeSnapshot,
+      topologyEntry.beforeSnapshot.label ?? `${topologyEntry.sourceLabel} (undo)`
+    );
+    setMeshDataset(restored, "mesh-operation:undo-last");
+    setSurfaceMeshTopologyHistory((prev) => prev.filter((entry) => entry.id !== topologyEntry.id));
+    setMeshOperationHistory((prev) =>
+      prev.map((entry) => (entry.id === operationEntry.id ? { ...entry, undoneAt: Date.now() } : entry))
+    );
+    setMeshLastOperation(operationEntry.result);
+    setSelectedSurfaceMeshTopologyHistoryId(null);
+    setSurfaceMeshTopologyHistoryPreviewId(null);
+    setSurfaceMeshTopologyStatus(`Undo Mesh Operation: reverted ${operationEntry.result.label}.`);
+    setMeshOperationError(null);
+    handleChangeViewerKind("mesh");
+  }, [handleChangeViewerKind, meshOperationHistory, setMeshDataset, surfaceMeshTopologyHistory]);
+
+  const canUndoLatestMeshOperation = useMemo(
+    () => meshOperationHistory.some((entry) => entry.topologyHistoryEntryId && !entry.undoneAt),
+    [meshOperationHistory]
+  );
+
   const copySurfaceMeshTopologyHistoryEntry = useCallback(
     (entryId: string) => {
       const entry = surfaceMeshTopologyHistory.find((candidate) => candidate.id === entryId);
@@ -53786,6 +53905,7 @@ case "mobius":
         engine?: "vtk" | "cgal";
         durationMs?: number;
         resultSummary?: MeshOperationResultSummary;
+        request?: MeshOperationRequest | null;
       }
     ) => {
       const baseLabel = buildActiveMeshLabel();
@@ -53810,6 +53930,7 @@ case "mobius":
         processed.indices?.length
           ? Math.floor(processed.indices.length / 3)
           : Math.max(0, Math.floor(afterVertexCount / 3));
+      let topologyHistoryEntryId: string | null = null;
       if (sourceMesh?.positions?.length) {
         const historyEntry: SurfaceMeshTopologyHistoryEntry = {
           id: makeId(),
@@ -53841,6 +53962,7 @@ case "mobius":
           snapshot: cloneSurfaceMeshData(processed, processed.label),
         };
         setSurfaceMeshTopologyHistory((prev) => [historyEntry, ...prev].slice(0, 24));
+        topologyHistoryEntryId = historyEntry.id;
         setSelectedSurfaceMeshTopologyHistoryId(historyEntry.id);
         setSurfaceMeshTopologyHistoryPreviewId(null);
         setSurfaceMeshTopologyHistoryPreviewMode("after");
@@ -53851,8 +53973,19 @@ case "mobius":
       focusSurfaceMeshViewport(processed);
       setSurfaceMeshImportError(null);
       appendMeshPromotionOperation(meta.operation, meta.resultSummary);
+      if (meta.resultSummary) {
+        publishMeshOperationResult(meta.resultSummary, meta.request, topologyHistoryEntryId);
+      }
     },
-    [appendMeshPromotionOperation, buildActiveMeshLabel, focusSurfaceMeshViewport, surfaceMeshData?.source, meshOperationOutputMode]
+    [
+      appendMeshPromotionOperation,
+      buildActiveMeshLabel,
+      focusSurfaceMeshViewport,
+      meshOperationOutputMode,
+      publishMeshOperationResult,
+      surfaceMeshData,
+      surfaceMeshData?.source,
+    ]
   );
 
   const getImplicitBakeWorker = useCallback(() => {
@@ -53955,20 +54088,18 @@ case "mobius":
     setMeshOperationBusy(true);
     setMeshOperationError(null);
     try {
-      const res = await runMeshOperation(
-        {
-          operation: "clean-normals",
-          inputs: [mesh.label],
-          engine: "auto",
-          parameters: { computeNormals: meshOperationCleanComputeNormals },
-          outputMode: meshOperationOutputMode === "replace" ? "replace" : "new-object",
-          quality: "balanced",
-        },
-        { primaryMesh: mesh }
-      );
-      const resultSummary = summarizeMeshOperationResult(res, meshOperationOutputMode === "replace" ? "replace" : "new-object");
-      setMeshLastOperation(resultSummary);
+      const request: MeshOperationRequest = {
+        operation: "clean-normals",
+        inputs: [mesh.label],
+        engine: "auto",
+        parameters: { computeNormals: meshOperationCleanComputeNormals },
+        outputMode: meshOperationOutputModeForRequest,
+        quality: "balanced",
+      };
+      const res = await runMeshOperation(request, { primaryMesh: mesh });
+      const resultSummary = summarizeMeshOperationResult(res, meshOperationOutputModeForRequest);
       if (res.status === "error" || !res.resultMesh) {
+        publishMeshOperationResult(resultSummary, request);
         setMeshOperationError(res.errors[0]?.message ?? "Clean failed.");
         return;
       }
@@ -53981,6 +54112,7 @@ case "mobius":
         engine: res.engine,
         durationMs: res.durationMs,
         resultSummary,
+        request,
       });
     } catch (err: any) {
       setMeshOperationError(err?.message ?? "Clean failed.");
@@ -53993,8 +54125,9 @@ case "mobius":
     cgalHealthState,
     getMeshForMeshOperation,
     meshOperationCleanComputeNormals,
-    meshOperationOutputMode,
+    meshOperationOutputModeForRequest,
     applyMeshOperationResultToSurfaceMesh,
+    publishMeshOperationResult,
     refreshCgalHealthAfterWorkerAction,
   ]);
 
@@ -54016,20 +54149,18 @@ case "mobius":
       const options = meshOperationUseTargetFaces
         ? { targetFaces: meshOperationDecimateTargetFaces, computeNormals: true }
         : { targetReduction: meshOperationDecimateReduction, computeNormals: true };
-      const res = await runMeshOperation(
-        {
-          operation: "decimate",
-          inputs: [mesh.label],
-          engine: "auto",
-          parameters: options,
-          outputMode: meshOperationOutputMode === "replace" ? "replace" : "new-object",
-          quality: "balanced",
-        },
-        { primaryMesh: mesh }
-      );
-      const resultSummary = summarizeMeshOperationResult(res, meshOperationOutputMode === "replace" ? "replace" : "new-object");
-      setMeshLastOperation(resultSummary);
+      const request: MeshOperationRequest = {
+        operation: "decimate",
+        inputs: [mesh.label],
+        engine: "auto",
+        parameters: options,
+        outputMode: meshOperationOutputModeForRequest,
+        quality: "balanced",
+      };
+      const res = await runMeshOperation(request, { primaryMesh: mesh });
+      const resultSummary = summarizeMeshOperationResult(res, meshOperationOutputModeForRequest);
       if (res.status === "error" || !res.resultMesh) {
+        publishMeshOperationResult(resultSummary, request);
         setMeshOperationError(res.errors[0]?.message ?? "Decimate failed.");
         return;
       }
@@ -54045,6 +54176,7 @@ case "mobius":
         engine: res.engine,
         durationMs: res.durationMs,
         resultSummary,
+        request,
       });
     } catch (err: any) {
       setMeshOperationError(err?.message ?? "Decimate failed.");
@@ -54059,8 +54191,9 @@ case "mobius":
     meshOperationUseTargetFaces,
     meshOperationDecimateTargetFaces,
     meshOperationDecimateReduction,
-    meshOperationOutputMode,
+    meshOperationOutputModeForRequest,
     applyMeshOperationResultToSurfaceMesh,
+    publishMeshOperationResult,
     refreshCgalHealthAfterWorkerAction,
   ]);
 
@@ -54078,24 +54211,22 @@ case "mobius":
     setMeshOperationBusy(true);
     setMeshOperationError(null);
     try {
-      const res = await runMeshOperation(
-        {
-          operation: "smooth",
-          inputs: [mesh.label],
-          engine: "auto",
-          parameters: {
-            iterations: meshOperationSmoothIterations,
-            passband: meshOperationSmoothPassband,
-            computeNormals: true,
-          },
-          outputMode: meshOperationOutputMode === "replace" ? "replace" : "new-object",
-          quality: "balanced",
+      const request: MeshOperationRequest = {
+        operation: "smooth",
+        inputs: [mesh.label],
+        engine: "auto",
+        parameters: {
+          iterations: meshOperationSmoothIterations,
+          passband: meshOperationSmoothPassband,
+          computeNormals: true,
         },
-        { primaryMesh: mesh }
-      );
-      const resultSummary = summarizeMeshOperationResult(res, meshOperationOutputMode === "replace" ? "replace" : "new-object");
-      setMeshLastOperation(resultSummary);
+        outputMode: meshOperationOutputModeForRequest,
+        quality: "balanced",
+      };
+      const res = await runMeshOperation(request, { primaryMesh: mesh });
+      const resultSummary = summarizeMeshOperationResult(res, meshOperationOutputModeForRequest);
       if (res.status === "error" || !res.resultMesh) {
+        publishMeshOperationResult(resultSummary, request);
         setMeshOperationError(res.errors[0]?.message ?? "Smooth failed.");
         return;
       }
@@ -54108,6 +54239,7 @@ case "mobius":
         engine: res.engine,
         durationMs: res.durationMs,
         resultSummary,
+        request,
       });
     } catch (err: any) {
       setMeshOperationError(err?.message ?? "Smooth failed.");
@@ -54121,8 +54253,9 @@ case "mobius":
     getMeshForMeshOperation,
     meshOperationSmoothIterations,
     meshOperationSmoothPassband,
-    meshOperationOutputMode,
+    meshOperationOutputModeForRequest,
     applyMeshOperationResultToSurfaceMesh,
+    publishMeshOperationResult,
     refreshCgalHealthAfterWorkerAction,
   ]);
 
@@ -54208,18 +54341,16 @@ case "mobius":
           ) {
             const meshA = makeBoxMesh("E2E box A", 0);
             const meshB = makeBoxMesh("E2E box B", 0.35);
-            const result = await runMeshOperation(
-              {
-                operation,
-                inputs: [meshA.label, meshB.label],
-                engine: "auto",
-                parameters: { computeNormals: true, curveRadius: operation === "boolean-imprint" ? 0.02 : undefined },
-                outputMode,
-                quality: "robust",
-              },
-              { primaryMesh: meshA, secondaryMesh: meshB }
-            );
-            setMeshLastOperation(summarizeMeshOperationResult(result, outputMode));
+            const request: MeshOperationRequest = {
+              operation,
+              inputs: [meshA.label, meshB.label],
+              engine: "auto",
+              parameters: { computeNormals: true, curveRadius: operation === "boolean-imprint" ? 0.02 : undefined },
+              outputMode,
+              quality: "robust",
+            };
+            const result = await runMeshOperation(request, { primaryMesh: meshA, secondaryMesh: meshB });
+            publishMeshOperationResult(summarizeMeshOperationResult(result, outputMode), request);
             if (result.status === "error") {
               return { ok: false, error: result.errors[0]?.message ?? `${operation} failed.` };
             }
@@ -54231,20 +54362,21 @@ case "mobius":
               min: [-1.4, -1.4, -1.4] as [number, number, number],
               max: [1.4, 1.4, 1.4] as [number, number, number],
             };
-            const result = await runMeshOperation(
-              {
-                operation,
-                inputs: [expr],
-                engine: "auto",
-                parameters: {
-                  expr,
-                  iso: 0,
-                  resolution: options?.resolution ?? 24,
-                  targetEdge: options?.targetEdge ?? 0.35,
-                },
-                outputMode: "preview",
-                quality: "fast",
+            const request: MeshOperationRequest = {
+              operation,
+              inputs: [expr],
+              engine: "auto",
+              parameters: {
+                expr,
+                iso: 0,
+                resolution: options?.resolution ?? 24,
+                targetEdge: options?.targetEdge ?? 0.35,
               },
+              outputMode: "preview",
+              quality: "fast",
+            };
+            const result = await runMeshOperation(
+              request,
               {
                 implicit:
                   operation === "implicit-preview"
@@ -54264,7 +54396,7 @@ case "mobius":
                       },
               }
             );
-            setMeshLastOperation(summarizeMeshOperationResult(result, "preview"));
+            publishMeshOperationResult(summarizeMeshOperationResult(result, "preview"), request);
             if (result.status === "error") {
               return { ok: false, error: result.errors[0]?.message ?? `${operation} failed.` };
             }
@@ -54292,18 +54424,16 @@ case "mobius":
                   ? { iterations: meshOperationSmoothIterations, passband: meshOperationSmoothPassband, computeNormals: true }
                   : null;
           if (!parameters) return { ok: false, error: `Unsupported mesh operation: ${operation}` };
-          const result = await runMeshOperation(
-            {
-              operation,
-              inputs: [mesh.label],
-              engine: "auto",
-              parameters,
-              outputMode,
-              quality: "balanced",
-            },
-            { primaryMesh: mesh }
-          );
-          setMeshLastOperation(summarizeMeshOperationResult(result, outputMode));
+          const request: MeshOperationRequest = {
+            operation,
+            inputs: [mesh.label],
+            engine: "auto",
+            parameters,
+            outputMode,
+            quality: "balanced",
+          };
+          const result = await runMeshOperation(request, { primaryMesh: mesh });
+          publishMeshOperationResult(summarizeMeshOperationResult(result, outputMode), request);
           if (result.status === "error") {
             return { ok: false, error: result.errors[0]?.message ?? `${operation} failed.` };
           }
@@ -54328,6 +54458,7 @@ case "mobius":
     meshOperationSmoothIterations,
     meshOperationSmoothPassband,
     meshOperationUseTargetFaces,
+    publishMeshOperationResult,
     surfaceMeshData,
     surfaceSampleSet,
   ]);
@@ -54503,20 +54634,18 @@ case "mobius":
             : meshOperationBooleanOperation === "intersection"
               ? "boolean-intersection"
               : "boolean-imprint";
-      const result = await runMeshOperation(
-        {
-          operation,
-          inputs: [meshA.label, meshB.label],
-          engine: "auto",
-          parameters: options,
-          outputMode: meshOperationOutputMode === "replace" ? "replace" : "new-object",
-          quality: "robust",
-        },
-        { primaryMesh: meshA, secondaryMesh: meshB }
-      );
-      const resultSummary = summarizeMeshOperationResult(result, meshOperationOutputMode === "replace" ? "replace" : "new-object");
-      setMeshLastOperation(resultSummary);
+      const request: MeshOperationRequest = {
+        operation,
+        inputs: [meshA.label, meshB.label],
+        engine: "auto",
+        parameters: options,
+        outputMode: meshOperationOutputModeForRequest,
+        quality: "robust",
+      };
+      const result = await runMeshOperation(request, { primaryMesh: meshA, secondaryMesh: meshB });
+      const resultSummary = summarizeMeshOperationResult(result, meshOperationOutputModeForRequest);
       if (result.status === "error" || !result.resultMesh) {
+        publishMeshOperationResult(resultSummary, request);
         setMeshOperationError(result.errors[0]?.message ?? "Boolean failed.");
         setMeshOperationBooleanStatus(`${meshOperationBooleanOperation} failed.`);
         return;
@@ -54537,6 +54666,7 @@ case "mobius":
           engine: result.engine,
           durationMs: result.durationMs,
           resultSummary,
+          request,
         }
       );
       setMeshOperationBooleanStatus(`${meshOperationBooleanOperation} completed.`);
@@ -54556,8 +54686,10 @@ case "mobius":
     meshOperationBooleanOperation,
     meshOperationBooleanCurveRadius,
     meshOperationOutputMode,
+    meshOperationOutputModeForRequest,
     surfaceMeshData?.source,
     applyMeshOperationResultToSurfaceMesh,
+    publishMeshOperationResult,
     refreshCgalHealthAfterWorkerAction,
   ]);
 
@@ -59741,6 +59873,144 @@ case "mobius":
     [cgalEstimatedTris, cgalTriBudgetEnabled, cgalAutoTargetEdge]
   );
 
+  const buildCurrentMeshOperationRequest = useCallback(
+    (operation: MeshOperationUiId | null | undefined): MeshOperationRequest | null => {
+      if (
+        !operation ||
+        operation === "boolean-split" ||
+        !(
+          operation === "clean-normals" ||
+          operation === "decimate" ||
+          operation === "smooth" ||
+          operation === "implicit-preview" ||
+          operation === "implicit-mesh" ||
+          operation === "boolean-union" ||
+          operation === "boolean-difference" ||
+          operation === "boolean-intersection" ||
+          operation === "boolean-imprint"
+        )
+      ) {
+        return null;
+      }
+
+      const outputMode = operation === "implicit-mesh" ? "preview" : meshOperationOutputModeForRequest;
+      const booleanInputs =
+        operation.startsWith("boolean-")
+          ? [
+              buildActiveMeshLabel(),
+              geometryBooleanObjectOptions.find((entry) => entry.id === meshOperationBooleanOperandObjectId)?.name ??
+                "Operand B",
+            ]
+          : undefined;
+      const implicitInputs = operation.startsWith("implicit-") ? [activeImplicitExpr || "implicit surface"] : undefined;
+      const meshInputs = [buildActiveMeshLabel()];
+      const parameters =
+        operation === "clean-normals"
+          ? { computeNormals: meshOperationCleanComputeNormals }
+          : operation === "decimate"
+            ? meshOperationUseTargetFaces
+              ? { targetFaces: Math.max(100, Math.round(meshOperationDecimateTargetFaces)), computeNormals: true }
+              : { targetReduction: clampNumber(meshOperationDecimateReduction, 0, 0.95), computeNormals: true }
+            : operation === "smooth"
+              ? {
+                  iterations: Math.max(1, Math.round(meshOperationSmoothIterations)),
+                  passband: clampNumber(meshOperationSmoothPassband, 0.001, 1),
+                  computeNormals: true,
+                }
+              : operation === "implicit-preview"
+                ? {
+                    expr: activeImplicitExpr,
+                    iso: 0,
+                    resolution: Math.max(8, Math.min(220, Math.round(implicitResolution))),
+                    targetFaces: meshOperationPreviewUseDecimate
+                      ? Math.max(200, Math.round(meshOperationPreviewTargetFaces))
+                      : undefined,
+                  }
+                : operation === "implicit-mesh"
+                  ? {
+                      expr: activeImplicitExpr,
+                      iso: 0,
+                      targetEdge: cgalEffectiveEdge,
+                      triBudget: cgalTriBudgetEnabled ? cgalTriBudget : undefined,
+                    }
+                  : {
+                      computeNormals: true,
+                      curveRadius: meshOperationBooleanCurveRadius > 0 ? meshOperationBooleanCurveRadius : undefined,
+                    };
+      return {
+        operation,
+        inputs: booleanInputs ?? implicitInputs ?? meshInputs,
+        engine: "auto",
+        parameters,
+        outputMode,
+        quality: operation.startsWith("boolean-") || operation === "implicit-mesh" ? "robust" : "balanced",
+      };
+    },
+    [
+      activeImplicitExpr,
+      buildActiveMeshLabel,
+      cgalEffectiveEdge,
+      cgalTriBudget,
+      cgalTriBudgetEnabled,
+      geometryBooleanObjectOptions,
+      implicitResolution,
+      meshOperationBooleanCurveRadius,
+      meshOperationBooleanOperandObjectId,
+      meshOperationCleanComputeNormals,
+      meshOperationDecimateReduction,
+      meshOperationDecimateTargetFaces,
+      meshOperationOutputModeForRequest,
+      meshOperationPreviewTargetFaces,
+      meshOperationPreviewUseDecimate,
+      meshOperationSmoothIterations,
+      meshOperationSmoothPassband,
+      meshOperationUseTargetFaces,
+    ]
+  );
+
+  const handleSaveMeshOperationPreset = useCallback(() => {
+    const operationLabel = meshLastOperation?.label ?? "Mesh operation";
+    const name = `${operationLabel} preset ${geometryOperationPresets.length + 1}`;
+    const preset: GeometryOperationPreset = {
+      id: makeId(),
+      name,
+      createdAt: Date.now(),
+      operation: meshLastOperation?.operation ?? null,
+      request: buildCurrentMeshOperationRequest(meshLastOperation?.operation ?? null),
+      outputMode: meshOperationOutputMode,
+      cleanComputeNormals: meshOperationCleanComputeNormals,
+      decimateReduction: meshOperationDecimateReduction,
+      decimateTargetFaces: Math.max(100, Math.round(meshOperationDecimateTargetFaces)),
+      decimateUseTargetFaces: meshOperationUseTargetFaces,
+      smoothIterations: Math.max(1, Math.round(meshOperationSmoothIterations)),
+      smoothPassband: clampNumber(meshOperationSmoothPassband, 0.001, 1),
+      booleanOperation: meshOperationBooleanOperation,
+      booleanOperandObjectId: meshOperationBooleanOperandObjectId,
+      booleanCurveRadius: Math.max(0, meshOperationBooleanCurveRadius),
+      previewTargetFaces: Math.max(200, Math.round(meshOperationPreviewTargetFaces)),
+      previewUseDecimate: meshOperationPreviewUseDecimate,
+      lastResult: meshLastOperation,
+    };
+    setGeometryOperationPresets((prev) => [preset, ...prev].slice(0, 40));
+    setGeometryCreateActionStatus(`Saved operation preset: ${name}.`);
+  }, [
+    geometryOperationPresets.length,
+    buildCurrentMeshOperationRequest,
+    meshLastOperation,
+    meshOperationBooleanCurveRadius,
+    meshOperationBooleanOperandObjectId,
+    meshOperationBooleanOperation,
+    meshOperationCleanComputeNormals,
+    meshOperationDecimateReduction,
+    meshOperationDecimateTargetFaces,
+    meshOperationOutputMode,
+    meshOperationPreviewTargetFaces,
+    meshOperationPreviewUseDecimate,
+    meshOperationSmoothIterations,
+    meshOperationSmoothPassband,
+    meshOperationUseTargetFaces,
+  ]);
+
   const handleMeshOperationPreviewImplicit = useCallback(async () => {
     if (meshOperationBusy || meshOperationPreviewBusy) return;
     if (cgalHealthState?.ok === false) {
@@ -59771,34 +60041,32 @@ case "mobius":
     setMeshOperationPreviewError(null);
     const startedAt = performance.now();
     try {
-      const res = await runMeshOperation(
-        {
-          operation: "implicit-preview",
-          inputs: [activeImplicitExpr || "implicit preview"],
-          engine: "auto",
-          parameters: {
-            expr,
-            iso: 0,
-            resolution,
-            targetFaces: meshOperationPreviewUseDecimate ? targetFaces : undefined,
-          },
-          outputMode: meshOperationOutputMode === "replace" ? "replace" : "new-object",
-          quality: "fast",
+      const request: MeshOperationRequest = {
+        operation: "implicit-preview",
+        inputs: [activeImplicitExpr || "implicit preview"],
+        engine: "auto",
+        parameters: {
+          expr,
+          iso: 0,
+          resolution,
+          targetFaces: meshOperationPreviewUseDecimate ? targetFaces : undefined,
         },
-        {
-          implicit: {
-            expr,
-            iso: 0,
-            domain: cgalDomainPreview,
-            resolution,
-            targetFaces: meshOperationPreviewUseDecimate ? targetFaces : undefined,
-          },
-        }
-      );
-      const resultSummary = summarizeMeshOperationResult(res, meshOperationOutputMode === "replace" ? "replace" : "new-object");
-      setMeshLastOperation(resultSummary);
+        outputMode: meshOperationOutputModeForRequest,
+        quality: "fast",
+      };
+      const res = await runMeshOperation(request, {
+        implicit: {
+          expr,
+          iso: 0,
+          domain: cgalDomainPreview,
+          resolution,
+          targetFaces: meshOperationPreviewUseDecimate ? targetFaces : undefined,
+        },
+      });
+      const resultSummary = summarizeMeshOperationResult(res, meshOperationOutputModeForRequest);
       if (res.status === "error" || !res.resultMesh) {
         setMeshPerformanceLastBuildMs(performance.now() - startedAt);
+        publishMeshOperationResult(resultSummary, request);
         const message = res.errors[0]?.message ?? "Implicit preview failed.";
         setMeshOperationPreviewError(message);
         setGenerateSurfaceStatus({ state: "error", message, at: Date.now() });
@@ -59814,6 +60082,7 @@ case "mobius":
         engine: res.engine,
         durationMs: res.durationMs,
         resultSummary,
+        request,
       });
       setGenerateSurfaceStatus({
         state: "success",
@@ -59838,10 +60107,11 @@ case "mobius":
     implicitResolution,
     meshOperationPreviewTargetFaces,
     meshOperationPreviewUseDecimate,
-    meshOperationOutputMode,
+    meshOperationOutputModeForRequest,
     surfaceMeshStats?.triCount,
     cgalDomainPreview,
     applyMeshOperationResultToSurfaceMesh,
+    publishMeshOperationResult,
     refreshCgalHealthAfterWorkerAction,
   ]);
 
@@ -59903,35 +60173,34 @@ case "mobius":
         domainDiag: diag,
       });
 
-      const res = await runMeshOperation(
-        {
-          operation: "implicit-mesh",
-          inputs: [expr],
-          engine: "auto",
-          parameters: {
-            expr,
-            iso: 0,
-            domain,
-            targetEdge,
-            radiusBound: cgalRadiusBound,
-            verbose: cgalVerbose,
-            preflightSamples: cgalPreflightSamples,
-          },
-          outputMode: "preview",
-          quality: cgalAutoTargetEdge || cgalTriBudgetEnabled ? "fast" : "balanced",
+      const request: MeshOperationRequest = {
+        operation: "implicit-mesh",
+        inputs: [expr],
+        engine: "auto",
+        parameters: {
+          expr,
+          iso: 0,
+          domain,
+          targetEdge,
+          radiusBound: cgalRadiusBound,
+          verbose: cgalVerbose,
+          preflightSamples: cgalPreflightSamples,
         },
-        {
-          implicit: {
-            expr,
-            iso: 0,
-            domain,
-            quality: { target_edge: targetEdge, radiusBound: cgalRadiusBound },
-            verbose: cgalVerbose,
-            preflightSamples: cgalPreflightSamples,
-          },
-        }
-      );
-      setMeshLastOperation(summarizeMeshOperationResult(res, "preview"));
+        outputMode: "preview",
+        quality: cgalAutoTargetEdge || cgalTriBudgetEnabled ? "fast" : "balanced",
+      };
+      const res = await runMeshOperation(request, {
+        implicit: {
+          expr,
+          iso: 0,
+          domain,
+          quality: { target_edge: targetEdge, radiusBound: cgalRadiusBound },
+          verbose: cgalVerbose,
+          preflightSamples: cgalPreflightSamples,
+        },
+      });
+      const resultSummary = summarizeMeshOperationResult(res, "preview");
+      publishMeshOperationResult(resultSummary, request);
 
       console.log("[CGAL] mesh response", {
         ok: res.status !== "error",
@@ -59990,6 +60259,7 @@ case "mobius":
     cgalTooHeavy,
     selectionBBoxForCgal,
     activeEqSurfaceId,
+    publishMeshOperationResult,
     refreshCgalHealthAfterWorkerAction,
   ]);
 
@@ -65637,6 +65907,11 @@ case "mobius":
                   pythonWorkerLogPath={cgalHealthState?.logsPath ?? null}
                   meshOperationBusy={meshOperationBusy}
                   meshOperationError={meshOperationError}
+                  meshOperationHistory={meshOperationHistory}
+                  onRestoreMeshOperationHistoryEntry={restoreMeshOperationHistoryEntry}
+                  onUndoLatestMeshOperation={undoLatestMeshOperation}
+                  canUndoLatestMeshOperation={canUndoLatestMeshOperation}
+                  onApplyMeshOperationPreset={handleApplyMeshOperationPreset}
                   meshOperationCleanComputeNormals={meshOperationCleanComputeNormals}
                   onChangeMeshOperationCleanComputeNormals={setMeshOperationCleanComputeNormals}
                   meshOperationDecimateReduction={meshOperationDecimateReduction}
@@ -68646,6 +68921,11 @@ case "mobius":
                           busy={meshOperationBusy}
                           cgalBusy={cgalBusy}
                           lastResult={meshLastOperation}
+                          operationHistory={meshOperationHistory}
+                          onRestoreOperationHistoryEntry={restoreMeshOperationHistoryEntry}
+                          onUndoLastOperation={undoLatestMeshOperation}
+                          canUndoLastOperation={canUndoLatestMeshOperation}
+                          onApplyOperationPreset={handleApplyMeshOperationPreset}
                           cleanComputeNormals={meshOperationCleanComputeNormals}
                           onChangeCleanComputeNormals={setMeshOperationCleanComputeNormals}
                           onClean={handleMeshOperationCleanNormals}
@@ -68677,7 +68957,7 @@ case "mobius":
                           onHideBooleanOperands={() => setMeshOperationBooleanDemoOperandsVisible(false)}
                           outputMode={meshOperationOutputMode}
                           onChangeOutputMode={setMeshOperationOutputMode}
-                          implicitAvailable={false}
+                          implicitAvailable={(surfaceViewerKind as SurfaceViewerKind) === "implicit" && !!activeImplicitExpr}
                           implicitExpr={activeImplicitExpr ?? ""}
                           onOpenImplicitSpherePreset={handleOpenImplicitSpherePresetForMeshOperations}
                           implicitResolution={implicitResolution}
@@ -69247,6 +69527,11 @@ case "mobius":
                     onBakeAsPrimaryObject={handleDatasetToGeometryScene}
                     onOpenAnalysis={() => setSurfacesLeftTab("analysis")}
                     meshLastOperation={meshLastOperation}
+                    meshOperationHistory={meshOperationHistory}
+                    onRestoreMeshOperationHistoryEntry={restoreMeshOperationHistoryEntry}
+                    onUndoLatestMeshOperation={undoLatestMeshOperation}
+                    canUndoLatestMeshOperation={canUndoLatestMeshOperation}
+                    onApplyMeshOperationPreset={handleApplyMeshOperationPreset}
                     meshOperationWorkerReady={meshOperationServiceReady}
                     meshOperationWorkerStatusText={meshOperationServiceStatusText}
                     meshOperationCgalReady={cgalServiceReady}
@@ -98845,6 +99130,11 @@ type SurfacesObjectPanelProps = {
   onBakeAsPrimaryObject: () => void;
   onOpenAnalysis: () => void;
   meshLastOperation: MeshOperationResultSummary | null;
+  meshOperationHistory: MeshOperationHistoryEntry[];
+  onRestoreMeshOperationHistoryEntry: (entryId: string) => void;
+  onUndoLatestMeshOperation: () => void;
+  canUndoLatestMeshOperation: boolean;
+  onApplyMeshOperationPreset: (presetId: MeshOperationPresetId) => void | Promise<void>;
   meshOperationWorkerReady: boolean;
   meshOperationWorkerStatusText: string;
   meshOperationCgalReady: boolean;
@@ -98987,6 +99277,11 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   onBakeAsPrimaryObject,
   onOpenAnalysis,
   meshLastOperation,
+  meshOperationHistory,
+  onRestoreMeshOperationHistoryEntry,
+  onUndoLatestMeshOperation,
+  canUndoLatestMeshOperation,
+  onApplyMeshOperationPreset,
   meshOperationWorkerReady,
   meshOperationWorkerStatusText,
   meshOperationCgalReady,
@@ -99344,6 +99639,11 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
           busy={meshOperationBusy}
           cgalBusy={meshOperationCgalBusy}
           lastResult={meshLastOperation}
+          operationHistory={meshOperationHistory}
+          onRestoreOperationHistoryEntry={onRestoreMeshOperationHistoryEntry}
+          onUndoLastOperation={onUndoLatestMeshOperation}
+          canUndoLastOperation={canUndoLatestMeshOperation}
+          onApplyOperationPreset={onApplyMeshOperationPreset}
           cleanComputeNormals={meshOperationCleanComputeNormals}
           onChangeCleanComputeNormals={onChangeMeshOperationCleanComputeNormals}
           onClean={onMeshOperationClean}
@@ -100878,6 +101178,11 @@ type SurfacesLeftPanelProps = {
   onRunCgalMesh: () => void;
   onStopCgalWorker: () => void;
   cgalMeshInfo: { vertexCount: number; triCount: number } | null;
+  meshOperationHistory: MeshOperationHistoryEntry[];
+  onRestoreMeshOperationHistoryEntry: (entryId: string) => void;
+  onUndoLatestMeshOperation: () => void;
+  canUndoLatestMeshOperation: boolean;
+  onApplyMeshOperationPreset: (presetId: MeshOperationPresetId) => void | Promise<void>;
 
   graphExpr: string;
   implicitExpr: string;
@@ -101515,6 +101820,11 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleVolumeDistanceSigned,
   onToggleVolumeDistanceAutoBounds,
   meshLastOperation,
+  meshOperationHistory,
+  onRestoreMeshOperationHistoryEntry,
+  onUndoLatestMeshOperation,
+  canUndoLatestMeshOperation,
+  onApplyMeshOperationPreset,
   meshOperationAvailable,
   pythonWorkerAvailable,
   pythonWorkerStatusMessage,
@@ -106117,6 +106427,11 @@ onChangeImplicitExpr,
               busy={meshOperationBusy}
               cgalBusy={cgalBusy}
               lastResult={meshLastOperation}
+              operationHistory={meshOperationHistory}
+              onRestoreOperationHistoryEntry={onRestoreMeshOperationHistoryEntry}
+              onUndoLastOperation={onUndoLatestMeshOperation}
+              canUndoLastOperation={canUndoLatestMeshOperation}
+              onApplyOperationPreset={onApplyMeshOperationPreset}
               cleanComputeNormals={meshOperationCleanComputeNormals}
               onChangeCleanComputeNormals={onChangeMeshOperationCleanComputeNormals}
               onClean={onMeshOperationCleanNormals}

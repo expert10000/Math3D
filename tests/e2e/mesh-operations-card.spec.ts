@@ -119,7 +119,7 @@ test.describe("Mesh Operations card", () => {
 
     const card = await openWorkspaceOperationsCard(page);
 
-    for (const preset of ["vtk-polish", "vtk-simplify", "vtk-smooth", "vtk-boolean"]) {
+    for (const preset of ["clean-normals", "decimate-3dbenchy", "smooth-bunny"]) {
       await card.getByTestId(`mesh-workspace-operation-registry-preset-${preset}`).click();
       await expect(card.locator("[aria-expanded=\"true\"]")).toBeVisible();
     }
@@ -160,6 +160,8 @@ test.describe("Mesh Operations card", () => {
     const runResult = await runMeshOperationHook(page, "decimate");
     expect(runResult.ok, runResult.error).toBeTruthy();
     await expectLastOperation(card, /Decimate/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Decimate/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Request:/i);
   });
 
   test("runs Smooth on Bunny and Armadillo through the shared operation layer", async () => {
@@ -214,6 +216,11 @@ test.describe("Mesh Operations card", () => {
     await selectSection(page, "Mesh");
 
     let card = await openWorkspaceOperationsCard(page);
+    await card.getByTestId("mesh-workspace-operation-registry-preset-boolean-demo-pair").click();
+    await expect(page.getByText(/Boolean demo A/i).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/Boolean demo B/i).first()).toBeVisible({ timeout: 15_000 });
+    await selectSection(page, "Mesh");
+    card = await openWorkspaceOperationsCard(page);
     await card.getByTestId("mesh-workspace-operation-registry-row-boolean-union").click();
     await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-formula")).toContainText("Result = Active Mesh");
     await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-chip-a")).toContainText("A:");
@@ -221,7 +228,7 @@ test.describe("Mesh Operations card", () => {
     const openPair = card.getByTestId("mesh-workspace-operation-registry-open-boolean-demo-pair-empty");
     if (await openPair.isVisible().catch(() => false)) {
       await openPair.click();
-      await expect(page.getByText(/Boolean demo pair opened in Geometry/i)).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/Boolean demo A/i).first()).toBeVisible({ timeout: 15_000 });
       await selectSection(page, "Mesh");
       card = await openWorkspaceOperationsCard(page);
       await card.getByTestId("mesh-workspace-operation-registry-row-boolean-union").click();
@@ -238,6 +245,7 @@ test.describe("Mesh Operations card", () => {
     }
     await runUnion.click();
     await expectLastOperation(card, /Boolean union/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Boolean union/i);
 
     await card.getByTestId("mesh-workspace-operation-registry-send-to-geometry").click();
     await selectSection(page, "Geometry");
@@ -259,6 +267,7 @@ test.describe("Mesh Operations card", () => {
     await runDifference.click({ force: true });
     await expectLastOperation(cardAgain, /Boolean difference/i);
     await expect(cardAgain.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/Triangles:/);
+    await expect(cardAgain.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Boolean difference/i);
     const operandToggle = cardAgain.getByTestId("mesh-workspace-operation-registry-toggle-boolean-operands");
     if (await operandToggle.isVisible().catch(() => false)) {
       await operandToggle.click();
@@ -268,7 +277,7 @@ test.describe("Mesh Operations card", () => {
     await expect(page.getByText(/mesh sent to geometry/i)).toBeVisible({ timeout: 15_000 });
   });
 
-  test("opens the implicit sphere preset from Mesh Operations and runs preview from the real card", async () => {
+  test("opens the implicit sphere preset from Mesh Operations and runs preview", async () => {
     ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
     const { page } = ctx;
     await resetSurfaceAppState(page);
@@ -277,7 +286,7 @@ test.describe("Mesh Operations card", () => {
     const card = await openWorkspaceOperationsCard(page);
     await card.getByTestId("mesh-workspace-operation-registry-row-implicit-preview").click();
     await expect(card.getByTestId("mesh-workspace-operation-registry-run-implicit-preview")).toBeDisabled();
-    await card.getByTestId("mesh-workspace-operation-registry-open-implicit-sphere").click();
+    await card.getByTestId("mesh-workspace-operation-registry-preset-implicit-sphere-mesh").click();
     await expect(page.getByText(/Surfaces \/ Implicit \/ Level Set \/ Sphere/i)).toBeVisible({ timeout: 15_000 });
     const previewButton = await firstVisible(page.getByRole("button", { name: "Preview", exact: true }));
     await expect(previewButton).toBeEnabled({ timeout: 15_000 });
