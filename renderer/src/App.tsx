@@ -42,6 +42,7 @@ import {
   type MeshBooleanOperation,
   type MeshOperationHistoryEntry,
   type MeshOperationPresetId,
+  type MeshOperationSavedPresetSummary,
   type MeshOperationUiId,
   type MeshOperationResultSummary,
 } from "./components/MeshOperationsCard";
@@ -65908,10 +65909,14 @@ case "mobius":
                   meshOperationBusy={meshOperationBusy}
                   meshOperationError={meshOperationError}
                   meshOperationHistory={meshOperationHistory}
+                  meshOperationSavedPresets={geometryOperationPresets}
                   onRestoreMeshOperationHistoryEntry={restoreMeshOperationHistoryEntry}
                   onUndoLatestMeshOperation={undoLatestMeshOperation}
                   canUndoLatestMeshOperation={canUndoLatestMeshOperation}
                   onApplyMeshOperationPreset={handleApplyMeshOperationPreset}
+                  onApplyMeshOperationSavedPreset={handleApplyGeometryOperationPreset}
+                  onSaveMeshOperationPreset={handleSaveMeshOperationPreset}
+                  canSaveMeshOperationPreset={!!meshLastOperation}
                   meshOperationCleanComputeNormals={meshOperationCleanComputeNormals}
                   onChangeMeshOperationCleanComputeNormals={setMeshOperationCleanComputeNormals}
                   meshOperationDecimateReduction={meshOperationDecimateReduction}
@@ -68922,10 +68927,14 @@ case "mobius":
                           cgalBusy={cgalBusy}
                           lastResult={meshLastOperation}
                           operationHistory={meshOperationHistory}
+                          savedPresets={geometryOperationPresets}
                           onRestoreOperationHistoryEntry={restoreMeshOperationHistoryEntry}
                           onUndoLastOperation={undoLatestMeshOperation}
                           canUndoLastOperation={canUndoLatestMeshOperation}
                           onApplyOperationPreset={handleApplyMeshOperationPreset}
+                          onApplySavedOperationPreset={handleApplyGeometryOperationPreset}
+                          onSaveOperationPreset={handleSaveMeshOperationPreset}
+                          canSaveOperationPreset={!!meshLastOperation}
                           cleanComputeNormals={meshOperationCleanComputeNormals}
                           onChangeCleanComputeNormals={setMeshOperationCleanComputeNormals}
                           onClean={handleMeshOperationCleanNormals}
@@ -69528,10 +69537,14 @@ case "mobius":
                     onOpenAnalysis={() => setSurfacesLeftTab("analysis")}
                     meshLastOperation={meshLastOperation}
                     meshOperationHistory={meshOperationHistory}
+                    meshOperationSavedPresets={geometryOperationPresets}
                     onRestoreMeshOperationHistoryEntry={restoreMeshOperationHistoryEntry}
                     onUndoLatestMeshOperation={undoLatestMeshOperation}
                     canUndoLatestMeshOperation={canUndoLatestMeshOperation}
                     onApplyMeshOperationPreset={handleApplyMeshOperationPreset}
+                    onApplyMeshOperationSavedPreset={handleApplyGeometryOperationPreset}
+                    onSaveMeshOperationPreset={handleSaveMeshOperationPreset}
+                    canSaveMeshOperationPreset={!!meshLastOperation}
                     meshOperationWorkerReady={meshOperationServiceReady}
                     meshOperationWorkerStatusText={meshOperationServiceStatusText}
                     meshOperationCgalReady={cgalServiceReady}
@@ -99131,10 +99144,14 @@ type SurfacesObjectPanelProps = {
   onOpenAnalysis: () => void;
   meshLastOperation: MeshOperationResultSummary | null;
   meshOperationHistory: MeshOperationHistoryEntry[];
+  meshOperationSavedPresets: MeshOperationSavedPresetSummary[];
   onRestoreMeshOperationHistoryEntry: (entryId: string) => void;
   onUndoLatestMeshOperation: () => void;
   canUndoLatestMeshOperation: boolean;
   onApplyMeshOperationPreset: (presetId: MeshOperationPresetId) => void | Promise<void>;
+  onApplyMeshOperationSavedPreset: (presetId: string) => void | Promise<void>;
+  onSaveMeshOperationPreset: () => void;
+  canSaveMeshOperationPreset: boolean;
   meshOperationWorkerReady: boolean;
   meshOperationWorkerStatusText: string;
   meshOperationCgalReady: boolean;
@@ -99278,10 +99295,14 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   onOpenAnalysis,
   meshLastOperation,
   meshOperationHistory,
+  meshOperationSavedPresets,
   onRestoreMeshOperationHistoryEntry,
   onUndoLatestMeshOperation,
   canUndoLatestMeshOperation,
   onApplyMeshOperationPreset,
+  onApplyMeshOperationSavedPreset,
+  onSaveMeshOperationPreset,
+  canSaveMeshOperationPreset,
   meshOperationWorkerReady,
   meshOperationWorkerStatusText,
   meshOperationCgalReady,
@@ -99640,10 +99661,14 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
           cgalBusy={meshOperationCgalBusy}
           lastResult={meshLastOperation}
           operationHistory={meshOperationHistory}
+          savedPresets={meshOperationSavedPresets}
           onRestoreOperationHistoryEntry={onRestoreMeshOperationHistoryEntry}
           onUndoLastOperation={onUndoLatestMeshOperation}
           canUndoLastOperation={canUndoLatestMeshOperation}
           onApplyOperationPreset={onApplyMeshOperationPreset}
+          onApplySavedOperationPreset={onApplyMeshOperationSavedPreset}
+          onSaveOperationPreset={onSaveMeshOperationPreset}
+          canSaveOperationPreset={canSaveMeshOperationPreset}
           cleanComputeNormals={meshOperationCleanComputeNormals}
           onChangeCleanComputeNormals={onChangeMeshOperationCleanComputeNormals}
           onClean={onMeshOperationClean}
@@ -101179,10 +101204,14 @@ type SurfacesLeftPanelProps = {
   onStopCgalWorker: () => void;
   cgalMeshInfo: { vertexCount: number; triCount: number } | null;
   meshOperationHistory: MeshOperationHistoryEntry[];
+  meshOperationSavedPresets: MeshOperationSavedPresetSummary[];
   onRestoreMeshOperationHistoryEntry: (entryId: string) => void;
   onUndoLatestMeshOperation: () => void;
   canUndoLatestMeshOperation: boolean;
   onApplyMeshOperationPreset: (presetId: MeshOperationPresetId) => void | Promise<void>;
+  onApplyMeshOperationSavedPreset: (presetId: string) => void | Promise<void>;
+  onSaveMeshOperationPreset: () => void;
+  canSaveMeshOperationPreset: boolean;
 
   graphExpr: string;
   implicitExpr: string;
@@ -101821,10 +101850,14 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleVolumeDistanceAutoBounds,
   meshLastOperation,
   meshOperationHistory,
+  meshOperationSavedPresets,
   onRestoreMeshOperationHistoryEntry,
   onUndoLatestMeshOperation,
   canUndoLatestMeshOperation,
   onApplyMeshOperationPreset,
+  onApplyMeshOperationSavedPreset,
+  onSaveMeshOperationPreset,
+  canSaveMeshOperationPreset,
   meshOperationAvailable,
   pythonWorkerAvailable,
   pythonWorkerStatusMessage,
@@ -106428,10 +106461,14 @@ onChangeImplicitExpr,
               cgalBusy={cgalBusy}
               lastResult={meshLastOperation}
               operationHistory={meshOperationHistory}
+              savedPresets={meshOperationSavedPresets}
               onRestoreOperationHistoryEntry={onRestoreMeshOperationHistoryEntry}
               onUndoLastOperation={onUndoLatestMeshOperation}
               canUndoLastOperation={canUndoLatestMeshOperation}
               onApplyOperationPreset={onApplyMeshOperationPreset}
+              onApplySavedOperationPreset={onApplyMeshOperationSavedPreset}
+              onSaveOperationPreset={onSaveMeshOperationPreset}
+              canSaveOperationPreset={canSaveMeshOperationPreset}
               cleanComputeNormals={meshOperationCleanComputeNormals}
               onChangeCleanComputeNormals={onChangeMeshOperationCleanComputeNormals}
               onClean={onMeshOperationCleanNormals}

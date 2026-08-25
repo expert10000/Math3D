@@ -37,6 +37,15 @@ export type MeshOperationHistoryEntry = {
   undoneAt?: number | null;
 };
 
+export type MeshOperationSavedPresetSummary = {
+  id: string;
+  name: string;
+  createdAt: number;
+  operation?: MeshOperationUiId | null;
+  request?: MeshOperationRequest | null;
+  lastResult?: MeshOperationResultSummary | null;
+};
+
 export const MESH_OPERATION_LABELS: Record<MeshOperationUiId, string> = {
   "clean-normals": "Clean normals",
   decimate: "Decimate",
@@ -84,9 +93,13 @@ export type MeshOperationsCompactCardProps = {
   cgalBusy: boolean;
   lastResult: MeshOperationResultSummary | null;
   operationHistory?: MeshOperationHistoryEntry[];
+  savedPresets?: MeshOperationSavedPresetSummary[];
   onRestoreOperationHistoryEntry?: (entryId: string) => void;
   onUndoLastOperation?: () => void;
   canUndoLastOperation?: boolean;
+  onApplySavedOperationPreset?: (presetId: string) => void | Promise<void>;
+  onSaveOperationPreset?: () => void;
+  canSaveOperationPreset?: boolean;
   cleanComputeNormals: boolean;
   onChangeCleanComputeNormals: (value: boolean) => void;
   onClean: () => void;
@@ -161,6 +174,11 @@ const formatMeshOperationDuration = (value: number | null | undefined) =>
 const getMeshOperationRunLabel = (operation: MeshOperationUiId | null) =>
   operation ? `Run ${MESH_OPERATION_LABELS[operation] ?? operation}` : "Run operation";
 
+const getSavedPresetOperationLabel = (preset: MeshOperationSavedPresetSummary) => {
+  const operation = (preset.request?.operation ?? preset.operation ?? preset.lastResult?.operation ?? null) as MeshOperationUiId | null;
+  return operation ? MESH_OPERATION_LABELS[operation] ?? operation : "Operation preset";
+};
+
 const getMeshBooleanFormulaText = (operation: MeshBooleanOperation) => {
   if (operation === "union") return "Result = Active Mesh ∪ Operand B";
   if (operation === "difference") return "Result = Active Mesh - Operand B";
@@ -225,9 +243,13 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
   cgalBusy,
   lastResult,
   operationHistory = [],
+  savedPresets = [],
   onRestoreOperationHistoryEntry,
   onUndoLastOperation,
   canUndoLastOperation = false,
+  onApplySavedOperationPreset,
+  onSaveOperationPreset,
+  canSaveOperationPreset = false,
   cleanComputeNormals,
   onChangeCleanComputeNormals,
   onClean,
@@ -375,6 +397,7 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
   const selectedBooleanOperand = booleanOperandOptions.find((entry) => entry.id === booleanOperandObjectId) ?? null;
   const booleanActiveLabel = activeMeshLabel?.trim() || "Active Mesh";
   const booleanOperandLabel = selectedBooleanOperand?.name?.trim() || "Operand B";
+  const hasUsableResult = !!lastResult && lastResult.status !== "error" && (lastResult.afterFaces != null || lastResult.afterVertices != null);
   const expandedCanRun =
     expandedOperation === "implicit-preview"
       ? implicitAvailable && workerReady && !operationBusy
@@ -977,17 +1000,22 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
             {lastResult.warnings.length > 0 && <div style={{ color: "#b45309" }}>Warnings: {lastResult.warnings.join("; ")}</div>}
             {lastResult.errors.length > 0 && <div style={{ color: "#b42318" }}>Errors: {lastResult.errors.join("; ")}</div>}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
-              <button data-testid={`${testId}-open-result`} type="button" onClick={onOpenResult}>
+              <button data-testid={`${testId}-open-result`} type="button" onClick={onOpenResult} disabled={!hasUsableResult}>
                 Open result
               </button>
-              <button data-testid={`${testId}-send-to-geometry`} type="button" onClick={onSendToGeometry} disabled={!canSendToGeometry}>
+              <button
+                data-testid={`${testId}-send-to-geometry`}
+                type="button"
+                onClick={onSendToGeometry}
+                disabled={!hasUsableResult || !canSendToGeometry}
+              >
                 Send to Geometry
               </button>
               <button
                 data-testid={`${testId}-open-result-in-geometry`}
                 type="button"
                 onClick={onOpenResultInGeometry ?? onSendToGeometry}
-                disabled={!canSendToGeometry}
+                disabled={!hasUsableResult || !canSendToGeometry}
               >
                 Open result in Geometry
               </button>
@@ -1002,15 +1030,74 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
         style={{ borderTop: "1px solid #bbf7d0", paddingTop: 5, display: "grid", gap: 4, fontSize: 10 }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-          <strong>Operation history</strong>
-          <button
-            data-testid={`${testId}-undo-last-operation`}
-            type="button"
-            onClick={onUndoLastOperation}
-            disabled={!canUndoLastOperation}
-          >
-            Undo latest
-          </button>
+          <strong>Presets & history</strong>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button
+              data-testid={`${testId}-save-current-preset`}
+              type="button"
+              onClick={onSaveOperationPreset}
+              disabled={!canSaveOperationPreset || !onSaveOperationPreset}
+              title="Save the current operation request and parameters."
+            >
+              Save preset
+            </button>
+            <button
+              data-testid={`${testId}-undo-last-operation`}
+              type="button"
+              onClick={onUndoLastOperation}
+              disabled={!canUndoLastOperation}
+              title="Undo the latest operation-backed mesh result."
+            >
+              Undo latest result
+            </button>
+          </div>
+        </div>
+        <div style={{ color: "#64748b" }}>Saved presets reapply parameters. Undo returns to the mesh before the latest operation.</div>
+        <div data-testid={`${testId}-saved-presets`} style={{ display: "grid", gap: 4 }}>
+          {savedPresets.length > 0 ? (
+            savedPresets.slice(0, 5).map((preset) => (
+              <div
+                key={`${testId}-saved-preset-${preset.id}`}
+                data-testid={`${testId}-saved-preset`}
+                style={{
+                  border: "1px solid #bbf7d0",
+                  borderRadius: 6,
+                  background: "#f8fffb",
+                  padding: "4px 5px",
+                  display: "grid",
+                  gap: 3,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
+                  <strong>{preset.name}</strong>
+                  <span>{getSavedPresetOperationLabel(preset)}</span>
+                </div>
+                <div style={{ color: "#64748b" }}>
+                  {preset.request ? `${preset.request.engine} · ${preset.request.outputMode}` : "legacy parameters"} ·{" "}
+                  {new Date(preset.createdAt).toLocaleTimeString()}
+                </div>
+                {preset.lastResult && (
+                  <div>
+                    Last: {preset.lastResult.status} · {preset.lastResult.beforeFaces.toLocaleString()} {"->"}{" "}
+                    {preset.lastResult.afterFaces == null ? "n/a" : preset.lastResult.afterFaces.toLocaleString()} F
+                  </div>
+                )}
+                <button
+                  data-testid={`${testId}-apply-saved-preset-${preset.id}`}
+                  type="button"
+                  onClick={() => {
+                    void onApplySavedOperationPreset?.(preset.id);
+                  }}
+                  disabled={!onApplySavedOperationPreset}
+                  style={{ justifySelf: "start" }}
+                >
+                  Apply preset
+                </button>
+              </div>
+            ))
+          ) : (
+            <div style={{ color: "#64748b" }}>No saved operation presets yet.</div>
+          )}
         </div>
         {operationHistory.length > 0 ? (
           <div style={{ display: "grid", gap: 4 }}>
@@ -1048,8 +1135,13 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
                     data-testid={`${testId}-restore-history-${entry.id}`}
                     onClick={() => onRestoreOperationHistoryEntry?.(entry.id)}
                     disabled={!entry.topologyHistoryEntryId || !!entry.undoneAt || !onRestoreOperationHistoryEntry}
+                    title={
+                      entry.topologyHistoryEntryId
+                        ? "Restore this saved mesh-result snapshot."
+                        : "This operation did not create a restorable mesh snapshot."
+                    }
                   >
-                    Restore
+                    {entry.topologyHistoryEntryId ? "Restore result" : "No snapshot"}
                   </button>
                   {entry.undoneAt && <span style={{ color: "#64748b" }}>undone</span>}
                 </div>

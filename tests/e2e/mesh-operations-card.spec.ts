@@ -160,8 +160,19 @@ test.describe("Mesh Operations card", () => {
     const runResult = await runMeshOperationHook(page, "decimate");
     expect(runResult.ok, runResult.error).toBeTruthy();
     await expectLastOperation(card, /Decimate/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-open-result")).toBeEnabled();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-send-to-geometry")).toBeEnabled();
     await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Decimate/i);
     await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Request:/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Undo latest result/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Undo returns to the mesh/i);
+
+    await card.getByTestId("mesh-workspace-operation-registry-save-current-preset").click();
+    const savedPresets = card.getByTestId("mesh-workspace-operation-registry-saved-presets");
+    await expect(savedPresets).toContainText(/Decimate preset/i);
+    await expect(savedPresets.getByTestId("mesh-workspace-operation-registry-saved-preset").first()).toContainText(/Decimate/i);
+    await savedPresets.getByRole("button", { name: "Apply preset" }).first().click();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-row-decimate")).toHaveAttribute("aria-expanded", "true");
   });
 
   test("runs Smooth on Bunny and Armadillo through the shared operation layer", async () => {
