@@ -46545,15 +46545,23 @@ case "mobius":
     setMode("surfaces");
     setDatasetKind("surface");
     setSurfaceViewerKind("implicit");
+    setSurfacesLeftTab("scene");
     setImplicitSurfaceId("sphere");
     setImplicitExpr("x*x + y*y + z*z - 1");
     setImplicitExprDraft("x*x + y*y + z*z - 1");
     setImplicitResolution((current) => Math.max(24, current));
+    setGeometrySelectedObjectId(null);
+    setMeshOperationBooleanOperandObjectId(null);
+    setGeometryDatasetMeshObjects((prev) =>
+      prev.map((entry) =>
+        entry.name === "Boolean demo A" || entry.name === "Boolean demo B" ? { ...entry, visible: false } : entry
+      )
+    );
     setMeshOperationPreviewError(null);
     setCgalError(null);
     setGenerateSurfaceStatus({
       state: "idle",
-      message: "Implicit sphere ready for Mesh Operations.",
+      message: "Implicit sphere source ready. Open Mesh Operations > Implicit mesh to run CGAL.",
       at: Date.now(),
     });
   }, []);
