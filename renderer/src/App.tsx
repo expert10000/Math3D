@@ -1606,6 +1606,12 @@ type GeometryOperationPreset = {
   request?: MeshOperationRequest | null;
   outputMode: "replace" | "derived";
   cleanComputeNormals?: boolean;
+  repairOrientFaces?: boolean;
+  repairRemoveDegenerateFaces?: boolean;
+  repairRemoveDuplicateFaces?: boolean;
+  repairCompactVertices?: boolean;
+  repairFillSmallHoles?: boolean;
+  repairMaxHoleEdges?: number;
   decimateReduction?: number;
   decimateTargetFaces?: number;
   decimateUseTargetFaces?: boolean;
@@ -33545,6 +33551,12 @@ const App: React.FC = () => {
   const [meshOperationSmoothIterations, setMeshOperationSmoothIterations] = useState(20);
   const [meshOperationSmoothPassband, setMeshOperationSmoothPassband] = useState(0.1);
   const [meshOperationCleanComputeNormals, setMeshOperationCleanComputeNormals] = useState(true);
+  const [meshOperationRepairOrientFaces, setMeshOperationRepairOrientFaces] = useState(true);
+  const [meshOperationRepairRemoveDegenerateFaces, setMeshOperationRepairRemoveDegenerateFaces] = useState(true);
+  const [meshOperationRepairRemoveDuplicateFaces, setMeshOperationRepairRemoveDuplicateFaces] = useState(true);
+  const [meshOperationRepairCompactVertices, setMeshOperationRepairCompactVertices] = useState(true);
+  const [meshOperationRepairFillSmallHoles, setMeshOperationRepairFillSmallHoles] = useState(true);
+  const [meshOperationRepairMaxHoleEdges, setMeshOperationRepairMaxHoleEdges] = useState(3);
   const [meshOperationBooleanOperation, setMeshOperationBooleanOperation] = useState<MeshBooleanOperation>("union");
   const [meshOperationBooleanOperandObjectId, setMeshOperationBooleanOperandObjectId] = useState<string | null>(null);
   const [meshOperationBooleanCurveRadius, setMeshOperationBooleanCurveRadius] = useState(0);
@@ -33649,6 +33661,12 @@ const App: React.FC = () => {
     const requestOperation = preset.request?.operation ?? preset.operation ?? null;
     setMeshOperationOutputMode(preset.outputMode);
     if (preset.cleanComputeNormals != null) setMeshOperationCleanComputeNormals(preset.cleanComputeNormals);
+    if (preset.repairOrientFaces != null) setMeshOperationRepairOrientFaces(preset.repairOrientFaces);
+    if (preset.repairRemoveDegenerateFaces != null) setMeshOperationRepairRemoveDegenerateFaces(preset.repairRemoveDegenerateFaces);
+    if (preset.repairRemoveDuplicateFaces != null) setMeshOperationRepairRemoveDuplicateFaces(preset.repairRemoveDuplicateFaces);
+    if (preset.repairCompactVertices != null) setMeshOperationRepairCompactVertices(preset.repairCompactVertices);
+    if (preset.repairFillSmallHoles != null) setMeshOperationRepairFillSmallHoles(preset.repairFillSmallHoles);
+    if (preset.repairMaxHoleEdges != null) setMeshOperationRepairMaxHoleEdges(Math.max(3, Math.min(12, Math.round(preset.repairMaxHoleEdges))));
     if (preset.decimateReduction != null) setMeshOperationDecimateReduction(clampNumber(preset.decimateReduction, 0, 0.95));
     if (preset.decimateTargetFaces != null) setMeshOperationDecimateTargetFaces(Math.max(100, Math.round(preset.decimateTargetFaces)));
     if (preset.decimateUseTargetFaces != null) setMeshOperationUseTargetFaces(preset.decimateUseTargetFaces);
@@ -33661,6 +33679,17 @@ const App: React.FC = () => {
     if (preset.previewUseDecimate != null) setMeshOperationPreviewUseDecimate(preset.previewUseDecimate);
     if (requestOperation === "clean-normals" && preset.request?.parameters.computeNormals != null) {
       setMeshOperationCleanComputeNormals(preset.request.parameters.computeNormals === true);
+    }
+    if (requestOperation === "cgal-repair") {
+      const parameters = preset.request?.parameters ?? {};
+      if (typeof parameters.orientFaces === "boolean") setMeshOperationRepairOrientFaces(parameters.orientFaces);
+      if (typeof parameters.removeDegenerateFaces === "boolean") setMeshOperationRepairRemoveDegenerateFaces(parameters.removeDegenerateFaces);
+      if (typeof parameters.removeDuplicateFaces === "boolean") setMeshOperationRepairRemoveDuplicateFaces(parameters.removeDuplicateFaces);
+      if (typeof parameters.compactVertices === "boolean") setMeshOperationRepairCompactVertices(parameters.compactVertices);
+      if (typeof parameters.fillSmallHoles === "boolean") setMeshOperationRepairFillSmallHoles(parameters.fillSmallHoles);
+      if (typeof parameters.maxHoleEdges === "number" && Number.isFinite(parameters.maxHoleEdges)) {
+        setMeshOperationRepairMaxHoleEdges(Math.max(3, Math.min(12, Math.round(parameters.maxHoleEdges))));
+      }
     }
     if (requestOperation === "decimate") {
       const targetFaces = preset.request?.parameters.targetFaces;
@@ -54155,6 +54184,83 @@ case "mobius":
     refreshCgalHealthAfterWorkerAction,
   ]);
 
+  const handleMeshOperationRepair = useCallback(async () => {
+    if (meshOperationBusy) return;
+    if (cgalHealthState?.ok === false) {
+      setMeshOperationError(cgalHealthState.error ?? "Python worker unavailable.");
+      return;
+    }
+    const mesh = getMeshForMeshOperation();
+    if (!mesh) {
+      setMeshOperationError("Surface mesh not ready yet.");
+      return;
+    }
+    const activeMeshLabel = buildActiveMeshLabel();
+    setMeshOperationBusy(true);
+    setMeshOperationError(null);
+    try {
+      const request: MeshOperationRequest = {
+        operation: "cgal-repair",
+        inputs: [activeMeshLabel],
+        engine: "auto",
+        parameters: {
+          orientFaces: meshOperationRepairOrientFaces,
+          removeDegenerateFaces: meshOperationRepairRemoveDegenerateFaces,
+          removeDuplicateFaces: meshOperationRepairRemoveDuplicateFaces,
+          compactVertices: meshOperationRepairCompactVertices,
+          fillSmallHoles: meshOperationRepairFillSmallHoles,
+          maxHoleEdges: Math.max(3, Math.min(12, Math.round(meshOperationRepairMaxHoleEdges))),
+        },
+        outputMode: meshOperationOutputModeForRequest,
+        quality: "robust",
+      };
+      const res = await runMeshOperation(request, { primaryMesh: mesh });
+      const resultSummary = summarizeMeshOperationResult(res, meshOperationOutputModeForRequest);
+      if (res.status === "error" || !res.resultMesh) {
+        publishMeshOperationResult(resultSummary, request);
+        setMeshOperationError(res.errors[0]?.message ?? "CGAL repair failed.");
+        return;
+      }
+      applyMeshOperationResultToSurfaceMesh("CGAL repair", res.resultMesh, {
+        operation: "CGAL repair",
+        beforeFaces: res.before.faceCount,
+        requestedFaces: null,
+        normalsRecomputed: true,
+        warnings: res.warnings.map((warning) => warning.message),
+        engine: res.engine,
+        durationMs: res.durationMs,
+        resultSummary,
+        request,
+      });
+      setMeshOperationLastValidation(null);
+      setSurfaceMeshTopologyStatus(
+        `CGAL repair complete: ${res.before.faceCount.toLocaleString()} -> ${
+          res.after?.faceCount?.toLocaleString() ?? "n/a"
+        } triangles.`
+      );
+    } catch (err: any) {
+      setMeshOperationError(err?.message ?? "CGAL repair failed.");
+    } finally {
+      setMeshOperationBusy(false);
+      refreshCgalHealthAfterWorkerAction();
+    }
+  }, [
+    meshOperationBusy,
+    cgalHealthState,
+    getMeshForMeshOperation,
+    buildActiveMeshLabel,
+    meshOperationRepairOrientFaces,
+    meshOperationRepairRemoveDegenerateFaces,
+    meshOperationRepairRemoveDuplicateFaces,
+    meshOperationRepairCompactVertices,
+    meshOperationRepairFillSmallHoles,
+    meshOperationRepairMaxHoleEdges,
+    meshOperationOutputModeForRequest,
+    applyMeshOperationResultToSurfaceMesh,
+    publishMeshOperationResult,
+    refreshCgalHealthAfterWorkerAction,
+  ]);
+
   const handleMeshOperationCleanNormals = useCallback(async () => {
     if (meshOperationBusy) return;
     if (cgalHealthState?.ok === false) {
@@ -54497,6 +54603,15 @@ case "mobius":
           const parameters =
             operation === "cgal-validate"
               ? { selfIntersectionSampleLimit: 1200 }
+              : operation === "cgal-repair"
+                ? {
+                    orientFaces: meshOperationRepairOrientFaces,
+                    removeDegenerateFaces: meshOperationRepairRemoveDegenerateFaces,
+                    removeDuplicateFaces: meshOperationRepairRemoveDuplicateFaces,
+                    compactVertices: meshOperationRepairCompactVertices,
+                    fillSmallHoles: meshOperationRepairFillSmallHoles,
+                    maxHoleEdges: Math.max(3, Math.min(12, Math.round(meshOperationRepairMaxHoleEdges))),
+                  }
               : operation === "clean-normals"
               ? { computeNormals: meshOperationCleanComputeNormals }
               : operation === "decimate"
@@ -54510,10 +54625,10 @@ case "mobius":
           const request: MeshOperationRequest = {
             operation,
             inputs: [mesh.label],
-            engine: operation === "cgal-validate" ? "cgal" : "auto",
+            engine: operation === "cgal-validate" || operation === "cgal-repair" ? "cgal" : "auto",
             parameters,
             outputMode,
-            quality: operation === "cgal-validate" ? "robust" : "balanced",
+            quality: operation === "cgal-validate" || operation === "cgal-repair" ? "robust" : "balanced",
           };
           const result = await runMeshOperation(request, { primaryMesh: mesh });
           publishMeshOperationResult(summarizeMeshOperationResult(result, outputMode), request);
@@ -54535,6 +54650,12 @@ case "mobius":
     getMeshForMeshOperation,
     isDev,
     meshOperationCleanComputeNormals,
+    meshOperationRepairOrientFaces,
+    meshOperationRepairRemoveDegenerateFaces,
+    meshOperationRepairRemoveDuplicateFaces,
+    meshOperationRepairCompactVertices,
+    meshOperationRepairFillSmallHoles,
+    meshOperationRepairMaxHoleEdges,
     meshOperationDecimateReduction,
     meshOperationDecimateTargetFaces,
     meshOperationOutputMode,
@@ -59964,6 +60085,7 @@ case "mobius":
         !(
           operation === "clean-normals" ||
           operation === "cgal-validate" ||
+          operation === "cgal-repair" ||
           operation === "decimate" ||
           operation === "smooth" ||
           operation === "implicit-preview" ||
@@ -59991,6 +60113,15 @@ case "mobius":
       const parameters =
         operation === "cgal-validate"
           ? { selfIntersectionSampleLimit: 1200 }
+          : operation === "cgal-repair"
+            ? {
+                orientFaces: meshOperationRepairOrientFaces,
+                removeDegenerateFaces: meshOperationRepairRemoveDegenerateFaces,
+                removeDuplicateFaces: meshOperationRepairRemoveDuplicateFaces,
+                compactVertices: meshOperationRepairCompactVertices,
+                fillSmallHoles: meshOperationRepairFillSmallHoles,
+                maxHoleEdges: Math.max(3, Math.min(12, Math.round(meshOperationRepairMaxHoleEdges))),
+              }
           : operation === "clean-normals"
           ? { computeNormals: meshOperationCleanComputeNormals }
           : operation === "decimate"
@@ -60029,7 +60160,10 @@ case "mobius":
         engine: "auto",
         parameters,
         outputMode,
-        quality: operation.startsWith("boolean-") || operation === "implicit-mesh" || operation === "cgal-validate" ? "robust" : "balanced",
+        quality:
+          operation.startsWith("boolean-") || operation === "implicit-mesh" || operation === "cgal-validate" || operation === "cgal-repair"
+            ? "robust"
+            : "balanced",
       };
     },
     [
@@ -60043,6 +60177,12 @@ case "mobius":
       meshOperationBooleanCurveRadius,
       meshOperationBooleanOperandObjectId,
       meshOperationCleanComputeNormals,
+      meshOperationRepairOrientFaces,
+      meshOperationRepairRemoveDegenerateFaces,
+      meshOperationRepairRemoveDuplicateFaces,
+      meshOperationRepairCompactVertices,
+      meshOperationRepairFillSmallHoles,
+      meshOperationRepairMaxHoleEdges,
       meshOperationDecimateReduction,
       meshOperationDecimateTargetFaces,
       meshOperationOutputModeForRequest,
@@ -60065,6 +60205,12 @@ case "mobius":
       request: buildCurrentMeshOperationRequest(meshLastOperation?.operation ?? null),
       outputMode: meshOperationOutputMode,
       cleanComputeNormals: meshOperationCleanComputeNormals,
+      repairOrientFaces: meshOperationRepairOrientFaces,
+      repairRemoveDegenerateFaces: meshOperationRepairRemoveDegenerateFaces,
+      repairRemoveDuplicateFaces: meshOperationRepairRemoveDuplicateFaces,
+      repairCompactVertices: meshOperationRepairCompactVertices,
+      repairFillSmallHoles: meshOperationRepairFillSmallHoles,
+      repairMaxHoleEdges: Math.max(3, Math.min(12, Math.round(meshOperationRepairMaxHoleEdges))),
       decimateReduction: meshOperationDecimateReduction,
       decimateTargetFaces: Math.max(100, Math.round(meshOperationDecimateTargetFaces)),
       decimateUseTargetFaces: meshOperationUseTargetFaces,
@@ -60087,6 +60233,12 @@ case "mobius":
     meshOperationBooleanOperandObjectId,
     meshOperationBooleanOperation,
     meshOperationCleanComputeNormals,
+    meshOperationRepairOrientFaces,
+    meshOperationRepairRemoveDegenerateFaces,
+    meshOperationRepairRemoveDuplicateFaces,
+    meshOperationRepairCompactVertices,
+    meshOperationRepairFillSmallHoles,
+    meshOperationRepairMaxHoleEdges,
     meshOperationDecimateReduction,
     meshOperationDecimateTargetFaces,
     meshOperationOutputMode,
@@ -66024,6 +66176,19 @@ case "mobius":
                   meshOperationCleanComputeNormals={meshOperationCleanComputeNormals}
                   onChangeMeshOperationCleanComputeNormals={setMeshOperationCleanComputeNormals}
                   onMeshOperationValidate={handleMeshOperationValidate}
+                  meshOperationRepairOrientFaces={meshOperationRepairOrientFaces}
+                  onChangeMeshOperationRepairOrientFaces={setMeshOperationRepairOrientFaces}
+                  meshOperationRepairRemoveDegenerateFaces={meshOperationRepairRemoveDegenerateFaces}
+                  onChangeMeshOperationRepairRemoveDegenerateFaces={setMeshOperationRepairRemoveDegenerateFaces}
+                  meshOperationRepairRemoveDuplicateFaces={meshOperationRepairRemoveDuplicateFaces}
+                  onChangeMeshOperationRepairRemoveDuplicateFaces={setMeshOperationRepairRemoveDuplicateFaces}
+                  meshOperationRepairCompactVertices={meshOperationRepairCompactVertices}
+                  onChangeMeshOperationRepairCompactVertices={setMeshOperationRepairCompactVertices}
+                  meshOperationRepairFillSmallHoles={meshOperationRepairFillSmallHoles}
+                  onChangeMeshOperationRepairFillSmallHoles={setMeshOperationRepairFillSmallHoles}
+                  meshOperationRepairMaxHoleEdges={meshOperationRepairMaxHoleEdges}
+                  onChangeMeshOperationRepairMaxHoleEdges={setMeshOperationRepairMaxHoleEdges}
+                  onMeshOperationRepair={handleMeshOperationRepair}
                   meshOperationDecimateReduction={meshOperationDecimateReduction}
                   onChangeMeshOperationDecimateReduction={setMeshOperationDecimateReduction}
                   meshOperationDecimateTargetFaces={meshOperationDecimateTargetFaces}
@@ -69097,6 +69262,19 @@ case "mobius":
                           cleanComputeNormals={meshOperationCleanComputeNormals}
                           onChangeCleanComputeNormals={setMeshOperationCleanComputeNormals}
                           onValidate={handleMeshOperationValidate}
+                          repairOrientFaces={meshOperationRepairOrientFaces}
+                          onChangeRepairOrientFaces={setMeshOperationRepairOrientFaces}
+                          repairRemoveDegenerateFaces={meshOperationRepairRemoveDegenerateFaces}
+                          onChangeRepairRemoveDegenerateFaces={setMeshOperationRepairRemoveDegenerateFaces}
+                          repairRemoveDuplicateFaces={meshOperationRepairRemoveDuplicateFaces}
+                          onChangeRepairRemoveDuplicateFaces={setMeshOperationRepairRemoveDuplicateFaces}
+                          repairCompactVertices={meshOperationRepairCompactVertices}
+                          onChangeRepairCompactVertices={setMeshOperationRepairCompactVertices}
+                          repairFillSmallHoles={meshOperationRepairFillSmallHoles}
+                          onChangeRepairFillSmallHoles={setMeshOperationRepairFillSmallHoles}
+                          repairMaxHoleEdges={meshOperationRepairMaxHoleEdges}
+                          onChangeRepairMaxHoleEdges={setMeshOperationRepairMaxHoleEdges}
+                          onRepair={handleMeshOperationRepair}
                           onClean={handleMeshOperationCleanNormals}
                           decimateReduction={meshOperationDecimateReduction}
                           onChangeDecimateReduction={setMeshOperationDecimateReduction}
@@ -69717,6 +69895,19 @@ case "mobius":
                     meshOperationCleanComputeNormals={meshOperationCleanComputeNormals}
                     onChangeMeshOperationCleanComputeNormals={setMeshOperationCleanComputeNormals}
                     onMeshOperationValidate={handleMeshOperationValidate}
+                    meshOperationRepairOrientFaces={meshOperationRepairOrientFaces}
+                    onChangeMeshOperationRepairOrientFaces={setMeshOperationRepairOrientFaces}
+                    meshOperationRepairRemoveDegenerateFaces={meshOperationRepairRemoveDegenerateFaces}
+                    onChangeMeshOperationRepairRemoveDegenerateFaces={setMeshOperationRepairRemoveDegenerateFaces}
+                    meshOperationRepairRemoveDuplicateFaces={meshOperationRepairRemoveDuplicateFaces}
+                    onChangeMeshOperationRepairRemoveDuplicateFaces={setMeshOperationRepairRemoveDuplicateFaces}
+                    meshOperationRepairCompactVertices={meshOperationRepairCompactVertices}
+                    onChangeMeshOperationRepairCompactVertices={setMeshOperationRepairCompactVertices}
+                    meshOperationRepairFillSmallHoles={meshOperationRepairFillSmallHoles}
+                    onChangeMeshOperationRepairFillSmallHoles={setMeshOperationRepairFillSmallHoles}
+                    meshOperationRepairMaxHoleEdges={meshOperationRepairMaxHoleEdges}
+                    onChangeMeshOperationRepairMaxHoleEdges={setMeshOperationRepairMaxHoleEdges}
+                    onMeshOperationRepair={handleMeshOperationRepair}
                     onMeshOperationClean={handleMeshOperationCleanNormals}
                     meshOperationDecimateReduction={meshOperationDecimateReduction}
                     onChangeMeshOperationDecimateReduction={setMeshOperationDecimateReduction}
@@ -99328,6 +99519,19 @@ type SurfacesObjectPanelProps = {
   meshOperationCleanComputeNormals: boolean;
   onChangeMeshOperationCleanComputeNormals: (value: boolean) => void;
   onMeshOperationValidate: () => void | Promise<void>;
+  meshOperationRepairOrientFaces: boolean;
+  onChangeMeshOperationRepairOrientFaces: (value: boolean) => void;
+  meshOperationRepairRemoveDegenerateFaces: boolean;
+  onChangeMeshOperationRepairRemoveDegenerateFaces: (value: boolean) => void;
+  meshOperationRepairRemoveDuplicateFaces: boolean;
+  onChangeMeshOperationRepairRemoveDuplicateFaces: (value: boolean) => void;
+  meshOperationRepairCompactVertices: boolean;
+  onChangeMeshOperationRepairCompactVertices: (value: boolean) => void;
+  meshOperationRepairFillSmallHoles: boolean;
+  onChangeMeshOperationRepairFillSmallHoles: (value: boolean) => void;
+  meshOperationRepairMaxHoleEdges: number;
+  onChangeMeshOperationRepairMaxHoleEdges: (value: number) => void;
+  onMeshOperationRepair: () => void | Promise<void>;
   onMeshOperationClean: () => void;
   meshOperationDecimateReduction: number;
   onChangeMeshOperationDecimateReduction: (value: number) => void;
@@ -99483,6 +99687,19 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   meshOperationCleanComputeNormals,
   onChangeMeshOperationCleanComputeNormals,
   onMeshOperationValidate,
+  meshOperationRepairOrientFaces,
+  onChangeMeshOperationRepairOrientFaces,
+  meshOperationRepairRemoveDegenerateFaces,
+  onChangeMeshOperationRepairRemoveDegenerateFaces,
+  meshOperationRepairRemoveDuplicateFaces,
+  onChangeMeshOperationRepairRemoveDuplicateFaces,
+  meshOperationRepairCompactVertices,
+  onChangeMeshOperationRepairCompactVertices,
+  meshOperationRepairFillSmallHoles,
+  onChangeMeshOperationRepairFillSmallHoles,
+  meshOperationRepairMaxHoleEdges,
+  onChangeMeshOperationRepairMaxHoleEdges,
+  onMeshOperationRepair,
   onMeshOperationClean,
   meshOperationDecimateReduction,
   onChangeMeshOperationDecimateReduction,
@@ -99848,6 +100065,19 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
           cleanComputeNormals={meshOperationCleanComputeNormals}
           onChangeCleanComputeNormals={onChangeMeshOperationCleanComputeNormals}
           onValidate={onMeshOperationValidate}
+          repairOrientFaces={meshOperationRepairOrientFaces}
+          onChangeRepairOrientFaces={onChangeMeshOperationRepairOrientFaces}
+          repairRemoveDegenerateFaces={meshOperationRepairRemoveDegenerateFaces}
+          onChangeRepairRemoveDegenerateFaces={onChangeMeshOperationRepairRemoveDegenerateFaces}
+          repairRemoveDuplicateFaces={meshOperationRepairRemoveDuplicateFaces}
+          onChangeRepairRemoveDuplicateFaces={onChangeMeshOperationRepairRemoveDuplicateFaces}
+          repairCompactVertices={meshOperationRepairCompactVertices}
+          onChangeRepairCompactVertices={onChangeMeshOperationRepairCompactVertices}
+          repairFillSmallHoles={meshOperationRepairFillSmallHoles}
+          onChangeRepairFillSmallHoles={onChangeMeshOperationRepairFillSmallHoles}
+          repairMaxHoleEdges={meshOperationRepairMaxHoleEdges}
+          onChangeRepairMaxHoleEdges={onChangeMeshOperationRepairMaxHoleEdges}
+          onRepair={onMeshOperationRepair}
           onClean={onMeshOperationClean}
           decimateReduction={meshOperationDecimateReduction}
           onChangeDecimateReduction={onChangeMeshOperationDecimateReduction}
@@ -101316,6 +101546,19 @@ type SurfacesLeftPanelProps = {
   meshOperationCleanComputeNormals: boolean;
   onChangeMeshOperationCleanComputeNormals: (v: boolean) => void;
   onMeshOperationValidate: () => void | Promise<void>;
+  meshOperationRepairOrientFaces: boolean;
+  onChangeMeshOperationRepairOrientFaces: (v: boolean) => void;
+  meshOperationRepairRemoveDegenerateFaces: boolean;
+  onChangeMeshOperationRepairRemoveDegenerateFaces: (v: boolean) => void;
+  meshOperationRepairRemoveDuplicateFaces: boolean;
+  onChangeMeshOperationRepairRemoveDuplicateFaces: (v: boolean) => void;
+  meshOperationRepairCompactVertices: boolean;
+  onChangeMeshOperationRepairCompactVertices: (v: boolean) => void;
+  meshOperationRepairFillSmallHoles: boolean;
+  onChangeMeshOperationRepairFillSmallHoles: (v: boolean) => void;
+  meshOperationRepairMaxHoleEdges: number;
+  onChangeMeshOperationRepairMaxHoleEdges: (v: number) => void;
+  onMeshOperationRepair: () => void | Promise<void>;
   meshOperationDecimateReduction: number;
   onChangeMeshOperationDecimateReduction: (v: number) => void;
   meshOperationDecimateTargetFaces: number;
@@ -102051,6 +102294,19 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   meshOperationCleanComputeNormals,
   onChangeMeshOperationCleanComputeNormals,
   onMeshOperationValidate,
+  meshOperationRepairOrientFaces,
+  onChangeMeshOperationRepairOrientFaces,
+  meshOperationRepairRemoveDegenerateFaces,
+  onChangeMeshOperationRepairRemoveDegenerateFaces,
+  meshOperationRepairRemoveDuplicateFaces,
+  onChangeMeshOperationRepairRemoveDuplicateFaces,
+  meshOperationRepairCompactVertices,
+  onChangeMeshOperationRepairCompactVertices,
+  meshOperationRepairFillSmallHoles,
+  onChangeMeshOperationRepairFillSmallHoles,
+  meshOperationRepairMaxHoleEdges,
+  onChangeMeshOperationRepairMaxHoleEdges,
+  onMeshOperationRepair,
   meshOperationDecimateReduction,
   onChangeMeshOperationDecimateReduction,
   meshOperationDecimateTargetFaces,
@@ -106661,6 +106917,19 @@ onChangeImplicitExpr,
               cleanComputeNormals={meshOperationCleanComputeNormals}
               onChangeCleanComputeNormals={onChangeMeshOperationCleanComputeNormals}
               onValidate={onMeshOperationValidate}
+              repairOrientFaces={meshOperationRepairOrientFaces}
+              onChangeRepairOrientFaces={onChangeMeshOperationRepairOrientFaces}
+              repairRemoveDegenerateFaces={meshOperationRepairRemoveDegenerateFaces}
+              onChangeRepairRemoveDegenerateFaces={onChangeMeshOperationRepairRemoveDegenerateFaces}
+              repairRemoveDuplicateFaces={meshOperationRepairRemoveDuplicateFaces}
+              onChangeRepairRemoveDuplicateFaces={onChangeMeshOperationRepairRemoveDuplicateFaces}
+              repairCompactVertices={meshOperationRepairCompactVertices}
+              onChangeRepairCompactVertices={onChangeMeshOperationRepairCompactVertices}
+              repairFillSmallHoles={meshOperationRepairFillSmallHoles}
+              onChangeRepairFillSmallHoles={onChangeMeshOperationRepairFillSmallHoles}
+              repairMaxHoleEdges={meshOperationRepairMaxHoleEdges}
+              onChangeRepairMaxHoleEdges={onChangeMeshOperationRepairMaxHoleEdges}
+              onRepair={onMeshOperationRepair}
               onClean={onMeshOperationCleanNormals}
               decimateReduction={meshOperationDecimateReduction}
               onChangeDecimateReduction={onChangeMeshOperationDecimateReduction}

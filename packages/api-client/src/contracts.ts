@@ -2,6 +2,9 @@ export type {
   CgalHealthResponse,
   CgalMeshRequest,
   CgalMeshResponse,
+  CgalRepairMeshRequest,
+  CgalRepairMeshResponse,
+  CgalRepairSummary,
   CgalValidateMeshRequest,
   CgalValidateMeshResponse,
   CgalPingResponse,
@@ -31,6 +34,7 @@ export type {
 export type MeshBackendCapabilities = {
   cgalHealth: boolean;
   cgalMesh: boolean;
+  cgalRepairMesh: boolean;
   cgalGeodesicHeat: boolean;
   vtkPreviewImplicit: boolean;
   vtkMeshCleanNormals: boolean;

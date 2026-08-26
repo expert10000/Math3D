@@ -35,6 +35,82 @@ declare global {
     | { ok: true; positions: number[]; indices: number[]; scalars?: { name: string; values: number[] }[] }
     | { ok: false; error: string };
 
+  type CgalValidateMeshRequest = {
+    jobId: string;
+    positions: ArrayBuffer | ArrayBufferView;
+    indices: ArrayBuffer | ArrayBufferView;
+    options?: {
+      selfIntersectionSampleLimit?: number;
+    };
+  };
+
+  type CgalValidateMeshResponse =
+    | {
+        ok: true;
+        vertexCount: number;
+        faceCount: number;
+        edgeCount: number;
+        componentCount: number;
+        boundaryEdgeCount: number;
+        nonManifoldEdgeCount: number;
+        invalidFaceCount: number;
+        degenerateFaceCount: number;
+        duplicateFaceCount: number;
+        watertight: boolean;
+        manifold: boolean;
+        oriented: boolean;
+        selfIntersection: {
+          checked: boolean;
+          suspectedPairs: number;
+          sampledFaces: number;
+          truncated: boolean;
+        };
+        diagnostics: string[];
+        warnings: string[];
+      }
+    | { ok: false; error: string };
+
+  type CgalRepairMeshRequest = {
+    jobId: string;
+    positions: ArrayBuffer | ArrayBufferView;
+    indices: ArrayBuffer | ArrayBufferView;
+    options?: {
+      orientFaces?: boolean;
+      removeDegenerateFaces?: boolean;
+      removeDuplicateFaces?: boolean;
+      compactVertices?: boolean;
+      fillSmallHoles?: boolean;
+      maxHoleEdges?: number;
+    };
+  };
+
+  type CgalRepairSummary = {
+    inputVertices: number;
+    inputFaces: number;
+    outputVertices: number;
+    outputFaces: number;
+    removedInvalidFaces: number;
+    removedDegenerateFaces: number;
+    removedDuplicateFaces: number;
+    removedUnusedVertices: number;
+    orientedComponents: number;
+    filledHoles: number;
+    diagnostics: string[];
+    warnings: string[];
+  };
+
+  type CgalRepairMeshResponse =
+    | {
+        ok: true;
+        positions: ArrayBuffer | ArrayBufferView;
+        indices: ArrayBuffer | ArrayBufferView;
+        normals?: ArrayBuffer | ArrayBufferView;
+        vertexCount: number;
+        triCount: number;
+        repair: CgalRepairSummary;
+      }
+    | { ok: false; error: string };
+
   type GeodesicHeatRequest = {
     jobId: string;
     mesh: { V: number[][]; F: number[][] };
@@ -423,6 +499,8 @@ declare global {
       version: () => Promise<{ ok: boolean; version?: string; protocol?: string; error?: string }>;
       health: () => Promise<{ ok: boolean; error?: string }>;
       mesh: (req: CgalMeshRequest) => Promise<CgalMeshResponse>;
+      validateMesh: (req: CgalValidateMeshRequest) => Promise<CgalValidateMeshResponse>;
+      repairMesh: (req: CgalRepairMeshRequest) => Promise<CgalRepairMeshResponse>;
       stop: () => Promise<{ ok: boolean; error?: string }>;
       geodesicHeat: (req: GeodesicHeatRequest) => Promise<GeodesicHeatResponse>;
     };
@@ -544,6 +622,7 @@ declare global {
         operation:
           | "clean-normals"
           | "cgal-validate"
+          | "cgal-repair"
           | "decimate"
           | "smooth"
           | "implicit-preview"

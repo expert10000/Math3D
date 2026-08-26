@@ -656,6 +656,260 @@ def handle_validate_mesh(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes
     )
 
 
+def handle_repair_mesh(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]]) -> None:
+    import numpy as np
+
+    job_id = msg.get("jobId", "")
+    if not payloads:
+        raise RuntimeError("Missing mesh repair payloads")
+    positions_raw = payloads.get("positions")
+    indices_raw = payloads.get("indices")
+    if not positions_raw or not indices_raw:
+        raise RuntimeError("Missing mesh repair buffers")
+
+    options = msg.get("options", {}) if isinstance(msg.get("options", {}), dict) else {}
+    remove_degenerate = bool(options.get("removeDegenerateFaces", True))
+    remove_duplicate = bool(options.get("removeDuplicateFaces", True))
+    compact_vertices = bool(options.get("compactVertices", True))
+    orient_faces = bool(options.get("orientFaces", True))
+    fill_small_holes = bool(options.get("fillSmallHoles", True))
+    max_hole_edges = int(options.get("maxHoleEdges", 3) or 3)
+    max_hole_edges = max(3, min(12, max_hole_edges))
+
+    send({"type": "progress", "jobId": job_id, "phase": "repair", "pct": 5, "msg": "decoding mesh buffers"})
+    positions = np.frombuffer(positions_raw, dtype=np.float32)
+    indices = np.frombuffer(indices_raw, dtype=np.uint32)
+    vertex_count = int(positions.size // 3)
+    face_count = int(indices.size // 3)
+    if vertex_count <= 0 or face_count <= 0:
+        raise RuntimeError("Mesh repair requires non-empty indexed triangle mesh")
+
+    pts = positions[: vertex_count * 3].reshape((-1, 3)).astype(np.float32, copy=True)
+    faces_in = indices[: face_count * 3].reshape((-1, 3))
+
+    send({"type": "progress", "jobId": job_id, "phase": "repair", "pct": 20, "msg": "filtering invalid faces"})
+    repaired_faces: List[List[int]] = []
+    seen_faces = set()
+    removed_invalid = 0
+    removed_degenerate = 0
+    removed_duplicate = 0
+    area_eps = 1e-18
+
+    for tri in faces_in:
+        a = int(tri[0])
+        b = int(tri[1])
+        c = int(tri[2])
+        if a < 0 or b < 0 or c < 0 or a >= vertex_count or b >= vertex_count or c >= vertex_count:
+            removed_invalid += 1
+            continue
+        degenerate = a == b or b == c or c == a
+        if not degenerate:
+            pa = pts[a]
+            pb = pts[b]
+            pc = pts[c]
+            degenerate = float(np.dot(np.cross(pb - pa, pc - pa), np.cross(pb - pa, pc - pa))) <= area_eps
+        if degenerate and remove_degenerate:
+            removed_degenerate += 1
+            continue
+        key_face = tuple(sorted((a, b, c)))
+        if remove_duplicate and key_face in seen_faces:
+            removed_duplicate += 1
+            continue
+        seen_faces.add(key_face)
+        repaired_faces.append([a, b, c])
+
+    if not repaired_faces:
+        raise RuntimeError("Repair removed every face; mesh has no valid triangles")
+    faces = np.asarray(repaired_faces, dtype=np.uint32)
+
+    def compact(pts_in, faces_in_arr):
+        used = np.unique(faces_in_arr.reshape(-1))
+        if used.size == pts_in.shape[0]:
+            return pts_in, faces_in_arr, 0
+        remap = np.full((pts_in.shape[0],), -1, dtype=np.int64)
+        remap[used.astype(np.int64)] = np.arange(used.size, dtype=np.int64)
+        compacted_faces = remap[faces_in_arr.astype(np.int64)].astype(np.uint32)
+        compacted_pts = pts_in[used.astype(np.int64)].astype(np.float32, copy=True)
+        return compacted_pts, compacted_faces, int(pts_in.shape[0] - compacted_pts.shape[0])
+
+    removed_unused = 0
+    if compact_vertices:
+        send({"type": "progress", "jobId": job_id, "phase": "repair", "pct": 40, "msg": "compacting unused vertices"})
+        pts, faces, removed_unused = compact(pts, faces)
+
+    def directed_edge(face, key):
+        a, b, c = int(face[0]), int(face[1]), int(face[2])
+        for u, v in ((a, b), (b, c), (c, a)):
+            if (u, v) == key or (v, u) == key:
+                return (u, v)
+        return None
+
+    oriented_components = 0
+    if orient_faces and faces.shape[0] > 0:
+        send({"type": "progress", "jobId": job_id, "phase": "repair", "pct": 55, "msg": "orienting connected components"})
+        edge_to_faces: Dict[Tuple[int, int], List[int]] = {}
+        for fi, tri in enumerate(faces):
+            a, b, c = int(tri[0]), int(tri[1]), int(tri[2])
+            for u, v in ((a, b), (b, c), (c, a)):
+                key = (u, v) if u < v else (v, u)
+                edge_to_faces.setdefault(key, []).append(fi)
+        adjacency: List[List[Tuple[int, Tuple[int, int]]]] = [[] for _ in range(int(faces.shape[0]))]
+        for key, incident in edge_to_faces.items():
+            if len(incident) != 2:
+                continue
+            f0, f1 = incident[0], incident[1]
+            adjacency[f0].append((f1, key))
+            adjacency[f1].append((f0, key))
+        visited = np.zeros((faces.shape[0],), dtype=np.bool_)
+        for start in range(int(faces.shape[0])):
+            if visited[start]:
+                continue
+            oriented_components += 1
+            visited[start] = True
+            queue = [start]
+            while queue:
+                current = queue.pop(0)
+                for neighbor, key in adjacency[current]:
+                    if visited[neighbor]:
+                        continue
+                    cur_dir = directed_edge(faces[current], key)
+                    nbr_dir = directed_edge(faces[neighbor], key)
+                    if cur_dir is not None and nbr_dir is not None and cur_dir == nbr_dir:
+                        faces[neighbor] = faces[neighbor][[0, 2, 1]]
+                    visited[neighbor] = True
+                    queue.append(neighbor)
+
+    def edge_counts_for(mesh_faces):
+        counts: Dict[Tuple[int, int], int] = {}
+        for tri in mesh_faces:
+            a, b, c = int(tri[0]), int(tri[1]), int(tri[2])
+            for u, v in ((a, b), (b, c), (c, a)):
+                key = (u, v) if u < v else (v, u)
+                counts[key] = counts.get(key, 0) + 1
+        return counts
+
+    filled_holes = 0
+    if fill_small_holes:
+        send({"type": "progress", "jobId": job_id, "phase": "repair", "pct": 72, "msg": "filling tiny boundary loops"})
+        counts = edge_counts_for(faces)
+        boundary_edges = {key for key, count in counts.items() if count == 1}
+        adjacency: Dict[int, List[int]] = {}
+        for a, b in boundary_edges:
+            adjacency.setdefault(a, []).append(b)
+            adjacency.setdefault(b, []).append(a)
+
+        unused_edges = set(boundary_edges)
+        additions: List[List[int]] = []
+        while unused_edges:
+            first = next(iter(unused_edges))
+            unused_edges.remove(first)
+            start, current = first
+            prev = start
+            loop = [start, current]
+            closed = False
+            while len(loop) <= max_hole_edges + 1:
+                if len(loop) >= 3:
+                    close_key = (current, start) if current < start else (start, current)
+                    if close_key in unused_edges:
+                        unused_edges.remove(close_key)
+                        closed = True
+                        break
+                candidates = []
+                for nxt in adjacency.get(current, []):
+                    if nxt == prev:
+                        continue
+                    key = (current, nxt) if current < nxt else (nxt, current)
+                    if key in unused_edges:
+                        candidates.append(nxt)
+                if not candidates:
+                    break
+                nxt = candidates[0]
+                key = (current, nxt) if current < nxt else (nxt, current)
+                unused_edges.remove(key)
+                loop.append(nxt)
+                prev, current = current, nxt
+            if closed and 3 <= len(loop) <= max_hole_edges:
+                existing = {tuple(sorted(map(int, tri))) for tri in faces}
+                added_for_loop = 0
+                for i in range(1, len(loop) - 1):
+                    tri = [int(loop[0]), int(loop[i]), int(loop[i + 1])]
+                    key_face = tuple(sorted(tri))
+                    if key_face in existing:
+                        continue
+                    existing.add(key_face)
+                    additions.append(tri)
+                    added_for_loop += 1
+                if added_for_loop > 0:
+                    filled_holes += 1
+        if additions:
+            faces = np.vstack([faces, np.asarray(additions, dtype=np.uint32)])
+
+    send({"type": "progress", "jobId": job_id, "phase": "repair", "pct": 88, "msg": "computing normals"})
+    normals = np.zeros_like(pts, dtype=np.float32)
+    for tri in faces:
+        a, b, c = int(tri[0]), int(tri[1]), int(tri[2])
+        normal = np.cross(pts[b] - pts[a], pts[c] - pts[a])
+        normals[a] += normal
+        normals[b] += normal
+        normals[c] += normal
+    lengths = np.linalg.norm(normals, axis=1)
+    nz = lengths > 1e-20
+    normals[nz] /= lengths[nz, None]
+
+    final_counts = edge_counts_for(faces)
+    final_boundary_edges = sum(1 for count in final_counts.values() if count == 1)
+    final_non_manifold_edges = sum(1 for count in final_counts.values() if count > 2)
+    diagnostics = [
+        f"Removed invalid faces: {removed_invalid}",
+        f"Removed degenerate faces: {removed_degenerate}",
+        f"Removed duplicate faces: {removed_duplicate}",
+        f"Removed unused vertices: {removed_unused}",
+        f"Oriented components: {oriented_components}",
+        f"Filled small holes: {filled_holes}",
+        f"Remaining boundary edges: {final_boundary_edges}",
+        f"Remaining non-manifold edges: {final_non_manifold_edges}",
+    ]
+    warnings = []
+    if final_boundary_edges > 0:
+        warnings.append("Mesh still has boundary edges after conservative repair.")
+    if final_non_manifold_edges > 0:
+        warnings.append("Mesh still has non-manifold edges after conservative repair.")
+    if not fill_small_holes:
+        warnings.append("Small hole filling was disabled.")
+
+    pts_out = np.asarray(pts, dtype=np.float32)
+    faces_out = np.asarray(faces, dtype=np.uint32)
+    normals_out = np.asarray(normals, dtype=np.float32)
+    send_binary(
+        {
+            "type": "cgal_repair_result",
+            "jobId": job_id,
+            "ok": True,
+            "vertexCount": int(pts_out.shape[0]),
+            "triCount": int(faces_out.shape[0]),
+            "repair": {
+                "inputVertices": vertex_count,
+                "inputFaces": face_count,
+                "outputVertices": int(pts_out.shape[0]),
+                "outputFaces": int(faces_out.shape[0]),
+                "removedInvalidFaces": removed_invalid,
+                "removedDegenerateFaces": removed_degenerate,
+                "removedDuplicateFaces": removed_duplicate,
+                "removedUnusedVertices": removed_unused,
+                "orientedComponents": oriented_components,
+                "filledHoles": filled_holes,
+                "diagnostics": diagnostics,
+                "warnings": warnings,
+            },
+        },
+        [
+            ("positions", pts_out.tobytes(order="C")),
+            ("indices", faces_out.tobytes(order="C")),
+            ("normals", normals_out.tobytes(order="C")),
+        ],
+    )
+
+
 def handle_geodesic_heat(msg: Dict[str, Any]) -> None:
     job_id = msg.get("jobId", "")
     mesh = msg.get("mesh") or {}
@@ -1592,6 +1846,7 @@ def main() -> None:
     alias_map = {
         "mesh.generate": "mesh_job",
         "mesh.validate": "validate_mesh",
+        "mesh.repair": "repair_mesh",
         "mesh.transform": "vtk_job",
         "mesh.boolean": "vtk_boolean",
         "mesh.preview": "vtk_preview",
@@ -1608,6 +1863,7 @@ def main() -> None:
         "health",
         "mesh.generate",
         "mesh.validate",
+        "mesh.repair",
         "mesh.transform",
         "mesh.boolean",
         "mesh.preview",
@@ -1647,6 +1903,8 @@ def main() -> None:
             run_handler(msg, handle_job)
         elif msg_type == "validate_mesh":
             run_handler(msg, handle_validate_mesh, payloads)
+        elif msg_type == "repair_mesh":
+            run_handler(msg, handle_repair_mesh, payloads)
         elif msg_type == "vtk_job":
             run_handler(msg, handle_vtk_job, payloads)
         elif msg_type == "vtk_boolean":

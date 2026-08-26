@@ -55,6 +55,47 @@ export type CgalValidateMeshResponse =
     }
   | { ok: false; error: string };
 
+export type CgalRepairMeshRequest = {
+  jobId: string;
+  positions: ArrayBuffer | ArrayBufferView | Buffer;
+  indices: ArrayBuffer | ArrayBufferView | Buffer;
+  options?: {
+    orientFaces?: boolean;
+    removeDegenerateFaces?: boolean;
+    removeDuplicateFaces?: boolean;
+    compactVertices?: boolean;
+    fillSmallHoles?: boolean;
+    maxHoleEdges?: number;
+  };
+};
+
+export type CgalRepairSummary = {
+  inputVertices: number;
+  inputFaces: number;
+  outputVertices: number;
+  outputFaces: number;
+  removedInvalidFaces: number;
+  removedDegenerateFaces: number;
+  removedDuplicateFaces: number;
+  removedUnusedVertices: number;
+  orientedComponents: number;
+  filledHoles: number;
+  diagnostics: string[];
+  warnings: string[];
+};
+
+export type CgalRepairMeshResponse =
+  | {
+      ok: true;
+      positions: ArrayBuffer | ArrayBufferView;
+      indices: ArrayBuffer | ArrayBufferView;
+      normals?: ArrayBuffer | ArrayBufferView;
+      vertexCount: number;
+      triCount: number;
+      repair: CgalRepairSummary;
+    }
+  | { ok: false; error: string };
+
 export type GeodesicHeatRequest = {
   jobId: string;
   mesh: { V: number[][]; F: number[][] };
@@ -132,6 +173,22 @@ export function registerCgalMeshIpc() {
       return res;
     } catch (e: any) {
       const diag = recordPythonWorkerFailure(e, "mesh:cgal:validate", "WORKER_OPERATION_FAILED");
+      return { ok: false, error: diag.message };
+    }
+  });
+
+  ipcMain.handle("mesh:cgal:repair", async (_evt, req: CgalRepairMeshRequest): Promise<CgalRepairMeshResponse> => {
+    try {
+      const worker = await getPythonWorker();
+      const res = await worker.repairCgalMesh(req);
+      if (!res.ok) {
+        const diag = recordPythonWorkerFailure(res.error, "mesh:cgal:repair", "WORKER_OPERATION_FAILED");
+        return { ok: false, error: diag.message };
+      }
+      recordPythonWorkerSuccess();
+      return res;
+    } catch (e: any) {
+      const diag = recordPythonWorkerFailure(e, "mesh:cgal:repair", "WORKER_OPERATION_FAILED");
       return { ok: false, error: diag.message };
     }
   });

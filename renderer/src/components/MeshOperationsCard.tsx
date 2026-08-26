@@ -5,6 +5,7 @@ import {
   type MeshOperationRequest,
   type MeshOperationResult,
   type MeshOperationStatus,
+  type MeshRepairSummary,
   type MeshValidationSummary,
   type ResolvedMeshOperationEngine,
 } from "../services/meshOperations";
@@ -12,7 +13,7 @@ import {
 export type MeshBooleanOperation = "union" | "difference" | "intersection" | "split" | "imprint";
 
 export type MeshOperationUiId = MeshOperationId | "boolean-split";
-export type MeshOperationVisibleRowId = MeshOperationUiId | "cgal-repair" | "cgal-remesh";
+export type MeshOperationVisibleRowId = MeshOperationUiId | "cgal-remesh";
 export type MeshOperationResultSummary = {
   operation: MeshOperationUiId;
   label: string;
@@ -27,6 +28,7 @@ export type MeshOperationResultSummary = {
   outputMode: "new-object" | "replace" | "preview";
   diagnostics?: string[];
   validation?: MeshValidationSummary;
+  repair?: MeshRepairSummary;
   warnings: string[];
   errors: string[];
   timestamp: number;
@@ -52,6 +54,7 @@ export type MeshOperationSavedPresetSummary = {
 
 export const MESH_OPERATION_LABELS: Record<MeshOperationUiId, string> = {
   "cgal-validate": "Validate mesh",
+  "cgal-repair": "Repair mesh",
   "clean-normals": "Clean normals",
   decimate: "Decimate",
   smooth: "Smooth",
@@ -66,7 +69,6 @@ export const MESH_OPERATION_LABELS: Record<MeshOperationUiId, string> = {
 
 const MESH_OPERATION_ROW_LABELS: Record<MeshOperationVisibleRowId, string> = {
   ...MESH_OPERATION_LABELS,
-  "cgal-repair": "Repair mesh",
   "cgal-remesh": "Remesh",
 };
 
@@ -88,6 +90,7 @@ export function summarizeMeshOperationResult(
     outputMode,
     diagnostics: result.warnings.filter((warning) => warning.severity === "info").map((warning) => warning.message),
     validation: result.validation,
+    repair: result.repair,
     warnings: result.warnings.filter((warning) => warning.severity !== "info").map((warning) => warning.message),
     errors: result.errors.map((error) => error.message),
     timestamp: Date.now(),
@@ -119,6 +122,19 @@ export type MeshOperationsCompactCardProps = {
   cleanComputeNormals: boolean;
   onChangeCleanComputeNormals: (value: boolean) => void;
   onValidate: () => void | Promise<void>;
+  repairOrientFaces: boolean;
+  onChangeRepairOrientFaces: (value: boolean) => void;
+  repairRemoveDegenerateFaces: boolean;
+  onChangeRepairRemoveDegenerateFaces: (value: boolean) => void;
+  repairRemoveDuplicateFaces: boolean;
+  onChangeRepairRemoveDuplicateFaces: (value: boolean) => void;
+  repairCompactVertices: boolean;
+  onChangeRepairCompactVertices: (value: boolean) => void;
+  repairFillSmallHoles: boolean;
+  onChangeRepairFillSmallHoles: (value: boolean) => void;
+  repairMaxHoleEdges: number;
+  onChangeRepairMaxHoleEdges: (value: number) => void;
+  onRepair: () => void | Promise<void>;
   onClean: () => void;
   decimateReduction: number;
   onChangeDecimateReduction: (value: number) => void;
@@ -193,7 +209,7 @@ const getMeshOperationRunLabel = (operation: MeshOperationUiId | null) =>
 
 const getMeshOperationRowRunLabel = (operation: MeshOperationVisibleRowId | null) => {
   if (!operation) return "Run operation";
-  if (operation === "cgal-repair" || operation === "cgal-remesh") return "Backend not connected";
+  if (operation === "cgal-remesh") return "Backend not connected";
   return getMeshOperationRunLabel(operation);
 };
 
@@ -269,13 +285,6 @@ const MESH_OPERATION_ROWS: Array<{
   disabledReason?: string;
 }> = [
   ...MESH_OPERATION_CAPABILITIES.map((capability) => ({ ...capability, implemented: true })),
-  {
-    operation: "cgal-repair",
-    engines: ["cgal"],
-    defaultEngine: "cgal",
-    implemented: false,
-    disabledReason: "CGAL polygon repair backend is not connected yet.",
-  },
   {
     operation: "cgal-remesh",
     engines: ["cgal"],
@@ -370,6 +379,44 @@ const MeshValidationCard: React.FC<{
   );
 };
 
+const MeshRepairCard: React.FC<{ repair: MeshRepairSummary }> = ({ repair }) => {
+  const row = (label: string, value: number) => (
+    <div key={label} style={validationBadgeStyle(value === 0 ? "pass" : "warn")}>
+      <span>{label}</span>
+      <strong>{value.toLocaleString()}</strong>
+    </div>
+  );
+  return (
+    <div
+      data-testid="mesh-operation-repair-card"
+      style={{
+        border: "1px solid #bae6fd",
+        borderRadius: 7,
+        background: "#f0f9ff",
+        padding: "6px",
+        display: "grid",
+        gap: 5,
+        marginTop: 3,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+        <strong>Repair</strong>
+        <span style={{ color: "#64748b" }}>
+          {repair.inputFaces.toLocaleString()} {"->"} {repair.outputFaces.toLocaleString()} triangles
+        </span>
+      </div>
+      <div style={{ display: "grid", gap: 4 }}>
+        {row("Invalid faces removed", repair.removedInvalidFaces)}
+        {row("Degenerate faces removed", repair.removedDegenerateFaces)}
+        {row("Duplicate faces removed", repair.removedDuplicateFaces)}
+        {row("Unused vertices removed", repair.removedUnusedVertices)}
+        {row("Small holes filled", repair.filledHoles)}
+      </div>
+      <div style={{ color: "#64748b", fontSize: 10 }}>Oriented components: {repair.orientedComponents.toLocaleString()}</div>
+    </div>
+  );
+};
+
 export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
   testId,
   meshReady,
@@ -395,6 +442,19 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
   cleanComputeNormals,
   onChangeCleanComputeNormals,
   onValidate,
+  repairOrientFaces,
+  onChangeRepairOrientFaces,
+  repairRemoveDegenerateFaces,
+  onChangeRepairRemoveDegenerateFaces,
+  repairRemoveDuplicateFaces,
+  onChangeRepairRemoveDuplicateFaces,
+  repairCompactVertices,
+  onChangeRepairCompactVertices,
+  repairFillSmallHoles,
+  onChangeRepairFillSmallHoles,
+  repairMaxHoleEdges,
+  onChangeRepairMaxHoleEdges,
+  onRepair,
   onClean,
   decimateReduction,
   onChangeDecimateReduction,
@@ -525,6 +585,10 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
       void onValidate();
       return;
     }
+    if (expandedOperation === "cgal-repair") {
+      void onRepair();
+      return;
+    }
     if (expandedOperation === "decimate") {
       onDecimate();
       return;
@@ -577,9 +641,11 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
         ? implicitAvailable && cgalReady && !operationBusy
         : expandedOperation === "cgal-validate"
           ? meshReady && cgalReady && !operationBusy
+          : expandedOperation === "cgal-repair"
+            ? meshReady && cgalReady && !operationBusy
         : expandedIsBoolean
           ? meshReady && workerReady && !!booleanOperandObjectId && !operationBusy
-          : expandedOperation && expandedOperation !== "cgal-repair" && expandedOperation !== "cgal-remesh"
+          : expandedOperation && expandedOperation !== "cgal-remesh"
             ? meshReady && workerReady && !operationBusy
             : false;
   const previewResolution = Math.max(8, Math.min(220, Math.round(implicitResolution)));
@@ -738,6 +804,106 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
                       <span>Checks watertightness, manifold edges, connected components, winding consistency, and sampled self-intersections.</span>
                       <span>Result is recorded in Last operation; the active mesh is not changed.</span>
                     </div>
+                  )}
+                  {operation === "cgal-repair" && (
+                    <>
+                      <div
+                        style={{
+                          border: "1px solid #bae6fd",
+                          background: "#f0f9ff",
+                          color: "#0f3557",
+                          borderRadius: 6,
+                          padding: "5px 6px",
+                          display: "grid",
+                          gap: 3,
+                        }}
+                      >
+                        <strong>Conservative CGAL repair</strong>
+                        <span>Repairs topology-safe issues in the worker and returns a new mesh result.</span>
+                      </div>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input
+                          data-testid={`${testId}-repair-orient-faces`}
+                          type="checkbox"
+                          checked={repairOrientFaces}
+                          onChange={(event) => onChangeRepairOrientFaces(event.target.checked)}
+                        />
+                        orient faces
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input
+                          data-testid={`${testId}-repair-remove-degenerate`}
+                          type="checkbox"
+                          checked={repairRemoveDegenerateFaces}
+                          onChange={(event) => onChangeRepairRemoveDegenerateFaces(event.target.checked)}
+                        />
+                        remove degenerate faces
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input
+                          data-testid={`${testId}-repair-remove-duplicates`}
+                          type="checkbox"
+                          checked={repairRemoveDuplicateFaces}
+                          onChange={(event) => onChangeRepairRemoveDuplicateFaces(event.target.checked)}
+                        />
+                        remove duplicate faces
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input
+                          data-testid={`${testId}-repair-compact-vertices`}
+                          type="checkbox"
+                          checked={repairCompactVertices}
+                          onChange={(event) => onChangeRepairCompactVertices(event.target.checked)}
+                        />
+                        compact unused vertices
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input
+                          data-testid={`${testId}-repair-fill-holes`}
+                          type="checkbox"
+                          checked={repairFillSmallHoles}
+                          onChange={(event) => onChangeRepairFillSmallHoles(event.target.checked)}
+                        />
+                        fill tiny holes
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        max hole edges
+                        <input
+                          data-testid={`${testId}-repair-max-hole-edges`}
+                          type="number"
+                          min={3}
+                          max={12}
+                          step={1}
+                          value={repairMaxHoleEdges}
+                          onChange={(event) => {
+                            const value = Number(event.target.value);
+                            if (Number.isFinite(value)) onChangeRepairMaxHoleEdges(Math.max(3, Math.min(12, Math.round(value))));
+                          }}
+                          disabled={!repairFillSmallHoles}
+                          style={{ width: 65 }}
+                        />
+                      </label>
+                      <div style={{ display: "grid", gap: 3 }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input
+                            type="radio"
+                            name={`${testId}-${operation}-output-mode`}
+                            checked={outputMode === "derived"}
+                            onChange={() => onChangeOutputMode("derived")}
+                          />
+                          New object
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input
+                            type="radio"
+                            name={`${testId}-${operation}-output-mode`}
+                            checked={outputMode === "replace"}
+                            onChange={() => onChangeOutputMode("replace")}
+                          />
+                          Replace
+                        </label>
+                      </div>
+                    </>
                   )}
                   {operation === "decimate" && (
                     <>
@@ -1065,7 +1231,7 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
                       {booleanStatus && <div style={{ color: "#0a66c2" }}>{booleanStatus}</div>}
                     </>
                   )}
-                  {(operation === "cgal-repair" || operation === "cgal-remesh") && (
+                  {operation === "cgal-remesh" && (
                     <div
                       style={{
                         border: "1px solid #fed7aa",
@@ -1077,12 +1243,8 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
                         gap: 4,
                       }}
                     >
-                      <strong>{operation === "cgal-repair" ? "CGAL Repair planned" : "CGAL Remesh planned"}</strong>
-                      {operation === "cgal-repair" ? (
-                        <span>Target operations: orient faces, remove degenerates, remove duplicate faces, and fill small holes.</span>
-                      ) : (
-                        <span>Target controls: edge length, iterations, preserve sharp edges, and output as new object or replace.</span>
-                      )}
+                      <strong>CGAL Remesh planned</strong>
+                      <span>Target controls: edge length, iterations, preserve sharp edges, and output as new object or replace.</span>
                       <span>{capability.disabledReason}</span>
                     </div>
                   )}
@@ -1263,6 +1425,7 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
             <div>Output: {lastResult.outputMode}</div>
             {lastResult.sourceIds.length > 0 && <div>Sources: {lastResult.sourceIds.join(", ")}</div>}
             {lastResult.validation && <MeshValidationCard validation={lastResult.validation} />}
+            {lastResult.repair && <MeshRepairCard repair={lastResult.repair} />}
             {!!lastResult.diagnostics?.length && <div>Details: {lastResult.diagnostics.join("; ")}</div>}
             {lastResult.warnings.length > 0 && <div style={{ color: "#b45309" }}>Warnings: {lastResult.warnings.join("; ")}</div>}
             {lastResult.errors.length > 0 && <div style={{ color: "#b42318" }}>Errors: {lastResult.errors.join("; ")}</div>}

@@ -12,6 +12,7 @@ type MeshOperationE2EHook = {
     operation:
       | "clean-normals"
       | "cgal-validate"
+      | "cgal-repair"
       | "decimate"
       | "smooth"
       | "implicit-preview"
@@ -166,10 +167,10 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-workspace-operation-registry-run-implicit-mesh")).toBeDisabled();
 
     await card.getByTestId("mesh-workspace-operation-registry-row-cgal-repair").click();
-    await expect(card).toContainText("CGAL Repair planned");
-    await expect(card).toContainText("orient faces");
-    await expect(card.getByTestId("mesh-workspace-operation-registry-run-cgal-repair")).toHaveText("Backend not connected");
-    await expect(card.getByTestId("mesh-workspace-operation-registry-run-cgal-repair")).toBeDisabled();
+    await expect(card).toContainText("Conservative CGAL repair");
+    await expect(card.getByTestId("mesh-workspace-operation-registry-repair-remove-degenerate")).toBeChecked();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-repair-remove-duplicates")).toBeChecked();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-run-cgal-repair")).toHaveText("Run Repair mesh");
 
     await card.getByTestId("mesh-workspace-operation-registry-row-cgal-remesh").click();
     await expect(card).toContainText("CGAL Remesh planned");
@@ -396,5 +397,27 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-validation-warning")).toContainText(
       /validation passed|needs repair/i
     );
+  });
+
+  test("runs CGAL mesh repair through the shared operation layer when available", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+    await loadBenchmarkModel(page, "cube-obj");
+
+    const card = await openWorkspaceOperationsCard(page);
+    await card.getByTestId("mesh-workspace-operation-registry-row-cgal-repair").click();
+    await card.getByTestId("mesh-workspace-operation-registry-repair-max-hole-edges").fill("4");
+    const repair = await runMeshOperationHook(page, "cgal-repair");
+    if (!repair.ok && /unavailable|not available|Python worker|CGAL/i.test(repair.error ?? "")) {
+      test.skip(true, `CGAL worker unavailable: ${repair.error}`);
+    }
+    expect(repair.ok, repair.error).toBeTruthy();
+    await expectLastOperation(card, /Repair mesh/i);
+    await expect(card.getByTestId("mesh-operation-repair-card")).toContainText(/Degenerate faces removed/i);
+    await expect(card.getByTestId("mesh-operation-repair-card")).toContainText(/Small holes filled/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-open-result")).toBeEnabled();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-send-to-geometry")).toBeEnabled();
   });
 });

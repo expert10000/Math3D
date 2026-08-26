@@ -1,5 +1,5 @@
-import type { CgalMeshRequest, CgalValidateMeshResponse } from "./cgalMeshClient";
-import { runCgalMesh, runCgalValidateMesh } from "./cgalMeshClient";
+import type { CgalMeshRequest, CgalRepairMeshResponse, CgalValidateMeshResponse } from "./cgalMeshClient";
+import { runCgalMesh, runCgalRepairMesh, runCgalValidateMesh } from "./cgalMeshClient";
 import type { SurfaceMeshData, SurfaceMeshSource } from "../mesh/surfaceMesh";
 import {
   vtkCleanNormals,
@@ -20,6 +20,7 @@ export type MeshOperationOutputMode = "new-object" | "replace" | "preview";
 
 export type MeshOperationId =
   | "cgal-validate"
+  | "cgal-repair"
   | "clean-normals"
   | "decimate"
   | "smooth"
@@ -44,6 +45,7 @@ export type MeshMetrics = {
 };
 
 export type MeshValidationSummary = Extract<CgalValidateMeshResponse, { ok: true }>;
+export type MeshRepairSummary = Extract<CgalRepairMeshResponse, { ok: true }>["repair"];
 
 export type MeshOperationRequest = {
   operation: MeshOperationId;
@@ -67,6 +69,7 @@ export type MeshOperationResult = {
   warnings: MeshOperationDiagnostic[];
   errors: MeshOperationDiagnostic[];
   validation?: MeshValidationSummary;
+  repair?: MeshRepairSummary;
   provenance: {
     engine: ResolvedMeshOperationEngine;
     version?: string;
@@ -115,11 +118,12 @@ const VTK_BOOLEAN_OPERATIONS = new Set<MeshOperationId>([
   "boolean-intersection",
   "boolean-imprint",
 ]);
-const CGAL_MESH_OPERATIONS = new Set<MeshOperationId>(["cgal-validate"]);
+const CGAL_MESH_OPERATIONS = new Set<MeshOperationId>(["cgal-validate", "cgal-repair"]);
 const CGAL_OPERATIONS = new Set<MeshOperationId>(["implicit-mesh"]);
 
 export const MESH_OPERATION_CAPABILITIES: MeshOperationCapability[] = [
   { operation: "cgal-validate", engines: ["cgal"], defaultEngine: "cgal" },
+  { operation: "cgal-repair", engines: ["cgal"], defaultEngine: "cgal" },
   { operation: "clean-normals", engines: ["vtk"], defaultEngine: "vtk" },
   { operation: "decimate", engines: ["vtk"], defaultEngine: "vtk" },
   { operation: "smooth", engines: ["vtk"], defaultEngine: "vtk" },
@@ -185,13 +189,26 @@ function meshFromBuffers(
   };
 }
 
+function float32FromBuffer(data: ArrayBuffer | ArrayBufferView): Float32Array {
+  if (data instanceof Float32Array) return data;
+  if (data instanceof ArrayBuffer) return new Float32Array(data);
+  return new Float32Array(data.buffer, data.byteOffset, Math.floor(data.byteLength / Float32Array.BYTES_PER_ELEMENT));
+}
+
+function uint32FromBuffer(data: ArrayBuffer | ArrayBufferView): Uint32Array {
+  if (data instanceof Uint32Array) return data;
+  if (data instanceof ArrayBuffer) return new Uint32Array(data);
+  return new Uint32Array(data.buffer, data.byteOffset, Math.floor(data.byteLength / Uint32Array.BYTES_PER_ELEMENT));
+}
+
 function resultSuccess(
   request: MeshOperationRequest,
   engine: ResolvedMeshOperationEngine,
   before: MeshMetrics,
   startedAt: number,
   resultMesh: SurfaceMeshData,
-  warnings: MeshOperationDiagnostic[] = []
+  warnings: MeshOperationDiagnostic[] = [],
+  repair?: MeshRepairSummary
 ): MeshOperationResult {
   return {
     status: warnings.some((warning) => warning.severity === "warning") ? "warning" : "success",
@@ -204,6 +221,7 @@ function resultSuccess(
     durationMs: performance.now() - startedAt,
     warnings,
     errors: [],
+    repair,
     provenance: { engine, parameters: request.parameters },
   };
 }
@@ -374,27 +392,69 @@ export async function runMeshOperation(
       return operationError(request, engine, before, startedAt, "Mesh input is empty.", "missing-input");
     }
     const sampleLimit = numericParam(request.parameters, "selfIntersectionSampleLimit");
-    const res = await runCgalValidateMesh({
+    if (request.operation === "cgal-validate") {
+      const res = await runCgalValidateMesh({
+        positions: mesh.positions,
+        indices: mesh.indices,
+        options: {
+          selfIntersectionSampleLimit: sampleLimit,
+        },
+      });
+      if (!res.ok) return operationError(request, engine, before, startedAt, res.error);
+      const diagnostics: MeshOperationDiagnostic[] = res.diagnostics.map((message) => ({
+        severity: "info",
+        code: "cgal-validation",
+        message,
+        source: "cgal",
+      }));
+      const warnings: MeshOperationDiagnostic[] = res.warnings.map((message) => ({
+        severity: "warning",
+        code: "cgal-validation-warning",
+        message,
+        source: "cgal",
+      }));
+      return resultDiagnostics(request, engine, before, startedAt, warnings, diagnostics, res);
+    }
+
+    const maxHoleEdges = numericParam(request.parameters, "maxHoleEdges");
+    const res = await runCgalRepairMesh({
       positions: mesh.positions,
       indices: mesh.indices,
       options: {
-        selfIntersectionSampleLimit: sampleLimit,
+        orientFaces: booleanParam(request.parameters, "orientFaces") ?? true,
+        removeDegenerateFaces: booleanParam(request.parameters, "removeDegenerateFaces") ?? true,
+        removeDuplicateFaces: booleanParam(request.parameters, "removeDuplicateFaces") ?? true,
+        compactVertices: booleanParam(request.parameters, "compactVertices") ?? true,
+        fillSmallHoles: booleanParam(request.parameters, "fillSmallHoles") ?? true,
+        maxHoleEdges: maxHoleEdges == null ? 3 : Math.max(3, Math.min(12, Math.round(maxHoleEdges))),
       },
     });
     if (!res.ok) return operationError(request, engine, before, startedAt, res.error);
-    const diagnostics: MeshOperationDiagnostic[] = res.diagnostics.map((message) => ({
+    const diagnostics: MeshOperationDiagnostic[] = res.repair.diagnostics.map((message) => ({
       severity: "info",
-      code: "cgal-validation",
+      code: "cgal-repair",
       message,
       source: "cgal",
     }));
-    const warnings: MeshOperationDiagnostic[] = res.warnings.map((message) => ({
+    const warnings: MeshOperationDiagnostic[] = res.repair.warnings.map((message) => ({
       severity: "warning",
-      code: "cgal-validation-warning",
+      code: "cgal-repair-warning",
       message,
       source: "cgal",
     }));
-    return resultDiagnostics(request, engine, before, startedAt, warnings, diagnostics, res);
+    return resultSuccess(
+      request,
+      engine,
+      before,
+      startedAt,
+      meshFromBuffers(`${mesh.label} (CGAL repair)`, mesh.source ?? { kind: "bakedFromImplicit" }, {
+        positions: float32FromBuffer(res.positions),
+        indices: uint32FromBuffer(res.indices),
+        normals: res.normals ? float32FromBuffer(res.normals) : null,
+      }),
+      [...diagnostics, ...warnings],
+      res.repair
+    );
   }
 
   if (VTK_IMPLICIT_OPERATIONS.has(request.operation)) {

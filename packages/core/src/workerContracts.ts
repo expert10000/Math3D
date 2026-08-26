@@ -48,6 +48,47 @@ export type CgalValidateMeshResponse =
     }
   | { ok: false; error: string };
 
+export type CgalRepairMeshRequest = {
+  jobId: string;
+  positions: ArrayBuffer | ArrayBufferView;
+  indices: ArrayBuffer | ArrayBufferView;
+  options?: {
+    orientFaces?: boolean;
+    removeDegenerateFaces?: boolean;
+    removeDuplicateFaces?: boolean;
+    compactVertices?: boolean;
+    fillSmallHoles?: boolean;
+    maxHoleEdges?: number;
+  };
+};
+
+export type CgalRepairSummary = {
+  inputVertices: number;
+  inputFaces: number;
+  outputVertices: number;
+  outputFaces: number;
+  removedInvalidFaces: number;
+  removedDegenerateFaces: number;
+  removedDuplicateFaces: number;
+  removedUnusedVertices: number;
+  orientedComponents: number;
+  filledHoles: number;
+  diagnostics: string[];
+  warnings: string[];
+};
+
+export type CgalRepairMeshResponse =
+  | {
+      ok: true;
+      positions: ArrayBuffer | ArrayBufferView;
+      indices: ArrayBuffer | ArrayBufferView;
+      normals?: ArrayBuffer | ArrayBufferView;
+      vertexCount: number;
+      triCount: number;
+      repair: CgalRepairSummary;
+    }
+  | { ok: false; error: string };
+
 export type CgalHealthResponse = { ok: boolean; error?: string };
 export type CgalPingResponse = { ok: boolean; pong?: boolean; error?: string };
 export type CgalVersionResponse = { ok: boolean; version?: string; protocol?: string; error?: string };
@@ -224,6 +265,7 @@ export type MeshResult = MeshContract & {
 export type WorkerRequest =
   | { kind: "cgal.mesh"; payload: Omit<CgalMeshRequest, "jobId"> }
   | { kind: "cgal.validate"; payload: Omit<CgalValidateMeshRequest, "jobId"> }
+  | { kind: "cgal.repair"; payload: Omit<CgalRepairMeshRequest, "jobId"> }
   | { kind: "cgal.geodesic-heat"; payload: Omit<GeodesicHeatRequest, "jobId"> }
   | { kind: "vtk.preview-implicit"; payload: Omit<VtkPreviewRequest, "jobId"> }
   | { kind: "vtk.clean-normals"; payload: Omit<VtkMeshRequest, "jobId"> }
@@ -238,6 +280,7 @@ export type WorkerRequest =
 export type WorkerResponse =
   | CgalMeshResponse
   | CgalValidateMeshResponse
+  | CgalRepairMeshResponse
   | GeodesicHeatResponse
   | VtkMeshResponse
   | VtkVolumeSliceResponse

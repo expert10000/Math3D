@@ -6,6 +6,8 @@ import { mainDebugLog } from "../debugLog";
 import type {
   CgalMeshRequest,
   CgalMeshResponse,
+  CgalRepairMeshRequest,
+  CgalRepairMeshResponse,
   CgalValidateMeshRequest,
   CgalValidateMeshResponse,
   GeodesicHeatRequest,
@@ -571,6 +573,72 @@ class PythonWorker {
       },
       diagnostics: Array.isArray(res.diagnostics) ? res.diagnostics.map(String) : [],
       warnings: Array.isArray(res.warnings) ? res.warnings.map(String) : [],
+    };
+  }
+
+  async repairCgalMesh(req: CgalRepairMeshRequest): Promise<CgalRepairMeshResponse> {
+    const positionsBuf = toBuffer(req.positions);
+    const indicesBuf = toBuffer(req.indices);
+    if (!positionsBuf.length || !indicesBuf.length) {
+      return { ok: false, error: "CGAL repair request missing buffers" };
+    }
+
+    const msg = {
+      type: "mesh.repair",
+      jobId: req.jobId,
+      options: req.options ?? {},
+      binary: [
+        { name: "positions", bytes: positionsBuf.length },
+        { name: "indices", bytes: indicesBuf.length },
+      ],
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000, [positionsBuf, indicesBuf]);
+    const t1 = Date.now();
+    mainDebugLog("[CGAL worker] repair response received", {
+      jobId: req.jobId,
+      type: res?.type,
+      ms: t1 - t0,
+      vertexCount: res?.vertexCount,
+      triCount: res?.triCount,
+      repair: res?.repair,
+    });
+
+    if (!res || res.type !== "cgal_repair_result") {
+      return { ok: false, error: workerErrorText(res, "Unknown CGAL repair response") };
+    }
+
+    const payloads = res.binaryPayloads as Record<string, Buffer> | undefined;
+    const pos = payloads?.positions;
+    const idx = payloads?.indices;
+    if (!pos || !idx) {
+      return { ok: false, error: "CGAL repair worker returned empty buffers" };
+    }
+    const normals = payloads?.normals;
+    const repair = res.repair && typeof res.repair === "object" ? res.repair : {};
+
+    return {
+      ok: true,
+      positions: bufferToArrayBuffer(pos),
+      indices: bufferToArrayBuffer(idx),
+      normals: normals ? bufferToArrayBuffer(normals) : undefined,
+      vertexCount: Number(res.vertexCount) || Math.floor(pos.byteLength / 12),
+      triCount: Number(res.triCount) || Math.floor(idx.byteLength / 12),
+      repair: {
+        inputVertices: Number(repair.inputVertices) || 0,
+        inputFaces: Number(repair.inputFaces) || 0,
+        outputVertices: Number(repair.outputVertices) || 0,
+        outputFaces: Number(repair.outputFaces) || 0,
+        removedInvalidFaces: Number(repair.removedInvalidFaces) || 0,
+        removedDegenerateFaces: Number(repair.removedDegenerateFaces) || 0,
+        removedDuplicateFaces: Number(repair.removedDuplicateFaces) || 0,
+        removedUnusedVertices: Number(repair.removedUnusedVertices) || 0,
+        orientedComponents: Number(repair.orientedComponents) || 0,
+        filledHoles: Number(repair.filledHoles) || 0,
+        diagnostics: Array.isArray(repair.diagnostics) ? repair.diagnostics.map(String) : [],
+        warnings: Array.isArray(repair.warnings) ? repair.warnings.map(String) : [],
+      },
     };
   }
 
