@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   MESH_OPERATION_CAPABILITIES,
   type MeshOperationId,
@@ -92,6 +92,8 @@ export type MeshOperationsCompactCardProps = {
   busy: boolean;
   cgalBusy: boolean;
   lastResult: MeshOperationResultSummary | null;
+  focusedOperation?: MeshOperationUiId | null;
+  focusedOperationToken?: number;
   operationHistory?: MeshOperationHistoryEntry[];
   savedPresets?: MeshOperationSavedPresetSummary[];
   onRestoreOperationHistoryEntry?: (entryId: string) => void;
@@ -242,6 +244,8 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
   busy,
   cgalBusy,
   lastResult,
+  focusedOperation,
+  focusedOperationToken,
   operationHistory = [],
   savedPresets = [],
   onRestoreOperationHistoryEntry,
@@ -325,6 +329,12 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
     if (booleanOperationForRow) onChangeBooleanOperation(booleanOperationForRow);
     setExpandedOperation((current) => (current === operation ? null : operation));
   };
+  useEffect(() => {
+    if (!focusedOperation) return;
+    const booleanOperationForRow = BOOLEAN_OPERATION_BY_MESH_OPERATION[focusedOperation];
+    if (booleanOperationForRow) onChangeBooleanOperation(booleanOperationForRow);
+    setExpandedOperation(focusedOperation);
+  }, [focusedOperation, focusedOperationToken, onChangeBooleanOperation]);
   const applyPreset = (preset: MeshOperationPresetId) => {
     void onApplyOperationPreset?.(preset);
     if (preset === "clean-normals") {

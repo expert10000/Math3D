@@ -77,6 +77,20 @@ async function openWorkspaceOperationsCard(page: Page): Promise<Locator> {
   return card;
 }
 
+async function visibleMeshOperationsCard(page: Page): Promise<Locator> {
+  const card = await firstVisible(page.locator('[data-testid$="operation-registry"]'));
+  await card.scrollIntoViewIfNeeded();
+  await expect(card).toBeVisible({ timeout: 15_000 });
+  return card;
+}
+
+async function visibleImplicitWorkflowCta(page: Page): Promise<Locator> {
+  const cta = await firstVisible(page.getByTestId("implicit-mesh-workflow-cta"));
+  await cta.scrollIntoViewIfNeeded();
+  await expect(cta).toBeVisible({ timeout: 15_000 });
+  return cta;
+}
+
 async function runMeshOperationHook(
   page: Page,
   operation: Parameters<MeshOperationE2EHook["run"]>[0],
@@ -295,14 +309,20 @@ test.describe("Mesh Operations card", () => {
     await selectSection(page, "Mesh");
 
     const card = await openWorkspaceOperationsCard(page);
-    await card.getByTestId("mesh-workspace-operation-registry-row-implicit-preview").click();
-    await expect(card.getByTestId("mesh-workspace-operation-registry-run-implicit-preview")).toBeDisabled();
-    await card.getByTestId("mesh-workspace-operation-registry-preset-implicit-sphere-mesh").click();
+    await card.getByTestId("mesh-workspace-operation-registry-preset-boolean-demo-pair").click();
+    await expect(page.getByText(/Boolean demo A/i).first()).toBeVisible({ timeout: 15_000 });
+    await selectSection(page, "Mesh");
+    const meshCard = await openWorkspaceOperationsCard(page);
+    await meshCard.getByTestId("mesh-workspace-operation-registry-row-implicit-preview").click();
+    await expect(meshCard.getByTestId("mesh-workspace-operation-registry-run-implicit-preview")).toBeDisabled();
+    await meshCard.getByTestId("mesh-workspace-operation-registry-preset-implicit-sphere-mesh").click();
     await expect(page.getByText(/Surfaces \/ Implicit \/ Level Set \/ Sphere/i)).toBeVisible({ timeout: 15_000 });
-    const previewButton = await firstVisible(page.getByRole("button", { name: "Preview", exact: true }));
-    await expect(previewButton).toBeEnabled({ timeout: 15_000 });
-    await previewButton.click();
-    await expect(page.getByText(/generate running|preview|mesh/i).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/Selected: Boolean demo A/i)).toHaveCount(0);
+    const cta = await visibleImplicitWorkflowCta(page);
+    await expect(cta).toContainText(/Run CGAL Implicit Mesh/i);
+    await cta.getByTestId("implicit-mesh-workflow-back-operations").click();
+    const returnedCard = await visibleMeshOperationsCard(page);
+    await expect(returnedCard.getByRole("button", { name: "Run Implicit mesh" })).toBeVisible({ timeout: 15_000 });
   });
 
   test("runs CGAL implicit mesh through the shared operation layer when available", async () => {
@@ -312,8 +332,12 @@ test.describe("Mesh Operations card", () => {
     await selectSection(page, "Mesh");
 
     const card = await openWorkspaceOperationsCard(page);
+    await card.getByTestId("mesh-workspace-operation-registry-preset-implicit-sphere-mesh").click();
+    const cta = await visibleImplicitWorkflowCta(page);
+    await cta.getByTestId("implicit-mesh-workflow-back-operations").click();
+    const focusedCard = await visibleMeshOperationsCard(page);
+    await expect(focusedCard.getByRole("button", { name: "Run Implicit mesh" })).toBeVisible({ timeout: 15_000 });
 
-    await card.getByTestId("mesh-workspace-operation-registry-row-implicit-mesh").click();
     const cgal = await runMeshOperationHook(page, "implicit-mesh", {
       implicitExpr: "x*x + y*y + z*z - 1",
       targetEdge: 0.45,
@@ -322,6 +346,9 @@ test.describe("Mesh Operations card", () => {
       test.skip(true, `CGAL worker unavailable: ${cgal.error}`);
     }
     expect(cgal.ok, cgal.error).toBeTruthy();
-    await expectLastOperation(card, /Implicit mesh/i);
+    await expectLastOperation(focusedCard, /Implicit mesh/i);
+    await expect(focusedCard.locator('[data-testid$="-last-result"]')).toContainText(/Output: new-object/i);
+    await expect(focusedCard.locator('[data-testid$="-open-result"]')).toBeEnabled();
+    await expect(focusedCard.locator('[data-testid$="-send-to-geometry"]')).toBeEnabled();
   });
 });

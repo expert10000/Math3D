@@ -33544,6 +33544,8 @@ const App: React.FC = () => {
   const [meshOperationOutputMode, setMeshOperationOutputMode] = useState<"replace" | "derived">("derived");
   const [meshLastOperation, setMeshLastOperation] = useState<MeshOperationResultSummary | null>(null);
   const [meshOperationHistory, setMeshOperationHistory] = useState<MeshOperationHistoryEntry[]>([]);
+  const [meshOperationFocusedOperation, setMeshOperationFocusedOperation] = useState<MeshOperationUiId | null>(null);
+  const [meshOperationFocusedOperationToken, setMeshOperationFocusedOperationToken] = useState(0);
   const [meshOperationPreviewBusy, setMeshOperationPreviewBusy] = useState(false);
   const [meshOperationPreviewError, setMeshOperationPreviewError] = useState<string | null>(null);
   const [meshOperationPreviewTargetFaces, setMeshOperationPreviewTargetFaces] = useState(20000);
@@ -33570,6 +33572,10 @@ const App: React.FC = () => {
     },
     []
   );
+  const focusMeshOperationRow = useCallback((operation: MeshOperationUiId) => {
+    setMeshOperationFocusedOperation(operation);
+    setMeshOperationFocusedOperationToken((token) => token + 1);
+  }, []);
   useEffect(() => {
     if (!isDev || typeof window === "undefined" || !window.meshBenchmarks?.list) return;
     let canceled = false;
@@ -46550,6 +46556,7 @@ case "mobius":
     setImplicitExpr("x*x + y*y + z*z - 1");
     setImplicitExprDraft("x*x + y*y + z*z - 1");
     setImplicitResolution((current) => Math.max(24, current));
+    focusMeshOperationRow("implicit-mesh");
     setGeometrySelectedObjectId(null);
     setMeshOperationBooleanOperandObjectId(null);
     setGeometryDatasetMeshObjects((prev) =>
@@ -46564,7 +46571,7 @@ case "mobius":
       message: "Implicit sphere source ready. Open Mesh Operations > Implicit mesh to run CGAL.",
       at: Date.now(),
     });
-  }, []);
+  }, [focusMeshOperationRow]);
 
   const handleChangeViewerKind = useCallback((kind: SurfaceViewerKind) => {
     setSurfaceViewerKind(kind);
@@ -59902,7 +59909,7 @@ case "mobius":
         return null;
       }
 
-      const outputMode = operation === "implicit-mesh" ? "preview" : meshOperationOutputModeForRequest;
+      const outputMode = operation === "implicit-mesh" ? "new-object" : meshOperationOutputModeForRequest;
       const booleanInputs =
         operation.startsWith("boolean-")
           ? [
@@ -60195,7 +60202,7 @@ case "mobius":
           verbose: cgalVerbose,
           preflightSamples: cgalPreflightSamples,
         },
-        outputMode: "preview",
+        outputMode: "new-object",
         quality: cgalAutoTargetEdge || cgalTriBudgetEnabled ? "fast" : "balanced",
       };
       const res = await runMeshOperation(request, {
@@ -60208,8 +60215,7 @@ case "mobius":
           preflightSamples: cgalPreflightSamples,
         },
       });
-      const resultSummary = summarizeMeshOperationResult(res, "preview");
-      publishMeshOperationResult(resultSummary, request);
+      const resultSummary = summarizeMeshOperationResult(res, "new-object");
 
       console.log("[CGAL] mesh response", {
         ok: res.status !== "error",
@@ -60221,12 +60227,28 @@ case "mobius":
       });
 
       if (res.status === "error" || !res.resultMesh?.indices) {
+        publishMeshOperationResult(resultSummary, request);
         setMeshPerformanceLastBuildMs(performance.now() - startedAt);
         setCgalError(res.errors[0]?.message ?? "Implicit meshing failed.");
         return;
       }
       setMeshPerformanceLastBuildMs(performance.now() - startedAt);
 
+      applyMeshOperationResultToSurfaceMesh("Implicit mesh", res.resultMesh, {
+        operation: "Implicit mesh",
+        beforeFaces: 0,
+        engine: "cgal",
+        durationMs: res.durationMs,
+        resultSummary,
+        request,
+      });
+      setGenerateSurfaceStatus({
+        state: "success",
+        message: `CGAL implicit mesh ready: ${resultSummary.afterVertices?.toLocaleString() ?? "n/a"} vertices / ${
+          resultSummary.afterFaces?.toLocaleString() ?? "n/a"
+        } faces.`,
+        at: Date.now(),
+      });
       setCgalMeshState({
         surfaceId: activeEqSurfaceId,
         expr,
@@ -60268,6 +60290,7 @@ case "mobius":
     cgalTooHeavy,
     selectionBBoxForCgal,
     activeEqSurfaceId,
+    applyMeshOperationResultToSurfaceMesh,
     publishMeshOperationResult,
     refreshCgalHealthAfterWorkerAction,
   ]);
@@ -65916,6 +65939,8 @@ case "mobius":
                   pythonWorkerLogPath={cgalHealthState?.logsPath ?? null}
                   meshOperationBusy={meshOperationBusy}
                   meshOperationError={meshOperationError}
+                  meshOperationFocusedOperation={meshOperationFocusedOperation}
+                  meshOperationFocusedOperationToken={meshOperationFocusedOperationToken}
                   meshOperationHistory={meshOperationHistory}
                   meshOperationSavedPresets={geometryOperationPresets}
                   onRestoreMeshOperationHistoryEntry={restoreMeshOperationHistoryEntry}
@@ -68448,6 +68473,57 @@ case "mobius":
               )}
               {(surfacesLayoutVariant === "layout2" || (surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "scene")) && (
                 <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%", flex: 1 }}>
+                  {surfaceViewerKind === "implicit" && (
+                    <div
+                      data-testid="implicit-mesh-workflow-cta"
+                      style={{
+                        border: "1px solid #a7f3d0",
+                        borderRadius: 8,
+                        background: "#f0fdf4",
+                        color: "#0f3557",
+                        padding: "8px 10px",
+                        display: "grid",
+                        gap: 6,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                        <strong>Implicit mesh source</strong>
+                        <span style={{ fontSize: 10, color: cgalServiceReady ? "#166534" : "#b42318", fontWeight: 800 }}>
+                          {cgalServiceReady ? "CGAL ready" : cgalServiceStatusText}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 11, color: "#475569" }}>
+                        Sphere source is active. Run CGAL here or return to Mesh Operations with Implicit mesh expanded.
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button
+                          data-testid="implicit-mesh-workflow-run-cgal"
+                          type="button"
+                          onClick={() => {
+                            focusMeshOperationRow("implicit-mesh");
+                            void handleRunCgalMesh();
+                          }}
+                          disabled={!cgalServiceReady || cgalBusy}
+                        >
+                          {cgalBusy ? "Running CGAL..." : "Run CGAL Implicit Mesh"}
+                        </button>
+                        <button
+                          data-testid="implicit-mesh-workflow-back-operations"
+                          type="button"
+                          onClick={() => {
+                            setMode("surfaces");
+                            setSurfacesPanelState("work");
+                            setSurfacesLeftTab("object");
+                            setSurfacesWorkGalleryOpen(false);
+                            focusMeshOperationRow("implicit-mesh");
+                          }}
+                        >
+                          Back to Mesh Operations
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {surfaceViewerKind === "mesh" && !surfacesWorkGalleryOpen && (
                     <div
                       style={{
@@ -68934,6 +69010,8 @@ case "mobius":
                           busy={meshOperationBusy}
                           cgalBusy={cgalBusy}
                           lastResult={meshLastOperation}
+                          focusedOperation={meshOperationFocusedOperation}
+                          focusedOperationToken={meshOperationFocusedOperationToken}
                           operationHistory={meshOperationHistory}
                           savedPresets={geometryOperationPresets}
                           onRestoreOperationHistoryEntry={restoreMeshOperationHistoryEntry}
@@ -69544,6 +69622,8 @@ case "mobius":
                     onBakeAsPrimaryObject={handleDatasetToGeometryScene}
                     onOpenAnalysis={() => setSurfacesLeftTab("analysis")}
                     meshLastOperation={meshLastOperation}
+                    meshOperationFocusedOperation={meshOperationFocusedOperation}
+                    meshOperationFocusedOperationToken={meshOperationFocusedOperationToken}
                     meshOperationHistory={meshOperationHistory}
                     meshOperationSavedPresets={geometryOperationPresets}
                     onRestoreMeshOperationHistoryEntry={restoreMeshOperationHistoryEntry}
@@ -99151,6 +99231,8 @@ type SurfacesObjectPanelProps = {
   onBakeAsPrimaryObject: () => void;
   onOpenAnalysis: () => void;
   meshLastOperation: MeshOperationResultSummary | null;
+  meshOperationFocusedOperation: MeshOperationUiId | null;
+  meshOperationFocusedOperationToken: number;
   meshOperationHistory: MeshOperationHistoryEntry[];
   meshOperationSavedPresets: MeshOperationSavedPresetSummary[];
   onRestoreMeshOperationHistoryEntry: (entryId: string) => void;
@@ -99302,6 +99384,8 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   onBakeAsPrimaryObject,
   onOpenAnalysis,
   meshLastOperation,
+  meshOperationFocusedOperation,
+  meshOperationFocusedOperationToken,
   meshOperationHistory,
   meshOperationSavedPresets,
   onRestoreMeshOperationHistoryEntry,
@@ -99668,6 +99752,8 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
           busy={meshOperationBusy}
           cgalBusy={meshOperationCgalBusy}
           lastResult={meshLastOperation}
+          focusedOperation={meshOperationFocusedOperation}
+          focusedOperationToken={meshOperationFocusedOperationToken}
           operationHistory={meshOperationHistory}
           savedPresets={meshOperationSavedPresets}
           onRestoreOperationHistoryEntry={onRestoreMeshOperationHistoryEntry}
@@ -101211,6 +101297,8 @@ type SurfacesLeftPanelProps = {
   onRunCgalMesh: () => void;
   onStopCgalWorker: () => void;
   cgalMeshInfo: { vertexCount: number; triCount: number } | null;
+  meshOperationFocusedOperation: MeshOperationUiId | null;
+  meshOperationFocusedOperationToken: number;
   meshOperationHistory: MeshOperationHistoryEntry[];
   meshOperationSavedPresets: MeshOperationSavedPresetSummary[];
   onRestoreMeshOperationHistoryEntry: (entryId: string) => void;
@@ -101857,6 +101945,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleVolumeDistanceSigned,
   onToggleVolumeDistanceAutoBounds,
   meshLastOperation,
+  meshOperationFocusedOperation,
+  meshOperationFocusedOperationToken,
   meshOperationHistory,
   meshOperationSavedPresets,
   onRestoreMeshOperationHistoryEntry,
@@ -106468,6 +106558,8 @@ onChangeImplicitExpr,
               busy={meshOperationBusy}
               cgalBusy={cgalBusy}
               lastResult={meshLastOperation}
+              focusedOperation={meshOperationFocusedOperation}
+              focusedOperationToken={meshOperationFocusedOperationToken}
               operationHistory={meshOperationHistory}
               savedPresets={meshOperationSavedPresets}
               onRestoreOperationHistoryEntry={onRestoreMeshOperationHistoryEntry}
