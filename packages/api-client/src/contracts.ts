@@ -2,6 +2,8 @@ export type {
   CgalHealthResponse,
   CgalMeshRequest,
   CgalMeshResponse,
+  CgalValidateMeshRequest,
+  CgalValidateMeshResponse,
   CgalPingResponse,
   CgalStopResponse,
   CgalVersionResponse,

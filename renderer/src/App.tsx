@@ -54090,6 +54090,52 @@ case "mobius":
     void refreshCgalHealthState();
   }, [refreshCgalHealthState]);
 
+  const handleMeshOperationValidate = useCallback(async () => {
+    if (meshOperationBusy) return;
+    if (cgalHealthState?.ok === false) {
+      setMeshOperationError(cgalHealthState.error ?? "Python worker unavailable.");
+      return;
+    }
+    const mesh = getMeshForMeshOperation();
+    if (!mesh) {
+      setMeshOperationError("Surface mesh not ready yet.");
+      return;
+    }
+    setMeshOperationBusy(true);
+    setMeshOperationError(null);
+    try {
+      const request: MeshOperationRequest = {
+        operation: "cgal-validate",
+        inputs: [mesh.label],
+        engine: "auto",
+        parameters: { selfIntersectionSampleLimit: 1200 },
+        outputMode: "preview",
+        quality: "robust",
+      };
+      const res = await runMeshOperation(request, { primaryMesh: mesh });
+      const resultSummary = summarizeMeshOperationResult(res, "preview");
+      publishMeshOperationResult(resultSummary, request);
+      if (res.status === "error") {
+        setMeshOperationError(res.errors[0]?.message ?? "CGAL validation failed.");
+      } else {
+        setSurfaceMeshTopologyStatus(
+          `CGAL validation ${res.status}: ${res.warnings.length ? res.warnings.map((warning) => warning.message).join("; ") : "mesh checks passed."}`
+        );
+      }
+    } catch (err: any) {
+      setMeshOperationError(err?.message ?? "CGAL validation failed.");
+    } finally {
+      setMeshOperationBusy(false);
+      refreshCgalHealthAfterWorkerAction();
+    }
+  }, [
+    meshOperationBusy,
+    cgalHealthState,
+    getMeshForMeshOperation,
+    publishMeshOperationResult,
+    refreshCgalHealthAfterWorkerAction,
+  ]);
+
   const handleMeshOperationCleanNormals = useCallback(async () => {
     if (meshOperationBusy) return;
     if (cgalHealthState?.ok === false) {
@@ -54430,7 +54476,9 @@ case "mobius":
             };
           }
           const parameters =
-            operation === "clean-normals"
+            operation === "cgal-validate"
+              ? { selfIntersectionSampleLimit: 1200 }
+              : operation === "clean-normals"
               ? { computeNormals: meshOperationCleanComputeNormals }
               : operation === "decimate"
                 ? meshOperationUseTargetFaces
@@ -54443,10 +54491,10 @@ case "mobius":
           const request: MeshOperationRequest = {
             operation,
             inputs: [mesh.label],
-            engine: "auto",
+            engine: operation === "cgal-validate" ? "cgal" : "auto",
             parameters,
             outputMode,
-            quality: "balanced",
+            quality: operation === "cgal-validate" ? "robust" : "balanced",
           };
           const result = await runMeshOperation(request, { primaryMesh: mesh });
           publishMeshOperationResult(summarizeMeshOperationResult(result, outputMode), request);
@@ -59896,6 +59944,7 @@ case "mobius":
         operation === "boolean-split" ||
         !(
           operation === "clean-normals" ||
+          operation === "cgal-validate" ||
           operation === "decimate" ||
           operation === "smooth" ||
           operation === "implicit-preview" ||
@@ -59921,7 +59970,9 @@ case "mobius":
       const implicitInputs = operation.startsWith("implicit-") ? [activeImplicitExpr || "implicit surface"] : undefined;
       const meshInputs = [buildActiveMeshLabel()];
       const parameters =
-        operation === "clean-normals"
+        operation === "cgal-validate"
+          ? { selfIntersectionSampleLimit: 1200 }
+          : operation === "clean-normals"
           ? { computeNormals: meshOperationCleanComputeNormals }
           : operation === "decimate"
             ? meshOperationUseTargetFaces
@@ -59959,7 +60010,7 @@ case "mobius":
         engine: "auto",
         parameters,
         outputMode,
-        quality: operation.startsWith("boolean-") || operation === "implicit-mesh" ? "robust" : "balanced",
+        quality: operation.startsWith("boolean-") || operation === "implicit-mesh" || operation === "cgal-validate" ? "robust" : "balanced",
       };
     },
     [
@@ -65952,6 +66003,7 @@ case "mobius":
                   canSaveMeshOperationPreset={!!meshLastOperation}
                   meshOperationCleanComputeNormals={meshOperationCleanComputeNormals}
                   onChangeMeshOperationCleanComputeNormals={setMeshOperationCleanComputeNormals}
+                  onMeshOperationValidate={handleMeshOperationValidate}
                   meshOperationDecimateReduction={meshOperationDecimateReduction}
                   onChangeMeshOperationDecimateReduction={setMeshOperationDecimateReduction}
                   meshOperationDecimateTargetFaces={meshOperationDecimateTargetFaces}
@@ -69023,6 +69075,7 @@ case "mobius":
                           canSaveOperationPreset={!!meshLastOperation}
                           cleanComputeNormals={meshOperationCleanComputeNormals}
                           onChangeCleanComputeNormals={setMeshOperationCleanComputeNormals}
+                          onValidate={handleMeshOperationValidate}
                           onClean={handleMeshOperationCleanNormals}
                           decimateReduction={meshOperationDecimateReduction}
                           onChangeDecimateReduction={setMeshOperationDecimateReduction}
@@ -69641,6 +69694,7 @@ case "mobius":
                     meshOperationCgalBusy={cgalBusy}
                     meshOperationCleanComputeNormals={meshOperationCleanComputeNormals}
                     onChangeMeshOperationCleanComputeNormals={setMeshOperationCleanComputeNormals}
+                    onMeshOperationValidate={handleMeshOperationValidate}
                     onMeshOperationClean={handleMeshOperationCleanNormals}
                     meshOperationDecimateReduction={meshOperationDecimateReduction}
                     onChangeMeshOperationDecimateReduction={setMeshOperationDecimateReduction}
@@ -99250,6 +99304,7 @@ type SurfacesObjectPanelProps = {
   meshOperationCgalBusy: boolean;
   meshOperationCleanComputeNormals: boolean;
   onChangeMeshOperationCleanComputeNormals: (value: boolean) => void;
+  onMeshOperationValidate: () => void | Promise<void>;
   onMeshOperationClean: () => void;
   meshOperationDecimateReduction: number;
   onChangeMeshOperationDecimateReduction: (value: number) => void;
@@ -99403,6 +99458,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   meshOperationCgalBusy,
   meshOperationCleanComputeNormals,
   onChangeMeshOperationCleanComputeNormals,
+  onMeshOperationValidate,
   onMeshOperationClean,
   meshOperationDecimateReduction,
   onChangeMeshOperationDecimateReduction,
@@ -99765,6 +99821,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
           canSaveOperationPreset={canSaveMeshOperationPreset}
           cleanComputeNormals={meshOperationCleanComputeNormals}
           onChangeCleanComputeNormals={onChangeMeshOperationCleanComputeNormals}
+          onValidate={onMeshOperationValidate}
           onClean={onMeshOperationClean}
           decimateReduction={meshOperationDecimateReduction}
           onChangeDecimateReduction={onChangeMeshOperationDecimateReduction}
@@ -101231,6 +101288,7 @@ type SurfacesLeftPanelProps = {
   meshOperationError: string | null;
   meshOperationCleanComputeNormals: boolean;
   onChangeMeshOperationCleanComputeNormals: (v: boolean) => void;
+  onMeshOperationValidate: () => void | Promise<void>;
   meshOperationDecimateReduction: number;
   onChangeMeshOperationDecimateReduction: (v: number) => void;
   meshOperationDecimateTargetFaces: number;
@@ -101964,6 +102022,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   meshOperationError,
   meshOperationCleanComputeNormals,
   onChangeMeshOperationCleanComputeNormals,
+  onMeshOperationValidate,
   meshOperationDecimateReduction,
   onChangeMeshOperationDecimateReduction,
   meshOperationDecimateTargetFaces,
@@ -106571,6 +106630,7 @@ onChangeImplicitExpr,
               canSaveOperationPreset={canSaveMeshOperationPreset}
               cleanComputeNormals={meshOperationCleanComputeNormals}
               onChangeCleanComputeNormals={onChangeMeshOperationCleanComputeNormals}
+              onValidate={onMeshOperationValidate}
               onClean={onMeshOperationCleanNormals}
               decimateReduction={meshOperationDecimateReduction}
               onChangeDecimateReduction={onChangeMeshOperationDecimateReduction}

@@ -13,6 +13,41 @@ export type CgalMeshResponse =
   | { ok: true; positions: number[]; indices: number[]; scalars?: { name: string; values: number[] }[] }
   | { ok: false; error: string };
 
+export type CgalValidateMeshRequest = {
+  jobId: string;
+  positions: ArrayBuffer | ArrayBufferView;
+  indices: ArrayBuffer | ArrayBufferView;
+  options?: {
+    selfIntersectionSampleLimit?: number;
+  };
+};
+
+export type CgalValidateMeshResponse =
+  | {
+      ok: true;
+      vertexCount: number;
+      faceCount: number;
+      edgeCount: number;
+      componentCount: number;
+      boundaryEdgeCount: number;
+      nonManifoldEdgeCount: number;
+      invalidFaceCount: number;
+      degenerateFaceCount: number;
+      duplicateFaceCount: number;
+      watertight: boolean;
+      manifold: boolean;
+      oriented: boolean;
+      selfIntersection: {
+        checked: boolean;
+        suspectedPairs: number;
+        sampledFaces: number;
+        truncated: boolean;
+      };
+      diagnostics: string[];
+      warnings: string[];
+    }
+  | { ok: false; error: string };
+
 export type CgalHealthResponse = { ok: boolean; error?: string };
 export type CgalPingResponse = { ok: boolean; pong?: boolean; error?: string };
 export type CgalVersionResponse = { ok: boolean; version?: string; protocol?: string; error?: string };
@@ -188,6 +223,7 @@ export type MeshResult = MeshContract & {
 
 export type WorkerRequest =
   | { kind: "cgal.mesh"; payload: Omit<CgalMeshRequest, "jobId"> }
+  | { kind: "cgal.validate"; payload: Omit<CgalValidateMeshRequest, "jobId"> }
   | { kind: "cgal.geodesic-heat"; payload: Omit<GeodesicHeatRequest, "jobId"> }
   | { kind: "vtk.preview-implicit"; payload: Omit<VtkPreviewRequest, "jobId"> }
   | { kind: "vtk.clean-normals"; payload: Omit<VtkMeshRequest, "jobId"> }
@@ -201,6 +237,7 @@ export type WorkerRequest =
 
 export type WorkerResponse =
   | CgalMeshResponse
+  | CgalValidateMeshResponse
   | GeodesicHeatResponse
   | VtkMeshResponse
   | VtkVolumeSliceResponse

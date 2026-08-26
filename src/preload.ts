@@ -48,6 +48,15 @@ export type CgalMeshRequest = {
   preflightSamples?: number;
 };
 
+export type CgalValidateMeshRequest = {
+  jobId: string;
+  positions: ArrayBuffer | ArrayBufferView;
+  indices: ArrayBuffer | ArrayBufferView;
+  options?: {
+    selfIntersectionSampleLimit?: number;
+  };
+};
+
 export type GeodesicHeatRequest = {
   jobId: string;
   mesh: { V: number[][]; F: number[][] };
@@ -365,6 +374,8 @@ contextBridge.exposeInMainWorld("cgalMesh", {
     ipcRenderer.invoke("mesh:cgal:health"),
   mesh: (req: CgalMeshRequest): Promise<any> =>
     ipcRenderer.invoke("mesh:cgal", req),
+  validateMesh: (req: CgalValidateMeshRequest): Promise<any> =>
+    ipcRenderer.invoke("mesh:cgal:validate", req),
   geodesicHeat: (req: GeodesicHeatRequest): Promise<any> =>
     ipcRenderer.invoke("mesh:geodesic:heat", req),
   stop: (): Promise<{ ok: boolean; error?: string }> =>

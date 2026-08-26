@@ -3,6 +3,8 @@ import type {
   CgalHealthResponse,
   CgalMeshRequest,
   CgalMeshResponse,
+  CgalValidateMeshRequest,
+  CgalValidateMeshResponse,
   CgalPingResponse,
   CgalStopResponse,
   CgalVersionResponse,
@@ -30,6 +32,7 @@ export interface MeshBackend {
   cgalVersion(): Promise<CgalVersionResponse>;
   stopCgalWorker(): Promise<CgalStopResponse>;
   runCgalMesh(req: Omit<CgalMeshRequest, "jobId">): Promise<CgalMeshResponse>;
+  runCgalValidateMesh(req: Omit<CgalValidateMeshRequest, "jobId">): Promise<CgalValidateMeshResponse>;
   runGeodesicHeat(req: Omit<GeodesicHeatRequest, "jobId">): Promise<GeodesicHeatResponse>;
   vtkPreviewImplicit(req: Omit<VtkPreviewRequest, "jobId">): Promise<VtkMeshResponse>;
   vtkCleanNormals(req: Omit<VtkMeshRequest, "jobId">): Promise<VtkMeshResponse>;
@@ -268,6 +271,11 @@ export function createElectronMeshBackend(): MeshBackend {
       if (!api?.mesh) return { ok: false, error: "CGAL IPC unavailable" };
       return api.mesh({ ...req, jobId: makeJobId() });
     },
+    async runCgalValidateMesh(req) {
+      const api = (getWindowObject() as any)?.cgalMesh;
+      if (!api?.validateMesh) return { ok: false, error: "CGAL validation IPC unavailable" };
+      return api.validateMesh({ ...req, jobId: makeJobId() });
+    },
     async runGeodesicHeat(req) {
       const api = (getWindowObject() as any)?.cgalMesh;
       if (!api?.geodesicHeat) return { ok: false, error: "Geodesic heat IPC unavailable" };
@@ -388,6 +396,9 @@ export function createHttpMeshBackend(baseUrl: string, options?: HttpMeshBackend
       } catch (error) {
         return { ok: false, error: asErrorMessage(error, "CGAL mesh request failed") };
       }
+    },
+    async runCgalValidateMesh() {
+      return { ok: false, error: "CGAL validation proxy unavailable" };
     },
     async runGeodesicHeat(req) {
       try {

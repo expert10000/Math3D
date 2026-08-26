@@ -6,6 +6,8 @@ import { mainDebugLog } from "../debugLog";
 import type {
   CgalMeshRequest,
   CgalMeshResponse,
+  CgalValidateMeshRequest,
+  CgalValidateMeshResponse,
   GeodesicHeatRequest,
   GeodesicHeatResponse,
 } from "../ipc/cgalMeshIpc";
@@ -511,6 +513,64 @@ class PythonWorker {
       positions,
       indices,
       scalars,
+    };
+  }
+
+  async validateCgalMesh(req: CgalValidateMeshRequest): Promise<CgalValidateMeshResponse> {
+    const positionsBuf = toBuffer(req.positions);
+    const indicesBuf = toBuffer(req.indices);
+    if (!positionsBuf.length || !indicesBuf.length) {
+      return { ok: false, error: "CGAL validation request missing buffers" };
+    }
+
+    const msg = {
+      type: "mesh.validate",
+      jobId: req.jobId,
+      options: req.options ?? {},
+      binary: [
+        { name: "positions", bytes: positionsBuf.length },
+        { name: "indices", bytes: indicesBuf.length },
+      ],
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000, [positionsBuf, indicesBuf]);
+    const t1 = Date.now();
+    mainDebugLog("[CGAL worker] validate response received", {
+      jobId: req.jobId,
+      type: res?.type,
+      ms: t1 - t0,
+      vertexCount: res?.vertexCount,
+      faceCount: res?.faceCount,
+      warnings: Array.isArray(res?.warnings) ? res.warnings.length : 0,
+    });
+
+    if (!res || res.type !== "cgal_validate_result") {
+      return { ok: false, error: workerErrorText(res, "Unknown CGAL validation response") };
+    }
+
+    return {
+      ok: true,
+      vertexCount: Number(res.vertexCount) || 0,
+      faceCount: Number(res.faceCount) || 0,
+      edgeCount: Number(res.edgeCount) || 0,
+      componentCount: Number(res.componentCount) || 0,
+      boundaryEdgeCount: Number(res.boundaryEdgeCount) || 0,
+      nonManifoldEdgeCount: Number(res.nonManifoldEdgeCount) || 0,
+      invalidFaceCount: Number(res.invalidFaceCount) || 0,
+      degenerateFaceCount: Number(res.degenerateFaceCount) || 0,
+      duplicateFaceCount: Number(res.duplicateFaceCount) || 0,
+      watertight: res.watertight === true,
+      manifold: res.manifold === true,
+      oriented: res.oriented === true,
+      selfIntersection: {
+        checked: res.selfIntersection?.checked === true,
+        suspectedPairs: Number(res.selfIntersection?.suspectedPairs) || 0,
+        sampledFaces: Number(res.selfIntersection?.sampledFaces) || 0,
+        truncated: res.selfIntersection?.truncated === true,
+      },
+      diagnostics: Array.isArray(res.diagnostics) ? res.diagnostics.map(String) : [],
+      warnings: Array.isArray(res.warnings) ? res.warnings.map(String) : [],
     };
   }
 

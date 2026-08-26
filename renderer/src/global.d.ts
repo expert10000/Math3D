@@ -543,6 +543,7 @@ declare global {
       run: (
         operation:
           | "clean-normals"
+          | "cgal-validate"
           | "decimate"
           | "smooth"
           | "implicit-preview"

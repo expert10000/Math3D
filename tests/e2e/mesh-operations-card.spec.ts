@@ -11,6 +11,7 @@ type MeshOperationE2EHook = {
   run: (
     operation:
       | "clean-normals"
+      | "cgal-validate"
       | "decimate"
       | "smooth"
       | "implicit-preview"
@@ -133,10 +134,14 @@ test.describe("Mesh Operations card", () => {
 
     const card = await openWorkspaceOperationsCard(page);
 
-    for (const preset of ["clean-normals", "decimate-3dbenchy", "smooth-bunny"]) {
+    for (const preset of ["cgal-validate", "clean-normals", "decimate-3dbenchy", "smooth-bunny"]) {
       await card.getByTestId(`mesh-workspace-operation-registry-preset-${preset}`).click();
       await expect(card.locator("[aria-expanded=\"true\"]")).toBeVisible();
     }
+
+    await card.getByTestId("mesh-workspace-operation-registry-row-cgal-validate").click();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-run-cgal-validate")).toHaveText("Run Validate mesh");
+    await expect(card).toContainText("Non-destructive CGAL validation");
 
     await card.getByTestId("mesh-workspace-operation-registry-row-clean-normals").click();
     await expect(card.getByTestId("mesh-workspace-operation-registry-run-clean-normals")).toHaveText("Run Clean normals");
@@ -350,5 +355,24 @@ test.describe("Mesh Operations card", () => {
     await expect(focusedCard.locator('[data-testid$="-last-result"]')).toContainText(/Output: new-object/i);
     await expect(focusedCard.locator('[data-testid$="-open-result"]')).toBeEnabled();
     await expect(focusedCard.locator('[data-testid$="-send-to-geometry"]')).toBeEnabled();
+  });
+
+  test("runs CGAL mesh validation through the shared operation layer when available", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+    await loadBenchmarkModel(page, "cube-obj");
+
+    const card = await openWorkspaceOperationsCard(page);
+    await card.getByTestId("mesh-workspace-operation-registry-row-cgal-validate").click();
+    const validate = await runMeshOperationHook(page, "cgal-validate");
+    if (!validate.ok && /unavailable|not available|Python worker|CGAL/i.test(validate.error ?? "")) {
+      test.skip(true, `CGAL worker unavailable: ${validate.error}`);
+    }
+    expect(validate.ok, validate.error).toBeTruthy();
+    await expectLastOperation(card, /Validate mesh/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/Watertight:/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/Manifold:/i);
   });
 });

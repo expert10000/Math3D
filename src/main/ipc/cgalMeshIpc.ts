@@ -20,6 +20,41 @@ export type CgalMeshResponse =
   | { ok: true; positions: number[]; indices: number[]; scalars?: { name: string; values: number[] }[] }
   | { ok: false; error: string };
 
+export type CgalValidateMeshRequest = {
+  jobId: string;
+  positions: ArrayBuffer | ArrayBufferView | Buffer;
+  indices: ArrayBuffer | ArrayBufferView | Buffer;
+  options?: {
+    selfIntersectionSampleLimit?: number;
+  };
+};
+
+export type CgalValidateMeshResponse =
+  | {
+      ok: true;
+      vertexCount: number;
+      faceCount: number;
+      edgeCount: number;
+      componentCount: number;
+      boundaryEdgeCount: number;
+      nonManifoldEdgeCount: number;
+      invalidFaceCount: number;
+      degenerateFaceCount: number;
+      duplicateFaceCount: number;
+      watertight: boolean;
+      manifold: boolean;
+      oriented: boolean;
+      selfIntersection: {
+        checked: boolean;
+        suspectedPairs: number;
+        sampledFaces: number;
+        truncated: boolean;
+      };
+      diagnostics: string[];
+      warnings: string[];
+    }
+  | { ok: false; error: string };
+
 export type GeodesicHeatRequest = {
   jobId: string;
   mesh: { V: number[][]; F: number[][] };
@@ -81,6 +116,22 @@ export function registerCgalMeshIpc() {
       return res;
     } catch (e: any) {
       const diag = recordPythonWorkerFailure(e, "mesh:cgal", "WORKER_OPERATION_FAILED");
+      return { ok: false, error: diag.message };
+    }
+  });
+
+  ipcMain.handle("mesh:cgal:validate", async (_evt, req: CgalValidateMeshRequest): Promise<CgalValidateMeshResponse> => {
+    try {
+      const worker = await getPythonWorker();
+      const res = await worker.validateCgalMesh(req);
+      if (!res.ok) {
+        const diag = recordPythonWorkerFailure(res.error, "mesh:cgal:validate", "WORKER_OPERATION_FAILED");
+        return { ok: false, error: diag.message };
+      }
+      recordPythonWorkerSuccess();
+      return res;
+    } catch (e: any) {
+      const diag = recordPythonWorkerFailure(e, "mesh:cgal:validate", "WORKER_OPERATION_FAILED");
       return { ok: false, error: diag.message };
     }
   });

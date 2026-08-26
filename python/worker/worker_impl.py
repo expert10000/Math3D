@@ -446,6 +446,216 @@ def handle_health(msg: Dict[str, Any]) -> None:
     )
 
 
+def handle_validate_mesh(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]]) -> None:
+    import numpy as np
+
+    job_id = msg.get("jobId", "")
+    if not payloads:
+        raise RuntimeError("Missing mesh validation payloads")
+    positions_raw = payloads.get("positions")
+    indices_raw = payloads.get("indices")
+    if not positions_raw or not indices_raw:
+        raise RuntimeError("Missing mesh validation buffers")
+
+    send({"type": "progress", "jobId": job_id, "phase": "validate", "pct": 5, "msg": "decoding mesh buffers"})
+    positions = np.frombuffer(positions_raw, dtype=np.float32)
+    indices = np.frombuffer(indices_raw, dtype=np.uint32)
+    vertex_count = int(positions.size // 3)
+    face_count = int(indices.size // 3)
+    if vertex_count <= 0 or face_count <= 0:
+        raise RuntimeError("Mesh validation requires non-empty indexed triangle mesh")
+    pts = positions[: vertex_count * 3].reshape((-1, 3))
+    faces = indices[: face_count * 3].reshape((-1, 3))
+
+    send({"type": "progress", "jobId": job_id, "phase": "validate", "pct": 25, "msg": "checking faces and edges"})
+    parent = list(range(vertex_count))
+    rank = [0] * vertex_count
+
+    def find(a: int) -> int:
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    def union(a: int, b: int) -> None:
+        ra = find(a)
+        rb = find(b)
+        if ra == rb:
+            return
+        if rank[ra] < rank[rb]:
+            parent[ra] = rb
+        elif rank[ra] > rank[rb]:
+            parent[rb] = ra
+        else:
+            parent[rb] = ra
+            rank[ra] += 1
+
+    edge_counts: Dict[Tuple[int, int], int] = {}
+    edge_dirs: Dict[Tuple[int, int], List[Tuple[int, int]]] = {}
+    seen_faces = set()
+    invalid_faces = 0
+    degenerate_faces = 0
+    duplicate_faces = 0
+    used_vertices = set()
+
+    for tri in faces:
+        a = int(tri[0])
+        b = int(tri[1])
+        c = int(tri[2])
+        if a < 0 or b < 0 or c < 0 or a >= vertex_count or b >= vertex_count or c >= vertex_count:
+            invalid_faces += 1
+            continue
+        if a == b or b == c or c == a:
+            degenerate_faces += 1
+            continue
+        key_face = tuple(sorted((a, b, c)))
+        if key_face in seen_faces:
+            duplicate_faces += 1
+        seen_faces.add(key_face)
+        used_vertices.update((a, b, c))
+        union(a, b)
+        union(b, c)
+        for u, v in ((a, b), (b, c), (c, a)):
+            key = (u, v) if u < v else (v, u)
+            edge_counts[key] = edge_counts.get(key, 0) + 1
+            edge_dirs.setdefault(key, []).append((u, v))
+
+    boundary_edges = sum(1 for count in edge_counts.values() if count == 1)
+    non_manifold_edges = sum(1 for count in edge_counts.values() if count > 2)
+    edge_count = len(edge_counts)
+    component_roots = {find(v) for v in used_vertices}
+    component_count = len(component_roots)
+
+    inconsistent_orientation_edges = 0
+    for incidences in edge_dirs.values():
+        if len(incidences) != 2:
+            continue
+        if incidences[0] == incidences[1]:
+            inconsistent_orientation_edges += 1
+
+    manifold = non_manifold_edges == 0 and invalid_faces == 0 and degenerate_faces == 0
+    watertight = manifold and boundary_edges == 0
+    oriented = inconsistent_orientation_edges == 0
+
+    send({"type": "progress", "jobId": job_id, "phase": "validate", "pct": 65, "msg": "sampling self-intersection broad phase"})
+    options = msg.get("options", {}) if isinstance(msg.get("options", {}), dict) else {}
+    sample_limit = int(options.get("selfIntersectionSampleLimit", 1200) or 1200)
+    sample_limit = max(0, min(sample_limit, 5000))
+    valid_face_mask = np.all(faces < vertex_count, axis=1) if face_count > 0 else np.zeros((0,), dtype=bool)
+    valid_faces = faces[valid_face_mask]
+    sampled_faces = int(min(sample_limit, valid_faces.shape[0]))
+    suspected_pairs = 0
+    eps = 1e-7
+
+    def segment_triangle_hit(p0, p1, t0, t1, t2) -> bool:
+        direction = p1 - p0
+        edge1 = t1 - t0
+        edge2 = t2 - t0
+        h = np.cross(direction, edge2)
+        det = float(np.dot(edge1, h))
+        if -eps < det < eps:
+            return False
+        inv_det = 1.0 / det
+        s = p0 - t0
+        u = inv_det * float(np.dot(s, h))
+        if u < eps or u > 1.0 - eps:
+            return False
+        q = np.cross(s, edge1)
+        v = inv_det * float(np.dot(direction, q))
+        if v < eps or u + v > 1.0 - eps:
+            return False
+        t = inv_det * float(np.dot(edge2, q))
+        return eps < t < 1.0 - eps
+
+    def triangles_cross(a_pts, b_pts) -> bool:
+        for i0, i1 in ((0, 1), (1, 2), (2, 0)):
+            if segment_triangle_hit(a_pts[i0], a_pts[i1], b_pts[0], b_pts[1], b_pts[2]):
+                return True
+        for i0, i1 in ((0, 1), (1, 2), (2, 0)):
+            if segment_triangle_hit(b_pts[i0], b_pts[i1], a_pts[0], a_pts[1], a_pts[2]):
+                return True
+        return False
+
+    if sampled_faces > 1 and sample_limit > 0:
+        if valid_faces.shape[0] > sampled_faces:
+            sample_indices = np.linspace(0, valid_faces.shape[0] - 1, sampled_faces, dtype=np.int64)
+            sampled = valid_faces[sample_indices]
+        else:
+            sampled = valid_faces
+        tri_pts = pts[sampled]
+        bmins = tri_pts.min(axis=1)
+        bmaxs = tri_pts.max(axis=1)
+        for i in range(sampled_faces):
+            a_min = bmins[i]
+            a_max = bmaxs[i]
+            a_set = {int(sampled[i, 0]), int(sampled[i, 1]), int(sampled[i, 2])}
+            for j in range(i + 1, sampled_faces):
+                if a_max[0] < bmins[j, 0] or bmaxs[j, 0] < a_min[0]:
+                    continue
+                if a_max[1] < bmins[j, 1] or bmaxs[j, 1] < a_min[1]:
+                    continue
+                if a_max[2] < bmins[j, 2] or bmaxs[j, 2] < a_min[2]:
+                    continue
+                if a_set.intersection((int(sampled[j, 0]), int(sampled[j, 1]), int(sampled[j, 2]))):
+                    continue
+                if triangles_cross(tri_pts[i], tri_pts[j]):
+                    suspected_pairs += 1
+
+    diagnostics = [
+        f"Watertight: {'yes' if watertight else 'no'}",
+        f"Manifold: {'yes' if manifold else 'no'}",
+        f"Connected components: {component_count}",
+        f"Boundary edges: {boundary_edges}",
+        f"Non-manifold edges: {non_manifold_edges}",
+        f"Invalid faces: {invalid_faces}",
+        f"Degenerate faces: {degenerate_faces}",
+        f"Duplicate faces: {duplicate_faces}",
+        f"Orientation-consistent winding: {'yes' if oriented else 'no'}",
+        f"Self-intersection broad phase: {suspected_pairs} suspected pair(s) from {sampled_faces} sampled faces",
+    ]
+    warnings = []
+    if not watertight:
+        warnings.append("Mesh is not watertight.")
+    if not manifold:
+        warnings.append("Mesh is not manifold or contains invalid/degenerate faces.")
+    if component_count > 1:
+        warnings.append(f"Mesh has {component_count} connected components.")
+    if not oriented:
+        warnings.append(f"Mesh has {inconsistent_orientation_edges} inconsistent shared-edge orientation(s).")
+    if suspected_pairs > 0:
+        warnings.append("Possible self-intersections detected by sampled AABB broad phase.")
+    if valid_faces.shape[0] > sampled_faces:
+        warnings.append("Self-intersection check was sampled; increase the limit for deeper inspection.")
+
+    send(
+        {
+            "type": "cgal_validate_result",
+            "jobId": job_id,
+            "ok": True,
+            "vertexCount": vertex_count,
+            "faceCount": face_count,
+            "edgeCount": edge_count,
+            "componentCount": component_count,
+            "boundaryEdgeCount": boundary_edges,
+            "nonManifoldEdgeCount": non_manifold_edges,
+            "invalidFaceCount": invalid_faces,
+            "degenerateFaceCount": degenerate_faces,
+            "duplicateFaceCount": duplicate_faces,
+            "watertight": watertight,
+            "manifold": manifold,
+            "oriented": oriented,
+            "selfIntersection": {
+                "checked": sample_limit > 0,
+                "suspectedPairs": suspected_pairs,
+                "sampledFaces": sampled_faces,
+                "truncated": valid_faces.shape[0] > sampled_faces,
+            },
+            "diagnostics": diagnostics,
+            "warnings": warnings,
+        }
+    )
+
+
 def handle_geodesic_heat(msg: Dict[str, Any]) -> None:
     job_id = msg.get("jobId", "")
     mesh = msg.get("mesh") or {}
@@ -1381,6 +1591,7 @@ def handle_vtk_boolean(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]]
 def main() -> None:
     alias_map = {
         "mesh.generate": "mesh_job",
+        "mesh.validate": "validate_mesh",
         "mesh.transform": "vtk_job",
         "mesh.boolean": "vtk_boolean",
         "mesh.preview": "vtk_preview",
@@ -1396,6 +1607,7 @@ def main() -> None:
         "version",
         "health",
         "mesh.generate",
+        "mesh.validate",
         "mesh.transform",
         "mesh.boolean",
         "mesh.preview",
@@ -1433,6 +1645,8 @@ def main() -> None:
 
         if msg_type == "mesh_job":
             run_handler(msg, handle_job)
+        elif msg_type == "validate_mesh":
+            run_handler(msg, handle_validate_mesh, payloads)
         elif msg_type == "vtk_job":
             run_handler(msg, handle_vtk_job, payloads)
         elif msg_type == "vtk_boolean":

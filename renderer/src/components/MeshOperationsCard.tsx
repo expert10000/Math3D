@@ -23,6 +23,7 @@ export type MeshOperationResultSummary = {
   afterFaces: number | null;
   durationMs: number;
   outputMode: "new-object" | "replace" | "preview";
+  diagnostics?: string[];
   warnings: string[];
   errors: string[];
   timestamp: number;
@@ -47,6 +48,7 @@ export type MeshOperationSavedPresetSummary = {
 };
 
 export const MESH_OPERATION_LABELS: Record<MeshOperationUiId, string> = {
+  "cgal-validate": "Validate mesh",
   "clean-normals": "Clean normals",
   decimate: "Decimate",
   smooth: "Smooth",
@@ -75,7 +77,8 @@ export function summarizeMeshOperationResult(
     afterFaces: result.after?.faceCount ?? null,
     durationMs: result.durationMs,
     outputMode,
-    warnings: result.warnings.map((warning) => warning.message),
+    diagnostics: result.warnings.filter((warning) => warning.severity === "info").map((warning) => warning.message),
+    warnings: result.warnings.filter((warning) => warning.severity !== "info").map((warning) => warning.message),
     errors: result.errors.map((error) => error.message),
     timestamp: Date.now(),
   };
@@ -104,6 +107,7 @@ export type MeshOperationsCompactCardProps = {
   canSaveOperationPreset?: boolean;
   cleanComputeNormals: boolean;
   onChangeCleanComputeNormals: (value: boolean) => void;
+  onValidate: () => void | Promise<void>;
   onClean: () => void;
   decimateReduction: number;
   onChangeDecimateReduction: (value: number) => void;
@@ -190,6 +194,7 @@ const getMeshBooleanFormulaText = (operation: MeshBooleanOperation) => {
 
 export type MeshOperationPresetId =
   | "clean-normals"
+  | "cgal-validate"
   | "decimate-3dbenchy"
   | "smooth-bunny"
   | "boolean-demo-pair"
@@ -201,6 +206,12 @@ const MESH_OPERATION_PRESETS: Array<{
   description: string;
   operation: MeshOperationUiId;
 }> = [
+  {
+    id: "cgal-validate",
+    label: "Validate",
+    description: "Check watertightness, manifoldness, components, and sampled self-intersections.",
+    operation: "cgal-validate",
+  },
   {
     id: "clean-normals",
     label: "Clean",
@@ -256,6 +267,7 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
   canSaveOperationPreset = false,
   cleanComputeNormals,
   onChangeCleanComputeNormals,
+  onValidate,
   onClean,
   decimateReduction,
   onChangeDecimateReduction,
@@ -343,6 +355,10 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
       setExpandedOperation("clean-normals");
       return;
     }
+    if (preset === "cgal-validate") {
+      setExpandedOperation("cgal-validate");
+      return;
+    }
     if (preset === "decimate-3dbenchy") {
       onChangeDecimateUseTargetFaces(true);
       onChangeDecimateTargetFaces(Math.max(500, Math.min(20000, decimateTargetFaces)));
@@ -376,6 +392,10 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
     if (!expandedOperation) return;
     if (expandedOperation === "clean-normals") {
       onClean();
+      return;
+    }
+    if (expandedOperation === "cgal-validate") {
+      void onValidate();
       return;
     }
     if (expandedOperation === "decimate") {
@@ -413,6 +433,8 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
       ? implicitAvailable && workerReady && !operationBusy
       : expandedOperation === "implicit-mesh"
         ? implicitAvailable && cgalReady && !operationBusy
+        : expandedOperation === "cgal-validate"
+          ? meshReady && cgalReady && !operationBusy
         : expandedIsBoolean
           ? meshReady && workerReady && !!booleanOperandObjectId && !operationBusy
           : expandedOperation
@@ -554,6 +576,23 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
                       />
                       recompute normals
                     </label>
+                  )}
+                  {operation === "cgal-validate" && (
+                    <div
+                      style={{
+                        border: "1px solid #bae6fd",
+                        background: "#f0f9ff",
+                        color: "#0f3557",
+                        borderRadius: 6,
+                        padding: "5px 6px",
+                        display: "grid",
+                        gap: 3,
+                      }}
+                    >
+                      <strong>Non-destructive CGAL validation</strong>
+                      <span>Checks watertightness, manifold edges, connected components, winding consistency, and sampled self-intersections.</span>
+                      <span>Result is recorded in Last operation; the active mesh is not changed.</span>
+                    </div>
                   )}
                   {operation === "decimate" && (
                     <>
@@ -1007,6 +1046,7 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
             </div>
             <div>Output: {lastResult.outputMode}</div>
             {lastResult.sourceIds.length > 0 && <div>Sources: {lastResult.sourceIds.join(", ")}</div>}
+            {!!lastResult.diagnostics?.length && <div>Details: {lastResult.diagnostics.join("; ")}</div>}
             {lastResult.warnings.length > 0 && <div style={{ color: "#b45309" }}>Warnings: {lastResult.warnings.join("; ")}</div>}
             {lastResult.errors.length > 0 && <div style={{ color: "#b42318" }}>Errors: {lastResult.errors.join("; ")}</div>}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
