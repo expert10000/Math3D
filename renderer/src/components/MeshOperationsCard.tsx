@@ -5,12 +5,14 @@ import {
   type MeshOperationRequest,
   type MeshOperationResult,
   type MeshOperationStatus,
+  type MeshValidationSummary,
   type ResolvedMeshOperationEngine,
 } from "../services/meshOperations";
 
 export type MeshBooleanOperation = "union" | "difference" | "intersection" | "split" | "imprint";
 
 export type MeshOperationUiId = MeshOperationId | "boolean-split";
+export type MeshOperationVisibleRowId = MeshOperationUiId | "cgal-repair" | "cgal-remesh";
 export type MeshOperationResultSummary = {
   operation: MeshOperationUiId;
   label: string;
@@ -24,6 +26,7 @@ export type MeshOperationResultSummary = {
   durationMs: number;
   outputMode: "new-object" | "replace" | "preview";
   diagnostics?: string[];
+  validation?: MeshValidationSummary;
   warnings: string[];
   errors: string[];
   timestamp: number;
@@ -61,6 +64,12 @@ export const MESH_OPERATION_LABELS: Record<MeshOperationUiId, string> = {
   "boolean-split": "Boolean split",
 };
 
+const MESH_OPERATION_ROW_LABELS: Record<MeshOperationVisibleRowId, string> = {
+  ...MESH_OPERATION_LABELS,
+  "cgal-repair": "Repair mesh",
+  "cgal-remesh": "Remesh",
+};
+
 export function summarizeMeshOperationResult(
   result: MeshOperationResult,
   outputMode: MeshOperationResultSummary["outputMode"]
@@ -78,6 +87,7 @@ export function summarizeMeshOperationResult(
     durationMs: result.durationMs,
     outputMode,
     diagnostics: result.warnings.filter((warning) => warning.severity === "info").map((warning) => warning.message),
+    validation: result.validation,
     warnings: result.warnings.filter((warning) => warning.severity !== "info").map((warning) => warning.message),
     errors: result.errors.map((error) => error.message),
     timestamp: Date.now(),
@@ -95,6 +105,7 @@ export type MeshOperationsCompactCardProps = {
   busy: boolean;
   cgalBusy: boolean;
   lastResult: MeshOperationResultSummary | null;
+  lastValidation?: { meshLabel: string; status: MeshOperationStatus; validation: MeshValidationSummary; timestamp: number } | null;
   focusedOperation?: MeshOperationUiId | null;
   focusedOperationToken?: number;
   operationHistory?: MeshOperationHistoryEntry[];
@@ -167,7 +178,7 @@ export type MeshOperationsCompactCardProps = {
   onApplyOperationPreset?: (presetId: MeshOperationPresetId) => void | Promise<void>;
 };
 
-const BOOLEAN_OPERATION_BY_MESH_OPERATION: Partial<Record<MeshOperationUiId, MeshBooleanOperation>> = {
+const BOOLEAN_OPERATION_BY_MESH_OPERATION: Partial<Record<MeshOperationVisibleRowId, MeshBooleanOperation>> = {
   "boolean-union": "union",
   "boolean-difference": "difference",
   "boolean-intersection": "intersection",
@@ -179,6 +190,12 @@ const formatMeshOperationDuration = (value: number | null | undefined) =>
 
 const getMeshOperationRunLabel = (operation: MeshOperationUiId | null) =>
   operation ? `Run ${MESH_OPERATION_LABELS[operation] ?? operation}` : "Run operation";
+
+const getMeshOperationRowRunLabel = (operation: MeshOperationVisibleRowId | null) => {
+  if (!operation) return "Run operation";
+  if (operation === "cgal-repair" || operation === "cgal-remesh") return "Backend not connected";
+  return getMeshOperationRunLabel(operation);
+};
 
 const getSavedPresetOperationLabel = (preset: MeshOperationSavedPresetSummary) => {
   const operation = (preset.request?.operation ?? preset.operation ?? preset.lastResult?.operation ?? null) as MeshOperationUiId | null;
@@ -244,6 +261,115 @@ const MESH_OPERATION_PRESETS: Array<{
   },
 ];
 
+const MESH_OPERATION_ROWS: Array<{
+  operation: MeshOperationVisibleRowId;
+  engines: ResolvedMeshOperationEngine[];
+  defaultEngine: ResolvedMeshOperationEngine;
+  implemented: boolean;
+  disabledReason?: string;
+}> = [
+  ...MESH_OPERATION_CAPABILITIES.map((capability) => ({ ...capability, implemented: true })),
+  {
+    operation: "cgal-repair",
+    engines: ["cgal"],
+    defaultEngine: "cgal",
+    implemented: false,
+    disabledReason: "CGAL polygon repair backend is not connected yet.",
+  },
+  {
+    operation: "cgal-remesh",
+    engines: ["cgal"],
+    defaultEngine: "cgal",
+    implemented: false,
+    disabledReason: "CGAL remesh backend is not connected yet.",
+  },
+];
+
+const validationBadgeStyle = (state: "pass" | "warn" | "fail"): React.CSSProperties => ({
+  border: `1px solid ${state === "pass" ? "#86efac" : state === "warn" ? "#fcd34d" : "#fca5a5"}`,
+  background: state === "pass" ? "#f0fdf4" : state === "warn" ? "#fffbeb" : "#fef2f2",
+  color: state === "pass" ? "#166534" : state === "warn" ? "#92400e" : "#b42318",
+  borderRadius: 6,
+  padding: "3px 5px",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 8,
+  alignItems: "baseline",
+});
+
+const yesNo = (value: boolean) => (value ? "yes" : "no");
+
+const MeshValidationCard: React.FC<{
+  validation: MeshValidationSummary;
+  compact?: boolean;
+  title?: string;
+}> = ({ validation, compact = false, title = "Validation" }) => {
+  const row = (label: string, value: string | number, state: "pass" | "warn" | "fail") => (
+    <div key={label} style={validationBadgeStyle(state)}>
+      <span>{label}</span>
+      <strong>{typeof value === "number" ? value.toLocaleString() : value}</strong>
+    </div>
+  );
+  const selfState =
+    !validation.selfIntersection.checked || validation.selfIntersection.truncated
+      ? "warn"
+      : validation.selfIntersection.suspectedPairs > 0
+        ? "fail"
+        : "pass";
+  const rows = [
+    row("Watertight", yesNo(validation.watertight), validation.watertight ? "pass" : "fail"),
+    row("Manifold", yesNo(validation.manifold), validation.manifold ? "pass" : "fail"),
+    row("Components", validation.componentCount, validation.componentCount === 1 ? "pass" : "warn"),
+    row("Boundary edges", validation.boundaryEdgeCount, validation.boundaryEdgeCount === 0 ? "pass" : "fail"),
+    row("Non-manifold edges", validation.nonManifoldEdgeCount, validation.nonManifoldEdgeCount === 0 ? "pass" : "fail"),
+    row("Degenerate faces", validation.degenerateFaceCount, validation.degenerateFaceCount === 0 ? "pass" : "warn"),
+    row("Duplicate faces", validation.duplicateFaceCount, validation.duplicateFaceCount === 0 ? "pass" : "warn"),
+    row(
+      "Self intersections",
+      validation.selfIntersection.checked
+        ? `${validation.selfIntersection.suspectedPairs.toLocaleString()} pairs`
+        : "not checked",
+      selfState
+    ),
+  ];
+
+  return (
+    <div
+      data-testid="mesh-operation-validation-card"
+      style={{
+        border: "1px solid #bfdbfe",
+        borderRadius: 7,
+        background: "#f8fbff",
+        padding: compact ? "5px 6px" : "7px 8px",
+        display: "grid",
+        gap: 5,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+        <strong>{title}</strong>
+        <span style={{ color: validation.warnings.length ? "#b45309" : "#166534", fontWeight: 800 }}>
+          {validation.warnings.length ? "needs review" : "passed"}
+        </span>
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: compact ? "1fr" : "repeat(2, minmax(0, 1fr))",
+          gap: 4,
+          fontSize: 10,
+        }}
+      >
+        {rows}
+      </div>
+      <div style={{ color: "#64748b", fontSize: 10 }}>
+        {validation.vertexCount.toLocaleString()} vertices · {validation.faceCount.toLocaleString()} triangles ·{" "}
+        {validation.edgeCount.toLocaleString()} edges
+        {validation.selfIntersection.truncated ? " · sampled self-intersection check" : ""}
+      </div>
+    </div>
+  );
+};
+
 export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
   testId,
   meshReady,
@@ -255,6 +381,7 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
   busy,
   cgalBusy,
   lastResult,
+  lastValidation,
   focusedOperation,
   focusedOperationToken,
   operationHistory = [],
@@ -326,7 +453,7 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
   onOpenResultInGeometry,
   onApplyOperationPreset,
 }) => {
-  const [expandedOperation, setExpandedOperation] = useState<MeshOperationUiId | null>(null);
+  const [expandedOperation, setExpandedOperation] = useState<MeshOperationVisibleRowId | null>(null);
   const operationBusy = busy || cgalBusy || previewBusy;
   const resultStatusColor =
     lastResult?.status === "error"
@@ -336,7 +463,7 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
         : lastResult
           ? "#166534"
           : "#64748b";
-  const selectOperation = (operation: MeshOperationUiId) => {
+  const selectOperation = (operation: MeshOperationVisibleRowId) => {
     const booleanOperationForRow = BOOLEAN_OPERATION_BY_MESH_OPERATION[operation];
     if (booleanOperationForRow) onChangeBooleanOperation(booleanOperationForRow);
     setExpandedOperation((current) => (current === operation ? null : operation));
@@ -428,6 +555,21 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
   const booleanActiveLabel = activeMeshLabel?.trim() || "Active Mesh";
   const booleanOperandLabel = selectedBooleanOperand?.name?.trim() || "Operand B";
   const hasUsableResult = !!lastResult && lastResult.status !== "error" && (lastResult.afterFaces != null || lastResult.afterVertices != null);
+  const validationForActiveMesh =
+    lastValidation && activeMeshLabel && lastValidation.meshLabel === activeMeshLabel
+      ? lastValidation.validation
+      : lastResult?.operation === "cgal-validate"
+        ? lastResult.validation ?? null
+        : null;
+  const activeMeshHasValidation = !!validationForActiveMesh;
+  const activeMeshValidationPass =
+    !!validationForActiveMesh &&
+    validationForActiveMesh.watertight &&
+    validationForActiveMesh.manifold &&
+    validationForActiveMesh.nonManifoldEdgeCount === 0 &&
+    validationForActiveMesh.invalidFaceCount === 0 &&
+    validationForActiveMesh.degenerateFaceCount === 0 &&
+    validationForActiveMesh.selfIntersection.suspectedPairs === 0;
   const expandedCanRun =
     expandedOperation === "implicit-preview"
       ? implicitAvailable && workerReady && !operationBusy
@@ -437,7 +579,7 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
           ? meshReady && cgalReady && !operationBusy
         : expandedIsBoolean
           ? meshReady && workerReady && !!booleanOperandObjectId && !operationBusy
-          : expandedOperation
+          : expandedOperation && expandedOperation !== "cgal-repair" && expandedOperation !== "cgal-remesh"
             ? meshReady && workerReady && !operationBusy
             : false;
   const previewResolution = Math.max(8, Math.min(220, Math.round(implicitResolution)));
@@ -487,11 +629,11 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
         </div>
       </div>
       <div style={{ display: "grid", gap: 3, fontSize: 10 }}>
-        {MESH_OPERATION_CAPABILITIES.map((capability) => {
-          const operation = capability.operation as MeshOperationUiId;
+        {MESH_OPERATION_ROWS.map((capability) => {
+          const operation = capability.operation;
           const operationReady = capability.engines.some((engine) => (engine === "cgal" ? cgalReady : workerReady));
           const needsImplicit = operation === "implicit-preview" || operation === "implicit-mesh";
-          const operationUsable = operationReady && (!needsImplicit || implicitAvailable);
+          const operationUsable = capability.implemented && operationReady && (!needsImplicit || implicitAvailable);
           const expanded = expandedOperation === operation;
           return (
             <div key={`${testId}-${operation}`} style={{ display: "grid", gap: 4 }}>
@@ -500,7 +642,10 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
                 type="button"
                 onClick={() => selectOperation(operation)}
                 aria-expanded={expanded}
-                title={needsImplicit && !implicitAvailable ? "Open an implicit surface first" : undefined}
+                title={
+                  capability.disabledReason ??
+                  (needsImplicit && !implicitAvailable ? "Open an implicit surface first" : undefined)
+                }
                 style={{
                   border: `1px solid ${expanded ? "#16a34a" : "transparent"}`,
                   background: expanded ? "#bbf7d0" : "transparent",
@@ -516,7 +661,7 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
                   borderRadius: 5,
                 }}
               >
-                <span style={{ fontWeight: expanded ? 800 : 600 }}>{MESH_OPERATION_LABELS[operation] ?? operation}</span>
+                <span style={{ fontWeight: expanded ? 800 : 600 }}>{MESH_OPERATION_ROW_LABELS[operation] ?? operation}</span>
                 <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
                   {expanded && (
                     <span
@@ -733,6 +878,56 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
                         <div style={{ color: "#92400e", fontSize: 10, fontWeight: 700 }}>
                           Needs closed watertight meshes before the boolean engine runs.
                         </div>
+                        {!activeMeshHasValidation ? (
+                          <div
+                            data-testid={`${testId}-boolean-validation-warning`}
+                            style={{
+                              border: "1px solid #fcd34d",
+                              background: "#fffbeb",
+                              color: "#92400e",
+                              borderRadius: 6,
+                              padding: "4px 6px",
+                              fontWeight: 700,
+                            }}
+                          >
+                            Run Validate first to check whether A is closed, watertight, and manifold.
+                          </div>
+                        ) : activeMeshValidationPass ? (
+                          <div
+                            data-testid={`${testId}-boolean-validation-warning`}
+                            style={{
+                              border: "1px solid #86efac",
+                              background: "#f0fdf4",
+                              color: "#166534",
+                              borderRadius: 6,
+                              padding: "4px 6px",
+                              fontWeight: 700,
+                            }}
+                          >
+                            Active mesh validation passed.
+                          </div>
+                        ) : (
+                          <div
+                            data-testid={`${testId}-boolean-validation-warning`}
+                            style={{
+                              border: "1px solid #fca5a5",
+                              background: "#fef2f2",
+                              color: "#b42318",
+                              borderRadius: 6,
+                              padding: "4px 6px",
+                              display: "grid",
+                              gap: 3,
+                            }}
+                          >
+                            <strong>Active mesh needs repair before robust booleans.</strong>
+                            <span>
+                              Watertight: {yesNo(validationForActiveMesh!.watertight)} · Manifold:{" "}
+                              {yesNo(validationForActiveMesh!.manifold)} · Boundary edges:{" "}
+                              {validationForActiveMesh!.boundaryEdgeCount.toLocaleString()} · Non-manifold edges:{" "}
+                              {validationForActiveMesh!.nonManifoldEdgeCount.toLocaleString()}
+                            </span>
+                          </div>
+                        )}
                       </div>
                       <label style={{ display: "grid", gap: 3 }}>
                         Operand B
@@ -869,6 +1064,27 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
                       </div>
                       {booleanStatus && <div style={{ color: "#0a66c2" }}>{booleanStatus}</div>}
                     </>
+                  )}
+                  {(operation === "cgal-repair" || operation === "cgal-remesh") && (
+                    <div
+                      style={{
+                        border: "1px solid #fed7aa",
+                        background: "#fff7ed",
+                        color: "#9a3412",
+                        borderRadius: 6,
+                        padding: "5px 6px",
+                        display: "grid",
+                        gap: 4,
+                      }}
+                    >
+                      <strong>{operation === "cgal-repair" ? "CGAL Repair planned" : "CGAL Remesh planned"}</strong>
+                      {operation === "cgal-repair" ? (
+                        <span>Target operations: orient faces, remove degenerates, remove duplicate faces, and fill small holes.</span>
+                      ) : (
+                        <span>Target controls: edge length, iterations, preserve sharp edges, and output as new object or replace.</span>
+                      )}
+                      <span>{capability.disabledReason}</span>
+                    </div>
                   )}
                   {operation === "implicit-preview" && (
                     <>
@@ -1015,7 +1231,7 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
                     disabled={!expandedCanRun}
                     style={{ justifySelf: "start", fontWeight: 800 }}
                   >
-                    {operationBusy ? "Working..." : getMeshOperationRunLabel(expandedOperation)}
+                    {operationBusy ? "Working..." : getMeshOperationRowRunLabel(expandedOperation)}
                   </button>
                 </div>
               )}
@@ -1046,6 +1262,7 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
             </div>
             <div>Output: {lastResult.outputMode}</div>
             {lastResult.sourceIds.length > 0 && <div>Sources: {lastResult.sourceIds.join(", ")}</div>}
+            {lastResult.validation && <MeshValidationCard validation={lastResult.validation} />}
             {!!lastResult.diagnostics?.length && <div>Details: {lastResult.diagnostics.join("; ")}</div>}
             {lastResult.warnings.length > 0 && <div style={{ color: "#b45309" }}>Warnings: {lastResult.warnings.join("; ")}</div>}
             {lastResult.errors.length > 0 && <div style={{ color: "#b42318" }}>Errors: {lastResult.errors.join("; ")}</div>}

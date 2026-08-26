@@ -165,6 +165,18 @@ test.describe("Mesh Operations card", () => {
     await expect(card).toContainText("Open an implicit surface first");
     await expect(card.getByTestId("mesh-workspace-operation-registry-run-implicit-mesh")).toBeDisabled();
 
+    await card.getByTestId("mesh-workspace-operation-registry-row-cgal-repair").click();
+    await expect(card).toContainText("CGAL Repair planned");
+    await expect(card).toContainText("orient faces");
+    await expect(card.getByTestId("mesh-workspace-operation-registry-run-cgal-repair")).toHaveText("Backend not connected");
+    await expect(card.getByTestId("mesh-workspace-operation-registry-run-cgal-repair")).toBeDisabled();
+
+    await card.getByTestId("mesh-workspace-operation-registry-row-cgal-remesh").click();
+    await expect(card).toContainText("CGAL Remesh planned");
+    await expect(card).toContainText("edge length");
+    await expect(card.getByTestId("mesh-workspace-operation-registry-run-cgal-remesh")).toHaveText("Backend not connected");
+    await expect(card.getByTestId("mesh-workspace-operation-registry-run-cgal-remesh")).toBeDisabled();
+
     for (const operation of ["boolean-union", "boolean-difference", "boolean-intersection", "boolean-imprint"]) {
       await card.getByTestId(`mesh-workspace-operation-registry-row-${operation}`).click();
       await expect(card.getByTestId(`mesh-workspace-operation-registry-run-${operation}`)).toContainText(/^Run /);
@@ -255,6 +267,9 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-formula")).toContainText("Result = Active Mesh");
     await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-chip-a")).toContainText("A:");
     await expect(card).toContainText("Needs closed watertight meshes");
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-validation-warning")).toContainText(
+      "Run Validate first"
+    );
     const openPair = card.getByTestId("mesh-workspace-operation-registry-open-boolean-demo-pair-empty");
     if (await openPair.isVisible().catch(() => false)) {
       await openPair.click();
@@ -374,5 +389,12 @@ test.describe("Mesh Operations card", () => {
     await expectLastOperation(card, /Validate mesh/i);
     await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/Watertight:/i);
     await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/Manifold:/i);
+    await expect(card.getByTestId("mesh-operation-validation-card")).toContainText(/Boundary edges/i);
+    await expect(card.getByTestId("mesh-operation-validation-card")).toContainText(/Non-manifold edges/i);
+    await expect(card.getByTestId("mesh-operation-validation-card")).toContainText(/Self intersections/i);
+    await card.getByTestId("mesh-workspace-operation-registry-row-boolean-union").click();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-validation-warning")).toContainText(
+      /validation passed|needs repair/i
+    );
   });
 });

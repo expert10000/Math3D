@@ -636,6 +636,13 @@ import {
   type WorkbookBundleAssetMode,
 } from "./workbook/projectFormat";
 
+type MeshOperationLastValidation = {
+  meshLabel: string;
+  status: MeshOperationResultSummary["status"];
+  validation: NonNullable<MeshOperationResultSummary["validation"]>;
+  timestamp: number;
+};
+
 type ContextualActionBindingMap = Partial<Record<ContextualEntityMode, readonly ContextualActionBinding[]>>;
 
 /* ---------------- App modes ---------------- */
@@ -33526,6 +33533,7 @@ const App: React.FC = () => {
     setSurfaceMeshTopologySaveName("");
     setMeshOperationNodeParameterDrafts({});
     setMeshLastOperation(null);
+    setMeshOperationLastValidation(null);
     setMeshOperationHistory([]);
   }, []);
   const surfaceMeshTopologyAutoPickStampRef = useRef(0);
@@ -33543,6 +33551,7 @@ const App: React.FC = () => {
   const [meshOperationBooleanStatus, setMeshOperationBooleanStatus] = useState<string | null>(null);
   const [meshOperationOutputMode, setMeshOperationOutputMode] = useState<"replace" | "derived">("derived");
   const [meshLastOperation, setMeshLastOperation] = useState<MeshOperationResultSummary | null>(null);
+  const [meshOperationLastValidation, setMeshOperationLastValidation] = useState<MeshOperationLastValidation | null>(null);
   const [meshOperationHistory, setMeshOperationHistory] = useState<MeshOperationHistoryEntry[]>([]);
   const [meshOperationFocusedOperation, setMeshOperationFocusedOperation] = useState<MeshOperationUiId | null>(null);
   const [meshOperationFocusedOperationToken, setMeshOperationFocusedOperationToken] = useState(0);
@@ -53984,6 +53993,7 @@ case "mobius":
         setSurfaceMeshTopologyHistoryPreviewMode("after");
       }
       setMeshDataset(processed, `mesh-operation:${meta.operation}`);
+      setMeshOperationLastValidation(null);
       setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
       focusSurfaceMeshViewport(processed);
@@ -54101,12 +54111,13 @@ case "mobius":
       setMeshOperationError("Surface mesh not ready yet.");
       return;
     }
+    const activeMeshLabel = buildActiveMeshLabel();
     setMeshOperationBusy(true);
     setMeshOperationError(null);
     try {
       const request: MeshOperationRequest = {
         operation: "cgal-validate",
-        inputs: [mesh.label],
+        inputs: [activeMeshLabel],
         engine: "auto",
         parameters: { selfIntersectionSampleLimit: 1200 },
         outputMode: "preview",
@@ -54115,6 +54126,14 @@ case "mobius":
       const res = await runMeshOperation(request, { primaryMesh: mesh });
       const resultSummary = summarizeMeshOperationResult(res, "preview");
       publishMeshOperationResult(resultSummary, request);
+      if (resultSummary.validation) {
+        setMeshOperationLastValidation({
+          meshLabel: activeMeshLabel,
+          status: resultSummary.status,
+          validation: resultSummary.validation,
+          timestamp: resultSummary.timestamp,
+        });
+      }
       if (res.status === "error") {
         setMeshOperationError(res.errors[0]?.message ?? "CGAL validation failed.");
       } else {
@@ -65984,6 +66003,7 @@ case "mobius":
                   onToggleVolumeDistanceSigned={setVolumeDistanceSigned}
                   onToggleVolumeDistanceAutoBounds={setVolumeDistanceAutoBounds}
                   meshLastOperation={meshLastOperation}
+                  meshOperationLastValidation={meshOperationLastValidation}
                   meshOperationAvailable={meshOperationMeshAvailable}
                   pythonWorkerAvailable={cgalHealthState?.ok === true}
                   pythonWorkerStatusMessage={cgalHealthState?.error ?? cgalHealthState?.statusMessage ?? null}
@@ -69062,6 +69082,7 @@ case "mobius":
                           busy={meshOperationBusy}
                           cgalBusy={cgalBusy}
                           lastResult={meshLastOperation}
+                          lastValidation={meshOperationLastValidation}
                           focusedOperation={meshOperationFocusedOperation}
                           focusedOperationToken={meshOperationFocusedOperationToken}
                           operationHistory={meshOperationHistory}
@@ -69675,6 +69696,7 @@ case "mobius":
                     onBakeAsPrimaryObject={handleDatasetToGeometryScene}
                     onOpenAnalysis={() => setSurfacesLeftTab("analysis")}
                     meshLastOperation={meshLastOperation}
+                    meshOperationLastValidation={meshOperationLastValidation}
                     meshOperationFocusedOperation={meshOperationFocusedOperation}
                     meshOperationFocusedOperationToken={meshOperationFocusedOperationToken}
                     meshOperationHistory={meshOperationHistory}
@@ -99285,6 +99307,7 @@ type SurfacesObjectPanelProps = {
   onBakeAsPrimaryObject: () => void;
   onOpenAnalysis: () => void;
   meshLastOperation: MeshOperationResultSummary | null;
+  meshOperationLastValidation: MeshOperationLastValidation | null;
   meshOperationFocusedOperation: MeshOperationUiId | null;
   meshOperationFocusedOperationToken: number;
   meshOperationHistory: MeshOperationHistoryEntry[];
@@ -99439,6 +99462,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   onBakeAsPrimaryObject,
   onOpenAnalysis,
   meshLastOperation,
+  meshOperationLastValidation,
   meshOperationFocusedOperation,
   meshOperationFocusedOperationToken,
   meshOperationHistory,
@@ -99801,6 +99825,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
         <MeshOperationsCompactCard
           testId="mesh-object-operation-registry"
           meshReady={!!activeSurfaceMeshStats}
+          activeMeshLabel={selectedNode?.name ?? null}
           workerReady={meshOperationWorkerReady}
           workerStatusText={meshOperationWorkerStatusText}
           cgalReady={meshOperationCgalReady}
@@ -99808,6 +99833,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
           busy={meshOperationBusy}
           cgalBusy={meshOperationCgalBusy}
           lastResult={meshLastOperation}
+          lastValidation={meshOperationLastValidation}
           focusedOperation={meshOperationFocusedOperation}
           focusedOperationToken={meshOperationFocusedOperationToken}
           operationHistory={meshOperationHistory}
@@ -101280,6 +101306,7 @@ type SurfacesLeftPanelProps = {
   onToggleVolumeDistanceSigned: (v: boolean) => void;
   onToggleVolumeDistanceAutoBounds: (v: boolean) => void;
   meshLastOperation: MeshOperationResultSummary | null;
+  meshOperationLastValidation: MeshOperationLastValidation | null;
   meshOperationAvailable: boolean;
   pythonWorkerAvailable: boolean;
   pythonWorkerStatusMessage: string | null;
@@ -102003,6 +102030,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleVolumeDistanceSigned,
   onToggleVolumeDistanceAutoBounds,
   meshLastOperation,
+  meshOperationLastValidation,
   meshOperationFocusedOperation,
   meshOperationFocusedOperationToken,
   meshOperationHistory,
@@ -106610,6 +106638,7 @@ onChangeImplicitExpr,
             <MeshOperationsCompactCard
               testId="mesh-operation-registry"
               meshReady={meshReady}
+              activeMeshLabel={surfaceMeshLabel}
               workerReady={meshOperationAvailable && pythonWorkerAvailable}
               workerStatusText={pythonWorkerStatusMessage ?? "worker unavailable"}
               cgalReady={cgalReady}
@@ -106617,6 +106646,7 @@ onChangeImplicitExpr,
               busy={meshOperationBusy}
               cgalBusy={cgalBusy}
               lastResult={meshLastOperation}
+              lastValidation={meshOperationLastValidation}
               focusedOperation={meshOperationFocusedOperation}
               focusedOperationToken={meshOperationFocusedOperationToken}
               operationHistory={meshOperationHistory}

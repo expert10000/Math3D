@@ -1,4 +1,4 @@
-import type { CgalMeshRequest } from "./cgalMeshClient";
+import type { CgalMeshRequest, CgalValidateMeshResponse } from "./cgalMeshClient";
 import { runCgalMesh, runCgalValidateMesh } from "./cgalMeshClient";
 import type { SurfaceMeshData, SurfaceMeshSource } from "../mesh/surfaceMesh";
 import {
@@ -43,6 +43,8 @@ export type MeshMetrics = {
   memoryBytes: number | null;
 };
 
+export type MeshValidationSummary = Extract<CgalValidateMeshResponse, { ok: true }>;
+
 export type MeshOperationRequest = {
   operation: MeshOperationId;
   inputs: string[];
@@ -64,6 +66,7 @@ export type MeshOperationResult = {
   durationMs: number;
   warnings: MeshOperationDiagnostic[];
   errors: MeshOperationDiagnostic[];
+  validation?: MeshValidationSummary;
   provenance: {
     engine: ResolvedMeshOperationEngine;
     version?: string;
@@ -211,7 +214,8 @@ function resultDiagnostics(
   before: MeshMetrics,
   startedAt: number,
   warnings: MeshOperationDiagnostic[],
-  diagnostics: MeshOperationDiagnostic[] = []
+  diagnostics: MeshOperationDiagnostic[] = [],
+  validation?: MeshValidationSummary
 ): MeshOperationResult {
   return {
     status: warnings.length ? "warning" : "success",
@@ -223,6 +227,7 @@ function resultDiagnostics(
     durationMs: performance.now() - startedAt,
     warnings: [...diagnostics, ...warnings],
     errors: [],
+    validation,
     provenance: { engine, parameters: request.parameters },
   };
 }
@@ -389,7 +394,7 @@ export async function runMeshOperation(
       message,
       source: "cgal",
     }));
-    return resultDiagnostics(request, engine, before, startedAt, warnings, diagnostics);
+    return resultDiagnostics(request, engine, before, startedAt, warnings, diagnostics, res);
   }
 
   if (VTK_IMPLICIT_OPERATIONS.has(request.operation)) {
