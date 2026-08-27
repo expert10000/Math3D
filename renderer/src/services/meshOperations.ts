@@ -29,7 +29,8 @@ export type MeshOperationId =
   | "boolean-union"
   | "boolean-difference"
   | "boolean-intersection"
-  | "boolean-imprint";
+  | "boolean-imprint"
+  | "boolean-split";
 
 export type MeshOperationDiagnostic = {
   severity: "info" | "warning" | "error";

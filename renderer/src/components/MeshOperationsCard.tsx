@@ -301,6 +301,24 @@ const MESH_OPERATION_ROWS: Array<{
   },
 ];
 
+const MESH_OPERATION_ROW_BY_ID = new Map(MESH_OPERATION_ROWS.map((row) => [row.operation, row]));
+
+const MESH_OPERATION_GROUPS: Array<{
+  id: string;
+  label: string;
+  operations: MeshOperationVisibleRowId[];
+}> = [
+  { id: "repair", label: "Repair", operations: ["cgal-validate", "cgal-repair", "clean-normals"] },
+  { id: "simplify", label: "Simplify", operations: ["decimate", "cgal-remesh"] },
+  { id: "smooth", label: "Smooth", operations: ["smooth"] },
+  {
+    id: "boolean",
+    label: "Boolean",
+    operations: ["boolean-union", "boolean-difference", "boolean-intersection", "boolean-imprint"],
+  },
+  { id: "implicit", label: "Implicit meshing", operations: ["implicit-preview", "implicit-mesh"] },
+];
+
 const validationBadgeStyle = (state: "pass" | "warn" | "fail"): React.CSSProperties => ({
   border: `1px solid ${state === "pass" ? "#86efac" : state === "warn" ? "#fcd34d" : "#fca5a5"}`,
   background: state === "pass" ? "#f0fdf4" : state === "warn" ? "#fffbeb" : "#fef2f2",
@@ -711,15 +729,43 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
           ))}
         </div>
       </div>
-      <div style={{ display: "grid", gap: 3, fontSize: 10 }}>
-        {MESH_OPERATION_ROWS.map((capability) => {
-          const operation = capability.operation;
-          const operationReady = capability.engines.some((engine) => (engine === "cgal" ? cgalReady : workerReady));
-          const needsImplicit = operation === "implicit-preview" || operation === "implicit-mesh";
-          const operationUsable = capability.implemented && operationReady && (!needsImplicit || implicitAvailable);
-          const expanded = expandedOperation === operation;
-          return (
-            <div key={`${testId}-${operation}`} style={{ display: "grid", gap: 4 }}>
+      <div style={{ display: "grid", gap: 6, fontSize: 10 }}>
+        {MESH_OPERATION_GROUPS.map((group) => (
+          <div
+            key={`${testId}-group-${group.id}`}
+            data-testid={`${testId}-group-${group.id}`}
+            style={{
+              border: "1px solid rgba(134, 239, 172, 0.65)",
+              borderRadius: 7,
+              background: "rgba(248, 255, 251, 0.68)",
+              padding: "5px 5px 6px",
+              display: "grid",
+              gap: 3,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 6,
+                alignItems: "baseline",
+                padding: "0 2px 2px",
+                color: "#0f3557",
+                fontWeight: 900,
+              }}
+            >
+              <span>{group.label}</span>
+              <span style={{ color: "#64748b", fontSize: 9 }}>{group.operations.length}</span>
+            </div>
+            {group.operations.map((operation) => {
+              const capability = MESH_OPERATION_ROW_BY_ID.get(operation);
+              if (!capability) return null;
+              const operationReady = capability.engines.some((engine) => (engine === "cgal" ? cgalReady : workerReady));
+              const needsImplicit = operation === "implicit-preview" || operation === "implicit-mesh";
+              const operationUsable = capability.implemented && operationReady && (!needsImplicit || implicitAvailable);
+              const expanded = expandedOperation === operation;
+              return (
+                <div key={`${testId}-${operation}`} style={{ display: "grid", gap: 4 }}>
               <button
                 data-testid={`${testId}-row-${operation}`}
                 type="button"
@@ -1421,9 +1467,11 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
                   </button>
                 </div>
               )}
-            </div>
-          );
-        })}
+                </div>
+              );
+            })}
+          </div>
+        ))}
       </div>
       <div
         data-testid={`${testId}-last-result`}

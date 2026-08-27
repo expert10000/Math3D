@@ -134,6 +134,9 @@ test.describe("Mesh Operations card", () => {
     await loadBenchmarkModel(page, "3dbenchy");
 
     const card = await openWorkspaceOperationsCard(page);
+    for (const group of ["repair", "simplify", "smooth", "boolean", "implicit"]) {
+      await expect(card.getByTestId(`mesh-workspace-operation-registry-group-${group}`)).toBeVisible();
+    }
 
     for (const preset of ["cgal-validate", "cgal-repair-memory", "clean-normals", "decimate-3dbenchy", "smooth-bunny"]) {
       await card.getByTestId(`mesh-workspace-operation-registry-preset-${preset}`).click();

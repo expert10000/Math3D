@@ -54715,6 +54715,7 @@ case "mobius":
         computeNormals: true,
         curveRadius: meshOperationBooleanCurveRadius > 0 ? meshOperationBooleanCurveRadius : undefined,
       };
+      const outputMode = meshOperationOutputMode === "replace" ? "replace" : "new-object";
       const meshB = {
         label: resolvedB.object.name,
         positions: resolvedB.mesh.positions,
@@ -54727,53 +54728,47 @@ case "mobius":
       };
 
       if (meshOperationBooleanOperation === "split") {
-        const aMinusB = await runMeshOperation(
-          {
-            operation: "boolean-difference",
-            inputs: [meshA.label, meshB.label],
-            engine: "auto",
-            parameters: options,
-            outputMode: meshOperationOutputMode === "replace" ? "replace" : "new-object",
-            quality: "robust",
-          },
-          { primaryMesh: meshA, secondaryMesh: meshB }
-        );
-        setMeshLastOperation(summarizeMeshOperationResult(aMinusB, meshOperationOutputMode === "replace" ? "replace" : "new-object"));
+        const aMinusBRequest: MeshOperationRequest = {
+          operation: "boolean-difference",
+          inputs: [meshA.label, meshB.label],
+          engine: "auto",
+          parameters: options,
+          outputMode,
+          quality: "robust",
+        };
+        const aMinusB = await runMeshOperation(aMinusBRequest, { primaryMesh: meshA, secondaryMesh: meshB });
         if (aMinusB.status === "error" || !aMinusB.resultMesh?.indices) {
+          publishMeshOperationResult(summarizeMeshOperationResult(aMinusB, outputMode), aMinusBRequest);
           setMeshOperationError(aMinusB.errors[0]?.message ?? "Boolean split failed.");
           setMeshOperationBooleanStatus("Split failed.");
           return;
         }
-        const aIntersectB = await runMeshOperation(
-          {
-            operation: "boolean-intersection",
-            inputs: [meshA.label, meshB.label],
-            engine: "auto",
-            parameters: options,
-            outputMode: meshOperationOutputMode === "replace" ? "replace" : "new-object",
-            quality: "robust",
-          },
-          { primaryMesh: meshA, secondaryMesh: meshB }
-        );
-        setMeshLastOperation(summarizeMeshOperationResult(aIntersectB, meshOperationOutputMode === "replace" ? "replace" : "new-object"));
+        const aIntersectBRequest: MeshOperationRequest = {
+          operation: "boolean-intersection",
+          inputs: [meshA.label, meshB.label],
+          engine: "auto",
+          parameters: options,
+          outputMode,
+          quality: "robust",
+        };
+        const aIntersectB = await runMeshOperation(aIntersectBRequest, { primaryMesh: meshA, secondaryMesh: meshB });
         if (aIntersectB.status === "error" || !aIntersectB.resultMesh?.indices) {
+          publishMeshOperationResult(summarizeMeshOperationResult(aIntersectB, outputMode), aIntersectBRequest);
           setMeshOperationError(aIntersectB.errors[0]?.message ?? "Boolean split failed.");
           setMeshOperationBooleanStatus("Split failed.");
           return;
         }
-        const bMinusA = await runMeshOperation(
-          {
-            operation: "boolean-difference",
-            inputs: [meshB.label, meshA.label],
-            engine: "auto",
-            parameters: options,
-            outputMode: meshOperationOutputMode === "replace" ? "replace" : "new-object",
-            quality: "robust",
-          },
-          { primaryMesh: meshB, secondaryMesh: meshA }
-        );
-        setMeshLastOperation(summarizeMeshOperationResult(bMinusA, meshOperationOutputMode === "replace" ? "replace" : "new-object"));
+        const bMinusARequest: MeshOperationRequest = {
+          operation: "boolean-difference",
+          inputs: [meshB.label, meshA.label],
+          engine: "auto",
+          parameters: options,
+          outputMode,
+          quality: "robust",
+        };
+        const bMinusA = await runMeshOperation(bMinusARequest, { primaryMesh: meshB, secondaryMesh: meshA });
         if (bMinusA.status === "error" || !bMinusA.resultMesh?.indices) {
+          publishMeshOperationResult(summarizeMeshOperationResult(bMinusA, outputMode), bMinusARequest);
           setMeshOperationError(bMinusA.errors[0]?.message ?? "Boolean split failed.");
           setMeshOperationBooleanStatus("Split failed.");
           return;
@@ -54801,7 +54796,7 @@ case "mobius":
           afterVertices: Math.max(0, Math.round(splitMesh.positions.length / 3)),
           afterFaces: Math.max(0, Math.round((splitMesh.indices?.length ?? 0) / 3)),
           durationMs: aMinusB.durationMs + aIntersectB.durationMs + bMinusA.durationMs,
-          outputMode: meshOperationOutputMode === "replace" ? "replace" : "new-object",
+          outputMode,
           warnings: [
             "Split merged A-B, A intersect B, and B-A into one editable mesh.",
             ...aMinusB.warnings.map((warning) => warning.message),
@@ -54810,6 +54805,14 @@ case "mobius":
           ],
           errors: [],
           timestamp: Date.now(),
+        };
+        const splitRequest: MeshOperationRequest = {
+          operation: "boolean-split",
+          inputs: [meshA.label, meshB.label],
+          engine: "auto",
+          parameters: options,
+          outputMode,
+          quality: "robust",
         };
         applyMeshOperationResultToSurfaceMesh(
           "Boolean split",
@@ -54832,9 +54835,9 @@ case "mobius":
             engine: "vtk",
             durationMs: aMinusB.durationMs + aIntersectB.durationMs + bMinusA.durationMs,
             resultSummary: splitResultSummary,
+            request: splitRequest,
           }
         );
-        setMeshLastOperation(splitResultSummary);
         setMeshOperationBooleanStatus("Split completed.");
         return;
       }
