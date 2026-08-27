@@ -71,6 +71,18 @@ export type CgalRepairMeshRequest = {
   };
 };
 
+export type CgalRemeshMeshRequest = {
+  jobId: string;
+  positions: ArrayBuffer | ArrayBufferView;
+  indices: ArrayBuffer | ArrayBufferView;
+  options?: {
+    targetEdgeLength?: number;
+    iterations?: number;
+    preserveSharpEdges?: boolean;
+    smoothIterations?: number;
+  };
+};
+
 export type GeodesicHeatRequest = {
   jobId: string;
   mesh: { V: number[][]; F: number[][] };
@@ -392,6 +404,8 @@ contextBridge.exposeInMainWorld("cgalMesh", {
     ipcRenderer.invoke("mesh:cgal:validate", req),
   repairMesh: (req: CgalRepairMeshRequest): Promise<any> =>
     ipcRenderer.invoke("mesh:cgal:repair", req),
+  remeshMesh: (req: CgalRemeshMeshRequest): Promise<any> =>
+    ipcRenderer.invoke("mesh:cgal:remesh", req),
   geodesicHeat: (req: GeodesicHeatRequest): Promise<any> =>
     ipcRenderer.invoke("mesh:geodesic:heat", req),
   stop: (): Promise<{ ok: boolean; error?: string }> =>

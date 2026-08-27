@@ -8,6 +8,8 @@ import type {
   CgalMeshResponse,
   CgalRepairMeshRequest,
   CgalRepairMeshResponse,
+  CgalRemeshMeshRequest,
+  CgalRemeshMeshResponse,
   CgalValidateMeshRequest,
   CgalValidateMeshResponse,
   GeodesicHeatRequest,
@@ -638,6 +640,71 @@ class PythonWorker {
         filledHoles: Number(repair.filledHoles) || 0,
         diagnostics: Array.isArray(repair.diagnostics) ? repair.diagnostics.map(String) : [],
         warnings: Array.isArray(repair.warnings) ? repair.warnings.map(String) : [],
+      },
+    };
+  }
+
+  async remeshCgalMesh(req: CgalRemeshMeshRequest): Promise<CgalRemeshMeshResponse> {
+    const positionsBuf = toBuffer(req.positions);
+    const indicesBuf = toBuffer(req.indices);
+    if (!positionsBuf.length || !indicesBuf.length) {
+      return { ok: false, error: "CGAL remesh request missing buffers" };
+    }
+
+    const msg = {
+      type: "mesh.remesh",
+      jobId: req.jobId,
+      options: req.options ?? {},
+      binary: [
+        { name: "positions", bytes: positionsBuf.length },
+        { name: "indices", bytes: indicesBuf.length },
+      ],
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000, [positionsBuf, indicesBuf]);
+    const t1 = Date.now();
+    mainDebugLog("[CGAL worker] remesh response received", {
+      jobId: req.jobId,
+      type: res?.type,
+      ms: t1 - t0,
+      vertexCount: res?.vertexCount,
+      triCount: res?.triCount,
+      remesh: res?.remesh,
+    });
+
+    if (!res || res.type !== "cgal_remesh_result") {
+      return { ok: false, error: workerErrorText(res, "Unknown CGAL remesh response") };
+    }
+
+    const payloads = res.binaryPayloads as Record<string, Buffer> | undefined;
+    const pos = payloads?.positions;
+    const idx = payloads?.indices;
+    if (!pos || !idx) {
+      return { ok: false, error: "CGAL remesh worker returned empty buffers" };
+    }
+    const normals = payloads?.normals;
+    const remesh = res.remesh && typeof res.remesh === "object" ? res.remesh : {};
+
+    return {
+      ok: true,
+      positions: bufferToArrayBuffer(pos),
+      indices: bufferToArrayBuffer(idx),
+      normals: normals ? bufferToArrayBuffer(normals) : undefined,
+      vertexCount: Number(res.vertexCount) || Math.floor(pos.byteLength / 12),
+      triCount: Number(res.triCount) || Math.floor(idx.byteLength / 12),
+      remesh: {
+        inputVertices: Number(remesh.inputVertices) || 0,
+        inputFaces: Number(remesh.inputFaces) || 0,
+        outputVertices: Number(remesh.outputVertices) || 0,
+        outputFaces: Number(remesh.outputFaces) || 0,
+        targetEdgeLength: Number(remesh.targetEdgeLength) || 0,
+        iterations: Number(remesh.iterations) || 0,
+        splitEdges: Number(remesh.splitEdges) || 0,
+        smoothedVertices: Number(remesh.smoothedVertices) || 0,
+        preservedVertices: Number(remesh.preservedVertices) || 0,
+        diagnostics: Array.isArray(remesh.diagnostics) ? remesh.diagnostics.map(String) : [],
+        warnings: Array.isArray(remesh.warnings) ? remesh.warnings.map(String) : [],
       },
     };
   }

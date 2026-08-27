@@ -14,6 +14,7 @@ type MeshOperationE2EHook = {
       | "cgal-validate"
       | "cgal-repair"
       | "cgal-repair-validate"
+      | "cgal-remesh"
       | "decimate"
       | "smooth"
       | "implicit-preview"
@@ -27,6 +28,9 @@ type MeshOperationE2EHook = {
       resolution?: number;
       targetFaces?: number;
       targetEdge?: number;
+      targetEdgeLength?: number;
+      iterations?: number;
+      preserveSharpEdges?: boolean;
     }
   ) => Promise<{ ok: boolean; error?: string }>;
 };
@@ -184,10 +188,12 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-workspace-operation-registry-run-cgal-repair-validate")).toHaveText("Run Repair + Validate");
 
     await card.getByTestId("mesh-workspace-operation-registry-row-cgal-remesh").click();
-    await expect(card).toContainText("CGAL Remesh planned");
-    await expect(card).toContainText("edge length");
-    await expect(card.getByTestId("mesh-workspace-operation-registry-run-cgal-remesh")).toHaveText("Backend not connected");
-    await expect(card.getByTestId("mesh-workspace-operation-registry-run-cgal-remesh")).toBeDisabled();
+    await expect(card).toContainText("Worker remesh");
+    await expect(card).toContainText("target length");
+    await card.getByTestId("mesh-workspace-operation-registry-remesh-target-edge").fill("0.35");
+    await card.getByTestId("mesh-workspace-operation-registry-remesh-iterations").fill("1");
+    await expect(card.getByTestId("mesh-workspace-operation-registry-remesh-preserve-sharp")).toBeChecked();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-run-cgal-remesh")).toHaveText("Run Remesh");
 
     for (const operation of ["boolean-union", "boolean-difference", "boolean-intersection", "boolean-imprint"]) {
       await card.getByTestId(`mesh-workspace-operation-registry-row-${operation}`).click();
@@ -455,9 +461,36 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-operation-repair-card")).toContainText(/Small holes filled/i);
     const comparison = card.getByTestId("mesh-operation-repair-validation-card");
     await expect(comparison).toBeVisible();
-    await expect(comparison).toContainText(/Before/i);
-    await expect(comparison).toContainText(/After/i);
+    await expect(comparison).toContainText(/Boundary edges/i);
+    await expect(comparison).toContainText(/Non-manifold edges/i);
     await expect(comparison).toContainText(/Improved|No change|Still needs review/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-open-result")).toBeEnabled();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-send-to-geometry")).toBeEnabled();
+  });
+
+  test("runs CGAL remesh through the shared operation layer when available", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+    await loadBenchmarkModel(page, "cube-obj");
+
+    const card = await openWorkspaceOperationsCard(page);
+    await card.getByTestId("mesh-workspace-operation-registry-row-cgal-remesh").click();
+    await card.getByTestId("mesh-workspace-operation-registry-remesh-target-edge").fill("0.35");
+    await card.getByTestId("mesh-workspace-operation-registry-remesh-iterations").fill("1");
+    const remesh = await runMeshOperationHook(page, "cgal-remesh", {
+      targetEdgeLength: 0.35,
+      iterations: 1,
+      preserveSharpEdges: true,
+    });
+    if (!remesh.ok && /unavailable|not available|Python worker|CGAL/i.test(remesh.error ?? "")) {
+      test.skip(true, `CGAL worker unavailable: ${remesh.error}`);
+    }
+    expect(remesh.ok, remesh.error).toBeTruthy();
+    await expectLastOperation(card, /Remesh/i);
+    await expect(card.getByTestId("mesh-operation-remesh-card")).toContainText(/Target edge/i);
+    await expect(card.getByTestId("mesh-operation-remesh-card")).toContainText(/Split edges/i);
     await expect(card.getByTestId("mesh-workspace-operation-registry-open-result")).toBeEnabled();
     await expect(card.getByTestId("mesh-workspace-operation-registry-send-to-geometry")).toBeEnabled();
   });

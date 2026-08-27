@@ -1,5 +1,5 @@
-import type { CgalMeshRequest, CgalRepairMeshResponse, CgalValidateMeshResponse } from "./cgalMeshClient";
-import { runCgalMesh, runCgalRepairMesh, runCgalValidateMesh } from "./cgalMeshClient";
+import type { CgalMeshRequest, CgalRepairMeshResponse, CgalRemeshMeshResponse, CgalValidateMeshResponse } from "./cgalMeshClient";
+import { runCgalMesh, runCgalRepairMesh, runCgalRemeshMesh, runCgalValidateMesh } from "./cgalMeshClient";
 import type { SurfaceMeshData, SurfaceMeshSource } from "../mesh/surfaceMesh";
 import {
   vtkCleanNormals,
@@ -22,6 +22,7 @@ export type MeshOperationId =
   | "cgal-validate"
   | "cgal-repair"
   | "cgal-repair-validate"
+  | "cgal-remesh"
   | "clean-normals"
   | "decimate"
   | "smooth"
@@ -48,6 +49,7 @@ export type MeshMetrics = {
 
 export type MeshValidationSummary = Extract<CgalValidateMeshResponse, { ok: true }>;
 export type MeshRepairSummary = Extract<CgalRepairMeshResponse, { ok: true }>["repair"];
+export type MeshRemeshSummary = Extract<CgalRemeshMeshResponse, { ok: true }>["remesh"];
 export type MeshRepairValidationVerdict = "improved" | "no-change" | "needs-review";
 export type MeshRepairValidationSummary = {
   before: MeshValidationSummary;
@@ -80,6 +82,7 @@ export type MeshOperationResult = {
   errors: MeshOperationDiagnostic[];
   validation?: MeshValidationSummary;
   repair?: MeshRepairSummary;
+  remesh?: MeshRemeshSummary;
   repairValidation?: MeshRepairValidationSummary;
   provenance: {
     engine: ResolvedMeshOperationEngine;
@@ -129,13 +132,14 @@ const VTK_BOOLEAN_OPERATIONS = new Set<MeshOperationId>([
   "boolean-intersection",
   "boolean-imprint",
 ]);
-const CGAL_MESH_OPERATIONS = new Set<MeshOperationId>(["cgal-validate", "cgal-repair", "cgal-repair-validate"]);
+const CGAL_MESH_OPERATIONS = new Set<MeshOperationId>(["cgal-validate", "cgal-repair", "cgal-repair-validate", "cgal-remesh"]);
 const CGAL_OPERATIONS = new Set<MeshOperationId>(["implicit-mesh"]);
 
 export const MESH_OPERATION_CAPABILITIES: MeshOperationCapability[] = [
   { operation: "cgal-validate", engines: ["cgal"], defaultEngine: "cgal" },
   { operation: "cgal-repair", engines: ["cgal"], defaultEngine: "cgal" },
   { operation: "cgal-repair-validate", engines: ["cgal"], defaultEngine: "cgal" },
+  { operation: "cgal-remesh", engines: ["cgal"], defaultEngine: "cgal" },
   { operation: "clean-normals", engines: ["vtk"], defaultEngine: "vtk" },
   { operation: "decimate", engines: ["vtk"], defaultEngine: "vtk" },
   { operation: "smooth", engines: ["vtk"], defaultEngine: "vtk" },
@@ -244,7 +248,8 @@ function resultSuccess(
   resultMesh: SurfaceMeshData,
   warnings: MeshOperationDiagnostic[] = [],
   repair?: MeshRepairSummary,
-  repairValidation?: MeshRepairValidationSummary
+  repairValidation?: MeshRepairValidationSummary,
+  remesh?: MeshRemeshSummary
 ): MeshOperationResult {
   return {
     status: warnings.some((warning) => warning.severity === "warning") ? "warning" : "success",
@@ -259,6 +264,7 @@ function resultSuccess(
     errors: [],
     repair,
     repairValidation,
+    remesh,
     provenance: { engine, parameters: request.parameters },
   };
 }
@@ -451,6 +457,42 @@ export async function runMeshOperation(
         source: "cgal",
       }));
       return resultDiagnostics(request, engine, before, startedAt, warnings, diagnostics, res);
+    }
+
+    if (request.operation === "cgal-remesh") {
+      const targetEdgeLength = numericParam(request.parameters, "targetEdgeLength") ?? 0.1;
+      const iterations = numericParam(request.parameters, "iterations") ?? 1;
+      const preserveSharpEdges = booleanParam(request.parameters, "preserveSharpEdges") ?? true;
+      const smoothIterations = numericParam(request.parameters, "smoothIterations") ?? iterations;
+      const res = await runCgalRemeshMesh({
+        positions: mesh.positions,
+        indices: mesh.indices,
+        options: {
+          targetEdgeLength: Math.max(1e-6, targetEdgeLength),
+          iterations: Math.max(0, Math.min(6, Math.round(iterations))),
+          preserveSharpEdges,
+          smoothIterations: Math.max(0, Math.min(8, Math.round(smoothIterations))),
+        },
+      });
+      if (!res.ok) return operationError(request, engine, before, startedAt, res.error);
+      const diagnostics: MeshOperationDiagnostic[] = res.remesh.diagnostics.map((message) => ({
+        severity: "info",
+        code: "cgal-remesh",
+        message,
+        source: "cgal",
+      }));
+      const warnings: MeshOperationDiagnostic[] = res.remesh.warnings.map((message) => ({
+        severity: "warning",
+        code: "cgal-remesh-warning",
+        message,
+        source: "cgal",
+      }));
+      const resultMesh = meshFromBuffers(`${mesh.label} (CGAL remesh)`, mesh.source ?? { kind: "bakedFromImplicit" }, {
+        positions: float32FromBuffer(res.positions),
+        indices: uint32FromBuffer(res.indices),
+        normals: res.normals ? float32FromBuffer(res.normals) : null,
+      });
+      return resultSuccess(request, engine, before, startedAt, resultMesh, [...diagnostics, ...warnings], undefined, undefined, res.remesh);
     }
 
     const maxHoleEdges = numericParam(request.parameters, "maxHoleEdges");

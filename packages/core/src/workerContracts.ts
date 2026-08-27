@@ -89,6 +89,44 @@ export type CgalRepairMeshResponse =
     }
   | { ok: false; error: string };
 
+export type CgalRemeshMeshRequest = {
+  jobId: string;
+  positions: ArrayBuffer | ArrayBufferView;
+  indices: ArrayBuffer | ArrayBufferView;
+  options?: {
+    targetEdgeLength?: number;
+    iterations?: number;
+    preserveSharpEdges?: boolean;
+    smoothIterations?: number;
+  };
+};
+
+export type CgalRemeshSummary = {
+  inputVertices: number;
+  inputFaces: number;
+  outputVertices: number;
+  outputFaces: number;
+  targetEdgeLength: number;
+  iterations: number;
+  splitEdges: number;
+  smoothedVertices: number;
+  preservedVertices: number;
+  diagnostics: string[];
+  warnings: string[];
+};
+
+export type CgalRemeshMeshResponse =
+  | {
+      ok: true;
+      positions: ArrayBuffer | ArrayBufferView;
+      indices: ArrayBuffer | ArrayBufferView;
+      normals?: ArrayBuffer | ArrayBufferView;
+      vertexCount: number;
+      triCount: number;
+      remesh: CgalRemeshSummary;
+    }
+  | { ok: false; error: string };
+
 export type CgalHealthResponse = { ok: boolean; error?: string };
 export type CgalPingResponse = { ok: boolean; pong?: boolean; error?: string };
 export type CgalVersionResponse = { ok: boolean; version?: string; protocol?: string; error?: string };
@@ -266,6 +304,7 @@ export type WorkerRequest =
   | { kind: "cgal.mesh"; payload: Omit<CgalMeshRequest, "jobId"> }
   | { kind: "cgal.validate"; payload: Omit<CgalValidateMeshRequest, "jobId"> }
   | { kind: "cgal.repair"; payload: Omit<CgalRepairMeshRequest, "jobId"> }
+  | { kind: "cgal.remesh"; payload: Omit<CgalRemeshMeshRequest, "jobId"> }
   | { kind: "cgal.geodesic-heat"; payload: Omit<GeodesicHeatRequest, "jobId"> }
   | { kind: "vtk.preview-implicit"; payload: Omit<VtkPreviewRequest, "jobId"> }
   | { kind: "vtk.clean-normals"; payload: Omit<VtkMeshRequest, "jobId"> }
@@ -281,6 +320,7 @@ export type WorkerResponse =
   | CgalMeshResponse
   | CgalValidateMeshResponse
   | CgalRepairMeshResponse
+  | CgalRemeshMeshResponse
   | GeodesicHeatResponse
   | VtkMeshResponse
   | VtkVolumeSliceResponse

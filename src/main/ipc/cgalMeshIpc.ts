@@ -96,6 +96,44 @@ export type CgalRepairMeshResponse =
     }
   | { ok: false; error: string };
 
+export type CgalRemeshMeshRequest = {
+  jobId: string;
+  positions: ArrayBuffer | ArrayBufferView | Buffer;
+  indices: ArrayBuffer | ArrayBufferView | Buffer;
+  options?: {
+    targetEdgeLength?: number;
+    iterations?: number;
+    preserveSharpEdges?: boolean;
+    smoothIterations?: number;
+  };
+};
+
+export type CgalRemeshSummary = {
+  inputVertices: number;
+  inputFaces: number;
+  outputVertices: number;
+  outputFaces: number;
+  targetEdgeLength: number;
+  iterations: number;
+  splitEdges: number;
+  smoothedVertices: number;
+  preservedVertices: number;
+  diagnostics: string[];
+  warnings: string[];
+};
+
+export type CgalRemeshMeshResponse =
+  | {
+      ok: true;
+      positions: ArrayBuffer | ArrayBufferView;
+      indices: ArrayBuffer | ArrayBufferView;
+      normals?: ArrayBuffer | ArrayBufferView;
+      vertexCount: number;
+      triCount: number;
+      remesh: CgalRemeshSummary;
+    }
+  | { ok: false; error: string };
+
 export type GeodesicHeatRequest = {
   jobId: string;
   mesh: { V: number[][]; F: number[][] };
@@ -189,6 +227,22 @@ export function registerCgalMeshIpc() {
       return res;
     } catch (e: any) {
       const diag = recordPythonWorkerFailure(e, "mesh:cgal:repair", "WORKER_OPERATION_FAILED");
+      return { ok: false, error: diag.message };
+    }
+  });
+
+  ipcMain.handle("mesh:cgal:remesh", async (_evt, req: CgalRemeshMeshRequest): Promise<CgalRemeshMeshResponse> => {
+    try {
+      const worker = await getPythonWorker();
+      const res = await worker.remeshCgalMesh(req);
+      if (!res.ok) {
+        const diag = recordPythonWorkerFailure(res.error, "mesh:cgal:remesh", "WORKER_OPERATION_FAILED");
+        return { ok: false, error: diag.message };
+      }
+      recordPythonWorkerSuccess();
+      return res;
+    } catch (e: any) {
+      const diag = recordPythonWorkerFailure(e, "mesh:cgal:remesh", "WORKER_OPERATION_FAILED");
       return { ok: false, error: diag.message };
     }
   });

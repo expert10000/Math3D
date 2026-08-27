@@ -111,6 +111,44 @@ declare global {
       }
     | { ok: false; error: string };
 
+  type CgalRemeshMeshRequest = {
+    jobId: string;
+    positions: ArrayBuffer | ArrayBufferView;
+    indices: ArrayBuffer | ArrayBufferView;
+    options?: {
+      targetEdgeLength?: number;
+      iterations?: number;
+      preserveSharpEdges?: boolean;
+      smoothIterations?: number;
+    };
+  };
+
+  type CgalRemeshSummary = {
+    inputVertices: number;
+    inputFaces: number;
+    outputVertices: number;
+    outputFaces: number;
+    targetEdgeLength: number;
+    iterations: number;
+    splitEdges: number;
+    smoothedVertices: number;
+    preservedVertices: number;
+    diagnostics: string[];
+    warnings: string[];
+  };
+
+  type CgalRemeshMeshResponse =
+    | {
+        ok: true;
+        positions: ArrayBuffer | ArrayBufferView;
+        indices: ArrayBuffer | ArrayBufferView;
+        normals?: ArrayBuffer | ArrayBufferView;
+        vertexCount: number;
+        triCount: number;
+        remesh: CgalRemeshSummary;
+      }
+    | { ok: false; error: string };
+
   type GeodesicHeatRequest = {
     jobId: string;
     mesh: { V: number[][]; F: number[][] };
@@ -501,6 +539,7 @@ declare global {
       mesh: (req: CgalMeshRequest) => Promise<CgalMeshResponse>;
       validateMesh: (req: CgalValidateMeshRequest) => Promise<CgalValidateMeshResponse>;
       repairMesh: (req: CgalRepairMeshRequest) => Promise<CgalRepairMeshResponse>;
+      remeshMesh: (req: CgalRemeshMeshRequest) => Promise<CgalRemeshMeshResponse>;
       stop: () => Promise<{ ok: boolean; error?: string }>;
       geodesicHeat: (req: GeodesicHeatRequest) => Promise<GeodesicHeatResponse>;
     };
@@ -624,6 +663,7 @@ declare global {
           | "cgal-validate"
           | "cgal-repair"
           | "cgal-repair-validate"
+          | "cgal-remesh"
           | "decimate"
           | "smooth"
           | "implicit-preview"
@@ -637,6 +677,9 @@ declare global {
           resolution?: number;
           targetFaces?: number;
           targetEdge?: number;
+          targetEdgeLength?: number;
+          iterations?: number;
+          preserveSharpEdges?: boolean;
         }
       ) => Promise<{
         ok: boolean;

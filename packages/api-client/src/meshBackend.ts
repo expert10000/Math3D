@@ -5,6 +5,8 @@ import type {
   CgalMeshResponse,
   CgalRepairMeshRequest,
   CgalRepairMeshResponse,
+  CgalRemeshMeshRequest,
+  CgalRemeshMeshResponse,
   CgalValidateMeshRequest,
   CgalValidateMeshResponse,
   CgalPingResponse,
@@ -36,6 +38,7 @@ export interface MeshBackend {
   runCgalMesh(req: Omit<CgalMeshRequest, "jobId">): Promise<CgalMeshResponse>;
   runCgalValidateMesh(req: Omit<CgalValidateMeshRequest, "jobId">): Promise<CgalValidateMeshResponse>;
   runCgalRepairMesh(req: Omit<CgalRepairMeshRequest, "jobId">): Promise<CgalRepairMeshResponse>;
+  runCgalRemeshMesh(req: Omit<CgalRemeshMeshRequest, "jobId">): Promise<CgalRemeshMeshResponse>;
   runGeodesicHeat(req: Omit<GeodesicHeatRequest, "jobId">): Promise<GeodesicHeatResponse>;
   vtkPreviewImplicit(req: Omit<VtkPreviewRequest, "jobId">): Promise<VtkMeshResponse>;
   vtkCleanNormals(req: Omit<VtkMeshRequest, "jobId">): Promise<VtkMeshResponse>;
@@ -112,6 +115,7 @@ const capabilitySnapshot = (win: any): MeshBackendCapabilities => ({
   cgalHealth: typeof win?.cgalMesh?.health === "function",
   cgalMesh: typeof win?.cgalMesh?.mesh === "function",
   cgalRepairMesh: typeof win?.cgalMesh?.repairMesh === "function",
+  cgalRemeshMesh: typeof win?.cgalMesh?.remeshMesh === "function",
   cgalGeodesicHeat: typeof win?.cgalMesh?.geodesicHeat === "function",
   vtkPreviewImplicit: typeof win?.vtkMesh?.previewImplicit === "function",
   vtkMeshCleanNormals: typeof win?.vtkMesh?.cleanNormals === "function",
@@ -285,6 +289,11 @@ export function createElectronMeshBackend(): MeshBackend {
       if (!api?.repairMesh) return { ok: false, error: "CGAL repair IPC unavailable" };
       return api.repairMesh({ ...req, jobId: makeJobId() });
     },
+    async runCgalRemeshMesh(req) {
+      const api = (getWindowObject() as any)?.cgalMesh;
+      if (!api?.remeshMesh) return { ok: false, error: "CGAL remesh IPC unavailable" };
+      return api.remeshMesh({ ...req, jobId: makeJobId() });
+    },
     async runGeodesicHeat(req) {
       const api = (getWindowObject() as any)?.cgalMesh;
       if (!api?.geodesicHeat) return { ok: false, error: "Geodesic heat IPC unavailable" };
@@ -360,6 +369,7 @@ export function createHttpMeshBackend(baseUrl: string, options?: HttpMeshBackend
         cgalHealth: true,
         cgalMesh: true,
         cgalRepairMesh: false,
+        cgalRemeshMesh: false,
         cgalGeodesicHeat: true,
         vtkPreviewImplicit: true,
         vtkMeshCleanNormals: true,
@@ -412,6 +422,9 @@ export function createHttpMeshBackend(baseUrl: string, options?: HttpMeshBackend
     },
     async runCgalRepairMesh() {
       return { ok: false, error: "CGAL repair proxy unavailable" };
+    },
+    async runCgalRemeshMesh() {
+      return { ok: false, error: "CGAL remesh proxy unavailable" };
     },
     async runGeodesicHeat(req) {
       try {

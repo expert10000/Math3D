@@ -7,6 +7,7 @@ import {
   type MeshOperationStatus,
   type MeshRepairValidationSummary,
   type MeshRepairSummary,
+  type MeshRemeshSummary,
   type MeshValidationSummary,
   type ResolvedMeshOperationEngine,
 } from "../services/meshOperations";
@@ -14,7 +15,7 @@ import {
 export type MeshBooleanOperation = "union" | "difference" | "intersection" | "split" | "imprint";
 
 export type MeshOperationUiId = MeshOperationId | "boolean-split";
-export type MeshOperationVisibleRowId = MeshOperationUiId | "cgal-remesh";
+export type MeshOperationVisibleRowId = MeshOperationUiId;
 export type MeshOperationResultSummary = {
   operation: MeshOperationUiId;
   label: string;
@@ -30,6 +31,7 @@ export type MeshOperationResultSummary = {
   diagnostics?: string[];
   validation?: MeshValidationSummary;
   repair?: MeshRepairSummary;
+  remesh?: MeshRemeshSummary;
   repairValidation?: MeshRepairValidationSummary;
   warnings: string[];
   errors: string[];
@@ -58,6 +60,7 @@ export const MESH_OPERATION_LABELS: Record<MeshOperationUiId, string> = {
   "cgal-validate": "Validate mesh",
   "cgal-repair": "Repair mesh",
   "cgal-repair-validate": "Repair + Validate",
+  "cgal-remesh": "Remesh",
   "clean-normals": "Clean normals",
   decimate: "Decimate",
   smooth: "Smooth",
@@ -94,6 +97,7 @@ export function summarizeMeshOperationResult(
     diagnostics: result.warnings.filter((warning) => warning.severity === "info").map((warning) => warning.message),
     validation: result.validation,
     repair: result.repair,
+    remesh: result.remesh,
     repairValidation: result.repairValidation,
     warnings: result.warnings.filter((warning) => warning.severity !== "info").map((warning) => warning.message),
     errors: result.errors.map((error) => error.message),
@@ -140,6 +144,13 @@ export type MeshOperationsPanelProps = {
   onChangeRepairMaxHoleEdges: (value: number) => void;
   onRepair: () => void | Promise<void>;
   onRepairValidate: () => void | Promise<void>;
+  remeshTargetEdgeLength: number;
+  onChangeRemeshTargetEdgeLength: (value: number) => void;
+  remeshIterations: number;
+  onChangeRemeshIterations: (value: number) => void;
+  remeshPreserveSharpEdges: boolean;
+  onChangeRemeshPreserveSharpEdges: (value: boolean) => void;
+  onRemesh: () => void | Promise<void>;
   onClean: () => void;
   decimateReduction: number;
   onChangeDecimateReduction: (value: number) => void;
@@ -214,7 +225,6 @@ const getMeshOperationRunLabel = (operation: MeshOperationUiId | null) =>
 
 const getMeshOperationRowRunLabel = (operation: MeshOperationVisibleRowId | null) => {
   if (!operation) return "Run operation";
-  if (operation === "cgal-remesh") return "Backend not connected";
   return getMeshOperationRunLabel(operation);
 };
 
@@ -228,6 +238,27 @@ const getMeshBooleanFormulaText = (operation: MeshBooleanOperation) => {
   if (operation === "difference") return "Result = Active Mesh - Operand B";
   if (operation === "intersection") return "Result = Active Mesh ∩ Operand B";
   return "Result = imprint curves from Active Mesh and Operand B";
+};
+
+const getMeshValidationBlockers = (validation: MeshValidationSummary): string[] => {
+  const blockers: string[] = [];
+  if (!validation.watertight) blockers.push("not watertight");
+  if (!validation.manifold || validation.nonManifoldEdgeCount > 0) {
+    blockers.push(
+      validation.nonManifoldEdgeCount > 0
+        ? `${validation.nonManifoldEdgeCount.toLocaleString()} non-manifold edges`
+        : "non-manifold edges"
+    );
+  }
+  if (validation.boundaryEdgeCount > 0) blockers.push(`${validation.boundaryEdgeCount.toLocaleString()} boundary edges`);
+  if (validation.invalidFaceCount > 0) blockers.push(`${validation.invalidFaceCount.toLocaleString()} invalid faces`);
+  if (validation.degenerateFaceCount > 0) blockers.push(`${validation.degenerateFaceCount.toLocaleString()} degenerate faces`);
+  if (validation.duplicateFaceCount > 0) blockers.push(`${validation.duplicateFaceCount.toLocaleString()} duplicate faces`);
+  if (validation.selfIntersection.suspectedPairs > 0) {
+    blockers.push(`${validation.selfIntersection.suspectedPairs.toLocaleString()} self-intersections suspected`);
+  }
+  if (!validation.selfIntersection.checked) blockers.push("self-intersections not checked");
+  return blockers;
 };
 
 export type MeshOperationPresetId =
@@ -304,13 +335,6 @@ const MESH_OPERATION_ROWS: Array<{
   disabledReason?: string;
 }> = [
   ...MESH_OPERATION_CAPABILITIES.map((capability) => ({ ...capability, implemented: true })),
-  {
-    operation: "cgal-remesh",
-    engines: ["cgal"],
-    defaultEngine: "cgal",
-    implemented: false,
-    disabledReason: "CGAL remesh backend is not connected yet.",
-  },
 ];
 
 const MESH_OPERATION_ROW_BY_ID = new Map(MESH_OPERATION_ROWS.map((row) => [row.operation, row]));
@@ -454,6 +478,43 @@ const MeshRepairCard: React.FC<{ repair: MeshRepairSummary }> = ({ repair }) => 
   );
 };
 
+const MeshRemeshCard: React.FC<{ remesh: MeshRemeshSummary }> = ({ remesh }) => {
+  const row = (label: string, value: string | number, state: "pass" | "warn" | "fail" = "pass") => (
+    <div key={label} style={validationBadgeStyle(state)}>
+      <span>{label}</span>
+      <strong>{typeof value === "number" ? value.toLocaleString() : value}</strong>
+    </div>
+  );
+  return (
+    <div
+      data-testid="mesh-operation-remesh-card"
+      style={{
+        border: "1px solid #bae6fd",
+        borderRadius: 7,
+        background: "#f0f9ff",
+        padding: "6px",
+        display: "grid",
+        gap: 5,
+        marginTop: 3,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+        <strong>Remesh</strong>
+        <span style={{ color: "#64748b" }}>
+          {remesh.inputFaces.toLocaleString()} {"->"} {remesh.outputFaces.toLocaleString()} triangles
+        </span>
+      </div>
+      <div style={{ display: "grid", gap: 4 }}>
+        {row("Target edge", remesh.targetEdgeLength.toPrecision(4))}
+        {row("Iterations", remesh.iterations)}
+        {row("Split edges", remesh.splitEdges, remesh.splitEdges > 0 ? "pass" : "warn")}
+        {row("Smoothed vertices", remesh.smoothedVertices)}
+        {row("Preserved vertices", remesh.preservedVertices, remesh.preservedVertices > 0 ? "warn" : "pass")}
+      </div>
+    </div>
+  );
+};
+
 const MeshRepairValidationComparisonCard: React.FC<{ comparison: MeshRepairValidationSummary }> = ({ comparison }) => {
   const verdictText =
     comparison.verdict === "improved"
@@ -463,6 +524,19 @@ const MeshRepairValidationComparisonCard: React.FC<{ comparison: MeshRepairValid
         : "No change";
   const verdictState: "pass" | "warn" | "fail" =
     comparison.verdict === "improved" ? "pass" : comparison.verdict === "no-change" ? "warn" : "fail";
+  const deltaRow = (label: string, before: number, after: number, strictZero = true) => {
+    const improved = after < before;
+    const worse = after > before;
+    const state: "pass" | "warn" | "fail" = strictZero && after > 0 ? (improved ? "warn" : "fail") : improved ? "pass" : worse ? "fail" : "warn";
+    return (
+      <div key={label} style={validationBadgeStyle(state)}>
+        <span>{label}</span>
+        <strong>
+          {before.toLocaleString()} {"->"} {after.toLocaleString()}
+        </strong>
+      </div>
+    );
+  };
   return (
     <div
       data-testid="mesh-operation-repair-validation-card"
@@ -477,7 +551,7 @@ const MeshRepairValidationComparisonCard: React.FC<{ comparison: MeshRepairValid
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
-        <strong>Repair validation</strong>
+        <strong>Repair + Validate</strong>
         <span style={validationBadgeStyle(verdictState)}>
           <strong>{verdictText}</strong>
           <span>
@@ -485,10 +559,19 @@ const MeshRepairValidationComparisonCard: React.FC<{ comparison: MeshRepairValid
           </span>
         </span>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 5 }}>
-        <MeshValidationCard validation={comparison.before} compact title="Before" />
-        <MeshValidationCard validation={comparison.after} compact title="After" />
+      <div style={{ display: "grid", gap: 4 }}>
+        {deltaRow("Boundary edges", comparison.before.boundaryEdgeCount, comparison.after.boundaryEdgeCount)}
+        {deltaRow("Non-manifold edges", comparison.before.nonManifoldEdgeCount, comparison.after.nonManifoldEdgeCount)}
+        {deltaRow("Degenerate faces", comparison.before.degenerateFaceCount, comparison.after.degenerateFaceCount)}
+        {deltaRow("Duplicate faces", comparison.before.duplicateFaceCount, comparison.after.duplicateFaceCount)}
       </div>
+      <details>
+        <summary style={{ cursor: "pointer", fontWeight: 800 }}>Full before/after validation</summary>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 5, marginTop: 5 }}>
+          <MeshValidationCard validation={comparison.before} compact title="Before" />
+          <MeshValidationCard validation={comparison.after} compact title="After" />
+        </div>
+      </details>
     </div>
   );
 };
@@ -532,6 +615,13 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
   onChangeRepairMaxHoleEdges,
   onRepair,
   onRepairValidate,
+  remeshTargetEdgeLength,
+  onChangeRemeshTargetEdgeLength,
+  remeshIterations,
+  onChangeRemeshIterations,
+  remeshPreserveSharpEdges,
+  onChangeRemeshPreserveSharpEdges,
+  onRemesh,
   onClean,
   decimateReduction,
   onChangeDecimateReduction,
@@ -690,6 +780,10 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
       void onRepairValidate();
       return;
     }
+    if (expandedOperation === "cgal-remesh") {
+      void onRemesh();
+      return;
+    }
     if (expandedOperation === "decimate") {
       onDecimate();
       return;
@@ -735,6 +829,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
     validationForActiveMesh.invalidFaceCount === 0 &&
     validationForActiveMesh.degenerateFaceCount === 0 &&
     validationForActiveMesh.selfIntersection.suspectedPairs === 0;
+  const activeMeshValidationBlockers = validationForActiveMesh ? getMeshValidationBlockers(validationForActiveMesh) : [];
   const expandedCanRun =
     expandedOperation === "implicit-preview"
       ? implicitAvailable && workerReady && !operationBusy
@@ -742,11 +837,11 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
         ? implicitAvailable && cgalReady && !operationBusy
         : expandedOperation === "cgal-validate"
           ? meshReady && cgalReady && !operationBusy
-          : expandedOperation === "cgal-repair" || expandedOperation === "cgal-repair-validate"
+          : expandedOperation === "cgal-repair" || expandedOperation === "cgal-repair-validate" || expandedOperation === "cgal-remesh"
             ? meshReady && cgalReady && !operationBusy
         : expandedIsBoolean
           ? meshReady && workerReady && !!booleanOperandObjectId && !operationBusy
-          : expandedOperation && expandedOperation !== "cgal-remesh"
+          : expandedOperation
             ? meshReady && workerReady && !operationBusy
             : false;
   const previewResolution = Math.max(8, Math.min(220, Math.round(implicitResolution)));
@@ -1228,12 +1323,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                             }}
                           >
                             <strong>Active mesh needs repair before robust booleans.</strong>
-                            <span>
-                              Watertight: {yesNo(validationForActiveMesh!.watertight)} · Manifold:{" "}
-                              {yesNo(validationForActiveMesh!.manifold)} · Boundary edges:{" "}
-                              {validationForActiveMesh!.boundaryEdgeCount.toLocaleString()} · Non-manifold edges:{" "}
-                              {validationForActiveMesh!.nonManifoldEdgeCount.toLocaleString()}
-                            </span>
+                            <span>{activeMeshValidationBlockers.join(", ") || "validation failed"}</span>
                           </div>
                         )}
                       </div>
@@ -1376,21 +1466,86 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                     </>
                   )}
                   {operation === "cgal-remesh" && (
-                    <div
-                      style={{
-                        border: "1px solid #fed7aa",
-                        background: "#fff7ed",
-                        color: "#9a3412",
-                        borderRadius: 6,
-                        padding: "5px 6px",
-                        display: "grid",
-                        gap: 4,
-                      }}
-                    >
-                      <strong>CGAL Remesh planned</strong>
-                      <span>Target controls: edge length, iterations, preserve sharp edges, and output as new object or replace.</span>
-                      <span>{capability.disabledReason}</span>
-                    </div>
+                    <>
+                      <div
+                        style={{
+                          border: "1px solid #bae6fd",
+                          background: "#f0f9ff",
+                          color: "#0f3557",
+                          borderRadius: 6,
+                          padding: "5px 6px",
+                          display: "grid",
+                          gap: 3,
+                        }}
+                      >
+                        <strong>Worker remesh</strong>
+                        <span>Splits long edges toward the target length, smooths interior vertices, and keeps the result in operation history.</span>
+                        <span>Use New object first; replace only after checking the result.</span>
+                      </div>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        target edge
+                        <input
+                          data-testid={`${testId}-remesh-target-edge`}
+                          type="number"
+                          min={0.0001}
+                          max={1000}
+                          step={0.01}
+                          value={remeshTargetEdgeLength}
+                          onChange={(event) => {
+                            const value = Number(event.target.value);
+                            if (Number.isFinite(value)) onChangeRemeshTargetEdgeLength(Math.max(0.0001, value));
+                          }}
+                          style={{ width: 90 }}
+                        />
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        iterations
+                        <input
+                          data-testid={`${testId}-remesh-iterations`}
+                          type="number"
+                          min={0}
+                          max={6}
+                          step={1}
+                          value={remeshIterations}
+                          onChange={(event) => {
+                            const value = Number(event.target.value);
+                            if (Number.isFinite(value)) onChangeRemeshIterations(Math.max(0, Math.min(6, Math.round(value))));
+                          }}
+                          style={{ width: 70 }}
+                        />
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input
+                          data-testid={`${testId}-remesh-preserve-sharp`}
+                          type="checkbox"
+                          checked={remeshPreserveSharpEdges}
+                          onChange={(event) => onChangeRemeshPreserveSharpEdges(event.target.checked)}
+                        />
+                        preserve sharp/boundary edges
+                      </label>
+                      <div style={{ display: "grid", gap: 3 }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input
+                            data-testid={`${testId}-remesh-output-derived`}
+                            type="radio"
+                            name={`${testId}-remesh-output-mode`}
+                            checked={outputMode === "derived"}
+                            onChange={() => onChangeOutputMode("derived")}
+                          />
+                          New object
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input
+                            data-testid={`${testId}-remesh-output-replace`}
+                            type="radio"
+                            name={`${testId}-remesh-output-mode`}
+                            checked={outputMode === "replace"}
+                            onChange={() => onChangeOutputMode("replace")}
+                          />
+                          Replace
+                        </label>
+                      </div>
+                    </>
                   )}
                   {operation === "implicit-preview" && (
                     <>
@@ -1573,6 +1728,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
             {lastResult.validation && <MeshValidationCard validation={lastResult.validation} />}
             {lastResult.repair && <MeshRepairCard repair={lastResult.repair} />}
             {lastResult.repairValidation && <MeshRepairValidationComparisonCard comparison={lastResult.repairValidation} />}
+            {lastResult.remesh && <MeshRemeshCard remesh={lastResult.remesh} />}
             {!!lastResult.diagnostics?.length && <div>Details: {lastResult.diagnostics.join("; ")}</div>}
             {lastResult.warnings.length > 0 && <div style={{ color: "#b45309" }}>Warnings: {lastResult.warnings.join("; ")}</div>}
             {lastResult.errors.length > 0 && <div style={{ color: "#b42318" }}>Errors: {lastResult.errors.join("; ")}</div>}

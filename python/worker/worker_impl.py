@@ -910,6 +910,210 @@ def handle_repair_mesh(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]]
     )
 
 
+def handle_remesh_mesh(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]]) -> None:
+    import numpy as np
+
+    job_id = msg.get("jobId", "")
+    if not payloads:
+        raise RuntimeError("Missing mesh remesh payloads")
+    positions_raw = payloads.get("positions")
+    indices_raw = payloads.get("indices")
+    if not positions_raw or not indices_raw:
+        raise RuntimeError("Missing mesh remesh buffers")
+
+    options = msg.get("options", {}) if isinstance(msg.get("options", {}), dict) else {}
+    target_edge = float(options.get("targetEdgeLength", 0.0) or 0.0)
+    iterations = int(options.get("iterations", 1) or 1)
+    iterations = max(0, min(6, iterations))
+    preserve_sharp = bool(options.get("preserveSharpEdges", True))
+    smooth_iterations = int(options.get("smoothIterations", iterations) or iterations)
+    smooth_iterations = max(0, min(8, smooth_iterations))
+
+    send({"type": "progress", "jobId": job_id, "phase": "remesh", "pct": 5, "msg": "decoding mesh buffers"})
+    positions = np.frombuffer(positions_raw, dtype=np.float32)
+    indices = np.frombuffer(indices_raw, dtype=np.uint32)
+    vertex_count = int(positions.size // 3)
+    face_count = int(indices.size // 3)
+    if vertex_count <= 0 or face_count <= 0:
+        raise RuntimeError("Mesh remesh requires non-empty indexed triangle mesh")
+
+    pts = positions[: vertex_count * 3].reshape((-1, 3)).astype(np.float32, copy=True)
+    faces = indices[: face_count * 3].reshape((-1, 3)).astype(np.uint32, copy=True)
+
+    def edge_lengths(sample_faces):
+        values = []
+        limit = min(int(sample_faces.shape[0]), 50000)
+        if limit <= 0:
+            return values
+        step = max(1, int(sample_faces.shape[0] // limit))
+        for tri in sample_faces[::step]:
+            a, b, c = int(tri[0]), int(tri[1]), int(tri[2])
+            if a >= pts.shape[0] or b >= pts.shape[0] or c >= pts.shape[0]:
+                continue
+            values.append(float(np.linalg.norm(pts[a] - pts[b])))
+            values.append(float(np.linalg.norm(pts[b] - pts[c])))
+            values.append(float(np.linalg.norm(pts[c] - pts[a])))
+        return values
+
+    sampled_lengths = edge_lengths(faces)
+    if target_edge <= 0 or not np.isfinite(target_edge):
+        target_edge = float(np.median(np.asarray(sampled_lengths, dtype=np.float64))) if sampled_lengths else 1.0
+    target_edge = max(1e-9, target_edge)
+
+    def edge_counts_for(mesh_faces):
+        counts: Dict[Tuple[int, int], int] = {}
+        for tri in mesh_faces:
+            a, b, c = int(tri[0]), int(tri[1]), int(tri[2])
+            for u, v in ((a, b), (b, c), (c, a)):
+                key = (u, v) if u < v else (v, u)
+                counts[key] = counts.get(key, 0) + 1
+        return counts
+
+    send({"type": "progress", "jobId": job_id, "phase": "remesh", "pct": 20, "msg": "splitting long edges"})
+    split_edges = 0
+    max_faces = max(int(face_count), min(1_000_000, int(face_count * 8)))
+    warnings: List[str] = []
+    for iteration in range(iterations):
+        points_list = pts.tolist()
+        midpoint_for_edge: Dict[Tuple[int, int], int] = {}
+        new_faces: List[List[int]] = []
+        changed = False
+        threshold = target_edge * 1.35
+
+        for tri in faces:
+            a, b, c = int(tri[0]), int(tri[1]), int(tri[2])
+            if a >= len(points_list) or b >= len(points_list) or c >= len(points_list):
+                continue
+            pa = np.asarray(points_list[a], dtype=np.float32)
+            pb = np.asarray(points_list[b], dtype=np.float32)
+            pc = np.asarray(points_list[c], dtype=np.float32)
+            candidates = [
+                (float(np.linalg.norm(pa - pb)), a, b, c, 0),
+                (float(np.linalg.norm(pb - pc)), b, c, a, 1),
+                (float(np.linalg.norm(pc - pa)), c, a, b, 2),
+            ]
+            length, u, v, other, edge_index = max(candidates, key=lambda item: item[0])
+            if length <= threshold or len(new_faces) + 2 > max_faces:
+                new_faces.append([a, b, c])
+                continue
+
+            key = (u, v) if u < v else (v, u)
+            midpoint_index = midpoint_for_edge.get(key)
+            if midpoint_index is None:
+                midpoint = ((np.asarray(points_list[u], dtype=np.float32) + np.asarray(points_list[v], dtype=np.float32)) * 0.5).tolist()
+                midpoint_index = len(points_list)
+                points_list.append(midpoint)
+                midpoint_for_edge[key] = midpoint_index
+                split_edges += 1
+            changed = True
+            m = midpoint_index
+            if edge_index == 0:
+                new_faces.append([a, m, c])
+                new_faces.append([m, b, c])
+            elif edge_index == 1:
+                new_faces.append([a, b, m])
+                new_faces.append([a, m, c])
+            else:
+                new_faces.append([a, b, m])
+                new_faces.append([m, b, c])
+
+        pts = np.asarray(points_list, dtype=np.float32)
+        faces = np.asarray(new_faces, dtype=np.uint32)
+        pct = 20 + int(((iteration + 1) / max(1, iterations)) * 35)
+        send({"type": "progress", "jobId": job_id, "phase": "remesh", "pct": pct, "msg": f"split pass {iteration + 1}/{iterations}"})
+        if not changed:
+            break
+        if int(faces.shape[0]) >= max_faces:
+            warnings.append("Remesh stopped at the conservative face-growth limit.")
+            break
+
+    send({"type": "progress", "jobId": job_id, "phase": "remesh", "pct": 62, "msg": "smoothing remeshed surface"})
+    edge_counts = edge_counts_for(faces)
+    preserved = set()
+    if preserve_sharp:
+        for key, count in edge_counts.items():
+            if count == 1 or count > 2:
+                preserved.add(int(key[0]))
+                preserved.add(int(key[1]))
+
+    smoothed_vertices = 0
+    if smooth_iterations > 0:
+        adjacency: List[set] = [set() for _ in range(int(pts.shape[0]))]
+        for tri in faces:
+            a, b, c = int(tri[0]), int(tri[1]), int(tri[2])
+            adjacency[a].update((b, c))
+            adjacency[b].update((a, c))
+            adjacency[c].update((a, b))
+        movable = [idx for idx, neighbors in enumerate(adjacency) if neighbors and idx not in preserved]
+        smoothed_vertices = len(movable)
+        for _ in range(smooth_iterations):
+            new_pts = pts.copy()
+            for idx in movable:
+                neighbors = list(adjacency[idx])
+                avg = np.mean(pts[neighbors], axis=0)
+                new_pts[idx] = pts[idx] * 0.65 + avg * 0.35
+            pts = new_pts
+
+    send({"type": "progress", "jobId": job_id, "phase": "remesh", "pct": 86, "msg": "computing normals"})
+    normals = np.zeros_like(pts, dtype=np.float32)
+    for tri in faces:
+        a, b, c = int(tri[0]), int(tri[1]), int(tri[2])
+        normal = np.cross(pts[b] - pts[a], pts[c] - pts[a])
+        normals[a] += normal
+        normals[b] += normal
+        normals[c] += normal
+    lengths = np.linalg.norm(normals, axis=1)
+    nz = lengths > 1e-20
+    normals[nz] /= lengths[nz, None]
+
+    final_counts = edge_counts_for(faces)
+    boundary_edges = sum(1 for count in final_counts.values() if count == 1)
+    non_manifold_edges = sum(1 for count in final_counts.values() if count > 2)
+    diagnostics = [
+        f"Target edge length: {target_edge:.6g}",
+        f"Split edges: {split_edges}",
+        f"Smoothed vertices per pass: {smoothed_vertices}",
+        f"Preserved boundary/non-manifold vertices: {len(preserved)}",
+        f"Remaining boundary edges: {boundary_edges}",
+        f"Remaining non-manifold edges: {non_manifold_edges}",
+    ]
+    if split_edges == 0:
+        warnings.append("No long edges exceeded the target threshold; remesh mostly smoothed the existing mesh.")
+    if non_manifold_edges > 0:
+        warnings.append("Remeshed mesh still has non-manifold edges.")
+
+    pts_out = np.asarray(pts, dtype=np.float32)
+    faces_out = np.asarray(faces, dtype=np.uint32)
+    normals_out = np.asarray(normals, dtype=np.float32)
+    send_binary(
+        {
+            "type": "cgal_remesh_result",
+            "jobId": job_id,
+            "ok": True,
+            "vertexCount": int(pts_out.shape[0]),
+            "triCount": int(faces_out.shape[0]),
+            "remesh": {
+                "inputVertices": vertex_count,
+                "inputFaces": face_count,
+                "outputVertices": int(pts_out.shape[0]),
+                "outputFaces": int(faces_out.shape[0]),
+                "targetEdgeLength": target_edge,
+                "iterations": iterations,
+                "splitEdges": split_edges,
+                "smoothedVertices": smoothed_vertices,
+                "preservedVertices": len(preserved),
+                "diagnostics": diagnostics,
+                "warnings": warnings,
+            },
+        },
+        [
+            ("positions", pts_out.tobytes(order="C")),
+            ("indices", faces_out.tobytes(order="C")),
+            ("normals", normals_out.tobytes(order="C")),
+        ],
+    )
+
+
 def handle_geodesic_heat(msg: Dict[str, Any]) -> None:
     job_id = msg.get("jobId", "")
     mesh = msg.get("mesh") or {}
@@ -1847,6 +2051,7 @@ def main() -> None:
         "mesh.generate": "mesh_job",
         "mesh.validate": "validate_mesh",
         "mesh.repair": "repair_mesh",
+        "mesh.remesh": "remesh_mesh",
         "mesh.transform": "vtk_job",
         "mesh.boolean": "vtk_boolean",
         "mesh.preview": "vtk_preview",
@@ -1864,6 +2069,7 @@ def main() -> None:
         "mesh.generate",
         "mesh.validate",
         "mesh.repair",
+        "mesh.remesh",
         "mesh.transform",
         "mesh.boolean",
         "mesh.preview",
@@ -1905,6 +2111,8 @@ def main() -> None:
             run_handler(msg, handle_validate_mesh, payloads)
         elif msg_type == "repair_mesh":
             run_handler(msg, handle_repair_mesh, payloads)
+        elif msg_type == "remesh_mesh":
+            run_handler(msg, handle_remesh_mesh, payloads)
         elif msg_type == "vtk_job":
             run_handler(msg, handle_vtk_job, payloads)
         elif msg_type == "vtk_boolean":
