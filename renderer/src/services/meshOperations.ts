@@ -122,6 +122,14 @@ export type MeshOperationCapability = {
   operation: MeshOperationId;
   engines: ResolvedMeshOperationEngine[];
   defaultEngine: ResolvedMeshOperationEngine;
+  group: "repair" | "simplify" | "smooth" | "boolean" | "implicit";
+  strategies: Array<{
+    id: "auto" | "fast" | "standard" | "robust" | "preview" | "final";
+    label: string;
+    engine: MeshOperationEngine;
+    implemented: boolean;
+    description: string;
+  }>;
 };
 
 const VTK_MESH_OPERATIONS = new Set<MeshOperationId>(["clean-normals", "decimate", "smooth"]);
@@ -136,19 +144,109 @@ const CGAL_MESH_OPERATIONS = new Set<MeshOperationId>(["cgal-validate", "cgal-re
 const CGAL_OPERATIONS = new Set<MeshOperationId>(["implicit-mesh"]);
 
 export const MESH_OPERATION_CAPABILITIES: MeshOperationCapability[] = [
-  { operation: "cgal-validate", engines: ["cgal"], defaultEngine: "cgal" },
-  { operation: "cgal-repair", engines: ["cgal"], defaultEngine: "cgal" },
-  { operation: "cgal-repair-validate", engines: ["cgal"], defaultEngine: "cgal" },
-  { operation: "cgal-remesh", engines: ["cgal"], defaultEngine: "cgal" },
-  { operation: "clean-normals", engines: ["vtk"], defaultEngine: "vtk" },
-  { operation: "decimate", engines: ["vtk"], defaultEngine: "vtk" },
-  { operation: "smooth", engines: ["vtk"], defaultEngine: "vtk" },
-  { operation: "implicit-preview", engines: ["vtk"], defaultEngine: "vtk" },
-  { operation: "implicit-mesh", engines: ["cgal"], defaultEngine: "cgal" },
-  { operation: "boolean-union", engines: ["vtk"], defaultEngine: "vtk" },
-  { operation: "boolean-difference", engines: ["vtk"], defaultEngine: "vtk" },
-  { operation: "boolean-intersection", engines: ["vtk"], defaultEngine: "vtk" },
-  { operation: "boolean-imprint", engines: ["vtk"], defaultEngine: "vtk" },
+  {
+    operation: "cgal-validate",
+    engines: ["cgal"],
+    defaultEngine: "cgal",
+    group: "repair",
+    strategies: [{ id: "robust", label: "Robust", engine: "cgal", implemented: true, description: "Topology validation in the Python/CGAL worker." }],
+  },
+  {
+    operation: "cgal-repair",
+    engines: ["cgal"],
+    defaultEngine: "cgal",
+    group: "repair",
+    strategies: [{ id: "robust", label: "Robust", engine: "cgal", implemented: true, description: "Conservative repair in the Python/CGAL worker." }],
+  },
+  {
+    operation: "cgal-repair-validate",
+    engines: ["cgal"],
+    defaultEngine: "cgal",
+    group: "repair",
+    strategies: [{ id: "robust", label: "Robust", engine: "cgal", implemented: true, description: "Repair followed by validation in one result." }],
+  },
+  {
+    operation: "cgal-remesh",
+    engines: ["cgal"],
+    defaultEngine: "cgal",
+    group: "simplify",
+    strategies: [{ id: "robust", label: "Robust", engine: "cgal", implemented: true, description: "Target-edge remesh in the Python/CGAL worker." }],
+  },
+  {
+    operation: "clean-normals",
+    engines: ["vtk"],
+    defaultEngine: "vtk",
+    group: "repair",
+    strategies: [{ id: "standard", label: "Standard", engine: "vtk", implemented: true, description: "Fast normal cleanup in the VTK worker." }],
+  },
+  {
+    operation: "decimate",
+    engines: ["vtk"],
+    defaultEngine: "vtk",
+    group: "simplify",
+    strategies: [{ id: "standard", label: "Standard", engine: "vtk", implemented: true, description: "Fast simplification in the VTK worker." }],
+  },
+  {
+    operation: "smooth",
+    engines: ["vtk"],
+    defaultEngine: "vtk",
+    group: "smooth",
+    strategies: [{ id: "standard", label: "Standard", engine: "vtk", implemented: true, description: "Windowed sinc smoothing in the VTK worker." }],
+  },
+  {
+    operation: "implicit-preview",
+    engines: ["vtk"],
+    defaultEngine: "vtk",
+    group: "implicit",
+    strategies: [{ id: "preview", label: "Preview", engine: "vtk", implemented: true, description: "Fast preview mesh for interactive work." }],
+  },
+  {
+    operation: "implicit-mesh",
+    engines: ["cgal"],
+    defaultEngine: "cgal",
+    group: "implicit",
+    strategies: [{ id: "final", label: "Robust/final", engine: "cgal", implemented: true, description: "Final implicit mesh through the robust worker path." }],
+  },
+  {
+    operation: "boolean-union",
+    engines: ["vtk", "cgal"],
+    defaultEngine: "vtk",
+    group: "boolean",
+    strategies: [
+      { id: "fast", label: "Fast", engine: "vtk", implemented: true, description: "Current VTK boolean worker path." },
+      { id: "robust", label: "Robust", engine: "cgal", implemented: false, description: "Planned robust boolean path after CGAL boolean backend lands." },
+    ],
+  },
+  {
+    operation: "boolean-difference",
+    engines: ["vtk", "cgal"],
+    defaultEngine: "vtk",
+    group: "boolean",
+    strategies: [
+      { id: "fast", label: "Fast", engine: "vtk", implemented: true, description: "Current VTK boolean worker path." },
+      { id: "robust", label: "Robust", engine: "cgal", implemented: false, description: "Planned robust boolean path after CGAL boolean backend lands." },
+    ],
+  },
+  {
+    operation: "boolean-intersection",
+    engines: ["vtk", "cgal"],
+    defaultEngine: "vtk",
+    group: "boolean",
+    strategies: [
+      { id: "fast", label: "Fast", engine: "vtk", implemented: true, description: "Current VTK boolean worker path." },
+      { id: "robust", label: "Robust", engine: "cgal", implemented: false, description: "Planned robust boolean path after CGAL boolean backend lands." },
+    ],
+  },
+  {
+    operation: "boolean-imprint",
+    engines: ["vtk", "cgal"],
+    defaultEngine: "vtk",
+    group: "boolean",
+    strategies: [
+      { id: "fast", label: "Fast", engine: "vtk", implemented: true, description: "Current VTK boolean worker path." },
+      { id: "robust", label: "Robust", engine: "cgal", implemented: false, description: "Planned robust imprint path after CGAL boolean backend lands." },
+    ],
+  },
 ];
 
 export function computeMeshMetrics(mesh?: Pick<SurfaceMeshData, "positions" | "indices" | "normals" | "uvs"> | null): MeshMetrics {

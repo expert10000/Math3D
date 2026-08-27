@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   MESH_OPERATION_CAPABILITIES,
+  type MeshOperationCapability,
   type MeshOperationId,
   type MeshOperationRequest,
   type MeshOperationResult,
@@ -327,33 +328,37 @@ const MESH_OPERATION_PRESETS: Array<{
   },
 ];
 
-const MESH_OPERATION_ROWS: Array<{
+type MeshOperationVisibleCapability = Omit<MeshOperationCapability, "operation"> & {
   operation: MeshOperationVisibleRowId;
-  engines: ResolvedMeshOperationEngine[];
-  defaultEngine: ResolvedMeshOperationEngine;
   implemented: boolean;
   disabledReason?: string;
-}> = [
+};
+
+const MESH_OPERATION_ROWS: MeshOperationVisibleCapability[] = [
   ...MESH_OPERATION_CAPABILITIES.map((capability) => ({ ...capability, implemented: true })),
 ];
 
 const MESH_OPERATION_ROW_BY_ID = new Map(MESH_OPERATION_ROWS.map((row) => [row.operation, row]));
 
+const MESH_OPERATION_GROUP_DEFINITIONS: Array<{
+  id: MeshOperationCapability["group"];
+  label: string;
+}> = [
+  { id: "repair", label: "Repair" },
+  { id: "simplify", label: "Simplify" },
+  { id: "smooth", label: "Smooth" },
+  { id: "boolean", label: "Boolean" },
+  { id: "implicit", label: "Implicit meshing" },
+];
+
 const MESH_OPERATION_GROUPS: Array<{
-  id: string;
+  id: MeshOperationCapability["group"];
   label: string;
   operations: MeshOperationVisibleRowId[];
-}> = [
-  { id: "repair", label: "Repair", operations: ["cgal-validate", "cgal-repair", "cgal-repair-validate", "clean-normals"] },
-  { id: "simplify", label: "Simplify", operations: ["decimate", "cgal-remesh"] },
-  { id: "smooth", label: "Smooth", operations: ["smooth"] },
-  {
-    id: "boolean",
-    label: "Boolean",
-    operations: ["boolean-union", "boolean-difference", "boolean-intersection", "boolean-imprint"],
-  },
-  { id: "implicit", label: "Implicit meshing", operations: ["implicit-preview", "implicit-mesh"] },
-];
+}> = MESH_OPERATION_GROUP_DEFINITIONS.map((group) => ({
+  ...group,
+  operations: MESH_OPERATION_ROWS.filter((row) => row.group === group.id).map((row) => row.operation),
+}));
 
 const validationBadgeStyle = (state: "pass" | "warn" | "fail"): React.CSSProperties => ({
   border: `1px solid ${state === "pass" ? "#86efac" : state === "warn" ? "#fcd34d" : "#fca5a5"}`,
@@ -969,23 +974,27 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                       active
                     </span>
                   )}
-                  {capability.engines.map((engine) => {
+                  {capability.strategies.map((strategy) => {
+                    const engine = strategy.engine === "auto" ? capability.defaultEngine : strategy.engine;
                     const engineReady = engine === "cgal" ? cgalReady : workerReady;
+                    const enabled = strategy.implemented && engineReady;
                     return (
                       <span
-                        key={`${testId}-${operation}-${engine}`}
+                        key={`${testId}-${operation}-${strategy.id}-${engine}`}
+                        title={strategy.description}
                         style={{
-                          border: `1px solid ${engineReady ? "#86efac" : "#e2e8f0"}`,
-                          background: engineReady ? "#f0fdf4" : "#f8fafc",
-                          color: engineReady ? "#166534" : "#64748b",
+                          border: `1px solid ${enabled ? "#86efac" : "#e2e8f0"}`,
+                          background: enabled ? "#f0fdf4" : "#f8fafc",
+                          color: enabled ? "#166534" : "#64748b",
                           borderRadius: 999,
                           padding: "1px 6px",
                           fontSize: 9,
                           fontWeight: 800,
                           textTransform: "uppercase",
+                          whiteSpace: "nowrap",
                         }}
                       >
-                        {engine}
+                        {strategy.label} {engine}
                       </span>
                     );
                   })}
@@ -1002,6 +1011,48 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                     gap: 6,
                   }}
                 >
+                  {capability.strategies.length > 1 && (
+                    <div
+                      data-testid={`${testId}-${operation}-strategies`}
+                      style={{
+                        border: "1px solid #dbeafe",
+                        background: "#eff6ff",
+                        borderRadius: 6,
+                        padding: "5px 6px",
+                        display: "grid",
+                        gap: 5,
+                      }}
+                    >
+                      <strong>Execution strategy</strong>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                        {capability.strategies.map((strategy) => {
+                          const engine = strategy.engine === "auto" ? capability.defaultEngine : strategy.engine;
+                          const engineReady = engine === "cgal" ? cgalReady : workerReady;
+                          const enabled = strategy.implemented && engineReady;
+                          return (
+                            <button
+                              key={`${testId}-${operation}-strategy-${strategy.id}`}
+                              type="button"
+                              disabled={!enabled || strategy.engine !== capability.defaultEngine}
+                              title={strategy.description}
+                              style={{
+                                border: `1px solid ${enabled ? "#93c5fd" : "#e2e8f0"}`,
+                                background: strategy.engine === capability.defaultEngine ? "#dbeafe" : "#f8fafc",
+                                color: enabled ? "#0f3557" : "#64748b",
+                                borderRadius: 999,
+                                padding: "2px 7px",
+                                fontSize: 10,
+                                fontWeight: 800,
+                              }}
+                            >
+                              {strategy.label} · {engine.toUpperCase()}
+                              {!strategy.implemented ? " planned" : ""}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   {operation === "clean-normals" && (
                     <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <input

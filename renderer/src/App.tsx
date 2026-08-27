@@ -45,7 +45,7 @@ import {
   type MeshOperationSavedPresetSummary,
   type MeshOperationUiId,
   type MeshOperationResultSummary,
-} from "./components/MeshOperationsCard";
+} from "./components/MeshOperationsPanel";
 import {
   ActiveSelectionCard,
   buildActiveSelectionSummary,
@@ -103191,6 +103191,17 @@ onChangeImplicitExpr,
   const cgalTargetEdgeLocked = cgalDisabled || cgalAutoTargetEdge || cgalTriBudgetEnabled;
   const meshOperationPreviewDisabled = meshOperationPreviewBusy || cgalBusy;
   const meshOperationPreviewResolution = Math.max(8, Math.min(220, Math.round(implicitResolution)));
+  const [implicitMeshingQuality, setImplicitMeshingQuality] = useState<"preview" | "standard" | "robust">("standard");
+  const implicitMeshingUsesPreview = implicitMeshingQuality === "preview";
+  const implicitMeshingEngineLabel = implicitMeshingUsesPreview ? "Auto (Preview -> VTK)" : "Auto (CGAL)";
+  const implicitMeshingBusy = implicitMeshingUsesPreview ? meshOperationPreviewBusy : cgalBusy;
+  const implicitMeshingDisabled = implicitMeshingUsesPreview ? meshOperationPreviewDisabled : cgalDisabled;
+  const runImplicitMeshingStrategy = useCallback(() => {
+    if (implicitMeshingUsesPreview) {
+      return onRunMeshOperationPreview();
+    }
+    return onRunCgalMesh();
+  }, [implicitMeshingUsesPreview, onRunCgalMesh, onRunMeshOperationPreview]);
   const generateStateLabel = meshOperationPreviewBusy ? "running" : generateSurfaceStatus.state;
   const generateStatusText = meshOperationPreviewBusy ? "generate running..." : generateSurfaceStatus.message;
   const generateStatusColor =
@@ -105738,209 +105749,251 @@ onChangeImplicitExpr,
                   <div>Mode: implicit surface f(x,y,z)=0</div>
                 </div>
 
-                <div style={{ display: "grid", gap: 6, fontSize: 11, borderTop: "1px dashed #d5dbe5", paddingTop: 8 }}>
-                  <div style={{ fontWeight: 600 }}>Preview meshing</div>
-                  <div>Engine: VTK</div>
-                  <div>Resolution: {meshOperationPreviewResolution}^3</div>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="checkbox"
-                      checked={meshOperationPreviewUseDecimate}
-                      disabled={meshOperationPreviewDisabled}
-                      onChange={(e) => onChangeMeshOperationPreviewUseDecimate(e.target.checked)}
-                    />
-                    Decimate preview
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    Target faces
-                    <input
-                      type="number"
-                      min={200}
-                      max={500000}
-                      step={100}
-                      value={Math.min(500000, Math.max(200, Math.round(meshOperationPreviewTargetFaces)))}
-                      disabled={!meshOperationPreviewUseDecimate || meshOperationPreviewDisabled}
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 7,
+                    fontSize: 11,
+                    borderTop: "1px dashed #d5dbe5",
+                    paddingTop: 8,
+                  }}
+                >
+                  <div style={{ fontWeight: 700 }}>Meshing</div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    Quality
+                    <select
+                      value={implicitMeshingQuality}
                       onChange={(e) => {
-                        const v = Number(e.target.value);
-                        if (Number.isFinite(v)) onChangeMeshOperationPreviewTargetFaces(Math.min(500000, Math.max(200, v)));
+                        const quality = e.target.value as "preview" | "standard" | "robust";
+                        setImplicitMeshingQuality(quality);
+                        if (quality === "standard") {
+                          onChangeCgalAutoTargetEdge(true);
+                          onChangeCgalTriBudgetEnabled(false);
+                        }
                       }}
-                      style={{ width: 110 }}
-                    />
+                    >
+                      <option value="preview">Preview</option>
+                      <option value="standard">Standard</option>
+                      <option value="robust">Robust</option>
+                    </select>
                   </label>
-                  <button type="button" onClick={() => void onRunMeshOperationPreview()} disabled={meshOperationPreviewDisabled}>
-                    {meshOperationPreviewBusy ? "Running preview..." : "Run preview"}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <strong>Engine</strong>
+                    <span>{implicitMeshingEngineLabel}</span>
+                    {!implicitMeshingUsesPreview && (
+                      <>
+                        <span
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: "50%",
+                            background: cgalStatusColor,
+                            display: "inline-block",
+                          }}
+                        />
+                        <span style={{ color: cgalStatusColor }}>{cgalStatusText}</span>
+                      </>
+                    )}
+                  </div>
+                  {implicitMeshingUsesPreview ? (
+                    <>
+                      <div>Resolution: {meshOperationPreviewResolution}^3</div>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input
+                          type="checkbox"
+                          checked={meshOperationPreviewUseDecimate}
+                          disabled={meshOperationPreviewDisabled}
+                          onChange={(e) => onChangeMeshOperationPreviewUseDecimate(e.target.checked)}
+                        />
+                        Triangle cap
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        Cap
+                        <input
+                          type="number"
+                          min={200}
+                          max={500000}
+                          step={100}
+                          value={Math.min(500000, Math.max(200, Math.round(meshOperationPreviewTargetFaces)))}
+                          disabled={!meshOperationPreviewUseDecimate || meshOperationPreviewDisabled}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (Number.isFinite(v)) onChangeMeshOperationPreviewTargetFaces(Math.min(500000, Math.max(200, v)));
+                          }}
+                          style={{ width: 110 }}
+                        />
+                      </label>
+                    </>
+                  ) : (
+                    <>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        Target edge
+                        <input
+                          type="number"
+                          min={0.0001}
+                          step={0.01}
+                          value={cgalTargetEdge}
+                          disabled={cgalTargetEdgeLocked}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (Number.isFinite(v)) onChangeCgalTargetEdge(Math.max(0.0001, v));
+                          }}
+                          style={{ width: 90 }}
+                        />
+                        <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <input
+                            type="checkbox"
+                            checked={cgalAutoTargetEdge || implicitMeshingQuality === "standard"}
+                            disabled={cgalDisabled || cgalTriBudgetEnabled || implicitMeshingQuality === "standard"}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              onChangeCgalAutoTargetEdge(checked);
+                              if (checked) onChangeCgalTriBudgetEnabled(false);
+                            }}
+                          />
+                          Auto
+                        </label>
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input
+                          type="checkbox"
+                          checked={cgalTriBudgetEnabled}
+                          disabled={cgalDisabled}
+                          onChange={(e) => onChangeCgalTriBudgetEnabled(e.target.checked)}
+                        />
+                        Triangle cap
+                        <input
+                          type="number"
+                          min={200}
+                          max={1000000}
+                          step={200}
+                          value={Math.min(1000000, Math.max(200, Math.round(cgalTriBudget)))}
+                          disabled={cgalDisabled || !cgalTriBudgetEnabled}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (Number.isFinite(v)) onChangeCgalTriBudget(Math.min(1000000, Math.max(200, v)));
+                          }}
+                          style={{ width: 110 }}
+                        />
+                      </label>
+                      <div style={{ color: cgalTooHeavy ? "#b42318" : "#556" }}>
+                        Est. triangles ~{fmtTriEstimate(cgalEstimatedTris)} @ edge {fmtVal(cgalEffectiveEdge, 4)}
+                      </div>
+                      {cgalMeshInfo && (
+                        <div style={{ color: "#556" }}>
+                          Last robust mesh: {cgalMeshInfo.vertexCount.toLocaleString()} verts /{" "}
+                          {cgalMeshInfo.triCount.toLocaleString()} tris
+                        </div>
+                      )}
+                    </>
+                  )}
+                  <button type="button" onClick={() => void runImplicitMeshingStrategy()} disabled={implicitMeshingDisabled}>
+                    {implicitMeshingBusy ? "Generating..." : "Generate mesh"}
                   </button>
                   <div style={{ color: generateStatusColor }}>Status: {generateStatusText}</div>
                   {meshOperationPreviewError && <div style={{ color: "#b42318" }}>{meshOperationPreviewError}</div>}
-                </div>
-
-                <div style={{ display: "grid", gap: 6, fontSize: 11, borderTop: "1px dashed #d5dbe5", paddingTop: 8 }}>
-                  <div style={{ fontWeight: 600 }}>Robust meshing</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span>Engine: CGAL</span>
-                    <span
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        background: cgalStatusColor,
-                        display: "inline-block",
-                      }}
-                    />
-                    <span style={{ color: cgalStatusColor }}>{cgalStatusText}</span>
-                  </div>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    Target edge
-                    <input
-                      type="number"
-                      min={0.0001}
-                      step={0.01}
-                      value={cgalTargetEdge}
-                      disabled={cgalTargetEdgeLocked}
-                      onChange={(e) => {
-                        const v = Number(e.target.value);
-                        if (Number.isFinite(v)) onChangeCgalTargetEdge(Math.max(0.0001, v));
-                      }}
-                      style={{ width: 90 }}
-                    />
-                    <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      <input
-                        type="checkbox"
-                        checked={cgalAutoTargetEdge}
-                        disabled={cgalDisabled || cgalTriBudgetEnabled}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          onChangeCgalAutoTargetEdge(checked);
-                          if (checked) onChangeCgalTriBudgetEnabled(false);
-                        }}
-                      />
-                      Auto
-                    </label>
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    Padding (%)
-                    <input
-                      type="number"
-                      min={0}
-                      max={50}
-                      step={0.5}
-                      value={Number.isFinite(cgalPadFrac) ? (cgalPadFrac * 100).toFixed(1) : "5.0"}
-                      disabled={cgalDisabled}
-                      onChange={(e) => {
-                        const v = Number(e.target.value);
-                        if (Number.isFinite(v)) onChangeCgalPadFrac(Math.min(0.5, Math.max(0, v / 100)));
-                      }}
-                      style={{ width: 70 }}
-                    />
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    Preflight samples
-                    <input
-                      type="number"
-                      min={3}
-                      max={40}
-                      step={1}
-                      value={Math.max(3, Math.min(40, Math.round(cgalPreflightSamples)))}
-                      disabled={cgalDisabled}
-                      onChange={(e) => {
-                        const v = Number(e.target.value);
-                        if (Number.isFinite(v)) onChangeCgalPreflightSamples(Math.max(3, Math.min(40, Math.round(v))));
-                      }}
-                      style={{ width: 80 }}
-                    />
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    Radius bound
-                    <input
-                      type="number"
-                      min={0.001}
-                      max={1}
-                      step={0.001}
-                      value={Number.isFinite(cgalRadiusBound) ? cgalRadiusBound : 0.1}
-                      disabled={cgalDisabled}
-                      onChange={(e) => {
-                        const v = Number(e.target.value);
-                        if (Number.isFinite(v)) onChangeCgalRadiusBound(Math.max(0.001, Math.min(1, v)));
-                      }}
-                      style={{ width: 90 }}
-                    />
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="checkbox"
-                      checked={cgalMinTrisEnabled}
-                      disabled={cgalDisabled}
-                      onChange={(e) => onChangeCgalMinTrisEnabled(e.target.checked)}
-                    />
-                    Min triangles
-                    <input
-                      type="number"
-                      min={200}
-                      max={1000000}
-                      step={200}
-                      value={Math.min(1000000, Math.max(200, Math.round(cgalMinTris)))}
-                      disabled={cgalDisabled || !cgalMinTrisEnabled}
-                      onChange={(e) => {
-                        const v = Number(e.target.value);
-                        if (Number.isFinite(v)) onChangeCgalMinTris(Math.min(1000000, Math.max(200, v)));
-                      }}
-                      style={{ width: 110 }}
-                    />
-                  </label>
-                  <button type="button" onClick={() => void onRunCgalMesh()} disabled={cgalDisabled}>
-                    {cgalBusy ? "Meshing..." : "Run mesh"}
-                  </button>
-                  <div style={{ color: cgalTooHeavy ? "#b42318" : "#556" }}>
-                    Est. triangles ~{fmtTriEstimate(cgalEstimatedTris)} @ edge {fmtVal(cgalEffectiveEdge, 4)}
-                  </div>
-                  {cgalMinTrisEnabled && (
-                    <div style={{ color: "#556" }}>
-                      Min-tris edge estimate {fmtVal(estimateTargetEdgeFromBudget(cgalDomainDiag, cgalMinTris), 4)}
-                    </div>
-                  )}
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="checkbox"
-                      checked={cgalVerbose}
-                      disabled={cgalDisabled}
-                      onChange={(e) => onChangeCgalVerbose(e.target.checked)}
-                    />
-                    Verbose engine logs
-                  </label>
-                  <button type="button" onClick={() => void onStopCgalWorker()} disabled={cgalStopDisabled}>
-                    Stop worker
-                  </button>
-                  {cgalMeshInfo && (
-                    <div style={{ color: "#556" }}>
-                      Last robust mesh: {cgalMeshInfo.vertexCount.toLocaleString()} verts /{" "}
-                      {cgalMeshInfo.triCount.toLocaleString()} tris
-                    </div>
-                  )}
-                  {cgalHealthState?.logsPath && (
-                    <div style={{ fontSize: 10, color: "#667085", wordBreak: "break-all" }}>log: {cgalHealthState.logsPath}</div>
-                  )}
                   {cgalError && <div style={{ color: "#b42318" }}>{cgalError}</div>}
-                </div>
-
-                <div style={{ display: "grid", gap: 6, fontSize: 11, borderTop: "1px dashed #d5dbe5", paddingTop: 8 }}>
-                  <div style={{ fontWeight: 600 }}>Output</div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    <button type="button" disabled title="Save-to-scene output is not wired yet.">
-                      Save to scene
-                    </button>
-                    <button type="button" onClick={onConvertToMesh} disabled={!surfaceMeshExportable}>
-                      Replace current mesh
-                    </button>
-                    <button type="button" disabled title="Derived mesh output is not wired yet.">
-                      Create derived mesh
-                    </button>
-                  </div>
+                  <details>
+                    <summary style={{ cursor: "pointer", fontWeight: 700 }}>Backend diagnostics</summary>
+                    <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        Padding (%)
+                        <input
+                          type="number"
+                          min={0}
+                          max={50}
+                          step={0.5}
+                          value={Number.isFinite(cgalPadFrac) ? (cgalPadFrac * 100).toFixed(1) : "5.0"}
+                          disabled={cgalDisabled}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (Number.isFinite(v)) onChangeCgalPadFrac(Math.min(0.5, Math.max(0, v / 100)));
+                          }}
+                          style={{ width: 70 }}
+                        />
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        Preflight samples
+                        <input
+                          type="number"
+                          min={3}
+                          max={40}
+                          step={1}
+                          value={Math.max(3, Math.min(40, Math.round(cgalPreflightSamples)))}
+                          disabled={cgalDisabled}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (Number.isFinite(v)) onChangeCgalPreflightSamples(Math.max(3, Math.min(40, Math.round(v))));
+                          }}
+                          style={{ width: 80 }}
+                        />
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        Radius bound
+                        <input
+                          type="number"
+                          min={0.001}
+                          max={1}
+                          step={0.001}
+                          value={Number.isFinite(cgalRadiusBound) ? cgalRadiusBound : 0.1}
+                          disabled={cgalDisabled}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (Number.isFinite(v)) onChangeCgalRadiusBound(Math.max(0.001, Math.min(1, v)));
+                          }}
+                          style={{ width: 90 }}
+                        />
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input
+                          type="checkbox"
+                          checked={cgalMinTrisEnabled}
+                          disabled={cgalDisabled}
+                          onChange={(e) => onChangeCgalMinTrisEnabled(e.target.checked)}
+                        />
+                        Min triangles
+                        <input
+                          type="number"
+                          min={200}
+                          max={1000000}
+                          step={200}
+                          value={Math.min(1000000, Math.max(200, Math.round(cgalMinTris)))}
+                          disabled={cgalDisabled || !cgalMinTrisEnabled}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (Number.isFinite(v)) onChangeCgalMinTris(Math.min(1000000, Math.max(200, v)));
+                          }}
+                          style={{ width: 110 }}
+                        />
+                      </label>
+                      {cgalMinTrisEnabled && (
+                        <div style={{ color: "#556" }}>
+                          Min-tris edge estimate {fmtVal(estimateTargetEdgeFromBudget(cgalDomainDiag, cgalMinTris), 4)}
+                        </div>
+                      )}
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input
+                          type="checkbox"
+                          checked={cgalVerbose}
+                          disabled={cgalDisabled}
+                          onChange={(e) => onChangeCgalVerbose(e.target.checked)}
+                        />
+                        Verbose engine logs
+                      </label>
+                      <button type="button" onClick={() => void onStopCgalWorker()} disabled={cgalStopDisabled}>
+                        Stop worker
+                      </button>
+                      {cgalHealthState?.logsPath && (
+                        <div style={{ fontSize: 10, color: "#667085", wordBreak: "break-all" }}>log: {cgalHealthState.logsPath}</div>
+                      )}
+                    </div>
+                  </details>
                 </div>
                 </div>
               </details>
             )}
             {viewerKind === "implicit" && (
-              <div
+              <details
                 style={{
                   marginTop: 12,
                   padding: 10,
@@ -105949,7 +106002,12 @@ onChangeImplicitExpr,
                   background: "#fafafa",
                 }}
               >
-                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Implicit baker (marching cubes)</div>
+                <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 800 }}>
+                  Legacy marching-cubes baker
+                </summary>
+                <div style={{ fontSize: 11, color: "#667085", margin: "6px 0" }}>
+                  Direct backend diagnostics. Use Mesh Operations for normal implicit meshing.
+                </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   <label style={{ fontSize: 11 }}>
                     x span
@@ -106049,7 +106107,7 @@ onChangeImplicitExpr,
                 {implicitBakeError && (
                   <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{implicitBakeError}</div>
                 )}
-              </div>
+              </details>
             )}
           </>
         ) : (
