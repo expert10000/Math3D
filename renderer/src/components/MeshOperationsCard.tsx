@@ -5,6 +5,7 @@ import {
   type MeshOperationRequest,
   type MeshOperationResult,
   type MeshOperationStatus,
+  type MeshRepairValidationSummary,
   type MeshRepairSummary,
   type MeshValidationSummary,
   type ResolvedMeshOperationEngine,
@@ -29,6 +30,7 @@ export type MeshOperationResultSummary = {
   diagnostics?: string[];
   validation?: MeshValidationSummary;
   repair?: MeshRepairSummary;
+  repairValidation?: MeshRepairValidationSummary;
   warnings: string[];
   errors: string[];
   timestamp: number;
@@ -55,6 +57,7 @@ export type MeshOperationSavedPresetSummary = {
 export const MESH_OPERATION_LABELS: Record<MeshOperationUiId, string> = {
   "cgal-validate": "Validate mesh",
   "cgal-repair": "Repair mesh",
+  "cgal-repair-validate": "Repair + Validate",
   "clean-normals": "Clean normals",
   decimate: "Decimate",
   smooth: "Smooth",
@@ -91,6 +94,7 @@ export function summarizeMeshOperationResult(
     diagnostics: result.warnings.filter((warning) => warning.severity === "info").map((warning) => warning.message),
     validation: result.validation,
     repair: result.repair,
+    repairValidation: result.repairValidation,
     warnings: result.warnings.filter((warning) => warning.severity !== "info").map((warning) => warning.message),
     errors: result.errors.map((error) => error.message),
     timestamp: Date.now(),
@@ -135,6 +139,7 @@ export type MeshOperationsPanelProps = {
   repairMaxHoleEdges: number;
   onChangeRepairMaxHoleEdges: (value: number) => void;
   onRepair: () => void | Promise<void>;
+  onRepairValidate: () => void | Promise<void>;
   onClean: () => void;
   decimateReduction: number;
   onChangeDecimateReduction: (value: number) => void;
@@ -229,6 +234,7 @@ export type MeshOperationPresetId =
   | "clean-normals"
   | "cgal-validate"
   | "cgal-repair-memory"
+  | "cgal-repair-validate"
   | "decimate-3dbenchy"
   | "smooth-bunny"
   | "boolean-demo-pair"
@@ -251,6 +257,12 @@ const MESH_OPERATION_PRESETS: Array<{
     label: "Repair preview",
     description: "Run conservative CGAL repair as a new in-memory mesh result; save only after review.",
     operation: "cgal-repair",
+  },
+  {
+    id: "cgal-repair-validate",
+    label: "Repair + Validate",
+    description: "Validate, repair as a new in-memory mesh, then validate the repaired result.",
+    operation: "cgal-repair-validate",
   },
   {
     id: "clean-normals",
@@ -308,7 +320,7 @@ const MESH_OPERATION_GROUPS: Array<{
   label: string;
   operations: MeshOperationVisibleRowId[];
 }> = [
-  { id: "repair", label: "Repair", operations: ["cgal-validate", "cgal-repair", "clean-normals"] },
+  { id: "repair", label: "Repair", operations: ["cgal-validate", "cgal-repair", "cgal-repair-validate", "clean-normals"] },
   { id: "simplify", label: "Simplify", operations: ["decimate", "cgal-remesh"] },
   { id: "smooth", label: "Smooth", operations: ["smooth"] },
   {
@@ -442,6 +454,45 @@ const MeshRepairCard: React.FC<{ repair: MeshRepairSummary }> = ({ repair }) => 
   );
 };
 
+const MeshRepairValidationComparisonCard: React.FC<{ comparison: MeshRepairValidationSummary }> = ({ comparison }) => {
+  const verdictText =
+    comparison.verdict === "improved"
+      ? "Improved"
+      : comparison.verdict === "needs-review"
+        ? "Still needs review"
+        : "No change";
+  const verdictState: "pass" | "warn" | "fail" =
+    comparison.verdict === "improved" ? "pass" : comparison.verdict === "no-change" ? "warn" : "fail";
+  return (
+    <div
+      data-testid="mesh-operation-repair-validation-card"
+      style={{
+        border: "1px solid #a7f3d0",
+        borderRadius: 7,
+        background: "#f0fdf4",
+        padding: "6px",
+        display: "grid",
+        gap: 6,
+        marginTop: 3,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+        <strong>Repair validation</strong>
+        <span style={validationBadgeStyle(verdictState)}>
+          <strong>{verdictText}</strong>
+          <span>
+            {comparison.scoreBefore.toLocaleString()} {"->"} {comparison.scoreAfter.toLocaleString()}
+          </span>
+        </span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 5 }}>
+        <MeshValidationCard validation={comparison.before} compact title="Before" />
+        <MeshValidationCard validation={comparison.after} compact title="After" />
+      </div>
+    </div>
+  );
+};
+
 export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
   testId,
   meshReady,
@@ -480,6 +531,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
   repairMaxHoleEdges,
   onChangeRepairMaxHoleEdges,
   onRepair,
+  onRepairValidate,
   onClean,
   decimateReduction,
   onChangeDecimateReduction,
@@ -581,6 +633,16 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
       setExpandedOperation("cgal-repair");
       return;
     }
+    if (preset === "cgal-repair-validate") {
+      onChangeRepairOrientFaces(true);
+      onChangeRepairRemoveDegenerateFaces(true);
+      onChangeRepairRemoveDuplicateFaces(true);
+      onChangeRepairCompactVertices(true);
+      onChangeRepairFillSmallHoles(true);
+      onChangeOutputMode("derived");
+      setExpandedOperation("cgal-repair-validate");
+      return;
+    }
     if (preset === "decimate-3dbenchy") {
       onChangeDecimateUseTargetFaces(true);
       onChangeDecimateTargetFaces(Math.max(500, Math.min(20000, decimateTargetFaces)));
@@ -622,6 +684,10 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
     }
     if (expandedOperation === "cgal-repair") {
       void onRepair();
+      return;
+    }
+    if (expandedOperation === "cgal-repair-validate") {
+      void onRepairValidate();
       return;
     }
     if (expandedOperation === "decimate") {
@@ -676,7 +742,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
         ? implicitAvailable && cgalReady && !operationBusy
         : expandedOperation === "cgal-validate"
           ? meshReady && cgalReady && !operationBusy
-          : expandedOperation === "cgal-repair"
+          : expandedOperation === "cgal-repair" || expandedOperation === "cgal-repair-validate"
             ? meshReady && cgalReady && !operationBusy
         : expandedIsBoolean
           ? meshReady && workerReady && !!booleanOperandObjectId && !operationBusy
@@ -868,7 +934,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                       <span>Result is recorded in Last operation; the active mesh is not changed.</span>
                     </div>
                   )}
-                  {operation === "cgal-repair" && (
+                  {(operation === "cgal-repair" || operation === "cgal-repair-validate") && (
                     <>
                       <div
                         style={{
@@ -881,9 +947,17 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                           gap: 3,
                         }}
                       >
-                        <strong>Conservative CGAL repair</strong>
-                        <span>Repairs topology-safe issues in the worker and returns a new in-memory mesh result.</span>
-                        <span>Review it first; use Save edited only when you want to persist the repaired mesh.</span>
+                        <strong>{operation === "cgal-repair-validate" ? "Repair, then validate" : "Conservative CGAL repair"}</strong>
+                        <span>
+                          {operation === "cgal-repair-validate"
+                            ? "Runs CGAL validation before and after repair, then returns a new in-memory mesh result."
+                            : "Repairs topology-safe issues in the worker and returns a new in-memory mesh result."}
+                        </span>
+                        <span>
+                          {operation === "cgal-repair-validate"
+                            ? "Use the comparison card to decide whether to save or continue repairing."
+                            : "Review it first; use Save edited only when you want to persist the repaired mesh."}
+                        </span>
                       </div>
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input
@@ -1498,6 +1572,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
             {lastResult.sourceIds.length > 0 && <div>Sources: {lastResult.sourceIds.join(", ")}</div>}
             {lastResult.validation && <MeshValidationCard validation={lastResult.validation} />}
             {lastResult.repair && <MeshRepairCard repair={lastResult.repair} />}
+            {lastResult.repairValidation && <MeshRepairValidationComparisonCard comparison={lastResult.repairValidation} />}
             {!!lastResult.diagnostics?.length && <div>Details: {lastResult.diagnostics.join("; ")}</div>}
             {lastResult.warnings.length > 0 && <div style={{ color: "#b45309" }}>Warnings: {lastResult.warnings.join("; ")}</div>}
             {lastResult.errors.length > 0 && <div style={{ color: "#b42318" }}>Errors: {lastResult.errors.join("; ")}</div>}

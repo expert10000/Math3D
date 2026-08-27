@@ -623,6 +623,7 @@ declare global {
           | "clean-normals"
           | "cgal-validate"
           | "cgal-repair"
+          | "cgal-repair-validate"
           | "decimate"
           | "smooth"
           | "implicit-preview"

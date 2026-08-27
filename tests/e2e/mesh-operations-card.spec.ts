@@ -13,6 +13,7 @@ type MeshOperationE2EHook = {
       | "clean-normals"
       | "cgal-validate"
       | "cgal-repair"
+      | "cgal-repair-validate"
       | "decimate"
       | "smooth"
       | "implicit-preview"
@@ -138,7 +139,7 @@ test.describe("Mesh Operations card", () => {
       await expect(card.getByTestId(`mesh-workspace-operation-registry-group-${group}`)).toBeVisible();
     }
 
-    for (const preset of ["cgal-validate", "cgal-repair-memory", "clean-normals", "decimate-3dbenchy", "smooth-bunny"]) {
+    for (const preset of ["cgal-validate", "cgal-repair-memory", "cgal-repair-validate", "clean-normals", "decimate-3dbenchy", "smooth-bunny"]) {
       await card.getByTestId(`mesh-workspace-operation-registry-preset-${preset}`).click();
       await expect(card.locator("[aria-expanded=\"true\"]")).toBeVisible();
     }
@@ -176,6 +177,11 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-workspace-operation-registry-repair-remove-degenerate")).toBeChecked();
     await expect(card.getByTestId("mesh-workspace-operation-registry-repair-remove-duplicates")).toBeChecked();
     await expect(card.getByTestId("mesh-workspace-operation-registry-run-cgal-repair")).toHaveText("Run Repair mesh");
+
+    await card.getByTestId("mesh-workspace-operation-registry-row-cgal-repair-validate").click();
+    await expect(card).toContainText("Repair, then validate");
+    await expect(card).toContainText("comparison card");
+    await expect(card.getByTestId("mesh-workspace-operation-registry-run-cgal-repair-validate")).toHaveText("Run Repair + Validate");
 
     await card.getByTestId("mesh-workspace-operation-registry-row-cgal-remesh").click();
     await expect(card).toContainText("CGAL Remesh planned");
@@ -422,6 +428,36 @@ test.describe("Mesh Operations card", () => {
     await expectLastOperation(card, /Repair mesh/i);
     await expect(card.getByTestId("mesh-operation-repair-card")).toContainText(/Degenerate faces removed/i);
     await expect(card.getByTestId("mesh-operation-repair-card")).toContainText(/Small holes filled/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-open-result")).toBeEnabled();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-send-to-geometry")).toBeEnabled();
+  });
+
+  test("runs CGAL repair plus validation and shows before/after validation", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+    await loadBenchmarkModel(page, "cube-obj");
+
+    const card = await openWorkspaceOperationsCard(page);
+    await card.getByTestId("mesh-workspace-operation-registry-preset-cgal-repair-validate").click();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-row-cgal-repair-validate")).toHaveAttribute(
+      "aria-expanded",
+      "true"
+    );
+    await expect(card.getByTestId("mesh-workspace-operation-registry-cgal-repair-validate-output-derived")).toBeChecked();
+    const repairValidate = await runMeshOperationHook(page, "cgal-repair-validate");
+    if (!repairValidate.ok && /unavailable|not available|Python worker|CGAL/i.test(repairValidate.error ?? "")) {
+      test.skip(true, `CGAL worker unavailable: ${repairValidate.error}`);
+    }
+    expect(repairValidate.ok, repairValidate.error).toBeTruthy();
+    await expectLastOperation(card, /Repair \+ Validate/i);
+    await expect(card.getByTestId("mesh-operation-repair-card")).toContainText(/Small holes filled/i);
+    const comparison = card.getByTestId("mesh-operation-repair-validation-card");
+    await expect(comparison).toBeVisible();
+    await expect(comparison).toContainText(/Before/i);
+    await expect(comparison).toContainText(/After/i);
+    await expect(comparison).toContainText(/Improved|No change|Still needs review/i);
     await expect(card.getByTestId("mesh-workspace-operation-registry-open-result")).toBeEnabled();
     await expect(card.getByTestId("mesh-workspace-operation-registry-send-to-geometry")).toBeEnabled();
   });
