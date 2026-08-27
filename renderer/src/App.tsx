@@ -36,7 +36,7 @@ import { WorkbookPanel } from "./components/WorkbookPanel";
 import { GeometryPickReadout } from "./components/GeometryPickReadout";
 import { UnifiedSelectionInspector } from "./components/UnifiedSelectionInspector";
 import {
-  MeshOperationsCompactCard,
+  MeshOperationsPanel,
   MESH_OPERATION_LABELS,
   summarizeMeshOperationResult,
   type MeshBooleanOperation,
@@ -69248,7 +69248,7 @@ case "mobius":
                             </div>
                           </div>
                         )}
-                        <MeshOperationsCompactCard
+                        <MeshOperationsPanel
                           testId="mesh-workspace-operation-registry"
                           meshReady={!!surfaceMeshStats}
                           activeMeshLabel={buildActiveMeshLabel()}
@@ -100051,7 +100051,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
       </div>
 
       {selectedIsDerivedSurfaceMesh && (
-        <MeshOperationsCompactCard
+        <MeshOperationsPanel
           testId="mesh-object-operation-registry"
           meshReady={!!activeSurfaceMeshStats}
           activeMeshLabel={selectedNode?.name ?? null}
@@ -106903,7 +106903,7 @@ onChangeImplicitExpr,
           </div>
 
           <div style={{ marginTop: 10 }}>
-            <MeshOperationsCompactCard
+            <MeshOperationsPanel
               testId="mesh-operation-registry"
               meshReady={meshReady}
               activeMeshLabel={surfaceMeshLabel}

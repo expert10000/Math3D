@@ -97,7 +97,7 @@ export function summarizeMeshOperationResult(
   };
 }
 
-export type MeshOperationsCompactCardProps = {
+export type MeshOperationsPanelProps = {
   testId: string;
   meshReady: boolean;
   activeMeshLabel?: string | null;
@@ -442,7 +442,7 @@ const MeshRepairCard: React.FC<{ repair: MeshRepairSummary }> = ({ repair }) => 
   );
 };
 
-export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps> = ({
+export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
   testId,
   meshReady,
   activeMeshLabel,
