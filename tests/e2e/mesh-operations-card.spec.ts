@@ -135,7 +135,7 @@ test.describe("Mesh Operations card", () => {
 
     const card = await openWorkspaceOperationsCard(page);
 
-    for (const preset of ["cgal-validate", "clean-normals", "decimate-3dbenchy", "smooth-bunny"]) {
+    for (const preset of ["cgal-validate", "cgal-repair-memory", "clean-normals", "decimate-3dbenchy", "smooth-bunny"]) {
       await card.getByTestId(`mesh-workspace-operation-registry-preset-${preset}`).click();
       await expect(card.locator("[aria-expanded=\"true\"]")).toBeVisible();
     }
@@ -168,6 +168,8 @@ test.describe("Mesh Operations card", () => {
 
     await card.getByTestId("mesh-workspace-operation-registry-row-cgal-repair").click();
     await expect(card).toContainText("Conservative CGAL repair");
+    await expect(card).toContainText("new in-memory mesh result");
+    await expect(card.getByTestId("mesh-workspace-operation-registry-cgal-repair-output-derived")).toBeChecked();
     await expect(card.getByTestId("mesh-workspace-operation-registry-repair-remove-degenerate")).toBeChecked();
     await expect(card.getByTestId("mesh-workspace-operation-registry-repair-remove-duplicates")).toBeChecked();
     await expect(card.getByTestId("mesh-workspace-operation-registry-run-cgal-repair")).toHaveText("Run Repair mesh");

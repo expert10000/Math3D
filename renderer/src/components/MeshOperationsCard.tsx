@@ -228,6 +228,7 @@ const getMeshBooleanFormulaText = (operation: MeshBooleanOperation) => {
 export type MeshOperationPresetId =
   | "clean-normals"
   | "cgal-validate"
+  | "cgal-repair-memory"
   | "decimate-3dbenchy"
   | "smooth-bunny"
   | "boolean-demo-pair"
@@ -244,6 +245,12 @@ const MESH_OPERATION_PRESETS: Array<{
     label: "Validate",
     description: "Check watertightness, manifoldness, components, and sampled self-intersections.",
     operation: "cgal-validate",
+  },
+  {
+    id: "cgal-repair-memory",
+    label: "Repair preview",
+    description: "Run conservative CGAL repair as a new in-memory mesh result; save only after review.",
+    operation: "cgal-repair",
   },
   {
     id: "clean-normals",
@@ -546,6 +553,16 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
       setExpandedOperation("cgal-validate");
       return;
     }
+    if (preset === "cgal-repair-memory") {
+      onChangeRepairOrientFaces(true);
+      onChangeRepairRemoveDegenerateFaces(true);
+      onChangeRepairRemoveDuplicateFaces(true);
+      onChangeRepairCompactVertices(true);
+      onChangeRepairFillSmallHoles(true);
+      onChangeOutputMode("derived");
+      setExpandedOperation("cgal-repair");
+      return;
+    }
     if (preset === "decimate-3dbenchy") {
       onChangeDecimateUseTargetFaces(true);
       onChangeDecimateTargetFaces(Math.max(500, Math.min(20000, decimateTargetFaces)));
@@ -819,7 +836,8 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
                         }}
                       >
                         <strong>Conservative CGAL repair</strong>
-                        <span>Repairs topology-safe issues in the worker and returns a new mesh result.</span>
+                        <span>Repairs topology-safe issues in the worker and returns a new in-memory mesh result.</span>
+                        <span>Review it first; use Save edited only when you want to persist the repaired mesh.</span>
                       </div>
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input
@@ -886,6 +904,7 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
                       <div style={{ display: "grid", gap: 3 }}>
                         <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <input
+                            data-testid={`${testId}-${operation}-output-derived`}
                             type="radio"
                             name={`${testId}-${operation}-output-mode`}
                             checked={outputMode === "derived"}
@@ -895,6 +914,7 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
                         </label>
                         <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <input
+                            data-testid={`${testId}-${operation}-output-replace`}
                             type="radio"
                             name={`${testId}-${operation}-output-mode`}
                             checked={outputMode === "replace"}
@@ -979,6 +999,7 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
                     <div style={{ display: "grid", gap: 3 }}>
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input
+                          data-testid={`${testId}-${operation}-output-derived`}
                           type="radio"
                           name={`${testId}-${operation}-output-mode`}
                           checked={outputMode === "derived"}
@@ -988,6 +1009,7 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
                       </label>
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input
+                          data-testid={`${testId}-${operation}-output-replace`}
                           type="radio"
                           name={`${testId}-${operation}-output-mode`}
                           checked={outputMode === "replace"}
@@ -1211,6 +1233,7 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
                       <div style={{ display: "grid", gap: 3 }}>
                         <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <input
+                            data-testid={`${testId}-${operation}-output-derived`}
                             type="radio"
                             name={`${testId}-output-mode`}
                             checked={outputMode === "derived"}
@@ -1220,6 +1243,7 @@ export const MeshOperationsCompactCard: React.FC<MeshOperationsCompactCardProps>
                         </label>
                         <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <input
+                            data-testid={`${testId}-${operation}-output-replace`}
                             type="radio"
                             name={`${testId}-output-mode`}
                             checked={outputMode === "replace"}

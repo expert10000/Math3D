@@ -50969,6 +50969,15 @@ case "mobius":
         setMeshOperationCleanComputeNormals(true);
         return;
       }
+      if (presetId === "cgal-repair-memory") {
+        setMeshOperationRepairOrientFaces(true);
+        setMeshOperationRepairRemoveDegenerateFaces(true);
+        setMeshOperationRepairRemoveDuplicateFaces(true);
+        setMeshOperationRepairCompactVertices(true);
+        setMeshOperationRepairFillSmallHoles(true);
+        setMeshOperationRepairMaxHoleEdges(3);
+        return;
+      }
       if (presetId === "decimate-3dbenchy") {
         setMeshOperationUseTargetFaces(true);
         setMeshOperationDecimateTargetFaces(5000);
