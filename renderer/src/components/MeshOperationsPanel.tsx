@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   MESH_OPERATION_CAPABILITIES,
   type MeshOperationCapability,
@@ -735,6 +735,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
   onApplyOperationPreset,
 }) => {
   const [expandedOperation, setExpandedOperation] = useState<MeshOperationVisibleRowId | null>(null);
+  const appliedFocusRef = useRef<string | null>(null);
   const operationBusy = busy || cgalBusy || previewBusy;
   const resultStatusColor =
     lastResult?.status === "error"
@@ -751,10 +752,15 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
   };
   useEffect(() => {
     if (!focusedOperation) return;
+    const focusKey = `${focusedOperation}:${focusedOperationToken ?? 0}`;
+    if (appliedFocusRef.current === focusKey) return;
+    appliedFocusRef.current = focusKey;
     const booleanOperationForRow = BOOLEAN_OPERATION_BY_MESH_OPERATION[focusedOperation];
-    if (booleanOperationForRow) onChangeBooleanOperation(booleanOperationForRow);
-    setExpandedOperation(focusedOperation);
-  }, [focusedOperation, focusedOperationToken, onChangeBooleanOperation]);
+    if (booleanOperationForRow && booleanOperationForRow !== booleanOperation) {
+      onChangeBooleanOperation(booleanOperationForRow);
+    }
+    setExpandedOperation((current) => (current === focusedOperation ? current : focusedOperation));
+  }, [booleanOperation, focusedOperation, focusedOperationToken, onChangeBooleanOperation]);
   useEffect(() => {
     if (booleanOperation === "imprint" && booleanStrategy !== "fast") {
       onChangeBooleanStrategy("fast");
