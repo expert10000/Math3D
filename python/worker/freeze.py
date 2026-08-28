@@ -38,6 +38,10 @@ def base_hidden_imports() -> List[str]:
         "vtkmodules",
         "vtkmodules.util",
         "vtkmodules.util.numpy_support",
+        "CGAL",
+        "CGAL.CGAL_Kernel",
+        "CGAL.CGAL_Polyhedron_3",
+        "CGAL.CGAL_Polygon_mesh_processing",
     ]
 
 
@@ -131,6 +135,29 @@ def main() -> int:
             print(message, file=sys.stderr)
             print("[freeze] MATH3D_REQUIRE_PYGALMESH is set, failing worker build.", file=sys.stderr)
             return 4
+        print(message)
+
+    if has_module("CGAL"):
+        cmd.extend([
+            "--hidden-import",
+            "CGAL",
+            "--hidden-import",
+            "CGAL.CGAL_Kernel",
+            "--hidden-import",
+            "CGAL.CGAL_Polyhedron_3",
+            "--hidden-import",
+            "CGAL.CGAL_Polygon_mesh_processing",
+            "--collect-binaries",
+            "CGAL",
+            "--collect-data",
+            "CGAL",
+        ])
+    else:
+        message = "[freeze] CGAL Python bindings not installed; native boolean will use VTK fallback."
+        if truthy_env("MATH3D_REQUIRE_CGAL"):
+            print(message, file=sys.stderr)
+            print("[freeze] MATH3D_REQUIRE_CGAL is set, failing worker build.", file=sys.stderr)
+            return 5
         print(message)
 
     print("[freeze] running:", " ".join(cmd))

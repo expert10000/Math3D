@@ -227,7 +227,7 @@ export const MESH_OPERATION_CAPABILITIES: MeshOperationCapability[] = [
     group: "boolean",
     strategies: [
       { id: "fast", label: "Fast", engine: "vtk", implemented: true, description: "Current VTK boolean worker path." },
-      { id: "robust", label: "Robust", engine: "cgal", implemented: true, description: "Validation-gated robust boolean worker path." },
+      { id: "robust", label: "Robust", engine: "cgal", implemented: true, description: "Native CGAL corefine boolean when available; validation-gated fallback otherwise." },
     ],
   },
   {
@@ -237,7 +237,7 @@ export const MESH_OPERATION_CAPABILITIES: MeshOperationCapability[] = [
     group: "boolean",
     strategies: [
       { id: "fast", label: "Fast", engine: "vtk", implemented: true, description: "Current VTK boolean worker path." },
-      { id: "robust", label: "Robust", engine: "cgal", implemented: true, description: "Validation-gated robust boolean worker path." },
+      { id: "robust", label: "Robust", engine: "cgal", implemented: true, description: "Native CGAL corefine boolean when available; validation-gated fallback otherwise." },
     ],
   },
   {
@@ -247,7 +247,7 @@ export const MESH_OPERATION_CAPABILITIES: MeshOperationCapability[] = [
     group: "boolean",
     strategies: [
       { id: "fast", label: "Fast", engine: "vtk", implemented: true, description: "Current VTK boolean worker path." },
-      { id: "robust", label: "Robust", engine: "cgal", implemented: true, description: "Validation-gated robust boolean worker path." },
+      { id: "robust", label: "Robust", engine: "cgal", implemented: true, description: "Native CGAL corefine boolean when available; validation-gated fallback otherwise." },
     ],
   },
   {

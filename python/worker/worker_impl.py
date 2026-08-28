@@ -2115,6 +2115,138 @@ def mesh_boolean_preflight_from_buffers(pos_bytes: bytes, idx_bytes: bytes, role
     }
 
 
+def compute_vertex_normals_from_buffers(positions, indices):
+    import numpy as np
+
+    pts = np.asarray(positions, dtype=np.float32).reshape((-1, 3))
+    tris = np.asarray(indices, dtype=np.uint32).reshape((-1, 3))
+    normals = np.zeros_like(pts, dtype=np.float32)
+    for tri in tris:
+        a = int(tri[0])
+        b = int(tri[1])
+        c = int(tri[2])
+        if a >= pts.shape[0] or b >= pts.shape[0] or c >= pts.shape[0]:
+            continue
+        normal = np.cross(pts[b] - pts[a], pts[c] - pts[a])
+        normals[a] += normal
+        normals[b] += normal
+        normals[c] += normal
+    lengths = np.linalg.norm(normals, axis=1)
+    nz = lengths > 1e-12
+    normals[nz] /= lengths[nz, None]
+    return normals.astype(np.float32, copy=False)
+
+
+def cgal_polyhedron_from_buffers(pos_bytes: bytes, idx_bytes: bytes):
+    import numpy as np
+    from CGAL import CGAL_Kernel as K
+    from CGAL import CGAL_Polyhedron_3 as PH
+
+    positions = np.frombuffer(pos_bytes, dtype=np.float32)
+    indices = np.frombuffer(idx_bytes, dtype=np.uint32)
+    vertex_count = int(positions.size // 3)
+    face_count = int(indices.size // 3)
+    pts = positions[: vertex_count * 3].reshape((-1, 3))
+    faces = indices[: face_count * 3].reshape((-1, 3))
+
+    poly = PH.Polyhedron_3()
+    modifier = PH.Polyhedron_modifier()
+    modifier.begin_surface(vertex_count, face_count)
+    for x, y, z in pts:
+        modifier.add_vertex(K.Point_3(float(x), float(y), float(z)))
+    for tri in faces:
+        a = int(tri[0])
+        b = int(tri[1])
+        c = int(tri[2])
+        if a == b or b == c or c == a:
+            continue
+        modifier.begin_facet()
+        modifier.add_vertex_to_facet(a)
+        modifier.add_vertex_to_facet(b)
+        modifier.add_vertex_to_facet(c)
+        modifier.end_facet()
+    modifier.end_surface()
+    poly.delegate(modifier)
+    return poly
+
+
+def cgal_polyhedron_to_buffers(poly, compute_normals: bool):
+    import numpy as np
+
+    vertices = list(poly.vertices())
+    positions = np.zeros((len(vertices), 3), dtype=np.float32)
+    for i, vertex in enumerate(vertices):
+        vertex.set_id(i)
+        point = vertex.point()
+        positions[i] = [float(point.x()), float(point.y()), float(point.z())]
+
+    triangles: List[List[int]] = []
+    for facet in poly.facets():
+        degree = int(facet.facet_degree())
+        if degree < 3:
+            continue
+        circ = facet.facet_begin()
+        ids: List[int] = []
+        for _ in range(degree):
+            halfedge = circ.next()
+            ids.append(int(halfedge.vertex().id()))
+        for i in range(1, len(ids) - 1):
+            triangles.append([ids[0], ids[i], ids[i + 1]])
+
+    indices = np.asarray(triangles, dtype=np.uint32).reshape((-1, 3))
+    normals = compute_vertex_normals_from_buffers(positions, indices) if compute_normals else None
+    return (
+        positions.astype(np.float32, copy=False).tobytes(order="C"),
+        indices.astype(np.uint32, copy=False).tobytes(order="C"),
+        normals.tobytes(order="C") if normals is not None else None,
+        int(positions.shape[0]),
+        int(indices.shape[0]),
+    )
+
+
+def run_native_cgal_boolean(
+    operation: str,
+    pos_a: bytes,
+    idx_a: bytes,
+    pos_b: bytes,
+    idx_b: bytes,
+    compute_normals: bool,
+) -> Optional[Tuple[bytes, bytes, Optional[bytes], int, int, List[str], List[str]]]:
+    try:
+        from CGAL import CGAL_Polygon_mesh_processing as PMP
+        from CGAL import CGAL_Polyhedron_3 as PH
+    except Exception:
+        return None
+
+    poly_a = cgal_polyhedron_from_buffers(pos_a, idx_a)
+    poly_b = cgal_polyhedron_from_buffers(pos_b, idx_b)
+    if not poly_a.is_valid() or not poly_a.is_closed():
+        raise RuntimeError("Native CGAL boolean blocked: operand A is not a valid closed polyhedron.")
+    if not poly_b.is_valid() or not poly_b.is_closed():
+        raise RuntimeError("Native CGAL boolean blocked: operand B is not a valid closed polyhedron.")
+
+    out_poly = PH.Polyhedron_3()
+    if operation == "union":
+        ok = PMP.corefine_and_compute_union(poly_a, poly_b, out_poly)
+    elif operation == "difference":
+        ok = PMP.corefine_and_compute_difference(poly_a, poly_b, out_poly)
+    elif operation == "intersection":
+        ok = PMP.corefine_and_compute_intersection(poly_a, poly_b, out_poly)
+    else:
+        raise RuntimeError(f"Unsupported native CGAL boolean operation: {operation}")
+
+    if not ok or out_poly.empty() or out_poly.size_of_facets() <= 0:
+        raise RuntimeError("Native CGAL boolean produced empty output.")
+
+    pos_out, idx_out, normals_out, vcount, tcount = cgal_polyhedron_to_buffers(out_poly, compute_normals)
+    diagnostics = [
+        "Native CGAL Polygon_mesh_processing corefine boolean completed.",
+        f"Output closed: {'yes' if out_poly.is_closed() else 'no'}.",
+        f"Output valid: {'yes' if out_poly.is_valid() else 'no'}.",
+    ]
+    return pos_out, idx_out, normals_out, vcount, tcount, diagnostics, []
+
+
 def handle_cgal_boolean(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]]) -> None:
     job_id = msg.get("jobId", "")
     operation = str(msg.get("operation") or "union").lower()
@@ -2136,33 +2268,55 @@ def handle_cgal_boolean(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]
     if blockers:
         raise RuntimeError(" ".join(blockers))
 
-    try:
-        import vtk
-    except Exception as e:
-        raise RuntimeError(f"VTK boolean kernel not available for CGAL robust adapter: {e}")
-
     options = msg.get("options") or {}
     compute_normals = bool(options.get("computeNormals", True))
-    poly_a = vtk_prepare_poly_for_boolean(vtk_poly_from_buffers(pos_a, idx_a))
-    poly_b = vtk_prepare_poly_for_boolean(vtk_poly_from_buffers(pos_b, idx_b))
+    native_warning: Optional[str] = None
+    native_result = None
+    try:
+        native_result = run_native_cgal_boolean(operation, pos_a, idx_a, pos_b, idx_b, compute_normals)
+    except Exception as e:
+        native_warning = f"Native CGAL boolean failed; using validation-gated VTK fallback: {e}"
 
-    boolean = vtk.vtkBooleanOperationPolyDataFilter()
-    if operation == "union":
-        boolean.SetOperationToUnion()
-    elif operation == "difference":
-        boolean.SetOperationToDifference()
-        if hasattr(boolean, "ReorientDifferenceCellsOn"):
-            boolean.ReorientDifferenceCellsOn()
+    if native_result is not None:
+        pos_out, idx_out, normals_out, vcount, tcount, native_diagnostics, native_warnings = native_result
+        kernel = "native-cgal"
+        extra_diagnostics = native_diagnostics
+        warnings = native_warnings
     else:
-        boolean.SetOperationToIntersection()
-    boolean.SetInputData(0, poly_a)
-    boolean.SetInputData(1, poly_b)
-    boolean.Update()
-    out_poly = vtk_triangles_only(boolean.GetOutput())
-    if out_poly is None or out_poly.GetNumberOfPoints() <= 0 or out_poly.GetNumberOfPolys() <= 0:
-        raise RuntimeError("CGAL robust boolean adapter produced empty output.")
+        try:
+            import vtk
+        except Exception as e:
+            if native_warning:
+                raise RuntimeError(f"{native_warning}; VTK fallback unavailable: {e}")
+            raise RuntimeError(f"Native CGAL boolean kernel unavailable and VTK fallback unavailable: {e}")
 
-    pos_out, idx_out, normals_out, vcount, tcount = vtk_poly_to_buffers(out_poly, compute_normals)
+        poly_a = vtk_prepare_poly_for_boolean(vtk_poly_from_buffers(pos_a, idx_a))
+        poly_b = vtk_prepare_poly_for_boolean(vtk_poly_from_buffers(pos_b, idx_b))
+
+        boolean = vtk.vtkBooleanOperationPolyDataFilter()
+        if operation == "union":
+            boolean.SetOperationToUnion()
+        elif operation == "difference":
+            boolean.SetOperationToDifference()
+            if hasattr(boolean, "ReorientDifferenceCellsOn"):
+                boolean.ReorientDifferenceCellsOn()
+        else:
+            boolean.SetOperationToIntersection()
+        boolean.SetInputData(0, poly_a)
+        boolean.SetInputData(1, poly_b)
+        boolean.Update()
+        out_poly = vtk_triangles_only(boolean.GetOutput())
+        if out_poly is None or out_poly.GetNumberOfPoints() <= 0 or out_poly.GetNumberOfPolys() <= 0:
+            raise RuntimeError("CGAL robust boolean adapter produced empty output.")
+
+        pos_out, idx_out, normals_out, vcount, tcount = vtk_poly_to_buffers(out_poly, compute_normals)
+        kernel = "vtk-validated"
+        extra_diagnostics = ["Validation-gated VTK fallback completed."]
+        warnings = [
+            native_warning
+            or "Native CGAL boolean kernel is unavailable; Robust used validation-gated VTK boolean output.",
+        ]
+
     parts: List[Tuple[str, bytes]] = [("positions", pos_out), ("indices", idx_out)]
     if normals_out:
         parts.append(("normals", normals_out))
@@ -2176,7 +2330,7 @@ def handle_cgal_boolean(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]
             "triCount": tcount,
             "boolean": {
                 "operation": operation,
-                "kernel": "vtk-validated",
+                "kernel": kernel,
                 "inputAFaces": int(preflight_a.get("faceCount", 0)),
                 "inputBFaces": int(preflight_b.get("faceCount", 0)),
                 "outputFaces": tcount,
@@ -2184,10 +2338,9 @@ def handle_cgal_boolean(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]
                     "Validation preflight passed for both operands.",
                     f"Operand A: {preflight_a.get('edgeCount', 0)} edges, {preflight_a.get('faceCount', 0)} triangles.",
                     f"Operand B: {preflight_b.get('edgeCount', 0)} edges, {preflight_b.get('faceCount', 0)} triangles.",
+                    *extra_diagnostics,
                 ],
-                "warnings": [
-                    "Native CGAL boolean kernel is not bundled yet; Robust currently uses validation-gated VTK boolean output.",
-                ],
+                "warnings": warnings,
             },
         },
         parts,
