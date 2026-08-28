@@ -54766,6 +54766,7 @@ case "mobius":
           }
           if (operation === "implicit-preview" || operation === "implicit-mesh") {
             const expr = options?.implicitExpr?.trim() || "x*x + y*y + z*z - 1";
+            const implicitOutputMode = operation === "implicit-mesh" ? "new-object" : "preview";
             const domain = {
               min: [-1.4, -1.4, -1.4] as [number, number, number],
               max: [1.4, 1.4, 1.4] as [number, number, number],
@@ -54780,8 +54781,8 @@ case "mobius":
                 resolution: options?.resolution ?? 24,
                 targetEdge: options?.targetEdge ?? 0.35,
               },
-              outputMode: "preview",
-              quality: "fast",
+              outputMode: implicitOutputMode,
+              quality: operation === "implicit-mesh" ? "robust" : "fast",
             };
             const result = await runMeshOperation(
               request,
@@ -54804,7 +54805,7 @@ case "mobius":
                       },
               }
             );
-            publishMeshOperationResult(summarizeMeshOperationResult(result, "preview"), request);
+            publishMeshOperationResult(summarizeMeshOperationResult(result, implicitOutputMode), request);
             if (result.status === "error") {
               return { ok: false, error: result.errors[0]?.message ?? `${operation} failed.` };
             }

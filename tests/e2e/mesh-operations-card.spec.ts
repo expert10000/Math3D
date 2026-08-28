@@ -116,7 +116,7 @@ async function runMeshOperationHook(
 }
 
 async function expectLastOperation(card: Locator, label: RegExp): Promise<void> {
-  const lastResult = card.getByTestId("mesh-workspace-operation-registry-last-result");
+  const lastResult = await firstVisible(card.locator('[data-testid$="-last-result"]'));
   await expect(lastResult).toContainText(label, { timeout: 90_000 });
   await expect(lastResult).toContainText(/success|warning/i, { timeout: 90_000 });
   await expect(lastResult).toContainText(/Vertices:/i);

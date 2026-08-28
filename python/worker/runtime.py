@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional
 REQUIRED_DEPENDENCIES = ["numpy", "scipy", "sympy", "vtk"]
 OPTIONAL_DEPENDENCIES = ["pygalmesh", "CGAL"]
 HEAVY_DEPENDENCIES = REQUIRED_DEPENDENCIES + OPTIONAL_DEPENDENCIES
+_DLL_DIRECTORY_HANDLES: List[Any] = []
+_DLL_DIRECTORIES_REGISTERED: set[str] = set()
 
 
 def is_frozen() -> bool:
@@ -74,6 +76,39 @@ def _ensure_syspath(path: str) -> None:
         sys.path.insert(0, path)
 
 
+def _ensure_dll_directory(path: str) -> None:
+    if not path or not os.path.isdir(path):
+        return
+    norm = os.path.normcase(os.path.normpath(path))
+    if norm in _DLL_DIRECTORIES_REGISTERED:
+        return
+    _DLL_DIRECTORIES_REGISTERED.add(norm)
+    os.environ["PATH"] = path + os.pathsep + os.environ.get("PATH", "")
+    add_dll_directory = getattr(os, "add_dll_directory", None)
+    if add_dll_directory is not None:
+        _DLL_DIRECTORY_HANDLES.append(add_dll_directory(path))
+
+
+def bootstrap_native_dll_paths(repo_root: Optional[str] = None) -> List[str]:
+    root = repo_root or find_repo_root()
+    candidates: List[str] = []
+    raw_extra = os.environ.get("MATH3D_NATIVE_DLL_DIRS", "")
+    candidates.extend([item for item in raw_extra.split(os.pathsep) if item])
+    candidates.extend(
+        [
+            os.path.join(root, ".deps", "vcpkg", "installed", "x64-windows", "bin"),
+            os.path.join(root, "build", "python-worker-dist"),
+            os.path.join(root, "build", "python-worker-dist", "python-worker"),
+        ]
+    )
+    registered: List[str] = []
+    for candidate in candidates:
+        if os.path.isdir(candidate):
+            _ensure_dll_directory(candidate)
+            registered.append(candidate)
+    return registered
+
+
 def bootstrap_worker_paths() -> Dict[str, str]:
     repo_root = find_repo_root()
     worker_dir = os.path.dirname(os.path.abspath(__file__))
@@ -83,16 +118,19 @@ def bootstrap_worker_paths() -> Dict[str, str]:
     _ensure_syspath(repo_root)
     if os.path.isdir(legacy_py_dir):
         _ensure_syspath(legacy_py_dir)
+    dll_dirs = bootstrap_native_dll_paths(repo_root)
 
     return {
         "repo_root": repo_root,
         "worker_dir": worker_dir,
         "legacy_py_dir": legacy_py_dir,
         "frozen": "1" if is_frozen() else "0",
+        "dll_dirs": os.pathsep.join(dll_dirs),
     }
 
 
 def dependency_probe() -> Dict[str, Any]:
+    bootstrap_native_dll_paths()
     result: Dict[str, Any] = {
         "ok": True,
         "dependencies": {},
