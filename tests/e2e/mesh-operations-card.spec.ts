@@ -31,6 +31,8 @@ type MeshOperationE2EHook = {
       targetEdgeLength?: number;
       iterations?: number;
       preserveSharpEdges?: boolean;
+      booleanStrategy?: "auto" | "fast" | "robust";
+      validationPass?: boolean;
     }
   ) => Promise<{ ok: boolean; error?: string }>;
 };
@@ -199,6 +201,9 @@ test.describe("Mesh Operations card", () => {
       await card.getByTestId(`mesh-workspace-operation-registry-row-${operation}`).click();
       await expect(card.getByTestId(`mesh-workspace-operation-registry-run-${operation}`)).toContainText(/^Run /);
       await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-operand")).toBeVisible();
+      await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-strategy-auto")).toBeVisible();
+      await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-strategy-fast")).toBeVisible();
+      await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-strategy-robust")).toBeVisible();
     }
 
     await card.getByTestId("mesh-workspace-operation-registry-row-decimate").click();
@@ -284,7 +289,7 @@ test.describe("Mesh Operations card", () => {
     await card.getByTestId("mesh-workspace-operation-registry-row-boolean-union").click();
     await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-formula")).toContainText("Result = Active Mesh");
     await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-chip-a")).toContainText("A:");
-    await expect(card).toContainText("Needs closed watertight meshes");
+    await expect(card).toContainText("Auto/Robust needs a recent passing Validate result");
     await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-validation-warning")).toContainText(
       "Run Validate first"
     );
@@ -302,6 +307,7 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-chip-a")).toContainText("Boolean demo A");
     await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-chip-b")).toContainText("Boolean demo B");
 
+    await card.getByTestId("mesh-workspace-operation-registry-boolean-strategy-fast").click();
     const runUnion = card.getByTestId("mesh-workspace-operation-registry-run-boolean-union");
     if (!(await runUnion.isEnabled())) {
       test.skip(true, "VTK worker is not available in this environment.");
@@ -317,6 +323,7 @@ test.describe("Mesh Operations card", () => {
     await selectSection(page, "Mesh");
     const cardAgain = await openWorkspaceOperationsCard(page);
     await cardAgain.getByTestId("mesh-workspace-operation-registry-row-boolean-difference").click();
+    await cardAgain.getByTestId("mesh-workspace-operation-registry-boolean-strategy-fast").click();
     await expect(cardAgain.getByTestId("mesh-workspace-operation-registry-boolean-formula")).toContainText(
       "Result = Active Mesh - Operand B"
     );
@@ -337,6 +344,53 @@ test.describe("Mesh Operations card", () => {
       await expect(operandToggle).toContainText(/Show operands|Hide operands/);
     }
     await cardAgain.getByTestId("mesh-workspace-operation-registry-open-result-in-geometry").click();
+    await expect(page.getByText(/mesh sent to geometry/i)).toBeVisible({ timeout: 15_000 });
+  });
+
+  test("blocks Robust CGAL boolean until validation passes, then runs difference", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+
+    let card = await openWorkspaceOperationsCard(page);
+    await card.getByTestId("mesh-workspace-operation-registry-preset-boolean-demo-pair").click();
+    await expect(page.getByText(/Boolean demo A/i).first()).toBeVisible({ timeout: 15_000 });
+    await selectSection(page, "Mesh");
+    card = await openWorkspaceOperationsCard(page);
+    await card.getByTestId("mesh-workspace-operation-registry-row-boolean-difference").click();
+    await card.getByTestId("mesh-workspace-operation-registry-prepare-boolean-demo").click();
+    await expect(card).toContainText("Boolean demo operands ready", { timeout: 15_000 });
+
+    const robustStrategy = card.getByTestId("mesh-workspace-operation-registry-boolean-strategy-robust");
+    if (!(await robustStrategy.isEnabled())) {
+      test.skip(true, "CGAL worker is not available in this environment.");
+    }
+    await robustStrategy.click();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-validation-warning")).toContainText(
+      "Run Validate first"
+    );
+    await card.getByTestId("mesh-workspace-operation-registry-run-boolean-difference").click();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/Run Validate first/i, {
+      timeout: 60_000,
+    });
+    await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/error/i);
+
+    await card.getByTestId("mesh-workspace-operation-registry-row-cgal-validate").click();
+    await card.getByTestId("mesh-workspace-operation-registry-run-cgal-validate").click();
+    await expectLastOperation(card, /Validate mesh/i);
+
+    await card.getByTestId("mesh-workspace-operation-registry-row-boolean-difference").click();
+    await card.getByTestId("mesh-workspace-operation-registry-boolean-strategy-robust").click();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-validation-warning")).toContainText(
+      "validation passed"
+    );
+    await card.getByTestId("mesh-workspace-operation-registry-run-boolean-difference").click();
+    await expectLastOperation(card, /Boolean difference/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/CGAL/i);
+    await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/Validation-gated VTK|Native CGAL/i);
+
+    await card.getByTestId("mesh-workspace-operation-registry-open-result-in-geometry").click();
     await expect(page.getByText(/mesh sent to geometry/i)).toBeVisible({ timeout: 15_000 });
   });
 

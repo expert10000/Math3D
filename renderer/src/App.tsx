@@ -40,6 +40,7 @@ import {
   MESH_OPERATION_LABELS,
   summarizeMeshOperationResult,
   type MeshBooleanOperation,
+  type MeshBooleanStrategy,
   type MeshOperationHistoryEntry,
   type MeshOperationPresetId,
   type MeshOperationSavedPresetSummary,
@@ -641,6 +642,26 @@ type MeshOperationLastValidation = {
   status: MeshOperationResultSummary["status"];
   validation: NonNullable<MeshOperationResultSummary["validation"]>;
   timestamp: number;
+};
+
+const getBooleanValidationBlockers = (validation?: MeshOperationLastValidation["validation"] | null): string[] => {
+  if (!validation) return ["Run Validate first"];
+  const blockers: string[] = [];
+  if (!validation.watertight) blockers.push("not watertight");
+  if (!validation.manifold || validation.nonManifoldEdgeCount > 0) {
+    blockers.push(
+      validation.nonManifoldEdgeCount > 0
+        ? `${validation.nonManifoldEdgeCount.toLocaleString()} non-manifold edges`
+        : "non-manifold edges"
+    );
+  }
+  if (validation.boundaryEdgeCount > 0) blockers.push(`${validation.boundaryEdgeCount.toLocaleString()} boundary edges`);
+  if (validation.invalidFaceCount > 0) blockers.push(`${validation.invalidFaceCount.toLocaleString()} invalid faces`);
+  if (validation.degenerateFaceCount > 0) blockers.push(`${validation.degenerateFaceCount.toLocaleString()} degenerate faces`);
+  if (validation.selfIntersection.suspectedPairs > 0) {
+    blockers.push(`${validation.selfIntersection.suspectedPairs.toLocaleString()} self-intersections suspected`);
+  }
+  return blockers;
 };
 
 type ContextualActionBindingMap = Partial<Record<ContextualEntityMode, readonly ContextualActionBinding[]>>;
@@ -1621,6 +1642,7 @@ type GeometryOperationPreset = {
   smoothIterations: number;
   smoothPassband: number;
   booleanOperation?: MeshBooleanOperation;
+  booleanStrategy?: MeshBooleanStrategy;
   booleanOperandObjectId?: string | null;
   booleanCurveRadius?: number;
   previewTargetFaces?: number;
@@ -33564,6 +33586,7 @@ const App: React.FC = () => {
   const [meshOperationRemeshIterations, setMeshOperationRemeshIterations] = useState(1);
   const [meshOperationRemeshPreserveSharpEdges, setMeshOperationRemeshPreserveSharpEdges] = useState(true);
   const [meshOperationBooleanOperation, setMeshOperationBooleanOperation] = useState<MeshBooleanOperation>("union");
+  const [meshOperationBooleanStrategy, setMeshOperationBooleanStrategy] = useState<MeshBooleanStrategy>("auto");
   const [meshOperationBooleanOperandObjectId, setMeshOperationBooleanOperandObjectId] = useState<string | null>(null);
   const [meshOperationBooleanCurveRadius, setMeshOperationBooleanCurveRadius] = useState(0);
   const [meshOperationBooleanStatus, setMeshOperationBooleanStatus] = useState<string | null>(null);
@@ -33682,6 +33705,7 @@ const App: React.FC = () => {
     setMeshOperationSmoothIterations(Math.max(1, Math.round(preset.smoothIterations)));
     setMeshOperationSmoothPassband(clampNumber(preset.smoothPassband, 0.001, 1));
     if (preset.booleanOperation) setMeshOperationBooleanOperation(preset.booleanOperation);
+    if (preset.booleanStrategy) setMeshOperationBooleanStrategy(preset.booleanStrategy);
     if ("booleanOperandObjectId" in preset) setMeshOperationBooleanOperandObjectId(preset.booleanOperandObjectId ?? null);
     if (preset.booleanCurveRadius != null) setMeshOperationBooleanCurveRadius(Math.max(0, preset.booleanCurveRadius));
     if (preset.previewTargetFaces != null) setMeshOperationPreviewTargetFaces(Math.max(200, Math.round(preset.previewTargetFaces)));
@@ -54717,11 +54741,19 @@ case "mobius":
           ) {
             const meshA = makeBoxMesh("E2E box A", 0);
             const meshB = makeBoxMesh("E2E box B", 0.35);
+            const booleanStrategy = options?.booleanStrategy ?? "fast";
+            const validationPass = options?.validationPass ?? booleanStrategy !== "robust";
             const request: MeshOperationRequest = {
               operation,
               inputs: [meshA.label, meshB.label],
-              engine: "auto",
-              parameters: { computeNormals: true, curveRadius: operation === "boolean-imprint" ? 0.02 : undefined },
+              engine: booleanStrategy === "fast" ? "vtk" : booleanStrategy === "robust" ? "cgal" : "auto",
+              parameters: {
+                computeNormals: true,
+                booleanStrategy,
+                validationPass,
+                validationBlockers: validationPass ? [] : ["Run Validate first"],
+                curveRadius: operation === "boolean-imprint" ? 0.02 : undefined,
+              },
               outputMode,
               quality: "robust",
             };
@@ -54891,6 +54923,11 @@ case "mobius":
       setMeshOperationError("Surface mesh not ready yet.");
       return;
     }
+    const activeMeshLabel = buildActiveMeshLabel();
+    const activeValidation =
+      meshOperationLastValidation?.meshLabel === activeMeshLabel ? meshOperationLastValidation.validation : null;
+    const validationBlockers = meshOperationBooleanStrategy === "fast" ? [] : getBooleanValidationBlockers(activeValidation);
+    const validationPass = validationBlockers.length === 0;
     if (!meshOperationBooleanOperandObjectId) {
       setMeshOperationError("Pick a Geometry object as operand B.");
       return;
@@ -54916,6 +54953,9 @@ case "mobius":
       const beforeFaces = Math.round(meshA.indices.length / 3);
       const options = {
         computeNormals: true,
+        booleanStrategy: meshOperationBooleanStrategy,
+        validationPass,
+        validationBlockers,
         curveRadius: meshOperationBooleanCurveRadius > 0 ? meshOperationBooleanCurveRadius : undefined,
       };
       const outputMode = meshOperationOutputMode === "replace" ? "replace" : "new-object";
@@ -54934,7 +54974,7 @@ case "mobius":
         const aMinusBRequest: MeshOperationRequest = {
           operation: "boolean-difference",
           inputs: [meshA.label, meshB.label],
-          engine: "auto",
+          engine: meshOperationBooleanStrategy === "fast" ? "vtk" : meshOperationBooleanStrategy === "robust" ? "cgal" : "auto",
           parameters: options,
           outputMode,
           quality: "robust",
@@ -54949,7 +54989,7 @@ case "mobius":
         const aIntersectBRequest: MeshOperationRequest = {
           operation: "boolean-intersection",
           inputs: [meshA.label, meshB.label],
-          engine: "auto",
+          engine: meshOperationBooleanStrategy === "fast" ? "vtk" : meshOperationBooleanStrategy === "robust" ? "cgal" : "auto",
           parameters: options,
           outputMode,
           quality: "robust",
@@ -54964,7 +55004,7 @@ case "mobius":
         const bMinusARequest: MeshOperationRequest = {
           operation: "boolean-difference",
           inputs: [meshB.label, meshA.label],
-          engine: "auto",
+          engine: meshOperationBooleanStrategy === "fast" ? "vtk" : meshOperationBooleanStrategy === "robust" ? "cgal" : "auto",
           parameters: options,
           outputMode,
           quality: "robust",
@@ -55012,7 +55052,7 @@ case "mobius":
         const splitRequest: MeshOperationRequest = {
           operation: "boolean-split",
           inputs: [meshA.label, meshB.label],
-          engine: "auto",
+          engine: meshOperationBooleanStrategy === "fast" ? "vtk" : "auto",
           parameters: options,
           outputMode,
           quality: "robust",
@@ -55056,7 +55096,7 @@ case "mobius":
       const request: MeshOperationRequest = {
         operation,
         inputs: [meshA.label, meshB.label],
-        engine: "auto",
+        engine: meshOperationBooleanStrategy === "fast" ? "vtk" : meshOperationBooleanStrategy === "robust" ? "cgal" : "auto",
         parameters: options,
         outputMode: meshOperationOutputModeForRequest,
         quality: "robust",
@@ -55102,7 +55142,10 @@ case "mobius":
     getMeshForMeshOperation,
     meshOperationBooleanOperandObjectId,
     resolveGeometrySceneMeshById,
+    buildActiveMeshLabel,
+    meshOperationLastValidation,
     meshOperationBooleanOperation,
+    meshOperationBooleanStrategy,
     meshOperationBooleanCurveRadius,
     meshOperationOutputMode,
     meshOperationOutputModeForRequest,
@@ -60377,6 +60420,7 @@ case "mobius":
                     }
                   : {
                       computeNormals: true,
+                      booleanStrategy: meshOperationBooleanStrategy,
                       curveRadius: meshOperationBooleanCurveRadius > 0 ? meshOperationBooleanCurveRadius : undefined,
                     };
       return {
@@ -60405,6 +60449,7 @@ case "mobius":
       geometryBooleanObjectOptions,
       implicitResolution,
       meshOperationBooleanCurveRadius,
+      meshOperationBooleanStrategy,
       meshOperationBooleanOperandObjectId,
       meshOperationCleanComputeNormals,
       meshOperationRepairOrientFaces,
@@ -60453,6 +60498,7 @@ case "mobius":
       smoothIterations: Math.max(1, Math.round(meshOperationSmoothIterations)),
       smoothPassband: clampNumber(meshOperationSmoothPassband, 0.001, 1),
       booleanOperation: meshOperationBooleanOperation,
+      booleanStrategy: meshOperationBooleanStrategy,
       booleanOperandObjectId: meshOperationBooleanOperandObjectId,
       booleanCurveRadius: Math.max(0, meshOperationBooleanCurveRadius),
       previewTargetFaces: Math.max(200, Math.round(meshOperationPreviewTargetFaces)),
@@ -60468,6 +60514,7 @@ case "mobius":
     meshOperationBooleanCurveRadius,
     meshOperationBooleanOperandObjectId,
     meshOperationBooleanOperation,
+    meshOperationBooleanStrategy,
     meshOperationCleanComputeNormals,
     meshOperationRepairOrientFaces,
     meshOperationRepairRemoveDegenerateFaces,
@@ -66451,6 +66498,8 @@ case "mobius":
                   onMeshOperationSmooth={handleMeshOperationSmooth}
                   meshOperationBooleanOperation={meshOperationBooleanOperation}
                   onChangeMeshOperationBooleanOperation={setMeshOperationBooleanOperation}
+                  meshOperationBooleanStrategy={meshOperationBooleanStrategy}
+                  onChangeMeshOperationBooleanStrategy={setMeshOperationBooleanStrategy}
                   meshOperationBooleanOperandObjectId={meshOperationBooleanOperandObjectId}
                   onChangeMeshOperationBooleanOperandObjectId={setMeshOperationBooleanOperandObjectId}
                   meshOperationBooleanOperandOptions={geometryBooleanObjectOptions}
@@ -69545,6 +69594,8 @@ case "mobius":
                           onSmooth={handleMeshOperationSmooth}
                           booleanOperation={meshOperationBooleanOperation}
                           onChangeBooleanOperation={setMeshOperationBooleanOperation}
+                          booleanStrategy={meshOperationBooleanStrategy}
+                          onChangeBooleanStrategy={setMeshOperationBooleanStrategy}
                           booleanOperandObjectId={meshOperationBooleanOperandObjectId}
                           onChangeBooleanOperandObjectId={setMeshOperationBooleanOperandObjectId}
                           booleanOperandOptions={geometryBooleanObjectOptions}
@@ -70186,6 +70237,8 @@ case "mobius":
                     onChangeMeshOperationSmoothPassband={setMeshOperationSmoothPassband}
                     meshOperationBooleanOperation={meshOperationBooleanOperation}
                     onChangeMeshOperationBooleanOperation={setMeshOperationBooleanOperation}
+                    meshOperationBooleanStrategy={meshOperationBooleanStrategy}
+                    onChangeMeshOperationBooleanStrategy={setMeshOperationBooleanStrategy}
                     meshOperationBooleanOperandObjectId={meshOperationBooleanOperandObjectId}
                     onChangeMeshOperationBooleanOperandObjectId={setMeshOperationBooleanOperandObjectId}
                     meshOperationBooleanOperandOptions={geometryBooleanObjectOptions}
@@ -99818,6 +99871,8 @@ type SurfacesObjectPanelProps = {
   onMeshOperationSmooth: () => void;
   meshOperationBooleanOperation: MeshBooleanOperation;
   onChangeMeshOperationBooleanOperation: (operation: MeshBooleanOperation) => void;
+  meshOperationBooleanStrategy: MeshBooleanStrategy;
+  onChangeMeshOperationBooleanStrategy: (strategy: MeshBooleanStrategy) => void;
   meshOperationBooleanOperandObjectId: string | null;
   onChangeMeshOperationBooleanOperandObjectId: (id: string | null) => void;
   meshOperationBooleanOperandOptions: Array<{ id: string; name: string }>;
@@ -99994,6 +100049,8 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   onMeshOperationSmooth,
   meshOperationBooleanOperation,
   onChangeMeshOperationBooleanOperation,
+  meshOperationBooleanStrategy,
+  onChangeMeshOperationBooleanStrategy,
   meshOperationBooleanOperandObjectId,
   onChangeMeshOperationBooleanOperandObjectId,
   meshOperationBooleanOperandOptions,
@@ -100380,6 +100437,8 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
           onSmooth={onMeshOperationSmooth}
           booleanOperation={meshOperationBooleanOperation}
           onChangeBooleanOperation={onChangeMeshOperationBooleanOperation}
+          booleanStrategy={meshOperationBooleanStrategy}
+          onChangeBooleanStrategy={onChangeMeshOperationBooleanStrategy}
           booleanOperandObjectId={meshOperationBooleanOperandObjectId}
           onChangeBooleanOperandObjectId={onChangeMeshOperationBooleanOperandObjectId}
           booleanOperandOptions={meshOperationBooleanOperandOptions}
@@ -101869,6 +101928,8 @@ type SurfacesLeftPanelProps = {
   onMeshOperationSmooth: () => void;
   meshOperationBooleanOperation: MeshBooleanOperation;
   onChangeMeshOperationBooleanOperation: (op: MeshBooleanOperation) => void;
+  meshOperationBooleanStrategy: MeshBooleanStrategy;
+  onChangeMeshOperationBooleanStrategy: (strategy: MeshBooleanStrategy) => void;
   meshOperationBooleanOperandObjectId: string | null;
   onChangeMeshOperationBooleanOperandObjectId: (id: string | null) => void;
   meshOperationBooleanOperandOptions: Array<{ id: string; name: string }>;
@@ -102625,6 +102686,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onMeshOperationSmooth,
   meshOperationBooleanOperation,
   onChangeMeshOperationBooleanOperation,
+  meshOperationBooleanStrategy,
+  onChangeMeshOperationBooleanStrategy,
   meshOperationBooleanOperandObjectId,
   onChangeMeshOperationBooleanOperandObjectId,
   meshOperationBooleanOperandOptions,
@@ -107314,6 +107377,8 @@ onChangeImplicitExpr,
               onSmooth={onMeshOperationSmooth}
               booleanOperation={meshOperationBooleanOperation}
               onChangeBooleanOperation={onChangeMeshOperationBooleanOperation}
+              booleanStrategy={meshOperationBooleanStrategy}
+              onChangeBooleanStrategy={onChangeMeshOperationBooleanStrategy}
               booleanOperandObjectId={meshOperationBooleanOperandObjectId}
               onChangeBooleanOperandObjectId={onChangeMeshOperationBooleanOperandObjectId}
               booleanOperandOptions={meshOperationBooleanOperandOptions}

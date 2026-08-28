@@ -149,6 +149,41 @@ declare global {
       }
     | { ok: false; error: string };
 
+  type CgalBooleanOperation = "union" | "difference" | "intersection";
+  type CgalBooleanMeshRequest = {
+    jobId: string;
+    positionsA: ArrayBuffer | ArrayBufferView;
+    indicesA: ArrayBuffer | ArrayBufferView;
+    positionsB: ArrayBuffer | ArrayBufferView;
+    indicesB: ArrayBuffer | ArrayBufferView;
+    operation: CgalBooleanOperation;
+    options?: {
+      computeNormals?: boolean;
+    };
+  };
+
+  type CgalBooleanSummary = {
+    operation: CgalBooleanOperation;
+    kernel: "native-cgal" | "vtk-validated";
+    inputAFaces: number;
+    inputBFaces: number;
+    outputFaces: number;
+    diagnostics: string[];
+    warnings: string[];
+  };
+
+  type CgalBooleanMeshResponse =
+    | {
+        ok: true;
+        positions: ArrayBuffer | ArrayBufferView;
+        indices: ArrayBuffer | ArrayBufferView;
+        normals?: ArrayBuffer | ArrayBufferView;
+        vertexCount: number;
+        triCount: number;
+        boolean: CgalBooleanSummary;
+      }
+    | { ok: false; error: string };
+
   type GeodesicHeatRequest = {
     jobId: string;
     mesh: { V: number[][]; F: number[][] };
@@ -540,6 +575,7 @@ declare global {
       validateMesh: (req: CgalValidateMeshRequest) => Promise<CgalValidateMeshResponse>;
       repairMesh: (req: CgalRepairMeshRequest) => Promise<CgalRepairMeshResponse>;
       remeshMesh: (req: CgalRemeshMeshRequest) => Promise<CgalRemeshMeshResponse>;
+      booleanMesh: (req: CgalBooleanMeshRequest) => Promise<CgalBooleanMeshResponse>;
       stop: () => Promise<{ ok: boolean; error?: string }>;
       geodesicHeat: (req: GeodesicHeatRequest) => Promise<GeodesicHeatResponse>;
     };
@@ -680,6 +716,8 @@ declare global {
           targetEdgeLength?: number;
           iterations?: number;
           preserveSharpEdges?: boolean;
+          booleanStrategy?: "auto" | "fast" | "robust";
+          validationPass?: boolean;
         }
       ) => Promise<{
         ok: boolean;

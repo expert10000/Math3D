@@ -134,6 +134,42 @@ export type CgalRemeshMeshResponse =
     }
   | { ok: false; error: string };
 
+export type CgalBooleanOperation = "union" | "difference" | "intersection";
+
+export type CgalBooleanMeshRequest = {
+  jobId: string;
+  positionsA: ArrayBuffer | ArrayBufferView | Buffer;
+  indicesA: ArrayBuffer | ArrayBufferView | Buffer;
+  positionsB: ArrayBuffer | ArrayBufferView | Buffer;
+  indicesB: ArrayBuffer | ArrayBufferView | Buffer;
+  operation: CgalBooleanOperation;
+  options?: {
+    computeNormals?: boolean;
+  };
+};
+
+export type CgalBooleanSummary = {
+  operation: CgalBooleanOperation;
+  kernel: "native-cgal" | "vtk-validated";
+  inputAFaces: number;
+  inputBFaces: number;
+  outputFaces: number;
+  diagnostics: string[];
+  warnings: string[];
+};
+
+export type CgalBooleanMeshResponse =
+  | {
+      ok: true;
+      positions: ArrayBuffer | ArrayBufferView;
+      indices: ArrayBuffer | ArrayBufferView;
+      normals?: ArrayBuffer | ArrayBufferView;
+      vertexCount: number;
+      triCount: number;
+      boolean: CgalBooleanSummary;
+    }
+  | { ok: false; error: string };
+
 export type GeodesicHeatRequest = {
   jobId: string;
   mesh: { V: number[][]; F: number[][] };
@@ -243,6 +279,22 @@ export function registerCgalMeshIpc() {
       return res;
     } catch (e: any) {
       const diag = recordPythonWorkerFailure(e, "mesh:cgal:remesh", "WORKER_OPERATION_FAILED");
+      return { ok: false, error: diag.message };
+    }
+  });
+
+  ipcMain.handle("mesh:cgal:boolean", async (_evt, req: CgalBooleanMeshRequest): Promise<CgalBooleanMeshResponse> => {
+    try {
+      const worker = await getPythonWorker();
+      const res = await worker.booleanCgalMesh(req);
+      if (!res.ok) {
+        const diag = recordPythonWorkerFailure(res.error, "mesh:cgal:boolean", "WORKER_OPERATION_FAILED");
+        return { ok: false, error: diag.message };
+      }
+      recordPythonWorkerSuccess();
+      return res;
+    } catch (e: any) {
+      const diag = recordPythonWorkerFailure(e, "mesh:cgal:boolean", "WORKER_OPERATION_FAILED");
       return { ok: false, error: diag.message };
     }
   });

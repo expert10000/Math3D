@@ -2046,12 +2046,160 @@ def handle_vtk_boolean(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]]
         parts,
     )
 
+
+def mesh_boolean_preflight_from_buffers(pos_bytes: bytes, idx_bytes: bytes, role: str) -> Dict[str, Any]:
+    import numpy as np
+
+    positions = np.frombuffer(pos_bytes, dtype=np.float32)
+    indices = np.frombuffer(idx_bytes, dtype=np.uint32)
+    vertex_count = int(positions.size // 3)
+    face_count = int(indices.size // 3)
+    if vertex_count <= 0 or face_count <= 0:
+        return {
+            "ok": False,
+            "vertexCount": vertex_count,
+            "faceCount": face_count,
+            "edgeCount": 0,
+            "boundaryEdgeCount": 0,
+            "nonManifoldEdgeCount": 0,
+            "invalidFaceCount": 0,
+            "degenerateFaceCount": 0,
+            "message": f"Operand {role} is empty.",
+        }
+
+    faces = indices[: face_count * 3].reshape((-1, 3))
+    edge_counts: Dict[Tuple[int, int], int] = {}
+    invalid_faces = 0
+    degenerate_faces = 0
+
+    def add_edge(a: int, b: int) -> None:
+        key = (a, b) if a < b else (b, a)
+        edge_counts[key] = edge_counts.get(key, 0) + 1
+
+    for tri in faces:
+        a = int(tri[0])
+        b = int(tri[1])
+        c = int(tri[2])
+        if a >= vertex_count or b >= vertex_count or c >= vertex_count:
+            invalid_faces += 1
+            continue
+        if a == b or b == c or c == a:
+            degenerate_faces += 1
+            continue
+        add_edge(a, b)
+        add_edge(b, c)
+        add_edge(c, a)
+
+    boundary_edges = sum(1 for count in edge_counts.values() if count == 1)
+    non_manifold_edges = sum(1 for count in edge_counts.values() if count > 2)
+    issues = []
+    if boundary_edges:
+        issues.append(f"{boundary_edges} boundary edges")
+    if non_manifold_edges:
+        issues.append(f"{non_manifold_edges} non-manifold edges")
+    if invalid_faces:
+        issues.append(f"{invalid_faces} invalid faces")
+    if degenerate_faces:
+        issues.append(f"{degenerate_faces} degenerate faces")
+
+    return {
+        "ok": not issues,
+        "vertexCount": vertex_count,
+        "faceCount": face_count,
+        "edgeCount": len(edge_counts),
+        "boundaryEdgeCount": boundary_edges,
+        "nonManifoldEdgeCount": non_manifold_edges,
+        "invalidFaceCount": invalid_faces,
+        "degenerateFaceCount": degenerate_faces,
+        "message": f"Operand {role} is not a closed watertight manifold mesh: {', '.join(issues)}." if issues else "",
+    }
+
+
+def handle_cgal_boolean(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]]) -> None:
+    job_id = msg.get("jobId", "")
+    operation = str(msg.get("operation") or "union").lower()
+    if operation not in ("union", "difference", "intersection"):
+        raise RuntimeError("CGAL robust boolean supports union, difference, and intersection. Use Fast VTK for imprint.")
+    if not payloads:
+        raise RuntimeError("Missing binary payloads for CGAL boolean")
+
+    pos_a = payloads.get("positionsA")
+    idx_a = payloads.get("indicesA")
+    pos_b = payloads.get("positionsB")
+    idx_b = payloads.get("indicesB")
+    if not pos_a or not idx_a or not pos_b or not idx_b:
+        raise RuntimeError("CGAL boolean requires positionsA/indicesA/positionsB/indicesB")
+
+    preflight_a = mesh_boolean_preflight_from_buffers(pos_a, idx_a, "A")
+    preflight_b = mesh_boolean_preflight_from_buffers(pos_b, idx_b, "B")
+    blockers = [str(entry.get("message")) for entry in (preflight_a, preflight_b) if not entry.get("ok")]
+    if blockers:
+        raise RuntimeError(" ".join(blockers))
+
+    try:
+        import vtk
+    except Exception as e:
+        raise RuntimeError(f"VTK boolean kernel not available for CGAL robust adapter: {e}")
+
+    options = msg.get("options") or {}
+    compute_normals = bool(options.get("computeNormals", True))
+    poly_a = vtk_prepare_poly_for_boolean(vtk_poly_from_buffers(pos_a, idx_a))
+    poly_b = vtk_prepare_poly_for_boolean(vtk_poly_from_buffers(pos_b, idx_b))
+
+    boolean = vtk.vtkBooleanOperationPolyDataFilter()
+    if operation == "union":
+        boolean.SetOperationToUnion()
+    elif operation == "difference":
+        boolean.SetOperationToDifference()
+        if hasattr(boolean, "ReorientDifferenceCellsOn"):
+            boolean.ReorientDifferenceCellsOn()
+    else:
+        boolean.SetOperationToIntersection()
+    boolean.SetInputData(0, poly_a)
+    boolean.SetInputData(1, poly_b)
+    boolean.Update()
+    out_poly = vtk_triangles_only(boolean.GetOutput())
+    if out_poly is None or out_poly.GetNumberOfPoints() <= 0 or out_poly.GetNumberOfPolys() <= 0:
+        raise RuntimeError("CGAL robust boolean adapter produced empty output.")
+
+    pos_out, idx_out, normals_out, vcount, tcount = vtk_poly_to_buffers(out_poly, compute_normals)
+    parts: List[Tuple[str, bytes]] = [("positions", pos_out), ("indices", idx_out)]
+    if normals_out:
+        parts.append(("normals", normals_out))
+
+    send_binary(
+        {
+            "type": "cgal_boolean_result",
+            "jobId": job_id,
+            "ok": True,
+            "vertexCount": vcount,
+            "triCount": tcount,
+            "boolean": {
+                "operation": operation,
+                "kernel": "vtk-validated",
+                "inputAFaces": int(preflight_a.get("faceCount", 0)),
+                "inputBFaces": int(preflight_b.get("faceCount", 0)),
+                "outputFaces": tcount,
+                "diagnostics": [
+                    "Validation preflight passed for both operands.",
+                    f"Operand A: {preflight_a.get('edgeCount', 0)} edges, {preflight_a.get('faceCount', 0)} triangles.",
+                    f"Operand B: {preflight_b.get('edgeCount', 0)} edges, {preflight_b.get('faceCount', 0)} triangles.",
+                ],
+                "warnings": [
+                    "Native CGAL boolean kernel is not bundled yet; Robust currently uses validation-gated VTK boolean output.",
+                ],
+            },
+        },
+        parts,
+    )
+
 def main() -> None:
     alias_map = {
         "mesh.generate": "mesh_job",
         "mesh.validate": "validate_mesh",
         "mesh.repair": "repair_mesh",
         "mesh.remesh": "remesh_mesh",
+        "mesh.cgal_boolean": "cgal_boolean",
         "mesh.transform": "vtk_job",
         "mesh.boolean": "vtk_boolean",
         "mesh.preview": "vtk_preview",
@@ -2070,6 +2218,7 @@ def main() -> None:
         "mesh.validate",
         "mesh.repair",
         "mesh.remesh",
+        "mesh.cgal_boolean",
         "mesh.transform",
         "mesh.boolean",
         "mesh.preview",
@@ -2113,6 +2262,8 @@ def main() -> None:
             run_handler(msg, handle_repair_mesh, payloads)
         elif msg_type == "remesh_mesh":
             run_handler(msg, handle_remesh_mesh, payloads)
+        elif msg_type == "cgal_boolean":
+            run_handler(msg, handle_cgal_boolean, payloads)
         elif msg_type == "vtk_job":
             run_handler(msg, handle_vtk_job, payloads)
         elif msg_type == "vtk_boolean":

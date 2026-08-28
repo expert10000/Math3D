@@ -83,6 +83,19 @@ export type CgalRemeshMeshRequest = {
   };
 };
 
+export type CgalBooleanOperation = "union" | "difference" | "intersection";
+export type CgalBooleanMeshRequest = {
+  jobId: string;
+  positionsA: ArrayBuffer | ArrayBufferView;
+  indicesA: ArrayBuffer | ArrayBufferView;
+  positionsB: ArrayBuffer | ArrayBufferView;
+  indicesB: ArrayBuffer | ArrayBufferView;
+  operation: CgalBooleanOperation;
+  options?: {
+    computeNormals?: boolean;
+  };
+};
+
 export type GeodesicHeatRequest = {
   jobId: string;
   mesh: { V: number[][]; F: number[][] };
@@ -406,6 +419,8 @@ contextBridge.exposeInMainWorld("cgalMesh", {
     ipcRenderer.invoke("mesh:cgal:repair", req),
   remeshMesh: (req: CgalRemeshMeshRequest): Promise<any> =>
     ipcRenderer.invoke("mesh:cgal:remesh", req),
+  booleanMesh: (req: CgalBooleanMeshRequest): Promise<any> =>
+    ipcRenderer.invoke("mesh:cgal:boolean", req),
   geodesicHeat: (req: GeodesicHeatRequest): Promise<any> =>
     ipcRenderer.invoke("mesh:geodesic:heat", req),
   stop: (): Promise<{ ok: boolean; error?: string }> =>

@@ -127,6 +127,42 @@ export type CgalRemeshMeshResponse =
     }
   | { ok: false; error: string };
 
+export type CgalBooleanOperation = "union" | "difference" | "intersection";
+
+export type CgalBooleanMeshRequest = {
+  jobId: string;
+  positionsA: ArrayBuffer | ArrayBufferView;
+  indicesA: ArrayBuffer | ArrayBufferView;
+  positionsB: ArrayBuffer | ArrayBufferView;
+  indicesB: ArrayBuffer | ArrayBufferView;
+  operation: CgalBooleanOperation;
+  options?: {
+    computeNormals?: boolean;
+  };
+};
+
+export type CgalBooleanSummary = {
+  operation: CgalBooleanOperation;
+  kernel: "native-cgal" | "vtk-validated";
+  inputAFaces: number;
+  inputBFaces: number;
+  outputFaces: number;
+  diagnostics: string[];
+  warnings: string[];
+};
+
+export type CgalBooleanMeshResponse =
+  | {
+      ok: true;
+      positions: ArrayBuffer | ArrayBufferView;
+      indices: ArrayBuffer | ArrayBufferView;
+      normals?: ArrayBuffer | ArrayBufferView;
+      vertexCount: number;
+      triCount: number;
+      boolean: CgalBooleanSummary;
+    }
+  | { ok: false; error: string };
+
 export type CgalHealthResponse = { ok: boolean; error?: string };
 export type CgalPingResponse = { ok: boolean; pong?: boolean; error?: string };
 export type CgalVersionResponse = { ok: boolean; version?: string; protocol?: string; error?: string };
@@ -305,6 +341,7 @@ export type WorkerRequest =
   | { kind: "cgal.validate"; payload: Omit<CgalValidateMeshRequest, "jobId"> }
   | { kind: "cgal.repair"; payload: Omit<CgalRepairMeshRequest, "jobId"> }
   | { kind: "cgal.remesh"; payload: Omit<CgalRemeshMeshRequest, "jobId"> }
+  | { kind: "cgal.boolean"; payload: Omit<CgalBooleanMeshRequest, "jobId"> }
   | { kind: "cgal.geodesic-heat"; payload: Omit<GeodesicHeatRequest, "jobId"> }
   | { kind: "vtk.preview-implicit"; payload: Omit<VtkPreviewRequest, "jobId"> }
   | { kind: "vtk.clean-normals"; payload: Omit<VtkMeshRequest, "jobId"> }
@@ -321,6 +358,7 @@ export type WorkerResponse =
   | CgalValidateMeshResponse
   | CgalRepairMeshResponse
   | CgalRemeshMeshResponse
+  | CgalBooleanMeshResponse
   | GeodesicHeatResponse
   | VtkMeshResponse
   | VtkVolumeSliceResponse

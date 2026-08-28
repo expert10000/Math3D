@@ -6,6 +6,8 @@ import { mainDebugLog } from "../debugLog";
 import type {
   CgalMeshRequest,
   CgalMeshResponse,
+  CgalBooleanMeshRequest,
+  CgalBooleanMeshResponse,
   CgalRepairMeshRequest,
   CgalRepairMeshResponse,
   CgalRemeshMeshRequest,
@@ -705,6 +707,73 @@ class PythonWorker {
         preservedVertices: Number(remesh.preservedVertices) || 0,
         diagnostics: Array.isArray(remesh.diagnostics) ? remesh.diagnostics.map(String) : [],
         warnings: Array.isArray(remesh.warnings) ? remesh.warnings.map(String) : [],
+      },
+    };
+  }
+
+  async booleanCgalMesh(req: CgalBooleanMeshRequest): Promise<CgalBooleanMeshResponse> {
+    const positionsABuf = toBuffer(req.positionsA);
+    const indicesABuf = toBuffer(req.indicesA);
+    const positionsBBuf = toBuffer(req.positionsB);
+    const indicesBBuf = toBuffer(req.indicesB);
+    if (!positionsABuf.length || !indicesABuf.length || !positionsBBuf.length || !indicesBBuf.length) {
+      return { ok: false, error: "CGAL boolean request missing buffers" };
+    }
+
+    const msg = {
+      type: "mesh.cgal_boolean",
+      jobId: req.jobId,
+      operation: req.operation,
+      options: req.options ?? {},
+      binary: [
+        { name: "positionsA", bytes: positionsABuf.length },
+        { name: "indicesA", bytes: indicesABuf.length },
+        { name: "positionsB", bytes: positionsBBuf.length },
+        { name: "indicesB", bytes: indicesBBuf.length },
+      ],
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000, [positionsABuf, indicesABuf, positionsBBuf, indicesBBuf]);
+    const t1 = Date.now();
+    mainDebugLog("[CGAL worker] boolean response received", {
+      jobId: req.jobId,
+      type: res?.type,
+      operation: req.operation,
+      ms: t1 - t0,
+      vertexCount: res?.vertexCount,
+      triCount: res?.triCount,
+      boolean: res?.boolean,
+    });
+
+    if (!res || res.type !== "cgal_boolean_result") {
+      return { ok: false, error: workerErrorText(res, "Unknown CGAL boolean response") };
+    }
+
+    const payloads = res.binaryPayloads as Record<string, Buffer> | undefined;
+    const pos = payloads?.positions;
+    const idx = payloads?.indices;
+    if (!pos || !idx) {
+      return { ok: false, error: "CGAL boolean worker returned empty buffers" };
+    }
+    const normals = payloads?.normals;
+    const boolean = res.boolean && typeof res.boolean === "object" ? res.boolean : {};
+
+    return {
+      ok: true,
+      positions: bufferToArrayBuffer(pos),
+      indices: bufferToArrayBuffer(idx),
+      normals: normals ? bufferToArrayBuffer(normals) : undefined,
+      vertexCount: Number(res.vertexCount) || Math.floor(pos.byteLength / 12),
+      triCount: Number(res.triCount) || Math.floor(idx.byteLength / 12),
+      boolean: {
+        operation: req.operation,
+        kernel: boolean.kernel === "native-cgal" ? "native-cgal" : "vtk-validated",
+        inputAFaces: Number(boolean.inputAFaces) || Math.floor(indicesABuf.byteLength / 12),
+        inputBFaces: Number(boolean.inputBFaces) || Math.floor(indicesBBuf.byteLength / 12),
+        outputFaces: Number(boolean.outputFaces) || Math.floor(idx.byteLength / 12),
+        diagnostics: Array.isArray(boolean.diagnostics) ? boolean.diagnostics.map(String) : [],
+        warnings: Array.isArray(boolean.warnings) ? boolean.warnings.map(String) : [],
       },
     };
   }

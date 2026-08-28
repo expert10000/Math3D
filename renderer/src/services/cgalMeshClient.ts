@@ -1,5 +1,7 @@
 import type {
   CgalHealthResponse,
+  CgalBooleanMeshRequest,
+  CgalBooleanMeshResponse,
   CgalMeshRequest,
   CgalMeshResponse,
   CgalRepairMeshRequest,
@@ -15,6 +17,7 @@ import type {
 import { meshBackend } from "./meshBackend";
 
 export type { CgalMeshRequest, CgalMeshResponse };
+export type { CgalBooleanMeshRequest, CgalBooleanMeshResponse };
 export type { CgalValidateMeshRequest, CgalValidateMeshResponse };
 export type { CgalRepairMeshRequest, CgalRepairMeshResponse };
 export type { CgalRemeshMeshRequest, CgalRemeshMeshResponse };
@@ -49,4 +52,8 @@ export async function runCgalRepairMesh(req: Omit<CgalRepairMeshRequest, "jobId"
 
 export async function runCgalRemeshMesh(req: Omit<CgalRemeshMeshRequest, "jobId">): Promise<CgalRemeshMeshResponse> {
   return meshBackend.runCgalRemeshMesh(req);
+}
+
+export async function runCgalBooleanMesh(req: Omit<CgalBooleanMeshRequest, "jobId">): Promise<CgalBooleanMeshResponse> {
+  return meshBackend.runCgalBooleanMesh(req);
 }

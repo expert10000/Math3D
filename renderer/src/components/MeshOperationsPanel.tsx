@@ -6,6 +6,7 @@ import {
   type MeshOperationRequest,
   type MeshOperationResult,
   type MeshOperationStatus,
+  type MeshBooleanSummary,
   type MeshRepairValidationSummary,
   type MeshRepairSummary,
   type MeshRemeshSummary,
@@ -14,6 +15,7 @@ import {
 } from "../services/meshOperations";
 
 export type MeshBooleanOperation = "union" | "difference" | "intersection" | "split" | "imprint";
+export type MeshBooleanStrategy = "auto" | "fast" | "robust";
 
 export type MeshOperationUiId = MeshOperationId | "boolean-split";
 export type MeshOperationVisibleRowId = MeshOperationUiId;
@@ -33,6 +35,7 @@ export type MeshOperationResultSummary = {
   validation?: MeshValidationSummary;
   repair?: MeshRepairSummary;
   remesh?: MeshRemeshSummary;
+  boolean?: MeshBooleanSummary;
   repairValidation?: MeshRepairValidationSummary;
   warnings: string[];
   errors: string[];
@@ -99,6 +102,7 @@ export function summarizeMeshOperationResult(
     validation: result.validation,
     repair: result.repair,
     remesh: result.remesh,
+    boolean: result.boolean,
     repairValidation: result.repairValidation,
     warnings: result.warnings.filter((warning) => warning.severity !== "info").map((warning) => warning.message),
     errors: result.errors.map((error) => error.message),
@@ -167,6 +171,8 @@ export type MeshOperationsPanelProps = {
   onSmooth: () => void;
   booleanOperation: MeshBooleanOperation;
   onChangeBooleanOperation: (operation: MeshBooleanOperation) => void;
+  booleanStrategy: MeshBooleanStrategy;
+  onChangeBooleanStrategy: (strategy: MeshBooleanStrategy) => void;
   booleanOperandObjectId: string | null;
   onChangeBooleanOperandObjectId: (id: string | null) => void;
   booleanOperandOptions: Array<{ id: string; name: string }>;
@@ -520,6 +526,47 @@ const MeshRemeshCard: React.FC<{ remesh: MeshRemeshSummary }> = ({ remesh }) => 
   );
 };
 
+const MeshBooleanCard: React.FC<{ booleanSummary: MeshBooleanSummary }> = ({ booleanSummary }) => {
+  const kernelLabel = booleanSummary.kernel === "native-cgal" ? "Native CGAL" : "Validation-gated VTK";
+  return (
+    <div
+      data-testid="mesh-operation-boolean-card"
+      style={{
+        border: "1px solid #bae6fd",
+        borderRadius: 7,
+        background: "#f0f9ff",
+        padding: "6px",
+        display: "grid",
+        gap: 5,
+        marginTop: 3,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+        <strong>Boolean</strong>
+        <span style={{ color: "#0f3557", fontWeight: 800 }}>{kernelLabel}</span>
+      </div>
+      <div style={{ display: "grid", gap: 4 }}>
+        <div style={validationBadgeStyle("pass")}>
+          <span>Operation</span>
+          <strong>{booleanSummary.operation}</strong>
+        </div>
+        <div style={validationBadgeStyle("pass")}>
+          <span>A triangles</span>
+          <strong>{booleanSummary.inputAFaces.toLocaleString()}</strong>
+        </div>
+        <div style={validationBadgeStyle("pass")}>
+          <span>B triangles</span>
+          <strong>{booleanSummary.inputBFaces.toLocaleString()}</strong>
+        </div>
+        <div style={validationBadgeStyle(booleanSummary.outputFaces > 0 ? "pass" : "fail")}>
+          <span>Result triangles</span>
+          <strong>{booleanSummary.outputFaces.toLocaleString()}</strong>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const MeshRepairValidationComparisonCard: React.FC<{ comparison: MeshRepairValidationSummary }> = ({ comparison }) => {
   const verdictText =
     comparison.verdict === "improved"
@@ -642,6 +689,8 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
   onSmooth,
   booleanOperation,
   onChangeBooleanOperation,
+  booleanStrategy,
+  onChangeBooleanStrategy,
   booleanOperandObjectId,
   onChangeBooleanOperandObjectId,
   booleanOperandOptions,
@@ -706,6 +755,11 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
     if (booleanOperationForRow) onChangeBooleanOperation(booleanOperationForRow);
     setExpandedOperation(focusedOperation);
   }, [focusedOperation, focusedOperationToken, onChangeBooleanOperation]);
+  useEffect(() => {
+    if (booleanOperation === "imprint" && booleanStrategy !== "fast") {
+      onChangeBooleanStrategy("fast");
+    }
+  }, [booleanOperation, booleanStrategy, onChangeBooleanStrategy]);
   const applyPreset = (preset: MeshOperationPresetId) => {
     void onApplyOperationPreset?.(preset);
     if (preset === "clean-normals") {
@@ -835,6 +889,13 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
     validationForActiveMesh.degenerateFaceCount === 0 &&
     validationForActiveMesh.selfIntersection.suspectedPairs === 0;
   const activeMeshValidationBlockers = validationForActiveMesh ? getMeshValidationBlockers(validationForActiveMesh) : [];
+  const selectedBooleanStrategyNeedsCgal = booleanStrategy === "auto" || booleanStrategy === "robust";
+  const selectedBooleanStrategyReady =
+    booleanStrategy === "fast"
+      ? workerReady
+      : booleanStrategy === "robust"
+        ? cgalReady
+        : cgalReady;
   const expandedCanRun =
     expandedOperation === "implicit-preview"
       ? implicitAvailable && workerReady && !operationBusy
@@ -845,7 +906,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
           : expandedOperation === "cgal-repair" || expandedOperation === "cgal-repair-validate" || expandedOperation === "cgal-remesh"
             ? meshReady && cgalReady && !operationBusy
         : expandedIsBoolean
-          ? meshReady && workerReady && !!booleanOperandObjectId && !operationBusy
+          ? meshReady && selectedBooleanStrategyReady && !!booleanOperandObjectId && !operationBusy
           : expandedOperation
             ? meshReady && workerReady && !operationBusy
             : false;
@@ -1025,31 +1086,63 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                     >
                       <strong>Execution strategy</strong>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                        {capability.strategies.map((strategy) => {
-                          const engine = strategy.engine === "auto" ? capability.defaultEngine : strategy.engine;
-                          const engineReady = engine === "cgal" ? cgalReady : workerReady;
-                          const enabled = strategy.implemented && engineReady;
-                          return (
-                            <button
-                              key={`${testId}-${operation}-strategy-${strategy.id}`}
-                              type="button"
-                              disabled={!enabled || strategy.engine !== capability.defaultEngine}
-                              title={strategy.description}
-                              style={{
-                                border: `1px solid ${enabled ? "#93c5fd" : "#e2e8f0"}`,
-                                background: strategy.engine === capability.defaultEngine ? "#dbeafe" : "#f8fafc",
-                                color: enabled ? "#0f3557" : "#64748b",
-                                borderRadius: 999,
-                                padding: "2px 7px",
-                                fontSize: 10,
-                                fontWeight: 800,
-                              }}
-                            >
-                              {strategy.label} · {engine.toUpperCase()}
-                              {!strategy.implemented ? " planned" : ""}
-                            </button>
-                          );
-                        })}
+                        {expandedIsBoolean
+                          ? ([
+                              { id: "auto" as const, label: "Auto", engine: "auto" as const, implemented: booleanOperation !== "imprint", description: "Choose Robust CGAL when validation passes; otherwise show a blocker." },
+                              ...capability.strategies,
+                            ]).map((strategy) => {
+                              const engine = strategy.engine === "auto" ? "auto" : strategy.engine;
+                              const engineReady = engine === "cgal" ? cgalReady : engine === "vtk" ? workerReady : cgalReady;
+                              const enabled = strategy.implemented && engineReady;
+                              const active = booleanStrategy === strategy.id;
+                              return (
+                                <button
+                                  key={`${testId}-${operation}-strategy-${strategy.id}`}
+                                  data-testid={`${testId}-boolean-strategy-${strategy.id}`}
+                                  type="button"
+                                  disabled={!enabled}
+                                  onClick={() => onChangeBooleanStrategy(strategy.id as MeshBooleanStrategy)}
+                                  title={strategy.description}
+                                  style={{
+                                    border: `1px solid ${active ? "#2563eb" : enabled ? "#93c5fd" : "#e2e8f0"}`,
+                                    background: active ? "#dbeafe" : enabled ? "#fff" : "#f8fafc",
+                                    color: enabled ? "#0f3557" : "#64748b",
+                                    borderRadius: 999,
+                                    padding: "2px 7px",
+                                    fontSize: 10,
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  {strategy.label} · {engine.toUpperCase()}
+                                  {!strategy.implemented ? " planned" : ""}
+                                </button>
+                              );
+                            })
+                          : capability.strategies.map((strategy) => {
+                              const engine = strategy.engine === "auto" ? capability.defaultEngine : strategy.engine;
+                              const engineReady = engine === "cgal" ? cgalReady : workerReady;
+                              const enabled = strategy.implemented && engineReady;
+                              return (
+                                <button
+                                  key={`${testId}-${operation}-strategy-${strategy.id}`}
+                                  type="button"
+                                  disabled={!enabled || strategy.engine !== capability.defaultEngine}
+                                  title={strategy.description}
+                                  style={{
+                                    border: `1px solid ${enabled ? "#93c5fd" : "#e2e8f0"}`,
+                                    background: strategy.engine === capability.defaultEngine ? "#dbeafe" : "#f8fafc",
+                                    color: enabled ? "#0f3557" : "#64748b",
+                                    borderRadius: 999,
+                                    padding: "2px 7px",
+                                    fontSize: 10,
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  {strategy.label} · {engine.toUpperCase()}
+                                  {!strategy.implemented ? " planned" : ""}
+                                </button>
+                              );
+                            })}
                       </div>
                     </div>
                   )}
@@ -1330,9 +1423,11 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                           </span>
                         </div>
                         <div style={{ color: "#92400e", fontSize: 10, fontWeight: 700 }}>
-                          Needs closed watertight meshes before the boolean engine runs.
+                          {selectedBooleanStrategyNeedsCgal
+                            ? "Auto/Robust needs a recent passing Validate result before the boolean engine runs."
+                            : "Fast VTK expects closed watertight operands; Validate first if the result fails."}
                         </div>
-                        {!activeMeshHasValidation ? (
+                        {selectedBooleanStrategyNeedsCgal && !activeMeshHasValidation ? (
                           <div
                             data-testid={`${testId}-boolean-validation-warning`}
                             style={{
@@ -1346,7 +1441,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                           >
                             Run Validate first to check whether A is closed, watertight, and manifold.
                           </div>
-                        ) : activeMeshValidationPass ? (
+                        ) : selectedBooleanStrategyNeedsCgal && activeMeshValidationPass ? (
                           <div
                             data-testid={`${testId}-boolean-validation-warning`}
                             style={{
@@ -1360,7 +1455,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                           >
                             Active mesh validation passed.
                           </div>
-                        ) : (
+                        ) : selectedBooleanStrategyNeedsCgal ? (
                           <div
                             data-testid={`${testId}-boolean-validation-warning`}
                             style={{
@@ -1375,6 +1470,20 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                           >
                             <strong>Active mesh needs repair before robust booleans.</strong>
                             <span>{activeMeshValidationBlockers.join(", ") || "validation failed"}</span>
+                          </div>
+                        ) : (
+                          <div
+                            data-testid={`${testId}-boolean-validation-warning`}
+                            style={{
+                              border: "1px solid #bfdbfe",
+                              background: "#eff6ff",
+                              color: "#1d4ed8",
+                              borderRadius: 6,
+                              padding: "4px 6px",
+                              fontWeight: 700,
+                            }}
+                          >
+                            Fast VTK selected. Robust validation gate is bypassed for this run.
                           </div>
                         )}
                       </div>
@@ -1780,6 +1889,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
             {lastResult.repair && <MeshRepairCard repair={lastResult.repair} />}
             {lastResult.repairValidation && <MeshRepairValidationComparisonCard comparison={lastResult.repairValidation} />}
             {lastResult.remesh && <MeshRemeshCard remesh={lastResult.remesh} />}
+            {lastResult.boolean && <MeshBooleanCard booleanSummary={lastResult.boolean} />}
             {!!lastResult.diagnostics?.length && <div>Details: {lastResult.diagnostics.join("; ")}</div>}
             {lastResult.warnings.length > 0 && <div style={{ color: "#b45309" }}>Warnings: {lastResult.warnings.join("; ")}</div>}
             {lastResult.errors.length > 0 && <div style={{ color: "#b42318" }}>Errors: {lastResult.errors.join("; ")}</div>}

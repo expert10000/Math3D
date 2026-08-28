@@ -1,5 +1,8 @@
 export type {
   CgalHealthResponse,
+  CgalBooleanMeshRequest,
+  CgalBooleanMeshResponse,
+  CgalBooleanSummary,
   CgalMeshRequest,
   CgalMeshResponse,
   CgalRepairMeshRequest,
@@ -37,6 +40,7 @@ export type {
 export type MeshBackendCapabilities = {
   cgalHealth: boolean;
   cgalMesh: boolean;
+  cgalBooleanMesh: boolean;
   cgalRepairMesh: boolean;
   cgalRemeshMesh: boolean;
   cgalGeodesicHeat: boolean;

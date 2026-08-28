@@ -1,5 +1,11 @@
-import type { CgalMeshRequest, CgalRepairMeshResponse, CgalRemeshMeshResponse, CgalValidateMeshResponse } from "./cgalMeshClient";
-import { runCgalMesh, runCgalRepairMesh, runCgalRemeshMesh, runCgalValidateMesh } from "./cgalMeshClient";
+import type {
+  CgalMeshRequest,
+  CgalBooleanMeshResponse,
+  CgalRepairMeshResponse,
+  CgalRemeshMeshResponse,
+  CgalValidateMeshResponse,
+} from "./cgalMeshClient";
+import { runCgalBooleanMesh, runCgalMesh, runCgalRepairMesh, runCgalRemeshMesh, runCgalValidateMesh } from "./cgalMeshClient";
 import type { SurfaceMeshData, SurfaceMeshSource } from "../mesh/surfaceMesh";
 import {
   vtkCleanNormals,
@@ -50,6 +56,7 @@ export type MeshMetrics = {
 export type MeshValidationSummary = Extract<CgalValidateMeshResponse, { ok: true }>;
 export type MeshRepairSummary = Extract<CgalRepairMeshResponse, { ok: true }>["repair"];
 export type MeshRemeshSummary = Extract<CgalRemeshMeshResponse, { ok: true }>["remesh"];
+export type MeshBooleanSummary = Extract<CgalBooleanMeshResponse, { ok: true }>["boolean"];
 export type MeshRepairValidationVerdict = "improved" | "no-change" | "needs-review";
 export type MeshRepairValidationSummary = {
   before: MeshValidationSummary;
@@ -83,6 +90,7 @@ export type MeshOperationResult = {
   validation?: MeshValidationSummary;
   repair?: MeshRepairSummary;
   remesh?: MeshRemeshSummary;
+  boolean?: MeshBooleanSummary;
   repairValidation?: MeshRepairValidationSummary;
   provenance: {
     engine: ResolvedMeshOperationEngine;
@@ -139,6 +147,11 @@ const VTK_BOOLEAN_OPERATIONS = new Set<MeshOperationId>([
   "boolean-difference",
   "boolean-intersection",
   "boolean-imprint",
+]);
+const CGAL_BOOLEAN_OPERATIONS = new Set<MeshOperationId>([
+  "boolean-union",
+  "boolean-difference",
+  "boolean-intersection",
 ]);
 const CGAL_MESH_OPERATIONS = new Set<MeshOperationId>(["cgal-validate", "cgal-repair", "cgal-repair-validate", "cgal-remesh"]);
 const CGAL_OPERATIONS = new Set<MeshOperationId>(["implicit-mesh"]);
@@ -214,7 +227,7 @@ export const MESH_OPERATION_CAPABILITIES: MeshOperationCapability[] = [
     group: "boolean",
     strategies: [
       { id: "fast", label: "Fast", engine: "vtk", implemented: true, description: "Current VTK boolean worker path." },
-      { id: "robust", label: "Robust", engine: "cgal", implemented: false, description: "Planned robust boolean path after CGAL boolean backend lands." },
+      { id: "robust", label: "Robust", engine: "cgal", implemented: true, description: "Validation-gated robust boolean worker path." },
     ],
   },
   {
@@ -224,7 +237,7 @@ export const MESH_OPERATION_CAPABILITIES: MeshOperationCapability[] = [
     group: "boolean",
     strategies: [
       { id: "fast", label: "Fast", engine: "vtk", implemented: true, description: "Current VTK boolean worker path." },
-      { id: "robust", label: "Robust", engine: "cgal", implemented: false, description: "Planned robust boolean path after CGAL boolean backend lands." },
+      { id: "robust", label: "Robust", engine: "cgal", implemented: true, description: "Validation-gated robust boolean worker path." },
     ],
   },
   {
@@ -234,7 +247,7 @@ export const MESH_OPERATION_CAPABILITIES: MeshOperationCapability[] = [
     group: "boolean",
     strategies: [
       { id: "fast", label: "Fast", engine: "vtk", implemented: true, description: "Current VTK boolean worker path." },
-      { id: "robust", label: "Robust", engine: "cgal", implemented: false, description: "Planned robust boolean path after CGAL boolean backend lands." },
+      { id: "robust", label: "Robust", engine: "cgal", implemented: true, description: "Validation-gated robust boolean worker path." },
     ],
   },
   {
@@ -244,7 +257,7 @@ export const MESH_OPERATION_CAPABILITIES: MeshOperationCapability[] = [
     group: "boolean",
     strategies: [
       { id: "fast", label: "Fast", engine: "vtk", implemented: true, description: "Current VTK boolean worker path." },
-      { id: "robust", label: "Robust", engine: "cgal", implemented: false, description: "Planned robust imprint path after CGAL boolean backend lands." },
+      { id: "robust", label: "Robust", engine: "cgal", implemented: false, description: "Robust imprint is not connected yet; use Fast VTK." },
     ],
   },
 ];
@@ -265,6 +278,13 @@ export function computeMeshMetrics(mesh?: Pick<SurfaceMeshData, "positions" | "i
 
 export function resolveMeshOperationEngine(request: MeshOperationRequest): ResolvedMeshOperationEngine {
   if (request.engine !== "auto") return request.engine;
+  const strategy = typeof request.parameters.booleanStrategy === "string" ? request.parameters.booleanStrategy : null;
+  if (VTK_BOOLEAN_OPERATIONS.has(request.operation)) {
+    if (strategy === "fast") return "vtk";
+    if (strategy === "robust" || strategy === "auto") return "cgal";
+    if (request.parameters.validationPass === true && CGAL_BOOLEAN_OPERATIONS.has(request.operation)) return "cgal";
+    return "vtk";
+  }
   return MESH_OPERATION_CAPABILITIES.find((entry) => entry.operation === request.operation)?.defaultEngine ?? "vtk";
 }
 
@@ -347,7 +367,8 @@ function resultSuccess(
   warnings: MeshOperationDiagnostic[] = [],
   repair?: MeshRepairSummary,
   repairValidation?: MeshRepairValidationSummary,
-  remesh?: MeshRemeshSummary
+  remesh?: MeshRemeshSummary,
+  boolean?: MeshBooleanSummary
 ): MeshOperationResult {
   return {
     status: warnings.some((warning) => warning.severity === "warning") ? "warning" : "success",
@@ -363,6 +384,7 @@ function resultSuccess(
     repair,
     repairValidation,
     remesh,
+    boolean,
     provenance: { engine, parameters: request.parameters },
   };
 }
@@ -399,6 +421,11 @@ function numericParam(parameters: Record<string, unknown>, key: string): number 
 function booleanParam(parameters: Record<string, unknown>, key: string): boolean | undefined {
   const value = parameters[key];
   return typeof value === "boolean" ? value : undefined;
+}
+
+function stringArrayParam(parameters: Record<string, unknown>, key: string): string[] {
+  const value = parameters[key];
+  return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
 }
 
 function vtkOptionsFromParameters(parameters: Record<string, unknown>): VtkMeshRequest["options"] {
@@ -697,7 +724,7 @@ export async function runMeshOperation(
   }
 
   if (VTK_BOOLEAN_OPERATIONS.has(request.operation)) {
-    if (engine !== "vtk") {
+    if (engine !== "vtk" && engine !== "cgal") {
       return operationError(request, engine, before, startedAt, `${request.operation} is not supported by ${engine}.`, "unsupported-engine");
     }
     const meshA = context.primaryMesh;
@@ -707,6 +734,61 @@ export async function runMeshOperation(
     }
     const operation = vtkBooleanOperationFromId(request.operation);
     if (!operation) return operationError(request, engine, before, startedAt, `${request.operation} is not registered.`, "unsupported-operation");
+    const validationBlockers = stringArrayParam(request.parameters, "validationBlockers");
+    if (engine === "cgal") {
+      if (!CGAL_BOOLEAN_OPERATIONS.has(request.operation) || operation === "imprint") {
+        return operationError(request, engine, before, startedAt, "Robust CGAL imprint is not connected yet; use Fast VTK imprint.", "unsupported-cgal-boolean");
+      }
+      if (validationBlockers.length) {
+        return operationError(
+          request,
+          engine,
+          before,
+          startedAt,
+          `Robust boolean blocked: ${validationBlockers.join(", ")}.`,
+          "validation-blocked-boolean"
+        );
+      }
+      if (request.parameters.validationPass !== true) {
+        return operationError(
+          request,
+          engine,
+          before,
+          startedAt,
+          "Robust boolean needs a recent passing Validate result for the active mesh.",
+          "validation-required"
+        );
+      }
+      const res = await runCgalBooleanMesh({
+        positionsA: meshA.positions,
+        indicesA: meshA.indices,
+        positionsB: meshB.positions,
+        indicesB: meshB.indices,
+        operation,
+        options: {
+          computeNormals: booleanParam(request.parameters, "computeNormals"),
+        },
+      });
+      if (!res.ok) return operationError(request, engine, before, startedAt, res.error);
+      const diagnostics: MeshOperationDiagnostic[] = res.boolean.diagnostics.map((message) => ({
+        severity: "info",
+        code: "cgal-boolean",
+        message,
+        source: "cgal",
+      }));
+      const warnings: MeshOperationDiagnostic[] = res.boolean.warnings.map((message) => ({
+        severity: "warning",
+        code: "cgal-boolean-warning",
+        message,
+        source: "cgal",
+      }));
+      const resultMesh = meshFromBuffers(`${meshA.label} robust ${operation} ${meshB.label}`, meshA.source ?? { kind: "csg" }, {
+        positions: float32FromBuffer(res.positions),
+        indices: uint32FromBuffer(res.indices),
+        normals: res.normals ? float32FromBuffer(res.normals) : null,
+      });
+      return resultSuccess(request, engine, before, startedAt, resultMesh, [...diagnostics, ...warnings], undefined, undefined, undefined, res.boolean);
+    }
     const preflightA = booleanMeshPreflight(meshA, "A");
     if (!preflightA.ok) {
       return operationError(request, engine, before, startedAt, preflightA.message ?? "Operand A is not valid for VTK boolean.", "unsafe-boolean-input");
