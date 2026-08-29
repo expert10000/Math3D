@@ -21,6 +21,7 @@ The setup script:
 - builds and installs `pygalmesh`
 - runs `dependency_probe()`
 - runs a real `mesh.generate` CGAL sphere smoke test
+- runs native CGAL boolean `union`, `difference`, and `intersection` smoke tests through the worker implementation
 
 The first native `pygalmesh` build can take several minutes on Windows because MSVC is compiling CGAL-heavy C++ code.
 
@@ -32,6 +33,8 @@ powershell -ExecutionPolicy Bypass -File scripts/setup-cgal-python-worker.ps1 -S
 powershell -ExecutionPolicy Bypass -File scripts/setup-cgal-python-worker.ps1 -ForceReinstall
 powershell -ExecutionPolicy Bypass -File scripts/setup-cgal-python-worker.ps1 -SkipSmoke
 ```
+
+Use `-SkipPythonDeps` when the environment is already installed and you only want the dependency and smoke checks. It skips the expensive pygalmesh rebuild.
 
 ## Native DLL locations
 
@@ -64,6 +67,14 @@ Expected:
 - `optionalMissing: []`
 
 Use this worker-bootstrap verification instead of a naked `import pygalmesh` command. On Windows, direct imports can fail if the vcpkg DLL directory has not been registered for that Python process.
+
+To verify native CGAL booleans on real mesh assets, run:
+
+```powershell
+npm run test:cgal-boolean:real-mesh
+```
+
+That smoke blocks the open Stanford Bunny with a boundary-edge message, then runs native CGAL corefine on an Armadillo overlap pair and a 3DBenchy cutter-box difference.
 
 Run a direct CGAL implicit mesh smoke:
 

@@ -329,6 +329,10 @@ test.describe("Mesh Operations card", () => {
     );
     await cardAgain.getByTestId("mesh-workspace-operation-registry-prepare-boolean-demo").click();
     await expect(cardAgain).toContainText("Boolean demo operands ready", { timeout: 15_000 });
+    const swapOperands = cardAgain.getByTestId("mesh-workspace-operation-registry-swap-boolean-operands");
+    await expect(swapOperands).toBeEnabled();
+    await swapOperands.click();
+    await expect(cardAgain).toContainText(/Swapped operands/i);
     const runDifference = cardAgain.getByTestId("mesh-workspace-operation-registry-run-boolean-difference");
     if (!(await runDifference.isEnabled())) {
       test.skip(true, "VTK worker is not available in this environment.");
@@ -341,7 +345,7 @@ test.describe("Mesh Operations card", () => {
     const operandToggle = cardAgain.getByTestId("mesh-workspace-operation-registry-toggle-boolean-operands");
     if (await operandToggle.isVisible().catch(() => false)) {
       await operandToggle.click();
-      await expect(operandToggle).toContainText(/Show operands|Hide operands/);
+      await expect(operandToggle).toContainText(/Show cutter B|Hide cutter B/);
     }
     await cardAgain.getByTestId("mesh-workspace-operation-registry-open-result-in-geometry").click();
     await expect(page.getByText(/mesh sent to geometry/i)).toBeVisible({ timeout: 15_000 });
@@ -390,9 +394,17 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/CGAL/i);
     await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/Native CGAL kernel/i);
     await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/CGAL corefine/i);
+    await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/A/i);
+    await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/B/i);
+    await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/Result/i);
 
-    await card.getByTestId("mesh-workspace-operation-registry-open-result-in-geometry").click();
-    await expect(page.getByText(/mesh sent to geometry/i)).toBeVisible({ timeout: 15_000 });
+    const cutterToggle = card.getByTestId("mesh-workspace-operation-registry-toggle-boolean-operands");
+    if (await cutterToggle.isVisible().catch(() => false)) {
+      await cutterToggle.click();
+      await expect(cutterToggle).toContainText(/Show cutter B|Hide cutter B/);
+    }
+    await card.getByTestId("mesh-workspace-operation-registry-validate-result").click();
+    await expectLastOperation(card, /Validate mesh/i);
   });
 
   test("opens the implicit sphere preset from Mesh Operations and runs preview", async () => {

@@ -198,43 +198,45 @@ if (!$SkipPythonDeps) {
   Invoke-Checked -FilePath $venvPython -Arguments @("-m", "pip", "install", "numpy", "scipy", "sympy", "vtk", "CGAL")
 }
 
-Remove-Item -LiteralPath $buildRoot -Recurse -Force -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Force -Path $buildRoot | Out-Null
-Invoke-Checked -FilePath $venvPython -Arguments @(
-  "-m", "pip", "download",
-  "pygalmesh==$PygalmeshVersion",
-  "--no-binary", "pygalmesh",
-  "--no-deps",
-  "-d", $buildRoot
-)
+if (!$SkipPythonDeps) {
+  Remove-Item -LiteralPath $buildRoot -Recurse -Force -ErrorAction SilentlyContinue
+  New-Item -ItemType Directory -Force -Path $buildRoot | Out-Null
+  Invoke-Checked -FilePath $venvPython -Arguments @(
+    "-m", "pip", "download",
+    "pygalmesh==$PygalmeshVersion",
+    "--no-binary", "pygalmesh",
+    "--no-deps",
+    "-d", $buildRoot
+  )
 
-$sdist = Get-ChildItem -LiteralPath $buildRoot -Filter "pygalmesh-$PygalmeshVersion*.tar.gz" | Select-Object -First 1
-if (!$sdist) {
-  throw "Downloaded pygalmesh source archive not found in $buildRoot"
-}
-Invoke-Checked -FilePath $venvPython -Arguments @(
-  "-c",
-  "import sys, tarfile; tarfile.open(sys.argv[1], 'r:gz').extractall(sys.argv[2])",
-  $sdist.FullName,
-  $buildRoot
-)
+  $sdist = Get-ChildItem -LiteralPath $buildRoot -Filter "pygalmesh-$PygalmeshVersion*.tar.gz" | Select-Object -First 1
+  if (!$sdist) {
+    throw "Downloaded pygalmesh source archive not found in $buildRoot"
+  }
+  Invoke-Checked -FilePath $venvPython -Arguments @(
+    "-c",
+    "import sys, tarfile; tarfile.open(sys.argv[1], 'r:gz').extractall(sys.argv[2])",
+    $sdist.FullName,
+    $buildRoot
+  )
 
-$sourceDir = Get-ChildItem -LiteralPath $buildRoot -Directory |
-  Where-Object { $_.Name -like "pygalmesh-$PygalmeshVersion*" } |
-  Select-Object -First 1
-if (!$sourceDir) {
-  throw "Extracted pygalmesh source directory not found."
-}
-Apply-PygalmeshPatch -SourceDir $sourceDir.FullName
+  $sourceDir = Get-ChildItem -LiteralPath $buildRoot -Directory |
+    Where-Object { $_.Name -like "pygalmesh-$PygalmeshVersion*" } |
+    Select-Object -First 1
+  if (!$sourceDir) {
+    throw "Extracted pygalmesh source directory not found."
+  }
+  Apply-PygalmeshPatch -SourceDir $sourceDir.FullName
 
-$installArgs = @("-m", "pip", "install", "--no-build-isolation")
-if ($ForceReinstall) {
-  $installArgs += "--force-reinstall"
+  $installArgs = @("-m", "pip", "install", "--no-build-isolation")
+  if ($ForceReinstall) {
+    $installArgs += "--force-reinstall"
+  }
+  $installArgs += $sourceDir.FullName
+  $quotedPython = "`"$venvPython`""
+  $quotedArgs = ($installArgs | ForEach-Object { "`"$_`"" }) -join " "
+  Invoke-WithVcVars -Command "$quotedPython $quotedArgs"
 }
-$installArgs += $sourceDir.FullName
-$quotedPython = "`"$venvPython`""
-$quotedArgs = ($installArgs | ForEach-Object { "`"$_`"" }) -join " "
-Invoke-WithVcVars -Command "$quotedPython $quotedArgs"
 
 if (!$SkipSmoke) {
   Invoke-Checked -FilePath $venvPython -Arguments @(
@@ -255,6 +257,48 @@ if (!$SkipSmoke) {
     throw "worker mesh.generate smoke returned failure: $($result.error)"
   }
   Write-Host "mesh.generate smoke ok: $($result.vertexCount) vertices / $($result.triCount) triangles"
+
+  $booleanSmoke = @'
+import numpy as np
+from python.worker.runtime import bootstrap_worker_paths
+bootstrap_worker_paths()
+from python.worker.worker_impl import run_native_cgal_boolean
+
+positions_a = np.asarray([
+    [-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [-0.5, 0.5, -0.5],
+    [-0.5, -0.5, 0.5], [0.5, -0.5, 0.5], [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5],
+], dtype=np.float32)
+positions_b = positions_a + np.asarray([0.35, 0.0, 0.0], dtype=np.float32)
+indices = np.asarray([
+    [0, 2, 1], [0, 3, 2],
+    [4, 5, 6], [4, 6, 7],
+    [0, 1, 5], [0, 5, 4],
+    [1, 2, 6], [1, 6, 5],
+    [2, 3, 7], [2, 7, 6],
+    [3, 0, 4], [3, 4, 7],
+], dtype=np.uint32)
+
+counts = []
+for op in ('union', 'difference', 'intersection'):
+    result = run_native_cgal_boolean(
+        op,
+        positions_a.tobytes(order='C'),
+        indices.tobytes(order='C'),
+        positions_b.tobytes(order='C'),
+        indices.tobytes(order='C'),
+        True,
+    )
+    if result is None:
+        raise RuntimeError('native CGAL boolean {} returned no result'.format(op))
+    _pos, _idx, _normals, vertex_count, tri_count, diagnostics, _warnings = result
+    if vertex_count <= 0 or tri_count <= 0:
+        raise RuntimeError('native CGAL boolean {} returned empty mesh: {}/{}'.format(op, vertex_count, tri_count))
+    if not any('corefine' in entry.lower() for entry in diagnostics):
+        raise RuntimeError('native CGAL boolean {} did not report corefine diagnostics: {}'.format(op, diagnostics))
+    counts.append('{} {}v/{}f'.format(op, vertex_count, tri_count))
+print('native CGAL boolean smoke ok: ' + '; '.join(counts))
+'@
+  Invoke-Checked -FilePath $venvPython -Arguments @("-c", $booleanSmoke)
 }
 
 Write-Step "complete"

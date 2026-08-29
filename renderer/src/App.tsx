@@ -46756,6 +46756,70 @@ case "mobius":
     setGeometryCreateActionStatus(visible ? "Boolean demo operands shown." : "Boolean demo operands hidden.");
   }, []);
 
+  const handleSwapMeshOperationBooleanOperands = useCallback(() => {
+    if (meshOperationBusy) return;
+    if (!meshOperationBooleanOperandObjectId) {
+      setMeshOperationError("Pick a Geometry object as operand B before swapping.");
+      return;
+    }
+    const resolvedB = resolveGeometrySceneMeshById(meshOperationBooleanOperandObjectId);
+    if (!resolvedB) {
+      setMeshOperationError("Operand B is unavailable. Ensure the selected Geometry object is visible.");
+      return;
+    }
+    if (!surfaceMeshData?.positions.length) {
+      setMeshOperationError("Active Mesh operand A is not ready to swap.");
+      return;
+    }
+
+    const previousALabel = surfaceMeshData.label?.trim() || "Active Mesh";
+    const previousAObjectId =
+      geometryDatasetMeshObjects.find((entry) => entry.id !== meshOperationBooleanOperandObjectId && entry.name === previousALabel)?.id ??
+      makeId();
+    const previousAObject: GeometryDatasetMeshObject = {
+      id: previousAObjectId,
+      name: previousALabel,
+      mesh: toDetachedMeshData(surfaceMeshData, previousALabel),
+      transform: {
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+      },
+      visible: true,
+      material: { color: 0x3b82f6, opacity: 0.5 },
+      promotion: null,
+      sourceSelectionOverlay: null,
+    };
+    const nextActiveMesh = applySurfaceMeshOps(cloneSurfaceMeshData(resolvedB.mesh, resolvedB.object.name));
+
+    setGeometryDatasetMeshObjects((prev) => [
+      previousAObject,
+      ...prev
+        .filter((entry) => entry.id !== previousAObject.id && entry.name !== previousAObject.name)
+        .map((entry) =>
+          entry.id === meshOperationBooleanOperandObjectId
+            ? { ...entry, visible: true }
+            : entry
+        ),
+    ]);
+    setMeshDataset(nextActiveMesh, "mesh-operation:boolean-swap-b-to-a");
+    setMode("surfaces");
+    setDatasetKind("mesh");
+    setSurfaceViewerKind("mesh");
+    setMeshOperationBooleanOperandObjectId(previousAObject.id);
+    setGeometrySelectedObjectId(previousAObject.id);
+    setMeshOperationError(null);
+    setMeshOperationBooleanStatus(`Swapped operands: active Mesh is ${resolvedB.object.name}, operand B is ${previousALabel}.`);
+    setGeometryCreateActionStatus("Boolean operands swapped.");
+  }, [
+    geometryDatasetMeshObjects,
+    meshOperationBooleanOperandObjectId,
+    meshOperationBusy,
+    resolveGeometrySceneMeshById,
+    setMeshDataset,
+    surfaceMeshData,
+  ]);
+
   const applyDefaultPorts = useCallback((block: WorkbookBlock): WorkbookBlock => {
     const ports = resolveBlockPorts(block);
     return { ...block, inputs: ports.inputs, outputs: ports.outputs };
@@ -66509,6 +66573,7 @@ case "mobius":
                   meshOperationBooleanStatus={meshOperationBooleanStatus}
                   onRunMeshOperationBoolean={handleMeshOperationBoolean}
                   onPrepareMeshOperationBooleanDemo={handlePrepareMeshOperationBooleanDemo}
+                  onSwapMeshOperationBooleanOperands={handleSwapMeshOperationBooleanOperands}
                   meshOperationOutputMode={meshOperationOutputMode}
                   onChangeMeshOperationOutputMode={setMeshOperationOutputMode}
                   generateSurfaceStatus={generateSurfaceStatus}
@@ -69606,6 +69671,7 @@ case "mobius":
                           onRunBoolean={handleMeshOperationBoolean}
                           onPrepareBooleanDemo={handlePrepareMeshOperationBooleanDemo}
                           onOpenBooleanDemoPair={handleOpenMeshOperationBooleanDemoPairInGeometry}
+                          onSwapBooleanOperands={handleSwapMeshOperationBooleanOperands}
                           booleanOperandsVisible={meshOperationBooleanDemoOperandsVisible}
                           onShowBooleanOperands={() => setMeshOperationBooleanDemoOperandsVisible(true)}
                           onHideBooleanOperands={() => setMeshOperationBooleanDemoOperandsVisible(false)}
@@ -70248,6 +70314,7 @@ case "mobius":
                     meshOperationBooleanStatus={meshOperationBooleanStatus}
                     onRunMeshOperationBoolean={handleMeshOperationBoolean}
                     onPrepareMeshOperationBooleanDemo={handlePrepareMeshOperationBooleanDemo}
+                    onSwapMeshOperationBooleanOperands={handleSwapMeshOperationBooleanOperands}
                     meshOperationOutputMode={meshOperationOutputMode}
                     onChangeMeshOperationOutputMode={setMeshOperationOutputMode}
                     meshOperationImplicitAvailable={surfaceViewerKind === "implicit" && !!activeImplicitExpr}
@@ -99882,6 +99949,7 @@ type SurfacesObjectPanelProps = {
   meshOperationBooleanStatus: string | null;
   onRunMeshOperationBoolean: () => void | Promise<void>;
   onPrepareMeshOperationBooleanDemo: () => void;
+  onSwapMeshOperationBooleanOperands: () => void;
   meshOperationOutputMode: "replace" | "derived";
   onChangeMeshOperationOutputMode: (mode: "replace" | "derived") => void;
   meshOperationImplicitAvailable: boolean;
@@ -100060,6 +100128,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   meshOperationBooleanStatus,
   onRunMeshOperationBoolean,
   onPrepareMeshOperationBooleanDemo,
+  onSwapMeshOperationBooleanOperands,
   meshOperationOutputMode,
   onChangeMeshOperationOutputMode,
   meshOperationImplicitAvailable,
@@ -100448,6 +100517,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
           booleanStatus={meshOperationBooleanStatus}
           onRunBoolean={onRunMeshOperationBoolean}
           onPrepareBooleanDemo={onPrepareMeshOperationBooleanDemo}
+          onSwapBooleanOperands={onSwapMeshOperationBooleanOperands}
           outputMode={meshOperationOutputMode}
           onChangeOutputMode={onChangeMeshOperationOutputMode}
           implicitAvailable={meshOperationImplicitAvailable}
@@ -101939,6 +102009,7 @@ type SurfacesLeftPanelProps = {
   meshOperationBooleanStatus: string | null;
   onRunMeshOperationBoolean: () => void | Promise<void>;
   onPrepareMeshOperationBooleanDemo: () => void;
+  onSwapMeshOperationBooleanOperands: () => void;
   meshOperationOutputMode: "replace" | "derived";
   onChangeMeshOperationOutputMode: (mode: "replace" | "derived") => void;
   generateSurfaceStatus: GenerateSurfaceStatus;
@@ -102697,6 +102768,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   meshOperationBooleanStatus,
   onRunMeshOperationBoolean,
   onPrepareMeshOperationBooleanDemo,
+  onSwapMeshOperationBooleanOperands,
   meshOperationOutputMode,
   onChangeMeshOperationOutputMode,
   generateSurfaceStatus,
@@ -107388,6 +107460,7 @@ onChangeImplicitExpr,
               booleanStatus={meshOperationBooleanStatus}
               onRunBoolean={onRunMeshOperationBoolean}
               onPrepareBooleanDemo={onPrepareMeshOperationBooleanDemo}
+              onSwapBooleanOperands={onSwapMeshOperationBooleanOperands}
               outputMode={meshOperationOutputMode}
               onChangeOutputMode={onChangeMeshOperationOutputMode}
               implicitAvailable={isImplicitAny}

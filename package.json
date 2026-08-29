@@ -34,6 +34,7 @@
     "build:python-worker": "node scripts/build-python-worker.mjs",
     "build:python-worker:smoke": "powershell -ExecutionPolicy Bypass -File scripts/build-python-worker.ps1 -SmokeTest",
     "setup:cgal-worker": "powershell -ExecutionPolicy Bypass -File scripts/setup-cgal-python-worker.ps1",
+    "test:cgal-boolean:real-mesh": ".\\.venv-worker\\Scripts\\python.exe scripts/cgal-boolean-real-mesh-smoke.py",
     "build:core": "npm run build:main && npm run build:renderer",
     "typecheck:noemit": "tsc -p tsconfig.node.json --noEmit && tsc -p renderer/tsconfig.app.json --noEmit && tsc -p tests/e2e/tsconfig.json --noEmit",
     "build": "npm run build:core && electron .",
