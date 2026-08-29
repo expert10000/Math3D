@@ -7,6 +7,7 @@ This site combines:
 - Architecture docs for cross-runtime workspace planning.
 - Runtime architecture overview: `runtime-architecture.md` (Electron main thread, React renderer, Python worker with CGAL/VTK).
 - Install and run modes guide: `install-and-run-modes.md` (desktop, browser, and Docker browser modes, including worker requirements).
+- CGAL Python worker setup: `cgal-python-worker-setup.md` (one-command vcpkg + patched pygalmesh setup).
 - Repository folder map: `repository-layout.md`.
 
 ## Public frontend

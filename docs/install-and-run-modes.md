@@ -69,7 +69,9 @@ $env:MATH3D_PYTHON = (Get-Command python).Source
 Notes:
 
 - `pyinstaller` is needed when building `worker.exe` (`npm run build:python-worker`).
-- `pygalmesh` is required for release/package builds that must include robust CGAL meshing. It may require CGAL/Eigen build prerequisites on the build machine.
+- For native CGAL implicit meshing, prefer the reproducible Windows setup script:
+  - `npm run setup:cgal-worker`
+  - details: `docs/cgal-python-worker-setup.md`
 
 ## Windows + Conda command recipes
 

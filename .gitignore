@@ -21,6 +21,7 @@ apps/mobile/.expo/
 /docs/api/
 /docs/from-A/
 /.tools/
+/.deps/
 
 # Large demo/reference assets are local-only unless explicitly committed.
 /data/
