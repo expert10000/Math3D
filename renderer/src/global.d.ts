@@ -159,6 +159,7 @@ declare global {
     operation: CgalBooleanOperation;
     options?: {
       computeNormals?: boolean;
+      allowVtkFallback?: boolean;
     };
   };
 

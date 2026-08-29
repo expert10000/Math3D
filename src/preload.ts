@@ -93,6 +93,7 @@ export type CgalBooleanMeshRequest = {
   operation: CgalBooleanOperation;
   options?: {
     computeNormals?: boolean;
+    allowVtkFallback?: boolean;
   };
 };
 

@@ -388,7 +388,8 @@ test.describe("Mesh Operations card", () => {
     await card.getByTestId("mesh-workspace-operation-registry-run-boolean-difference").click();
     await expectLastOperation(card, /Boolean difference/i);
     await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/CGAL/i);
-    await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/Validation-gated VTK|Native CGAL/i);
+    await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/Native CGAL kernel/i);
+    await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/CGAL corefine/i);
 
     await card.getByTestId("mesh-workspace-operation-registry-open-result-in-geometry").click();
     await expect(page.getByText(/mesh sent to geometry/i)).toBeVisible({ timeout: 15_000 });

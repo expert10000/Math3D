@@ -2215,8 +2215,8 @@ def run_native_cgal_boolean(
     try:
         from CGAL import CGAL_Polygon_mesh_processing as PMP
         from CGAL import CGAL_Polyhedron_3 as PH
-    except Exception:
-        return None
+    except Exception as e:
+        raise RuntimeError(f"Native CGAL boolean bindings unavailable: {e}")
 
     poly_a = cgal_polyhedron_from_buffers(pos_a, idx_a)
     poly_b = cgal_polyhedron_from_buffers(pos_b, idx_b)
@@ -2270,12 +2270,15 @@ def handle_cgal_boolean(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]
 
     options = msg.get("options") or {}
     compute_normals = bool(options.get("computeNormals", True))
+    allow_vtk_fallback = bool(options.get("allowVtkFallback", False))
     native_warning: Optional[str] = None
     native_result = None
     try:
         native_result = run_native_cgal_boolean(operation, pos_a, idx_a, pos_b, idx_b, compute_normals)
     except Exception as e:
-        native_warning = f"Native CGAL boolean failed; using validation-gated VTK fallback: {e}"
+        native_warning = f"Native CGAL boolean failed: {e}"
+        if not allow_vtk_fallback:
+            raise RuntimeError(native_warning)
 
     if native_result is not None:
         pos_out, idx_out, normals_out, vcount, tcount, native_diagnostics, native_warnings = native_result
@@ -2314,7 +2317,7 @@ def handle_cgal_boolean(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]
         extra_diagnostics = ["Validation-gated VTK fallback completed."]
         warnings = [
             native_warning
-            or "Native CGAL boolean kernel is unavailable; Robust used validation-gated VTK boolean output.",
+            or "Native CGAL boolean kernel is unavailable; explicit VTK fallback produced the boolean output.",
         ]
 
     parts: List[Tuple[str, bytes]] = [("positions", pos_out), ("indices", idx_out)]
