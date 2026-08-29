@@ -145,7 +145,15 @@ test.describe("Mesh Operations card", () => {
       await expect(card.getByTestId(`mesh-workspace-operation-registry-group-${group}`)).toBeVisible();
     }
 
-    for (const preset of ["cgal-validate", "cgal-repair-memory", "cgal-repair-validate", "clean-normals", "decimate-3dbenchy", "smooth-bunny"]) {
+    for (const preset of [
+      "cgal-validate",
+      "cgal-repair-memory",
+      "cgal-repair-validate",
+      "clean-normals",
+      "validate-bunny",
+      "decimate-3dbenchy",
+      "smooth-bunny",
+    ]) {
       await card.getByTestId(`mesh-workspace-operation-registry-preset-${preset}`).click();
       await expect(card.locator("[aria-expanded=\"true\"]")).toBeVisible();
     }
@@ -482,6 +490,27 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-validation-warning")).toContainText(
       /validation passed|needs repair/i
     );
+  });
+
+  test("loads Bunny validation preset and reports open boundary edges", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+
+    const card = await openWorkspaceOperationsCard(page);
+    await card.getByTestId("mesh-workspace-operation-registry-preset-validate-bunny").click();
+    await expect(page.getByText(/08_stanford_bunny\.obj/i).first()).toBeVisible({
+      timeout: 20_000,
+    });
+    const runValidate = card.getByTestId("mesh-workspace-operation-registry-run-cgal-validate");
+    await expect(runValidate).toHaveText("Run Validate mesh");
+    await expect(runValidate).toBeEnabled({ timeout: 60_000 });
+    await runValidate.click();
+    await expectLastOperation(card, /Validate mesh/i);
+    await expect(card.getByTestId("mesh-operation-validation-card")).toContainText(/Needs repair|Needs review/i);
+    await expect(card.getByTestId("mesh-operation-validation-card")).toContainText(/Boundary edges/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/Watertight: no/i);
   });
 
   test("runs CGAL mesh repair through the shared operation layer when available", async () => {

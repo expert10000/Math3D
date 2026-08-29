@@ -274,6 +274,7 @@ export type MeshOperationPresetId =
   | "cgal-validate"
   | "cgal-repair-memory"
   | "cgal-repair-validate"
+  | "validate-bunny"
   | "decimate-3dbenchy"
   | "smooth-bunny"
   | "boolean-demo-pair"
@@ -308,6 +309,12 @@ const MESH_OPERATION_PRESETS: Array<{
     label: "Clean",
     description: "Clean normals into a new mesh object.",
     operation: "clean-normals",
+  },
+  {
+    id: "validate-bunny",
+    label: "Validate Bunny",
+    description: "Load Stanford Bunny and prepare CGAL validation for its open boundary edges.",
+    operation: "cgal-validate",
   },
   {
     id: "decimate-3dbenchy",
@@ -908,6 +915,10 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
       onChangeRepairFillSmallHoles(true);
       onChangeOutputMode("derived");
       setExpandedOperation("cgal-repair-validate");
+      return;
+    }
+    if (preset === "validate-bunny") {
+      setExpandedOperation("cgal-validate");
       return;
     }
     if (preset === "decimate-3dbenchy") {

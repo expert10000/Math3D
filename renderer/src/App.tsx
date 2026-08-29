@@ -51072,6 +51072,7 @@ case "mobius":
     async (presetId: MeshOperationPresetId) => {
       setMeshOperationError(null);
       setMeshOperationPreviewError(null);
+      setMeshLastOperation(null);
       setCgalError(null);
       setMeshOperationOutputMode("derived");
       if (presetId === "clean-normals") {
@@ -51085,6 +51086,10 @@ case "mobius":
         setMeshOperationRepairCompactVertices(true);
         setMeshOperationRepairFillSmallHoles(true);
         setMeshOperationRepairMaxHoleEdges(3);
+        return;
+      }
+      if (presetId === "validate-bunny") {
+        await handleLoadSurfaceMeshBenchmarkModel("stanford-bunny");
         return;
       }
       if (presetId === "decimate-3dbenchy") {
@@ -69606,7 +69611,7 @@ case "mobius":
                           workerStatusText={meshOperationServiceStatusText}
                           cgalReady={cgalServiceReady}
                           cgalStatusText={cgalServiceStatusText}
-                          busy={meshOperationBusy}
+                          busy={meshOperationBusy || surfaceMeshImportBusy}
                           cgalBusy={cgalBusy}
                           lastResult={meshLastOperation}
                           lastValidation={meshOperationLastValidation}
