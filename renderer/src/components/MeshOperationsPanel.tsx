@@ -380,11 +380,64 @@ const validationBadgeStyle = (state: "pass" | "warn" | "fail"): React.CSSPropert
 
 const yesNo = (value: boolean) => (value ? "yes" : "no");
 
+const countChanged = (before: number, after: number) => before !== after;
+
+const getValidationVerdict = (validation: MeshValidationSummary): { label: string; state: "pass" | "warn" | "fail" } => {
+  const blockers =
+    validation.boundaryEdgeCount +
+    validation.nonManifoldEdgeCount +
+    validation.invalidFaceCount +
+    validation.degenerateFaceCount +
+    validation.selfIntersection.suspectedPairs;
+  if (!validation.watertight || !validation.manifold || blockers > 0) return { label: "Needs repair", state: "fail" };
+  if (!validation.oriented || validation.duplicateFaceCount > 0 || validation.selfIntersection.truncated || validation.warnings.length > 0) {
+    return { label: "Needs review", state: "warn" };
+  }
+  return { label: "Ready for robust operations", state: "pass" };
+};
+
+const getRepairVerdict = (repair: MeshRepairSummary): { label: string; state: "pass" | "warn" | "fail" } => {
+  if (repair.warnings.length > 0) return { label: "Still needs review", state: "warn" };
+  const changes =
+    repair.removedInvalidFaces +
+    repair.removedDegenerateFaces +
+    repair.removedDuplicateFaces +
+    repair.removedUnusedVertices +
+    repair.filledHoles +
+    (countChanged(repair.inputFaces, repair.outputFaces) ? 1 : 0) +
+    (countChanged(repair.inputVertices, repair.outputVertices) ? 1 : 0);
+  return changes > 0 ? { label: "Improved", state: "pass" } : { label: "No change", state: "warn" };
+};
+
+const getBooleanKernelBadge = (
+  booleanSummary: MeshBooleanSummary
+): { label: string; state: "pass" | "warn"; detail: string } =>
+  booleanSummary.kernel === "native-cgal"
+    ? {
+        label: "Native CGAL kernel",
+        state: "pass",
+        detail: "Robust boolean ran through the native CGAL backend.",
+      }
+    : {
+        label: "VTK fallback",
+        state: "warn",
+        detail: "Robust route validated the inputs, then used the VTK boolean backend because native CGAL corefine is unavailable.",
+      };
+
+const formatMeshOperationBackend = (result: MeshOperationResultSummary): string => {
+  if (result.boolean) {
+    const kernel = getBooleanKernelBadge(result.boolean);
+    return result.engine === "cgal" ? `CGAL route · ${kernel.label}` : `VTK · ${kernel.label}`;
+  }
+  return result.engine.toUpperCase();
+};
+
 const MeshValidationCard: React.FC<{
   validation: MeshValidationSummary;
   compact?: boolean;
   title?: string;
 }> = ({ validation, compact = false, title = "Validation" }) => {
+  const verdict = getValidationVerdict(validation);
   const row = (label: string, value: string | number, state: "pass" | "warn" | "fail") => (
     <div key={label} style={validationBadgeStyle(state)}>
       <span>{label}</span>
@@ -428,10 +481,15 @@ const MeshValidationCard: React.FC<{
     >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
         <strong>{title}</strong>
-        <span style={{ color: validation.warnings.length ? "#b45309" : "#166534", fontWeight: 800 }}>
-          {validation.warnings.length ? "needs review" : "passed"}
+        <span style={validationBadgeStyle(verdict.state)}>
+          <strong>{verdict.label}</strong>
         </span>
       </div>
+      {!compact && (
+        <div style={{ color: "#475569", fontSize: 10 }}>
+          CGAL checked topology without changing the mesh. Use this verdict to decide whether robust booleans can run.
+        </div>
+      )}
       <div
         style={{
           display: "grid",
@@ -452,6 +510,7 @@ const MeshValidationCard: React.FC<{
 };
 
 const MeshRepairCard: React.FC<{ repair: MeshRepairSummary }> = ({ repair }) => {
+  const verdict = getRepairVerdict(repair);
   const row = (label: string, value: number) => (
     <div key={label} style={validationBadgeStyle(value === 0 ? "pass" : "warn")}>
       <span>{label}</span>
@@ -471,20 +530,44 @@ const MeshRepairCard: React.FC<{ repair: MeshRepairSummary }> = ({ repair }) => 
         marginTop: 3,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
         <strong>Repair</strong>
-        <span style={{ color: "#64748b" }}>
-          {repair.inputFaces.toLocaleString()} {"->"} {repair.outputFaces.toLocaleString()} triangles
+        <span style={validationBadgeStyle(verdict.state)}>
+          <strong>{verdict.label}</strong>
         </span>
       </div>
+      <div style={{ color: "#475569", fontSize: 10 }}>New in-memory mesh result. Review it, then save/export only if it is the version you want.</div>
       <div style={{ display: "grid", gap: 4 }}>
-        {row("Invalid faces removed", repair.removedInvalidFaces)}
+        <div style={validationBadgeStyle(countChanged(repair.inputVertices, repair.outputVertices) ? "warn" : "pass")}>
+          <span>Vertices</span>
+          <strong>
+            {repair.inputVertices.toLocaleString()} {"->"} {repair.outputVertices.toLocaleString()}
+          </strong>
+        </div>
+        <div style={validationBadgeStyle(countChanged(repair.inputFaces, repair.outputFaces) ? "warn" : "pass")}>
+          <span>Triangles</span>
+          <strong>
+            {repair.inputFaces.toLocaleString()} {"->"} {repair.outputFaces.toLocaleString()}
+          </strong>
+        </div>
         {row("Degenerate faces removed", repair.removedDegenerateFaces)}
         {row("Duplicate faces removed", repair.removedDuplicateFaces)}
-        {row("Unused vertices removed", repair.removedUnusedVertices)}
-        {row("Small holes filled", repair.filledHoles)}
       </div>
-      <div style={{ color: "#64748b", fontSize: 10 }}>Oriented components: {repair.orientedComponents.toLocaleString()}</div>
+      <details>
+        <summary style={{ cursor: "pointer", fontWeight: 800 }}>Repair details</summary>
+        <div style={{ display: "grid", gap: 4, marginTop: 5 }}>
+          {row("Invalid faces removed", repair.removedInvalidFaces)}
+          {row("Unused vertices removed", repair.removedUnusedVertices)}
+          {row("Small holes filled", repair.filledHoles)}
+          <div style={{ color: "#64748b", fontSize: 10 }}>Oriented components: {repair.orientedComponents.toLocaleString()}</div>
+        </div>
+      </details>
+      {!!repair.warnings.length && (
+        <div style={{ color: "#b45309", fontSize: 10 }}>Warnings: {repair.warnings.join("; ")}</div>
+      )}
+      {!!repair.diagnostics.length && (
+        <div style={{ color: "#64748b", fontSize: 10 }}>Details: {repair.diagnostics.join("; ")}</div>
+      )}
     </div>
   );
 };
@@ -527,7 +610,7 @@ const MeshRemeshCard: React.FC<{ remesh: MeshRemeshSummary }> = ({ remesh }) => 
 };
 
 const MeshBooleanCard: React.FC<{ booleanSummary: MeshBooleanSummary }> = ({ booleanSummary }) => {
-  const kernelLabel = booleanSummary.kernel === "native-cgal" ? "Native CGAL" : "Validation-gated VTK";
+  const kernel = getBooleanKernelBadge(booleanSummary);
   return (
     <div
       data-testid="mesh-operation-boolean-card"
@@ -541,14 +624,21 @@ const MeshBooleanCard: React.FC<{ booleanSummary: MeshBooleanSummary }> = ({ boo
         marginTop: 3,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
         <strong>Boolean</strong>
-        <span style={{ color: "#0f3557", fontWeight: 800 }}>{kernelLabel}</span>
+        <span style={validationBadgeStyle(kernel.state)}>
+          <strong>{kernel.label}</strong>
+        </span>
       </div>
+      <div style={{ color: kernel.state === "pass" ? "#166534" : "#92400e", fontSize: 10 }}>{kernel.detail}</div>
       <div style={{ display: "grid", gap: 4 }}>
         <div style={validationBadgeStyle("pass")}>
           <span>Operation</span>
           <strong>{booleanSummary.operation}</strong>
+        </div>
+        <div style={validationBadgeStyle(kernel.state)}>
+          <span>Backend used</span>
+          <strong>{booleanSummary.kernel === "native-cgal" ? "CGAL corefine" : "VTK boolean"}</strong>
         </div>
         <div style={validationBadgeStyle("pass")}>
           <span>A triangles</span>
@@ -563,6 +653,8 @@ const MeshBooleanCard: React.FC<{ booleanSummary: MeshBooleanSummary }> = ({ boo
           <strong>{booleanSummary.outputFaces.toLocaleString()}</strong>
         </div>
       </div>
+      {booleanSummary.warnings.length > 0 && <div style={{ color: "#b45309", fontSize: 10 }}>{booleanSummary.warnings.join("; ")}</div>}
+      {booleanSummary.diagnostics.length > 0 && <div style={{ color: "#64748b", fontSize: 10 }}>{booleanSummary.diagnostics.join("; ")}</div>}
     </div>
   );
 };
@@ -1879,7 +1971,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
         {lastResult ? (
           <>
             <div>
-              {lastResult.label} · {lastResult.engine.toUpperCase()} · {formatMeshOperationDuration(lastResult.durationMs)}
+              {lastResult.label} · {formatMeshOperationBackend(lastResult)} · {formatMeshOperationDuration(lastResult.durationMs)}
             </div>
             <div>
               Vertices: {lastResult.beforeVertices.toLocaleString()} {"->"}{" "}
