@@ -404,14 +404,23 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-operation-boolean-review")).toContainText(/A: Boolean demo A/i);
     await expect(card.getByTestId("mesh-operation-boolean-review")).toContainText(/B: Boolean demo B/i);
     await expect(card.getByTestId("mesh-operation-boolean-review")).toContainText(/Result: Boolean demo A/i);
+    const reviewToolbar = page.getByTestId("mesh-boolean-review-toolbar");
+    await expect(reviewToolbar).toBeVisible({ timeout: 15_000 });
+    await expect(reviewToolbar).toContainText(/Boolean Review/i);
+    await reviewToolbar.getByTestId("mesh-boolean-review-isolate-b").click();
+    await expect(reviewToolbar.getByTestId("mesh-boolean-review-isolate-b")).toHaveAttribute("aria-pressed", "true");
+    await reviewToolbar.getByTestId("mesh-boolean-review-isolate-all").click();
+    await expect(reviewToolbar.getByTestId("mesh-boolean-review-isolate-all")).toHaveAttribute("aria-pressed", "true");
 
     const cutterToggle = card.getByTestId("mesh-workspace-operation-registry-toggle-boolean-operands");
     if (await cutterToggle.isVisible().catch(() => false)) {
       await cutterToggle.click();
       await expect(cutterToggle).toContainText(/Show cutter B|Hide cutter B/);
     }
-    await card.getByTestId("mesh-workspace-operation-registry-validate-result").click();
+    await reviewToolbar.getByTestId("mesh-boolean-review-validate-result").click();
     await expectLastOperation(card, /Validate mesh/i);
+    await reviewToolbar.getByTestId("mesh-boolean-review-keep-result").click();
+    await expect(page.getByTestId("mesh-boolean-review-toolbar")).toHaveCount(0);
   });
 
   test("opens the implicit sphere preset from Mesh Operations and runs preview", async () => {
