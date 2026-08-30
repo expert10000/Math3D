@@ -8740,6 +8740,46 @@ const buildMeshOperationBooleanDemoCubeMesh = (label: string, offsetX: number): 
   });
 };
 
+const buildMeshOperationCutterBoxMesh = (label: string, bounds: BBox3): SurfaceMeshData => {
+  const dx = Math.max(0.001, bounds.max[0] - bounds.min[0]);
+  const dy = Math.max(0.001, bounds.max[1] - bounds.min[1]);
+  const dz = Math.max(0.001, bounds.max[2] - bounds.min[2]);
+  const minX = bounds.min[0] + dx * 0.42;
+  const maxX = bounds.max[0] + dx * 0.08;
+  const minY = bounds.min[1] - dy * 0.08;
+  const maxY = bounds.max[1] + dy * 0.08;
+  const minZ = bounds.min[2] - dz * 0.08;
+  const maxZ = bounds.max[2] + dz * 0.08;
+  return applySurfaceMeshOps({
+    label,
+    positions: new Float32Array([
+      minX, minY, minZ,
+      maxX, minY, minZ,
+      maxX, maxY, minZ,
+      minX, maxY, minZ,
+      minX, minY, maxZ,
+      maxX, minY, maxZ,
+      maxX, maxY, maxZ,
+      minX, maxY, maxZ,
+    ]),
+    indices: new Uint32Array([
+      0, 2, 1,
+      0, 3, 2,
+      4, 5, 6,
+      4, 6, 7,
+      0, 1, 5,
+      0, 5, 4,
+      1, 2, 6,
+      1, 6, 5,
+      2, 3, 7,
+      2, 7, 6,
+      3, 0, 4,
+      3, 4, 7,
+    ]),
+    source: { kind: "polyhedronPreset", id: "mesh-operation-cutter-box", label },
+  });
+};
+
 const buildTopologyDemoPyramidMesh = (label = "Topology demo pyramid"): SurfaceMeshData =>
   createSurfaceMeshTopologyDemoMesh(
     label,
@@ -33597,7 +33637,7 @@ const App: React.FC = () => {
   const [meshOperationFocusedOperation, setMeshOperationFocusedOperation] = useState<MeshOperationUiId | null>(null);
   const [meshOperationFocusedOperationToken, setMeshOperationFocusedOperationToken] = useState(0);
   const [meshOperationAutoRunAfterLoad, setMeshOperationAutoRunAfterLoad] = useState<{
-    presetId: "repair-bunny";
+    presetId: "repair-bunny" | "validate-armadillo" | "bunny-smooth-validate";
     expectedLabel: string;
   } | null>(null);
   const [meshOperationPreviewBusy, setMeshOperationPreviewBusy] = useState(false);
@@ -51055,10 +51095,12 @@ case "mobius":
             ? `Loaded benchmark model: ${response.entry.label}. Fast preview mode is active for this large mesh.`
             : `Loaded benchmark model: ${response.entry.label}.`
         );
+        return loadedMesh;
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to load benchmark model.";
         setSurfaceMeshBenchmarkError(msg);
         setSurfaceMeshImportError(msg);
+        return null;
       } finally {
         setSurfaceMeshImportBusy(false);
       }
@@ -51106,6 +51148,61 @@ case "mobius":
         focusMeshOperationRow("cgal-repair-validate");
         setMeshOperationAutoRunAfterLoad({
           presetId: "repair-bunny",
+          expectedLabel: "08_stanford_bunny.obj",
+        });
+        await handleLoadSurfaceMeshBenchmarkModel("stanford-bunny");
+        return;
+      }
+      if (presetId === "validate-armadillo") {
+        focusMeshOperationRow("cgal-validate");
+        setMeshOperationAutoRunAfterLoad({
+          presetId: "validate-armadillo",
+          expectedLabel: "11_armadillo.obj",
+        });
+        await handleLoadSurfaceMeshBenchmarkModel("armadillo");
+        return;
+      }
+      if (presetId === "benchy-cutter-boolean") {
+        setMeshOperationBooleanOperation("difference");
+        setMeshOperationBooleanStrategy("fast");
+        setMeshOperationOutputMode("derived");
+        focusMeshOperationRow("boolean-difference");
+        const loadedMesh = await handleLoadSurfaceMeshBenchmarkModel("3dbenchy");
+        const bounds = boundsFromPositions(loadedMesh?.positions);
+        if (bounds) {
+          const cutterId = makeId();
+          const cutterMesh = buildMeshOperationCutterBoxMesh("3DBenchy cutter box", bounds);
+          const cutterObject: GeometryDatasetMeshObject = {
+            id: cutterId,
+            name: "3DBenchy cutter box",
+            mesh: toDetachedMeshData(cutterMesh),
+            transform: {
+              position: { x: 0, y: 0, z: 0 },
+              rotation: { x: 0, y: 0, z: 0 },
+              scale: { x: 1, y: 1, z: 1 },
+            },
+            visible: true,
+            material: { color: 0xf97316, opacity: 0.36 },
+            promotion: null,
+            sourceSelectionOverlay: null,
+          };
+          setGeometryDatasetMeshObjects((prev) => [
+            cutterObject,
+            ...prev.filter((entry) => entry.name !== cutterObject.name),
+          ]);
+          setMeshOperationBooleanOperandObjectId(cutterId);
+          setGeometrySelectedObjectId(cutterId);
+          setMeshOperationBooleanStatus("3DBenchy cutter box ready: Active Mesh - cutter box. Click Run Boolean difference.");
+        }
+        return;
+      }
+      if (presetId === "bunny-smooth-validate") {
+        setMeshOperationSmoothIterations(4);
+        setMeshOperationSmoothPassband(0.1);
+        setMeshOperationOutputMode("derived");
+        focusMeshOperationRow("smooth");
+        setMeshOperationAutoRunAfterLoad({
+          presetId: "bunny-smooth-validate",
           expectedLabel: "08_stanford_bunny.obj",
         });
         await handleLoadSurfaceMeshBenchmarkModel("stanford-bunny");
@@ -54491,15 +54588,28 @@ case "mobius":
   ]);
 
   useEffect(() => {
-    if (!meshOperationAutoRunAfterLoad || meshOperationAutoRunAfterLoad.presetId !== "repair-bunny") return;
+    if (
+      !meshOperationAutoRunAfterLoad ||
+      (meshOperationAutoRunAfterLoad.presetId !== "repair-bunny" &&
+        meshOperationAutoRunAfterLoad.presetId !== "validate-armadillo")
+    ) {
+      return;
+    }
     if (surfaceMeshImportBusy || meshOperationBusy) return;
     const label = (surfaceMeshData?.label ?? "").toLowerCase();
     if (!label.includes(meshOperationAutoRunAfterLoad.expectedLabel.toLowerCase())) return;
+    const presetId = meshOperationAutoRunAfterLoad.presetId;
     setMeshOperationAutoRunAfterLoad(null);
+    if (presetId === "validate-armadillo") {
+      focusMeshOperationRow("cgal-validate");
+      void handleMeshOperationValidate();
+      return;
+    }
     focusMeshOperationRow("cgal-repair-validate");
     void handleMeshOperationRepairValidate();
   }, [
     focusMeshOperationRow,
+    handleMeshOperationValidate,
     handleMeshOperationRepairValidate,
     meshOperationAutoRunAfterLoad,
     meshOperationBusy,
@@ -54763,6 +54873,128 @@ case "mobius":
     applyMeshOperationResultToSurfaceMesh,
     publishMeshOperationResult,
     refreshCgalHealthAfterWorkerAction,
+  ]);
+
+  const handleMeshOperationSmoothValidateCurrentMesh = useCallback(async () => {
+    if (meshOperationBusy) return;
+    if (cgalHealthState?.ok === false) {
+      setMeshOperationError(cgalHealthState.error ?? "Python worker unavailable.");
+      return;
+    }
+    const mesh = getMeshForMeshOperation();
+    if (!mesh) {
+      setMeshOperationError("Surface mesh not ready yet.");
+      return;
+    }
+    const activeMeshLabel = buildActiveMeshLabel();
+    setMeshOperationBusy(true);
+    setMeshOperationError(null);
+    try {
+      const smoothRequest: MeshOperationRequest = {
+        operation: "smooth",
+        inputs: [mesh.label],
+        engine: "auto",
+        parameters: {
+          iterations: meshOperationSmoothIterations,
+          passband: meshOperationSmoothPassband,
+          computeNormals: true,
+        },
+        outputMode: meshOperationOutputModeForRequest,
+        quality: "balanced",
+      };
+      const smoothRes = await runMeshOperation(smoothRequest, { primaryMesh: mesh });
+      const smoothSummary = summarizeMeshOperationResult(smoothRes, meshOperationOutputModeForRequest);
+      if (smoothRes.status === "error" || !smoothRes.resultMesh) {
+        publishMeshOperationResult(smoothSummary, smoothRequest);
+        setMeshOperationError(smoothRes.errors[0]?.message ?? "Smooth + validate failed during smoothing.");
+        return;
+      }
+      applyMeshOperationResultToSurfaceMesh("Smooth", smoothRes.resultMesh, {
+        operation: "Smooth",
+        beforeFaces: smoothRes.before.faceCount,
+        requestedFaces: null,
+        normalsRecomputed: true,
+        warnings: smoothRes.warnings.map((warning) => warning.message),
+        engine: smoothRes.engine,
+        durationMs: smoothRes.durationMs,
+        resultSummary: smoothSummary,
+        request: smoothRequest,
+      });
+
+      const smoothedLabel = smoothRes.resultMesh.label ?? `${activeMeshLabel} (Smooth)`;
+      const validationMesh: MeshOperationMeshInput = {
+        label: smoothedLabel,
+        positions: smoothRes.resultMesh.positions,
+        indices: smoothRes.resultMesh.indices ?? new Uint32Array(),
+        normals: smoothRes.resultMesh.normals ?? null,
+        source: smoothRes.resultMesh.source,
+      };
+      const validateRequest: MeshOperationRequest = {
+        operation: "cgal-validate",
+        inputs: [smoothedLabel],
+        engine: "auto",
+        parameters: { selfIntersectionSampleLimit: 1200 },
+        outputMode: "preview",
+        quality: "robust",
+      };
+      const validateRes = await runMeshOperation(validateRequest, { primaryMesh: validationMesh });
+      const validateSummary = summarizeMeshOperationResult(validateRes, "preview");
+      publishMeshOperationResult(validateSummary, validateRequest);
+      if (validateSummary.validation) {
+        setMeshOperationLastValidation({
+          meshLabel: smoothedLabel,
+          status: validateSummary.status,
+          validation: validateSummary.validation,
+          timestamp: validateSummary.timestamp,
+        });
+      }
+      focusMeshOperationRow("cgal-validate");
+      if (validateRes.status === "error") {
+        setMeshOperationError(validateRes.errors[0]?.message ?? "Smooth + validate failed during validation.");
+      } else {
+        setSurfaceMeshTopologyStatus(
+          `Smooth + validate complete: ${
+            validateRes.warnings.length
+              ? validateRes.warnings.map((warning) => warning.message).join("; ")
+              : "mesh checks passed."
+          }`
+        );
+      }
+    } catch (err: any) {
+      setMeshOperationError(err?.message ?? "Smooth + validate failed.");
+    } finally {
+      setMeshOperationBusy(false);
+      refreshCgalHealthAfterWorkerAction();
+    }
+  }, [
+    applyMeshOperationResultToSurfaceMesh,
+    buildActiveMeshLabel,
+    cgalHealthState,
+    focusMeshOperationRow,
+    getMeshForMeshOperation,
+    meshOperationBusy,
+    meshOperationOutputModeForRequest,
+    meshOperationSmoothIterations,
+    meshOperationSmoothPassband,
+    publishMeshOperationResult,
+    refreshCgalHealthAfterWorkerAction,
+  ]);
+
+  useEffect(() => {
+    if (!meshOperationAutoRunAfterLoad || meshOperationAutoRunAfterLoad.presetId !== "bunny-smooth-validate") return;
+    if (surfaceMeshImportBusy || meshOperationBusy) return;
+    const label = (surfaceMeshData?.label ?? "").toLowerCase();
+    if (!label.includes(meshOperationAutoRunAfterLoad.expectedLabel.toLowerCase())) return;
+    setMeshOperationAutoRunAfterLoad(null);
+    focusMeshOperationRow("smooth");
+    void handleMeshOperationSmoothValidateCurrentMesh();
+  }, [
+    focusMeshOperationRow,
+    handleMeshOperationSmoothValidateCurrentMesh,
+    meshOperationAutoRunAfterLoad,
+    meshOperationBusy,
+    surfaceMeshData?.label,
+    surfaceMeshImportBusy,
   ]);
 
   useEffect(() => {

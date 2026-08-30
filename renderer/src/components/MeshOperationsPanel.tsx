@@ -276,6 +276,9 @@ export type MeshOperationPresetId =
   | "cgal-repair-validate"
   | "validate-bunny"
   | "repair-bunny"
+  | "validate-armadillo"
+  | "benchy-cutter-boolean"
+  | "bunny-smooth-validate"
   | "decimate-3dbenchy"
   | "smooth-bunny"
   | "boolean-demo-pair"
@@ -322,6 +325,24 @@ const MESH_OPERATION_PRESETS: Array<{
     label: "Repair Bunny",
     description: "Load Stanford Bunny, repair as a new in-memory mesh, then validate the repaired result.",
     operation: "cgal-repair-validate",
+  },
+  {
+    id: "validate-armadillo",
+    label: "Validate Armadillo",
+    description: "Load Armadillo and run CGAL validation as a non-destructive robust-readiness check.",
+    operation: "cgal-validate",
+  },
+  {
+    id: "benchy-cutter-boolean",
+    label: "3DBenchy Cutter",
+    description: "Load 3DBenchy, add a cutter box as operand B, and prepare Boolean difference.",
+    operation: "boolean-difference",
+  },
+  {
+    id: "bunny-smooth-validate",
+    label: "Smooth + Validate Bunny",
+    description: "Load Stanford Bunny, smooth into a new in-memory mesh, then validate the smoothed result.",
+    operation: "smooth",
   },
   {
     id: "decimate-3dbenchy",
@@ -701,6 +722,13 @@ const MeshRepairValidationComparisonCard: React.FC<{ comparison: MeshRepairValid
         : "No change";
   const verdictState: "pass" | "warn" | "fail" =
     comparison.verdict === "improved" ? "pass" : comparison.verdict === "no-change" ? "warn" : "fail";
+  const remainingBlockers = getMeshValidationBlockers(comparison.after);
+  const explanation =
+    remainingBlockers.length > 0
+      ? `Still needs review: ${remainingBlockers.slice(0, 4).join(", ")}${
+          remainingBlockers.length > 4 ? `, +${remainingBlockers.length - 4} more` : ""
+        }. Repair kept the result in memory; save only after reviewing the remaining topology.`
+      : "Repair result is closed/manifold enough for robust operations.";
   const deltaRow = (label: string, before: number, after: number, strictZero = true) => {
     const improved = after < before;
     const worse = after > before;
@@ -735,6 +763,17 @@ const MeshRepairValidationComparisonCard: React.FC<{ comparison: MeshRepairValid
             {comparison.scoreBefore.toLocaleString()} {"->"} {comparison.scoreAfter.toLocaleString()}
           </span>
         </span>
+      </div>
+      <div
+        data-testid="mesh-operation-repair-validation-explanation"
+        style={{
+          ...validationBadgeStyle(remainingBlockers.length > 0 ? "warn" : "pass"),
+          alignItems: "start",
+          whiteSpace: "normal",
+        }}
+      >
+        <span>Verdict</span>
+        <strong>{explanation}</strong>
       </div>
       <div style={{ display: "grid", gap: 4 }}>
         {deltaRow("Boundary edges", comparison.before.boundaryEdgeCount, comparison.after.boundaryEdgeCount)}
@@ -936,6 +975,24 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
       onChangeRepairFillSmallHoles(true);
       onChangeOutputMode("derived");
       setExpandedOperation("cgal-repair-validate");
+      return;
+    }
+    if (preset === "validate-armadillo") {
+      setExpandedOperation("cgal-validate");
+      return;
+    }
+    if (preset === "benchy-cutter-boolean") {
+      onChangeBooleanOperation("difference");
+      onChangeBooleanStrategy("fast");
+      onChangeOutputMode("derived");
+      setExpandedOperation("boolean-difference");
+      return;
+    }
+    if (preset === "bunny-smooth-validate") {
+      onChangeSmoothIterations(Math.max(4, smoothIterations));
+      onChangeSmoothPassband(Math.max(0.01, Math.min(0.15, smoothPassband)));
+      onChangeOutputMode("derived");
+      setExpandedOperation("smooth");
       return;
     }
     if (preset === "decimate-3dbenchy") {

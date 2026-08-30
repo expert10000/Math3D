@@ -152,6 +152,9 @@ test.describe("Mesh Operations card", () => {
       "clean-normals",
       "validate-bunny",
       "repair-bunny",
+      "validate-armadillo",
+      "benchy-cutter-boolean",
+      "bunny-smooth-validate",
       "decimate-3dbenchy",
       "smooth-bunny",
     ]) {
@@ -537,6 +540,41 @@ test.describe("Mesh Operations card", () => {
     await expect(comparison).toContainText(/Non-manifold edges/i);
     await expect(card.getByTestId("mesh-workspace-operation-registry-open-result")).toBeEnabled();
     await expect(card.getByTestId("mesh-workspace-operation-registry-send-to-geometry")).toBeEnabled();
+  });
+
+  test("prepares 3DBenchy cutter boolean preset", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+
+    const card = await openWorkspaceOperationsCard(page);
+    await card.getByTestId("mesh-workspace-operation-registry-preset-benchy-cutter-boolean").click();
+    await expect(page.getByText(/10_3dbenchy\.stl/i).first()).toBeVisible({ timeout: 20_000 });
+    await expect(card.getByTestId("mesh-workspace-operation-registry-row-boolean-difference")).toHaveAttribute(
+      "aria-expanded",
+      "true"
+    );
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-operand")).toContainText(
+      /3DBenchy cutter box/i
+    );
+    await expect(card).toContainText(/Active Mesh - cutter box/i);
+  });
+
+  test("loads Bunny smooth validate preset and reports validation", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+
+    const card = await openWorkspaceOperationsCard(page);
+    await card.getByTestId("mesh-workspace-operation-registry-preset-bunny-smooth-validate").click();
+    await expect(page.getByText(/08_stanford_bunny\.obj/i).first()).toBeVisible({
+      timeout: 20_000,
+    });
+    await expectLastOperation(card, /Validate mesh/i);
+    await expect(card.getByTestId("mesh-operation-validation-card")).toContainText(/Boundary edges/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Smooth/i);
   });
 
   test("runs CGAL mesh repair through the shared operation layer when available", async () => {
