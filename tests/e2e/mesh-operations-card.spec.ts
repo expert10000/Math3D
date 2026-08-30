@@ -401,9 +401,9 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/CGAL/i);
     await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/Native CGAL kernel/i);
     await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/CGAL corefine/i);
-    await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/A/i);
-    await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/B/i);
-    await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/Result/i);
+    await expect(card.getByTestId("mesh-operation-boolean-review")).toContainText(/A: Boolean demo A/i);
+    await expect(card.getByTestId("mesh-operation-boolean-review")).toContainText(/B: Boolean demo B/i);
+    await expect(card.getByTestId("mesh-operation-boolean-review")).toContainText(/Result: Boolean demo A/i);
 
     const cutterToggle = card.getByTestId("mesh-workspace-operation-registry-toggle-boolean-operands");
     if (await cutterToggle.isVisible().catch(() => false)) {
@@ -554,6 +554,11 @@ test.describe("Mesh Operations card", () => {
       /3DBenchy cutter box/i
     );
     await expect(card).toContainText(/Active Mesh - cutter box/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-strategy-robust")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    await expect(card).toContainText(/Validate, then run Robust Boolean difference/i);
   });
 
   test("loads Bunny smooth validate preset and reports validation", async () => {

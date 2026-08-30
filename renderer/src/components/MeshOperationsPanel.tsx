@@ -36,6 +36,11 @@ export type MeshOperationResultSummary = {
   repair?: MeshRepairSummary;
   remesh?: MeshRemeshSummary;
   boolean?: MeshBooleanSummary;
+  booleanReview?: {
+    operandA: string;
+    operandB: string;
+    result: string;
+  };
   repairValidation?: MeshRepairValidationSummary;
   warnings: string[];
   errors: string[];
@@ -135,6 +140,7 @@ export type MeshOperationsPanelProps = {
   cleanComputeNormals: boolean;
   onChangeCleanComputeNormals: (value: boolean) => void;
   onValidate: () => void | Promise<void>;
+  onValidateResult?: () => void | Promise<void>;
   repairOrientFaces: boolean;
   onChangeRepairOrientFaces: (value: boolean) => void;
   repairRemoveDegenerateFaces: boolean;
@@ -649,10 +655,12 @@ const MeshBooleanCard: React.FC<{
   booleanSummary: MeshBooleanSummary;
   sourceIds: string[];
   resultLabel: string;
-}> = ({ booleanSummary, sourceIds, resultLabel }) => {
+  review?: MeshOperationResultSummary["booleanReview"];
+}> = ({ booleanSummary, sourceIds, resultLabel, review }) => {
   const kernel = getBooleanKernelBadge(booleanSummary);
-  const sourceA = sourceIds[0]?.trim() || "Active Mesh";
-  const sourceB = sourceIds[1]?.trim() || "Operand B";
+  const sourceA = review?.operandA || sourceIds[0]?.trim() || "Active Mesh";
+  const sourceB = review?.operandB || sourceIds[1]?.trim() || "Operand B";
+  const resultName = review?.result || resultLabel;
   return (
     <div
       data-testid="mesh-operation-boolean-card"
@@ -673,6 +681,24 @@ const MeshBooleanCard: React.FC<{
         </span>
       </div>
       <div style={{ color: kernel.state === "pass" ? "#166534" : "#92400e", fontSize: 10 }}>{kernel.detail}</div>
+      <div
+        data-testid="mesh-operation-boolean-review"
+        style={{
+          border: "1px solid #bfdbfe",
+          background: "#eff6ff",
+          borderRadius: 6,
+          padding: "5px 6px",
+          display: "grid",
+          gap: 4,
+        }}
+      >
+        <strong>Review A / B / Result</strong>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+          <span style={validationBadgeStyle("pass")}>A: <strong>{sourceA}</strong></span>
+          <span style={validationBadgeStyle("warn")}>B: <strong>{sourceB}</strong></span>
+          <span style={validationBadgeStyle(booleanSummary.outputFaces > 0 ? "pass" : "fail")}>Result: <strong>{resultName}</strong></span>
+        </div>
+      </div>
       <div style={{ display: "grid", gap: 4 }}>
         <div style={validationBadgeStyle("pass")}>
           <span>A</span>
@@ -684,7 +710,7 @@ const MeshBooleanCard: React.FC<{
         </div>
         <div style={validationBadgeStyle(booleanSummary.outputFaces > 0 ? "pass" : "fail")}>
           <span>Result</span>
-          <strong>{resultLabel}</strong>
+          <strong>{resultName}</strong>
         </div>
         <div style={validationBadgeStyle("pass")}>
           <span>Operation</span>
@@ -817,6 +843,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
   cleanComputeNormals,
   onChangeCleanComputeNormals,
   onValidate,
+  onValidateResult,
   repairOrientFaces,
   onChangeRepairOrientFaces,
   repairRemoveDegenerateFaces,
@@ -983,7 +1010,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
     }
     if (preset === "benchy-cutter-boolean") {
       onChangeBooleanOperation("difference");
-      onChangeBooleanStrategy("fast");
+      onChangeBooleanStrategy("robust");
       onChangeOutputMode("derived");
       setExpandedOperation("boolean-difference");
       return;
@@ -1303,6 +1330,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                                   key={`${testId}-${operation}-strategy-${strategy.id}`}
                                   data-testid={`${testId}-boolean-strategy-${strategy.id}`}
                                   type="button"
+                                  aria-pressed={active}
                                   disabled={!enabled}
                                   onClick={() => onChangeBooleanStrategy(strategy.id as MeshBooleanStrategy)}
                                   title={strategy.description}
@@ -2106,6 +2134,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                 booleanSummary={lastResult.boolean}
                 sourceIds={lastResult.sourceIds}
                 resultLabel={lastResult.afterFaces == null ? lastResult.label : `${lastResult.label} (${lastResult.afterFaces.toLocaleString()} triangles)`}
+                review={lastResult.booleanReview}
               />
             )}
             {!!lastResult.diagnostics?.length && <div>Details: {lastResult.diagnostics.join("; ")}</div>}
@@ -2136,7 +2165,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                   data-testid={`${testId}-validate-result`}
                   type="button"
                   onClick={() => {
-                    void onValidate();
+                    void (onValidateResult ?? onValidate)();
                   }}
                   disabled={!hasUsableResult || operationBusy || !cgalReady}
                 >

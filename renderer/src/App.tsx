@@ -33634,6 +33634,7 @@ const App: React.FC = () => {
   const [meshLastOperation, setMeshLastOperation] = useState<MeshOperationResultSummary | null>(null);
   const [meshOperationLastValidation, setMeshOperationLastValidation] = useState<MeshOperationLastValidation | null>(null);
   const [meshOperationHistory, setMeshOperationHistory] = useState<MeshOperationHistoryEntry[]>([]);
+  const meshOperationLastResultMeshRef = useRef<MeshOperationMeshInput | null>(null);
   const [meshOperationFocusedOperation, setMeshOperationFocusedOperation] = useState<MeshOperationUiId | null>(null);
   const [meshOperationFocusedOperationToken, setMeshOperationFocusedOperationToken] = useState(0);
   const [meshOperationAutoRunAfterLoad, setMeshOperationAutoRunAfterLoad] = useState<{
@@ -51164,7 +51165,7 @@ case "mobius":
       }
       if (presetId === "benchy-cutter-boolean") {
         setMeshOperationBooleanOperation("difference");
-        setMeshOperationBooleanStrategy("fast");
+        setMeshOperationBooleanStrategy("robust");
         setMeshOperationOutputMode("derived");
         focusMeshOperationRow("boolean-difference");
         const loadedMesh = await handleLoadSurfaceMeshBenchmarkModel("3dbenchy");
@@ -51192,7 +51193,7 @@ case "mobius":
           ]);
           setMeshOperationBooleanOperandObjectId(cutterId);
           setGeometrySelectedObjectId(cutterId);
-          setMeshOperationBooleanStatus("3DBenchy cutter box ready: Active Mesh - cutter box. Click Run Boolean difference.");
+          setMeshOperationBooleanStatus("3DBenchy cutter box ready: Active Mesh - cutter box. Validate, then run Robust Boolean difference.");
         }
         return;
       }
@@ -54213,6 +54214,13 @@ case "mobius":
         source,
       };
       const processed = applySurfaceMeshOps(next);
+      meshOperationLastResultMeshRef.current = {
+        label: processed.label ?? label,
+        positions: processed.positions,
+        indices: processed.indices ?? new Uint32Array(),
+        normals: processed.normals ?? null,
+        source: processed.source,
+      };
       const sourceMesh = surfaceMeshData;
       const beforeVertexCount = sourceMesh?.positions ? Math.floor(sourceMesh.positions.length / 3) : Math.max(0, meta.resultSummary?.beforeVertices ?? 0);
       const beforeFaceCount =
@@ -54418,8 +54426,66 @@ case "mobius":
     }
   }, [
     meshOperationBusy,
+    buildActiveMeshLabel,
     cgalHealthState,
     getMeshForMeshOperation,
+    publishMeshOperationResult,
+    refreshCgalHealthAfterWorkerAction,
+  ]);
+
+  const handleValidateLastMeshOperationResult = useCallback(async () => {
+    if (meshOperationBusy) return;
+    if (cgalHealthState?.ok === false) {
+      setMeshOperationError(cgalHealthState.error ?? "Python worker unavailable.");
+      return;
+    }
+    const mesh = meshOperationLastResultMeshRef.current;
+    if (!mesh?.positions.length || !mesh.indices.length) {
+      setMeshOperationError("No operation result mesh is available to validate.");
+      return;
+    }
+    setMeshOperationBusy(true);
+    setMeshOperationError(null);
+    focusMeshOperationRow("cgal-validate");
+    try {
+      const request: MeshOperationRequest = {
+        operation: "cgal-validate",
+        inputs: [mesh.label],
+        engine: "auto",
+        parameters: { selfIntersectionSampleLimit: 1200, source: "latest-operation-result" },
+        outputMode: "preview",
+        quality: "robust",
+      };
+      const res = await runMeshOperation(request, { primaryMesh: mesh });
+      const resultSummary = summarizeMeshOperationResult(res, "preview");
+      publishMeshOperationResult(resultSummary, request);
+      if (resultSummary.validation) {
+        setMeshOperationLastValidation({
+          meshLabel: mesh.label,
+          status: resultSummary.status,
+          validation: resultSummary.validation,
+          timestamp: resultSummary.timestamp,
+        });
+      }
+      if (res.status === "error") {
+        setMeshOperationError(res.errors[0]?.message ?? "CGAL validation failed.");
+      } else {
+        setSurfaceMeshTopologyStatus(
+          `Validated operation result ${mesh.label}: ${
+            res.warnings.length ? res.warnings.map((warning) => warning.message).join("; ") : "mesh checks passed."
+          }`
+        );
+      }
+    } catch (err: any) {
+      setMeshOperationError(err?.message ?? "CGAL validation failed.");
+    } finally {
+      setMeshOperationBusy(false);
+      refreshCgalHealthAfterWorkerAction();
+    }
+  }, [
+    meshOperationBusy,
+    cgalHealthState,
+    focusMeshOperationRow,
     publishMeshOperationResult,
     refreshCgalHealthAfterWorkerAction,
   ]);
@@ -55379,6 +55445,11 @@ case "mobius":
           afterFaces: Math.max(0, Math.round((splitMesh.indices?.length ?? 0) / 3)),
           durationMs: aMinusB.durationMs + aIntersectB.durationMs + bMinusA.durationMs,
           outputMode,
+          booleanReview: {
+            operandA: meshA.label,
+            operandB: meshB.label,
+            result: splitMesh.label ?? `${meshA.label} split ${meshB.label}`,
+          },
           warnings: [
             "Split merged A-B, A intersect B, and B-A into one editable mesh.",
             ...aMinusB.warnings.map((warning) => warning.message),
@@ -55448,6 +55519,14 @@ case "mobius":
         setMeshOperationBooleanStatus(`${meshOperationBooleanOperation} failed.`);
         return;
       }
+      resultSummary.booleanReview = {
+        operandA: meshA.label,
+        operandB: meshB.label,
+        result:
+          meshOperationOutputMode === "replace"
+            ? meshA.label
+            : `${meshA.label} (Boolean ${meshOperationBooleanOperation})`,
+      };
 
       applyMeshOperationResultToSurfaceMesh(
         `Boolean ${meshOperationBooleanOperation}`,
@@ -69898,6 +69977,7 @@ case "mobius":
                           cleanComputeNormals={meshOperationCleanComputeNormals}
                           onChangeCleanComputeNormals={setMeshOperationCleanComputeNormals}
                           onValidate={handleMeshOperationValidate}
+                          onValidateResult={handleValidateLastMeshOperationResult}
                           repairOrientFaces={meshOperationRepairOrientFaces}
                           onChangeRepairOrientFaces={setMeshOperationRepairOrientFaces}
                           repairRemoveDegenerateFaces={meshOperationRepairRemoveDegenerateFaces}
