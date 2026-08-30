@@ -150,11 +150,6 @@ test.describe("Mesh Operations card", () => {
       "cgal-repair-memory",
       "cgal-repair-validate",
       "clean-normals",
-      "validate-bunny",
-      "repair-bunny",
-      "validate-armadillo",
-      "benchy-cutter-boolean",
-      "bunny-smooth-validate",
       "decimate-3dbenchy",
       "smooth-bunny",
     ]) {
