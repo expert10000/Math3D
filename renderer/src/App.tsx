@@ -33596,6 +33596,10 @@ const App: React.FC = () => {
   const [meshOperationHistory, setMeshOperationHistory] = useState<MeshOperationHistoryEntry[]>([]);
   const [meshOperationFocusedOperation, setMeshOperationFocusedOperation] = useState<MeshOperationUiId | null>(null);
   const [meshOperationFocusedOperationToken, setMeshOperationFocusedOperationToken] = useState(0);
+  const [meshOperationAutoRunAfterLoad, setMeshOperationAutoRunAfterLoad] = useState<{
+    presetId: "repair-bunny";
+    expectedLabel: string;
+  } | null>(null);
   const [meshOperationPreviewBusy, setMeshOperationPreviewBusy] = useState(false);
   const [meshOperationPreviewError, setMeshOperationPreviewError] = useState<string | null>(null);
   const [meshOperationPreviewTargetFaces, setMeshOperationPreviewTargetFaces] = useState(20000);
@@ -51092,6 +51096,21 @@ case "mobius":
         await handleLoadSurfaceMeshBenchmarkModel("stanford-bunny");
         return;
       }
+      if (presetId === "repair-bunny") {
+        setMeshOperationRepairOrientFaces(true);
+        setMeshOperationRepairRemoveDegenerateFaces(true);
+        setMeshOperationRepairRemoveDuplicateFaces(true);
+        setMeshOperationRepairCompactVertices(true);
+        setMeshOperationRepairFillSmallHoles(true);
+        setMeshOperationRepairMaxHoleEdges(3);
+        focusMeshOperationRow("cgal-repair-validate");
+        setMeshOperationAutoRunAfterLoad({
+          presetId: "repair-bunny",
+          expectedLabel: "08_stanford_bunny.obj",
+        });
+        await handleLoadSurfaceMeshBenchmarkModel("stanford-bunny");
+        return;
+      }
       if (presetId === "decimate-3dbenchy") {
         setMeshOperationUseTargetFaces(true);
         setMeshOperationDecimateTargetFaces(5000);
@@ -51119,6 +51138,7 @@ case "mobius":
       handleLoadSurfaceMeshBenchmarkModel,
       handleOpenImplicitSpherePresetForMeshOperations,
       handleOpenMeshOperationBooleanDemoPairInGeometry,
+      focusMeshOperationRow,
     ]
   );
 
@@ -54468,6 +54488,23 @@ case "mobius":
     applyMeshOperationResultToSurfaceMesh,
     publishMeshOperationResult,
     refreshCgalHealthAfterWorkerAction,
+  ]);
+
+  useEffect(() => {
+    if (!meshOperationAutoRunAfterLoad || meshOperationAutoRunAfterLoad.presetId !== "repair-bunny") return;
+    if (surfaceMeshImportBusy || meshOperationBusy) return;
+    const label = (surfaceMeshData?.label ?? "").toLowerCase();
+    if (!label.includes(meshOperationAutoRunAfterLoad.expectedLabel.toLowerCase())) return;
+    setMeshOperationAutoRunAfterLoad(null);
+    focusMeshOperationRow("cgal-repair-validate");
+    void handleMeshOperationRepairValidate();
+  }, [
+    focusMeshOperationRow,
+    handleMeshOperationRepairValidate,
+    meshOperationAutoRunAfterLoad,
+    meshOperationBusy,
+    surfaceMeshData?.label,
+    surfaceMeshImportBusy,
   ]);
 
   const handleMeshOperationRemesh = useCallback(async () => {

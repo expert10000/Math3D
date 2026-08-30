@@ -151,6 +151,7 @@ test.describe("Mesh Operations card", () => {
       "cgal-repair-validate",
       "clean-normals",
       "validate-bunny",
+      "repair-bunny",
       "decimate-3dbenchy",
       "smooth-bunny",
     ]) {
@@ -511,6 +512,31 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-operation-validation-card")).toContainText(/Needs repair|Needs review/i);
     await expect(card.getByTestId("mesh-operation-validation-card")).toContainText(/Boundary edges/i);
     await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/Watertight: no/i);
+  });
+
+  test("loads Bunny repair preset and runs repair plus validation", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+
+    const card = await openWorkspaceOperationsCard(page);
+    await card.getByTestId("mesh-workspace-operation-registry-preset-repair-bunny").click();
+    await expect(page.getByText(/08_stanford_bunny\.obj/i).first()).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(card.getByTestId("mesh-workspace-operation-registry-row-cgal-repair-validate")).toHaveAttribute(
+      "aria-expanded",
+      "true"
+    );
+    await expectLastOperation(card, /Repair \+ Validate/i);
+    await expect(card.getByTestId("mesh-operation-repair-card")).toContainText(/Improved|No change|Still needs review/i);
+    const comparison = card.getByTestId("mesh-operation-repair-validation-card");
+    await expect(comparison).toBeVisible();
+    await expect(comparison).toContainText(/Boundary edges/i);
+    await expect(comparison).toContainText(/Non-manifold edges/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-open-result")).toBeEnabled();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-send-to-geometry")).toBeEnabled();
   });
 
   test("runs CGAL mesh repair through the shared operation layer when available", async () => {
