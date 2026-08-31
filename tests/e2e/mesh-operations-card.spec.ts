@@ -393,6 +393,19 @@ test.describe("Mesh Operations card", () => {
     }
     await apply.click();
     await expect(composer).toContainText(/Applied difference/i, { timeout: 90_000 });
+    const review = composer.getByTestId("geometry-boolean-composer-review");
+    await expect(review).toBeVisible({ timeout: 15_000 });
+    await expect(review).toContainText(/Boolean result review/i);
+    await expect(review).toContainText(/A/i);
+    await expect(review).toContainText(/B/i);
+    await expect(review).toContainText(/Result/i);
+    await review.getByTestId("geometry-boolean-composer-hide-operands").click();
+    await expect(composer).toContainText(/Boolean operands hidden/i);
+    await review.getByTestId("geometry-boolean-composer-show-operands").click();
+    await expect(composer).toContainText(/Boolean operands shown/i);
+    await review.getByTestId("geometry-boolean-composer-show-result").click();
+    await expect(composer).toContainText(/Boolean result selected/i);
+    await expect(review.getByTestId("geometry-boolean-composer-validate-result")).toBeVisible();
 
     await selectSection(page, "Mesh");
     card = await openWorkspaceOperationsCard(page);

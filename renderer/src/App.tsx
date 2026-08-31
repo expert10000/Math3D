@@ -3148,6 +3148,19 @@ type GeometryRepeatMode =
   | "mirror-axis";
 type GeometryBooleanOperation = "union" | "difference" | "intersection" | "split" | "imprint";
 type GeometryBooleanSolver = MeshBooleanStrategy;
+type GeometryBooleanComposerReview = {
+  operation: GeometryBooleanOperation;
+  solver: GeometryBooleanSolver;
+  operandAId: string;
+  operandBId: string;
+  resultId: string;
+  operandAName: string;
+  operandBName: string;
+  resultName: string;
+  beforeFaces: number;
+  afterFaces: number | null;
+  at: number;
+};
 type GeometryBooleanPreviewMesh = SurfaceMeshData & {
   id: string;
   color?: number;
@@ -12888,6 +12901,8 @@ const App: React.FC = () => {
   const [geometryBooleanPreviewWarnings, setGeometryBooleanPreviewWarnings] = useState<string[]>([]);
   const [geometryBooleanPreviewMeshes, setGeometryBooleanPreviewMeshes] = useState<GeometryBooleanPreviewMesh[]>([]);
   const [geometryBooleanPreviewCurveLines, setGeometryBooleanPreviewCurveLines] = useState<PolylineSet>([]);
+  const [geometryBooleanComposerReview, setGeometryBooleanComposerReview] =
+    useState<GeometryBooleanComposerReview | null>(null);
   const [geometrySnapPreview, setGeometrySnapPreview] = useState<{
     point: SnapPoint3;
     kind: GeometrySnapPreviewKind;
@@ -46855,6 +46870,46 @@ case "mobius":
     setGeometryCreateActionStatus(visible ? "Boolean demo operands shown." : "Boolean demo operands hidden.");
   }, []);
 
+  const setGeometryBooleanComposerObjectsVisible = useCallback((visible: boolean) => {
+    const ids = [
+      geometryBooleanObjectAId,
+      geometryBooleanObjectBId,
+    ].filter((id): id is string => !!id);
+    if (!ids.length) {
+      setGeometryBooleanPreviewStatus("Pick operands or apply a Boolean result first.");
+      return;
+    }
+    const idSet = new Set(ids);
+    setGeometryObjects((prev) => prev.map((entry) => (idSet.has(entry.id) ? { ...entry, visible } : entry)));
+    setGeometryDatasetMeshObjects((prev) => prev.map((entry) => (idSet.has(entry.id) ? { ...entry, visible } : entry)));
+    setGeometryBooleanPreviewStatus(visible ? "Boolean operands shown." : "Boolean operands hidden.");
+    setGeometryCreateActionStatus(visible ? "Boolean operands shown." : "Boolean operands hidden.");
+  }, [geometryBooleanObjectAId, geometryBooleanObjectBId]);
+
+  const handleSwapGeometryBooleanOperands = useCallback(() => {
+    if (geometryBooleanBusy || meshOperationBusy) return;
+    setGeometryBooleanObjectAId(geometryBooleanObjectBId);
+    setGeometryBooleanObjectBId(geometryBooleanObjectAId);
+    setGeometryBooleanPreviewMeshes([]);
+    setGeometryBooleanPreviewCurveLines([]);
+    setGeometryBooleanPreviewWarnings([]);
+    setGeometryBooleanPreviewStatus("Boolean operands swapped.");
+    setGeometryCreateActionStatus("Boolean operands swapped.");
+  }, [geometryBooleanBusy, geometryBooleanObjectAId, geometryBooleanObjectBId, meshOperationBusy]);
+
+  const handleShowGeometryBooleanResult = useCallback(() => {
+    const resultId = geometryBooleanComposerReview?.resultId;
+    if (!resultId) {
+      setGeometryBooleanPreviewStatus("Apply a Boolean operation first.");
+      return;
+    }
+    setGeometryDatasetMeshObjects((prev) => prev.map((entry) => (entry.id === resultId ? { ...entry, visible: true } : entry)));
+    setGeometryObjects((prev) => prev.map((entry) => (entry.id === resultId ? { ...entry, visible: true } : entry)));
+    setGeometrySelectedObjectId(resultId);
+    setGeometryBooleanPreviewStatus("Boolean result selected.");
+    setGeometryCreateActionStatus("Boolean result selected.");
+  }, [geometryBooleanComposerReview?.resultId]);
+
   const handleSwapMeshOperationBooleanOperands = useCallback(() => {
     if (meshOperationBusy) return;
     if (!meshOperationBooleanOperandObjectId) {
@@ -54655,6 +54710,16 @@ case "mobius":
     refreshCgalHealthAfterWorkerAction,
   ]);
 
+  const handleValidateGeometryBooleanResult = useCallback(async () => {
+    if (!geometryBooleanComposerReview?.resultId) {
+      setGeometryBooleanPreviewStatus("Apply a Boolean operation before validating the result.");
+      return;
+    }
+    setGeometryBooleanPreviewStatus("Validating Boolean result...");
+    await handleValidateLastMeshOperationResult();
+    setGeometryBooleanPreviewStatus("Boolean result validation recorded below and in Mesh Operations history.");
+  }, [geometryBooleanComposerReview?.resultId, handleValidateLastMeshOperationResult]);
+
   const handleMeshOperationRepair = useCallback(async () => {
     if (meshOperationBusy) return;
     if (cgalHealthState?.ok === false) {
@@ -54728,6 +54793,118 @@ case "mobius":
     meshOperationRepairMaxHoleEdges,
     meshOperationOutputModeForRequest,
     applyMeshOperationResultToSurfaceMesh,
+    publishMeshOperationResult,
+    refreshCgalHealthAfterWorkerAction,
+  ]);
+
+  const handleRepairLastMeshOperationResult = useCallback(async () => {
+    if (meshOperationBusy) return;
+    if (cgalHealthState?.ok === false) {
+      setMeshOperationError(cgalHealthState.error ?? "Python worker unavailable.");
+      return;
+    }
+    const mesh = meshOperationLastResultMeshRef.current;
+    if (!mesh?.positions.length || !mesh.indices.length) {
+      setMeshOperationError("No operation result mesh is available to repair.");
+      return;
+    }
+    setMeshOperationBusy(true);
+    setMeshOperationError(null);
+    setGeometryBooleanPreviewStatus("Repairing Boolean result...");
+    try {
+      const request: MeshOperationRequest = {
+        operation: "cgal-repair-validate",
+        inputs: [mesh.label],
+        engine: "auto",
+        parameters: {
+          orientFaces: meshOperationRepairOrientFaces,
+          removeDegenerateFaces: meshOperationRepairRemoveDegenerateFaces,
+          removeDuplicateFaces: meshOperationRepairRemoveDuplicateFaces,
+          compactVertices: meshOperationRepairCompactVertices,
+          fillSmallHoles: meshOperationRepairFillSmallHoles,
+          maxHoleEdges: Math.max(3, Math.min(12, Math.round(meshOperationRepairMaxHoleEdges))),
+          selfIntersectionSampleLimit: 1200,
+          source: "latest-operation-result",
+        },
+        outputMode: "new-object",
+        quality: "robust",
+      };
+      const res = await runMeshOperation(request, { primaryMesh: mesh });
+      const resultSummary = summarizeMeshOperationResult(res, "new-object");
+      publishMeshOperationResult(resultSummary, request);
+      if (res.status === "error" || !res.resultMesh) {
+        const message = res.errors[0]?.message ?? "CGAL repair of the operation result failed.";
+        setMeshOperationError(message);
+        setGeometryBooleanPreviewStatus(message);
+        return;
+      }
+      const repairedLabel = `${mesh.label} (repaired)`;
+      const repairedMesh = applySurfaceMeshOps(cloneSurfaceMeshData(res.resultMesh, repairedLabel));
+      meshOperationLastResultMeshRef.current = {
+        label: repairedMesh.label ?? repairedLabel,
+        positions: repairedMesh.positions,
+        indices: repairedMesh.indices ?? new Uint32Array(),
+        normals: repairedMesh.normals ?? null,
+        source: repairedMesh.source,
+      };
+      if (resultSummary.repairValidation?.after) {
+        setMeshOperationLastValidation({
+          meshLabel: repairedMesh.label ?? repairedLabel,
+          status: resultSummary.status,
+          validation: resultSummary.repairValidation.after,
+          timestamp: resultSummary.timestamp,
+        });
+      }
+      const objectId = makeId();
+      const resultObject: GeometryDatasetMeshObject = {
+        id: objectId,
+        name: repairedMesh.label ?? repairedLabel,
+        mesh: toDetachedMeshData(repairedMesh),
+        transform: {
+          position: { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+        },
+        visible: true,
+        material: { color: 0x22c55e, opacity: 0.72 },
+        promotion: null,
+        sourceSelectionOverlay: null,
+      };
+      setGeometryDatasetMeshObjects((prev) => [resultObject, ...prev]);
+      setGeometrySelectedObjectId(objectId);
+      setGeometryBooleanComposerReview((review) =>
+        review
+          ? {
+              ...review,
+              resultId: objectId,
+              resultName: resultObject.name,
+              afterFaces: resultSummary.afterFaces ?? review.afterFaces,
+              at: Date.now(),
+            }
+          : review
+      );
+      setGeometryBooleanPreviewStatus(
+        `Repaired Boolean result: ${resultSummary.beforeFaces.toLocaleString()} -> ${
+          resultSummary.afterFaces?.toLocaleString() ?? "n/a"
+        } faces.`
+      );
+    } catch (err: any) {
+      const message = err?.message ?? "CGAL repair of the operation result failed.";
+      setMeshOperationError(message);
+      setGeometryBooleanPreviewStatus(message);
+    } finally {
+      setMeshOperationBusy(false);
+      refreshCgalHealthAfterWorkerAction();
+    }
+  }, [
+    meshOperationBusy,
+    cgalHealthState,
+    meshOperationRepairOrientFaces,
+    meshOperationRepairRemoveDegenerateFaces,
+    meshOperationRepairRemoveDuplicateFaces,
+    meshOperationRepairCompactVertices,
+    meshOperationRepairFillSmallHoles,
+    meshOperationRepairMaxHoleEdges,
     publishMeshOperationResult,
     refreshCgalHealthAfterWorkerAction,
   ]);
@@ -55921,6 +56098,19 @@ case "mobius":
       };
       setGeometryDatasetMeshObjects((prev) => [resultObject, ...prev]);
       setGeometrySelectedObjectId(objectId);
+      setGeometryBooleanComposerReview({
+        operation: geometryBooleanOperation,
+        solver: geometryBooleanSolver,
+        operandAId: objectAId,
+        operandBId: objectBId,
+        resultId: objectId,
+        operandAName: aData.object.name,
+        operandBName: bData.object.name,
+        resultName: resultObject.name,
+        beforeFaces: resultSummary.beforeFaces,
+        afterFaces: resultSummary.afterFaces ?? null,
+        at: Date.now(),
+      });
       setGeometryBooleanPreviewMeshes([]);
       setGeometryBooleanPreviewCurveLines([]);
       const message = `Applied ${geometryBooleanOperation}: ${resultSummary.beforeFaces.toLocaleString()} -> ${
@@ -70440,7 +70630,7 @@ case "mobius":
                           canSendToGeometry={unifiedCanConvertToMeshObject}
                           onSendToGeometry={handleDatasetToGeometryScene}
                           onOpenResultInGeometry={handleDatasetToGeometryScene}
-                          onRepairResult={handleMeshOperationRepair}
+                          onRepairResult={handleRepairLastMeshOperationResult}
                           onUseResultAsBooleanA={handleUseMeshOperationResultAsBooleanA}
                           onUseResultAsBooleanB={handleUseMeshOperationResultAsBooleanB}
                         />
@@ -71080,7 +71270,7 @@ case "mobius":
                     meshOperationCgalError={cgalError}
                     onRunMeshOperationCgalMesh={handleRunCgalMesh}
                     onShowMeshOperationResultDetails={() => undefined}
-                    onRepairMeshOperationResult={handleMeshOperationRepair}
+                    onRepairMeshOperationResult={handleRepairLastMeshOperationResult}
                     onUseMeshOperationResultAsBooleanA={handleUseMeshOperationResultAsBooleanA}
                     onUseMeshOperationResultAsBooleanB={handleUseMeshOperationResultAsBooleanB}
                     onRegenerateStaleSelected={() => handleRegenerateDerivedProducts("selected")}
@@ -82281,6 +82471,16 @@ case "mobius":
                               ))}
                             </select>
                           </label>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              data-testid="geometry-boolean-composer-swap-ab"
+                              type="button"
+                              onClick={handleSwapGeometryBooleanOperands}
+                              disabled={geometryBooleanBusy || meshOperationBusy || !geometryBooleanObjectAId || !geometryBooleanObjectBId}
+                            >
+                              Swap A/B
+                            </button>
+                          </div>
                           <div style={{ display: "grid", gap: 4, fontSize: 11 }}>
                             <strong>Solver</strong>
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -82325,6 +82525,126 @@ case "mobius":
                               {geometryBooleanPreviewWarnings.map((warning, index) => (
                                 <div key={`geo-boolean-warning-${index}`}>Warning: {warning}</div>
                               ))}
+                            </div>
+                          )}
+                          {geometryBooleanComposerReview && (
+                            <div
+                              data-testid="geometry-boolean-composer-review"
+                              style={{
+                                border: "1px solid #bbf7d0",
+                                borderRadius: 8,
+                                background: "#f0fdf4",
+                                padding: "7px 8px",
+                                display: "grid",
+                                gap: 6,
+                                fontSize: 10,
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                                <strong>Boolean result review</strong>
+                                <span style={{ color: "#166534", fontWeight: 800 }}>ready</span>
+                              </div>
+                              <div style={{ display: "grid", gridTemplateColumns: "72px minmax(0, 1fr)", gap: "4px 8px" }}>
+                                <strong>Operation</strong>
+                                <span>
+                                  {geometryBooleanComposerReview.operation === "difference"
+                                    ? "Difference"
+                                    : geometryBooleanComposerReview.operation === "intersection"
+                                      ? "Intersection"
+                                      : geometryBooleanComposerReview.operation === "union"
+                                        ? "Union"
+                                        : geometryBooleanComposerReview.operation}
+                                  {" · "}
+                                  {geometryBooleanComposerReview.solver === "fast"
+                                    ? "Fast"
+                                    : geometryBooleanComposerReview.solver === "robust"
+                                      ? "Robust"
+                                      : "Auto"}
+                                </span>
+                                <strong>A</strong>
+                                <span>{geometryBooleanComposerReview.operandAName}</span>
+                                <strong>B</strong>
+                                <span>{geometryBooleanComposerReview.operandBName}</span>
+                                <strong>Result</strong>
+                                <span>{geometryBooleanComposerReview.resultName}</span>
+                                <strong>Faces</strong>
+                                <span>
+                                  {geometryBooleanComposerReview.beforeFaces.toLocaleString()} {"->"}{" "}
+                                  {geometryBooleanComposerReview.afterFaces == null
+                                    ? "n/a"
+                                    : geometryBooleanComposerReview.afterFaces.toLocaleString()}
+                                </span>
+                              </div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button
+                                  data-testid="geometry-boolean-composer-show-operands"
+                                  type="button"
+                                  onClick={() => setGeometryBooleanComposerObjectsVisible(true)}
+                                >
+                                  Show operands
+                                </button>
+                                <button
+                                  data-testid="geometry-boolean-composer-hide-operands"
+                                  type="button"
+                                  onClick={() => setGeometryBooleanComposerObjectsVisible(false)}
+                                >
+                                  Hide operands
+                                </button>
+                                <button
+                                  data-testid="geometry-boolean-composer-show-result"
+                                  type="button"
+                                  onClick={handleShowGeometryBooleanResult}
+                                >
+                                  Show result
+                                </button>
+                                <button
+                                  data-testid="geometry-boolean-composer-validate-result"
+                                  type="button"
+                                  onClick={() => void handleValidateGeometryBooleanResult()}
+                                  disabled={meshOperationBusy || !cgalServiceReady}
+                                >
+                                  Validate result
+                                </button>
+                              </div>
+                              {meshLastOperation?.validationContext === "boolean-result" && meshLastOperation.validation && (
+                                <div
+                                  data-testid="geometry-boolean-composer-validation"
+                                  style={{
+                                    border: "1px solid #86efac",
+                                    borderRadius: 7,
+                                    background: "#ffffff",
+                                    padding: "6px",
+                                    display: "grid",
+                                    gap: 4,
+                                  }}
+                                >
+                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                    <strong>Validation</strong>
+                                    <span style={{ color: meshLastOperation.validation.watertight && meshLastOperation.validation.manifold ? "#166534" : "#b45309", fontWeight: 800 }}>
+                                      {meshLastOperation.validation.watertight && meshLastOperation.validation.manifold ? "passes" : "needs review"}
+                                    </span>
+                                  </div>
+                                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                                    <span>Watertight: {meshLastOperation.validation.watertight ? "yes" : "no"}</span>
+                                    <span>Manifold: {meshLastOperation.validation.manifold ? "yes" : "no"}</span>
+                                    <span>Components: {meshLastOperation.validation.componentCount.toLocaleString()}</span>
+                                    <span>Boundary edges: {meshLastOperation.validation.boundaryEdgeCount.toLocaleString()}</span>
+                                    <span>Non-manifold: {meshLastOperation.validation.nonManifoldEdgeCount.toLocaleString()}</span>
+                                    <span>Degenerate: {meshLastOperation.validation.degenerateFaceCount.toLocaleString()}</span>
+                                  </div>
+                                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                    <button type="button" onClick={() => void handleMeshOperationRepair()} disabled={meshOperationBusy || !cgalServiceReady}>
+                                      Repair result
+                                    </button>
+                                    <button type="button" onClick={handleUseMeshOperationResultAsBooleanA}>
+                                      Use as A
+                                    </button>
+                                    <button type="button" onClick={handleUseMeshOperationResultAsBooleanB}>
+                                      Use as B
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
