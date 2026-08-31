@@ -310,7 +310,7 @@ const MESH_OPERATION_PRESETS: Array<{
   {
     id: "cgal-repair-memory",
     label: "Repair preview",
-    description: "Run conservative CGAL repair as a new in-memory mesh result; save only after review.",
+    description: "Run conservative repair as a new in-memory mesh result; save only after review.",
     operation: "cgal-repair",
   },
   {
@@ -328,7 +328,7 @@ const MESH_OPERATION_PRESETS: Array<{
   {
     id: "validate-bunny",
     label: "Validate Bunny",
-    description: "Load Stanford Bunny and prepare CGAL validation for its open boundary edges.",
+    description: "Load Stanford Bunny and prepare robust validation for its open boundary edges.",
     operation: "cgal-validate",
   },
   {
@@ -340,7 +340,7 @@ const MESH_OPERATION_PRESETS: Array<{
   {
     id: "validate-armadillo",
     label: "Validate Armadillo",
-    description: "Load Armadillo and run CGAL validation as a non-destructive robust-readiness check.",
+    description: "Load Armadillo and run robust validation as a non-destructive readiness check.",
     operation: "cgal-validate",
   },
   {
@@ -1629,7 +1629,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                         gap: 3,
                       }}
                     >
-                      <strong>Non-destructive CGAL validation</strong>
+                      <strong>Non-destructive validation</strong>
                       <span>Checks watertightness, manifold edges, connected components, winding consistency, and sampled self-intersections.</span>
                       <span>Result is recorded in Last operation; the active mesh is not changed.</span>
                     </div>
@@ -1647,10 +1647,10 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                           gap: 3,
                         }}
                       >
-                        <strong>{operation === "cgal-repair-validate" ? "Repair, then validate" : "Conservative CGAL repair"}</strong>
+                        <strong>{operation === "cgal-repair-validate" ? "Repair, then validate" : "Conservative repair"}</strong>
                         <span>
                           {operation === "cgal-repair-validate"
-                            ? "Runs CGAL validation before and after repair, then returns a new in-memory mesh result."
+                            ? "Runs validation before and after repair, then returns a new in-memory mesh result."
                             : "Repairs topology-safe issues in the worker and returns a new in-memory mesh result."}
                         </span>
                         <span>
@@ -2280,7 +2280,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                           </button>
                         </div>
                       )}
-                      <div>Worker: {cgalStatusText}</div>
+                      <div>Robust backend: {cgalStatusText}</div>
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input
                           data-testid={`${testId}-implicit-auto-edge`}

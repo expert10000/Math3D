@@ -226,8 +226,8 @@ export const MESH_OPERATION_CAPABILITIES: MeshOperationCapability[] = [
     defaultEngine: "vtk",
     group: "boolean",
     strategies: [
-      { id: "fast", label: "Fast", engine: "vtk", implemented: true, description: "Current VTK boolean worker path." },
-      { id: "robust", label: "Robust", engine: "cgal", implemented: true, description: "Native CGAL corefine boolean; requires validated watertight operands." },
+      { id: "fast", label: "Fast", engine: "vtk", implemented: true, description: "Fast interactive boolean solver." },
+      { id: "robust", label: "Robust", engine: "cgal", implemented: true, description: "Robust solid boolean solver; requires validated watertight operands." },
     ],
   },
   {
@@ -236,8 +236,8 @@ export const MESH_OPERATION_CAPABILITIES: MeshOperationCapability[] = [
     defaultEngine: "vtk",
     group: "boolean",
     strategies: [
-      { id: "fast", label: "Fast", engine: "vtk", implemented: true, description: "Current VTK boolean worker path." },
-      { id: "robust", label: "Robust", engine: "cgal", implemented: true, description: "Native CGAL corefine boolean; requires validated watertight operands." },
+      { id: "fast", label: "Fast", engine: "vtk", implemented: true, description: "Fast interactive boolean solver." },
+      { id: "robust", label: "Robust", engine: "cgal", implemented: true, description: "Robust solid boolean solver; requires validated watertight operands." },
     ],
   },
   {
@@ -246,8 +246,8 @@ export const MESH_OPERATION_CAPABILITIES: MeshOperationCapability[] = [
     defaultEngine: "vtk",
     group: "boolean",
     strategies: [
-      { id: "fast", label: "Fast", engine: "vtk", implemented: true, description: "Current VTK boolean worker path." },
-      { id: "robust", label: "Robust", engine: "cgal", implemented: true, description: "Native CGAL corefine boolean; requires validated watertight operands." },
+      { id: "fast", label: "Fast", engine: "vtk", implemented: true, description: "Fast interactive boolean solver." },
+      { id: "robust", label: "Robust", engine: "cgal", implemented: true, description: "Robust solid boolean solver; requires validated watertight operands." },
     ],
   },
   {
@@ -256,8 +256,8 @@ export const MESH_OPERATION_CAPABILITIES: MeshOperationCapability[] = [
     defaultEngine: "vtk",
     group: "boolean",
     strategies: [
-      { id: "fast", label: "Fast", engine: "vtk", implemented: true, description: "Current VTK boolean worker path." },
-      { id: "robust", label: "Robust", engine: "cgal", implemented: false, description: "Robust imprint is not connected yet; use Fast VTK." },
+      { id: "fast", label: "Fast", engine: "vtk", implemented: true, description: "Fast interactive imprint solver." },
+      { id: "robust", label: "Robust", engine: "cgal", implemented: false, description: "Robust imprint is not connected yet; use Fast." },
     ],
   },
 ];
@@ -519,7 +519,7 @@ function booleanMeshPreflight(mesh: MeshOperationMeshInput, role: "A" | "B"): Bo
     nonManifoldEdges,
     invalidFaces,
     message: issues.length
-      ? `Operand ${role} (${mesh.label}) is not a closed watertight manifold mesh: ${issues.join(", ")}. VTK boolean is skipped to avoid a native worker crash. Use closed solid operands, or click "Use demo operands" for the safe cube example.`
+      ? `Operand ${role} (${mesh.label}) is not a closed watertight manifold mesh: ${issues.join(", ")}. Fast boolean is skipped to avoid a native worker crash. Use closed solid operands, or click "Use demo operands" for the safe cube example.`
       : undefined,
   };
 }
@@ -737,7 +737,7 @@ export async function runMeshOperation(
     const validationBlockers = stringArrayParam(request.parameters, "validationBlockers");
     if (engine === "cgal") {
       if (!CGAL_BOOLEAN_OPERATIONS.has(request.operation) || operation === "imprint") {
-        return operationError(request, engine, before, startedAt, "Robust CGAL imprint is not connected yet; use Fast VTK imprint.", "unsupported-cgal-boolean");
+        return operationError(request, engine, before, startedAt, "Robust imprint is not connected yet; use Fast imprint.", "unsupported-cgal-boolean");
       }
       if (validationBlockers.length) {
         return operationError(
@@ -791,11 +791,11 @@ export async function runMeshOperation(
     }
     const preflightA = booleanMeshPreflight(meshA, "A");
     if (!preflightA.ok) {
-      return operationError(request, engine, before, startedAt, preflightA.message ?? "Operand A is not valid for VTK boolean.", "unsafe-boolean-input");
+      return operationError(request, engine, before, startedAt, preflightA.message ?? "Operand A is not valid for Fast boolean.", "unsafe-boolean-input");
     }
     const preflightB = booleanMeshPreflight(meshB, "B");
     if (!preflightB.ok) {
-      return operationError(request, engine, before, startedAt, preflightB.message ?? "Operand B is not valid for VTK boolean.", "unsafe-boolean-input");
+      return operationError(request, engine, before, startedAt, preflightB.message ?? "Operand B is not valid for Fast boolean.", "unsafe-boolean-input");
     }
     const res = await vtkBoolean({
       positionsA: meshA.positions,

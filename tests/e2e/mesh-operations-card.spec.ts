@@ -160,7 +160,7 @@ test.describe("Mesh Operations card", () => {
 
     await card.getByTestId("mesh-workspace-operation-registry-row-cgal-validate").click();
     await expect(card.getByTestId("mesh-workspace-operation-registry-run-cgal-validate")).toHaveText("Run Validate mesh");
-    await expect(card).toContainText("Non-destructive CGAL validation");
+    await expect(card).toContainText("Non-destructive validation");
 
     await card.getByTestId("mesh-workspace-operation-registry-row-clean-normals").click();
     await expect(card.getByTestId("mesh-workspace-operation-registry-run-clean-normals")).toHaveText("Run Clean normals");
@@ -185,7 +185,7 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-workspace-operation-registry-run-implicit-mesh")).toBeDisabled();
 
     await card.getByTestId("mesh-workspace-operation-registry-row-cgal-repair").click();
-    await expect(card).toContainText("Conservative CGAL repair");
+    await expect(card).toContainText("Conservative repair");
     await expect(card).toContainText("new in-memory mesh result");
     await expect(card.getByTestId("mesh-workspace-operation-registry-cgal-repair-output-derived")).toBeChecked();
     await expect(card.getByTestId("mesh-workspace-operation-registry-repair-remove-degenerate")).toBeChecked();
@@ -500,7 +500,7 @@ test.describe("Mesh Operations card", () => {
     await expect(page.getByText(/Surfaces \/ Implicit \/ Level Set \/ Sphere/i)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/Selected: Boolean demo A/i)).toHaveCount(0);
     const cta = await visibleImplicitWorkflowCta(page);
-    await expect(cta).toContainText(/Run CGAL Implicit Mesh/i);
+    await expect(cta).toContainText(/Run Robust Implicit Mesh/i);
     await cta.getByTestId("implicit-mesh-workflow-back-operations").click();
     const returnedCard = await visibleMeshOperationsCard(page);
     await expect(returnedCard.getByRole("button", { name: "Run Implicit mesh" })).toBeVisible({ timeout: 15_000 });

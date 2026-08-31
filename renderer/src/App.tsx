@@ -34106,7 +34106,7 @@ const App: React.FC = () => {
     setSurfacesPanelState("work");
     setSurfacesLeftTab("scene");
     setSurfaceViewerKind("mesh");
-    setGeometryCreateActionStatus("Selected object sent to Mesh module.");
+    setGeometryCreateActionStatus("Selected object opened in Mesh.");
   }, [bakeGeometryObjectToDatasetById, geometrySelectedObjectId]);
   const buildPromotionOperationHistory = useCallback(
     (objectId: string | null | undefined, fallback: string[] = []): string[] => {
@@ -70014,11 +70014,11 @@ case "mobius":
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
                         <strong>Implicit mesh source</strong>
                         <span style={{ fontSize: 10, color: cgalServiceReady ? "#166534" : "#b42318", fontWeight: 800 }}>
-                          {cgalServiceReady ? "CGAL ready" : cgalServiceStatusText}
+                          {cgalServiceReady ? "Robust ready" : cgalServiceStatusText}
                         </span>
                       </div>
                       <div style={{ fontSize: 11, color: "#475569" }}>
-                        Sphere source is active. Run CGAL here or return to Mesh Operations with Implicit mesh expanded.
+                        Sphere source is active. Run robust meshing here or return to Mesh Operations with Implicit mesh expanded.
                       </div>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <button
@@ -70030,7 +70030,7 @@ case "mobius":
                           }}
                           disabled={!cgalServiceReady || cgalBusy}
                         >
-                          {cgalBusy ? "Running CGAL..." : "Run CGAL Implicit Mesh"}
+                          {cgalBusy ? "Meshing..." : "Run Robust Implicit Mesh"}
                         </button>
                         <button
                           data-testid="implicit-mesh-workflow-back-operations"
@@ -83883,11 +83883,11 @@ case "mobius":
                                   Bake to mesh
                                 </button>
                                 <button type="button" onClick={handleSendSelectedGeometryObjectToMeshModule}>
-                                  Send to Mesh module
+                                  Open in Mesh
                                 </button>
                               </div>
                               <div style={{ fontSize: 10, opacity: 0.72 }}>
-                                Mesh-edit quick fixes enable after baking to a mesh object. Advanced repair belongs to Mesh module.
+                                Mesh-edit quick fixes enable after baking to a mesh object. Advanced repair belongs in Mesh Operations.
                               </div>
                               {geometrySectionPreview && (
                                 <div style={{ marginTop: 4, fontSize: 10, opacity: 0.88 }}>
@@ -84810,7 +84810,7 @@ case "mobius":
                             onClick={handleSendSelectedGeometryObjectToMeshModule}
                             style={{ fontSize: 11 }}
                           >
-                            Send to Mesh module
+                            Open in Mesh
                           </button>
                           <button
                             type="button"
@@ -85398,11 +85398,11 @@ case "mobius":
                                   Bake to mesh
                                 </button>
                                 <button type="button" onClick={handleSendSelectedGeometryObjectToMeshModule}>
-                                  Send to Mesh module
+                                  Open in Mesh
                                 </button>
                               </div>
                               <div style={{ fontSize: 10, opacity: 0.72 }}>
-                                Geometry can flag issues early; advanced cleanup should be completed in Mesh module.
+                                Geometry can flag issues early; advanced cleanup should be completed in Mesh Operations.
                               </div>
                               {geometrySectionPreview && (
                                 <div style={{ marginTop: 4, fontSize: 10, opacity: 0.88 }}>
@@ -85503,7 +85503,7 @@ case "mobius":
                             onClick={handleSendSelectedGeometryObjectToMeshModule}
                             style={{ fontSize: 11 }}
                           >
-                            Send to Mesh module
+                            Open in Mesh
                           </button>
                           <button
                             type="button"
@@ -86491,7 +86491,7 @@ case "mobius":
                               }}
                             >
                               <div style={{ fontSize: 11, color: "#334155" }}>
-                                Geometry focuses on simple construction editing. Deep mesh editing should route to Mesh module.
+                                Geometry focuses on simple construction editing. Deep mesh editing should route to Mesh Operations.
                               </div>
                               <div style={{ fontSize: 11, color: "#475467" }}>
                                 Procedural object = editable by parameters. Mesh object = editable by mesh operations.
@@ -86805,9 +86805,9 @@ case "mobius":
                                     setSurfacesLeftTab("scene");
                                   }}
                                   disabled={!geometrySelectedSceneObject}
-                                  title="Bake selected geometry object to mesh dataset and open Mesh module."
+                                  title="Bake selected geometry object to mesh dataset and open Mesh."
                                 >
-                                  Open in Mesh module
+                                  Open in Mesh
                                 </button>
                               </div>
                               <div style={{ fontSize: 10, color: "#475467" }}>
@@ -104547,7 +104547,9 @@ onChangeImplicitExpr,
   const meshOperationPreviewResolution = Math.max(8, Math.min(220, Math.round(implicitResolution)));
   const [implicitMeshingQuality, setImplicitMeshingQuality] = useState<"preview" | "standard" | "robust">("standard");
   const implicitMeshingUsesPreview = implicitMeshingQuality === "preview";
-  const implicitMeshingEngineLabel = implicitMeshingUsesPreview ? "Auto (Preview -> VTK)" : "Auto (CGAL)";
+  const implicitMeshingEngineLabel =
+    implicitMeshingQuality === "preview" ? "Preview" : implicitMeshingQuality === "robust" ? "Robust" : "Standard";
+  const implicitMeshingBackendLabel = implicitMeshingUsesPreview ? "VTK preview" : "CGAL robust";
   const implicitMeshingBusy = implicitMeshingUsesPreview ? meshOperationPreviewBusy : cgalBusy;
   const implicitMeshingDisabled = implicitMeshingUsesPreview ? meshOperationPreviewDisabled : cgalDisabled;
   const runImplicitMeshingStrategy = useCallback(() => {
@@ -107132,7 +107134,7 @@ onChangeImplicitExpr,
                     </select>
                   </label>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <strong>Engine</strong>
+                    <strong>Method</strong>
                     <span>{implicitMeshingEngineLabel}</span>
                     {!implicitMeshingUsesPreview && (
                       <>
@@ -107250,6 +107252,7 @@ onChangeImplicitExpr,
                   <details>
                     <summary style={{ cursor: "pointer", fontWeight: 700 }}>Backend diagnostics</summary>
                     <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+                      <div>Backend: {implicitMeshingBackendLabel}</div>
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         Padding (%)
                         <input

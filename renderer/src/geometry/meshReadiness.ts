@@ -400,7 +400,7 @@ export const evaluateGeometryMeshReadiness = (mesh: SurfaceMeshData): GeometryMe
   if (boundaryEdgeCount > 0) {
     notes.push("Warning: object has open boundary.");
     notes.push("Quick fix: triangulate and weld close vertices for simple gaps.");
-    notes.push("Advanced repair: open in Mesh module.");
+    notes.push("Advanced repair: open Mesh Operations.");
   }
   if (selfIntersectionWarning) {
     notes.push("Warning: potential self-intersection detected from sampled triangle AABB overlaps.");
