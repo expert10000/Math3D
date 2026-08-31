@@ -54564,6 +54564,7 @@ case "mobius":
       };
       const res = await runMeshOperation(request, { primaryMesh: mesh });
       const resultSummary = summarizeMeshOperationResult(res, "preview");
+      resultSummary.validationContext = "boolean-result";
       publishMeshOperationResult(resultSummary, request);
       if (resultSummary.validation) {
         setMeshOperationLastValidation({

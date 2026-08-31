@@ -398,12 +398,12 @@ test.describe("Mesh Operations card", () => {
     );
     await card.getByTestId("mesh-workspace-operation-registry-run-boolean-difference").click();
     await expectLastOperation(card, /Boolean difference/i);
-    await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/CGAL/i);
-    await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/Native CGAL kernel/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/Method: Robust/i);
+    await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/native CGAL backend/i);
     await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/CGAL corefine/i);
-    await expect(card.getByTestId("mesh-operation-boolean-review")).toContainText(/A: Boolean demo A/i);
-    await expect(card.getByTestId("mesh-operation-boolean-review")).toContainText(/B: Boolean demo B/i);
-    await expect(card.getByTestId("mesh-operation-boolean-review")).toContainText(/Result: Boolean demo A/i);
+    await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/A: Boolean demo A/i);
+    await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/B: Boolean demo B/i);
+    await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/Result: Boolean demo A/i);
     const reviewToolbar = page.getByTestId("mesh-boolean-review-toolbar");
     await expect(reviewToolbar).toBeVisible({ timeout: 15_000 });
     await expect(reviewToolbar).toContainText(/Boolean Review/i);
@@ -419,6 +419,7 @@ test.describe("Mesh Operations card", () => {
     }
     await reviewToolbar.getByTestId("mesh-boolean-review-validate-result").click();
     await expectLastOperation(card, /Validate mesh/i);
+    await expect(card.getByTestId("mesh-operation-boolean-validation-card")).toContainText(/Boolean result validation/i);
     await reviewToolbar.getByTestId("mesh-boolean-review-keep-result").click();
     await expect(page.getByTestId("mesh-boolean-review-toolbar")).toHaveCount(0);
   });
