@@ -3147,6 +3147,7 @@ type GeometryRepeatMode =
   | "mirror-plane"
   | "mirror-axis";
 type GeometryBooleanOperation = "union" | "difference" | "intersection" | "split" | "imprint";
+type GeometryBooleanSolver = MeshBooleanStrategy;
 type GeometryBooleanPreviewMesh = SurfaceMeshData & {
   id: string;
   color?: number;
@@ -12881,6 +12882,8 @@ const App: React.FC = () => {
   const [geometryBooleanObjectBId, setGeometryBooleanObjectBId] = useState<string | null>(null);
   const [geometryBooleanOperation, setGeometryBooleanOperation] =
     useState<GeometryBooleanOperation>("union");
+  const [geometryBooleanSolver, setGeometryBooleanSolver] = useState<GeometryBooleanSolver>("auto");
+  const [geometryBooleanBusy, setGeometryBooleanBusy] = useState(false);
   const [geometryBooleanPreviewStatus, setGeometryBooleanPreviewStatus] = useState<string | null>(null);
   const [geometryBooleanPreviewWarnings, setGeometryBooleanPreviewWarnings] = useState<string[]>([]);
   const [geometryBooleanPreviewMeshes, setGeometryBooleanPreviewMeshes] = useState<GeometryBooleanPreviewMesh[]>([]);
@@ -22411,6 +22414,7 @@ const App: React.FC = () => {
         brushA.updateMatrixWorld(true);
         brushB.updateMatrixWorld(true);
         const evaluator = new Evaluator();
+        evaluator.attributes = ["position", "normal"];
         evaluator.debug.enabled = true;
 
         const previewMeshes: GeometryBooleanPreviewMesh[] = [];
@@ -22513,52 +22517,6 @@ const App: React.FC = () => {
           `Preview ${geometryBooleanOperation}: ${totalPreviewVerts.toLocaleString()} verts, ` +
           `${totalPreviewTris.toLocaleString()} tris, ${curveLines.length.toLocaleString()} curve segments.`;
         setGeometryBooleanPreviewStatus(previewMessage);
-        if (previewOnly) {
-          geomA.dispose();
-          geomB.dispose();
-          return;
-        }
-
-        if (!previewMeshes.length) {
-          const message = "Preview produced no triangle mesh. Adjust operands or operation.";
-          setGeometryBooleanPreviewStatus(message);
-          if (!previewOnly) setGeometryCreateActionStatus(message);
-          geomA.dispose();
-          geomB.dispose();
-          return;
-        }
-
-        const merged =
-          previewMeshes.length === 1
-            ? {
-                positions: Float32Array.from(previewMeshes[0].positions),
-                indices: previewMeshes[0].indices
-                  ? Uint32Array.from(previewMeshes[0].indices)
-                  : null,
-              }
-            : mergeMeshData(
-                previewMeshes.map((mesh) => ({
-                  positions: mesh.positions,
-                  indices: mesh.indices,
-                }))
-              );
-        const handoffMesh = applySurfaceMeshOps({
-          label: `${aData.object.name} ${geometryBooleanOperation} ${bData.object.name} (geometry preview handoff)`,
-          positions: merged.positions,
-          indices: merged.indices,
-          source: { kind: "csg" },
-        });
-        setMeshDataset(handoffMesh, `geometry-boolean-preview-handoff:${geometryBooleanOperation}`);
-        setSurfaceViewerKind("mesh");
-        setMode("surfaces");
-        setSurfacesPanelState("work");
-        setSurfacesLeftTab("scene");
-        setGeometryBooleanPreviewMeshes([]);
-        setGeometryBooleanPreviewCurveLines([]);
-        const doneMessage =
-          "Preview handed off to Mesh module. Run repair/remesh/validation for accurate boolean cleanup.";
-        setGeometryCreateActionStatus(doneMessage);
-        setGeometryBooleanPreviewStatus(doneMessage);
         geomA.dispose();
         geomB.dispose();
       } catch (error) {
@@ -22580,9 +22538,6 @@ const App: React.FC = () => {
   );
   const handlePreviewGeometryBoolean = useCallback(() => {
     runGeometryBooleanOperation(true);
-  }, [runGeometryBooleanOperation]);
-  const handleBakeGeometryBoolean = useCallback(() => {
-    runGeometryBooleanOperation(false);
   }, [runGeometryBooleanOperation]);
   const handleFitSelectedToUnitBox = useCallback(() => {
     if (!geometrySelectedSceneObject || !geometrySelectedWorldBounds) return;
@@ -55795,6 +55750,209 @@ case "mobius":
     refreshCgalHealthAfterWorkerAction,
   ]);
 
+  const handleApplyGeometryBoolean = useCallback(async () => {
+    if (geometryBooleanBusy || meshOperationBusy) return;
+    const objectAId = geometryBooleanObjectAId;
+    const objectBId = geometryBooleanObjectBId;
+    if (!objectAId || !objectBId) {
+      const message = "Pick object A and object B first.";
+      setGeometryBooleanPreviewStatus(message);
+      setGeometryBooleanPreviewWarnings([]);
+      setGeometryCreateActionStatus(message);
+      return;
+    }
+    if (objectAId === objectBId) {
+      const message = "Object A and object B must be different.";
+      setGeometryBooleanPreviewStatus(message);
+      setGeometryBooleanPreviewWarnings([]);
+      setGeometryCreateActionStatus(message);
+      return;
+    }
+    if (geometryBooleanOperation === "split") {
+      const message = "Split is preview-only in Geometry for now. Use Mesh Operations when you need an editable split result.";
+      setGeometryBooleanPreviewStatus(message);
+      setGeometryCreateActionStatus(message);
+      return;
+    }
+    if (geometryBooleanOperation === "imprint" && geometryBooleanSolver === "robust") {
+      const message = "Robust imprint is not connected yet. Use Fast solver for imprint/intersection-curve output.";
+      setGeometryBooleanPreviewStatus(message);
+      setGeometryCreateActionStatus(message);
+      return;
+    }
+    const aData = resolveGeometrySceneMeshById(objectAId);
+    const bData = resolveGeometrySceneMeshById(objectBId);
+    if (!aData || !bData) {
+      const message = "Both operands must be visible mesh-backed objects.";
+      setGeometryBooleanPreviewStatus(message);
+      setGeometryBooleanPreviewWarnings([]);
+      setGeometryCreateActionStatus(message);
+      return;
+    }
+
+    const toMeshInput = (resolved: NonNullable<ReturnType<typeof resolveGeometrySceneMeshById>>): MeshOperationMeshInput => {
+      const vertexCount = Math.floor(resolved.mesh.positions.length / 3);
+      const indices =
+        resolved.mesh.indices ??
+        (() => {
+          const seq = new Uint32Array(vertexCount);
+          for (let i = 0; i < vertexCount; i += 1) seq[i] = i;
+          return seq;
+        })();
+      return {
+        label: resolved.object.name,
+        positions: resolved.mesh.positions,
+        indices,
+        normals: resolved.mesh.normals ?? null,
+        source: {
+          kind: "geometryObject" as const,
+          objectId: resolved.object.id,
+          objectName: resolved.object.name,
+        },
+      };
+    };
+    const meshA = toMeshInput(aData);
+    const meshB = toMeshInput(bData);
+    const validationBlockers: string[] = [];
+    if (geometryBooleanSolver !== "fast") {
+      const addReadinessBlockers = (role: "A" | "B", name: string, mesh: SurfaceMeshData) => {
+        const readiness = evaluateGeometryMeshReadiness(mesh);
+        if (readiness.stats.boundaryEdgeCount > 0) {
+          validationBlockers.push(`${role} ${name}: ${readiness.stats.boundaryEdgeCount.toLocaleString()} boundary edges`);
+        }
+        if (readiness.stats.nonManifoldEdgeCount > 0) {
+          validationBlockers.push(`${role} ${name}: ${readiness.stats.nonManifoldEdgeCount.toLocaleString()} non-manifold edges`);
+        }
+        if (readiness.stats.invalidFaceCount > 0) {
+          validationBlockers.push(`${role} ${name}: ${readiness.stats.invalidFaceCount.toLocaleString()} invalid faces`);
+        }
+        if (readiness.stats.degenerateTriangleCount > 0) {
+          validationBlockers.push(`${role} ${name}: ${readiness.stats.degenerateTriangleCount.toLocaleString()} degenerate faces`);
+        }
+      };
+      addReadinessBlockers("A", aData.object.name, aData.mesh);
+      addReadinessBlockers("B", bData.object.name, bData.mesh);
+    }
+    const operation =
+      geometryBooleanOperation === "union"
+        ? "boolean-union"
+        : geometryBooleanOperation === "difference"
+          ? "boolean-difference"
+          : geometryBooleanOperation === "intersection"
+            ? "boolean-intersection"
+            : "boolean-imprint";
+    const engine =
+      geometryBooleanSolver === "fast"
+        ? "vtk"
+        : geometryBooleanSolver === "robust"
+          ? "cgal"
+          : geometryBooleanOperation === "imprint"
+            ? "vtk"
+            : "auto";
+    const validationPass = geometryBooleanSolver === "fast" || validationBlockers.length === 0;
+    const request: MeshOperationRequest = {
+      operation,
+      inputs: [meshA.label, meshB.label],
+      engine,
+      parameters: {
+        computeNormals: true,
+        booleanStrategy: geometryBooleanSolver,
+        validationPass,
+        validationBlockers,
+        curveRadius: geometryBooleanOperation === "imprint" ? 0.02 : undefined,
+      },
+      outputMode: "new-object",
+      quality: geometryBooleanSolver === "fast" ? "fast" : "robust",
+    };
+
+    setGeometryBooleanBusy(true);
+    setMeshOperationBusy(true);
+    setMeshOperationError(null);
+    setGeometryBooleanPreviewStatus(`Applying ${geometryBooleanOperation} with ${geometryBooleanSolver} solver...`);
+    setGeometryBooleanPreviewWarnings([]);
+    setMeshOperationBooleanOperation(geometryBooleanOperation);
+    setMeshOperationBooleanStrategy(geometryBooleanSolver);
+    setMeshOperationBooleanOperandObjectId(objectBId);
+    setMeshOperationBooleanStatus(`Geometry composer applying ${geometryBooleanOperation}...`);
+    try {
+      const result = await runMeshOperation(request, { primaryMesh: meshA, secondaryMesh: meshB });
+      const resultSummary = summarizeMeshOperationResult(result, "new-object");
+      const resultLabel =
+        result.resultMesh?.label ??
+        `${aData.object.name} (${geometryBooleanOperation} ${bData.object.name})`;
+      resultSummary.booleanReview = {
+        operandA: meshA.label,
+        operandB: meshB.label,
+        result: resultLabel,
+      };
+      publishMeshOperationResult(resultSummary, request);
+      if (result.status === "error" || !result.resultMesh?.positions.length || !result.resultMesh.indices?.length) {
+        const message = result.errors[0]?.message ?? `${geometryBooleanOperation} failed.`;
+        setMeshOperationError(message);
+        setGeometryBooleanPreviewStatus(message);
+        setGeometryCreateActionStatus(message);
+        setMeshOperationBooleanStatus(`${geometryBooleanOperation} failed.`);
+        return;
+      }
+
+      const resultMesh = applySurfaceMeshOps(cloneSurfaceMeshData(result.resultMesh, resultLabel));
+      meshOperationLastResultMeshRef.current = {
+        label: resultMesh.label ?? resultLabel,
+        positions: resultMesh.positions,
+        indices: resultMesh.indices ?? new Uint32Array(),
+        normals: resultMesh.normals ?? null,
+        source: resultMesh.source,
+      };
+      startMeshBooleanReview(geometryBooleanOperation, geometryBooleanSolver, meshA, meshB, resultMesh);
+      const objectId = makeId();
+      const resultObject: GeometryDatasetMeshObject = {
+        id: objectId,
+        name: resultMesh.label ?? resultLabel,
+        mesh: toDetachedMeshData(resultMesh),
+        transform: {
+          position: { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+        },
+        visible: true,
+        material: { color: 0x2563eb, opacity: 0.7 },
+        promotion: null,
+        sourceSelectionOverlay: null,
+      };
+      setGeometryDatasetMeshObjects((prev) => [resultObject, ...prev]);
+      setGeometrySelectedObjectId(objectId);
+      setGeometryBooleanPreviewMeshes([]);
+      setGeometryBooleanPreviewCurveLines([]);
+      const message = `Applied ${geometryBooleanOperation}: ${resultSummary.beforeFaces.toLocaleString()} -> ${
+        resultSummary.afterFaces?.toLocaleString() ?? "n/a"
+      } faces.`;
+      setGeometryBooleanPreviewStatus(message);
+      setGeometryCreateActionStatus(message);
+      setMeshOperationBooleanStatus(`${geometryBooleanOperation} completed.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${geometryBooleanOperation} failed.`;
+      setMeshOperationError(message);
+      setGeometryBooleanPreviewStatus(message);
+      setGeometryCreateActionStatus(message);
+      setMeshOperationBooleanStatus(`${geometryBooleanOperation} failed.`);
+    } finally {
+      setGeometryBooleanBusy(false);
+      setMeshOperationBusy(false);
+      refreshCgalHealthAfterWorkerAction();
+    }
+  }, [
+    geometryBooleanBusy,
+    meshOperationBusy,
+    geometryBooleanObjectAId,
+    geometryBooleanObjectBId,
+    geometryBooleanOperation,
+    geometryBooleanSolver,
+    resolveGeometrySceneMeshById,
+    publishMeshOperationResult,
+    startMeshBooleanReview,
+    refreshCgalHealthAfterWorkerAction,
+  ]);
+
   const handleBuildDistanceVolume = useCallback(async () => {
     if (volumeDistanceBusy) return;
     if (cgalHealthState?.ok === false) {
@@ -82032,19 +82190,73 @@ case "mobius":
                         }}
                       >
                         <summary style={{ cursor: "pointer", fontSize: 11, fontWeight: 800 }}>
-                          Advanced boolean preview (Geometry)
+                          Boolean operation composer
                         </summary>
-                        <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
-                        <div style={{ fontSize: 10, color: "#64748b" }}>
-                          Production boolean results should be run from Mesh Operations. This Geometry tool is a fast preview and handoff helper.
-                        </div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
-                          <label>
-                            Object A
+                        <div data-testid="geometry-boolean-composer" style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                          {(() => {
+                            const objectAName =
+                              geometryBooleanObjectOptions.find((entry) => entry.id === geometryBooleanObjectAId)?.name ?? "Select A";
+                            const objectBName =
+                              geometryBooleanObjectOptions.find((entry) => entry.id === geometryBooleanObjectBId)?.name ?? "Select B";
+                            const operationSymbol =
+                              geometryBooleanOperation === "union"
+                                ? "union"
+                                : geometryBooleanOperation === "difference"
+                                  ? "-"
+                                  : geometryBooleanOperation === "intersection"
+                                    ? "intersection"
+                                    : geometryBooleanOperation === "split"
+                                      ? "split"
+                                      : "imprint";
+                            const solverLabel =
+                              geometryBooleanSolver === "fast"
+                                ? "Fast"
+                                : geometryBooleanSolver === "robust"
+                                  ? "Robust"
+                                  : geometryBooleanOperation === "imprint"
+                                    ? "Auto (Fast)"
+                                    : "Auto";
+                            return (
+                              <>
+                                <div style={{ display: "grid", gridTemplateColumns: "72px minmax(0, 1fr)", gap: "5px 8px", fontSize: 11 }}>
+                                  <strong>Operation</strong>
+                                  <span>{geometryBooleanOperation === "difference" ? "Difference" : geometryBooleanOperation}</span>
+                                  <strong>A</strong>
+                                  <span>{objectAName}</span>
+                                  <strong>B</strong>
+                                  <span>{objectBName}</span>
+                                  <strong>Solver</strong>
+                                  <span>{solverLabel}</span>
+                                </div>
+                                <div
+                                  data-testid="geometry-boolean-composer-formula"
+                                  style={{ border: "1px solid #c7d2fe", borderRadius: 7, padding: "6px 8px", background: "#eef2ff", fontSize: 11 }}
+                                >
+                                  Result = {objectAName} {operationSymbol} {objectBName}
+                                </div>
+                              </>
+                            );
+                          })()}
+                          <label style={{ display: "grid", gap: 3, fontSize: 11 }}>
+                            Operation
                             <select
+                              data-testid="geometry-boolean-composer-operation"
+                              value={geometryBooleanOperation}
+                              onChange={(e) => setGeometryBooleanOperation(e.target.value as GeometryBooleanOperation)}
+                            >
+                              <option value="union">Union</option>
+                              <option value="difference">Difference (A - B)</option>
+                              <option value="intersection">Intersection</option>
+                              <option value="split">Split preview</option>
+                              <option value="imprint">Imprint / intersection curve</option>
+                            </select>
+                          </label>
+                          <label style={{ display: "grid", gap: 3, fontSize: 11 }}>
+                            A
+                            <select
+                              data-testid="geometry-boolean-composer-a"
                               value={geometryBooleanObjectAId ?? ""}
                               onChange={(e) => setGeometryBooleanObjectAId(e.target.value || null)}
-                              style={{ marginLeft: 6, minWidth: 180 }}
                             >
                               <option value="">Select</option>
                               {geometryBooleanObjectOptions.map((entry) => (
@@ -82054,12 +82266,12 @@ case "mobius":
                               ))}
                             </select>
                           </label>
-                          <label>
-                            Object B
+                          <label style={{ display: "grid", gap: 3, fontSize: 11 }}>
+                            B
                             <select
+                              data-testid="geometry-boolean-composer-b"
                               value={geometryBooleanObjectBId ?? ""}
                               onChange={(e) => setGeometryBooleanObjectBId(e.target.value || null)}
-                              style={{ marginLeft: 6, minWidth: 180 }}
                             >
                               <option value="">Select</option>
                               {geometryBooleanObjectOptions.map((entry) => (
@@ -82069,42 +82281,52 @@ case "mobius":
                               ))}
                             </select>
                           </label>
-                          <label>
-                            Operation
-                            <select
-                              value={geometryBooleanOperation}
-                              onChange={(e) => setGeometryBooleanOperation(e.target.value as GeometryBooleanOperation)}
-                              style={{ marginLeft: 6 }}
-                            >
-                              <option value="union">Union</option>
-                              <option value="difference">Difference (A - B)</option>
-                              <option value="intersection">Intersection</option>
-                              <option value="split">Split (A-B, A intersect B, B-A)</option>
-                              <option value="imprint">Imprint / intersection curve</option>
-                            </select>
-                          </label>
-                        </div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          <button type="button" onClick={handlePreviewGeometryBoolean}>
-                            Preview (fast)
-                          </button>
-                          <button type="button" onClick={handleBakeGeometryBoolean}>
-                            Send to Mesh Operations
-                          </button>
-                        </div>
-                        <div style={{ fontSize: 10, color: "#64748b" }}>
-                          Geometry: fast approximate preview with warnings. Mesh: robust boolean, repair, remesh, topology validation.
-                        </div>
-                        {geometryBooleanPreviewStatus && (
-                          <div style={{ fontSize: 10, color: "#475569" }}>{geometryBooleanPreviewStatus}</div>
-                        )}
-                        {geometryBooleanPreviewWarnings.length > 0 && (
-                          <div style={{ fontSize: 10, color: "#92400e", display: "grid", gap: 2 }}>
-                            {geometryBooleanPreviewWarnings.map((warning, index) => (
-                              <div key={`geo-boolean-warning-${index}`}>Warning: {warning}</div>
-                            ))}
+                          <div style={{ display: "grid", gap: 4, fontSize: 11 }}>
+                            <strong>Solver</strong>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              {(["auto", "fast", "robust"] as GeometryBooleanSolver[]).map((solver) => (
+                                <button
+                                  key={`geometry-boolean-solver-${solver}`}
+                                  data-testid={`geometry-boolean-composer-solver-${solver}`}
+                                  type="button"
+                                  onClick={() => setGeometryBooleanSolver(solver)}
+                                  disabled={geometryBooleanOperation === "imprint" && solver === "robust"}
+                                  style={{
+                                    borderColor: geometryBooleanSolver === solver ? "#2563eb" : "#cbd5e1",
+                                    background: geometryBooleanSolver === solver ? "#dbeafe" : "#fff",
+                                  }}
+                                >
+                                  {solver === "auto" ? "Auto" : solver === "fast" ? "Fast" : "Robust"}
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                        )}
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button data-testid="geometry-boolean-composer-preview" type="button" onClick={handlePreviewGeometryBoolean}>
+                              Preview
+                            </button>
+                            <button
+                              data-testid="geometry-boolean-composer-apply"
+                              type="button"
+                              onClick={() => void handleApplyGeometryBoolean()}
+                              disabled={geometryBooleanBusy || meshOperationBusy || geometryBooleanOperation === "split"}
+                            >
+                              {geometryBooleanBusy ? "Applying..." : "Apply"}
+                            </button>
+                          </div>
+                          <div style={{ fontSize: 10, color: "#64748b" }}>
+                            Preview draws a temporary viewport result. Apply runs the shared Mesh Operations router and creates a Geometry result object.
+                          </div>
+                          {geometryBooleanPreviewStatus && (
+                            <div style={{ fontSize: 10, color: "#475569" }}>{geometryBooleanPreviewStatus}</div>
+                          )}
+                          {geometryBooleanPreviewWarnings.length > 0 && (
+                            <div style={{ fontSize: 10, color: "#92400e", display: "grid", gap: 2 }}>
+                              {geometryBooleanPreviewWarnings.map((warning, index) => (
+                                <div key={`geo-boolean-warning-${index}`}>Warning: {warning}</div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </details>
 

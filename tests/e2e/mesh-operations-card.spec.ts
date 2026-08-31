@@ -362,6 +362,44 @@ test.describe("Mesh Operations card", () => {
     await expect(page.getByText(/mesh sent to geometry/i)).toBeVisible({ timeout: 15_000 });
   });
 
+  test("uses Geometry Boolean composer to preview and apply through MeshOperationRequest", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+
+    let card = await openWorkspaceOperationsCard(page);
+    await card.getByTestId("mesh-workspace-operation-registry-preset-boolean-demo-pair").click();
+    await expect(page.getByText(/Boolean demo A/i).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/Boolean demo B/i).first()).toBeVisible({ timeout: 15_000 });
+
+    await selectSection(page, "Geometry");
+    await page.getByTestId("geometry-workflow-step-transform").click();
+    await page.getByText("Boolean operation composer").click();
+    const composer = page.getByTestId("geometry-boolean-composer");
+    await expect(composer).toBeVisible({ timeout: 15_000 });
+    await expect(composer).toContainText(/Operation/i);
+    await expect(composer).toContainText(/Solver/i);
+    await expect(composer).not.toContainText(/Send to Mesh Operations/i);
+    await composer.getByTestId("geometry-boolean-composer-operation").selectOption("difference");
+    await composer.getByTestId("geometry-boolean-composer-solver-fast").click();
+    await expect(composer.getByTestId("geometry-boolean-composer-formula")).toContainText(/Result = .* - .*/);
+
+    await composer.getByTestId("geometry-boolean-composer-preview").click();
+    await expect(composer).toContainText(/Preview difference/i, { timeout: 30_000 });
+    const apply = composer.getByTestId("geometry-boolean-composer-apply");
+    if (!(await apply.isEnabled())) {
+      test.skip(true, "Boolean apply is disabled in this environment.");
+    }
+    await apply.click();
+    await expect(composer).toContainText(/Applied difference/i, { timeout: 90_000 });
+
+    await selectSection(page, "Mesh");
+    card = await openWorkspaceOperationsCard(page);
+    await expectLastOperation(card, /Boolean difference/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/Output: new-object/i);
+  });
+
   test("blocks Robust CGAL boolean until validation passes, then runs difference", async () => {
     ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
     const { page } = ctx;
