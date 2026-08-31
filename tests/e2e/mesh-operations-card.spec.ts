@@ -144,6 +144,7 @@ test.describe("Mesh Operations card", () => {
     for (const group of ["repair", "simplify", "smooth", "boolean", "implicit"]) {
       await expect(card.getByTestId(`mesh-workspace-operation-registry-group-${group}`)).toBeVisible();
     }
+    await expect(card.getByTestId("mesh-workspace-operation-registry-preset-armadillo-robust-boolean")).toBeVisible();
 
     for (const preset of [
       "cgal-validate",
@@ -221,7 +222,10 @@ test.describe("Mesh Operations card", () => {
     const runResult = await runMeshOperationHook(page, "decimate");
     expect(runResult.ok, runResult.error).toBeTruthy();
     await expectLastOperation(card, /Decimate/i);
-    await expect(card.getByTestId("mesh-workspace-operation-registry-open-result")).toBeEnabled();
+    const showResultDetails = card.getByTestId("mesh-workspace-operation-registry-show-result-details");
+    await expect(showResultDetails).toBeEnabled();
+    await showResultDetails.click();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toBeFocused();
     await expect(card.getByTestId("mesh-workspace-operation-registry-send-to-geometry")).toBeEnabled();
     await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Decimate/i);
     await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Request:/i);
@@ -419,7 +423,11 @@ test.describe("Mesh Operations card", () => {
     }
     await reviewToolbar.getByTestId("mesh-boolean-review-validate-result").click();
     await expectLastOperation(card, /Validate mesh/i);
-    await expect(card.getByTestId("mesh-operation-boolean-validation-card")).toContainText(/Boolean result validation/i);
+    const validationCard = card.getByTestId("mesh-operation-boolean-validation-card");
+    await expect(validationCard).toContainText(/Boolean result validation/i);
+    await expect(validationCard.getByTestId("mesh-operation-boolean-validation-repair-result")).toBeEnabled();
+    await expect(validationCard.getByTestId("mesh-operation-boolean-validation-use-as-a")).toBeEnabled();
+    await expect(validationCard.getByTestId("mesh-operation-boolean-validation-use-as-b")).toBeEnabled();
     await reviewToolbar.getByTestId("mesh-boolean-review-keep-result").click();
     await expect(page.getByTestId("mesh-boolean-review-toolbar")).toHaveCount(0);
   });
@@ -470,7 +478,7 @@ test.describe("Mesh Operations card", () => {
     expect(cgal.ok, cgal.error).toBeTruthy();
     await expectLastOperation(focusedCard, /Implicit mesh/i);
     await expect(focusedCard.locator('[data-testid$="-last-result"]')).toContainText(/Output: new-object/i);
-    await expect(focusedCard.locator('[data-testid$="-open-result"]')).toBeEnabled();
+    await expect(focusedCard.locator('[data-testid$="-show-result-details"]')).toBeEnabled();
     await expect(focusedCard.locator('[data-testid$="-send-to-geometry"]')).toBeEnabled();
   });
 
@@ -543,7 +551,7 @@ test.describe("Mesh Operations card", () => {
     await expect(comparison).toBeVisible();
     await expect(comparison).toContainText(/Boundary edges/i);
     await expect(comparison).toContainText(/Non-manifold edges/i);
-    await expect(card.getByTestId("mesh-workspace-operation-registry-open-result")).toBeEnabled();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-show-result-details")).toBeEnabled();
     await expect(card.getByTestId("mesh-workspace-operation-registry-send-to-geometry")).toBeEnabled();
   });
 
@@ -607,7 +615,7 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-operation-repair-card")).toContainText(/New in-memory mesh result/i);
     await expect(card.getByTestId("mesh-operation-repair-card")).toContainText(/Degenerate faces removed/i);
     await expect(card.getByTestId("mesh-operation-repair-card")).toContainText(/Small holes filled/i);
-    await expect(card.getByTestId("mesh-workspace-operation-registry-open-result")).toBeEnabled();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-show-result-details")).toBeEnabled();
     await expect(card.getByTestId("mesh-workspace-operation-registry-send-to-geometry")).toBeEnabled();
   });
 
@@ -637,7 +645,7 @@ test.describe("Mesh Operations card", () => {
     await expect(comparison).toContainText(/Boundary edges/i);
     await expect(comparison).toContainText(/Non-manifold edges/i);
     await expect(comparison).toContainText(/Improved|No change|Still needs review/i);
-    await expect(card.getByTestId("mesh-workspace-operation-registry-open-result")).toBeEnabled();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-show-result-details")).toBeEnabled();
     await expect(card.getByTestId("mesh-workspace-operation-registry-send-to-geometry")).toBeEnabled();
   });
 
@@ -664,7 +672,7 @@ test.describe("Mesh Operations card", () => {
     await expectLastOperation(card, /Remesh/i);
     await expect(card.getByTestId("mesh-operation-remesh-card")).toContainText(/Target edge/i);
     await expect(card.getByTestId("mesh-operation-remesh-card")).toContainText(/Split edges/i);
-    await expect(card.getByTestId("mesh-workspace-operation-registry-open-result")).toBeEnabled();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-show-result-details")).toBeEnabled();
     await expect(card.getByTestId("mesh-workspace-operation-registry-send-to-geometry")).toBeEnabled();
   });
 });

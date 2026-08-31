@@ -218,10 +218,13 @@ export type MeshOperationsPanelProps = {
   cgalEstimatedTris: number;
   cgalError: string | null;
   onRunCgalMesh: () => void | Promise<void>;
-  onOpenResult: () => void;
+  onShowResultDetails?: () => void;
   canSendToGeometry: boolean;
   onSendToGeometry: () => void;
   onOpenResultInGeometry?: () => void;
+  onRepairResult?: () => void | Promise<void>;
+  onUseResultAsBooleanA?: () => void | Promise<void>;
+  onUseResultAsBooleanB?: () => void | Promise<void>;
   onApplyOperationPreset?: (presetId: MeshOperationPresetId) => void | Promise<void>;
 };
 
@@ -284,6 +287,7 @@ export type MeshOperationPresetId =
   | "validate-bunny"
   | "repair-bunny"
   | "validate-armadillo"
+  | "armadillo-robust-boolean"
   | "benchy-cutter-boolean"
   | "bunny-smooth-validate"
   | "decimate-3dbenchy"
@@ -338,6 +342,12 @@ const MESH_OPERATION_PRESETS: Array<{
     label: "Validate Armadillo",
     description: "Load Armadillo and run CGAL validation as a non-destructive robust-readiness check.",
     operation: "cgal-validate",
+  },
+  {
+    id: "armadillo-robust-boolean",
+    label: "Armadillo Robust Boolean",
+    description: "Load Armadillo, add a cutter box as operand B, and prepare a robust Boolean difference.",
+    operation: "boolean-difference",
   },
   {
     id: "benchy-cutter-boolean",
@@ -557,7 +567,12 @@ const MeshValidationCard: React.FC<{
   );
 };
 
-const MeshBooleanValidationCard: React.FC<{ validation: MeshValidationSummary }> = ({ validation }) => {
+const MeshBooleanValidationCard: React.FC<{
+  validation: MeshValidationSummary;
+  onRepairResult?: () => void | Promise<void>;
+  onUseResultAsBooleanA?: () => void | Promise<void>;
+  onUseResultAsBooleanB?: () => void | Promise<void>;
+}> = ({ validation, onRepairResult, onUseResultAsBooleanA, onUseResultAsBooleanB }) => {
   const verdict = getValidationVerdict(validation);
   const blockers = getMeshValidationBlockers(validation);
   const blockerText = blockers.length ? blockers.slice(0, 5).join(", ") : "ready for robust boolean review";
@@ -599,6 +614,32 @@ const MeshBooleanValidationCard: React.FC<{ validation: MeshValidationSummary }>
         {countRow("Duplicate faces", validation.duplicateFaceCount, validation.duplicateFaceCount === 0 ? "pass" : "warn")}
       </div>
       <div style={{ color: "#475569", fontSize: 10 }}>{actionText}</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+        <button
+          data-testid="mesh-operation-boolean-validation-repair-result"
+          type="button"
+          onClick={() => void onRepairResult?.()}
+          disabled={!onRepairResult}
+        >
+          Repair result
+        </button>
+        <button
+          data-testid="mesh-operation-boolean-validation-use-as-a"
+          type="button"
+          onClick={() => void onUseResultAsBooleanA?.()}
+          disabled={!onUseResultAsBooleanA}
+        >
+          Use as A
+        </button>
+        <button
+          data-testid="mesh-operation-boolean-validation-use-as-b"
+          type="button"
+          onClick={() => void onUseResultAsBooleanB?.()}
+          disabled={!onUseResultAsBooleanB}
+        >
+          Use as B
+        </button>
+      </div>
     </div>
   );
 };
@@ -1048,14 +1089,20 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
   cgalError,
   onRunPreview,
   onRunCgalMesh,
-  onOpenResult,
+  onShowResultDetails,
   canSendToGeometry,
   onSendToGeometry,
   onOpenResultInGeometry,
+  onRepairResult,
+  onUseResultAsBooleanA,
+  onUseResultAsBooleanB,
   onApplyOperationPreset,
 }) => {
   const [expandedOperation, setExpandedOperation] = useState<MeshOperationVisibleRowId | null>(null);
   const appliedFocusRef = useRef<string | null>(null);
+  const resultDetailsRef = useRef<HTMLDivElement | null>(null);
+  const resultDetailsPulseTimeoutRef = useRef<number | null>(null);
+  const [resultDetailsFocused, setResultDetailsFocused] = useState(false);
   const operationBusy = busy || cgalBusy || previewBusy;
   const resultStatusColor =
     lastResult?.status === "error"
@@ -1086,6 +1133,32 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
       onChangeBooleanStrategy("fast");
     }
   }, [booleanOperation, booleanStrategy, onChangeBooleanStrategy]);
+  useEffect(
+    () => () => {
+      if (resultDetailsPulseTimeoutRef.current != null && typeof window !== "undefined") {
+        window.clearTimeout(resultDetailsPulseTimeoutRef.current);
+      }
+    },
+    []
+  );
+  const showResultDetails = () => {
+    onShowResultDetails?.();
+    if (typeof window === "undefined") return;
+    window.requestAnimationFrame(() => {
+      const node = resultDetailsRef.current;
+      if (!node) return;
+      node.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      node.focus({ preventScroll: true });
+      setResultDetailsFocused(true);
+      if (resultDetailsPulseTimeoutRef.current != null) {
+        window.clearTimeout(resultDetailsPulseTimeoutRef.current);
+      }
+      resultDetailsPulseTimeoutRef.current = window.setTimeout(() => {
+        setResultDetailsFocused(false);
+        resultDetailsPulseTimeoutRef.current = null;
+      }, 1800);
+    });
+  };
   const applyPreset = (preset: MeshOperationPresetId) => {
     void onApplyOperationPreset?.(preset);
     if (preset === "clean-normals") {
@@ -1136,7 +1209,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
       setExpandedOperation("cgal-validate");
       return;
     }
-    if (preset === "benchy-cutter-boolean") {
+    if (preset === "benchy-cutter-boolean" || preset === "armadillo-robust-boolean") {
       onChangeBooleanOperation("difference");
       onChangeBooleanStrategy("robust");
       onChangeOutputMode("derived");
@@ -2028,7 +2101,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                       </div>
                       <div style={booleanStageStyle("next")}>
                         {booleanStageHeader(5, "Result", "next")}
-                        <div style={{ color: "#475569", fontSize: 10 }}>Result appears below in Last operation, with Open result and Send to Geometry.</div>
+                        <div style={{ color: "#475569", fontSize: 10 }}>Result appears below in Last operation, with Show result details and Send to Geometry.</div>
                       </div>
                       <div style={booleanStageStyle("next")}>
                         {booleanStageHeader(6, "Validate Result", "next")}
@@ -2278,8 +2351,20 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
         ))}
       </div>
       <div
+        ref={resultDetailsRef}
         data-testid={`${testId}-last-result`}
-        style={{ borderTop: "1px solid #bbf7d0", paddingTop: 5, display: "grid", gap: 3, fontSize: 10 }}
+        tabIndex={-1}
+        aria-label="Mesh operation result details"
+        style={{
+          borderTop: "1px solid #bbf7d0",
+          outline: resultDetailsFocused ? "2px solid #2563eb" : "none",
+          outlineOffset: 2,
+          borderRadius: resultDetailsFocused ? 7 : 0,
+          paddingTop: 5,
+          display: "grid",
+          gap: 3,
+          fontSize: 10,
+        }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
           <strong>Last operation</strong>
@@ -2302,7 +2387,12 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
             {lastResult.sourceIds.length > 0 && <div>Sources: {lastResult.sourceIds.join(", ")}</div>}
             {lastResult.validation &&
               (lastResult.validationContext === "boolean-result" ? (
-                <MeshBooleanValidationCard validation={lastResult.validation} />
+                <MeshBooleanValidationCard
+                  validation={lastResult.validation}
+                  onRepairResult={onRepairResult}
+                  onUseResultAsBooleanA={onUseResultAsBooleanA}
+                  onUseResultAsBooleanB={onUseResultAsBooleanB}
+                />
               ) : (
                 <MeshValidationCard validation={lastResult.validation} />
               ))}
@@ -2321,8 +2411,8 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
             {lastResult.warnings.length > 0 && <div style={{ color: "#b45309" }}>Warnings: {lastResult.warnings.join("; ")}</div>}
             {lastResult.errors.length > 0 && <div style={{ color: "#b42318" }}>Errors: {lastResult.errors.join("; ")}</div>}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
-              <button data-testid={`${testId}-open-result`} type="button" onClick={onOpenResult} disabled={!hasUsableResult}>
-                Open result
+              <button data-testid={`${testId}-show-result-details`} type="button" onClick={showResultDetails} disabled={!hasUsableResult}>
+                Show result details
               </button>
               <button
                 data-testid={`${testId}-send-to-geometry`}

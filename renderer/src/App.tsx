@@ -46964,6 +46964,75 @@ case "mobius":
     surfaceMeshData,
   ]);
 
+  const handleUseMeshOperationResultAsBooleanA = useCallback(() => {
+    const mesh = meshOperationLastResultMeshRef.current;
+    if (!mesh?.positions.length || !mesh.indices.length) {
+      setMeshOperationError("No operation result mesh is available to use as operand A.");
+      return;
+    }
+    const source = surfaceMeshData?.source ?? mesh.source ?? { kind: "csg" };
+    const next = applySurfaceMeshOps(meshOperationInputToSurfaceMeshData(mesh, source, mesh.label));
+    const booleanRow: MeshOperationUiId =
+      meshOperationBooleanOperation === "union"
+        ? "boolean-union"
+        : meshOperationBooleanOperation === "difference"
+          ? "boolean-difference"
+          : meshOperationBooleanOperation === "intersection"
+            ? "boolean-intersection"
+            : meshOperationBooleanOperation === "imprint"
+              ? "boolean-imprint"
+              : "boolean-split";
+    setMeshDataset(next, "mesh-operation:boolean-result-as-a");
+    setMode("surfaces");
+    setDatasetKind("mesh");
+    setSurfaceViewerKind("mesh");
+    focusMeshOperationRow(booleanRow);
+    setMeshOperationError(null);
+    setMeshOperationBooleanStatus(`${next.label ?? mesh.label} is now operand A. Choose operand B, then run the Boolean operation.`);
+  }, [focusMeshOperationRow, meshOperationBooleanOperation, setMeshDataset, surfaceMeshData?.source]);
+
+  const handleUseMeshOperationResultAsBooleanB = useCallback(() => {
+    const mesh = meshOperationLastResultMeshRef.current;
+    if (!mesh?.positions.length || !mesh.indices.length) {
+      setMeshOperationError("No operation result mesh is available to use as operand B.");
+      return;
+    }
+    const source = surfaceMeshData?.source ?? mesh.source ?? { kind: "csg" };
+    const label = mesh.label?.trim() || "Mesh operation result";
+    const id = makeId();
+    const obj: GeometryDatasetMeshObject = {
+      id,
+      name: label,
+      mesh: toDetachedMeshData(meshOperationInputToSurfaceMeshData(mesh, source, label)),
+      transform: {
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+      },
+      visible: true,
+      material: { color: 0xf97316, opacity: 0.42 },
+      promotion: null,
+      sourceSelectionOverlay: null,
+    };
+    const booleanRow: MeshOperationUiId =
+      meshOperationBooleanOperation === "union"
+        ? "boolean-union"
+        : meshOperationBooleanOperation === "difference"
+          ? "boolean-difference"
+          : meshOperationBooleanOperation === "intersection"
+            ? "boolean-intersection"
+            : meshOperationBooleanOperation === "imprint"
+              ? "boolean-imprint"
+              : "boolean-split";
+    setGeometryObjects((prev) => (prev.length === 1 && isSeedGeometryBoxObject(prev[0]) ? [] : prev));
+    setGeometryDatasetMeshObjects((prev) => [obj, ...prev.filter((entry) => entry.id !== id && entry.name !== label)]);
+    setMeshOperationBooleanOperandObjectId(id);
+    setGeometrySelectedObjectId(id);
+    focusMeshOperationRow(booleanRow);
+    setMeshOperationError(null);
+    setMeshOperationBooleanStatus(`${label} is now operand B. Keep or load the active Mesh as operand A, then run the Boolean operation.`);
+  }, [focusMeshOperationRow, meshOperationBooleanOperation, surfaceMeshData?.source]);
+
   const applyDefaultPorts = useCallback((block: WorkbookBlock): WorkbookBlock => {
     const ports = resolveBlockPorts(block);
     return { ...block, inputs: ports.inputs, outputs: ports.outputs };
@@ -51293,6 +51362,40 @@ case "mobius":
           setMeshOperationBooleanOperandObjectId(cutterId);
           setGeometrySelectedObjectId(cutterId);
           setMeshOperationBooleanStatus("3DBenchy cutter box ready: Active Mesh - cutter box. Validate, then run Robust Boolean difference.");
+        }
+        return;
+      }
+      if (presetId === "armadillo-robust-boolean") {
+        setMeshOperationBooleanOperation("difference");
+        setMeshOperationBooleanStrategy("robust");
+        setMeshOperationOutputMode("derived");
+        focusMeshOperationRow("boolean-difference");
+        const loadedMesh = await handleLoadSurfaceMeshBenchmarkModel("armadillo");
+        const bounds = boundsFromPositions(loadedMesh?.positions);
+        if (bounds) {
+          const cutterId = makeId();
+          const cutterMesh = buildMeshOperationCutterBoxMesh("Armadillo cutter box", bounds);
+          const cutterObject: GeometryDatasetMeshObject = {
+            id: cutterId,
+            name: "Armadillo cutter box",
+            mesh: toDetachedMeshData(cutterMesh),
+            transform: {
+              position: { x: 0, y: 0, z: 0 },
+              rotation: { x: 0, y: 0, z: 0 },
+              scale: { x: 1, y: 1, z: 1 },
+            },
+            visible: true,
+            material: { color: 0xf97316, opacity: 0.36 },
+            promotion: null,
+            sourceSelectionOverlay: null,
+          };
+          setGeometryDatasetMeshObjects((prev) => [
+            cutterObject,
+            ...prev.filter((entry) => entry.name !== cutterObject.name),
+          ]);
+          setMeshOperationBooleanOperandObjectId(cutterId);
+          setGeometrySelectedObjectId(cutterId);
+          setMeshOperationBooleanStatus("Armadillo cutter box ready: Active Mesh - cutter box. Validate, then run Robust Boolean difference.");
         }
         return;
       }
@@ -67087,6 +67190,8 @@ case "mobius":
                   cgalPreflightSamples={cgalPreflightSamples}
                   onChangeCgalPreflightSamples={setCgalPreflightSamples}
                   onRunCgalMesh={handleRunCgalMesh}
+                  onUseMeshOperationResultAsBooleanA={handleUseMeshOperationResultAsBooleanA}
+                  onUseMeshOperationResultAsBooleanB={handleUseMeshOperationResultAsBooleanB}
                   onStopCgalWorker={handleStopCgalWorker}
                   cgalMeshInfo={cgalMeshInfo}
                   graphExpr={graphExpr}
@@ -70173,10 +70278,13 @@ case "mobius":
                           cgalEstimatedTris={cgalEstimatedTris}
                           cgalError={cgalError}
                           onRunCgalMesh={handleRunCgalMesh}
-                          onOpenResult={() => setSurfacesLeftTab("object")}
+                          onShowResultDetails={() => undefined}
                           canSendToGeometry={unifiedCanConvertToMeshObject}
                           onSendToGeometry={handleDatasetToGeometryScene}
                           onOpenResultInGeometry={handleDatasetToGeometryScene}
+                          onRepairResult={handleMeshOperationRepair}
+                          onUseResultAsBooleanA={handleUseMeshOperationResultAsBooleanA}
+                          onUseResultAsBooleanB={handleUseMeshOperationResultAsBooleanB}
                         />
                         {surfaceMeshBenchmarkBrowserOpen && surfaceMeshBenchmarkModels.length > 0 && (
                           <div style={{ display: "grid", gap: 8 }}>
@@ -70813,7 +70921,10 @@ case "mobius":
                     meshOperationCgalEstimatedTris={cgalEstimatedTris}
                     meshOperationCgalError={cgalError}
                     onRunMeshOperationCgalMesh={handleRunCgalMesh}
-                    onOpenMeshOperationResult={() => setSurfacesLeftTab("object")}
+                    onShowMeshOperationResultDetails={() => undefined}
+                    onRepairMeshOperationResult={handleMeshOperationRepair}
+                    onUseMeshOperationResultAsBooleanA={handleUseMeshOperationResultAsBooleanA}
+                    onUseMeshOperationResultAsBooleanB={handleUseMeshOperationResultAsBooleanB}
                     onRegenerateStaleSelected={() => handleRegenerateDerivedProducts("selected")}
                     onRegenerateStaleAll={() => handleRegenerateDerivedProducts("all")}
                   />
@@ -100527,7 +100638,10 @@ type SurfacesObjectPanelProps = {
   meshOperationCgalEstimatedTris: number;
   meshOperationCgalError: string | null;
   onRunMeshOperationCgalMesh: () => void | Promise<void>;
-  onOpenMeshOperationResult: () => void;
+  onShowMeshOperationResultDetails?: () => void;
+  onRepairMeshOperationResult: () => void | Promise<void>;
+  onUseMeshOperationResultAsBooleanA: () => void | Promise<void>;
+  onUseMeshOperationResultAsBooleanB: () => void | Promise<void>;
   onRegenerateStaleSelected: () => void;
   onRegenerateStaleAll: () => void;
 };
@@ -100706,7 +100820,10 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   meshOperationCgalEstimatedTris,
   meshOperationCgalError,
   onRunMeshOperationCgalMesh,
-  onOpenMeshOperationResult,
+  onShowMeshOperationResultDetails,
+  onRepairMeshOperationResult,
+  onUseMeshOperationResultAsBooleanA,
+  onUseMeshOperationResultAsBooleanB,
   onRegenerateStaleSelected,
   onRegenerateStaleAll,
 }) => {
@@ -101095,9 +101212,12 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
           cgalEstimatedTris={meshOperationCgalEstimatedTris}
           cgalError={meshOperationCgalError}
           onRunCgalMesh={onRunMeshOperationCgalMesh}
-          onOpenResult={onOpenMeshOperationResult}
+          onShowResultDetails={onShowMeshOperationResultDetails}
           canSendToGeometry={canConvertToMeshObject}
           onSendToGeometry={onConvertToMeshObject}
+          onRepairResult={onRepairMeshOperationResult}
+          onUseResultAsBooleanA={onUseMeshOperationResultAsBooleanA}
+          onUseResultAsBooleanB={onUseMeshOperationResultAsBooleanB}
         />
       )}
 
@@ -102603,6 +102723,8 @@ type SurfacesLeftPanelProps = {
   cgalPreflightSamples: number;
   onChangeCgalPreflightSamples: (v: number) => void;
   onRunCgalMesh: () => void;
+  onUseMeshOperationResultAsBooleanA: () => void | Promise<void>;
+  onUseMeshOperationResultAsBooleanB: () => void | Promise<void>;
   onStopCgalWorker: () => void;
   cgalMeshInfo: { vertexCount: number; triCount: number } | null;
   meshOperationFocusedOperation: MeshOperationUiId | null;
@@ -103362,6 +103484,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   cgalPreflightSamples,
   onChangeCgalPreflightSamples,
   onRunCgalMesh,
+  onUseMeshOperationResultAsBooleanA,
+  onUseMeshOperationResultAsBooleanB,
   onStopCgalWorker,
   cgalMeshInfo,
   graphExpr,
@@ -108038,9 +108162,12 @@ onChangeImplicitExpr,
               cgalEstimatedTris={cgalEstimatedTris}
               cgalError={cgalError}
               onRunCgalMesh={onRunCgalMesh}
-              onOpenResult={() => setMeshToolsTab("surface_mesh")}
+              onShowResultDetails={() => undefined}
               canSendToGeometry={meshReady}
               onSendToGeometry={onConvertToMeshObject}
+              onRepairResult={onMeshOperationRepair}
+              onUseResultAsBooleanA={onUseMeshOperationResultAsBooleanA}
+              onUseResultAsBooleanB={onUseMeshOperationResultAsBooleanB}
             />
           </div>
           <div style={{ marginTop: 4, fontSize: 10, opacity: 0.72 }}>
@@ -112553,12 +112680,21 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     </div>
   );
 
+  const meshOperationMethodLabel = meshLastOperation
+    ? meshLastOperation.boolean
+      ? meshLastOperation.engine === "cgal" || meshLastOperation.boolean.kernel === "native-cgal"
+        ? "Robust"
+        : "Fast"
+      : meshLastOperation.engine === "cgal" || String(meshLastOperation.operation).startsWith("cgal")
+        ? "Robust"
+        : "Standard"
+    : "n/a";
   const meshBackendLabel = cgalMeshInfo
-    ? "CGAL"
+    ? "Robust mesh result"
     : meshLastOperation
-      ? meshLastOperation.engine.toUpperCase()
+      ? `Method: ${meshOperationMethodLabel}`
       : isImplicitViewer
-        ? "Mesh engines"
+        ? "Mesh operations"
         : "SurfaceMesh";
   const watertight =
     meshTopologyDetails?.watertight ??
@@ -112917,7 +113053,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             <div style={inspectorSectionCard}>
               <div style={inspectorSectionTitle}>Mesh Result</div>
               <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
-                <div><strong>Engine/source:</strong> {meshBackendLabel}</div>
+                <div><strong>Source/method:</strong> {meshBackendLabel}</div>
                 <div><strong>Vertices:</strong> {formatInspectorCount(meshInspectorStats.vertexCount)}</div>
                 <div><strong>Faces:</strong> {formatInspectorCount(meshInspectorStats.faceCount)}</div>
                 <div><strong>Edges:</strong> {formatInspectorCount(meshTopologyDetails?.edgeCount ?? null)}</div>
@@ -112987,7 +113123,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               {meshLastOperation ? (
                 <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
                   <div><strong>Operation:</strong> {meshLastOperation.label}</div>
-                  <div><strong>Engine:</strong> {meshLastOperation.engine.toUpperCase()}</div>
+                  <div><strong>Method:</strong> {meshOperationMethodLabel}</div>
                   <div><strong>Status:</strong> {meshLastOperation.status}</div>
                   <div><strong>Before:</strong> {meshLastOperation.beforeFaces.toLocaleString()} faces</div>
                   <div>
@@ -113933,7 +114069,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           {meshLastOperation ? (
             <div style={{ fontSize: 11, display: "grid", gap: 5 }}>
               <div><strong>Operation:</strong> {meshLastOperation.label}</div>
-              <div><strong>Engine:</strong> {meshLastOperation.engine.toUpperCase()}</div>
+              <div><strong>Method:</strong> {meshOperationMethodLabel}</div>
               <div><strong>Status:</strong> {meshLastOperation.status}</div>
               <div><strong>Before:</strong> {meshLastOperation.beforeFaces.toLocaleString()} faces</div>
               <div>
