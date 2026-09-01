@@ -114,6 +114,41 @@ const chip = (label: string, value: string, tone: "a" | "b" | "result") => {
   );
 };
 
+const entityStripCell = (
+  label: string,
+  name: string,
+  triangleCount: number | null | undefined,
+  tone: "a" | "b" | "result"
+) => {
+  const palette =
+    tone === "a"
+      ? { border: "#93c5fd", background: "#eff6ff", color: "#1d4ed8" }
+      : tone === "b"
+        ? { border: "#fdba74", background: "#fff7ed", color: "#9a3412" }
+        : { border: "#86efac", background: "#f0fdf4", color: "#166534" };
+  return (
+    <div
+      key={label}
+      style={{
+        border: `1px solid ${palette.border}`,
+        background: palette.background,
+        color: palette.color,
+        borderRadius: 6,
+        padding: "6px",
+        display: "grid",
+        gap: 4,
+        minWidth: 0,
+      }}
+    >
+      <strong style={{ fontSize: 10 }}>{label}</strong>
+      <span title={name} style={{ fontSize: 11, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {name}
+      </span>
+      <span style={{ fontSize: 10 }}>Visible · {formatCount(triangleCount)} triangles</span>
+    </div>
+  );
+};
+
 const booleanKernelDetail = (
   summary: MeshBooleanSummary | null | undefined
 ): { state: "pass" | "warn"; backend: string; detail: string } => {
@@ -187,6 +222,14 @@ export const MeshBooleanReviewCard: React.FC<MeshBooleanReviewCardProps> = ({
         <span style={validationBadgeStyle(resolvedStatus)}>
           <strong>{resolvedStatus === "fail" ? "Needs review" : "Review ready"}</strong>
         </span>
+      </div>
+      <div
+        data-testid={`${testId}-entities`}
+        style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 5 }}
+      >
+        {entityStripCell("A", operandA, resolvedInputAFaces, "a")}
+        {entityStripCell("B", operandB, resolvedInputBFaces, "b")}
+        {entityStripCell("RESULT", result, resolvedResultFaces, "result")}
       </div>
       <div data-testid={reviewTestId} style={stageStyle("active")}>
         {stageHeader(1, "Operation")}
