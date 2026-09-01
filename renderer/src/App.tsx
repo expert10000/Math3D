@@ -46938,10 +46938,27 @@ case "mobius":
     setGeometryCreateActionStatus(visible ? "Boolean operands shown." : "Boolean operands hidden.");
   }, [geometryBooleanObjectAId, geometryBooleanObjectBId]);
 
+  const handleHideGeometryBooleanCutter = useCallback(() => {
+    const cutterId = geometryBooleanObjectBId;
+    if (!cutterId) {
+      setGeometryBooleanPreviewStatus("Pick operand B or apply a Boolean result first.");
+      return;
+    }
+    setGeometryObjects((prev) => prev.map((entry) => (entry.id === cutterId ? { ...entry, visible: false } : entry)));
+    setGeometryDatasetMeshObjects((prev) => prev.map((entry) => (entry.id === cutterId ? { ...entry, visible: false } : entry)));
+    setGeometryBooleanPreviewStatus("Boolean cutter B hidden; A and the result remain visible.");
+    setGeometryCreateActionStatus("Boolean cutter B hidden; A and the result remain visible.");
+  }, [geometryBooleanObjectBId]);
+
   const handleSwapGeometryBooleanOperands = useCallback(() => {
     if (geometryBooleanBusy || meshOperationBusy) return;
-    setGeometryBooleanObjectAId(geometryBooleanObjectBId);
-    setGeometryBooleanObjectBId(geometryBooleanObjectAId);
+    const nextAId = geometryBooleanObjectBId;
+    const nextBId = geometryBooleanObjectAId;
+    setGeometryBooleanObjectAId(nextAId);
+    setGeometryBooleanObjectBId(nextBId);
+    // The composer follows the active Geometry object for A. Keep that rule in
+    // sync with an explicit swap, especially after Apply selects the result.
+    if (nextAId) setGeometrySelectedObjectId(nextAId);
     setGeometryBooleanPreviewMeshes([]);
     setGeometryBooleanPreviewCurveLines([]);
     setGeometryBooleanPreviewWarnings([]);
@@ -82663,11 +82680,19 @@ case "mobius":
                                     Show operands
                                   </button>
                                   <button
-                                    data-testid="geometry-boolean-composer-hide-operands"
+                                    data-testid="geometry-boolean-composer-hide-cutter"
                                     type="button"
-                                    onClick={() => setGeometryBooleanComposerObjectsVisible(false)}
+                                    onClick={handleHideGeometryBooleanCutter}
                                   >
-                                    Hide operands
+                                    Hide cutter B
+                                  </button>
+                                  <button
+                                    data-testid="geometry-boolean-composer-review-swap-ab"
+                                    type="button"
+                                    onClick={handleSwapGeometryBooleanOperands}
+                                    disabled={geometryBooleanBusy || meshOperationBusy || !geometryBooleanObjectAId || !geometryBooleanObjectBId}
+                                  >
+                                    Swap A/B
                                   </button>
                                   <button
                                     data-testid="geometry-boolean-composer-show-result"

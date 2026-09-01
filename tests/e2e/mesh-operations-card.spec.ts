@@ -467,12 +467,19 @@ test.describe("Mesh Operations card", () => {
     await expect(review).toContainText(/A/i);
     await expect(review).toContainText(/B/i);
     await expect(review).toContainText(/Result/i);
-    await review.getByTestId("geometry-boolean-composer-hide-operands").click();
-    await expect(composer).toContainText(/Boolean operands hidden/i);
+    await review.getByTestId("geometry-boolean-composer-hide-cutter").click();
+    await expect(composer).toContainText(/Boolean cutter B hidden/i);
     await review.getByTestId("geometry-boolean-composer-show-operands").click();
     await expect(composer).toContainText(/Boolean operands shown/i);
+    const operandA = composer.getByTestId("geometry-boolean-composer-a");
+    const operandB = composer.getByTestId("geometry-boolean-composer-b");
+    const originalA = await operandA.inputValue();
+    const originalB = await operandB.inputValue();
+    await review.getByTestId("geometry-boolean-composer-review-swap-ab").click();
+    await expect(operandA).toHaveValue(originalB);
+    await expect(operandB).toHaveValue(originalA);
     await review.getByTestId("geometry-boolean-composer-show-result").click();
-    await expect(composer).toContainText(/Boolean result selected/i);
+    await expect(operandA).toHaveValue(originalA);
     await expect(review.getByTestId("geometry-boolean-composer-validate-result")).toBeVisible();
 
     await selectSection(page, "Mesh");
