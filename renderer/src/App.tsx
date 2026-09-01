@@ -47,6 +47,7 @@ import {
   type MeshOperationUiId,
   type MeshOperationResultSummary,
 } from "./components/MeshOperationsPanel";
+import { MeshBooleanReviewCard } from "./components/MeshBooleanReviewCard";
 import {
   ActiveSelectionCard,
   buildActiveSelectionSummary,
@@ -51129,6 +51130,7 @@ case "mobius":
     async (
       files: FileList | File[] | null,
       options?: {
+        forceMergeVertices?: boolean;
         profileLabel?: string;
         benchmarkModel?: MeshBenchmarkModel | null;
         profileStartedAt?: number;
@@ -51153,7 +51155,7 @@ case "mobius":
         prepareLargeSurfaceMeshInteractiveLoad("Large mesh loading in fast preview mode.", { clearCurrentMesh: true });
       }
       try {
-        const mergeVerticesForLoad = surfaceMeshMergeVertices && !largeFileHint;
+        const mergeVerticesForLoad = options?.forceMergeVertices === true || (surfaceMeshMergeVertices && !largeFileHint);
         const base = await loadSurfaceMeshFromFile(files, {
           mergeVertices: mergeVerticesForLoad,
           onStage: (entry) => recordMeshPipelineProfilePhase(profileId, `import:${entry.stage}`, entry.ms),
@@ -51275,7 +51277,7 @@ case "mobius":
   }, [handleLoadSurfaceMeshFile]);
 
   const handleLoadSurfaceMeshBenchmarkModel = useCallback(
-    async (modelId: string) => {
+    async (modelId: string, options?: { forceMergeVertices?: boolean }) => {
       const api = typeof window !== "undefined" ? window.meshBenchmarks : undefined;
       const benchmarkLoadingAllowed = isDev || !!window.appRuntime?.e2e;
       if (!benchmarkLoadingAllowed || !api?.load) {
@@ -51310,6 +51312,7 @@ case "mobius":
           type: response.entry.fileName.toLowerCase().endsWith(".stl") ? "model/stl" : "text/plain",
         });
         const loadedMesh = await handleLoadSurfaceMeshFile([file], {
+          forceMergeVertices: options?.forceMergeVertices,
           profileLabel: response.entry.label,
           benchmarkModel: response.entry,
           profileStartedAt,
@@ -51435,8 +51438,25 @@ case "mobius":
         setMeshOperationBooleanStrategy("robust");
         setMeshOperationOutputMode("derived");
         focusMeshOperationRow("boolean-difference");
-        const loadedMesh = await handleLoadSurfaceMeshBenchmarkModel("3dbenchy");
-        const bounds = boundsFromPositions(loadedMesh?.positions);
+        const loadedMesh = await handleLoadSurfaceMeshBenchmarkModel("3dbenchy", { forceMergeVertices: true });
+        let booleanReadyMesh = loadedMesh;
+        if (loadedMesh?.positions.length && loadedMesh.indices?.length) {
+          const indexedLoadedMesh: MeshOperationMeshInput = { ...loadedMesh, indices: loadedMesh.indices };
+          const cleanRequest: MeshOperationRequest = {
+            operation: "clean-normals",
+            inputs: [loadedMesh.label],
+            engine: "vtk",
+            parameters: { computeNormals: true },
+            outputMode: "replace",
+            quality: "balanced",
+          };
+          const cleanResult = await runMeshOperation(cleanRequest, { primaryMesh: indexedLoadedMesh });
+          if (cleanResult.status !== "error" && cleanResult.resultMesh) {
+            booleanReadyMesh = { ...cleanResult.resultMesh, label: loadedMesh.label };
+            setMeshDataset(booleanReadyMesh, "mesh-operation:benchy-cutter-clean-a");
+          }
+        }
+        const bounds = boundsFromPositions(booleanReadyMesh?.positions);
         if (bounds) {
           const cutterId = makeId();
           const cutterMesh = buildMeshOperationCutterBoxMesh("3DBenchy cutter box", bounds);
@@ -82617,124 +82637,96 @@ case "mobius":
                             </div>
                           )}
                           {geometryBooleanComposerReview && (
-                            <div
-                              data-testid="geometry-boolean-composer-review"
-                              style={{
-                                border: "1px solid #bbf7d0",
-                                borderRadius: 8,
-                                background: "#f0fdf4",
-                                padding: "7px 8px",
-                                display: "grid",
-                                gap: 6,
-                                fontSize: 10,
-                              }}
-                            >
-                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
-                                <strong>Boolean result review</strong>
-                                <span style={{ color: "#166534", fontWeight: 800 }}>ready</span>
-                              </div>
-                              <div style={{ display: "grid", gridTemplateColumns: "72px minmax(0, 1fr)", gap: "4px 8px" }}>
-                                <strong>Operation</strong>
-                                <span>
-                                  {geometryBooleanComposerReview.operation === "difference"
-                                    ? "Difference"
-                                    : geometryBooleanComposerReview.operation === "intersection"
-                                      ? "Intersection"
-                                      : geometryBooleanComposerReview.operation === "union"
-                                        ? "Union"
-                                        : geometryBooleanComposerReview.operation}
-                                  {" · "}
-                                  {geometryBooleanComposerReview.solver === "fast"
-                                    ? "Fast"
-                                    : geometryBooleanComposerReview.solver === "robust"
-                                      ? "Robust"
-                                      : "Auto"}
-                                </span>
-                                <strong>A</strong>
-                                <span>{geometryBooleanComposerReview.operandAName}</span>
-                                <strong>B</strong>
-                                <span>{geometryBooleanComposerReview.operandBName}</span>
-                                <strong>Result</strong>
-                                <span>{geometryBooleanComposerReview.resultName}</span>
-                                <strong>Faces</strong>
-                                <span>
-                                  {geometryBooleanComposerReview.beforeFaces.toLocaleString()} {"->"}{" "}
-                                  {geometryBooleanComposerReview.afterFaces == null
-                                    ? "n/a"
-                                    : geometryBooleanComposerReview.afterFaces.toLocaleString()}
-                                </span>
-                              </div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button
-                                  data-testid="geometry-boolean-composer-show-operands"
-                                  type="button"
-                                  onClick={() => setGeometryBooleanComposerObjectsVisible(true)}
-                                >
-                                  Show operands
-                                </button>
-                                <button
-                                  data-testid="geometry-boolean-composer-hide-operands"
-                                  type="button"
-                                  onClick={() => setGeometryBooleanComposerObjectsVisible(false)}
-                                >
-                                  Hide operands
-                                </button>
-                                <button
-                                  data-testid="geometry-boolean-composer-show-result"
-                                  type="button"
-                                  onClick={handleShowGeometryBooleanResult}
-                                >
-                                  Show result
-                                </button>
-                                <button
-                                  data-testid="geometry-boolean-composer-validate-result"
-                                  type="button"
-                                  onClick={() => void handleValidateGeometryBooleanResult()}
-                                  disabled={meshOperationBusy || !cgalServiceReady}
-                                >
-                                  Validate result
-                                </button>
-                              </div>
-                              {meshLastOperation?.validationContext === "boolean-result" && meshLastOperation.validation && (
-                                <div
-                                  data-testid="geometry-boolean-composer-validation"
-                                  style={{
-                                    border: "1px solid #86efac",
-                                    borderRadius: 7,
-                                    background: "#ffffff",
-                                    padding: "6px",
-                                    display: "grid",
-                                    gap: 4,
-                                  }}
-                                >
-                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                                    <strong>Validation</strong>
-                                    <span style={{ color: meshLastOperation.validation.watertight && meshLastOperation.validation.manifold ? "#166534" : "#b45309", fontWeight: 800 }}>
-                                      {meshLastOperation.validation.watertight && meshLastOperation.validation.manifold ? "passes" : "needs review"}
-                                    </span>
-                                  </div>
-                                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-                                    <span>Watertight: {meshLastOperation.validation.watertight ? "yes" : "no"}</span>
-                                    <span>Manifold: {meshLastOperation.validation.manifold ? "yes" : "no"}</span>
-                                    <span>Components: {meshLastOperation.validation.componentCount.toLocaleString()}</span>
-                                    <span>Boundary edges: {meshLastOperation.validation.boundaryEdgeCount.toLocaleString()}</span>
-                                    <span>Non-manifold: {meshLastOperation.validation.nonManifoldEdgeCount.toLocaleString()}</span>
-                                    <span>Degenerate: {meshLastOperation.validation.degenerateFaceCount.toLocaleString()}</span>
-                                  </div>
-                                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                    <button type="button" onClick={() => void handleMeshOperationRepair()} disabled={meshOperationBusy || !cgalServiceReady}>
-                                      Repair result
-                                    </button>
-                                    <button type="button" onClick={handleUseMeshOperationResultAsBooleanA}>
-                                      Use as A
-                                    </button>
-                                    <button type="button" onClick={handleUseMeshOperationResultAsBooleanB}>
-                                      Use as B
-                                    </button>
-                                  </div>
+                            <MeshBooleanReviewCard
+                              actions={
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+                                  <button
+                                    data-testid="geometry-boolean-composer-show-operands"
+                                    type="button"
+                                    onClick={() => setGeometryBooleanComposerObjectsVisible(true)}
+                                  >
+                                    Show operands
+                                  </button>
+                                  <button
+                                    data-testid="geometry-boolean-composer-hide-operands"
+                                    type="button"
+                                    onClick={() => setGeometryBooleanComposerObjectsVisible(false)}
+                                  >
+                                    Hide operands
+                                  </button>
+                                  <button
+                                    data-testid="geometry-boolean-composer-show-result"
+                                    type="button"
+                                    onClick={handleShowGeometryBooleanResult}
+                                  >
+                                    Show result
+                                  </button>
+                                  <button
+                                    data-testid="geometry-boolean-composer-validate-result"
+                                    type="button"
+                                    onClick={() => void handleValidateGeometryBooleanResult()}
+                                    disabled={meshOperationBusy || !cgalServiceReady}
+                                  >
+                                    Validate result
+                                  </button>
                                 </div>
-                              )}
-                            </div>
+                              }
+                              booleanSummary={meshLastOperation?.boolean ?? null}
+                              durationMs={meshLastOperation?.boolean ? meshLastOperation.durationMs : null}
+                              inputAFaces={meshLastOperation?.boolean?.inputAFaces ?? geometryBooleanComposerReview.beforeFaces}
+                              inputBFaces={meshLastOperation?.boolean?.inputBFaces ?? null}
+                              method={geometryBooleanComposerReview.solver}
+                              operation={geometryBooleanComposerReview.operation}
+                              operandA={geometryBooleanComposerReview.operandAName}
+                              operandB={geometryBooleanComposerReview.operandBName}
+                              result={geometryBooleanComposerReview.resultName}
+                              resultFaces={meshLastOperation?.boolean?.outputFaces ?? geometryBooleanComposerReview.afterFaces}
+                              reviewTestId="geometry-boolean-composer-review-operation"
+                              status={geometryBooleanComposerReview.afterFaces == null ? "warning" : "ready"}
+                              testId="geometry-boolean-composer-review"
+                              title="Boolean result review"
+                              validationSlot={
+                                meshLastOperation?.validationContext === "boolean-result" && meshLastOperation.validation ? (
+                                  <div
+                                    data-testid="geometry-boolean-composer-validation"
+                                    style={{
+                                      border: "1px solid #86efac",
+                                      borderRadius: 7,
+                                      background: "#ffffff",
+                                      padding: "6px",
+                                      display: "grid",
+                                      gap: 4,
+                                    }}
+                                  >
+                                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                      <strong>Validation</strong>
+                                      <span style={{ color: meshLastOperation.validation.watertight && meshLastOperation.validation.manifold ? "#166534" : "#b45309", fontWeight: 800 }}>
+                                        {meshLastOperation.validation.watertight && meshLastOperation.validation.manifold ? "passes" : "needs review"}
+                                      </span>
+                                    </div>
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                                      <span>Watertight: {meshLastOperation.validation.watertight ? "yes" : "no"}</span>
+                                      <span>Manifold: {meshLastOperation.validation.manifold ? "yes" : "no"}</span>
+                                      <span>Components: {meshLastOperation.validation.componentCount.toLocaleString()}</span>
+                                      <span>Boundary edges: {meshLastOperation.validation.boundaryEdgeCount.toLocaleString()}</span>
+                                      <span>Non-manifold: {meshLastOperation.validation.nonManifoldEdgeCount.toLocaleString()}</span>
+                                      <span>Degenerate: {meshLastOperation.validation.degenerateFaceCount.toLocaleString()}</span>
+                                    </div>
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                      <button type="button" onClick={() => void handleMeshOperationRepair()} disabled={meshOperationBusy || !cgalServiceReady}>
+                                        Repair result
+                                      </button>
+                                      <button type="button" onClick={handleUseMeshOperationResultAsBooleanA}>
+                                        Use as A
+                                      </button>
+                                      <button type="button" onClick={handleUseMeshOperationResultAsBooleanB}>
+                                        Use as B
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : null
+                              }
+                            />
                           )}
                         </div>
                       </details>

@@ -123,6 +123,72 @@ async function expectLastOperation(card: Locator, label: RegExp): Promise<void> 
   await expect(lastResult).toContainText(/Triangles:/i);
 }
 
+async function runRobustCutterPresetFullFlow(
+  page: Page,
+  presetId: "benchy-cutter-boolean" | "armadillo-robust-boolean",
+  loadedMesh: RegExp,
+  cutterName: RegExp,
+  resultName: RegExp
+): Promise<void> {
+  await selectSection(page, "Mesh");
+  const card = await openWorkspaceOperationsCard(page);
+  await card.getByTestId(`mesh-workspace-operation-registry-preset-${presetId}`).click();
+  await expect(page.getByText(loadedMesh).first()).toBeVisible({ timeout: 45_000 });
+  await expect(card.getByTestId("mesh-workspace-operation-registry-row-boolean-difference")).toHaveAttribute(
+    "aria-expanded",
+    "true"
+  );
+  await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-operand")).toContainText(cutterName, {
+    timeout: 15_000,
+  });
+  const robustStrategy = card.getByTestId("mesh-workspace-operation-registry-boolean-strategy-robust");
+  if (!(await robustStrategy.isEnabled())) {
+    test.skip(true, "CGAL worker is not available in this environment.");
+  }
+  await expect(robustStrategy).toHaveAttribute("aria-pressed", "true");
+
+  await card.getByTestId("mesh-workspace-operation-registry-row-cgal-validate").click();
+  await card.getByTestId("mesh-workspace-operation-registry-run-cgal-validate").click();
+  await expectLastOperation(card, /Validate mesh/i);
+
+  await card.getByTestId("mesh-workspace-operation-registry-row-boolean-difference").click();
+  const validationWarning = card.getByTestId("mesh-workspace-operation-registry-boolean-validation-warning");
+  const validationText = (await validationWarning.textContent({ timeout: 15_000 })) ?? "";
+  if (!/validation passed/i.test(validationText)) {
+    await expect(validationWarning).toContainText(/repair|needs/i);
+    await card.getByTestId("mesh-workspace-operation-registry-boolean-repair-validate-active").click();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-row-cgal-repair-validate")).toHaveAttribute(
+      "aria-expanded",
+      "true"
+    );
+    await expect(card.getByTestId("mesh-workspace-operation-registry-repair-max-hole-edges")).toHaveValue("12");
+    await card.getByTestId("mesh-workspace-operation-registry-run-cgal-repair-validate").click();
+    await expectLastOperation(card, /Repair \+ Validate/i);
+    await card.getByTestId("mesh-workspace-operation-registry-row-boolean-difference").click();
+  }
+  await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-validation-warning")).toContainText(
+    "validation passed",
+    { timeout: 15_000 }
+  );
+  await card.getByTestId("mesh-workspace-operation-registry-run-boolean-difference").click();
+  await expectLastOperation(card, /Boolean difference/i);
+  await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/Robust method/i);
+  await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/native CGAL backend/i, {
+    timeout: 120_000,
+  });
+  await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/CGAL corefine/i);
+
+  const reviewToolbar = page.getByTestId("mesh-boolean-review-toolbar");
+  await expect(reviewToolbar).toBeVisible({ timeout: 15_000 });
+  await reviewToolbar.getByTestId("mesh-boolean-review-validate-result").click();
+  await expectLastOperation(card, /Validate mesh/i);
+  await expect(card.getByTestId("mesh-operation-boolean-validation-card")).toContainText(/Boolean result validation/i);
+
+  await card.getByTestId("mesh-workspace-operation-registry-open-result-in-geometry").click();
+  await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(resultName).first()).toBeVisible({ timeout: 45_000 });
+}
+
 test.describe("Mesh Operations card", () => {
   test.setTimeout(240_000);
 
@@ -653,28 +719,32 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-workspace-operation-registry-send-to-geometry")).toBeEnabled();
   });
 
-  test("prepares 3DBenchy cutter boolean preset", async () => {
+  test("runs 3DBenchy cutter full robust boolean flow", async () => {
     ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
     const { page } = ctx;
     await resetSurfaceAppState(page);
-    await selectSection(page, "Mesh");
 
-    const card = await openWorkspaceOperationsCard(page);
-    await card.getByTestId("mesh-workspace-operation-registry-preset-benchy-cutter-boolean").click();
-    await expect(page.getByText(/10_3dbenchy\.stl/i).first()).toBeVisible({ timeout: 20_000 });
-    await expect(card.getByTestId("mesh-workspace-operation-registry-row-boolean-difference")).toHaveAttribute(
-      "aria-expanded",
-      "true"
+    await runRobustCutterPresetFullFlow(
+      page,
+      "benchy-cutter-boolean",
+      /10_3dbenchy\.stl/i,
+      /3DBenchy cutter box/i,
+      /10_3dbenchy\.stl \(Boolean difference\)/i
     );
-    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-operand")).toContainText(
-      /3DBenchy cutter box/i
+  });
+
+  test("runs Armadillo cutter full robust boolean flow", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+
+    await runRobustCutterPresetFullFlow(
+      page,
+      "armadillo-robust-boolean",
+      /11_armadillo\.obj/i,
+      /Armadillo cutter box/i,
+      /11_armadillo\.obj \(Boolean difference\)/i
     );
-    await expect(card).toContainText(/Active Mesh - cutter box/i);
-    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-strategy-robust")).toHaveAttribute(
-      "aria-pressed",
-      "true"
-    );
-    await expect(card).toContainText(/Validate, then run Robust Boolean difference/i);
   });
 
   test("loads Bunny smooth validate preset and reports validation", async () => {

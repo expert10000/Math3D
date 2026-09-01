@@ -13,6 +13,7 @@ import {
   type MeshValidationSummary,
   type ResolvedMeshOperationEngine,
 } from "../services/meshOperations";
+import { MeshBooleanReviewCard } from "./MeshBooleanReviewCard";
 
 export type MeshBooleanOperation = "union" | "difference" | "intersection" | "split" | "imprint";
 export type MeshBooleanStrategy = "auto" | "fast" | "robust";
@@ -469,21 +470,6 @@ const getRepairVerdict = (repair: MeshRepairSummary): { label: string; state: "p
   return changes > 0 ? { label: "Improved", state: "pass" } : { label: "No change", state: "warn" };
 };
 
-const getBooleanKernelBadge = (
-  booleanSummary: MeshBooleanSummary
-): { label: string; state: "pass" | "warn"; detail: string } =>
-  booleanSummary.kernel === "native-cgal"
-    ? {
-        label: "Native CGAL kernel",
-        state: "pass",
-        detail: "Robust boolean ran through the native CGAL backend.",
-      }
-    : {
-        label: "VTK fallback",
-        state: "warn",
-        detail: "Robust route validated the inputs, then used the VTK boolean backend because native CGAL corefine is unavailable.",
-      };
-
 const formatBooleanMethod = (result: MeshOperationResultSummary): string => {
   if (!result.boolean) return "Method: Auto";
   if (result.engine === "cgal" || result.boolean.kernel === "native-cgal") return "Method: Robust";
@@ -757,161 +743,24 @@ const MeshBooleanCard: React.FC<{
   resultLabel: string;
   review?: MeshOperationResultSummary["booleanReview"];
 }> = ({ booleanSummary, sourceIds, resultLabel, review }) => {
-  const kernel = getBooleanKernelBadge(booleanSummary);
   const sourceA = review?.operandA || sourceIds[0]?.trim() || "Active Mesh";
   const sourceB = review?.operandB || sourceIds[1]?.trim() || "Operand B";
   const resultName = review?.result || resultLabel;
-  const method = booleanSummary.kernel === "native-cgal" ? "Robust" : "Fast";
-  const operationLabel =
-    booleanSummary.operation === "union"
-      ? "Union"
-      : booleanSummary.operation === "difference"
-        ? "Difference"
-        : booleanSummary.operation === "intersection"
-          ? "Intersection"
-          : booleanSummary.operation === "imprint"
-            ? "Imprint"
-            : booleanSummary.operation;
-  const stageStyle = (state: "done" | "active" | "next" = "done"): React.CSSProperties => ({
-    border: `1px solid ${state === "done" ? "#bbf7d0" : state === "active" ? "#93c5fd" : "#e2e8f0"}`,
-    borderRadius: 7,
-    background: state === "done" ? "#f0fdf4" : state === "active" ? "#eff6ff" : "#f8fafc",
-    padding: "6px 7px",
-    display: "grid",
-    gap: 4,
-  });
-  const stageHeader = (step: number, label: string, state: "done" | "active" | "next" = "done") => (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-      <span
-        style={{
-          width: 18,
-          height: 18,
-          borderRadius: 999,
-          display: "inline-grid",
-          placeItems: "center",
-          background: state === "next" ? "#e2e8f0" : "#2563eb",
-          color: state === "next" ? "#475569" : "#fff",
-          fontSize: 10,
-          fontWeight: 900,
-          flexShrink: 0,
-        }}
-      >
-        {step}
-      </span>
-      <strong>{label}</strong>
-    </div>
-  );
-  const chip = (label: string, value: string, tone: "a" | "b" | "result") => {
-    const palette =
-      tone === "a"
-        ? { border: "#93c5fd", background: "#eff6ff", color: "#1d4ed8" }
-        : tone === "b"
-          ? { border: "#fdba74", background: "#fff7ed", color: "#9a3412" }
-          : { border: "#86efac", background: "#f0fdf4", color: "#166534" };
-    return (
-      <span
-        style={{
-          border: `1px solid ${palette.border}`,
-          background: palette.background,
-          color: palette.color,
-          borderRadius: 999,
-          padding: "2px 7px",
-          fontSize: 10,
-          fontWeight: 800,
-        }}
-      >
-        {label}: <strong>{value}</strong>
-      </span>
-    );
-  };
   return (
-    <div
-      data-testid="mesh-operation-boolean-card"
-      style={{
-        border: "1px solid #bae6fd",
-        borderRadius: 7,
-        background: "#f0f9ff",
-        padding: "7px",
-        display: "grid",
-        gap: 6,
-        marginTop: 3,
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
-        <strong>Boolean</strong>
-        <span style={validationBadgeStyle(booleanSummary.outputFaces > 0 ? "pass" : "fail")}>
-          <strong>{booleanSummary.outputFaces > 0 ? "Review ready" : "Needs review"}</strong>
-        </span>
-      </div>
-      <div
-        data-testid="mesh-operation-boolean-review"
-        style={stageStyle("active")}
-      >
-        {stageHeader(1, "Operation")}
-        <div style={{ color: "#0f3557", fontSize: 10 }}>
-          {operationLabel} · {method} method · {getMeshBooleanFormulaText(booleanSummary.operation as MeshBooleanOperation)}
-        </div>
-      </div>
-      <div style={stageStyle()}>
-        {stageHeader(2, "Inputs A / B")}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-          {chip("A", sourceA, "a")}
-          {chip("B", sourceB, "b")}
-        </div>
-      </div>
-      <div style={stageStyle()}>
-        {stageHeader(3, "Preview")}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, color: "#475569", fontSize: 10 }}>
-          <span>A solid</span>
-          <span>B transparent cutter</span>
-          <span>Result selected</span>
-        </div>
-      </div>
-      <div style={stageStyle()}>
-        {stageHeader(4, `Run ${method} Boolean`)}
-        <div style={{ color: "#475569", fontSize: 10 }}>Completed and kept as a non-destructive review result.</div>
-      </div>
-      <div style={stageStyle()}>
-        {stageHeader(5, "Result")}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-          {chip("Result", resultName, "result")}
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 4, fontSize: 10 }}>
-          <div style={validationBadgeStyle("pass")}>
-            <span>A triangles</span>
-            <strong>{booleanSummary.inputAFaces.toLocaleString()}</strong>
-          </div>
-          <div style={validationBadgeStyle("pass")}>
-            <span>B triangles</span>
-            <strong>{booleanSummary.inputBFaces.toLocaleString()}</strong>
-          </div>
-          <div style={validationBadgeStyle(booleanSummary.outputFaces > 0 ? "pass" : "fail")}>
-            <span>Result triangles</span>
-            <strong>{booleanSummary.outputFaces.toLocaleString()}</strong>
-          </div>
-        </div>
-      </div>
-      <div style={stageStyle("next")}>
-        {stageHeader(6, "Validate Result", "next")}
-        <div style={{ color: "#475569", fontSize: 10 }}>Use Validate Result before using this mesh in another robust operation.</div>
-      </div>
-      <div style={stageStyle("next")}>
-        {stageHeader(7, "Keep Result", "next")}
-        <div style={{ color: "#475569", fontSize: 10 }}>Keep the result after review, or send it to Geometry.</div>
-      </div>
-      <details>
-        <summary style={{ cursor: "pointer", fontWeight: 800, fontSize: 10 }}>Advanced engine details</summary>
-        <div style={{ display: "grid", gap: 4, marginTop: 4, fontSize: 10 }}>
-          <div style={validationBadgeStyle(kernel.state)}>
-            <span>Backend used</span>
-            <strong>{booleanSummary.kernel === "native-cgal" ? "CGAL corefine" : "VTK boolean"}</strong>
-          </div>
-          <div style={{ color: kernel.state === "pass" ? "#166534" : "#92400e" }}>{kernel.detail}</div>
-        </div>
-      </details>
-      {booleanSummary.warnings.length > 0 && <div style={{ color: "#b45309", fontSize: 10 }}>{booleanSummary.warnings.join("; ")}</div>}
-      {booleanSummary.diagnostics.length > 0 && <div style={{ color: "#64748b", fontSize: 10 }}>{booleanSummary.diagnostics.join("; ")}</div>}
-    </div>
+    <MeshBooleanReviewCard
+      booleanSummary={booleanSummary}
+      inputAFaces={booleanSummary.inputAFaces}
+      inputBFaces={booleanSummary.inputBFaces}
+      method={booleanSummary.kernel === "native-cgal" ? "robust" : "fast"}
+      operation={booleanSummary.operation as MeshBooleanOperation}
+      operandA={sourceA}
+      operandB={sourceB}
+      result={resultName}
+      resultFaces={booleanSummary.outputFaces}
+      reviewTestId="mesh-operation-boolean-review"
+      testId="mesh-operation-boolean-card"
+      title="Boolean"
+    />
   );
 };
 
@@ -1932,6 +1781,24 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                           >
                             <strong>Active mesh needs repair before robust booleans.</strong>
                             <span>{activeMeshValidationBlockers.join(", ") || "validation failed"}</span>
+                            <button
+                              data-testid={`${testId}-boolean-repair-validate-active`}
+                              type="button"
+                              onClick={() => {
+                                onChangeRepairOrientFaces(true);
+                                onChangeRepairRemoveDegenerateFaces(true);
+                                onChangeRepairRemoveDuplicateFaces(true);
+                                onChangeRepairCompactVertices(true);
+                                onChangeRepairFillSmallHoles(true);
+                                onChangeRepairMaxHoleEdges(12);
+                                onChangeOutputMode("derived");
+                                setExpandedOperation("cgal-repair-validate");
+                              }}
+                              disabled={operationBusy}
+                              style={{ justifySelf: "start", fontWeight: 800 }}
+                            >
+                              Repair + Validate A
+                            </button>
                           </div>
                         ) : (
                           <div
