@@ -74235,6 +74235,15 @@ case "mobius":
                           Validate Result
                         </button>
                         <button
+                          data-testid="mesh-boolean-review-repair-result"
+                          type="button"
+                          onClick={() => void handleRepairLastMeshOperationResult()}
+                          disabled={meshOperationBusy || !cgalServiceReady}
+                          style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
+                        >
+                          Repair Result
+                        </button>
+                        <button
                           data-testid="mesh-boolean-review-keep-result"
                           type="button"
                           onClick={() => closeMeshBooleanReview("Boolean result kept.")}
@@ -82675,6 +82684,21 @@ case "mobius":
                                   >
                                     Validate result
                                   </button>
+                                  <button
+                                    data-testid="geometry-boolean-composer-repair-result"
+                                    type="button"
+                                    onClick={() => void handleRepairLastMeshOperationResult()}
+                                    disabled={meshOperationBusy || !cgalServiceReady}
+                                  >
+                                    Repair result
+                                  </button>
+                                  <button
+                                    data-testid="geometry-boolean-composer-keep-result"
+                                    type="button"
+                                    onClick={() => setGeometryBooleanPreviewStatus("Boolean result kept in Geometry.")}
+                                  >
+                                    Keep result
+                                  </button>
                                 </div>
                               }
                               booleanSummary={meshLastOperation?.boolean ?? null}
@@ -82719,7 +82743,7 @@ case "mobius":
                                       <span>Degenerate: {meshLastOperation.validation.degenerateFaceCount.toLocaleString()}</span>
                                     </div>
                                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                      <button type="button" onClick={() => void handleMeshOperationRepair()} disabled={meshOperationBusy || !cgalServiceReady}>
+                                      <button type="button" onClick={() => void handleRepairLastMeshOperationResult()} disabled={meshOperationBusy || !cgalServiceReady}>
                                         Repair result
                                       </button>
                                       <button type="button" onClick={handleUseMeshOperationResultAsBooleanA}>
@@ -113580,10 +113604,20 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         ? "Healthy"
         : "Needs review"
       : watertight === true && (meshHealthNonManifoldEdgeCount ?? 0) === 0 && (meshHealthBoundaryEdgeCount ?? 0) === 0
-        ? "Healthy"
-        : watertight === false || meshHealthIssueCount > 0
+      ? "Healthy"
+      : watertight === false || meshHealthIssueCount > 0
           ? "Needs review"
           : "Unknown";
+  const meshDiagnosticsValidationBlockers = meshHealthValidation ? getBooleanValidationBlockers(meshHealthValidation) : ["Run Validate first"];
+  const meshCompactDimensionLabel = meshSummaryDimensions
+    ? `X ${fmt(meshSummaryDimensions.x)} | Y ${fmt(meshSummaryDimensions.y)} | Z ${fmt(meshSummaryDimensions.z)}`
+    : "n/a";
+  const meshHealthToneForState = (state: "pass" | "warn" | "fail") =>
+    state === "pass"
+      ? { border: "#86efac", background: "#f0fdf4", color: "#166534" }
+      : state === "fail"
+        ? { border: "#fca5a5", background: "#fef2f2", color: "#b42318" }
+        : { border: "#fcd34d", background: "#fffbeb", color: "#92400e" };
   const meshHealthTone =
     meshHealthStatusLabel === "Healthy"
       ? { border: "#86efac", background: "#f0fdf4", color: "#166534" }
@@ -113873,6 +113907,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 <div><strong>Vertices:</strong> {formatInspectorCount(meshInspectorStats.vertexCount)}</div>
                 <div><strong>Faces:</strong> {formatInspectorCount(meshInspectorStats.faceCount)}</div>
                 <div><strong>Edges:</strong> {formatInspectorCount(meshTopologyDetails?.edgeCount ?? null)}</div>
+                <div><strong>Dimensions:</strong> {meshCompactDimensionLabel}</div>
                 {deferredSurfaceSampleSetInfo && (
                   <div
                     data-testid="mesh-analysis-deferred-status"
@@ -113906,20 +113941,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                     </button>
                   </div>
                 )}
-                <div>
-                  <strong>Bounds:</strong>{" "}
-                  {surfaceMeshBounds
-                    ? `min (${fmt(surfaceMeshBounds.min[0])}, ${fmt(surfaceMeshBounds.min[1])}, ${fmt(surfaceMeshBounds.min[2])}) · max (${fmt(surfaceMeshBounds.max[0])}, ${fmt(surfaceMeshBounds.max[1])}, ${fmt(surfaceMeshBounds.max[2])})`
-                    : "n/a"}
-                </div>
                 <div><strong>Watertight:</strong> {watertight == null ? "unknown" : watertight ? "yes" : "no"}</div>
                 <div><strong>Normal status:</strong> {normalStatus}</div>
               </div>
-            </div>
-
-            <div style={inspectorSectionCard}>
-              <div style={inspectorSectionTitle}>Topology Details</div>
-              {renderTopologyDetails("mesh-inspector")}
             </div>
 
             <div style={inspectorSectionCard}>
@@ -114004,390 +114028,6 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               )}
             </div>
 
-            {isMeshViewer && (
-              <div style={inspectorSectionCard}>
-                <div style={inspectorSectionTitle}>Performance</div>
-                <div style={{ fontSize: 11, display: "grid", gap: 8 }}>
-                  <div style={{ fontWeight: 600 }}>Quality during interaction</div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {(
-                      [
-                        ["full", "Full"],
-                        ["adaptive", "Adaptive"],
-                        ["fast-preview", "Fast Preview"],
-                      ] as const
-                    ).map(([mode, label]) => (
-                      <button
-                        key={`mesh-runtime-mode-${mode}`}
-                        type="button"
-                        onClick={() => onChangeMeshInteractionQualityMode(mode)}
-                        style={pill(meshInteractionQualityMode === mode)}
-                        aria-pressed={meshInteractionQualityMode === mode}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ minWidth: 164 }}>Restore full quality after</span>
-                    <input
-                      type="number"
-                      min={50}
-                      max={2000}
-                      step={10}
-                      value={Math.max(50, Math.min(2000, Math.round(meshInteractionRestoreDelayMs)))}
-                      onChange={(event) => {
-                        const value = Number(event.target.value);
-                        if (!Number.isFinite(value)) return;
-                        onChangeMeshInteractionRestoreDelayMs(Math.max(50, Math.min(2000, Math.round(value))));
-                      }}
-                      style={{ width: 96 }}
-                    />
-                    <span>ms idle</span>
-                  </label>
-                  <div style={{ fontWeight: 600 }}>Hide during interaction</div>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={meshInteractionHideVertexMarkers}
-                      onChange={(event) => onChangeMeshInteractionHideVertexMarkers(event.target.checked)}
-                    />
-                    Vertex markers
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={meshInteractionHideFaceNormals}
-                      onChange={(event) => onChangeMeshInteractionHideFaceNormals(event.target.checked)}
-                    />
-                    Face normals
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={meshInteractionHideCurvatureGlyphs}
-                      onChange={(event) => onChangeMeshInteractionHideCurvatureGlyphs(event.target.checked)}
-                    />
-                    Curvature glyphs
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={meshInteractionHideWireframe}
-                      onChange={(event) => onChangeMeshInteractionHideWireframe(event.target.checked)}
-                    />
-                    Wireframe
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ minWidth: 164 }}>Preview triangle target</span>
-                    <input
-                      type="number"
-                      min={5000}
-                      max={5000000}
-                      step={1000}
-                      value={Math.max(5000, Math.min(5000000, Math.round(meshInteractionPreviewTriangleTarget)))}
-                      onChange={(event) => {
-                        const value = Number(event.target.value);
-                        if (!Number.isFinite(value)) return;
-                        onChangeMeshInteractionPreviewTriangleTarget(Math.max(5000, Math.min(5000000, Math.round(value))));
-                      }}
-                      style={{ width: 120 }}
-                    />
-                  </label>
-                </div>
-              </div>
-            )}
-
-            {isDevMode && (
-              <div style={inspectorSectionCard}>
-                <div style={inspectorSectionTitle}>Mesh Performance</div>
-                <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
-                  <div><strong>Mode:</strong> {meshPerformanceModeLabel}</div>
-                  {activeMeshPerformancePresetLabel && (
-                    <div><strong>Benchmark:</strong> {activeMeshPerformancePresetLabel}</div>
-                  )}
-                  <div><strong>FPS:</strong> {formatPerfMetric(surfacePerformanceSnapshot?.fps ?? null, 1)}</div>
-                  <div><strong>Frame time:</strong> {formatPerfMetric(surfacePerformanceSnapshot?.frameTimeMs ?? null, 1)} ms</div>
-                  <div><strong>Triangles visible:</strong> {formatInspectorCount(surfacePerformanceSnapshot?.triangles ?? null)}</div>
-                  <div><strong>Vertices visible:</strong> {formatInspectorCount(surfacePerformanceSnapshot?.vertices ?? null)}</div>
-                  <div><strong>Draw calls:</strong> {formatInspectorCount(surfacePerformanceSnapshot?.drawCalls ?? null)}</div>
-                  <div><strong>Mesh objects:</strong> {formatInspectorCount(surfacePerformanceSnapshot?.meshObjects ?? null)}</div>
-                  <div><strong>Overlay objects:</strong> {formatInspectorCount(surfacePerformanceSnapshot?.overlayObjects ?? null)}</div>
-                  <div><strong>Raycast time:</strong> {formatPerfMetric(surfacePerformanceSnapshot?.raycastTimeMs ?? null, 2)} ms</div>
-                  <div>
-                    <strong>Last mesh build:</strong>{" "}
-                    {formatPerfMetric(surfacePerformanceSnapshot?.lastMeshBuildMs ?? meshPerformanceLastBuildMs, 1)} ms
-                  </div>
-                  {meshViewerTrace && (
-                    <div style={{ display: "grid", gap: 3, borderTop: "1px solid #dbe4ee", paddingTop: 8, marginTop: 2 }}>
-                      <div style={{ fontWeight: 700 }}>Viewer trace</div>
-                      <div><strong>Rebuild:</strong> {formatPerfMetric(meshViewerTrace.meshRebuildTotalMs, 1)} ms</div>
-                      <div><strong>Geometry update:</strong> {formatPerfMetric(meshViewerTrace.geometryUpdateMs, 1)} ms</div>
-                      <div><strong>Sample set:</strong> {formatPerfMetric(meshViewerTrace.sampleSetMs, 1)} ms</div>
-                      <div><strong>Bounds:</strong> {formatPerfMetric(meshViewerTrace.boundsMs, 1)} ms</div>
-                      <div><strong>Render call:</strong> {formatPerfMetric(meshViewerTrace.renderMs, 1)} ms</div>
-                      <div>
-                        <strong>Samples:</strong> {formatInspectorCount(meshViewerTrace.sampleCount ?? null)}
-                        {" | "}
-                        <strong>Meshes:</strong> {formatInspectorCount(meshViewerTrace.meshCount ?? null)}
-                      </div>
-                    </div>
-                  )}
-                  <div><strong>LOD level:</strong> {surfacePerformanceSnapshot?.lodLevel ?? "n/a"}</div>
-                  <div><strong>BVH status:</strong> {surfacePerformanceSnapshot?.bvhStatus ?? "n/a"}</div>
-                  <div><strong>GPU memory estimate:</strong> {surfacePerformanceSnapshot?.gpuMemoryEstimateLabel ?? "n/a"}</div>
-                  <div>
-                    <strong>Renderer memory:</strong>{" "}
-                    {surfacePerformanceSnapshot
-                      ? `geometries ${formatInspectorCount(surfacePerformanceSnapshot.rendererMemory.geometries)} · textures ${formatInspectorCount(surfacePerformanceSnapshot.rendererMemory.textures)}`
-                      : "n/a"}
-                  </div>
-                  <div
-                    style={{ display: "grid", gap: 6, borderTop: "1px solid #dbe4ee", paddingTop: 8, marginTop: 2 }}
-                    data-testid="mesh-debug-monitor"
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
-                      <strong>Mesh Debug Monitor</strong>
-                      <span style={{ color: meshDebugMemory?.warning ? "#b42318" : "#475467", fontWeight: 800 }}>
-                        {meshDebugMemory?.warning ?? "recording"}
-                      </span>
-                    </div>
-                    <div>
-                      <strong>Renderer RSS:</strong>{" "}
-                      {meshDebugMemory?.workingSetGb != null ? `${meshDebugMemory.workingSetGb.toFixed(2)} GB` : "n/a"}
-                      {" | "}
-                      <strong>JS heap:</strong>{" "}
-                      {meshDebugMemory?.jsHeapUsedBytes != null
-                        ? `${formatBenchmarkBytes(meshDebugMemory.jsHeapUsedBytes)} / ${formatBenchmarkBytes(meshDebugMemory.jsHeapTotalBytes)}`
-                        : "n/a"}
-                    </div>
-                    <div>
-                      <strong>Stalls:</strong> {meshDebugMonitor.stallCount.toLocaleString()}
-                      {" | "}
-                      <strong>Worst:</strong> {formatPerfMetric(meshDebugMonitor.worstStallMs, 1)} ms
-                      {" | "}
-                      <strong>Events:</strong> {meshDebugMonitor.events.length.toLocaleString()}
-                    </div>
-                    <div>
-                      <strong>Frame gap:</strong> {formatPerfMetric(surfacePerformanceSnapshot?.frameGapMs ?? null, 1)} ms
-                      {" | "}
-                      <strong>GPU estimate:</strong> {formatBenchmarkBytes(meshDebugMemory?.gpuEstimateBytes)}
-                    </div>
-                    {meshDebugRecentEvents.length > 0 && (
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "58px 58px minmax(160px, 1fr) 54px",
-                          gap: "3px 6px",
-                          maxHeight: 150,
-                          overflow: "auto",
-                          fontSize: 10,
-                          alignItems: "baseline",
-                        }}
-                      >
-                        <strong>Time</strong>
-                        <strong>Kind</strong>
-                        <strong>Event</strong>
-                        <strong>ms</strong>
-                        {meshDebugRecentEvents.map((event) => (
-                          <React.Fragment key={`mesh-debug-event-${event.id}`}>
-                            <span>{formatMeshDebugEventTime(event.ts)}</span>
-                            <span>{event.kind}</span>
-                            <span title={event.details ? JSON.stringify(event.details) : undefined}>{event.label}</span>
-                            <span>{event.ms == null ? "" : formatPerfMetric(event.ms, 1)}</span>
-                          </React.Fragment>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  {meshPipelineProfile && (
-                    <div
-                      style={{ display: "grid", gap: 6, borderTop: "1px solid #dbe4ee", paddingTop: 8, marginTop: 2 }}
-                      data-testid="mesh-pipeline-profile"
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
-                        <strong>Pipeline trace</strong>
-                        <span style={{ color: meshPipelineProfile.status === "failed" ? "#b42318" : "#475467", fontWeight: 800 }}>
-                          {meshPipelineProfile.status}
-                        </span>
-                      </div>
-                      <div><strong>Model:</strong> {meshPipelineProfile.label}</div>
-                      <div>
-                        <strong>Total:</strong> {formatPerfMetric(meshPipelineProfileElapsedMs, 1)} ms
-                        {" | "}
-                        <strong>First frame:</strong> {formatPerfMetric(meshPipelineProfile.firstFrameMs, 1)} ms
-                      </div>
-                      <div>
-                        <strong>Mesh:</strong> {formatInspectorCount(meshPipelineProfile.vertices)} vertices /{" "}
-                        {formatInspectorCount(meshPipelineProfile.triangles)} triangles
-                      </div>
-                      <div><strong>Memory:</strong> {formatBenchmarkBytes(meshPipelineProfile.memoryBytes)}</div>
-                      {meshPipelineProfile.error && (
-                        <div style={{ color: "#b42318", fontWeight: 700 }}>{meshPipelineProfile.error}</div>
-                      )}
-                      {meshPipelineProfilePhaseRows.length > 0 && (
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "1.35fr repeat(4, minmax(46px, 1fr))",
-                            gap: "4px 6px",
-                            overflowX: "auto",
-                            fontSize: 10,
-                            alignItems: "baseline",
-                          }}
-                        >
-                          <strong>Phase</strong>
-                          <strong>Total</strong>
-                          <strong>Calls</strong>
-                          <strong>Max</strong>
-                          <strong>Last</strong>
-                          {meshPipelineProfilePhaseRows.map((phase) => (
-                            <React.Fragment key={`mesh-profile-phase-${phase.phase}`}>
-                              <span title={phase.phase}>{phase.phase}</span>
-                              <span>{formatPerfMetric(phase.totalMs, 1)}</span>
-                              <span>{phase.count.toLocaleString()}</span>
-                              <span>{formatPerfMetric(phase.maxMs, 1)}</span>
-                              <span>{formatPerfMetric(phase.lastMs, 1)}</span>
-                            </React.Fragment>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
-                    <button
-                      type="button"
-                      onClick={copyMeshPipelineProfile}
-                      disabled={!meshPipelineProfile}
-                    >
-                      Copy pipeline trace
-                    </button>
-                    <button
-                      type="button"
-                      onClick={copyMeshDebugTrace}
-                    >
-                      Copy debug trace
-                    </button>
-                    <button
-                      type="button"
-                      onClick={onClearMeshDebugMonitor}
-                    >
-                      Clear debug trace
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const payload = {
-                          capturedAt: new Date().toISOString(),
-                          mode: meshPerformanceModeLabel,
-                          benchmark: activeMeshPerformancePresetLabel,
-                          snapshot: surfacePerformanceSnapshot,
-                        };
-                        const text = JSON.stringify(payload, null, 2);
-                        const clipboard = typeof navigator !== "undefined" ? navigator.clipboard : undefined;
-                        if (clipboard?.writeText) {
-                          void clipboard.writeText(text);
-                        }
-                      }}
-                    >
-                      Copy performance snapshot
-                    </button>
-                    <button
-                      type="button"
-                      onClick={onRestoreMeshPerformanceBaseline}
-                      disabled={!meshPerformanceBenchmarkId}
-                    >
-                      Restore baseline
-                    </button>
-                    <button
-                      type="button"
-                      onClick={onRunMeshBenchmarkPerformanceSuite}
-                      disabled={meshBenchmarkPerformanceSuite.running}
-                    >
-                      Run Performance Suite
-                    </button>
-                  </div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
-                    {MESH_PERF_BENCHMARK_PRESETS.map((preset) => (
-                      <button
-                        key={`mesh-perf-benchmark-${preset.id}`}
-                        type="button"
-                        onClick={() => onRunMeshPerformanceBenchmark(preset.id)}
-                        style={pill(meshPerformanceBenchmarkId === preset.id)}
-                        aria-pressed={meshPerformanceBenchmarkId === preset.id}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
-                  {(meshBenchmarkPerformanceSuite.status || meshBenchmarkPerformanceSuite.results.length > 0) && (
-                    <div style={{ display: "grid", gap: 6, marginTop: 4 }} data-testid="mesh-benchmark-performance-suite">
-                      {meshBenchmarkPerformanceSuite.status && (
-                        <div style={{ fontWeight: 800, color: meshBenchmarkPerformanceSuite.running ? "#1e3a5f" : "#334155" }}>
-                          {meshBenchmarkPerformanceSuite.status}
-                        </div>
-                      )}
-                      {meshBenchmarkPerformanceSuite.results.length > 0 && (
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "1.1fr repeat(7, minmax(54px, 1fr))",
-                            gap: "5px 6px",
-                            overflowX: "auto",
-                            fontSize: 10,
-                            alignItems: "baseline",
-                          }}
-                        >
-                          <strong>Model</strong>
-                          <strong>Import</strong>
-                          <strong>Weld</strong>
-                          <strong>Adj</strong>
-                          <strong>Analyse</strong>
-                          <strong>Build</strong>
-                          <strong>Tris</strong>
-                          <strong>Memory</strong>
-                          {meshBenchmarkPerformanceSuite.results.map((result) => (
-                            <React.Fragment key={`mesh-benchmark-perf-${result.id}`}>
-                              <span title={result.error ?? result.fileName} style={{ color: result.status === "passed" ? "#334155" : "#b42318" }}>
-                                {result.status === "passed" ? "" : "FAIL "}
-                                {result.label}
-                              </span>
-                              <span
-                                title={[
-                                  `fileRead ${formatPerfMetric(result.fileReadMs, 1)} ms`,
-                                  `fastObjDetect ${formatPerfMetric(result.fastObjDetectMs, 1)} ms`,
-                                  `fastObjParse ${formatPerfMetric(result.fastObjParseMs, 1)} ms`,
-                                  `vertexParse ${formatPerfMetric(result.vertexParseMs, 1)} ms`,
-                                  `faceParse ${formatPerfMetric(result.faceParseMs, 1)} ms`,
-                                  `indexBuild ${formatPerfMetric(result.indexBuildMs, 1)} ms`,
-                                ].join("\n")}
-                              >
-                                {formatPerfMetric(result.importMs, 1)}
-                              </span>
-                              <span>{formatPerfMetric(result.vertexWeldMs, 1)}</span>
-                              <span>{formatPerfMetric(result.adjacencyMs, 1)}</span>
-                              <span
-                                title={[
-                                  `topology ${formatPerfMetric(result.topologyMs, 1)} ms`,
-                                  `quality ${formatPerfMetric(result.qualityMs, 1)} ms`,
-                                  `diagnostics ${formatPerfMetric(result.diagnosticsMs, 1)} ms`,
-                                  `curvature ${formatPerfMetric(result.curvatureMs, 1)} ms`,
-                                ].join("\n")}
-                              >
-                                {formatPerfMetric(result.meshAnalyzeMs, 1)}
-                              </span>
-                              <span>{formatPerfMetric(result.meshBuildMs, 1)}</span>
-                              <span>{formatInspectorCount(result.triangles)}</span>
-                              <span>{formatBenchmarkBytes(result.memoryBytes)}</span>
-                            </React.Fragment>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </>
         )}
 
@@ -114834,6 +114474,92 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             )}
             {renderDiagnosticsErrors()}
             {renderDiagnosticsWarnings()}
+            <div style={{ borderTop: "1px solid #e2e8f0", marginTop: 10, paddingTop: 10, display: "grid", gap: 8 }}>
+              <div style={inspectorSectionTitle}>Backend and validation</div>
+              <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+                <div><strong>Worker:</strong> {cgalHealthState?.ok ? "available" : cgalHealthState?.error ?? "unknown"}</div>
+                <div><strong>Last operation status:</strong> {meshLastOperation?.status ?? "none"}</div>
+                <div><strong>Warnings:</strong> {diagnosticsWarningCount.toLocaleString()}</div>
+                <div><strong>Errors:</strong> {diagnosticsErrorCount.toLocaleString()}</div>
+                <div>
+                  <strong>Boolean blockers:</strong>{" "}
+                  {meshDiagnosticsValidationBlockers.length
+                    ? meshDiagnosticsValidationBlockers.join(", ")
+                    : "none"}
+                </div>
+                <div>
+                  <strong>Worker log:</strong>{" "}
+                  {cgalHealthState?.logsPath ? (
+                    <a
+                      href={`file:///${String(cgalHealthState.logsPath).replace(/\\/g, "/").replace(/^([A-Za-z]):/, "$1:")}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      open log
+                    </a>
+                  ) : (
+                    "n/a"
+                  )}
+                </div>
+              </div>
+            </div>
+            <details style={{ borderTop: "1px solid #e2e8f0", marginTop: 10, paddingTop: 10 }}>
+              <summary
+                data-testid="mesh-inspector-diagnostics-raw-topology-toggle"
+                style={{ cursor: "pointer", fontWeight: 850, fontSize: 12 }}
+              >
+                Raw topology details
+              </summary>
+              <div style={{ marginTop: 8 }}>{renderTopologyDetails("mesh-inspector-diagnostics-topology")}</div>
+            </details>
+            {isDevMode && (
+              <details style={{ borderTop: "1px solid #e2e8f0", marginTop: 10, paddingTop: 10 }}>
+                <summary style={{ cursor: "pointer", fontWeight: 850, fontSize: 12 }}>Runtime performance and debug</summary>
+                <div style={{ fontSize: 11, display: "grid", gap: 6, marginTop: 8 }}>
+                  <div><strong>Mode:</strong> {meshPerformanceModeLabel}</div>
+                  {activeMeshPerformancePresetLabel && (
+                    <div><strong>Benchmark:</strong> {activeMeshPerformancePresetLabel}</div>
+                  )}
+                  <div><strong>FPS:</strong> {formatPerfMetric(surfacePerformanceSnapshot?.fps ?? null, 1)}</div>
+                  <div><strong>Frame time:</strong> {formatPerfMetric(surfacePerformanceSnapshot?.frameTimeMs ?? null, 1)} ms</div>
+                  <div><strong>Draw calls:</strong> {formatInspectorCount(surfacePerformanceSnapshot?.drawCalls ?? null)}</div>
+                  <div><strong>GPU estimate:</strong> {surfacePerformanceSnapshot?.gpuMemoryEstimateLabel ?? formatBenchmarkBytes(meshDebugMemory?.gpuEstimateBytes)}</div>
+                  <div data-testid="mesh-debug-monitor">
+                    <strong>Stalls:</strong> {meshDebugMonitor.stallCount.toLocaleString()}
+                    {" | "}
+                    <strong>Worst:</strong> {formatPerfMetric(meshDebugMonitor.worstStallMs, 1)} ms
+                    {" | "}
+                    <strong>Events:</strong> {meshDebugMonitor.events.length.toLocaleString()}
+                  </div>
+                  {meshPipelineProfile && (
+                    <div data-testid="mesh-pipeline-profile">
+                      <strong>Pipeline:</strong> {meshPipelineProfile.status} · first frame{" "}
+                      {formatPerfMetric(meshPipelineProfile.firstFrameMs, 1)} ms · total{" "}
+                      {formatPerfMetric(meshPipelineProfileElapsedMs, 1)} ms
+                    </div>
+                  )}
+                  {(meshBenchmarkPerformanceSuite.status || meshBenchmarkPerformanceSuite.results.length > 0) && (
+                    <div data-testid="mesh-benchmark-performance-suite">
+                      <strong>Performance suite:</strong> {meshBenchmarkPerformanceSuite.status ?? `${meshBenchmarkPerformanceSuite.results.length} result(s)`}
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button type="button" onClick={copyMeshPipelineProfile} disabled={!meshPipelineProfile}>
+                      Copy pipeline trace
+                    </button>
+                    <button type="button" onClick={copyMeshDebugTrace}>
+                      Copy debug trace
+                    </button>
+                    <button type="button" onClick={onClearMeshDebugMonitor}>
+                      Clear debug trace
+                    </button>
+                    <button type="button" onClick={onRunMeshBenchmarkPerformanceSuite} disabled={meshBenchmarkPerformanceSuite.running}>
+                      Run Performance Suite
+                    </button>
+                  </div>
+                </div>
+              </details>
+            )}
           </div>
         )}
 
@@ -114844,47 +114570,93 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               {meshOperationHistory.length === 0 ? (
                 <div style={{ color: "#64748b" }}>No mesh operations yet.</div>
               ) : (
-                meshOperationHistory.slice(0, 8).map((entry) => (
-                  <div
-                    key={`mesh-inspector-operation-history-${entry.id}`}
-                    style={{
-                      border: "1px solid #dbe4ee",
-                      borderRadius: 7,
-                      background: entry.undoneAt ? "#f8fafc" : "#ffffff",
-                      padding: "6px 7px",
-                      display: "grid",
-                      gap: 4,
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                      <strong>{entry.result.label}</strong>
-                      <span>{entry.result.status}</span>
-                    </div>
-                    <div>
-                      {formatSummaryTime(entry.result.durationMs)} · {entry.result.beforeFaces.toLocaleString()} {"->"}{" "}
-                      {entry.result.afterFaces == null ? "n/a" : entry.result.afterFaces.toLocaleString()} faces
-                    </div>
-                    {entry.undoneAt && <div style={{ color: "#64748b" }}>Undone</div>}
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      <button
-                        type="button"
-                        onClick={() => onRestoreMeshOperationHistoryEntry(entry.id)}
-                        disabled={Boolean(entry.undoneAt)}
-                      >
-                        Restore result
-                      </button>
-                      {entry === meshOperationHistory[0] && (
+                meshOperationHistory.slice(0, 8).map((entry, index) => {
+                  const isLatest = index === 0;
+                  const entryVerdict =
+                    entry.undoneAt
+                      ? "Undone"
+                      : entry.result.repairValidation?.verdict === "improved"
+                        ? "Improved"
+                        : entry.result.repairValidation?.verdict === "needs-review" || entry.result.status === "warning"
+                          ? "Needs review"
+                          : entry.result.status === "error"
+                            ? "Failed"
+                            : "Complete";
+                  const verdictTone =
+                    entryVerdict === "Improved" || entryVerdict === "Complete"
+                      ? meshHealthToneForState("pass")
+                      : entryVerdict === "Failed"
+                        ? meshHealthToneForState("fail")
+                        : meshHealthToneForState("warn");
+                  return (
+                    <div
+                      key={`mesh-inspector-operation-history-${entry.id}`}
+                      style={{
+                        border: `1px solid ${verdictTone.border}`,
+                        borderRadius: 7,
+                        background: entry.undoneAt ? "#f8fafc" : "#ffffff",
+                        padding: "7px",
+                        display: "grid",
+                        gap: 5,
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                        <strong>{entry.result.label}</strong>
+                        <span
+                          style={{
+                            border: `1px solid ${verdictTone.border}`,
+                            borderRadius: 999,
+                            background: verdictTone.background,
+                            color: verdictTone.color,
+                            padding: "2px 7px",
+                            fontSize: 10,
+                            fontWeight: 850,
+                          }}
+                        >
+                          {entryVerdict}
+                        </span>
+                      </div>
+                      <div>
+                        {formatSummaryTime(entry.result.durationMs)} · {entry.result.beforeFaces.toLocaleString()} {"->"}{" "}
+                        {entry.result.afterFaces == null ? "n/a" : entry.result.afterFaces.toLocaleString()} faces
+                      </div>
+                      <div style={{ color: "#64748b" }}>
+                        {entry.result.beforeVertices.toLocaleString()} {"->"}{" "}
+                        {entry.result.afterVertices == null ? "n/a" : entry.result.afterVertices.toLocaleString()} vertices
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <button
                           type="button"
-                          onClick={onUndoLatestMeshOperation}
-                          disabled={!canUndoLatestMeshOperation}
+                          onClick={() => onRestoreMeshOperationHistoryEntry(entry.id)}
+                          disabled={Boolean(entry.undoneAt)}
                         >
-                          Undo latest
+                          Restore
                         </button>
-                      )}
+                        <button type="button" disabled title="Comparison view is handled by Boolean Review when available.">
+                          Compare
+                        </button>
+                        {isLatest && (
+                          <button
+                            type="button"
+                            onClick={() => void onValidateLastMeshOperationResult()}
+                            disabled={entry.result.status === "error"}
+                          >
+                            Validate
+                          </button>
+                        )}
+                        {isLatest && (
+                          <button
+                            type="button"
+                            onClick={onUndoLatestMeshOperation}
+                            disabled={!canUndoLatestMeshOperation}
+                          >
+                            Undo
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -115769,6 +115541,28 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             <div><strong>Watertight:</strong> {watertight == null ? "unknown" : watertight ? "yes" : "no"}</div>
             <div><strong>Normal status:</strong> {normalStatus}</div>
           </div>
+          <div style={{ borderTop: "1px solid #e2e8f0", marginTop: 10, paddingTop: 10, display: "grid", gap: 8 }}>
+            <div style={inspectorSectionTitle}>Backend and validation</div>
+            <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+              <div><strong>Worker:</strong> {cgalHealthState?.ok ? "available" : cgalHealthState?.error ?? "unknown"}</div>
+              <div><strong>Last operation status:</strong> {meshLastOperation?.status ?? "none"}</div>
+              <div><strong>Warnings:</strong> {diagnosticsWarningCount.toLocaleString()}</div>
+              <div><strong>Errors:</strong> {diagnosticsErrorCount.toLocaleString()}</div>
+              <div>
+                <strong>Boolean blockers:</strong>{" "}
+                {meshDiagnosticsValidationBlockers.length ? meshDiagnosticsValidationBlockers.join(", ") : "none"}
+              </div>
+            </div>
+          </div>
+          <details style={{ borderTop: "1px solid #e2e8f0", marginTop: 10, paddingTop: 10 }}>
+            <summary
+              data-testid="mesh-inspector-diagnostics-raw-topology-toggle"
+              style={{ cursor: "pointer", fontWeight: 850, fontSize: 12 }}
+            >
+              Raw topology details
+            </summary>
+            <div style={{ marginTop: 8 }}>{renderTopologyDetails("mesh-inspector-diagnostics-topology")}</div>
+          </details>
         </div>
       )}
 

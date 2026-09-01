@@ -322,11 +322,12 @@ test.describe("Mesh topology persistence and handoff", () => {
       });
 
       await page.getByTestId("mesh-inspector-tab-object").click();
-      await expect(page.getByTestId("mesh-inspector-topology-flags")).toContainText(/Manifold: yes/);
-      await expect(page.getByTestId("mesh-inspector-vertex-adjacency")).toContainText(/v0/);
-      await expect(page.getByTestId("mesh-inspector-vertex-adjacency")).toContainText(/neighbors: v/);
-      await expect(page.getByTestId("mesh-inspector-face-adjacency")).toContainText(/neighbors: f/);
-      await expect(page.getByTestId("mesh-inspector-edge-incidence")).toContainText(/faces: f/);
+      await expect(page.getByTestId("mesh-summary-card")).toBeVisible();
+      const diagnosticsTab = page.getByTestId("mesh-inspector-tab-diagnostics");
+      await diagnosticsTab.evaluate((button) => {
+        if (button instanceof HTMLButtonElement) button.click();
+      });
+      await expect(diagnosticsTab).toHaveAttribute("aria-pressed", "true");
       await page.getByTestId("mesh-selection-filter-kind-face").click();
       await expect(page.getByTestId("mesh-context-pick-face")).toBeDisabled();
       await expect(page.getByTestId("mesh-selection-filter-summary")).toContainText(/types: object, edge, vertex/);
