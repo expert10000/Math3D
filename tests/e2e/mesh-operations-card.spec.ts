@@ -145,12 +145,14 @@ test.describe("Mesh Operations card", () => {
       await expect(card.getByTestId(`mesh-workspace-operation-registry-group-${group}`)).toBeVisible();
     }
     await expect(card.getByTestId("mesh-workspace-operation-registry-preset-armadillo-robust-boolean")).toBeVisible();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-preset-sphere-minus-box")).toBeVisible();
 
     for (const preset of [
       "cgal-validate",
       "cgal-repair-memory",
       "cgal-repair-validate",
       "clean-normals",
+      "sphere-minus-box",
       "decimate-3dbenchy",
       "smooth-bunny",
     ]) {
@@ -481,6 +483,51 @@ test.describe("Mesh Operations card", () => {
     await expect(validationCard.getByTestId("mesh-operation-boolean-validation-use-as-b")).toBeEnabled();
     await reviewToolbar.getByTestId("mesh-boolean-review-keep-result").click();
     await expect(page.getByTestId("mesh-boolean-review-toolbar")).toHaveCount(0);
+  });
+
+  test("runs Sphere minus box robust preset, validates result, and opens it in Geometry", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+
+    const card = await openWorkspaceOperationsCard(page);
+    await card.getByTestId("mesh-workspace-operation-registry-preset-sphere-minus-box").click();
+    await expect(page.getByText(/Sphere solid/i).first()).toBeVisible({ timeout: 15_000 });
+    await expect(card.getByTestId("mesh-workspace-operation-registry-row-boolean-difference")).toHaveAttribute(
+      "aria-expanded",
+      "true"
+    );
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-operand")).toContainText(/Sphere cutter box/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-strategy-robust")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+
+    await card.getByTestId("mesh-workspace-operation-registry-row-cgal-validate").click();
+    await card.getByTestId("mesh-workspace-operation-registry-run-cgal-validate").click();
+    await expectLastOperation(card, /Validate mesh/i);
+
+    await card.getByTestId("mesh-workspace-operation-registry-row-boolean-difference").click();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-validation-warning")).toContainText(
+      "validation passed"
+    );
+    await card.getByTestId("mesh-workspace-operation-registry-run-boolean-difference").click();
+    await expectLastOperation(card, /Boolean difference/i);
+    await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/Robust method/i);
+    await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/native CGAL backend/i);
+    await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/A: Sphere solid/i);
+    await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/B: Sphere cutter box/i);
+
+    const reviewToolbar = page.getByTestId("mesh-boolean-review-toolbar");
+    await expect(reviewToolbar).toBeVisible({ timeout: 15_000 });
+    await reviewToolbar.getByTestId("mesh-boolean-review-validate-result").click();
+    await expectLastOperation(card, /Validate mesh/i);
+    await expect(card.getByTestId("mesh-operation-boolean-validation-card")).toContainText(/Boolean result validation/i);
+
+    await card.getByTestId("mesh-workspace-operation-registry-open-result-in-geometry").click();
+    await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/Sphere solid \(Boolean difference\)/i).first()).toBeVisible({ timeout: 15_000 });
   });
 
   test("opens the implicit sphere preset from Mesh Operations and runs preview", async () => {

@@ -289,6 +289,7 @@ export type MeshOperationPresetId =
   | "validate-armadillo"
   | "armadillo-robust-boolean"
   | "benchy-cutter-boolean"
+  | "sphere-minus-box"
   | "bunny-smooth-validate"
   | "decimate-3dbenchy"
   | "smooth-bunny"
@@ -353,6 +354,12 @@ const MESH_OPERATION_PRESETS: Array<{
     id: "benchy-cutter-boolean",
     label: "3DBenchy Cutter",
     description: "Load 3DBenchy, add a cutter box as operand B, and prepare Boolean difference.",
+    operation: "boolean-difference",
+  },
+  {
+    id: "sphere-minus-box",
+    label: "Sphere minus box",
+    description: "Create a closed sphere and cutter box, then prepare Robust Boolean difference.",
     operation: "boolean-difference",
   },
   {
@@ -1209,7 +1216,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
       setExpandedOperation("cgal-validate");
       return;
     }
-    if (preset === "benchy-cutter-boolean" || preset === "armadillo-robust-boolean") {
+    if (preset === "benchy-cutter-boolean" || preset === "armadillo-robust-boolean" || preset === "sphere-minus-box") {
       onChangeBooleanOperation("difference");
       onChangeBooleanStrategy("robust");
       onChangeOutputMode("derived");

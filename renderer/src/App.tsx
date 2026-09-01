@@ -8788,6 +8788,56 @@ const buildMeshOperationBooleanDemoCubeMesh = (label: string, offsetX: number): 
   });
 };
 
+const buildMeshOperationSphereMesh = (
+  label: string,
+  radius = 1,
+  longitudeSegments = 32,
+  latitudeSegments = 16
+): SurfaceMeshData => {
+  const lon = Math.max(8, Math.round(longitudeSegments));
+  const lat = Math.max(4, Math.round(latitudeSegments));
+  const positions: number[] = [0, radius, 0];
+  for (let y = 1; y < lat; y += 1) {
+    const phi = (Math.PI * y) / lat;
+    const ringRadius = Math.sin(phi) * radius;
+    const py = Math.cos(phi) * radius;
+    for (let x = 0; x < lon; x += 1) {
+      const theta = (Math.PI * 2 * x) / lon;
+      positions.push(Math.cos(theta) * ringRadius, py, Math.sin(theta) * ringRadius);
+    }
+  }
+  const bottom = positions.length / 3;
+  positions.push(0, -radius, 0);
+
+  const indices: number[] = [];
+  const ringIndex = (ring: number, segment: number) => 1 + ring * lon + ((segment + lon) % lon);
+  for (let x = 0; x < lon; x += 1) {
+    indices.push(0, ringIndex(0, x + 1), ringIndex(0, x));
+  }
+  for (let y = 0; y < lat - 2; y += 1) {
+    for (let x = 0; x < lon; x += 1) {
+      const a = ringIndex(y, x);
+      const b = ringIndex(y, x + 1);
+      const c = ringIndex(y + 1, x);
+      const d = ringIndex(y + 1, x + 1);
+      indices.push(a, d, c, a, b, d);
+    }
+  }
+  const lastRing = lat - 2;
+  for (let x = 0; x < lon; x += 1) {
+    indices.push(bottom, ringIndex(lastRing, x), ringIndex(lastRing, x + 1));
+  }
+
+  return applySurfaceMeshOps({
+    label,
+    positions: Float32Array.from(positions),
+    indices: Uint32Array.from(indices),
+    normals: null,
+    uvs: null,
+    source: { kind: "polyhedronPreset", id: "mesh-operation-sphere-solid", label },
+  });
+};
+
 const buildMeshOperationCutterBoxMesh = (label: string, bounds: BBox3): SurfaceMeshData => {
   const dx = Math.max(0.001, bounds.max[0] - bounds.min[0]);
   const dy = Math.max(0.001, bounds.max[1] - bounds.min[1]);
@@ -13246,7 +13296,7 @@ const App: React.FC = () => {
   const meshOperationBooleanDemoOperandsVisible = useMemo(
     () =>
       geometryDatasetMeshObjects.some(
-        (entry) => (entry.name === "Boolean demo A" || entry.name === "Boolean demo B") && entry.visible
+        (entry) => (entry.name === "Boolean demo A" || entry.name.endsWith("cutter box")) && entry.visible
       ),
     [geometryDatasetMeshObjects]
   );
@@ -46862,13 +46912,14 @@ case "mobius":
   }, [createMeshOperationBooleanDemoObjects, handleGeometryFit, installMeshOperationBooleanDemoObjects]);
 
   const setMeshOperationBooleanDemoOperandsVisible = useCallback((visible: boolean) => {
+    const operandId = meshOperationBooleanOperandObjectId;
     setGeometryDatasetMeshObjects((prev) =>
       prev.map((entry) =>
-        entry.name === "Boolean demo A" || entry.name === "Boolean demo B" ? { ...entry, visible } : entry
+        entry.id === operandId || entry.name === "Boolean demo A" || entry.name.endsWith("cutter box") ? { ...entry, visible } : entry
       )
     );
-    setGeometryCreateActionStatus(visible ? "Boolean demo operands shown." : "Boolean demo operands hidden.");
-  }, []);
+    setGeometryCreateActionStatus(visible ? "Boolean operands shown." : "Boolean operands hidden.");
+  }, [meshOperationBooleanOperandObjectId]);
 
   const setGeometryBooleanComposerObjectsVisible = useCallback((visible: boolean) => {
     const ids = [
@@ -51339,6 +51390,44 @@ case "mobius":
           expectedLabel: "11_armadillo.obj",
         });
         await handleLoadSurfaceMeshBenchmarkModel("armadillo");
+        return;
+      }
+      if (presetId === "sphere-minus-box") {
+        const sphereMesh = buildMeshOperationSphereMesh("Sphere solid", 1, 32, 16);
+        const bounds = boundsFromPositions(sphereMesh.positions);
+        setMeshOperationBooleanOperation("difference");
+        setMeshOperationBooleanStrategy("robust");
+        setMeshOperationOutputMode("derived");
+        focusMeshOperationRow("boolean-difference");
+        setMeshDataset(sphereMesh, "mesh-operation:sphere-minus-box-a");
+        setMode("surfaces");
+        setDatasetKind("mesh");
+        setSurfaceViewerKind("mesh");
+        if (bounds) {
+          const cutterId = makeId();
+          const cutterMesh = buildMeshOperationCutterBoxMesh("Sphere cutter box", bounds);
+          const cutterObject: GeometryDatasetMeshObject = {
+            id: cutterId,
+            name: "Sphere cutter box",
+            mesh: toDetachedMeshData(cutterMesh),
+            transform: {
+              position: { x: 0, y: 0, z: 0 },
+              rotation: { x: 0, y: 0, z: 0 },
+              scale: { x: 1, y: 1, z: 1 },
+            },
+            visible: true,
+            material: { color: 0xf97316, opacity: 0.36 },
+            promotion: null,
+            sourceSelectionOverlay: null,
+          };
+          setGeometryDatasetMeshObjects((prev) => [
+            cutterObject,
+            ...prev.filter((entry) => entry.name !== cutterObject.name && entry.name !== sphereMesh.label),
+          ]);
+          setMeshOperationBooleanOperandObjectId(cutterId);
+          setGeometrySelectedObjectId(cutterId);
+          setMeshOperationBooleanStatus("Sphere cutter box ready: Sphere solid - cutter box. Validate, then run Robust Boolean difference.");
+        }
         return;
       }
       if (presetId === "benchy-cutter-boolean") {
