@@ -2278,9 +2278,13 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const onCameraTourEventRef = useRef<Props["onCameraTourEvent"] | undefined>(undefined);
   const onPerformanceSnapshotRef = useRef<Props["onPerformanceSnapshot"] | undefined>(undefined);
   const onMeshInteractionStateChangeRef = useRef<Props["onMeshInteractionStateChange"] | undefined>(undefined);
+  const onSampleSetRef = useRef<Props["onSampleSet"] | undefined>(undefined);
+  const onGaussPointsRef = useRef<Props["onGaussPoints"] | undefined>(undefined);
   onCameraTourEventRef.current = onCameraTourEvent;
   onPerformanceSnapshotRef.current = onPerformanceSnapshot;
   onMeshInteractionStateChangeRef.current = onMeshInteractionStateChange;
+  onSampleSetRef.current = onSampleSet;
+  onGaussPointsRef.current = onGaussPoints;
   const lastMeshBuildMsRef = useRef<number | null>(lastMeshBuildMs);
   const meshPerformanceTraceRef = useRef<NonNullable<SurfacePerformanceSnapshot["trace"]> | null>(null);
   const chunkedFullMeshUploadRunRef = useRef(0);
@@ -4857,7 +4861,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     }
 
     sampleSetRef.current = nextSampleSet;
-    onSampleSet?.(nextSampleSet);
+    onSampleSetRef.current?.(nextSampleSet);
 
     const box = new THREE.Box3().setFromObject(surfaceObj);
     const center = new THREE.Vector3();
@@ -6224,7 +6228,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       applyProbeFromDomainRef.current = null;
 
       sampleSetRef.current = null;
-      onSampleSet?.(null);
+      onSampleSetRef.current?.(null);
       sceneRef.current = null;
 
       surfaceObjRef.current = null;
@@ -7207,7 +7211,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       });
     }
     sampleSetRef.current = nextSampleSet;
-    onSampleSet?.(nextSampleSet);
+    onSampleSetRef.current?.(nextSampleSet);
     const sampleSetMs = performance.now() - sampleSetStart;
     if (sampleSetMs >= 8 || surfaceId === "surface_mesh") {
       emitMeshViewerAllocTrace("viewer", "viewer:sampleSetBuilt", {
@@ -7438,21 +7442,21 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     retainSampleMeshData,
     sampleMaxPoints,
     showBoundingBox,
-    onSampleSet,
     gizmoEnabled,
     gizmoMeshKey,
   ]);
 
   useEffect(() => {
-    if (!onGaussPoints) return;
+    const emitGaussPoints = onGaussPointsRef.current;
+    if (!emitGaussPoints) return;
     if (!gaussMapEnabled) {
-      onGaussPoints([]);
+      emitGaussPoints([]);
       return;
     }
 
     const sampleSet = sampleSetRef.current;
     if (!sampleSet || !sampleSet.samples.length) {
-      onGaussPoints([]);
+      emitGaussPoints([]);
       return;
     }
 
@@ -7470,8 +7474,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       },
     }));
 
-    onGaussPoints(pts);
-  }, [sceneEpoch, gaussMapEnabled, onGaussPoints]);
+    emitGaussPoints(pts);
+  }, [sceneEpoch, gaussMapEnabled]);
 
   useEffect(() => {
     const scene = sceneRef.current;
