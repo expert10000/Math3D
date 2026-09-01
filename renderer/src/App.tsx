@@ -77033,7 +77033,13 @@ case "mobius":
                       meshOperationPreviewTargetFaces={meshOperationPreviewTargetFaces}
                       meshOperationPreviewUseDecimate={meshOperationPreviewUseDecimate}
                       meshLastOperation={meshLastOperation}
+                      meshOperationLastValidation={meshOperationLastValidation}
+                      meshOperationHistory={meshOperationHistory}
                       meshOperationError={meshOperationError}
+                      onValidateLastMeshOperationResult={handleValidateLastMeshOperationResult}
+                      onRestoreMeshOperationHistoryEntry={restoreMeshOperationHistoryEntry}
+                      onUndoLatestMeshOperation={undoLatestMeshOperation}
+                      canUndoLatestMeshOperation={canUndoLatestMeshOperation}
                       onSaveMeshOperationPreset={handleSaveMeshOperationPreset}
                       onChangeMeshOperationPreviewTargetFaces={setMeshOperationPreviewTargetFaces}
                       onChangeMeshOperationPreviewUseDecimate={setMeshOperationPreviewUseDecimate}
@@ -111911,7 +111917,13 @@ type SurfacesRightPanelProps = {
   meshOperationPreviewTargetFaces: number;
   meshOperationPreviewUseDecimate: boolean;
   meshLastOperation: MeshOperationResultSummary | null;
+  meshOperationLastValidation: MeshOperationLastValidation | null;
+  meshOperationHistory: MeshOperationHistoryEntry[];
   meshOperationError: string | null;
+  onValidateLastMeshOperationResult: () => void | Promise<void>;
+  onRestoreMeshOperationHistoryEntry: (entryId: string) => void;
+  onUndoLatestMeshOperation: () => void;
+  canUndoLatestMeshOperation: boolean;
   onSaveMeshOperationPreset: () => void;
   onChangeMeshOperationPreviewTargetFaces: (v: number) => void;
   onChangeMeshOperationPreviewUseDecimate: (v: boolean) => void;
@@ -112064,7 +112076,7 @@ type SurfacesRightPanelProps = {
   onRemoveImplicitDomainPreset: (id: string) => void;
 };
 
-type InspectorPanelTab = "object" | "selection" | "probe" | "analysis" | "diagnostics" | "warnings";
+type InspectorPanelTab = "object" | "selection" | "probe" | "analysis" | "diagnostics" | "history" | "warnings";
 type AnalysisResultsView = "show-all" | "current-screen";
 type MeshAnalysisFeatureState = "ready" | "running" | "deferred" | "not-requested" | "missing" | "unavailable";
 type MeshAnalysisFeatureRow = {
@@ -112162,7 +112174,13 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   meshOperationPreviewTargetFaces,
   meshOperationPreviewUseDecimate,
   meshLastOperation,
+  meshOperationLastValidation,
+  meshOperationHistory,
   meshOperationError,
+  onValidateLastMeshOperationResult,
+  onRestoreMeshOperationHistoryEntry,
+  onUndoLatestMeshOperation,
+  canUndoLatestMeshOperation,
   onSaveMeshOperationPreset,
   onChangeMeshOperationPreviewTargetFaces,
   onChangeMeshOperationPreviewUseDecimate,
@@ -113420,7 +113438,6 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     normalMagnitude == null ? "unknown" : hasUnstableNormals ? "unstable" : "valid";
   const operationBeforeFaces = meshLastOperation?.beforeFaces ?? null;
   const operationAfterFaces = meshLastOperation?.afterFaces ?? null;
-  const operationDisplayLabel = meshLastOperation?.label ?? "none";
   const operationReductionPct =
     operationBeforeFaces && operationAfterFaces && operationBeforeFaces > 0
       ? ((operationBeforeFaces - operationAfterFaces) / operationBeforeFaces) * 100
@@ -113443,15 +113460,13 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   ]
     .filter(Boolean)
     .join(", ");
-  const cgalLogLink = cgalHealthState?.logsPath
-    ? `file:///${String(cgalHealthState.logsPath).replace(/\\/g, "/").replace(/^([A-Za-z]):/, "$1:")}`
-    : null;
   const resultsInspectorTabs: Array<{ id: InspectorPanelTab; label: string }> = [
     { id: "object", label: "Object" },
     { id: "selection", label: "Selection" },
     { id: "probe", label: "Probe" },
     { id: "analysis", label: "Analysis" },
     { id: "diagnostics", label: `Diagnostics ${diagnosticsTotalCount}` },
+    { id: "history", label: "History" },
   ];
   const stickyPickPoint = probeInfo?.point ?? inspectPos;
   const stickyPickLabel = stickyPickPoint
@@ -113535,6 +113550,120 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       : formatInspectorCount(meshInspectorStats.connectedComponentCount);
   const meshSummaryEdgeLabel =
     meshTopologyDetails?.edgeCount == null ? meshSummaryTopologyMuted : formatInspectorCount(meshTopologyDetails.edgeCount);
+  const meshHealthValidation = meshOperationLastValidation?.validation ?? meshLastOperation?.validation ?? null;
+  const meshHealthBoundaryEdgeCount =
+    meshHealthValidation?.boundaryEdgeCount ?? meshInspectorStats.boundaryEdgeCount ?? null;
+  const meshHealthNonManifoldEdgeCount =
+    meshHealthValidation?.nonManifoldEdgeCount ?? topologyNonManifoldEdgeCount ?? null;
+  const meshHealthDegenerateFaceCount =
+    meshHealthValidation?.degenerateFaceCount ?? badTriangleCount ?? null;
+  const meshHealthDuplicateFaceCount = meshHealthValidation?.duplicateFaceCount ?? null;
+  const meshHealthSelfIntersectionLabel = meshHealthValidation
+    ? meshHealthValidation.selfIntersection.checked
+      ? `${meshHealthValidation.selfIntersection.suspectedPairs.toLocaleString()} suspected${
+          meshHealthValidation.selfIntersection.truncated ? " (sampled)" : ""
+        }`
+      : "Not checked"
+    : meshAnalyzeDiagnostics
+      ? `${meshAnalyzeDiagnostics.selfIntersectionPairs.toLocaleString()} suspected`
+      : "Not checked";
+  const meshHealthIssueCount =
+    (meshHealthBoundaryEdgeCount ?? 0) +
+    (meshHealthNonManifoldEdgeCount ?? 0) +
+    (meshHealthDegenerateFaceCount ?? 0) +
+    (meshHealthDuplicateFaceCount ?? 0) +
+    (meshHealthValidation?.selfIntersection.checked ? meshHealthValidation.selfIntersection.suspectedPairs : 0);
+  const meshHealthStatusLabel = meshSummaryTopologyDeferred
+    ? "Analysis deferred"
+    : meshHealthValidation
+      ? meshHealthValidation.watertight && meshHealthValidation.manifold && meshHealthIssueCount === 0
+        ? "Healthy"
+        : "Needs review"
+      : watertight === true && (meshHealthNonManifoldEdgeCount ?? 0) === 0 && (meshHealthBoundaryEdgeCount ?? 0) === 0
+        ? "Healthy"
+        : watertight === false || meshHealthIssueCount > 0
+          ? "Needs review"
+          : "Unknown";
+  const meshHealthTone =
+    meshHealthStatusLabel === "Healthy"
+      ? { border: "#86efac", background: "#f0fdf4", color: "#166534" }
+      : meshHealthStatusLabel === "Needs review"
+        ? { border: "#fcd34d", background: "#fffbeb", color: "#92400e" }
+        : { border: "#dbe4ee", background: "#f8fafc", color: "#475467" };
+  const meshLastOperationVerdict = (() => {
+    if (meshOperationError || meshLastOperation?.status === "error") {
+      return { label: "Failed", border: "#fca5a5", background: "#fef2f2", color: "#b42318" };
+    }
+    if (!meshLastOperation) {
+      return { label: "No operation yet", border: "#dbe4ee", background: "#f8fafc", color: "#475467" };
+    }
+    if (meshLastOperation.repairValidation?.verdict === "improved") {
+      return { label: "Improved", border: "#86efac", background: "#f0fdf4", color: "#166534" };
+    }
+    if (meshLastOperation.repairValidation?.verdict === "needs-review" || meshLastOperation.status === "warning") {
+      return { label: "Still needs review", border: "#fcd34d", background: "#fffbeb", color: "#92400e" };
+    }
+    if (meshLastOperation.repairValidation?.verdict === "no-change") {
+      return { label: "No change", border: "#cbd5e1", background: "#f8fafc", color: "#475467" };
+    }
+    return { label: "Complete", border: "#86efac", background: "#f0fdf4", color: "#166534" };
+  })();
+  const renderHealthCountRow = (label: string, value: string | number | null) => (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+      <span>{label}</span>
+      <strong>{typeof value === "number" ? formatInspectorCount(value) : value ?? "n/a"}</strong>
+    </div>
+  );
+  const renderOperationDeltaRow = (label: string, before: number | null | undefined, after: number | null | undefined) => (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+      <span>{label}</span>
+      <strong>
+        {before == null ? "n/a" : formatInspectorCount(before)} {"->"} {after == null ? "n/a" : formatInspectorCount(after)}
+      </strong>
+    </div>
+  );
+  const renderMeshActiveSelectionCard = () => (
+    <ActiveSelectionCard
+      testId="mesh-active-selection-card"
+      workspace="Mesh"
+      type={meshActiveSelectionCardType}
+      entityId={meshActiveSelectionCardId}
+      actions={meshActiveSelectionCardActions}
+      actionButtons={meshActiveSelectionCardActionButtons}
+      emptyState={meshActiveSelectionCardEmptyState}
+      confirmationLabel={meshActiveSelectionCardConfirmationLabel}
+      confirmationTestId="mesh-active-selection-confirmation"
+      lastCommandLabel={meshActiveSelectionCardLastCommandLabel}
+      lastCommandTestId="mesh-active-selection-last-command"
+      canUndoLast={meshActiveSelectionCardCanUndoLast}
+      onUndoLast={onUndoSurfaceMeshTopologyEdit}
+      undoTestId="mesh-active-selection-undo-last"
+      onOpenHistory={onOpenSurfaceMeshTopologyHistory}
+      openHistoryTestId="mesh-active-selection-open-history"
+      onClearSelection={onClearSurfaceMeshTopologySelection}
+      canBookmarkSelection={meshCanBookmarkSelection}
+      onBookmarkSelection={onBookmarkMeshSelection}
+      bookmarkSelectionTestId="mesh-active-selection-bookmark"
+      canRedoSelection={meshCanRedoSelection}
+      onRedoSelection={onRedoMeshSelection}
+      redoSelectionTestId="mesh-active-selection-redo"
+      selectionHistoryItems={meshSelectionHistoryItems}
+      selectionBookmarks={meshSelectionBookmarks}
+      onRestoreSelection={onRestoreMeshSelection}
+      onRemoveSelectionBookmark={onRemoveMeshSelectionBookmark}
+      adaptiveGizmoLabel={meshAdaptiveTopologyGizmoLabel}
+      adaptiveGizmoTestId="mesh-active-selection-adaptive-gizmo"
+      previewHighVisibility={commandPreviewHighVisibility}
+      previewAccessibilityLabel={
+        meshContextualPreviewActive
+          ? `High visibility: ${commandPreviewHighVisibility ? "on" : "off"}`
+          : undefined
+      }
+      previewAccessibilityTestId="mesh-active-selection-card-preview-accessibility"
+      onOpenPreviewSettings={meshContextualPreviewActive ? onOpenPreviewSettings : undefined}
+      openPreviewSettingsTestId="mesh-active-selection-card-open-preview-settings"
+    />
+  );
   const copyMeshPipelineProfile = () => {
     if (!meshPipelineProfile) return;
     const text = JSON.stringify(serializeMeshPipelineProfileRun(meshPipelineProfile), null, 2);
@@ -113570,46 +113699,6 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             </button>
           ))}
         </div>
-        <ActiveSelectionCard
-          testId="mesh-active-selection-card"
-          workspace="Mesh"
-          type={meshActiveSelectionCardType}
-          entityId={meshActiveSelectionCardId}
-          actions={meshActiveSelectionCardActions}
-          actionButtons={meshActiveSelectionCardActionButtons}
-          emptyState={meshActiveSelectionCardEmptyState}
-          confirmationLabel={meshActiveSelectionCardConfirmationLabel}
-          confirmationTestId="mesh-active-selection-confirmation"
-          lastCommandLabel={meshActiveSelectionCardLastCommandLabel}
-          lastCommandTestId="mesh-active-selection-last-command"
-          canUndoLast={meshActiveSelectionCardCanUndoLast}
-          onUndoLast={onUndoSurfaceMeshTopologyEdit}
-          undoTestId="mesh-active-selection-undo-last"
-          onOpenHistory={onOpenSurfaceMeshTopologyHistory}
-          openHistoryTestId="mesh-active-selection-open-history"
-          onClearSelection={onClearSurfaceMeshTopologySelection}
-          canBookmarkSelection={meshCanBookmarkSelection}
-          onBookmarkSelection={onBookmarkMeshSelection}
-          bookmarkSelectionTestId="mesh-active-selection-bookmark"
-          canRedoSelection={meshCanRedoSelection}
-          onRedoSelection={onRedoMeshSelection}
-          redoSelectionTestId="mesh-active-selection-redo"
-          selectionHistoryItems={meshSelectionHistoryItems}
-          selectionBookmarks={meshSelectionBookmarks}
-          onRestoreSelection={onRestoreMeshSelection}
-          onRemoveSelectionBookmark={onRemoveMeshSelectionBookmark}
-          adaptiveGizmoLabel={meshAdaptiveTopologyGizmoLabel}
-          adaptiveGizmoTestId="mesh-active-selection-adaptive-gizmo"
-          previewHighVisibility={commandPreviewHighVisibility}
-          previewAccessibilityLabel={
-            meshContextualPreviewActive
-              ? `High visibility: ${commandPreviewHighVisibility ? "on" : "off"}`
-              : undefined
-          }
-          previewAccessibilityTestId="mesh-active-selection-card-preview-accessibility"
-          onOpenPreviewSettings={meshContextualPreviewActive ? onOpenPreviewSettings : undefined}
-          openPreviewSettingsTestId="mesh-active-selection-card-open-preview-settings"
-        />
         <div
           style={{
             position: "sticky",
@@ -113640,6 +113729,26 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 data-testid="mesh-summary-card"
               >
                 <div style={{ display: "grid", gap: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                    <div style={{ fontSize: 11, fontWeight: 900, color: "#0f172a", textTransform: "uppercase" }}>
+                      Mesh Health
+                    </div>
+                    <span
+                      data-testid="mesh-health-status"
+                      style={{
+                        border: `1px solid ${meshHealthTone.border}`,
+                        borderRadius: 999,
+                        background: meshHealthTone.background,
+                        color: meshHealthTone.color,
+                        padding: "2px 8px",
+                        fontSize: 10,
+                        fontWeight: 850,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {meshHealthStatusLabel}
+                    </span>
+                  </div>
                   <div style={{ display: "grid", gap: 2 }}>
                     <div
                       style={{
@@ -113661,28 +113770,17 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                     <div style={{ fontSize: 10, fontWeight: 900, color: "#475467", textTransform: "uppercase" }}>
                       Geometry
                     </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <span>Vertices</span>
-                      <strong>{formatInspectorCount(meshInspectorStats.vertexCount)}</strong>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <span>Triangles</span>
-                      <strong>{formatInspectorCount(meshInspectorStats.faceCount)}</strong>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <span>Edges</span>
-                      <strong>{meshSummaryEdgeLabel}</strong>
-                    </div>
+                    {renderHealthCountRow("Vertices", meshInspectorStats.vertexCount)}
+                    {renderHealthCountRow("Faces", meshInspectorStats.faceCount)}
+                    {renderHealthCountRow("Edges", meshSummaryEdgeLabel)}
                   </div>
 
                   <div style={{ display: "grid", gap: 4, fontSize: 11 }}>
                     <div style={{ fontSize: 10, fontWeight: 900, color: "#475467", textTransform: "uppercase" }}>
                       Topology
                     </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <span>Components</span>
-                      <strong>{meshSummaryComponentLabel}</strong>
-                    </div>
+                    {renderHealthCountRow("Components", meshSummaryComponentLabel)}
+                    {renderHealthCountRow("Boundary loops", meshTopologyDetails ? meshTopologyDetails.boundaryLoops.length : meshSummaryTopologyMuted)}
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                       <span>Boundary</span>
                       <strong>
@@ -113703,6 +113801,10 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                             : `Non-manifold (${topologyNonManifoldEdgeCount.toLocaleString()})`}
                       </strong>
                     </div>
+                    {renderHealthCountRow("Non-manifold edges", meshHealthNonManifoldEdgeCount)}
+                    {renderHealthCountRow("Degenerate faces", meshHealthDegenerateFaceCount)}
+                    {renderHealthCountRow("Duplicate faces", meshHealthDuplicateFaceCount)}
+                    {renderHealthCountRow("Self intersections", meshHealthSelfIntersectionLabel)}
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                       <span>Orientable</span>
                       <strong>
@@ -113765,7 +113867,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             )}
 
             <div style={inspectorSectionCard}>
-              <div style={inspectorSectionTitle}>Mesh Result</div>
+              <div style={inspectorSectionTitle}>Mesh Details</div>
               <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
                 <div><strong>Source/method:</strong> {meshBackendLabel}</div>
                 <div><strong>Vertices:</strong> {formatInspectorCount(meshInspectorStats.vertexCount)}</div>
@@ -113812,18 +113914,6 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 </div>
                 <div><strong>Watertight:</strong> {watertight == null ? "unknown" : watertight ? "yes" : "no"}</div>
                 <div><strong>Normal status:</strong> {normalStatus}</div>
-                <div><strong>Last operation:</strong> {operationDisplayLabel}</div>
-                <div><strong>Warnings:</strong> {activeWarningRows.length ? activeWarningRows.map((row) => row.label).join(", ") : "none"}</div>
-                <div>
-                  <strong>Log link:</strong>{" "}
-                  {cgalLogLink ? (
-                    <a href={cgalLogLink} target="_blank" rel="noreferrer">
-                      open log
-                    </a>
-                  ) : (
-                    "n/a"
-                  )}
-                </div>
               </div>
             </div>
 
@@ -113833,21 +113923,53 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             </div>
 
             <div style={inspectorSectionCard}>
-              <div style={inspectorSectionTitle}>Mesh Operation Result</div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                <div style={inspectorSectionTitle}>Last Operation</div>
+                <span
+                  data-testid="mesh-last-operation-verdict"
+                  style={{
+                    border: `1px solid ${meshLastOperationVerdict.border}`,
+                    borderRadius: 999,
+                    background: meshLastOperationVerdict.background,
+                    color: meshLastOperationVerdict.color,
+                    padding: "2px 8px",
+                    fontSize: 10,
+                    fontWeight: 850,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {meshLastOperationVerdict.label}
+                </span>
+              </div>
               {meshLastOperation ? (
                 <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
-                  <div><strong>Operation:</strong> {meshLastOperation.label}</div>
-                  <div><strong>Method:</strong> {meshOperationMethodLabel}</div>
-                  <div><strong>Status:</strong> {meshLastOperation.status}</div>
-                  <div><strong>Before:</strong> {meshLastOperation.beforeFaces.toLocaleString()} faces</div>
-                  <div>
-                    <strong>After:</strong>{" "}
-                    {meshLastOperation.afterFaces == null ? "n/a" : `${meshLastOperation.afterFaces.toLocaleString()} faces`}
-                  </div>
+                  <div><strong>{meshLastOperation.label}</strong> · {meshOperationMethodLabel}</div>
+                  {renderOperationDeltaRow("Vertices", meshLastOperation.beforeVertices, meshLastOperation.afterVertices)}
+                  {renderOperationDeltaRow("Faces", meshLastOperation.beforeFaces, meshLastOperation.afterFaces)}
+                  {meshLastOperation.repairValidation && (
+                    <>
+                      {renderOperationDeltaRow(
+                        "Components",
+                        meshLastOperation.repairValidation.before.componentCount,
+                        meshLastOperation.repairValidation.after.componentCount
+                      )}
+                      {renderOperationDeltaRow(
+                        "Non-manifold",
+                        meshLastOperation.repairValidation.before.nonManifoldEdgeCount,
+                        meshLastOperation.repairValidation.after.nonManifoldEdgeCount
+                      )}
+                      {renderOperationDeltaRow(
+                        "Boundary edges",
+                        meshLastOperation.repairValidation.before.boundaryEdgeCount,
+                        meshLastOperation.repairValidation.after.boundaryEdgeCount
+                      )}
+                    </>
+                  )}
                   <div>
                     <strong>Reduction:</strong>{" "}
                     {operationReductionPct == null ? "n/a" : `${Math.max(0, operationReductionPct).toFixed(1)}%`}
                   </div>
+                  <div><strong>Duration:</strong> {formatSummaryTime(meshLastOperation.durationMs)}</div>
                   <div><strong>Topology changed:</strong> {topologyChangedLabel}</div>
                   <div><strong>Output:</strong> {meshLastOperation.outputMode}</div>
                   <div><strong>Warnings:</strong> {meshLastOperation.warnings.length ? meshLastOperation.warnings.join("; ") : "none"}</div>
@@ -113857,8 +113979,21 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                     </div>
                   )}
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    <button type="button" disabled title="Apply action is not wired in right results panel.">Apply</button>
-                    <button type="button" disabled title="Undo action is not wired in right results panel.">Undo</button>
+                    <button type="button" disabled title="Comparison view is handled by the Mesh Operations review card.">Compare</button>
+                    <button
+                      type="button"
+                      onClick={() => void onValidateLastMeshOperationResult()}
+                      disabled={meshLastOperation.status === "error"}
+                    >
+                      Validate
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onUndoLatestMeshOperation}
+                      disabled={!canUndoLatestMeshOperation}
+                    >
+                      Undo
+                    </button>
                     <button type="button" onClick={onSaveMeshOperationPreset} title="Save the current mesh operation settings as a preset.">
                       Save operation settings
                     </button>
@@ -114257,7 +114392,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         )}
 
         {inspectorPanelTab === "selection" && (
-          <div style={inspectorSectionCard}>
+          <>
+            {renderMeshActiveSelectionCard()}
+            <div style={inspectorSectionCard}>
               <div style={inspectorSectionTitle}>Selection</div>
               <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
                 <div>
@@ -114279,6 +114416,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 <div><strong>Geodesic/path:</strong> {geodesicPathLength != null && Number.isFinite(geodesicPathLength) ? `length=${fmt(geodesicPathLength)}` : "n/a"}</div>
               </div>
             </div>
+          </>
         )}
 
         {inspectorPanelTab === "probe" && (
@@ -114696,6 +114834,59 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             )}
             {renderDiagnosticsErrors()}
             {renderDiagnosticsWarnings()}
+          </div>
+        )}
+
+        {inspectorPanelTab === "history" && (
+          <div data-testid="mesh-inspector-history-card" style={inspectorSectionCard}>
+            <div style={inspectorSectionTitle}>Operation History</div>
+            <div style={{ fontSize: 11, display: "grid", gap: 8 }}>
+              {meshOperationHistory.length === 0 ? (
+                <div style={{ color: "#64748b" }}>No mesh operations yet.</div>
+              ) : (
+                meshOperationHistory.slice(0, 8).map((entry) => (
+                  <div
+                    key={`mesh-inspector-operation-history-${entry.id}`}
+                    style={{
+                      border: "1px solid #dbe4ee",
+                      borderRadius: 7,
+                      background: entry.undoneAt ? "#f8fafc" : "#ffffff",
+                      padding: "6px 7px",
+                      display: "grid",
+                      gap: 4,
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                      <strong>{entry.result.label}</strong>
+                      <span>{entry.result.status}</span>
+                    </div>
+                    <div>
+                      {formatSummaryTime(entry.result.durationMs)} · {entry.result.beforeFaces.toLocaleString()} {"->"}{" "}
+                      {entry.result.afterFaces == null ? "n/a" : entry.result.afterFaces.toLocaleString()} faces
+                    </div>
+                    {entry.undoneAt && <div style={{ color: "#64748b" }}>Undone</div>}
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => onRestoreMeshOperationHistoryEntry(entry.id)}
+                        disabled={Boolean(entry.undoneAt)}
+                      >
+                        Restore result
+                      </button>
+                      {entry === meshOperationHistory[0] && (
+                        <button
+                          type="button"
+                          onClick={onUndoLatestMeshOperation}
+                          disabled={!canUndoLatestMeshOperation}
+                        >
+                          Undo latest
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         )}
       </section>
