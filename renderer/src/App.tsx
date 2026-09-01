@@ -112346,6 +112346,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const [paramDomainLabel, setParamDomainLabel] = useState("");
   const [inspectorPanelTab, setInspectorPanelTab] = useState<InspectorPanelTab>("object");
   const [analysisResultsView, setAnalysisResultsView] = useState<AnalysisResultsView>("current-screen");
+  useEffect(() => {
+    if (inspectorPanelTab === "warnings") setInspectorPanelTab("diagnostics");
+  }, [inspectorPanelTab]);
 
   const paramDefaults = isWeierstrass ? WEIERSTRASS_DEFAULTS.domain : getParamDomainPreviewBounds(paramId);
   const safeGraphDomain = normalizeGraphDomain(graphDomain, getDefaultGraphSpan(surfaceId));
@@ -112727,6 +112730,92 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   ];
   const diagnosticsWarningCount = warningRows.filter((row) => row.active).length;
   const activeWarningRows = warningRows.filter((row) => row.active);
+  const diagnosticsErrorRows = [
+    meshOperationPreviewError ? { id: "mesh-preview-error", label: "Mesh preview", detail: meshOperationPreviewError } : null,
+    cgalError ? { id: "cgal-error", label: "Robust meshing", detail: cgalError } : null,
+    meshOperationError ? { id: "mesh-operation-error", label: "Mesh operation", detail: meshOperationError } : null,
+    ...(meshLastOperation?.errors.map((detail, index) => ({
+      id: `mesh-last-operation-error-${index}`,
+      label: meshLastOperation.label,
+      detail,
+    })) ?? []),
+  ].filter((row): row is { id: string; label: string; detail: string } => !!row);
+  const diagnosticsErrorCount =
+    diagnosticsErrorRows.length;
+  const diagnosticsInfoCount =
+    (meshAnalyzeDiagnostics ? 1 : 0) +
+    (meshTopologyDetails ? 1 : 0) +
+    (meshQualityReport ? 1 : 0) +
+    (meshLastOperation ? 1 : 0);
+  const diagnosticsTotalCount = diagnosticsErrorCount + diagnosticsWarningCount + diagnosticsInfoCount;
+  const renderDiagnosticsSeveritySummary = () => (
+    <div
+      data-testid="mesh-inspector-diagnostics-severity-summary"
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+        gap: 6,
+        marginBottom: 10,
+        fontSize: 11,
+      }}
+    >
+      {[
+        { label: "Errors", count: diagnosticsErrorCount, tone: diagnosticsErrorCount > 0 ? "#b42318" : "#166534", bg: diagnosticsErrorCount > 0 ? "#fef2f2" : "#f0fdf4", border: diagnosticsErrorCount > 0 ? "#fca5a5" : "#bbf7d0" },
+        { label: "Warnings", count: diagnosticsWarningCount, tone: diagnosticsWarningCount > 0 ? "#9a3412" : "#166534", bg: diagnosticsWarningCount > 0 ? "#fff7ed" : "#f0fdf4", border: diagnosticsWarningCount > 0 ? "#fed7aa" : "#bbf7d0" },
+        { label: "Info", count: diagnosticsInfoCount, tone: "#475569", bg: "#f8fafc", border: "#dbe4ee" },
+      ].map((entry) => (
+        <div
+          key={`diagnostics-severity-${entry.label}`}
+          style={{
+            border: `1px solid ${entry.border}`,
+            borderRadius: 7,
+            background: entry.bg,
+            color: entry.tone,
+            padding: "6px 7px",
+            display: "grid",
+            gap: 2,
+          }}
+        >
+          <span style={{ fontWeight: 800 }}>{entry.label}</span>
+          <strong>{entry.count.toLocaleString()}</strong>
+        </div>
+      ))}
+    </div>
+  );
+  const renderDiagnosticsErrors = () => (
+    <div style={{ marginTop: 10, borderTop: "1px solid #e2e8f0", paddingTop: 9 }}>
+      <div style={{ ...inspectorSectionTitle, marginBottom: 6 }}>Errors</div>
+      {diagnosticsErrorRows.length === 0 ? (
+        <div style={{ fontSize: 11, color: "#1f894f" }}>No active errors.</div>
+      ) : (
+        <div style={{ fontSize: 11, display: "grid", gap: 7 }}>
+          {diagnosticsErrorRows.map((row) => (
+            <div key={`diagnostics-error-row-${row.id}`} style={{ display: "grid", gap: 2 }}>
+              <div style={{ fontWeight: 700, color: "#b42318" }}>{row.label}</div>
+              <div style={{ color: "#475467" }}>{row.detail}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+  const renderDiagnosticsWarnings = () => (
+    <div style={{ marginTop: 10, borderTop: "1px solid #e2e8f0", paddingTop: 9 }}>
+      <div style={{ ...inspectorSectionTitle, marginBottom: 6 }}>Warnings</div>
+      {activeWarningRows.length === 0 ? (
+        <div style={{ fontSize: 11, color: "#1f894f" }}>No active warnings.</div>
+      ) : (
+        <div style={{ fontSize: 11, display: "grid", gap: 7 }}>
+          {activeWarningRows.map((row) => (
+            <div key={`warning-row-${row.id}`} style={{ display: "grid", gap: 2 }}>
+              <div style={{ fontWeight: 700, color: "#b42318" }}>{row.label}</div>
+              <div style={{ color: "#475467" }}>{row.detail}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
   const selectedProbeCurvature =
     isGraphViewer && probeCurv
       ? { K: probeCurv.K, H: probeCurv.H, k1: probeCurv.k1, k2: probeCurv.k2 }
@@ -113239,7 +113328,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     { id: "object", label: "Object" },
     { id: "selection", label: "Selection" },
     { id: "analysis", label: "Analysis" },
-    { id: "warnings", label: "Warnings" },
+    { id: "diagnostics", label: `Diagnostics ${diagnosticsTotalCount}` },
   ];
   const pointPickSection = (
     <div style={workflowCardStyle("domain")}>
@@ -113362,8 +113451,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     { id: "selection", label: "Selection" },
     { id: "probe", label: "Probe" },
     { id: "analysis", label: "Analysis" },
-    { id: "diagnostics", label: "Diagnostics" },
-    { id: "warnings", label: "Warnings" },
+    { id: "diagnostics", label: `Diagnostics ${diagnosticsTotalCount}` },
   ];
   const stickyPickPoint = probeInfo?.point ?? inspectPos;
   const stickyPickLabel = stickyPickPoint
@@ -114393,6 +114481,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 {meshAnalyzeDiagnostics ? (meshAnalyzeDiagnostics.cleanMesh ? "clean mesh" : "needs review") : "not ready"}
               </span>
             </div>
+            {renderDiagnosticsSeveritySummary()}
             {meshAnalyzeDiagnostics?.cleanMesh && (
               <div
                 style={{
@@ -114605,24 +114694,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 </button>
               </div>
             )}
-          </div>
-        )}
-
-        {inspectorPanelTab === "warnings" && (
-          <div style={inspectorSectionCard}>
-            <div style={inspectorSectionTitle}>Warnings</div>
-            {activeWarningRows.length === 0 ? (
-              <div style={{ fontSize: 11, color: "#1f894f" }}>No active warnings.</div>
-            ) : (
-              <div style={{ fontSize: 11, display: "grid", gap: 7 }}>
-                {activeWarningRows.map((row) => (
-                  <div key={`warning-row-${row.id}`} style={{ display: "grid", gap: 2 }}>
-                    <div style={{ fontWeight: 700, color: "#b42318" }}>{row.label}</div>
-                    <div style={{ color: "#475467" }}>{row.detail}</div>
-                  </div>
-                ))}
-              </div>
-            )}
+            {renderDiagnosticsErrors()}
+            {renderDiagnosticsWarnings()}
           </div>
         )}
       </section>
@@ -115493,23 +115566,18 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         </>
       )}
 
-      {inspectorPanelTab === "warnings" && (
-        <div style={inspectorSectionCard}>
-          <div style={inspectorSectionTitle}>Warnings</div>
-          {activeWarningRows.length === 0 ? (
-            <div style={{ fontSize: 11, color: "#1f894f" }}>No active warnings.</div>
-          ) : (
-            <div style={{ fontSize: 11, display: "grid", gap: 7 }}>
-              {activeWarningRows.map((row) => (
-                <div key={`warning-row-${row.id}`} style={{ display: "grid", gap: 2 }}>
-                  <div style={{ fontWeight: 700, color: "#b42318" }}>
-                    {row.label}
-                  </div>
-                  <div style={{ color: "#475467" }}>{row.detail}</div>
-                </div>
-              ))}
-            </div>
-          )}
+      {inspectorPanelTab === "diagnostics" && (
+        <div data-testid="surface-inspector-diagnostics-card" style={inspectorSectionCard}>
+          <div style={inspectorSectionTitle}>Diagnostics</div>
+          {renderDiagnosticsSeveritySummary()}
+          {renderDiagnosticsErrors()}
+          {renderDiagnosticsWarnings()}
+          <div style={{ marginTop: 10, borderTop: "1px solid #e2e8f0", paddingTop: 9, fontSize: 11, display: "grid", gap: 6 }}>
+            <div><strong>Mesh status:</strong> {meshQualityStatus}</div>
+            <div><strong>Topology:</strong> {topologyDiagnosticsStatus}</div>
+            <div><strong>Watertight:</strong> {watertight == null ? "unknown" : watertight ? "yes" : "no"}</div>
+            <div><strong>Normal status:</strong> {normalStatus}</div>
+          </div>
         </div>
       )}
 
