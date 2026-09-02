@@ -68526,6 +68526,9 @@ case "mobius":
               <div style={topNavBarStyle}>
                 <div
                   style={{
+                    position: "sticky",
+                    top: 0,
+                    zIndex: 12,
                     display: "flex",
                     alignItems: "center",
                     gap: isPhoneLandscapeLayout ? 5 : 10,
@@ -70457,6 +70460,7 @@ case "mobius":
                     border: "1px solid #dbe4f0",
                     borderRadius: 8,
                     background: "#f8fbff",
+                    boxShadow: "0 2px 6px rgba(15, 23, 42, 0.08)",
                   }}
                 >
                   {(
@@ -70581,7 +70585,7 @@ case "mobius":
                               style={pill(meshDebugDrawerOpen)}
                               aria-pressed={meshDebugDrawerOpen}
                             >
-                              Mesh Debug
+                              Developer diagnostics
                             </button>
                           )}
                           <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -70611,7 +70615,7 @@ case "mobius":
                         {surfaceMeshImportError && (
                           <div style={{ color: "#b42318", fontSize: 11 }}>{surfaceMeshImportError}</div>
                         )}
-                        {isDev && largeMeshPerformanceHud && (
+                        {isDev && meshDebugDrawerOpen && largeMeshPerformanceHud && (
                           <div
                             data-testid="mesh-large-performance-hud"
                             style={{
@@ -70678,7 +70682,7 @@ case "mobius":
                             </div>
                           </div>
                         )}
-                        {meshPipelineProfile && (
+                        {meshDebugDrawerOpen && meshPipelineProfile && (
                           <div
                             data-testid="mesh-load-profile-summary"
                             style={{
@@ -70730,7 +70734,7 @@ case "mobius":
                             )}
                           </div>
                         )}
-                        {isDev && (
+                        {isDev && meshDebugDrawerOpen && (
                           <div
                             data-testid="mesh-debug-summary"
                             style={{
@@ -77462,6 +77466,7 @@ case "mobius":
                       meshOperationLastValidation={meshOperationLastValidation}
                       meshOperationHistory={meshOperationHistory}
                       meshOperationError={meshOperationError}
+                      onValidateActiveMesh={handleMeshOperationValidate}
                       onValidateLastMeshOperationResult={handleValidateLastMeshOperationResult}
                       onPreviewMeshOperationHistoryEntry={previewMeshOperationHistoryEntry}
                       onRestoreMeshOperationHistoryEntry={restoreMeshOperationHistoryEntry}
@@ -112385,6 +112390,7 @@ type SurfacesRightPanelProps = {
   meshOperationLastValidation: MeshOperationLastValidation | null;
   meshOperationHistory: MeshOperationHistoryEntry[];
   meshOperationError: string | null;
+  onValidateActiveMesh: () => void | Promise<void>;
   onValidateLastMeshOperationResult: () => void | Promise<void>;
   onPreviewMeshOperationHistoryEntry: (entryId: string, side: "before" | "after") => void;
   onRestoreMeshOperationHistoryEntry: (entryId: string) => void;
@@ -112644,6 +112650,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   meshOperationLastValidation,
   meshOperationHistory,
   meshOperationError,
+  onValidateActiveMesh,
   onValidateLastMeshOperationResult,
   onPreviewMeshOperationHistoryEntry,
   onRestoreMeshOperationHistoryEntry,
@@ -114036,23 +114043,42 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     : meshAnalyzeDiagnostics
       ? `${meshAnalyzeDiagnostics.selfIntersectionPairs.toLocaleString()} suspected`
       : "Not checked";
+  const meshHealthSuspectedSelfIntersectionCount = meshHealthValidation?.selfIntersection.checked
+    ? meshHealthValidation.selfIntersection.suspectedPairs
+    : meshAnalyzeDiagnostics?.selfIntersectionPairs ?? 0;
+  const meshHealthHasFullValidation = !!meshHealthValidation && meshHealthValidation.selfIntersection.checked;
   const meshHealthIssueCount =
     (meshHealthBoundaryEdgeCount ?? 0) +
     (meshHealthNonManifoldEdgeCount ?? 0) +
     (meshHealthDegenerateFaceCount ?? 0) +
     (meshHealthDuplicateFaceCount ?? 0) +
-    (meshHealthValidation?.selfIntersection.checked ? meshHealthValidation.selfIntersection.suspectedPairs : 0);
+    meshHealthSuspectedSelfIntersectionCount;
+  const meshHealthIssueCategoryCount = [
+    meshHealthBoundaryEdgeCount,
+    meshHealthNonManifoldEdgeCount,
+    meshHealthDegenerateFaceCount,
+    meshHealthDuplicateFaceCount,
+    meshHealthSuspectedSelfIntersectionCount,
+  ].filter((count) => (count ?? 0) > 0).length;
   const meshHealthStatusLabel = meshSummaryTopologyDeferred
-    ? "Analysis deferred"
-    : meshHealthValidation
-      ? meshHealthValidation.watertight && meshHealthValidation.manifold && meshHealthIssueCount === 0
-        ? "Healthy"
-        : "Needs review"
-      : watertight === true && (meshHealthNonManifoldEdgeCount ?? 0) === 0 && (meshHealthBoundaryEdgeCount ?? 0) === 0
-      ? "Healthy"
-      : watertight === false || meshHealthIssueCount > 0
-          ? "Needs review"
-          : "Unknown";
+    ? "Unverified"
+    : !meshHealthHasFullValidation && meshHealthIssueCount > 0
+      ? "Needs validation"
+      : meshHealthHasFullValidation && meshHealthIssueCount > 0
+        ? "Invalid"
+        : meshHealthHasFullValidation && meshHealthValidation.watertight && meshHealthValidation.manifold
+          ? "Healthy"
+          : watertight === false || (meshHealthNonManifoldEdgeCount ?? 0) > 0 || (meshHealthBoundaryEdgeCount ?? 0) > 0
+            ? "Invalid"
+            : "Unverified";
+  const meshHealthStatusDisplay =
+    meshHealthStatusLabel === "Healthy"
+      ? "✓ Healthy"
+      : meshHealthStatusLabel === "Invalid"
+        ? "✕ Invalid"
+        : meshHealthStatusLabel === "Needs validation"
+          ? "? Needs validation"
+          : "? Unverified";
   const meshDiagnosticsValidationBlockers = meshHealthValidation ? getBooleanValidationBlockers(meshHealthValidation) : ["Run Validate first"];
   const meshCompactDimensionLabel = meshSummaryDimensions
     ? `X ${fmt(meshSummaryDimensions.x)} | Y ${fmt(meshSummaryDimensions.y)} | Z ${fmt(meshSummaryDimensions.z)}`
@@ -114066,7 +114092,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const meshHealthTone =
     meshHealthStatusLabel === "Healthy"
       ? { border: "#86efac", background: "#f0fdf4", color: "#166534" }
-      : meshHealthStatusLabel === "Needs review"
+      : meshHealthStatusLabel === "Invalid"
+        ? { border: "#fca5a5", background: "#fef2f2", color: "#b42318" }
+        : meshHealthStatusLabel === "Needs validation"
         ? { border: "#fcd34d", background: "#fffbeb", color: "#92400e" }
         : { border: "#dbe4ee", background: "#f8fafc", color: "#475467" };
   const meshLastOperationVerdict = (() => {
@@ -114225,7 +114253,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {meshHealthStatusLabel}
+                      {meshHealthStatusDisplay}
                     </span>
                   </div>
                   <div style={{ display: "grid", gap: 2 }}>
@@ -114248,21 +114276,28 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                   {meshHealthIssueCount > 0 ? (
                     <div
                       style={{
-                        border: "1px solid #fbbf24",
+                        border: `1px solid ${meshHealthTone.border}`,
                         borderRadius: 7,
-                        background: "#fffbeb",
+                        background: meshHealthTone.background,
                         padding: "7px 8px",
                         display: "grid",
                         gap: 4,
                         fontSize: 11,
                       }}
                     >
-                      <strong style={{ color: "#92400e" }}>Needs review</strong>
+                      <strong style={{ color: meshHealthTone.color }}>
+                        {meshHealthStatusLabel} · {meshHealthIssueCategoryCount} issue categor{meshHealthIssueCategoryCount === 1 ? "y" : "ies"}
+                      </strong>
                       {renderHealthCountRow("Boundary edges", meshHealthBoundaryEdgeCount)}
                       {renderHealthCountRow("Non-manifold edges", meshHealthNonManifoldEdgeCount)}
                       {renderHealthCountRow("Degenerate faces", meshHealthDegenerateFaceCount)}
                       {renderHealthCountRow("Duplicate faces", meshHealthDuplicateFaceCount)}
                       {renderHealthCountRow("Self intersections", meshHealthSelfIntersectionLabel)}
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button type="button" onClick={() => void onValidateActiveMesh()}>
+                          Validate fully
+                        </button>
+                      </div>
                     </div>
                   ) : null}
 
