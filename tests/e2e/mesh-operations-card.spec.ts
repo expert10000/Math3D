@@ -571,6 +571,11 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/A: Boolean demo A/i);
     await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/B: Boolean demo B/i);
     await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/Result: Boolean demo A/i);
+    await page.getByTestId("mesh-inspector-tab-history").click();
+    const booleanProvenance = page.getByTestId("mesh-operation-provenance-graph");
+    const booleanNode = booleanProvenance.getByRole("button", { name: /Boolean difference/i }).last();
+    await expect(booleanNode).toHaveAttribute("data-parent-count", "1");
+    await expect(booleanNode).toContainText(/Inputs: Boolean demo A \+ Boolean demo B/i);
     const reviewCard = card.getByTestId("mesh-operation-boolean-card");
     await reviewCard.getByTestId("mesh-boolean-review-b-visibility").click();
     await expect(reviewCard).toContainText(/Hidden/i);

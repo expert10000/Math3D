@@ -57,6 +57,9 @@ export type MeshOperationHistoryEntry = {
   at: number;
   result: MeshOperationResultSummary;
   request?: MeshOperationRequest;
+  /** Earlier operation results this entry consumes; absent only for an imported/root mesh. */
+  parentEntryIds?: string[];
+  outputLabel?: string;
   topologyHistoryEntryId?: string | null;
   undoneAt?: number | null;
 };

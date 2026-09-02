@@ -33740,13 +33740,28 @@ const App: React.FC = () => {
       setMeshLastOperation(result);
       setMeshOperationHistory((prev) =>
         [
-          {
+          (() => {
+            const inputLabels = request?.inputs ?? result.sourceIds;
+            const parents = inputLabels
+              .map((inputLabel) =>
+                prev.find((entry) => {
+                  const output = entry.outputLabel ?? entry.result.booleanReview?.result ?? entry.result.sourceIds[0] ?? entry.result.label;
+                  return output === inputLabel;
+                })
+              )
+              .filter((entry): entry is MeshOperationHistoryEntry => Boolean(entry))
+              .filter((entry, index, entries) => entries.findIndex((candidate) => candidate.id === entry.id) === index);
+            const fallbackParent = parents.length ? null : prev.find((entry) => !entry.undoneAt && entry.result.status !== "error");
+            return {
             id: makeId(),
             at: Date.now(),
             result,
             request: request ?? undefined,
+            parentEntryIds: (parents.length ? parents : fallbackParent ? [fallbackParent] : []).map((entry) => entry.id),
+            outputLabel: result.booleanReview?.result ?? result.sourceIds[0] ?? request?.inputs[0] ?? result.label,
             topologyHistoryEntryId: topologyHistoryEntryId ?? null,
-          },
+            };
+          })(),
           ...prev,
         ].slice(0, 32)
       );
@@ -115076,12 +115091,14 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                     .map((entry, index, chain) => {
                       const isCurrent = index === chain.length - 1 && !entry.undoneAt;
                       const inputCount = entry.request?.inputs.length ?? 0;
+                      const parentCount = entry.parentEntryIds?.length ?? 0;
                       return (
                         <React.Fragment key={`mesh-operation-provenance-node-${entry.id}`}>
                           <div style={{ height: 10, borderLeft: "2px solid #94a3b8", marginLeft: 14 }} />
                           <button
                             type="button"
                             data-testid={`mesh-operation-provenance-node-${entry.id}`}
+                            data-parent-count={parentCount}
                             onClick={() => onPreviewMeshOperationHistoryEntry(entry.id, "after")}
                             disabled={!entry.topologyHistoryEntryId}
                             title={entry.topologyHistoryEntryId ? "Preview this operation result" : "No preview snapshot is available"}
@@ -115103,7 +115120,12 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                               {isCurrent && <span style={{ color: "#166534", fontSize: 10, fontWeight: 850 }}>current</span>}
                             </div>
                             <div style={{ color: "#475569", marginTop: 2 }}>
-                              {inputCount > 1 ? `${inputCount} inputs` : entry.request?.inputs[0] ? `from ${entry.request.inputs[0]}` : "operation result"}
+                              {inputCount > 1
+                                ? `Inputs: ${entry.request?.inputs.join(" + ")}`
+                                : entry.request?.inputs[0]
+                                  ? `from ${entry.request.inputs[0]}`
+                                  : "operation result"}
+                              {parentCount > 0 ? ` · depends on ${parentCount} earlier result${parentCount === 1 ? "" : "s"}` : ""}
                               {entry.undoneAt ? " · undone" : ""}
                             </div>
                           </button>
