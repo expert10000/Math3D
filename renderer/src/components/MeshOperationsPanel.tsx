@@ -1285,30 +1285,63 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
           {workerReady ? "worker ready" : workerStatusText}
         </span>
       </div>
-      <div style={{ display: "grid", gap: 4 }}>
-        <div style={{ fontSize: 10, fontWeight: 800, color: "#0f3557" }}>Presets</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-          {MESH_OPERATION_PRESETS.map((preset) => (
-            <button
-              key={`${testId}-preset-${preset.id}`}
-              data-testid={`${testId}-preset-${preset.id}`}
-              type="button"
-              onClick={() => applyPreset(preset.id)}
-              title={preset.description}
-              style={{
-                border: "1px solid #a7f3d0",
-                background: expandedOperation === preset.operation ? "#bbf7d0" : "#fff",
-                color: "#0f3557",
-                borderRadius: 999,
-                padding: "3px 8px",
-                fontSize: 10,
-                fontWeight: 800,
-              }}
-            >
-              {preset.label}
-            </button>
-          ))}
+      <div data-testid={`${testId}-presets`} style={{ display: "grid", gap: 5, borderBottom: "1px solid #bbf7d0", paddingBottom: 6 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+          <strong style={{ fontSize: 10 }}>Presets</strong>
+          <div style={{ display: "flex", gap: 5 }}>
+            <button data-testid={`${testId}-save-current-preset`} type="button" onClick={onSaveOperationPreset} disabled={!canSaveOperationPreset || !onSaveOperationPreset}>Save</button>
+            <button data-testid={`${testId}-manage-presets`} type="button" onClick={() => setPresetManagerOpen((open) => !open)} aria-expanded={presetManagerOpen}>Manage</button>
+          </div>
         </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+          <strong style={{ fontSize: 10 }}>Recent</strong>
+          <select
+            data-testid={`${testId}-recent-preset`}
+            value={recentPresetId}
+            onChange={(event) => {
+              const presetId = event.target.value;
+              setRecentPresetId(presetId);
+              if (presetId) void onApplySavedOperationPreset?.(presetId);
+            }}
+            disabled={!savedPresets.length || !onApplySavedOperationPreset}
+            style={{ minWidth: 132, fontSize: 10 }}
+          >
+            <option value="">Choose recent...</option>
+            {savedPresets.slice(0, 12).map((preset) => <option key={`${testId}-recent-preset-${preset.id}`} value={preset.id}>{preset.name}</option>)}
+          </select>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+          <strong style={{ fontSize: 10 }}>Examples</strong>
+          <button data-testid={`${testId}-preset-bunny-smooth-validate`} type="button" onClick={() => applyPreset("bunny-smooth-validate")}>Bunny</button>
+          <button data-testid={`${testId}-preset-validate-armadillo`} type="button" onClick={() => applyPreset("validate-armadillo")}>Armadillo</button>
+          <button data-testid={`${testId}-preset-benchy-cutter-boolean`} type="button" onClick={() => applyPreset("benchy-cutter-boolean")}>Boolean</button>
+          <button data-testid={`${testId}-preset-implicit-sphere-mesh`} type="button" onClick={() => applyPreset("implicit-sphere-mesh")}>Implicit</button>
+        </div>
+        {presetManagerOpen && (
+          <div data-testid={`${testId}-saved-presets`} style={{ display: "grid", gap: 4, borderTop: "1px solid #d1fae5", paddingTop: 5 }}>
+            <strong style={{ fontSize: 10 }}>More workflows</strong>
+            {MESH_OPERATION_PRESETS.filter((preset) => !["bunny-smooth-validate", "validate-armadillo", "benchy-cutter-boolean", "implicit-sphere-mesh"].includes(preset.id)).map((preset) => (
+              <button
+                key={`${testId}-preset-${preset.id}`}
+                data-testid={`${testId}-preset-${preset.id}`}
+                type="button"
+                onClick={() => applyPreset(preset.id)}
+                title={preset.description}
+                style={{ justifySelf: "start", fontSize: 10 }}
+              >
+                {preset.label}
+              </button>
+            ))}
+            {savedPresets.length > 0 && <strong style={{ fontSize: 10, marginTop: 2 }}>Saved</strong>}
+            {savedPresets.map((preset) => (
+              <div key={`${testId}-saved-preset-${preset.id}`} data-testid={`${testId}-saved-preset`} style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center" }}>
+                <span title={preset.name} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{preset.name}</span>
+                <button data-testid={`${testId}-apply-saved-preset-${preset.id}`} type="button" onClick={() => void onApplySavedOperationPreset?.(preset.id)} disabled={!onApplySavedOperationPreset}>Use</button>
+              </div>
+            ))}
+            {!savedPresets.length && <div style={{ color: "#64748b" }}>No saved operation presets yet.</div>}
+          </div>
+        )}
       </div>
       <div style={{ display: "grid", gap: 6, fontSize: 10 }}>
         {MESH_OPERATION_GROUPS.map((group) => (
@@ -2363,71 +2396,9 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
           <div style={{ color: "#64748b" }}>Click any row to set parameters, then Run.</div>
         )}
       </div>
-      <div data-testid={`${testId}-history`} style={{ borderTop: "1px solid #bbf7d0", paddingTop: 5, display: "grid", gap: 5, fontSize: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-          <strong>Presets</strong>
-          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "flex-end" }}>
-            <button
-              data-testid={`${testId}-save-current-preset`}
-              type="button"
-              onClick={onSaveOperationPreset}
-              disabled={!canSaveOperationPreset || !onSaveOperationPreset}
-              title="Save the current operation request and parameters."
-            >
-              Save preset
-            </button>
-            <button
-              data-testid={`${testId}-manage-presets`}
-              type="button"
-              onClick={() => setPresetManagerOpen((open) => !open)}
-              aria-expanded={presetManagerOpen}
-            >
-              Manage
-            </button>
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-          <strong style={{ fontSize: 10 }}>Recent</strong>
-          <select
-            data-testid={`${testId}-recent-preset`}
-            value={recentPresetId}
-            onChange={(event) => {
-              const presetId = event.target.value;
-              setRecentPresetId(presetId);
-              if (presetId) void onApplySavedOperationPreset?.(presetId);
-            }}
-            disabled={!savedPresets.length || !onApplySavedOperationPreset}
-            style={{ minWidth: 132, fontSize: 10 }}
-          >
-            <option value="">Choose recent...</option>
-            {savedPresets.slice(0, 12).map((preset) => (
-              <option key={`${testId}-recent-preset-${preset.id}`} value={preset.id}>
-                {preset.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-          <strong style={{ fontSize: 10 }}>Examples</strong>
-          <button type="button" data-testid={`${testId}-preset-bunny`} onClick={() => applyPreset("bunny-smooth-validate")}>Bunny</button>
-          <button type="button" data-testid={`${testId}-preset-armadillo`} onClick={() => applyPreset("validate-armadillo")}>Armadillo</button>
-          <button type="button" data-testid={`${testId}-preset-boolean`} onClick={() => applyPreset("benchy-cutter-boolean")}>Boolean</button>
-          <button type="button" data-testid={`${testId}-preset-implicit`} onClick={() => applyPreset("implicit-sphere-mesh")}>Implicit</button>
-        </div>
-        {presetManagerOpen && (
-          <div data-testid={`${testId}-saved-presets`} style={{ display: "grid", gap: 4, borderTop: "1px solid #d1fae5", paddingTop: 5 }}>
-            {savedPresets.length > 0 ? savedPresets.slice(0, 12).map((preset) => (
-              <div key={`${testId}-saved-preset-${preset.id}`} data-testid={`${testId}-saved-preset`} style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center" }}>
-                <span title={preset.name} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{preset.name}</span>
-                <button data-testid={`${testId}-apply-saved-preset-${preset.id}`} type="button" onClick={() => void onApplySavedOperationPreset?.(preset.id)} disabled={!onApplySavedOperationPreset}>Use</button>
-              </div>
-            )) : <div style={{ color: "#64748b" }}>No saved operation presets yet.</div>}
-          </div>
-        )}
-        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-          <button data-testid={`${testId}-undo-last-operation`} type="button" onClick={onUndoLastOperation} disabled={!canUndoLastOperation} title="Undo the latest operation-backed mesh result.">Undo</button>
-          <span style={{ color: "#64748b" }}>Detailed operation history is in Inspector → History.</span>
-        </div>
+      <div data-testid={`${testId}-history`} style={{ borderTop: "1px solid #bbf7d0", paddingTop: 5, display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center", fontSize: 10 }}>
+        <button data-testid={`${testId}-undo-last-operation`} type="button" onClick={onUndoLastOperation} disabled={!canUndoLastOperation} title="Undo the latest operation-backed mesh result.">Undo</button>
+        <span style={{ color: "#64748b" }}>Detailed operation history is in Inspector → History.</span>
       </div>
     </div>
   );

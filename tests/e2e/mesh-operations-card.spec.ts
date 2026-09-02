@@ -93,6 +93,15 @@ async function visibleMeshOperationsCard(page: Page): Promise<Locator> {
   return card;
 }
 
+async function applyManagedMeshPreset(card: Locator, presetId: string): Promise<void> {
+  const preset = card.getByTestId(`mesh-workspace-operation-registry-preset-${presetId}`);
+  if (!(await preset.isVisible().catch(() => false))) {
+    await card.getByTestId("mesh-workspace-operation-registry-manage-presets").click();
+  }
+  await expect(preset).toBeVisible();
+  await preset.click();
+}
+
 async function visibleImplicitWorkflowCta(page: Page): Promise<Locator> {
   const cta = await firstVisible(page.getByTestId("implicit-mesh-workflow-cta"));
   await cta.scrollIntoViewIfNeeded();
@@ -132,7 +141,7 @@ async function runRobustCutterPresetFullFlow(
 ): Promise<void> {
   await selectSection(page, "Mesh");
   const card = await openWorkspaceOperationsCard(page);
-  await card.getByTestId(`mesh-workspace-operation-registry-preset-${presetId}`).click();
+  await applyManagedMeshPreset(card, presetId);
   await expect(page.getByText(loadedMesh).first()).toBeVisible({ timeout: 45_000 });
   await expect(card.getByTestId("mesh-workspace-operation-registry-row-boolean-difference")).toHaveAttribute(
     "aria-expanded",
@@ -210,8 +219,10 @@ test.describe("Mesh Operations card", () => {
     for (const group of ["repair", "simplify", "smooth", "boolean", "implicit"]) {
       await expect(card.getByTestId(`mesh-workspace-operation-registry-group-${group}`)).toBeVisible();
     }
+    await card.getByTestId("mesh-workspace-operation-registry-manage-presets").click();
     await expect(card.getByTestId("mesh-workspace-operation-registry-preset-armadillo-robust-boolean")).toBeVisible();
     await expect(card.getByTestId("mesh-workspace-operation-registry-preset-sphere-minus-box")).toBeVisible();
+    await card.getByTestId("mesh-workspace-operation-registry-manage-presets").click();
 
     for (const preset of [
       "cgal-validate",
@@ -222,8 +233,8 @@ test.describe("Mesh Operations card", () => {
       "decimate-3dbenchy",
       "smooth-bunny",
     ]) {
-      await card.getByTestId(`mesh-workspace-operation-registry-preset-${preset}`).click();
-      await expect(card.locator("[aria-expanded=\"true\"]")).toBeVisible();
+      await applyManagedMeshPreset(card, preset);
+      await expect(card.locator('[data-testid*="-row-"][aria-expanded="true"]')).toBeVisible();
     }
 
     await card.getByTestId("mesh-workspace-operation-registry-row-cgal-validate").click();
@@ -295,12 +306,13 @@ test.describe("Mesh Operations card", () => {
     await showResultDetails.click();
     await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toBeFocused();
     await expect(card.getByTestId("mesh-workspace-operation-registry-send-to-geometry")).toBeEnabled();
-    await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Presets/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-presets")).toContainText(/Presets/i);
     await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Inspector → History/i);
     await expect(card.getByTestId("mesh-workspace-operation-registry-undo-last-operation")).toHaveText("Undo");
 
     await card.getByTestId("mesh-workspace-operation-registry-save-current-preset").click();
-    await card.getByTestId("mesh-workspace-operation-registry-manage-presets").click();
+    const managePresets = card.getByTestId("mesh-workspace-operation-registry-manage-presets");
+    if ((await managePresets.getAttribute("aria-expanded")) !== "true") await managePresets.click();
     const savedPresets = card.getByTestId("mesh-workspace-operation-registry-saved-presets");
     await expect(savedPresets).toContainText(/Decimate preset/i);
     await expect(savedPresets.getByTestId("mesh-workspace-operation-registry-saved-preset").first()).toContainText(/Decimate/i);
@@ -365,7 +377,7 @@ test.describe("Mesh Operations card", () => {
     await selectSection(page, "Mesh");
 
     let card = await openWorkspaceOperationsCard(page);
-    await card.getByTestId("mesh-workspace-operation-registry-preset-boolean-demo-pair").click();
+    await applyManagedMeshPreset(card, "boolean-demo-pair");
     await expect(page.getByText(/Boolean demo A/i).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/Boolean demo B/i).first()).toBeVisible({ timeout: 15_000 });
     await selectSection(page, "Mesh");
@@ -442,7 +454,7 @@ test.describe("Mesh Operations card", () => {
     await selectSection(page, "Mesh");
 
     let card = await openWorkspaceOperationsCard(page);
-    await card.getByTestId("mesh-workspace-operation-registry-preset-boolean-demo-pair").click();
+    await applyManagedMeshPreset(card, "boolean-demo-pair");
     await expect(page.getByText(/Boolean demo A/i).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/Boolean demo B/i).first()).toBeVisible({ timeout: 15_000 });
 
@@ -504,7 +516,7 @@ test.describe("Mesh Operations card", () => {
     await selectSection(page, "Mesh");
 
     let card = await openWorkspaceOperationsCard(page);
-    await card.getByTestId("mesh-workspace-operation-registry-preset-boolean-demo-pair").click();
+    await applyManagedMeshPreset(card, "boolean-demo-pair");
     await expect(page.getByText(/Boolean demo A/i).first()).toBeVisible({ timeout: 15_000 });
     await selectSection(page, "Mesh");
     card = await openWorkspaceOperationsCard(page);
@@ -583,7 +595,7 @@ test.describe("Mesh Operations card", () => {
     await selectSection(page, "Mesh");
 
     const card = await openWorkspaceOperationsCard(page);
-    await card.getByTestId("mesh-workspace-operation-registry-preset-sphere-minus-box").click();
+    await applyManagedMeshPreset(card, "sphere-minus-box");
     await expect(page.getByText(/Sphere solid/i).first()).toBeVisible({ timeout: 15_000 });
     await expect(card.getByTestId("mesh-workspace-operation-registry-row-boolean-difference")).toHaveAttribute(
       "aria-expanded",
@@ -628,7 +640,7 @@ test.describe("Mesh Operations card", () => {
     await selectSection(page, "Mesh");
 
     const card = await openWorkspaceOperationsCard(page);
-    await card.getByTestId("mesh-workspace-operation-registry-preset-boolean-demo-pair").click();
+    await applyManagedMeshPreset(card, "boolean-demo-pair");
     await expect(page.getByText(/Boolean demo A/i).first()).toBeVisible({ timeout: 15_000 });
     await selectSection(page, "Mesh");
     const meshCard = await openWorkspaceOperationsCard(page);
@@ -705,7 +717,7 @@ test.describe("Mesh Operations card", () => {
     await selectSection(page, "Mesh");
 
     const card = await openWorkspaceOperationsCard(page);
-    await card.getByTestId("mesh-workspace-operation-registry-preset-validate-bunny").click();
+    await applyManagedMeshPreset(card, "validate-bunny");
     await expect(page.getByText(/08_stanford_bunny\.obj/i).first()).toBeVisible({
       timeout: 20_000,
     });
@@ -726,7 +738,7 @@ test.describe("Mesh Operations card", () => {
     await selectSection(page, "Mesh");
 
     const card = await openWorkspaceOperationsCard(page);
-    await card.getByTestId("mesh-workspace-operation-registry-preset-repair-bunny").click();
+    await applyManagedMeshPreset(card, "repair-bunny");
     await expect(page.getByText(/08_stanford_bunny\.obj/i).first()).toBeVisible({
       timeout: 20_000,
     });
@@ -820,7 +832,7 @@ test.describe("Mesh Operations card", () => {
     await loadBenchmarkModel(page, "cube-obj");
 
     const card = await openWorkspaceOperationsCard(page);
-    await card.getByTestId("mesh-workspace-operation-registry-preset-cgal-repair-validate").click();
+    await applyManagedMeshPreset(card, "cgal-repair-validate");
     await expect(card.getByTestId("mesh-workspace-operation-registry-row-cgal-repair-validate")).toHaveAttribute(
       "aria-expanded",
       "true"
