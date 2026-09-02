@@ -335,6 +335,9 @@ test.describe("Mesh Operations card", () => {
     await page.getByTestId("mesh-inspector-tab-history").click();
     const inspectorHistory = page.getByTestId("mesh-inspector-history-card");
     await expect(inspectorHistory).toContainText(/Decimate/i);
+    const provenanceGraph = page.getByTestId("mesh-operation-provenance-graph");
+    await expect(provenanceGraph).toContainText(/Source/i);
+    await expect(provenanceGraph).toContainText(/Decimate/i);
     await expect(inspectorHistory.getByRole("button", { name: "Preview before" }).first()).toBeDisabled();
   });
 

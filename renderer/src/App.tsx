@@ -115052,6 +115052,67 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               <div style={inspectorSectionTitle}>Mesh History</div>
               <span style={{ color: "#64748b", fontSize: 10 }}>{meshOperationHistory.length.toLocaleString()} step{meshOperationHistory.length === 1 ? "" : "s"}</span>
             </div>
+            {meshOperationHistory.length > 0 && (
+              <details open data-testid="mesh-operation-provenance-graph" style={{ marginBottom: 10 }}>
+                <summary style={{ cursor: "pointer", fontSize: 11, fontWeight: 850, color: "#0f172a" }}>
+                  Operation provenance
+                </summary>
+                <div style={{ display: "grid", gap: 0, marginTop: 7, fontSize: 11 }}>
+                  <div
+                    style={{
+                      border: "1px solid #cbd5e1",
+                      borderRadius: 6,
+                      background: "#f8fafc",
+                      padding: "6px 7px",
+                      color: "#334155",
+                    }}
+                  >
+                    <strong>Source</strong> · {meshOperationHistory[meshOperationHistory.length - 1]?.request?.inputs.join(" + ") || meshSummaryTitle}
+                  </div>
+                  {meshOperationHistory
+                    .slice(0, 12)
+                    .slice()
+                    .reverse()
+                    .map((entry, index, chain) => {
+                      const isCurrent = index === chain.length - 1 && !entry.undoneAt;
+                      const inputCount = entry.request?.inputs.length ?? 0;
+                      return (
+                        <React.Fragment key={`mesh-operation-provenance-node-${entry.id}`}>
+                          <div style={{ height: 10, borderLeft: "2px solid #94a3b8", marginLeft: 14 }} />
+                          <button
+                            type="button"
+                            data-testid={`mesh-operation-provenance-node-${entry.id}`}
+                            onClick={() => onPreviewMeshOperationHistoryEntry(entry.id, "after")}
+                            disabled={!entry.topologyHistoryEntryId}
+                            title={entry.topologyHistoryEntryId ? "Preview this operation result" : "No preview snapshot is available"}
+                            style={{
+                              appearance: "none",
+                              width: "100%",
+                              textAlign: "left",
+                              border: `1px solid ${isCurrent ? "#86efac" : "#bfdbfe"}`,
+                              borderRadius: 6,
+                              background: isCurrent ? "#f0fdf4" : "#eff6ff",
+                              padding: "6px 7px",
+                              color: "#0f3557",
+                              opacity: entry.topologyHistoryEntryId ? 1 : 0.72,
+                              cursor: entry.topologyHistoryEntryId ? "pointer" : "default",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
+                              <strong>{entry.result.label}</strong>
+                              {isCurrent && <span style={{ color: "#166534", fontSize: 10, fontWeight: 850 }}>current</span>}
+                            </div>
+                            <div style={{ color: "#475569", marginTop: 2 }}>
+                              {inputCount > 1 ? `${inputCount} inputs` : entry.request?.inputs[0] ? `from ${entry.request.inputs[0]}` : "operation result"}
+                              {entry.undoneAt ? " · undone" : ""}
+                            </div>
+                          </button>
+                        </React.Fragment>
+                      );
+                    })}
+                </div>
+              </details>
+            )}
             <div style={{ fontSize: 11, display: "grid", gap: 8 }}>
               {meshOperationHistory.length === 0 ? (
                 <div style={{ color: "#64748b" }}>No mesh operations yet.</div>
