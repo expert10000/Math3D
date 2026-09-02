@@ -58550,6 +58550,32 @@ case "mobius":
     setMeshAnalyzeDiagnosticOverlayMode("none");
     setSurfaceMeshTopologyStatus("Diagnostics recomputed.");
   }, []);
+  const handleShowMeshHealthProblems = useCallback(() => {
+    setSurfacesLeftTab("analysis");
+    if (surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount) {
+      handleHighlightMeshAnalyzeBoundary();
+      return;
+    }
+    if (surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount) {
+      handleHighlightMeshAnalyzeDuplicates();
+      return;
+    }
+    setMeshAnalyzeDiagnosticOverlayMode("none");
+    setSurfaceMeshTopologyStatus(
+      "Mesh Health found a non-spatial issue. Review Diagnostics for full validation details."
+    );
+    showSelectionEventStatus(
+      "Mesh",
+      "No spatial overlay is available for this validation finding. Review Diagnostics.",
+      "mesh-health-problems-no-spatial-overlay"
+    );
+  }, [
+    handleHighlightMeshAnalyzeBoundary,
+    handleHighlightMeshAnalyzeDuplicates,
+    showSelectionEventStatus,
+    surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount,
+    surfaceMeshAnalyzeDiagnostics?.duplicateVertexCount,
+  ]);
   const meshAnalyzeDiagnosticFocusActive =
     surfaceViewerKind === "mesh" &&
     surfacesLeftTab === "analysis" &&
@@ -64492,6 +64518,26 @@ case "mobius":
   ]);
 
   const unifiedObjectNodes = unifiedObjectModel.nodes;
+  const meshWorkspaceSceneNodes = useMemo(() => {
+    const activeId = unifiedObjectModel.activeDatasetNodeId;
+    if (!activeId) return unifiedObjectNodes.filter((node) => node.category !== "sceneObject");
+    const scopedIds = new Set<string>();
+    let cursor = unifiedObjectModel.nodeById.get(activeId) ?? null;
+    while (cursor) {
+      scopedIds.add(cursor.id);
+      cursor = cursor.parentId ? unifiedObjectModel.nodeById.get(cursor.parentId) ?? null : null;
+    }
+    return unifiedObjectNodes.filter(
+      (node) => scopedIds.has(node.id) || (node.category === "derived" && !!node.parentId && scopedIds.has(node.parentId))
+    );
+  }, [unifiedObjectModel.activeDatasetNodeId, unifiedObjectModel.nodeById, unifiedObjectNodes]);
+  const meshWorkspaceOtherSceneObjectCount = useMemo(() => {
+    const scopedIds = new Set(meshWorkspaceSceneNodes.map((node) => node.id));
+    return unifiedObjectNodes.filter((node) => node.category === "sceneObject" && !scopedIds.has(node.id)).length;
+  }, [meshWorkspaceSceneNodes, unifiedObjectNodes]);
+  const meshWorkspaceSelectedId = meshWorkspaceSceneNodes.some((node) => node.id === unifiedTreeSelectedId)
+    ? unifiedTreeSelectedId
+    : unifiedObjectModel.activeDatasetNodeId;
   const unifiedSelectedNode = unifiedTreeSelectedId
     ? unifiedObjectModel.nodeById.get(unifiedTreeSelectedId) ?? null
     : null;
@@ -70593,16 +70639,6 @@ case "mobius":
                           >
                             Benchmark Model... [DEV]
                           </button>
-                          {isDev && (
-                            <button
-                              type="button"
-                              onClick={() => setMeshDebugDrawerOpen((open) => !open)}
-                              style={pill(meshDebugDrawerOpen)}
-                              aria-pressed={meshDebugDrawerOpen}
-                            >
-                              Developer diagnostics
-                            </button>
-                          )}
                           <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <input
                               type="checkbox"
@@ -71609,9 +71645,16 @@ case "mobius":
                   )}
                   {meshWorkspaceLeftTab === "scene" && (
                   <UnifiedObjectTreePanel
-                    title={isInspectDisplayMode ? "Scene roles / pipeline" : "Scene contents"}
-                    nodes={unifiedObjectNodes}
-                    selectedId={unifiedTreeSelectedId}
+                    title={isInspectDisplayMode ? "Mesh viewport / pipeline" : "Mesh viewport"}
+                    contextDescription={
+                      meshWorkspaceOtherSceneObjectCount > 0
+                        ? `Showing the active mesh and its overlays. ${meshWorkspaceOtherSceneObjectCount.toLocaleString()} Geometry scene object${
+                            meshWorkspaceOtherSceneObjectCount === 1 ? " is" : "s are"
+                          } managed in Geometry.`
+                        : "Showing the active mesh and its overlays."
+                    }
+                    nodes={meshWorkspaceSceneNodes}
+                    selectedId={meshWorkspaceSelectedId}
                     onSelect={handleSelectUnifiedNode}
                     onFocus={handleFocusUnifiedNode}
                     onToggleVisibility={handleToggleUnifiedNodeVisibility}
@@ -77482,6 +77525,7 @@ case "mobius":
                       meshOperationHistory={meshOperationHistory}
                       meshOperationError={meshOperationError}
                       onValidateActiveMesh={handleMeshOperationValidate}
+                      onShowMeshHealthProblems={handleShowMeshHealthProblems}
                       onValidateLastMeshOperationResult={handleValidateLastMeshOperationResult}
                       onPreviewMeshOperationHistoryEntry={previewMeshOperationHistoryEntry}
                       onRestoreMeshOperationHistoryEntry={restoreMeshOperationHistoryEntry}
@@ -77529,6 +77573,7 @@ case "mobius":
                       meshPerformanceLastBuildMs={meshPerformanceLastBuildMs}
                       meshPipelineProfile={meshPipelineProfile}
                       meshDebugMonitor={meshDebugMonitor}
+                      onOpenMeshDeveloperDiagnostics={() => setMeshDebugDrawerOpen(true)}
                       onClearMeshDebugMonitor={clearMeshDebugMonitor}
                       onRunMeshPerformanceBenchmark={handleRunMeshPerformanceBenchmark}
                       onRestoreMeshPerformanceBaseline={handleRestoreMeshPerformanceBaseline}
@@ -100867,6 +100912,7 @@ type UnifiedObjectTreePanelProps = {
   onIsolateSelected?: () => void;
   canShowAllSceneObjects?: boolean;
   onShowAllSceneObjects?: () => void;
+  contextDescription?: string;
   fillHeight?: boolean;
 };
 
@@ -101078,6 +101124,7 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
   onIsolateSelected,
   canShowAllSceneObjects = false,
   onShowAllSceneObjects,
+  contextDescription,
   fillHeight = false,
 }) => {
   const [listMode, setListMode] = useState<"grouped" | "flat">("grouped");
@@ -101170,6 +101217,22 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
   const selectedCanForceRemove = !!selected && !!onForceRemoveNode;
   const selectedQuickToggleLabel =
     selected && typeof selected.visible === "boolean" && selected.visible ? "Hide" : "Show";
+  const compactNodeName = (name: string) => {
+    const withoutGeneratedSuffixes = name
+      .replace(/\s+\(Implicit mesh\)/gi, "")
+      .replace(/\s+mesh object$/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    return withoutGeneratedSuffixes.length > 44
+      ? `${withoutGeneratedSuffixes.slice(0, 43).trimEnd()}...`
+      : withoutGeneratedSuffixes;
+  };
+  const sceneObjectNodes = nodes.filter((node) => node.category === "sceneObject");
+  const visibleSceneObjectCount = sceneObjectNodes.filter((node) => node.visible !== false).length;
+  const visibleNodeCount = nodes.filter((node) => node.visible !== false).length;
+  const sceneSummary = sceneObjectNodes.length
+    ? `${visibleSceneObjectCount}/${sceneObjectNodes.length} scene object${sceneObjectNodes.length === 1 ? "" : "s"} visible`
+    : `${visibleNodeCount}/${nodes.length} viewport item${nodes.length === 1 ? "" : "s"} visible`;
 
   const renderRow = (node: UnifiedObjectNode) => {
     const active = selectedId === node.id;
@@ -101181,14 +101244,6 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
     const canDuplicate = node.category === "sceneObject" && !!onDuplicateNode;
     const canRename = node.category === "sceneObject" && !!onRenameNode;
     const roleIcon = role === "primaryObject" ? "P" : role === "overlay" ? "O" : role === "derivedResult" ? "D" : "R";
-    const sourceKind =
-      node.category === "surfaceDefinition"
-        ? "Surface definition"
-        : node.category === "sceneObject"
-          ? "Scene object"
-          : node.category === "dataset"
-            ? "Dataset"
-            : "Derived";
     const derivedFrom = node.parentId ? (byId.get(node.parentId)?.name ?? null) : null;
     const derivedStatus =
       node.derivedStatus ??
@@ -101205,8 +101260,8 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
           : derivedStatus === "ready"
             ? "#166534"
             : "#64748b";
-    const metaLine = [roleLabel, typeLabel, sourceKind].join(" · ");
-    const withSource = derivedFrom ? `${metaLine} · Derived from ${derivedFrom}` : metaLine;
+    const metaLine = [roleLabel, typeLabel].join(" · ");
+    const withSource = derivedFrom ? `${metaLine} · from ${compactNodeName(derivedFrom)}` : metaLine;
     const statusMeta = derivedStatus ? GEOMETRY_DERIVED_STATUS_META[derivedStatus] : null;
     const metadataLine = statusMeta
       ? `${withSource} · ${statusMeta.symbol ? `${statusMeta.symbol} ` : ""}${statusMeta.label.toUpperCase()}`
@@ -101270,7 +101325,7 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
                   whiteSpace: "nowrap",
                 }}
               >
-                {node.name}
+                {compactNodeName(node.name)}
               </span>
               <span
                 style={{
@@ -101434,7 +101489,11 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
       }}
     >
       <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
-        <div style={{ fontSize: 12, fontWeight: 700 }}>{title}</div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+          <div style={{ fontSize: 12, fontWeight: 700 }}>{title}</div>
+          <span style={{ color: "#64748b", fontSize: 10, fontWeight: 750, whiteSpace: "nowrap" }}>{sceneSummary}</span>
+        </div>
+        {contextDescription && <div style={{ color: "#64748b", fontSize: 10, lineHeight: 1.35 }}>{contextDescription}</div>}
         <div style={{ display: "grid", gap: 4 }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.3 }}>
             List mode
@@ -101559,7 +101618,9 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
         <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Selected item</div>
         {selected ? (
           <div style={{ display: "grid", gap: 6, fontSize: 11, overflowWrap: "anywhere" }}>
-            <div style={{ fontSize: 12, fontWeight: 700 }}>{selected.name}</div>
+            <div title={selected.name} style={{ fontSize: 12, fontWeight: 700 }}>
+              {compactNodeName(selected.name)}
+            </div>
             <div style={{ color: "#475569" }}>
               {selectedRoleLabel} · {shortTypeLabel(selected.type)} · mesh {selectedMeshReady ? "ready" : "n/a"} ·{" "}
               {typeof selected.visible === "boolean" ? (selected.visible ? "visible" : "hidden") : "n/a"}
@@ -112406,6 +112467,7 @@ type SurfacesRightPanelProps = {
   meshOperationHistory: MeshOperationHistoryEntry[];
   meshOperationError: string | null;
   onValidateActiveMesh: () => void | Promise<void>;
+  onShowMeshHealthProblems: () => void;
   onValidateLastMeshOperationResult: () => void | Promise<void>;
   onPreviewMeshOperationHistoryEntry: (entryId: string, side: "before" | "after") => void;
   onRestoreMeshOperationHistoryEntry: (entryId: string) => void;
@@ -112453,6 +112515,7 @@ type SurfacesRightPanelProps = {
   meshPerformanceLastBuildMs: number | null;
   meshPipelineProfile: MeshPipelineProfileRun | null;
   meshDebugMonitor: MeshDebugMonitorState;
+  onOpenMeshDeveloperDiagnostics: () => void;
   onClearMeshDebugMonitor: () => void;
   onRunMeshPerformanceBenchmark: (id: MeshPerfBenchmarkId) => void;
   onRestoreMeshPerformanceBaseline: () => void;
@@ -112666,6 +112729,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   meshOperationHistory,
   meshOperationError,
   onValidateActiveMesh,
+  onShowMeshHealthProblems,
   onValidateLastMeshOperationResult,
   onPreviewMeshOperationHistoryEntry,
   onRestoreMeshOperationHistoryEntry,
@@ -112713,6 +112777,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   meshPerformanceLastBuildMs,
   meshPipelineProfile,
   meshDebugMonitor,
+  onOpenMeshDeveloperDiagnostics,
   onClearMeshDebugMonitor,
   onRunMeshPerformanceBenchmark,
   onRestoreMeshPerformanceBaseline,
@@ -114075,12 +114140,21 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     meshHealthDuplicateFaceCount,
     meshHealthSuspectedSelfIntersectionCount,
   ].filter((count) => (count ?? 0) > 0).length;
+  const meshHealthHasStructuralDefect = [
+    meshHealthBoundaryEdgeCount,
+    meshHealthNonManifoldEdgeCount,
+    meshHealthDegenerateFaceCount,
+    meshHealthDuplicateFaceCount,
+  ].some((count) => (count ?? 0) > 0);
+  const meshHealthHasSuspectedIntersections = meshHealthSuspectedSelfIntersectionCount > 0;
   const meshHealthStatusLabel = meshSummaryTopologyDeferred
     ? "Unverified"
-    : !meshHealthHasFullValidation && meshHealthIssueCount > 0
-      ? "Needs validation"
-      : meshHealthHasFullValidation && meshHealthIssueCount > 0
-        ? "Invalid"
+    : meshHealthHasStructuralDefect || meshHealthValidation?.watertight === false || meshHealthValidation?.manifold === false
+      ? "Invalid"
+      : meshHealthHasSuspectedIntersections
+        ? meshHealthHasFullValidation
+          ? "Warning"
+          : "Needs validation"
         : meshHealthHasFullValidation && meshHealthValidation.watertight && meshHealthValidation.manifold
           ? "Healthy"
           : watertight === false || (meshHealthNonManifoldEdgeCount ?? 0) > 0 || (meshHealthBoundaryEdgeCount ?? 0) > 0
@@ -114091,6 +114165,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       ? "✓ Healthy"
       : meshHealthStatusLabel === "Invalid"
         ? "✕ Invalid"
+        : meshHealthStatusLabel === "Warning"
+          ? "! Warning"
         : meshHealthStatusLabel === "Needs validation"
           ? "? Needs validation"
           : "? Unverified";
@@ -114109,7 +114185,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       ? { border: "#86efac", background: "#f0fdf4", color: "#166534" }
       : meshHealthStatusLabel === "Invalid"
         ? { border: "#fca5a5", background: "#fef2f2", color: "#b42318" }
-        : meshHealthStatusLabel === "Needs validation"
+        : meshHealthStatusLabel === "Needs validation" || meshHealthStatusLabel === "Warning"
         ? { border: "#fcd34d", background: "#fffbeb", color: "#92400e" }
         : { border: "#dbe4ee", background: "#f8fafc", color: "#475467" };
   const meshLastOperationVerdict = (() => {
@@ -114309,8 +114385,18 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                       {renderHealthCountRow("Duplicate faces", meshHealthDuplicateFaceCount)}
                       {renderHealthCountRow("Self intersections", meshHealthSelfIntersectionLabel)}
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <button type="button" onClick={() => void onValidateActiveMesh()}>
+                        <button type="button" data-testid="mesh-health-validate-fully" onClick={() => void onValidateActiveMesh()}>
                           Validate fully
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="mesh-health-show-problems"
+                          onClick={() => {
+                            setInspectorPanelTab("diagnostics");
+                            onShowMeshHealthProblems();
+                          }}
+                        >
+                          Show problems
                         </button>
                       </div>
                     </div>
@@ -115001,6 +115087,40 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 </div>
               </div>
             </div>
+            {isDevMode && (
+              <div
+                data-testid="mesh-developer-diagnostics-card"
+                style={{
+                  borderTop: "1px solid #e2e8f0",
+                  marginTop: 10,
+                  paddingTop: 10,
+                  display: "grid",
+                  gap: 7,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                  <div style={inspectorSectionTitle}>Developer</div>
+                  <span
+                    style={{
+                      color: meshDebugMemory?.warning ? "#b42318" : cgalHealthState?.ok ? "#166534" : "#92400e",
+                      fontSize: 10,
+                      fontWeight: 850,
+                    }}
+                  >
+                    {meshDebugMemory?.warning ? "memory warning" : cgalHealthState?.ok ? "worker ready" : "worker unavailable"}
+                  </span>
+                </div>
+                <div style={{ color: "#475467", fontSize: 11 }}>
+                  Worker {cgalHealthState?.ok ? "ready" : "unavailable"} · RSS{" "}
+                  {meshDebugMemory?.workingSetGb != null ? `${meshDebugMemory.workingSetGb.toFixed(2)} GB` : "n/a"}
+                </div>
+                <div>
+                  <button type="button" data-testid="mesh-open-developer-diagnostics" onClick={onOpenMeshDeveloperDiagnostics}>
+                    Open developer diagnostics
+                  </button>
+                </div>
+              </div>
+            )}
             <details style={{ borderTop: "1px solid #e2e8f0", marginTop: 10, paddingTop: 10 }}>
               <summary
                 data-testid="mesh-inspector-diagnostics-raw-topology-toggle"

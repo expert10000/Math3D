@@ -222,7 +222,7 @@ test.describe("Mesh Operations card", () => {
     await expect(page.getByText("Mesh topology editing").first()).toBeVisible();
     await expect(card).toHaveCount(0);
     await leftTabs.getByTestId("mesh-workspace-left-tab-scene").click();
-    await expect(page.getByText("Scene contents").first()).toBeVisible();
+    await expect(page.getByText("Mesh viewport").first()).toBeVisible();
     await leftTabs.getByTestId("mesh-workspace-left-tab-operations").click();
     await expect(card).toBeVisible();
     for (const group of ["repair", "simplify", "smooth", "boolean", "implicit"]) {
