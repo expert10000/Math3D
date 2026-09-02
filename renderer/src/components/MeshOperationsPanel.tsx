@@ -13,7 +13,10 @@ import {
   type MeshValidationSummary,
   type ResolvedMeshOperationEngine,
 } from "../services/meshOperations";
-import { MeshBooleanReviewCard } from "./MeshBooleanReviewCard";
+import {
+  MeshBooleanReviewCard,
+  type MeshBooleanReviewEntityControls,
+} from "./MeshBooleanReviewCard";
 
 export type MeshBooleanOperation = "union" | "difference" | "intersection" | "split" | "imprint";
 export type MeshBooleanStrategy = "auto" | "fast" | "robust";
@@ -226,6 +229,9 @@ export type MeshOperationsPanelProps = {
   onRepairResult?: () => void | Promise<void>;
   onUseResultAsBooleanA?: () => void | Promise<void>;
   onUseResultAsBooleanB?: () => void | Promise<void>;
+  onShowBooleanResultProblems?: () => void;
+  onOpenFullBooleanValidation?: () => void;
+  booleanReviewEntityControls?: MeshBooleanReviewEntityControls;
   onApplyOperationPreset?: (presetId: MeshOperationPresetId) => void | Promise<void>;
 };
 
@@ -565,7 +571,16 @@ const MeshBooleanValidationCard: React.FC<{
   onRepairResult?: () => void | Promise<void>;
   onUseResultAsBooleanA?: () => void | Promise<void>;
   onUseResultAsBooleanB?: () => void | Promise<void>;
-}> = ({ validation, onRepairResult, onUseResultAsBooleanA, onUseResultAsBooleanB }) => {
+  onShowBooleanResultProblems?: () => void;
+  onOpenFullBooleanValidation?: () => void;
+}> = ({
+  validation,
+  onRepairResult,
+  onUseResultAsBooleanA,
+  onUseResultAsBooleanB,
+  onShowBooleanResultProblems,
+  onOpenFullBooleanValidation,
+}) => {
   const verdict = getValidationVerdict(validation);
   const blockers = getMeshValidationBlockers(validation);
   const blockerText = blockers.length ? blockers.slice(0, 5).join(", ") : "ready for robust boolean review";
@@ -608,6 +623,22 @@ const MeshBooleanValidationCard: React.FC<{
       </div>
       <div style={{ color: "#475569", fontSize: 10 }}>{actionText}</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+        <button
+          data-testid="mesh-operation-boolean-validation-show-problems"
+          type="button"
+          onClick={onShowBooleanResultProblems}
+          disabled={!onShowBooleanResultProblems}
+        >
+          Show Problems
+        </button>
+        <button
+          data-testid="mesh-operation-boolean-validation-open-full"
+          type="button"
+          onClick={onOpenFullBooleanValidation}
+          disabled={!onOpenFullBooleanValidation}
+        >
+          Open Full Validation
+        </button>
         <button
           data-testid="mesh-operation-boolean-validation-repair-result"
           type="button"
@@ -742,7 +773,8 @@ const MeshBooleanCard: React.FC<{
   sourceIds: string[];
   resultLabel: string;
   review?: MeshOperationResultSummary["booleanReview"];
-}> = ({ booleanSummary, sourceIds, resultLabel, review }) => {
+  entityControls?: MeshBooleanReviewEntityControls;
+}> = ({ booleanSummary, sourceIds, resultLabel, review, entityControls }) => {
   const sourceA = review?.operandA || sourceIds[0]?.trim() || "Active Mesh";
   const sourceB = review?.operandB || sourceIds[1]?.trim() || "Operand B";
   const resultName = review?.result || resultLabel;
@@ -760,6 +792,7 @@ const MeshBooleanCard: React.FC<{
       reviewTestId="mesh-operation-boolean-review"
       testId="mesh-operation-boolean-card"
       title="Boolean"
+      entityControls={entityControls}
     />
   );
 };
@@ -952,6 +985,9 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
   onRepairResult,
   onUseResultAsBooleanA,
   onUseResultAsBooleanB,
+  onShowBooleanResultProblems,
+  onOpenFullBooleanValidation,
+  booleanReviewEntityControls,
   onApplyOperationPreset,
 }) => {
   const [expandedOperation, setExpandedOperation] = useState<MeshOperationVisibleRowId | null>(null);
@@ -959,6 +995,8 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
   const resultDetailsRef = useRef<HTMLDivElement | null>(null);
   const resultDetailsPulseTimeoutRef = useRef<number | null>(null);
   const [resultDetailsFocused, setResultDetailsFocused] = useState(false);
+  const [presetManagerOpen, setPresetManagerOpen] = useState(false);
+  const [recentPresetId, setRecentPresetId] = useState("");
   const operationBusy = busy || cgalBusy || previewBusy;
   const resultStatusColor =
     lastResult?.status === "error"
@@ -2266,6 +2304,8 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                   onRepairResult={onRepairResult}
                   onUseResultAsBooleanA={onUseResultAsBooleanA}
                   onUseResultAsBooleanB={onUseResultAsBooleanB}
+                  onShowBooleanResultProblems={onShowBooleanResultProblems}
+                  onOpenFullBooleanValidation={onOpenFullBooleanValidation}
                 />
               ) : (
                 <MeshValidationCard validation={lastResult.validation} />
@@ -2279,6 +2319,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                 sourceIds={lastResult.sourceIds}
                 resultLabel={lastResult.afterFaces == null ? lastResult.label : `${lastResult.label} (${lastResult.afterFaces.toLocaleString()} triangles)`}
                 review={lastResult.booleanReview}
+                entityControls={booleanReviewEntityControls}
               />
             )}
             {!!lastResult.diagnostics?.length && <div>Details: {lastResult.diagnostics.join("; ")}</div>}
@@ -2322,12 +2363,9 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
           <div style={{ color: "#64748b" }}>Click any row to set parameters, then Run.</div>
         )}
       </div>
-      <div
-        data-testid={`${testId}-history`}
-        style={{ borderTop: "1px solid #bbf7d0", paddingTop: 5, display: "grid", gap: 4, fontSize: 10 }}
-      >
+      <div data-testid={`${testId}-history`} style={{ borderTop: "1px solid #bbf7d0", paddingTop: 5, display: "grid", gap: 5, fontSize: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-          <strong>Presets & history</strong>
+          <strong>Presets</strong>
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "flex-end" }}>
             <button
               data-testid={`${testId}-save-current-preset`}
@@ -2339,115 +2377,57 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
               Save preset
             </button>
             <button
-              data-testid={`${testId}-undo-last-operation`}
+              data-testid={`${testId}-manage-presets`}
               type="button"
-              onClick={onUndoLastOperation}
-              disabled={!canUndoLastOperation}
-              title="Undo the latest operation-backed mesh result."
+              onClick={() => setPresetManagerOpen((open) => !open)}
+              aria-expanded={presetManagerOpen}
             >
-              Undo latest result
+              Manage
             </button>
           </div>
         </div>
-        <div style={{ color: "#64748b" }}>Saved presets reapply parameters. Undo returns to the mesh before the latest operation.</div>
-        <div data-testid={`${testId}-saved-presets`} style={{ display: "grid", gap: 4 }}>
-          {savedPresets.length > 0 ? (
-            savedPresets.slice(0, 5).map((preset) => (
-              <div
-                key={`${testId}-saved-preset-${preset.id}`}
-                data-testid={`${testId}-saved-preset`}
-                style={{
-                  border: "1px solid #bbf7d0",
-                  borderRadius: 6,
-                  background: "#f8fffb",
-                  padding: "4px 5px",
-                  display: "grid",
-                  gap: 3,
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
-                  <strong>{preset.name}</strong>
-                  <span>{getSavedPresetOperationLabel(preset)}</span>
-                </div>
-                <div style={{ color: "#64748b" }}>
-                  {preset.request ? `${preset.request.engine} · ${preset.request.outputMode}` : "legacy parameters"} ·{" "}
-                  {new Date(preset.createdAt).toLocaleTimeString()}
-                </div>
-                {preset.lastResult && (
-                  <div>
-                    Last: {preset.lastResult.status} · {preset.lastResult.beforeFaces.toLocaleString()} {"->"}{" "}
-                    {preset.lastResult.afterFaces == null ? "n/a" : preset.lastResult.afterFaces.toLocaleString()} F
-                  </div>
-                )}
-                <button
-                  data-testid={`${testId}-apply-saved-preset-${preset.id}`}
-                  type="button"
-                  onClick={() => {
-                    void onApplySavedOperationPreset?.(preset.id);
-                  }}
-                  disabled={!onApplySavedOperationPreset}
-                  style={{ justifySelf: "start" }}
-                >
-                  Apply preset
-                </button>
-              </div>
-            ))
-          ) : (
-            <div style={{ color: "#64748b" }}>No saved operation presets yet.</div>
-          )}
-        </div>
-        {operationHistory.length > 0 ? (
-          <div style={{ display: "grid", gap: 4 }}>
-            {operationHistory.slice(0, 5).map((entry) => (
-              <div
-                key={`${testId}-history-${entry.id}`}
-                data-testid={`${testId}-history-entry`}
-                style={{
-                  border: "1px solid #bbf7d0",
-                  borderRadius: 6,
-                  background: entry.undoneAt ? "#f8fafc" : "#ffffff",
-                  padding: "4px 5px",
-                  display: "grid",
-                  gap: 3,
-                  opacity: entry.undoneAt ? 0.68 : 1,
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
-                  <strong>{entry.result.label}</strong>
-                  <span>{entry.result.status}</span>
-                </div>
-                <div>
-                  {formatMeshOperationBackend(entry.result)} · {formatMeshOperationDuration(entry.result.durationMs)} ·{" "}
-                  {entry.result.beforeFaces.toLocaleString()} {"->"}{" "}
-                  {entry.result.afterFaces == null ? "n/a" : entry.result.afterFaces.toLocaleString()} F
-                </div>
-                {entry.request && (
-                  <div style={{ color: "#64748b" }}>
-                    Request: {entry.request.operation} · {entry.request.outputMode}
-                  </div>
-                )}
-                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    data-testid={`${testId}-restore-history-${entry.id}`}
-                    onClick={() => onRestoreOperationHistoryEntry?.(entry.id)}
-                    disabled={!entry.topologyHistoryEntryId || !!entry.undoneAt || !onRestoreOperationHistoryEntry}
-                    title={
-                      entry.topologyHistoryEntryId
-                        ? "Restore this saved mesh-result snapshot."
-                        : "This operation did not create a restorable mesh snapshot."
-                    }
-                  >
-                    {entry.topologyHistoryEntryId ? "Restore result" : "No snapshot"}
-                  </button>
-                  {entry.undoneAt && <span style={{ color: "#64748b" }}>undone</span>}
-                </div>
-              </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+          <strong style={{ fontSize: 10 }}>Recent</strong>
+          <select
+            data-testid={`${testId}-recent-preset`}
+            value={recentPresetId}
+            onChange={(event) => {
+              const presetId = event.target.value;
+              setRecentPresetId(presetId);
+              if (presetId) void onApplySavedOperationPreset?.(presetId);
+            }}
+            disabled={!savedPresets.length || !onApplySavedOperationPreset}
+            style={{ minWidth: 132, fontSize: 10 }}
+          >
+            <option value="">Choose recent...</option>
+            {savedPresets.slice(0, 12).map((preset) => (
+              <option key={`${testId}-recent-preset-${preset.id}`} value={preset.id}>
+                {preset.name}
+              </option>
             ))}
+          </select>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+          <strong style={{ fontSize: 10 }}>Examples</strong>
+          <button type="button" data-testid={`${testId}-preset-bunny`} onClick={() => applyPreset("bunny-smooth-validate")}>Bunny</button>
+          <button type="button" data-testid={`${testId}-preset-armadillo`} onClick={() => applyPreset("validate-armadillo")}>Armadillo</button>
+          <button type="button" data-testid={`${testId}-preset-boolean`} onClick={() => applyPreset("benchy-cutter-boolean")}>Boolean</button>
+          <button type="button" data-testid={`${testId}-preset-implicit`} onClick={() => applyPreset("implicit-sphere-mesh")}>Implicit</button>
+        </div>
+        {presetManagerOpen && (
+          <div data-testid={`${testId}-saved-presets`} style={{ display: "grid", gap: 4, borderTop: "1px solid #d1fae5", paddingTop: 5 }}>
+            {savedPresets.length > 0 ? savedPresets.slice(0, 12).map((preset) => (
+              <div key={`${testId}-saved-preset-${preset.id}`} data-testid={`${testId}-saved-preset`} style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center" }}>
+                <span title={preset.name} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{preset.name}</span>
+                <button data-testid={`${testId}-apply-saved-preset-${preset.id}`} type="button" onClick={() => void onApplySavedOperationPreset?.(preset.id)} disabled={!onApplySavedOperationPreset}>Use</button>
+              </div>
+            )) : <div style={{ color: "#64748b" }}>No saved operation presets yet.</div>}
           </div>
-        ) : (
-          <div style={{ color: "#64748b" }}>No operation history yet.</div>
         )}
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+          <button data-testid={`${testId}-undo-last-operation`} type="button" onClick={onUndoLastOperation} disabled={!canUndoLastOperation} title="Undo the latest operation-backed mesh result.">Undo</button>
+          <span style={{ color: "#64748b" }}>Detailed operation history is in Inspector → History.</span>
+        </div>
       </div>
     </div>
   );

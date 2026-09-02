@@ -295,17 +295,22 @@ test.describe("Mesh Operations card", () => {
     await showResultDetails.click();
     await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toBeFocused();
     await expect(card.getByTestId("mesh-workspace-operation-registry-send-to-geometry")).toBeEnabled();
-    await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Decimate/i);
-    await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Request:/i);
-    await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Undo latest result/i);
-    await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Undo returns to the mesh/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Presets/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Inspector → History/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-undo-last-operation")).toHaveText("Undo");
 
     await card.getByTestId("mesh-workspace-operation-registry-save-current-preset").click();
+    await card.getByTestId("mesh-workspace-operation-registry-manage-presets").click();
     const savedPresets = card.getByTestId("mesh-workspace-operation-registry-saved-presets");
     await expect(savedPresets).toContainText(/Decimate preset/i);
     await expect(savedPresets.getByTestId("mesh-workspace-operation-registry-saved-preset").first()).toContainText(/Decimate/i);
-    await savedPresets.getByRole("button", { name: "Apply preset" }).first().click();
+    await savedPresets.getByRole("button", { name: "Use" }).first().click();
     await expect(card.getByTestId("mesh-workspace-operation-registry-row-decimate")).toHaveAttribute("aria-expanded", "true");
+
+    await page.getByTestId("mesh-inspector-tab-history").click();
+    const inspectorHistory = page.getByTestId("mesh-inspector-history-card");
+    await expect(inspectorHistory).toContainText(/Decimate/i);
+    await expect(inspectorHistory.getByRole("button", { name: "Preview before" }).first()).toBeDisabled();
   });
 
   test("runs Smooth on Bunny and Armadillo through the shared operation layer", async () => {
@@ -393,7 +398,7 @@ test.describe("Mesh Operations card", () => {
     }
     await runUnion.click();
     await expectLastOperation(card, /Boolean union/i);
-    await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Boolean union/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/Boolean union/i);
 
     await card.getByTestId("mesh-workspace-operation-registry-send-to-geometry").click();
     await selectSection(page, "Geometry");
@@ -420,7 +425,7 @@ test.describe("Mesh Operations card", () => {
     await runDifference.click({ force: true });
     await expectLastOperation(cardAgain, /Boolean difference/i);
     await expect(cardAgain.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/Triangles:/);
-    await expect(cardAgain.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Boolean difference/i);
+    await expect(cardAgain.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/Boolean difference/i);
     const operandToggle = cardAgain.getByTestId("mesh-workspace-operation-registry-toggle-boolean-operands");
     if (await operandToggle.isVisible().catch(() => false)) {
       await operandToggle.click();
@@ -467,6 +472,10 @@ test.describe("Mesh Operations card", () => {
     await expect(review).toContainText(/A/i);
     await expect(review).toContainText(/B/i);
     await expect(review).toContainText(/Result/i);
+    await review.getByTestId("mesh-boolean-review-b-visibility").click();
+    await expect(review).toContainText(/Hidden/i);
+    await review.getByTestId("mesh-boolean-review-b-visibility").click();
+    await review.getByTestId("mesh-boolean-review-result-select").dblclick();
     await review.getByTestId("geometry-boolean-composer-hide-cutter").click();
     await expect(composer).toContainText(/Boolean cutter B hidden/i);
     await review.getByTestId("geometry-boolean-composer-show-operands").click();
@@ -534,9 +543,16 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/A: Boolean demo A/i);
     await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/B: Boolean demo B/i);
     await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/Result: Boolean demo A/i);
+    const reviewCard = card.getByTestId("mesh-operation-boolean-card");
+    await reviewCard.getByTestId("mesh-boolean-review-b-visibility").click();
+    await expect(reviewCard).toContainText(/Hidden/i);
+    await reviewCard.getByTestId("mesh-boolean-review-b-visibility").click();
+    await reviewCard.getByTestId("mesh-boolean-review-result-select").click();
+    await reviewCard.getByTestId("mesh-boolean-review-b-select").dblclick();
     const reviewToolbar = page.getByTestId("mesh-boolean-review-toolbar");
     await expect(reviewToolbar).toBeVisible({ timeout: 15_000 });
     await expect(reviewToolbar).toContainText(/Boolean Review/i);
+    await expect(reviewToolbar.getByTestId("mesh-boolean-review-isolate-b")).toHaveAttribute("aria-pressed", "true");
     await reviewToolbar.getByTestId("mesh-boolean-review-isolate-b").click();
     await expect(reviewToolbar.getByTestId("mesh-boolean-review-isolate-b")).toHaveAttribute("aria-pressed", "true");
     await reviewToolbar.getByTestId("mesh-boolean-review-isolate-all").click();
@@ -554,6 +570,8 @@ test.describe("Mesh Operations card", () => {
     await expect(validationCard.getByTestId("mesh-operation-boolean-validation-repair-result")).toBeEnabled();
     await expect(validationCard.getByTestId("mesh-operation-boolean-validation-use-as-a")).toBeEnabled();
     await expect(validationCard.getByTestId("mesh-operation-boolean-validation-use-as-b")).toBeEnabled();
+    await expect(validationCard.getByTestId("mesh-operation-boolean-validation-show-problems")).toBeEnabled();
+    await expect(validationCard.getByTestId("mesh-operation-boolean-validation-open-full")).toBeEnabled();
     await reviewToolbar.getByTestId("mesh-boolean-review-keep-result").click();
     await expect(page.getByTestId("mesh-boolean-review-toolbar")).toHaveCount(0);
   });
@@ -767,7 +785,7 @@ test.describe("Mesh Operations card", () => {
     });
     await expectLastOperation(card, /Validate mesh/i);
     await expect(card.getByTestId("mesh-operation-validation-card")).toContainText(/Boundary edges/i);
-    await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Smooth/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/Validate mesh/i);
   });
 
   test("runs CGAL mesh repair through the shared operation layer when available", async () => {

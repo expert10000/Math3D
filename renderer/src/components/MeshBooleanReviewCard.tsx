@@ -3,12 +3,22 @@ import type { MeshBooleanSummary } from "../services/meshOperations";
 
 export type MeshBooleanReviewOperation = MeshBooleanSummary["operation"] | "split" | "imprint";
 export type MeshBooleanReviewMethod = "auto" | "fast" | "robust";
+export type MeshBooleanReviewEntity = "a" | "b" | "result";
+
+export type MeshBooleanReviewEntityControls = {
+  visible: Record<MeshBooleanReviewEntity, boolean>;
+  selected?: MeshBooleanReviewEntity;
+  onSelect: (entity: MeshBooleanReviewEntity) => void;
+  onToggleVisibility: (entity: MeshBooleanReviewEntity) => void;
+  onIsolate: (entity: MeshBooleanReviewEntity) => void;
+};
 
 export type MeshBooleanReviewCardProps = {
   actions?: React.ReactNode;
   advancedDetails?: React.ReactNode;
   booleanSummary?: MeshBooleanSummary | null;
   durationMs?: number | null;
+  entityControls?: MeshBooleanReviewEntityControls;
   inputAFaces?: number | null;
   inputBFaces?: number | null;
   method: MeshBooleanReviewMethod;
@@ -118,7 +128,8 @@ const entityStripCell = (
   label: string,
   name: string,
   triangleCount: number | null | undefined,
-  tone: "a" | "b" | "result"
+  tone: "a" | "b" | "result",
+  entityControls?: MeshBooleanReviewEntityControls
 ) => {
   const palette =
     tone === "a"
@@ -126,11 +137,16 @@ const entityStripCell = (
       : tone === "b"
         ? { border: "#fdba74", background: "#fff7ed", color: "#9a3412" }
         : { border: "#86efac", background: "#f0fdf4", color: "#166534" };
+  const entity = tone;
+  const interactive = !!entityControls;
+  const visible = entityControls?.visible[entity] ?? true;
+  const selected = entityControls?.selected === entity;
   return (
     <div
       key={label}
+      onDoubleClick={() => entityControls?.onIsolate(entity)}
       style={{
-        border: `1px solid ${palette.border}`,
+        border: `${selected ? 2 : 1}px solid ${selected ? palette.color : palette.border}`,
         background: palette.background,
         color: palette.color,
         borderRadius: 6,
@@ -140,11 +156,46 @@ const entityStripCell = (
         minWidth: 0,
       }}
     >
-      <strong style={{ fontSize: 10 }}>{label}</strong>
-      <span title={name} style={{ fontSize: 11, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {name}
-      </span>
-      <span style={{ fontSize: 10 }}>Visible · {formatCount(triangleCount)} triangles</span>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 4, alignItems: "center" }}>
+        <strong style={{ fontSize: 10 }}>{label}</strong>
+        {interactive && (
+          <button
+            type="button"
+            data-testid={`mesh-boolean-review-${entity}-visibility`}
+            onClick={(event) => {
+              event.stopPropagation();
+              entityControls.onToggleVisibility(entity);
+            }}
+            title={`${visible ? "Hide" : "Show"} ${label}`}
+            aria-label={`${visible ? "Hide" : "Show"} ${label}`}
+            style={{ fontSize: 9, padding: "1px 4px" }}
+          >
+            {visible ? "Hide" : "Show"}
+          </button>
+        )}
+      </div>
+      <button
+        type="button"
+        data-testid={interactive ? `mesh-boolean-review-${entity}-select` : undefined}
+        onClick={() => entityControls?.onSelect(entity)}
+        title={interactive ? `Select ${label}; double-click to isolate` : name}
+        style={{
+          appearance: "none",
+          border: 0,
+          padding: 0,
+          background: "transparent",
+          color: "inherit",
+          cursor: interactive ? "pointer" : "default",
+          textAlign: "left",
+          minWidth: 0,
+        }}
+      >
+        <span style={{ display: "block", fontSize: 11, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {name}
+        </span>
+      </button>
+      <span style={{ fontSize: 10 }}>{visible ? "Visible" : "Hidden"} · {formatCount(triangleCount)} triangles</span>
+      {interactive && <span style={{ fontSize: 9, color: palette.color }}>Double-click to isolate</span>}
     </div>
   );
 };
@@ -178,6 +229,7 @@ export const MeshBooleanReviewCard: React.FC<MeshBooleanReviewCardProps> = ({
   advancedDetails,
   booleanSummary,
   durationMs,
+  entityControls,
   inputAFaces,
   inputBFaces,
   method,
@@ -227,9 +279,9 @@ export const MeshBooleanReviewCard: React.FC<MeshBooleanReviewCardProps> = ({
         data-testid={`${testId}-entities`}
         style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 5 }}
       >
-        {entityStripCell("A", operandA, resolvedInputAFaces, "a")}
-        {entityStripCell("B", operandB, resolvedInputBFaces, "b")}
-        {entityStripCell("RESULT", result, resolvedResultFaces, "result")}
+        {entityStripCell("A", operandA, resolvedInputAFaces, "a", entityControls)}
+        {entityStripCell("B", operandB, resolvedInputBFaces, "b", entityControls)}
+        {entityStripCell("RESULT", result, resolvedResultFaces, "result", entityControls)}
       </div>
       <div data-testid={reviewTestId} style={stageStyle("active")}>
         {stageHeader(1, "Operation")}

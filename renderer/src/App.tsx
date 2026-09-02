@@ -47,7 +47,11 @@ import {
   type MeshOperationUiId,
   type MeshOperationResultSummary,
 } from "./components/MeshOperationsPanel";
-import { MeshBooleanReviewCard } from "./components/MeshBooleanReviewCard";
+import {
+  MeshBooleanReviewCard,
+  type MeshBooleanReviewEntity,
+  type MeshBooleanReviewEntityControls,
+} from "./components/MeshBooleanReviewCard";
 import {
   ActiveSelectionCard,
   buildActiveSelectionSummary,
@@ -2341,6 +2345,7 @@ type MeshBooleanReviewState = {
   showB: boolean;
   showResult: boolean;
   displayMode: MeshBooleanReviewDisplayMode;
+  selectedEntity: MeshBooleanReviewEntity;
 };
 
 const meshOperationInputToSurfaceMeshData = (
@@ -8252,6 +8257,28 @@ const computeSurfaceMeshFocus = (
   return {
     center,
     radius: Math.max(0.2, Math.sqrt(Math.max(0, radiusSq))),
+  };
+};
+
+const computeCombinedSurfaceMeshFocus = (
+  meshes: Array<Pick<SurfaceMeshData, "positions">>
+): { center: { x: number; y: number; z: number }; radius: number } | null => {
+  const foci = meshes.map((mesh) => computeSurfaceMeshFocus(mesh)).filter((focus): focus is NonNullable<typeof focus> => !!focus);
+  if (!foci.length) return null;
+  const min = { x: Infinity, y: Infinity, z: Infinity };
+  const max = { x: -Infinity, y: -Infinity, z: -Infinity };
+  for (const focus of foci) {
+    min.x = Math.min(min.x, focus.center.x - focus.radius);
+    min.y = Math.min(min.y, focus.center.y - focus.radius);
+    min.z = Math.min(min.z, focus.center.z - focus.radius);
+    max.x = Math.max(max.x, focus.center.x + focus.radius);
+    max.y = Math.max(max.y, focus.center.y + focus.radius);
+    max.z = Math.max(max.z, focus.center.z + focus.radius);
+  }
+  const center = { x: (min.x + max.x) * 0.5, y: (min.y + max.y) * 0.5, z: (min.z + max.z) * 0.5 };
+  return {
+    center,
+    radius: Math.max(0.2, Math.hypot(max.x - min.x, max.y - min.y, max.z - min.z) * 0.5),
   };
 };
 
@@ -33702,6 +33729,7 @@ const App: React.FC = () => {
   const [meshOperationPreviewTargetFaces, setMeshOperationPreviewTargetFaces] = useState(20000);
   const [meshOperationPreviewUseDecimate, setMeshOperationPreviewUseDecimate] = useState(true);
   const [meshBooleanReview, setMeshBooleanReview] = useState<MeshBooleanReviewState | null>(null);
+  const [meshBooleanReviewProblemsVisible, setMeshBooleanReviewProblemsVisible] = useState(false);
   const meshOperationOutputModeForRequest = useMemo(
     () => (meshOperationOutputMode === "replace" ? "replace" : "new-object"),
     [meshOperationOutputMode]
@@ -33747,18 +33775,55 @@ const App: React.FC = () => {
         showB: true,
         showResult: true,
         displayMode: "all",
+        selectedEntity: "result",
       });
+      setMeshBooleanReviewProblemsVisible(false);
     },
     [surfaceMeshData?.source]
   );
   const updateMeshBooleanReviewDisplayMode = useCallback((displayMode: MeshBooleanReviewDisplayMode) => {
-    setMeshBooleanReview((review) => (review ? { ...review, displayMode } : review));
+    setMeshBooleanReview((review) =>
+      review
+        ? {
+            ...review,
+            displayMode,
+            selectedEntity: displayMode === "all" ? review.selectedEntity : displayMode,
+          }
+        : review
+    );
   }, []);
   const updateMeshBooleanReviewVisibility = useCallback((key: "showA" | "showB" | "showResult") => {
     setMeshBooleanReview((review) => (review ? { ...review, [key]: !review[key] } : review));
   }, []);
+  const selectMeshBooleanReviewEntity = useCallback((entity: MeshBooleanReviewEntity) => {
+    setMeshBooleanReview((review) => (review ? { ...review, selectedEntity: entity } : review));
+    setSurfaceMeshTopologyStatus(`${entity === "a" ? "Operand A" : entity === "b" ? "Operand B" : "Boolean result"} selected in Boolean Review.`);
+  }, []);
+  const toggleMeshBooleanReviewEntityVisibility = useCallback((entity: MeshBooleanReviewEntity) => {
+    const key = entity === "a" ? "showA" : entity === "b" ? "showB" : "showResult";
+    updateMeshBooleanReviewVisibility(key);
+  }, [updateMeshBooleanReviewVisibility]);
+  const isolateMeshBooleanReviewEntity = useCallback((entity: MeshBooleanReviewEntity) => {
+    updateMeshBooleanReviewDisplayMode(entity);
+    setSurfaceMeshTopologyStatus(`${entity === "a" ? "Operand A" : entity === "b" ? "Operand B" : "Boolean result"} isolated in Boolean Review.`);
+  }, [updateMeshBooleanReviewDisplayMode]);
+  const meshBooleanReviewEntityControls = useMemo<MeshBooleanReviewEntityControls | undefined>(() => {
+    if (!meshBooleanReview) return undefined;
+    return {
+      visible: {
+        a: meshBooleanReview.showA,
+        b: meshBooleanReview.showB,
+        result: meshBooleanReview.showResult,
+      },
+      selected: meshBooleanReview.selectedEntity,
+      onSelect: selectMeshBooleanReviewEntity,
+      onToggleVisibility: toggleMeshBooleanReviewEntityVisibility,
+      onIsolate: isolateMeshBooleanReviewEntity,
+    };
+  }, [isolateMeshBooleanReviewEntity, meshBooleanReview, selectMeshBooleanReviewEntity, toggleMeshBooleanReviewEntityVisibility]);
   const closeMeshBooleanReview = useCallback((status = "Boolean review closed.") => {
     setMeshBooleanReview(null);
+    setMeshBooleanReviewProblemsVisible(false);
     setMeshOperationBooleanStatus(status);
   }, []);
   useEffect(() => {
@@ -37063,6 +37128,70 @@ const App: React.FC = () => {
     }
     return groups.length ? groups : null;
   }, [isMeshLikeViewer, meshBooleanReview]);
+  const meshBooleanReviewProblemOverlays = useMemo<{
+    pointSets: OverlayPointSet[] | null;
+    polylineGroups: OverlayPolylineGroup[] | null;
+    labelSets: OverlayLabelSet[] | null;
+  }>(() => {
+    const empty = { pointSets: null, polylineGroups: null, labelSets: null };
+    if (!meshBooleanReviewProblemsVisible || !meshBooleanReview || !isMeshLikeViewer) return empty;
+    const result = meshBooleanReview.result;
+    const boundaryEdges = collectTriangleMeshBoundaryEdges(result).slice(0, 1200);
+    const lines = boundaryEdges
+      .map(([aIndex, bIndex]) => {
+        const a = readMeshPoint(result, aIndex);
+        const b = readMeshPoint(result, bIndex);
+        return a && b ? [a, b] : null;
+      })
+      .filter((line): line is [{ x: number; y: number; z: number }, { x: number; y: number; z: number }] => !!line);
+    const boundaryPoints = lines.flatMap((line) => line).slice(0, 600);
+    const duplicatePoints = findCoincidentMeshVertexGroups(result, 1e-8, 12)
+      .flatMap((group) => group)
+      .slice(0, 180)
+      .map((vertex) => readMeshPoint(result, vertex))
+      .filter((point): point is { x: number; y: number; z: number } => !!point);
+    const focus = computeSurfaceMeshFocus(result);
+    const labels: OverlayLabelSet[] = [];
+    if (lines[0]) {
+      const [a, b] = lines[0];
+      labels.push({
+        size: 1.05,
+        labels: [
+          {
+            text: `${boundaryEdges.length.toLocaleString()} boundary edges highlighted`,
+            position: { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5, z: (a.z + b.z) * 0.5 },
+            color: 0xb91c1c,
+            opacity: 1,
+          },
+        ],
+      });
+    } else if (duplicatePoints[0]) {
+      labels.push({
+        size: 1.05,
+        labels: [{ text: "Coincident vertices highlighted", position: duplicatePoints[0], color: 0xa21caf, opacity: 1 }],
+      });
+    } else if (focus) {
+      labels.push({
+        size: 1.05,
+        labels: [
+          {
+            text: "No locatable boundary or duplicate-vertex problems",
+            position: focus.center,
+            color: 0x92400e,
+            opacity: 1,
+          },
+        ],
+      });
+    }
+    return {
+      pointSets: [
+        ...(boundaryPoints.length ? [{ points: boundaryPoints, color: 0xff1744, size: 0.14, opacity: 1 }] : []),
+        ...(duplicatePoints.length ? [{ points: duplicatePoints, color: 0xc026d3, size: 0.17, opacity: 1 }] : []),
+      ],
+      polylineGroups: lines.length ? [{ lines, color: 0xff1744, opacity: 1, radiusWorld: 0.038 }] : null,
+      labelSets: labels.length ? labels : null,
+    };
+  }, [isMeshLikeViewer, meshBooleanReview, meshBooleanReviewProblemsVisible]);
   const surfaceMeshTopologyViewerMesh =
     surfaceMeshTopologyHistoryDisplayMesh ?? meshBooleanReviewDisplayMesh ?? largeSurfaceMeshDisplayProxy ?? surfaceMeshData;
   const surfaceMeshTopologyGizmoDragParamsRef = useRef<AdaptiveTopologyGizmoDragParams | null>(null);
@@ -37843,6 +37972,7 @@ const App: React.FC = () => {
   const combinedOverlayLabelSets = useMemo<OverlayLabelSet[] | null>(() => {
     const labels: OverlayLabelSet[] = [];
     if (surfaceMeshTopologySelectionLabelSets?.length) labels.push(...surfaceMeshTopologySelectionLabelSets);
+    if (meshBooleanReviewProblemOverlays.labelSets?.length) labels.push(...meshBooleanReviewProblemOverlays.labelSets);
     if (surfaceMeshAccessibleCommandPreviewOverlays?.labelSets?.length) {
       labels.push(...surfaceMeshAccessibleCommandPreviewOverlays.labelSets);
     }
@@ -37851,6 +37981,7 @@ const App: React.FC = () => {
     }
     return labels.length ? labels : null;
   }, [
+    meshBooleanReviewProblemOverlays.labelSets,
     meshAppliedContextualViewportPreviewOverlays,
     surfaceMeshAccessibleCommandPreviewOverlays,
     surfaceMeshTopologySelectionLabelSets,
@@ -38109,8 +38240,52 @@ const App: React.FC = () => {
   const [cameraSync, setCameraSync] = useState<CameraSyncState | null>(null);
   const [cameraOverride, setCameraOverride] = useState<CameraSyncState | null>(null);
   const [cameraOverrideToken, setCameraOverrideToken] = useState(0);
+  const meshBooleanReviewAutoFrameKeyRef = useRef<string | null>(null);
   const [compareCameraOverride, setCompareCameraOverride] = useState<CameraSyncState | null>(null);
   const [compareCameraOverrideToken, setCompareCameraOverrideToken] = useState(0);
+  useEffect(() => {
+    if (surfaceViewerKind !== "mesh" || !meshBooleanReview || meshBooleanReview.displayMode !== "all") return;
+    const key = [
+      meshBooleanReview.operandA.positions.length,
+      meshBooleanReview.operandB.positions.length,
+      meshBooleanReview.result.positions.length,
+    ].join(":");
+    if (meshBooleanReviewAutoFrameKeyRef.current === key) return;
+    meshBooleanReviewAutoFrameKeyRef.current = key;
+    const focus = computeCombinedSurfaceMeshFocus([
+      meshBooleanReview.operandA,
+      meshBooleanReview.operandB,
+      meshBooleanReview.result,
+    ]);
+    const current = cameraSync ?? cameraOverride;
+    if (!focus || !current) return;
+    const direction = new THREE.Vector3(
+      current.position.x - current.target.x,
+      current.position.y - current.target.y,
+      current.position.z - current.target.z
+    );
+    const distance = direction.length();
+    if (!Number.isFinite(distance) || distance <= 1e-6) return;
+    const targetOffset = Math.hypot(
+      current.target.x - focus.center.x,
+      current.target.y - focus.center.y,
+      current.target.z - focus.center.z
+    );
+    const requiredDistance = Math.max(1.6, focus.radius * 2.55);
+    const likelyOffScreen = targetOffset + focus.radius * 1.25 > distance * 0.72 || requiredDistance > distance * 1.08;
+    if (!likelyOffScreen) return;
+    direction.normalize().multiplyScalar(Math.max(distance, requiredDistance));
+    setCameraOverride({
+      position: {
+        x: focus.center.x + direction.x,
+        y: focus.center.y + direction.y,
+        z: focus.center.z + direction.z,
+      },
+      target: { ...focus.center },
+      up: { ...current.up },
+    });
+    setCameraOverrideToken((token) => token + 1);
+  }, [cameraOverride, cameraSync, meshBooleanReview, surfaceViewerKind]);
   const [surfacesCameraTourStatus, setSurfacesCameraTourStatus] = useState<GeometryCameraTourStatus>("idle");
   const [surfacesCameraTourPlayed, setSurfacesCameraTourPlayed] = useState(false);
   const [surfacesCameraTourMode, setSurfacesCameraTourMode] = useState<CameraTourMode>("balanced");
@@ -46979,6 +47154,97 @@ case "mobius":
     setGeometryCreateActionStatus("Boolean result selected.");
   }, [geometryBooleanComposerReview?.resultId]);
 
+  const geometryBooleanReviewEntityId = useCallback(
+    (entity: MeshBooleanReviewEntity): string | null => {
+      if (!geometryBooleanComposerReview) return null;
+      if (entity === "a") return geometryBooleanComposerReview.operandAId;
+      if (entity === "b") return geometryBooleanComposerReview.operandBId;
+      return geometryBooleanComposerReview.resultId;
+    },
+    [geometryBooleanComposerReview]
+  );
+  const geometryBooleanReviewEntityVisibility = useMemo<Record<MeshBooleanReviewEntity, boolean>>(() => {
+    const visibleFor = (entity: MeshBooleanReviewEntity) => {
+      const id = geometryBooleanReviewEntityId(entity);
+      if (!id) return false;
+      return (
+        geometryDatasetMeshObjects.find((entry) => entry.id === id)?.visible ??
+        geometryObjects.find((entry) => entry.id === id)?.visible ??
+        false
+      );
+    };
+    return { a: visibleFor("a"), b: visibleFor("b"), result: visibleFor("result") };
+  }, [geometryBooleanReviewEntityId, geometryDatasetMeshObjects, geometryObjects]);
+  const selectGeometryBooleanReviewEntity = useCallback(
+    (entity: MeshBooleanReviewEntity) => {
+      const id = geometryBooleanReviewEntityId(entity);
+      if (!id) return;
+      setGeometrySelectedObjectId(id);
+      setGeometryBooleanPreviewStatus(`${entity === "a" ? "Operand A" : entity === "b" ? "Operand B" : "Boolean result"} selected.`);
+      setGeometryCreateActionStatus(`${entity === "a" ? "Operand A" : entity === "b" ? "Operand B" : "Boolean result"} selected.`);
+    },
+    [geometryBooleanReviewEntityId]
+  );
+  const setGeometryBooleanReviewEntityVisible = useCallback(
+    (entity: MeshBooleanReviewEntity, visible: boolean) => {
+      const id = geometryBooleanReviewEntityId(entity);
+      if (!id) return;
+      setGeometryObjects((prev) => prev.map((entry) => (entry.id === id ? { ...entry, visible } : entry)));
+      setGeometryDatasetMeshObjects((prev) => prev.map((entry) => (entry.id === id ? { ...entry, visible } : entry)));
+      setGeometryBooleanPreviewStatus(`${entity === "a" ? "Operand A" : entity === "b" ? "Operand B" : "Boolean result"} ${visible ? "shown" : "hidden"}.`);
+    },
+    [geometryBooleanReviewEntityId]
+  );
+  const toggleGeometryBooleanReviewEntityVisibility = useCallback(
+    (entity: MeshBooleanReviewEntity) => {
+      setGeometryBooleanReviewEntityVisible(entity, !geometryBooleanReviewEntityVisibility[entity]);
+    },
+    [geometryBooleanReviewEntityVisibility, setGeometryBooleanReviewEntityVisible]
+  );
+  const isolateGeometryBooleanReviewEntity = useCallback(
+    (entity: MeshBooleanReviewEntity) => {
+      const selectedId = geometryBooleanReviewEntityId(entity);
+      if (!selectedId || !geometryBooleanComposerReview) return;
+      const reviewIds = new Set([
+        geometryBooleanComposerReview.operandAId,
+        geometryBooleanComposerReview.operandBId,
+        geometryBooleanComposerReview.resultId,
+      ]);
+      setGeometryObjects((prev) => prev.map((entry) => (reviewIds.has(entry.id) ? { ...entry, visible: entry.id === selectedId } : entry)));
+      setGeometryDatasetMeshObjects((prev) =>
+        prev.map((entry) => (reviewIds.has(entry.id) ? { ...entry, visible: entry.id === selectedId } : entry))
+      );
+      setGeometrySelectedObjectId(selectedId);
+      setGeometryBooleanPreviewStatus(`${entity === "a" ? "Operand A" : entity === "b" ? "Operand B" : "Boolean result"} isolated.`);
+      setGeometryCreateActionStatus(`${entity === "a" ? "Operand A" : entity === "b" ? "Operand B" : "Boolean result"} isolated.`);
+    },
+    [geometryBooleanComposerReview, geometryBooleanReviewEntityId]
+  );
+  const geometryBooleanReviewEntityControls = useMemo<MeshBooleanReviewEntityControls | undefined>(() => {
+    if (!geometryBooleanComposerReview) return undefined;
+    return {
+      visible: geometryBooleanReviewEntityVisibility,
+      selected:
+        geometrySelectedObjectId === geometryBooleanComposerReview.operandAId
+          ? "a"
+          : geometrySelectedObjectId === geometryBooleanComposerReview.operandBId
+            ? "b"
+            : geometrySelectedObjectId === geometryBooleanComposerReview.resultId
+              ? "result"
+              : undefined,
+      onSelect: selectGeometryBooleanReviewEntity,
+      onToggleVisibility: toggleGeometryBooleanReviewEntityVisibility,
+      onIsolate: isolateGeometryBooleanReviewEntity,
+    };
+  }, [
+    geometryBooleanComposerReview,
+    geometryBooleanReviewEntityVisibility,
+    geometrySelectedObjectId,
+    isolateGeometryBooleanReviewEntity,
+    selectGeometryBooleanReviewEntity,
+    toggleGeometryBooleanReviewEntityVisibility,
+  ]);
+
   const handleSwapMeshOperationBooleanOperands = useCallback(() => {
     if (meshOperationBusy) return;
     if (!meshOperationBooleanOperandObjectId) {
@@ -53334,15 +53600,17 @@ case "mobius":
   const meshViewerOverlayPointSets = useMemo<OverlayPointSet[] | null>(() => {
     const sets: OverlayPointSet[] = [];
     if (combinedOverlayPointSets?.length) sets.push(...combinedOverlayPointSets);
+    if (meshBooleanReviewProblemOverlays.pointSets?.length) sets.push(...meshBooleanReviewProblemOverlays.pointSets);
     if (meshSelectionHighlightOverlays.pointSets.length) sets.push(...meshSelectionHighlightOverlays.pointSets);
     return sets.length ? sets : null;
-  }, [combinedOverlayPointSets, meshSelectionHighlightOverlays.pointSets]);
+  }, [combinedOverlayPointSets, meshBooleanReviewProblemOverlays.pointSets, meshSelectionHighlightOverlays.pointSets]);
   const meshViewerOverlayPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     const groups: OverlayPolylineGroup[] = [];
     if (combinedOverlayPolylineGroups?.length) groups.push(...combinedOverlayPolylineGroups);
+    if (meshBooleanReviewProblemOverlays.polylineGroups?.length) groups.push(...meshBooleanReviewProblemOverlays.polylineGroups);
     if (meshSelectionHighlightOverlays.polylineGroups.length) groups.push(...meshSelectionHighlightOverlays.polylineGroups);
     return groups.length ? groups : null;
-  }, [combinedOverlayPolylineGroups, meshSelectionHighlightOverlays.polylineGroups]);
+  }, [combinedOverlayPolylineGroups, meshBooleanReviewProblemOverlays.polylineGroups, meshSelectionHighlightOverlays.polylineGroups]);
   const meshUnifiedSelectionFilterStatus =
     meshUnifiedSelection && !meshUnifiedSelectionFilterResult.accepted
       ? meshUnifiedSelectionFilterResult.reasons[0] ?? "Selection filtered out"
@@ -53628,6 +53896,29 @@ case "mobius":
       setSelectedSurfaceMeshTopologyHistoryId(topologyEntry.id);
       setSurfaceMeshTopologyHistoryPreviewId(null);
       setSurfaceMeshTopologyStatus(`Restored Mesh Operation: ${operationEntry.result.label}.`);
+      setMeshOperationError(null);
+      handleChangeViewerKind("mesh");
+    },
+    [handleChangeViewerKind, meshOperationHistory, setMeshDataset, surfaceMeshTopologyHistory]
+  );
+
+  const previewMeshOperationHistoryEntry = useCallback(
+    (entryId: string, side: "before" | "after") => {
+      const operationEntry = meshOperationHistory.find((candidate) => candidate.id === entryId);
+      const topologyEntry = operationEntry?.topologyHistoryEntryId
+        ? surfaceMeshTopologyHistory.find((candidate) => candidate.id === operationEntry.topologyHistoryEntryId)
+        : null;
+      if (!operationEntry || !topologyEntry) {
+        setMeshOperationError("That operation has no previewable mesh snapshot.");
+        return;
+      }
+      const source = side === "before" ? topologyEntry.beforeSnapshot : topologyEntry.snapshot;
+      const label = `${source.label ?? operationEntry.result.label} (${side} preview)`;
+      setMeshDataset(cloneSurfaceMeshData(source, label), `mesh-operation:history-preview-${side}`);
+      setMeshLastOperation(operationEntry.result);
+      setSelectedSurfaceMeshTopologyHistoryId(topologyEntry.id);
+      setSurfaceMeshTopologyHistoryPreviewId(null);
+      setSurfaceMeshTopologyStatus(`Previewing ${side} mesh: ${operationEntry.result.label}. Restore returns to the saved result.`);
       setMeshOperationError(null);
       handleChangeViewerKind("mesh");
     },
@@ -54845,6 +55136,38 @@ case "mobius":
     await handleValidateLastMeshOperationResult();
     setGeometryBooleanPreviewStatus("Boolean result validation recorded below and in Mesh Operations history.");
   }, [geometryBooleanComposerReview?.resultId, handleValidateLastMeshOperationResult]);
+
+  const openBooleanResultInMeshReview = useCallback(
+    (purpose: "problems" | "validation") => {
+      const mesh = meshOperationLastResultMeshRef.current;
+      if (!mesh?.positions.length || !mesh.indices.length) {
+        setMeshOperationError("No Boolean result mesh is available.");
+        return;
+      }
+      const source = surfaceMeshData?.source ?? mesh.source ?? { kind: "csg" };
+      const resultMesh = applySurfaceMeshOps(meshOperationInputToSurfaceMeshData(mesh, source, mesh.label));
+      setMeshDataset(resultMesh, `mesh-operation:boolean-result-${purpose}`);
+      setMode("surfaces");
+      setDatasetKind("mesh");
+      setSurfaceViewerKind("mesh");
+      setSurfacesLeftTab("scene");
+      setRightPanelTab("inspector");
+      focusMeshOperationRow("cgal-validate");
+      setMeshBooleanReviewProblemsVisible(purpose === "problems");
+      setMeshOperationBooleanStatus(
+        purpose === "problems"
+          ? "Boolean result problems are overlaid in the viewport."
+          : "Boolean result opened for full validation."
+      );
+    },
+    [focusMeshOperationRow, setMeshDataset, surfaceMeshData?.source]
+  );
+  const handleShowBooleanResultProblems = useCallback(() => {
+    openBooleanResultInMeshReview("problems");
+  }, [openBooleanResultInMeshReview]);
+  const handleOpenFullBooleanValidation = useCallback(() => {
+    openBooleanResultInMeshReview("validation");
+  }, [openBooleanResultInMeshReview]);
 
   const handleMeshOperationRepair = useCallback(async () => {
     if (meshOperationBusy) return;
@@ -70759,6 +71082,9 @@ case "mobius":
                           onRepairResult={handleRepairLastMeshOperationResult}
                           onUseResultAsBooleanA={handleUseMeshOperationResultAsBooleanA}
                           onUseResultAsBooleanB={handleUseMeshOperationResultAsBooleanB}
+                          onShowBooleanResultProblems={handleShowBooleanResultProblems}
+                          onOpenFullBooleanValidation={handleOpenFullBooleanValidation}
+                          booleanReviewEntityControls={meshBooleanReviewEntityControls}
                         />
                         {surfaceMeshBenchmarkBrowserOpen && surfaceMeshBenchmarkModels.length > 0 && (
                           <div style={{ display: "grid", gap: 8 }}>
@@ -74252,6 +74578,22 @@ case "mobius":
                           Validate Result
                         </button>
                         <button
+                          data-testid="mesh-boolean-review-show-problems"
+                          type="button"
+                          onClick={handleShowBooleanResultProblems}
+                          style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
+                        >
+                          Show Problems
+                        </button>
+                        <button
+                          data-testid="mesh-boolean-review-open-full-validation"
+                          type="button"
+                          onClick={handleOpenFullBooleanValidation}
+                          style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
+                        >
+                          Full Validation
+                        </button>
+                        <button
                           data-testid="mesh-boolean-review-repair-result"
                           type="button"
                           onClick={() => void handleRepairLastMeshOperationResult()}
@@ -77063,6 +77405,7 @@ case "mobius":
                       meshOperationHistory={meshOperationHistory}
                       meshOperationError={meshOperationError}
                       onValidateLastMeshOperationResult={handleValidateLastMeshOperationResult}
+                      onPreviewMeshOperationHistoryEntry={previewMeshOperationHistoryEntry}
                       onRestoreMeshOperationHistoryEntry={restoreMeshOperationHistoryEntry}
                       onUndoLatestMeshOperation={undoLatestMeshOperation}
                       canUndoLatestMeshOperation={canUndoLatestMeshOperation}
@@ -82740,6 +83083,7 @@ case "mobius":
                               status={geometryBooleanComposerReview.afterFaces == null ? "warning" : "ready"}
                               testId="geometry-boolean-composer-review"
                               title="Boolean result review"
+                              entityControls={geometryBooleanReviewEntityControls}
                               validationSlot={
                                 meshLastOperation?.validationContext === "boolean-result" && meshLastOperation.validation ? (
                                   <div
@@ -82768,6 +83112,20 @@ case "mobius":
                                       <span>Degenerate: {meshLastOperation.validation.degenerateFaceCount.toLocaleString()}</span>
                                     </div>
                                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                      <button
+                                        data-testid="geometry-boolean-composer-show-problems"
+                                        type="button"
+                                        onClick={handleShowBooleanResultProblems}
+                                      >
+                                        Show Problems
+                                      </button>
+                                      <button
+                                        data-testid="geometry-boolean-composer-open-full-validation"
+                                        type="button"
+                                        onClick={handleOpenFullBooleanValidation}
+                                      >
+                                        Open Full Validation
+                                      </button>
                                       <button type="button" onClick={() => void handleRepairLastMeshOperationResult()} disabled={meshOperationBusy || !cgalServiceReady}>
                                         Repair result
                                       </button>
@@ -111970,6 +112328,7 @@ type SurfacesRightPanelProps = {
   meshOperationHistory: MeshOperationHistoryEntry[];
   meshOperationError: string | null;
   onValidateLastMeshOperationResult: () => void | Promise<void>;
+  onPreviewMeshOperationHistoryEntry: (entryId: string, side: "before" | "after") => void;
   onRestoreMeshOperationHistoryEntry: (entryId: string) => void;
   onUndoLatestMeshOperation: () => void;
   canUndoLatestMeshOperation: boolean;
@@ -112227,6 +112586,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   meshOperationHistory,
   meshOperationError,
   onValidateLastMeshOperationResult,
+  onPreviewMeshOperationHistoryEntry,
   onRestoreMeshOperationHistoryEntry,
   onUndoLatestMeshOperation,
   canUndoLatestMeshOperation,
@@ -114590,7 +114950,10 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
         {inspectorPanelTab === "history" && (
           <div data-testid="mesh-inspector-history-card" style={inspectorSectionCard}>
-            <div style={inspectorSectionTitle}>Operation History</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 7 }}>
+              <div style={inspectorSectionTitle}>Mesh History</div>
+              <span style={{ color: "#64748b", fontSize: 10 }}>{meshOperationHistory.length.toLocaleString()} step{meshOperationHistory.length === 1 ? "" : "s"}</span>
+            </div>
             <div style={{ fontSize: 11, display: "grid", gap: 8 }}>
               {meshOperationHistory.length === 0 ? (
                 <div style={{ color: "#64748b" }}>No mesh operations yet.</div>
@@ -114626,20 +114989,27 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                       }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                        <strong>{entry.result.label}</strong>
-                        <span
-                          style={{
-                            border: `1px solid ${verdictTone.border}`,
-                            borderRadius: 999,
-                            background: verdictTone.background,
-                            color: verdictTone.color,
-                            padding: "2px 7px",
-                            fontSize: 10,
-                            fontWeight: 850,
-                          }}
-                        >
-                          {entryVerdict}
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                          <span style={{ color: "#64748b", fontVariantNumeric: "tabular-nums" }}>{meshOperationHistory.length - index}</span>
+                          <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.result.label}</strong>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          {isLatest && !entry.undoneAt && <span style={{ color: "#166534", fontSize: 10, fontWeight: 850 }}>current</span>}
+                          <span
+                            style={{
+                              border: `1px solid ${verdictTone.border}`,
+                              borderRadius: 999,
+                              background: verdictTone.background,
+                              color: verdictTone.color,
+                              padding: "2px 7px",
+                              fontSize: 10,
+                              fontWeight: 850,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {entryVerdict}
+                          </span>
+                        </div>
                       </div>
                       <div>
                         {formatSummaryTime(entry.result.durationMs)} · {entry.result.beforeFaces.toLocaleString()} {"->"}{" "}
@@ -114652,8 +115022,25 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <button
                           type="button"
+                          data-testid={`mesh-history-preview-before-${entry.id}`}
+                          onClick={() => onPreviewMeshOperationHistoryEntry(entry.id, "before")}
+                          disabled={!entry.topologyHistoryEntryId}
+                        >
+                          Preview before
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`mesh-history-preview-after-${entry.id}`}
+                          onClick={() => onPreviewMeshOperationHistoryEntry(entry.id, "after")}
+                          disabled={!entry.topologyHistoryEntryId}
+                        >
+                          Preview after
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`mesh-history-restore-${entry.id}`}
                           onClick={() => onRestoreMeshOperationHistoryEntry(entry.id)}
-                          disabled={Boolean(entry.undoneAt)}
+                          disabled={Boolean(entry.undoneAt) || !entry.topologyHistoryEntryId}
                         >
                           Restore
                         </button>
