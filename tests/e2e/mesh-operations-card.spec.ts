@@ -216,6 +216,15 @@ test.describe("Mesh Operations card", () => {
     await loadBenchmarkModel(page, "3dbenchy");
 
     const card = await openWorkspaceOperationsCard(page);
+    const leftTabs = page.getByTestId("mesh-workspace-left-tabs");
+    await expect(leftTabs).toBeVisible();
+    await leftTabs.getByTestId("mesh-workspace-left-tab-topology").click();
+    await expect(page.getByText("Mesh topology editing").first()).toBeVisible();
+    await expect(card).toHaveCount(0);
+    await leftTabs.getByTestId("mesh-workspace-left-tab-scene").click();
+    await expect(page.getByText("Scene contents").first()).toBeVisible();
+    await leftTabs.getByTestId("mesh-workspace-left-tab-operations").click();
+    await expect(card).toBeVisible();
     for (const group of ["repair", "simplify", "smooth", "boolean", "implicit"]) {
       await expect(card.getByTestId(`mesh-workspace-operation-registry-group-${group}`)).toBeVisible();
     }
@@ -309,6 +318,10 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-workspace-operation-registry-presets")).toContainText(/Presets/i);
     await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Inspector → History/i);
     await expect(card.getByTestId("mesh-workspace-operation-registry-undo-last-operation")).toHaveText("Undo");
+
+    await page.getByTestId("mesh-inspector-tab-result").click();
+    await expect(page.getByTestId("mesh-operation-result-card")).toContainText(/Decimate/i);
+    await expect(page.getByTestId("mesh-last-operation-verdict")).toBeVisible();
 
     await card.getByTestId("mesh-workspace-operation-registry-save-current-preset").click();
     const managePresets = card.getByTestId("mesh-workspace-operation-registry-manage-presets");
@@ -564,6 +577,8 @@ test.describe("Mesh Operations card", () => {
     const reviewToolbar = page.getByTestId("mesh-boolean-review-toolbar");
     await expect(reviewToolbar).toBeVisible({ timeout: 15_000 });
     await expect(reviewToolbar).toContainText(/Boolean Review/i);
+    await expect(reviewToolbar).toContainText(/Viewport mode/i);
+    await expect(reviewToolbar).toContainText(/Mesh Editing/i);
     await expect(reviewToolbar.getByTestId("mesh-boolean-review-isolate-b")).toHaveAttribute("aria-pressed", "true");
     await reviewToolbar.getByTestId("mesh-boolean-review-isolate-b").click();
     await expect(reviewToolbar.getByTestId("mesh-boolean-review-isolate-b")).toHaveAttribute("aria-pressed", "true");
