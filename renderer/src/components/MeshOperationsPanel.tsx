@@ -302,6 +302,7 @@ export type MeshOperationPresetId =
   | "sphere-minus-box"
   | "bunny-smooth-validate"
   | "decimate-3dbenchy"
+  | "load-dragon-medium"
   | "smooth-bunny"
   | "boolean-demo-pair"
   | "implicit-sphere-mesh";
@@ -383,6 +384,12 @@ const MESH_OPERATION_PRESETS: Array<{
     label: "Decimate 3DBenchy",
     description: "Load 3DBenchy and prepare a target-face decimation.",
     operation: "decimate",
+  },
+  {
+    id: "load-dragon-medium",
+    label: "Dragon Medium",
+    description: "Load Dragon Medium and open non-destructive validation.",
+    operation: "cgal-validate",
   },
   {
     id: "smooth-bunny",
@@ -1102,7 +1109,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
       setExpandedOperation("cgal-repair-validate");
       return;
     }
-    if (preset === "validate-armadillo") {
+    if (preset === "validate-armadillo" || preset === "load-dragon-medium") {
       setExpandedOperation("cgal-validate");
       return;
     }
@@ -1317,13 +1324,16 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
           <strong style={{ fontSize: 10 }}>Examples</strong>
           <button data-testid={`${testId}-preset-bunny-smooth-validate`} type="button" onClick={() => applyPreset("bunny-smooth-validate")}>Bunny</button>
           <button data-testid={`${testId}-preset-validate-armadillo`} type="button" onClick={() => applyPreset("validate-armadillo")}>Armadillo</button>
+          <button data-testid={`${testId}-preset-load-dragon-medium`} type="button" onClick={() => applyPreset("load-dragon-medium")}>Dragon</button>
+          <button data-testid={`${testId}-preset-decimate-3dbenchy`} type="button" onClick={() => applyPreset("decimate-3dbenchy")}>3DBenchy</button>
+          <button data-testid={`${testId}-preset-sphere-minus-box`} type="button" onClick={() => applyPreset("sphere-minus-box")}>Sphere cut</button>
           <button data-testid={`${testId}-preset-benchy-cutter-boolean`} type="button" onClick={() => applyPreset("benchy-cutter-boolean")}>Boolean</button>
           <button data-testid={`${testId}-preset-implicit-sphere-mesh`} type="button" onClick={() => applyPreset("implicit-sphere-mesh")}>Implicit</button>
         </div>
         {presetManagerOpen && (
           <div data-testid={`${testId}-saved-presets`} style={{ display: "grid", gap: 4, borderTop: "1px solid #d1fae5", paddingTop: 5 }}>
             <strong style={{ fontSize: 10 }}>More workflows</strong>
-            {MESH_OPERATION_PRESETS.filter((preset) => !["bunny-smooth-validate", "validate-armadillo", "benchy-cutter-boolean", "implicit-sphere-mesh"].includes(preset.id)).map((preset) => (
+            {MESH_OPERATION_PRESETS.filter((preset) => !["bunny-smooth-validate", "validate-armadillo", "load-dragon-medium", "decimate-3dbenchy", "sphere-minus-box", "benchy-cutter-boolean", "implicit-sphere-mesh"].includes(preset.id)).map((preset) => (
               <button
                 key={`${testId}-preset-${preset.id}`}
                 data-testid={`${testId}-preset-${preset.id}`}

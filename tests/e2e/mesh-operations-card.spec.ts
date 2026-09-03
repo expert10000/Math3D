@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { PNG } from "pngjs";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
 const sectionLabels = ["Surfaces", "Mesh", "Volume", "Curves", "Topology", "Geometry", "Complex Analysis"] as const;
@@ -84,6 +85,28 @@ async function openWorkspaceOperationsCard(page: Page): Promise<Locator> {
   await card.scrollIntoViewIfNeeded();
   await expect(card).toBeVisible({ timeout: 15_000 });
   return card;
+}
+
+async function expectFullViewerToRenderMesh(viewer: Locator): Promise<void> {
+  const image = PNG.sync.read(await viewer.screenshot());
+  const x0 = Math.floor(image.width * 0.2);
+  const x1 = Math.ceil(image.width * 0.8);
+  const y0 = Math.floor(image.height * 0.25);
+  const y1 = Math.ceil(image.height * 0.85);
+  const total = Math.max(1, (x1 - x0) * (y1 - y0));
+  let meshPixels = 0;
+
+  for (let y = y0; y < y1; y += 1) {
+    for (let x = x0; x < x1; x += 1) {
+      const offset = (y * image.width + x) * 4;
+      const r = image.data[offset];
+      const g = image.data[offset + 1];
+      const b = image.data[offset + 2];
+      if (r < 220 || g < 220 || b < 220) meshPixels += 1;
+    }
+  }
+
+  expect(meshPixels / total, "Full viewer central canvas should contain rendered mesh pixels.").toBeGreaterThan(0.003);
 }
 
 async function visibleMeshOperationsCard(page: Page): Promise<Locator> {
@@ -339,6 +362,53 @@ test.describe("Mesh Operations card", () => {
     await expect(provenanceGraph).toContainText(/Source/i);
     await expect(provenanceGraph).toContainText(/Decimate/i);
     await expect(inspectorHistory.getByRole("button", { name: "Preview before" }).first()).toBeDisabled();
+  });
+
+  test("Full button opens the complete Bunny and Armadillo viewers", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await ctx.app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setSize(1400, 1200);
+    });
+    await page.waitForFunction(() => window.innerHeight >= 900, { timeout: 10_000 });
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+
+    for (const [benchmark, expectedTriangles] of [
+      ["stanford-bunny", /69\s*451 triangles/],
+      ["armadillo", /99\s*976 triangles/],
+    ] as const) {
+      await loadBenchmarkModel(page, benchmark);
+      const fullButton = page.getByTestId("mesh-viewer-quality-sharp");
+      await expect(fullButton).toBeVisible();
+      await fullButton.click();
+
+      const fullViewer = page.getByTestId("mesh-dedicated-full-viewer");
+      await expect(fullViewer).toBeVisible();
+      await expect(fullViewer).toContainText(expectedTriangles);
+      await expect(fullViewer).toContainText(/ready in \d+ ms/i, { timeout: 30_000 });
+      await expectFullViewerToRenderMesh(fullViewer);
+
+      await fullViewer.getByRole("button", { name: "Back to Fast", exact: true }).click();
+      await expect(fullViewer).toHaveCount(0);
+    }
+  });
+
+  test("keeps Full selected for a large Bunny operation result", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+    await loadBenchmarkModel(page, "stanford-bunny");
+
+    const smooth = await runMeshOperationHook(page, "smooth", { iterations: 2 });
+    expect(smooth.ok, smooth.error).toBeTruthy();
+
+    const fullButton = page.getByTestId("mesh-viewer-quality-sharp");
+    await fullButton.click();
+    await expect(fullButton).toHaveAttribute("aria-pressed", "true");
+    await page.waitForTimeout(1_500);
+    await expect(fullButton).toHaveAttribute("aria-pressed", "true");
   });
 
   test("runs Smooth on Bunny and Armadillo through the shared operation layer", async () => {

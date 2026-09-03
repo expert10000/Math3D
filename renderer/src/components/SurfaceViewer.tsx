@@ -2275,6 +2275,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const radiusRef = useRef<number>(3);
   const boundsBoxRef = useRef<THREE.Box3 | null>(null);
   const forceReframeRef = useRef<(() => void) | null>(null);
+  const meshReframeAppliedTokenRef = useRef(0);
   const onCameraTourEventRef = useRef<Props["onCameraTourEvent"] | undefined>(undefined);
   const onPerformanceSnapshotRef = useRef<Props["onPerformanceSnapshot"] | undefined>(undefined);
   const onMeshInteractionStateChangeRef = useRef<Props["onMeshInteractionStateChange"] | undefined>(undefined);
@@ -7241,6 +7242,14 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const sizeVec = new THREE.Vector3();
     box.getSize(sizeVec);
     radiusRef.current = sizeVec.length() * 0.5 || 3;
+    boundsBoxRef.current = box.clone();
+
+    // Fast proxies arrive after their source mesh. Fit after these bounds exist,
+    // rather than fitting the previous mesh before the proxy rebuild completes.
+    if (windowReframeToken && meshReframeAppliedTokenRef.current !== windowReframeToken) {
+      meshReframeAppliedTokenRef.current = windowReframeToken;
+      requestAnimationFrame(() => forceReframeRef.current?.());
+    }
 
     const viewGizmo = viewGizmoRef.current;
     if (viewGizmo) viewGizmo.position.copy(center);
@@ -7444,6 +7453,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     showBoundingBox,
     gizmoEnabled,
     gizmoMeshKey,
+    windowReframeToken,
   ]);
 
   useEffect(() => {
