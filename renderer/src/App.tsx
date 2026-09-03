@@ -2080,6 +2080,26 @@ const LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD = 50_000;
 const LARGE_MESH_FAST_LOAD_FILE_BYTES = 5 * 1024 * 1024;
 const LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET = 1_000;
 
+type LargeMeshFastPreviewPresentation = {
+  algorithm: FastPreviewProxyAlgorithm;
+  targetTriangles: number;
+};
+
+// Benchmark defaults are deliberately kept at today's Fast behavior. Keeping
+// them per model lets us tune a difficult mesh without changing every loader.
+const BENCHMARK_FAST_PREVIEW_PRESENTATIONS: Record<string, LargeMeshFastPreviewPresentation> = {
+  "stanford-bunny": { algorithm: "triangle-sample", targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET },
+  armadillo: { algorithm: "triangle-sample", targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET },
+  "dragon-medium": { algorithm: "triangle-sample", targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET },
+  "3dbenchy": { algorithm: "triangle-sample", targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET },
+};
+
+const getBenchmarkFastPreviewPresentation = (modelId: string): LargeMeshFastPreviewPresentation =>
+  BENCHMARK_FAST_PREVIEW_PRESENTATIONS[modelId] ?? {
+    algorithm: "triangle-sample",
+    targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET,
+  };
+
 const DETERMINISTIC_IMPLICIT_SAMPLE_EXPR = "x*x + y*y + z*z - 1";
 
 const toCgalHealthState = (status: PythonWorkerDiagnosticsSnapshot): CgalHealthState => ({
@@ -2114,6 +2134,8 @@ type LargeSurfaceMeshResolutionCache = {
   label: string;
   fullMesh: SurfaceMeshData;
   previewMesh: SurfaceMeshData;
+  fastPreviewAlgorithm: FastPreviewProxyAlgorithm;
+  fastPreviewTargetTriangles: number;
   active: "preview" | "full";
 };
 
@@ -33983,6 +34005,13 @@ const App: React.FC = () => {
     }
   }, []);
 
+  const handleFitMeshViewport = useCallback(() => {
+    const cache = largeSurfaceMeshResolutionCacheRef.current;
+    focusSurfaceMeshViewport(cache?.fullMesh ?? surfaceMeshData, {
+      roomy: cache?.fastPreviewAlgorithm === "connected-cluster",
+    });
+  }, [focusSurfaceMeshViewport, surfaceMeshData]);
+
   const bakeGeometryObjectToDatasetById = useCallback((objectId: string) => {
     setGeometryBakeError(null);
     const obj =
@@ -40615,10 +40644,11 @@ const App: React.FC = () => {
 
       const nextPreview = buildLargeSurfaceMeshDisplayProxy(
         cache.fullMesh,
-        LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET,
+        cache.fastPreviewTargetTriangles,
         algorithm
       );
       cache.previewMesh = nextPreview;
+      cache.fastPreviewAlgorithm = algorithm;
       recordMeshDebugEvent({
         kind: "quality",
         label: `Fast proxy -> ${algorithm}`,
@@ -50816,7 +50846,9 @@ case "mobius":
       });
       setSurfaceRenderQuality(nextQuality);
       setMeshInteractionQualityMode("fast-preview");
-      setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
+      setMeshInteractionPreviewTriangleTarget(
+        largeSurfaceMeshResolutionCacheRef.current?.fastPreviewTargetTriangles ?? LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET
+      );
     },
     [clearLargeSurfaceMeshFullPreviewAsyncWork, recordMeshDebugEvent]
   );
@@ -50834,10 +50866,10 @@ case "mobius":
       if (surfaceMeshData !== cache.previewMesh) {
         setMeshDataset(cache.previewMesh, "mesh-large:dedicated-full-keep-preview");
       }
-      focusSurfaceMeshViewport(cache.fullMesh, { roomy: meshFastPreviewAlgorithm === "connected-cluster" });
+      focusSurfaceMeshViewport(cache.fullMesh, { roomy: cache.fastPreviewAlgorithm === "connected-cluster" });
       setSurfaceRenderQuality("performance");
       setMeshInteractionQualityMode("fast-preview");
-      setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
+      setMeshInteractionPreviewTriangleTarget(cache.fastPreviewTargetTriangles);
       setSurfaceMeshImportBusy(false);
       setSurfaceMeshTopologyStatus(
         `Preparing dedicated Full viewer for ${cache.label}: ${expectedTriangles.toLocaleString()} triangles.`
@@ -51182,9 +51214,9 @@ case "mobius":
         meshFullRestoreFrameProfileRef.current = null;
         cache.active = "preview";
         setMeshInteractionQualityMode("fast-preview");
-        setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
+        setMeshInteractionPreviewTriangleTarget(cache.fastPreviewTargetTriangles);
         setMeshDataset(cache.previewMesh, "mesh-large:restore-preview");
-        focusSurfaceMeshViewport(cache.fullMesh, { roomy: meshFastPreviewAlgorithm === "connected-cluster" });
+        focusSurfaceMeshViewport(cache.fullMesh, { roomy: cache.fastPreviewAlgorithm === "connected-cluster" });
         recordMeshDebugEvent({
           kind: "quality",
           label: `Fast preview restored: ${cache.label}`,
@@ -51200,11 +51232,11 @@ case "mobius":
       }
       meshFullRestoreFrameProfileRef.current = null;
       setMeshInteractionQualityMode("fast-preview");
-      setMeshInteractionPreviewTriangleTarget(LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET);
+      setMeshInteractionPreviewTriangleTarget(cache.fastPreviewTargetTriangles);
       recordMeshDebugEvent({
         kind: "quality",
         label: "Fast preview requested",
-        details: { targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET },
+        details: { targetTriangles: cache.fastPreviewTargetTriangles },
       });
     },
     [
@@ -51404,7 +51436,14 @@ case "mobius":
           recordMeshPipelineProfilePhase(profileId, "app:displayProxy", benchmarkNowMs() - displayProxyStart);
         }
         largeSurfaceMeshResolutionCacheRef.current = isLargeMesh
-          ? { label: meshReady.label, fullMesh: meshReady, previewMesh: meshForApp, active: "preview" }
+          ? {
+              label: meshReady.label,
+              fullMesh: meshReady,
+              previewMesh: meshForApp,
+              fastPreviewAlgorithm: meshFastPreviewAlgorithm,
+              fastPreviewTargetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET,
+              active: "preview",
+            }
           : null;
         let appStageStart = benchmarkNowMs();
         clearSurfaceMeshTopologySessionState();
@@ -51465,6 +51504,7 @@ case "mobius":
         forceMergeVertices?: boolean;
         profileLabel?: string;
         benchmarkModel?: MeshBenchmarkModel | null;
+        fastPreviewPresentation?: LargeMeshFastPreviewPresentation;
         profileStartedAt?: number;
         preStages?: Array<{ phase: string; ms: number }>;
       }
@@ -51499,19 +51539,30 @@ case "mobius":
         });
         recordMeshPipelineProfilePhase(profileId, "prep:total", benchmarkNowMs() - meshBuildStart);
         const isLargeMesh = surfaceMeshTriangleCount(meshReady) >= LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD;
+        const fastPreviewPresentation = options?.fastPreviewPresentation ?? {
+          algorithm: meshFastPreviewAlgorithm,
+          targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET,
+        };
         const displayProxyStart = benchmarkNowMs();
         const meshForApp = isLargeMesh
           ? buildLargeSurfaceMeshDisplayProxy(
               meshReady,
-              LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET,
-              meshFastPreviewAlgorithm
+              fastPreviewPresentation.targetTriangles,
+              fastPreviewPresentation.algorithm
             )
           : meshReady;
         if (isLargeMesh) {
           recordMeshPipelineProfilePhase(profileId, "app:displayProxy", benchmarkNowMs() - displayProxyStart);
         }
         largeSurfaceMeshResolutionCacheRef.current = isLargeMesh
-          ? { label: meshReady.label, fullMesh: meshReady, previewMesh: meshForApp, active: "preview" }
+          ? {
+              label: meshReady.label,
+              fullMesh: meshReady,
+              previewMesh: meshForApp,
+              fastPreviewAlgorithm: fastPreviewPresentation.algorithm,
+              fastPreviewTargetTriangles: fastPreviewPresentation.targetTriangles,
+              active: "preview",
+            }
           : null;
         let appStageStart = benchmarkNowMs();
         clearSurfaceMeshTopologySessionState();
@@ -51556,7 +51607,7 @@ case "mobius":
         setSurfaceViewerKind("mesh");
         recordMeshPipelineProfilePhase(profileId, "app:viewState", benchmarkNowMs() - appStageStart);
         appStageStart = benchmarkNowMs();
-        focusSurfaceMeshViewport(meshReady, { roomy: meshFastPreviewAlgorithm === "connected-cluster" });
+        focusSurfaceMeshViewport(meshReady, { roomy: fastPreviewPresentation.algorithm === "connected-cluster" });
         recordMeshPipelineProfilePhase(profileId, "app:focusViewport", benchmarkNowMs() - appStageStart);
         finishMeshPipelineProfile(profileId, { mesh: meshReady });
         return meshReady;
@@ -51622,6 +51673,8 @@ case "mobius":
         return;
       }
       const hintedModel = surfaceMeshBenchmarkModels.find((model) => model.id === modelId) ?? null;
+      const fastPreviewPresentation = getBenchmarkFastPreviewPresentation(modelId);
+      setMeshFastPreviewAlgorithm(fastPreviewPresentation.algorithm);
       resetLargeSurfaceMeshFullPreviewForNewLoad(hintedModel?.label ?? modelId);
       setSurfaceMeshBenchmarkBrowserOpen(false);
       setSurfaceMeshImportBusy(true);
@@ -51652,6 +51705,7 @@ case "mobius":
           forceMergeVertices: options?.forceMergeVertices,
           profileLabel: response.entry.label,
           benchmarkModel: response.entry,
+          fastPreviewPresentation,
           profileStartedAt,
           preStages: [{ phase: "benchmark:loadAsset", ms: benchmarkAssetLoadMs }],
         });
@@ -73820,6 +73874,15 @@ case "mobius":
                             </button>
                           );
                         })}
+                        <button
+                          type="button"
+                          data-testid="mesh-viewer-fit-mesh"
+                          onClick={handleFitMeshViewport}
+                          style={viewerControlButtonStyle(false, "compact")}
+                          title="Frame the active mesh in the viewport"
+                        >
+                          Fit mesh
+                        </button>
                       </div>
                     )}
                     {showMeshViewerLocalToolStrip &&
@@ -74235,6 +74298,15 @@ case "mobius":
                               );
                             })()
                           ))}
+                          <button
+                            type="button"
+                            data-testid="mesh-viewer-fit-mesh"
+                            onClick={handleFitMeshViewport}
+                            style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
+                            title="Frame the active mesh in the viewport"
+                          >
+                            {meshViewerControlsDensity === "compact" ? "Fit" : "Fit mesh"}
+                          </button>
                           <span style={{ ...viewerControlLabelStyle, marginLeft: 4 }}>
                             {meshViewerControlsDensity === "compact" ? "Cam" : "Camera"}
                           </span>

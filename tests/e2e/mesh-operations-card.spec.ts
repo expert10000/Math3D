@@ -109,6 +109,46 @@ async function expectFullViewerToRenderMesh(viewer: Locator): Promise<void> {
   expect(meshPixels / total, "Full viewer central canvas should contain rendered mesh pixels.").toBeGreaterThan(0.003);
 }
 
+async function expectPrimaryViewerToRenderMesh(viewer: Locator): Promise<void> {
+  const image = PNG.sync.read(await viewer.screenshot());
+  // Ignore the viewport's toolbar and status chips: only the central canvas
+  // should satisfy this assertion.
+  const x0 = Math.floor(image.width * 0.2);
+  const x1 = Math.ceil(image.width * 0.8);
+  const y0 = Math.floor(image.height * 0.28);
+  const y1 = Math.ceil(image.height * 0.85);
+  const colors = new Map<number, number>();
+
+  for (let y = y0; y < y1; y += 2) {
+    for (let x = x0; x < x1; x += 2) {
+      const offset = (y * image.width + x) * 4;
+      const bin =
+        ((image.data[offset] >> 4) << 8) |
+        ((image.data[offset + 1] >> 4) << 4) |
+        (image.data[offset + 2] >> 4);
+      colors.set(bin, (colors.get(bin) ?? 0) + 1);
+    }
+  }
+
+  const [backgroundBin] = [...colors.entries()].sort((a, b) => b[1] - a[1])[0] ?? [0];
+  const background = [(backgroundBin >> 8) & 0xf, (backgroundBin >> 4) & 0xf, backgroundBin & 0xf];
+  let meshPixels = 0;
+  let total = 0;
+  for (let y = y0; y < y1; y += 1) {
+    for (let x = x0; x < x1; x += 1) {
+      const offset = (y * image.width + x) * 4;
+      const distance =
+        Math.abs((image.data[offset] >> 4) - background[0]) +
+        Math.abs((image.data[offset + 1] >> 4) - background[1]) +
+        Math.abs((image.data[offset + 2] >> 4) - background[2]);
+      if (distance >= 3) meshPixels += 1;
+      total += 1;
+    }
+  }
+
+  expect(meshPixels / Math.max(1, total), "Fast viewer should contain a framed mesh, not a blank canvas.").toBeGreaterThan(0.002);
+}
+
 async function visibleMeshOperationsCard(page: Page): Promise<Locator> {
   const card = await firstVisible(page.locator('[data-testid$="operation-registry"]'));
   await card.scrollIntoViewIfNeeded();
@@ -364,7 +404,7 @@ test.describe("Mesh Operations card", () => {
     await expect(inspectorHistory.getByRole("button", { name: "Preview before" }).first()).toBeDisabled();
   });
 
-  test("Full button opens the complete Bunny and Armadillo viewers", async () => {
+  test("Full button opens the complete Bunny, Armadillo, and Dragon viewers", async () => {
     ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
     const { page } = ctx;
     await ctx.app.evaluate(({ BrowserWindow }) => {
@@ -377,6 +417,7 @@ test.describe("Mesh Operations card", () => {
     for (const [benchmark, expectedTriangles] of [
       ["stanford-bunny", /69\s*451 triangles/],
       ["armadillo", /99\s*976 triangles/],
+      ["dragon-medium", /12_dragon_medium\.obj/i],
     ] as const) {
       await loadBenchmarkModel(page, benchmark);
       const fullButton = page.getByTestId("mesh-viewer-quality-sharp");
@@ -392,6 +433,25 @@ test.describe("Mesh Operations card", () => {
       await fullViewer.getByRole("button", { name: "Back to Fast", exact: true }).click();
       await expect(fullViewer).toHaveCount(0);
     }
+  });
+
+  test("frames Dragon's Fast proxy on load and on demand", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await ctx.app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setSize(1400, 1200);
+    });
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+    await loadBenchmarkModel(page, "dragon-medium");
+
+    const viewer = page.getByTestId("surface-primary-viewer");
+    await expect(viewer).toBeVisible({ timeout: 45_000 });
+    await expectPrimaryViewerToRenderMesh(viewer);
+
+    const fitButton = await firstVisible(page.getByTestId("mesh-viewer-fit-mesh"));
+    await fitButton.click();
+    await expectPrimaryViewerToRenderMesh(viewer);
   });
 
   test("keeps Full selected for a large Bunny operation result", async () => {
