@@ -1663,8 +1663,9 @@ type GeometryOperationPreset = {
   lastResult?: MeshOperationResultSummary | null;
 };
 type WorkbookWorkspaceState = {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   savedAt: number;
+  meshWorkspace?: MeshWorkspaceProjectState;
   geometry: {
     mode: GeometryMode;
     objects: GeometryObject[];
@@ -5074,6 +5075,56 @@ type UnifiedManualDerived = {
   operation?: GeometryDerivedOperation;
   resultObjectId?: string;
   errorMessage?: string;
+};
+
+type MeshWorkspaceGroup = {
+  id: string;
+  name: string;
+  memberIds: string[];
+  createdAt: number;
+};
+
+type MeshWorkspaceGeometryLink = {
+  id: string;
+  geometryObjectId: string;
+  linkedAt: number;
+};
+
+type MeshWorkspaceEntry = {
+  id: string;
+  name: string;
+  sourceDefinition: string;
+  displayState: string;
+  visible: boolean;
+  kind: "active" | "geometry";
+  geometryObjectId?: string;
+};
+
+type MeshWorkspaceProjectState = {
+  version: 1;
+  activeMeshVisible: boolean;
+  geometryLinks: MeshWorkspaceGeometryLink[];
+  groups: MeshWorkspaceGroup[];
+  order: string[];
+  selectedEntryIds: string[];
+};
+
+type MeshWorkspaceProvenanceEntry = {
+  id: string;
+  label: string;
+  parentEntryIds: string[];
+  status: MeshOperationResultSummary["status"];
+  historyEntryId: string;
+};
+
+type MeshWorkspaceInspectorSummary = {
+  meshCount: number;
+  linkedGeometryCount: number;
+  selectedCount: number;
+  vertexCount: number;
+  faceCount: number;
+  bounds: BBox3 | null;
+  healthLabel: string;
 };
 
 const UNIFIED_SCENE_ROLE_LABELS: Record<UnifiedSceneRole, string> = {
@@ -33728,10 +33779,17 @@ const App: React.FC = () => {
   const [meshOperationPreviewUseDecimate, setMeshOperationPreviewUseDecimate] = useState(true);
   const [meshWorkspaceLeftTab, setMeshWorkspaceLeftTab] = useState<MeshWorkspaceLeftTab>("operations");
   const [meshImportPanelExpanded, setMeshImportPanelExpanded] = useState(false);
+  const [meshWorkspaceActiveMeshVisible, setMeshWorkspaceActiveMeshVisible] = useState(true);
+  const [meshWorkspaceGeometryLinks, setMeshWorkspaceGeometryLinks] = useState<MeshWorkspaceGeometryLink[]>([]);
+  const [meshWorkspaceGroups, setMeshWorkspaceGroups] = useState<MeshWorkspaceGroup[]>([]);
+  const [meshWorkspaceOrder, setMeshWorkspaceOrder] = useState<string[]>(["workspace:active"]);
+  const [meshWorkspaceSelectedEntryId, setMeshWorkspaceSelectedEntryId] = useState<string | null>(null);
+  const [meshWorkspaceSelectedEntryIds, setMeshWorkspaceSelectedEntryIds] = useState<string[]>([]);
   const [meshWorkspaceOverlayIsolation, setMeshWorkspaceOverlayIsolation] = useState<{
     selectedId: string;
     visibility: Record<string, boolean>;
   } | null>(null);
+  const [meshWorkspaceMeshIsolation, setMeshWorkspaceMeshIsolation] = useState<Record<string, boolean> | null>(null);
   const [meshBooleanReview, setMeshBooleanReview] = useState<MeshBooleanReviewState | null>(null);
   const [meshBooleanReviewProblemsVisible, setMeshBooleanReviewProblemsVisible] = useState(false);
   const meshOperationOutputModeForRequest = useMemo(
@@ -48735,8 +48793,16 @@ case "mobius":
     }
 
     return {
-      version: 2,
+      version: 3,
       savedAt: now,
+      meshWorkspace: {
+        version: 1,
+        activeMeshVisible: meshWorkspaceActiveMeshVisible,
+        geometryLinks: meshWorkspaceGeometryLinks.map((link) => ({ ...link })),
+        groups: meshWorkspaceGroups.map((group) => ({ ...group, memberIds: [...group.memberIds] })),
+        order: [...meshWorkspaceOrder],
+        selectedEntryIds: [...meshWorkspaceSelectedEntryIds],
+      },
       geometry: {
         mode: geometryMode,
         objects: geometryObjects.map((obj) => ({
@@ -48965,6 +49031,11 @@ case "mobius":
       geodesicDiskAutoUpdate,
       geodesicDiskShowBoundary,
       geodesicDiskMethod,
+      meshWorkspaceActiveMeshVisible,
+      meshWorkspaceGeometryLinks,
+      meshWorkspaceGroups,
+      meshWorkspaceOrder,
+      meshWorkspaceSelectedEntryIds,
     ]
   );
 
@@ -49040,6 +49111,42 @@ case "mobius":
     if (!workspace || typeof workspace !== "object") return;
     const restoredWorkspace = migrateWorkbookWorkspace(workspace);
     if (!restoredWorkspace || typeof restoredWorkspace !== "object") return;
+
+    const restoredMeshWorkspace = restoredWorkspace.meshWorkspace;
+    if (restoredMeshWorkspace && typeof restoredMeshWorkspace === "object") {
+      setMeshWorkspaceActiveMeshVisible(restoredMeshWorkspace.activeMeshVisible !== false);
+      setMeshWorkspaceGeometryLinks(
+        Array.isArray(restoredMeshWorkspace.geometryLinks)
+          ? restoredMeshWorkspace.geometryLinks
+              .filter((link): link is MeshWorkspaceGeometryLink =>
+                !!link && typeof link.id === "string" && typeof link.geometryObjectId === "string"
+              )
+              .map((link) => ({ id: link.id, geometryObjectId: link.geometryObjectId, linkedAt: Number(link.linkedAt) || Date.now() }))
+          : []
+      );
+      setMeshWorkspaceGroups(
+        Array.isArray(restoredMeshWorkspace.groups)
+          ? restoredMeshWorkspace.groups
+              .filter((group): group is MeshWorkspaceGroup => !!group && typeof group.id === "string" && typeof group.name === "string")
+              .map((group) => ({
+                id: group.id,
+                name: group.name,
+                memberIds: Array.isArray(group.memberIds) ? group.memberIds.filter((id) => typeof id === "string") : [],
+                createdAt: Number(group.createdAt) || Date.now(),
+              }))
+          : []
+      );
+      setMeshWorkspaceOrder(
+        Array.isArray(restoredMeshWorkspace.order)
+          ? restoredMeshWorkspace.order.filter((id): id is string => typeof id === "string")
+          : ["workspace:active"]
+      );
+      setMeshWorkspaceSelectedEntryIds(
+        Array.isArray(restoredMeshWorkspace.selectedEntryIds)
+          ? restoredMeshWorkspace.selectedEntryIds.filter((id): id is string => typeof id === "string")
+          : []
+      );
+    }
 
     const geometry = restoredWorkspace.geometry;
     if (geometry && typeof geometry === "object") {
@@ -64643,9 +64750,191 @@ case "mobius":
       (node) => scopedIds.has(node.id) || (node.category === "derived" && !!node.parentId && scopedIds.has(node.parentId))
     );
   }, [unifiedObjectModel.activeDatasetNodeId, unifiedObjectModel.nodeById, unifiedObjectNodes]);
-  const meshWorkspaceSelectedId = meshWorkspaceSceneNodes.some((node) => node.id === unifiedTreeSelectedId)
-    ? unifiedTreeSelectedId
-    : unifiedObjectModel.activeDatasetNodeId;
+  const meshWorkspaceGeometryEntries = useMemo<MeshWorkspaceEntry[]>(
+    () =>
+      meshWorkspaceGeometryLinks.flatMap((link) => {
+        const node = unifiedObjectModel.nodeById.get(`scene:${link.geometryObjectId}`);
+        if (!node) return [];
+        return [{
+          id: link.id,
+          name: node.name,
+          sourceDefinition: node.sourceDefinition,
+          displayState: node.displayState,
+          visible: node.visible !== false,
+          kind: "geometry" as const,
+          geometryObjectId: link.geometryObjectId,
+        }];
+      }),
+    [meshWorkspaceGeometryLinks, unifiedObjectModel.nodeById]
+  );
+  const meshWorkspaceEntries = useMemo<MeshWorkspaceEntry[]>(() => {
+    const root = unifiedObjectModel.activeDatasetNodeId
+      ? unifiedObjectModel.nodeById.get(unifiedObjectModel.activeDatasetNodeId) ?? null
+      : null;
+    const active = root
+      ? [{
+          id: "workspace:active",
+          name: root.name,
+          sourceDefinition: root.sourceDefinition,
+          displayState: root.displayState,
+          visible: meshWorkspaceActiveMeshVisible,
+          kind: "active" as const,
+        }]
+      : [];
+    const entries = [...active, ...meshWorkspaceGeometryEntries];
+    const orderIndex = new Map(meshWorkspaceOrder.map((id, index) => [id, index]));
+    return entries.slice().sort((a, b) => (orderIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (orderIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER));
+  }, [meshWorkspaceActiveMeshVisible, meshWorkspaceGeometryEntries, meshWorkspaceOrder, unifiedObjectModel.activeDatasetNodeId, unifiedObjectModel.nodeById]);
+  useEffect(() => {
+    const validIds = new Set(meshWorkspaceGeometryEntries.map((entry) => entry.id));
+    setMeshWorkspaceGeometryLinks((prev) => {
+      const next = prev.filter((link) => validIds.has(link.id));
+      return next.length === prev.length ? prev : next;
+    });
+    setMeshWorkspaceGroups((prev) =>
+      prev.map((group) => ({
+        ...group,
+        memberIds: group.memberIds.filter((id) => id === "workspace:active" || validIds.has(id)),
+      }))
+    );
+    setMeshWorkspaceOrder((prev) => {
+      const next = prev.filter((id) => id === "workspace:active" || validIds.has(id));
+      for (const id of validIds) if (!next.includes(id)) next.push(id);
+      return next;
+    });
+    setMeshWorkspaceSelectedEntryIds((prev) => prev.filter((id) => id === "workspace:active" || validIds.has(id)));
+    setMeshWorkspaceSelectedEntryId((prev) =>
+      prev === "workspace:active" || (prev != null && validIds.has(prev)) ? prev : null
+    );
+  }, [meshWorkspaceGeometryEntries]);
+  useEffect(() => {
+    if (surfaceMeshData?.positions?.length) setMeshWorkspaceActiveMeshVisible(true);
+  }, [surfaceMeshData]);
+  const meshWorkspaceSelectedId =
+    meshWorkspaceSelectedEntryId ??
+    (meshWorkspaceSceneNodes.some((node) => node.id === unifiedTreeSelectedId)
+      ? unifiedTreeSelectedId
+      : "workspace:active");
+  const meshWorkspaceViewerOverrides = useMemo(() => {
+    const hasAdditionalMeshes = meshWorkspaceGeometryEntries.length > 0;
+    if (!hasAdditionalMeshes && meshWorkspaceActiveMeshVisible) return null;
+    const overrides: Array<{
+      id: string;
+      positions: ArrayLike<number>;
+      indices?: ArrayLike<number> | null;
+      normals?: ArrayLike<number> | null;
+      color?: number;
+      opacity?: number;
+      roughness?: number;
+      metalness?: number;
+    }> = [];
+    if (meshWorkspaceActiveMeshVisible && surfaceMeshTopologyViewerMesh?.positions?.length) {
+      overrides.push({
+        id: "workspace:active",
+        positions: surfaceMeshTopologyViewerMesh.positions,
+        indices: surfaceMeshTopologyViewerMesh.indices,
+        normals: surfaceMeshTopologyViewerMesh.normals,
+      });
+    }
+    for (const entry of meshWorkspaceGeometryEntries) {
+      if (!entry.visible || !entry.geometryObjectId || entry.geometryObjectId === meshGeometryRoundTripSource?.objectId) continue;
+      const resolved = resolveGeometrySceneMeshById(entry.geometryObjectId);
+      if (!resolved?.mesh.positions.length) continue;
+      overrides.push({
+        id: entry.id,
+        positions: resolved.mesh.positions,
+        indices: resolved.mesh.indices,
+        normals: resolved.mesh.normals,
+        color: normalizeGeometryMaterial(resolved.object.material).color,
+        opacity: Math.min(0.55, Math.max(0.24, normalizeGeometryMaterial(resolved.object.material).opacity * 0.72)),
+        roughness: 0.48,
+        metalness: 0.04,
+      });
+    }
+    return overrides;
+  }, [
+    meshGeometryRoundTripSource?.objectId,
+    meshWorkspaceActiveMeshVisible,
+    meshWorkspaceGeometryEntries,
+    resolveGeometrySceneMeshById,
+    surfaceMeshTopologyViewerMesh,
+  ]);
+  const meshWorkspaceProvenanceEntries = useMemo<MeshWorkspaceProvenanceEntry[]>(
+    () =>
+      meshOperationHistory
+        .slice()
+        .reverse()
+        .slice(-12)
+        .map((entry) => ({
+          id: `workspace:operation:${entry.id}`,
+          label: entry.result.label,
+          parentEntryIds: entry.parentEntryIds,
+          status: entry.result.status,
+          historyEntryId: entry.id,
+        })),
+    [meshOperationHistory]
+  );
+  const meshWorkspaceInspectorSummary = useMemo<MeshWorkspaceInspectorSummary>(() => {
+    const meshes: SurfaceMeshData[] = [];
+    if (surfaceMeshTopologyViewerMesh?.positions?.length) meshes.push(surfaceMeshTopologyViewerMesh);
+    for (const entry of meshWorkspaceGeometryEntries) {
+      if (!entry.geometryObjectId || entry.geometryObjectId === meshGeometryRoundTripSource?.objectId) continue;
+      const resolved = resolveGeometrySceneMeshById(entry.geometryObjectId);
+      if (resolved?.mesh.positions.length) meshes.push(resolved.mesh);
+    }
+    let vertexCount = 0;
+    let faceCount = 0;
+    let bounds: BBox3 | null = null;
+    for (const mesh of meshes) {
+      vertexCount += Math.floor(mesh.positions.length / 3);
+      faceCount += surfaceMeshTriangleCount(mesh);
+      const nextBounds = boundsFromPositions(mesh.positions);
+      if (!nextBounds) continue;
+      bounds = bounds
+        ? {
+            min: [
+              Math.min(bounds.min[0], nextBounds.min[0]),
+              Math.min(bounds.min[1], nextBounds.min[1]),
+              Math.min(bounds.min[2], nextBounds.min[2]),
+            ],
+            max: [
+              Math.max(bounds.max[0], nextBounds.max[0]),
+              Math.max(bounds.max[1], nextBounds.max[1]),
+              Math.max(bounds.max[2], nextBounds.max[2]),
+            ],
+          }
+        : nextBounds;
+    }
+    const activeHasIssues = Boolean(
+      meshQualityReport &&
+        (meshQualityReport.topology.boundaryEdgeCount > 0 ||
+          meshQualityReport.topology.nonManifoldEdgeCount > 0 ||
+          meshQualityReport.topology.degenerateFaceCount > 0)
+    );
+    const effectiveSelectedEntryIds = meshWorkspaceSelectedEntryIds.length
+      ? meshWorkspaceSelectedEntryIds
+      : meshWorkspaceEntries.some((entry) => entry.id === meshWorkspaceSelectedId)
+        ? [meshWorkspaceSelectedId]
+        : [];
+    return {
+      meshCount: meshes.length,
+      linkedGeometryCount: meshWorkspaceGeometryEntries.length,
+      selectedCount: effectiveSelectedEntryIds.length,
+      vertexCount,
+      faceCount,
+      bounds,
+      healthLabel: activeHasIssues ? "Active mesh needs review" : meshWorkspaceGeometryEntries.length ? "Linked meshes unverified" : "Active mesh healthy",
+    };
+  }, [
+    meshGeometryRoundTripSource?.objectId,
+    meshQualityReport,
+    meshWorkspaceGeometryEntries,
+    meshWorkspaceEntries,
+    meshWorkspaceSelectedId,
+    meshWorkspaceSelectedEntryIds.length,
+    resolveGeometrySceneMeshById,
+    surfaceMeshTopologyViewerMesh,
+  ]);
   const unifiedSelectedNode = unifiedTreeSelectedId
     ? unifiedObjectModel.nodeById.get(unifiedTreeSelectedId) ?? null
     : null;
@@ -64966,6 +65255,326 @@ case "mobius":
       visibility,
     });
   }, [handleToggleUnifiedNodeVisibility, meshWorkspaceOverlayIsolation, meshWorkspaceSceneNodes, meshWorkspaceSelectedId]);
+  const handleSelectMeshWorkspaceEntry = useCallback(
+    (entryId: string, additive = false) => {
+      setMeshWorkspaceSelectedEntryId(entryId);
+      setMeshWorkspaceSelectedEntryIds((prev) => {
+        if (!additive) return [entryId];
+        return prev.includes(entryId) ? prev.filter((id) => id !== entryId) : [...prev, entryId];
+      });
+      if (entryId === "workspace:active") {
+        if (unifiedObjectModel.activeDatasetNodeId) setUnifiedTreeSelectedId(unifiedObjectModel.activeDatasetNodeId);
+        return;
+      }
+      const linked = meshWorkspaceGeometryEntries.find((entry) => entry.id === entryId);
+      if (linked?.geometryObjectId) setUnifiedTreeSelectedId(`scene:${linked.geometryObjectId}`);
+      else setUnifiedTreeSelectedId(entryId);
+    },
+    [meshWorkspaceGeometryEntries, unifiedObjectModel.activeDatasetNodeId]
+  );
+  const handleToggleMeshWorkspaceEntryVisibility = useCallback(
+    (entryId: string) => {
+      if (entryId === "workspace:active") {
+        setMeshWorkspaceActiveMeshVisible((visible) => !visible);
+        return;
+      }
+      const linked = meshWorkspaceGeometryEntries.find((entry) => entry.id === entryId);
+      if (linked?.geometryObjectId) handleToggleGeometryObjectVisible(linked.geometryObjectId);
+    },
+    [handleToggleGeometryObjectVisible, meshWorkspaceGeometryEntries]
+  );
+  const handleSetMeshWorkspaceGroupVisibility = useCallback(
+    (groupId: string, visible: boolean) => {
+      const group = meshWorkspaceGroups.find((candidate) => candidate.id === groupId);
+      if (!group) return;
+      for (const entryId of group.memberIds) {
+        const entry = meshWorkspaceEntries.find((candidate) => candidate.id === entryId);
+        if (!entry || entry.visible === visible) continue;
+        if (entry.id === "workspace:active") setMeshWorkspaceActiveMeshVisible(visible);
+        else if (entry.geometryObjectId) handleToggleGeometryObjectVisible(entry.geometryObjectId);
+      }
+    },
+    [handleToggleGeometryObjectVisible, meshWorkspaceEntries, meshWorkspaceGroups]
+  );
+  const handleToggleMeshWorkspaceMeshIsolation = useCallback(
+    (entryId: string) => {
+      if (meshWorkspaceMeshIsolation) {
+        setMeshWorkspaceActiveMeshVisible(meshWorkspaceMeshIsolation["workspace:active"] !== false);
+        for (const entry of meshWorkspaceGeometryEntries) {
+          const shouldBeVisible = meshWorkspaceMeshIsolation[entry.id];
+          if (typeof shouldBeVisible === "boolean" && entry.visible !== shouldBeVisible && entry.geometryObjectId) {
+            handleToggleGeometryObjectVisible(entry.geometryObjectId);
+          }
+        }
+        setMeshWorkspaceMeshIsolation(null);
+        return;
+      }
+      const visibility = Object.fromEntries(meshWorkspaceEntries.map((entry) => [entry.id, entry.visible]));
+      setMeshWorkspaceActiveMeshVisible(entryId === "workspace:active");
+      for (const entry of meshWorkspaceGeometryEntries) {
+        const shouldBeVisible = entry.id === entryId;
+        if (entry.visible !== shouldBeVisible && entry.geometryObjectId) handleToggleGeometryObjectVisible(entry.geometryObjectId);
+      }
+      setMeshWorkspaceMeshIsolation(visibility);
+    },
+    [handleToggleGeometryObjectVisible, meshWorkspaceEntries, meshWorkspaceGeometryEntries, meshWorkspaceMeshIsolation]
+  );
+  const handleCreateMeshWorkspaceGroup = useCallback(() => {
+    setMeshWorkspaceGroups((prev) => [
+      ...prev,
+      { id: makeId(), name: `Group ${prev.length + 1}`, memberIds: [], createdAt: Date.now() },
+    ]);
+  }, []);
+  const handleRenameMeshWorkspaceGroup = useCallback((groupId: string, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setMeshWorkspaceGroups((prev) => prev.map((group) => (group.id === groupId ? { ...group, name: trimmed } : group)));
+  }, []);
+  const handleDeleteMeshWorkspaceGroup = useCallback((groupId: string) => {
+    setMeshWorkspaceGroups((prev) => prev.filter((group) => group.id !== groupId));
+  }, []);
+  const handleAssignMeshWorkspaceEntryToGroup = useCallback((entryId: string, groupId: string | null) => {
+    setMeshWorkspaceGroups((prev) =>
+      prev.map((group) => ({
+        ...group,
+        memberIds:
+          group.id === groupId
+            ? [...new Set([...group.memberIds.filter((id) => id !== entryId), entryId])]
+            : group.memberIds.filter((id) => id !== entryId),
+      }))
+    );
+  }, []);
+  const handleReorderMeshWorkspaceEntries = useCallback((sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return;
+    setMeshWorkspaceOrder((prev) => {
+      const known = meshWorkspaceEntries.map((entry) => entry.id);
+      const next = [...prev.filter((id) => known.includes(id) && id !== sourceId), sourceId];
+      const targetIndex = next.indexOf(targetId);
+      if (targetIndex < 0) return next;
+      next.splice(next.length - 1, 1);
+      next.splice(targetIndex, 0, sourceId);
+      return next;
+    });
+  }, [meshWorkspaceEntries]);
+  const handleSetMeshWorkspaceEntriesVisibility = useCallback((entryIds: string[], visible: boolean) => {
+    for (const entryId of entryIds) {
+      const entry = meshWorkspaceEntries.find((candidate) => candidate.id === entryId);
+      if (!entry || entry.visible === visible) continue;
+      if (entry.id === "workspace:active") setMeshWorkspaceActiveMeshVisible(visible);
+      else if (entry.geometryObjectId) handleToggleGeometryObjectVisible(entry.geometryObjectId);
+    }
+  }, [handleToggleGeometryObjectVisible, meshWorkspaceEntries]);
+  const handleShowAllMeshWorkspaceEntries = useCallback(() => {
+    handleSetMeshWorkspaceEntriesVisibility(meshWorkspaceEntries.map((entry) => entry.id), true);
+  }, [handleSetMeshWorkspaceEntriesVisibility, meshWorkspaceEntries]);
+  const handleUnlinkMeshWorkspaceGeometry = useCallback((entryId: string) => {
+    setMeshWorkspaceGeometryLinks((prev) => prev.filter((link) => link.id !== entryId));
+    setMeshWorkspaceGroups((prev) =>
+      prev.map((group) => ({ ...group, memberIds: group.memberIds.filter((id) => id !== entryId) }))
+    );
+    setMeshWorkspaceOrder((prev) => prev.filter((id) => id !== entryId));
+    setMeshWorkspaceSelectedEntryId((selected) => (selected === entryId ? "workspace:active" : selected));
+    setMeshWorkspaceSelectedEntryIds((prev) => prev.filter((id) => id !== entryId));
+  }, []);
+  const handleLinkSelectedGeometryMeshToWorkspace = useCallback(() => {
+    const selected = geometrySelectedSceneObject;
+    if (!selected) {
+      setSurfaceMeshTopologyStatus("Select a Geometry mesh first, then choose Link selected Geometry mesh.");
+      return;
+    }
+    const resolved = resolveGeometrySceneMeshById(selected.id);
+    if (!resolved?.mesh.positions.length) {
+      setSurfaceMeshTopologyStatus("The selected Geometry object does not provide a mesh source.");
+      return;
+    }
+    const linkId = `workspace:geometry:${selected.id}`;
+    setMeshWorkspaceGeometryLinks((prev) =>
+      prev.some((link) => link.geometryObjectId === selected.id)
+        ? prev
+        : [...prev, { id: linkId, geometryObjectId: selected.id, linkedAt: Date.now() }]
+    );
+    setMeshWorkspaceOrder((prev) => (prev.includes(linkId) ? prev : [...prev, linkId]));
+    setMeshWorkspaceSelectedEntryId(linkId);
+    setSurfaceMeshTopologyStatus(`Linked Geometry mesh: ${selected.name}. Activate it from the Outliner to edit its Mesh copy.`);
+  }, [geometrySelectedSceneObject, resolveGeometrySceneMeshById]);
+  const handleLoadMeshWorkspaceTestScene = useCallback((meshCount: 1 | 5 | 10) => {
+    const activeMesh = buildMeshOperationBooleanDemoCubeMesh("Workspace test active", -0.35);
+    const palette = [0xf97316, 0x22c55e, 0x8b5cf6, 0x06b6d4, 0xeab308, 0xec4899, 0x14b8a6, 0x84cc16, 0x64748b];
+    const linkCount = meshCount - 1;
+    const columns = meshCount === 10 ? 3 : 2;
+    const linkedObjects: GeometryDatasetMeshObject[] = Array.from({ length: linkCount }, (_, index) => {
+      const id = makeId();
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      const isBooleanOperand = index === 0;
+      return {
+        id,
+        name: isBooleanOperand ? "Workspace test cutter" : `Workspace test reference ${index}`,
+        mesh: toDetachedMeshData(buildMeshOperationBooleanDemoCubeMesh(isBooleanOperand ? "Workspace test cutter" : `Workspace test reference ${index}`, isBooleanOperand ? 0.35 : 0)),
+        transform: {
+          position: isBooleanOperand
+            ? { x: 0, y: 0, z: 0 }
+            : {
+                x: 2.8 + column * 2.5,
+                y: (row - 1) * 2.5,
+                z: index % 2 === 0 ? 0.5 : -0.5,
+              },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+        },
+        visible: true,
+        material: { color: palette[index % palette.length], opacity: isBooleanOperand ? 0.58 : 0.72 },
+        promotion: null,
+        sourceSelectionOverlay: null,
+      };
+    });
+    const links = linkedObjects.map((object) => ({
+      id: `workspace:geometry:${object.id}`,
+      geometryObjectId: object.id,
+      linkedAt: Date.now(),
+    }));
+    const firstLinkId = links[0]?.id ?? null;
+    const groups: MeshWorkspaceGroup[] = firstLinkId
+      ? [
+          {
+            id: "workspace:test:operands",
+            name: "Boolean candidates",
+            memberIds: ["workspace:active", firstLinkId],
+            createdAt: Date.now(),
+          },
+          ...(links.length > 1
+            ? [{
+                id: "workspace:test:references",
+                name: "Scene references",
+                memberIds: links.slice(1).map((link) => link.id),
+                createdAt: Date.now(),
+              }]
+            : []),
+        ]
+      : [];
+    const focusMeshData = mergeMeshData([
+      { positions: activeMesh.positions, indices: activeMesh.indices },
+      ...linkedObjects.map((object) => {
+        const transformed = transformSurfaceMeshByGeometryTransform(object.mesh, object.transform);
+        return { positions: transformed.positions, indices: transformed.indices };
+      }),
+    ]);
+    const focusMesh: SurfaceMeshData = {
+      label: `Workspace test scene (${meshCount})`,
+      positions: focusMeshData.positions,
+      indices: focusMeshData.indices,
+      source: { kind: "geometryObject", objects: linkedObjects.map((object) => ({ objectId: object.id, objectName: object.name })) },
+    };
+
+    setGeometryDatasetMeshObjects((prev) => [
+      ...linkedObjects,
+      ...prev.filter((object) => !object.name.startsWith("Workspace test ")),
+    ]);
+    setMeshDataset(activeMesh, "mesh-workspace:test-scene");
+    setDatasetKind("mesh");
+    setSurfaceViewerKind("mesh");
+    setMode("surfaces");
+    setSurfacesPanelState("work");
+    setSurfacesLeftTab("scene");
+    setMeshWorkspaceActiveMeshVisible(true);
+    setMeshWorkspaceGeometryLinks(links);
+    setMeshWorkspaceGroups(groups);
+    setMeshWorkspaceOrder(["workspace:active", ...links.map((link) => link.id)]);
+    setMeshWorkspaceSelectedEntryId("workspace:active");
+    setMeshWorkspaceSelectedEntryIds(firstLinkId ? ["workspace:active", firstLinkId] : ["workspace:active"]);
+    setMeshWorkspaceOverlayIsolation(null);
+    setMeshWorkspaceMeshIsolation(null);
+    setMeshWorkspaceLeftTab("scene");
+    setGeometrySelectedObjectId(linkedObjects[0]?.id ?? null);
+    setMeshOperationBooleanOperation("difference");
+    setMeshOperationBooleanStrategy("auto");
+    setMeshOperationBooleanOperandObjectId(linkedObjects[0]?.id ?? null);
+    setMeshOperationOutputMode("derived");
+    focusSurfaceMeshViewport(focusMesh, { roomy: meshCount > 5 });
+    setSurfaceMeshTopologyStatus(
+      meshCount === 1
+        ? "Workspace test scene loaded: one active mesh."
+        : `Workspace test scene loaded: active mesh plus ${linkCount} linked Geometry meshes. Two Boolean candidates are selected.`
+    );
+  }, [focusSurfaceMeshViewport, setMeshDataset]);
+  const handleActivateMeshWorkspaceEntry = useCallback(
+    (entryId: string) => {
+      if (entryId === "workspace:active") {
+        handleFitMeshViewport();
+        return;
+      }
+      const entry = meshWorkspaceGeometryEntries.find((candidate) => candidate.id === entryId);
+      if (!entry?.geometryObjectId) return;
+      const resolved = resolveGeometrySceneMeshById(entry.geometryObjectId);
+      if (!resolved?.mesh.positions.length) {
+        setSurfaceMeshTopologyStatus("Linked Geometry mesh is no longer available.");
+        return;
+      }
+      const restored = applySurfaceMeshOps(cloneSurfaceMeshData(resolved.mesh, `${resolved.object.name} (linked Mesh)`));
+      setMeshDataset(restored, "mesh-workspace:activate-geometry-link");
+      setGeometrySelectedObjectId(entry.geometryObjectId);
+      setUnifiedTreeSelectedId(`scene:${entry.geometryObjectId}`);
+      setMeshWorkspaceSelectedEntryId(entryId);
+      setDatasetKind("mesh");
+      setSurfaceViewerKind("mesh");
+      setMode("surfaces");
+      setSurfacesPanelState("work");
+      setSurfacesLeftTab("analysis");
+      setMeshGeometryRoundTripSource({
+        objectId: entry.geometryObjectId,
+        objectName: resolved.object.name,
+        snapshotMode: "current",
+        openedAt: Date.now(),
+        latestTopologyLabel: null,
+        historyStepCount: 0,
+      });
+      focusSurfaceMeshViewport(restored);
+      setSurfaceMeshTopologyStatus(`Activated linked Geometry mesh: ${resolved.object.name}.`);
+    },
+    [
+      focusSurfaceMeshViewport,
+      handleFitMeshViewport,
+      meshWorkspaceGeometryEntries,
+      resolveGeometrySceneMeshById,
+      setMeshDataset,
+    ]
+  );
+  const handleOpenMeshWorkspaceGeometrySource = useCallback((entryId: string) => {
+    const entry = meshWorkspaceGeometryEntries.find((candidate) => candidate.id === entryId);
+    if (!entry?.geometryObjectId) return;
+    setGeometrySelectedObjectId(entry.geometryObjectId);
+    setUnifiedTreeSelectedId(`scene:${entry.geometryObjectId}`);
+    setMode("geometry");
+    setGeometryMode("procedural");
+    setGeometryProceduralPanelTab("object");
+  }, [meshWorkspaceGeometryEntries]);
+  const handleComposeMeshWorkspaceBoolean = useCallback(() => {
+    const selectedEntries = meshWorkspaceEntries.filter((entry) => meshWorkspaceSelectedEntryIds.includes(entry.id));
+    if (selectedEntries.length !== 2) {
+      setSurfaceMeshTopologyStatus("Select exactly two Mesh workspace rows to compose a Boolean operation.");
+      return;
+    }
+    const [first, second] = selectedEntries;
+    const activeEntry = first.kind === "active" ? first : second.kind === "active" ? second : first;
+    const operandEntry = activeEntry.id === first.id ? second : first;
+    if (activeEntry.kind === "geometry") handleActivateMeshWorkspaceEntry(activeEntry.id);
+    if (operandEntry.kind !== "geometry" || !operandEntry.geometryObjectId) {
+      setSurfaceMeshTopologyStatus("Choose the active Mesh plus one linked Geometry mesh for Boolean A/B.");
+      return;
+    }
+    setMeshOperationBooleanOperation("difference");
+    setMeshOperationBooleanStrategy("auto");
+    setMeshOperationBooleanOperandObjectId(operandEntry.geometryObjectId);
+    setMeshOperationOutputMode("derived");
+    setMeshWorkspaceLeftTab("operations");
+    focusMeshOperationRow("boolean-difference");
+    setMeshOperationBooleanStatus(`Boolean inputs ready: A ${activeEntry.name}, B ${operandEntry.name}.`);
+  }, [
+    focusMeshOperationRow,
+    handleActivateMeshWorkspaceEntry,
+    meshWorkspaceEntries,
+    meshWorkspaceSelectedEntryIds,
+  ]);
   const handleDeleteUnifiedNode = useCallback(
     (nodeId: string) => {
       const node = unifiedObjectModel.nodeById.get(nodeId);
@@ -71874,7 +72483,30 @@ case "mobius":
                       nodes={meshWorkspaceSceneNodes}
                       rootId={unifiedObjectModel.activeDatasetNodeId}
                       selectedId={meshWorkspaceSelectedId}
-                      onSelect={handleSelectUnifiedNode}
+                      selectedEntryIds={meshWorkspaceSelectedEntryIds}
+                      workspaceEntries={meshWorkspaceEntries}
+                      groups={meshWorkspaceGroups}
+                      provenanceEntries={meshWorkspaceProvenanceEntries}
+                      onSelect={(nodeId) => {
+                        setMeshWorkspaceSelectedEntryId(null);
+                        setMeshWorkspaceSelectedEntryIds([]);
+                        handleSelectUnifiedNode(nodeId);
+                      }}
+                      onSelectWorkspaceEntry={handleSelectMeshWorkspaceEntry}
+                      onActivateWorkspaceEntry={handleActivateMeshWorkspaceEntry}
+                      onToggleWorkspaceEntryVisibility={handleToggleMeshWorkspaceEntryVisibility}
+                      onToggleWorkspaceEntryIsolation={handleToggleMeshWorkspaceMeshIsolation}
+                      onSetGroupVisibility={handleSetMeshWorkspaceGroupVisibility}
+                      onAssignWorkspaceEntryToGroup={handleAssignMeshWorkspaceEntryToGroup}
+                      onRenameGroup={handleRenameMeshWorkspaceGroup}
+                      onDeleteGroup={handleDeleteMeshWorkspaceGroup}
+                      onReorderWorkspaceEntries={handleReorderMeshWorkspaceEntries}
+                      onSetWorkspaceEntriesVisibility={handleSetMeshWorkspaceEntriesVisibility}
+                      onShowAllWorkspaceEntries={handleShowAllMeshWorkspaceEntries}
+                      onComposeBoolean={handleComposeMeshWorkspaceBoolean}
+                      onRestoreProvenanceEntry={restoreMeshOperationHistoryEntry}
+                      onUnlinkWorkspaceEntry={handleUnlinkMeshWorkspaceGeometry}
+                      onOpenWorkspaceGeometrySource={handleOpenMeshWorkspaceGeometrySource}
                       onToggleVisibility={handleToggleUnifiedNodeVisibility}
                       onFrame={handleFitMeshViewport}
                       onImport={() => {
@@ -71885,11 +72517,12 @@ case "mobius":
                         setMeshImportPanelExpanded(true);
                         setSurfaceMeshBenchmarkBrowserOpen(true);
                       }}
-                      onLinkGeometry={handleOpenGeometryMeshTopologySource}
-                      onCreateGroup={() => setSurfaceMeshTopologyStatus("Groups become available when the Mesh workspace contains multiple mesh objects.")}
+                      onLinkGeometry={handleLinkSelectedGeometryMeshToWorkspace}
+                      onLoadWorkspaceTestScene={handleLoadMeshWorkspaceTestScene}
+                      onCreateGroup={handleCreateMeshWorkspaceGroup}
                       canShowAllSceneObjects={unifiedCanShowAllSceneObjects}
                       onShowAllSceneObjects={handleShowAllUnifiedObjects}
-                      isolationActive={!!meshWorkspaceOverlayIsolation}
+                      isolationActive={!!meshWorkspaceOverlayIsolation || !!meshWorkspaceMeshIsolation}
                       onToggleIsolation={handleToggleMeshWorkspaceOverlayIsolation}
                       status={
                         largeSurfaceMeshFullPreviewJob && largeSurfaceMeshFullPreviewJob.status !== "ready"
@@ -75634,6 +76267,12 @@ case "mobius":
                                 ? surfaceMeshTopologyViewerMesh
                                 : null
                             }
+                            surfaceMeshOverrides={
+                              surfaceViewerKind === "mesh" || surfaceViewerKind === "complex"
+                                ? meshWorkspaceViewerOverrides
+                                : null
+                            }
+                            surfaceMeshFallbackMode={meshWorkspaceViewerOverrides ? "none" : undefined}
                             implicitMeshToken={cgalMeshToken}
                             sampleMaxPoints={surfaceViewerKind === "graph" ? graphSampleMaxPoints : undefined}
                               wireframe={primaryOverlay.showWireframe}
@@ -77742,6 +78381,7 @@ case "mobius":
                       surfaceId={activeEqSurfaceId}
                       paramId={paramSurfaceId}
                       surfaceMeshLabel={surfaceMeshLabel}
+                      meshWorkspaceSummary={meshWorkspaceInspectorSummary}
                       meshActiveSelectionCardType={meshActiveSelectionSummary.type}
                       meshActiveSelectionCardId={meshActiveSelectionSummary.entityId}
                       meshActiveSelectionCardActions={meshActiveSelectionSummary.actions}
@@ -101973,12 +102613,32 @@ type MeshWorkspaceSceneOutlinerProps = {
   nodes: UnifiedObjectNode[];
   rootId: string | null;
   selectedId: string | null;
+  selectedEntryIds: string[];
+  workspaceEntries: MeshWorkspaceEntry[];
+  groups: MeshWorkspaceGroup[];
+  provenanceEntries: MeshWorkspaceProvenanceEntry[];
   onSelect: (id: string) => void;
+  onSelectWorkspaceEntry: (id: string, additive?: boolean) => void;
+  onActivateWorkspaceEntry: (id: string) => void;
+  onToggleWorkspaceEntryVisibility: (id: string) => void;
+  onToggleWorkspaceEntryIsolation: (id: string) => void;
+  onSetGroupVisibility: (groupId: string, visible: boolean) => void;
+  onAssignWorkspaceEntryToGroup: (entryId: string, groupId: string | null) => void;
+  onRenameGroup: (groupId: string, name: string) => void;
+  onDeleteGroup: (groupId: string) => void;
+  onReorderWorkspaceEntries: (sourceId: string, targetId: string) => void;
+  onSetWorkspaceEntriesVisibility: (entryIds: string[], visible: boolean) => void;
+  onShowAllWorkspaceEntries: () => void;
+  onComposeBoolean: () => void;
+  onRestoreProvenanceEntry: (historyEntryId: string) => void;
+  onUnlinkWorkspaceEntry: (entryId: string) => void;
+  onOpenWorkspaceGeometrySource: (entryId: string) => void;
   onToggleVisibility: (id: string) => void;
   onFrame: () => void;
   onImport: () => void;
   onOpenBenchmark: () => void;
   onLinkGeometry: () => void;
+  onLoadWorkspaceTestScene: (meshCount: 1 | 5 | 10) => void;
   onCreateGroup: () => void;
   canShowAllSceneObjects: boolean;
   onShowAllSceneObjects: () => void;
@@ -101991,12 +102651,32 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
   nodes,
   rootId,
   selectedId,
+  selectedEntryIds,
+  workspaceEntries,
+  groups,
+  provenanceEntries,
   onSelect,
+  onSelectWorkspaceEntry,
+  onActivateWorkspaceEntry,
+  onToggleWorkspaceEntryVisibility,
+  onToggleWorkspaceEntryIsolation,
+  onSetGroupVisibility,
+  onAssignWorkspaceEntryToGroup,
+  onRenameGroup,
+  onDeleteGroup,
+  onReorderWorkspaceEntries,
+  onSetWorkspaceEntriesVisibility,
+  onShowAllWorkspaceEntries,
+  onComposeBoolean,
+  onRestoreProvenanceEntry,
+  onUnlinkWorkspaceEntry,
+  onOpenWorkspaceGeometrySource,
   onToggleVisibility,
   onFrame,
   onImport,
   onOpenBenchmark,
   onLinkGeometry,
+  onLoadWorkspaceTestScene,
   onCreateGroup,
   canShowAllSceneObjects,
   onShowAllSceneObjects,
@@ -102006,6 +102686,9 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
 }) => {
   const [overlaysExpanded, setOverlaysExpanded] = useState(true);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [rowMenuId, setRowMenuId] = useState<string | null>(null);
+  const [draggedEntryId, setDraggedEntryId] = useState<string | null>(null);
+  const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(() => new Set());
   const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const root = (rootId ? byId.get(rootId) : null) ?? nodes.find((node) => node.category === "dataset") ?? null;
   const displayName = (name: string) => {
@@ -102037,11 +102720,24 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
     return descendants;
   }, [nodes, root]);
   const overlayNodes = descendantNodes.filter((node) => node.category === "derived");
-  const visibleCount = (root?.visible !== false ? 1 : 0) + overlayNodes.filter((node) => node.visible !== false).length;
-  const selected = (selectedId ? byId.get(selectedId) : null) ?? root;
-  const selectedCanToggle = !!selected?.canToggleVisibility && typeof selected.visible === "boolean";
-  const meshStats = root?.displayState.match(/(\d[\d,]*)\s+verts/i)?.[1] ?? null;
-  const meshType = root?.sourceDefinition.match(/\b(OBJ|STL|PLY|GLTF|GLB)\b/i)?.[1]?.toUpperCase() ?? "Mesh";
+  const visibleCount = workspaceEntries.filter((entry) => entry.visible).length + overlayNodes.filter((node) => node.visible !== false).length;
+  const selectedOverlay = selectedId ? byId.get(selectedId) ?? null : null;
+  const selectedWorkspaceEntry = workspaceEntries.find((entry) => entry.id === selectedId) ?? null;
+  const selectedEntry = selectedWorkspaceEntry ?? (selectedOverlay ? null : workspaceEntries[0] ?? null);
+  const selected = selectedOverlay ?? selectedEntry;
+  const selectedCanToggle = !!selected && "canToggleVisibility" in selected
+    ? !!selected.canToggleVisibility && typeof selected.visible === "boolean"
+    : !!selectedEntry;
+  const groupedEntryIds = useMemo(() => new Set(groups.flatMap((group) => group.memberIds)), [groups]);
+  const ungroupedEntries = workspaceEntries.filter((entry) => !groupedEntryIds.has(entry.id));
+  const overlayVisibility = overlayNodes.filter((node) => node.canToggleVisibility && typeof node.visible === "boolean");
+  const overlayVisibilityState = !overlayVisibility.length
+    ? "none"
+    : overlayVisibility.every((node) => node.visible)
+      ? "visible"
+      : overlayVisibility.some((node) => node.visible)
+        ? "mixed"
+        : "hidden";
   const statusStyle =
     status === "Invalid"
       ? { color: "#b42318", border: "#fda29b", background: "#fff1f0" }
@@ -102103,6 +102799,125 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
     );
   };
 
+  const renderWorkspaceRow = (entry: MeshWorkspaceEntry, nested = false) => {
+    const active = entry.id === selectedId || selectedEntryIds.includes(entry.id);
+    const group = groups.find((candidate) => candidate.memberIds.includes(entry.id)) ?? null;
+    const menuOpen = rowMenuId === entry.id;
+    return (
+      <div
+        key={entry.id}
+        data-testid={`mesh-workspace-outliner-entry-${entry.id}`}
+        draggable
+        onDragStart={() => setDraggedEntryId(entry.id)}
+        onDragEnd={() => setDraggedEntryId(null)}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          if (draggedEntryId) onReorderWorkspaceEntries(draggedEntryId, entry.id);
+          setDraggedEntryId(null);
+        }}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr auto auto",
+          gap: 5,
+          alignItems: "center",
+          marginLeft: nested ? 16 : 0,
+          padding: "7px 8px",
+          borderRadius: 7,
+          border: active ? "1px solid #60a5fa" : "1px solid #bfdbfe",
+          background: active ? "#eaf2ff" : "#fff",
+          boxShadow: active ? "inset 3px 0 0 #2563eb" : undefined,
+          position: "relative",
+        }}
+      >
+        <button
+          type="button"
+          onClick={(event) => onSelectWorkspaceEntry(entry.id, event.ctrlKey || event.metaKey)}
+          onDoubleClick={() => onActivateWorkspaceEntry(entry.id)}
+          style={{ minWidth: 0, padding: 0, border: 0, background: "transparent", textAlign: "left", cursor: "pointer", display: "grid", gap: 2 }}
+          title={`${entry.name}. Double-click to activate and frame.`}
+        >
+          <span style={{ color: "#0f172a", fontSize: 12, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {displayName(entry.name)}
+          </span>
+          <span style={{ color: "#64748b", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {entry.kind === "geometry" ? "Linked Geometry · " : "Active Mesh · "}
+            {entry.visible ? entry.sourceDefinition : "Hidden"}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onToggleWorkspaceEntryVisibility(entry.id)}
+          aria-label={`${entry.visible ? "Hide" : "Show"} ${displayName(entry.name)}`}
+          title={entry.visible ? `Hide ${displayName(entry.name)}` : `Show ${displayName(entry.name)}`}
+          style={{ padding: "3px 6px", fontSize: 10 }}
+        >
+          {entry.visible ? "Hide" : "Show"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setRowMenuId((current) => (current === entry.id ? null : entry.id))}
+          aria-expanded={menuOpen}
+          aria-label={`Actions for ${displayName(entry.name)}`}
+          style={{ padding: "3px 6px", fontSize: 10 }}
+        >
+          More
+        </button>
+        {menuOpen && (
+          <div
+            role="menu"
+            style={{
+              position: "absolute",
+              zIndex: 15,
+              top: "calc(100% + 3px)",
+              right: 0,
+              width: 190,
+              padding: 4,
+              display: "grid",
+              gap: 3,
+              border: "1px solid #cbd5e1",
+              borderRadius: 7,
+              background: "#fff",
+              boxShadow: "0 8px 20px rgba(15,23,42,0.16)",
+            }}
+          >
+            <button type="button" role="menuitem" onClick={() => { setRowMenuId(null); onActivateWorkspaceEntry(entry.id); }} style={{ textAlign: "left", padding: "5px 7px", fontSize: 11 }}>
+              {entry.kind === "active" ? "Frame active mesh" : "Activate in Mesh"}
+            </button>
+            <button type="button" role="menuitem" onClick={() => { setRowMenuId(null); onToggleWorkspaceEntryIsolation(entry.id); }} style={{ textAlign: "left", padding: "5px 7px", fontSize: 11 }}>
+              Isolate
+            </button>
+            {entry.kind === "geometry" && (
+              <button type="button" role="menuitem" onClick={() => { setRowMenuId(null); onOpenWorkspaceGeometrySource(entry.id); }} style={{ textAlign: "left", padding: "5px 7px", fontSize: 11 }}>
+                Open source in Geometry
+              </button>
+            )}
+            {groups.length > 0 && (
+              <div style={{ display: "grid", gap: 2, padding: "3px 2px", borderTop: "1px solid #e2e8f0" }}>
+                <span style={{ color: "#64748b", fontSize: 10, fontWeight: 700 }}>Move to group</span>
+                {groups.map((candidate) => (
+                  <button key={candidate.id} type="button" role="menuitem" onClick={() => { onAssignWorkspaceEntryToGroup(entry.id, candidate.id); setRowMenuId(null); }} style={{ textAlign: "left", padding: "4px 6px", fontSize: 10 }}>
+                    {candidate.name}{group?.id === candidate.id ? " (current)" : ""}
+                  </button>
+                ))}
+                {group && (
+                  <button type="button" role="menuitem" onClick={() => { onAssignWorkspaceEntryToGroup(entry.id, null); setRowMenuId(null); }} style={{ textAlign: "left", padding: "4px 6px", fontSize: 10 }}>
+                    Remove from group
+                  </button>
+                )}
+              </div>
+            )}
+            {entry.kind === "geometry" && (
+              <button type="button" role="menuitem" onClick={() => { onUnlinkWorkspaceEntry(entry.id); setRowMenuId(null); }} style={{ textAlign: "left", padding: "5px 7px", color: "#b42318", fontSize: 11 }}>
+                Unlink from workspace
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div
       data-testid="mesh-workspace-scene-outliner"
@@ -102132,13 +102947,38 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
         </button>
         <button
           type="button"
+          onClick={onShowAllWorkspaceEntries}
+          style={{ padding: "4px 8px", fontSize: 11 }}
+          title="Show the active Mesh and every linked Geometry mesh"
+        >
+          Show workspace
+        </button>
+        <button
+          type="button"
           onClick={onShowAllSceneObjects}
           disabled={!canShowAllSceneObjects}
           style={{ padding: "4px 8px", fontSize: 11 }}
-          title="Show all Geometry scene objects"
+          title="Show all Geometry scene objects, including sources outside this workspace"
         >
-          Show all
+          Show Geometry
         </button>
+        <span style={{ alignSelf: "center", color: "#64748b", fontSize: 10, fontWeight: 700 }}>Examples</span>
+        {([1, 5, 10] as const).map((meshCount) => (
+          <button
+            key={`workspace-test-scene-${meshCount}`}
+            type="button"
+            data-testid={`mesh-workspace-load-test-scene-${meshCount}`}
+            onClick={() => onLoadWorkspaceTestScene(meshCount)}
+            style={{ padding: "4px 7px", fontSize: 10 }}
+            title={
+              meshCount === 1
+                ? "Load one active mesh for a baseline workspace check"
+                : `Load one active mesh and ${meshCount - 1} linked Geometry meshes for workspace testing`
+            }
+          >
+            {meshCount} mesh{meshCount === 1 ? "" : "es"}
+          </button>
+        ))}
         {addMenuOpen && (
           <div
             role="menu"
@@ -102176,66 +103016,96 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
       {root ? (
         <div style={{ display: "grid", gap: 3 }}>
           <div style={{ color: "#64748b", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3 }}>
-            Mesh workspace (1)
+            Mesh workspace ({workspaceEntries.length} total · {workspaceEntries.filter((entry) => entry.kind === "geometry").length} linked Geometry)
           </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr auto auto",
-              gap: 6,
-              alignItems: "center",
-              padding: "7px 8px",
-              borderRadius: 7,
-              border: selected?.id === root.id ? "1px solid #60a5fa" : "1px solid #bfdbfe",
-              background: selected?.id === root.id ? "#eaf2ff" : "#fff",
-              boxShadow: selected?.id === root.id ? "inset 3px 0 0 #2563eb" : undefined,
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => onSelect(root.id)}
-              onDoubleClick={onFrame}
-              style={{ minWidth: 0, padding: 0, border: 0, background: "transparent", textAlign: "left", cursor: "pointer", display: "grid", gap: 2 }}
-              title={`${root.name}. Double-click to frame the mesh.`}
-            >
-              <span style={{ color: "#0f172a", fontSize: 12, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {displayName(root.name)}
-              </span>
-              <span style={{ color: "#64748b", fontSize: 10 }}>
-                {meshType}{meshStats ? ` · ${meshStats} vertices` : ""}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onSelect(root.id)}
-              style={{
-                padding: "3px 6px",
-                fontSize: 10,
-                color: statusStyle.color,
-                borderColor: statusStyle.border,
-                background: statusStyle.background,
-                fontWeight: 700,
-              }}
-              title="Select the mesh and review its health in Inspector"
-            >
-              {status}
-            </button>
-            <button type="button" onClick={onFrame} style={{ padding: "3px 6px", fontSize: 10 }} title="Frame active mesh">
-              Frame
-            </button>
-          </div>
+          {groups.map((group) => {
+            const members = workspaceEntries.filter((entry) => group.memberIds.includes(entry.id));
+            const isCollapsed = collapsedGroupIds.has(group.id);
+            const visibility = !members.length ? "empty" : members.every((entry) => entry.visible) ? "visible" : members.some((entry) => entry.visible) ? "mixed" : "hidden";
+            return (
+              <div key={group.id} style={{ display: "grid", gap: 3, padding: "4px 0" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <button type="button" onClick={() => setCollapsedGroupIds((prev) => { const next = new Set(prev); if (next.has(group.id)) next.delete(group.id); else next.add(group.id); return next; })} style={{ padding: "3px 4px", border: 0, background: "transparent", color: "#334155", fontSize: 10, fontWeight: 800 }}>
+                    {isCollapsed ? "▶" : "▼"} {group.name} ({members.length})
+                  </button>
+                  <button type="button" onClick={() => onSetGroupVisibility(group.id, visibility !== "visible")} title="Toggle visibility for every mesh in this group" style={{ marginLeft: "auto", padding: "3px 6px", fontSize: 10 }}>
+                    {visibility === "mixed" ? "Mixed" : visibility === "visible" ? "Hide all" : "Show all"}
+                  </button>
+                  <button type="button" onClick={() => { const name = window.prompt("Group name", group.name); if (name) onRenameGroup(group.id, name); }} style={{ padding: "3px 6px", fontSize: 10 }}>
+                    Rename
+                  </button>
+                  <button type="button" onClick={() => onDeleteGroup(group.id)} style={{ padding: "3px 6px", color: "#b42318", fontSize: 10 }}>
+                    Delete
+                  </button>
+                </div>
+                {!isCollapsed && (members.length ? members.map((entry) => renderWorkspaceRow(entry, true)) : <div style={{ marginLeft: 18, color: "#64748b", fontSize: 10 }}>Empty group. Use a row menu to add meshes.</div>)}
+              </div>
+            );
+          })}
+          {ungroupedEntries.length > 0 && (
+            <div style={{ display: "grid", gap: 3 }}>
+              {groups.length > 0 && <div style={{ color: "#64748b", fontSize: 10, fontWeight: 700 }}>UNGROUPED</div>}
+              {ungroupedEntries.map((entry) => (
+                <React.Fragment key={entry.id}>
+                  {renderWorkspaceRow(entry)}
+                  {entry.kind === "active" && (
+                    <button
+                      type="button"
+                      onClick={() => onSelectWorkspaceEntry("workspace:active")}
+                      style={{
+                        padding: "3px 5px",
+                        border: 0,
+                        background: "transparent",
+                        color: statusStyle.color,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        textAlign: "left",
+                      }}
+                      title="Select the active mesh and review its health in Inspector"
+                    >
+                      {status}
+                    </button>
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+          )}
+
+          {provenanceEntries.length > 0 && (
+            <div style={{ display: "grid", gap: 3, marginTop: 4, paddingTop: 5, borderTop: "1px solid #dbe4f0" }}>
+              <div style={{ color: "#64748b", fontSize: 10, fontWeight: 800, textTransform: "uppercase" }}>Operation lineage</div>
+              <div style={{ marginLeft: 6, padding: "4px 6px", borderLeft: "2px solid #94a3b8", color: "#334155", fontSize: 10, fontWeight: 700 }}>
+                Original mesh
+              </div>
+              {provenanceEntries.map((entry, index) => (
+                <div key={entry.id} style={{ display: "grid", gridTemplateColumns: "1fr auto", alignItems: "center", gap: 5, marginLeft: 16, padding: "4px 6px", borderLeft: "2px solid #60a5fa", background: "#f8fbff" }}>
+                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: entry.status === "error" ? "#b42318" : "#1e3a5f", fontSize: 10 }}>
+                    {index + 1}. {entry.label}
+                  </span>
+                  <button type="button" onClick={() => onRestoreProvenanceEntry(entry.historyEntryId)} style={{ padding: "3px 6px", fontSize: 10 }}>
+                    Restore
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           {overlayNodes.length > 0 && (
             <div style={{ display: "grid", gap: 2 }}>
-              <button
-                type="button"
-                onClick={() => setOverlaysExpanded((expanded) => !expanded)}
-                aria-expanded={overlaysExpanded}
-                style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 2px", border: 0, background: "transparent", color: "#334155", fontSize: 10, fontWeight: 700, textAlign: "left", cursor: "pointer" }}
-              >
-                <span aria-hidden="true">{overlaysExpanded ? "▼" : "▶"}</span>
-                Overlays ({overlayNodes.length})
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <button type="button" onClick={() => setOverlaysExpanded((expanded) => !expanded)} aria-expanded={overlaysExpanded} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 2px", border: 0, background: "transparent", color: "#334155", fontSize: 10, fontWeight: 700, textAlign: "left", cursor: "pointer" }}>
+                  <span aria-hidden="true">{overlaysExpanded ? "▼" : "▶"}</span>
+                  Overlays ({overlayNodes.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => overlayVisibility.forEach((node) => { if (node.visible === (overlayVisibilityState !== "visible")) onToggleVisibility(node.id); })}
+                  title="Toggle all overlay visibility"
+                  style={{ marginLeft: "auto", padding: "3px 6px", fontSize: 10 }}
+                >
+                  {overlayVisibilityState === "mixed" ? "Mixed" : overlayVisibilityState === "visible" ? "Hide all" : "Show all"}
+                </button>
+              </div>
               {overlaysExpanded && overlayNodes.map(renderOverlayRow)}
             </div>
           )}
@@ -102260,15 +103130,24 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
         }}
       >
         <span style={{ minWidth: 0, color: "#334155", fontSize: 11, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {selected ? `${displayName(selected.name)} selected` : "No selection"}
+          {selectedEntryIds.length > 1 ? `${selectedEntryIds.length} meshes selected` : selected ? `${displayName(selected.name)} selected` : "No selection"}
         </span>
         <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
-          <button type="button" onClick={onFrame} style={{ padding: "3px 6px", fontSize: 10 }}>Frame</button>
-          <button type="button" onClick={onToggleIsolation} style={{ padding: "3px 6px", fontSize: 10 }}>
-            {isolationActive ? "Restore" : "Isolate"}
-          </button>
+          {selectedEntryIds.length > 0 && (
+            <>
+              <button type="button" onClick={() => onSetWorkspaceEntriesVisibility(selectedEntryIds, true)} style={{ padding: "3px 6px", fontSize: 10 }}>Show</button>
+              <button type="button" onClick={() => onSetWorkspaceEntriesVisibility(selectedEntryIds, false)} style={{ padding: "3px 6px", fontSize: 10 }}>Hide</button>
+            </>
+          )}
+          {selectedEntryIds.length === 2 && (
+            <button type="button" onClick={onComposeBoolean} style={{ padding: "3px 6px", fontSize: 10 }} title="Use the two selected meshes as Boolean A and B">
+              Boolean
+            </button>
+          )}
+          <button type="button" onClick={() => selectedEntry && onActivateWorkspaceEntry(selectedEntry.id)} style={{ padding: "3px 6px", fontSize: 10 }}>Frame</button>
+          {selectedEntry ? <button type="button" onClick={() => onToggleWorkspaceEntryIsolation(selectedEntry.id)} style={{ padding: "3px 6px", fontSize: 10 }}>{isolationActive ? "Restore" : "Isolate"}</button> : <button type="button" onClick={onToggleIsolation} style={{ padding: "3px 6px", fontSize: 10 }}>{isolationActive ? "Restore" : "Isolate"}</button>}
           {selectedCanToggle && (
-            <button type="button" onClick={() => onToggleVisibility(selected!.id)} style={{ padding: "3px 6px", fontSize: 10 }}>
+            <button type="button" onClick={() => selectedEntry ? onToggleWorkspaceEntryVisibility(selectedEntry.id) : onToggleVisibility(selected!.id)} style={{ padding: "3px 6px", fontSize: 10 }}>
               {selected!.visible ? "Hide" : "Show"}
             </button>
           )}
@@ -112995,6 +113874,7 @@ type SurfacesRightPanelProps = {
   surfaceId: SurfaceId;
   paramId: ParamSurfaceId;
   surfaceMeshLabel: string;
+  meshWorkspaceSummary: MeshWorkspaceInspectorSummary;
   meshActiveSelectionCardType: ActiveSelectionCardProps["type"];
   meshActiveSelectionCardId: ActiveSelectionCardProps["entityId"];
   meshActiveSelectionCardActions: ActiveSelectionCardProps["actions"];
@@ -113259,6 +114139,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   surfaceId,
   paramId,
   surfaceMeshLabel,
+  meshWorkspaceSummary,
   meshActiveSelectionCardType,
   meshActiveSelectionCardId,
   meshActiveSelectionCardActions,
@@ -114929,6 +115810,38 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
         {inspectorPanelTab === "object" && (
           <>
+            {isMeshViewer && (
+              meshWorkspaceSummary.meshCount > 1 ? (
+                <div
+                  style={{
+                    ...inspectorSectionCard,
+                    border: "1px solid #bfdbfe",
+                    background: "#f8fbff",
+                    display: "grid",
+                    gap: 7,
+                  }}
+                  data-testid="mesh-workspace-inspector-summary"
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                    <strong style={{ fontSize: 11, textTransform: "uppercase", color: "#1e3a5f" }}>
+                      Workspace
+                    </strong>
+                    <span style={{ fontSize: 10, color: "#475569" }}>
+                      {meshWorkspaceSummary.meshCount.toLocaleString()} total · {meshWorkspaceSummary.linkedGeometryCount.toLocaleString()} linked Geometry
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#1e293b" }}>
+                    <strong>{meshWorkspaceSummary.selectedCount.toLocaleString()}</strong> selected · {meshWorkspaceSummary.vertexCount.toLocaleString()} V · {meshWorkspaceSummary.faceCount.toLocaleString()} F
+                  </div>
+                  <div style={{ fontSize: 10, color: "#475569" }}>
+                    {meshWorkspaceSummary.healthLabel}
+                    {meshWorkspaceSummary.bounds
+                      ? ` · Bounds ${fmt(meshWorkspaceSummary.bounds.min[0])}, ${fmt(meshWorkspaceSummary.bounds.min[1])}, ${fmt(meshWorkspaceSummary.bounds.min[2])} to ${fmt(meshWorkspaceSummary.bounds.max[0])}, ${fmt(meshWorkspaceSummary.bounds.max[1])}, ${fmt(meshWorkspaceSummary.bounds.max[2])}`
+                      : ""}
+                  </div>
+                </div>
+              ) : null
+            )}
             {isMeshViewer && (
               <div
                 style={{

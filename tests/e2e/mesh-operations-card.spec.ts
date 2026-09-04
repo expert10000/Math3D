@@ -287,12 +287,27 @@ test.describe("Mesh Operations card", () => {
     await leftTabs.getByTestId("mesh-workspace-left-tab-scene").click();
     const outliner = page.getByTestId("mesh-workspace-scene-outliner");
     await expect(outliner).toBeVisible();
-    await expect(page.getByText("Mesh workspace (1)").first()).toBeVisible();
+    await expect(page.getByText(/Mesh workspace \(1 total · 0 linked Geometry\)/).first()).toBeVisible();
     await expect(page.getByTestId("mesh-workspace-open-mesh-file")).not.toBeVisible();
     await outliner.getByRole("button", { name: "+ Add" }).click();
     await expect(outliner.getByRole("menuitem", { name: "Import mesh..." })).toBeVisible();
     await expect(outliner.getByRole("menuitem", { name: "Open benchmark model..." })).toBeVisible();
     await outliner.getByRole("button", { name: "+ Add" }).click();
+    const activeMeshRow = outliner.getByTestId("mesh-workspace-outliner-entry-workspace:active");
+    await expect(activeMeshRow).toBeVisible();
+    await expect(activeMeshRow).toHaveAttribute("draggable", "true");
+    await activeMeshRow.getByRole("button", { name: /Hide / }).click();
+    await expect(activeMeshRow.getByRole("button", { name: /Show / })).toBeVisible();
+    await activeMeshRow.getByRole("button", { name: /Show / }).click();
+    await activeMeshRow.getByRole("button", { name: /Actions for / }).click();
+    await expect(outliner.getByRole("menuitem", { name: "Frame active mesh" })).toBeVisible();
+    await outliner.getByRole("menuitem", { name: "Frame active mesh" }).click();
+    await outliner.getByRole("button", { name: "+ Add" }).click();
+    await outliner.getByRole("menuitem", { name: "Create group..." }).click();
+    await expect(outliner.getByText("Group 1 (0)")).toBeVisible();
+    await activeMeshRow.getByRole("button", { name: /Actions for / }).click();
+    await outliner.getByRole("menuitem", { name: "Group 1" }).click();
+    await expect(outliner.getByText("Group 1 (1)")).toBeVisible();
     await outliner.getByRole("button", { name: "Isolate" }).click();
     await expect(outliner.getByRole("button", { name: "Restore" })).toBeVisible();
     await outliner.getByRole("button", { name: "Restore" }).click();
@@ -414,6 +429,36 @@ test.describe("Mesh Operations card", () => {
     await expect(provenanceGraph).toContainText(/Source/i);
     await expect(provenanceGraph).toContainText(/Decimate/i);
     await expect(inspectorHistory.getByRole("button", { name: "Preview before" }).first()).toBeDisabled();
+
+    await leftTabs.getByTestId("mesh-workspace-left-tab-scene").click();
+    await expect(outliner.getByText("Operation lineage")).toBeVisible();
+    await expect(outliner).toContainText(/Decimate/i);
+  });
+
+  test("loads a five-mesh workspace example with Geometry links ready for Boolean", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+    await loadBenchmarkModel(page, "3dbenchy");
+
+    await openWorkspaceOperationsCard(page);
+    const leftTabs = page.getByTestId("mesh-workspace-left-tabs");
+    await leftTabs.getByTestId("mesh-workspace-left-tab-scene").click();
+    const outliner = page.getByTestId("mesh-workspace-scene-outliner");
+    await outliner.getByTestId("mesh-workspace-load-test-scene-5").click();
+
+    await expect(outliner.getByText(/Mesh workspace \(5 total · 4 linked Geometry\)/)).toBeVisible();
+    await expect(outliner.getByText("Boolean candidates (2)")).toBeVisible();
+    await expect(outliner.getByText("Scene references (3)")).toBeVisible();
+    await expect(outliner.getByRole("button", { name: "Boolean", exact: true })).toBeVisible();
+    const workspaceSummary = page.getByTestId("mesh-workspace-inspector-summary");
+    await expect(workspaceSummary).toContainText("5 total · 4 linked Geometry");
+    await expect(workspaceSummary).toContainText("2 selected");
+
+    await outliner.getByRole("button", { name: "Boolean", exact: true }).click();
+    const card = await openWorkspaceOperationsCard(page);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-row-boolean-difference")).toHaveAttribute("aria-expanded", "true");
   });
 
   test("Full button opens the complete Bunny, Armadillo, and Dragon viewers", async () => {
