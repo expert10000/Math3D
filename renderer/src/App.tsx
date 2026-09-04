@@ -33727,6 +33727,11 @@ const App: React.FC = () => {
   const [meshOperationPreviewTargetFaces, setMeshOperationPreviewTargetFaces] = useState(20000);
   const [meshOperationPreviewUseDecimate, setMeshOperationPreviewUseDecimate] = useState(true);
   const [meshWorkspaceLeftTab, setMeshWorkspaceLeftTab] = useState<MeshWorkspaceLeftTab>("operations");
+  const [meshImportPanelExpanded, setMeshImportPanelExpanded] = useState(false);
+  const [meshWorkspaceOverlayIsolation, setMeshWorkspaceOverlayIsolation] = useState<{
+    selectedId: string;
+    visibility: Record<string, boolean>;
+  } | null>(null);
   const [meshBooleanReview, setMeshBooleanReview] = useState<MeshBooleanReviewState | null>(null);
   const [meshBooleanReviewProblemsVisible, setMeshBooleanReviewProblemsVisible] = useState(false);
   const meshOperationOutputModeForRequest = useMemo(
@@ -64638,10 +64643,6 @@ case "mobius":
       (node) => scopedIds.has(node.id) || (node.category === "derived" && !!node.parentId && scopedIds.has(node.parentId))
     );
   }, [unifiedObjectModel.activeDatasetNodeId, unifiedObjectModel.nodeById, unifiedObjectNodes]);
-  const meshWorkspaceOtherSceneObjectCount = useMemo(() => {
-    const scopedIds = new Set(meshWorkspaceSceneNodes.map((node) => node.id));
-    return unifiedObjectNodes.filter((node) => node.category === "sceneObject" && !scopedIds.has(node.id)).length;
-  }, [meshWorkspaceSceneNodes, unifiedObjectNodes]);
   const meshWorkspaceSelectedId = meshWorkspaceSceneNodes.some((node) => node.id === unifiedTreeSelectedId)
     ? unifiedTreeSelectedId
     : unifiedObjectModel.activeDatasetNodeId;
@@ -64937,6 +64938,34 @@ case "mobius":
       toggleCoordinatePlanes,
     ]
   );
+  const handleToggleMeshWorkspaceOverlayIsolation = useCallback(() => {
+    const overlays = meshWorkspaceSceneNodes.filter(
+      (node) => node.category === "derived" && node.canToggleVisibility && typeof node.visible === "boolean"
+    );
+    if (!overlays.length) return;
+
+    if (meshWorkspaceOverlayIsolation) {
+      for (const node of overlays) {
+        const shouldBeVisible = meshWorkspaceOverlayIsolation.visibility[node.id];
+        if (typeof shouldBeVisible === "boolean" && node.visible !== shouldBeVisible) {
+          handleToggleUnifiedNodeVisibility(node.id);
+        }
+      }
+      setMeshWorkspaceOverlayIsolation(null);
+      return;
+    }
+
+    const visibility = Object.fromEntries(overlays.map((node) => [node.id, node.visible === true]));
+    const selectedOverlayId = overlays.some((node) => node.id === meshWorkspaceSelectedId) ? meshWorkspaceSelectedId : null;
+    for (const node of overlays) {
+      const shouldBeVisible = selectedOverlayId === node.id;
+      if (node.visible !== shouldBeVisible) handleToggleUnifiedNodeVisibility(node.id);
+    }
+    setMeshWorkspaceOverlayIsolation({
+      selectedId: meshWorkspaceSelectedId ?? "dataset:surface:active",
+      visibility,
+    });
+  }, [handleToggleUnifiedNodeVisibility, meshWorkspaceOverlayIsolation, meshWorkspaceSceneNodes, meshWorkspaceSelectedId]);
   const handleDeleteUnifiedNode = useCallback(
     (nodeId: string) => {
       const node = unifiedObjectModel.nodeById.get(nodeId);
@@ -68928,6 +68957,7 @@ case "mobius":
                       </div>
                       {showScreenshotGallery && (
                         <div
+                          data-testid="mesh-workspace-import-controls"
                           style={{
                             border: "1px solid #dbe4f0",
                             borderRadius: 8,
@@ -70646,7 +70676,7 @@ case "mobius":
                     [
                       ["operations", "Operations"],
                       ["topology", "Topology Edit"],
-                      ["scene", "Scene"],
+                      ["scene", "Outliner"],
                     ] as const
                   ).map(([tab, label]) => (
                     <button
@@ -70718,16 +70748,45 @@ case "mobius":
                   {surfaceViewerKind === "mesh" && !surfacesWorkGalleryOpen && (
                     <div
                       style={{
-                        border: "1px solid #bfdbfe",
-                        borderRadius: 10,
-                        background: "#eff6ff",
-                        padding: "8px 10px",
-                        marginBottom: 10,
+                        border: meshWorkspaceLeftTab === "operations" ? "1px solid #bfdbfe" : "none",
+                        borderRadius: meshWorkspaceLeftTab === "operations" ? 10 : 0,
+                        background: meshWorkspaceLeftTab === "operations" ? "#eff6ff" : "transparent",
+                        padding: meshWorkspaceLeftTab === "operations" ? "8px 10px" : 0,
+                        marginBottom: meshWorkspaceLeftTab === "operations" ? 10 : 0,
                         display: "grid",
                         gap: 7,
                         fontSize: 11,
                       }}
                     >
+                      {meshWorkspaceLeftTab === "operations" &&
+                        !!surfaceMeshData?.positions?.length &&
+                        !meshImportPanelExpanded && (
+                          <div
+                            data-testid="mesh-workspace-source-summary"
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 8,
+                              padding: "6px 8px",
+                              border: "1px solid #93c5fd",
+                              borderRadius: 8,
+                              background: "#f8fbff",
+                            }}
+                          >
+                            <div style={{ minWidth: 0, display: "grid", gap: 2 }}>
+                              <strong style={{ color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                Source: {surfaceMeshData.label || "Active mesh"}
+                              </strong>
+                              <span style={{ color: "#475569", fontSize: 10 }}>
+                                {(surfaceMeshStats?.vertCount ?? 0).toLocaleString()} vertices / {(surfaceMeshStats?.triCount ?? 0).toLocaleString()} faces
+                              </span>
+                            </div>
+                            <button type="button" onClick={() => setMeshImportPanelExpanded(true)} style={{ padding: "4px 8px", fontSize: 11 }}>
+                              + Add
+                            </button>
+                          </div>
+                        )}
                       <div
                         data-testid="mesh-workspace-open-mesh-file"
                         style={{
@@ -70735,11 +70794,26 @@ case "mobius":
                           borderRadius: 8,
                           background: "#dbeafe",
                           padding: "8px 9px",
-                          display: "grid",
+                          display: meshWorkspaceLeftTab === "operations" ? "grid" : "none",
                           gap: 7,
                         }}
                       >
-                        <strong style={{ color: "#0f172a" }}>Open mesh file</strong>
+                        <div
+                          style={{
+                            display: !surfaceMeshData?.positions?.length || meshImportPanelExpanded ? "grid" : "none",
+                            gap: 7,
+                          }}
+                        >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                          <strong style={{ color: "#0f172a" }}>
+                            {surfaceMeshData?.positions?.length ? "Add or replace mesh" : "Open mesh file"}
+                          </strong>
+                          {surfaceMeshData?.positions?.length && (
+                            <button type="button" onClick={() => setMeshImportPanelExpanded(false)} style={{ padding: "3px 6px", fontSize: 10 }}>
+                              Done
+                            </button>
+                          )}
+                        </div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                           <button
                             type="button"
@@ -70763,7 +70837,7 @@ case "mobius":
                               checked={surfaceMeshMergeVertices}
                               onChange={(event) => setSurfaceMeshMergeVertices(event.target.checked)}
                             />
-                            merge vertices
+                            Weld coincident vertices
                           </label>
                           <input
                             ref={meshWorkspaceFileInputRef}
@@ -71213,6 +71287,7 @@ case "mobius":
                             </div>
                           </div>
                         )}
+                        </div>
                         {meshWorkspaceLeftTab === "operations" && (
                           <>
                         <MeshOperationsPanel
@@ -71795,32 +71870,40 @@ case "mobius":
                     </div>
                   )}
                   {meshWorkspaceLeftTab === "scene" && (
-                  <UnifiedObjectTreePanel
-                    title={isInspectDisplayMode ? "Mesh viewport / pipeline" : "Mesh viewport"}
-                    contextDescription={
-                      meshWorkspaceOtherSceneObjectCount > 0
-                        ? `Showing the active mesh and its overlays. ${meshWorkspaceOtherSceneObjectCount.toLocaleString()} Geometry scene object${
-                            meshWorkspaceOtherSceneObjectCount === 1 ? " is" : "s are"
-                          } managed in Geometry.`
-                        : "Showing the active mesh and its overlays."
-                    }
-                    nodes={meshWorkspaceSceneNodes}
-                    selectedId={meshWorkspaceSelectedId}
-                    onSelect={handleSelectUnifiedNode}
-                    onFocus={handleFocusUnifiedNode}
-                    onToggleVisibility={handleToggleUnifiedNodeVisibility}
-                    onDeleteNode={handleDeleteUnifiedNode}
-                    onForceRemoveNode={handleForceRemoveUnifiedNode}
-                    onDuplicateNode={handleDuplicateUnifiedNode}
-                    onRenameNode={handleRenameUnifiedNode}
-                    onToggleSelectedLocked={handleToggleUnifiedSelectedLocked}
-                    selectedSceneObjectLocked={unifiedSelectedSceneLocked}
-                    canIsolateSelected={unifiedCanIsolateSelected}
-                    onIsolateSelected={handleIsolateUnifiedSelectedObject}
-                    canShowAllSceneObjects={unifiedCanShowAllSceneObjects}
-                    onShowAllSceneObjects={handleShowAllUnifiedObjects}
-                    fillHeight
-                  />
+                    <MeshWorkspaceSceneOutliner
+                      nodes={meshWorkspaceSceneNodes}
+                      rootId={unifiedObjectModel.activeDatasetNodeId}
+                      selectedId={meshWorkspaceSelectedId}
+                      onSelect={handleSelectUnifiedNode}
+                      onToggleVisibility={handleToggleUnifiedNodeVisibility}
+                      onFrame={handleFitMeshViewport}
+                      onImport={() => {
+                        void handleOpenSurfaceMeshFileDialog();
+                      }}
+                      onOpenBenchmark={() => {
+                        setMeshWorkspaceLeftTab("operations");
+                        setMeshImportPanelExpanded(true);
+                        setSurfaceMeshBenchmarkBrowserOpen(true);
+                      }}
+                      onLinkGeometry={handleOpenGeometryMeshTopologySource}
+                      onCreateGroup={() => setSurfaceMeshTopologyStatus("Groups become available when the Mesh workspace contains multiple mesh objects.")}
+                      canShowAllSceneObjects={unifiedCanShowAllSceneObjects}
+                      onShowAllSceneObjects={handleShowAllUnifiedObjects}
+                      isolationActive={!!meshWorkspaceOverlayIsolation}
+                      onToggleIsolation={handleToggleMeshWorkspaceOverlayIsolation}
+                      status={
+                        largeSurfaceMeshFullPreviewJob && largeSurfaceMeshFullPreviewJob.status !== "ready"
+                          ? "Loading full mesh"
+                          : surfaceRenderQuality === "performance" && largeSurfaceMeshResolutionCacheRef.current
+                            ? "Proxy"
+                            : meshQualityReport &&
+                                (meshQualityReport.topology.boundaryEdgeCount > 0 ||
+                                  meshQualityReport.topology.nonManifoldEdgeCount > 0 ||
+                                  meshQualityReport.topology.degenerateFaceCount > 0)
+                              ? "Invalid"
+                              : "Ready"
+                      }
+                    />
                   )}
                 </div>
               )}
@@ -101881,6 +101964,315 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
         ) : (
           <div style={{ fontSize: 11, opacity: 0.75 }}>No selected object.</div>
         )}
+      </div>
+    </div>
+  );
+};
+
+type MeshWorkspaceSceneOutlinerProps = {
+  nodes: UnifiedObjectNode[];
+  rootId: string | null;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  onToggleVisibility: (id: string) => void;
+  onFrame: () => void;
+  onImport: () => void;
+  onOpenBenchmark: () => void;
+  onLinkGeometry: () => void;
+  onCreateGroup: () => void;
+  canShowAllSceneObjects: boolean;
+  onShowAllSceneObjects: () => void;
+  isolationActive: boolean;
+  onToggleIsolation: () => void;
+  status: "Proxy" | "Ready" | "Invalid" | "Loading full mesh";
+};
+
+const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
+  nodes,
+  rootId,
+  selectedId,
+  onSelect,
+  onToggleVisibility,
+  onFrame,
+  onImport,
+  onOpenBenchmark,
+  onLinkGeometry,
+  onCreateGroup,
+  canShowAllSceneObjects,
+  onShowAllSceneObjects,
+  isolationActive,
+  onToggleIsolation,
+  status,
+}) => {
+  const [overlaysExpanded, setOverlaysExpanded] = useState(true);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+  const root = (rootId ? byId.get(rootId) : null) ?? nodes.find((node) => node.category === "dataset") ?? null;
+  const displayName = (name: string) => {
+    const normalized = name
+      .replace(/^\d+_/, "")
+      .replace(/\.(obj|stl|ply|gltf|glb)$/i, "")
+      .replace(/^Implicit:\s*/i, "")
+      .replace(/\s+\(Implicit mesh\)/gi, "")
+      .replace(/\s+mesh object$/i, "")
+      .replaceAll("_", " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!normalized) return "Mesh";
+    return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase()).replace(/3dbenchy/i, "3DBenchy");
+  };
+  const descendantNodes = useMemo(() => {
+    if (!root) return [];
+    const descendants: UnifiedObjectNode[] = [];
+    const seen = new Set<string>([root.id]);
+    const visit = (parentId: string) => {
+      for (const node of nodes) {
+        if (node.parentId !== parentId || seen.has(node.id)) continue;
+        seen.add(node.id);
+        descendants.push(node);
+        visit(node.id);
+      }
+    };
+    visit(root.id);
+    return descendants;
+  }, [nodes, root]);
+  const overlayNodes = descendantNodes.filter((node) => node.category === "derived");
+  const visibleCount = (root?.visible !== false ? 1 : 0) + overlayNodes.filter((node) => node.visible !== false).length;
+  const selected = (selectedId ? byId.get(selectedId) : null) ?? root;
+  const selectedCanToggle = !!selected?.canToggleVisibility && typeof selected.visible === "boolean";
+  const meshStats = root?.displayState.match(/(\d[\d,]*)\s+verts/i)?.[1] ?? null;
+  const meshType = root?.sourceDefinition.match(/\b(OBJ|STL|PLY|GLTF|GLB)\b/i)?.[1]?.toUpperCase() ?? "Mesh";
+  const statusStyle =
+    status === "Invalid"
+      ? { color: "#b42318", border: "#fda29b", background: "#fff1f0" }
+      : status === "Proxy" || status === "Loading full mesh"
+        ? { color: "#9a6700", border: "#f6c665", background: "#fffaeb" }
+        : { color: "#166534", border: "#86efac", background: "#f0fdf4" };
+
+  const renderOverlayRow = (node: UnifiedObjectNode) => {
+    const active = node.id === selectedId;
+    const canToggle = !!node.canToggleVisibility && typeof node.visible === "boolean";
+    return (
+      <div
+        key={node.id}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr auto",
+          gap: 6,
+          alignItems: "center",
+          marginLeft: 20,
+          padding: "5px 6px",
+          border: active ? "1px solid #93c5fd" : "1px solid transparent",
+          borderRadius: 6,
+          background: active ? "#eff6ff" : "transparent",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => onSelect(node.id)}
+          style={{
+            minWidth: 0,
+            padding: 0,
+            border: 0,
+            background: "transparent",
+            textAlign: "left",
+            cursor: "pointer",
+            display: "grid",
+            gap: 1,
+          }}
+          title={node.sourceDefinition}
+        >
+          <span style={{ color: "#0f172a", fontSize: 11, fontWeight: active ? 700 : 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {displayName(node.name)}
+          </span>
+          <span style={{ color: "#64748b", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {node.visible === false ? "Hidden" : node.sourceDefinition}
+          </span>
+        </button>
+        {canToggle && (
+          <button
+            type="button"
+            onClick={() => onToggleVisibility(node.id)}
+            title={node.visible ? `Hide ${displayName(node.name)}` : `Show ${displayName(node.name)}`}
+            style={{ padding: "3px 6px", fontSize: 10 }}
+          >
+            {node.visible ? "Hide" : "Show"}
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div
+      data-testid="mesh-workspace-scene-outliner"
+      style={{
+        marginTop: 0,
+        padding: "8px 10px 0",
+        borderRadius: 8,
+        border: "1px solid #dbe4f0",
+        background: "#f8fafc",
+        display: "grid",
+        gap: 8,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center" }}>
+        <div style={{ fontSize: 12, fontWeight: 800 }}>Scene contents</div>
+        <span style={{ color: "#64748b", fontSize: 10, fontWeight: 700 }}>{visibleCount} visible</span>
+      </div>
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", position: "relative" }}>
+        <button
+          type="button"
+          onClick={() => setAddMenuOpen((open) => !open)}
+          aria-expanded={addMenuOpen}
+          style={{ padding: "4px 8px", fontSize: 11 }}
+          title="Add a mesh or linked Geometry source"
+        >
+          + Add
+        </button>
+        <button
+          type="button"
+          onClick={onShowAllSceneObjects}
+          disabled={!canShowAllSceneObjects}
+          style={{ padding: "4px 8px", fontSize: 11 }}
+          title="Show all Geometry scene objects"
+        >
+          Show all
+        </button>
+        {addMenuOpen && (
+          <div
+            role="menu"
+            style={{
+              position: "absolute",
+              top: 30,
+              left: 0,
+              zIndex: 12,
+              width: 208,
+              padding: 4,
+              display: "grid",
+              gap: 3,
+              border: "1px solid #cbd5e1",
+              borderRadius: 7,
+              background: "#ffffff",
+              boxShadow: "0 8px 20px rgba(15,23,42,0.16)",
+            }}
+          >
+            <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); onImport(); }} style={{ textAlign: "left", padding: "6px 8px", fontSize: 11 }}>
+              Import mesh...
+            </button>
+            <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); onOpenBenchmark(); }} style={{ textAlign: "left", padding: "6px 8px", fontSize: 11 }}>
+              Open benchmark model...
+            </button>
+            <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); onLinkGeometry(); }} style={{ textAlign: "left", padding: "6px 8px", fontSize: 11 }}>
+              Link selected Geometry mesh
+            </button>
+            <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); onCreateGroup(); }} style={{ textAlign: "left", padding: "6px 8px", fontSize: 11 }}>
+              Create group...
+            </button>
+          </div>
+        )}
+      </div>
+
+      {root ? (
+        <div style={{ display: "grid", gap: 3 }}>
+          <div style={{ color: "#64748b", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3 }}>
+            Mesh workspace (1)
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr auto auto",
+              gap: 6,
+              alignItems: "center",
+              padding: "7px 8px",
+              borderRadius: 7,
+              border: selected?.id === root.id ? "1px solid #60a5fa" : "1px solid #bfdbfe",
+              background: selected?.id === root.id ? "#eaf2ff" : "#fff",
+              boxShadow: selected?.id === root.id ? "inset 3px 0 0 #2563eb" : undefined,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => onSelect(root.id)}
+              onDoubleClick={onFrame}
+              style={{ minWidth: 0, padding: 0, border: 0, background: "transparent", textAlign: "left", cursor: "pointer", display: "grid", gap: 2 }}
+              title={`${root.name}. Double-click to frame the mesh.`}
+            >
+              <span style={{ color: "#0f172a", fontSize: 12, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {displayName(root.name)}
+              </span>
+              <span style={{ color: "#64748b", fontSize: 10 }}>
+                {meshType}{meshStats ? ` · ${meshStats} vertices` : ""}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelect(root.id)}
+              style={{
+                padding: "3px 6px",
+                fontSize: 10,
+                color: statusStyle.color,
+                borderColor: statusStyle.border,
+                background: statusStyle.background,
+                fontWeight: 700,
+              }}
+              title="Select the mesh and review its health in Inspector"
+            >
+              {status}
+            </button>
+            <button type="button" onClick={onFrame} style={{ padding: "3px 6px", fontSize: 10 }} title="Frame active mesh">
+              Frame
+            </button>
+          </div>
+
+          {overlayNodes.length > 0 && (
+            <div style={{ display: "grid", gap: 2 }}>
+              <button
+                type="button"
+                onClick={() => setOverlaysExpanded((expanded) => !expanded)}
+                aria-expanded={overlaysExpanded}
+                style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 2px", border: 0, background: "transparent", color: "#334155", fontSize: 10, fontWeight: 700, textAlign: "left", cursor: "pointer" }}
+              >
+                <span aria-hidden="true">{overlaysExpanded ? "▼" : "▶"}</span>
+                Overlays ({overlayNodes.length})
+              </button>
+              {overlaysExpanded && overlayNodes.map(renderOverlayRow)}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ padding: "14px 4px", color: "#64748b", fontSize: 11 }}>No mesh loaded. Add a mesh to start a workspace scene.</div>
+      )}
+
+      <div
+        style={{
+          position: "sticky",
+          bottom: 0,
+          marginTop: 2,
+          marginInline: -10,
+          padding: "8px 10px",
+          borderTop: "1px solid #dbe4f0",
+          background: "#ffffff",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 7,
+        }}
+      >
+        <span style={{ minWidth: 0, color: "#334155", fontSize: 11, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {selected ? `${displayName(selected.name)} selected` : "No selection"}
+        </span>
+        <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+          <button type="button" onClick={onFrame} style={{ padding: "3px 6px", fontSize: 10 }}>Frame</button>
+          <button type="button" onClick={onToggleIsolation} style={{ padding: "3px 6px", fontSize: 10 }}>
+            {isolationActive ? "Restore" : "Isolate"}
+          </button>
+          {selectedCanToggle && (
+            <button type="button" onClick={() => onToggleVisibility(selected!.id)} style={{ padding: "3px 6px", fontSize: 10 }}>
+              {selected!.visible ? "Hide" : "Show"}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

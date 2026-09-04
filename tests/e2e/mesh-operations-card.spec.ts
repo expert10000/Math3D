@@ -285,8 +285,20 @@ test.describe("Mesh Operations card", () => {
     await expect(page.getByText("Mesh topology editing").first()).toBeVisible();
     await expect(card).toHaveCount(0);
     await leftTabs.getByTestId("mesh-workspace-left-tab-scene").click();
-    await expect(page.getByText("Mesh viewport").first()).toBeVisible();
+    const outliner = page.getByTestId("mesh-workspace-scene-outliner");
+    await expect(outliner).toBeVisible();
+    await expect(page.getByText("Mesh workspace (1)").first()).toBeVisible();
+    await expect(page.getByTestId("mesh-workspace-open-mesh-file")).not.toBeVisible();
+    await outliner.getByRole("button", { name: "+ Add" }).click();
+    await expect(outliner.getByRole("menuitem", { name: "Import mesh..." })).toBeVisible();
+    await expect(outliner.getByRole("menuitem", { name: "Open benchmark model..." })).toBeVisible();
+    await outliner.getByRole("button", { name: "+ Add" }).click();
+    await outliner.getByRole("button", { name: "Isolate" }).click();
+    await expect(outliner.getByRole("button", { name: "Restore" })).toBeVisible();
+    await outliner.getByRole("button", { name: "Restore" }).click();
     await leftTabs.getByTestId("mesh-workspace-left-tab-operations").click();
+    await expect(page.getByTestId("mesh-workspace-source-summary")).toBeVisible();
+    await expect(page.getByTestId("mesh-workspace-import-controls")).not.toBeVisible();
     await expect(card).toBeVisible();
     for (const group of ["repair", "simplify", "smooth", "boolean", "implicit"]) {
       await expect(card.getByTestId(`mesh-workspace-operation-registry-group-${group}`)).toBeVisible();
