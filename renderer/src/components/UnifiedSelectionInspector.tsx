@@ -22,6 +22,8 @@ const list = (values: readonly (number | string)[] | null | undefined): string =
 const pluralKind = (kind: string, count: number): string =>
   count === 1 ? kind : kind === "vertex" ? "vertices" : `${kind}s`;
 
+const entityIdLabel = (item: SelectionResult): string => item.entityId.replace(/^(object|face|edge|vertex):/, "");
+
 const uniqueSorted = <T extends number | string>(values: readonly T[]): T[] => {
   const seen = new Set<string>();
   const result: T[] = [];
@@ -85,6 +87,7 @@ export const UnifiedSelectionInspector = ({
   const multiEntityLabel = multiSelection
     ? `${multiSelection.count} ${pluralKind(multiEntityType, multiSelection.count)} selected`
     : "";
+  const selectedEntityIds = multiSelection ? uniqueSorted(selectedItems.map(entityIdLabel)) : [];
   const multiScopeLabel =
     multiSelection && multiSelection.objectLabels.length > 1
       ? `Across ${multiSelection.objectLabels.length} objects`
@@ -128,6 +131,8 @@ export const UnifiedSelectionInspector = ({
           <span data-testid="unified-selection-entity">
             {multiEntityLabel}
           </span>
+          <span style={labelStyle}>Selected {pluralKind(multiEntityType, multiSelection.count)}</span>
+          <span data-testid="unified-selection-multi-ids">{list(selectedEntityIds)}</span>
           <span style={labelStyle}>Active</span>
           <span data-testid="unified-selection-active">{activeSelection?.label ?? multiSelection.activeSelection?.label ?? "n/a"}</span>
           <span style={labelStyle}>Point</span>

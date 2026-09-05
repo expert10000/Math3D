@@ -39,7 +39,7 @@ describe("selectionHighlighting", () => {
     expect(overlays.polylineGroups.length).toBe(1);
   });
 
-  it("shows connected faces for edge selections without flooding candidate paths", () => {
+  it("keeps edge selections distinct from face selections", () => {
     const selection = selectionResultFromMeshTopology({
       mode: "edge",
       objectLabel: "Strip",
@@ -50,8 +50,10 @@ describe("selectionHighlighting", () => {
 
     const overlays = buildSelectionHighlightOverlays(selection, stripMesh);
 
-    expect(overlays.meshGroups.length).toBeGreaterThanOrEqual(1);
+    expect(overlays.meshGroups).toHaveLength(0);
     expect(overlays.polylineGroups.length).toBe(1);
+    expect(overlays.pointSets).toHaveLength(1);
+    expect(overlays.pointSets[0].points).toHaveLength(2);
   });
 
   it("shows connected edges and adjacent faces for vertex selections", () => {

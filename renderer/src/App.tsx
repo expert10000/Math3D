@@ -37488,7 +37488,7 @@ const App: React.FC = () => {
   const surfaceMeshTopologySelectionFaceMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
     if (
       surfaceMeshTopologySelectionCleared ||
-      surfaceMeshTopologyPickMode === "object" ||
+      surfaceMeshTopologyPickMode !== "face" ||
       !isMeshLikeViewer ||
       !surfaceMeshTopologyViewerMesh?.positions?.length
     ) {
@@ -37568,30 +37568,15 @@ const App: React.FC = () => {
       return null;
     }
     const points: GeometryProbePoint[] = [];
-    const edgeA = readMeshPoint(surfaceMeshTopologyViewerMesh, Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0)));
-    const edgeB = readMeshPoint(surfaceMeshTopologyViewerMesh, Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0)));
-    if (edgeA) points.push(edgeA);
-    if (edgeB) points.push(edgeB);
-    if (edgeA && edgeB) {
-      points.push({
-        x: (edgeA.x + edgeB.x) * 0.5,
-        y: (edgeA.y + edgeB.y) * 0.5,
-        z: (edgeA.z + edgeB.z) * 0.5,
-      });
+    if (surfaceMeshTopologyPickMode === "edge") {
+      const edgeA = readMeshPoint(surfaceMeshTopologyViewerMesh, Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0)));
+      const edgeB = readMeshPoint(surfaceMeshTopologyViewerMesh, Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0)));
+      if (edgeA) points.push(edgeA);
+      if (edgeB) points.push(edgeB);
+    } else if (surfaceMeshTopologyPickMode === "vertex") {
+      const vertex = readMeshPoint(surfaceMeshTopologyViewerMesh, Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0)));
+      if (vertex) points.push(vertex);
     }
-    const polygon = readMeshFacePolygon(
-      surfaceMeshTopologyViewerMesh,
-      Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0))
-    );
-    if (polygon?.vertices?.length) {
-      points.push({
-        x: polygon.vertices.reduce((sum, point) => sum + point.x, 0) / polygon.vertices.length,
-        y: polygon.vertices.reduce((sum, point) => sum + point.y, 0) / polygon.vertices.length,
-        z: polygon.vertices.reduce((sum, point) => sum + point.z, 0) / polygon.vertices.length,
-      });
-    }
-    const vertex = readMeshPoint(surfaceMeshTopologyViewerMesh, Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0)));
-    if (vertex) points.push(vertex);
     if (!points.length) return null;
     return [
       {
@@ -37632,7 +37617,9 @@ const App: React.FC = () => {
     const edgeAIndex = Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0));
     const edgeBIndex = Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0));
     const vertexIndex = Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0));
-    const polygon = readMeshFacePolygon(surfaceMeshTopologyViewerMesh, faceIndex);
+    const polygon = surfaceMeshTopologyPickMode === "face"
+      ? readMeshFacePolygon(surfaceMeshTopologyViewerMesh, faceIndex)
+      : null;
     if (polygon?.vertices?.length) {
       const normal = geometryNormalizeVec(polygonNormalFromVertices(polygon.vertices) ?? { x: 0, y: 1, z: 0 }) ?? {
         x: 0,
@@ -37652,8 +37639,12 @@ const App: React.FC = () => {
         opacity: 0.94,
       });
     }
-    const edgeA = readMeshPoint(surfaceMeshTopologyViewerMesh, edgeAIndex);
-    const edgeB = readMeshPoint(surfaceMeshTopologyViewerMesh, edgeBIndex);
+    const edgeA = surfaceMeshTopologyPickMode === "edge"
+      ? readMeshPoint(surfaceMeshTopologyViewerMesh, edgeAIndex)
+      : null;
+    const edgeB = surfaceMeshTopologyPickMode === "edge"
+      ? readMeshPoint(surfaceMeshTopologyViewerMesh, edgeBIndex)
+      : null;
     if (edgeA && edgeB) {
       labels.push({
         text: `Edge ${edgeAIndex}-${edgeBIndex}`,
@@ -37667,7 +37658,9 @@ const App: React.FC = () => {
         opacity: 0.96,
       });
     }
-    const vertex = readMeshPoint(surfaceMeshTopologyViewerMesh, vertexIndex);
+    const vertex = surfaceMeshTopologyPickMode === "vertex"
+      ? readMeshPoint(surfaceMeshTopologyViewerMesh, vertexIndex)
+      : null;
     if (vertex) {
       labels.push({
         text: `V ${vertexIndex}`,
@@ -37732,13 +37725,14 @@ const App: React.FC = () => {
       return null;
     }
     const lines: PolylineSet = [];
-    const edgeA = readMeshPoint(surfaceMeshTopologyViewerMesh, Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0)));
-    const edgeB = readMeshPoint(surfaceMeshTopologyViewerMesh, Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0)));
-    if (edgeA && edgeB) lines.push([edgeA, edgeB]);
-    const polygon = readMeshFacePolygon(
-      surfaceMeshTopologyViewerMesh,
-      Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0))
-    );
+    if (surfaceMeshTopologyPickMode === "edge") {
+      const edgeA = readMeshPoint(surfaceMeshTopologyViewerMesh, Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0)));
+      const edgeB = readMeshPoint(surfaceMeshTopologyViewerMesh, Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0)));
+      if (edgeA && edgeB) lines.push([edgeA, edgeB]);
+    }
+    const polygon = surfaceMeshTopologyPickMode === "face"
+      ? readMeshFacePolygon(surfaceMeshTopologyViewerMesh, Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0)))
+      : null;
     if (polygon?.vertices?.length) {
       const normal = geometryNormalizeVec(polygonNormalFromVertices(polygon.vertices) ?? { x: 0, y: 1, z: 0 }) ?? {
         x: 0,
@@ -54046,6 +54040,20 @@ case "mobius":
           surfaceMeshTopologyPickMode === "vertex" ? "vertices" : `${surfaceMeshTopologyPickMode}s`
         } selected`
       : meshContextSelectionState.selectionLabel;
+  const meshMultiSelectionIdsLabel = useMemo(() => {
+    if (meshMultiSelectionSet.items.length <= 1 || surfaceMeshTopologyPickMode === "object") return null;
+    const ids = [...new Set(
+      meshMultiSelectionSet.items
+        .filter((selection) => selection.entityType === surfaceMeshTopologyPickMode)
+        .map((selection) => selection.entityId.replace(/^(object|face|edge|vertex):/, ""))
+    )].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    if (!ids.length) return null;
+    const visible = ids.slice(0, 12).join(", ");
+    return ids.length > 12 ? `${visible}, +${ids.length - 12}` : visible;
+  }, [meshMultiSelectionSet.items, surfaceMeshTopologyPickMode]);
+  const meshContextToolbarSelectionSummary = meshMultiSelectionIdsLabel
+    ? `${meshContextToolbarSelectionLabel} · IDs ${meshMultiSelectionIdsLabel}`
+    : meshContextToolbarSelectionLabel;
   const meshActiveSelectionCardType: ActiveSelectionCardProps["type"] = meshContextSelectionState.activeCardType;
   const meshActiveSelectionCardActions = meshContextSelectionState.actions;
   const meshActiveSelectionCardId = meshContextSelectionState.cardId;
@@ -72384,6 +72392,14 @@ case "mobius":
                         <span data-testid="mesh-topology-selected-edge">{selectedSurfaceMeshTopologyEdgeLabel}</span>
                         <span data-testid="mesh-topology-selected-vertex">{selectedSurfaceMeshTopologyVertexLabel}</span>
                       </div>
+                      {meshMultiSelectionIdsLabel && (
+                        <div
+                          data-testid="mesh-topology-multi-selection-ids"
+                          style={{ color: "#075985", fontSize: 11, fontWeight: 800 }}
+                        >
+                          {meshContextToolbarSelectionSummary}
+                        </div>
+                      )}
                       {surfaceMeshEdgeSelection && (
                         <span data-testid="mesh-edge-selection-summary" style={{ color: "#0f766e", fontWeight: 800 }}>
                           {surfaceMeshEdgeSelection.status}
@@ -75809,10 +75825,10 @@ case "mobius":
                           selectionLabel={
                             meshUnifiedSelectionFilterStatus ??
                             (surfaceMeshTopologyPickMode === "object"
-                              ? meshContextToolbarSelectionLabel
+                              ? meshContextToolbarSelectionSummary
                               : meshActiveSelectionSummary.emptyState ??
                                 meshActiveSelectionSummary.eventLabel ??
-                                meshContextToolbarSelectionLabel)
+                                meshContextToolbarSelectionSummary)
                           }
                           selectionTestId="mesh-context-selection-label"
                           previewLabel={meshContextToolbarPreviewLabel}

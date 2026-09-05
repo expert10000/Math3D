@@ -208,14 +208,19 @@ export function buildSelectionHighlightOverlays(
           radiusWorld: selection.state === "hover" ? 0.009 : 0.014,
         });
       }
-      const connectedFaces = faceGroupFromIndices(
-        mesh,
-        selection.adjacency.faces,
-        SELECTION_HIGHLIGHT_COLORS.adjacent,
-        adjacentOpacity,
-        0.018
-      );
-      if (connectedFaces) meshGroups.push(connectedFaces);
+      // An edge selection must remain visually unambiguous.  Its incident faces
+      // are useful topology data, but filling them makes a selected edge read as
+      // a selected face in the viewport.
+      const [a, b] = pair;
+      const endpoints = [readPoint(mesh, a), readPoint(mesh, b)].filter((point): point is Vec3 => !!point);
+      if (endpoints.length) {
+        pointSets.push({
+          points: endpoints,
+          color: SELECTION_HIGHLIGHT_COLORS.previewAlt,
+          size: selection.state === "hover" ? 0.11 : 0.16,
+          opacity: selection.state === "hover" ? 0.56 : 0.82,
+        });
+      }
     }
   } else if (selection.entityType === "vertex") {
     const vertexIndex = selectedVertexId(selection);
