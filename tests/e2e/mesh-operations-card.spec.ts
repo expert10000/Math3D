@@ -431,8 +431,12 @@ test.describe("Mesh Operations card", () => {
     await expect(inspectorHistory.getByRole("button", { name: "Preview before" }).first()).toBeDisabled();
 
     await leftTabs.getByTestId("mesh-workspace-left-tab-scene").click();
-    await expect(outliner.getByText("Operation lineage")).toBeVisible();
+    await expect(outliner.getByText("Operation provenance")).toBeVisible();
     await expect(outliner).toContainText(/Decimate/i);
+    const provenanceNode = outliner.getByTestId(/mesh-workspace-provenance-node-/).first();
+    await provenanceNode.click();
+    await page.getByTestId("mesh-inspector-tab-object").click();
+    await expect(page.getByTestId("mesh-workspace-selected-provenance")).toContainText(/Decimate/i);
   });
 
   test("loads a five-mesh workspace example with Geometry links ready for Boolean", async () => {
@@ -452,13 +456,104 @@ test.describe("Mesh Operations card", () => {
     await expect(outliner.getByText("Boolean candidates (2)")).toBeVisible();
     await expect(outliner.getByText("Scene references (3)")).toBeVisible();
     await expect(outliner.getByRole("button", { name: "Boolean", exact: true })).toBeVisible();
+    await expect(outliner.getByTestId("mesh-workspace-boolean-slot-a")).toContainText(/Workspace Test Active/i);
+    await expect(outliner.getByTestId("mesh-workspace-boolean-slot-b")).toContainText(/Workspace Test Cutter/i);
     const workspaceSummary = page.getByTestId("mesh-workspace-inspector-summary");
     await expect(workspaceSummary).toContainText("5 total · 4 linked Geometry");
-    await expect(workspaceSummary).toContainText("2 selected");
+    await expect(workspaceSummary).toContainText("1 selected");
 
     await outliner.getByRole("button", { name: "Boolean", exact: true }).click();
     const card = await openWorkspaceOperationsCard(page);
     await expect(card.getByTestId("mesh-workspace-operation-registry-row-boolean-difference")).toHaveAttribute("aria-expanded", "true");
+
+    await leftTabs.getByTestId("mesh-workspace-left-tab-scene").click();
+    page.once("dialog", (dialog) => dialog.accept("Five mesh Boolean review"));
+    await outliner.getByRole("button", { name: "Save scene", exact: true }).click();
+    const sceneSelect = outliner.getByRole("combobox", { name: "Workspace scene" });
+    await expect(sceneSelect).toContainText("Five mesh Boolean review");
+    await sceneSelect.selectOption({ label: "Five mesh Boolean review" });
+    await outliner.getByRole("button", { name: "Load", exact: true }).click();
+  });
+
+  test("selects an edge on the selected linked workspace mesh", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1", VITE_DEV_SERVER_URL: undefined });
+    const { page } = ctx;
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await ctx.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(1700, 1100));
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+    await loadBenchmarkModel(page, "3dbenchy");
+    await openWorkspaceOperationsCard(page);
+    await page.getByTestId("mesh-workspace-left-tab-scene").click();
+    const outliner = page.getByTestId("mesh-workspace-scene-outliner");
+    await outliner.getByTestId("mesh-workspace-load-test-scene-5").click();
+    await page.getByTestId("mesh-viewer-quality-sharp").click();
+    await expect(page.getByTestId("mesh-viewer-quality-sharp")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("mesh-context-pick-edge").click();
+    await expect(page.getByTestId("mesh-workspace-left-tab-topology")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("mesh-context-pick-edge")).toHaveAttribute("aria-pressed", "true");
+    const viewer = page.getByTestId("surface-primary-viewer");
+    for (const name of ["Wireframe", "Bounding box", "Coordinates", "Gizmo", "Overlay controls"]) {
+      const checkbox = viewer.getByRole("checkbox", { name, exact: true });
+      if (await checkbox.count()) await checkbox.first().uncheck();
+    }
+    const canvas = viewer.locator("canvas").first();
+    await expect(canvas).toBeVisible();
+    // Locate a linked cyan mesh directly; no Outliner activation is required.
+    let target = { x: 0, y: 0, count: 0 };
+    await expect.poll(async () => {
+      const png = PNG.sync.read(await canvas.screenshot());
+      target = { x: 0, y: 0, count: 0 };
+      for (let y = 0; y < png.height; y += 2) {
+        for (let x = 0; x < png.width; x += 2) {
+          const i = (y * png.width + x) * 4;
+          const [r, g, b] = [png.data[i], png.data[i + 1], png.data[i + 2]];
+          if (x > png.width * 0.58 && y < png.height * 0.78 && g > 105 && b > 125 && b > r * 1.15 && g > r * 1.05) {
+            target.x += x; target.y += y; target.count++;
+          }
+        }
+      }
+      if (target.count) {
+        const box = (await canvas.boundingBox())!;
+        target.x = box.x + target.x / target.count * box.width / png.width;
+        target.y = box.y + target.y / target.count * box.height / png.height;
+      }
+      return target.count;
+    }).toBeGreaterThan(100);
+    await page.mouse.move(target.x, target.y);
+    await page.mouse.click(target.x, target.y);
+    await expect(page.getByTestId("mesh-context-selection-label")).toContainText(/edge\s+\d+/i);
+    await expect(viewer).toContainText(/Workspace test reference \d/i);
+    await expect(page.getByRole("button", { name: "Split", exact: true })).toBeEnabled();
+    await expect.poll(async () => {
+      const png = PNG.sync.read(await canvas.screenshot());
+      let highlighted = 0;
+      for (let i = 0; i < png.data.length; i += 4) {
+        const [r, g, b] = [png.data[i], png.data[i + 1], png.data[i + 2]];
+        if (r > 110 && b > 150 && r > b * 0.55 && g < b * 0.7) highlighted++;
+      }
+      return highlighted;
+    }).toBeGreaterThan(20);
+    await canvas.screenshot({ path: test.info().outputPath("linked-mesh-edge-highlight.png") });
+    await page.getByTestId("mesh-workspace-left-tab-scene").click();
+    await expect(page.getByTestId("mesh-context-pick-object")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("mesh-workspace-inspector-summary")).toContainText("5 total");
+    await expect(page.getByTestId("mesh-workspace-inspector-summary")).toContainText("4 linked Geometry");
+    await expect(outliner.getByTestId("mesh-workspace-boolean-slot-a")).toContainText(/Workspace Test Active/i);
+
+    const secondReference = outliner.getByText("Workspace Test Reference 2", { exact: true }).first();
+    await secondReference.click();
+    await page.getByTestId("mesh-context-pick-edge").click();
+    await expect(page.getByTestId("mesh-workspace-left-tab-topology")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("mesh-viewer-quality-performance").click();
+    await expect(page.getByTestId("mesh-viewer-quality-performance")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("mesh-viewer-quality-sharp").click();
+    await expect(page.getByTestId("mesh-viewer-quality-sharp")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("mesh-workspace-left-tab-scene").click();
+    await expect(page.getByTestId("mesh-workspace-inspector-summary")).toContainText("5 total");
+    await expect(page.getByTestId("mesh-workspace-inspector-summary")).toContainText("4 linked Geometry");
+    expect(errors).toEqual([]);
   });
 
   test("Full button opens the complete Bunny, Armadillo, and Dragon viewers", async () => {

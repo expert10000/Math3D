@@ -1648,6 +1648,10 @@ type Props = {
     vertexIndex?: number;
     modifiers?: SurfaceViewerPickModifiers;
   }) => void;
+  /** A plain object selection click for multi-mesh workspace views. */
+  onMeshObjectPick?: (info: { meshKey?: string; modifiers?: SurfaceViewerPickModifiers }) => void;
+  /** Lets object picking cycle past the currently selected mesh when objects overlap. */
+  objectPickPreferredMeshKey?: string | null;
   geodesicPathEnabled?: boolean;
   onGeodesicPathPick?: (info: {
     point: { x: number; y: number; z: number };
@@ -1733,6 +1737,11 @@ type Props = {
   }) => void;
   onInspectHoverMiss?: () => void;
   inspectSelectionMeshKey?: string | null;
+  selectionHighlightOverlays?: {
+    meshGroups: readonly OverlayMeshGroup[];
+    polylineGroups: readonly OverlayPolylineGroup[];
+    pointSets: readonly OverlayPointSet[];
+  };
   inspectPoint?: { x: number; y: number; z: number } | null;
   selectionOverlayVisible?: boolean;
   selectionOverlayOnTop?: boolean;
@@ -1922,6 +1931,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     selectionMask = null,
     selectRegionEnabled = false,
     onSelectionPick,
+    onMeshObjectPick,
+    objectPickPreferredMeshKey = null,
     geodesicPathEnabled = false,
     onGeodesicPathPick,
     geodesicPathStart = null,
@@ -1955,6 +1966,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     onInspectHover,
     onInspectHoverMiss,
     inspectSelectionMeshKey = null,
+    selectionHighlightOverlays,
     inspectPoint = null,
     selectionOverlayVisible = true,
     selectionOverlayOnTop = false,
@@ -2061,11 +2073,13 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
       : implicitOverlay;
   const hideSceneOverlaysDuringInteraction =
     suppressInteractionOverlays && meshInteractionHideSceneOverlays;
-  const effectiveOverlayMeshGroups = hideSceneOverlaysDuringInteraction || fastPreviewHelpersHidden ? null : overlayMeshGroups;
+  const effectiveOverlayMeshGroups = hideSceneOverlaysDuringInteraction || fastPreviewHelpersHidden
+    ? selectionHighlightOverlays?.meshGroups : overlayMeshGroups;
   const effectiveOverlayLabelSets = hideSceneOverlaysDuringInteraction || fastPreviewHelpersHidden ? null : overlayLabelSets;
   const effectiveOverlayPolylineGroups =
-    hideSceneOverlaysDuringInteraction || fastPreviewHelpersHidden ? null : overlayPolylineGroups;
-  const effectiveOverlayPointSets = hideSceneOverlaysDuringInteraction || fastPreviewHelpersHidden ? null : overlayPointSets;
+    hideSceneOverlaysDuringInteraction || fastPreviewHelpersHidden ? selectionHighlightOverlays?.polylineGroups : overlayPolylineGroups;
+  const effectiveOverlayPointSets = hideSceneOverlaysDuringInteraction || fastPreviewHelpersHidden
+    ? selectionHighlightOverlays?.pointSets : overlayPointSets;
 
   const mountRef = useRef<HTMLDivElement | null>(null);
 
@@ -2108,6 +2122,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const sampleSetRef = useRef<SurfaceSampleSet | null>(null);
   const selectRegionEnabledRef = useRef(selectRegionEnabled);
   const onSelectionPickRef = useRef(onSelectionPick);
+  const onMeshObjectPickRef = useRef(onMeshObjectPick);
+  const objectPickPreferredMeshKeyRef = useRef<string | null>(objectPickPreferredMeshKey);
   const inspectEnabledRef = useRef(inspectEnabled);
   const inspectSelectionMeshKeyRef = useRef<string | null>(inspectSelectionMeshKey);
   const dragEnabledRef = useRef(dragEnabled);
@@ -2502,6 +2518,12 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   useEffect(() => {
     onSelectionPickRef.current = onSelectionPick;
   }, [onSelectionPick]);
+  useEffect(() => {
+    onMeshObjectPickRef.current = onMeshObjectPick;
+  }, [onMeshObjectPick]);
+  useEffect(() => {
+    objectPickPreferredMeshKeyRef.current = objectPickPreferredMeshKey;
+  }, [objectPickPreferredMeshKey]);
   useEffect(() => {
     geodesicPathEnabledRef.current = geodesicPathEnabled;
   }, [geodesicPathEnabled]);
@@ -5415,6 +5437,15 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const isGraphSurface = isGraphId(surfaceId);
       const allowMeshPick = isGraphSurface || surfaceId === "surface_mesh";
       let hit = pickableIntersects[0];
+      const selectedMeshKey = inspectSelectionMeshKeyRef.current;
+      const selectedMeshHit = inspectEnabledRef.current && selectedMeshKey
+        ? pickableIntersects.find((candidate) => resolveHitMeshKey(candidate) === selectedMeshKey)
+        : null;
+      const workspaceMeshHit = inspectEnabledRef.current
+        ? pickableIntersects.find((candidate) => !!resolveHitMeshKey(candidate))
+        : null;
+      if (selectedMeshHit) hit = selectedMeshHit;
+      else if (workspaceMeshHit) hit = workspaceMeshHit;
       if (geodesicHeatEnabledRef.current || geodesicDiskPickEnabledRef.current) {
         const heatHit = allowMeshPick
           ? pickableIntersects.find((candidate) => typeof (candidate as any).faceIndex === "number")
@@ -5425,21 +5456,28 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           });
         if (!heatHit) return;
         hit = heatHit;
-      } else if (inspectEnabledRef.current && !dragEnabledRef.current && pickableIntersects.length > 1) {
-        const selectedMeshKey = inspectSelectionMeshKeyRef.current;
-        const firstHitMeshKey = resolveHitMeshKey(pickableIntersects[0]);
-        if (selectedMeshKey && firstHitMeshKey === selectedMeshKey) {
-          const alternate = pickableIntersects.find((candidate) => {
-            const candidateKey = resolveHitMeshKey(candidate);
-            return !!candidateKey && candidateKey !== selectedMeshKey;
-          });
-          if (alternate) hit = alternate;
-        }
+      }
+      if (onMeshObjectPickRef.current) {
+        // Workspace object picking must ignore grid/gizmo/helper intersections.
+        const meshHits = pickableIntersects.filter((candidate) => !!resolveHitMeshKey(candidate));
+        if (meshHits.length) {
+          const preferredMeshKey = objectPickPreferredMeshKeyRef.current;
+          const alternate = event.altKey && preferredMeshKey
+            ? meshHits.find((candidate) => resolveHitMeshKey(candidate) !== preferredMeshKey)
+            : null;
+          hit = alternate ?? meshHits[0];
+        } else return;
       }
       const point = hit.point.clone();
       const hitMeshKeyValue = (hit.object as any)?.userData?.__surfaceMeshOverrideId;
       const hitMeshKey = hitMeshKeyValue == null ? undefined : String(hitMeshKeyValue);
       const inspectScreenInfo = buildInspectScreenInfo(hit, event, rect);
+
+      const meshObjectPickCb = onMeshObjectPickRef.current;
+      if (event.button === 0 && hitMeshKey && meshObjectPickCb) {
+        meshObjectPickCb({ meshKey: hitMeshKey, modifiers: pickModifiers });
+        return;
+      }
 
       let normalWorld = new THREE.Vector3(0, 1, 0);
 
@@ -5682,6 +5720,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
     };
 
+    let lastInspectHoverPickAt = 0;
     const handlePointerMove = (event: PointerEvent) => {
       const dragState = dragStateRef.current;
       const topologyDragState = topologyGizmoDragStateRef.current;
@@ -5695,7 +5734,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         canUseMeshInteractionLod &&
         meshRuntimeQualityRef.current !== "accurate"
       ) {
-        return;
+        const now = performance.now();
+        if (now - lastInspectHoverPickAt < 50) return;
+        lastInspectHoverPickAt = now;
       }
       const rect = renderer.domElement.getBoundingClientRect();
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -5748,7 +5789,19 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         onInspectHoverMissRef.current?.();
         return;
       }
-      const hit = pickableIntersects[0];
+      const selectedMeshKey = inspectSelectionMeshKeyRef.current;
+      const selectedMeshHit = selectedMeshKey
+        ? pickableIntersects.find(
+            (candidate) => String((candidate.object as any)?.userData?.__surfaceMeshOverrideId ?? "") === selectedMeshKey
+          )
+        : null;
+      if (selectedMeshKey && !selectedMeshHit) {
+        onInspectHoverMissRef.current?.();
+        return;
+      }
+      const hit = selectedMeshHit ?? pickableIntersects.find(
+          (candidate) => !!(candidate.object as any)?.userData?.__surfaceMeshOverrideId
+        ) ?? pickableIntersects[0];
       const point = hit.point.clone();
       const hitMeshKey = (hit.object as any)?.userData?.__surfaceMeshOverrideId;
       const inspectScreenInfo = buildInspectScreenInfo(hit, event, rect);

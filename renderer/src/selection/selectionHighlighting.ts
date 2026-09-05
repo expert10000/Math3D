@@ -95,7 +95,7 @@ const colorForState = (selection: SelectionResult): number => {
 };
 
 const opacityForState = (selection: SelectionResult): number =>
-  selection.state === "hover" ? 0.7 : selection.state === "preview" || selection.state === "editing" ? 0.62 : 0.92;
+  selection.state === "hover" ? 0.52 : selection.state === "preview" || selection.state === "editing" ? 0.62 : 0.92;
 
 const faceGroupFromIndices = (
   mesh: SurfaceMeshData,
@@ -189,13 +189,25 @@ export function buildSelectionHighlightOverlays(
         ])
       : [];
     if (faceLines.length) {
-      polylineGroups.push({ lines: faceLines, color, opacity: selectedOpacity, radiusWorld: 0.012 });
+      polylineGroups.push({
+        lines: faceLines,
+        color,
+        opacity: selectedOpacity,
+        radiusWorld: selection.state === "hover" ? 0.008 : 0.012,
+      });
     }
   } else if (selection.entityType === "edge") {
     const pair = edgePairFromSelection(selection);
     if (pair) {
       const selectedLines = edgeLinesFromPairs(mesh, [pair]);
-      if (selectedLines.length) polylineGroups.push({ lines: selectedLines, color, opacity: selectedOpacity, radiusWorld: 0.014 });
+      if (selectedLines.length) {
+        polylineGroups.push({
+          lines: selectedLines,
+          color,
+          opacity: selectedOpacity,
+          radiusWorld: selection.state === "hover" ? 0.009 : 0.014,
+        });
+      }
       const connectedFaces = faceGroupFromIndices(
         mesh,
         selection.adjacency.faces,

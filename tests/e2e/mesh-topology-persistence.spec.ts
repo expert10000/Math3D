@@ -167,6 +167,7 @@ async function selectDeterministicMeshFace(page: Page): Promise<void> {
     await advancedIds.locator("summary").click();
   }
   await expect(advancedIds).toHaveAttribute("open", "");
+  await advancedIds.getByLabel("Advanced face id").fill("1");
   await advancedIds.getByLabel("Advanced face id").fill("0");
   await expect(page.getByTestId("mesh-topology-selected-face").first()).toContainText("Selected face 0");
   await expect(page.getByText(/valid face/i).first()).toBeVisible();
@@ -280,6 +281,7 @@ async function runTopologyDemo(
     );
     await page.getByTestId("mesh-context-open-history").click();
   } else {
+    await page.getByTestId("mesh-workspace-left-tab-topology").click();
     const operation = await firstVisible(page.getByRole("button", { name: operationButtonName, exact: true }));
     await operation.click();
   }
@@ -328,6 +330,7 @@ test.describe("Mesh topology persistence and handoff", () => {
         if (button instanceof HTMLButtonElement) button.click();
       });
       await expect(diagnosticsTab).toHaveAttribute("aria-pressed", "true");
+      await page.getByTestId("mesh-workspace-left-tab-topology").click();
       await page.getByTestId("mesh-selection-filter-kind-face").click();
       await expect(page.getByTestId("mesh-context-pick-face")).toBeDisabled();
       await expect(page.getByTestId("mesh-selection-filter-summary")).toContainText(/types: object, edge, vertex/);
@@ -606,7 +609,8 @@ test.describe("Mesh topology persistence and handoff", () => {
       await page.reload();
       await page.waitForLoadState("domcontentloaded");
       await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true })).then((button) => button.click());
-      await expect(page.getByText(/Topology history/i).first()).toBeVisible({ timeout: 15_000 });
+      await page.getByTestId("mesh-inspector-tab-history").click();
+      await expect(page.getByText(/Mesh History/i).first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText(/Split edge/i).first()).toBeVisible();
 
       await openMeshGallery(page);
@@ -617,8 +621,8 @@ test.describe("Mesh topology persistence and handoff", () => {
       await openMeshGallery(page);
       await page.getByTestId("mesh-preset-card-mesh_knot").click();
       await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true })).then((button) => button.click());
-      await expect(page.getByText(/No Mesh topology edits yet/i).first()).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByText(/Last result: none/i).first()).toBeVisible();
+      await expect(page.getByText(/No mesh operations yet/i).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/Last operation/i).first()).toBeVisible();
       await expect(page.getByTestId("mesh-geometry-roundtrip-card")).toHaveCount(0);
 
       await openMeshGallery(page);
