@@ -94,6 +94,23 @@ describe("topologyEditDefinition", () => {
     expect(Math.floor((replayed.indices?.length ?? 0) / 3)).toBe(9);
   });
 
+  it("replays one atomic multi-face definition against original face IDs", () => {
+    const definition = createMeshTopologyEditDefinition({
+      operation: "Face Subdivide",
+      sourceMeshVersion: createMeshTopologySourceVersion({ label: "Box", vertexCount: 4, faceCount: 2 }),
+      target: createMeshTopologyFaceTarget(0),
+      selectedFaceIndices: [1, 0, 1],
+      parameters: { mode: "center-fan" },
+    });
+
+    const replayed = applyMeshTopologyEditDefinition(makeMesh(), definition);
+
+    expect(definition.selectedFaceIndices).toEqual([0, 1]);
+    expect(definition.selectionKey).toBe("mesh:Box:v4:f2|Face Subdivide|faces:0,1");
+    expect(Math.floor(replayed.positions.length / 3)).toBe(6);
+    expect(Math.floor((replayed.indices?.length ?? 0) / 3)).toBe(6);
+  });
+
   it("creates stable vertex definition keys and replays move vertex definitions", () => {
     const definition = createMeshTopologyEditDefinition({
       operation: "Move Vertex",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SurfaceMeshData } from "./surfaceMesh";
-import { bevelEdge, collapseEdge, deleteFace, extrudeFace, insetFace, moveVertex, splitEdge, subdivideFace, weldVertices } from "./meshEditOps";
+import { bevelEdge, collapseEdge, deleteFace, extrudeFace, extrudeFaces, insetFace, insetFaces, moveVertex, splitEdge, subdivideFace, subdivideFaces, weldVertices } from "./meshEditOps";
 
 const makeSquareMesh = (): SurfaceMeshData => ({
   label: "Editable square",
@@ -65,6 +65,19 @@ describe("mesh edit operations", () => {
     expect(positionAt(edited, 4)[0]).toBeCloseTo(2 / 3);
     expect(positionAt(edited, 4)[1]).toBeCloseTo(1 / 3);
     expect(positionAt(edited, 4)[2]).toBeCloseTo(0);
+  });
+
+  it("applies a face edit batch against original face indices", () => {
+    const subdivided = subdivideFaces(makeSquareMesh(), [0, 1], "center-fan");
+    const inset = insetFaces(makeSquareMesh(), [0, 1], 0.25);
+    const extruded = extrudeFaces(makeSquareMesh(), [0, 1], 0.25);
+
+    expect(vertexCount(subdivided)).toBe(6);
+    expect(faceCount(subdivided)).toBe(6);
+    expect(vertexCount(inset)).toBe(10);
+    expect(faceCount(inset)).toBe(14);
+    expect(vertexCount(extruded)).toBe(10);
+    expect(faceCount(extruded)).toBe(16);
   });
 
   it("splits every incident triangle on a selected edge", () => {

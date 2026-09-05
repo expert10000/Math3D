@@ -2,10 +2,13 @@ import {
   bevelEdge,
   collapseEdge,
   extrudeFace,
+  extrudeFaces,
   insetFace,
+  insetFaces,
   moveVertex,
   splitEdge,
   subdivideFace,
+  subdivideFaces,
   type EdgeCollapseMode,
   type FaceSubdivideMode,
 } from "./meshEditOps";
@@ -44,6 +47,8 @@ export type MeshTopologyEditDefinition = {
   readonly operation: MeshTopologyEditOperation;
   readonly sourceMeshVersion: MeshTopologySourceVersion;
   readonly target: MeshTopologyEditTarget;
+  /** Original face IDs for one atomic multi-face edit. */
+  readonly selectedFaceIndices?: readonly number[];
   readonly parameters: MeshTopologyEditParameters;
   readonly selectionKey: string;
   readonly selectionBreadcrumb: string;
@@ -148,15 +153,23 @@ export function createMeshTopologyEditDefinition(input: {
   readonly sourceMeshVersion: MeshTopologySourceVersion;
   readonly target: MeshTopologyEditTarget;
   readonly parameters: MeshTopologyEditParameters;
+  readonly selectedFaceIndices?: readonly number[];
 }): MeshTopologyEditDefinition {
   const paramsLabel = formatMeshTopologyEditParameters(input.parameters);
-  const selectionKey = `${input.sourceMeshVersion.key}|${input.operation}|${input.target.key}`;
-  const selectionBreadcrumb = `Mesh > ${input.sourceMeshVersion.label} > ${input.target.label}`;
-  const replayLabel = `op=${input.operation}; source=${input.sourceMeshVersion.key}; selection=${input.target.key}; params=${paramsLabel}`;
+  const selectedFaceIndices =
+    input.target.kind === "face" && input.selectedFaceIndices?.length
+      ? [...new Set(input.selectedFaceIndices.map((index) => Math.max(0, Math.round(index))))].sort((a, b) => a - b)
+      : undefined;
+  const batchKey = selectedFaceIndices?.length ? `faces:${selectedFaceIndices.join(",")}` : input.target.key;
+  const batchLabel = selectedFaceIndices?.length > 1 ? `${selectedFaceIndices.length} faces · ${selectedFaceIndices.join(", ")}` : input.target.label;
+  const selectionKey = `${input.sourceMeshVersion.key}|${input.operation}|${batchKey}`;
+  const selectionBreadcrumb = `Mesh > ${input.sourceMeshVersion.label} > ${batchLabel}`;
+  const replayLabel = `op=${input.operation}; source=${input.sourceMeshVersion.key}; selection=${batchKey}; params=${paramsLabel}`;
   return {
     operation: input.operation,
     sourceMeshVersion: input.sourceMeshVersion,
     target: input.target,
+    selectedFaceIndices,
     parameters: input.parameters,
     selectionKey,
     selectionBreadcrumb,
@@ -174,6 +187,7 @@ export function updateMeshTopologyEditDefinitionParameters(
     sourceMeshVersion: definition.sourceMeshVersion,
     target: definition.target,
     parameters,
+    selectedFaceIndices: definition.selectedFaceIndices,
   });
 }
 
@@ -186,6 +200,7 @@ export function retargetMeshTopologyEditDefinition(
     sourceMeshVersion: definition.sourceMeshVersion,
     target,
     parameters: definition.parameters,
+    selectedFaceIndices: target.kind === "face" ? definition.selectedFaceIndices : undefined,
   });
 }
 
@@ -244,17 +259,23 @@ export function applyMeshTopologyEditDefinition(
       (definition.parameters.mode === "center-fan" || definition.parameters.mode === "four-triangles")
         ? definition.parameters.mode
         : "center-fan";
-    return subdivideFace(mesh, definition.target.faceIndex, mode);
+    return definition.selectedFaceIndices?.length
+      ? subdivideFaces(mesh, definition.selectedFaceIndices, mode)
+      : subdivideFace(mesh, definition.target.faceIndex, mode);
   }
   if (definition.operation === "Extrude Face") {
     if (definition.target.kind !== "face") throw new Error("Definition target is not a face.");
     const distance = "distance" in definition.parameters ? definition.parameters.distance : 0.08;
-    return extrudeFace(mesh, definition.target.faceIndex, distance);
+    return definition.selectedFaceIndices?.length
+      ? extrudeFaces(mesh, definition.selectedFaceIndices, distance)
+      : extrudeFace(mesh, definition.target.faceIndex, distance);
   }
   if (definition.operation === "Inset Face") {
     if (definition.target.kind !== "face") throw new Error("Definition target is not a face.");
     const ratio = "ratio" in definition.parameters ? definition.parameters.ratio : 0.2;
-    return insetFace(mesh, definition.target.faceIndex, ratio);
+    return definition.selectedFaceIndices?.length
+      ? insetFaces(mesh, definition.selectedFaceIndices, ratio)
+      : insetFace(mesh, definition.target.faceIndex, ratio);
   }
   if (definition.operation === "Move Vertex") {
     if (definition.target.kind !== "vertex") throw new Error("Definition target is not a vertex.");

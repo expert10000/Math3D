@@ -264,6 +264,40 @@ export const subdivideFace = (
   return buildMesh(mesh, positions, nextTriangles);
 };
 
+const normalizedFaceBatch = (faceIndices: readonly number[]): number[] => {
+  const indices = [...new Set(faceIndices.map((index) => Math.round(index)))];
+  if (!indices.length || indices.some((index) => !Number.isInteger(index) || index < 0)) {
+    throw new Error("Select one or more valid faces.");
+  }
+  // Faces that replace a triangle must run from the highest original index down,
+  // otherwise removing one shifts the remaining source indices.
+  return indices.sort((a, b) => b - a);
+};
+
+const applyFaceBatch = (
+  mesh: SurfaceMeshData,
+  faceIndices: readonly number[],
+  edit: (current: SurfaceMeshData, faceIndex: number) => SurfaceMeshData
+): SurfaceMeshData => normalizedFaceBatch(faceIndices).reduce(edit, mesh);
+
+export const subdivideFaces = (
+  mesh: SurfaceMeshData,
+  faceIndices: readonly number[],
+  mode: FaceSubdivideMode = "four-triangles"
+): SurfaceMeshData => applyFaceBatch(mesh, faceIndices, (current, faceIndex) => subdivideFace(current, faceIndex, mode));
+
+export const extrudeFaces = (
+  mesh: SurfaceMeshData,
+  faceIndices: readonly number[],
+  distance: number
+): SurfaceMeshData => applyFaceBatch(mesh, faceIndices, (current, faceIndex) => extrudeFace(current, faceIndex, distance));
+
+export const insetFaces = (
+  mesh: SurfaceMeshData,
+  faceIndices: readonly number[],
+  ratio: number
+): SurfaceMeshData => applyFaceBatch(mesh, faceIndices, (current, faceIndex) => insetFace(current, faceIndex, ratio));
+
 export const splitEdge = (mesh: SurfaceMeshData, edgeA: number, edgeB: number, ratio = 0.5): SurfaceMeshData => {
   const vertexCount = assertMeshVertices(mesh);
   if (edgeA < 0 || edgeB < 0 || edgeA >= vertexCount || edgeB >= vertexCount || edgeA === edgeB) {

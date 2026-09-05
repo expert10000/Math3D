@@ -469,10 +469,13 @@ import {
   collapseEdge,
   deleteFace,
   extrudeFace,
+  extrudeFaces,
   insetFace,
+  insetFaces,
   moveVertex,
   splitEdge,
   subdivideFace,
+  subdivideFaces,
   weldVertices,
   type EdgeCollapseMode,
   type FaceSubdivideMode,
@@ -6624,7 +6627,7 @@ const surfaceMeshTopologyOperationFromAction = (actionLabel: string): SurfaceMes
   return null;
 };
 const parseSurfaceMeshTopologyOperationTarget = (targetLabel: string): SurfaceMeshTopologyOperationTarget => {
-  const faceMatch = targetLabel.match(/\bface\s+(\d+)/i);
+  const faceMatch = targetLabel.match(/\bfaces?\s+(\d+)/i);
   const edgeMatch = targetLabel.match(/\bedge\s+(\d+)\s*-\s*(\d+)/i);
   const vertexMatch = targetLabel.match(/\bvertex\s+(\d+)/i);
   return {
@@ -6699,6 +6702,15 @@ const buildSurfaceMeshTopologyDefinition = ({
   beforeCounts: { vertexCount: number; faceCount: number };
 }): MeshTopologyEditDefinition => {
   const operation = surfaceMeshTopologyOperationFromAction(actionLabel) ?? "Split Edge";
+  const selectedFaceIndices =
+    operation === "Face Subdivide" || operation === "Extrude Face" || operation === "Inset Face"
+      ? [...new Set(
+          [...paramsLabel.matchAll(/(?:^|[;,\s])faces=([0-9][0-9,\s]*)/gi)]
+            .flatMap((match) => (match[1] ?? "").split(","))
+            .map((value) => Number(value.trim()))
+            .filter((value) => Number.isInteger(value) && value >= 0)
+        )]
+      : undefined;
   return createMeshTopologyEditDefinition({
     operation,
     sourceMeshVersion: createMeshTopologySourceVersion({
@@ -6708,6 +6720,7 @@ const buildSurfaceMeshTopologyDefinition = ({
     }),
     target: surfaceMeshTopologyTargetFromLabel(operation, targetLabel),
     parameters: surfaceMeshTopologyParametersFromLabel(operation, paramsLabel),
+    selectedFaceIndices,
   });
 };
 const surfaceMeshTopologyActionLabelFromDefinition = (definition: MeshTopologyEditDefinition): string =>
@@ -37090,6 +37103,64 @@ const App: React.FC = () => {
       },
     ];
   }, [isMeshLikeViewer, meshQualityReport, meshQualityShowNonManifoldEdges]);
+  const surfaceMeshTopologyFaceBatch = useMemo(() => {
+    const activeFaceIndex = Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
+    const selections = meshMultiSelectionSet.items;
+    if (selections.length <= 1) {
+      return {
+        faceIndices: [activeFaceIndex],
+        targetLabel: `Face ${activeFaceIndex}`,
+        paramsSuffix: "",
+        blocker: null as string | null,
+      };
+    }
+    const faceSelections = selections.filter((selection) => selection.selectionType === "face");
+    if (faceSelections.length !== selections.length) {
+      const kinds = [...new Set(selections.map((selection) => selection.selectionType))].join(", ");
+      return {
+        faceIndices: [],
+        targetLabel: "Mixed selection",
+        paramsSuffix: "",
+        blocker: `Batch face operations need faces only; current selection contains ${kinds}.`,
+      };
+    }
+    if (new Set(faceSelections.map((selection) => selection.objectId)).size !== 1) {
+      return {
+        faceIndices: [],
+        targetLabel: "Multi-object selection",
+        paramsSuffix: "",
+        blocker: "Batch face operations need faces from one mesh object.",
+      };
+    }
+    const faceIndices = [...new Set(faceSelections.map((selection) => selection.faceId))]
+      .filter((faceIndex): faceIndex is number => Number.isInteger(faceIndex) && faceIndex >= 0)
+      .sort((a, b) => a - b);
+    if (!faceIndices.length) {
+      return {
+        faceIndices: [],
+        targetLabel: "No faces",
+        paramsSuffix: "",
+        blocker: "Batch face operations need valid face IDs.",
+      };
+    }
+    const invalidFace = surfaceMeshData
+      ? faceIndices.find((faceIndex) => !readMeshFaceVertexIndices(surfaceMeshData, faceIndex))
+      : undefined;
+    if (invalidFace != null) {
+      return {
+        faceIndices: [],
+        targetLabel: `${faceIndices.length} faces · ${faceIndices.join(", ")}`,
+        paramsSuffix: "",
+        blocker: `Face ${invalidFace} is no longer valid for the active mesh. Select the faces again.`,
+      };
+    }
+    return {
+      faceIndices,
+      targetLabel: `${faceIndices.length} faces · ${faceIndices.join(", ")}`,
+      paramsSuffix: `; faces=${faceIndices.join(",")}`,
+      blocker: null as string | null,
+    };
+  }, [meshMultiSelectionSet.items, surfaceMeshData, surfaceMeshTopologyFaceIndex]);
   useEffect(() => {
     if (!surfaceMeshTopologyFeedback) return;
     const timeout = window.setTimeout(
@@ -37106,12 +37177,14 @@ const App: React.FC = () => {
       surfaceMeshTopologySelectionCleared ||
       surfaceMeshTopologyHistoryPreviewId ||
       surfaceMeshTopologyPickMode === "object" ||
+      (surfaceMeshTopologyPickMode === "face" && surfaceMeshTopologyFaceBatch.blocker) ||
       !surfaceMeshData?.positions?.length
     ) {
       return null;
     }
     try {
-      const faceIndex = Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
+      const faceIndices = surfaceMeshTopologyFaceBatch.faceIndices;
+      const faceIndex = faceIndices[0] ?? Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
       const edgeA = Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0));
       const edgeB = Math.max(0, Math.round(surfaceMeshTopologyEdgeB || 0));
       let action = "edge-split";
@@ -37119,26 +37192,26 @@ const App: React.FC = () => {
       let edited: SurfaceMeshData;
       if (surfaceMeshTopologyPreviewOperation === "Face Subdivide") {
         action = "face-subdivide";
-        targetLabel = `Face ${faceIndex}`;
-        edited = subdivideFace(
+        targetLabel = surfaceMeshTopologyFaceBatch.targetLabel;
+        edited = subdivideFaces(
           cloneSurfaceMeshData(surfaceMeshData, surfaceMeshData.label),
-          faceIndex,
+          faceIndices,
           surfaceMeshTopologySubdivideMode
         );
       } else if (surfaceMeshTopologyPreviewOperation === "Extrude Face") {
         action = "face-extrude";
-        targetLabel = `Face ${faceIndex}`;
-        edited = extrudeFace(
+        targetLabel = surfaceMeshTopologyFaceBatch.targetLabel;
+        edited = extrudeFaces(
           cloneSurfaceMeshData(surfaceMeshData, surfaceMeshData.label),
-          faceIndex,
+          faceIndices,
           Math.max(0.001, Math.abs(surfaceMeshTopologyExtrudeDistance || 0.001))
         );
       } else if (surfaceMeshTopologyPreviewOperation === "Inset Face") {
         action = "face-inset";
-        targetLabel = `Face ${faceIndex}`;
-        edited = insetFace(
+        targetLabel = surfaceMeshTopologyFaceBatch.targetLabel;
+        edited = insetFaces(
           cloneSurfaceMeshData(surfaceMeshData, surfaceMeshData.label),
-          faceIndex,
+          faceIndices,
           clampNumber(surfaceMeshTopologyInsetRatio, 0.02, 0.92)
         );
       } else if (surfaceMeshTopologyPreviewOperation === "Collapse Edge") {
@@ -37198,6 +37271,7 @@ const App: React.FC = () => {
     surfaceMeshTopologyEdgeB,
     surfaceMeshTopologyExtrudeDistance,
     surfaceMeshTopologyFaceIndex,
+    surfaceMeshTopologyFaceBatch,
     surfaceMeshTopologyFeedback,
     surfaceMeshTopologyHistoryPreviewId,
     surfaceMeshTopologyInsetRatio,
@@ -52603,9 +52677,13 @@ case "mobius":
         ? `${surfaceMeshTopologyPreviewOperation}: ${surfaceMeshTopologyGhostFeedback.summary}`
         : null,
       faceSubdivide: buildSurfaceMeshTopologyPreview("Face subdivide", (mesh) =>
-        subdivideFace(
+        surfaceMeshTopologyFaceBatch.blocker
+          ? (() => {
+              throw new Error(surfaceMeshTopologyFaceBatch.blocker);
+            })()
+          : subdivideFaces(
           mesh,
-          Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0)),
+          surfaceMeshTopologyFaceBatch.faceIndices,
           surfaceMeshTopologySubdivideMode
         )
       ),
@@ -52642,6 +52720,7 @@ case "mobius":
       surfaceMeshTopologyFieldValidation.effectiveEdgeA,
       surfaceMeshTopologyFieldValidation.effectiveEdgeB,
       surfaceMeshTopologyFaceIndex,
+      surfaceMeshTopologyFaceBatch,
       surfaceMeshTopologyPreviewOperation,
       surfaceMeshTopologySplitRatio,
       surfaceMeshTopologySubdivideMode,
@@ -52650,9 +52729,13 @@ case "mobius":
   const surfaceMeshTopologyPreviewCountDetails = useMemo(
     () => ({
       faceSubdivide: buildSurfaceMeshTopologyPreviewCountDetail("Face subdivide", (mesh) =>
-        subdivideFace(
+        surfaceMeshTopologyFaceBatch.blocker
+          ? (() => {
+              throw new Error(surfaceMeshTopologyFaceBatch.blocker);
+            })()
+          : subdivideFaces(
           mesh,
-          Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0)),
+          surfaceMeshTopologyFaceBatch.faceIndices,
           surfaceMeshTopologySubdivideMode
         )
       ),
@@ -52688,6 +52771,7 @@ case "mobius":
       surfaceMeshTopologyFieldValidation.effectiveEdgeA,
       surfaceMeshTopologyFieldValidation.effectiveEdgeB,
       surfaceMeshTopologyFaceIndex,
+      surfaceMeshTopologyFaceBatch,
       surfaceMeshTopologySplitRatio,
       surfaceMeshTopologySubdivideMode,
     ]
@@ -52806,9 +52890,15 @@ case "mobius":
         setSurfaceMeshTopologyHistory((prev) => [historyEntry, ...prev].slice(0, 24));
         setSelectedSurfaceMeshTopologyHistoryId(historyEntry.id);
         setMeshDataset(edited, traceOperation);
+        // Topology edits can reindex faces, edges, and vertices. Do not carry stale element IDs
+        // into the next command; the batch itself remains available as one history entry.
+        setMeshMultiSelectionSet(createUnifiedSelectionSet([]));
+        setSurfaceMeshTopologySelectionCleared(true);
         afterApply?.({ beforeCounts, afterCounts, edited });
         appendMeshPromotionOperation(operationHistoryLabel);
-        setSurfaceMeshTopologyStatus(`${actionLabel}: ${historyEntry.resultLabel}. Selected ${selectedResultLabel}.`);
+        setSurfaceMeshTopologyStatus(
+          `${actionLabel}: ${historyEntry.resultLabel}. ${selectedResultLabel}. Selection cleared because topology changed.`
+        );
         handleChangeViewerKind("mesh");
       } catch (err: any) {
         setSurfaceMeshTopologyFeedback(null);
@@ -52827,44 +52917,50 @@ case "mobius":
 
   const handleSurfaceMeshFaceSubdivide = useCallback(() => {
     setSurfaceMeshTopologyPreviewOperation("Face Subdivide");
-    const faceIndex = Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
+    if (surfaceMeshTopologyFaceBatch.blocker) {
+      setSurfaceMeshTopologyStatus(`Face subdivide blocked: ${surfaceMeshTopologyFaceBatch.blocker}`);
+      return;
+    }
     const mode = surfaceMeshTopologySubdivideMode;
     applySurfaceMeshTopologyEdit(
       "Face subdivide",
       "mesh-topology:face-subdivide",
-      `topology face ${faceIndex} subdivided (${mode})`,
+      `topology ${surfaceMeshTopologyFaceBatch.targetLabel} subdivided (${mode})`,
       "face subdivide",
-      `Face ${faceIndex}`,
-      `mode=${mode}`,
-      mode === "center-fan" ? "center fan triangles" : "four-triangle split",
-      (mesh) => subdivideFace(mesh, faceIndex, mode)
+      surfaceMeshTopologyFaceBatch.targetLabel,
+      `mode=${mode}${surfaceMeshTopologyFaceBatch.paramsSuffix}`,
+      mode === "center-fan"
+        ? `center fan triangles on ${surfaceMeshTopologyFaceBatch.targetLabel}`
+        : `four-triangle split on ${surfaceMeshTopologyFaceBatch.targetLabel}`,
+      (mesh) => subdivideFaces(mesh, surfaceMeshTopologyFaceBatch.faceIndices, mode)
     );
-  }, [applySurfaceMeshTopologyEdit, surfaceMeshTopologyFaceIndex, surfaceMeshTopologySubdivideMode]);
+  }, [applySurfaceMeshTopologyEdit, surfaceMeshTopologyFaceBatch, surfaceMeshTopologySubdivideMode]);
 
   const handleSurfaceMeshExtrudeFace = useCallback(
     (distanceOverride?: number) => {
       setSurfaceMeshTopologyPreviewOperation("Extrude Face");
-      const faceIndex = Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
-      if (!surfaceMeshTopologyFieldValidation.faceValid) {
-        setSurfaceMeshTopologyStatus(`Extrude Face blocked: ${surfaceMeshTopologyFieldValidation.faceLabel}.`);
+      if (surfaceMeshTopologyFaceBatch.blocker || !surfaceMeshTopologyFieldValidation.faceValid) {
+        setSurfaceMeshTopologyStatus(
+          `Extrude Face blocked: ${surfaceMeshTopologyFaceBatch.blocker ?? surfaceMeshTopologyFieldValidation.faceLabel}.`
+        );
         return;
       }
       const distance = Math.max(0.001, Math.abs((distanceOverride ?? surfaceMeshTopologyExtrudeDistance) || 0.001));
       applySurfaceMeshTopologyEdit(
         "Extrude face",
         "mesh-topology:face-extrude",
-        `topology face ${faceIndex} extruded (${fmt(distance)})`,
+        `topology ${surfaceMeshTopologyFaceBatch.targetLabel} extruded (${fmt(distance)})`,
         "face extrude",
-        `Face ${faceIndex}`,
-        `distance=${fmt(distance)}`,
-        `extruded Face ${faceIndex}`,
-        (mesh) => extrudeFace(mesh, faceIndex, distance)
+        surfaceMeshTopologyFaceBatch.targetLabel,
+        `distance=${fmt(distance)}${surfaceMeshTopologyFaceBatch.paramsSuffix}`,
+        `extruded ${surfaceMeshTopologyFaceBatch.targetLabel}`,
+        (mesh) => extrudeFaces(mesh, surfaceMeshTopologyFaceBatch.faceIndices, distance)
       );
     },
     [
       applySurfaceMeshTopologyEdit,
       surfaceMeshTopologyExtrudeDistance,
-      surfaceMeshTopologyFaceIndex,
+      surfaceMeshTopologyFaceBatch,
       surfaceMeshTopologyFieldValidation.faceLabel,
       surfaceMeshTopologyFieldValidation.faceValid,
     ]
@@ -52873,26 +52969,27 @@ case "mobius":
   const handleSurfaceMeshInsetFace = useCallback(
     (ratioOverride?: number) => {
       setSurfaceMeshTopologyPreviewOperation("Inset Face");
-      const faceIndex = Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0));
-      if (!surfaceMeshTopologyFieldValidation.faceValid) {
-        setSurfaceMeshTopologyStatus(`Inset Face blocked: ${surfaceMeshTopologyFieldValidation.faceLabel}.`);
+      if (surfaceMeshTopologyFaceBatch.blocker || !surfaceMeshTopologyFieldValidation.faceValid) {
+        setSurfaceMeshTopologyStatus(
+          `Inset Face blocked: ${surfaceMeshTopologyFaceBatch.blocker ?? surfaceMeshTopologyFieldValidation.faceLabel}.`
+        );
         return;
       }
       const ratio = clampNumber(ratioOverride ?? surfaceMeshTopologyInsetRatio, 0.02, 0.92);
       applySurfaceMeshTopologyEdit(
         "Inset face",
         "mesh-topology:face-inset",
-        `topology face ${faceIndex} inset (${fmt(ratio)})`,
+        `topology ${surfaceMeshTopologyFaceBatch.targetLabel} inset (${fmt(ratio)})`,
         "face inset",
-        `Face ${faceIndex}`,
-        `ratio=${fmt(ratio)}`,
-        `inset Face ${faceIndex}`,
-        (mesh) => insetFace(mesh, faceIndex, ratio)
+        surfaceMeshTopologyFaceBatch.targetLabel,
+        `ratio=${fmt(ratio)}${surfaceMeshTopologyFaceBatch.paramsSuffix}`,
+        `inset ${surfaceMeshTopologyFaceBatch.targetLabel}`,
+        (mesh) => insetFaces(mesh, surfaceMeshTopologyFaceBatch.faceIndices, ratio)
       );
     },
     [
       applySurfaceMeshTopologyEdit,
-      surfaceMeshTopologyFaceIndex,
+      surfaceMeshTopologyFaceBatch,
       surfaceMeshTopologyFieldValidation.faceLabel,
       surfaceMeshTopologyFieldValidation.faceValid,
       surfaceMeshTopologyInsetRatio,
@@ -54112,7 +54209,12 @@ case "mobius":
   );
   const meshContextToolbarConfirmationLabel = meshLatestUnifiedCommandHistoryEntry?.confirmationLabel ?? null;
   const meshContextToolbarLastCommandLabel = meshLatestUnifiedCommandHistoryEntry?.lastCommandLabel ?? null;
-  const meshContextToolbarPreviewLabel = meshContextSelectionState.previewLabel;
+  const meshContextToolbarPreviewLabel =
+    surfaceMeshTopologyPickMode === "face" && surfaceMeshTopologyFaceBatch.blocker
+      ? `Blocked: ${surfaceMeshTopologyFaceBatch.blocker}`
+      : surfaceMeshTopologyPickMode === "face" && surfaceMeshTopologyFaceBatch.faceIndices.length > 1
+        ? `${meshContextSelectionState.previewLabel ?? "Preview"} · ${surfaceMeshTopologyFaceBatch.targetLabel}`
+        : meshContextSelectionState.previewLabel;
   const meshViewportCommandPreviewLabel = useMemo(
     () => meshContextToolbarPreviewLabel?.replace(/^Preview:\s*/i, "") ?? null,
     [meshContextToolbarPreviewLabel]
@@ -54156,7 +54258,12 @@ case "mobius":
       buildContextualViewportPreview({
         workspace: "Mesh",
         operation: meshContextualViewportPreviewOperation,
-        selectedEntity: meshContextSelectionState.cardId !== "none" ? meshContextSelectionState.cardId : null,
+        selectedEntity:
+          surfaceMeshTopologyPickMode === "face"
+            ? surfaceMeshTopologyFaceBatch.targetLabel
+            : meshContextSelectionState.cardId !== "none"
+              ? meshContextSelectionState.cardId
+              : null,
         label: meshViewportCommandPreviewLabel,
         actionPulseId: meshContextualViewportPreviewPulseId,
         details: meshContextualViewportPreviewCountDetail
@@ -54166,6 +54273,7 @@ case "mobius":
       }),
     [
       meshContextSelectionState.cardId,
+      surfaceMeshTopologyFaceBatch.targetLabel,
       meshContextualViewportPreviewCountDetail,
       meshContextualViewportPreviewOperation,
       meshContextualViewportPreviewPulseId,
@@ -54249,6 +54357,22 @@ case "mobius":
       handleChangeViewerKind("mesh");
     },
     [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshTopologyHistory]
+  );
+
+  const previewSurfaceMeshTopologyHistoryEntry = useCallback(
+    (entryId: string) => {
+      const entry = surfaceMeshTopologyHistory.find((candidate) => candidate.id === entryId);
+      if (!entry) {
+        setSurfaceMeshTopologyStatus("Topology history snapshot not found.");
+        return;
+      }
+      setSelectedSurfaceMeshTopologyHistoryId(entry.id);
+      setSurfaceMeshTopologyHistoryPreviewId(entry.id);
+      setSurfaceMeshTopologyHistoryPreviewMode("after");
+      setSurfaceMeshTopologyStatus(`Previewing topology result: ${entry.actionLabel} on ${entry.targetLabel}.`);
+      handleChangeViewerKind("mesh");
+    },
+    [handleChangeViewerKind, surfaceMeshTopologyHistory]
   );
 
   const restoreMeshOperationHistoryEntry = useCallback(
@@ -58388,25 +58512,35 @@ case "mobius":
   const meshContextCanRunPrimaryAction =
     surfaceMeshTopologyPickMode === "object"
       ? meshObjectPromoteReady && meshContextSelectionState.canRunPrimaryAction
-      : meshContextSelectionState.canRunPrimaryAction;
+      : meshContextSelectionState.canRunPrimaryAction &&
+        (surfaceMeshTopologyPickMode !== "face" || !surfaceMeshTopologyFaceBatch.blocker);
   const meshContextualActionBindings: ContextualActionBindingMap = {
     face: [
       {
         descriptor: meshSubdivideFaceAction,
         onClick: handleSurfaceMeshFaceSubdivide,
-        disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.faceValid,
+        disabled:
+          surfaceMeshTopologySelectionCleared ||
+          !surfaceMeshTopologyFieldValidation.faceValid ||
+          !!surfaceMeshTopologyFaceBatch.blocker,
         activePulseId: contextualActionPulseId,
       },
       {
         descriptor: meshExtrudeFaceAction,
         onClick: () => handleSurfaceMeshExtrudeFace(),
-        disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.faceValid,
+        disabled:
+          surfaceMeshTopologySelectionCleared ||
+          !surfaceMeshTopologyFieldValidation.faceValid ||
+          !!surfaceMeshTopologyFaceBatch.blocker,
         activePulseId: contextualActionPulseId,
       },
       {
         descriptor: meshInsetFaceAction,
         onClick: () => handleSurfaceMeshInsetFace(),
-        disabled: surfaceMeshTopologySelectionCleared || !surfaceMeshTopologyFieldValidation.faceValid,
+        disabled:
+          surfaceMeshTopologySelectionCleared ||
+          !surfaceMeshTopologyFieldValidation.faceValid ||
+          !!surfaceMeshTopologyFaceBatch.blocker,
         activePulseId: contextualActionPulseId,
       },
     ],
@@ -65031,25 +65165,54 @@ case "mobius":
         childrenByParentId.set(parentId, [...(childrenByParentId.get(parentId) ?? []), entry.id]);
       }
     }
-    return historyEntries
+    const operationEntries = historyEntries
       .slice()
       .reverse()
       .map((entry) => ({
         id: `workspace:operation:${entry.id}`,
         label: entry.result.label,
-        parentEntryIds: (entry.parentEntryIds ?? []).filter((parentId) => knownIds.has(parentId)),
-        childEntryIds: childrenByParentId.get(entry.id) ?? [],
+        parentEntryIds: (entry.parentEntryIds ?? [])
+          .filter((parentId) => knownIds.has(parentId))
+          .map((parentId) => `operation:${parentId}`),
+        childEntryIds: (childrenByParentId.get(entry.id) ?? []).map((childId) => `operation:${childId}`),
         status: entry.result.status,
-        historyEntryId: entry.id,
+        historyEntryId: `operation:${entry.id}`,
         outputLabel: entry.outputLabel ?? entry.result.label,
         beforeVertices: entry.result.beforeVertices,
         afterVertices: entry.result.afterVertices,
         beforeFaces: entry.result.beforeFaces,
         afterFaces: entry.result.afterFaces,
       }));
-  }, [meshOperationHistory]);
+    const operationTopologyHistoryIds = new Set(
+      historyEntries
+        .map((entry) => entry.topologyHistoryEntryId)
+        .filter((entryId): entryId is string => typeof entryId === "string" && entryId.length > 0)
+    );
+    const standaloneTopologyEntries = surfaceMeshTopologyHistory
+      .filter((entry) => !operationTopologyHistoryIds.has(entry.id))
+      .slice(0, 32)
+      .reverse();
+    const topologyEntries = standaloneTopologyEntries.map((entry, index) => ({
+      id: `workspace:topology:${entry.id}`,
+      label: `${entry.actionLabel} · ${entry.targetLabel}`,
+      parentEntryIds: index > 0 ? [`topology:${standaloneTopologyEntries[index - 1].id}`] : [],
+      childEntryIds:
+        index < standaloneTopologyEntries.length - 1 ? [`topology:${standaloneTopologyEntries[index + 1].id}`] : [],
+      status: "success" as const,
+      historyEntryId: `topology:${entry.id}`,
+      outputLabel: entry.resultLabel,
+      beforeVertices: entry.beforeCounts.vertexCount,
+      afterVertices: entry.afterCounts.vertexCount,
+      beforeFaces: entry.beforeCounts.faceCount,
+      afterFaces: entry.afterCounts.faceCount,
+    }));
+    return [...operationEntries, ...topologyEntries];
+  }, [meshOperationHistory, surfaceMeshTopologyHistory]);
   const meshWorkspaceSelectedProvenanceEntry = useMemo(
-    () => meshOperationHistory.find((entry) => entry.id === meshWorkspaceSelectedProvenanceEntryId) ?? null,
+    () => {
+      const historyId = meshWorkspaceSelectedProvenanceEntryId?.replace(/^operation:/, "") ?? null;
+      return historyId ? meshOperationHistory.find((entry) => entry.id === historyId) ?? null : null;
+    },
     [meshOperationHistory, meshWorkspaceSelectedProvenanceEntryId]
   );
   const meshWorkspaceInspectorSummary = useMemo<MeshWorkspaceInspectorSummary>(() => {
@@ -72400,6 +72563,14 @@ case "mobius":
                           {meshContextToolbarSelectionSummary}
                         </div>
                       )}
+                      {surfaceMeshTopologyPickMode === "face" && surfaceMeshTopologyFaceBatch.blocker && (
+                        <div
+                          data-testid="mesh-topology-batch-blocker"
+                          style={{ color: "#b42318", fontSize: 11, fontWeight: 800 }}
+                        >
+                          Batch edit blocked: {surfaceMeshTopologyFaceBatch.blocker}
+                        </div>
+                      )}
                       {surfaceMeshEdgeSelection && (
                         <span data-testid="mesh-edge-selection-summary" style={{ color: "#0f766e", fontWeight: 800 }}>
                           {surfaceMeshEdgeSelection.status}
@@ -72854,8 +73025,22 @@ case "mobius":
                       onShowAllWorkspaceEntries={handleShowAllMeshWorkspaceEntries}
                       onComposeBoolean={handleComposeMeshWorkspaceBoolean}
                       onSelectProvenanceEntry={setMeshWorkspaceSelectedProvenanceEntryId}
-                      onPreviewProvenanceEntry={(entryId) => previewMeshOperationHistoryEntry(entryId, "after")}
-                      onRestoreProvenanceEntry={restoreMeshOperationHistoryEntry}
+                      onPreviewProvenanceEntry={(entryId) => {
+                        const historyId = entryId.replace(/^(?:operation|topology):/, "");
+                        if (entryId.startsWith("topology:")) {
+                          previewSurfaceMeshTopologyHistoryEntry(historyId);
+                          return;
+                        }
+                        previewMeshOperationHistoryEntry(historyId, "after");
+                      }}
+                      onRestoreProvenanceEntry={(entryId) => {
+                        const historyId = entryId.replace(/^(?:operation|topology):/, "");
+                        if (entryId.startsWith("topology:")) {
+                          restoreSurfaceMeshTopologyHistoryEntry(historyId);
+                          return;
+                        }
+                        restoreMeshOperationHistoryEntry(historyId);
+                      }}
                       onUnlinkWorkspaceEntry={handleUnlinkMeshWorkspaceGeometry}
                       onOpenWorkspaceGeometrySource={handleOpenMeshWorkspaceGeometrySource}
                       onToggleVisibility={handleToggleUnifiedNodeVisibility}
