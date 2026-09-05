@@ -65053,7 +65053,7 @@ case "mobius":
           name: root.name,
           sourceDefinition: root.sourceDefinition,
           displayState: root.displayState,
-          lastOperationLabel: surfaceMeshTopologyHistory[0]?.actionLabel ?? null,
+          lastOperationLabel: surfaceMeshTopologyHistory[0]?.actionLabel ?? meshOperationHistory[0]?.result.label ?? null,
           visible: meshWorkspaceActiveMeshVisible,
           kind: "active" as const,
         }]
@@ -65061,7 +65061,7 @@ case "mobius":
     const entries = [...active, ...meshWorkspaceGeometryEntries];
     const orderIndex = new Map(meshWorkspaceOrder.map((id, index) => [id, index]));
     return entries.slice().sort((a, b) => (orderIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (orderIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER));
-  }, [meshWorkspaceActiveMeshVisible, meshWorkspaceGeometryEntries, meshWorkspaceOrder, surfaceMeshTopologyHistory, unifiedObjectModel.activeDatasetNodeId, unifiedObjectModel.nodeById]);
+  }, [meshOperationHistory, meshWorkspaceActiveMeshVisible, meshWorkspaceGeometryEntries, meshWorkspaceOrder, surfaceMeshTopologyHistory, unifiedObjectModel.activeDatasetNodeId, unifiedObjectModel.nodeById]);
   useEffect(() => {
     const validIds = new Set(meshWorkspaceGeometryEntries.map((entry) => entry.id));
     setMeshWorkspaceGeometryLinks((prev) => {
@@ -72984,8 +72984,6 @@ case "mobius":
                       selectedEntryIds={meshWorkspaceSelectedEntryIds}
                       workspaceEntries={meshWorkspaceEntries}
                       groups={meshWorkspaceGroups}
-                      provenanceEntries={meshWorkspaceProvenanceEntries}
-                      selectedProvenanceEntryId={meshWorkspaceSelectedProvenanceEntryId}
                       booleanInputIds={meshWorkspaceBooleanInputIds}
                       booleanSetupActive={
                         !!meshBooleanReview ||
@@ -73015,23 +73013,7 @@ case "mobius":
                       onSetWorkspaceEntriesVisibility={handleSetMeshWorkspaceEntriesVisibility}
                       onShowAllWorkspaceEntries={handleShowAllMeshWorkspaceEntries}
                       onComposeBoolean={handleComposeMeshWorkspaceBoolean}
-                      onSelectProvenanceEntry={setMeshWorkspaceSelectedProvenanceEntryId}
-                      onPreviewProvenanceEntry={(entryId) => {
-                        const historyId = entryId.replace(/^(?:operation|topology):/, "");
-                        if (entryId.startsWith("topology:")) {
-                          previewSurfaceMeshTopologyHistoryEntry(historyId);
-                          return;
-                        }
-                        previewMeshOperationHistoryEntry(historyId, "after");
-                      }}
-                      onRestoreProvenanceEntry={(entryId) => {
-                        const historyId = entryId.replace(/^(?:operation|topology):/, "");
-                        if (entryId.startsWith("topology:")) {
-                          restoreSurfaceMeshTopologyHistoryEntry(historyId);
-                          return;
-                        }
-                        restoreMeshOperationHistoryEntry(historyId);
-                      }}
+                      onOpenHistory={() => setInspectorPanelTab("history")}
                       onUnlinkWorkspaceEntry={handleUnlinkMeshWorkspaceGeometry}
                       onOpenWorkspaceGeometrySource={handleOpenMeshWorkspaceGeometrySource}
                       onToggleVisibility={handleToggleUnifiedNodeVisibility}
@@ -103177,8 +103159,6 @@ type MeshWorkspaceSceneOutlinerProps = {
   selectedEntryIds: string[];
   workspaceEntries: MeshWorkspaceEntry[];
   groups: MeshWorkspaceGroup[];
-  provenanceEntries: MeshWorkspaceProvenanceEntry[];
-  selectedProvenanceEntryId: string | null;
   booleanInputIds: { a: string | null; b: string | null };
   booleanSetupActive: boolean;
   savedScenes: MeshWorkspaceScenePreset[];
@@ -103199,9 +103179,7 @@ type MeshWorkspaceSceneOutlinerProps = {
   onSetWorkspaceEntriesVisibility: (entryIds: string[], visible: boolean) => void;
   onShowAllWorkspaceEntries: () => void;
   onComposeBoolean: () => void;
-  onSelectProvenanceEntry: (historyEntryId: string) => void;
-  onPreviewProvenanceEntry: (historyEntryId: string) => void;
-  onRestoreProvenanceEntry: (historyEntryId: string) => void;
+  onOpenHistory: () => void;
   onUnlinkWorkspaceEntry: (entryId: string) => void;
   onOpenWorkspaceGeometrySource: (entryId: string) => void;
   onToggleVisibility: (id: string) => void;
@@ -103228,8 +103206,6 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
   selectedEntryIds,
   workspaceEntries,
   groups,
-  provenanceEntries,
-  selectedProvenanceEntryId,
   booleanInputIds,
   booleanSetupActive,
   savedScenes,
@@ -103250,9 +103226,7 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
   onSetWorkspaceEntriesVisibility,
   onShowAllWorkspaceEntries,
   onComposeBoolean,
-  onSelectProvenanceEntry,
-  onPreviewProvenanceEntry,
-  onRestoreProvenanceEntry,
+  onOpenHistory,
   onUnlinkWorkspaceEntry,
   onOpenWorkspaceGeometrySource,
   onToggleVisibility,
@@ -103271,13 +103245,13 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
   onToggleIsolation,
   status,
 }) => {
-  const [overlaysExpanded, setOverlaysExpanded] = useState(false);
+  const [viewHelpersExpanded, setViewHelpersExpanded] = useState(false);
+  const [expandedObjectOverlayEntryIds, setExpandedObjectOverlayEntryIds] = useState<Set<string>>(() => new Set());
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [workspaceToolsOpen, setWorkspaceToolsOpen] = useState(false);
   const [sceneSearch, setSceneSearch] = useState("");
   const [meshesExpanded, setMeshesExpanded] = useState(true);
   const [geometryLinksExpanded, setGeometryLinksExpanded] = useState(true);
-  const [provenanceExpanded, setProvenanceExpanded] = useState(false);
   const [rowMenuId, setRowMenuId] = useState<string | null>(null);
   const [draggedEntryId, setDraggedEntryId] = useState<string | null>(null);
   const [selectedSavedSceneId, setSelectedSavedSceneId] = useState<string>("");
@@ -103313,6 +103287,13 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
     return descendants;
   }, [nodes, root]);
   const overlayNodes = descendantNodes.filter((node) => node.category === "derived");
+  const isViewHelperOverlay = (node: UnifiedObjectNode) =>
+    node.id === "derived:auto:coordinate-planes" ||
+    node.id === "derived:auto:chart-grid" ||
+    node.id === "derived:auto:volume-slices" ||
+    node.id === "derived:auto:volume-streamlines";
+  const objectOverlayNodes = overlayNodes.filter((node) => !isViewHelperOverlay(node));
+  const viewHelperNodes = overlayNodes.filter(isViewHelperOverlay);
   const visibleCount = workspaceEntries.filter((entry) => entry.visible).length + overlayNodes.filter((node) => node.visible !== false).length;
   const selectedOverlay = selectedId ? byId.get(selectedId) ?? null : null;
   const selectedWorkspaceEntry = workspaceEntries.find((entry) => entry.id === selectedId) ?? null;
@@ -103331,22 +103312,29 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
   );
   const meshEntries = filteredWorkspaceEntries.filter((entry) => entry.kind === "active");
   const geometryEntries = filteredWorkspaceEntries.filter((entry) => entry.kind === "geometry");
-  const filteredOverlayNodes = overlayNodes.filter((node) =>
+  const filteredObjectOverlayNodes = objectOverlayNodes.filter((node) =>
     matchesSceneSearch(`${node.name} ${node.sourceDefinition} ${node.displayState}`)
   );
-  const provenanceByHistoryId = useMemo(
-    () => new Map(provenanceEntries.map((entry) => [entry.historyEntryId, entry])),
-    [provenanceEntries]
+  const filteredViewHelperNodes = viewHelperNodes.filter((node) =>
+    matchesSceneSearch(`${node.name} ${node.sourceDefinition} ${node.displayState}`)
   );
-  const provenanceRoots = provenanceEntries.filter((entry) => !entry.parentEntryIds.some((parentId) => provenanceByHistoryId.has(parentId)));
-  const overlayVisibility = overlayNodes.filter((node) => node.canToggleVisibility && typeof node.visible === "boolean");
-  const overlayVisibilityState = !overlayVisibility.length
+  const visibilityState = (nodesToCheck: UnifiedObjectNode[]) => {
+    const visibleNodes = nodesToCheck.filter((node) => node.canToggleVisibility && typeof node.visible === "boolean");
+    if (!visibleNodes.length) return "none" as const;
+    if (visibleNodes.every((node) => node.visible)) return "visible" as const;
+    if (visibleNodes.some((node) => node.visible)) return "mixed" as const;
+    return "hidden" as const;
+  };
+  const toggleOverlayNodes = (nodesToToggle: UnifiedObjectNode[]) => {
+    const toggleable = nodesToToggle.filter((node) => node.canToggleVisibility && typeof node.visible === "boolean");
+    const nextVisible = visibilityState(toggleable) !== "visible";
+    toggleable.forEach((node) => {
+      if (node.visible !== nextVisible) onToggleVisibility(node.id);
+    });
+  };
+  const viewHelperVisibilityState = !viewHelperNodes.length
     ? "none"
-    : overlayVisibility.every((node) => node.visible)
-      ? "visible"
-      : overlayVisibility.some((node) => node.visible)
-        ? "mixed"
-        : "hidden";
+    : visibilityState(viewHelperNodes);
   const statusStyle =
     status === "Invalid"
       ? { color: "#b42318", border: "#fda29b", background: "#fff1f0" }
@@ -103357,7 +103345,7 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
   const draggedEntryIds = () =>
     draggedEntryId && selectedEntryIds.includes(draggedEntryId) ? selectedEntryIds : draggedEntryId ? [draggedEntryId] : [];
 
-  const renderOverlayRow = (node: UnifiedObjectNode) => {
+  const renderOverlayRow = (node: UnifiedObjectNode, nested = false) => {
     const active = node.id === selectedId;
     const canToggle = !!node.canToggleVisibility && typeof node.visible === "boolean";
     return (
@@ -103368,7 +103356,7 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
           gridTemplateColumns: "1fr auto",
           gap: 6,
           alignItems: "center",
-          marginLeft: 20,
+          marginLeft: nested ? 12 : 20,
           padding: "5px 6px",
           border: active ? "1px solid #93c5fd" : "1px solid transparent",
           borderRadius: 6,
@@ -103423,9 +103411,15 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
           : /preset/i.test(entry.sourceDefinition)
             ? "Preset"
             : "Mesh";
+    const ownedOverlays = entry.id === "workspace:active" ? filteredObjectOverlayNodes : [];
+    const overlayVisibilityState = visibilityState(ownedOverlays);
+    const overlaysExpanded = expandedObjectOverlayEntryIds.has(entry.id);
     return (
       <div
         key={entry.id}
+        style={{ marginLeft: nested ? 16 : 0, display: "grid", gap: 3 }}
+      >
+        <div
         data-testid={`mesh-workspace-outliner-entry-${entry.id}`}
         draggable
         onDragStart={() => setDraggedEntryId(entry.id)}
@@ -103441,7 +103435,6 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
           gridTemplateColumns: "1fr auto auto",
           gap: 5,
           alignItems: "center",
-          marginLeft: nested ? 16 : 0,
           padding: "7px 8px",
           borderRadius: 7,
           border: active ? "1px solid #60a5fa" : "1px solid #bfdbfe",
@@ -103461,10 +103454,10 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
             {displayName(entry.name)}
           </span>
           <span style={{ color: "#64748b", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {relationship} · {entry.sourceDefinition}
+            {relationship} · {entry.displayState}
           </span>
           <span style={{ color: entry.kind === "active" && status !== "Ready" ? statusStyle.color : "#64748b", fontSize: 9, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {entry.lastOperationLabel ? `Last operation: ${entry.lastOperationLabel}` : entry.kind === "active" ? `${entry.displayState} · ${status}` : entry.displayState}
+            {entry.lastOperationLabel ? `Last operation: ${entry.lastOperationLabel}` : entry.kind === "active" ? status : ""}
             {group ? ` · ${group.name}` : ""}
           </span>
         </button>
@@ -103537,30 +103530,48 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
             )}
           </div>
         )}
-      </div>
-    );
-  };
-
-  const renderProvenanceNode = (entry: MeshWorkspaceProvenanceEntry, depth = 0, visited = new Set<string>()): React.ReactNode => {
-    if (visited.has(entry.historyEntryId)) return null;
-    const nextVisited = new Set(visited);
-    nextVisited.add(entry.historyEntryId);
-    const active = entry.historyEntryId === selectedProvenanceEntryId;
-    const children = entry.childEntryIds
-      .map((historyEntryId) => provenanceByHistoryId.get(historyEntryId))
-      .filter((child): child is MeshWorkspaceProvenanceEntry => !!child);
-    return (
-      <React.Fragment key={entry.id}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", alignItems: "center", gap: 4, marginLeft: 12 + depth * 14, padding: "5px 6px", borderLeft: "2px solid #60a5fa", borderRadius: 5, background: active ? "#dbeafe" : "#f8fbff" }}>
-          <button type="button" data-testid={`mesh-workspace-provenance-node-${entry.historyEntryId}`} onClick={() => onSelectProvenanceEntry(entry.historyEntryId)} style={{ minWidth: 0, padding: 0, border: 0, background: "transparent", textAlign: "left", cursor: "pointer" }}>
-            <div style={{ color: entry.status === "error" ? "#b42318" : "#1e3a5f", fontSize: 10, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.label}</div>
-            <div style={{ color: "#64748b", fontSize: 9, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.parentEntryIds.length} input{entry.parentEntryIds.length === 1 ? "" : "s"} → {children.length} output{children.length === 1 ? "" : "s"} · {entry.beforeFaces.toLocaleString()} → {entry.afterFaces == null ? "n/a" : entry.afterFaces.toLocaleString()} F</div>
-          </button>
-          <button type="button" onClick={() => onPreviewProvenanceEntry(entry.historyEntryId)} style={{ padding: "3px 5px", fontSize: 9 }}>Preview</button>
-          <button type="button" onClick={() => onRestoreProvenanceEntry(entry.historyEntryId)} style={{ padding: "3px 5px", fontSize: 9 }}>Restore</button>
         </div>
-        {children.map((child) => renderProvenanceNode(child, depth + 1, nextVisited))}
-      </React.Fragment>
+        {(entry.id === "workspace:active" && objectOverlayNodes.length > 0) && (
+          <div style={{ marginLeft: 12, display: "grid", gap: 2, padding: "3px 0 1px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <button
+                type="button"
+                onClick={() => setExpandedObjectOverlayEntryIds((current) => {
+                  const next = new Set(current);
+                  if (next.has(entry.id)) next.delete(entry.id);
+                  else next.add(entry.id);
+                  return next;
+                })}
+                aria-expanded={overlaysExpanded}
+                style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, padding: "3px 2px", border: 0, background: "transparent", color: "#475569", fontSize: 10, fontWeight: 700, textAlign: "left", cursor: "pointer" }}
+              >
+                <span aria-hidden="true">{overlaysExpanded ? "▼" : "▶"}</span>
+                Object overlays ({objectOverlayNodes.filter((node) => node.visible).length}/{objectOverlayNodes.length} visible)
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleOverlayNodes(objectOverlayNodes)}
+                title={overlayVisibilityState === "mixed" ? "Some object overlays are visible" : "Toggle object overlay visibility"}
+                aria-label={`Object overlays: ${overlayVisibilityState}`}
+                style={{ marginLeft: "auto", padding: "2px 5px", fontSize: 9 }}
+              >
+                {overlayVisibilityState === "mixed" ? "Partial" : overlayVisibilityState === "visible" ? "Hide" : "Show"}
+              </button>
+            </div>
+            {overlaysExpanded && (ownedOverlays.length ? ownedOverlays.map((node) => renderOverlayRow(node, true)) : <div style={{ marginLeft: 14, color: "#64748b", fontSize: 9 }}>No matching object overlays.</div>)}
+          </div>
+        )}
+        {entry.lastOperationLabel && (
+          <button
+            type="button"
+            onClick={onOpenHistory}
+            title="Open the operation chain in Inspector History"
+            style={{ justifySelf: "start", marginLeft: 12, padding: "2px 5px", color: "#475569", fontSize: 9 }}
+          >
+            History
+          </button>
+        )}
+      </div>
     );
   };
 
@@ -103606,7 +103617,7 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
           onClick={() => setWorkspaceToolsOpen((open) => !open)}
           aria-expanded={workspaceToolsOpen}
           style={{ padding: "4px 8px", fontSize: 11 }}
-          title="Open workspace tools, Boolean inputs, and saved scenes"
+          title="Open workspace tools and snapshots"
         >
           More
         </button>
@@ -103693,12 +103704,12 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
             </button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 5, padding: "6px 0", borderBottom: "1px solid #dbe4f0" }}>
-        <select aria-label="Workspace scene" value={selectedSavedSceneId} onChange={(event) => setSelectedSavedSceneId(event.target.value)} style={{ minWidth: 0, fontSize: 10 }}>
-          <option value="">Saved workspace scenes</option>
+        <select aria-label="Workspace snapshots" value={selectedSavedSceneId} onChange={(event) => setSelectedSavedSceneId(event.target.value)} style={{ minWidth: 0, fontSize: 10 }}>
+          <option value="">Workspace snapshots</option>
           {savedScenes.map((scene) => <option key={scene.id} value={scene.id}>{scene.name}</option>)}
         </select>
         <div style={{ display: "flex", gap: 4 }}>
-          <button type="button" onClick={() => { const name = window.prompt("Workspace scene name", "Workspace scene"); if (name) onSaveWorkspaceScene(name); }} style={{ padding: "3px 6px", fontSize: 10 }}>Save scene</button>
+          <button type="button" onClick={() => { const name = window.prompt("Workspace snapshot name", "Workspace snapshot"); if (name) onSaveWorkspaceScene(name); }} style={{ padding: "3px 6px", fontSize: 10 }}>Save snapshot</button>
           {selectedSavedSceneId && <>
             <button type="button" onClick={() => onRestoreWorkspaceScene(selectedSavedSceneId)} style={{ padding: "3px 6px", fontSize: 10 }}>Load</button>
             <button type="button" onClick={() => { onDeleteWorkspaceScene(selectedSavedSceneId); setSelectedSavedSceneId(""); }} style={{ padding: "3px 6px", color: "#b42318", fontSize: 10 }}>Delete</button>
@@ -103737,32 +103748,24 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
             </details>
           )}
 
-          {provenanceEntries.length > 0 && (
-            <div style={{ display: "grid", gap: 3, marginTop: 4, paddingTop: 5, borderTop: "1px solid #dbe4f0" }}>
-              <button type="button" onClick={() => setProvenanceExpanded((expanded) => !expanded)} aria-expanded={provenanceExpanded} style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 2px", border: 0, background: "transparent", color: "#475569", fontSize: 10, fontWeight: 800, textAlign: "left" }}>
-                <span aria-hidden="true">{provenanceExpanded ? "▼" : "▶"}</span> Operation provenance ({provenanceEntries.length})
-              </button>
-              {provenanceExpanded && <><div style={{ marginLeft: 6, padding: "4px 6px", borderLeft: "2px solid #94a3b8", color: "#334155", fontSize: 10, fontWeight: 700 }}>Original mesh</div>{provenanceRoots.map((entry) => renderProvenanceNode(entry))}</>}
-            </div>
-          )}
-
-          {overlayNodes.length > 0 && (
+          {viewHelperNodes.length > 0 && (
             <div style={{ display: "grid", gap: 2 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                <button type="button" onClick={() => setOverlaysExpanded((expanded) => !expanded)} aria-expanded={overlaysExpanded} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 2px", border: 0, background: "transparent", color: "#334155", fontSize: 10, fontWeight: 700, textAlign: "left", cursor: "pointer" }}>
-                  <span aria-hidden="true">{overlaysExpanded ? "▼" : "▶"}</span>
-                  View helpers ({filteredOverlayNodes.length}/{overlayNodes.length})
+                <button type="button" onClick={() => setViewHelpersExpanded((expanded) => !expanded)} aria-expanded={viewHelpersExpanded} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 2px", border: 0, background: "transparent", color: "#334155", fontSize: 10, fontWeight: 700, textAlign: "left", cursor: "pointer" }}>
+                  <span aria-hidden="true">{viewHelpersExpanded ? "▼" : "▶"}</span>
+                  View helpers ({viewHelperNodes.filter((node) => node.visible).length}/{viewHelperNodes.length} visible)
                 </button>
                 <button
                   type="button"
-                  onClick={() => overlayVisibility.forEach((node) => { if (node.visible === (overlayVisibilityState !== "visible")) onToggleVisibility(node.id); })}
-                  title="Toggle all overlay visibility"
+                  onClick={() => toggleOverlayNodes(viewHelperNodes)}
+                  title={viewHelperVisibilityState === "mixed" ? "Some view helpers are visible" : "Toggle view helper visibility"}
+                  aria-label={`View helpers: ${viewHelperVisibilityState}`}
                   style={{ marginLeft: "auto", padding: "3px 6px", fontSize: 10 }}
                 >
-                  {overlayVisibilityState === "mixed" ? "Mixed" : overlayVisibilityState === "visible" ? "Hide all" : "Show all"}
+                  {viewHelperVisibilityState === "mixed" ? "Partial" : viewHelperVisibilityState === "visible" ? "Hide" : "Show"}
                 </button>
               </div>
-              {overlaysExpanded && filteredOverlayNodes.map(renderOverlayRow)}
+              {viewHelpersExpanded && (filteredViewHelperNodes.length ? filteredViewHelperNodes.map(renderOverlayRow) : <div style={{ marginLeft: 18, color: "#64748b", fontSize: 9 }}>No matching view helpers.</div>)}
             </div>
           )}
         </div>
