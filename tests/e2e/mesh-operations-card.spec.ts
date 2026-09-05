@@ -287,7 +287,8 @@ test.describe("Mesh Operations card", () => {
     await leftTabs.getByTestId("mesh-workspace-left-tab-scene").click();
     const outliner = page.getByTestId("mesh-workspace-scene-outliner");
     await expect(outliner).toBeVisible();
-    await expect(page.getByText(/Mesh workspace \(1 total · 0 linked Geometry\)/).first()).toBeVisible();
+    await expect(outliner.getByRole("button", { name: /Meshes \(1\)/ })).toBeVisible();
+    await expect(outliner.getByRole("button", { name: /Geometry links \(0\)/ })).toBeVisible();
     await expect(page.getByTestId("mesh-workspace-open-mesh-file")).not.toBeVisible();
     await outliner.getByRole("button", { name: "+ Add" }).click();
     await expect(outliner.getByRole("menuitem", { name: "Import mesh..." })).toBeVisible();
@@ -304,10 +305,9 @@ test.describe("Mesh Operations card", () => {
     await outliner.getByRole("menuitem", { name: "Frame active mesh" }).click();
     await outliner.getByRole("button", { name: "+ Add" }).click();
     await outliner.getByRole("menuitem", { name: "Create group..." }).click();
-    await expect(outliner.getByText("Group 1 (0)")).toBeVisible();
     await activeMeshRow.getByRole("button", { name: /Actions for / }).click();
     await outliner.getByRole("menuitem", { name: "Group 1" }).click();
-    await expect(outliner.getByText("Group 1 (1)")).toBeVisible();
+    await expect(activeMeshRow).toContainText("Group 1");
     await outliner.getByRole("button", { name: "Isolate" }).click();
     await expect(outliner.getByRole("button", { name: "Restore" })).toBeVisible();
     await outliner.getByRole("button", { name: "Restore" }).click();
@@ -450,12 +450,13 @@ test.describe("Mesh Operations card", () => {
     const leftTabs = page.getByTestId("mesh-workspace-left-tabs");
     await leftTabs.getByTestId("mesh-workspace-left-tab-scene").click();
     const outliner = page.getByTestId("mesh-workspace-scene-outliner");
+    await outliner.getByRole("button", { name: "+ Add" }).click();
     await outliner.getByTestId("mesh-workspace-load-test-scene-5").click();
 
-    await expect(outliner.getByText(/Mesh workspace \(5 total · 4 linked Geometry\)/)).toBeVisible();
-    await expect(outliner.getByText("Boolean candidates (2)")).toBeVisible();
-    await expect(outliner.getByText("Scene references (3)")).toBeVisible();
+    await expect(outliner.getByRole("button", { name: /Meshes \(1\)/ })).toBeVisible();
+    await expect(outliner.getByRole("button", { name: /Geometry links \(4\)/ })).toBeVisible();
     await expect(outliner.getByRole("button", { name: "Boolean", exact: true })).toBeVisible();
+    await outliner.getByTitle("Open workspace tools, Boolean inputs, and saved scenes").click();
     await expect(outliner.getByTestId("mesh-workspace-boolean-slot-a")).toContainText(/Workspace Test Active/i);
     await expect(outliner.getByTestId("mesh-workspace-boolean-slot-b")).toContainText(/Workspace Test Cutter/i);
     const workspaceSummary = page.getByTestId("mesh-workspace-inspector-summary");
@@ -467,6 +468,9 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-workspace-operation-registry-row-boolean-difference")).toHaveAttribute("aria-expanded", "true");
 
     await leftTabs.getByTestId("mesh-workspace-left-tab-scene").click();
+    if ((await outliner.getByTitle("Open workspace tools, Boolean inputs, and saved scenes").getAttribute("aria-expanded")) !== "true") {
+      await outliner.getByTitle("Open workspace tools, Boolean inputs, and saved scenes").click();
+    }
     page.once("dialog", (dialog) => dialog.accept("Five mesh Boolean review"));
     await outliner.getByRole("button", { name: "Save scene", exact: true }).click();
     const sceneSelect = outliner.getByRole("combobox", { name: "Workspace scene" });
@@ -487,6 +491,7 @@ test.describe("Mesh Operations card", () => {
     await openWorkspaceOperationsCard(page);
     await page.getByTestId("mesh-workspace-left-tab-scene").click();
     const outliner = page.getByTestId("mesh-workspace-scene-outliner");
+    await outliner.getByRole("button", { name: "+ Add" }).click();
     await outliner.getByTestId("mesh-workspace-load-test-scene-5").click();
     await page.getByTestId("mesh-viewer-quality-sharp").click();
     await expect(page.getByTestId("mesh-viewer-quality-sharp")).toHaveAttribute("aria-pressed", "true");
@@ -540,6 +545,7 @@ test.describe("Mesh Operations card", () => {
     await expect(page.getByTestId("mesh-context-pick-object")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("mesh-workspace-inspector-summary")).toContainText("5 total");
     await expect(page.getByTestId("mesh-workspace-inspector-summary")).toContainText("4 linked Geometry");
+    await outliner.getByTitle("Open workspace tools, Boolean inputs, and saved scenes").click();
     await expect(outliner.getByTestId("mesh-workspace-boolean-slot-a")).toContainText(/Workspace Test Active/i);
 
     const secondReference = outliner.getByText("Workspace Test Reference 2", { exact: true }).first();
