@@ -66824,6 +66824,28 @@ case "mobius":
     !cleanScreenshotSurfaceActive &&
     !isPhoneViewerPriorityLayout &&
     !surfacesBrowseModeActive;
+  const isMeshAnalysisWorkflowContext =
+    showSurfaceWorkflowStrip && surfaceViewerKind === "mesh" && surfacesLeftTab === "analysis";
+  const meshAnalysisWorkflowResultLabel =
+    meshAnalyzeCurvatureFieldLabel ??
+    (showGaussMap ? "Gauss map" : null) ??
+    (showPrincipalDirections ? "Principal directions" : null) ??
+    (meshAnalyzeDiagnosticOverlayMode === "boundary" ? "Boundary edges" : null) ??
+    (meshAnalyzeDiagnosticOverlayMode === "duplicates" ? "Coincident vertices" : null) ??
+    "Overview";
+  const meshAnalysisWorkflowValidationLabel = surfaceMeshAnalyzeDiagnostics
+    ? surfaceMeshAnalyzeDiagnostics.cleanMesh
+      ? "Validated"
+      : surfaceMeshAnalyzeDiagnostics.selfIntersectionPairs > 0
+        ? "Needs validation"
+        : "Needs review"
+    : "Unverified";
+  const meshAnalysisWorkflowValidationTone =
+    meshAnalysisWorkflowValidationLabel === "Validated"
+      ? { border: "#86efac", background: "#f0fdf4", color: "#166534" }
+      : meshAnalysisWorkflowValidationLabel === "Unverified"
+        ? { border: "#dbe4ee", background: "#f8fafc", color: "#475467" }
+        : { border: "#fcd34d", background: "#fffbeb", color: "#92400e" };
   const showSurfaceLocalToolStrip = showSurfaceWorkflowStrip && !isSurfacePreviewMode;
   const showMeshViewerLocalToolStrip =
     mode === "surfaces" &&
@@ -71496,21 +71518,70 @@ case "mobius":
 
       {showSurfaceWorkflowStrip && (
         <div style={{ padding: isSurfacePreviewMode ? "0 0 6px" : "0 0 10px" }}>
-          <div
-            style={{
-              width: "100%",
-              border: "1px solid #dbe4f0",
-              borderRadius: 10,
-              padding: isSurfacePreviewMode ? "4px 8px" : "6px 10px",
-              background: "linear-gradient(180deg, #ffffff, #f8fbff)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: isSurfacePreviewMode ? 4 : 6,
-              flexWrap: "wrap",
-            }}
-          >
-            {SURFACE_WORKFLOW_STEPS.map((step, index) => {
+          {isMeshAnalysisWorkflowContext ? (
+            <div
+              data-testid="mesh-analysis-context-breadcrumb"
+              style={{
+                width: "100%",
+                border: "1px solid #dbe4f0",
+                borderRadius: 10,
+                padding: "6px 10px",
+                background: "linear-gradient(180deg, #ffffff, #f8fbff)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 7,
+                flexWrap: "wrap",
+                color: "#334155",
+                fontSize: 11,
+              }}
+            >
+              <span style={{ fontWeight: 800, color: "#0f172a" }}>Mesh</span>
+              <span style={{ color: "#94a3b8" }}>›</span>
+              <span style={{ fontWeight: 700, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {surfaceMeshLabel}
+              </span>
+              <span style={{ color: "#94a3b8" }}>›</span>
+              <span style={{ fontWeight: 800, color: "#0a66c2" }}>Analysis</span>
+              <span style={{ color: "#94a3b8" }}>›</span>
+              <span style={{ fontWeight: 700 }}>{meshAnalysisWorkflowResultLabel}</span>
+              <span
+                data-testid="mesh-analysis-context-validation"
+                style={{
+                  marginLeft: 4,
+                  border: `1px solid ${meshAnalysisWorkflowValidationTone.border}`,
+                  borderRadius: 999,
+                  background: meshAnalysisWorkflowValidationTone.background,
+                  color: meshAnalysisWorkflowValidationTone.color,
+                  fontSize: 10,
+                  fontWeight: 800,
+                  padding: "3px 8px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {meshAnalysisWorkflowValidationLabel === "Validated"
+                  ? "✓ Validated"
+                  : meshAnalysisWorkflowValidationLabel === "Unverified"
+                    ? "? Unverified"
+                    : `? ${meshAnalysisWorkflowValidationLabel}`}
+              </span>
+            </div>
+          ) : (
+            <div
+              style={{
+                width: "100%",
+                border: "1px solid #dbe4f0",
+                borderRadius: 10,
+                padding: isSurfacePreviewMode ? "4px 8px" : "6px 10px",
+                background: "linear-gradient(180deg, #ffffff, #f8fbff)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: isSurfacePreviewMode ? 4 : 6,
+                flexWrap: "wrap",
+              }}
+            >
+              {SURFACE_WORKFLOW_STEPS.map((step, index) => {
               const stepState = surfaceWorkflowStepStateById[step.id];
               const isDisabled = stepState === "disabled";
               const borderColor =
@@ -71561,7 +71632,7 @@ case "mobius":
                 </React.Fragment>
               );
             })}
-            {mode === "surfaces" && (
+              {mode === "surfaces" && (
               <>
                 <span style={{ color: "#94a3b8", fontSize: 11 }}>|</span>
                 <button
@@ -71588,8 +71659,9 @@ case "mobius":
                   {surfacePreviewFocusMode ? "Show panels" : "Focus preview"}
                 </button>
               </>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       )}
       {showSurfaceWorkbookQuickStrip && (

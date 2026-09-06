@@ -52,6 +52,8 @@ async function openGeometryPrimitiveInMeshAnalyze(page: Page, primitive: "sphere
 
   await expect(page.getByText(/Mesh \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/MESH \/ ANALYZE/i).first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("mesh-analysis-context-breadcrumb")).toContainText(/Mesh.*Analysis/i);
+  await expect(page.getByTestId("mesh-analysis-context-validation")).toBeVisible();
 }
 
 async function openGeometrySphereInMeshAnalyze(page: Page): Promise<void> {
@@ -67,6 +69,8 @@ async function openMeshPresetInAnalyze(page: Page, presetId: string): Promise<vo
   await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true })).then((button) => button.click());
   await page.getByTestId("surfaces-left-tab-analysis").click();
   await expect(page.getByText(/MESH \/ ANALYZE/i).first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("mesh-analysis-context-breadcrumb")).toContainText(/Mesh.*Analysis/i);
+  await expect(page.getByTestId("mesh-analysis-context-validation")).toBeVisible();
 }
 
 test("Mesh Analyze shows curvature range, independent Probe, and returns to Geometry", async () => {
