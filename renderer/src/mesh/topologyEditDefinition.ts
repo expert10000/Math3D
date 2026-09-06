@@ -156,12 +156,14 @@ export function createMeshTopologyEditDefinition(input: {
   readonly selectedFaceIndices?: readonly number[];
 }): MeshTopologyEditDefinition {
   const paramsLabel = formatMeshTopologyEditParameters(input.parameters);
-  const selectedFaceIndices =
-    input.target.kind === "face" && input.selectedFaceIndices?.length
-      ? [...new Set(input.selectedFaceIndices.map((index) => Math.max(0, Math.round(index))))].sort((a, b) => a - b)
-      : undefined;
+  const requestedFaceIndices = input.target.kind === "face" ? input.selectedFaceIndices ?? [] : [];
+  const selectedFaceIndices = requestedFaceIndices.length
+    ? [...new Set(requestedFaceIndices.map((index) => Math.max(0, Math.round(index))))].sort((a, b) => a - b)
+    : undefined;
   const batchKey = selectedFaceIndices?.length ? `faces:${selectedFaceIndices.join(",")}` : input.target.key;
-  const batchLabel = selectedFaceIndices?.length > 1 ? `${selectedFaceIndices.length} faces · ${selectedFaceIndices.join(", ")}` : input.target.label;
+  const batchLabel = selectedFaceIndices && selectedFaceIndices.length > 1
+    ? `${selectedFaceIndices.length} faces · ${selectedFaceIndices.join(", ")}`
+    : input.target.label;
   const selectionKey = `${input.sourceMeshVersion.key}|${input.operation}|${batchKey}`;
   const selectionBreadcrumb = `Mesh > ${input.sourceMeshVersion.label} > ${batchLabel}`;
   const replayLabel = `op=${input.operation}; source=${input.sourceMeshVersion.key}; selection=${batchKey}; params=${paramsLabel}`;

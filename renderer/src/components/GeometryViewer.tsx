@@ -35,6 +35,7 @@ export type GeometryViewerProps = {
       opacity?: number;
       roughness?: number;
       metalness?: number;
+      wireframe?: boolean;
       flatShading?: boolean;
       pickPolicy?: GeometryPickPolicy;
       renderableMetadata?: GeometryRenderableMetadata;
@@ -267,6 +268,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
             opacity: entry.opacity,
             roughness: entry.roughness,
             metalness: entry.metalness,
+            wireframe: entry.wireframe,
             flatShading: entry.flatShading,
             pickPolicy: entry.pickPolicy,
             renderableMetadata: entry.renderableMetadata,

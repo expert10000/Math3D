@@ -5106,6 +5106,13 @@ type MeshWorkspaceEntry = {
   geometryObjectId?: string;
 };
 
+type MeshWorkspaceEntryOverlayState = {
+  wireframe: boolean;
+  bounds: boolean;
+};
+
+type MeshWorkspaceEntryOverlayStates = Record<string, MeshWorkspaceEntryOverlayState>;
+
 type MeshWorkspaceProjectState = {
   version: 1;
   activeMeshVisible: boolean;
@@ -5114,6 +5121,7 @@ type MeshWorkspaceProjectState = {
   order: string[];
   selectedEntryIds: string[];
   booleanInputIds?: { a: string | null; b: string | null };
+  entryOverlayStates?: MeshWorkspaceEntryOverlayStates;
   savedScenes?: MeshWorkspaceScenePreset[];
 };
 
@@ -5127,6 +5135,7 @@ type MeshWorkspaceScenePreset = {
   order: string[];
   selectedEntryIds: string[];
   booleanInputIds: { a: string | null; b: string | null };
+  entryOverlayStates?: MeshWorkspaceEntryOverlayStates;
 };
 
 type MeshWorkspaceProvenanceEntry = {
@@ -33822,6 +33831,7 @@ const App: React.FC = () => {
     setMeshOperationLastValidation(null);
     setMeshOperationHistory([]);
     setMeshBooleanReview(null);
+    setMeshWorkspaceEntryOverlayStates({});
   }, []);
   const surfaceMeshTopologyAutoPickStampRef = useRef(0);
   const [meshOperationBusy, setMeshOperationBusy] = useState(false);
@@ -33870,6 +33880,8 @@ const App: React.FC = () => {
   const [meshWorkspaceSelectedEntryId, setMeshWorkspaceSelectedEntryId] = useState<string | null>(null);
   const [meshWorkspaceSelectedEntryIds, setMeshWorkspaceSelectedEntryIds] = useState<string[]>([]);
   const [meshWorkspaceBooleanInputIds, setMeshWorkspaceBooleanInputIds] = useState<{ a: string | null; b: string | null }>({ a: null, b: null });
+  const [meshWorkspaceEntryOverlayStates, setMeshWorkspaceEntryOverlayStates] = useState<MeshWorkspaceEntryOverlayStates>({});
+  const [meshWorkspaceRequestedInspectorTab, setMeshWorkspaceRequestedInspectorTab] = useState<InspectorPanelTab | null>(null);
   const [meshWorkspaceSavedScenes, setMeshWorkspaceSavedScenes] = useState<MeshWorkspaceScenePreset[]>([]);
   const [meshWorkspaceSelectedProvenanceEntryId, setMeshWorkspaceSelectedProvenanceEntryId] = useState<string | null>(null);
   const meshWorkspaceSceneModeActiveRef = useRef(false);
@@ -37134,7 +37146,9 @@ const App: React.FC = () => {
       };
     }
     const faceIndices = [...new Set(faceSelections.map((selection) => selection.faceId))]
-      .filter((faceIndex): faceIndex is number => Number.isInteger(faceIndex) && faceIndex >= 0)
+      .filter((faceIndex): faceIndex is number =>
+        typeof faceIndex === "number" && Number.isInteger(faceIndex) && faceIndex >= 0
+      )
       .sort((a, b) => a - b);
     if (!faceIndices.length) {
       return {
@@ -48964,6 +48978,9 @@ case "mobius":
         order: [...meshWorkspaceOrder],
         selectedEntryIds: [...meshWorkspaceSelectedEntryIds],
         booleanInputIds: { ...meshWorkspaceBooleanInputIds },
+        entryOverlayStates: Object.fromEntries(
+          Object.entries(meshWorkspaceEntryOverlayStates).map(([entryId, state]) => [entryId, { ...state }])
+        ),
         savedScenes: meshWorkspaceSavedScenes.map((scene) => ({
           ...scene,
           geometryLinks: scene.geometryLinks.map((link) => ({ ...link })),
@@ -48971,6 +48988,9 @@ case "mobius":
           order: [...scene.order],
           selectedEntryIds: [...scene.selectedEntryIds],
           booleanInputIds: { ...scene.booleanInputIds },
+          entryOverlayStates: Object.fromEntries(
+            Object.entries(scene.entryOverlayStates ?? {}).map(([entryId, state]) => [entryId, { ...state }])
+          ),
         })),
       },
       geometry: {
@@ -49323,6 +49343,17 @@ case "mobius":
         a: booleanInputIds && typeof booleanInputIds.a === "string" ? booleanInputIds.a : null,
         b: booleanInputIds && typeof booleanInputIds.b === "string" ? booleanInputIds.b : null,
       });
+      setMeshWorkspaceEntryOverlayStates(
+        restoredMeshWorkspace.entryOverlayStates && typeof restoredMeshWorkspace.entryOverlayStates === "object"
+          ? Object.fromEntries(
+              Object.entries(restoredMeshWorkspace.entryOverlayStates).flatMap(([entryId, state]) =>
+                state && typeof state === "object"
+                  ? [[entryId, { wireframe: Boolean((state as MeshWorkspaceEntryOverlayState).wireframe), bounds: Boolean((state as MeshWorkspaceEntryOverlayState).bounds) }]]
+                  : []
+              )
+            )
+          : {}
+      );
       setMeshWorkspaceSavedScenes(
         Array.isArray(restoredMeshWorkspace.savedScenes)
           ? restoredMeshWorkspace.savedScenes
@@ -49340,6 +49371,16 @@ case "mobius":
                   a: scene.booleanInputIds && typeof scene.booleanInputIds.a === "string" ? scene.booleanInputIds.a : null,
                   b: scene.booleanInputIds && typeof scene.booleanInputIds.b === "string" ? scene.booleanInputIds.b : null,
                 },
+                entryOverlayStates:
+                  scene.entryOverlayStates && typeof scene.entryOverlayStates === "object"
+                    ? Object.fromEntries(
+                        Object.entries(scene.entryOverlayStates).flatMap(([entryId, state]) =>
+                          state && typeof state === "object"
+                            ? [[entryId, { wireframe: Boolean((state as MeshWorkspaceEntryOverlayState).wireframe), bounds: Boolean((state as MeshWorkspaceEntryOverlayState).bounds) }]]
+                            : []
+                        )
+                      )
+                    : {},
               }))
           : []
       );
@@ -54361,7 +54402,7 @@ case "mobius":
   );
 
   const previewSurfaceMeshTopologyHistoryEntry = useCallback(
-    (entryId: string) => {
+    (entryId: string, side: "before" | "after" = "after") => {
       const entry = surfaceMeshTopologyHistory.find((candidate) => candidate.id === entryId);
       if (!entry) {
         setSurfaceMeshTopologyStatus("Topology history snapshot not found.");
@@ -54369,8 +54410,8 @@ case "mobius":
       }
       setSelectedSurfaceMeshTopologyHistoryId(entry.id);
       setSurfaceMeshTopologyHistoryPreviewId(entry.id);
-      setSurfaceMeshTopologyHistoryPreviewMode("after");
-      setSurfaceMeshTopologyStatus(`Previewing topology result: ${entry.actionLabel} on ${entry.targetLabel}.`);
+      setSurfaceMeshTopologyHistoryPreviewMode(side);
+      setSurfaceMeshTopologyStatus(`Previewing topology ${side}: ${entry.actionLabel} on ${entry.targetLabel}.`);
       handleChangeViewerKind("mesh");
     },
     [handleChangeViewerKind, surfaceMeshTopologyHistory]
@@ -65087,6 +65128,11 @@ case "mobius":
     setMeshWorkspaceSelectedEntryId((prev) =>
       prev === "workspace:active" || (prev != null && validIds.has(prev)) ? prev : null
     );
+    setMeshWorkspaceEntryOverlayStates((prev) => {
+      const allowed = new Set(["workspace:active", ...validIds]);
+      const next = Object.fromEntries(Object.entries(prev).filter(([entryId]) => allowed.has(entryId)));
+      return Object.keys(next).length === Object.keys(prev).length ? prev : next;
+    });
   }, [meshWorkspaceGeometryEntries]);
   useEffect(() => {
     if (surfaceMeshData?.positions?.length) setMeshWorkspaceActiveMeshVisible(true);
@@ -65116,6 +65162,7 @@ case "mobius":
       opacity?: number;
       roughness?: number;
       metalness?: number;
+      wireframe?: boolean;
     }> = [];
     if (meshWorkspaceActiveMeshVisible && surfaceMeshTopologyViewerMesh?.positions?.length) {
       const selected = selectedIds.has("workspace:active");
@@ -65145,6 +65192,7 @@ case "mobius":
         opacity: selected ? 0.96 : hasWorkspaceSelection ? 0.2 : Math.min(0.55, Math.max(0.24, (material.opacity ?? 1) * 0.72)),
         roughness: selected ? 0.28 : 0.48,
         metalness: selected ? 0.12 : 0.04,
+        wireframe: meshWorkspaceEntryOverlayStates[entry.id]?.wireframe === true,
       });
     }
     return overrides;
@@ -65152,11 +65200,28 @@ case "mobius":
     meshGeometryRoundTripSource?.objectId,
     meshWorkspaceActiveMeshVisible,
     meshWorkspaceGeometryEntries,
+    meshWorkspaceEntryOverlayStates,
     meshWorkspaceSelectedEntryIds,
     meshWorkspaceSelectedId,
     resolveGeometrySceneMeshById,
     surfaceMeshTopologyViewerMesh,
   ]);
+  const meshWorkspaceEntryBoundsOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    const groups: OverlayPolylineGroup[] = [];
+    for (const entry of meshWorkspaceGeometryEntries) {
+      if (!entry.visible || !entry.geometryObjectId || !meshWorkspaceEntryOverlayStates[entry.id]?.bounds) continue;
+      const resolved = resolveGeometrySceneMeshById(entry.geometryObjectId);
+      const bounds = resolved?.mesh.positions?.length ? boundsFromPositions(resolved.mesh.positions) : null;
+      if (!bounds) continue;
+      groups.push(...buildWholeObjectSelectionPolylineGroups(bounds, false));
+    }
+    return groups.length ? groups : null;
+  }, [meshWorkspaceEntryOverlayStates, meshWorkspaceGeometryEntries, resolveGeometrySceneMeshById]);
+  const meshWorkspaceOverlayPolylineGroupsWithDiagnostics = useMemo<OverlayPolylineGroup[] | null>(() => {
+    const groups = [...(meshViewerOverlayPolylineGroupsWithDiagnostics ?? [])];
+    if (meshWorkspaceEntryBoundsOverlayGroups?.length) groups.push(...meshWorkspaceEntryBoundsOverlayGroups);
+    return groups.length ? groups : null;
+  }, [meshViewerOverlayPolylineGroupsWithDiagnostics, meshWorkspaceEntryBoundsOverlayGroups]);
   const meshWorkspaceProvenanceEntries = useMemo<MeshWorkspaceProvenanceEntry[]>(() => {
     const historyEntries = meshOperationHistory.slice(0, 32);
     const knownIds = new Set(historyEntries.map((entry) => entry.id));
@@ -65737,6 +65802,20 @@ case "mobius":
   const handleShowAllMeshWorkspaceEntries = useCallback(() => {
     handleSetMeshWorkspaceEntriesVisibility(meshWorkspaceEntries.map((entry) => entry.id), true);
   }, [handleSetMeshWorkspaceEntriesVisibility, meshWorkspaceEntries]);
+  const handleSetMeshWorkspaceEntryOverlayVisibility = useCallback(
+    (entryId: string, overlay: keyof MeshWorkspaceEntryOverlayState, visible: boolean) => {
+      if (entryId === "workspace:active") return;
+      setMeshWorkspaceEntryOverlayStates((previous) => ({
+        ...previous,
+        [entryId]: {
+          wireframe: previous[entryId]?.wireframe ?? false,
+          bounds: previous[entryId]?.bounds ?? false,
+          [overlay]: visible,
+        },
+      }));
+    },
+    []
+  );
   const handleSetMeshWorkspaceBooleanInput = useCallback((slot: "a" | "b", entryId: string | null) => {
     setMeshWorkspaceBooleanInputIds((previous) => ({ ...previous, [slot]: entryId }));
   }, []);
@@ -65753,10 +65832,13 @@ case "mobius":
       order: [...meshWorkspaceOrder],
       selectedEntryIds: [...meshWorkspaceSelectedEntryIds],
       booleanInputIds: { ...meshWorkspaceBooleanInputIds },
+      entryOverlayStates: Object.fromEntries(
+        Object.entries(meshWorkspaceEntryOverlayStates).map(([entryId, state]) => [entryId, { ...state }])
+      ),
     };
     setMeshWorkspaceSavedScenes((previous) => [snapshot, ...previous.filter((scene) => scene.name !== trimmed)].slice(0, 12));
-    setSurfaceMeshTopologyStatus(`Saved workspace scene: ${trimmed}.`);
-  }, [meshWorkspaceActiveMeshVisible, meshWorkspaceBooleanInputIds, meshWorkspaceGeometryLinks, meshWorkspaceGroups, meshWorkspaceOrder, meshWorkspaceSelectedEntryIds]);
+    setSurfaceMeshTopologyStatus(`Saved workspace snapshot: ${trimmed}.`);
+  }, [meshWorkspaceActiveMeshVisible, meshWorkspaceBooleanInputIds, meshWorkspaceEntryOverlayStates, meshWorkspaceGeometryLinks, meshWorkspaceGroups, meshWorkspaceOrder, meshWorkspaceSelectedEntryIds]);
   const handleRestoreMeshWorkspaceScene = useCallback((sceneId: string) => {
     const scene = meshWorkspaceSavedScenes.find((candidate) => candidate.id === sceneId);
     if (!scene) return;
@@ -65767,8 +65849,11 @@ case "mobius":
     setMeshWorkspaceSelectedEntryIds([...scene.selectedEntryIds]);
     setMeshWorkspaceSelectedEntryId(scene.selectedEntryIds[0] ?? "workspace:active");
     setMeshWorkspaceBooleanInputIds({ ...scene.booleanInputIds });
-    setMeshWorkspaceLeftTab("scene");
-    setSurfaceMeshTopologyStatus(`Restored workspace scene: ${scene.name}.`);
+    setMeshWorkspaceEntryOverlayStates(
+      Object.fromEntries(Object.entries(scene.entryOverlayStates ?? {}).map(([entryId, state]) => [entryId, { ...state }]))
+    );
+    setMeshWorkspaceLeftTab("snapshots");
+    setSurfaceMeshTopologyStatus(`Restored workspace snapshot: ${scene.name}.`);
   }, [meshWorkspaceSavedScenes]);
   const handleDeleteMeshWorkspaceScene = useCallback((sceneId: string) => {
     setMeshWorkspaceSavedScenes((previous) => previous.filter((scene) => scene.id !== sceneId));
@@ -65785,6 +65870,10 @@ case "mobius":
       a: prev.a === entryId ? null : prev.a,
       b: prev.b === entryId ? null : prev.b,
     }));
+    setMeshWorkspaceEntryOverlayStates((prev) => {
+      const { [entryId]: _removed, ...next } = prev;
+      return next;
+    });
   }, []);
   const handleLinkSelectedGeometryMeshToWorkspace = useCallback(() => {
     const selected = geometrySelectedSceneObject;
@@ -65843,6 +65932,20 @@ case "mobius":
       geometryObjectId: object.id,
       linkedAt: Date.now(),
     }));
+    const overlayVariants: MeshWorkspaceEntryOverlayState[] = [
+      { wireframe: true, bounds: false },
+      { wireframe: false, bounds: true },
+      { wireframe: false, bounds: false },
+      { wireframe: true, bounds: true },
+    ];
+    const entryOverlayStates: MeshWorkspaceEntryOverlayStates = Object.fromEntries(
+      links.map((link, index) => [
+        link.id,
+        // The example deliberately exposes each combination: wireframe only,
+        // bounds only, neither, then both.
+        { ...overlayVariants[index % overlayVariants.length] },
+      ])
+    );
     const firstLinkId = links[0]?.id ?? null;
     const groups: MeshWorkspaceGroup[] = [];
     const focusMeshData = mergeMeshData([
@@ -65878,6 +65981,7 @@ case "mobius":
     setMeshWorkspaceSelectedEntryId("workspace:active");
     setMeshWorkspaceSelectedEntryIds(["workspace:active"]);
     setMeshWorkspaceBooleanInputIds({ a: "workspace:active", b: firstLinkId });
+    setMeshWorkspaceEntryOverlayStates(entryOverlayStates);
     setMeshWorkspaceOverlayIsolation(null);
     setMeshWorkspaceMeshIsolation(null);
     setMeshWorkspaceLeftTab("scene");
@@ -65890,7 +65994,7 @@ case "mobius":
     setSurfaceMeshTopologyStatus(
       meshCount === 1
         ? "Workspace test scene loaded: one active mesh."
-        : `Workspace test scene loaded: active mesh plus ${linkCount} linked Geometry meshes. Boolean A/B are ready.`
+        : `Workspace test scene loaded: active mesh plus ${linkCount} linked Geometry meshes with independent overlays. Boolean A/B are ready.`
     );
   }, [focusSurfaceMeshViewport, setMeshDataset]);
   const handleActivateMeshWorkspaceEntry = useCallback(
@@ -71765,6 +71869,7 @@ case "mobius":
                       ["operations", "Operations"],
                       ["topology", "Topology Edit"],
                       ["scene", "Outliner"],
+                      ["snapshots", "Snapshots"],
                     ] as const
                   ).map(([tab, label]) => (
                     <button
@@ -72985,13 +73090,13 @@ case "mobius":
                       workspaceEntries={meshWorkspaceEntries}
                       groups={meshWorkspaceGroups}
                       booleanInputIds={meshWorkspaceBooleanInputIds}
+                      entryOverlayStates={meshWorkspaceEntryOverlayStates}
                       booleanSetupActive={
                         !!meshBooleanReview ||
                         !!meshWorkspaceBooleanInputIds.a ||
                         !!meshWorkspaceBooleanInputIds.b ||
                         meshOperationFocusedOperation?.startsWith("boolean-") === true
                       }
-                      savedScenes={meshWorkspaceSavedScenes}
                       onSelect={(nodeId) => {
                         setMeshWorkspaceSelectedEntryId(null);
                         setMeshWorkspaceSelectedEntryIds([]);
@@ -73000,6 +73105,7 @@ case "mobius":
                       onSelectWorkspaceEntry={handleSelectMeshWorkspaceEntry}
                       onActivateWorkspaceEntry={handleActivateMeshWorkspaceEntry}
                       onToggleWorkspaceEntryVisibility={handleToggleMeshWorkspaceEntryVisibility}
+                      onSetWorkspaceEntryOverlayVisibility={handleSetMeshWorkspaceEntryOverlayVisibility}
                       onToggleWorkspaceEntryIsolation={handleToggleMeshWorkspaceMeshIsolation}
                       onToggleWorkspaceEntrySetIsolation={handleToggleMeshWorkspaceEntrySetIsolation}
                       onSetGroupVisibility={handleSetMeshWorkspaceGroupVisibility}
@@ -73013,7 +73119,11 @@ case "mobius":
                       onSetWorkspaceEntriesVisibility={handleSetMeshWorkspaceEntriesVisibility}
                       onShowAllWorkspaceEntries={handleShowAllMeshWorkspaceEntries}
                       onComposeBoolean={handleComposeMeshWorkspaceBoolean}
-                      onOpenHistory={() => setInspectorPanelTab("history")}
+                      onOpenHistory={() => {
+                        handleOpenMeshContextHistory();
+                        setRightPanelTab("inspector");
+                        setMeshWorkspaceRequestedInspectorTab("history");
+                      }}
                       onUnlinkWorkspaceEntry={handleUnlinkMeshWorkspaceGeometry}
                       onOpenWorkspaceGeometrySource={handleOpenMeshWorkspaceGeometrySource}
                       onToggleVisibility={handleToggleUnifiedNodeVisibility}
@@ -73028,9 +73138,6 @@ case "mobius":
                       }}
                       onLinkGeometry={handleLinkSelectedGeometryMeshToWorkspace}
                       onLoadWorkspaceTestScene={handleLoadMeshWorkspaceTestScene}
-                      onSaveWorkspaceScene={handleSaveMeshWorkspaceScene}
-                      onRestoreWorkspaceScene={handleRestoreMeshWorkspaceScene}
-                      onDeleteWorkspaceScene={handleDeleteMeshWorkspaceScene}
                       onCreateGroup={handleCreateMeshWorkspaceGroup}
                       canShowAllSceneObjects={unifiedCanShowAllSceneObjects}
                       onShowAllSceneObjects={handleShowAllUnifiedObjects}
@@ -73048,6 +73155,15 @@ case "mobius":
                               ? "Invalid"
                               : "Ready"
                       }
+                    />
+                  )}
+                  {meshWorkspaceLeftTab === "snapshots" && (
+                    <MeshWorkspaceSnapshotsPanel
+                      scenes={meshWorkspaceSavedScenes}
+                      workspaceEntries={meshWorkspaceEntries}
+                      onSave={handleSaveMeshWorkspaceScene}
+                      onRestore={handleRestoreMeshWorkspaceScene}
+                      onDelete={handleDeleteMeshWorkspaceScene}
                     />
                   )}
                 </div>
@@ -76746,7 +76862,7 @@ case "mobius":
                             geodesicHeatPolylines={geodesicHeatPolylines}
                             geodesicHeatmapValues={geodesicHeatHeatmapValues}
                             geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
-                            overlayPolylineGroups={meshViewerOverlayPolylineGroupsWithDiagnostics}
+                            overlayPolylineGroups={meshWorkspaceOverlayPolylineGroupsWithDiagnostics}
                             overlayPointSets={meshViewerOverlayPointSetsWithDiagnostics}
                             overlayLabelSets={combinedOverlayLabelSetsWithDiagnostics}
                             overlayMeshGroups={meshViewerOverlayMeshGroups}
@@ -76939,7 +77055,7 @@ case "mobius":
                             ? handleSurfaceMeshTopologyGizmoDragEnd
                             : undefined
                         }
-                        overlayPolylineGroups={meshViewerOverlayPolylineGroupsWithDiagnostics}
+                        overlayPolylineGroups={meshWorkspaceOverlayPolylineGroupsWithDiagnostics}
                         overlayPointSets={meshViewerOverlayPointSetsWithDiagnostics}
                         overlayLabelSets={combinedOverlayLabelSetsWithDiagnostics}
                         overlayMeshGroups={meshViewerOverlayMeshGroups}
@@ -78925,6 +79041,7 @@ case "mobius":
                       surfaceMeshLabel={surfaceMeshLabel}
                       meshWorkspaceSummary={meshWorkspaceInspectorSummary}
                       meshWorkspaceSelectedProvenanceEntry={meshWorkspaceSelectedProvenanceEntry}
+                      requestedInspectorTab={meshWorkspaceRequestedInspectorTab}
                       meshActiveSelectionCardType={meshActiveSelectionSummary.type}
                       meshActiveSelectionCardId={meshActiveSelectionSummary.entityId}
                       meshActiveSelectionCardActions={meshActiveSelectionSummary.actions}
@@ -79010,12 +79127,15 @@ case "mobius":
                       meshLastOperation={meshLastOperation}
                       meshOperationLastValidation={meshOperationLastValidation}
                       meshOperationHistory={meshOperationHistory}
+                      surfaceMeshTopologyHistory={surfaceMeshTopologyHistory}
                       meshOperationError={meshOperationError}
                       onValidateActiveMesh={handleMeshOperationValidate}
                       onShowMeshHealthProblems={handleShowMeshHealthProblems}
                       onValidateLastMeshOperationResult={handleValidateLastMeshOperationResult}
                       onPreviewMeshOperationHistoryEntry={previewMeshOperationHistoryEntry}
                       onRestoreMeshOperationHistoryEntry={restoreMeshOperationHistoryEntry}
+                      onPreviewSurfaceMeshTopologyHistoryEntry={previewSurfaceMeshTopologyHistoryEntry}
+                      onRestoreSurfaceMeshTopologyHistoryEntry={restoreSurfaceMeshTopologyHistoryEntry}
                       onUndoLatestMeshOperation={undoLatestMeshOperation}
                       canUndoLatestMeshOperation={canUndoLatestMeshOperation}
                       onSaveMeshOperationPreset={handleSaveMeshOperationPreset}
@@ -103152,6 +103272,80 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
   );
 };
 
+type MeshWorkspaceSnapshotsPanelProps = {
+  scenes: MeshWorkspaceScenePreset[];
+  workspaceEntries: MeshWorkspaceEntry[];
+  onSave: (name: string) => void;
+  onRestore: (sceneId: string) => void;
+  onDelete: (sceneId: string) => void;
+};
+
+const MeshWorkspaceSnapshotsPanel: React.FC<MeshWorkspaceSnapshotsPanelProps> = ({
+  scenes,
+  workspaceEntries,
+  onSave,
+  onRestore,
+  onDelete,
+}) => {
+  const [snapshotName, setSnapshotName] = useState("");
+  return (
+  <div
+    data-testid="mesh-workspace-snapshots"
+    style={{
+      padding: "10px",
+      border: "1px solid #dbe4f0",
+      borderRadius: 8,
+      background: "#f8fafc",
+      display: "grid",
+      gap: 9,
+    }}
+  >
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase" }}>Workspace snapshots</div>
+        <div style={{ color: "#64748b", fontSize: 10, marginTop: 2 }}>{workspaceEntries.length} current mesh{workspaceEntries.length === 1 ? "" : "es"}</div>
+      </div>
+      <div style={{ display: "flex", gap: 5 }}>
+        <input
+          aria-label="Workspace snapshot name"
+          value={snapshotName}
+          onChange={(event) => setSnapshotName(event.target.value)}
+          placeholder="Snapshot name"
+          style={{ minWidth: 0, width: 112, padding: "4px 6px", fontSize: 10 }}
+        />
+        <button
+          type="button"
+          onClick={() => {
+            const name = snapshotName.trim() || "Workspace snapshot";
+            onSave(name);
+            setSnapshotName("");
+          }}
+          style={{ padding: "4px 8px", fontSize: 11 }}
+        >
+          Save snapshot
+        </button>
+      </div>
+    </div>
+    {scenes.length === 0 ? (
+      <div style={{ color: "#64748b", fontSize: 11, padding: "8px 0" }}>No workspace snapshots yet.</div>
+    ) : (
+      scenes.map((scene) => (
+        <div key={scene.id} style={{ display: "grid", gap: 5, padding: "7px", border: "1px solid #cbd5e1", borderRadius: 7, background: "#fff" }}>
+          <strong style={{ fontSize: 11, color: "#0f172a" }}>{scene.name}</strong>
+          <span style={{ color: "#64748b", fontSize: 10 }}>
+            {scene.geometryLinks.length + 1} meshes · {scene.groups.length} groups · {new Date(scene.savedAt).toLocaleString()}
+          </span>
+          <div style={{ display: "flex", gap: 5 }}>
+            <button type="button" onClick={() => onRestore(scene.id)} style={{ padding: "3px 7px", fontSize: 10 }}>Restore</button>
+            <button type="button" onClick={() => onDelete(scene.id)} style={{ padding: "3px 7px", color: "#b42318", fontSize: 10 }}>Delete</button>
+          </div>
+        </div>
+      ))
+    )}
+  </div>
+  );
+};
+
 type MeshWorkspaceSceneOutlinerProps = {
   nodes: UnifiedObjectNode[];
   rootId: string | null;
@@ -103161,11 +103355,16 @@ type MeshWorkspaceSceneOutlinerProps = {
   groups: MeshWorkspaceGroup[];
   booleanInputIds: { a: string | null; b: string | null };
   booleanSetupActive: boolean;
-  savedScenes: MeshWorkspaceScenePreset[];
+  entryOverlayStates: MeshWorkspaceEntryOverlayStates;
   onSelect: (id: string) => void;
   onSelectWorkspaceEntry: (id: string, additive?: boolean) => void;
   onActivateWorkspaceEntry: (id: string) => void;
   onToggleWorkspaceEntryVisibility: (id: string) => void;
+  onSetWorkspaceEntryOverlayVisibility: (
+    entryId: string,
+    overlay: keyof MeshWorkspaceEntryOverlayState,
+    visible: boolean
+  ) => void;
   onToggleWorkspaceEntryIsolation: (id: string) => void;
   onToggleWorkspaceEntrySetIsolation: (ids: string[]) => void;
   onSetGroupVisibility: (groupId: string, visible: boolean) => void;
@@ -103188,9 +103387,6 @@ type MeshWorkspaceSceneOutlinerProps = {
   onOpenBenchmark: () => void;
   onLinkGeometry: () => void;
   onLoadWorkspaceTestScene: (meshCount: 1 | 5 | 10) => void;
-  onSaveWorkspaceScene: (name: string) => void;
-  onRestoreWorkspaceScene: (sceneId: string) => void;
-  onDeleteWorkspaceScene: (sceneId: string) => void;
   onCreateGroup: () => void;
   canShowAllSceneObjects: boolean;
   onShowAllSceneObjects: () => void;
@@ -103208,11 +103404,12 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
   groups,
   booleanInputIds,
   booleanSetupActive,
-  savedScenes,
+  entryOverlayStates,
   onSelect,
   onSelectWorkspaceEntry,
   onActivateWorkspaceEntry,
   onToggleWorkspaceEntryVisibility,
+  onSetWorkspaceEntryOverlayVisibility,
   onToggleWorkspaceEntryIsolation,
   onToggleWorkspaceEntrySetIsolation,
   onSetGroupVisibility,
@@ -103235,9 +103432,6 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
   onOpenBenchmark,
   onLinkGeometry,
   onLoadWorkspaceTestScene,
-  onSaveWorkspaceScene,
-  onRestoreWorkspaceScene,
-  onDeleteWorkspaceScene,
   onCreateGroup,
   canShowAllSceneObjects,
   onShowAllSceneObjects,
@@ -103247,6 +103441,7 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
 }) => {
   const [viewHelpersExpanded, setViewHelpersExpanded] = useState(false);
   const [expandedObjectOverlayEntryIds, setExpandedObjectOverlayEntryIds] = useState<Set<string>>(() => new Set());
+  const [collapsedSelectedObjectOverlayEntryIds, setCollapsedSelectedObjectOverlayEntryIds] = useState<Set<string>>(() => new Set());
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [workspaceToolsOpen, setWorkspaceToolsOpen] = useState(false);
   const [sceneSearch, setSceneSearch] = useState("");
@@ -103254,7 +103449,6 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
   const [geometryLinksExpanded, setGeometryLinksExpanded] = useState(true);
   const [rowMenuId, setRowMenuId] = useState<string | null>(null);
   const [draggedEntryId, setDraggedEntryId] = useState<string | null>(null);
-  const [selectedSavedSceneId, setSelectedSavedSceneId] = useState<string>("");
   const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const root = (rootId ? byId.get(rootId) : null) ?? nodes.find((node) => node.category === "dataset") ?? null;
   const displayName = (name: string) => {
@@ -103303,6 +103497,29 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
     ? !!selected.canToggleVisibility && typeof selected.visible === "boolean"
     : !!selectedEntry;
   const workspaceEntryById = useMemo(() => new Map(workspaceEntries.map((entry) => [entry.id, entry])), [workspaceEntries]);
+
+  // The expanded controls always describe the single mesh currently being inspected.
+  // Visibility itself remains per-object and is never changed by selecting another row.
+  useEffect(() => {
+    if (selectedEntryIds.length !== 1 || !selectedId || !workspaceEntryById.has(selectedId)) return;
+    setExpandedObjectOverlayEntryIds((current) =>
+      current.size === 1 && current.has(selectedId) ? current : new Set([selectedId])
+    );
+  }, [selectedEntryIds.length, selectedId, workspaceEntryById]);
+
+  const selectWorkspaceEntry = (entryId: string, additive: boolean) => {
+    onSelectWorkspaceEntry(entryId, additive);
+    if (!additive) {
+      setExpandedObjectOverlayEntryIds(new Set([entryId]));
+      setCollapsedSelectedObjectOverlayEntryIds((current) => {
+        if (!current.has(entryId)) return current;
+        const next = new Set(current);
+        next.delete(entryId);
+        return next;
+      });
+    }
+  };
+
   const showBooleanSetup = booleanSetupActive || !!booleanInputIds.a || !!booleanInputIds.b;
   const normalizedSceneSearch = sceneSearch.trim().toLowerCase();
   const matchesSceneSearch = (value: string) =>
@@ -103399,6 +103616,38 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
     );
   };
 
+  const renderWorkspaceEntryOverlayRow = (
+    entry: MeshWorkspaceEntry,
+    overlay: keyof MeshWorkspaceEntryOverlayState,
+    label: string,
+    visible: boolean
+  ) => (
+    <div
+      key={`${entry.id}:${overlay}`}
+      data-testid={`mesh-workspace-entry-overlay-${entry.id}-${overlay}`}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr auto",
+        gap: 6,
+        alignItems: "center",
+        marginLeft: 20,
+        padding: "5px 6px",
+        borderRadius: 6,
+        background: visible ? "#f0fdf4" : "transparent",
+      }}
+    >
+      <span style={{ color: "#475569", fontSize: 11, fontWeight: 600 }}>{label}</span>
+      <button
+        type="button"
+        onClick={() => onSetWorkspaceEntryOverlayVisibility(entry.id, overlay, !visible)}
+        title={`${visible ? "Hide" : "Show"} ${label} for ${displayName(entry.name)}`}
+        style={{ padding: "3px 6px", fontSize: 10 }}
+      >
+        {visible ? "Hide" : "Show"}
+      </button>
+    </div>
+  );
+
   const renderWorkspaceRow = (entry: MeshWorkspaceEntry, nested = false) => {
     const active = entry.id === selectedId || selectedEntryIds.includes(entry.id);
     const group = groups.find((candidate) => candidate.memberIds.includes(entry.id)) ?? null;
@@ -103412,8 +103661,28 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
             ? "Preset"
             : "Mesh";
     const ownedOverlays = entry.id === "workspace:active" ? filteredObjectOverlayNodes : [];
-    const overlayVisibilityState = visibilityState(ownedOverlays);
-    const overlaysExpanded = expandedObjectOverlayEntryIds.has(entry.id);
+    const linkedOverlayState = entryOverlayStates[entry.id] ?? { wireframe: false, bounds: false };
+    const linkedOverlays = entry.kind === "geometry"
+      ? [
+          { id: "wireframe" as const, label: "Wireframe", visible: linkedOverlayState.wireframe },
+          { id: "bounds" as const, label: "Mesh bounds", visible: linkedOverlayState.bounds },
+        ]
+      : [];
+    const hasOwnedOverlays = entry.id === "workspace:active" ? objectOverlayNodes.length > 0 : linkedOverlays.length > 0;
+    const overlayVisibilityState = entry.id === "workspace:active"
+      ? visibilityState(ownedOverlays)
+      : linkedOverlays.every((overlay) => overlay.visible)
+        ? "visible"
+        : linkedOverlays.some((overlay) => overlay.visible)
+          ? "mixed"
+          : "hidden";
+    // `selectedId` is the mesh whose controls are currently being inspected.
+    // Multi-selection may retain additional command inputs, but it must not leave
+    // an unrelated mesh's overlay section open as the visible inspector context.
+    const selectedAsSingleWorkspaceEntry = selectedId === entry.id;
+    const overlaysExpanded = selectedAsSingleWorkspaceEntry
+      ? !collapsedSelectedObjectOverlayEntryIds.has(entry.id)
+      : expandedObjectOverlayEntryIds.has(entry.id);
     return (
       <div
         key={entry.id}
@@ -103445,7 +103714,7 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
       >
         <button
           type="button"
-          onClick={(event) => onSelectWorkspaceEntry(entry.id, event.ctrlKey || event.metaKey)}
+          onClick={(event) => selectWorkspaceEntry(entry.id, event.ctrlKey || event.metaKey)}
           onDoubleClick={() => onActivateWorkspaceEntry(entry.id)}
           style={{ minWidth: 0, padding: 0, border: 0, background: "transparent", textAlign: "left", cursor: "pointer", display: "grid", gap: 2 }}
           title={`${entry.name}. Double-click to activate and frame.`}
@@ -103531,26 +103800,44 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
           </div>
         )}
         </div>
-        {(entry.id === "workspace:active" && objectOverlayNodes.length > 0) && (
+        {hasOwnedOverlays && (
           <div style={{ marginLeft: 12, display: "grid", gap: 2, padding: "3px 0 1px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <button
                 type="button"
-                onClick={() => setExpandedObjectOverlayEntryIds((current) => {
-                  const next = new Set(current);
-                  if (next.has(entry.id)) next.delete(entry.id);
-                  else next.add(entry.id);
-                  return next;
-                })}
+                onClick={() => {
+                  if (selectedAsSingleWorkspaceEntry) {
+                    setCollapsedSelectedObjectOverlayEntryIds((collapsed) => {
+                      const next = new Set(collapsed);
+                      if (next.has(entry.id)) next.delete(entry.id);
+                      else next.add(entry.id);
+                      return next;
+                    });
+                    return;
+                  }
+                  setExpandedObjectOverlayEntryIds((current) => {
+                    const next = new Set(current);
+                    if (next.has(entry.id)) next.delete(entry.id);
+                    else next.add(entry.id);
+                    return next;
+                  });
+                }}
                 aria-expanded={overlaysExpanded}
                 style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, padding: "3px 2px", border: 0, background: "transparent", color: "#475569", fontSize: 10, fontWeight: 700, textAlign: "left", cursor: "pointer" }}
               >
                 <span aria-hidden="true">{overlaysExpanded ? "▼" : "▶"}</span>
-                Object overlays ({objectOverlayNodes.filter((node) => node.visible).length}/{objectOverlayNodes.length} visible)
+                Object overlays ({entry.id === "workspace:active" ? objectOverlayNodes.filter((node) => node.visible).length : linkedOverlays.filter((overlay) => overlay.visible).length}/{entry.id === "workspace:active" ? objectOverlayNodes.length : linkedOverlays.length} visible)
               </button>
               <button
                 type="button"
-                onClick={() => toggleOverlayNodes(objectOverlayNodes)}
+                onClick={() => {
+                  if (entry.id === "workspace:active") {
+                    toggleOverlayNodes(objectOverlayNodes);
+                    return;
+                  }
+                  const nextVisible = overlayVisibilityState !== "visible";
+                  linkedOverlays.forEach((overlay) => onSetWorkspaceEntryOverlayVisibility(entry.id, overlay.id, nextVisible));
+                }}
                 title={overlayVisibilityState === "mixed" ? "Some object overlays are visible" : "Toggle object overlay visibility"}
                 aria-label={`Object overlays: ${overlayVisibilityState}`}
                 style={{ marginLeft: "auto", padding: "2px 5px", fontSize: 9 }}
@@ -103558,7 +103845,11 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
                 {overlayVisibilityState === "mixed" ? "Partial" : overlayVisibilityState === "visible" ? "Hide" : "Show"}
               </button>
             </div>
-            {overlaysExpanded && (ownedOverlays.length ? ownedOverlays.map((node) => renderOverlayRow(node, true)) : <div style={{ marginLeft: 14, color: "#64748b", fontSize: 9 }}>No matching object overlays.</div>)}
+            {overlaysExpanded && (entry.id === "workspace:active"
+              ? ownedOverlays.length
+                ? ownedOverlays.map((node) => renderOverlayRow(node, true))
+                : <div style={{ marginLeft: 14, color: "#64748b", fontSize: 9 }}>No matching object overlays.</div>
+              : linkedOverlays.map((overlay) => renderWorkspaceEntryOverlayRow(entry, overlay.id, overlay.label, overlay.visible)))}
           </div>
         )}
         {entry.lastOperationLabel && (
@@ -103703,19 +103994,6 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
               Show Geometry
             </button>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 5, padding: "6px 0", borderBottom: "1px solid #dbe4f0" }}>
-        <select aria-label="Workspace snapshots" value={selectedSavedSceneId} onChange={(event) => setSelectedSavedSceneId(event.target.value)} style={{ minWidth: 0, fontSize: 10 }}>
-          <option value="">Workspace snapshots</option>
-          {savedScenes.map((scene) => <option key={scene.id} value={scene.id}>{scene.name}</option>)}
-        </select>
-        <div style={{ display: "flex", gap: 4 }}>
-          <button type="button" onClick={() => { const name = window.prompt("Workspace snapshot name", "Workspace snapshot"); if (name) onSaveWorkspaceScene(name); }} style={{ padding: "3px 6px", fontSize: 10 }}>Save snapshot</button>
-          {selectedSavedSceneId && <>
-            <button type="button" onClick={() => onRestoreWorkspaceScene(selectedSavedSceneId)} style={{ padding: "3px 6px", fontSize: 10 }}>Load</button>
-            <button type="button" onClick={() => { onDeleteWorkspaceScene(selectedSavedSceneId); setSelectedSavedSceneId(""); }} style={{ padding: "3px 6px", color: "#b42318", fontSize: 10 }}>Delete</button>
-          </>}
-        </div>
-          </div>
         </div>
       )}
 
@@ -103765,7 +104043,7 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
                   {viewHelperVisibilityState === "mixed" ? "Partial" : viewHelperVisibilityState === "visible" ? "Hide" : "Show"}
                 </button>
               </div>
-              {viewHelpersExpanded && (filteredViewHelperNodes.length ? filteredViewHelperNodes.map(renderOverlayRow) : <div style={{ marginLeft: 18, color: "#64748b", fontSize: 9 }}>No matching view helpers.</div>)}
+              {viewHelpersExpanded && (filteredViewHelperNodes.length ? filteredViewHelperNodes.map((node) => renderOverlayRow(node)) : <div style={{ marginLeft: 18, color: "#64748b", fontSize: 9 }}>No matching view helpers.</div>)}
             </div>
           )}
         </div>
@@ -114538,6 +114816,7 @@ type SurfacesRightPanelProps = {
   surfaceMeshLabel: string;
   meshWorkspaceSummary: MeshWorkspaceInspectorSummary;
   meshWorkspaceSelectedProvenanceEntry: MeshOperationHistoryEntry | null;
+  requestedInspectorTab?: InspectorPanelTab | null;
   meshActiveSelectionCardType: ActiveSelectionCardProps["type"];
   meshActiveSelectionCardId: ActiveSelectionCardProps["entityId"];
   meshActiveSelectionCardActions: ActiveSelectionCardProps["actions"];
@@ -114621,12 +114900,15 @@ type SurfacesRightPanelProps = {
   meshLastOperation: MeshOperationResultSummary | null;
   meshOperationLastValidation: MeshOperationLastValidation | null;
   meshOperationHistory: MeshOperationHistoryEntry[];
+  surfaceMeshTopologyHistory: SurfaceMeshTopologyHistoryEntry[];
   meshOperationError: string | null;
   onValidateActiveMesh: () => void | Promise<void>;
   onShowMeshHealthProblems: () => void;
   onValidateLastMeshOperationResult: () => void | Promise<void>;
   onPreviewMeshOperationHistoryEntry: (entryId: string, side: "before" | "after") => void;
   onRestoreMeshOperationHistoryEntry: (entryId: string) => void;
+  onPreviewSurfaceMeshTopologyHistoryEntry: (entryId: string, side: "before" | "after") => void;
+  onRestoreSurfaceMeshTopologyHistoryEntry: (entryId: string) => void;
   onUndoLatestMeshOperation: () => void;
   canUndoLatestMeshOperation: boolean;
   onSaveMeshOperationPreset: () => void;
@@ -114783,7 +115065,7 @@ type SurfacesRightPanelProps = {
 };
 
 type InspectorPanelTab = "object" | "result" | "selection" | "probe" | "analysis" | "diagnostics" | "history" | "warnings";
-type MeshWorkspaceLeftTab = "operations" | "topology" | "scene";
+type MeshWorkspaceLeftTab = "operations" | "topology" | "scene" | "snapshots";
 type AnalysisResultsView = "show-all" | "current-screen";
 type MeshAnalysisFeatureState = "ready" | "running" | "deferred" | "not-requested" | "missing" | "unavailable";
 type MeshAnalysisFeatureRow = {
@@ -114804,6 +115086,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   surfaceMeshLabel,
   meshWorkspaceSummary,
   meshWorkspaceSelectedProvenanceEntry,
+  requestedInspectorTab = null,
   meshActiveSelectionCardType,
   meshActiveSelectionCardId,
   meshActiveSelectionCardActions,
@@ -114885,12 +115168,15 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   meshLastOperation,
   meshOperationLastValidation,
   meshOperationHistory,
+  surfaceMeshTopologyHistory,
   meshOperationError,
   onValidateActiveMesh,
   onShowMeshHealthProblems,
   onValidateLastMeshOperationResult,
   onPreviewMeshOperationHistoryEntry,
   onRestoreMeshOperationHistoryEntry,
+  onPreviewSurfaceMeshTopologyHistoryEntry,
+  onRestoreSurfaceMeshTopologyHistoryEntry,
   onUndoLatestMeshOperation,
   canUndoLatestMeshOperation,
   onSaveMeshOperationPreset,
@@ -115080,6 +115366,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   useEffect(() => {
     if (inspectorPanelTab === "warnings") setInspectorPanelTab("diagnostics");
   }, [inspectorPanelTab]);
+  useEffect(() => {
+    if (requestedInspectorTab) setInspectorPanelTab(requestedInspectorTab);
+  }, [requestedInspectorTab]);
 
   const paramDefaults = isWeierstrass ? WEIERSTRASS_DEFAULTS.domain : getParamDomainPreviewBounds(paramId);
   const safeGraphDomain = normalizeGraphDomain(graphDomain, getDefaultGraphSpan(surfaceId));
@@ -117403,8 +117692,40 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           <div data-testid="mesh-inspector-history-card" style={inspectorSectionCard}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 7 }}>
               <div style={inspectorSectionTitle}>Mesh History</div>
-              <span style={{ color: "#64748b", fontSize: 10 }}>{meshOperationHistory.length.toLocaleString()} step{meshOperationHistory.length === 1 ? "" : "s"}</span>
+              <span style={{ color: "#64748b", fontSize: 10 }}>
+                {(meshOperationHistory.length + surfaceMeshTopologyHistory.length).toLocaleString()} event{meshOperationHistory.length + surfaceMeshTopologyHistory.length === 1 ? "" : "s"}
+              </span>
             </div>
+            {surfaceMeshTopologyHistory.length > 0 && (
+              <details open data-testid="mesh-topology-provenance-timeline" style={{ marginBottom: 10 }}>
+                <summary style={{ cursor: "pointer", fontSize: 11, fontWeight: 850, color: "#0f172a" }}>
+                  Topology edits · {surfaceMeshTopologyHistory.length}
+                </summary>
+                <div style={{ display: "grid", gap: 7, marginTop: 7 }}>
+                  {surfaceMeshTopologyHistory.slice(0, 12).map((entry, index) => (
+                    <div
+                      key={`mesh-inspector-topology-history-${entry.id}`}
+                      style={{ border: "1px solid #bfdbfe", borderRadius: 7, background: "#fff", padding: "7px", display: "grid", gap: 4, fontSize: 11 }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                        <strong>{entry.actionLabel}</strong>
+                        {index === 0 && <span style={{ color: "#166534", fontSize: 10, fontWeight: 850 }}>current</span>}
+                      </div>
+                      <div style={{ color: "#475569" }}>Input: {entry.targetLabel} · {entry.paramsLabel}</div>
+                      <div style={{ color: "#475569" }}>
+                        Output: {entry.resultLabel} · {entry.beforeCounts.vertexCount.toLocaleString()} → {entry.afterCounts.vertexCount.toLocaleString()} vertices · {entry.beforeCounts.faceCount.toLocaleString()} → {entry.afterCounts.faceCount.toLocaleString()} faces
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button type="button" onClick={() => onPreviewSurfaceMeshTopologyHistoryEntry(entry.id, "before")}>Preview before</button>
+                        <button type="button" onClick={() => onPreviewSurfaceMeshTopologyHistoryEntry(entry.id, "after")}>Preview after</button>
+                        <button type="button" onClick={() => onPreviewSurfaceMeshTopologyHistoryEntry(entry.id, "after")}>Compare</button>
+                        <button type="button" onClick={() => onRestoreSurfaceMeshTopologyHistoryEntry(entry.id)}>Restore</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
             {meshOperationHistory.length > 0 && (
               <details open data-testid="mesh-operation-provenance-graph" style={{ marginBottom: 10 }}>
                 <summary style={{ cursor: "pointer", fontSize: 11, fontWeight: 850, color: "#0f172a" }}>
@@ -117538,6 +117859,10 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                         {entry.result.beforeVertices.toLocaleString()} {"->"}{" "}
                         {entry.result.afterVertices == null ? "n/a" : entry.result.afterVertices.toLocaleString()} vertices
                       </div>
+                      <div style={{ color: "#64748b" }}>
+                        <strong>Inputs:</strong> {entry.request?.inputs.join(" + ") || entry.result.sourceIds.join(" + ") || "active mesh"}
+                        {" · "}<strong>Output:</strong> {entry.outputLabel ?? entry.result.label}
+                      </div>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <button
                           type="button"
@@ -117563,7 +117888,12 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                         >
                           Restore
                         </button>
-                        <button type="button" disabled title="Comparison view is handled by Boolean Review when available.">
+                        <button
+                          type="button"
+                          onClick={() => entry.topologyHistoryEntryId && onPreviewSurfaceMeshTopologyHistoryEntry(entry.topologyHistoryEntryId, "after")}
+                          disabled={!entry.topologyHistoryEntryId}
+                          title="Show the result with its input mesh"
+                        >
                           Compare
                         </button>
                         {isLatest && (
