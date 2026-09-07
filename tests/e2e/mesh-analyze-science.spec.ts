@@ -99,12 +99,23 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-workspace-scene-outliner")).toBeVisible();
     await expect(page.getByTestId("mesh-workspace-left-tab-scene")).toHaveAttribute("aria-pressed", "true");
     await page.getByTestId("mesh-workspace-left-tab-analyze").click();
+    await expect(page.getByTestId("mesh-analyze-taxonomy")).toBeVisible();
     await expect(page.getByTestId("mesh-analyze-curvature-config")).toBeVisible();
     await expect(page.getByTestId("mesh-analyze-science-overlay")).toHaveCount(0);
     await page.getByTestId("mesh-analyze-hud-toggle").click();
     await expect(page.getByTestId("mesh-analyze-science-overlay")).toBeVisible();
     await page.getByTestId("mesh-analyze-config-compute-k").click();
-    await expect(page.getByTestId("mesh-analyze-config-field-gaussian")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("mesh-analysis-result-gaussian")).toHaveAttribute("aria-pressed", "true");
+    const toolbar = page.getByTestId("mesh-analysis-context-toolbar");
+    await expect(toolbar).toContainText(/Field/i);
+    await expect(toolbar).toContainText(/Palette/i);
+    await expect(toolbar).toContainText(/Range/i);
+    await expect(toolbar).toContainText(/Layers/i);
+    await expect(toolbar.getByText("Pick:", { exact: true })).toHaveCount(0);
+    await page.getByTestId("mesh-analysis-nav-mesh-quality").click();
+    await expect(page.getByTestId("mesh-analyze-quality-config")).toBeVisible();
+    await page.getByTestId("mesh-analysis-nav-differential-geometry").click();
+    await expect(page.getByTestId("mesh-analyze-curvature-config")).toBeVisible();
     await expect(page.getByTestId("mesh-analyze-range-source")).toContainText(/whole mesh/i);
     await expect(page.getByTestId("mesh-analyze-curvature-min")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analyze-curvature-max")).not.toContainText("n/a");
@@ -146,15 +157,11 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByText(/No coincident vertices found/i).first()).toBeVisible();
     await expect(page.getByTestId("mesh-analyze-diagnostic-overlay-label")).toContainText(/No coincident vertices found/i);
 
-    const toolbar = page.getByTestId("mesh-analysis-context-toolbar");
-    await toolbar.getByRole("button", { name: "Edge", exact: true }).click();
-    await expect(toolbar.getByRole("button", { name: "Edge", exact: true })).toHaveAttribute("aria-pressed", "true");
     const probe = page.getByTestId("mesh-analyze-probe-toggle");
     if ((await probe.getAttribute("aria-pressed")) !== "true") await probe.click();
     await expect(probe).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("mesh-analyze-probe-help")).toContainText(/Click mesh to record probe/i);
-    await expect(toolbar.getByRole("button", { name: "Edge", exact: true })).toHaveAttribute("aria-pressed", "true");
-    await clickSurfaceViewerCanvas(page, 0.5, 0.52);
+    await clickSurfaceViewerCanvas(page, 0.58, 0.42);
     await expect(page.getByTestId("mesh-analyze-probe-K")).not.toContainText("n/a", { timeout: 15_000 });
     await expect(page.getByTestId("mesh-analyze-probe-H")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analyze-probe-k1")).not.toContainText("n/a");
@@ -168,7 +175,6 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-probe-label")).toContainText(/Probe: vertex \d+ at/i);
     await page.getByTestId("mesh-analyze-clear-probes").click();
     await expect(page.getByTestId("mesh-analyze-probe-history")).toHaveCount(0);
-    await expect(toolbar.getByRole("button", { name: "Edge", exact: true })).toHaveAttribute("aria-pressed", "true");
 
     await page.getByTestId("mesh-analyze-return-geometry").click();
     await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
@@ -197,7 +203,7 @@ test("Mesh Analyze populates curvature range for torus knot preset", async () =>
     await expect(page.getByTestId("mesh-analyze-view-clean")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("mesh-analyze-view-directions")).toHaveAttribute("aria-pressed", "false");
     await expect(page.getByTestId("mesh-analyze-view-gauss")).toHaveAttribute("aria-pressed", "false");
-    await expect(toolbar.getByRole("button", { name: "Gauss map", exact: true })).toHaveAttribute("aria-pressed", "false");
+    await expect(toolbar.getByRole("button", { name: "Gauss", exact: true })).toHaveAttribute("aria-pressed", "false");
     await expect(page.getByTestId("mesh-analyze-toggle-chart-grid")).toHaveAttribute("aria-pressed", "false");
 
     await expect(page.getByTestId("mesh-analyze-science-overlay")).toBeVisible({ timeout: 15_000 });
@@ -209,22 +215,22 @@ test("Mesh Analyze populates curvature range for torus knot preset", async () =>
     await page.getByTestId("mesh-inspector-tab-diagnostics").click();
     await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Boundary:\s*0/i);
     await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Coincident:\s*0/i);
-    await expect(page.getByTestId("mesh-analyze-reset")).toContainText(/Reset view/i);
+    await expect(page.getByTestId("mesh-analyze-reset")).toContainText(/Reset/i);
     await page.getByTestId("mesh-analyze-view-gauss").click();
     await expect(page.getByTestId("mesh-analyze-view-gauss")).toHaveAttribute("aria-pressed", "true");
-    await expect(toolbar.getByRole("button", { name: "Gauss map", exact: true })).toHaveAttribute("aria-pressed", "true");
-    await page.getByTestId("mesh-analyze-toggle-directions").click();
+    await expect(toolbar.getByRole("button", { name: "Gauss", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("mesh-analyze-view-directions").click();
     await page.getByTestId("mesh-analyze-toggle-chart-grid").click();
     await expect(page.getByTestId("mesh-analyze-overlay-crowd-hint")).toContainText(/Many overlays active/i);
     await page.getByTestId("mesh-analyze-view-clean").click();
     await expect(page.getByTestId("mesh-analyze-view-clean")).toHaveAttribute("aria-pressed", "true");
-    await expect(toolbar.getByRole("button", { name: "Gauss map", exact: true })).toHaveAttribute("aria-pressed", "false");
-    await expect(page.getByTestId("mesh-analyze-toggle-directions")).toHaveAttribute("aria-pressed", "false");
+    await expect(toolbar.getByRole("button", { name: "Gauss", exact: true })).toHaveAttribute("aria-pressed", "false");
+    await expect(page.getByTestId("mesh-analyze-view-directions")).toHaveAttribute("aria-pressed", "false");
     await expect(page.getByTestId("mesh-analyze-toggle-chart-grid")).toHaveAttribute("aria-pressed", "false");
     await expect(page.getByTestId("mesh-analyze-overlay-crowd-hint")).toHaveCount(0);
     await page.getByTestId("mesh-analysis-result-solid").click();
     await expect(page.getByTestId("mesh-analyze-result-off")).toContainText(/No curvature result selected/i);
-    await expect(toolbar.getByRole("button", { name: "Gauss map", exact: true })).toBeDisabled();
+    await expect(toolbar.getByRole("button", { name: "Gauss", exact: true })).toBeDisabled();
     await page.getByTestId("mesh-analyze-show-k").click();
     await expect(gaussianButton).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("mesh-analyze-curvature-min")).not.toContainText("n/a");

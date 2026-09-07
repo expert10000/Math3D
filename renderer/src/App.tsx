@@ -38956,10 +38956,6 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    clearInspect();
-  }, [surfaceSampleSet, clearInspect]);
-
-  useEffect(() => {
     if (!selection || selection.kind !== "surfaceDisk") return;
     if (selection.radius === selectionRadius) return;
     setSelection({ ...selection, radius: selectionRadius });
@@ -39769,6 +39765,9 @@ const App: React.FC = () => {
   useEffect(() => {
     setMeshAnalyzeProbeHistory([]);
   }, [surfaceMeshData, surfaceViewerKind]);
+  useEffect(() => {
+    clearInspect();
+  }, [activeEqSurfaceId, clearInspect, paramSurfaceId, surfaceMeshData, surfaceViewerKind]);
   const surfaceMeshTopologyPick = useMemo(
     () =>
       surfaceViewerKind === "mesh" && !surfaceMeshLargeAnalysisDeferred
@@ -45719,7 +45718,7 @@ case "mobius":
     setImplicitProbeXYZ(null);
     setComplexMapProbe(null);
     setSurfaceMeshHoverPick(null);
-  }, [activeEqSurfaceId, paramSurfaceId, surfaceViewerKind, colorMode]);
+  }, [activeEqSurfaceId, paramSurfaceId, surfaceViewerKind]);
 
   useEffect(() => {
     if (!probeEnabled) {
@@ -58546,6 +58545,8 @@ case "mobius":
     handleProbe({
       point: info.point,
       normal: info.normal,
+      vertexIndex: info.vertexIndex,
+      meshKey: info.meshKey,
       uv: info.uv,
       xy: info.xy,
       modifiers: info.modifiers,
@@ -59828,12 +59829,16 @@ case "mobius":
     surfaceScienceCurvatureStats.K,
   ]);
   const meshAnalyzeTopologyProbeCurvature = useMemo(() => {
-    if (surfaceViewerKind !== "mesh" || !probeEnabled || !surfaceMeshCurvatures) return null;
+    if (surfaceViewerKind !== "mesh" || !probeEnabled || !meshAnalyzeCurvatureArrays) return null;
     const pick = surfaceMeshTopologyPick;
     if (!pick && probeStamp <= 0) return null;
     let vertexIndex: number | null =
       pick?.vertexIndex ??
+      probeInfo?.vertexIndex ??
       (surfaceMeshTopologyPickMode === "vertex" ? selectedSurfaceMeshTopologyVertexId : null);
+    if (vertexIndex == null && probeInfo?.point && surfaceMeshData) {
+      vertexIndex = findNearestMeshVertexIndex(surfaceMeshData, probeInfo.point);
+    }
     if (vertexIndex == null && surfaceMeshTopologyPickMode === "edge") {
       vertexIndex = Math.max(0, Math.round(surfaceMeshTopologyEdgeA || 0));
     }
@@ -59841,26 +59846,28 @@ case "mobius":
       const tri = readMeshFaceVertexIndices(surfaceMeshData, selectedSurfaceMeshTopologyFaceId);
       vertexIndex = tri?.[0] ?? null;
     }
-    if (vertexIndex == null || vertexIndex < 0 || vertexIndex >= surfaceMeshCurvatures.K.length) return null;
+    if (vertexIndex == null || vertexIndex < 0 || vertexIndex >= meshAnalyzeCurvatureArrays.K.length) return null;
     const read = (values: Float32Array) => {
       const value = values[vertexIndex];
       return Number.isFinite(value) ? value : Number.NaN;
     };
     const point = surfaceMeshData ? readMeshPoint(surfaceMeshData, vertexIndex) : null;
     return {
-      K: read(surfaceMeshCurvatures.K),
-      H: read(surfaceMeshCurvatures.H),
-      k1: read(surfaceMeshCurvatures.k1),
-      k2: read(surfaceMeshCurvatures.k2),
+      K: read(meshAnalyzeCurvatureArrays.K),
+      H: read(meshAnalyzeCurvatureArrays.H),
+      k1: read(meshAnalyzeCurvatureArrays.k1),
+      k2: read(meshAnalyzeCurvatureArrays.k2),
       vertexIndex,
       point,
     };
   }, [
     probeEnabled,
+    probeInfo?.point,
+    probeInfo?.vertexIndex,
     probeStamp,
     selectedSurfaceMeshTopologyVertexId,
     selectedSurfaceMeshTopologyFaceId,
-    surfaceMeshCurvatures,
+    meshAnalyzeCurvatureArrays,
     surfaceMeshData,
     surfaceMeshTopologyEdgeA,
     surfaceMeshTopologyPick,
@@ -74029,141 +74036,182 @@ case "mobius":
                           Diagnostics
                         </button>
                       </div>
-                      <div
-                        data-testid="mesh-analyze-curvature-config"
-                        style={{
-                          border: "1px solid #bfdbfe",
-                          borderRadius: 8,
-                          background: "#ffffff",
-                          padding: "8px",
-                          display: "grid",
-                          gap: 7,
-                        }}
-                      >
+                      <div data-testid="mesh-analyze-taxonomy" style={{ display: "grid", gap: 7 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-                          <strong style={{ fontSize: 11, color: "#0f172a" }}>Differential geometry</strong>
-                          <span style={{ color: "#64748b", fontSize: 10, fontWeight: 700 }}>current mesh</span>
+                          <strong style={{ fontSize: 11, color: "#0f172a" }}>Analysis computations</strong>
+                          <span style={{ color: "#64748b", fontSize: 10, fontWeight: 700 }}>
+                            {activeMeshAnalysisCachedKinds.length
+                              ? `${activeMeshAnalysisCachedKinds.length} cached`
+                              : "not cached"}
+                          </span>
                         </div>
-                        <div style={{ display: "grid", gap: 4 }}>
-                          <span style={{ color: "#475467", fontSize: 10, fontWeight: 800 }}>Quantity</span>
-                          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                            {([
-                              ["gaussian", "Gaussian K"],
-                              ["mean", "Mean H"],
-                              ["k1", "Principal k1"],
-                              ["k2", "Principal k2"],
-                            ] as const).map(([field, label]) => (
-                              (() => {
-                                const active = colorMode === field;
-                                const tone =
-                                  field === "gaussian"
-                                    ? { border: "#93c5fd", background: "#eff6ff", active: "#dbeafe", color: "#1d4ed8" }
-                                    : field === "mean"
-                                      ? { border: "#5eead4", background: "#f0fdfa", active: "#ccfbf1", color: "#0f766e" }
-                                      : field === "k1"
-                                        ? { border: "#c4b5fd", background: "#f5f3ff", active: "#ede9fe", color: "#6d28d9" }
-                                        : { border: "#fdba74", background: "#fff7ed", active: "#ffedd5", color: "#c2410c" };
-                                return (
-                                  <button
-                                    key={`mesh-analyze-config-field-${field}`}
-                                    type="button"
-                                    data-testid={`mesh-analyze-config-field-${field}`}
-                                    onClick={() => handleSelectMeshAnalyzeCurvatureField(field)}
-                                    aria-pressed={active}
-                                    style={{
-                                      border: `1px solid ${tone.border}`,
-                                      borderRadius: 999,
-                                      background: active ? tone.active : tone.background,
-                                      color: tone.color,
-                                      boxShadow: active ? `inset 0 0 0 1px ${tone.border}` : undefined,
-                                      fontWeight: active ? 800 : 700,
-                                      padding: "3px 7px",
-                                      fontSize: 10,
-                                      cursor: "pointer",
-                                    }}
-                                  >
-                                    {label}
-                                  </button>
-                                );
-                              })()
-                            ))}
-                          </div>
-                        </div>
-                        <div style={{ display: "grid", gap: 2, color: "#475467", fontSize: 10.5 }}>
-                          <span><strong>Method:</strong> Discrete angle-defect / cotangent Laplacian</span>
-                          <span><strong>Range domain:</strong> {meshAnalyzeRangeMode === "whole" ? "Whole mesh" : "Selection"}</span>
-                        </div>
-                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                          <button
-                            type="button"
-                            data-testid="mesh-analyze-config-compute-k"
-                            onClick={() => handleSelectMeshAnalyzeCurvatureField("gaussian")}
-                            disabled={!meshAnalyzeCanShowCurvature}
-                            style={{
-                              borderColor: "#60a5fa",
-                              background: "#dbeafe",
-                              color: "#1d4ed8",
-                              fontWeight: 800,
-                              fontSize: 10,
-                              padding: "3px 7px",
-                            }}
-                          >
-                            {meshAnalyzeCanShowCurvature ? "Use Gaussian K" : "Curvature unavailable"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setMeshAnalyzeRangeMode("whole")}
-                            aria-pressed={meshAnalyzeRangeMode === "whole"}
-                            style={{ ...pill(meshAnalyzeRangeMode === "whole"), padding: "3px 7px", fontSize: 10 }}
-                          >
-                            Whole
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setMeshAnalyzeRangeMode("selected")}
-                            disabled={!meshAnalyzeSelectedRangeAvailable}
-                            aria-pressed={meshAnalyzeRangeMode === "selected"}
-                            title={meshAnalyzeSelectedRangeAvailable ? "Use the selected region for display range" : "Select a mesh region first"}
-                            style={{
-                              ...pill(meshAnalyzeRangeMode === "selected"),
-                              padding: "3px 7px",
-                              fontSize: 10,
-                              opacity: meshAnalyzeSelectedRangeAvailable ? 1 : 0.55,
-                            }}
-                          >
-                            Selection
-                          </button>
-                        </div>
-                      </div>
-                      <div style={{ display: "grid", gap: 5 }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, color: "#0f172a" }}>Analysis catalog</div>
-                        <div style={{ display: "grid", gap: 4 }}>
+                        <div style={{ display: "grid", gap: 3 }}>
                           {([
-                            ["differential-geometry", "Overview"],
-                            ["differential-geometry", "Differential Geometry"],
-                            ["vector-calculus", "Fields"],
-                            ["curvature-lines", "Surface Features"],
-                            ["ridges-valleys", "Ridges / Valleys"],
-                            ["chart-analysis", "Charts & Statistics"],
-                            ["mesh-quality", "Mesh Quality"],
-                            ["geodesics", "Distances & Geodesics"],
-                            ["diagnostics", "Topology & Integrity"],
-                            ["diagnostics", "Diagnostics"],
-                          ] as const).map(([section, label]) => (
-                            <button
-                              key={`mesh-analysis-nav-${label}`}
-                              type="button"
-                              onClick={() => setAnalysisFocusedSection(section)}
-                              aria-pressed={analysisFocusedSection === section && label !== "Overview"}
-                              style={{
-                                ...pill(analysisFocusedSection === section && label !== "Overview"),
-                                justifyContent: "flex-start",
-                                textAlign: "left",
-                              }}
-                            >
-                              {label}
-                            </button>
-                          ))}
+                            ["differential-geometry", "Differential geometry", meshAnalyzeCanShowCurvature ? "ready" : "waiting"],
+                            ["vector-calculus", "Fields", surfaceScalarFields.size || surfaceVectorFields.size ? "ready" : "available"],
+                            ["curvature-lines", "Surface features", showCurvatureLines || showPrincipalDirections ? "active" : "available"],
+                            ["ridges-valleys", "Ridges / valleys", showRidges || showValleys ? "active" : "available"],
+                            ["chart-analysis", "Charts & statistics", showChartGrid ? "active" : "available"],
+                            ["mesh-quality", "Mesh quality", meshQualityBusy ? `${Math.round(meshQualityProgress * 100)}%` : meshQualityReport ? "ready" : "waiting"],
+                            ["geodesics", "Distances & geodesics", geodesicPathLength != null ? "ready" : geodesicPathEnabled ? "picking" : "available"],
+                            ["diagnostics", "Topology & integrity", surfaceMeshAnalyzeDiagnostics ? (surfaceMeshAnalyzeDiagnostics.cleanMesh ? "clean" : "review") : "waiting"],
+                          ] as const).map(([section, label, status]) => {
+                            const active = analysisFocusedSection === section;
+                            return (
+                              <button
+                                key={`mesh-analysis-nav-${section}`}
+                                type="button"
+                                data-testid={`mesh-analysis-nav-${section}`}
+                                onClick={() => setAnalysisFocusedSection(section)}
+                                aria-pressed={active}
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "minmax(0, 1fr) auto",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  border: `1px solid ${active ? "#60a5fa" : "#dbe2ea"}`,
+                                  borderRadius: 6,
+                                  background: active ? "#eaf3ff" : "#ffffff",
+                                  color: "#0f172a",
+                                  padding: "5px 7px",
+                                  fontSize: 10.5,
+                                  textAlign: "left",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <span style={{ minWidth: 0, fontWeight: active ? 850 : 700 }}>{label}</span>
+                                <span style={{ color: status === "review" ? "#b45309" : status === "clean" || status === "ready" ? "#15803d" : "#64748b", fontSize: 9.5, fontWeight: 800 }}>
+                                  {status}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <div style={{ borderTop: "1px solid #dbe2ea", paddingTop: 7, display: "grid", gap: 6 }}>
+                          {analysisFocusedSection === "differential-geometry" && (
+                            <div data-testid="mesh-analyze-curvature-config" style={{ display: "grid", gap: 6 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                <strong style={{ fontSize: 10.5 }}>Curvature result</strong>
+                                <span style={{ color: meshAnalyzeCanShowCurvature ? "#15803d" : "#64748b", fontSize: 10, fontWeight: 800 }}>
+                                  {meshAnalyzeCanShowCurvature ? "K / H / k1 / k2 cached" : "not available"}
+                                </span>
+                              </div>
+                              <div style={{ color: "#475467", fontSize: 10.5 }}>
+                                <strong>Method:</strong> discrete angle defect / cotangent Laplacian
+                              </div>
+                              <button
+                                type="button"
+                                data-testid="mesh-analyze-config-compute-k"
+                                onClick={() => handleSelectMeshAnalyzeCurvatureField("gaussian")}
+                                disabled={!meshAnalyzeCanShowCurvature}
+                                style={{ borderColor: "#60a5fa", background: "#dbeafe", color: "#1d4ed8", fontWeight: 800, fontSize: 10 }}
+                              >
+                                {meshAnalyzeCanShowCurvature ? "Show cached curvature" : "Curvature unavailable"}
+                              </button>
+                            </div>
+                          )}
+                          {analysisFocusedSection === "vector-calculus" && (
+                            <div style={{ display: "grid", gap: 6, fontSize: 10.5 }}>
+                              <label style={{ display: "grid", gap: 3 }}>
+                                <span style={{ fontWeight: 800 }}>Scalar source</span>
+                                <select value={calculusScalarSource} onChange={(event) => setCalculusScalarSource(event.target.value)}>
+                                  {calculusScalarOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              {calculusScalarSource === "custom" && (
+                                <input
+                                  aria-label="Custom scalar expression"
+                                  value={calculusCustomScalarExpr}
+                                  onChange={(event) => setCalculusCustomScalarExpr(event.target.value)}
+                                  placeholder="f(x,y,z,u,v)"
+                                />
+                              )}
+                              <button type="button" onClick={runCalculusGradient}>Compute gradient</button>
+                              <label style={{ display: "grid", gap: 3 }}>
+                                <span style={{ fontWeight: 800 }}>Vector source</span>
+                                <select
+                                  value={calculusVectorSource}
+                                  onChange={(event) => setCalculusVectorSource(event.target.value)}
+                                  disabled={!calculusVectorOptions.length}
+                                >
+                                  {calculusVectorOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              <div style={{ display: "flex", gap: 5 }}>
+                                <button type="button" onClick={runCalculusDivergence} disabled={!calculusVectorOptions.length}>Compute divergence</button>
+                                <button type="button" onClick={runCalculusCurl} disabled={!calculusVectorOptions.length}>Compute curl</button>
+                              </div>
+                              <div style={{ color: "#64748b" }}>{surfaceScalarFields.size} scalar / {surfaceVectorFields.size} vector fields available</div>
+                            </div>
+                          )}
+                          {analysisFocusedSection === "curvature-lines" && (
+                            <div style={{ display: "grid", gap: 6, fontSize: 10.5 }}>
+                              <div>Prepare direction and curvature-line data for viewport layers.</div>
+                              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                <button type="button" onClick={() => { setShowPrincipalDirections(true); setMeshAnalyzeViewPreset("directions"); }}>Prepare directions</button>
+                                <button type="button" onClick={() => { setShowCurvatureLines(true); setCurvatureRebuildToken((value) => value + 1); }}>Trace curvature lines</button>
+                              </div>
+                            </div>
+                          )}
+                          {analysisFocusedSection === "ridges-valleys" && (
+                            <div style={{ display: "grid", gap: 6, fontSize: 10.5 }}>
+                              <div>Extract extrema from principal curvature and direction results.</div>
+                              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                <button type="button" onClick={() => setShowRidges(true)}>Compute ridges</button>
+                                <button type="button" onClick={() => setShowValleys(true)}>Compute valleys</button>
+                              </div>
+                            </div>
+                          )}
+                          {analysisFocusedSection === "chart-analysis" && (
+                            <div style={{ display: "grid", gap: 6, fontSize: 10.5 }}>
+                              <div>Statistics use the cached field and current range domain.</div>
+                              <button type="button" onClick={() => { setInspectEnabled(true); setMeshWorkspaceRequestedInspectorTab("analysis"); }}>Open statistics</button>
+                            </div>
+                          )}
+                          {analysisFocusedSection === "mesh-quality" && (
+                            <div data-testid="mesh-analyze-quality-config" style={{ display: "grid", gap: 6, fontSize: 10.5 }}>
+                              <label style={{ display: "grid", gridTemplateColumns: "1fr 72px", alignItems: "center", gap: 6 }}>
+                                <span>High aspect threshold</span>
+                                <input type="number" min={1} step={0.5} value={meshQualityHighAspectThreshold} onChange={(event) => setMeshQualityHighAspectThreshold(Math.max(1, Number(event.target.value) || 1))} />
+                              </label>
+                              <label style={{ display: "grid", gridTemplateColumns: "1fr 72px", alignItems: "center", gap: 6 }}>
+                                <span>Listed defects</span>
+                                <input type="number" min={1} step={1} value={meshQualityMaxListedDefects} onChange={(event) => setMeshQualityMaxListedDefects(Math.max(1, Math.round(Number(event.target.value) || 1)))} />
+                              </label>
+                              <button type="button" onClick={handleRecomputeMeshAnalyzeDiagnostics} disabled={meshQualityBusy}>
+                                {meshQualityBusy ? `Computing ${Math.round(meshQualityProgress * 100)}%` : "Recompute quality"}
+                              </button>
+                            </div>
+                          )}
+                          {analysisFocusedSection === "geodesics" && (
+                            <div style={{ display: "grid", gap: 6, fontSize: 10.5 }}>
+                              <div>{geodesicPathMessage || "Choose two mesh points to compute a surface path."}</div>
+                              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                <button type="button" onClick={() => setGeodesicPathEnabled((value) => !value)} aria-pressed={geodesicPathEnabled}>
+                                  {geodesicPathEnabled ? "Stop picking" : "Pick path endpoints"}
+                                </button>
+                                <button type="button" onClick={handleClearGeodesicPath} disabled={!geodesicPathStart && !geodesicPathEnd}>Clear path</button>
+                              </div>
+                            </div>
+                          )}
+                          {analysisFocusedSection === "diagnostics" && (
+                            <div data-testid="mesh-analyze-diagnostics-config" style={{ display: "grid", gap: 6, fontSize: 10.5 }}>
+                              <div>
+                                {surfaceMeshAnalyzeDiagnostics
+                                  ? `${surfaceMeshAnalyzeDiagnostics.boundaryEdgeCount} boundary / ${surfaceMeshAnalyzeDiagnostics.nonManifoldEdgeCount} non-manifold / ${surfaceMeshAnalyzeDiagnostics.degenerateTriangleCount} degenerate`
+                                  : "Topology diagnostics are not available."}
+                              </div>
+                              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                <button type="button" onClick={handleRecomputeMeshAnalyzeDiagnostics}>Recompute diagnostics</button>
+                                <button type="button" onClick={() => handleApplyMeshAnalyzeMode("diagnostics")}>Review problems</button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -76114,53 +76162,7 @@ case "mobius":
                               zIndex: 17,
                             }}
                           >
-                            <span style={{ fontWeight: 800, color: "#1e3a8a" }}>Pick:</span>
-                            {SURFACE_MESH_TOPOLOGY_PICK_MODES.map((pickMode) => (
-                              <button
-                                key={`mesh-analysis-pick-${pickMode}`}
-                                type="button"
-                                onClick={() => {
-                                  handleChangeMeshWorkspacePickMode(pickMode);
-                                  if (pickMode !== "object" && !probeEnabled) setProbeEnabled(true);
-                                }}
-                                disabled={!unifiedSelectionKindFilters[pickMode]}
-                                aria-pressed={surfaceMeshTopologyPickMode === pickMode}
-                                style={viewerControlButtonStyle(surfaceMeshTopologyPickMode === pickMode, meshViewerControlsDensity)}
-                              >
-                                {pickMode === "object" ? "Object" : pickMode[0].toUpperCase() + pickMode.slice(1)}
-                              </button>
-                            ))}
-                            <button
-                              type="button"
-                              data-testid="mesh-analyze-probe-toggle"
-                              onClick={() => {
-                                const nextProbeEnabled = !probeEnabled;
-                                setMeshAnalyzeMode(nextProbeEnabled ? "probe" : "clean");
-                                setProbeEnabled(nextProbeEnabled);
-                                setSurfaceMeshTopologyStatus(
-                                  nextProbeEnabled
-                                    ? `Probe measurement active; ${surfaceMeshTopologyPickMode} pick stays available. Click the mesh to read K/H/k1/k2.`
-                                    : "Probe measurement off."
-                                );
-                                if (!inspectEnabled) setInspectEnabled(true);
-                              }}
-                              title="Toggle curvature measurement clicks. This is independent from Object/Face/Edge/Vertex pick mode."
-                              aria-pressed={probeEnabled}
-                              style={viewerControlButtonStyle(probeEnabled, meshViewerControlsDensity)}
-                            >
-                              Probe
-                            </button>
-                            <button
-                              type="button"
-                              data-testid="mesh-analyze-hud-toggle"
-                              onClick={() => setMeshAnalyzeScienceOverlayVisible((visible) => !visible)}
-                              aria-pressed={meshAnalyzeScienceOverlayVisible}
-                              style={viewerControlButtonStyle(meshAnalyzeScienceOverlayVisible, meshViewerControlsDensity)}
-                              title={meshAnalyzeScienceOverlayVisible ? "Hide analysis HUD" : "Show analysis HUD"}
-                            >
-                              HUD
-                            </button>
-                            <span style={{ fontWeight: 800, color: "#1e3a8a", marginLeft: 4 }}>Field:</span>
+                            <span style={{ fontWeight: 800, color: "#1e3a8a" }}>Field</span>
                             {([
                               ["solid", "None"],
                               ["mean", "H"],
@@ -76180,49 +76182,32 @@ case "mobius":
                               </button>
                             ))}
                             <span style={{ width: 1, height: 20, background: "#cbd5e1", margin: "0 2px" }} />
-                            <span style={{ fontWeight: 800, color: "#1e3a8a" }}>View:</span>
+                            <span style={{ fontWeight: 800, color: "#1e3a8a" }}>Palette</span>
+                            <span aria-hidden="true" style={{ width: 30, height: 12, border: "1px solid #94a3b8", borderRadius: 3, background: meshAnalyzePaletteGradient }} />
+                            <select
+                              aria-label="Analysis palette"
+                              data-testid="mesh-analyze-palette"
+                              value={colorPalette}
+                              onChange={(event) => setColorPalette(event.target.value as ColorPalette)}
+                              style={{ fontSize: 10.5, padding: "2px 4px" }}
+                            >
+                              <option value="blueRed">Blue / red</option>
+                              <option value="rainbow">Rainbow</option>
+                              <option value="grayscale">Grayscale</option>
+                              <option value="redYellow">Red / yellow</option>
+                            </select>
                             <button
                               type="button"
-                              data-testid="mesh-analyze-view-clean"
-                              onClick={() => applyMeshAnalyzeViewPreset("clean")}
-                              aria-pressed={meshAnalyzeViewPreset === "clean"}
-                              style={viewerControlButtonStyle(meshAnalyzeViewPreset === "clean", meshViewerControlsDensity)}
+                              data-testid="mesh-analyze-invert-palette"
+                              onClick={() => setMeshAnalyzePaletteInverted((value) => !value)}
+                              aria-pressed={meshAnalyzePaletteInverted}
+                              style={viewerControlButtonStyle(meshAnalyzePaletteInverted, meshViewerControlsDensity)}
+                              title={meshAnalyzePaletteDirectionLabel}
                             >
-                              Clean curvature
-                            </button>
-                            <button
-                              type="button"
-                              data-testid="mesh-analyze-view-directions"
-                              onClick={() => applyMeshAnalyzeViewPreset("directions")}
-                              aria-pressed={meshAnalyzeViewPreset === "directions"}
-                              style={viewerControlButtonStyle(meshAnalyzeViewPreset === "directions", meshViewerControlsDensity)}
-                            >
-                              Curvature + directions
-                            </button>
-                            <button
-                              type="button"
-                              data-testid="mesh-analyze-view-gauss"
-                              onClick={() => applyMeshAnalyzeViewPreset("gauss")}
-                              disabled={!meshAnalyzeCanShowCurvature}
-                              aria-pressed={meshAnalyzeViewPreset === "gauss"}
-                              style={{
-                                ...viewerControlButtonStyle(meshAnalyzeViewPreset === "gauss", meshViewerControlsDensity),
-                                opacity: meshAnalyzeCanShowCurvature ? 1 : 0.55,
-                              }}
-                            >
-                              Curvature + Gauss map
+                              Invert
                             </button>
                             <span style={{ width: 1, height: 20, background: "#cbd5e1", margin: "0 2px" }} />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setShowInViewportOverlayControls(true);
-                              }}
-                              style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
-                            >
-                              Legend
-                            </button>
-                            <span style={{ fontWeight: 800, color: "#1e3a8a" }}>Range:</span>
+                            <span style={{ fontWeight: 800, color: "#1e3a8a" }}>Range</span>
                             <button
                               type="button"
                               data-testid="mesh-analyze-auto-range"
@@ -76230,7 +76215,7 @@ case "mobius":
                               aria-pressed={!meshAnalyzeClampEnabled}
                               style={viewerControlButtonStyle(!meshAnalyzeClampEnabled, meshViewerControlsDensity)}
                             >
-                              Auto range
+                              Auto
                             </button>
                             <label style={viewerControlCheckStyle}>
                               <input
@@ -76246,7 +76231,7 @@ case "mobius":
                                   setMeshAnalyzeClampEnabled(enabled);
                                 }}
                               />
-                              Manual range
+                              Manual
                             </label>
                             <button
                               type="button"
@@ -76271,46 +76256,33 @@ case "mobius":
                             >
                               Selected
                             </button>
-                            <button
-                              type="button"
-                              data-testid="mesh-analyze-invert-palette"
-                              onClick={() => setMeshAnalyzePaletteInverted((value) => !value)}
-                              aria-pressed={meshAnalyzePaletteInverted}
-                              style={viewerControlButtonStyle(meshAnalyzePaletteInverted, meshViewerControlsDensity)}
-                            >
-                              Invert
-                            </button>
-                            <span
-                              data-testid="mesh-analyze-palette-direction"
-                              style={{ color: "#475569", fontWeight: 750 }}
-                            >
-                              {meshAnalyzePaletteDirectionLabel}
-                            </span>
-                            <input
-                              aria-label="Clamp minimum"
-                              data-testid="mesh-analyze-clamp-min"
-                              value={meshAnalyzeClampMin}
-                              onChange={(event) => setMeshAnalyzeClampMin(event.target.value)}
-                              placeholder="min"
-                              disabled={!meshAnalyzeClampEnabled}
-                              style={{ width: 58, fontSize: 11, padding: "2px 5px" }}
-                            />
-                            <input
-                              aria-label="Clamp maximum"
-                              data-testid="mesh-analyze-clamp-max"
-                              value={meshAnalyzeClampMax}
-                              onChange={(event) => setMeshAnalyzeClampMax(event.target.value)}
-                              placeholder="max"
-                              disabled={!meshAnalyzeClampEnabled}
-                              style={{ width: 58, fontSize: 11, padding: "2px 5px" }}
-                            />
+                            {meshAnalyzeClampEnabled && (
+                              <>
+                                <input
+                                  aria-label="Clamp minimum"
+                                  data-testid="mesh-analyze-clamp-min"
+                                  value={meshAnalyzeClampMin}
+                                  onChange={(event) => setMeshAnalyzeClampMin(event.target.value)}
+                                  placeholder="min"
+                                  style={{ width: 54, fontSize: 10.5, padding: "2px 4px" }}
+                                />
+                                <input
+                                  aria-label="Clamp maximum"
+                                  data-testid="mesh-analyze-clamp-max"
+                                  value={meshAnalyzeClampMax}
+                                  onChange={(event) => setMeshAnalyzeClampMax(event.target.value)}
+                                  placeholder="max"
+                                  style={{ width: 54, fontSize: 10.5, padding: "2px 4px" }}
+                                />
+                              </>
+                            )}
                             <button
                               type="button"
                               data-testid="mesh-analyze-reset-range"
                               onClick={meshAnalyzeResetClampRange}
                               style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
                             >
-                              Reset range
+                              Reset
                             </button>
                             <button
                               type="button"
@@ -76319,7 +76291,7 @@ case "mobius":
                               disabled={!meshAnalyzeCurvatureField}
                               style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
                             >
-                              Symmetric
+                              +/-
                             </button>
                             <button
                               type="button"
@@ -76328,7 +76300,7 @@ case "mobius":
                               disabled={!meshAnalyzeCurvatureField}
                               style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
                             >
-                              Percentile
+                              2-98%
                             </button>
                             <button
                               type="button"
@@ -76339,25 +76311,55 @@ case "mobius":
                             >
                               Full
                             </button>
+                            <span data-testid="mesh-analyze-palette-direction" style={{ display: "none" }}>
+                              {meshAnalyzePaletteDirectionLabel}
+                            </span>
+                            <span style={{ width: 1, height: 20, background: "#cbd5e1", margin: "0 2px" }} />
+                            <span style={{ fontWeight: 800, color: "#1e3a8a" }}>Layers</span>
                             <button
                               type="button"
-                              data-testid="mesh-analyze-toggle-directions"
+                              data-testid="mesh-analyze-view-clean"
+                              onClick={() => applyMeshAnalyzeViewPreset("clean")}
+                              aria-pressed={meshAnalyzeViewPreset === "clean"}
+                              style={viewerControlButtonStyle(meshAnalyzeViewPreset === "clean", meshViewerControlsDensity)}
+                            >
+                              Clean
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="mesh-analyze-view-directions"
                               onClick={() => {
-                                setShowPrincipalDirections((value) => {
-                                  const next = !value;
-                                  if (next) {
-                                    setMeshAnalyzeMode("curvature");
-                                    setMeshAnalyzeViewPreset("directions");
-                                  } else if (!showGaussMap && !showChartGrid) {
-                                    setMeshAnalyzeViewPreset("clean");
-                                  }
-                                  return next;
-                                });
+                                if (showPrincipalDirections) {
+                                  setShowPrincipalDirections(false);
+                                  if (!showGaussMap && !showChartGrid) setMeshAnalyzeViewPreset("clean");
+                                } else {
+                                  applyMeshAnalyzeViewPreset("directions");
+                                }
                               }}
                               aria-pressed={showPrincipalDirections}
                               style={viewerControlButtonStyle(showPrincipalDirections, meshViewerControlsDensity)}
                             >
                               Directions
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="mesh-analyze-view-gauss"
+                              onClick={() => {
+                                if (showGaussMap) {
+                                  setShowGaussMap(false);
+                                  if (!showPrincipalDirections && !showChartGrid) setMeshAnalyzeViewPreset("clean");
+                                } else {
+                                  applyMeshAnalyzeViewPreset("gauss");
+                                }
+                              }}
+                              disabled={!meshAnalyzeCurvatureField}
+                              aria-pressed={showGaussMap}
+                              style={{
+                                ...viewerControlButtonStyle(showGaussMap, meshViewerControlsDensity),
+                                opacity: meshAnalyzeCurvatureField ? 1 : 0.55,
+                              }}
+                            >
+                              Gauss
                             </button>
                             <button
                               type="button"
@@ -76373,31 +76375,7 @@ case "mobius":
                               aria-pressed={showChartGrid}
                               style={viewerControlButtonStyle(showChartGrid, meshViewerControlsDensity)}
                             >
-                              Chart grid
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setShowGaussMap((value) => {
-                                  const next = !value;
-                                  if (next) {
-                                    setMeshAnalyzeMode("curvature");
-                                    setMeshAnalyzeViewPreset("gauss");
-                                  } else if (!showPrincipalDirections && !showChartGrid) {
-                                    setMeshAnalyzeViewPreset("clean");
-                                  }
-                                  return next;
-                                });
-                              }}
-                              disabled={!meshAnalyzeCurvatureField}
-                              title={meshAnalyzeCurvatureField ? "Toggle Gauss map" : "Select K, H, k1, or k2 before showing Gauss map"}
-                              aria-pressed={showGaussMap}
-                              style={{
-                                ...viewerControlButtonStyle(showGaussMap, meshViewerControlsDensity),
-                                opacity: meshAnalyzeCurvatureField ? 1 : 0.55,
-                              }}
-                            >
-                              Gauss map
+                              Grid
                             </button>
                             <button
                               type="button"
@@ -76423,7 +76401,38 @@ case "mobius":
                               }}
                               style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
                             >
-                              Reset view
+                              Reset
+                            </button>
+                            <span style={{ width: 1, height: 20, background: "#cbd5e1", margin: "0 2px" }} />
+                            <button
+                              type="button"
+                              data-testid="mesh-analyze-hud-toggle"
+                              onClick={() => setMeshAnalyzeScienceOverlayVisible((visible) => !visible)}
+                              aria-pressed={meshAnalyzeScienceOverlayVisible}
+                              style={viewerControlButtonStyle(meshAnalyzeScienceOverlayVisible, meshViewerControlsDensity)}
+                              title={meshAnalyzeScienceOverlayVisible ? "Hide scientific legend" : "Show scientific legend"}
+                            >
+                              Legend
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="mesh-analyze-probe-toggle"
+                              onClick={() => {
+                                const nextProbeEnabled = !probeEnabled;
+                                setMeshAnalyzeMode(nextProbeEnabled ? "probe" : "clean");
+                                setProbeEnabled(nextProbeEnabled);
+                                setSurfaceMeshTopologyStatus(
+                                  nextProbeEnabled
+                                    ? "Probe active. Click the mesh to read K/H/k1/k2."
+                                    : "Probe measurement off."
+                                );
+                                if (!inspectEnabled) setInspectEnabled(true);
+                              }}
+                              title="Toggle scientific measurement clicks"
+                              aria-pressed={probeEnabled}
+                              style={viewerControlButtonStyle(probeEnabled, meshViewerControlsDensity)}
+                            >
+                              Probe
                             </button>
                           </div>
                         ) : meshBooleanReview ? null : (

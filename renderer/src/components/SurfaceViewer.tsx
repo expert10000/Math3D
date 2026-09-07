@@ -676,6 +676,8 @@ export type SurfaceId = CoreSurfaceId;
 export type ProbeInfo = {
   point: { x: number; y: number; z: number };
   normal: { x: number; y: number; z: number };
+  vertexIndex?: number;
+  meshKey?: string;
   uv?: { u: number; v: number };
   xy?: { x: number; y: number };
   modifiers?: SurfaceViewerPickModifiers;
@@ -5120,9 +5122,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       const cb = onProbeRef.current;
       if (cb) {
+        const nearest = findNearestSample(point);
         cb({
           point: { x: point.x, y: point.y, z: point.z },
           normal: { x: n.x, y: n.y, z: n.z },
+          vertexIndex: nearest?.sample.vertexIndex,
+          meshKey: nearest?.sample.meshKey,
           xy: xyDomain,
           uv: uvDomain,
           modifiers,
@@ -5281,7 +5286,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       raycaster.setFromCamera(pointer, camera);
       const activeTopologyGizmo = topologyGizmoRef.current;
-      if (event.button === 0 && activeTopologyGizmo?.enabled && topologyGizmoHitTargetsRef.current.length) {
+      if (!probeEnabled && event.button === 0 && activeTopologyGizmo?.enabled && topologyGizmoHitTargetsRef.current.length) {
         const topologyHits = raycaster.intersectObjects(topologyGizmoHitTargetsRef.current, true);
         if (topologyHits.length) {
           const origin = new THREE.Vector3(
@@ -5698,7 +5703,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
               });
             }
           }
-          return;
+          if (!probeEnabled) return;
         }
 
       if (probeEnabled) {
