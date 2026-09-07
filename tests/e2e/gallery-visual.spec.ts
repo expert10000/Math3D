@@ -305,6 +305,30 @@ test("Gallery cards visual baseline", async () => {
     await expect(weierGrid).toBeVisible();
     await waitForImagesLoaded(weierGrid);
     await expect(weierGrid).toHaveScreenshot("surface-weierstrass-cards.png", surfaceSnapshotOpts);
+
+    await clickFirstVisibleButton(page, "Mesh");
+    await clickFirstVisibleButton(page, "Mesh presets");
+    const meshWorkflowStrip = page.getByTestId("mesh-workflow-strip");
+    await expect(meshWorkflowStrip).toBeVisible();
+    await expect(meshWorkflowStrip).toContainText(/Source.*Configure.*Preview.*Execute.*Validate.*Compare/i);
+    await expect(meshWorkflowStrip).not.toContainText(/Equation|Parse|Domain|Promote|Save/i);
+    const meshPresetGrid = page.getByTestId("mesh-preset-grid");
+    await expect(meshPresetGrid).toBeVisible();
+    await expect(page.getByTestId("mesh-preset-gallery-path")).toContainText(/Mesh.*Presets.*Topology demos/i);
+    const topologyThumbs = meshPresetGrid.locator("img");
+    await expect(topologyThumbs.first()).toBeVisible();
+    const firstTopologyThumb = await topologyThumbs.nth(0).getAttribute("src");
+    const secondTopologyThumb = await topologyThumbs.nth(1).getAttribute("src");
+    expect(firstTopologyThumb).toBeTruthy();
+    expect(secondTopologyThumb).toBeTruthy();
+    expect(firstTopologyThumb).not.toBe(secondTopologyThumb);
+
+    await page.getByTestId("mesh-action-new").click();
+    await expect(page.getByText(/Selected mesh object: Icosphere/i).first()).toBeVisible();
+    await expect(page.getByTestId("mesh-preset-grid")).toBeHidden();
+
+    await page.getByTestId("mesh-action-demo").click();
+    await expect(page.getByText(/Selected mesh object: Torus knot/i).first()).toBeVisible();
   } finally {
     if (app) {
       await app.close();

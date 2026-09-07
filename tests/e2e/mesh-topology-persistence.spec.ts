@@ -534,9 +534,8 @@ test.describe("Mesh topology persistence and handoff", () => {
 
       await openMeshGallery(page);
       await page.getByTestId("mesh-topology-preset-card-topology_demo_bevel_edge").click();
-      await firstVisible(page.getByRole("button", { name: "Promote", exact: true })).then((button) => button.click());
-      await expect(page.getByText(/Converted to detached Mesh object/i).first()).toBeVisible({ timeout: 15_000 });
-      await firstVisible(page.getByRole("button", { name: "Close", exact: true })).then((button) => button.click());
+      await firstVisible(page.getByRole("button", { name: "Open in Geometry", exact: true })).then((button) => button.click());
+      await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByTestId("geometry-right-open-object")).toBeVisible({ timeout: 15_000 });
       await page.getByTestId("geometry-right-open-object").click();
 
@@ -711,11 +710,9 @@ test.describe("Mesh topology persistence and handoff", () => {
       await runTopologyDemo(page, "topology_demo_collapse_edge", "Collapse Edge", /Collapse edge/i);
       await runTopologyDemo(page, "topology_demo_bevel_edge", "Bevel Edge", /Bevel edge/i);
 
-      await firstVisible(page.getByRole("button", { name: "Promote", exact: true })).then((button) => button.click());
+      await firstVisible(page.getByRole("button", { name: "Open in Geometry", exact: true })).then((button) => button.click());
       await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText(/Demo: bevel edge \(bevel edge\)/i).first()).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByText(/Converted to detached Mesh object/i).first()).toBeVisible({ timeout: 15_000 });
-      await firstVisible(page.getByRole("button", { name: "Close", exact: true })).then((button) => button.click());
       await expect(page.getByTestId("geometry-right-open-object")).toBeVisible({ timeout: 15_000 });
       await expect(page.getByTestId("geometry-right-linked-mesh-source")).toBeVisible({ timeout: 15_000 });
       await expect(page.getByTestId("geometry-right-linked-mesh-source")).toContainText(/Linked Mesh edit source/i);
