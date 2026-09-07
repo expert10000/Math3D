@@ -6,7 +6,7 @@
 Math3D is an interactive geometry app (Electron + React) with browser mode support.
 
 <p align="center">
-  <img src="docs/assets/screenshots/dev/math3d-dev-surface-wave-preview.png" width="86%" alt="Math3D development preview surface" />
+  <img src="docs/assets/screenshots/desktop/math3d-mesh-analysis-torus-knot.png" width="86%" alt="Math3D Mesh Analyze Gaussian curvature on a torus knot" />
 </p>
 
 ## Highlights
@@ -27,7 +27,7 @@ Math3D is an interactive geometry app (Electron + React) with browser mode suppo
 <p align="center">
   <img src="docs/assets/screenshots/desktop/math3d-desktop-constructed-rotational-hyperboloid-preview.png" width="31%" alt="Constructed rotational surface preview (hyperboloid)" />
   <img src="docs/assets/screenshots/desktop/math3d-desktop-weierstrass-helicoid-preview.png" width="31%" alt="Weierstrass surface preview (helicoid)" />
-  <img src="docs/assets/screenshots/desktop/math3d-desktop-mesh-knot-preview.png" width="31%" alt="Mesh preview (knot)" />
+  <img src="docs/assets/screenshots/dev/math3d-dev-surface-wave-preview.png" width="31%" alt="Explicit wave surface preview" />
 </p>
 
 Full gallery catalog: [GALLERY.md](GALLERY.md)  

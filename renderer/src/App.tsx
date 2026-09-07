@@ -529,6 +529,16 @@ import {
   type MeshTopologyListRow,
 } from "./mesh/topologyInspector";
 import {
+  createMeshAnalysisMeshIdentity,
+  createMeshAnalysisResultStore,
+  getMeshAnalysisResult,
+  meshAnalysisResultKindsForMesh,
+  upsertMeshAnalysisResult,
+  type MeshAnalysisMeshIdentity,
+  type MeshCurvatureAnalysisPayload,
+  type MeshDiagnosticsAnalysisPayload,
+} from "./mesh/analysisResultStore";
+import {
   buildMeshBenchmarkVerificationRows,
   hasMeshBenchmarkExpectedMetrics,
   meshBenchmarkVerificationPasses,
@@ -36893,59 +36903,42 @@ const App: React.FC = () => {
   const complexMapOverlayPointsActive = isComplexMapMesh ? complexMapOverlayPointSets : null;
   const meshQualityWorkerRef = useRef<Worker | null>(null);
   const meshQualityJobRef = useRef<string | null>(null);
-  const meshQualityCacheKeyRef = useRef<string | null>(null);
-  const meshQualityCacheRef = useRef(new Map<string, { report: MeshQualityReport; ts: number }>());
-  const meshQualityArrayIdsRef = useRef(new WeakMap<object, number>());
-  const meshQualityNextArrayIdRef = useRef(1);
   const [meshQualityHighAspectThreshold, setMeshQualityHighAspectThreshold] = useState(8);
   const [meshQualityMaxListedDefects, setMeshQualityMaxListedDefects] = useState(120);
   const [meshQualityShowDegenerateFaces, setMeshQualityShowDegenerateFaces] = useState(true);
   const [meshQualityShowHighAspectFaces, setMeshQualityShowHighAspectFaces] = useState(true);
   const [meshQualityShowNonManifoldEdges, setMeshQualityShowNonManifoldEdges] = useState(true);
   const [meshQualityExportStatus, setMeshQualityExportStatus] = useState<string | null>(null);
-  const [meshQualityReport, setMeshQualityReport] = useState<MeshQualityReport | null>(null);
+  const [meshAnalysisResultStore, setMeshAnalysisResultStore] = useState(createMeshAnalysisResultStore);
   const [meshQualityError, setMeshQualityError] = useState<string | null>(null);
   const [meshQualityBusy, setMeshQualityBusy] = useState(false);
   const [meshQualityProgress, setMeshQualityProgress] = useState(0);
   const [meshQualityPhase, setMeshQualityPhase] = useState<MeshQualityReportPhase | "idle">("idle");
   const [meshQualityCacheHit, setMeshQualityCacheHit] = useState(false);
-  const getMeshQualityArrayId = useCallback((value: object | null): number => {
-    if (!value) return 0;
-    const known = meshQualityArrayIdsRef.current.get(value);
-    if (known != null) return known;
-    const next = meshQualityNextArrayIdRef.current++;
-    meshQualityArrayIdsRef.current.set(value, next);
-    return next;
-  }, []);
-  const buildMeshQualityCacheKey = useCallback(
-    (positions: Float32Array, indices: Uint32Array | null, highAspectThreshold: number, maxListed: number) => {
-      const positionsId = getMeshQualityArrayId(positions);
-      const indicesId = getMeshQualityArrayId(indices);
-      return [
-        positionsId,
-        positions.length,
-        indicesId,
-        indices?.length ?? 0,
-        highAspectThreshold.toFixed(4),
-        Math.max(1, Math.floor(maxListed)),
-      ].join(":");
-    },
-    [getMeshQualityArrayId]
+  const activeMeshAnalysisIdentity = useMemo<MeshAnalysisMeshIdentity | null>(
+    () => (surfaceMeshData?.positions?.length ? createMeshAnalysisMeshIdentity(surfaceMeshData) : null),
+    [surfaceMeshData]
   );
-  const storeMeshQualityCache = useCallback((key: string, report: MeshQualityReport) => {
-    const cache = meshQualityCacheRef.current;
-    cache.set(key, { report, ts: Date.now() });
-    if (cache.size <= 8) return;
-    let oldestKey: string | null = null;
-    let oldestTs = Number.POSITIVE_INFINITY;
-    for (const [entryKey, entry] of cache.entries()) {
-      if (entry.ts < oldestTs) {
-        oldestTs = entry.ts;
-        oldestKey = entryKey;
-      }
-    }
-    if (oldestKey) cache.delete(oldestKey);
-  }, []);
+  const meshQualityResultVariant = useMemo(
+    () => `threshold-${meshQualityHighAspectThreshold.toFixed(4)}-listed-${Math.max(1, Math.floor(meshQualityMaxListedDefects))}`,
+    [meshQualityHighAspectThreshold, meshQualityMaxListedDefects]
+  );
+  const cachedMeshQualityResult = useMemo(
+    () =>
+      getMeshAnalysisResult<MeshQualityReport>(
+        meshAnalysisResultStore,
+        activeMeshAnalysisIdentity,
+        "quality",
+        meshQualityResultVariant
+      ),
+    [activeMeshAnalysisIdentity, meshAnalysisResultStore, meshQualityResultVariant]
+  );
+  const meshQualityReport =
+    cachedMeshQualityResult?.state === "ready" ? cachedMeshQualityResult.payload : null;
+  const activeMeshAnalysisCachedKinds = useMemo(
+    () => meshAnalysisResultKindsForMesh(meshAnalysisResultStore, activeMeshAnalysisIdentity),
+    [activeMeshAnalysisIdentity, meshAnalysisResultStore]
+  );
   const terminateMeshQualityWorker = useCallback(() => {
     if (!meshQualityWorkerRef.current) return;
     meshQualityWorkerRef.current.terminate();
@@ -36955,7 +36948,6 @@ const App: React.FC = () => {
   const handleCancelMeshQualityCompute = useCallback(() => {
     if (!meshQualityBusy) return;
     meshQualityJobRef.current = null;
-    meshQualityCacheKeyRef.current = null;
     terminateMeshQualityWorker();
     setMeshQualityBusy(false);
     setMeshQualityPhase("idle");
@@ -36965,9 +36957,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!surfaceMeshData?.positions?.length) {
       meshQualityJobRef.current = null;
-      meshQualityCacheKeyRef.current = null;
       terminateMeshQualityWorker();
-      setMeshQualityReport(null);
       setMeshQualityError(null);
       setMeshQualityBusy(false);
       setMeshQualityProgress(0);
@@ -36977,9 +36967,7 @@ const App: React.FC = () => {
     }
     if (shouldDeferLargeSurfaceMeshAnalysis(surfaceMeshData) && meshAnalyzeDiagnosticsNonce === 0) {
       meshQualityJobRef.current = null;
-      meshQualityCacheKeyRef.current = null;
       terminateMeshQualityWorker();
-      setMeshQualityReport(null);
       setMeshQualityError("Large mesh quality analysis is deferred. Use Recompute diagnostics when you need full topology checks.");
       setMeshQualityBusy(false);
       setMeshQualityProgress(0);
@@ -36989,16 +36977,7 @@ const App: React.FC = () => {
     }
     const positions = surfaceMeshData.positions;
     const indices = surfaceMeshData.indices ?? null;
-    const cacheKey = buildMeshQualityCacheKey(
-      positions,
-      indices,
-      meshQualityHighAspectThreshold,
-      meshQualityMaxListedDefects
-    );
-    const cached = meshQualityCacheRef.current.get(cacheKey);
-    if (cached) {
-      cached.ts = Date.now();
-      setMeshQualityReport(cached.report);
+    if (cachedMeshQualityResult?.state === "ready" && cachedMeshQualityResult.payload) {
       setMeshQualityError(null);
       setMeshQualityBusy(false);
       setMeshQualityProgress(1);
@@ -37006,7 +36985,6 @@ const App: React.FC = () => {
       setMeshQualityCacheHit(true);
       return;
     }
-
     terminateMeshQualityWorker();
     const worker = new Worker(new URL("./workers/meshQualityReportWorker.ts", import.meta.url), {
       type: "module",
@@ -37014,7 +36992,7 @@ const App: React.FC = () => {
     meshQualityWorkerRef.current = worker;
     const jobId = makeId();
     meshQualityJobRef.current = jobId;
-    meshQualityCacheKeyRef.current = cacheKey;
+    const analysisIdentity = activeMeshAnalysisIdentity;
     setMeshQualityBusy(true);
     setMeshQualityError(null);
     setMeshQualityProgress(0);
@@ -37033,15 +37011,25 @@ const App: React.FC = () => {
         setMeshQualityPhase("idle");
         setMeshQualityProgress(1);
         if (msg.ok) {
-          setMeshQualityReport(msg.report);
           setMeshQualityError(null);
-          const resultCacheKey = meshQualityCacheKeyRef.current;
-          if (resultCacheKey) storeMeshQualityCache(resultCacheKey, msg.report);
+          if (analysisIdentity) {
+            setMeshAnalysisResultStore((previous) =>
+              upsertMeshAnalysisResult(previous, {
+                kind: "quality",
+                variant: meshQualityResultVariant,
+                mesh: analysisIdentity,
+                parameters: {
+                  highAspectRatioThreshold: meshQualityHighAspectThreshold,
+                  maxListedDefects: Math.max(1, Math.floor(meshQualityMaxListedDefects)),
+                },
+                payload: msg.report,
+              })
+            );
+          }
         } else {
           setMeshQualityError(msg.error || "Failed to compute mesh quality report.");
         }
         meshQualityJobRef.current = null;
-        meshQualityCacheKeyRef.current = null;
         if (meshQualityWorkerRef.current === worker) {
           meshQualityWorkerRef.current = null;
         }
@@ -37070,8 +37058,9 @@ const App: React.FC = () => {
     meshQualityHighAspectThreshold,
     meshQualityMaxListedDefects,
     meshAnalyzeDiagnosticsNonce,
-    buildMeshQualityCacheKey,
-    storeMeshQualityCache,
+    activeMeshAnalysisIdentity,
+    cachedMeshQualityResult,
+    meshQualityResultVariant,
     terminateMeshQualityWorker,
   ]);
   const meshQualityOverlayPointSets = useMemo<OverlayPointSet[] | null>(() => {
@@ -37576,13 +37565,24 @@ const App: React.FC = () => {
     surfaceMeshTopologyViewerMesh,
   ]);
   const surfaceMeshObjectSelectionPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
-    if (!isMeshLikeViewer || surfaceMeshTopologyPickMode !== "object" || !surfaceMeshTopologyViewerMesh?.positions?.length) {
+    if (
+      surfaceMeshTopologySelectionCleared ||
+      !isMeshLikeViewer ||
+      surfaceMeshTopologyPickMode !== "object" ||
+      !surfaceMeshTopologyViewerMesh?.positions?.length
+    ) {
       return null;
     }
     const bounds = boundsFromPositions(surfaceMeshTopologyViewerMesh.positions);
     if (!bounds) return null;
     return buildWholeObjectSelectionPolylineGroups(bounds, selectionViewportPulse?.workspace === "Mesh");
-  }, [isMeshLikeViewer, selectionViewportPulse?.workspace, surfaceMeshTopologyPickMode, surfaceMeshTopologyViewerMesh]);
+  }, [
+    isMeshLikeViewer,
+    selectionViewportPulse?.workspace,
+    surfaceMeshTopologyPickMode,
+    surfaceMeshTopologySelectionCleared,
+    surfaceMeshTopologyViewerMesh,
+  ]);
   const surfaceMeshTopologySelectionFaceMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
     if (
       surfaceMeshTopologySelectionCleared ||
@@ -45944,12 +45944,44 @@ case "mobius":
     }
     return { K, H, k1, k2 };
   }, [surfaceSampleSet, surfaceViewerKind, activeEqSurfaceId, graphExpr]);
+  const cachedMeshCurvatureResult = useMemo(
+    () =>
+      getMeshAnalysisResult<MeshCurvatureAnalysisPayload>(
+        meshAnalysisResultStore,
+        activeMeshAnalysisIdentity,
+        "curvature",
+        "discrete-angle-defect-cotan-v1"
+      ),
+    [activeMeshAnalysisIdentity, meshAnalysisResultStore]
+  );
   const surfaceMeshCurvatures = useMemo(() => {
     if (surfaceViewerKind !== "mesh" && surfaceViewerKind !== "complex") return null;
     if (!surfaceMeshData?.positions?.length) return null;
     if (surfaceMeshLargeAnalysisDeferred) return null;
+    if (cachedMeshCurvatureResult?.state === "ready" && cachedMeshCurvatureResult.payload) {
+      return cachedMeshCurvatureResult.payload;
+    }
     return computeTriangleMeshCurvatureScalars(surfaceMeshData);
-  }, [surfaceMeshData, surfaceMeshLargeAnalysisDeferred, surfaceViewerKind]);
+  }, [cachedMeshCurvatureResult, surfaceMeshData, surfaceMeshLargeAnalysisDeferred, surfaceViewerKind]);
+  useEffect(() => {
+    if (!activeMeshAnalysisIdentity || !surfaceMeshCurvatures) return;
+    setMeshAnalysisResultStore((previous) => {
+      const existing = getMeshAnalysisResult<MeshCurvatureAnalysisPayload>(
+        previous,
+        activeMeshAnalysisIdentity,
+        "curvature",
+        "discrete-angle-defect-cotan-v1"
+      );
+      if (existing?.payload === surfaceMeshCurvatures) return previous;
+      return upsertMeshAnalysisResult(previous, {
+        kind: "curvature",
+        variant: "discrete-angle-defect-cotan-v1",
+        mesh: activeMeshAnalysisIdentity,
+        parameters: { method: "angle-defect-cotan", boundaryTreatment: "pi" },
+        payload: surfaceMeshCurvatures,
+      });
+    });
+  }, [activeMeshAnalysisIdentity, surfaceMeshCurvatures]);
 
   const sampleNeighbors = useMemo(() => buildSampleNeighbors(surfaceSampleSet), [surfaceSampleSet]);
 
@@ -58972,7 +59004,19 @@ case "mobius":
     const benchmarkFileName = surfaceMeshBenchmarkVerification.model.fileName.toLowerCase();
     return activeFileName === benchmarkFileName ? surfaceMeshBenchmarkVerification : null;
   }, [isDev, surfaceMeshBenchmarkVerification, surfaceMeshData?.source]);
-  const surfaceMeshAnalyzeDiagnostics = useMemo(() => {
+  const meshDiagnosticsResultVariant = `robust-topology-v1-${meshAnalyzeDiagnosticsNonce}`;
+  const cachedMeshDiagnosticsResult = useMemo(
+    () =>
+      getMeshAnalysisResult<MeshDiagnosticsAnalysisPayload>(
+        meshAnalysisResultStore,
+        activeMeshAnalysisIdentity,
+        "diagnostics",
+        meshDiagnosticsResultVariant
+      ),
+    [activeMeshAnalysisIdentity, meshAnalysisResultStore, meshDiagnosticsResultVariant]
+  );
+  const computedSurfaceMeshAnalyzeDiagnostics = useMemo<MeshDiagnosticsAnalysisPayload | null>(() => {
+    if (cachedMeshDiagnosticsResult?.state === "ready" && cachedMeshDiagnosticsResult.payload) return null;
     if (!surfaceMeshData?.positions?.length) return null;
     if (shouldDeferLargeSurfaceMeshAnalysis(surfaceMeshData) && meshAnalyzeDiagnosticsNonce === 0) return null;
     const readiness = evaluateGeometryMeshReadiness(surfaceMeshData);
@@ -59016,7 +59060,23 @@ case "mobius":
         topology?.watertight === true,
       sphereSeamWarning: sphereLike && readiness.stats.boundaryEdgeCount > 0,
     };
-  }, [meshAnalyzeDiagnosticsNonce, meshPromotionTrace?.sourceGeometryObjectName, surfaceMeshData, surfaceMeshLabel]);
+  }, [cachedMeshDiagnosticsResult, meshAnalyzeDiagnosticsNonce, meshPromotionTrace?.sourceGeometryObjectName, surfaceMeshData, surfaceMeshLabel]);
+  const surfaceMeshAnalyzeDiagnostics =
+    cachedMeshDiagnosticsResult?.state === "ready" && cachedMeshDiagnosticsResult.payload
+      ? cachedMeshDiagnosticsResult.payload
+      : computedSurfaceMeshAnalyzeDiagnostics;
+  useEffect(() => {
+    if (!activeMeshAnalysisIdentity || !computedSurfaceMeshAnalyzeDiagnostics) return;
+    setMeshAnalysisResultStore((previous) =>
+      upsertMeshAnalysisResult(previous, {
+        kind: "diagnostics",
+        variant: meshDiagnosticsResultVariant,
+        mesh: activeMeshAnalysisIdentity,
+        parameters: { method: "robust-topology", run: meshAnalyzeDiagnosticsNonce },
+        payload: computedSurfaceMeshAnalyzeDiagnostics,
+      })
+    );
+  }, [activeMeshAnalysisIdentity, computedSurfaceMeshAnalyzeDiagnostics, meshAnalyzeDiagnosticsNonce, meshDiagnosticsResultVariant]);
   const surfaceInspectorMeshStats = useMemo(
     () => ({
       vertexCount:
@@ -68431,10 +68491,14 @@ case "mobius":
       (showGaussMap ? 1 : 0) +
       (showPrincipalDirections ? 1 : 0);
     const totalCount = 8;
-    if (analysisRunning || meshQualityBusy) return `analysis ${readyCount}/${totalCount} running`;
-    if (deferredSurfaceSampleSetInfo) return `analysis ${readyCount}/${totalCount} deferred`;
-    return `analysis ${readyCount}/${totalCount} ready`;
+    const cacheLabel = activeMeshAnalysisCachedKinds.length
+      ? ` / cache ${activeMeshAnalysisCachedKinds.join(", ")}`
+      : "";
+    if (analysisRunning || meshQualityBusy) return `analysis ${readyCount}/${totalCount} running${cacheLabel}`;
+    if (deferredSurfaceSampleSetInfo) return `analysis ${readyCount}/${totalCount} deferred${cacheLabel}`;
+    return `analysis ${readyCount}/${totalCount} ready${cacheLabel}`;
   }, [
+    activeMeshAnalysisCachedKinds,
     analysisRunning,
     deferredSurfaceSampleSetInfo,
     isMeshLikeViewer,
@@ -115011,21 +115075,7 @@ onChangeImplicitExpr,
 
 /* ---------------- Right Panel (domain previews) ---------------- */
 
-type MeshAnalyzeDiagnosticsSummary = {
-  trianglesValid: boolean;
-  invalidFaceCount: number;
-  degenerateTriangleCount: number;
-  boundaryEdgeCount: number;
-  nonManifoldEdgeCount: number;
-  selfIntersectionPairs: number;
-  duplicateVertexCount: number;
-  eulerCharacteristic: number | null;
-  watertight: boolean | null;
-  boundaryLoopCount: number;
-  weldTolerance: number;
-  cleanMesh: boolean;
-  sphereSeamWarning: boolean;
-};
+type MeshAnalyzeDiagnosticsSummary = Omit<MeshDiagnosticsAnalysisPayload, "duplicateVertexGroups">;
 
 type SurfacesRightPanelProps = {
   viewerKind: SurfaceViewerKind;
