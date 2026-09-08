@@ -116,6 +116,21 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-science-overlay")).toHaveCount(0);
     await page.getByTestId("mesh-analyze-hud-toggle").click();
     await expect(page.getByTestId("mesh-analyze-science-overlay")).toBeVisible();
+
+    await page.getByTestId("mesh-workspace-left-tab-topology").click();
+    await page.getByTestId("mesh-context-pick-edge").click();
+    await clickSurfaceViewerCanvas(page, 0.52, 0.42);
+    await page.getByTestId("mesh-inspector-tab-selection").click();
+    await expect(page.getByTestId("mesh-active-selection-card-type")).toHaveText("Edge");
+    await expect(page.getByTestId("mesh-active-selection-card-id")).toContainText(/Edge \d+-\d+/);
+    const ordinarySelectionType = await page.getByTestId("mesh-active-selection-card-type").innerText();
+    const ordinarySelectionId = await page.getByTestId("mesh-active-selection-card-id").innerText();
+    await page.getByTestId("mesh-workspace-left-tab-analyze").click();
+    await page.getByTestId("mesh-inspector-tab-result").click();
+    const analysisProbeToggle = page.getByTestId("mesh-analyze-probe-toggle");
+    if ((await analysisProbeToggle.getAttribute("aria-pressed")) === "true") await analysisProbeToggle.click();
+    await expect(analysisProbeToggle).toHaveAttribute("aria-pressed", "false");
+
     await page.getByTestId("mesh-analyze-config-compute-k").click();
     await expect(page.getByTestId("mesh-analysis-result-gaussian")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("mesh-analysis-context-category")).toHaveText("Differential Geometry");
@@ -125,7 +140,23 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(activeResult).toContainText(/Gaussian curvature K/i);
     await expect(page.getByTestId("mesh-analysis-active-result-state")).toHaveText("Ready");
     await expect(page.getByTestId("mesh-analysis-result-statistics")).toBeVisible();
-    await expect(page.getByTestId("mesh-analysis-result-metadata")).toContainText(/Discrete angle defect/i);
+    await expect(page.getByTestId("mesh-analysis-result-definition")).toContainText(/Method\s*Angle defect/i);
+    await expect(page.getByTestId("mesh-analysis-result-definition")).toContainText(/Domain\s*\d+ vertices/i);
+    await expect(page.getByTestId("mesh-analysis-result-stat-median")).not.toContainText("n/a");
+    await expect(page.getByTestId("mesh-analysis-result-stat-sigma")).not.toContainText("n/a");
+    await expect(page.getByTestId("mesh-analysis-result-extrema")).toContainText(/Minimum\s*Vertex \d+/i);
+    await expect(page.getByTestId("mesh-analysis-result-extrema")).toContainText(/Maximum\s*Vertex \d+/i);
+    await expect(page.getByTestId("mesh-analysis-result-histogram")).toBeVisible();
+    await expect(page.getByTestId("mesh-analysis-result-metadata")).toContainText(/Backend\s*Renderer CPU/i);
+    await expect(page.getByTestId("mesh-analysis-result-metadata")).toContainText(/Time\s*(?:< 1 ms|[\d.]+ ms)/i);
+    await expect(page.getByTestId("mesh-analysis-result-metadata")).toContainText(/Cached\s*(?:Yes|No)/i);
+    await page.getByTestId("mesh-analysis-feature-mean-curvature").click();
+    await expect(page.getByTestId("mesh-analysis-context-result")).toHaveText("Mean curvature H");
+    await expect(activeResult).toBeInViewport();
+    await page.getByTestId("mesh-analysis-feature-gaussian-curvature").click();
+    await expect(page.getByTestId("mesh-analysis-context-result")).toHaveText("Gaussian curvature K");
+    await expect(activeResult).toBeInViewport();
+    await page.screenshot({ path: test.info().outputPath("mesh-analyze-expanded-curvature-wide.png") });
     const toolbar = page.getByTestId("mesh-analysis-context-toolbar");
     await expect(toolbar).toContainText(/Field/i);
     await expect(toolbar).toContainText(/Palette/i);
@@ -136,14 +167,64 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-quality-config")).toBeVisible();
     await expect(page.getByTestId("mesh-analysis-context-category")).toHaveText("Mesh Quality");
     await expect(page.getByTestId("mesh-analysis-context-result")).toHaveText("Aspect ratio");
+    for (const metric of [
+      { id: "aspectRatio", label: "Aspect ratio", method: /Longest edge/i },
+      { id: "triangleArea", label: "Triangle area", method: /Cross-product/i },
+      { id: "edgeLength", label: "Edge length", method: /Euclidean mesh edge/i },
+      { id: "vertexValence", label: "Vertex valence", method: /Incident edge count/i },
+      { id: "dihedralAngleDeg", label: "Dihedral angle", method: /adjacent face normals/i },
+    ]) {
+      await page.getByTestId(`mesh-analyze-quality-metric-${metric.id}`).click();
+      await expect(page.getByTestId(`mesh-analyze-quality-metric-${metric.id}`)).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByTestId("mesh-analysis-context-result")).toHaveText(metric.label);
+      await expect(activeResult).toContainText(metric.label);
+      await expect(page.getByTestId("mesh-analysis-result-metadata")).toContainText(metric.method);
+      await expect(page.getByTestId("mesh-analyze-result-summary")).toContainText(metric.label);
+    }
+
+    const breadcrumb = page.getByTestId("mesh-analysis-context-breadcrumb");
+    const resultStatistics = page.getByTestId("mesh-analysis-result-statistics");
+    const viewer = page.getByTestId("surface-primary-viewer");
+    const hud = page.getByTestId("mesh-analyze-science-overlay");
+    const rightPanel = page.getByTestId("surface-right-panel");
+    await expect(breadcrumb).toHaveCSS("flex-wrap", "wrap");
+    expect(await breadcrumb.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    expect(await resultStatistics.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    const viewerBox = await viewer.boundingBox();
+    const hudBox = await hud.boundingBox();
+    const rightPanelBox = await rightPanel.boundingBox();
+    expect(viewerBox).not.toBeNull();
+    expect(hudBox).not.toBeNull();
+    expect(rightPanelBox).not.toBeNull();
+    expect(hudBox!.x).toBeGreaterThanOrEqual(viewerBox!.x);
+    expect(hudBox!.y).toBeGreaterThanOrEqual(viewerBox!.y);
+    expect(hudBox!.x + hudBox!.width).toBeLessThanOrEqual(viewerBox!.x + viewerBox!.width);
+    expect(hudBox!.x + hudBox!.width).toBeLessThanOrEqual(rightPanelBox!.x);
+    await page.screenshot({ path: test.info().outputPath("mesh-analyze-result-wide.png") });
+
+    const splitter = page.getByTestId("surface-right-splitter");
+    const splitterBox = await splitter.boundingBox();
+    expect(splitterBox).not.toBeNull();
+    await page.mouse.move(splitterBox!.x + splitterBox!.width / 2, splitterBox!.y + splitterBox!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(splitterBox!.x + 120, splitterBox!.y + splitterBox!.height / 2, { steps: 5 });
+    await page.mouse.up();
+    await expect.poll(async () => (await rightPanel.boundingBox())?.width ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(270);
+    expect((await rightPanel.boundingBox())!.width).toBeLessThan(rightPanelBox!.width - 40);
+    expect(await resultStatistics.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    await page.screenshot({ path: test.info().outputPath("mesh-analyze-result-narrow-inspector.png") });
+
     await page.getByTestId("mesh-analysis-nav-differential-geometry").click();
     await expect(page.getByTestId("mesh-analyze-curvature-config")).toBeVisible();
     await expect(page.getByTestId("mesh-analyze-range-source")).toContainText(/whole mesh/i);
     await expect(page.getByTestId("mesh-analyze-curvature-min")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analyze-curvature-max")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analysis-result-stat-mean")).not.toContainText("n/a");
-    await expect(page.getByTestId("mesh-analysis-result-stat-standard-deviation")).not.toContainText("n/a");
+    await expect(page.getByTestId("mesh-analysis-result-stat-sigma")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analysis-result-metadata")).toContainText(/Sphere reference/i);
+    expect(await activeResult.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    await activeResult.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: test.info().outputPath("mesh-analyze-expanded-curvature-narrow.png") });
     await page.getByTestId("mesh-analyze-invert-palette").click();
     await expect(page.getByTestId("mesh-analyze-invert-palette")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("mesh-analyze-palette-direction")).toContainText(/high -> low/i);
@@ -182,7 +263,6 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     const probe = page.getByTestId("mesh-analyze-probe-toggle");
     if ((await probe.getAttribute("aria-pressed")) !== "true") await probe.click();
     await expect(probe).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByTestId("mesh-analyze-probe-help")).toContainText(/Click mesh to record probe/i);
     await clickSurfaceViewerCanvas(page, 0.58, 0.42);
     await expect(page.getByTestId("mesh-analyze-probe-K")).not.toContainText("n/a", { timeout: 15_000 });
     await expect(page.getByTestId("mesh-analyze-probe-H")).not.toContainText("n/a");
@@ -190,6 +270,15 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-probe-k2")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analyze-probe-label")).toContainText(/Probe: vertex \d+ at/i);
     await expect(page.getByTestId("mesh-inspector-tab-selection")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("mesh-selection-local-K")).not.toContainText("n/a");
+    await expect(page.getByTestId("mesh-selection-local-H")).not.toContainText("n/a");
+    await expect(page.getByTestId("mesh-selection-local-k1")).not.toContainText("n/a");
+    await expect(page.getByTestId("mesh-selection-local-k2")).not.toContainText("n/a");
+    await expect(page.getByTestId("mesh-selection-local-normal")).toContainText(/\([^)]*,[^)]*,[^)]*\)/);
+    await expect(page.getByTestId("mesh-selection-local-direction-d1")).toContainText(/\([^)]*,[^)]*,[^)]*\)/);
+    await expect(page.getByTestId("mesh-selection-local-direction-d2")).toContainText(/\([^)]*,[^)]*,[^)]*\)/);
+    await expect(page.getByTestId("mesh-active-selection-card-type")).toHaveText(ordinarySelectionType);
+    await expect(page.getByTestId("mesh-active-selection-card-id")).toHaveText(ordinarySelectionId);
     await expect(page.getByTestId("mesh-analyze-probe-history")).toHaveCount(0);
     await expect(page.getByTestId("mesh-analyze-science-overlay")).toHaveCSS("overflow-y", "auto");
     const inspectorProbeHistory = page.getByTestId("mesh-inspector-probe-history");
@@ -235,7 +324,7 @@ test("Mesh Analyze populates curvature range for torus knot preset", async () =>
     await expect(page.getByTestId("mesh-analyze-curvature-min")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analyze-curvature-max")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analysis-result-stat-mean")).not.toContainText("n/a");
-    await expect(page.getByTestId("mesh-analysis-result-stat-standard-deviation")).not.toContainText("n/a");
+    await expect(page.getByTestId("mesh-analysis-result-stat-sigma")).not.toContainText("n/a");
     await page.getByTestId("mesh-inspector-tab-diagnostics").click();
     await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Boundary:\s*0/i);
     await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Coincident:\s*0/i);

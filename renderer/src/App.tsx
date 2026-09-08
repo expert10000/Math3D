@@ -542,6 +542,14 @@ import {
   type MeshDiagnosticsAnalysisPayload,
 } from "./mesh/analysisResultStore";
 import {
+  MESH_QUALITY_METRIC_OPTIONS,
+  selectMeshActiveAnalysisResult,
+  summarizeMeshScalarField,
+  type MeshActiveAnalysisResultSummary,
+  type MeshAnalysisFocusedSection,
+  type MeshQualityMetricKey,
+} from "./mesh/activeAnalysisResult";
+import {
   buildMeshBenchmarkVerificationRows,
   hasMeshBenchmarkExpectedMetrics,
   meshBenchmarkVerificationPasses,
@@ -36992,6 +37000,7 @@ const App: React.FC = () => {
   const meshQualityJobRef = useRef<string | null>(null);
   const [meshQualityHighAspectThreshold, setMeshQualityHighAspectThreshold] = useState(8);
   const [meshQualityMaxListedDefects, setMeshQualityMaxListedDefects] = useState(120);
+  const [meshAnalyzeQualityMetric, setMeshAnalyzeQualityMetric] = useState<MeshQualityMetricKey>("aspectRatio");
   const [meshQualityShowDegenerateFaces, setMeshQualityShowDegenerateFaces] = useState(true);
   const [meshQualityShowHighAspectFaces, setMeshQualityShowHighAspectFaces] = useState(true);
   const [meshQualityShowNonManifoldEdges, setMeshQualityShowNonManifoldEdges] = useState(true);
@@ -46097,17 +46106,27 @@ case "mobius":
       ),
     [activeMeshAnalysisIdentity, meshAnalysisResultStore]
   );
-  const surfaceMeshCurvatures = useMemo(() => {
+  const surfaceMeshCurvatureComputation = useMemo(() => {
     if (surfaceViewerKind !== "mesh" && surfaceViewerKind !== "complex") return null;
     if (!surfaceMeshData?.positions?.length) return null;
     if (surfaceMeshLargeAnalysisDeferred) return null;
     if (cachedMeshCurvatureResult?.state === "ready" && cachedMeshCurvatureResult.payload) {
-      return cachedMeshCurvatureResult.payload;
+      const durationMs = Number(cachedMeshCurvatureResult.parameters.durationMs);
+      return {
+        payload: cachedMeshCurvatureResult.payload,
+        durationMs: Number.isFinite(durationMs) ? durationMs : null,
+        cacheHit: true,
+      };
     }
-    return computeTriangleMeshCurvatureScalars(surfaceMeshData);
+    const startedAt = performance.now();
+    const payload = computeTriangleMeshCurvatureScalars(surfaceMeshData);
+    return payload
+      ? { payload, durationMs: performance.now() - startedAt, cacheHit: false }
+      : null;
   }, [cachedMeshCurvatureResult, surfaceMeshData, surfaceMeshLargeAnalysisDeferred, surfaceViewerKind]);
+  const surfaceMeshCurvatures = surfaceMeshCurvatureComputation?.payload ?? null;
   useEffect(() => {
-    if (!activeMeshAnalysisIdentity || !surfaceMeshCurvatures) return;
+    if (!activeMeshAnalysisIdentity || !surfaceMeshCurvatureComputation) return;
     setMeshAnalysisResultStore((previous) => {
       const existing = getMeshAnalysisResult<MeshCurvatureAnalysisPayload>(
         previous,
@@ -46115,16 +46134,20 @@ case "mobius":
         "curvature",
         "discrete-angle-defect-cotan-v1"
       );
-      if (existing?.payload === surfaceMeshCurvatures) return previous;
+      if (existing?.payload === surfaceMeshCurvatureComputation.payload) return previous;
       return upsertMeshAnalysisResult(previous, {
         kind: "curvature",
         variant: "discrete-angle-defect-cotan-v1",
         mesh: activeMeshAnalysisIdentity,
-        parameters: { method: "angle-defect-cotan", boundaryTreatment: "pi" },
-        payload: surfaceMeshCurvatures,
+        parameters: {
+          method: "angle-defect-cotan",
+          boundaryTreatment: "pi",
+          durationMs: surfaceMeshCurvatureComputation.durationMs,
+        },
+        payload: surfaceMeshCurvatureComputation.payload,
       });
     });
-  }, [activeMeshAnalysisIdentity, surfaceMeshCurvatures]);
+  }, [activeMeshAnalysisIdentity, surfaceMeshCurvatureComputation]);
 
   const sampleNeighbors = useMemo(() => buildSampleNeighbors(surfaceSampleSet), [surfaceSampleSet]);
 
@@ -59900,7 +59923,10 @@ case "mobius":
     surfaceViewerKind,
   ]);
   const meshAnalyzeCurvatureStats = meshAnalyzeCurvatureField
-    ? surfaceScienceCurvatureStats[meshAnalyzeCurvatureField]
+    ? summarizeMeshScalarField(
+        meshAnalyzeCurvatureArrays?.[meshAnalyzeCurvatureField],
+        surfaceScienceCurvatureMask?.selected
+      )
     : null;
   const meshAnalyzeClampRange = useMemo(() => {
     if (!meshAnalyzeClampEnabled) return null;
@@ -66522,9 +66548,22 @@ case "mobius":
       const linked = meshWorkspaceEntries.find((entry) => entry.id === info.meshKey && entry.kind === "geometry");
       if (linked) handleActivateMeshWorkspaceEntry(linked.id, { keepCamera: true });
     }
-    setSurfaceMeshInspectPick(info);
+    const measurementOnly =
+      surfaceViewerKind === "mesh" &&
+      surfacesLeftTab === "analysis" &&
+      meshWorkspaceLeftTab === "analyze" &&
+      probeEnabled;
+    if (!measurementOnly) setSurfaceMeshInspectPick(info);
     handleInspectPick(info);
-  }, [handleActivateMeshWorkspaceEntry, handleInspectPick, meshWorkspaceEntries, meshWorkspaceLeftTab, surfaceViewerKind]);
+  }, [
+    handleActivateMeshWorkspaceEntry,
+    handleInspectPick,
+    meshWorkspaceEntries,
+    meshWorkspaceLeftTab,
+    probeEnabled,
+    surfaceViewerKind,
+    surfacesLeftTab,
+  ]);
   const handleOpenMeshWorkspaceGeometrySource = useCallback((entryId: string) => {
     const entry = meshWorkspaceGeometryEntries.find((candidate) => candidate.id === entryId);
     if (!entry?.geometryObjectId) return;
@@ -67203,157 +67242,49 @@ case "mobius":
     !surfacesBrowseModeActive;
   const isMeshAnalysisWorkflowContext =
     showSurfaceWorkflowStrip && surfaceViewerKind === "mesh" && surfacesLeftTab === "analysis";
-  const meshActiveAnalysisResult: MeshActiveAnalysisResultSummary = (() => {
-    const timestamp = (value: number | null | undefined) =>
-      value == null ? "Current session" : new Date(value).toLocaleString();
-    if (analysisFocusedSection === "mesh-quality") {
-      const aspectRatio = meshQualityReport?.metrics.aspectRatio;
-      return {
-        category: "Mesh Quality",
-        result: "Aspect ratio",
-        state: meshQualityBusy ? "Running" : meshQualityReport ? "Ready" : deferredSurfaceSampleSetInfo ? "Deferred" : "Unavailable",
-        statistics: [
-          { label: "Minimum", value: aspectRatio?.min == null ? "n/a" : fmt(aspectRatio.min) },
-          { label: "Mean", value: aspectRatio?.avg == null ? "n/a" : fmt(aspectRatio.avg) },
-          { label: "Maximum", value: aspectRatio?.max == null ? "n/a" : fmt(aspectRatio.max) },
-          { label: "Listed high-aspect faces", value: meshQualityReport?.defects.highAspectFaces.length.toLocaleString() ?? "n/a" },
-        ],
-        metadata: [
-          { label: "Method", value: "Triangle edge-ratio quality metric" },
-          { label: "Threshold", value: fmt(meshQualityHighAspectThreshold) },
-          { label: "Samples", value: meshQualityReport?.faceCount.toLocaleString() ?? "n/a" },
-          { label: "Cache", value: meshQualityCacheHit ? "Cached result" : "Current result" },
-          { label: "Computed", value: timestamp(cachedMeshQualityResult?.updatedAt) },
-        ],
-      };
-    }
-    if (analysisFocusedSection === "geodesics") {
-      return {
-        category: "Distances & Geodesics",
-        result: "Geodesic distance",
-        state: geodesicHeatBusy ? "Running" : geodesicHeatLength != null ? "Ready" : "Unavailable",
-        statistics: [{ label: "Path length", value: geodesicHeatLength == null ? "n/a" : fmt(geodesicHeatLength) }],
-        metadata: [
-          { label: "Method", value: geodesicHeatUseContinuous ? "Continuous heat method" : "Mesh graph / heat method" },
-          { label: "Endpoint state", value: geodesicHeatStart && geodesicHeatEnd ? "Two endpoints" : "Awaiting endpoints" },
-        ],
-      };
-    }
-    if (analysisFocusedSection === "diagnostics") {
-      const result =
-        meshAnalyzeDiagnosticOverlayMode === "boundary"
-          ? "Boundary edges"
-          : meshAnalyzeDiagnosticOverlayMode === "duplicates"
-            ? "Coincident vertices"
-            : "Mesh diagnostics";
-      return {
-        category: "Topology & Integrity",
-        result,
-        state: surfaceMeshAnalyzeDiagnostics ? "Ready" : deferredSurfaceSampleSetInfo ? "Deferred" : "Unavailable",
-        statistics: [
-          { label: "Boundary edges", value: surfaceMeshAnalyzeDiagnostics?.boundaryEdgeCount.toLocaleString() ?? "n/a" },
-          { label: "Non-manifold edges", value: surfaceMeshAnalyzeDiagnostics?.nonManifoldEdgeCount.toLocaleString() ?? "n/a" },
-          { label: "Degenerate triangles", value: surfaceMeshAnalyzeDiagnostics?.degenerateTriangleCount.toLocaleString() ?? "n/a" },
-          { label: "Self intersections", value: surfaceMeshAnalyzeDiagnostics?.selfIntersectionPairs.toLocaleString() ?? "n/a" },
-        ],
-        metadata: [
-          { label: "Method", value: "Robust topology diagnostics" },
-          { label: "Mesh state", value: surfaceMeshAnalyzeDiagnostics?.state ?? "Unverified" },
-          { label: "Computed", value: timestamp(cachedMeshDiagnosticsResult?.updatedAt) },
-        ],
-      };
-    }
-    if (analysisFocusedSection === "vector-calculus") {
-      return {
-        category: "Vector Calculus",
-        result: showGaussMap ? "Gauss map" : calculusActiveVectorField || "Vector field",
-        state: surfaceInspectorActiveVectorMagnitudeRange || showGaussMap ? "Ready" : "Unavailable",
-        statistics: [
-          { label: "Magnitude minimum", value: surfaceInspectorActiveVectorMagnitudeRange ? fmt(surfaceInspectorActiveVectorMagnitudeRange.min) : "n/a" },
-          { label: "Magnitude maximum", value: surfaceInspectorActiveVectorMagnitudeRange ? fmt(surfaceInspectorActiveVectorMagnitudeRange.max) : "n/a" },
-        ],
-        metadata: [
-          { label: "Scalar source", value: calculusScalarSource },
-          { label: "Vector source", value: calculusVectorSource || "none" },
-          { label: "Gauss map", value: showGaussMap ? "Visible" : "Hidden" },
-        ],
-      };
-    }
-    if (analysisFocusedSection === "curvature-lines" || analysisFocusedSection === "ridges-valleys") {
-      const ridges = analysisFocusedSection === "ridges-valleys";
-      return {
-        category: "Surface Features",
-        result: ridges ? "Ridges & valleys" : "Curvature lines",
-        state: ridges ? (showRidges || showValleys ? "Ready" : "Unavailable") : showCurvatureLines ? "Ready" : "Unavailable",
-        statistics: [],
-        metadata: ridges
-          ? [{ label: "Visible layers", value: [showRidges ? "Ridges" : null, showValleys ? "Valleys" : null].filter(Boolean).join(", ") || "none" }]
-          : [
-              { label: "Direction field", value: curvatureLineField },
-              { label: "Seed source", value: curvatureSeedSource },
-              { label: "Max steps", value: Math.max(1, Math.round(curvatureMaxSteps)).toLocaleString() },
-            ],
-      };
-    }
-    if (analysisFocusedSection === "chart-analysis") {
-      return {
-        category: "Charts & Statistics",
-        result: meshAnalyzeCurvatureFieldLabel ?? "Field statistics",
-        state: meshAnalyzeCurvatureStats ? "Ready" : "Unavailable",
-        statistics: meshAnalyzeCurvatureStats
-          ? [
-              { label: "Minimum", value: fmt(meshAnalyzeCurvatureStats.min) },
-              { label: "Maximum", value: fmt(meshAnalyzeCurvatureStats.max) },
-              { label: "Mean", value: fmt(meshAnalyzeCurvatureStats.mean) },
-              { label: "Standard deviation", value: fmt(meshAnalyzeCurvatureStats.std) },
-            ]
-          : [],
-        metadata: [{ label: "Scope", value: surfaceScienceCurvatureRangeSource }],
-      };
-    }
-    if (meshAnalyzeCurvatureField && meshAnalyzeCurvatureFieldLabel) {
-      return {
-        category: "Differential Geometry",
-        result: meshAnalyzeCurvatureFieldLabel,
-        state: meshAnalyzeCurvatureStats ? "Ready" : deferredSurfaceSampleSetInfo ? "Deferred" : "Unavailable",
-        statistics: meshAnalyzeCurvatureStats
-          ? [
-              { label: "Minimum", value: fmt(meshAnalyzeCurvatureStats.min) },
-              { label: "Maximum", value: fmt(meshAnalyzeCurvatureStats.max) },
-              { label: "Mean", value: fmt(meshAnalyzeCurvatureStats.mean) },
-              { label: "Standard deviation", value: fmt(meshAnalyzeCurvatureStats.std) },
-              { label: "Samples", value: meshAnalyzeCurvatureStats.count.toLocaleString() },
-            ]
-          : [],
-        metadata: [
-          { label: "Method", value: "Discrete angle defect + cotangent Laplacian" },
-          { label: "Scope", value: surfaceScienceCurvatureRangeSource },
-          { label: "Display range", value: meshAnalyzeClampRange ? `${fmt(meshAnalyzeClampRange.min)} to ${fmt(meshAnalyzeClampRange.max)} (clamped)` : "Automatic" },
-          { label: "Palette", value: `${colorPalette}${meshAnalyzePaletteInverted ? " (inverted)" : ""}` },
-          { label: "Cache", value: cachedMeshCurvatureResult?.state === "ready" ? "Cached result" : "Current result" },
-          { label: "Computed", value: timestamp(cachedMeshCurvatureResult?.updatedAt) },
-          ...(meshAnalyzeSphereSanity
-            ? [{
-                label: "Sphere reference",
-                value: `${meshAnalyzeSphereSanity.ok ? "Within tolerance" : "Review"}; K ${fmt(meshAnalyzeSphereSanity.measuredK ?? Number.NaN)} / ${fmt(meshAnalyzeSphereSanity.expectedK)}, H ${fmt(meshAnalyzeSphereSanity.measuredH ?? Number.NaN)} / ${fmt(meshAnalyzeSphereSanity.expectedH)}`,
-              }]
-            : []),
-        ],
-      };
-    }
-    return {
-      category: null,
-      result: "Overview",
-      state: surfaceMeshStats ? "Ready" : deferredSurfaceSampleSetInfo ? "Deferred" : "Unavailable",
-      statistics: surfaceMeshStats
-        ? [
-            { label: "Vertices", value: surfaceMeshStats.vertCount.toLocaleString() },
-            { label: "Faces", value: surfaceMeshStats.triCount.toLocaleString() },
-          ]
-        : [],
-      metadata: [{ label: "Mesh", value: surfaceMeshLabel }],
-    };
-  })();
+  const meshActiveAnalysisResult: MeshActiveAnalysisResultSummary = selectMeshActiveAnalysisResult({
+    section: analysisFocusedSection,
+    deferred: !!deferredSurfaceSampleSetInfo,
+    qualityMetric: meshAnalyzeQualityMetric,
+    qualityReport: meshQualityReport,
+    qualityBusy: meshQualityBusy,
+    qualityThreshold: meshQualityHighAspectThreshold,
+    qualityCacheHit: meshQualityCacheHit,
+    qualityUpdatedAt: cachedMeshQualityResult?.updatedAt ?? null,
+    qualityEdgeCount: surfaceInspectorTopologyDetails?.edgeCount ?? null,
+    geodesicBusy: geodesicHeatBusy,
+    geodesicLength: geodesicHeatLength,
+    geodesicUseContinuous: geodesicHeatUseContinuous,
+    geodesicHasStart: !!geodesicHeatStart,
+    geodesicHasEnd: !!geodesicHeatEnd,
+    diagnostics: surfaceMeshAnalyzeDiagnostics,
+    diagnosticsMode: meshAnalyzeDiagnosticOverlayMode,
+    diagnosticsUpdatedAt: cachedMeshDiagnosticsResult?.updatedAt ?? null,
+    vectorMagnitudeRange: surfaceInspectorActiveVectorMagnitudeRange,
+    showGaussMap,
+    calculusActiveVectorField,
+    calculusScalarSource,
+    calculusVectorSource,
+    showRidges,
+    showValleys,
+    showCurvatureLines,
+    curvatureLineField,
+    curvatureSeedSource,
+    curvatureMaxSteps,
+    curvatureField: meshAnalyzeCurvatureField,
+    curvatureFieldLabel: meshAnalyzeCurvatureFieldLabel,
+    curvatureStats: meshAnalyzeCurvatureStats,
+    curvatureRangeSource: surfaceScienceCurvatureRangeSource,
+    curvatureClampRange: meshAnalyzeClampRange,
+    curvaturePalette: colorPalette,
+    curvaturePaletteInverted: meshAnalyzePaletteInverted,
+    curvatureCacheReady: cachedMeshCurvatureResult?.state === "ready",
+    curvatureUpdatedAt: cachedMeshCurvatureResult?.updatedAt ?? null,
+    curvatureComputationMs: surfaceMeshCurvatureComputation?.durationMs ?? null,
+    sphereSanity: meshAnalyzeSphereSanity,
+    meshStats: surfaceMeshStats,
+    meshLabel: surfaceMeshLabel,
+  });
   const meshAnalysisWorkflowValidationLabel = surfaceMeshAnalyzeDiagnostics
     ? surfaceMeshAnalyzeDiagnostics.state === "Healthy"
       ? "Validated"
@@ -74642,10 +74573,44 @@ case "mobius":
                           )}
                           {analysisFocusedSection === "mesh-quality" && (
                             <div data-testid="mesh-analyze-quality-config" style={{ display: "grid", gap: 6, fontSize: 10.5 }}>
-                              <label style={{ display: "grid", gridTemplateColumns: "1fr 72px", alignItems: "center", gap: 6 }}>
-                                <span>High aspect threshold</span>
-                                <input type="number" min={1} step={0.5} value={meshQualityHighAspectThreshold} onChange={(event) => setMeshQualityHighAspectThreshold(Math.max(1, Number(event.target.value) || 1))} />
-                              </label>
+                              <div style={{ fontWeight: 800, color: "#334155" }}>Metric</div>
+                              <div
+                                role="group"
+                                aria-label="Quality metric"
+                                data-testid="mesh-analyze-quality-metrics"
+                                style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 4 }}
+                              >
+                                {MESH_QUALITY_METRIC_OPTIONS.map((option) => {
+                                  const active = meshAnalyzeQualityMetric === option.id;
+                                  return (
+                                    <button
+                                      key={option.id}
+                                      type="button"
+                                      data-testid={`mesh-analyze-quality-metric-${option.id}`}
+                                      onClick={() => setMeshAnalyzeQualityMetric(option.id)}
+                                      aria-pressed={active}
+                                      title={option.label}
+                                      style={{
+                                        minWidth: 0,
+                                        padding: "4px 6px",
+                                        borderColor: active ? "#60a5fa" : "#d0d5dd",
+                                        background: active ? "#dbeafe" : "#ffffff",
+                                        color: active ? "#1d4ed8" : "#334155",
+                                        fontSize: 10,
+                                        fontWeight: active ? 850 : 700,
+                                      }}
+                                    >
+                                      {option.shortLabel}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {meshAnalyzeQualityMetric === "aspectRatio" && (
+                                <label style={{ display: "grid", gridTemplateColumns: "1fr 72px", alignItems: "center", gap: 6 }}>
+                                  <span>High aspect threshold</span>
+                                  <input type="number" min={1} step={0.5} value={meshQualityHighAspectThreshold} onChange={(event) => setMeshQualityHighAspectThreshold(Math.max(1, Number(event.target.value) || 1))} />
+                                </label>
+                              )}
                               <label style={{ display: "grid", gridTemplateColumns: "1fr 72px", alignItems: "center", gap: 6 }}>
                                 <span>Listed defects</span>
                                 <input type="number" min={1} step={1} value={meshQualityMaxListedDefects} onChange={(event) => setMeshQualityMaxListedDefects(Math.max(1, Math.round(Number(event.target.value) || 1)))} />
@@ -74809,6 +74774,7 @@ case "mobius":
                             <button
                               key={`mesh-tools-topology-primary-pick-mode-${pickMode}`}
                               type="button"
+                              data-testid={`mesh-topology-pick-${pickMode}`}
                               onClick={() => {
                                 handleChangeSurfaceMeshTopologyPickMode(pickMode);
                                 if (!probeEnabled) setProbeEnabled(true);
@@ -79506,7 +79472,9 @@ case "mobius":
               </div>
             </div>
 
-            {showSurfacesRightPanel && !isSurfaceStackedLayout && <div onMouseDown={startDragRight} style={splitterStyle} />}
+            {showSurfacesRightPanel && !isSurfaceStackedLayout && (
+              <div data-testid="surface-right-splitter" onMouseDown={startDragRight} style={splitterStyle} />
+            )}
 
             {/* RIGHT */}
             {showSurfacesRightPanel && (
@@ -79760,6 +79728,11 @@ case "mobius":
                       curvatureMaxSteps={curvatureMaxSteps}
                       curvatureMaxLines={curvatureMaxLines}
                       onRebuildCurvatureLines={() => setCurvatureRebuildToken((t) => t + 1)}
+                      onSelectMeshAnalysisCurvatureField={(field) => {
+                        handleSelectMeshAnalyzeCurvatureField(
+                          field === "K" ? "gaussian" : field === "H" ? "mean" : field
+                        );
+                      }}
                       probeInfo={probeInfo}
                       probeCurv={probeCurv}
                       paramProbeCurv={paramProbeCurv}
@@ -105999,7 +105972,7 @@ const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
       <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
         <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Pick info</div>
         {activePoint && activeNormal ? (
-          <div style={{ fontSize: 11, display: "grid", gridTemplateColumns: "88px 1fr", gap: "4px 8px" }}>
+          <div data-testid="mesh-selection-local-science" style={{ fontSize: 11, display: "grid", gridTemplateColumns: "88px 1fr", gap: "4px 8px" }}>
             {inspectIdx != null && (
               <>
                 <div style={{ color: "#556" }}>Index</div>
@@ -106021,37 +105994,37 @@ const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
               </>
             )}
             <div style={{ color: "#556" }}>Normal</div>
-            <div>{fmt3(activeNormal)}</div>
+            <div data-testid="mesh-selection-local-normal">{fmt3(activeNormal)}</div>
             {tangentBasis && (
               <>
-                <div style={{ color: "#556" }}>Tangent U</div>
-                <div>{fmt3(tangentBasis.t1)}</div>
-                <div style={{ color: "#556" }}>Tangent V</div>
-                <div>{fmt3(tangentBasis.t2)}</div>
+                <div style={{ color: "#556" }}>Tangent direction 1</div>
+                <div data-testid="mesh-selection-local-direction-d1">{fmt3(tangentBasis.t1)}</div>
+                <div style={{ color: "#556" }}>Tangent direction 2</div>
+                <div data-testid="mesh-selection-local-direction-d2">{fmt3(tangentBasis.t2)}</div>
               </>
             )}
             {curvature?.K != null && (
               <>
                 <div style={{ color: "#556" }}>K</div>
-                <div>{fmt(curvature.K)}</div>
+                <div data-testid="mesh-selection-local-K">{fmt(curvature.K)}</div>
               </>
             )}
             {curvature?.H != null && (
               <>
                 <div style={{ color: "#556" }}>H</div>
-                <div>{fmt(curvature.H)}</div>
+                <div data-testid="mesh-selection-local-H">{fmt(curvature.H)}</div>
               </>
             )}
             {curvature?.k1 != null && (
               <>
                 <div style={{ color: "#556" }}>k1</div>
-                <div>{fmt(curvature.k1)}</div>
+                <div data-testid="mesh-selection-local-k1">{fmt(curvature.k1)}</div>
               </>
             )}
             {curvature?.k2 != null && (
               <>
                 <div style={{ color: "#556" }}>k2</div>
-                <div>{fmt(curvature.k2)}</div>
+                <div data-testid="mesh-selection-local-k2">{fmt(curvature.k2)}</div>
               </>
             )}
           </div>
@@ -107442,15 +107415,7 @@ type SurfacesLeftPanelProps = {
 };
 
 type SurfacesLeftTab = "controls" | "scene" | "object" | "view" | "analysis" | "services" | "theory";
-type AnalysisFocusedSection =
-  | "differential-geometry"
-  | "vector-calculus"
-  | "curvature-lines"
-  | "ridges-valleys"
-  | "chart-analysis"
-  | "mesh-quality"
-  | "geodesics"
-  | "diagnostics";
+type AnalysisFocusedSection = MeshAnalysisFocusedSection;
 type DifferentialGeometryAnalysisMode = "auto" | "fast-preview" | "robust-mesh" | "analytic";
 type DifferentialGeometryPrecheckMode = "run" | "auto";
 type DifferentialGeometrySmoothing = "none" | "light" | "medium";
@@ -115688,6 +115653,7 @@ type SurfacesRightPanelProps = {
   curvatureMaxSteps: number;
   curvatureMaxLines: number;
   onRebuildCurvatureLines: () => void;
+  onSelectMeshAnalysisCurvatureField: (field: "K" | "H" | "k1" | "k2") => void;
 
   probeInfo: ProbeInfo | null;
   probeCurv: CurvatureData | null;
@@ -115742,13 +115708,6 @@ type SurfacesRightPanelProps = {
 type InspectorPanelTab = "object" | "result" | "selection" | "probe" | "analysis" | "diagnostics" | "history" | "warnings";
 type MeshWorkspaceLeftTab = "operations" | "analyze" | "topology" | "scene" | "snapshots";
 type AnalysisResultsView = "show-all" | "current-screen";
-type MeshActiveAnalysisResultSummary = {
-  category: string | null;
-  result: string;
-  state: "Ready" | "Running" | "Deferred" | "Unavailable";
-  statistics: Array<{ label: string; value: string }>;
-  metadata: Array<{ label: string; value: string }>;
-};
 type MeshAnalysisFeatureState = "ready" | "running" | "deferred" | "not-requested" | "missing" | "unavailable";
 type MeshAnalysisFeatureRow = {
   id: string;
@@ -115758,6 +115717,7 @@ type MeshAnalysisFeatureRow = {
   detail?: string;
   actionLabel?: string;
   onAction?: () => void;
+  onOpenResult?: () => void;
   disabled?: boolean;
 };
 
@@ -115958,6 +115918,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   curvatureMaxSteps,
   curvatureMaxLines,
   onRebuildCurvatureLines,
+  onSelectMeshAnalysisCurvatureField,
   probeInfo,
   probeCurv,
   paramProbeCurv,
@@ -116661,6 +116622,17 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         detail: formatRange(curvatureRanges.H),
         actionLabel: curvatureRanges.H ? undefined : "Run",
         onAction: curvatureRanges.H ? undefined : onRebuildCurvatureLines,
+        onOpenResult: curvatureRanges.H
+          ? () => {
+              onSelectMeshAnalysisCurvatureField("H");
+              setInspectorPanelTab("result");
+              window.requestAnimationFrame(() => {
+                document.querySelector('[data-testid="mesh-analysis-active-result"]')?.scrollIntoView({
+                  block: "nearest",
+                });
+              });
+            }
+          : undefined,
       },
       {
         id: "gaussian-curvature",
@@ -116670,6 +116642,17 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         detail: formatRange(curvatureRanges.K),
         actionLabel: curvatureRanges.K ? undefined : "Run",
         onAction: curvatureRanges.K ? undefined : onToggleGaussMap,
+        onOpenResult: curvatureRanges.K
+          ? () => {
+              onSelectMeshAnalysisCurvatureField("K");
+              setInspectorPanelTab("result");
+              window.requestAnimationFrame(() => {
+                document.querySelector('[data-testid="mesh-analysis-active-result"]')?.scrollIntoView({
+                  block: "nearest",
+                });
+              });
+            }
+          : undefined,
       },
       {
         id: "principal-directions",
@@ -116756,6 +116739,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     onPrepareDeferredSurfaceAnalysisData,
     onRecomputeMeshAnalyzeDiagnostics,
     onRebuildCurvatureLines,
+    onSelectMeshAnalysisCurvatureField,
     onToggleGaussMap,
     onTogglePrincipalDirections,
     principalDirectionsStatus,
@@ -116794,10 +116778,25 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                     fontSize: 11,
                   }}
                 >
-                  <div style={{ minWidth: 0 }}>
+                  <button
+                    type="button"
+                    data-testid={`mesh-analysis-feature-${row.id}`}
+                    onClick={row.onOpenResult}
+                    disabled={!row.onOpenResult}
+                    style={{
+                      minWidth: 0,
+                      padding: 0,
+                      border: 0,
+                      background: "transparent",
+                      color: "inherit",
+                      cursor: row.onOpenResult ? "pointer" : "default",
+                      textAlign: "left",
+                      font: "inherit",
+                    }}
+                  >
                     <div style={{ fontWeight: 700 }}>{row.label}</div>
                     {row.detail && <div style={{ color: "#64748b" }}>{row.detail}</div>}
-                  </div>
+                  </button>
                   <div style={{ display: "flex", gap: 5, justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap" }}>
                     <span
                       style={{
@@ -117980,33 +117979,92 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                     {meshActiveAnalysisResult.state}
                   </span>
                 </div>
-                {meshActiveAnalysisResult.statistics.length > 0 ? (
+                {(meshActiveAnalysisResult.method || meshActiveAnalysisResult.domain) && (
                   <div
-                    data-testid="mesh-analysis-result-statistics"
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                      borderTop: "1px solid #e2e8f0",
-                      borderLeft: "1px solid #e2e8f0",
-                      marginBottom: 9,
-                    }}
+                    data-testid="mesh-analysis-result-definition"
+                    style={{ borderTop: "1px solid #e2e8f0", padding: "7px 0", display: "grid", gap: 4, fontSize: 10 }}
                   >
-                    {meshActiveAnalysisResult.statistics.map((statistic) => (
-                      <div
-                        key={`active-result-stat-${statistic.label}`}
-                        data-testid={`mesh-analysis-result-stat-${statistic.label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
-                        style={{ borderRight: "1px solid #e2e8f0", borderBottom: "1px solid #e2e8f0", padding: "6px 7px", minWidth: 0 }}
-                      >
-                        <div style={{ color: "#64748b", fontSize: 9, fontWeight: 800, textTransform: "uppercase" }}>{statistic.label}</div>
-                        <div style={{ color: "#0f172a", fontSize: 11, fontWeight: 850, overflowWrap: "anywhere" }}>{statistic.value}</div>
+                    {meshActiveAnalysisResult.method && (
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                        <span style={{ color: "#64748b" }}>Method</span>
+                        <strong style={{ textAlign: "right", overflowWrap: "anywhere" }}>{meshActiveAnalysisResult.method}</strong>
                       </div>
-                    ))}
+                    )}
+                    {meshActiveAnalysisResult.domain && (
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                        <span style={{ color: "#64748b" }}>Domain</span>
+                        <strong style={{ textAlign: "right", overflowWrap: "anywhere" }}>{meshActiveAnalysisResult.domain}</strong>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {meshActiveAnalysisResult.statistics.length > 0 ? (
+                  <div style={{ marginBottom: 9 }}>
+                    <div style={{ color: "#475569", fontSize: 10, fontWeight: 850, textTransform: "uppercase", marginBottom: 5 }}>Statistics</div>
+                    <div
+                      data-testid="mesh-analysis-result-statistics"
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                        borderTop: "1px solid #e2e8f0",
+                        borderLeft: "1px solid #e2e8f0",
+                      }}
+                    >
+                      {meshActiveAnalysisResult.statistics.map((statistic) => (
+                        <div
+                          key={`active-result-stat-${statistic.label}`}
+                          data-testid={`mesh-analysis-result-stat-${statistic.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`}
+                          style={{ borderRight: "1px solid #e2e8f0", borderBottom: "1px solid #e2e8f0", padding: "6px 7px", minWidth: 0 }}
+                        >
+                          <div style={{ color: "#64748b", fontSize: 9, fontWeight: 800, textTransform: "uppercase" }}>{statistic.label}</div>
+                          <div style={{ color: "#0f172a", fontSize: 11, fontWeight: 850, overflowWrap: "anywhere" }}>{statistic.value}</div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <div style={{ color: "#64748b", fontSize: 11, marginBottom: 9 }}>No numerical result is available yet.</div>
                 )}
+                {meshActiveAnalysisResult.extrema?.length ? (
+                  <div data-testid="mesh-analysis-result-extrema" style={{ borderTop: "1px solid #e2e8f0", paddingTop: 7, marginBottom: 9, display: "grid", gap: 4, fontSize: 10 }}>
+                    <div style={{ color: "#475569", fontWeight: 850, textTransform: "uppercase" }}>Extrema</div>
+                    {meshActiveAnalysisResult.extrema.map((entry) => (
+                      <div key={`active-result-extrema-${entry.label}`} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                        <span style={{ color: "#64748b" }}>{entry.label}</span>
+                        <strong>{entry.value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {meshActiveAnalysisResult.histogram?.length ? (() => {
+                  const maxBinCount = Math.max(...meshActiveAnalysisResult.histogram.map((bin) => bin.count), 1);
+                  return (
+                    <div data-testid="mesh-analysis-result-histogram" style={{ borderTop: "1px solid #e2e8f0", paddingTop: 7, marginBottom: 9 }}>
+                      <div style={{ color: "#475569", fontSize: 10, fontWeight: 850, textTransform: "uppercase", marginBottom: 6 }}>Histogram</div>
+                      <div style={{ height: 64, display: "flex", gap: 2, alignItems: "flex-end", borderBottom: "1px solid #cbd5e1" }}>
+                        {meshActiveAnalysisResult.histogram.map((bin, index) => (
+                          <div
+                            key={`active-result-histogram-${index}`}
+                            title={`${fmt(bin.min)} to ${fmt(bin.max)}: ${bin.count}`}
+                            style={{
+                              flex: "1 1 0",
+                              minWidth: 2,
+                              height: `${Math.max(3, (bin.count / maxBinCount) * 100)}%`,
+                              background: "#2563eb",
+                              opacity: bin.count ? 0.82 : 0.18,
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 3, color: "#64748b", fontSize: 9 }}>
+                        <span>{fmt(meshActiveAnalysisResult.histogram[0].min)}</span>
+                        <span>{fmt(meshActiveAnalysisResult.histogram[meshActiveAnalysisResult.histogram.length - 1].max)}</span>
+                      </div>
+                    </div>
+                  );
+                })() : null}
                 <div data-testid="mesh-analysis-result-metadata" style={{ borderTop: "1px solid #e2e8f0", paddingTop: 7, display: "grid", gap: 4, fontSize: 10 }}>
-                  <div style={{ color: "#475569", fontWeight: 850, textTransform: "uppercase" }}>Computation metadata</div>
+                  <div style={{ color: "#475569", fontWeight: 850, textTransform: "uppercase" }}>Computation</div>
                   {meshActiveAnalysisResult.metadata.map((entry) => (
                     <div key={`active-result-meta-${entry.label}`} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                       <span style={{ color: "#64748b" }}>{entry.label}</span>

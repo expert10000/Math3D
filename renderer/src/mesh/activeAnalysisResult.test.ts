@@ -1,0 +1,170 @@
+import { describe, expect, it } from "vitest";
+import type { MeshQualityReport } from "./meshQualityReport";
+import {
+  MESH_QUALITY_METRIC_OPTIONS,
+  selectMeshActiveAnalysisResult,
+  summarizeMeshScalarField,
+  type MeshActiveAnalysisResultInput,
+  type MeshQualityMetricKey,
+} from "./activeAnalysisResult";
+
+const qualityReport: MeshQualityReport = {
+  generatedAt: "2026-09-08T12:00:00.000Z",
+  vertexCount: 4,
+  faceCount: 2,
+  metrics: {
+    edgeLength: { min: 1, avg: 2, max: 3 },
+    triangleArea: { min: 4, avg: 5, max: 6 },
+    aspectRatio: { min: 7, avg: 8, max: 9 },
+    vertexValence: { min: 10, avg: 11, max: 12 },
+    dihedralAngleDeg: { min: 13, avg: 14, max: 15 },
+  },
+  topology: { boundaryEdgeCount: 0, nonManifoldEdgeCount: 0, degenerateFaceCount: 1 },
+  defects: {
+    degenerateFaces: [],
+    highAspectFaces: [
+      { faceIndex: 1, centroid: { x: 0, y: 0, z: 0 }, area: 1, aspectRatio: 9 },
+    ],
+    nonManifoldEdges: [],
+  },
+};
+
+const baseInput = (overrides: Partial<MeshActiveAnalysisResultInput> = {}): MeshActiveAnalysisResultInput => ({
+  section: "differential-geometry",
+  deferred: false,
+  qualityMetric: "aspectRatio",
+  qualityReport: null,
+  qualityBusy: false,
+  qualityThreshold: 8,
+  qualityCacheHit: false,
+  qualityUpdatedAt: null,
+  qualityEdgeCount: 5,
+  geodesicBusy: false,
+  geodesicLength: null,
+  geodesicUseContinuous: false,
+  geodesicHasStart: false,
+  geodesicHasEnd: false,
+  diagnostics: null,
+  diagnosticsMode: "none",
+  diagnosticsUpdatedAt: null,
+  vectorMagnitudeRange: null,
+  showGaussMap: false,
+  calculusActiveVectorField: "",
+  calculusScalarSource: "none",
+  calculusVectorSource: "",
+  showRidges: false,
+  showValleys: false,
+  showCurvatureLines: false,
+  curvatureLineField: "d1",
+  curvatureSeedSource: "global",
+  curvatureMaxSteps: 120,
+  curvatureField: null,
+  curvatureFieldLabel: null,
+  curvatureStats: null,
+  curvatureRangeSource: "whole mesh",
+  curvatureClampRange: null,
+  curvaturePalette: "blue-red",
+  curvaturePaletteInverted: false,
+  curvatureCacheReady: false,
+  curvatureUpdatedAt: null,
+  curvatureComputationMs: null,
+  sphereSanity: null,
+  meshStats: { vertCount: 4, triCount: 2 },
+  meshLabel: "Fixture",
+  formatTimestamp: (value) => (value == null ? "Current session" : `timestamp:${value}`),
+  ...overrides,
+});
+
+describe("selectMeshActiveAnalysisResult", () => {
+  it("selects each mesh quality metric with its own values and metadata", () => {
+    const expected: Record<MeshQualityMetricKey, { label: string; min: string; samples: string }> = {
+      aspectRatio: { label: "Aspect ratio", min: "7.0000", samples: "2" },
+      triangleArea: { label: "Triangle area", min: "4.0000", samples: "2" },
+      edgeLength: { label: "Edge length", min: "1.0000", samples: "5" },
+      vertexValence: { label: "Vertex valence", min: "10.0000", samples: "4" },
+      dihedralAngleDeg: { label: "Dihedral angle", min: "13.0000", samples: "5" },
+    };
+
+    for (const option of MESH_QUALITY_METRIC_OPTIONS) {
+      const result = selectMeshActiveAnalysisResult(baseInput({
+        section: "mesh-quality",
+        qualityMetric: option.id,
+        qualityReport,
+        qualityCacheHit: true,
+        qualityUpdatedAt: 42,
+      }));
+      expect(result.category).toBe("Mesh Quality");
+      expect(result.result).toBe(expected[option.id].label);
+      expect(result.state).toBe("Ready");
+      expect(result.statistics).toContainEqual({ label: "Minimum", value: expected[option.id].min });
+      expect(result.statistics).toContainEqual({ label: "Samples", value: expected[option.id].samples });
+      expect(result.metadata).toContainEqual({ label: "Cache", value: "Cached result" });
+      expect(result.metadata).toContainEqual({ label: "Computed", value: "timestamp:42" });
+    }
+  });
+
+  it("returns curvature statistics and computation context", () => {
+    const curvatureStats = summarizeMeshScalarField(Float32Array.from([-1, 0, 1, 2]), null, 4);
+    const result = selectMeshActiveAnalysisResult(baseInput({
+      curvatureField: "K",
+      curvatureFieldLabel: "Gaussian curvature K",
+      curvatureStats,
+      curvatureClampRange: { min: -0.5, max: 1.5 },
+      curvatureCacheReady: true,
+      curvatureUpdatedAt: 99,
+      curvatureComputationMs: 1.25,
+    }));
+
+    expect(result).toMatchObject({
+      category: "Differential Geometry",
+      result: "Gaussian curvature K",
+      state: "Ready",
+      method: "Angle defect",
+      domain: "4 vertices",
+    });
+    expect(result.statistics).toContainEqual({ label: "Median", value: "0.5000" });
+    expect(result.statistics).toContainEqual({ label: "σ (sigma)", value: "1.1180" });
+    expect(result.extrema).toEqual([
+      { label: "Minimum", value: "Vertex 0" },
+      { label: "Maximum", value: "Vertex 3" },
+    ]);
+    expect(result.histogram).toHaveLength(4);
+    expect(result.metadata).toContainEqual({ label: "Display range", value: "-0.5000 to 1.5000 (clamped)" });
+    expect(result.metadata).toContainEqual({ label: "Backend", value: "Renderer CPU" });
+    expect(result.metadata).toContainEqual({ label: "Time", value: "1.25 ms" });
+    expect(result.metadata).toContainEqual({ label: "Cached", value: "Yes" });
+    expect(result.metadata).toContainEqual({ label: "Computed", value: "timestamp:99" });
+  });
+
+  it("summarizes a selected scalar domain with stable extrema indices and histogram counts", () => {
+    const result = summarizeMeshScalarField(
+      Float32Array.from([8, Number.NaN, 2, 6, 4]),
+      Uint8Array.from([0, 1, 1, 1, 1]),
+      2
+    );
+
+    expect(result).toMatchObject({
+      min: 2,
+      max: 6,
+      mean: 4,
+      median: 4,
+      count: 3,
+      minIndex: 2,
+      maxIndex: 3,
+    });
+    expect(result?.histogram.map((bin) => bin.count)).toEqual([1, 2]);
+  });
+
+  it("falls back to a ready mesh overview when no result is selected", () => {
+    expect(selectMeshActiveAnalysisResult(baseInput())).toEqual({
+      category: null,
+      result: "Overview",
+      state: "Ready",
+      statistics: [
+        { label: "Vertices", value: "4" },
+        { label: "Faces", value: "2" },
+      ],
+      metadata: [{ label: "Mesh", value: "Fixture" }],
+    });
+  });
+});
