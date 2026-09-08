@@ -4,6 +4,8 @@ export type MeshAnalysisResultKind = "curvature" | "quality" | "diagnostics" | "
 
 export type MeshAnalysisResultState = "ready" | "running" | "deferred" | "stale" | "error";
 
+export type MeshDiagnosticState = "Healthy" | "Warning" | "Invalid" | "Unverified";
+
 export type MeshAnalysisResultDependency = {
   kind: MeshAnalysisResultKind;
   variant?: string;
@@ -30,8 +32,37 @@ export type MeshDiagnosticsAnalysisPayload = {
   watertight: boolean | null;
   boundaryLoopCount: number;
   weldTolerance: number;
+  state: MeshDiagnosticState;
   cleanMesh: boolean;
   sphereSeamWarning: boolean;
+};
+
+type MeshDiagnosticStateInput = Pick<
+  MeshDiagnosticsAnalysisPayload,
+  | "trianglesValid"
+  | "invalidFaceCount"
+  | "degenerateTriangleCount"
+  | "boundaryEdgeCount"
+  | "nonManifoldEdgeCount"
+  | "selfIntersectionPairs"
+  | "duplicateVertexCount"
+  | "watertight"
+>;
+
+export const deriveMeshDiagnosticState = (diagnostics: MeshDiagnosticStateInput): MeshDiagnosticState => {
+  if (
+    !diagnostics.trianglesValid ||
+    diagnostics.invalidFaceCount > 0 ||
+    diagnostics.degenerateTriangleCount > 0 ||
+    diagnostics.boundaryEdgeCount > 0 ||
+    diagnostics.nonManifoldEdgeCount > 0 ||
+    diagnostics.watertight === false
+  ) {
+    return "Invalid";
+  }
+  if (diagnostics.selfIntersectionPairs > 0 || diagnostics.duplicateVertexCount > 0) return "Warning";
+  if (diagnostics.watertight === true) return "Healthy";
+  return "Unverified";
 };
 
 export type MeshAnalysisMeshIdentity = {
