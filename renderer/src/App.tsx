@@ -535,6 +535,8 @@ import {
   meshAnalysisResultKindsForMesh,
   upsertMeshAnalysisResult,
   type MeshAnalysisMeshIdentity,
+  type MeshAnalysisResultKind,
+  type MeshAnalysisResultState,
   type MeshCurvatureAnalysisPayload,
   type MeshDiagnosticsAnalysisPayload,
 } from "./mesh/analysisResultStore";
@@ -5128,9 +5130,93 @@ type MeshWorkspaceEntry = {
 type MeshWorkspaceEntryOverlayState = {
   wireframe: boolean;
   bounds: boolean;
+  analysis?: MeshWorkspaceAnalysisLayerState;
 };
 
+type MeshWorkspaceAnalysisField = "none" | "K" | "H" | "k1" | "k2";
+type MeshWorkspaceAnalysisLayerId = "curvature" | "directions" | "gauss" | "diagnostics";
+type MeshWorkspaceAnalysisLayerState = {
+  field: MeshWorkspaceAnalysisField;
+  directions: boolean;
+  gauss: boolean;
+  diagnostics: boolean;
+  palette: ColorPalette;
+  paletteInverted: boolean;
+  rangeMode: "whole" | "selected";
+  status: MeshAnalysisResultState | "not-requested";
+  progress: number | null;
+  resultKinds: MeshAnalysisResultKind[];
+  meshRevision: string | null;
+  updatedAt: number;
+};
+
+const defaultMeshWorkspaceAnalysisLayerState = (): MeshWorkspaceAnalysisLayerState => ({
+  field: "none",
+  directions: false,
+  gauss: false,
+  diagnostics: false,
+  palette: "blueRed",
+  paletteInverted: false,
+  rangeMode: "whole",
+  status: "not-requested",
+  progress: null,
+  resultKinds: [],
+  meshRevision: null,
+  updatedAt: Date.now(),
+});
+
+const normalizeMeshWorkspaceEntryOverlayState = (value: unknown): MeshWorkspaceEntryOverlayState => {
+  const source = value && typeof value === "object" ? value as Partial<MeshWorkspaceEntryOverlayState> : {};
+  const rawAnalysis = source.analysis && typeof source.analysis === "object"
+    ? source.analysis as Partial<MeshWorkspaceAnalysisLayerState>
+    : null;
+  const defaults = defaultMeshWorkspaceAnalysisLayerState();
+  const field = rawAnalysis?.field;
+  const status = rawAnalysis?.status;
+  return {
+    wireframe: Boolean(source.wireframe),
+    bounds: Boolean(source.bounds),
+    analysis: rawAnalysis
+      ? {
+          field: field === "K" || field === "H" || field === "k1" || field === "k2" ? field : "none",
+          directions: Boolean(rawAnalysis.directions),
+          gauss: Boolean(rawAnalysis.gauss),
+          diagnostics: Boolean(rawAnalysis.diagnostics),
+          palette: rawAnalysis.palette === "grayscale" || rawAnalysis.palette === "redYellow" || rawAnalysis.palette === "blueRed" || rawAnalysis.palette === "rainbow"
+            ? rawAnalysis.palette
+            : defaults.palette,
+          paletteInverted: Boolean(rawAnalysis.paletteInverted),
+          rangeMode: rawAnalysis.rangeMode === "selected" ? "selected" : "whole",
+          status:
+            status === "ready" || status === "running" || status === "deferred" || status === "stale" || status === "error"
+              ? status
+              : "not-requested",
+          progress: typeof rawAnalysis.progress === "number" && Number.isFinite(rawAnalysis.progress)
+            ? Math.min(1, Math.max(0, rawAnalysis.progress))
+            : null,
+          resultKinds: Array.isArray(rawAnalysis.resultKinds)
+            ? rawAnalysis.resultKinds.filter((kind): kind is MeshAnalysisResultKind =>
+                kind === "curvature" || kind === "quality" || kind === "diagnostics" || kind === "geodesic"
+              )
+            : [],
+          meshRevision: typeof rawAnalysis.meshRevision === "string" ? rawAnalysis.meshRevision : null,
+          updatedAt: typeof rawAnalysis.updatedAt === "number" && Number.isFinite(rawAnalysis.updatedAt)
+            ? rawAnalysis.updatedAt
+            : defaults.updatedAt,
+        }
+      : undefined,
+  };
+};
+
+const cloneMeshWorkspaceEntryOverlayState = (state: MeshWorkspaceEntryOverlayState): MeshWorkspaceEntryOverlayState => ({
+  ...state,
+  analysis: state.analysis
+    ? { ...state.analysis, resultKinds: [...state.analysis.resultKinds] }
+    : undefined,
+});
+
 type MeshWorkspaceEntryOverlayStates = Record<string, MeshWorkspaceEntryOverlayState>;
+type MeshWorkspaceObjectOverlayId = "wireframe" | "bounds";
 
 type MeshWorkspaceProjectState = {
   version: 1;
@@ -36953,7 +37039,17 @@ const App: React.FC = () => {
     setMeshQualityPhase("idle");
     setMeshQualityProgress(0);
     setMeshQualityError("Mesh quality computation canceled.");
-  }, [meshQualityBusy, terminateMeshQualityWorker]);
+    if (activeMeshAnalysisIdentity) {
+      setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+        kind: "quality",
+        variant: meshQualityResultVariant,
+        mesh: activeMeshAnalysisIdentity,
+        state: "error",
+        progress: null,
+        error: "Mesh quality computation canceled.",
+      }));
+    }
+  }, [activeMeshAnalysisIdentity, meshQualityBusy, meshQualityResultVariant, terminateMeshQualityWorker]);
   useEffect(() => {
     if (!surfaceMeshData?.positions?.length) {
       meshQualityJobRef.current = null;
@@ -36973,6 +37069,17 @@ const App: React.FC = () => {
       setMeshQualityProgress(0);
       setMeshQualityPhase("idle");
       setMeshQualityCacheHit(false);
+      if (activeMeshAnalysisIdentity) {
+        setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+          kind: "quality",
+          variant: meshQualityResultVariant,
+          mesh: activeMeshAnalysisIdentity,
+          state: "deferred",
+          progress: null,
+          dependencies: [{ kind: "diagnostics", state: "deferred" }],
+          error: null,
+        }));
+      }
       return;
     }
     const positions = surfaceMeshData.positions;
@@ -36998,12 +37105,35 @@ const App: React.FC = () => {
     setMeshQualityProgress(0);
     setMeshQualityPhase("faces");
     setMeshQualityCacheHit(false);
+    if (analysisIdentity) {
+      setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+        kind: "quality",
+        variant: meshQualityResultVariant,
+        mesh: analysisIdentity,
+        state: "running",
+        progress: 0,
+        dependencies: [{ kind: "diagnostics", state: "running" }],
+        error: null,
+      }));
+    }
     const onMessage = (event: MessageEvent<MeshQualityWorkerMessage>) => {
       const msg = event.data;
       if (!msg || msg.jobId !== jobId) return;
       if (msg.type === "progress") {
         setMeshQualityPhase(msg.phase);
-        setMeshQualityProgress(Math.max(0, Math.min(1, Number(msg.progress ?? 0))));
+        const progress = Math.max(0, Math.min(1, Number(msg.progress ?? 0)));
+        setMeshQualityProgress(progress);
+        if (analysisIdentity) {
+          setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+            kind: "quality",
+            variant: meshQualityResultVariant,
+            mesh: analysisIdentity,
+            state: "running",
+            progress,
+            dependencies: [{ kind: "diagnostics", state: "running" }],
+            error: null,
+          }));
+        }
         return;
       }
       if (msg.type === "result") {
@@ -37022,12 +37152,26 @@ const App: React.FC = () => {
                   highAspectRatioThreshold: meshQualityHighAspectThreshold,
                   maxListedDefects: Math.max(1, Math.floor(meshQualityMaxListedDefects)),
                 },
+                state: "ready",
+                progress: 1,
+                dependencies: [{ kind: "diagnostics", state: "ready" }],
                 payload: msg.report,
               })
             );
           }
         } else {
-          setMeshQualityError(msg.error || "Failed to compute mesh quality report.");
+          const error = msg.error || "Failed to compute mesh quality report.";
+          setMeshQualityError(error);
+          if (analysisIdentity) {
+            setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+              kind: "quality",
+              variant: meshQualityResultVariant,
+              mesh: analysisIdentity,
+              state: "error",
+              progress: null,
+              error,
+            }));
+          }
         }
         meshQualityJobRef.current = null;
         if (meshQualityWorkerRef.current === worker) {
@@ -37059,7 +37203,6 @@ const App: React.FC = () => {
     meshQualityMaxListedDefects,
     meshAnalyzeDiagnosticsNonce,
     activeMeshAnalysisIdentity,
-    cachedMeshQualityResult,
     meshQualityResultVariant,
     terminateMeshQualityWorker,
   ]);
@@ -49024,7 +49167,7 @@ case "mobius":
         selectedEntryIds: [...meshWorkspaceSelectedEntryIds],
         booleanInputIds: { ...meshWorkspaceBooleanInputIds },
         entryOverlayStates: Object.fromEntries(
-          Object.entries(meshWorkspaceEntryOverlayStates).map(([entryId, state]) => [entryId, { ...state }])
+          Object.entries(meshWorkspaceEntryOverlayStates).map(([entryId, state]) => [entryId, cloneMeshWorkspaceEntryOverlayState(state)])
         ),
         savedScenes: meshWorkspaceSavedScenes.map((scene) => ({
           ...scene,
@@ -49034,7 +49177,7 @@ case "mobius":
           selectedEntryIds: [...scene.selectedEntryIds],
           booleanInputIds: { ...scene.booleanInputIds },
           entryOverlayStates: Object.fromEntries(
-            Object.entries(scene.entryOverlayStates ?? {}).map(([entryId, state]) => [entryId, { ...state }])
+            Object.entries(scene.entryOverlayStates ?? {}).map(([entryId, state]) => [entryId, cloneMeshWorkspaceEntryOverlayState(state)])
           ),
         })),
       },
@@ -49272,6 +49415,7 @@ case "mobius":
       meshWorkspaceOrder,
       meshWorkspaceSelectedEntryIds,
       meshWorkspaceBooleanInputIds,
+      meshWorkspaceEntryOverlayStates,
       meshWorkspaceSavedScenes,
     ]
   );
@@ -49393,7 +49537,7 @@ case "mobius":
           ? Object.fromEntries(
               Object.entries(restoredMeshWorkspace.entryOverlayStates).flatMap(([entryId, state]) =>
                 state && typeof state === "object"
-                  ? [[entryId, { wireframe: Boolean((state as MeshWorkspaceEntryOverlayState).wireframe), bounds: Boolean((state as MeshWorkspaceEntryOverlayState).bounds) }]]
+                  ? [[entryId, normalizeMeshWorkspaceEntryOverlayState(state)]]
                   : []
               )
             )
@@ -49421,7 +49565,7 @@ case "mobius":
                     ? Object.fromEntries(
                         Object.entries(scene.entryOverlayStates).flatMap(([entryId, state]) =>
                           state && typeof state === "object"
-                            ? [[entryId, { wireframe: Boolean((state as MeshWorkspaceEntryOverlayState).wireframe), bounds: Boolean((state as MeshWorkspaceEntryOverlayState).bounds) }]]
+                            ? [[entryId, normalizeMeshWorkspaceEntryOverlayState(state)]]
                             : []
                         )
                       )
@@ -59655,6 +59799,100 @@ case "mobius":
           : meshAnalyzeCurvatureField === "k2"
             ? "Principal curvature k2"
             : null;
+  const meshAnalysisPersistedIdentityRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (surfaceViewerKind !== "mesh" || !activeMeshAnalysisIdentity) return;
+    const identityKey = activeMeshAnalysisIdentity.key;
+    if (meshAnalysisPersistedIdentityRef.current !== identityKey) {
+      meshAnalysisPersistedIdentityRef.current = identityKey;
+      const stored = meshWorkspaceEntryOverlayStates["workspace:active"]?.analysis;
+      if (stored && (!stored.meshRevision || stored.meshRevision === activeMeshAnalysisIdentity.revision)) {
+        setColorMode(
+          stored.field === "K"
+            ? "gaussian"
+            : stored.field === "H"
+              ? "mean"
+              : stored.field === "k1"
+                ? "k1"
+                : stored.field === "k2"
+                  ? "k2"
+                  : "solid"
+        );
+        setColorPalette(stored.palette);
+        setMeshAnalyzePaletteInverted(stored.paletteInverted);
+        setMeshAnalyzeRangeMode(stored.rangeMode);
+        setShowPrincipalDirections(stored.directions);
+        setShowGaussMap(stored.gauss && stored.field !== "none");
+        if (!stored.diagnostics) setMeshAnalyzeDiagnosticOverlayMode("none");
+        return;
+      }
+    }
+    const status: MeshWorkspaceAnalysisLayerState["status"] = meshQualityBusy
+        ? "running"
+        : surfaceMeshLargeAnalysisDeferred || deferredSurfaceSampleSetInfo
+          ? "deferred"
+          : meshQualityError
+            ? "error"
+          : activeMeshAnalysisCachedKinds.length
+            ? "ready"
+            : "not-requested";
+    const nextAnalysis: MeshWorkspaceAnalysisLayerState = {
+      field: meshAnalyzeCurvatureField ?? "none",
+      directions: showPrincipalDirections,
+      gauss: showGaussMap,
+      diagnostics: meshAnalyzeDiagnosticOverlayMode !== "none",
+      palette: colorPalette,
+      paletteInverted: meshAnalyzePaletteInverted,
+      rangeMode: meshAnalyzeRangeMode,
+      status,
+      progress: meshQualityBusy ? meshQualityProgress : status === "ready" ? 1 : null,
+      resultKinds: activeMeshAnalysisCachedKinds,
+      meshRevision: activeMeshAnalysisIdentity.revision,
+      updatedAt: Date.now(),
+    };
+    setMeshWorkspaceEntryOverlayStates((previous) => {
+      const current = previous["workspace:active"];
+      const prior = current?.analysis;
+      const unchanged = prior &&
+        prior.field === nextAnalysis.field &&
+        prior.directions === nextAnalysis.directions &&
+        prior.gauss === nextAnalysis.gauss &&
+        prior.diagnostics === nextAnalysis.diagnostics &&
+        prior.palette === nextAnalysis.palette &&
+        prior.paletteInverted === nextAnalysis.paletteInverted &&
+        prior.rangeMode === nextAnalysis.rangeMode &&
+        prior.status === nextAnalysis.status &&
+        prior.progress === nextAnalysis.progress &&
+        prior.meshRevision === nextAnalysis.meshRevision &&
+        prior.resultKinds.join("|") === nextAnalysis.resultKinds.join("|");
+      if (unchanged) return previous;
+      return {
+        ...previous,
+        "workspace:active": {
+          wireframe: current?.wireframe ?? false,
+          bounds: current?.bounds ?? false,
+          analysis: nextAnalysis,
+        },
+      };
+    });
+  }, [
+    activeMeshAnalysisCachedKinds,
+    activeMeshAnalysisIdentity,
+    colorPalette,
+    deferredSurfaceSampleSetInfo,
+    meshAnalyzeCurvatureField,
+    meshAnalyzeDiagnosticOverlayMode,
+    meshAnalyzePaletteInverted,
+    meshAnalyzeRangeMode,
+    meshQualityBusy,
+    meshQualityError,
+    meshQualityProgress,
+    meshWorkspaceEntryOverlayStates,
+    showGaussMap,
+    showPrincipalDirections,
+    surfaceMeshLargeAnalysisDeferred,
+    surfaceViewerKind,
+  ]);
   const meshAnalyzeCurvatureStats = meshAnalyzeCurvatureField
     ? surfaceScienceCurvatureStats[meshAnalyzeCurvatureField]
     : null;
@@ -65205,6 +65443,22 @@ case "mobius":
     const orderIndex = new Map(meshWorkspaceOrder.map((id, index) => [id, index]));
     return entries.slice().sort((a, b) => (orderIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (orderIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER));
   }, [meshOperationHistory, meshWorkspaceActiveMeshVisible, meshWorkspaceGeometryEntries, meshWorkspaceOrder, surfaceMeshTopologyHistory, unifiedObjectModel.activeDatasetNodeId, unifiedObjectModel.nodeById]);
+  const meshWorkspaceOutlinerEntryOverlayStates = useMemo<MeshWorkspaceEntryOverlayStates>(() => {
+    const next = Object.fromEntries(
+      Object.entries(meshWorkspaceEntryOverlayStates).map(([entryId, state]) => [entryId, cloneMeshWorkspaceEntryOverlayState(state)])
+    );
+    for (const entry of meshWorkspaceGeometryEntries) {
+      const analysis = next[entry.id]?.analysis;
+      if (!analysis) continue;
+      if (analysis.status === "running") analysis.status = "stale";
+      if (!analysis.meshRevision || !entry.geometryObjectId) continue;
+      const resolved = resolveGeometrySceneMeshById(entry.geometryObjectId);
+      if (!resolved?.mesh.positions.length) continue;
+      const currentRevision = createMeshAnalysisMeshIdentity(resolved.mesh).revision;
+      if (currentRevision !== analysis.meshRevision) analysis.status = "stale";
+    }
+    return next;
+  }, [meshWorkspaceEntryOverlayStates, meshWorkspaceGeometryEntries, resolveGeometrySceneMeshById]);
   useEffect(() => {
     const validIds = new Set(meshWorkspaceGeometryEntries.map((entry) => entry.id));
     setMeshWorkspaceGeometryLinks((prev) => {
@@ -65905,7 +66159,7 @@ case "mobius":
     handleSetMeshWorkspaceEntriesVisibility(meshWorkspaceEntries.map((entry) => entry.id), true);
   }, [handleSetMeshWorkspaceEntriesVisibility, meshWorkspaceEntries]);
   const handleSetMeshWorkspaceEntryOverlayVisibility = useCallback(
-    (entryId: string, overlay: keyof MeshWorkspaceEntryOverlayState, visible: boolean) => {
+    (entryId: string, overlay: MeshWorkspaceObjectOverlayId, visible: boolean) => {
       if (entryId === "workspace:active") return;
       setMeshWorkspaceEntryOverlayStates((previous) => ({
         ...previous,
@@ -65917,6 +66171,36 @@ case "mobius":
       }));
     },
     []
+  );
+  const handleSetMeshWorkspaceEntryAnalysisLayerVisibility = useCallback(
+    (entryId: string, layer: MeshWorkspaceAnalysisLayerId, visible: boolean) => {
+      const current = meshWorkspaceEntryOverlayStates[entryId]?.analysis ?? defaultMeshWorkspaceAnalysisLayerState();
+      if (entryId === "workspace:active") {
+        if (layer === "curvature") {
+          setColorMode(visible ? (current.field === "H" ? "mean" : current.field === "k1" ? "k1" : current.field === "k2" ? "k2" : "gaussian") : "solid");
+        } else if (layer === "directions") {
+          setShowPrincipalDirections(visible);
+        } else if (layer === "gauss") {
+          setShowGaussMap(visible && current.field !== "none");
+        } else {
+          setMeshAnalyzeDiagnosticOverlayMode(visible ? "boundary" : "none");
+        }
+      }
+      setMeshWorkspaceEntryOverlayStates((previous) => {
+        const entryState = previous[entryId] ?? { wireframe: false, bounds: false };
+        const analysis = entryState.analysis ?? defaultMeshWorkspaceAnalysisLayerState();
+        const nextAnalysis: MeshWorkspaceAnalysisLayerState = {
+          ...analysis,
+          field: layer === "curvature" ? (visible ? (analysis.field === "none" ? "K" : analysis.field) : "none") : analysis.field,
+          directions: layer === "directions" ? visible : analysis.directions,
+          gauss: layer === "gauss" ? visible : analysis.gauss,
+          diagnostics: layer === "diagnostics" ? visible : analysis.diagnostics,
+          updatedAt: Date.now(),
+        };
+        return { ...previous, [entryId]: { ...entryState, analysis: nextAnalysis } };
+      });
+    },
+    [meshWorkspaceEntryOverlayStates]
   );
   const handleSetMeshWorkspaceBooleanInput = useCallback((slot: "a" | "b", entryId: string | null) => {
     setMeshWorkspaceBooleanInputIds((previous) => ({ ...previous, [slot]: entryId }));
@@ -65935,7 +66219,7 @@ case "mobius":
       selectedEntryIds: [...meshWorkspaceSelectedEntryIds],
       booleanInputIds: { ...meshWorkspaceBooleanInputIds },
       entryOverlayStates: Object.fromEntries(
-        Object.entries(meshWorkspaceEntryOverlayStates).map(([entryId, state]) => [entryId, { ...state }])
+        Object.entries(meshWorkspaceEntryOverlayStates).map(([entryId, state]) => [entryId, cloneMeshWorkspaceEntryOverlayState(state)])
       ),
     };
     setMeshWorkspaceSavedScenes((previous) => [snapshot, ...previous.filter((scene) => scene.name !== trimmed)].slice(0, 12));
@@ -65952,7 +66236,7 @@ case "mobius":
     setMeshWorkspaceSelectedEntryId(scene.selectedEntryIds[0] ?? "workspace:active");
     setMeshWorkspaceBooleanInputIds({ ...scene.booleanInputIds });
     setMeshWorkspaceEntryOverlayStates(
-      Object.fromEntries(Object.entries(scene.entryOverlayStates ?? {}).map(([entryId, state]) => [entryId, { ...state }]))
+      Object.fromEntries(Object.entries(scene.entryOverlayStates ?? {}).map(([entryId, state]) => [entryId, cloneMeshWorkspaceEntryOverlayState(state)]))
     );
     setMeshWorkspaceLeftTab("snapshots");
     setSurfaceMeshTopologyStatus(`Restored workspace snapshot: ${scene.name}.`);
@@ -66035,18 +66319,20 @@ case "mobius":
       linkedAt: Date.now(),
     }));
     const overlayVariants: MeshWorkspaceEntryOverlayState[] = [
-      { wireframe: true, bounds: false },
-      { wireframe: false, bounds: true },
-      { wireframe: false, bounds: false },
-      { wireframe: true, bounds: true },
+      { wireframe: true, bounds: false, analysis: { ...defaultMeshWorkspaceAnalysisLayerState(), field: "K", directions: true, status: "ready", resultKinds: ["curvature"], meshRevision: "workspace-example-1" } },
+      { wireframe: false, bounds: true, analysis: { ...defaultMeshWorkspaceAnalysisLayerState(), field: "H", gauss: true, status: "ready", resultKinds: ["curvature", "diagnostics"], meshRevision: "workspace-example-2" } },
+      { wireframe: false, bounds: false, analysis: { ...defaultMeshWorkspaceAnalysisLayerState(), diagnostics: true, status: "deferred", meshRevision: "workspace-example-3" } },
+      { wireframe: true, bounds: true, analysis: { ...defaultMeshWorkspaceAnalysisLayerState(), field: "k1", directions: true, diagnostics: true, status: "ready", resultKinds: ["curvature", "quality", "diagnostics"], meshRevision: "workspace-example-4" } },
     ];
     const entryOverlayStates: MeshWorkspaceEntryOverlayStates = Object.fromEntries(
-      links.map((link, index) => [
-        link.id,
-        // The example deliberately exposes each combination: wireframe only,
-        // bounds only, neither, then both.
-        { ...overlayVariants[index % overlayVariants.length] },
-      ])
+      links.map((link, index) => {
+        const variant = cloneMeshWorkspaceEntryOverlayState(overlayVariants[index % overlayVariants.length]);
+        if (variant.analysis) {
+          const worldMesh = transformSurfaceMeshByGeometryTransform(linkedObjects[index].mesh, linkedObjects[index].transform);
+          variant.analysis.meshRevision = createMeshAnalysisMeshIdentity(worldMesh).revision;
+        }
+        return [link.id, variant] as const;
+      })
     );
     const firstLinkId = links[0]?.id ?? null;
     const groups: MeshWorkspaceGroup[] = [];
@@ -66156,6 +66442,9 @@ case "mobius":
           a: inputs.a ? remapEntryId(inputs.a) : null,
           b: inputs.b ? remapEntryId(inputs.b) : null,
         }));
+        setMeshWorkspaceEntryOverlayStates((states) => Object.fromEntries(
+          Object.entries(states).map(([id, state]) => [remapEntryId(id), cloneMeshWorkspaceEntryOverlayState(state)])
+        ));
       }
       const restored = applySurfaceMeshOps(cloneSurfaceMeshData(resolved.mesh, `${resolved.object.name} (linked Mesh)`));
       setMeshDataset(restored, "mesh-workspace:activate-geometry-link");
@@ -66190,6 +66479,14 @@ case "mobius":
       setMeshDataset,
     ]
   );
+  const handlePrepareMeshWorkspaceEntryAnalysis = useCallback((entryId: string) => {
+    if (entryId !== "workspace:active") {
+      handleActivateMeshWorkspaceEntry(entryId, { keepCamera: true });
+      setSurfaceMeshTopologyStatus("Linked mesh activated. Prepare its analysis from the Analyze workspace.");
+      return;
+    }
+    handlePrepareDeferredSurfaceAnalysisData();
+  }, [handleActivateMeshWorkspaceEntry, handlePrepareDeferredSurfaceAnalysisData]);
   const handleChangeMeshWorkspacePickMode = useCallback((pickMode: SurfaceMeshTopologyPickMode) => {
     if (!unifiedSelectionKindFilters[pickMode]) return;
     if (meshWorkspaceLeftTab === "scene" || (meshWorkspaceSelectedId && meshWorkspaceSelectedId !== "workspace:active")) {
@@ -72230,6 +72527,34 @@ case "mobius":
                       {label}
                     </button>
                   ))}
+                  <div
+                    data-testid="mesh-workspace-example-shortcuts"
+                    style={{
+                      flexBasis: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 5,
+                      paddingTop: 6,
+                      marginTop: 1,
+                      borderTop: "1px solid #dbe4f0",
+                    }}
+                  >
+                    <span style={{ color: "#475569", fontSize: 10, fontWeight: 800, marginRight: 2 }}>
+                      Test scenes
+                    </span>
+                    {([1, 5, 10] as const).map((meshCount) => (
+                      <button
+                        key={`mesh-workspace-example-shortcut-${meshCount}`}
+                        type="button"
+                        data-testid={`mesh-workspace-example-${meshCount}`}
+                        onClick={() => handleLoadMeshWorkspaceTestScene(meshCount)}
+                        title={`Load the prepared ${meshCount}-mesh workspace test scene`}
+                        style={{ padding: "3px 7px", fontSize: 10 }}
+                      >
+                        {meshCount} {meshCount === 1 ? "mesh" : "meshes"}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
               {(surfacesLayoutVariant === "layout2" || (surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "scene")) && (
@@ -73437,7 +73762,7 @@ case "mobius":
                       workspaceEntries={meshWorkspaceEntries}
                       groups={meshWorkspaceGroups}
                       booleanInputIds={meshWorkspaceBooleanInputIds}
-                      entryOverlayStates={meshWorkspaceEntryOverlayStates}
+                      entryOverlayStates={meshWorkspaceOutlinerEntryOverlayStates}
                       booleanSetupActive={
                         !!meshBooleanReview ||
                         !!meshWorkspaceBooleanInputIds.a ||
@@ -73453,6 +73778,8 @@ case "mobius":
                       onActivateWorkspaceEntry={handleActivateMeshWorkspaceEntry}
                       onToggleWorkspaceEntryVisibility={handleToggleMeshWorkspaceEntryVisibility}
                       onSetWorkspaceEntryOverlayVisibility={handleSetMeshWorkspaceEntryOverlayVisibility}
+                      onSetWorkspaceEntryAnalysisLayerVisibility={handleSetMeshWorkspaceEntryAnalysisLayerVisibility}
+                      onPrepareWorkspaceEntryAnalysis={handlePrepareMeshWorkspaceEntryAnalysis}
                       onToggleWorkspaceEntryIsolation={handleToggleMeshWorkspaceMeshIsolation}
                       onToggleWorkspaceEntrySetIsolation={handleToggleMeshWorkspaceEntrySetIsolation}
                       onSetGroupVisibility={handleSetMeshWorkspaceGroupVisibility}
@@ -77451,7 +77778,7 @@ case "mobius":
                               fontSize: 11,
                               color: "#0f172a",
                               zIndex: 80,
-                              pointerEvents: "auto",
+                              pointerEvents: "none",
                               overflowY: "auto",
                               overscrollBehavior: "contain",
                               backdropFilter: "blur(4px)",
@@ -77459,30 +77786,9 @@ case "mobius":
                           >
                             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
                               <div style={{ fontSize: 10, fontWeight: 850, color: "#1d4ed8" }}>MESH ANALYZE</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <span style={{ fontSize: 10, color: "#475569", fontWeight: 700 }}>
-                                  {surfaceMeshStats.vertCount.toLocaleString()} V / {surfaceMeshStats.triCount.toLocaleString()} F
-                                </span>
-                                <button
-                                  type="button"
-                                  data-testid="mesh-analyze-hud-hide"
-                                  onClick={() => setMeshAnalyzeScienceOverlayVisible(false)}
-                                  title="Hide analysis HUD"
-                                  style={{
-                                    border: "1px solid #cbd5e1",
-                                    borderRadius: 5,
-                                    background: "#fff",
-                                    color: "#475569",
-                                    fontSize: 10,
-                                    fontWeight: 800,
-                                    lineHeight: 1,
-                                    padding: "3px 5px",
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  Hide
-                                </button>
-                              </div>
+                              <span style={{ fontSize: 10, color: "#475569", fontWeight: 700 }}>
+                                {surfaceMeshStats.vertCount.toLocaleString()} V / {surfaceMeshStats.triCount.toLocaleString()} F
+                              </span>
                             </div>
                             {meshAnalyzeManyOverlaysActive && (
                               <div
@@ -77608,29 +77914,8 @@ case "mobius":
                                 <div style={{ color: "#64748b", fontSize: 10 }}>
                                   Select K or H to restore curvature coloring and range statistics.
                                 </div>
-                                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                                  <button
-                                    type="button"
-                                    data-testid="mesh-analyze-show-k"
-                                    onClick={() => {
-                                      setColorMode("gaussian");
-                                      setAnalysisFocusedSection("differential-geometry");
-                                    }}
-                                    style={{ ...viewerControlButtonStyle(false, "compact"), fontSize: 10 }}
-                                  >
-                                    Show K
-                                  </button>
-                                  <button
-                                    type="button"
-                                    data-testid="mesh-analyze-show-h"
-                                    onClick={() => {
-                                      setColorMode("mean");
-                                      setAnalysisFocusedSection("differential-geometry");
-                                    }}
-                                    style={{ ...viewerControlButtonStyle(false, "compact"), fontSize: 10 }}
-                                  >
-                                    Show H
-                                  </button>
+                                <div style={{ color: "#475569", fontSize: 10, fontWeight: 750 }}>
+                                  Choose a field from the analysis controls.
                                 </div>
                               </div>
                             )}
@@ -77704,17 +77989,7 @@ case "mobius":
                                         }}
                                       >
                                         <div style={{ color: "#475569", fontSize: 10, fontWeight: 850 }}>Recent probes</div>
-                                        <button
-                                          type="button"
-                                          data-testid="mesh-analyze-clear-probes"
-                                          onClick={() => {
-                                            setMeshAnalyzeProbeHistory([]);
-                                            setSurfaceMeshTopologyStatus("Probe history cleared.");
-                                          }}
-                                          style={{ fontSize: 10, padding: "1px 6px" }}
-                                        >
-                                          Clear probes
-                                        </button>
+                                        <span style={{ color: "#64748b", fontSize: 9 }}>latest 5</span>
                                       </div>
                                       <div
                                         style={{
@@ -77733,11 +78008,9 @@ case "mobius":
                                         <span>H</span>
                                       </div>
                                       {meshAnalyzeProbeHistory.map((entry) => (
-                                        <button
+                                        <div
                                           key={entry.id}
-                                          type="button"
                                           data-testid="mesh-analyze-probe-history-row"
-                                          onClick={() => replayMeshAnalyzeProbeHistoryEntry(entry)}
                                           style={{
                                             display: "grid",
                                             gridTemplateColumns: "44px 1fr 1fr",
@@ -77758,14 +78031,13 @@ case "mobius":
                                                 ? "2px 4px"
                                                 : "3px 5px",
                                             fontSize: 10,
-                                            textAlign: "left",
                                           }}
                                           title={`Probe vertex ${entry.vertexIndex} at ${fmt3(entry.point)}`}
                                         >
                                           <strong>v{entry.vertexIndex}</strong>
                                           <span>K {fmt(entry.K)}</span>
                                           <span>H {fmt(entry.H)}</span>
-                                        </button>
+                                        </div>
                                       ))}
                                     </div>
                                   )}
@@ -79262,6 +79534,7 @@ case "mobius":
                     <>
                     <SurfacesRightPanel
                       viewerKind={surfaceViewerKind}
+                      meshAnalysisActive={surfaceViewerKind === "mesh" && surfacesLeftTab === "analysis"}
                       surfaceId={activeEqSurfaceId}
                       paramId={paramSurfaceId}
                       surfaceMeshLabel={surfaceMeshLabel}
@@ -79479,6 +79752,12 @@ case "mobius":
                       inspectPos={inspectPos}
                       inspectNormal={inspectNormal}
                       inspectMetrics={inspectMetrics}
+                      meshAnalyzeProbeHistory={meshAnalyzeProbeHistory}
+                      onRestoreMeshAnalyzeProbe={replayMeshAnalyzeProbeHistoryEntry}
+                      onClearMeshAnalyzeProbeHistory={() => {
+                        setMeshAnalyzeProbeHistory([]);
+                        setSurfaceMeshTopologyStatus("Probe history cleared.");
+                      }}
                       geometryProbeSelectionMode={geometryProbeSelectionMode}
                       geometryProbeSelectionDetails={geometryProbeSelectionDetails}
                       geometryProbeHoverSelectionDetails={geometryProbeHoverSelectionDetails}
@@ -103653,9 +103932,15 @@ type MeshWorkspaceSceneOutlinerProps = {
   onToggleWorkspaceEntryVisibility: (id: string) => void;
   onSetWorkspaceEntryOverlayVisibility: (
     entryId: string,
-    overlay: keyof MeshWorkspaceEntryOverlayState,
+    overlay: MeshWorkspaceObjectOverlayId,
     visible: boolean
   ) => void;
+  onSetWorkspaceEntryAnalysisLayerVisibility: (
+    entryId: string,
+    layer: MeshWorkspaceAnalysisLayerId,
+    visible: boolean
+  ) => void;
+  onPrepareWorkspaceEntryAnalysis: (entryId: string) => void;
   onToggleWorkspaceEntryIsolation: (id: string) => void;
   onToggleWorkspaceEntrySetIsolation: (ids: string[]) => void;
   onSetGroupVisibility: (groupId: string, visible: boolean) => void;
@@ -103701,6 +103986,8 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
   onActivateWorkspaceEntry,
   onToggleWorkspaceEntryVisibility,
   onSetWorkspaceEntryOverlayVisibility,
+  onSetWorkspaceEntryAnalysisLayerVisibility,
+  onPrepareWorkspaceEntryAnalysis,
   onToggleWorkspaceEntryIsolation,
   onToggleWorkspaceEntrySetIsolation,
   onSetGroupVisibility,
@@ -103733,6 +104020,7 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
   const [viewHelpersExpanded, setViewHelpersExpanded] = useState(false);
   const [expandedObjectOverlayEntryIds, setExpandedObjectOverlayEntryIds] = useState<Set<string>>(() => new Set());
   const [collapsedSelectedObjectOverlayEntryIds, setCollapsedSelectedObjectOverlayEntryIds] = useState<Set<string>>(() => new Set());
+  const [expandedAnalysisLayerEntryIds, setExpandedAnalysisLayerEntryIds] = useState<Set<string>>(() => new Set());
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [workspaceToolsOpen, setWorkspaceToolsOpen] = useState(false);
   const [sceneSearch, setSceneSearch] = useState("");
@@ -103777,7 +104065,9 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
     node.id === "derived:auto:chart-grid" ||
     node.id === "derived:auto:volume-slices" ||
     node.id === "derived:auto:volume-streamlines";
-  const objectOverlayNodes = overlayNodes.filter((node) => !isViewHelperOverlay(node));
+  const isPersistedAnalysisLayerOverlay = (node: UnifiedObjectNode) =>
+    node.id === "derived:auto:curvature-field" || node.id === "derived:auto:principal-directions";
+  const objectOverlayNodes = overlayNodes.filter((node) => !isViewHelperOverlay(node) && !isPersistedAnalysisLayerOverlay(node));
   const viewHelperNodes = overlayNodes.filter(isViewHelperOverlay);
   const visibleCount = workspaceEntries.filter((entry) => entry.visible).length + overlayNodes.filter((node) => node.visible !== false).length;
   const selectedOverlay = selectedId ? byId.get(selectedId) ?? null : null;
@@ -103794,6 +104084,9 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
   useEffect(() => {
     if (selectedEntryIds.length !== 1 || !selectedId || !workspaceEntryById.has(selectedId)) return;
     setExpandedObjectOverlayEntryIds((current) =>
+      current.size === 1 && current.has(selectedId) ? current : new Set([selectedId])
+    );
+    setExpandedAnalysisLayerEntryIds((current) =>
       current.size === 1 && current.has(selectedId) ? current : new Set([selectedId])
     );
   }, [selectedEntryIds.length, selectedId, workspaceEntryById]);
@@ -103909,7 +104202,7 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
 
   const renderWorkspaceEntryOverlayRow = (
     entry: MeshWorkspaceEntry,
-    overlay: keyof MeshWorkspaceEntryOverlayState,
+    overlay: MeshWorkspaceObjectOverlayId,
     label: string,
     visible: boolean
   ) => (
@@ -103953,6 +104246,14 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
             : "Mesh";
     const ownedOverlays = entry.id === "workspace:active" ? filteredObjectOverlayNodes : [];
     const linkedOverlayState = entryOverlayStates[entry.id] ?? { wireframe: false, bounds: false };
+    const analysisState = linkedOverlayState.analysis ?? defaultMeshWorkspaceAnalysisLayerState();
+    const analysisLayers = [
+      { id: "curvature" as const, label: analysisState.field === "none" ? "Curvature field" : `Curvature ${analysisState.field}`, visible: analysisState.field !== "none" },
+      { id: "directions" as const, label: "Principal directions", visible: analysisState.directions },
+      { id: "gauss" as const, label: "Gauss map", visible: analysisState.gauss },
+      { id: "diagnostics" as const, label: "Diagnostics", visible: analysisState.diagnostics },
+    ];
+    const visibleAnalysisLayerCount = analysisLayers.filter((layer) => layer.visible).length;
     const linkedOverlays = entry.kind === "geometry"
       ? [
           { id: "wireframe" as const, label: "Wireframe", visible: linkedOverlayState.wireframe },
@@ -103974,6 +104275,12 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
     const overlaysExpanded = selectedAsSingleWorkspaceEntry
       ? !collapsedSelectedObjectOverlayEntryIds.has(entry.id)
       : expandedObjectOverlayEntryIds.has(entry.id);
+    const analysisLayersExpanded = expandedAnalysisLayerEntryIds.has(entry.id);
+    const analysisStatusLabel = analysisState.status === "not-requested"
+      ? "not computed"
+      : analysisState.status === "running" && analysisState.progress != null
+        ? `running ${Math.round(analysisState.progress * 100)}%`
+        : analysisState.status;
     return (
       <div
         key={entry.id}
@@ -104143,6 +104450,66 @@ const MeshWorkspaceSceneOutliner: React.FC<MeshWorkspaceSceneOutlinerProps> = ({
               : linkedOverlays.map((overlay) => renderWorkspaceEntryOverlayRow(entry, overlay.id, overlay.label, overlay.visible)))}
           </div>
         )}
+        <div
+          data-testid={`mesh-workspace-analysis-layers-${entry.id}`}
+          style={{ marginLeft: 12, display: "grid", gap: 2, padding: "3px 0 1px" }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <button
+              type="button"
+              onClick={() => setExpandedAnalysisLayerEntryIds((current) => {
+                const next = new Set(current);
+                if (next.has(entry.id)) next.delete(entry.id);
+                else next.add(entry.id);
+                return next;
+              })}
+              aria-expanded={analysisLayersExpanded}
+              style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, padding: "3px 2px", border: 0, background: "transparent", color: "#475569", fontSize: 10, fontWeight: 700, textAlign: "left", cursor: "pointer" }}
+            >
+              <span aria-hidden="true">{analysisLayersExpanded ? "▼" : "▶"}</span>
+              Analysis layers ({visibleAnalysisLayerCount}/{analysisLayers.length} visible)
+            </button>
+            <span
+              data-testid={`mesh-workspace-analysis-status-${entry.id}`}
+              style={{ marginLeft: "auto", color: analysisState.status === "error" ? "#b42318" : analysisState.status === "ready" ? "#166534" : "#64748b", fontSize: 9, fontWeight: 750 }}
+            >
+              {analysisStatusLabel}
+            </span>
+          </div>
+          {analysisLayersExpanded && (
+            <div style={{ display: "grid", gap: 2 }}>
+              {analysisLayers.map((layer) => (
+                <div
+                  key={`${entry.id}:analysis:${layer.id}`}
+                  data-testid={`mesh-workspace-analysis-layer-${entry.id}-${layer.id}`}
+                  style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center", marginLeft: 20, padding: "5px 6px", borderRadius: 6, background: layer.visible ? "#eefcf7" : "transparent" }}
+                >
+                  <span style={{ color: "#475569", fontSize: 11, fontWeight: 600 }}>{layer.label}</span>
+                  <button
+                    type="button"
+                    onClick={() => onSetWorkspaceEntryAnalysisLayerVisibility(entry.id, layer.id, !layer.visible)}
+                    style={{ padding: "3px 6px", fontSize: 10 }}
+                  >
+                    {layer.visible ? "Hide" : "Show"}
+                  </button>
+                </div>
+              ))}
+              <div style={{ marginLeft: 20, color: "#64748b", fontSize: 9 }}>
+                Results: {analysisState.resultKinds.length ? analysisState.resultKinds.join(", ") : "none cached"}
+              </div>
+              {(analysisState.status === "deferred" || analysisState.status === "stale") && (
+                <button
+                  type="button"
+                  data-testid={`mesh-workspace-prepare-analysis-${entry.id}`}
+                  onClick={() => onPrepareWorkspaceEntryAnalysis(entry.id)}
+                  style={{ justifySelf: "start", marginLeft: 20, padding: "3px 7px", fontSize: 10 }}
+                >
+                  {entry.id === "workspace:active" ? "Prepare analysis" : "Activate to prepare"}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
         {entry.lastOperationLabel && (
           <button
             type="button"
@@ -115088,6 +115455,7 @@ type MeshAnalyzeDiagnosticsSummary = Omit<MeshDiagnosticsAnalysisPayload, "dupli
 
 type SurfacesRightPanelProps = {
   viewerKind: SurfaceViewerKind;
+  meshAnalysisActive: boolean;
   surfaceId: SurfaceId;
   paramId: ParamSurfaceId;
   surfaceMeshLabel: string;
@@ -115315,6 +115683,9 @@ type SurfacesRightPanelProps = {
   inspectPos: { x: number; y: number; z: number } | null;
   inspectNormal: { x: number; y: number; z: number } | null;
   inspectMetrics: { K?: number; H?: number; k1?: number; k2?: number } | null;
+  meshAnalyzeProbeHistory: MeshAnalyzeProbeHistoryEntry[];
+  onRestoreMeshAnalyzeProbe: (entry: MeshAnalyzeProbeHistoryEntry) => void;
+  onClearMeshAnalyzeProbeHistory: () => void;
 
   onPickDomainUV: (uv: { u: number; v: number }) => void;
   onPickDomainXY: (xy: { x: number; y: number }) => void;
@@ -115358,6 +115729,7 @@ type MeshAnalysisFeatureRow = {
 
 const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   viewerKind,
+  meshAnalysisActive,
   surfaceId,
   paramId,
   surfaceMeshLabel,
@@ -115569,6 +115941,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   inspectPos,
   inspectNormal,
   inspectMetrics,
+  meshAnalyzeProbeHistory,
+  onRestoreMeshAnalyzeProbe,
+  onClearMeshAnalyzeProbeHistory,
   geometryProbeSelectionMode = "object",
   geometryProbeSelectionDetails = null,
   geometryProbeHoverSelectionDetails = null,
@@ -115644,8 +116019,22 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     if (inspectorPanelTab === "warnings") setInspectorPanelTab("diagnostics");
   }, [inspectorPanelTab]);
   useEffect(() => {
-    if (requestedInspectorTab) setInspectorPanelTab(requestedInspectorTab);
-  }, [requestedInspectorTab]);
+    if (!requestedInspectorTab) return;
+    if (meshAnalysisActive && requestedInspectorTab === "analysis") {
+      setInspectorPanelTab("result");
+      return;
+    }
+    if (meshAnalysisActive && requestedInspectorTab === "probe") {
+      setInspectorPanelTab("selection");
+      return;
+    }
+    setInspectorPanelTab(requestedInspectorTab);
+  }, [meshAnalysisActive, requestedInspectorTab]);
+  useEffect(() => {
+    if (!meshAnalysisActive) return;
+    if (inspectorPanelTab === "object" || inspectorPanelTab === "analysis") setInspectorPanelTab("result");
+    else if (inspectorPanelTab === "probe" || inspectorPanelTab === "warnings") setInspectorPanelTab("selection");
+  }, [inspectorPanelTab, meshAnalysisActive]);
 
   const paramDefaults = isWeierstrass ? WEIERSTRASS_DEFAULTS.domain : getParamDomainPreviewBounds(paramId);
   const safeGraphDomain = normalizeGraphDomain(graphDomain, getDefaultGraphSpan(surfaceId));
@@ -116739,15 +117128,22 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   ]
     .filter(Boolean)
     .join(", ");
-  const resultsInspectorTabs: Array<{ id: InspectorPanelTab; label: string }> = [
-    { id: "object", label: "Object" },
-    { id: "result", label: "Result" },
-    { id: "selection", label: "Selection" },
-    { id: "probe", label: "Probe" },
-    { id: "analysis", label: "Analysis" },
-    { id: "diagnostics", label: `Diagnostics ${diagnosticsTotalCount}` },
-    { id: "history", label: "History" },
-  ];
+  const resultsInspectorTabs: Array<{ id: InspectorPanelTab; label: string }> = meshAnalysisActive
+    ? [
+        { id: "result", label: "Result" },
+        { id: "selection", label: "Selection" },
+        { id: "diagnostics", label: `Diagnostics ${diagnosticsTotalCount}` },
+        { id: "history", label: "History" },
+      ]
+    : [
+        { id: "object", label: "Object" },
+        { id: "result", label: "Result" },
+        { id: "selection", label: "Selection" },
+        { id: "probe", label: "Probe" },
+        { id: "analysis", label: "Analysis" },
+        { id: "diagnostics", label: `Diagnostics ${diagnosticsTotalCount}` },
+        { id: "history", label: "History" },
+      ];
   const stickyPickPoint = probeInfo?.point ?? inspectPos;
   const stickyPickLabel = stickyPickPoint
     ? `(${fmt(stickyPickPoint.x)}, ${fmt(stickyPickPoint.y)}, ${fmt(stickyPickPoint.z)})`
@@ -117343,7 +117739,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           </>
         )}
 
-        {inspectorPanelTab === "result" && (
+        {inspectorPanelTab === "result" && !meshAnalysisActive && (
           <div style={inspectorSectionCard} data-testid="mesh-operation-result-card">
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 6 }}>
               <div style={inspectorSectionTitle}>Last Operation</div>
@@ -117424,10 +117820,68 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 <div><strong>Geodesic/path:</strong> {geodesicPathLength != null && Number.isFinite(geodesicPathLength) ? `length=${fmt(geodesicPathLength)}` : "n/a"}</div>
               </div>
             </div>
+            {meshAnalysisActive && (
+              <>
+                <SurfacesInspectPanel
+                  viewerKind={viewerKind}
+                  inspectEnabled={inspectEnabled}
+                  onToggleInspectEnabled={onToggleInspectEnabled}
+                  onClearInspect={onClearInspect}
+                  inspectIdx={inspectIdx}
+                  inspectPos={inspectPos}
+                  inspectNormal={inspectNormal}
+                  inspectMetrics={inspectMetrics}
+                  probeInfo={probeInfo}
+                  probeCurv={probeCurv}
+                  paramProbeCurv={paramProbeCurv}
+                  graphDomain={safeGraphDomain}
+                  paramDomain={safeParamDomain}
+                  onPickDomainXY={onPickDomainXY}
+                  onPickDomainUV={onPickDomainUV}
+                  probeEnabled={probeEnabled}
+                  onToggleProbe={onToggleProbe}
+                  showProbeNormal={showProbeNormal}
+                  onToggleProbeNormal={onToggleProbeNormal}
+                  showProbeTangentPlane={showProbeTangentPlane}
+                  onToggleProbeTangentPlane={onToggleProbeTangentPlane}
+                  showProbeTangents={showProbeTangents}
+                  onToggleProbeTangents={onToggleProbeTangents}
+                  geometryProbeSelectionMode={geometryProbeSelectionMode}
+                  geometryProbeSelectionDetails={geometryProbeSelectionDetails}
+                  geometryProbeHoverSelectionDetails={geometryProbeHoverSelectionDetails}
+                />
+                <div data-testid="mesh-inspector-probe-history" style={inspectorSectionCard}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                    <div style={inspectorSectionTitle}>Recent probes</div>
+                    <button type="button" onClick={onClearMeshAnalyzeProbeHistory} disabled={!meshAnalyzeProbeHistory.length} style={{ padding: "3px 7px", fontSize: 10 }}>
+                      Clear
+                    </button>
+                  </div>
+                  {meshAnalyzeProbeHistory.length ? (
+                    <div style={{ display: "grid", gap: 4 }}>
+                      {meshAnalyzeProbeHistory.map((entry) => (
+                        <button
+                          key={`inspector-${entry.id}`}
+                          type="button"
+                          onClick={() => onRestoreMeshAnalyzeProbe(entry)}
+                          style={{ display: "grid", gridTemplateColumns: "48px 1fr 1fr", gap: 6, padding: "5px 7px", textAlign: "left", fontSize: 10 }}
+                        >
+                          <strong>v{entry.vertexIndex}</strong>
+                          <span>K {fmt(entry.K)}</span>
+                          <span>H {fmt(entry.H)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ color: "#64748b", fontSize: 10 }}>No recorded probes.</div>
+                  )}
+                </div>
+              </>
+            )}
           </>
         )}
 
-        {inspectorPanelTab === "probe" && (
+        {inspectorPanelTab === "probe" && !meshAnalysisActive && (
           <SurfacesInspectPanel
             viewerKind={viewerKind}
             inspectEnabled={inspectEnabled}
@@ -117458,12 +117912,12 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           />
         )}
 
-        {inspectorPanelTab === "analysis" && (
+        {(inspectorPanelTab === "analysis" || (meshAnalysisActive && inspectorPanelTab === "result")) && (
           <>
             {renderMeshBenchmarkVerification()}
 
             <div style={inspectorSectionCard}>
-              <div style={inspectorSectionTitle}>Analyze by feature</div>
+              <div style={inspectorSectionTitle}>{meshAnalysisActive ? "Scientific results" : "Analyze by feature"}</div>
               {showDetailedResultsCards && (
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
                   <button

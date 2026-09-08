@@ -446,10 +446,10 @@ test.describe("Mesh Operations card", () => {
 
     await openWorkspaceOperationsCard(page);
     const leftTabs = page.getByTestId("mesh-workspace-left-tabs");
-    await leftTabs.getByTestId("mesh-workspace-left-tab-scene").click();
+    await expect(leftTabs.getByTestId("mesh-workspace-example-shortcuts")).toBeVisible();
+    await leftTabs.getByTestId("mesh-workspace-example-5").click();
+    await expect(leftTabs.getByTestId("mesh-workspace-left-tab-scene")).toHaveAttribute("aria-pressed", "true");
     const outliner = page.getByTestId("mesh-workspace-scene-outliner");
-    await outliner.getByRole("button", { name: "+ Add" }).click();
-    await outliner.getByTestId("mesh-workspace-load-test-scene-5").click();
 
     await expect(outliner.getByRole("button", { name: /Meshes \(1\)/ })).toBeVisible();
     await expect(outliner.getByRole("button", { name: /Geometry links \(4\)/ })).toBeVisible();
@@ -461,6 +461,12 @@ test.describe("Mesh Operations card", () => {
     await linkedRows.nth(0).locator("button").first().click();
     await expect(firstLinkedOverlayScope.getByRole("button", { name: /^Object overlays \(/ })).toHaveAttribute("aria-expanded", "true");
     await expect(activeOverlayScope.getByRole("button", { name: /^Object overlays \(/ })).toHaveAttribute("aria-expanded", "false");
+    await expect(firstLinkedOverlayScope.getByRole("button", { name: /^Analysis layers \(/ })).toHaveAttribute("aria-expanded", "true");
+    await expect(firstLinkedOverlayScope.locator('[data-testid^="mesh-workspace-analysis-status-"]')).toContainText("ready");
+    const firstLinkedDirections = firstLinkedOverlayScope.locator('[data-testid$="-directions"]');
+    await expect(firstLinkedDirections).toContainText(/Principal directions/i);
+    await firstLinkedDirections.getByRole("button", { name: "Hide", exact: true }).click();
+    await expect(firstLinkedDirections.getByRole("button", { name: "Show", exact: true })).toBeVisible();
     const firstLinkedWireframe = firstLinkedOverlayScope.getByTestId(/mesh-workspace-entry-overlay-.*-wireframe/);
     await expect(firstLinkedWireframe.getByRole("button", { name: "Hide", exact: true })).toBeVisible();
     await firstLinkedWireframe.getByRole("button", { name: "Hide", exact: true }).click();
@@ -483,7 +489,15 @@ test.describe("Mesh Operations card", () => {
     await snapshots.getByRole("textbox", { name: "Workspace snapshot name" }).fill("Five mesh Boolean review");
     await snapshots.getByRole("button", { name: "Save snapshot", exact: true }).click();
     await expect(snapshots).toContainText("Five mesh Boolean review");
+    await leftTabs.getByTestId("mesh-workspace-left-tab-scene").click();
+    await linkedRows.nth(0).locator("button").first().click();
+    await firstLinkedDirections.getByRole("button", { name: "Show", exact: true }).click();
+    await expect(firstLinkedDirections.getByRole("button", { name: "Hide", exact: true })).toBeVisible();
+    await leftTabs.getByTestId("mesh-workspace-left-tab-snapshots").click();
     await snapshots.getByRole("button", { name: "Restore", exact: true }).click();
+    await leftTabs.getByTestId("mesh-workspace-left-tab-scene").click();
+    await linkedRows.nth(0).locator("button").first().click();
+    await expect(firstLinkedDirections.getByRole("button", { name: "Show", exact: true })).toBeVisible();
   });
 
   test("selects an edge on the selected linked workspace mesh", async () => {

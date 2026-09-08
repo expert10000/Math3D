@@ -58,4 +58,28 @@ describe("mesh analysis result store", () => {
     expect(meshAnalysisResultKindsForMesh(store, mesh)).toEqual(["curvature", "quality"]);
     expect(getMeshAnalysisResult(store, mesh, "quality", "threshold-8-listed-120")?.payload).toEqual({ maxAspectRatio: 8 });
   });
+
+  it("tracks progress and dependencies for deferred and running results", () => {
+    const mesh = createMeshAnalysisMeshIdentity(makeMesh("Triangle"));
+    let store = upsertMeshAnalysisResult(createMeshAnalysisResultStore(), {
+      kind: "quality",
+      mesh,
+      state: "deferred",
+      progress: null,
+      dependencies: [{ kind: "diagnostics", state: "stale" }],
+      now: 1,
+    });
+    store = upsertMeshAnalysisResult(store, {
+      kind: "quality",
+      mesh,
+      state: "running",
+      progress: 0.42,
+      now: 2,
+    });
+    const result = getMeshAnalysisResult(store, mesh, "quality");
+    expect(result?.state).toBe("running");
+    expect(result?.progress).toBe(0.42);
+    expect(result?.dependencies).toEqual([{ kind: "diagnostics", state: "stale" }]);
+    expect(meshAnalysisResultKindsForMesh(store, mesh)).toEqual([]);
+  });
 });

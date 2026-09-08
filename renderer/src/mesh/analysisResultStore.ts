@@ -2,7 +2,13 @@ import type { SurfaceMeshData, SurfaceMeshSource } from "./surfaceMesh";
 
 export type MeshAnalysisResultKind = "curvature" | "quality" | "diagnostics" | "geodesic";
 
-export type MeshAnalysisResultState = "ready" | "running" | "error";
+export type MeshAnalysisResultState = "ready" | "running" | "deferred" | "stale" | "error";
+
+export type MeshAnalysisResultDependency = {
+  kind: MeshAnalysisResultKind;
+  variant?: string;
+  state: MeshAnalysisResultState;
+};
 
 export type MeshCurvatureAnalysisPayload = {
   K: Float32Array;
@@ -48,6 +54,8 @@ export type MeshAnalysisResult<TPayload = unknown> = {
   parameters: Record<string, number | string | boolean | null>;
   payload: TPayload | null;
   error: string | null;
+  progress: number | null;
+  dependencies: MeshAnalysisResultDependency[];
 };
 
 export type MeshAnalysisResultStore = {
@@ -63,6 +71,8 @@ type UpsertMeshAnalysisResultOptions<TPayload> = {
   parameters?: Record<string, number | string | boolean | null>;
   payload?: TPayload | null;
   error?: string | null;
+  progress?: number | null;
+  dependencies?: MeshAnalysisResultDependency[];
   now?: number;
 };
 
@@ -170,6 +180,13 @@ export const upsertMeshAnalysisResult = <TPayload>(
     parameters: options.parameters ?? previous?.parameters ?? {},
     payload: options.payload ?? null,
     error: options.error ?? null,
+    progress:
+      options.progress !== undefined
+        ? options.progress == null
+          ? null
+          : Math.min(1, Math.max(0, options.progress))
+        : previous?.progress ?? (options.state === "ready" || options.state == null ? 1 : null),
+    dependencies: options.dependencies ?? previous?.dependencies ?? [],
   };
   const entries = { ...store.entries, [key]: nextEntry };
   const orderedKeys = Object.entries(entries)
