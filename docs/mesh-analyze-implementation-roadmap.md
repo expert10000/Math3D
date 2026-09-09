@@ -10,7 +10,7 @@ The numbered commits below are implementation plans, not claims that correspondi
 | Plan | Status | Git commit | Verification |
 | --- | --- | --- | --- |
 | 1 — Canonical AnalysisResult registry and cache | Complete | `3894943` | 344 renderer tests, TypeScript typecheck, and production renderer build passed |
-| 2 — Canonical mesh health and CGAL integrity | Next | — | — |
+| 2 — Canonical mesh health and CGAL integrity | Complete | `54e9a44` | 349 renderer tests, TypeScript typecheck, production renderer build, and 3 Mesh Analyze E2E tests passed |
 | 3–12 | Planned | — | See the detailed sections below |
 
 The implementation commits follow the numbered plan sections. Progress entries record completed code only after its relevant tests and build checks pass.
@@ -55,18 +55,20 @@ Completed:
 
 ## Commit 2 — Canonical mesh health and CGAL integrity
 
-**Status: partial foundation.** The supplied attachment includes this commit's title only.
+**Status: implemented.** The supplied attachment includes this commit's title only.
 
 Already implemented:
 
 - Diagnostics payloads, severity classification, and defect visualization.
 - CGAL validation infrastructure and topology checks.
 
-Remaining:
+Completed:
 
-- [ ] Establish the canonical `MeshHealthResult` contract.
-- [ ] Unify Inspector diagnostics and backend validation through that contract.
-- [ ] Verify severity, orientation, manifold, and self-intersection semantics with explicit tests.
+- [x] Established a canonical `MeshHealthResult` contract for local topology and CGAL validation.
+- [x] Unified the analysis result store, State check toolbar badge, Inspector summary, topology rows, blockers, and backend provenance through that contract.
+- [x] Bound CGAL results to exact mesh revision keys so validation cannot leak across meshes or edits.
+- [x] Defined explicit severity rules for invalid geometry, manifoldness, orientability, inconsistent orientation, duplicate faces and vertices, self-intersections, and incomplete sampled validation.
+- [x] Added focused unit tests and Mesh Analyze E2E coverage for the renamed State check UI.
 
 ## Commit 3 — Differential geometry
 
