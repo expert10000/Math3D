@@ -1,5 +1,6 @@
 import type { SurfaceMeshData, SurfaceMeshSource } from "./surfaceMesh";
 import { deriveMeshHealthState, type MeshHealthResult, type MeshHealthState } from "./meshHealth";
+import type { MeshDifferentialGeometryResult } from "./meshDifferentialGeometry";
 
 export type MeshAnalysisResultKind =
   | "curvature"
@@ -35,12 +36,7 @@ export type MeshAnalysisResultDependency = {
   resultVersion?: number;
 };
 
-export type MeshCurvatureAnalysisPayload = {
-  K: Float32Array;
-  H: Float32Array;
-  k1: Float32Array;
-  k2: Float32Array;
-};
+export type MeshCurvatureAnalysisPayload = MeshDifferentialGeometryResult;
 
 export type MeshDiagnosticsAnalysisPayload = MeshHealthResult;
 

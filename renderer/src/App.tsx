@@ -547,6 +547,13 @@ import {
   mergeCgalMeshHealthResult,
 } from "./mesh/meshHealth";
 import {
+  computeMeshDifferentialGeometry,
+  readMeshDifferentialGeometryProbe,
+  TRIANGLE_MESH_CURVATURE_PARAMETERS as MESH_DIFFERENTIAL_GEOMETRY_PARAMETERS,
+  type MeshDifferentialGeometryProbe,
+  type MeshDifferentialGeometrySummary,
+} from "./mesh/meshDifferentialGeometry";
+import {
   MESH_QUALITY_METRIC_OPTIONS,
   selectMeshActiveAnalysisResult,
   summarizeMeshScalarField,
@@ -6029,174 +6036,6 @@ const findCoincidentMeshVertexGroups = (
   }
   return [...buckets.values()].filter((group) => group.length > 1).slice(0, maxGroups);
 };
-
-const computeTriangleMeshCurvatureScalars = (
-  mesh: SurfaceMeshData
-): { K: Float32Array; H: Float32Array; k1: Float32Array; k2: Float32Array } | null => {
-  const positions = mesh.positions;
-  const vertexCount = Math.floor((positions?.length ?? 0) / 3);
-  if (vertexCount <= 0) return null;
-  const indices = mesh.indices ?? null;
-  const triCount = indices && indices.length >= 3 ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
-  if (triCount <= 0) return null;
-
-  const area = new Float64Array(vertexCount);
-  const angleSum = new Float64Array(vertexCount);
-  const meanX = new Float64Array(vertexCount);
-  const meanY = new Float64Array(vertexCount);
-  const meanZ = new Float64Array(vertexCount);
-  const edgeIncidence = new Map<string, number>();
-  const centroid = [0, 0, 0];
-  for (let i = 0; i < vertexCount; i += 1) {
-    const base = i * 3;
-    centroid[0] += Number(positions[base] ?? 0);
-    centroid[1] += Number(positions[base + 1] ?? 0);
-    centroid[2] += Number(positions[base + 2] ?? 0);
-  }
-  centroid[0] /= vertexCount;
-  centroid[1] /= vertexCount;
-  centroid[2] /= vertexCount;
-
-  const readVertex = (i: number) => {
-    const base = i * 3;
-    return [Number(positions[base]), Number(positions[base + 1]), Number(positions[base + 2])] as const;
-  };
-  const addEdge = (a: number, b: number) => {
-    const i0 = Math.min(a, b);
-    const i1 = Math.max(a, b);
-    const key = `${i0}|${i1}`;
-    edgeIncidence.set(key, (edgeIncidence.get(key) ?? 0) + 1);
-  };
-  const addMeanContribution = (i: number, j: number, weight: number) => {
-    const ib = i * 3;
-    const jb = j * 3;
-    meanX[i] += weight * (Number(positions[jb]) - Number(positions[ib]));
-    meanY[i] += weight * (Number(positions[jb + 1]) - Number(positions[ib + 1]));
-    meanZ[i] += weight * (Number(positions[jb + 2]) - Number(positions[ib + 2]));
-  };
-  const angleBetween = (ux: number, uy: number, uz: number, vx: number, vy: number, vz: number) => {
-    const uLen = Math.hypot(ux, uy, uz);
-    const vLen = Math.hypot(vx, vy, vz);
-    if (uLen <= 1e-12 || vLen <= 1e-12) return Number.NaN;
-    const dot = (ux * vx + uy * vy + uz * vz) / (uLen * vLen);
-    return Math.acos(Math.max(-1, Math.min(1, dot)));
-  };
-  const cotFromAngle = (angle: number) => {
-    const s = Math.sin(angle);
-    if (!Number.isFinite(s) || Math.abs(s) <= 1e-8) return 0;
-    return Math.cos(angle) / s;
-  };
-
-  for (let t = 0; t < triCount; t += 1) {
-    const base = t * 3;
-    const ia = indices ? Number(indices[base]) : base;
-    const ib = indices ? Number(indices[base + 1]) : base + 1;
-    const ic = indices ? Number(indices[base + 2]) : base + 2;
-    const valid =
-      Number.isInteger(ia) &&
-      Number.isInteger(ib) &&
-      Number.isInteger(ic) &&
-      ia >= 0 &&
-      ib >= 0 &&
-      ic >= 0 &&
-      ia < vertexCount &&
-      ib < vertexCount &&
-      ic < vertexCount &&
-      ia !== ib &&
-      ib !== ic &&
-      ia !== ic;
-    if (!valid) continue;
-    const [ax, ay, az] = readVertex(ia);
-    const [bx, by, bz] = readVertex(ib);
-    const [cx, cy, cz] = readVertex(ic);
-    if (![ax, ay, az, bx, by, bz, cx, cy, cz].every(Number.isFinite)) continue;
-    const abx = bx - ax;
-    const aby = by - ay;
-    const abz = bz - az;
-    const acx = cx - ax;
-    const acy = cy - ay;
-    const acz = cz - az;
-    const bcx = cx - bx;
-    const bcy = cy - by;
-    const bcz = cz - bz;
-    const crossX = aby * acz - abz * acy;
-    const crossY = abz * acx - abx * acz;
-    const crossZ = abx * acy - aby * acx;
-    const triArea = Math.hypot(crossX, crossY, crossZ) * 0.5;
-    if (!Number.isFinite(triArea) || triArea <= 1e-14) continue;
-
-    const angleA = angleBetween(abx, aby, abz, acx, acy, acz);
-    const angleB = angleBetween(-abx, -aby, -abz, bcx, bcy, bcz);
-    const angleC = angleBetween(-acx, -acy, -acz, -bcx, -bcy, -bcz);
-    if (![angleA, angleB, angleC].every(Number.isFinite)) continue;
-
-    area[ia] += triArea / 3;
-    area[ib] += triArea / 3;
-    area[ic] += triArea / 3;
-    angleSum[ia] += angleA;
-    angleSum[ib] += angleB;
-    angleSum[ic] += angleC;
-    addEdge(ia, ib);
-    addEdge(ib, ic);
-    addEdge(ic, ia);
-
-    const cotA = cotFromAngle(angleA);
-    const cotB = cotFromAngle(angleB);
-    const cotC = cotFromAngle(angleC);
-    addMeanContribution(ia, ib, cotC);
-    addMeanContribution(ib, ia, cotC);
-    addMeanContribution(ib, ic, cotA);
-    addMeanContribution(ic, ib, cotA);
-    addMeanContribution(ic, ia, cotB);
-    addMeanContribution(ia, ic, cotB);
-  }
-
-  const boundaryVertices = new Set<number>();
-  for (const [key, count] of edgeIncidence.entries()) {
-    if (count !== 1) continue;
-    const [a, b] = key.split("|").map((part) => Number(part));
-    if (Number.isInteger(a)) boundaryVertices.add(a);
-    if (Number.isInteger(b)) boundaryVertices.add(b);
-  }
-
-  const K = new Float32Array(vertexCount);
-  const H = new Float32Array(vertexCount);
-  const k1 = new Float32Array(vertexCount);
-  const k2 = new Float32Array(vertexCount);
-  for (let i = 0; i < vertexCount; i += 1) {
-    const a = area[i];
-    if (!Number.isFinite(a) || a <= 1e-14) {
-      K[i] = Number.NaN;
-      H[i] = Number.NaN;
-      k1[i] = Number.NaN;
-      k2[i] = Number.NaN;
-      continue;
-    }
-    const targetAngle = boundaryVertices.has(i) ? Math.PI : Math.PI * 2;
-    const gaussian = (targetAngle - angleSum[i]) / a;
-    const lx = meanX[i] / (2 * a);
-    const ly = meanY[i] / (2 * a);
-    const lz = meanZ[i] / (2 * a);
-    const ib = i * 3;
-    const rx = Number(positions[ib]) - centroid[0];
-    const ry = Number(positions[ib + 1]) - centroid[1];
-    const rz = Number(positions[ib + 2]) - centroid[2];
-    const sign = lx * rx + ly * ry + lz * rz <= 0 ? 1 : -1;
-    const mean = sign * Math.hypot(lx, ly, lz) * 0.5;
-    const disc = Math.max(0, mean * mean - gaussian);
-    const root = Math.sqrt(disc);
-    K[i] = gaussian;
-    H[i] = mean;
-    k1[i] = mean + root;
-    k2[i] = mean - root;
-  }
-  return { K, H, k1, k2 };
-};
-
-const TRIANGLE_MESH_CURVATURE_PARAMETERS = {
-  method: "angle-defect-cotan",
-  boundaryTreatment: "pi",
-} as const;
 
 type TriangleMeshGeometricMetrics = {
   vertexCount: number;
@@ -46134,8 +45973,8 @@ case "mobius":
         meshAnalysisResultStore,
         activeMeshAnalysisIdentity,
         "curvature",
-        TRIANGLE_MESH_CURVATURE_PARAMETERS,
-        "discrete-angle-defect-cotan-v1"
+        MESH_DIFFERENTIAL_GEOMETRY_PARAMETERS,
+        "discrete-differential-geometry-v2"
       ),
     [activeMeshAnalysisIdentity, meshAnalysisResultStore]
   );
@@ -46152,12 +45991,26 @@ case "mobius":
       };
     }
     const startedAt = performance.now();
-    const payload = computeTriangleMeshCurvatureScalars(surfaceMeshData);
+    const payload = computeMeshDifferentialGeometry(surfaceMeshData);
     return payload
       ? { payload, durationMs: performance.now() - startedAt, cacheHit: false }
       : null;
   }, [cachedMeshCurvatureResult, surfaceMeshData, surfaceMeshLargeAnalysisDeferred, surfaceViewerKind]);
   const surfaceMeshCurvatures = surfaceMeshCurvatureComputation?.payload ?? null;
+  const surfaceMeshPrincipalField = useMemo(() => {
+    if (!surfaceMeshCurvatures || !surfaceMeshData?.positions?.length) return null;
+    return {
+      positions: surfaceMeshData.positions,
+      normals: surfaceMeshCurvatures.normals,
+      k1: surfaceMeshCurvatures.k1,
+      k2: surfaceMeshCurvatures.k2,
+      d1: surfaceMeshCurvatures.d1,
+      d2: surfaceMeshCurvatures.d2,
+      directionValidMask: surfaceMeshCurvatures.directionValidMask,
+      vertexCount: surfaceMeshCurvatures.summary.vertexCount,
+      index: surfaceMeshData.indices,
+    };
+  }, [surfaceMeshCurvatures, surfaceMeshData]);
   useEffect(() => {
     if (!activeMeshAnalysisIdentity || !surfaceMeshCurvatureComputation) return;
     setMeshAnalysisResultStore((previous) => {
@@ -46165,14 +46018,14 @@ case "mobius":
         previous,
         activeMeshAnalysisIdentity,
         "curvature",
-        "discrete-angle-defect-cotan-v1"
+        "discrete-differential-geometry-v2"
       );
       if (existing?.payload === surfaceMeshCurvatureComputation.payload) return previous;
       return upsertMeshAnalysisResult(previous, {
         kind: "curvature",
-        variant: "discrete-angle-defect-cotan-v1",
+        variant: "discrete-differential-geometry-v2",
         mesh: activeMeshAnalysisIdentity,
-        parameters: TRIANGLE_MESH_CURVATURE_PARAMETERS,
+        parameters: MESH_DIFFERENTIAL_GEOMETRY_PARAMETERS,
         computeTimeMs: surfaceMeshCurvatureComputation.durationMs,
         payload: surfaceMeshCurvatureComputation.payload,
       });
@@ -46219,6 +46072,10 @@ case "mobius":
       map.set("k1", { name: "k1", values: curvatures.k1 });
       map.set("k2", { name: "k2", values: curvatures.k2 });
     }
+    if (surfaceMeshCurvatures) {
+      map.set("shapeIndex", { name: "shapeIndex", values: surfaceMeshCurvatures.shapeIndex });
+      map.set("curvedness", { name: "curvedness", values: surfaceMeshCurvatures.curvedness });
+    }
     if (workbookScalarFields.size) {
       workbookScalarFields.forEach((field, name) => map.set(name, field));
     }
@@ -46242,6 +46099,10 @@ case "mobius":
     if (meshVectors?.length) {
       meshVectors.forEach((field) => map.set(field.name, field));
     }
+    if (surfaceMeshCurvatures) {
+      map.set("principal-d1", { name: "principal-d1", values: surfaceMeshCurvatures.d1, itemSize: 3 });
+      map.set("principal-d2", { name: "principal-d2", values: surfaceMeshCurvatures.d2, itemSize: 3 });
+    }
     if (workbookVectorFields.size) {
       workbookVectorFields.forEach((field, name) => map.set(name, field));
     }
@@ -46249,7 +46110,7 @@ case "mobius":
       calculusVectorFields.forEach((field, name) => map.set(name, field));
     }
     return map;
-  }, [calculusVectorFields, meshDataset?.fields?.vectors, workbookVectorFields]);
+  }, [calculusVectorFields, meshDataset?.fields?.vectors, surfaceMeshCurvatures, workbookVectorFields]);
 
   const calculusScalarOptions = useMemo(() => {
     const out: Array<{ value: string; label: string }> = [];
@@ -58724,9 +58585,27 @@ case "mobius":
     };
   }, [surfaceQuery, surfaceSampleSet]);
 
-  const inspectMetrics = useMemo(() => {
-    if (inspectIdx == null || !selectionCurvatures) return null;
-    const out: { K?: number; H?: number; k1?: number; k2?: number } = {};
+  const inspectMetrics = useMemo<SurfaceInspectMetrics | null>(() => {
+    if (inspectIdx == null) return null;
+    if ((surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") && surfaceMeshCurvatures) {
+      const probe = readMeshDifferentialGeometryProbe(surfaceMeshCurvatures, inspectIdx);
+      if (probe) {
+        return {
+          K: probe.K,
+          H: probe.H,
+          k1: probe.k1,
+          k2: probe.k2,
+          shapeIndex: probe.shapeIndex,
+          curvedness: probe.curvedness,
+          d1: probe.d1,
+          d2: probe.d2,
+          directionValid: probe.directionValid,
+          warnings: probe.warnings,
+        };
+      }
+    }
+    if (!selectionCurvatures) return null;
+    const out: SurfaceInspectMetrics = {};
     const read = (arr: Float32Array | undefined, key: "K" | "H" | "k1" | "k2") => {
       if (!arr || inspectIdx < 0 || inspectIdx >= arr.length) return;
       const v = arr[inspectIdx];
@@ -58737,7 +58616,7 @@ case "mobius":
     read(selectionCurvatures.k1, "k1");
     read(selectionCurvatures.k2, "k2");
     return Object.keys(out).length ? out : null;
-  }, [inspectIdx, selectionCurvatures]);
+  }, [inspectIdx, selectionCurvatures, surfaceMeshCurvatures, surfaceViewerKind]);
 
   const handleInspectPick = useCallback((info: GeometryProceduralPickInfo & {
     index: number;
@@ -74530,11 +74409,11 @@ case "mobius":
                               <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                                 <strong style={{ fontSize: 10.5 }}>Curvature result</strong>
                                 <span style={{ color: meshAnalyzeCanShowCurvature ? "#15803d" : "#64748b", fontSize: 10, fontWeight: 800 }}>
-                                  {meshAnalyzeCanShowCurvature ? "K / H / k1 / k2 cached" : "not available"}
+                                  {meshAnalyzeCanShowCurvature ? "K / H / k1 / k2 / shape index / curvedness cached" : "not available"}
                                 </span>
                               </div>
                               <div style={{ color: "#475467", fontSize: 10.5 }}>
-                                <strong>Method:</strong> discrete angle defect / cotangent Laplacian
+                                <strong>Method:</strong> angle defect / cotangent Laplacian / fitted shape operator
                               </div>
                               <button
                                 type="button"
@@ -77783,6 +77662,7 @@ case "mobius":
                             showProbeTangentPlane={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showProbeTangentPlane}
                             showProbeTangents={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showProbeTangents}
                             showPrincipalDirections={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showPrincipalDirections}
+                            meshPrincipalField={surfaceViewerKind === "mesh" ? surfaceMeshPrincipalField : null}
                             showPrincipalNormalPlanes={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showPrincipalNormalPlanes}
                             showPrincipalLines={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showPrincipalLines}
                             showPrincipalGlyphs={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showPrincipalGlyphs}
@@ -79789,6 +79669,7 @@ case "mobius":
                       inspectPos={inspectPos}
                       inspectNormal={inspectNormal}
                       inspectMetrics={inspectMetrics}
+                      meshDifferentialGeometrySummary={surfaceMeshCurvatures?.summary ?? null}
                       meshAnalyzeProbeHistory={meshAnalyzeProbeHistory}
                       onRestoreMeshAnalyzeProbe={replayMeshAnalyzeProbeHistoryEntry}
                       onClearMeshAnalyzeProbeHistory={() => {
@@ -105898,6 +105779,13 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   );
 };
 
+type SurfaceInspectMetrics = Partial<
+  Pick<
+    MeshDifferentialGeometryProbe,
+    "K" | "H" | "k1" | "k2" | "shapeIndex" | "curvedness" | "d1" | "d2" | "directionValid" | "warnings"
+  >
+>;
+
 type SurfacesInspectPanelProps = {
   viewerKind: SurfaceViewerKind;
   inspectEnabled: boolean;
@@ -105906,7 +105794,7 @@ type SurfacesInspectPanelProps = {
   inspectIdx: number | null;
   inspectPos: { x: number; y: number; z: number } | null;
   inspectNormal: { x: number; y: number; z: number } | null;
-  inspectMetrics: { K?: number; H?: number; k1?: number; k2?: number } | null;
+  inspectMetrics: SurfaceInspectMetrics | null;
   geometryProbeSelectionMode: GeometryProbeSelectionMode;
   geometryProbeSelectionDetails: GeometryProbeSelectionDetails | null;
   geometryProbeHoverSelectionDetails: GeometryProbeSelectionDetails | null;
@@ -105965,7 +105853,14 @@ const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
 
   const activePoint = probeInfo?.point ?? inspectPos;
   const activeNormal = probeInfo?.normal ?? inspectNormal;
-  const tangentBasis = activeNormal ? buildTangentBasis(activeNormal) : null;
+  const fittedPrincipalBasis =
+    inspectMetrics?.directionValid && inspectMetrics.d1 && inspectMetrics.d2
+      ? {
+          t1: { x: inspectMetrics.d1[0], y: inspectMetrics.d1[1], z: inspectMetrics.d1[2] },
+          t2: { x: inspectMetrics.d2[0], y: inspectMetrics.d2[1], z: inspectMetrics.d2[2] },
+        }
+      : null;
+  const tangentBasis = fittedPrincipalBasis ?? (activeNormal ? buildTangentBasis(activeNormal) : null);
   const chartXY = probeInfo?.xy ?? (probeInfo?.point ? { x: probeInfo.point.x, y: probeInfo.point.z } : null);
   const chartUV = probeInfo?.uv ?? null;
 
@@ -106035,9 +105930,9 @@ const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
             <div data-testid="mesh-selection-local-normal">{fmt3(activeNormal)}</div>
             {tangentBasis && (
               <>
-                <div style={{ color: "#556" }}>Tangent direction 1</div>
+                <div style={{ color: "#556" }}>{fittedPrincipalBasis ? "Principal direction 1" : "Tangent direction 1"}</div>
                 <div data-testid="mesh-selection-local-direction-d1">{fmt3(tangentBasis.t1)}</div>
-                <div style={{ color: "#556" }}>Tangent direction 2</div>
+                <div style={{ color: "#556" }}>{fittedPrincipalBasis ? "Principal direction 2" : "Tangent direction 2"}</div>
                 <div data-testid="mesh-selection-local-direction-d2">{fmt3(tangentBasis.t2)}</div>
               </>
             )}
@@ -106063,6 +105958,26 @@ const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
               <>
                 <div style={{ color: "#556" }}>k2</div>
                 <div data-testid="mesh-selection-local-k2">{fmt(curvature.k2)}</div>
+              </>
+            )}
+            {inspectMetrics?.shapeIndex != null && (
+              <>
+                <div style={{ color: "#556" }}>Shape index</div>
+                <div data-testid="mesh-selection-local-shape-index">{fmt(inspectMetrics.shapeIndex)}</div>
+              </>
+            )}
+            {inspectMetrics?.curvedness != null && (
+              <>
+                <div style={{ color: "#556" }}>Curvedness</div>
+                <div data-testid="mesh-selection-local-curvedness">{fmt(inspectMetrics.curvedness)}</div>
+              </>
+            )}
+            {!!inspectMetrics?.warnings?.length && (
+              <>
+                <div style={{ color: "#9a3412" }}>Warnings</div>
+                <div data-testid="mesh-selection-local-curvature-warnings" style={{ color: "#9a3412" }}>
+                  {inspectMetrics.warnings.join(" ")}
+                </div>
               </>
             )}
           </div>
@@ -107411,7 +107326,7 @@ type SurfacesLeftPanelProps = {
   inspectIdx: number | null;
   inspectPos: { x: number; y: number; z: number } | null;
   inspectNormal: { x: number; y: number; z: number } | null;
-  inspectMetrics: { K?: number; H?: number; k1?: number; k2?: number } | null;
+  inspectMetrics: SurfaceInspectMetrics | null;
 
   // contours (graph surfaces)
   showContours: boolean;
@@ -115713,7 +115628,8 @@ type SurfacesRightPanelProps = {
   inspectIdx: number | null;
   inspectPos: { x: number; y: number; z: number } | null;
   inspectNormal: { x: number; y: number; z: number } | null;
-  inspectMetrics: { K?: number; H?: number; k1?: number; k2?: number } | null;
+  inspectMetrics: SurfaceInspectMetrics | null;
+  meshDifferentialGeometrySummary: MeshDifferentialGeometrySummary | null;
   meshAnalyzeProbeHistory: MeshAnalyzeProbeHistoryEntry[];
   onRestoreMeshAnalyzeProbe: (entry: MeshAnalyzeProbeHistoryEntry) => void;
   onClearMeshAnalyzeProbeHistory: () => void;
@@ -115975,6 +115891,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   inspectPos,
   inspectNormal,
   inspectMetrics,
+  meshDifferentialGeometrySummary,
   meshAnalyzeProbeHistory,
   onRestoreMeshAnalyzeProbe,
   onClearMeshAnalyzeProbeHistory,
@@ -116541,9 +116458,13 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       ? { K: probeCurv.K, H: probeCurv.H, k1: probeCurv.k1, k2: probeCurv.k2 }
       : isParamViewer && paramProbeCurv
         ? { K: paramProbeCurv.K, H: paramProbeCurv.H, k1: paramProbeCurv.k1, k2: paramProbeCurv.k2 }
-        : null;
+        : isMeshViewer && inspectMetrics?.K != null
+          ? { K: inspectMetrics.K, H: inspectMetrics.H, k1: inspectMetrics.k1, k2: inspectMetrics.k2 }
+          : null;
+  const meshDifferentialGeometryReady =
+    isMeshViewer && (meshDifferentialGeometrySummary?.validVertexCount ?? 0) > 0;
   const differentialGeometryStatus: "ready" | "stale" | "missing" =
-    selectedProbeCurvature || showPrincipalDirections || showPrincipalLines || showCurvatureLines
+    selectedProbeCurvature || meshDifferentialGeometryReady || (!isMeshViewer && (showPrincipalDirections || showPrincipalLines || showCurvatureLines))
       ? "ready"
       : probeEnabled || !!probeInfo
         ? "stale"
@@ -116568,7 +116489,17 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     (chartAnalysisStatus === "ready" ? 0 : 1) +
     (topologyDiagnosticsStatus === "ready" ? 0 : 1);
   const principalDirectionsStatus: "ready" | "stale" | "missing" =
-    showPrincipalDirections ? "ready" : probeEnabled || !!probeInfo ? "stale" : "missing";
+    isMeshViewer
+      ? (meshDifferentialGeometrySummary?.directionValidVertexCount ?? 0) > 0
+        ? "ready"
+        : meshDifferentialGeometrySummary
+          ? "stale"
+          : "missing"
+      : showPrincipalDirections
+        ? "ready"
+        : probeEnabled || !!probeInfo
+          ? "stale"
+          : "missing";
   const vectorCalculusDetailedStatus = calculusError
     ? "stale"
     : calculusStatus || calculusVectorOverlayEnabled
@@ -118149,6 +118080,22 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 <div><strong>K range:</strong> {formatRange(curvatureRanges.K)}</div>
                 <div><strong>H range:</strong> {formatRange(curvatureRanges.H)}</div>
                 <div><strong>k1 / k2 range:</strong> {formatRange(curvatureRanges.k1)} / {formatRange(curvatureRanges.k2)}</div>
+                {meshDifferentialGeometrySummary && (
+                  <>
+                    <div data-testid="mesh-differential-geometry-valid-count">
+                      <strong>Valid curvature vertices:</strong> {meshDifferentialGeometrySummary.validVertexCount.toLocaleString()} / {meshDifferentialGeometrySummary.vertexCount.toLocaleString()}
+                    </div>
+                    <div data-testid="mesh-differential-geometry-direction-count">
+                      <strong>Fitted principal directions:</strong> {meshDifferentialGeometrySummary.directionValidVertexCount.toLocaleString()}
+                    </div>
+                    <div data-testid="mesh-differential-geometry-warning-counts">
+                      <strong>Uncertainty masks:</strong> {meshDifferentialGeometrySummary.boundaryVertexCount.toLocaleString()} boundary · {meshDifferentialGeometrySummary.umbilicVertexCount.toLocaleString()} umbilic · {meshDifferentialGeometrySummary.nearlyFlatVertexCount.toLocaleString()} flat · {meshDifferentialGeometrySummary.inconsistentOrientationVertexCount.toLocaleString()} winding
+                    </div>
+                    <div>
+                      <strong>Convention:</strong> barycentric area · π boundary defect · outward-convex H positive
+                    </div>
+                  </>
+                )}
                 <div><strong>bad triangles:</strong> {formatInspectorCount(badTriangleCount)}</div>
                 <div><strong>boundary edges:</strong> {formatInspectorCount(meshInspectorStats.boundaryEdgeCount)}</div>
                 <div><strong>geodesic length:</strong> {geodesicPathLength != null && Number.isFinite(geodesicPathLength) ? fmt(geodesicPathLength) : "n/a"}</div>

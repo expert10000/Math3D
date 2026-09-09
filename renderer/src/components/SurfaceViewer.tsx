@@ -1597,6 +1597,7 @@ type Props = {
   showProbeTangentPlane?: boolean;
   showProbeTangents?: boolean;
   showPrincipalDirections?: boolean;
+  meshPrincipalField?: PrincipalField | null;
   showPrincipalNormalPlanes?: boolean;
   showPrincipalLines?: boolean;
   showPrincipalGlyphs?: boolean;
@@ -1812,6 +1813,7 @@ type PrincipalField = {
   k2: Float32Array;
   d1: Float32Array;
   d2: Float32Array;
+  directionValidMask?: Uint8Array;
   vertexCount: number;
   index: ArrayLike<number> | null;
 };
@@ -1888,6 +1890,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     showProbeTangentPlane = true,
     showProbeTangents = true,
     showPrincipalDirections = false,
+    meshPrincipalField = null,
     showPrincipalNormalPlanes = false,
     showPrincipalLines = false,
     showPrincipalGlyphs = false,
@@ -9019,6 +9022,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
   ]);
 
   const getPrincipalField = () => {
+    if (meshPrincipalField) return meshPrincipalField;
     const key = [
       surfaceId,
       graphExpr ?? "",
@@ -9845,6 +9849,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     implicitResolution,
     surfaceMeshOverride,
     surfaceMeshOverrides,
+    meshPrincipalField,
     sceneEpoch,
   ]);
 
@@ -10052,6 +10057,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     graphDomain?.xSpan,
     graphDomain?.ySpan,
     implicitResolution,
+    meshPrincipalField,
     sceneEpoch,
   ]);
 
@@ -10084,10 +10090,60 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     clearGroup(group);
 
+    const isMeshSurface = !!meshPrincipalField;
     const isGraphSurface = isGraphId(surfaceId);
     const isImplicitSurface = isImplicitId(surfaceId);
-    if (!isGraphSurface && !isImplicitSurface) return;
-    if (fastPreviewHelpersHidden || (!showPrincipalDirections && !showPrincipalNormalPlanes && !showPrincipalLines)) return;
+    if (!isMeshSurface && !isGraphSurface && !isImplicitSurface) return;
+    if (fastPreviewHelpersHidden || (!showPrincipalDirections && !showPrincipalGlyphs && !showPrincipalNormalPlanes && !showPrincipalLines)) return;
+
+    if (meshPrincipalField) {
+      if (!showPrincipalDirections && !showPrincipalGlyphs) return;
+      const field = meshPrincipalField;
+      const targetGlyphs = Math.max(12, Math.min(1200, Math.round(principalGlyphDensity)));
+      const stride = Math.max(1, Math.ceil(field.vertexCount / targetGlyphs));
+      const glyphLength = principalGlyphLength > 0
+        ? principalGlyphLength
+        : Math.max(0.01, (radiusRef.current || 3) * 0.045);
+      const offset = Math.max(1e-5, (radiusRef.current || 3) * 0.0015);
+      const d1Points: THREE.Vector3[] = [];
+      const d2Points: THREE.Vector3[] = [];
+      const appendDirection = (points: THREE.Vector3[], base: number, direction: Float32Array) => {
+        const px = field.positions[base];
+        const py = field.positions[base + 1];
+        const pz = field.positions[base + 2];
+        const nx = field.normals[base];
+        const ny = field.normals[base + 1];
+        const nz = field.normals[base + 2];
+        const dx = direction[base];
+        const dy = direction[base + 1];
+        const dz = direction[base + 2];
+        if (![px, py, pz, nx, ny, nz, dx, dy, dz].every(Number.isFinite)) return;
+        const cx = px + nx * offset;
+        const cy = py + ny * offset;
+        const cz = pz + nz * offset;
+        points.push(
+          new THREE.Vector3(cx - dx * glyphLength, cy - dy * glyphLength, cz - dz * glyphLength),
+          new THREE.Vector3(cx + dx * glyphLength, cy + dy * glyphLength, cz + dz * glyphLength)
+        );
+      };
+      for (let vertex = 0; vertex < field.vertexCount; vertex += stride) {
+        if (field.directionValidMask && !field.directionValidMask[vertex]) continue;
+        const base = vertex * 3;
+        appendDirection(d1Points, base, field.d1);
+        if (principalGlyphMode === "both") appendDirection(d2Points, base, field.d2);
+      }
+      const addSegments = (points: THREE.Vector3[], color: number) => {
+        if (!points.length) return;
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const material = new THREE.LineBasicMaterial({ color, depthTest: false, depthWrite: false });
+        const lines = new THREE.LineSegments(geometry, material);
+        lines.renderOrder = 998;
+        group.add(lines);
+      };
+      addSegments(d1Points, 0x1b9e77);
+      addSegments(d2Points, 0xd95f02);
+      return;
+    }
 
     if (isGraphSurface) {
       if (!probeXY) return;
@@ -10437,8 +10493,13 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     graphDomain?.xSpan,
     graphDomain?.ySpan,
     showPrincipalDirections,
+    showPrincipalGlyphs,
     showPrincipalNormalPlanes,
     showPrincipalLines,
+    meshPrincipalField,
+    principalGlyphDensity,
+    principalGlyphLength,
+    principalGlyphMode,
     probeEnabled,
     sceneEpoch,
   ]);

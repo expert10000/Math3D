@@ -274,6 +274,8 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-selection-local-H")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-selection-local-k1")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-selection-local-k2")).not.toContainText("n/a");
+    await expect(page.getByTestId("mesh-selection-local-shape-index")).not.toContainText("n/a");
+    await expect(page.getByTestId("mesh-selection-local-curvedness")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-selection-local-normal")).toContainText(/\([^)]*,[^)]*,[^)]*\)/);
     await expect(page.getByTestId("mesh-selection-local-direction-d1")).toContainText(/\([^)]*,[^)]*,[^)]*\)/);
     await expect(page.getByTestId("mesh-selection-local-direction-d2")).toContainText(/\([^)]*,[^)]*,[^)]*\)/);
