@@ -1,8 +1,28 @@
 import type { SurfaceMeshData, SurfaceMeshSource } from "./surfaceMesh";
 
-export type MeshAnalysisResultKind = "curvature" | "quality" | "diagnostics" | "geodesic";
+export type MeshAnalysisResultKind =
+  | "curvature"
+  | "quality"
+  | "diagnostics"
+  | "geodesic"
+  | "normals"
+  | "principal-directions"
+  | "field-calculus"
+  | "surface-features"
+  | "ridges-valleys"
+  | (string & {});
 
 export type MeshAnalysisResultState = "ready" | "running" | "deferred" | "stale" | "error";
+
+export type MeshAnalysisParameterValue =
+  | number
+  | string
+  | boolean
+  | null
+  | readonly MeshAnalysisParameterValue[]
+  | { readonly [key: string]: MeshAnalysisParameterValue };
+
+export type MeshAnalysisParameters = Readonly<Record<string, MeshAnalysisParameterValue>>;
 
 export type MeshDiagnosticState = "Healthy" | "Warning" | "Invalid" | "Unverified";
 
@@ -10,6 +30,8 @@ export type MeshAnalysisResultDependency = {
   kind: MeshAnalysisResultKind;
   variant?: string;
   state: MeshAnalysisResultState;
+  key?: string;
+  resultVersion?: number;
 };
 
 export type MeshCurvatureAnalysisPayload = {
@@ -82,15 +104,18 @@ export type MeshAnalysisResult<TPayload = unknown> = {
   mesh: MeshAnalysisMeshIdentity;
   createdAt: number;
   updatedAt: number;
-  parameters: Record<string, number | string | boolean | null>;
+  parameters: MeshAnalysisParameters;
   payload: TPayload | null;
   error: string | null;
   progress: number | null;
   dependencies: MeshAnalysisResultDependency[];
+  parameterHash: string;
+  resultVersion: number;
+  computeTimeMs: number | null;
 };
 
 export type MeshAnalysisResultStore = {
-  version: 1;
+  version: 2;
   entries: Record<string, MeshAnalysisResult>;
 };
 
@@ -99,11 +124,12 @@ type UpsertMeshAnalysisResultOptions<TPayload> = {
   mesh: MeshAnalysisMeshIdentity;
   variant?: string;
   state?: MeshAnalysisResultState;
-  parameters?: Record<string, number | string | boolean | null>;
+  parameters?: MeshAnalysisParameters;
   payload?: TPayload | null;
   error?: string | null;
   progress?: number | null;
   dependencies?: MeshAnalysisResultDependency[];
+  computeTimeMs?: number | null;
   now?: number;
 };
 
@@ -137,21 +163,40 @@ const sourceIdentity = (source: SurfaceMeshSource): string => {
 const hashNumbers = (values: ArrayLike<number> | null | undefined): string => {
   if (!values?.length) return "0";
   const length = values.length;
-  const sampleCount = length <= 262_144 ? length : Math.min(4_096, length);
   const numberBits = new DataView(new ArrayBuffer(8));
   let hash = 2166136261;
-  for (let sample = 0; sample < sampleCount; sample += 1) {
-    const index = Math.min(length - 1, Math.floor((sample * (length - 1)) / Math.max(1, sampleCount - 1)));
+  for (let index = 0; index < length; index += 1) {
     const value = Number(values[index] ?? 0);
-    numberBits.setFloat64(0, Number.isFinite(value) ? value : 0, true);
+    numberBits.setFloat64(0, value, true);
     hash ^= numberBits.getUint32(0, true);
     hash = Math.imul(hash, 16777619);
     hash ^= numberBits.getUint32(4, true);
     hash = Math.imul(hash, 16777619);
   }
-  const precision = sampleCount === length ? "full" : "sampled";
-  return `${precision}-${(hash >>> 0).toString(36)}`;
+  return `full-${(hash >>> 0).toString(36)}`;
 };
+
+const stableParameterValue = (value: unknown): unknown => {
+  if (typeof value === "number") {
+    if (Number.isNaN(value)) return { $number: "NaN" };
+    if (value === Number.POSITIVE_INFINITY) return { $number: "+Infinity" };
+    if (value === Number.NEGATIVE_INFINITY) return { $number: "-Infinity" };
+    if (Object.is(value, -0)) return { $number: "-0" };
+  }
+  if (Array.isArray(value)) return value.map(stableParameterValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, stableParameterValue(entry)])
+    );
+  }
+  return value;
+};
+
+export const meshAnalysisParameterHash = (
+  parameters: MeshAnalysisParameters
+): string => JSON.stringify(stableParameterValue(parameters));
 
 export const createMeshAnalysisMeshIdentity = (mesh: SurfaceMeshData): MeshAnalysisMeshIdentity => {
   const vertexCount = Math.floor(mesh.positions.length / 3);
@@ -175,7 +220,7 @@ export const createMeshAnalysisMeshIdentity = (mesh: SurfaceMeshData): MeshAnaly
   };
 };
 
-export const createMeshAnalysisResultStore = (): MeshAnalysisResultStore => ({ version: 1, entries: {} });
+export const createMeshAnalysisResultStore = (): MeshAnalysisResultStore => ({ version: 2, entries: {} });
 
 export const meshAnalysisResultKey = (
   mesh: MeshAnalysisMeshIdentity,
@@ -193,14 +238,120 @@ export const getMeshAnalysisResult = <TPayload = unknown>(
   return (store.entries[meshAnalysisResultKey(mesh, kind, variant)] as MeshAnalysisResult<TPayload> | undefined) ?? null;
 };
 
+export const isMeshAnalysisResultCurrent = (
+  store: MeshAnalysisResultStore,
+  result: MeshAnalysisResult | null | undefined
+): boolean => {
+  if (!result || result.state !== "ready") return false;
+  return result.dependencies.every((dependency) => {
+    const key = dependency.key ?? dependencyKey(result.mesh, dependency);
+    const current = store.entries[key];
+    return !!current &&
+      current.state === "ready" &&
+      (dependency.resultVersion == null || current.resultVersion === dependency.resultVersion);
+  });
+};
+
+export const getMeshAnalysisResultForParameters = <TPayload = unknown>(
+  store: MeshAnalysisResultStore,
+  mesh: MeshAnalysisMeshIdentity | null | undefined,
+  kind: MeshAnalysisResultKind,
+  parameters: MeshAnalysisParameters,
+  variant = "default"
+): MeshAnalysisResult<TPayload> | null => {
+  const result = getMeshAnalysisResult<TPayload>(store, mesh, kind, variant);
+  if (
+    !result ||
+    result.parameterHash !== meshAnalysisParameterHash(parameters) ||
+    !isMeshAnalysisResultCurrent(store, result)
+  ) return null;
+  return result;
+};
+
+const dependencyKey = (
+  mesh: MeshAnalysisMeshIdentity,
+  dependency: Pick<MeshAnalysisResultDependency, "kind" | "variant">
+): string => meshAnalysisResultKey(mesh, dependency.kind, dependency.variant ?? "default");
+
+const invalidateDependents = (
+  entries: Record<string, MeshAnalysisResult>,
+  changedKey: string,
+  now: number
+): void => {
+  const pending = [changedKey];
+  const visited = new Set<string>();
+  while (pending.length) {
+    const dependencyResultKey = pending.shift()!;
+    if (visited.has(dependencyResultKey)) continue;
+    visited.add(dependencyResultKey);
+    for (const [candidateKey, candidate] of Object.entries(entries)) {
+      if (candidateKey === changedKey) continue;
+      const dependsOnChangedResult = candidate.dependencies.some((dependency) =>
+        dependency.key
+          ? dependency.key === dependencyResultKey
+          : dependencyKey(candidate.mesh, dependency) === dependencyResultKey
+      );
+      if (!dependsOnChangedResult) continue;
+      if (candidate.state === "stale") {
+        pending.push(candidateKey);
+        continue;
+      }
+      entries[candidateKey] = {
+        ...candidate,
+        state: "stale",
+        updatedAt: now,
+        progress: null,
+        dependencies: candidate.dependencies.map((dependency) =>
+          (dependency.key ?? dependencyKey(candidate.mesh, dependency)) === dependencyResultKey
+            ? { ...dependency, state: "stale" }
+            : dependency
+        ),
+      };
+      pending.push(candidateKey);
+    }
+  }
+};
+
+export const invalidateMeshAnalysisResult = (
+  store: MeshAnalysisResultStore,
+  mesh: MeshAnalysisMeshIdentity,
+  kind: MeshAnalysisResultKind,
+  variant = "default",
+  now = Date.now()
+): MeshAnalysisResultStore => {
+  const key = meshAnalysisResultKey(mesh, kind, variant);
+  const current = store.entries[key];
+  if (!current) return store;
+  const entries = {
+    ...store.entries,
+    [key]: { ...current, state: "stale" as const, updatedAt: now, progress: null },
+  };
+  invalidateDependents(entries, key, now);
+  return { version: 2, entries };
+};
+
 export const upsertMeshAnalysisResult = <TPayload>(
   store: MeshAnalysisResultStore,
   options: UpsertMeshAnalysisResultOptions<TPayload>
 ): MeshAnalysisResultStore => {
   const variant = options.variant ?? "default";
   const key = meshAnalysisResultKey(options.mesh, options.kind, variant);
-  const previous = store.entries[key];
+  const previous = store.entries[key] as MeshAnalysisResult<TPayload> | undefined;
   const now = options.now ?? Date.now();
+  const parameters = options.parameters ?? previous?.parameters ?? {};
+  const parameterHash = meshAnalysisParameterHash(parameters);
+  const resultVersion = (previous?.resultVersion ?? 0) + 1;
+  const dependencies = (options.dependencies ?? previous?.dependencies ?? []).map((dependency) => {
+    const key = dependency.key ?? dependencyKey(options.mesh, dependency);
+    const current = store.entries[key];
+    return {
+      ...dependency,
+      variant: dependency.variant ?? "default",
+      key,
+      state: current?.state ?? dependency.state,
+      resultVersion: current?.resultVersion ?? dependency.resultVersion,
+    };
+  });
   const nextEntry: MeshAnalysisResult<TPayload> = {
     kind: options.kind,
     variant,
@@ -208,25 +359,35 @@ export const upsertMeshAnalysisResult = <TPayload>(
     mesh: options.mesh,
     createdAt: previous?.createdAt ?? now,
     updatedAt: now,
-    parameters: options.parameters ?? previous?.parameters ?? {},
-    payload: options.payload ?? null,
-    error: options.error ?? null,
+    parameters,
+    payload: options.payload !== undefined ? options.payload : previous?.payload ?? null,
+    error: options.error !== undefined ? options.error : previous?.error ?? null,
     progress:
       options.progress !== undefined
         ? options.progress == null
           ? null
           : Math.min(1, Math.max(0, options.progress))
         : previous?.progress ?? (options.state === "ready" || options.state == null ? 1 : null),
-    dependencies: options.dependencies ?? previous?.dependencies ?? [],
+    dependencies,
+    parameterHash,
+    resultVersion,
+    computeTimeMs:
+      options.computeTimeMs !== undefined ? options.computeTimeMs : previous?.computeTimeMs ?? null,
   };
   const entries = { ...store.entries, [key]: nextEntry };
+  for (const [entryKey, entry] of Object.entries(entries)) {
+    if (entryKey === key || entry.mesh.meshId !== options.mesh.meshId || entry.mesh.revision === options.mesh.revision) continue;
+    if (entry.state !== "stale") entries[entryKey] = { ...entry, state: "stale", updatedAt: now, progress: null };
+  }
+  invalidateDependents(entries, key, now);
+  entries[key] = nextEntry;
   const orderedKeys = Object.entries(entries)
     .sort(([, a], [, b]) => b.updatedAt - a.updatedAt)
     .map(([entryKey]) => entryKey);
   if (orderedKeys.length > MAX_STORED_RESULTS) {
     for (const staleKey of orderedKeys.slice(MAX_STORED_RESULTS)) delete entries[staleKey];
   }
-  return { version: 1, entries };
+  return { version: 2, entries };
 };
 
 export const meshAnalysisResultKindsForMesh = (
@@ -236,7 +397,7 @@ export const meshAnalysisResultKindsForMesh = (
   if (!mesh) return [];
   const kinds = new Set<MeshAnalysisResultKind>();
   for (const entry of Object.values(store.entries)) {
-    if (entry.mesh.key === mesh.key && entry.state === "ready") kinds.add(entry.kind);
+    if (entry.mesh.key === mesh.key && isMeshAnalysisResultCurrent(store, entry)) kinds.add(entry.kind);
   }
   return [...kinds].sort();
 };

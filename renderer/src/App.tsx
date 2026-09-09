@@ -533,6 +533,7 @@ import {
   createMeshAnalysisResultStore,
   deriveMeshDiagnosticState,
   getMeshAnalysisResult,
+  getMeshAnalysisResultForParameters,
   meshAnalysisResultKindsForMesh,
   upsertMeshAnalysisResult,
   type MeshAnalysisMeshIdentity,
@@ -6171,6 +6172,11 @@ const computeTriangleMeshCurvatureScalars = (
   }
   return { K, H, k1, k2 };
 };
+
+const TRIANGLE_MESH_CURVATURE_PARAMETERS = {
+  method: "angle-defect-cotan",
+  boundaryTreatment: "pi",
+} as const;
 
 type TriangleMeshGeometricMetrics = {
   vertexCount: number;
@@ -37019,15 +37025,23 @@ const App: React.FC = () => {
     () => `threshold-${meshQualityHighAspectThreshold.toFixed(4)}-listed-${Math.max(1, Math.floor(meshQualityMaxListedDefects))}`,
     [meshQualityHighAspectThreshold, meshQualityMaxListedDefects]
   );
+  const meshQualityResultParameters = useMemo(
+    () => ({
+      highAspectRatioThreshold: meshQualityHighAspectThreshold,
+      maxListedDefects: Math.max(1, Math.floor(meshQualityMaxListedDefects)),
+    }),
+    [meshQualityHighAspectThreshold, meshQualityMaxListedDefects]
+  );
   const cachedMeshQualityResult = useMemo(
     () =>
-      getMeshAnalysisResult<MeshQualityReport>(
+      getMeshAnalysisResultForParameters<MeshQualityReport>(
         meshAnalysisResultStore,
         activeMeshAnalysisIdentity,
         "quality",
+        meshQualityResultParameters,
         meshQualityResultVariant
       ),
-    [activeMeshAnalysisIdentity, meshAnalysisResultStore, meshQualityResultVariant]
+    [activeMeshAnalysisIdentity, meshAnalysisResultStore, meshQualityResultParameters, meshQualityResultVariant]
   );
   const meshQualityReport =
     cachedMeshQualityResult?.state === "ready" ? cachedMeshQualityResult.payload : null;
@@ -37086,7 +37100,7 @@ const App: React.FC = () => {
           mesh: activeMeshAnalysisIdentity,
           state: "deferred",
           progress: null,
-          dependencies: [{ kind: "diagnostics", state: "deferred" }],
+          dependencies: [],
           error: null,
         }));
       }
@@ -37122,7 +37136,7 @@ const App: React.FC = () => {
         mesh: analysisIdentity,
         state: "running",
         progress: 0,
-        dependencies: [{ kind: "diagnostics", state: "running" }],
+        dependencies: [],
         error: null,
       }));
     }
@@ -37140,7 +37154,7 @@ const App: React.FC = () => {
             mesh: analysisIdentity,
             state: "running",
             progress,
-            dependencies: [{ kind: "diagnostics", state: "running" }],
+            dependencies: [],
             error: null,
           }));
         }
@@ -37158,13 +37172,10 @@ const App: React.FC = () => {
                 kind: "quality",
                 variant: meshQualityResultVariant,
                 mesh: analysisIdentity,
-                parameters: {
-                  highAspectRatioThreshold: meshQualityHighAspectThreshold,
-                  maxListedDefects: Math.max(1, Math.floor(meshQualityMaxListedDefects)),
-                },
+                parameters: meshQualityResultParameters,
                 state: "ready",
                 progress: 1,
-                dependencies: [{ kind: "diagnostics", state: "ready" }],
+                dependencies: [],
                 payload: msg.report,
               })
             );
@@ -37211,6 +37222,7 @@ const App: React.FC = () => {
     surfaceMeshData,
     meshQualityHighAspectThreshold,
     meshQualityMaxListedDefects,
+    meshQualityResultParameters,
     meshAnalyzeDiagnosticsNonce,
     activeMeshAnalysisIdentity,
     meshQualityResultVariant,
@@ -46098,10 +46110,11 @@ case "mobius":
   }, [surfaceSampleSet, surfaceViewerKind, activeEqSurfaceId, graphExpr]);
   const cachedMeshCurvatureResult = useMemo(
     () =>
-      getMeshAnalysisResult<MeshCurvatureAnalysisPayload>(
+      getMeshAnalysisResultForParameters<MeshCurvatureAnalysisPayload>(
         meshAnalysisResultStore,
         activeMeshAnalysisIdentity,
         "curvature",
+        TRIANGLE_MESH_CURVATURE_PARAMETERS,
         "discrete-angle-defect-cotan-v1"
       ),
     [activeMeshAnalysisIdentity, meshAnalysisResultStore]
@@ -46111,7 +46124,7 @@ case "mobius":
     if (!surfaceMeshData?.positions?.length) return null;
     if (surfaceMeshLargeAnalysisDeferred) return null;
     if (cachedMeshCurvatureResult?.state === "ready" && cachedMeshCurvatureResult.payload) {
-      const durationMs = Number(cachedMeshCurvatureResult.parameters.durationMs);
+      const durationMs = cachedMeshCurvatureResult.computeTimeMs;
       return {
         payload: cachedMeshCurvatureResult.payload,
         durationMs: Number.isFinite(durationMs) ? durationMs : null,
@@ -46139,11 +46152,8 @@ case "mobius":
         kind: "curvature",
         variant: "discrete-angle-defect-cotan-v1",
         mesh: activeMeshAnalysisIdentity,
-        parameters: {
-          method: "angle-defect-cotan",
-          boundaryTreatment: "pi",
-          durationMs: surfaceMeshCurvatureComputation.durationMs,
-        },
+        parameters: TRIANGLE_MESH_CURVATURE_PARAMETERS,
+        computeTimeMs: surfaceMeshCurvatureComputation.durationMs,
         payload: surfaceMeshCurvatureComputation.payload,
       });
     });
