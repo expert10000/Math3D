@@ -12,7 +12,8 @@ The numbered commits below are implementation plans, not claims that correspondi
 | 1 — Canonical AnalysisResult registry and cache | Complete | `3894943` | 344 renderer tests, TypeScript typecheck, and production renderer build passed |
 | 2 — Canonical mesh health and CGAL integrity | Complete | `54e9a44` | 349 renderer tests, TypeScript typecheck, production renderer build, and 3 Mesh Analyze E2E tests passed |
 | 3 — Differential geometry | Complete | `af13026` | 361 renderer tests, TypeScript typecheck, production renderer build, and 3 Mesh Analyze E2E tests passed |
-| 4–12 | Planned | — | See the detailed sections below |
+| 4 — Mesh-quality scalar fields | Complete | `d894dee` | 364 renderer tests, TypeScript typecheck, production renderer build, and 3 Mesh Analyze E2E tests passed |
+| 5–12 | Planned | — | See the detailed sections below |
 
 The implementation commits follow the numbered plan sections. Progress entries record completed code only after its relevant tests and build checks pass.
 
@@ -102,7 +103,7 @@ Acceptance: stable cached scientific results with documented conventions and num
 
 Planned message: `mesh-analysis: add VTK mesh-quality fields and bad-element selection`
 
-**Status: quality-report foundation exists; scalar-field workflow incomplete.**
+**Status: implemented.**
 
 Already implemented:
 
@@ -110,13 +111,16 @@ Already implemented:
 - Defect lists and overlays.
 - Quality-report worker and cached reports.
 
-Remaining:
+Completed:
 
-- [ ] Add the planned VTK-backed triangle metrics: area, aspect ratio, edge ratio, minimum/maximum angle, radius ratio, and scaled Jacobian.
-- [ ] Preserve full face-domain scalar arrays rather than only summaries and listed defects.
-- [ ] Use the shared palette/range/legend/histogram/percentile/probe pipeline.
-- [ ] Add threshold selection and worst 1% / 5% selection through the shared Selection Inspector.
-- [ ] Test equilateral, elongated, near-degenerate, mixed-quality, and large meshes.
+- [x] Added VTK/Verdict-compatible area, aspect ratio, edge ratio, minimum angle, maximum angle, radius ratio, and scaled Jacobian formulas with documented equilateral normalization.
+- [x] Corrected the legacy aspect-ratio calculation, which previously computed longest-edge / shortest-edge, and retained edge ratio as its own field.
+- [x] Preserved every triangle metric as a face-indexed `Float64Array`, with an explicit valid-face mask and face centroids; retained complete edge-length, dihedral-angle, and vertex-valence arrays as well.
+- [x] Routed face metrics through the shared palette, inversion, automatic/manual range, whole/selected range, 2–98% percentile, legend, histogram, extrema, and probe controls.
+- [x] Added flat per-face viewport coloring so shared vertices do not blur distinct triangle values.
+- [x] Added bad-side threshold selection and stable worst 1% / 5% face selection, with selected-face markers and mapping into the shared Selection Inspector.
+- [x] Added complete face arrays to JSON and CSV quality exports.
+- [x] Added equilateral VTK/Verdict reference, elongated, near-degenerate, mixed-quality selection, non-manifold, and 33,282-face grid tests, plus Mesh Analyze E2E coverage.
 
 Acceptance: Mesh Quality is a complete scientific scalar-field family.
 
