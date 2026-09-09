@@ -11,7 +11,8 @@ The numbered commits below are implementation plans, not claims that correspondi
 | --- | --- | --- | --- |
 | 1 — Canonical AnalysisResult registry and cache | Complete | `3894943` | 344 renderer tests, TypeScript typecheck, and production renderer build passed |
 | 2 — Canonical mesh health and CGAL integrity | Complete | `54e9a44` | 349 renderer tests, TypeScript typecheck, production renderer build, and 3 Mesh Analyze E2E tests passed |
-| 3–12 | Planned | — | See the detailed sections below |
+| 3 — Differential geometry | Complete | `af13026` | 361 renderer tests, TypeScript typecheck, production renderer build, and 3 Mesh Analyze E2E tests passed |
+| 4–12 | Planned | — | See the detailed sections below |
 
 The implementation commits follow the numbered plan sections. Progress entries record completed code only after its relevant tests and build checks pass.
 
@@ -74,7 +75,7 @@ Completed:
 
 Planned message: `mesh-analysis: complete curvature and principal-direction analysis`
 
-**Status: partially implemented; recommended next implementation step.**
+**Status: implemented.**
 
 Already implemented:
 
@@ -83,17 +84,17 @@ Already implemented:
 - Statistics, histogram, extrema, palette/range controls, and vertex probe.
 - Basic handling of boundaries and zero-area vertices.
 
-Remaining:
+Completed:
 
-- [ ] Extract the canonical discrete implementation from `App.tsx` into testable modules.
-- [ ] Define orientation, mean-curvature sign, vertex area, and boundary conventions.
-- [ ] Validate K = k1·k2 and H = (k1+k2)/2 where applicable; warn on inconsistent reconstruction.
-- [ ] Implement and validate principal-direction estimation/fitting.
-- [ ] Add shape index and curvedness as cached quantities.
-- [ ] Add explicit validity/warning masks for non-manifold, degenerate, nearly flat, umbilic, and inconsistently oriented neighborhoods.
-- [ ] Expose actual principal directions and warnings in the Inspector/probe.
-- [ ] Add VTK comparison without inheriting its conventions silently.
-- [ ] Add plane, unit sphere, cylinder, torus, refinement, noisy sphere, Fandisk, Bunny, and Armadillo verification.
+- [x] Extracted the canonical discrete implementation from `App.tsx` into a testable `meshDifferentialGeometry` module.
+- [x] Defined barycentric vertex area, π boundary angle defect, input-winding behavior for open meshes, outward orientation for closed meshes, positive outward-convex mean curvature, and k1 ≥ k2 ordering.
+- [x] Added K = k1·k2 and H = (k1+k2)/2 residual arrays and an uncertainty mask for clamped or inconsistent reconstruction.
+- [x] Implemented weighted normal-section least-squares shape-operator fitting for principal directions.
+- [x] Added cached shape-index and curvedness scalar arrays and canonical d1/d2 vector fields.
+- [x] Added explicit validity and warning masks for boundary, non-manifold, degenerate, nearly flat, umbilic, inconsistently oriented, insufficient-neighborhood, and curvature-identity cases.
+- [x] Routed fitted directions into mesh glyphs, curvature lines, ridge/valley extraction, Inspector readiness, and probe readouts with local warnings.
+- [x] Added a VTK-reference comparison API that requires the caller to declare whether mean-curvature signs agree or are opposite.
+- [x] Added plane, unit sphere, reversed sphere, cylinder, torus, refinement, noisy sphere, Fandisk, Stanford Bunny, and Armadillo verification.
 
 Acceptance: stable cached scientific results with documented conventions and numerical verification, including reliable principal directions where defined.
 
