@@ -5,6 +5,16 @@ Reviewed checkout: `f15d89a` — Expand Mesh Analyze scientific results
 
 The numbered commits below are implementation plans, not claims that corresponding Git commits are complete. This document records the current implementation and the remaining work against the supplied plans.
 
+## Implementation progress
+
+| Plan | Status | Git commit | Verification |
+| --- | --- | --- | --- |
+| 1 — Canonical AnalysisResult registry and cache | Complete | `3894943` | 344 renderer tests, TypeScript typecheck, and production renderer build passed |
+| 2 — Canonical mesh health and CGAL integrity | Next | — | — |
+| 3–12 | Planned | — | See the detailed sections below |
+
+The implementation commits follow the numbered plan sections. Progress entries record completed code only after its relevant tests and build checks pass.
+
 ## Current assessment
 
 Math3D already has a substantial Mesh Analyze workbench. Most planned commits are partially implemented; the interface is further along than mathematical validation. Existing work should be extended rather than rebuilt.
