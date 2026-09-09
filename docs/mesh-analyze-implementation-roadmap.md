@@ -13,7 +13,8 @@ The numbered commits below are implementation plans, not claims that correspondi
 | 2 — Canonical mesh health and CGAL integrity | Complete | `54e9a44` | 349 renderer tests, TypeScript typecheck, production renderer build, and 3 Mesh Analyze E2E tests passed |
 | 3 — Differential geometry | Complete | `af13026` | 361 renderer tests, TypeScript typecheck, production renderer build, and 3 Mesh Analyze E2E tests passed |
 | 4 — Mesh-quality scalar fields | Complete | `d894dee` | 364 renderer tests, TypeScript typecheck, production renderer build, and 3 Mesh Analyze E2E tests passed |
-| 5–12 | Planned | — | See the detailed sections below |
+| 5 — Surface field calculus | Complete | `ebe8115` | 371 renderer tests, TypeScript typecheck, production renderer build, and 3 Mesh Analyze E2E tests passed |
+| 6–12 | Planned | — | See the detailed sections below |
 
 The implementation commits follow the numbered plan sections. Progress entries record completed code only after its relevant tests and build checks pass.
 
@@ -128,21 +129,24 @@ Acceptance: Mesh Quality is a complete scientific scalar-field family.
 
 Planned message: `mesh-analysis: add surface scalar and vector field operators`
 
-**Status: working operators exist; canonical discretization and registry remain incomplete.**
+**Status: implemented.**
 
 Already implemented:
 
 - Tangent-plane gradient, divergence, normal-curl, and composed Laplacian code.
 - Scalar/vector controls and custom expressions.
 
-Remaining:
+Completed:
 
-- [ ] Complete registry-driven scalar sources: coordinates, curvature quantities, distance, vertex area, valence, mapped quality, imported attributes, and expressions.
-- [ ] Complete vector sources: normals, validated principal directions, gradients, imported and custom fields.
-- [ ] Add canonical cotangent Laplace–Beltrami with documented mass/area convention.
-- [ ] Validate divergence and curl across changing tangent frames and document the surface rotation convention.
-- [ ] Store operator outputs as cached analysis results with dependencies.
-- [ ] Verify plane fields, sphere coordinates, constants, tangent vector fields, and refinement convergence.
+- [x] Added a registry-driven scalar-source family for x/y/z coordinates, height, origin distance, barycentric vertex area, valence, K/H/k1/k2, shape index, curvedness, face-quality fields mapped to vertices, imported attributes, derived fields, and custom expressions.
+- [x] Added normals, validity-masked principal directions, generated gradients, imported/derived vectors, and three-component custom vector expressions projected to the tangent plane.
+- [x] Added the canonical cotangent Laplace–Beltrami operator `Δf = M⁻¹Lf`, with `Mᵢᵢ = Σ Aₜ/3`, edge weights `(cot α + cot β)/2`, negative sphere-coordinate eigenvalues, and explicit NaN boundary values.
+- [x] Defined the gradient as the piecewise-linear face gradient area-averaged at vertices and divergence as the weak FEM divergence after face-tangent projection.
+- [x] Defined oriented normal-curl as `curlₙ X = divₛ(X × n)`, where `n` follows input triangle winding; the implementation does not depend on a chosen global tangent frame.
+- [x] Cached every canonical operator result by mesh revision, operator, source, parameters, and variant, with exact curvature, quality, principal-direction, and composed-gradient dependency snapshots.
+- [x] Registered normals and principal directions as explicit cache dependencies and cleared transient derived fields when the active mesh revision changes.
+- [x] Added Mesh Analyze controls for the direct cotangent Laplacian and custom tangent-vector expressions, plus Inspector method, valid-domain, mass, boundary, curl, timestamp, and cache metadata.
+- [x] Verified linear and constant plane fields, divergence, oriented curl on a rotated plane, unit-sphere coordinate eigenvalues, refinement convergence, registry coverage, dependency invalidation, cache reuse, and the complete Electron workflow.
 
 Acceptance: a mathematically defined surface-calculus family with verified results.
 
