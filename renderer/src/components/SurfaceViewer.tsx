@@ -504,8 +504,12 @@ export type OverlayMeshGroup = {
   positions: ArrayLike<number>;
   indices?: ArrayLike<number> | null;
   color: number;
+  colors?: ArrayLike<number> | null;
   opacity?: number;
   doubleSided?: boolean;
+  depthTest?: boolean;
+  depthWrite?: boolean;
+  renderOrder?: number;
 };
 type SurfaceDecompositionCell = {
   id: string;
@@ -676,6 +680,7 @@ export type SurfaceId = CoreSurfaceId;
 export type ProbeInfo = {
   point: { x: number; y: number; z: number };
   normal: { x: number; y: number; z: number };
+  faceIndex?: number;
   vertexIndex?: number;
   meshKey?: string;
   uv?: { u: number; v: number };
@@ -5075,7 +5080,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       normalWorld: THREE.Vector3,
       xyDomain?: { x: number; y: number },
       uvDomain?: { u: number; v: number },
-      modifiers?: SurfaceViewerPickModifiers
+      modifiers?: SurfaceViewerPickModifiers,
+      faceIndex?: number
     ) => {
       const n = normalWorld.clone().normalize();
 
@@ -5129,6 +5135,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         cb({
           point: { x: point.x, y: point.y, z: point.z },
           normal: { x: n.x, y: n.y, z: n.z },
+          faceIndex,
           vertexIndex: nearest?.sample.vertexIndex,
           meshKey: nearest?.sample.meshKey,
           xy: xyDomain,
@@ -5710,7 +5717,14 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         }
 
       if (probeEnabled) {
-        applyProbe(point, normalWorld, xyDomain, uvDomain, pickModifiers);
+        applyProbe(
+          point,
+          normalWorld,
+          xyDomain,
+          uvDomain,
+          pickModifiers,
+          typeof (hit as any).faceIndex === "number" ? Number((hit as any).faceIndex) : undefined
+        );
       }
 
       const selectionCb = onSelectionPickRef.current;
@@ -8471,18 +8485,22 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (entry.indices && entry.indices.length >= 3) {
         geom.setIndex(Array.from(entry.indices));
       }
+      if (entry.colors && entry.colors.length === entry.positions.length) {
+        geom.setAttribute("color", new THREE.BufferAttribute(Float32Array.from(entry.colors), 3));
+      }
       geom.computeVertexNormals();
       const opacity = entry.opacity ?? 1;
       const mat = new THREE.MeshBasicMaterial({
-        color: entry.color,
+        color: entry.colors ? 0xffffff : entry.color,
+        vertexColors: !!entry.colors,
         transparent: opacity < 1,
         opacity,
-        depthTest: false,
-        depthWrite: false,
+        depthTest: entry.depthTest ?? false,
+        depthWrite: entry.depthWrite ?? false,
         side: entry.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
       });
       const mesh = new THREE.Mesh(geom, mat);
-      mesh.renderOrder = 220;
+      mesh.renderOrder = entry.renderOrder ?? 220;
       mesh.frustumCulled = false;
       group.add(mesh);
     }

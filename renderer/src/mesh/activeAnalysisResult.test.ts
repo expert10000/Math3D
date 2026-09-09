@@ -16,8 +16,35 @@ const qualityReport: MeshQualityReport = {
     edgeLength: { min: 1, avg: 2, max: 3 },
     triangleArea: { min: 4, avg: 5, max: 6 },
     aspectRatio: { min: 7, avg: 8, max: 9 },
+    edgeRatio: { min: 1, avg: 1.5, max: 2 },
+    minimumAngleDeg: { min: 20, avg: 40, max: 60 },
+    maximumAngleDeg: { min: 60, avg: 90, max: 120 },
+    radiusRatio: { min: 1, avg: 2, max: 3 },
+    scaledJacobian: { min: 0.2, avg: 0.6, max: 1 },
     vertexValence: { min: 10, avg: 11, max: 12 },
     dihedralAngleDeg: { min: 13, avg: 14, max: 15 },
+  },
+  fields: {
+    face: {
+      triangleArea: Float64Array.from([4, 6]),
+      aspectRatio: Float64Array.from([7, 9]),
+      edgeRatio: Float64Array.from([1, 2]),
+      minimumAngleDeg: Float64Array.from([20, 60]),
+      maximumAngleDeg: Float64Array.from([60, 120]),
+      radiusRatio: Float64Array.from([1, 3]),
+      scaledJacobian: Float64Array.from([0.2, 1]),
+    },
+    faceValidMask: Uint8Array.from([1, 1]),
+    faceCentroids: Float32Array.from([0, 0, 0, 1, 1, 1]),
+    vertexValence: Float64Array.from([10, 11, 11, 12]),
+    edgeLength: Float64Array.from([1, 1.5, 2, 2.5, 3]),
+    dihedralAngleDeg: Float64Array.from([13, 13.5, 14, 14.5, 15]),
+  },
+  conventions: {
+    backend: "Math3D VTK/Verdict-compatible",
+    domain: "triangle faces",
+    invalidValue: "NaN",
+    idealEquilateral: "aspect ratio = edge ratio = radius ratio = scaled Jacobian = 1; angles = 60 deg",
   },
   topology: { boundaryEdgeCount: 0, nonManifoldEdgeCount: 0, degenerateFaceCount: 1 },
   defects: {
@@ -80,6 +107,11 @@ describe("selectMeshActiveAnalysisResult", () => {
     const expected: Record<MeshQualityMetricKey, { label: string; min: string; samples: string }> = {
       aspectRatio: { label: "Aspect ratio", min: "7.0000", samples: "2" },
       triangleArea: { label: "Triangle area", min: "4.0000", samples: "2" },
+      edgeRatio: { label: "Edge ratio", min: "1.0000", samples: "2" },
+      minimumAngleDeg: { label: "Minimum angle", min: "20.0000", samples: "2" },
+      maximumAngleDeg: { label: "Maximum angle", min: "60.0000", samples: "2" },
+      radiusRatio: { label: "Radius ratio", min: "1.0000", samples: "2" },
+      scaledJacobian: { label: "Scaled Jacobian", min: "0.2000", samples: "2" },
       edgeLength: { label: "Edge length", min: "1.0000", samples: "5" },
       vertexValence: { label: "Vertex valence", min: "10.0000", samples: "4" },
       dihedralAngleDeg: { label: "Dihedral angle", min: "13.0000", samples: "5" },
@@ -98,6 +130,8 @@ describe("selectMeshActiveAnalysisResult", () => {
       expect(result.state).toBe("Ready");
       expect(result.statistics).toContainEqual({ label: "Minimum", value: expected[option.id].min });
       expect(result.statistics).toContainEqual({ label: "Samples", value: expected[option.id].samples });
+      expect(result.histogram).toHaveLength(12);
+      expect(result.extrema).toHaveLength(2);
       expect(result.metadata).toContainEqual({ label: "Cache", value: "Cached result" });
       expect(result.metadata).toContainEqual({ label: "Computed", value: "timestamp:42" });
     }

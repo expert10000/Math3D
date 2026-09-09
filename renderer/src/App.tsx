@@ -207,7 +207,7 @@ import ComputeEngineManagerPanel from "./features/computeEngines/ComputeEngineMa
 import { useResponsiveLayout } from "./hooks/useResponsiveLayout";
 
 import { ParamSurfaceViewer, type ParamSurfaceId } from "./components/ParamSurfaceViewer";
-import { solidColorForPalette, type ColorPalette } from "./components/colorPalette";
+import { scalarToColor01, solidColorForPalette, type ColorPalette } from "./components/colorPalette";
 import {
   DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
   type ReferencePlaneLabelSkin,
@@ -568,7 +568,15 @@ import {
   type MeshBenchmarkExpected,
   type MeshBenchmarkVerificationRow,
 } from "./mesh/meshBenchmarkVerification";
-import { computeMeshQualityReport, type MeshQualityReport, type MeshQualityReportPhase } from "./mesh/meshQualityReport";
+import {
+  computeMeshQualityReport,
+  meshTriangleQualityDefinition,
+  selectMeshQualityFaces,
+  type MeshQualityFaceSelectionResult,
+  type MeshQualityReport,
+  type MeshQualityReportPhase,
+  type MeshTriangleQualityMetricKey,
+} from "./mesh/meshQualityReport";
 import type {
   DatasetKind,
   MeshDataset,
@@ -36866,6 +36874,8 @@ const App: React.FC = () => {
   const [meshQualityHighAspectThreshold, setMeshQualityHighAspectThreshold] = useState(8);
   const [meshQualityMaxListedDefects, setMeshQualityMaxListedDefects] = useState(120);
   const [meshAnalyzeQualityMetric, setMeshAnalyzeQualityMetric] = useState<MeshQualityMetricKey>("aspectRatio");
+  const [meshQualitySelectionThreshold, setMeshQualitySelectionThreshold] = useState(20);
+  const [meshQualityFaceSelection, setMeshQualityFaceSelection] = useState<MeshQualityFaceSelectionResult | null>(null);
   const [meshQualityShowDegenerateFaces, setMeshQualityShowDegenerateFaces] = useState(true);
   const [meshQualityShowHighAspectFaces, setMeshQualityShowHighAspectFaces] = useState(true);
   const [meshQualityShowNonManifoldEdges, setMeshQualityShowNonManifoldEdges] = useState(true);
@@ -36904,6 +36914,9 @@ const App: React.FC = () => {
   );
   const meshQualityReport =
     cachedMeshQualityResult?.state === "ready" ? cachedMeshQualityResult.payload : null;
+  useEffect(() => {
+    setMeshQualityFaceSelection(null);
+  }, [activeMeshAnalysisIdentity?.revision, meshAnalyzeQualityMetric]);
   const activeMeshAnalysisCachedKinds = useMemo(
     () => meshAnalysisResultKindsForMesh(meshAnalysisResultStore, activeMeshAnalysisIdentity),
     [activeMeshAnalysisIdentity, meshAnalysisResultStore]
@@ -37114,9 +37127,21 @@ const App: React.FC = () => {
         opacity: 0.95,
       });
     }
+    if (meshQualityFaceSelection?.count) {
+      const points: Array<{ x: number; y: number; z: number }> = [];
+      const centroids = meshQualityReport.fields.faceCentroids;
+      for (let faceIndex = 0; faceIndex < meshQualityFaceSelection.selected.length; faceIndex += 1) {
+        if (!meshQualityFaceSelection.selected[faceIndex]) continue;
+        const base = faceIndex * 3;
+        const point = { x: Number(centroids[base]), y: Number(centroids[base + 1]), z: Number(centroids[base + 2]) };
+        if (Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z)) points.push(point);
+      }
+      if (points.length) sets.push({ points, color: 0xffd60a, size: 0.045, opacity: 1 });
+    }
     return sets.length ? sets : null;
   }, [
     isMeshLikeViewer,
+    meshQualityFaceSelection,
     meshQualityReport,
     meshQualityShowDegenerateFaces,
     meshQualityShowHighAspectFaces,
@@ -52706,7 +52731,18 @@ case "mobius":
     }
     const base = sanitizeFileBase(surfaceMeshLabel || "surface_mesh", "surface_mesh");
     const fileName = `${base}-mesh-quality-${new Date().toISOString().slice(0, 10)}.json`;
-    downloadTextFile(JSON.stringify(meshQualityReport, null, 2), fileName, "application/json");
+    const serializable = {
+      ...meshQualityReport,
+      fields: {
+        face: Object.fromEntries(Object.entries(meshQualityReport.fields.face).map(([key, values]) => [key, Array.from(values)])),
+        faceValidMask: Array.from(meshQualityReport.fields.faceValidMask),
+        faceCentroids: Array.from(meshQualityReport.fields.faceCentroids),
+        vertexValence: Array.from(meshQualityReport.fields.vertexValence),
+        edgeLength: Array.from(meshQualityReport.fields.edgeLength),
+        dihedralAngleDeg: Array.from(meshQualityReport.fields.dihedralAngleDeg),
+      },
+    };
+    downloadTextFile(JSON.stringify(serializable, null, 2), fileName, "application/json");
     setMeshQualityExportStatus(`Exported ${fileName}`);
   }, [meshQualityReport, surfaceMeshLabel]);
 
@@ -52724,27 +52760,19 @@ case "mobius":
       ["topology", "boundaryEdgeCount", report.topology.boundaryEdgeCount],
       ["topology", "nonManifoldEdgeCount", report.topology.nonManifoldEdgeCount],
       ["topology", "degenerateFaceCount", report.topology.degenerateFaceCount],
-      ["metric.edgeLength", "min", report.metrics.edgeLength.min],
-      ["metric.edgeLength", "avg", report.metrics.edgeLength.avg],
-      ["metric.edgeLength", "max", report.metrics.edgeLength.max],
-      ["metric.triangleArea", "min", report.metrics.triangleArea.min],
-      ["metric.triangleArea", "avg", report.metrics.triangleArea.avg],
-      ["metric.triangleArea", "max", report.metrics.triangleArea.max],
-      ["metric.aspectRatio", "min", report.metrics.aspectRatio.min],
-      ["metric.aspectRatio", "avg", report.metrics.aspectRatio.avg],
-      ["metric.aspectRatio", "max", report.metrics.aspectRatio.max],
-      ["metric.vertexValence", "min", report.metrics.vertexValence.min],
-      ["metric.vertexValence", "avg", report.metrics.vertexValence.avg],
-      ["metric.vertexValence", "max", report.metrics.vertexValence.max],
-      ["metric.dihedralAngleDeg", "min", report.metrics.dihedralAngleDeg.min],
-      ["metric.dihedralAngleDeg", "avg", report.metrics.dihedralAngleDeg.avg],
-      ["metric.dihedralAngleDeg", "max", report.metrics.dihedralAngleDeg.max],
       ["defects", "degenerateFaces", report.defects.degenerateFaces.length],
       ["defects", "highAspectFaces", report.defects.highAspectFaces.length],
       ["defects", "nonManifoldEdges", report.defects.nonManifoldEdges.length],
       [],
       ["defectType", "id", "metricA", "metricB", "metricC", "x", "y", "z"],
     ];
+    for (const [metric, metricSummary] of Object.entries(report.metrics)) {
+      rows.splice(7, 0,
+        [`metric.${metric}`, "max", metricSummary.max],
+        [`metric.${metric}`, "avg", metricSummary.avg],
+        [`metric.${metric}`, "min", metricSummary.min]
+      );
+    }
     for (const face of report.defects.degenerateFaces) {
       rows.push([
         "degenerateFace",
@@ -52779,6 +52807,24 @@ case "mobius":
         edge.midpoint.x,
         edge.midpoint.y,
         edge.midpoint.z,
+      ]);
+    }
+    rows.push([], ["faceIndex", "valid", "area", "aspectRatio", "edgeRatio", "minimumAngleDeg", "maximumAngleDeg", "radiusRatio", "scaledJacobian", "centroidX", "centroidY", "centroidZ"]);
+    for (let faceIndex = 0; faceIndex < report.fields.faceValidMask.length; faceIndex += 1) {
+      const base = faceIndex * 3;
+      rows.push([
+        faceIndex,
+        !!report.fields.faceValidMask[faceIndex],
+        report.fields.face.triangleArea[faceIndex],
+        report.fields.face.aspectRatio[faceIndex],
+        report.fields.face.edgeRatio[faceIndex],
+        report.fields.face.minimumAngleDeg[faceIndex],
+        report.fields.face.maximumAngleDeg[faceIndex],
+        report.fields.face.radiusRatio[faceIndex],
+        report.fields.face.scaledJacobian[faceIndex],
+        report.fields.faceCentroids[base],
+        report.fields.faceCentroids[base + 1],
+        report.fields.faceCentroids[base + 2],
       ]);
     }
     const csv = rows.map((row) => row.map((cell) => csvCell(cell)).join(",")).join("\n");
@@ -54223,13 +54269,6 @@ case "mobius":
     meshQualityReport?.metrics.dihedralAngleDeg.avg != null && Number.isFinite(meshQualityReport.metrics.dihedralAngleDeg.avg)
       ? `dihedral avg ${meshQualityReport.metrics.dihedralAngleDeg.avg.toFixed(1)} deg`
       : null;
-  const meshViewerOverlayMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
-    const groups: OverlayMeshGroup[] = [];
-    if (combinedOverlayMeshGroups?.length) groups.push(...combinedOverlayMeshGroups);
-    if (meshBooleanReviewOverlayMeshGroups?.length) groups.push(...meshBooleanReviewOverlayMeshGroups);
-    if (meshSelectionHighlightOverlays.meshGroups.length) groups.push(...meshSelectionHighlightOverlays.meshGroups);
-    return groups.length ? groups : null;
-  }, [combinedOverlayMeshGroups, meshBooleanReviewOverlayMeshGroups, meshSelectionHighlightOverlays.meshGroups]);
   const meshViewerOverlayPointSets = useMemo<OverlayPointSet[] | null>(() => {
     const sets: OverlayPointSet[] = [];
     if (combinedOverlayPointSets?.length) sets.push(...combinedOverlayPointSets);
@@ -59557,7 +59596,7 @@ case "mobius":
     return { min, max };
   };
   const readFiniteStats = (
-    values: Float32Array | null | undefined,
+    values: ArrayLike<number> | null | undefined,
     mask?: SelectionMask | null
   ): { min: number; max: number; mean: number; std: number; count: number } | null => {
     if (!values?.length) return null;
@@ -59583,7 +59622,7 @@ case "mobius":
     return { min, max, mean, std: Math.sqrt(variance), count };
   };
   const readFinitePercentileRange = (
-    values: Float32Array | null | undefined,
+    values: ArrayLike<number> | null | undefined,
     mask?: SelectionMask | null,
     low = 0.02,
     high = 0.98
@@ -59745,6 +59784,22 @@ case "mobius":
           : meshAnalyzeCurvatureField === "k2"
             ? "Principal curvature k2"
             : null;
+  const meshAnalyzeQualityFaceField =
+    analysisFocusedSection === "mesh-quality" && meshQualityReport
+      ? meshQualityReport.fields.face[meshAnalyzeQualityMetric as MeshTriangleQualityMetricKey] ?? null
+      : null;
+  const meshAnalyzeQualityDefinition = meshAnalyzeQualityFaceField
+    ? meshTriangleQualityDefinition(meshAnalyzeQualityMetric as MeshTriangleQualityMetricKey)
+    : null;
+  const meshAnalyzeQualitySelectionMask =
+    meshAnalyzeRangeMode === "selected" &&
+    meshQualityFaceSelection?.count &&
+    meshAnalyzeQualityFaceField?.length === meshQualityFaceSelection.selected.length
+      ? meshQualityFaceSelection
+      : null;
+  const meshAnalyzeQualityStats = meshAnalyzeQualityFaceField
+    ? summarizeMeshScalarField(meshAnalyzeQualityFaceField, meshAnalyzeQualitySelectionMask?.selected)
+    : null;
   const meshAnalysisPersistedIdentityRef = useRef<string | null>(null);
   useEffect(() => {
     if (surfaceViewerKind !== "mesh" || !activeMeshAnalysisIdentity) return;
@@ -59845,6 +59900,12 @@ case "mobius":
         surfaceScienceCurvatureMask?.selected
       )
     : null;
+  const meshAnalyzeActiveScalarValues = meshAnalyzeQualityFaceField ??
+    (meshAnalyzeCurvatureField ? meshAnalyzeCurvatureArrays?.[meshAnalyzeCurvatureField] ?? null : null);
+  const meshAnalyzeActiveScalarMask = meshAnalyzeQualityFaceField
+    ? meshAnalyzeQualitySelectionMask
+    : surfaceScienceCurvatureMask;
+  const meshAnalyzeActiveScalarStats = meshAnalyzeQualityStats ?? meshAnalyzeCurvatureStats;
   const meshAnalyzeClampRange = useMemo(() => {
     if (!meshAnalyzeClampEnabled) return null;
     const min = Number(meshAnalyzeClampMin);
@@ -59860,6 +59921,10 @@ case "mobius":
           max: meshAnalyzeClampRange.max,
         }
       : meshAnalyzeCurvatureStats;
+  const meshAnalyzeDisplayedQualityStats =
+    meshAnalyzeQualityStats && meshAnalyzeClampRange
+      ? { ...meshAnalyzeQualityStats, min: meshAnalyzeClampRange.min, max: meshAnalyzeClampRange.max }
+      : meshAnalyzeQualityStats;
   const meshAnalyzeCurvatureHeatmapValues = useMemo(() => {
     if (surfaceViewerKind !== "mesh" || surfacesLeftTab !== "analysis") return null;
     if (!meshAnalyzeCurvatureField || !meshAnalyzeDisplayedCurvatureStats) return null;
@@ -59889,38 +59954,99 @@ case "mobius":
     surfaceViewerKind,
     surfacesLeftTab,
   ]);
+  const meshAnalyzeQualityFieldOverlay = useMemo<OverlayMeshGroup | null>(() => {
+    if (!meshAnalyzeQualityFaceField || !meshAnalyzeDisplayedQualityStats || !surfaceMeshData?.positions?.length) return null;
+    const sourcePositions = surfaceMeshData.positions;
+    const indices = surfaceMeshData.indices ?? null;
+    const vertexCount = Math.floor(sourcePositions.length / 3);
+    const min = meshAnalyzeDisplayedQualityStats.min;
+    const max = meshAnalyzeDisplayedQualityStats.max;
+    const range = max - min;
+    if (!Number.isFinite(min) || !Number.isFinite(max) || range <= 0) return null;
+    const positions: number[] = [];
+    const colors: number[] = [];
+    for (let faceIndex = 0; faceIndex < meshAnalyzeQualityFaceField.length; faceIndex += 1) {
+      const value = Number(meshAnalyzeQualityFaceField[faceIndex]);
+      if (!Number.isFinite(value) || !meshQualityReport?.fields.faceValidMask[faceIndex]) continue;
+      const normalized = (Math.min(max, Math.max(min, value)) - min) / range;
+      const rgb = scalarToColor01(meshAnalyzePaletteInverted ? 1 - normalized : normalized, colorPalette);
+      const base = faceIndex * 3;
+      const triangle: number[] = [];
+      let valid = true;
+      for (let corner = 0; corner < 3; corner += 1) {
+        const vertexIndex = indices ? Number(indices[base + corner]) : base + corner;
+        if (!Number.isInteger(vertexIndex) || vertexIndex < 0 || vertexIndex >= vertexCount) { valid = false; break; }
+        const offset = vertexIndex * 3;
+        triangle.push(Number(sourcePositions[offset]), Number(sourcePositions[offset + 1]), Number(sourcePositions[offset + 2]));
+      }
+      if (!valid) continue;
+      positions.push(...triangle);
+      for (let corner = 0; corner < 3; corner += 1) colors.push(rgb.r, rgb.g, rgb.b);
+    }
+    return positions.length ? {
+      positions: Float32Array.from(positions),
+      colors: Float32Array.from(colors),
+      color: 0xffffff,
+      opacity: 0.92,
+      doubleSided: true,
+      depthTest: true,
+      depthWrite: false,
+      renderOrder: 180,
+    } : null;
+  }, [
+    colorPalette,
+    meshAnalyzeDisplayedQualityStats,
+    meshAnalyzePaletteInverted,
+    meshAnalyzeQualityFaceField,
+    meshQualityReport?.fields.faceValidMask,
+    surfaceMeshData,
+  ]);
+  const meshViewerOverlayMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
+    const groups: OverlayMeshGroup[] = [];
+    if (combinedOverlayMeshGroups?.length) groups.push(...combinedOverlayMeshGroups);
+    if (meshBooleanReviewOverlayMeshGroups?.length) groups.push(...meshBooleanReviewOverlayMeshGroups);
+    if (meshSelectionHighlightOverlays.meshGroups.length) groups.push(...meshSelectionHighlightOverlays.meshGroups);
+    if (meshAnalyzeQualityFieldOverlay) groups.push(meshAnalyzeQualityFieldOverlay);
+    return groups.length ? groups : null;
+  }, [
+    combinedOverlayMeshGroups,
+    meshAnalyzeQualityFieldOverlay,
+    meshBooleanReviewOverlayMeshGroups,
+    meshSelectionHighlightOverlays.meshGroups,
+  ]);
   const overlayHeatmapValues = meshAnalyzeCurvatureHeatmapValues ?? baseOverlayHeatmapValues;
   const overlayHeatmapEnabled = !!overlayHeatmapValues?.length;
   const meshAnalyzeSelectedRangeAvailable =
-    !!selectionMask?.count &&
-    !!meshAnalyzeCurvatureArrays?.K &&
-    selectionMask.selected.length === meshAnalyzeCurvatureArrays.K.length;
+    meshAnalyzeQualityFaceField
+      ? !!meshQualityFaceSelection?.count
+      : !!selectionMask?.count &&
+        !!meshAnalyzeCurvatureArrays?.K &&
+        selectionMask.selected.length === meshAnalyzeCurvatureArrays.K.length;
   const meshAnalyzeResetClampRange = useCallback(() => {
-    if (meshAnalyzeCurvatureStats) {
-      setMeshAnalyzeClampMin(fmt(meshAnalyzeCurvatureStats.min));
-      setMeshAnalyzeClampMax(fmt(meshAnalyzeCurvatureStats.max));
+    if (meshAnalyzeActiveScalarStats) {
+      setMeshAnalyzeClampMin(fmt(meshAnalyzeActiveScalarStats.min));
+      setMeshAnalyzeClampMax(fmt(meshAnalyzeActiveScalarStats.max));
     } else {
       setMeshAnalyzeClampMin("");
       setMeshAnalyzeClampMax("");
     }
     setMeshAnalyzeClampEnabled(false);
-  }, [meshAnalyzeCurvatureStats]);
+  }, [meshAnalyzeActiveScalarStats]);
   const applyMeshAnalyzeRangePreset = useCallback(
     (preset: "symmetric" | "percentile" | "full") => {
-      if (!meshAnalyzeCurvatureField) return;
-      const values = meshAnalyzeCurvatureArrays?.[meshAnalyzeCurvatureField];
+      const values = meshAnalyzeActiveScalarValues;
       if (!values?.length) return;
       if (preset === "full") {
-        const stats = readFiniteStats(values, surfaceScienceCurvatureMask);
+        const stats = readFiniteStats(values, meshAnalyzeActiveScalarMask);
         if (!stats) return;
         setMeshAnalyzeClampMin(fmt(stats.min));
         setMeshAnalyzeClampMax(fmt(stats.max));
         setMeshAnalyzeClampEnabled(false);
-        setSurfaceMeshTopologyStatus(`Legend range preset: full ${surfaceScienceCurvatureRangeSource}.`);
+        setSurfaceMeshTopologyStatus(`Legend range preset: full ${meshAnalyzeActiveScalarMask ? "selected region" : "whole mesh"}.`);
         return;
       }
       if (preset === "symmetric") {
-        const stats = readFiniteStats(values, surfaceScienceCurvatureMask);
+        const stats = readFiniteStats(values, meshAnalyzeActiveScalarMask);
         if (!stats) return;
         const limit = Math.max(Math.abs(stats.min), Math.abs(stats.max), 1e-9);
         setMeshAnalyzeClampMin(fmt(-limit));
@@ -59929,7 +60055,7 @@ case "mobius":
         setSurfaceMeshTopologyStatus(`Legend range preset: symmetric ±${fmt(limit)}.`);
         return;
       }
-      const range = readFinitePercentileRange(values, surfaceScienceCurvatureMask, 0.02, 0.98);
+      const range = readFinitePercentileRange(values, meshAnalyzeActiveScalarMask, 0.02, 0.98);
       if (!range || range.min >= range.max) return;
       setMeshAnalyzeClampMin(fmt(range.min));
       setMeshAnalyzeClampMax(fmt(range.max));
@@ -59939,11 +60065,73 @@ case "mobius":
       );
     },
     [
-      meshAnalyzeCurvatureField,
-      meshAnalyzeCurvatureArrays,
-      surfaceScienceCurvatureMask,
-      surfaceScienceCurvatureRangeSource,
+      meshAnalyzeActiveScalarMask,
+      meshAnalyzeActiveScalarValues,
     ]
+  );
+  const handleSelectMeshQualityMetric = useCallback((metric: MeshQualityMetricKey) => {
+    setMeshAnalyzeQualityMetric(metric);
+    const defaultThresholds: Partial<Record<MeshQualityMetricKey, number>> = {
+      triangleArea: 0,
+      aspectRatio: 3,
+      edgeRatio: 3,
+      minimumAngleDeg: 20,
+      maximumAngleDeg: 120,
+      radiusRatio: 3,
+      scaledJacobian: 0.2,
+    };
+    if (defaultThresholds[metric] != null) setMeshQualitySelectionThreshold(defaultThresholds[metric]!);
+    setAnalysisFocusedSection("mesh-quality");
+    setMeshAnalyzeMode("curvature");
+    setShowInViewportOverlayControls(true);
+    setMeshAnalyzeDiagnosticOverlayMode("none");
+    setMeshAnalyzeClampEnabled(false);
+  }, []);
+  const applyMeshQualityFaceSelection = useCallback(
+    (selection: { mode: "threshold"; value: number } | { mode: "worst-percent"; percent: number }) => {
+      if (!meshQualityReport || !meshAnalyzeQualityFaceField || !surfaceMeshData) {
+        setSurfaceMeshTopologyStatus("Select a triangle quality field before selecting bad faces.");
+        return;
+      }
+      const metric = meshAnalyzeQualityMetric as MeshTriangleQualityMetricKey;
+      const result = selectMeshQualityFaces(meshQualityReport, metric, selection);
+      setMeshQualityFaceSelection(result);
+      const vertexCount = Math.floor(surfaceMeshData.positions.length / 3);
+      const selectedVertices = new Uint8Array(vertexCount);
+      const indices = surfaceMeshData.indices ?? null;
+      for (let faceIndex = 0; faceIndex < result.selected.length; faceIndex += 1) {
+        if (!result.selected[faceIndex]) continue;
+        const base = faceIndex * 3;
+        for (let corner = 0; corner < 3; corner += 1) {
+          const vertexIndex = indices ? Number(indices[base + corner]) : base + corner;
+          if (Number.isInteger(vertexIndex) && vertexIndex >= 0 && vertexIndex < vertexCount) selectedVertices[vertexIndex] = 1;
+        }
+      }
+      const sampleCount = surfaceSampleSet?.samples.length ?? 0;
+      const sampleSelected = new Uint8Array(sampleCount);
+      let selectedSampleCount = 0;
+      for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex += 1) {
+        const vertexIndex = surfaceSampleSet?.samples[sampleIndex]?.vertexIndex;
+        if (vertexIndex == null || !selectedVertices[vertexIndex]) continue;
+        sampleSelected[sampleIndex] = 1;
+        selectedSampleCount += 1;
+      }
+      const sampleMask: SelectionMask = { selected: sampleSelected, count: selectedSampleCount };
+      setSelection(null);
+      setSelectionSeed(null);
+      setSelectionMaskOverride(sampleMask);
+      setSelectionMask(sampleMask);
+      setSelectRegionEnabled(false);
+      setRightPanelTab("inspector");
+      setMeshWorkspaceRequestedInspectorTab(null);
+      window.setTimeout(() => setMeshWorkspaceRequestedInspectorTab("selection"), 0);
+      const label = meshTriangleQualityDefinition(metric).label;
+      const cutoff = result.cutoff == null ? "n/a" : fmt(result.cutoff);
+      setSurfaceMeshTopologyStatus(
+        `${label}: selected ${result.count.toLocaleString()} faces (${selection.mode === "threshold" ? `bad-side threshold ${fmt(selection.value)}` : `worst ${selection.percent}%`}; cutoff ${cutoff}).`
+      );
+    },
+    [meshAnalyzeQualityFaceField, meshAnalyzeQualityMetric, meshQualityReport, surfaceMeshData, surfaceSampleSet]
   );
   const meshAnalyzeSphereSanity = useMemo(() => {
     const sphereLike =
@@ -60119,6 +60307,24 @@ case "mobius":
       : meshAnalyzeProbePoint
         ? `Probe: point ${fmt3(meshAnalyzeProbePoint)}`
         : null;
+  const meshAnalyzeQualityProbe = useMemo(() => {
+    if (analysisFocusedSection !== "mesh-quality" || !probeEnabled || !meshAnalyzeQualityFaceField) return null;
+    const faceIndex = probeInfo?.faceIndex ?? surfaceMeshTopologyPick?.faceIndex;
+    if (faceIndex == null || faceIndex < 0 || faceIndex >= meshAnalyzeQualityFaceField.length) return null;
+    const value = Number(meshAnalyzeQualityFaceField[faceIndex]);
+    return {
+      faceIndex,
+      value: Number.isFinite(value) ? value : null,
+      valid: !!meshQualityReport?.fields.faceValidMask[faceIndex],
+    };
+  }, [
+    analysisFocusedSection,
+    meshAnalyzeQualityFaceField,
+    meshQualityReport?.fields.faceValidMask,
+    probeEnabled,
+    probeInfo?.faceIndex,
+    surfaceMeshTopologyPick?.faceIndex,
+  ]);
   const meshAnalyzePaletteDirectionLabel = meshAnalyzePaletteInverted ? "Palette: high -> low" : "Palette: low -> high";
   const handleApplyMeshAnalyzeMode = useCallback(
     (mode: MeshAnalyzeMode) => {
@@ -60177,7 +60383,7 @@ case "mobius":
     surfaceViewerKind === "mesh" &&
     surfacesLeftTab === "analysis" &&
     !!surfaceMeshStats &&
-    (meshAnalyzeCurvatureField != null || probeEnabled || !!meshAnalyzeProbeCurvature);
+    (meshAnalyzeCurvatureField != null || !!meshAnalyzeQualityFaceField || probeEnabled || !!meshAnalyzeProbeCurvature);
   const meshAnalyzeHeavyOverlayLabels = [
     showBoundingBox ? "bounding box" : null,
     showChartGrid ? "chart grid" : null,
@@ -74504,7 +74710,7 @@ case "mobius":
                                       key={option.id}
                                       type="button"
                                       data-testid={`mesh-analyze-quality-metric-${option.id}`}
-                                      onClick={() => setMeshAnalyzeQualityMetric(option.id)}
+                                      onClick={() => handleSelectMeshQualityMetric(option.id)}
                                       aria-pressed={active}
                                       title={option.label}
                                       style={{
@@ -74522,6 +74728,11 @@ case "mobius":
                                   );
                                 })}
                               </div>
+                              <div data-testid="mesh-analyze-quality-domain" style={{ color: "#475467" }}>
+                                {meshAnalyzeQualityFaceField
+                                  ? `${meshAnalyzeQualityFaceField.length.toLocaleString()} face values · VTK/Verdict-compatible`
+                                  : "Summary domain; choose a triangle metric for face visualization and selection."}
+                              </div>
                               {meshAnalyzeQualityMetric === "aspectRatio" && (
                                 <label style={{ display: "grid", gridTemplateColumns: "1fr 72px", alignItems: "center", gap: 6 }}>
                                   <span>High aspect threshold</span>
@@ -74532,6 +74743,54 @@ case "mobius":
                                 <span>Listed defects</span>
                                 <input type="number" min={1} step={1} value={meshQualityMaxListedDefects} onChange={(event) => setMeshQualityMaxListedDefects(Math.max(1, Math.round(Number(event.target.value) || 1)))} />
                               </label>
+                              {meshAnalyzeQualityFaceField && meshAnalyzeQualityDefinition && (
+                                <div
+                                  data-testid="mesh-analyze-quality-selection"
+                                  style={{ borderTop: "1px solid #e2e8f0", paddingTop: 6, display: "grid", gap: 5 }}
+                                >
+                                  <strong>Select bad faces</strong>
+                                  <label style={{ display: "grid", gridTemplateColumns: "1fr 72px", alignItems: "center", gap: 6 }}>
+                                    <span>
+                                      {meshAnalyzeQualityDefinition.direction === "lower-is-worse" ? "At most" : "At least"} ({meshAnalyzeQualityDefinition.unit})
+                                    </span>
+                                    <input
+                                      data-testid="mesh-analyze-quality-threshold"
+                                      type="number"
+                                      step="any"
+                                      value={meshQualitySelectionThreshold}
+                                      onChange={(event) => setMeshQualitySelectionThreshold(Number(event.target.value) || 0)}
+                                    />
+                                  </label>
+                                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 4 }}>
+                                    <button
+                                      type="button"
+                                      data-testid="mesh-analyze-quality-select-threshold"
+                                      onClick={() => applyMeshQualityFaceSelection({ mode: "threshold", value: meshQualitySelectionThreshold })}
+                                    >
+                                      Threshold
+                                    </button>
+                                    <button
+                                      type="button"
+                                      data-testid="mesh-analyze-quality-select-worst-1"
+                                      onClick={() => applyMeshQualityFaceSelection({ mode: "worst-percent", percent: 1 })}
+                                    >
+                                      Worst 1%
+                                    </button>
+                                    <button
+                                      type="button"
+                                      data-testid="mesh-analyze-quality-select-worst-5"
+                                      onClick={() => applyMeshQualityFaceSelection({ mode: "worst-percent", percent: 5 })}
+                                    >
+                                      Worst 5%
+                                    </button>
+                                  </div>
+                                  <div data-testid="mesh-analyze-quality-selection-count" style={{ color: "#475467" }}>
+                                    {meshQualityFaceSelection?.metric === meshAnalyzeQualityMetric
+                                      ? `${meshQualityFaceSelection.count.toLocaleString()} faces selected`
+                                      : "No quality faces selected"}
+                                  </div>
+                                </div>
+                              )}
                               <button type="button" onClick={handleRecomputeMeshAnalyzeDiagnostics} disabled={meshQualityBusy}>
                                 {meshQualityBusy ? `Computing ${Math.round(meshQualityProgress * 100)}%` : "Recompute quality"}
                               </button>
@@ -76515,24 +76774,40 @@ case "mobius":
                             }}
                           >
                             <span style={{ fontWeight: 800, color: "#1e3a8a" }}>Field</span>
-                            {([
-                              ["solid", "None"],
-                              ["mean", "H"],
-                              ["gaussian", "K"],
-                              ["k1", "k1"],
-                              ["k2", "k2"],
-                            ] as const).map(([resultMode, label]) => (
-                              <button
-                                key={`mesh-analysis-result-${resultMode}`}
-                                type="button"
-                                data-testid={`mesh-analysis-result-${resultMode}`}
-                                onClick={() => handleSelectMeshAnalyzeCurvatureField(resultMode)}
-                                aria-pressed={colorMode === resultMode}
-                                style={viewerControlButtonStyle(colorMode === resultMode, meshViewerControlsDensity)}
-                              >
-                                {label}
-                              </button>
-                            ))}
+                            {analysisFocusedSection === "mesh-quality"
+                              ? MESH_QUALITY_METRIC_OPTIONS.filter((option) =>
+                                  !!meshQualityReport?.fields.face[option.id as MeshTriangleQualityMetricKey]
+                                ).map((option) => (
+                                  <button
+                                    key={`mesh-analysis-quality-field-${option.id}`}
+                                    type="button"
+                                    data-testid={`mesh-analysis-quality-field-${option.id}`}
+                                    onClick={() => handleSelectMeshQualityMetric(option.id)}
+                                    aria-pressed={meshAnalyzeQualityMetric === option.id}
+                                    title={option.label}
+                                    style={viewerControlButtonStyle(meshAnalyzeQualityMetric === option.id, meshViewerControlsDensity)}
+                                  >
+                                    {option.shortLabel}
+                                  </button>
+                                ))
+                              : ([
+                                  ["solid", "None"],
+                                  ["mean", "H"],
+                                  ["gaussian", "K"],
+                                  ["k1", "k1"],
+                                  ["k2", "k2"],
+                                ] as const).map(([resultMode, label]) => (
+                                  <button
+                                    key={`mesh-analysis-result-${resultMode}`}
+                                    type="button"
+                                    data-testid={`mesh-analysis-result-${resultMode}`}
+                                    onClick={() => handleSelectMeshAnalyzeCurvatureField(resultMode)}
+                                    aria-pressed={colorMode === resultMode}
+                                    style={viewerControlButtonStyle(colorMode === resultMode, meshViewerControlsDensity)}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
                             <span style={{ width: 1, height: 20, background: "#cbd5e1", margin: "0 2px" }} />
                             <span style={{ fontWeight: 800, color: "#1e3a8a" }}>Palette</span>
                             <span aria-hidden="true" style={{ width: 30, height: 12, border: "1px solid #94a3b8", borderRadius: 3, background: meshAnalyzePaletteGradient }} />
@@ -76576,9 +76851,9 @@ case "mobius":
                                 checked={meshAnalyzeClampEnabled}
                                 onChange={(event) => {
                                   const enabled = event.target.checked;
-                                  if (enabled && !meshAnalyzeClampEnabled && meshAnalyzeCurvatureStats) {
-                                    setMeshAnalyzeClampMin(fmt(meshAnalyzeCurvatureStats.min));
-                                    setMeshAnalyzeClampMax(fmt(meshAnalyzeCurvatureStats.max));
+                                  if (enabled && !meshAnalyzeClampEnabled && meshAnalyzeActiveScalarStats) {
+                                    setMeshAnalyzeClampMin(fmt(meshAnalyzeActiveScalarStats.min));
+                                    setMeshAnalyzeClampMax(fmt(meshAnalyzeActiveScalarStats.max));
                                   }
                                   setMeshAnalyzeClampEnabled(enabled);
                                 }}
@@ -76640,7 +76915,7 @@ case "mobius":
                               type="button"
                               data-testid="mesh-analyze-range-preset-symmetric"
                               onClick={() => applyMeshAnalyzeRangePreset("symmetric")}
-                              disabled={!meshAnalyzeCurvatureField}
+                              disabled={!meshAnalyzeActiveScalarValues?.length}
                               style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
                             >
                               +/-
@@ -76649,7 +76924,7 @@ case "mobius":
                               type="button"
                               data-testid="mesh-analyze-range-preset-percentile"
                               onClick={() => applyMeshAnalyzeRangePreset("percentile")}
-                              disabled={!meshAnalyzeCurvatureField}
+                              disabled={!meshAnalyzeActiveScalarValues?.length}
                               style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
                             >
                               2-98%
@@ -76658,7 +76933,7 @@ case "mobius":
                               type="button"
                               data-testid="mesh-analyze-range-preset-full"
                               onClick={() => applyMeshAnalyzeRangePreset("full")}
-                              disabled={!meshAnalyzeCurvatureField}
+                              disabled={!meshAnalyzeActiveScalarValues?.length}
                               style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
                             >
                               Full
@@ -77833,7 +78108,25 @@ case "mobius":
                                 Many overlays active; use Clean curvature for a clearer view.
                               </div>
                             )}
-                            {(analysisFocusedSection === "differential-geometry" || analysisFocusedSection === "chart-analysis") &&
+                            {analysisFocusedSection === "mesh-quality" && meshAnalyzeQualityDefinition ? (
+                              <div data-testid="mesh-analyze-quality-legend" style={{ display: "grid", gap: 5 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                  <strong>{meshAnalyzeQualityDefinition.label}</strong>
+                                  <span style={{ color: "#475569" }}>
+                                    {meshAnalyzeDisplayedQualityStats ? `${meshAnalyzeDisplayedQualityStats.count.toLocaleString()} faces` : "range pending"}
+                                  </span>
+                                </div>
+                                <div style={{ height: 10, borderRadius: 999, border: "1px solid rgba(15, 23, 42, 0.18)", background: meshAnalyzePaletteGradient }} />
+                                <div data-testid="mesh-analyze-quality-range-source" style={{ color: "#64748b", fontSize: 10, fontWeight: 750 }}>
+                                  {meshAnalyzeClampRange ? "Manual range" : "Auto range"} · {meshAnalyzeQualitySelectionMask ? "selected faces" : "whole mesh"}
+                                  {meshAnalyzeClampRange ? " (clamped)" : ""} · {meshAnalyzePaletteDirectionLabel}
+                                </div>
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: "#334155" }}>
+                                  <span>min {meshAnalyzeDisplayedQualityStats ? fmt(meshAnalyzeDisplayedQualityStats.min) : "n/a"}</span>
+                                  <span>max {meshAnalyzeDisplayedQualityStats ? fmt(meshAnalyzeDisplayedQualityStats.max) : "n/a"}</span>
+                                </div>
+                              </div>
+                            ) : (analysisFocusedSection === "differential-geometry" || analysisFocusedSection === "chart-analysis") &&
                             meshAnalyzeCurvatureField && meshAnalyzeCurvatureFieldLabel ? (
                               <div style={{ display: "grid", gap: 5 }}>
                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
@@ -77915,7 +78208,14 @@ case "mobius":
                                   {probeEnabled ? "active" : "off"}
                                 </span>
                               </div>
-                              {meshAnalyzeProbeCurvature ? (
+                              {meshAnalyzeQualityProbe && meshAnalyzeQualityDefinition ? (
+                                <div data-testid="mesh-analyze-quality-probe" style={{ border: "1px solid #dbeafe", borderRadius: 7, background: "#ffffff", padding: "5px 6px" }}>
+                                  <div style={{ color: "#475569", fontSize: 10, fontWeight: 800 }}>{meshAnalyzeQualityDefinition.label}</div>
+                                  <div style={{ fontWeight: 850 }}>
+                                    Face {meshAnalyzeQualityProbe.faceIndex}: {meshAnalyzeQualityProbe.value == null ? "invalid" : fmt(meshAnalyzeQualityProbe.value)} {meshAnalyzeQualityDefinition.unit}
+                                  </div>
+                                </div>
+                              ) : meshAnalyzeProbeCurvature ? (
                                 <>
                                   <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 5 }}>
                                     {([
@@ -113505,6 +113805,26 @@ onChangeImplicitExpr,
                       <span>{fmtVal(meshQualityReport.metrics.aspectRatio.min ?? NaN, 3)}</span>
                       <span>{fmtVal(meshQualityReport.metrics.aspectRatio.avg ?? NaN, 3)}</span>
                       <span>{fmtVal(meshQualityReport.metrics.aspectRatio.max ?? NaN, 3)}</span>
+                      <span>Edge ratio</span>
+                      <span>{fmtVal(meshQualityReport.metrics.edgeRatio.min ?? NaN, 3)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.edgeRatio.avg ?? NaN, 3)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.edgeRatio.max ?? NaN, 3)}</span>
+                      <span>Minimum angle (deg)</span>
+                      <span>{fmtVal(meshQualityReport.metrics.minimumAngleDeg.min ?? NaN, 2)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.minimumAngleDeg.avg ?? NaN, 2)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.minimumAngleDeg.max ?? NaN, 2)}</span>
+                      <span>Maximum angle (deg)</span>
+                      <span>{fmtVal(meshQualityReport.metrics.maximumAngleDeg.min ?? NaN, 2)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.maximumAngleDeg.avg ?? NaN, 2)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.maximumAngleDeg.max ?? NaN, 2)}</span>
+                      <span>Radius ratio</span>
+                      <span>{fmtVal(meshQualityReport.metrics.radiusRatio.min ?? NaN, 3)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.radiusRatio.avg ?? NaN, 3)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.radiusRatio.max ?? NaN, 3)}</span>
+                      <span>Scaled Jacobian</span>
+                      <span>{fmtVal(meshQualityReport.metrics.scaledJacobian.min ?? NaN, 3)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.scaledJacobian.avg ?? NaN, 3)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.scaledJacobian.max ?? NaN, 3)}</span>
                       <span>Vertex valence</span>
                       <span>{fmtVal(meshQualityReport.metrics.vertexValence.min ?? NaN, 2)}</span>
                       <span>{fmtVal(meshQualityReport.metrics.vertexValence.avg ?? NaN, 2)}</span>

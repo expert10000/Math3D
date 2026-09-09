@@ -168,8 +168,13 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analysis-context-category")).toHaveText("Mesh Quality");
     await expect(page.getByTestId("mesh-analysis-context-result")).toHaveText("Aspect ratio");
     for (const metric of [
-      { id: "aspectRatio", label: "Aspect ratio", method: /Longest edge/i },
-      { id: "triangleArea", label: "Triangle area", method: /Cross-product/i },
+      { id: "aspectRatio", label: "Aspect ratio", method: /VTK\/Verdict.*greatest edge/i },
+      { id: "triangleArea", label: "Triangle area", method: /VTK\/Verdict.*cross-product/i },
+      { id: "edgeRatio", label: "Edge ratio", method: /VTK\/Verdict.*longest edge/i },
+      { id: "minimumAngleDeg", label: "Minimum angle", method: /VTK\/Verdict.*smallest interior angle/i },
+      { id: "maximumAngleDeg", label: "Maximum angle", method: /VTK\/Verdict.*largest interior angle/i },
+      { id: "radiusRatio", label: "Radius ratio", method: /VTK\/Verdict.*circumradius/i },
+      { id: "scaledJacobian", label: "Scaled Jacobian", method: /VTK\/Verdict.*normalized corner Jacobian/i },
       { id: "edgeLength", label: "Edge length", method: /Euclidean mesh edge/i },
       { id: "vertexValence", label: "Vertex valence", method: /Incident edge count/i },
       { id: "dihedralAngleDeg", label: "Dihedral angle", method: /adjacent face normals/i },
@@ -179,8 +184,20 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
       await expect(page.getByTestId("mesh-analysis-context-result")).toHaveText(metric.label);
       await expect(activeResult).toContainText(metric.label);
       await expect(page.getByTestId("mesh-analysis-result-metadata")).toContainText(metric.method);
-      await expect(page.getByTestId("mesh-analyze-result-summary")).toContainText(metric.label);
+      await expect(page.getByTestId("mesh-analysis-result-histogram")).toBeVisible();
     }
+    await page.getByTestId("mesh-analyze-quality-metric-minimumAngleDeg").click();
+    await expect(page.getByTestId("mesh-analyze-quality-domain")).toContainText(/face values.*VTK\/Verdict-compatible/i);
+    await expect(page.getByTestId("mesh-analyze-quality-legend")).toContainText(/Minimum angle/i);
+    await expect(page.getByTestId("mesh-analysis-quality-field-minimumAngleDeg")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("mesh-analyze-quality-select-worst-1").click();
+    await expect(page.getByTestId("mesh-analyze-quality-selection-count")).toContainText(/\d+ faces selected/i);
+    await expect(page.getByTestId("mesh-inspector-tab-selection")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("mesh-inspector-tab-result").click();
+    if ((await analysisProbeToggle.getAttribute("aria-pressed")) !== "true") await analysisProbeToggle.click();
+    await clickSurfaceViewerCanvas(page, 0.58, 0.42);
+    await expect(page.getByTestId("mesh-analyze-quality-probe")).toContainText(/Face \d+:/i);
+    await page.getByTestId("mesh-inspector-tab-result").click();
 
     const breadcrumb = page.getByTestId("mesh-analysis-context-breadcrumb");
     const resultStatistics = page.getByTestId("mesh-analysis-result-statistics");

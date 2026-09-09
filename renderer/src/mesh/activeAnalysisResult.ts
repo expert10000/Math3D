@@ -1,5 +1,10 @@
 import type { MeshDiagnosticsAnalysisPayload } from "./analysisResultStore";
-import type { MeshQualityReport } from "./meshQualityReport";
+import {
+  MESH_TRIANGLE_QUALITY_DEFINITIONS,
+  meshTriangleQualityDefinition,
+  type MeshQualityReport,
+  type MeshTriangleQualityMetricKey,
+} from "./meshQualityReport";
 
 export type MeshAnalysisFocusedSection =
   | "differential-geometry"
@@ -11,9 +16,7 @@ export type MeshAnalysisFocusedSection =
   | "geodesics"
   | "diagnostics";
 
-export type MeshQualityMetricKey =
-  | "aspectRatio"
-  | "triangleArea"
+export type MeshQualityMetricKey = MeshTriangleQualityMetricKey
   | "edgeLength"
   | "vertexValence"
   | "dihedralAngleDeg";
@@ -23,8 +26,7 @@ export const MESH_QUALITY_METRIC_OPTIONS: ReadonlyArray<{
   label: string;
   shortLabel: string;
 }> = [
-  { id: "aspectRatio", label: "Aspect ratio", shortLabel: "Aspect" },
-  { id: "triangleArea", label: "Triangle area", shortLabel: "Area" },
+  ...MESH_TRIANGLE_QUALITY_DEFINITIONS.map(({ id, label, shortLabel }) => ({ id, label, shortLabel })),
   { id: "edgeLength", label: "Edge length", shortLabel: "Edge" },
   { id: "vertexValence", label: "Vertex valence", shortLabel: "Valence" },
   { id: "dihedralAngleDeg", label: "Dihedral angle", shortLabel: "Dihedral" },
@@ -184,16 +186,46 @@ const qualityMetricDefinition: Record<
   MeshQualityMetricKey,
   { label: string; method: string; unit: string; sampleKind: "faces" | "edges" | "vertices" }
 > = {
+  triangleArea: {
+    label: "Triangle area",
+    method: meshTriangleQualityDefinition("triangleArea").method,
+    unit: "mesh units^2",
+    sampleKind: "faces",
+  },
   aspectRatio: {
     label: "Aspect ratio",
-    method: "Longest edge / shortest altitude",
+    method: meshTriangleQualityDefinition("aspectRatio").method,
     unit: "ratio",
     sampleKind: "faces",
   },
-  triangleArea: {
-    label: "Triangle area",
-    method: "Cross-product triangle area",
-    unit: "mesh units^2",
+  edgeRatio: {
+    label: "Edge ratio",
+    method: meshTriangleQualityDefinition("edgeRatio").method,
+    unit: "ratio",
+    sampleKind: "faces",
+  },
+  minimumAngleDeg: {
+    label: "Minimum angle",
+    method: meshTriangleQualityDefinition("minimumAngleDeg").method,
+    unit: "degrees",
+    sampleKind: "faces",
+  },
+  maximumAngleDeg: {
+    label: "Maximum angle",
+    method: meshTriangleQualityDefinition("maximumAngleDeg").method,
+    unit: "degrees",
+    sampleKind: "faces",
+  },
+  radiusRatio: {
+    label: "Radius ratio",
+    method: meshTriangleQualityDefinition("radiusRatio").method,
+    unit: "ratio",
+    sampleKind: "faces",
+  },
+  scaledJacobian: {
+    label: "Scaled Jacobian",
+    method: meshTriangleQualityDefinition("scaledJacobian").method,
+    unit: "normalized",
     sampleKind: "faces",
   },
   edgeLength: {
@@ -226,15 +258,27 @@ export const selectMeshActiveAnalysisResult = (
   if (input.section === "mesh-quality") {
     const definition = qualityMetricDefinition[input.qualityMetric];
     const summary = input.qualityReport?.metrics[input.qualityMetric] ?? null;
-    const sampleCount =
-      definition.sampleKind === "faces"
+    const values = input.qualityReport
+      ? definition.sampleKind === "faces"
+        ? input.qualityReport.fields.face[input.qualityMetric as MeshTriangleQualityMetricKey]
+        : definition.sampleKind === "vertices"
+          ? input.qualityReport.fields.vertexValence
+          : input.qualityMetric === "edgeLength"
+            ? input.qualityReport.fields.edgeLength
+            : input.qualityReport.fields.dihedralAngleDeg
+      : null;
+    const detailed = summarizeMeshScalarField(values);
+    const sampleCount = detailed?.count ??
+      (definition.sampleKind === "faces"
         ? input.qualityReport?.faceCount
         : definition.sampleKind === "vertices"
           ? input.qualityReport?.vertexCount
-          : input.qualityEdgeCount;
+          : input.qualityEdgeCount);
     const statistics = [
       { label: "Minimum", value: formatNumber(summary?.min) },
       { label: "Mean", value: formatNumber(summary?.avg) },
+      { label: "Median", value: formatNumber(detailed?.median) },
+      { label: "σ (sigma)", value: formatNumber(detailed?.std) },
       { label: "Maximum", value: formatNumber(summary?.max) },
       { label: "Samples", value: formatCount(sampleCount) },
     ];
@@ -253,7 +297,14 @@ export const selectMeshActiveAnalysisResult = (
       category: "Mesh Quality",
       result: definition.label,
       state: input.qualityBusy ? "Running" : input.qualityReport ? "Ready" : input.deferred ? "Deferred" : "Unavailable",
+      method: definition.method,
+      domain: `${formatCount(sampleCount)} ${definition.sampleKind}`,
       statistics,
+      extrema: detailed ? [
+        { label: "Minimum", value: `${definition.sampleKind === "faces" ? "Face" : definition.sampleKind === "edges" ? "Edge" : "Vertex"} ${detailed.minIndex}` },
+        { label: "Maximum", value: `${definition.sampleKind === "faces" ? "Face" : definition.sampleKind === "edges" ? "Edge" : "Vertex"} ${detailed.maxIndex}` },
+      ] : undefined,
+      histogram: detailed?.histogram,
       metadata: [
         { label: "Method", value: definition.method },
         { label: "Units", value: definition.unit },
