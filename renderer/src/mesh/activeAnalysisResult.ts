@@ -1,4 +1,5 @@
 import type { MeshDiagnosticsAnalysisPayload } from "./analysisResultStore";
+import type { MeshFieldCalculusResult } from "./meshSurfaceFieldCalculus";
 import {
   MESH_TRIANGLE_QUALITY_DEFINITIONS,
   meshTriangleQualityDefinition,
@@ -154,6 +155,9 @@ export type MeshActiveAnalysisResultInput = {
   calculusActiveVectorField: string;
   calculusScalarSource: string;
   calculusVectorSource: string;
+  calculusLastResult: MeshFieldCalculusResult | null;
+  calculusCacheHit: boolean;
+  calculusUpdatedAt: number | null;
   showRidges: boolean;
   showValleys: boolean;
   showCurvatureLines: boolean;
@@ -357,18 +361,38 @@ export const selectMeshActiveAnalysisResult = (
   }
 
   if (input.section === "vector-calculus") {
+    const calculus = input.calculusLastResult;
+    const method = calculus?.operator === "laplacian"
+      ? "Cotangent Laplace-Beltrami"
+      : calculus?.operator === "gradient"
+        ? "Piecewise-linear face gradient"
+        : calculus?.operator === "divergence"
+          ? "Weak FEM surface divergence"
+          : calculus?.operator === "normal-curl"
+            ? "Oriented weak FEM normal-curl"
+            : undefined;
     return {
       category: "Vector Calculus",
-      result: input.showGaussMap ? "Gauss map" : input.calculusActiveVectorField || "Vector field",
-      state: input.vectorMagnitudeRange || input.showGaussMap ? "Ready" : "Unavailable",
+      result: input.showGaussMap ? "Gauss map" : calculus ? `${calculus.operator}(${calculus.source})` : input.calculusActiveVectorField || "Vector field",
+      state: calculus || input.vectorMagnitudeRange || input.showGaussMap ? "Ready" : "Unavailable",
+      method,
+      domain: calculus ? `${formatCount(calculus.validCount)} / ${formatCount(calculus.validMask.length)} vertices` : undefined,
       statistics: [
         { label: "Magnitude minimum", value: formatNumber(input.vectorMagnitudeRange?.min) },
         { label: "Magnitude maximum", value: formatNumber(input.vectorMagnitudeRange?.max) },
+        ...(calculus ? [{ label: "Valid vertices", value: formatCount(calculus.validCount) }] : []),
       ],
       metadata: [
         { label: "Scalar source", value: input.calculusScalarSource },
         { label: "Vector source", value: input.calculusVectorSource || "none" },
         { label: "Gauss map", value: input.showGaussMap ? "Visible" : "Hidden" },
+        ...(calculus ? [
+          { label: "Mass", value: calculus.conventions.mass },
+          { label: "Boundary", value: calculus.conventions.boundary },
+          ...(calculus.operator === "normal-curl" ? [{ label: "Curl convention", value: calculus.conventions.normalCurl }] : []),
+          { label: "Cache", value: input.calculusCacheHit ? "Cached result" : "Current result" },
+          { label: "Computed", value: timestamp(input.calculusUpdatedAt) },
+        ] : []),
       ],
     };
   }

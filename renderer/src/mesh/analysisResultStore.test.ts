@@ -9,6 +9,7 @@ import {
   meshAnalysisResultKindsForMesh,
   upsertMeshAnalysisResult,
 } from "./analysisResultStore";
+import { MESH_FIELD_CALCULUS_VERSION, meshFieldCalculusResultVariant } from "./meshSurfaceFieldCalculus";
 
 const makeMesh = (label: string, z = 0) => ({
   label,
@@ -200,5 +201,42 @@ describe("mesh analysis result store", () => {
     expect(result?.state).toBe("stale");
     expect(result?.payload?.K[0]).toBe(7);
     expect(meshAnalysisResultKindsForMesh(store, mesh)).toEqual([]);
+  });
+
+  it("caches field-calculus operators by source and invalidates their exact dependencies", () => {
+    const mesh = createMeshAnalysisMeshIdentity(makeMesh("Triangle"));
+    let store = upsertMeshAnalysisResult(createMeshAnalysisResultStore(), {
+      kind: "curvature",
+      variant: "discrete-differential-geometry-v2",
+      mesh,
+      payload: { K: Float64Array.from([1, 1, 1]) },
+      now: 1,
+    });
+    const source = "K";
+    const variant = meshFieldCalculusResultVariant("laplacian", source);
+    const parameters = {
+      version: MESH_FIELD_CALCULUS_VERSION,
+      operator: "laplacian",
+      source,
+      mass: "lumped-barycentric",
+    };
+    store = upsertMeshAnalysisResult(store, {
+      kind: "field-calculus",
+      variant,
+      mesh,
+      parameters,
+      dependencies: [{ kind: "curvature", variant: "discrete-differential-geometry-v2", state: "ready" }],
+      payload: { values: Float64Array.from([0, 0, 0]) },
+      now: 2,
+    });
+    expect(getMeshAnalysisResultForParameters(store, mesh, "field-calculus", parameters, variant)?.state).toBe("ready");
+    store = upsertMeshAnalysisResult(store, {
+      kind: "curvature",
+      variant: "discrete-differential-geometry-v2",
+      mesh,
+      payload: { K: Float64Array.from([2, 2, 2]) },
+      now: 3,
+    });
+    expect(getMeshAnalysisResult(store, mesh, "field-calculus", variant)?.state).toBe("stale");
   });
 });

@@ -20,6 +20,10 @@ describe("mesh analysis registry", () => {
       { kind: "normals" },
       { kind: "curvature" },
     ]);
+    expect(getMeshAnalysisDefinition(registry, "field-calculus")).toMatchObject({
+      family: "surface-field-calculus",
+      domain: "vertex",
+    });
     expect(listMeshAnalysisDefinitions(registry).length).toBeGreaterThan(4);
   });
 

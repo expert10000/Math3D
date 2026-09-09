@@ -39,6 +39,7 @@ export const DEFAULT_MESH_ANALYSIS_DEFINITIONS: readonly MeshAnalysisDefinition[
     dependencies: [{ kind: "normals" }, { kind: "curvature" }],
   },
   { kind: "quality", label: "Mesh quality", family: "mesh-quality", domain: "face" },
+  { kind: "field-calculus", label: "Surface field calculus", family: "surface-field-calculus", domain: "vertex" },
   { kind: "geodesic", label: "Geodesic analysis", family: "distances-geodesics", domain: "path" },
   {
     kind: "surface-features",

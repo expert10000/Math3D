@@ -199,6 +199,26 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-quality-probe")).toContainText(/Face \d+:/i);
     await page.getByTestId("mesh-inspector-tab-result").click();
 
+    await page.getByTestId("mesh-analysis-nav-vector-calculus").click();
+    const calculusConfig = page.getByTestId("mesh-analyze-field-calculus-config");
+    await expect(calculusConfig).toBeVisible();
+    await expect(page.getByTestId("mesh-analyze-calculus-conventions")).toContainText(/Cotangent.*barycentric.*curl/i);
+    await page.getByTestId("mesh-analyze-calculus-scalar-source").selectOption("x");
+    await page.getByTestId("mesh-analyze-calculus-gradient").click();
+    await expect(page.getByTestId("mesh-analyze-calculus-status")).toContainText(/canonical face gradient/i);
+    await page.getByTestId("mesh-analyze-calculus-laplacian").click();
+    await expect(page.getByTestId("mesh-analyze-calculus-status")).toContainText(/cotangent M/i);
+    await page.getByTestId("mesh-analyze-calculus-laplacian").click();
+    await expect(page.getByTestId("mesh-analyze-calculus-status")).toContainText(/Loaded cached laplacian\(x\)/i);
+    await expect(page.getByTestId("mesh-analysis-context-category")).toHaveText("Vector Calculus");
+    await expect(page.getByTestId("mesh-analysis-result-definition")).toContainText(/Cotangent Laplace-Beltrami/i);
+    await expect(page.getByTestId("mesh-analysis-result-metadata")).toContainText(/lumped barycentric mass/i);
+    await page.getByTestId("mesh-analyze-calculus-vector-source").selectOption("custom-vector");
+    await page.getByTestId("mesh-analyze-calculus-custom-vector").fill("-y; x; 0");
+    await page.getByTestId("mesh-analyze-calculus-curl").click();
+    await expect(page.getByTestId("mesh-analyze-calculus-status")).toContainText(/curl_n = div_S\(X × n\)/i);
+    await expect(page.getByTestId("mesh-analysis-result-metadata")).toContainText(/curl_n\(X\) = div_S\(X cross n\)/i);
+
     const breadcrumb = page.getByTestId("mesh-analysis-context-breadcrumb");
     const resultStatistics = page.getByTestId("mesh-analysis-result-statistics");
     const viewer = page.getByTestId("surface-primary-viewer");

@@ -533,6 +533,7 @@ import {
   createMeshAnalysisResultStore,
   getMeshAnalysisResult,
   getMeshAnalysisResultForParameters,
+  meshAnalysisResultKey,
   meshAnalysisResultKindsForMesh,
   upsertMeshAnalysisResult,
   type MeshAnalysisMeshIdentity,
@@ -541,6 +542,18 @@ import {
   type MeshCurvatureAnalysisPayload,
   type MeshDiagnosticsAnalysisPayload,
 } from "./mesh/analysisResultStore";
+import {
+  MESH_FIELD_CALCULUS_VERSION,
+  computeMeshFieldDivergence,
+  computeMeshFieldGradient,
+  computeMeshFieldLaplacian,
+  computeMeshFieldNormalCurl,
+  createMeshFieldSourceRegistry,
+  meshFieldCalculusResultVariant,
+  prepareMeshFieldCalculus,
+  type MeshFieldCalculusOperator,
+  type MeshFieldCalculusResult,
+} from "./mesh/meshSurfaceFieldCalculus";
 import {
   createLocalMeshHealthResult,
   getMeshHealthBlockers,
@@ -1786,6 +1799,7 @@ type WorkbookWorkspaceState = {
       calculusVectorOverlayEnabled: boolean;
       calculusVectorSource: string;
       calculusActiveVectorField: string;
+      calculusCustomVectorExpr: string;
       calculusVectorDensity: number;
       calculusVectorScale: number;
       volumeShowStreamlines: boolean;
@@ -38824,6 +38838,7 @@ const App: React.FC = () => {
   const [calculusVectorSource, setCalculusVectorSource] = useState("grad(height)");
   const [calculusActiveVectorField, setCalculusActiveVectorField] = useState("grad(height)");
   const [calculusCustomScalarExpr, setCalculusCustomScalarExpr] = useState("sin(x) + 0.5*cos(z)");
+  const [calculusCustomVectorExpr, setCalculusCustomVectorExpr] = useState("-y; x; 0");
   const [calculusVectorOverlayEnabled, setCalculusVectorOverlayEnabled] = useState(false);
   const [calculusVectorDensity, setCalculusVectorDensity] = useState(800);
   const [calculusVectorScale, setCalculusVectorScale] = useState(1);
@@ -38831,6 +38846,25 @@ const App: React.FC = () => {
   const [calculusHeatmapEnabled, setCalculusHeatmapEnabled] = useState(false);
   const [calculusStatus, setCalculusStatus] = useState<string | null>(null);
   const [calculusError, setCalculusError] = useState<string | null>(null);
+  const [calculusLastResult, setCalculusLastResult] = useState<{
+    result: MeshFieldCalculusResult;
+    cacheHit: boolean;
+    updatedAt: number;
+  } | null>(null);
+  const calculusMeshRevisionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (surfaceViewerKind !== "mesh" || !activeMeshAnalysisIdentity?.key) return;
+    const previousRevision = calculusMeshRevisionRef.current;
+    calculusMeshRevisionRef.current = activeMeshAnalysisIdentity.key;
+    if (!previousRevision || previousRevision === activeMeshAnalysisIdentity.key) return;
+    setCalculusScalarFields(new Map());
+    setCalculusVectorFields(new Map());
+    setCalculusHeatmapValues(null);
+    setCalculusHeatmapEnabled(false);
+    setCalculusLastResult(null);
+    setCalculusStatus(null);
+    setCalculusError(null);
+  }, [activeMeshAnalysisIdentity?.key, surfaceViewerKind]);
   const activeChartKind = useMemo<Exclude<ChartMode, "auto">>(() => {
     if (chartMode === "xy" && surfaceViewerKind === "graph") return "xy";
     if (chartMode === "uv" && (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass")) return "uv";
@@ -46039,14 +46073,30 @@ case "mobius":
   useEffect(() => {
     if (!activeMeshAnalysisIdentity || !surfaceMeshCurvatureComputation) return;
     setMeshAnalysisResultStore((previous) => {
-      const existing = getMeshAnalysisResult<MeshCurvatureAnalysisPayload>(
+      const existingCurvature = getMeshAnalysisResult<MeshCurvatureAnalysisPayload>(
         previous,
         activeMeshAnalysisIdentity,
         "curvature",
         "discrete-differential-geometry-v2"
       );
-      if (existing?.payload === surfaceMeshCurvatureComputation.payload) return previous;
-      return upsertMeshAnalysisResult(previous, {
+      const existingNormals = getMeshAnalysisResult(previous, activeMeshAnalysisIdentity, "normals", "area-weighted-v1");
+      const existingDirections = getMeshAnalysisResult(previous, activeMeshAnalysisIdentity, "principal-directions", "shape-operator-v2");
+      if (
+        existingCurvature?.payload === surfaceMeshCurvatureComputation.payload &&
+        (existingNormals?.payload as { values?: unknown } | null)?.values === surfaceMeshCurvatureComputation.payload.normals &&
+        (existingDirections?.payload as { d1?: unknown } | null)?.d1 === surfaceMeshCurvatureComputation.payload.d1
+      ) return previous;
+      let next = upsertMeshAnalysisResult(previous, {
+        kind: "normals",
+        variant: "area-weighted-v1",
+        mesh: activeMeshAnalysisIdentity,
+        parameters: { method: "area-weighted-input-winding" },
+        payload: {
+          values: surfaceMeshCurvatureComputation.payload.normals,
+          validMask: surfaceMeshCurvatureComputation.payload.validMask,
+        },
+      });
+      next = upsertMeshAnalysisResult(next, {
         kind: "curvature",
         variant: "discrete-differential-geometry-v2",
         mesh: activeMeshAnalysisIdentity,
@@ -46054,8 +46104,67 @@ case "mobius":
         computeTimeMs: surfaceMeshCurvatureComputation.durationMs,
         payload: surfaceMeshCurvatureComputation.payload,
       });
+      const normalResult = getMeshAnalysisResult(next, activeMeshAnalysisIdentity, "normals", "area-weighted-v1");
+      const curvatureResult = getMeshAnalysisResult(next, activeMeshAnalysisIdentity, "curvature", "discrete-differential-geometry-v2");
+      return upsertMeshAnalysisResult(next, {
+        kind: "principal-directions",
+        variant: "shape-operator-v2",
+        mesh: activeMeshAnalysisIdentity,
+        parameters: { method: "weighted-normal-section-shape-operator", ordering: "k1>=k2" },
+        dependencies: [
+          {
+            kind: "normals",
+            variant: "area-weighted-v1",
+            state: normalResult?.state ?? "stale",
+            key: meshAnalysisResultKey(activeMeshAnalysisIdentity, "normals", "area-weighted-v1"),
+            resultVersion: normalResult?.resultVersion,
+          },
+          {
+            kind: "curvature",
+            variant: "discrete-differential-geometry-v2",
+            state: curvatureResult?.state ?? "stale",
+            key: meshAnalysisResultKey(activeMeshAnalysisIdentity, "curvature", "discrete-differential-geometry-v2"),
+            resultVersion: curvatureResult?.resultVersion,
+          },
+        ],
+        payload: {
+          d1: surfaceMeshCurvatureComputation.payload.d1,
+          d2: surfaceMeshCurvatureComputation.payload.d2,
+          validMask: surfaceMeshCurvatureComputation.payload.directionValidMask,
+          warningMask: surfaceMeshCurvatureComputation.payload.warningMask,
+        },
+      });
     });
   }, [activeMeshAnalysisIdentity, surfaceMeshCurvatureComputation]);
+
+  const meshFieldCalculusPrepared = useMemo(() => {
+    if (surfaceViewerKind !== "mesh" || !surfaceMeshData?.positions?.length || surfaceMeshLargeAnalysisDeferred) return null;
+    return prepareMeshFieldCalculus(surfaceMeshData);
+  }, [surfaceMeshData, surfaceMeshLargeAnalysisDeferred, surfaceViewerKind]);
+
+  const meshFieldSourceRegistry = useMemo(() => {
+    if (!meshFieldCalculusPrepared) return null;
+    return createMeshFieldSourceRegistry(meshFieldCalculusPrepared, {
+      curvature: surfaceMeshCurvatures,
+      quality: meshQualityReport,
+      qualityVariant: meshQualityResultVariant,
+      importedScalars: meshDataset?.fields?.scalars,
+      importedVectors: meshDataset?.fields?.vectors,
+      derivedScalars: [...workbookScalarFields.values(), ...calculusScalarFields.values()],
+      derivedVectors: [...workbookVectorFields.values(), ...calculusVectorFields.values()],
+    });
+  }, [
+    calculusScalarFields,
+    calculusVectorFields,
+    meshDataset?.fields?.scalars,
+    meshDataset?.fields?.vectors,
+    meshFieldCalculusPrepared,
+    meshQualityReport,
+    meshQualityResultVariant,
+    surfaceMeshCurvatures,
+    workbookScalarFields,
+    workbookVectorFields,
+  ]);
 
   const sampleNeighbors = useMemo(() => buildSampleNeighbors(surfaceSampleSet), [surfaceSampleSet]);
 
@@ -46086,6 +46195,9 @@ case "mobius":
       map.set("radius", { name: "radius", values: radius });
       map.set("temperature", { name: "temperature", values: temperature });
     }
+    meshFieldSourceRegistry?.scalars.forEach((source) => {
+      map.set(source.id, { name: source.id, values: Float32Array.from(source.values) });
+    });
     const meshScalars = meshDataset?.fields?.scalars;
     if (meshScalars?.length) {
       meshScalars.forEach((field) => map.set(field.name, field));
@@ -46116,6 +46228,7 @@ case "mobius":
     surfaceSampleSet,
     surfaceSampleSet?.curvatures,
     workbookScalarFields,
+    meshFieldSourceRegistry,
   ]);
 
   const surfaceVectorFields = useMemo(() => {
@@ -46128,6 +46241,9 @@ case "mobius":
       map.set("principal-d1", { name: "principal-d1", values: surfaceMeshCurvatures.d1, itemSize: 3 });
       map.set("principal-d2", { name: "principal-d2", values: surfaceMeshCurvatures.d2, itemSize: 3 });
     }
+    meshFieldSourceRegistry?.vectors.forEach((source) => {
+      map.set(source.id, { name: source.id, values: Float32Array.from(source.values), itemSize: 3 });
+    });
     if (workbookVectorFields.size) {
       workbookVectorFields.forEach((field, name) => map.set(name, field));
     }
@@ -46135,7 +46251,7 @@ case "mobius":
       calculusVectorFields.forEach((field, name) => map.set(name, field));
     }
     return map;
-  }, [calculusVectorFields, meshDataset?.fields?.vectors, surfaceMeshCurvatures, workbookVectorFields]);
+  }, [calculusVectorFields, meshDataset?.fields?.vectors, meshFieldSourceRegistry, surfaceMeshCurvatures, workbookVectorFields]);
 
   const calculusScalarOptions = useMemo(() => {
     const out: Array<{ value: string; label: string }> = [];
@@ -46154,15 +46270,17 @@ case "mobius":
     add("k1", "k1");
     add("k2", "k2");
     const names = Array.from(surfaceScalarFields.keys()).sort((a, b) => a.localeCompare(b));
-    for (const name of names) add(name, name);
+    for (const name of names) add(name, meshFieldSourceRegistry?.scalars.get(name)?.label ?? name);
     add("custom", "Custom expression");
     return out;
-  }, [surfaceScalarFields]);
+  }, [meshFieldSourceRegistry, surfaceScalarFields]);
 
   const calculusVectorOptions = useMemo(() => {
     const names = Array.from(surfaceVectorFields.keys()).sort((a, b) => a.localeCompare(b));
-    return names.map((name) => ({ value: name, label: name }));
-  }, [surfaceVectorFields]);
+    const options = names.map((name) => ({ value: name, label: meshFieldSourceRegistry?.vectors.get(name)?.label ?? name }));
+    options.push({ value: "custom-vector", label: "Custom tangent vector" });
+    return options;
+  }, [meshFieldSourceRegistry, surfaceVectorFields]);
 
   useEffect(() => {
     if (!calculusScalarOptions.length) return;
@@ -49232,6 +49350,7 @@ case "mobius":
           calculusVectorOverlayEnabled,
           calculusVectorSource,
           calculusActiveVectorField,
+          calculusCustomVectorExpr,
           calculusVectorDensity,
           calculusVectorScale,
           volumeShowStreamlines,
@@ -49329,6 +49448,7 @@ case "mobius":
       calculusVectorOverlayEnabled,
       calculusVectorSource,
       calculusActiveVectorField,
+      calculusCustomVectorExpr,
       calculusVectorDensity,
       calculusVectorScale,
       volumeShowStreamlines,
@@ -49887,6 +50007,7 @@ case "mobius":
       setCalculusVectorOverlayEnabled(Boolean(vectors.calculusVectorOverlayEnabled));
       if (typeof vectors.calculusVectorSource === "string") setCalculusVectorSource(vectors.calculusVectorSource);
       if (typeof vectors.calculusActiveVectorField === "string") setCalculusActiveVectorField(vectors.calculusActiveVectorField);
+      if (typeof vectors.calculusCustomVectorExpr === "string") setCalculusCustomVectorExpr(vectors.calculusCustomVectorExpr);
       if (Number.isFinite(vectors.calculusVectorDensity)) {
         setCalculusVectorDensity(Math.max(10, Math.round(vectors.calculusVectorDensity)));
       }
@@ -61005,11 +61126,12 @@ case "mobius":
       const samples = surfaceSampleSet.samples;
       const name = String(source || "").trim();
       if (!name) return { error: "Pick a scalar source." };
+      const registeredMeshSource = meshFieldSourceRegistry?.scalars.get(name) ?? null;
 
       if (name === "height") {
         const values = new Float32Array(samples.length);
         for (let i = 0; i < samples.length; i++) values[i] = Number(samples[i].position.y);
-        return { name, values };
+        return { name, values, meshValues: registeredMeshSource?.values };
       }
 
       if (name === "radius") {
@@ -61018,13 +61140,13 @@ case "mobius":
           const p = samples[i].position;
           values[i] = Math.hypot(p.x, p.y, p.z);
         }
-        return { name, values };
+        return { name, values, meshValues: registeredMeshSource?.values };
       }
 
       if (name === "temperature") {
         const existing = surfaceQuery.scalarField?.("temperature") ?? null;
         const mapped = resolveScalarValuesForSamples(existing, samples);
-        if (mapped) return { name: existing?.name ?? "temperature", values: mapped };
+        if (mapped) return { name: existing?.name ?? "temperature", values: mapped, meshValues: existing?.values };
         let minY = Infinity;
         let maxY = -Infinity;
         for (let i = 0; i < samples.length; i++) {
@@ -61039,7 +61161,7 @@ case "mobius":
           const y = Number(samples[i].position.y);
           values[i] = Number.isFinite(y) ? (y - minY) / span : Number.NaN;
         }
-        return { name, values };
+        return { name, values, meshValues: existing?.values };
       }
 
       if (name === "custom") {
@@ -61060,16 +61182,33 @@ case "mobius":
           const value = fn({ x: p.x, y: p.y, z: p.z, u, v });
           values[i] = Number.isFinite(value) ? value : Number.NaN;
         }
-        return { name: `custom:${src}`, values };
+        let meshValues: Float64Array | undefined;
+        if (meshFieldCalculusPrepared) {
+          meshValues = new Float64Array(meshFieldCalculusPrepared.vertexCount);
+          for (let vertex = 0; vertex < meshFieldCalculusPrepared.vertexCount; vertex += 1) {
+            const base = vertex * 3;
+            const value = fn({
+              x: meshFieldCalculusPrepared.positions[base],
+              y: meshFieldCalculusPrepared.positions[base + 1],
+              z: meshFieldCalculusPrepared.positions[base + 2],
+              u: meshFieldCalculusPrepared.positions[base],
+              v: meshFieldCalculusPrepared.positions[base + 2],
+            });
+            meshValues[vertex] = Number.isFinite(value) ? value : Number.NaN;
+          }
+        }
+        return { name: `custom:${src}`, values, meshValues };
       }
 
       const field = surfaceQuery.scalarField?.(name) ?? null;
       if (!field) return { error: `Scalar field "${name}" not available.` };
       const values = resolveScalarValuesForSamples(field, samples);
       if (!values) return { error: `Scalar field "${name}" has incompatible size.` };
-      return { name: field.name ?? name, values };
+      const meshValues = registeredMeshSource?.values ??
+        (meshFieldCalculusPrepared && field.values.length === meshFieldCalculusPrepared.vertexCount ? field.values : undefined);
+      return { name: field.name ?? name, values, meshValues };
     },
-    [calculusCustomScalarExpr, surfaceQuery, surfaceSampleSet]
+    [calculusCustomScalarExpr, meshFieldCalculusPrepared, meshFieldSourceRegistry, surfaceQuery, surfaceSampleSet]
   );
 
   const resolveCalculusVectorSource = useCallback(
@@ -61077,14 +61216,149 @@ case "mobius":
       if (!surfaceSampleSet?.samples?.length) return { error: "Surface samples not ready." };
       const name = String(source || "").trim();
       if (!name) return { error: "Pick a vector source." };
+      if (name === "custom-vector") {
+        const parts = calculusCustomVectorExpr.split(";").map((part) => part.trim());
+        if (parts.length !== 3 || parts.some((part) => !part)) {
+          return { error: "Custom vector requires three expressions separated by semicolons: Fx; Fy; Fz." };
+        }
+        const compiled = parts.map((part) => compileExpression(part, ["x", "y", "z", "u", "v"]));
+        const error = compiled.find((entry) => entry.error || !entry.fn)?.error;
+        if (error || compiled.some((entry) => !entry.fn)) {
+          return { error: error ? `${error.message} (col ${error.col})` : "Vector expression error." };
+        }
+        const evaluate = (x: number, y: number, z: number, u: number, v: number, nx: number, ny: number, nz: number) => {
+          const raw = compiled.map((entry) => entry.fn!({ x, y, z, u, v }));
+          const dot = raw[0] * nx + raw[1] * ny + raw[2] * nz;
+          return [raw[0] - dot * nx, raw[1] - dot * ny, raw[2] - dot * nz] as const;
+        };
+        const values = new Float32Array(surfaceSampleSet.samples.length * 3);
+        for (let index = 0; index < surfaceSampleSet.samples.length; index += 1) {
+          const sample = surfaceSampleSet.samples[index];
+          const p = sample.position;
+          const n = sample.normal;
+          values.set(evaluate(p.x, p.y, p.z, sample.uv?.u ?? p.x, sample.uv?.v ?? p.z, n.x, n.y, n.z), index * 3);
+        }
+        let meshValues: Float64Array | undefined;
+        if (meshFieldCalculusPrepared) {
+          meshValues = new Float64Array(meshFieldCalculusPrepared.vertexCount * 3);
+          for (let vertex = 0; vertex < meshFieldCalculusPrepared.vertexCount; vertex += 1) {
+            const base = vertex * 3;
+            meshValues.set(evaluate(
+              meshFieldCalculusPrepared.positions[base],
+              meshFieldCalculusPrepared.positions[base + 1],
+              meshFieldCalculusPrepared.positions[base + 2],
+              meshFieldCalculusPrepared.positions[base],
+              meshFieldCalculusPrepared.positions[base + 2],
+              meshFieldCalculusPrepared.vertexNormals[base],
+              meshFieldCalculusPrepared.vertexNormals[base + 1],
+              meshFieldCalculusPrepared.vertexNormals[base + 2]
+            ), base);
+          }
+        }
+        return { name: `custom-vector:${calculusCustomVectorExpr}`, values, meshValues };
+      }
       const field = surfaceQuery.vectorField?.(name) ?? null;
       if (!field) return { error: `Vector field "${name}" not available.` };
       const values = resolveVectorValuesForSamples(field, surfaceSampleSet.samples);
       if (!values) return { error: `Vector field "${name}" has incompatible size.` };
-      return { name: field.name ?? name, values };
+      const registeredMeshSource = meshFieldSourceRegistry?.vectors.get(name) ?? null;
+      const meshValues = registeredMeshSource?.values ??
+        (meshFieldCalculusPrepared && field.values.length === meshFieldCalculusPrepared.vertexCount * 3 ? field.values : undefined);
+      return { name: field.name ?? name, values, meshValues };
     },
-    [surfaceQuery, surfaceSampleSet]
+    [calculusCustomVectorExpr, meshFieldCalculusPrepared, meshFieldSourceRegistry, surfaceQuery, surfaceSampleSet]
   );
+
+  const runCanonicalMeshFieldCalculus = useCallback((options: {
+    operator: MeshFieldCalculusOperator;
+    selectedSource: string;
+    resolvedSource: string;
+    values: ArrayLike<number> | null | undefined;
+  }): { result: MeshFieldCalculusResult; cacheHit: boolean; updatedAt: number } | null => {
+    if (!meshFieldCalculusPrepared || !activeMeshAnalysisIdentity || !options.values) return null;
+    const expectedLength = meshFieldCalculusPrepared.vertexCount *
+      (options.operator === "divergence" || options.operator === "normal-curl" ? 3 : 1);
+    if (options.values.length < expectedLength) return null;
+
+    const parameters = {
+      version: MESH_FIELD_CALCULUS_VERSION,
+      operator: options.operator,
+      source: options.resolvedSource,
+      mass: "lumped-barycentric",
+      boundary: "nan",
+      curlConvention: "curl_n=div_S(X-cross-n)",
+    } as const;
+    const variant = meshFieldCalculusResultVariant(options.operator, options.resolvedSource);
+    const cached = getMeshAnalysisResultForParameters<MeshFieldCalculusResult>(
+      meshAnalysisResultStore,
+      activeMeshAnalysisIdentity,
+      "field-calculus",
+      parameters,
+      variant
+    );
+    if (cached?.payload) {
+      const ready = { result: cached.payload, cacheHit: true, updatedAt: cached.updatedAt };
+      setCalculusLastResult(ready);
+      return ready;
+    }
+
+    const sourceDefinition = options.operator === "gradient" || options.operator === "laplacian"
+      ? meshFieldSourceRegistry?.scalars.get(options.selectedSource)
+      : meshFieldSourceRegistry?.vectors.get(options.selectedSource);
+    const dependencySpecs: Array<{ kind: MeshAnalysisResultKind; variant?: string }> = [];
+    if (sourceDefinition?.dependency) dependencySpecs.push(sourceDefinition.dependency);
+    const gradientMatch = options.selectedSource.match(/^grad\((.*)\)$/);
+    if (gradientMatch) {
+      dependencySpecs.push({
+        kind: "field-calculus",
+        variant: meshFieldCalculusResultVariant("gradient", gradientMatch[1]),
+      });
+    }
+    const dependencies = dependencySpecs.map((dependency) => {
+      const sourceResult = getMeshAnalysisResult(
+        meshAnalysisResultStore,
+        activeMeshAnalysisIdentity,
+        dependency.kind,
+        dependency.variant ?? "default"
+      );
+      return {
+        kind: dependency.kind,
+        variant: dependency.variant ?? "default",
+        state: sourceResult?.state ?? "stale" as MeshAnalysisResultState,
+        key: meshAnalysisResultKey(activeMeshAnalysisIdentity, dependency.kind, dependency.variant ?? "default"),
+        resultVersion: sourceResult?.resultVersion,
+      };
+    });
+
+    const startedAt = performance.now();
+    const result = options.operator === "gradient"
+      ? computeMeshFieldGradient(meshFieldCalculusPrepared, options.values, options.resolvedSource)
+      : options.operator === "divergence"
+        ? computeMeshFieldDivergence(meshFieldCalculusPrepared, options.values, options.resolvedSource)
+        : options.operator === "normal-curl"
+          ? computeMeshFieldNormalCurl(meshFieldCalculusPrepared, options.values, options.resolvedSource)
+          : computeMeshFieldLaplacian(meshFieldCalculusPrepared, options.values, options.resolvedSource);
+    const updatedAt = Date.now();
+    const computeTimeMs = performance.now() - startedAt;
+    setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+      kind: "field-calculus",
+      variant,
+      mesh: activeMeshAnalysisIdentity,
+      parameters,
+      dependencies,
+      payload: result,
+      computeTimeMs,
+      now: updatedAt,
+    }));
+    const ready = { result, cacheHit: false, updatedAt };
+    setCalculusLastResult(ready);
+    return ready;
+  }, [
+    activeMeshAnalysisIdentity,
+    meshAnalysisResultStore,
+    meshFieldCalculusPrepared,
+    meshFieldSourceRegistry,
+  ]);
 
   const runCalculusGradient = useCallback(() => {
     if (!surfaceSampleSet?.samples?.length) {
@@ -61103,7 +61377,15 @@ case "mobius":
       setCalculusStatus(null);
       return;
     }
-    const gradient = computeGradientField(surfaceSampleSet.samples, scalarInput.values, sampleNeighbors);
+    const canonical = runCanonicalMeshFieldCalculus({
+      operator: "gradient",
+      selectedSource: calculusScalarSource,
+      resolvedSource: scalarInput.name,
+      values: scalarInput.meshValues,
+    });
+    const gradient = canonical
+      ? { vectors: Float32Array.from(canonical.result.values), validCount: canonical.result.validCount }
+      : computeGradientField(surfaceSampleSet.samples, scalarInput.values, sampleNeighbors);
     const fieldName = `grad(${scalarInput.name})`;
     registerCalculusVectorField({ name: fieldName, values: gradient.vectors, itemSize: 3 });
     setCalculusVectorSource(fieldName);
@@ -61112,11 +61394,15 @@ case "mobius":
     setCalculusHeatmapValues(null);
     setCalculusHeatmapEnabled(false);
     setCalculusError(null);
-    setCalculusStatus(`Computed ${fieldName} (${gradient.validCount}/${surfaceSampleSet.samples.length} samples).`);
+    setCalculusStatus(
+      `${canonical?.cacheHit ? "Loaded cached" : "Computed"} ${fieldName} (${gradient.validCount}/${canonical ? meshFieldCalculusPrepared?.vertexCount ?? surfaceSampleSet.samples.length : surfaceSampleSet.samples.length} vertices${canonical ? "; canonical face gradient" : ""}).`
+    );
   }, [
     calculusScalarSource,
+    meshFieldCalculusPrepared,
     registerCalculusVectorField,
     resolveCalculusScalarSource,
+    runCanonicalMeshFieldCalculus,
     sampleNeighbors,
     surfaceSampleSet,
   ]);
@@ -61138,7 +61424,15 @@ case "mobius":
       setCalculusStatus(null);
       return;
     }
-    const divergence = computeDivergenceField(surfaceSampleSet.samples, vectorInput.values, sampleNeighbors);
+    const canonical = runCanonicalMeshFieldCalculus({
+      operator: "divergence",
+      selectedSource: calculusVectorSource,
+      resolvedSource: vectorInput.name,
+      values: vectorInput.meshValues,
+    });
+    const divergence = canonical
+      ? { scalars: Float32Array.from(canonical.result.values), validCount: canonical.result.validCount }
+      : computeDivergenceField(surfaceSampleSet.samples, vectorInput.values, sampleNeighbors);
     const fieldName = `div(${vectorInput.name})`;
     registerCalculusScalarField({ name: fieldName, values: divergence.scalars });
     const meshCount = surfaceSampleSet.meshData?.length ?? 0;
@@ -61154,13 +61448,15 @@ case "mobius":
     setCalculusError(null);
     setCalculusStatus(
       heatmapOk
-        ? `Computed ${fieldName} + heatmap (${divergence.validCount}/${surfaceSampleSet.samples.length} samples).`
-        : `Computed ${fieldName} (${divergence.validCount}/${surfaceSampleSet.samples.length} samples).`
+        ? `${canonical?.cacheHit ? "Loaded cached" : "Computed"} ${fieldName} + heatmap (${divergence.validCount}/${canonical ? meshFieldCalculusPrepared?.vertexCount ?? surfaceSampleSet.samples.length : surfaceSampleSet.samples.length} vertices${canonical ? "; weak FEM" : ""}).`
+        : `${canonical?.cacheHit ? "Loaded cached" : "Computed"} ${fieldName} (${divergence.validCount}/${surfaceSampleSet.samples.length} samples).`
     );
   }, [
     calculusVectorSource,
+    meshFieldCalculusPrepared,
     registerCalculusScalarField,
     resolveCalculusVectorSource,
+    runCanonicalMeshFieldCalculus,
     sampleNeighbors,
     surfaceSampleSet,
   ]);
@@ -61182,7 +61478,15 @@ case "mobius":
       setCalculusStatus(null);
       return;
     }
-    const curl = computeCurlNormalField(surfaceSampleSet.samples, vectorInput.values, sampleNeighbors);
+    const canonical = runCanonicalMeshFieldCalculus({
+      operator: "normal-curl",
+      selectedSource: calculusVectorSource,
+      resolvedSource: vectorInput.name,
+      values: vectorInput.meshValues,
+    });
+    const curl = canonical
+      ? { scalars: Float32Array.from(canonical.result.values), validCount: canonical.result.validCount }
+      : computeCurlNormalField(surfaceSampleSet.samples, vectorInput.values, sampleNeighbors);
     const fieldName = `curln(${vectorInput.name})`;
     registerCalculusScalarField({ name: fieldName, values: curl.scalars });
     const meshCount = surfaceSampleSet.meshData?.length ?? 0;
@@ -61198,13 +61502,60 @@ case "mobius":
     setCalculusError(null);
     setCalculusStatus(
       heatmapOk
-        ? `Computed ${fieldName} + heatmap (${curl.validCount}/${surfaceSampleSet.samples.length} samples).`
-        : `Computed ${fieldName} (${curl.validCount}/${surfaceSampleSet.samples.length} samples).`
+        ? `${canonical?.cacheHit ? "Loaded cached" : "Computed"} ${fieldName} + heatmap (${curl.validCount}/${canonical ? meshFieldCalculusPrepared?.vertexCount ?? surfaceSampleSet.samples.length : surfaceSampleSet.samples.length} vertices${canonical ? "; curl_n = div_S(X × n)" : ""}).`
+        : `${canonical?.cacheHit ? "Loaded cached" : "Computed"} ${fieldName} (${curl.validCount}/${surfaceSampleSet.samples.length} samples).`
     );
   }, [
     calculusVectorSource,
+    meshFieldCalculusPrepared,
     registerCalculusScalarField,
     resolveCalculusVectorSource,
+    runCanonicalMeshFieldCalculus,
+    sampleNeighbors,
+    surfaceSampleSet,
+  ]);
+
+  const runCalculusLaplacian = useCallback(() => {
+    if (!surfaceSampleSet?.samples?.length || !sampleNeighbors) {
+      setCalculusError("Surface samples or adjacency are not ready.");
+      setCalculusStatus(null);
+      return;
+    }
+    const scalarInput = resolveCalculusScalarSource(calculusScalarSource);
+    if ("error" in scalarInput) {
+      setCalculusError(scalarInput.error ?? "Scalar source not available.");
+      setCalculusStatus(null);
+      return;
+    }
+    const canonical = runCanonicalMeshFieldCalculus({
+      operator: "laplacian",
+      selectedSource: calculusScalarSource,
+      resolvedSource: scalarInput.name,
+      values: scalarInput.meshValues,
+    });
+    const laplacian = canonical
+      ? { scalars: Float32Array.from(canonical.result.values), validCount: canonical.result.validCount }
+      : (() => {
+          const gradient = computeGradientField(surfaceSampleSet.samples, scalarInput.values, sampleNeighbors);
+          return computeDivergenceField(surfaceSampleSet.samples, gradient.vectors, sampleNeighbors);
+        })();
+    const fieldName = `laplacian(${scalarInput.name})`;
+    registerCalculusScalarField({ name: fieldName, values: laplacian.scalars });
+    const meshCount = surfaceSampleSet.meshData?.length ?? 0;
+    const vertexCount = meshCount === 1 ? Math.floor((surfaceSampleSet.meshData?.[0].positions.length ?? 0) / 3) : 0;
+    const heatmapOk = meshCount === 1 && vertexCount === surfaceSampleSet.samples.length;
+    setCalculusHeatmapValues(heatmapOk ? laplacian.scalars : null);
+    setCalculusHeatmapEnabled(heatmapOk);
+    setCalculusError(null);
+    setCalculusStatus(
+      `${canonical?.cacheHit ? "Loaded cached" : "Computed"} ${fieldName}${heatmapOk ? " + heatmap" : ""} (${laplacian.validCount}/${canonical ? meshFieldCalculusPrepared?.vertexCount ?? surfaceSampleSet.samples.length : surfaceSampleSet.samples.length} vertices${canonical ? "; cotangent M^-1L" : ""}).`
+    );
+  }, [
+    calculusScalarSource,
+    meshFieldCalculusPrepared,
+    registerCalculusScalarField,
+    resolveCalculusScalarSource,
+    runCanonicalMeshFieldCalculus,
     sampleNeighbors,
     surfaceSampleSet,
   ]);
@@ -61674,8 +62025,16 @@ case "mobius":
       if ("error" in scalarInput) {
         return { status: "stale", summary: scalarInput.error };
       }
-      const { values, name } = scalarInput;
-      const gradient = computeGradientField(surfaceSampleSet.samples, values, sampleNeighbors);
+      const { values, name, field: scalarField } = scalarInput;
+      const canonical = runCanonicalMeshFieldCalculus({
+        operator: "gradient",
+        selectedSource: name,
+        resolvedSource: name,
+        values: meshFieldCalculusPrepared && scalarField.values.length === meshFieldCalculusPrepared.vertexCount ? scalarField.values : null,
+      });
+      const gradient = canonical
+        ? { vectors: Float32Array.from(canonical.result.values), validCount: canonical.result.validCount }
+        : computeGradientField(surfaceSampleSet.samples, values, sampleNeighbors);
       const fieldName = `grad(${name})`;
       const field: SurfaceVectorField = { name: fieldName, values: gradient.vectors, itemSize: 3 };
       registerWorkbookVectorField(ctx.blockId, field);
@@ -61702,6 +62061,8 @@ case "mobius":
       readBlockParamValue,
       registerWorkbookVectorField,
       resolveScalarFieldInput,
+      meshFieldCalculusPrepared,
+      runCanonicalMeshFieldCalculus,
       sampleNeighbors,
       surfaceSampleSet,
     ]
@@ -61719,8 +62080,16 @@ case "mobius":
       if ("error" in vectorInput) {
         return { status: "stale", summary: vectorInput.error };
       }
-      const { values, name } = vectorInput;
-      const divergence = computeDivergenceField(surfaceSampleSet.samples, values, sampleNeighbors);
+      const { values, name, field: vectorField } = vectorInput;
+      const canonical = runCanonicalMeshFieldCalculus({
+        operator: "divergence",
+        selectedSource: name,
+        resolvedSource: name,
+        values: meshFieldCalculusPrepared && vectorField.values.length === meshFieldCalculusPrepared.vertexCount * 3 ? vectorField.values : null,
+      });
+      const divergence = canonical
+        ? { scalars: Float32Array.from(canonical.result.values), validCount: canonical.result.validCount }
+        : computeDivergenceField(surfaceSampleSet.samples, values, sampleNeighbors);
       const fieldName = `div(${name})`;
       const field: SurfaceScalarField = { name: fieldName, values: divergence.scalars };
       registerWorkbookScalarField(ctx.blockId, field);
@@ -61743,6 +62112,8 @@ case "mobius":
     [
       registerWorkbookScalarField,
       resolveVectorFieldInput,
+      meshFieldCalculusPrepared,
+      runCanonicalMeshFieldCalculus,
       sampleNeighbors,
       surfaceSampleSet,
       setWorkbookHeatmapEnabled,
@@ -61762,8 +62133,16 @@ case "mobius":
       if ("error" in vectorInput) {
         return { status: "stale", summary: vectorInput.error };
       }
-      const { values, name } = vectorInput;
-      const curl = computeCurlNormalField(surfaceSampleSet.samples, values, sampleNeighbors);
+      const { values, name, field: vectorField } = vectorInput;
+      const canonical = runCanonicalMeshFieldCalculus({
+        operator: "normal-curl",
+        selectedSource: name,
+        resolvedSource: name,
+        values: meshFieldCalculusPrepared && vectorField.values.length === meshFieldCalculusPrepared.vertexCount * 3 ? vectorField.values : null,
+      });
+      const curl = canonical
+        ? { scalars: Float32Array.from(canonical.result.values), validCount: canonical.result.validCount }
+        : computeCurlNormalField(surfaceSampleSet.samples, values, sampleNeighbors);
       const fieldName = `curln(${name})`;
       const field: SurfaceScalarField = { name: fieldName, values: curl.scalars };
       registerWorkbookScalarField(ctx.blockId, field);
@@ -61786,6 +62165,8 @@ case "mobius":
     [
       registerWorkbookScalarField,
       resolveVectorFieldInput,
+      meshFieldCalculusPrepared,
+      runCanonicalMeshFieldCalculus,
       sampleNeighbors,
       surfaceSampleSet,
       setWorkbookHeatmapEnabled,
@@ -61805,9 +62186,19 @@ case "mobius":
       if ("error" in scalarInput) {
         return { status: "stale", summary: scalarInput.error };
       }
-      const { values, name } = scalarInput;
-      const gradient = computeGradientField(surfaceSampleSet.samples, values, sampleNeighbors);
-      const laplacian = computeDivergenceField(surfaceSampleSet.samples, gradient.vectors, sampleNeighbors);
+      const { values, name, field: scalarField } = scalarInput;
+      const canonical = runCanonicalMeshFieldCalculus({
+        operator: "laplacian",
+        selectedSource: name,
+        resolvedSource: name,
+        values: meshFieldCalculusPrepared && scalarField.values.length === meshFieldCalculusPrepared.vertexCount ? scalarField.values : null,
+      });
+      const laplacian = canonical
+        ? { scalars: Float32Array.from(canonical.result.values), validCount: canonical.result.validCount }
+        : (() => {
+            const gradient = computeGradientField(surfaceSampleSet.samples, values, sampleNeighbors);
+            return computeDivergenceField(surfaceSampleSet.samples, gradient.vectors, sampleNeighbors);
+          })();
       const fieldName = `laplacian(${name})`;
       const field: SurfaceScalarField = { name: fieldName, values: laplacian.scalars };
       registerWorkbookScalarField(ctx.blockId, field);
@@ -61830,6 +62221,8 @@ case "mobius":
     [
       registerWorkbookScalarField,
       resolveScalarFieldInput,
+      meshFieldCalculusPrepared,
+      runCanonicalMeshFieldCalculus,
       sampleNeighbors,
       surfaceSampleSet,
       setWorkbookHeatmapEnabled,
@@ -67388,6 +67781,9 @@ case "mobius":
     calculusActiveVectorField,
     calculusScalarSource,
     calculusVectorSource,
+    calculusLastResult: calculusLastResult?.result ?? null,
+    calculusCacheHit: calculusLastResult?.cacheHit ?? false,
+    calculusUpdatedAt: calculusLastResult?.updatedAt ?? null,
     showRidges,
     showValleys,
     showCurvatureLines,
@@ -70317,6 +70713,8 @@ case "mobius":
                 onChangeCalculusScalarSource={setCalculusScalarSource}
                 calculusCustomScalarExpr={calculusCustomScalarExpr}
                 onChangeCalculusCustomScalarExpr={setCalculusCustomScalarExpr}
+                calculusCustomVectorExpr={calculusCustomVectorExpr}
+                onChangeCalculusCustomVectorExpr={setCalculusCustomVectorExpr}
                 calculusVectorOptions={calculusVectorOptions}
                 calculusVectorSource={calculusVectorSource}
                 onChangeCalculusVectorSource={setCalculusVectorSource}
@@ -70334,6 +70732,7 @@ case "mobius":
                   setCalculusHeatmapEnabled(false);
                 }}
                 onRunCalculusGradient={runCalculusGradient}
+                onRunCalculusLaplacian={runCalculusLaplacian}
                 onRunCalculusDivergence={runCalculusDivergence}
                 onRunCalculusCurl={runCalculusCurl}
                 calculusStatus={calculusStatus}
@@ -74633,10 +75032,10 @@ case "mobius":
                             </div>
                           )}
                           {analysisFocusedSection === "vector-calculus" && (
-                            <div style={{ display: "grid", gap: 6, fontSize: 10.5 }}>
+                            <div data-testid="mesh-analyze-field-calculus-config" style={{ display: "grid", gap: 6, fontSize: 10.5 }}>
                               <label style={{ display: "grid", gap: 3 }}>
                                 <span style={{ fontWeight: 800 }}>Scalar source</span>
-                                <select value={calculusScalarSource} onChange={(event) => setCalculusScalarSource(event.target.value)}>
+                                <select data-testid="mesh-analyze-calculus-scalar-source" value={calculusScalarSource} onChange={(event) => setCalculusScalarSource(event.target.value)}>
                                   {calculusScalarOptions.map((option) => (
                                     <option key={option.value} value={option.value}>{option.label}</option>
                                   ))}
@@ -74650,10 +75049,14 @@ case "mobius":
                                   placeholder="f(x,y,z,u,v)"
                                 />
                               )}
-                              <button type="button" onClick={runCalculusGradient}>Compute gradient</button>
+                              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                <button type="button" data-testid="mesh-analyze-calculus-gradient" onClick={runCalculusGradient}>Compute gradient</button>
+                                <button type="button" data-testid="mesh-analyze-calculus-laplacian" onClick={runCalculusLaplacian}>Compute Laplacian</button>
+                              </div>
                               <label style={{ display: "grid", gap: 3 }}>
                                 <span style={{ fontWeight: 800 }}>Vector source</span>
                                 <select
+                                  data-testid="mesh-analyze-calculus-vector-source"
                                   value={calculusVectorSource}
                                   onChange={(event) => setCalculusVectorSource(event.target.value)}
                                   disabled={!calculusVectorOptions.length}
@@ -74663,11 +75066,25 @@ case "mobius":
                                   ))}
                                 </select>
                               </label>
+                              {calculusVectorSource === "custom-vector" && (
+                                <input
+                                  aria-label="Custom tangent vector expression"
+                                  data-testid="mesh-analyze-calculus-custom-vector"
+                                  value={calculusCustomVectorExpr}
+                                  onChange={(event) => setCalculusCustomVectorExpr(event.target.value)}
+                                  placeholder="Fx; Fy; Fz"
+                                />
+                              )}
                               <div style={{ display: "flex", gap: 5 }}>
-                                <button type="button" onClick={runCalculusDivergence} disabled={!calculusVectorOptions.length}>Compute divergence</button>
-                                <button type="button" onClick={runCalculusCurl} disabled={!calculusVectorOptions.length}>Compute curl</button>
+                                <button type="button" data-testid="mesh-analyze-calculus-divergence" onClick={runCalculusDivergence} disabled={!calculusVectorOptions.length}>Compute divergence</button>
+                                <button type="button" data-testid="mesh-analyze-calculus-curl" onClick={runCalculusCurl} disabled={!calculusVectorOptions.length}>Compute curl</button>
                               </div>
                               <div style={{ color: "#64748b" }}>{surfaceScalarFields.size} scalar / {surfaceVectorFields.size} vector fields available</div>
+                              <div data-testid="mesh-analyze-calculus-conventions" style={{ color: "#475467" }}>
+                                Cotangent Δ = M⁻¹L · barycentric lumped mass · curlₙ X = divₛ(X × n)
+                              </div>
+                              {calculusStatus && <div data-testid="mesh-analyze-calculus-status" style={{ color: "#166534" }}>{calculusStatus}</div>}
+                              {calculusError && <div style={{ color: "#b42318" }}>{calculusError}</div>}
                             </div>
                           )}
                           {analysisFocusedSection === "curvature-lines" && (
@@ -107473,6 +107890,8 @@ type SurfacesLeftPanelProps = {
   onChangeCalculusScalarSource: (value: string) => void;
   calculusCustomScalarExpr: string;
   onChangeCalculusCustomScalarExpr: (value: string) => void;
+  calculusCustomVectorExpr: string;
+  onChangeCalculusCustomVectorExpr: (value: string) => void;
   calculusVectorOptions: Array<{ value: string; label: string }>;
   calculusVectorSource: string;
   onChangeCalculusVectorSource: (value: string) => void;
@@ -107487,6 +107906,7 @@ type SurfacesLeftPanelProps = {
   calculusHeatmapEnabled: boolean;
   onClearCalculusHeatmap: () => void;
   onRunCalculusGradient: () => void;
+  onRunCalculusLaplacian: () => void;
   onRunCalculusDivergence: () => void;
   onRunCalculusCurl: () => void;
   calculusStatus: string | null;
@@ -108200,6 +108620,8 @@ onChangeImplicitExpr,
   onChangeCalculusScalarSource,
   calculusCustomScalarExpr,
   onChangeCalculusCustomScalarExpr,
+  calculusCustomVectorExpr,
+  onChangeCalculusCustomVectorExpr,
   calculusVectorOptions,
   calculusVectorSource,
   onChangeCalculusVectorSource,
@@ -108214,6 +108636,7 @@ onChangeImplicitExpr,
   calculusHeatmapEnabled,
   onClearCalculusHeatmap,
   onRunCalculusGradient,
+  onRunCalculusLaplacian,
   onRunCalculusDivergence,
   onRunCalculusCurl,
   calculusStatus,
@@ -112998,6 +113421,9 @@ onChangeImplicitExpr,
               <button type="button" onClick={onRunCalculusGradient}>
                 Compute grad
               </button>
+              <button type="button" onClick={onRunCalculusLaplacian}>
+                Compute Δ
+              </button>
               <button type="button" onClick={onRunCalculusDivergence} disabled={!calculusVectorOptions.length}>
                 Compute div
               </button>
@@ -113020,6 +113446,17 @@ onChangeImplicitExpr,
                 ))}
               </select>
             </label>
+            {calculusVectorSource === "custom-vector" && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 11, color: "#555", marginBottom: 4 }}>Fx; Fy; Fz (projected tangent)</div>
+                <input
+                  type="text"
+                  value={calculusCustomVectorExpr}
+                  onChange={(event) => onChangeCalculusCustomVectorExpr(event.target.value)}
+                  style={{ width: "100%", boxSizing: "border-box", padding: "4px 6px", borderRadius: 6, border: "1px solid #d0d7de", fontFamily: "monospace", fontSize: 11 }}
+                />
+              </div>
+            )}
             <label style={{ display: "block", cursor: "pointer", marginBottom: 6 }}>
               <input
                 type="checkbox"

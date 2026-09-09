@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MeshQualityReport } from "./meshQualityReport";
+import { MESH_FIELD_CALCULUS_CONVENTIONS, MESH_FIELD_CALCULUS_VERSION } from "./meshSurfaceFieldCalculus";
 import {
   MESH_QUALITY_METRIC_OPTIONS,
   selectMeshActiveAnalysisResult,
@@ -79,6 +80,9 @@ const baseInput = (overrides: Partial<MeshActiveAnalysisResultInput> = {}): Mesh
   calculusActiveVectorField: "",
   calculusScalarSource: "none",
   calculusVectorSource: "",
+  calculusLastResult: null,
+  calculusCacheHit: false,
+  calculusUpdatedAt: null,
   showRidges: false,
   showValleys: false,
   showCurvatureLines: false,
@@ -168,6 +172,34 @@ describe("selectMeshActiveAnalysisResult", () => {
     expect(result.metadata).toContainEqual({ label: "Time", value: "1.25 ms" });
     expect(result.metadata).toContainEqual({ label: "Cached", value: "Yes" });
     expect(result.metadata).toContainEqual({ label: "Computed", value: "timestamp:99" });
+  });
+
+  it("reports canonical field-calculus conventions and cache state", () => {
+    const result = selectMeshActiveAnalysisResult(baseInput({
+      section: "vector-calculus",
+      calculusLastResult: {
+        version: MESH_FIELD_CALCULUS_VERSION,
+        operator: "laplacian",
+        source: "x",
+        domain: "vertex",
+        itemSize: 1,
+        values: Float64Array.from([-2, 0, 2, 0]),
+        validMask: Uint8Array.from([1, 1, 1, 0]),
+        validCount: 3,
+        conventions: MESH_FIELD_CALCULUS_CONVENTIONS,
+      },
+      calculusCacheHit: true,
+      calculusUpdatedAt: 7,
+    }));
+    expect(result).toMatchObject({
+      category: "Vector Calculus",
+      result: "laplacian(x)",
+      state: "Ready",
+      method: "Cotangent Laplace-Beltrami",
+      domain: "3 / 4 vertices",
+    });
+    expect(result.metadata).toContainEqual({ label: "Cache", value: "Cached result" });
+    expect(result.metadata).toContainEqual({ label: "Computed", value: "timestamp:7" });
   });
 
   it("summarizes a selected scalar domain with stable extrema indices and histogram counts", () => {
