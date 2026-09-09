@@ -531,7 +531,6 @@ import {
 import {
   createMeshAnalysisMeshIdentity,
   createMeshAnalysisResultStore,
-  deriveMeshDiagnosticState,
   getMeshAnalysisResult,
   getMeshAnalysisResultForParameters,
   meshAnalysisResultKindsForMesh,
@@ -542,6 +541,11 @@ import {
   type MeshCurvatureAnalysisPayload,
   type MeshDiagnosticsAnalysisPayload,
 } from "./mesh/analysisResultStore";
+import {
+  createLocalMeshHealthResult,
+  getMeshHealthBlockers,
+  mergeCgalMeshHealthResult,
+} from "./mesh/meshHealth";
 import {
   MESH_QUALITY_METRIC_OPTIONS,
   selectMeshActiveAnalysisResult,
@@ -673,10 +677,26 @@ import {
 
 type MeshOperationLastValidation = {
   meshLabel: string;
+  meshKey?: string;
   status: MeshOperationResultSummary["status"];
   validation: NonNullable<MeshOperationResultSummary["validation"]>;
   timestamp: number;
 };
+
+const meshOperationAnalysisKey = (mesh: {
+  label: string;
+  positions: Float32Array;
+  indices: Uint32Array | null;
+  normals?: Float32Array | null;
+  source?: SurfaceMeshData["source"];
+}): string =>
+  createMeshAnalysisMeshIdentity({
+    label: mesh.label,
+    positions: mesh.positions,
+    indices: mesh.indices,
+    normals: mesh.normals ?? null,
+    source: mesh.source ?? { kind: "detachedMesh", fromLabel: mesh.label },
+  }).key;
 
 const getBooleanValidationBlockers = (validation?: MeshOperationLastValidation["validation"] | null): string[] => {
   if (!validation) return ["Run Validate first"];
@@ -55841,6 +55861,7 @@ case "mobius":
       if (resultSummary.validation) {
         setMeshOperationLastValidation({
           meshLabel: activeMeshLabel,
+          meshKey: meshOperationAnalysisKey(mesh),
           status: resultSummary.status,
           validation: resultSummary.validation,
           timestamp: resultSummary.timestamp,
@@ -55898,6 +55919,7 @@ case "mobius":
       if (resultSummary.validation) {
         setMeshOperationLastValidation({
           meshLabel: mesh.label,
+          meshKey: meshOperationAnalysisKey(mesh),
           status: resultSummary.status,
           validation: resultSummary.validation,
           timestamp: resultSummary.timestamp,
@@ -56098,6 +56120,7 @@ case "mobius":
       if (resultSummary.repairValidation?.after) {
         setMeshOperationLastValidation({
           meshLabel: repairedMesh.label ?? repairedLabel,
+          meshKey: meshOperationAnalysisKey(repairedMesh),
           status: resultSummary.status,
           validation: resultSummary.repairValidation.after,
           timestamp: resultSummary.timestamp,
@@ -56209,6 +56232,7 @@ case "mobius":
       if (resultSummary.repairValidation?.after) {
         setMeshOperationLastValidation({
           meshLabel: res.resultMesh.label ?? activeMeshLabel,
+          meshKey: meshOperationAnalysisKey(res.resultMesh),
           status: resultSummary.status,
           validation: resultSummary.repairValidation.after,
           timestamp: resultSummary.timestamp,
@@ -56599,6 +56623,7 @@ case "mobius":
       if (validateSummary.validation) {
         setMeshOperationLastValidation({
           meshLabel: smoothedLabel,
+          meshKey: meshOperationAnalysisKey(validationMesh),
           status: validateSummary.status,
           validation: validateSummary.validation,
           timestamp: validateSummary.timestamp,
@@ -59187,7 +59212,11 @@ case "mobius":
     const benchmarkFileName = surfaceMeshBenchmarkVerification.model.fileName.toLowerCase();
     return activeFileName === benchmarkFileName ? surfaceMeshBenchmarkVerification : null;
   }, [isDev, surfaceMeshBenchmarkVerification, surfaceMeshData?.source]);
-  const meshDiagnosticsResultVariant = `robust-topology-v1-${meshAnalyzeDiagnosticsNonce}`;
+  const matchingMeshHealthValidation =
+    meshOperationLastValidation?.meshKey === activeMeshAnalysisIdentity?.key
+      ? meshOperationLastValidation
+      : null;
+  const meshDiagnosticsResultVariant = `state-check-v2-${meshAnalyzeDiagnosticsNonce}-${matchingMeshHealthValidation?.timestamp ?? "local"}`;
   const cachedMeshDiagnosticsResult = useMemo(
     () =>
       getMeshAnalysisResult<MeshDiagnosticsAnalysisPayload>(
@@ -59213,42 +59242,31 @@ case "mobius":
         : [];
     if (meshPromotionTrace?.sourceGeometryObjectName) sourceNames.push(meshPromotionTrace.sourceGeometryObjectName);
     const sphereLike = sourceNames.some((name) => /\bsphere\b/i.test(name)) || /\bsphere\b/i.test(surfaceMeshLabel);
-    const trianglesValid =
-      readiness.stats.invalidFaceCount === 0 &&
-      readiness.stats.degenerateTriangleCount === 0 &&
-      readiness.stats.faceCount > 0;
     const duplicateVertexGroups = findCoincidentMeshVertexGroups(
       surfaceMeshData,
       readiness.suggestions.dedupeTolerance,
       6
     );
-    const diagnostics = {
-      trianglesValid,
-      invalidFaceCount: readiness.stats.invalidFaceCount,
-      degenerateTriangleCount: readiness.stats.degenerateTriangleCount,
-      boundaryEdgeCount: readiness.stats.boundaryEdgeCount,
-      nonManifoldEdgeCount: readiness.stats.nonManifoldEdgeCount,
-      selfIntersectionPairs: readiness.stats.suspectedSelfIntersectionPairs,
-      duplicateVertexCount: readiness.stats.duplicateVertexCount,
+    const localHealth = createLocalMeshHealthResult(readiness, topology, {
       duplicateVertexGroups,
-      eulerCharacteristic: topology?.eulerCharacteristic ?? null,
-      watertight: topology?.watertight ?? null,
-      boundaryLoopCount: topology?.boundaryLoops.length ?? 0,
-      weldTolerance: readiness.suggestions.weldTolerance,
       sphereSeamWarning: sphereLike && readiness.stats.boundaryEdgeCount > 0,
-    };
-    const state = deriveMeshDiagnosticState(diagnostics);
-    return { ...diagnostics, state, cleanMesh: state === "Healthy" };
-  }, [cachedMeshDiagnosticsResult, meshAnalyzeDiagnosticsNonce, meshPromotionTrace?.sourceGeometryObjectName, surfaceMeshData, surfaceMeshLabel]);
+    });
+    return matchingMeshHealthValidation
+      ? mergeCgalMeshHealthResult(localHealth, matchingMeshHealthValidation.validation)
+      : localHealth;
+  }, [
+    cachedMeshDiagnosticsResult,
+    matchingMeshHealthValidation,
+    meshAnalyzeDiagnosticsNonce,
+    meshPromotionTrace?.sourceGeometryObjectName,
+    surfaceMeshData,
+    surfaceMeshLabel,
+  ]);
   const rawSurfaceMeshAnalyzeDiagnostics =
     cachedMeshDiagnosticsResult?.state === "ready" && cachedMeshDiagnosticsResult.payload
       ? cachedMeshDiagnosticsResult.payload
       : computedSurfaceMeshAnalyzeDiagnostics;
-  const surfaceMeshAnalyzeDiagnostics = useMemo<MeshDiagnosticsAnalysisPayload | null>(() => {
-    if (!rawSurfaceMeshAnalyzeDiagnostics) return null;
-    const state = deriveMeshDiagnosticState(rawSurfaceMeshAnalyzeDiagnostics);
-    return { ...rawSurfaceMeshAnalyzeDiagnostics, state, cleanMesh: state === "Healthy" };
-  }, [rawSurfaceMeshAnalyzeDiagnostics]);
+  const surfaceMeshAnalyzeDiagnostics = rawSurfaceMeshAnalyzeDiagnostics;
   useEffect(() => {
     if (!activeMeshAnalysisIdentity || !computedSurfaceMeshAnalyzeDiagnostics) return;
     setMeshAnalysisResultStore((previous) =>
@@ -59256,11 +59274,21 @@ case "mobius":
         kind: "diagnostics",
         variant: meshDiagnosticsResultVariant,
         mesh: activeMeshAnalysisIdentity,
-        parameters: { method: "robust-topology", run: meshAnalyzeDiagnosticsNonce },
+        parameters: {
+          method: "canonical-state-check",
+          run: meshAnalyzeDiagnosticsNonce,
+          cgalValidationAt: matchingMeshHealthValidation?.timestamp ?? null,
+        },
         payload: computedSurfaceMeshAnalyzeDiagnostics,
       })
     );
-  }, [activeMeshAnalysisIdentity, computedSurfaceMeshAnalyzeDiagnostics, meshAnalyzeDiagnosticsNonce, meshDiagnosticsResultVariant]);
+  }, [
+    activeMeshAnalysisIdentity,
+    computedSurfaceMeshAnalyzeDiagnostics,
+    matchingMeshHealthValidation?.timestamp,
+    meshAnalyzeDiagnosticsNonce,
+    meshDiagnosticsResultVariant,
+  ]);
   const surfaceInspectorMeshStats = useMemo(
     () => ({
       vertexCount:
@@ -59386,7 +59414,7 @@ case "mobius":
     }
     setMeshAnalyzeDiagnosticOverlayMode("none");
     setSurfaceMeshTopologyStatus(
-      "Mesh State found a non-spatial issue. Review Diagnostics for full validation details."
+      "State check found a non-spatial issue. Review Diagnostics for full validation details."
     );
     showSelectionEventStatus(
       "Mesh",
@@ -74425,7 +74453,7 @@ case "mobius":
                         }}
                       >
                         <span>
-                          Mesh state: {surfaceMeshAnalyzeDiagnostics
+                          State check: {surfaceMeshAnalyzeDiagnostics
                             ? `${surfaceMeshAnalyzeDiagnostics.state}${surfaceMeshAnalyzeDiagnostics.selfIntersectionPairs > 0 ? ` · ${surfaceMeshAnalyzeDiagnostics.selfIntersectionPairs} suspected intersections` : ""}`
                             : "Unverified"}
                         </span>
@@ -116161,7 +116189,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             <strong>Boundary loops:</strong> {topologyBoundaryLoopsLabel}
           </div>
           <div>
-            <strong>Mesh state:</strong> {meshTopologyDetails.topologyTypeLabel}
+            <strong>State check:</strong> {meshTopologyDetails.topologyTypeLabel}
           </div>
           <div>
             <strong>Orientability:</strong> {meshTopologyDetails.orientabilityLabel}
@@ -117264,35 +117292,31 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         : "n/a";
   const meshSummaryTopologyDeferred = isMeshViewer && !meshTopologyDetails && !!deferredSurfaceSampleSetInfo;
   const meshSummaryTopologyMuted = meshSummaryTopologyDeferred ? "deferred" : "unknown";
+  const meshSummaryComponentCount =
+    meshAnalyzeDiagnostics?.componentCount ?? meshInspectorStats.connectedComponentCount;
   const meshSummaryComponentLabel =
-    meshInspectorStats.connectedComponentCount == null
+    meshSummaryComponentCount == null
       ? meshSummaryTopologyMuted
-      : formatInspectorCount(meshInspectorStats.connectedComponentCount);
+      : formatInspectorCount(meshSummaryComponentCount);
   const meshSummaryEdgeLabel =
-    meshTopologyDetails?.edgeCount == null ? meshSummaryTopologyMuted : formatInspectorCount(meshTopologyDetails.edgeCount);
-  const meshHealthValidation = meshOperationLastValidation?.validation ?? meshLastOperation?.validation ?? null;
+    meshAnalyzeDiagnostics?.edgeCount ?? meshTopologyDetails?.edgeCount ?? null;
   const meshHealthBoundaryEdgeCount =
-    meshAnalyzeDiagnostics?.boundaryEdgeCount ?? meshHealthValidation?.boundaryEdgeCount ?? meshInspectorStats.boundaryEdgeCount ?? null;
+    meshAnalyzeDiagnostics?.boundaryEdgeCount ?? null;
   const meshHealthNonManifoldEdgeCount =
-    meshAnalyzeDiagnostics?.nonManifoldEdgeCount ?? meshHealthValidation?.nonManifoldEdgeCount ?? topologyNonManifoldEdgeCount ?? null;
+    meshAnalyzeDiagnostics?.nonManifoldEdgeCount ?? null;
   const meshHealthDegenerateFaceCount =
-    meshAnalyzeDiagnostics?.degenerateTriangleCount ?? meshHealthValidation?.degenerateFaceCount ?? badTriangleCount ?? null;
-  const meshHealthDuplicateFaceCount = meshHealthValidation?.duplicateFaceCount ?? null;
+    meshAnalyzeDiagnostics?.degenerateTriangleCount ?? null;
+  const meshHealthDuplicateFaceCount = meshAnalyzeDiagnostics?.duplicateFaceCount ?? null;
   const meshHealthSelfIntersectionLabel = meshAnalyzeDiagnostics
-    ? `${meshAnalyzeDiagnostics.selfIntersectionPairs.toLocaleString()} suspected`
-    : meshHealthValidation
-    ? meshHealthValidation.selfIntersection.checked
-      ? `${meshHealthValidation.selfIntersection.suspectedPairs.toLocaleString()} suspected${
-          meshHealthValidation.selfIntersection.truncated ? " (sampled)" : ""
-        }`
-      : "Not checked"
+    ? `${meshAnalyzeDiagnostics.selfIntersectionPairs.toLocaleString()} suspected${
+        meshAnalyzeDiagnostics.selfIntersection.truncated
+          ? " (sampled)"
+          : meshAnalyzeDiagnostics.selfIntersection.checked
+            ? ""
+            : " (local estimate)"
+      }`
     : "Not checked";
-  const meshHealthSuspectedSelfIntersectionCount = meshAnalyzeDiagnostics
-    ? meshAnalyzeDiagnostics.selfIntersectionPairs
-    : meshHealthValidation?.selfIntersection.checked
-    ? meshHealthValidation.selfIntersection.suspectedPairs
-    : 0;
-  const meshHealthHasFullValidation = !!meshHealthValidation && meshHealthValidation.selfIntersection.checked;
+  const meshHealthSuspectedSelfIntersectionCount = meshAnalyzeDiagnostics?.selfIntersectionPairs ?? 0;
   const meshHealthIssueCount =
     (meshHealthBoundaryEdgeCount ?? 0) +
     (meshHealthNonManifoldEdgeCount ?? 0) +
@@ -117306,28 +117330,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     meshHealthDuplicateFaceCount,
     meshHealthSuspectedSelfIntersectionCount,
   ].filter((count) => (count ?? 0) > 0).length;
-  const meshHealthHasStructuralDefect = [
-    meshHealthBoundaryEdgeCount,
-    meshHealthNonManifoldEdgeCount,
-    meshHealthDegenerateFaceCount,
-    meshHealthDuplicateFaceCount,
-  ].some((count) => (count ?? 0) > 0);
-  const meshHealthHasSuspectedIntersections = meshHealthSuspectedSelfIntersectionCount > 0;
-  const meshHealthFallbackStatusLabel =
-    meshHealthHasStructuralDefect || meshHealthValidation?.watertight === false || meshHealthValidation?.manifold === false
-      ? "Invalid"
-      : meshHealthHasSuspectedIntersections
-        ? meshHealthHasFullValidation
-          ? "Warning"
-          : "Needs validation"
-        : meshHealthHasFullValidation && meshHealthValidation.watertight && meshHealthValidation.manifold
-          ? "Healthy"
-          : watertight === false || (meshHealthNonManifoldEdgeCount ?? 0) > 0 || (meshHealthBoundaryEdgeCount ?? 0) > 0
-            ? "Invalid"
-            : "Unverified";
   const meshHealthStatusLabel = meshSummaryTopologyDeferred
     ? "Unverified"
-    : meshAnalyzeDiagnostics?.state ?? meshHealthFallbackStatusLabel;
+    : meshAnalyzeDiagnostics?.state ?? "Unverified";
   const meshHealthStatusDisplay =
     meshHealthStatusLabel === "Healthy"
       ? "✓ Healthy"
@@ -117335,10 +117340,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         ? "✕ Invalid"
         : meshHealthStatusLabel === "Warning"
           ? "! Warning"
-        : meshHealthStatusLabel === "Needs validation"
-          ? "? Needs validation"
-          : "? Unverified";
-  const meshDiagnosticsValidationBlockers = meshHealthValidation ? getBooleanValidationBlockers(meshHealthValidation) : ["Run Validate first"];
+        : "? Unverified";
+  const meshDiagnosticsValidationBlockers = getMeshHealthBlockers(meshAnalyzeDiagnostics);
   const meshCompactDimensionLabel = meshSummaryDimensions
     ? `X ${fmt(meshSummaryDimensions.x)} | Y ${fmt(meshSummaryDimensions.y)} | Z ${fmt(meshSummaryDimensions.z)}`
     : "n/a";
@@ -117353,7 +117356,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       ? { border: "#86efac", background: "#f0fdf4", color: "#166534" }
       : meshHealthStatusLabel === "Invalid"
         ? { border: "#fca5a5", background: "#fef2f2", color: "#b42318" }
-        : meshHealthStatusLabel === "Needs validation" || meshHealthStatusLabel === "Warning"
+        : meshHealthStatusLabel === "Warning"
         ? { border: "#fcd34d", background: "#fffbeb", color: "#92400e" }
         : { border: "#dbe4ee", background: "#f8fafc", color: "#475467" };
   const meshLastOperationVerdict = (() => {
@@ -117556,8 +117559,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               >
                 <div style={{ display: "grid", gap: 10 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                    <div style={{ fontSize: 11, fontWeight: 900, color: "#0f172a", textTransform: "uppercase" }}>
-                      Mesh State
+                      <div style={{ fontSize: 11, fontWeight: 900, color: "#0f172a", textTransform: "uppercase" }}>
+                        State check
                     </div>
                     <span
                       data-testid="mesh-health-status"
@@ -117637,7 +117640,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                     <div style={{ display: "grid", gap: 4, paddingTop: 6 }}>
                       {renderHealthCountRow("Vertices", meshInspectorStats.vertexCount)}
                       {renderHealthCountRow("Faces", meshInspectorStats.faceCount)}
-                      {renderHealthCountRow("Edges", meshSummaryEdgeLabel)}
+                      {renderHealthCountRow("Edges", meshSummaryEdgeLabel == null ? meshSummaryTopologyMuted : meshSummaryEdgeLabel)}
                     </div>
                   </details>
 
@@ -117647,12 +117650,12 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                     </summary>
                     <div style={{ display: "grid", gap: 4, paddingTop: 6 }}>
                     {renderHealthCountRow("Components", meshSummaryComponentLabel)}
-                    {renderHealthCountRow("Boundary loops", meshTopologyDetails ? meshTopologyDetails.boundaryLoops.length : meshSummaryTopologyMuted)}
+                    {renderHealthCountRow("Boundary loops", meshAnalyzeDiagnostics?.boundaryLoopCount ?? (meshTopologyDetails ? meshTopologyDetails.boundaryLoops.length : meshSummaryTopologyMuted))}
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                       <span>Boundary</span>
                       <strong>
-                        {meshTopologyDetails
-                          ? meshTopologyDetails.closed
+                        {meshAnalyzeDiagnostics?.watertight != null
+                          ? meshAnalyzeDiagnostics.watertight
                             ? "Closed"
                             : "Open"
                           : meshSummaryTopologyMuted}
@@ -117661,11 +117664,11 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                       <span>Manifold</span>
                       <strong>
-                        {topologyNonManifoldEdgeCount == null
+                        {meshAnalyzeDiagnostics?.manifold == null
                           ? meshSummaryTopologyMuted
-                          : topologyNonManifoldEdgeCount === 0
+                          : meshAnalyzeDiagnostics.manifold
                             ? "Manifold"
-                            : `Non-manifold (${topologyNonManifoldEdgeCount.toLocaleString()})`}
+                            : `Non-manifold (${(meshAnalyzeDiagnostics.nonManifoldEdgeCount ?? 0).toLocaleString()})`}
                       </strong>
                     </div>
                     {renderHealthCountRow("Non-manifold edges", meshHealthNonManifoldEdgeCount)}
@@ -117675,9 +117678,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                       <span>Orientable</span>
                       <strong>
-                        {meshTopologyDetails?.orientable == null
+                        {meshAnalyzeDiagnostics?.orientable == null
                           ? meshSummaryTopologyMuted
-                          : meshTopologyDetails.orientable
+                          : meshAnalyzeDiagnostics.orientable
                             ? "Orientable"
                             : "Non-orientable"}
                       </strong>
@@ -117720,6 +117723,10 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                       Backend / provenance
                     </summary>
                     <div style={{ display: "grid", gap: 4, paddingTop: 6 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <span>State check</span>
+                      <strong>{meshAnalyzeDiagnostics?.backend === "hybrid" ? "Math3D + CGAL" : "Math3D"}</strong>
+                    </div>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                       <span>Payload</span>
                       <strong>{formatBenchmarkBytes(meshPipelineProfile?.memoryBytes)}</strong>

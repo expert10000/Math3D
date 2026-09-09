@@ -244,7 +244,7 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await page.getByTestId("mesh-analyze-range-preset-full").click();
     await expect(page.getByTestId("mesh-analyze-range-source")).not.toContainText(/clamped/i);
     await page.getByTestId("mesh-inspector-tab-diagnostics").click();
-    await expect(page.getByTestId("mesh-analyze-health-badge")).toContainText(/Mesh state:\s*Warning/i);
+    await expect(page.getByTestId("mesh-analyze-health-badge")).toContainText(/State check:\s*Warning/i);
     await expect(page.getByTestId("mesh-analyze-health-badge")).toContainText(/3 suspected intersections/i);
     await expect(page.getByTestId("mesh-inspector-diagnostics-card")).toContainText(/Warning/i);
     await expect(page.getByTestId("mesh-analyze-clean-counts")).toHaveCount(0);

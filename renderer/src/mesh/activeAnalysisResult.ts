@@ -298,8 +298,8 @@ export const selectMeshActiveAnalysisResult = (
         { label: "Self intersections", value: formatCount(input.diagnostics?.selfIntersectionPairs) },
       ],
       metadata: [
-        { label: "Method", value: "Robust topology diagnostics" },
-        { label: "Mesh state", value: input.diagnostics?.state ?? "Unverified" },
+        { label: "Method", value: input.diagnostics?.backend === "hybrid" ? "Math3D + CGAL state check" : "Math3D state check" },
+        { label: "State check", value: input.diagnostics?.state ?? "Unverified" },
         { label: "Computed", value: timestamp(input.diagnosticsUpdatedAt) },
       ],
     };

@@ -1,4 +1,5 @@
 import type { SurfaceMeshData, SurfaceMeshSource } from "./surfaceMesh";
+import { deriveMeshHealthState, type MeshHealthResult, type MeshHealthState } from "./meshHealth";
 
 export type MeshAnalysisResultKind =
   | "curvature"
@@ -24,7 +25,7 @@ export type MeshAnalysisParameterValue =
 
 export type MeshAnalysisParameters = Readonly<Record<string, MeshAnalysisParameterValue>>;
 
-export type MeshDiagnosticState = "Healthy" | "Warning" | "Invalid" | "Unverified";
+export type MeshDiagnosticState = MeshHealthState;
 
 export type MeshAnalysisResultDependency = {
   kind: MeshAnalysisResultKind;
@@ -41,51 +42,9 @@ export type MeshCurvatureAnalysisPayload = {
   k2: Float32Array;
 };
 
-export type MeshDiagnosticsAnalysisPayload = {
-  trianglesValid: boolean;
-  invalidFaceCount: number;
-  degenerateTriangleCount: number;
-  boundaryEdgeCount: number;
-  nonManifoldEdgeCount: number;
-  selfIntersectionPairs: number;
-  duplicateVertexCount: number;
-  duplicateVertexGroups: number[][];
-  eulerCharacteristic: number | null;
-  watertight: boolean | null;
-  boundaryLoopCount: number;
-  weldTolerance: number;
-  state: MeshDiagnosticState;
-  cleanMesh: boolean;
-  sphereSeamWarning: boolean;
-};
+export type MeshDiagnosticsAnalysisPayload = MeshHealthResult;
 
-type MeshDiagnosticStateInput = Pick<
-  MeshDiagnosticsAnalysisPayload,
-  | "trianglesValid"
-  | "invalidFaceCount"
-  | "degenerateTriangleCount"
-  | "boundaryEdgeCount"
-  | "nonManifoldEdgeCount"
-  | "selfIntersectionPairs"
-  | "duplicateVertexCount"
-  | "watertight"
->;
-
-export const deriveMeshDiagnosticState = (diagnostics: MeshDiagnosticStateInput): MeshDiagnosticState => {
-  if (
-    !diagnostics.trianglesValid ||
-    diagnostics.invalidFaceCount > 0 ||
-    diagnostics.degenerateTriangleCount > 0 ||
-    diagnostics.boundaryEdgeCount > 0 ||
-    diagnostics.nonManifoldEdgeCount > 0 ||
-    diagnostics.watertight === false
-  ) {
-    return "Invalid";
-  }
-  if (diagnostics.selfIntersectionPairs > 0 || diagnostics.duplicateVertexCount > 0) return "Warning";
-  if (diagnostics.watertight === true) return "Healthy";
-  return "Unverified";
-};
+export const deriveMeshDiagnosticState = deriveMeshHealthState;
 
 export type MeshAnalysisMeshIdentity = {
   meshId: string;
