@@ -2155,18 +2155,18 @@ type LargeMeshFastPreviewPresentation = {
   targetTriangles: number;
 };
 
-// Benchmark defaults are deliberately kept at today's Fast behavior. Keeping
-// them per model lets us tune a difficult mesh without changing every loader.
+// Keep benchmark presentation settings per model so difficult meshes can be
+// tuned independently while retaining a connected surface by default.
 const BENCHMARK_FAST_PREVIEW_PRESENTATIONS: Record<string, LargeMeshFastPreviewPresentation> = {
-  "stanford-bunny": { algorithm: "triangle-sample", targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET },
-  armadillo: { algorithm: "triangle-sample", targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET },
-  "dragon-medium": { algorithm: "triangle-sample", targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET },
-  "3dbenchy": { algorithm: "triangle-sample", targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET },
+  "stanford-bunny": { algorithm: "connected-cluster", targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET },
+  armadillo: { algorithm: "connected-cluster", targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET },
+  "dragon-medium": { algorithm: "connected-cluster", targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET },
+  "3dbenchy": { algorithm: "connected-cluster", targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET },
 };
 
 const getBenchmarkFastPreviewPresentation = (modelId: string): LargeMeshFastPreviewPresentation =>
   BENCHMARK_FAST_PREVIEW_PRESENTATIONS[modelId] ?? {
-    algorithm: "triangle-sample",
+    algorithm: "connected-cluster",
     targetTriangles: LARGE_MESH_FAST_PREVIEW_TRIANGLE_TARGET,
   };
 
@@ -2263,7 +2263,7 @@ type LargeSurfaceMeshFullPreviewJob = {
 const buildLargeSurfaceMeshDisplayProxy = (
   mesh: SurfaceMeshData,
   targetTriangles: number,
-  algorithm: FastPreviewProxyAlgorithm = "triangle-sample"
+  algorithm: FastPreviewProxyAlgorithm = "connected-cluster"
 ): SurfaceMeshData => {
   const fullTriangles = surfaceMeshTriangleCount(mesh);
   const sampleTriangles = Math.max(1, Math.min(Math.floor(targetTriangles), fullTriangles));
@@ -37387,7 +37387,7 @@ const App: React.FC = () => {
       : surfaceMeshTopologyHistoryPreviewEntry.snapshot;
   }, [surfaceMeshTopologyHistoryPreviewEntry, surfaceMeshTopologyHistoryPreviewMode]);
   const [meshFastPreviewAlgorithm, setMeshFastPreviewAlgorithm] =
-    useState<FastPreviewProxyAlgorithm>("triangle-sample");
+    useState<FastPreviewProxyAlgorithm>("connected-cluster");
   const [meshExplicitFullOverride, setMeshExplicitFullOverride] = useState(false);
   const largeSurfaceMeshDisplayProxy = useMemo(
     () => {

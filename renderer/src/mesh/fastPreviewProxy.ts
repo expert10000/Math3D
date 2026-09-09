@@ -191,7 +191,7 @@ const buildConnectedClusterProxy = (mesh: FastPreviewProxyInput, targetTriangles
 export const buildFastPreviewProxy = (
   mesh: FastPreviewProxyInput,
   targetTriangles: number,
-  algorithm: FastPreviewProxyAlgorithm
+  algorithm: FastPreviewProxyAlgorithm = "connected-cluster"
 ): FastPreviewProxyBuffers => {
   const fullTriangles = sourceTriangleCount(mesh);
   if (fullTriangles <= 0 || targetTriangles >= fullTriangles) {

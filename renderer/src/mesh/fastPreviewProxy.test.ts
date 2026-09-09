@@ -67,4 +67,9 @@ describe("fast mesh preview proxies", () => {
     expect(vertexCount).toBeLessThan(triangleCount * 3);
     expect(countComponents(vertexCount, indices)).toBeLessThan(triangleCount);
   });
+
+  it("uses the connected proxy by default", () => {
+    const proxy = buildFastPreviewProxy(makeGrid(64), 180);
+    expect(proxy.indices).not.toBeNull();
+  });
 });
