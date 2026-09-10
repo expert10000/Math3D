@@ -233,6 +233,7 @@ function summarizeArtifact(artifact, meshId, fileBytes) {
     "viewer:attributeUpdate",
     "viewer:geometryUpdate",
     "viewer:render",
+    "viewer:overlayBuild",
     "full:workerTransferPrepare",
     "full:workerBuild",
     "full:workerNormalCompute",
@@ -362,8 +363,8 @@ function writeMarkdownReport(report, outFile) {
   }
 
   lines.push("", "## UI / Interaction", "");
-  lines.push("| Mesh | React commit | Post-commit inspector | Sample set | Interaction med/p90 | Worst stall med/p90 |");
-  lines.push("| --- | ---: | ---: | ---: | ---: | ---: |");
+  lines.push("| Mesh | React commit | Post-commit inspector | Sample set | Overlay build | Interaction med/p90 | Worst stall med/p90 |");
+  lines.push("| --- | ---: | ---: | ---: | ---: | ---: | ---: |");
   for (const mesh of report.meshes) {
     lines.push(
       [
@@ -371,6 +372,7 @@ function writeMarkdownReport(report, outFile) {
         `${formatMs(mesh.phases["app:reactCommit"]?.median ?? null)} / ${formatMs(mesh.phases["app:reactCommit"]?.p90 ?? null)}`,
         `${formatMs(mesh.phases["app:postCommitInspectorState"]?.median ?? null)} / ${formatMs(mesh.phases["app:postCommitInspectorState"]?.p90 ?? null)}`,
         `${formatMs(mesh.phases["viewer:sampleSetBuilt"]?.median ?? null)} / ${formatMs(mesh.phases["viewer:sampleSetBuilt"]?.p90 ?? null)}`,
+        `${formatMs(mesh.phases["viewer:overlayBuild"]?.median ?? null)} / ${formatMs(mesh.phases["viewer:overlayBuild"]?.p90 ?? null)}`,
         `${formatMs(mesh.stats.interactionMedianMs.median)} / ${formatMs(mesh.stats.interactionP90Ms.p90)}`,
         `${formatMs(mesh.stats.worstStallMs.median)} / ${formatMs(mesh.stats.worstStallMs.p90)}`,
       ].join(" | ")

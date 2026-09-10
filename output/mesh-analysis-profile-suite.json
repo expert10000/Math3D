@@ -1,0 +1,48 @@
+{
+  "ok": true,
+  "generatedAt": "2026-09-10T11:15:51.139Z",
+  "results": [
+    {
+      "meshId": "stanford-bunny",
+      "ok": true,
+      "loadMs": 583,
+      "curvatureComputeMs": 69.09999999962747,
+      "curvatureQueueAndComputeMs": 273.59999999962747,
+      "surfaceFeaturesComputeMs": 26.100000001490116,
+      "surfaceFeaturesQueueAndComputeMs": 75.09999999962747,
+      "overlayReadyMs": 163.80000000074506,
+      "probeLatencyMs": 133.5,
+      "loadWorstUiBlockMs": 253.2000000011176,
+      "analysisWorstUiBlockMs": 253.2000000011176,
+      "memoryDeltaBytes": 87437312
+    },
+    {
+      "meshId": "armadillo",
+      "ok": true,
+      "loadMs": 869,
+      "curvatureComputeMs": 52.09999999962747,
+      "curvatureQueueAndComputeMs": 236.59999999962747,
+      "surfaceFeaturesComputeMs": 17,
+      "surfaceFeaturesQueueAndComputeMs": 57.90000000037253,
+      "overlayReadyMs": 234,
+      "probeLatencyMs": 207.5,
+      "loadWorstUiBlockMs": 217.60000000149012,
+      "analysisWorstUiBlockMs": 217.60000000149012,
+      "memoryDeltaBytes": 81137664
+    },
+    {
+      "meshId": "dragon-medium",
+      "ok": true,
+      "loadMs": 1146,
+      "curvatureComputeMs": 31.300000000745058,
+      "curvatureQueueAndComputeMs": 138.19999999925494,
+      "surfaceFeaturesComputeMs": 13.5,
+      "surfaceFeaturesQueueAndComputeMs": 52.40000000037253,
+      "overlayReadyMs": 225.69999999925494,
+      "probeLatencyMs": 109.40000000037253,
+      "loadWorstUiBlockMs": 1050.699999999255,
+      "analysisWorstUiBlockMs": 0,
+      "memoryDeltaBytes": 13033472
+    }
+  ]
+}

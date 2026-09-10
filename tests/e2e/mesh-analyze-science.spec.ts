@@ -53,8 +53,18 @@ async function openGeometryPrimitiveInMeshAnalyze(page: Page, primitive: "sphere
   await expect(page.getByText(/Mesh \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/MESH \/ ANALYZE/i).first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId("mesh-analysis-context-breadcrumb")).toContainText(/Mesh.*Analysis/i);
-  await expect(page.getByTestId("mesh-analysis-context-validation")).toBeVisible();
-  await expect(page.getByTestId("mesh-analyze-return-geometry")).toHaveCount(0);
+    await expect(page.getByTestId("mesh-analysis-context-validation")).toBeVisible();
+    await expect(page.getByTestId("mesh-analyze-target-ghost-others")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("mesh-analyze-construction-overlays")).not.toBeChecked();
+    await page.getByTestId("mesh-analyze-target-focus-target").click();
+    await expect(page.getByTestId("mesh-analyze-target-focus-target")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("mesh-analyze-target-show-scene").click();
+    await expect(page.getByTestId("mesh-analyze-target-show-scene")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("mesh-analyze-target-ghost-others").click();
+    await page.getByTestId("mesh-analyze-construction-overlays").check();
+    await expect(page.getByTestId("mesh-analyze-construction-overlays")).toBeChecked();
+    await page.getByTestId("mesh-analyze-construction-overlays").uncheck();
+    await expect(page.getByTestId("mesh-analyze-return-geometry")).toHaveCount(0);
   await expect(page.getByTestId("mesh-open-in-geometry")).toBeVisible();
   await expect(page.getByTestId("mesh-viewport-command-preview")).toHaveCount(0);
   await expect(page.getByText("Show Gauss map (S²)", { exact: true })).toHaveCount(0);
@@ -113,6 +123,7 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await page.getByTestId("mesh-workspace-left-tab-analyze").click();
     await expect(page.getByTestId("mesh-analyze-taxonomy")).toBeVisible();
     await expect(page.getByTestId("mesh-analyze-curvature-config")).toBeVisible();
+    await expect(page.getByTestId("mesh-analyze-curvature-worker-status")).toContainText(/Worker: (ready|running|publishing)/i);
     await expect(page.getByTestId("mesh-analyze-science-overlay")).toHaveCount(0);
     await page.getByTestId("mesh-analyze-hud-toggle").click();
     await expect(page.getByTestId("mesh-analyze-science-overlay")).toBeVisible();

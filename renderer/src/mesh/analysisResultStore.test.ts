@@ -103,6 +103,38 @@ describe("mesh analysis result store", () => {
     expect(meshAnalysisResultKindsForMesh(store, mesh)).toEqual([]);
   });
 
+  it("tracks queued and cancelled worker jobs without publishing partial results", () => {
+    const mesh = createMeshAnalysisMeshIdentity(makeMesh("Triangle"));
+    let store = upsertMeshAnalysisResult(createMeshAnalysisResultStore(), {
+      kind: "curvature",
+      mesh,
+      state: "queued",
+      progress: 0,
+      payload: null,
+      now: 1,
+    });
+    expect(getMeshAnalysisResult(store, mesh, "curvature")).toMatchObject({
+      state: "queued",
+      progress: 0,
+      payload: null,
+    });
+    store = upsertMeshAnalysisResult(store, {
+      kind: "curvature",
+      mesh,
+      state: "cancelled",
+      progress: null,
+      error: "cancelled",
+      now: 2,
+    });
+    expect(getMeshAnalysisResult(store, mesh, "curvature")).toMatchObject({
+      state: "cancelled",
+      progress: null,
+      payload: null,
+      error: "cancelled",
+    });
+    expect(meshAnalysisResultKindsForMesh(store, mesh)).toEqual([]);
+  });
+
   it("matches cache entries only when their input parameters match", () => {
     const mesh = createMeshAnalysisMeshIdentity(makeMesh("Triangle"));
     const store = upsertMeshAnalysisResult(createMeshAnalysisResultStore(), {

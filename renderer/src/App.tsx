@@ -561,7 +561,6 @@ import {
   mergeCgalMeshHealthResult,
 } from "./mesh/meshHealth";
 import {
-  computeMeshDifferentialGeometry,
   readMeshDifferentialGeometryProbe,
   TRIANGLE_MESH_CURVATURE_PARAMETERS as MESH_DIFFERENTIAL_GEOMETRY_PARAMETERS,
   type MeshDifferentialGeometryProbe,
@@ -571,10 +570,13 @@ import {
   DEFAULT_SURFACE_FEATURE_PARAMETERS,
   SURFACE_FEATURE_CLASSES,
   SURFACE_FEATURE_LABELS,
-  extractSurfaceFeatures,
   type SurfaceFeatureClass,
   type SurfaceFeatureExtractionResult,
 } from "./mesh/surfaceFeatureExtraction";
+import type {
+  MeshAnalysisWorkerMessage,
+  MeshAnalysisWorkerPhase,
+} from "./workers/meshAnalysisWorkerTypes";
 import {
   MESH_QUALITY_METRIC_OPTIONS,
   selectMeshActiveAnalysisResult,
@@ -1020,6 +1022,7 @@ type DisplayMode = "workspace" | "present" | "inspect";
 type ViewportPreset = "minimal" | "study" | "analysis" | "debug";
 type MeshAnalyzeMode = "clean" | "curvature" | "quality" | "diagnostics" | "probe";
 type MeshAnalyzeViewPreset = "clean" | "directions" | "gauss" | "custom";
+type MeshAnalyzeTargetDisplay = "focus-target" | "ghost-others" | "show-scene";
 type GeometryViewportQualityMode = "auto" | "fast-preview" | "full";
 type GeometryCameraViewPreset = "3d" | "planar";
 type GeometryViewportSettings = {
@@ -5258,7 +5261,8 @@ const normalizeMeshWorkspaceEntryOverlayState = (value: unknown): MeshWorkspaceE
           paletteInverted: Boolean(rawAnalysis.paletteInverted),
           rangeMode: rawAnalysis.rangeMode === "selected" ? "selected" : "whole",
           status:
-            status === "ready" || status === "running" || status === "deferred" || status === "stale" || status === "error"
+            status === "ready" || status === "queued" || status === "running" || status === "cancelled" ||
+            status === "deferred" || status === "stale" || status === "error"
               ? status
               : "not-requested",
           progress: typeof rawAnalysis.progress === "number" && Number.isFinite(rawAnalysis.progress)
@@ -32081,6 +32085,9 @@ const App: React.FC = () => {
     (geometryRightPanelTab !== "selection" ||
       geometryProbeSelectionMode === "object");
   const [analysisFocusedSection, setAnalysisFocusedSection] = useState<AnalysisFocusedSection>("vector-calculus");
+  const [meshAnalyzeTargetDisplay, setMeshAnalyzeTargetDisplay] =
+    useState<MeshAnalyzeTargetDisplay>("ghost-others");
+  const [meshAnalyzeConstructionOverlaysVisible, setMeshAnalyzeConstructionOverlaysVisible] = useState(false);
   const [surfaceFeatureClass, setSurfaceFeatureClass] = useState<SurfaceFeatureClass>("high-curvature");
   const [surfaceFeatureOverlayVisible, setSurfaceFeatureOverlayVisible] = useState(false);
   const [surfaceFeatureShowEdges, setSurfaceFeatureShowEdges] = useState(true);
@@ -33907,6 +33914,19 @@ const App: React.FC = () => {
   const [meshOperationPreviewTargetFaces, setMeshOperationPreviewTargetFaces] = useState(20000);
   const [meshOperationPreviewUseDecimate, setMeshOperationPreviewUseDecimate] = useState(true);
   const [meshWorkspaceLeftTab, setMeshWorkspaceLeftTab] = useState<MeshWorkspaceLeftTab>("operations");
+  const meshAnalyzeContextActiveRef = useRef(false);
+  useEffect(() => {
+    const active = surfaceViewerKind === "mesh" && meshWorkspaceLeftTab === "analyze";
+    if (active && !meshAnalyzeContextActiveRef.current) {
+      setMeshAnalyzeTargetDisplay("ghost-others");
+      setMeshAnalyzeConstructionOverlaysVisible(false);
+    }
+    meshAnalyzeContextActiveRef.current = active;
+  }, [meshWorkspaceLeftTab, surfaceViewerKind]);
+  const hideMeshAnalyzeConstructionOverlays =
+    surfaceViewerKind === "mesh" &&
+    meshWorkspaceLeftTab === "analyze" &&
+    !meshAnalyzeConstructionOverlaysVisible;
   const [meshImportPanelExpanded, setMeshImportPanelExpanded] = useState(false);
   const [meshWorkspaceActiveMeshVisible, setMeshWorkspaceActiveMeshVisible] = useState(true);
   const [meshWorkspaceGeometryLinks, setMeshWorkspaceGeometryLinks] = useState<MeshWorkspaceGeometryLink[]>([]);
@@ -36919,6 +36939,17 @@ const App: React.FC = () => {
   const complexMapOverlayPointsActive = isComplexMapMesh ? complexMapOverlayPointSets : null;
   const meshQualityWorkerRef = useRef<Worker | null>(null);
   const meshQualityJobRef = useRef<string | null>(null);
+  const meshDifferentialWorkerRef = useRef<Worker | null>(null);
+  const meshDifferentialJobRef = useRef<string | null>(null);
+  const meshSurfaceFeatureWorkerRef = useRef<Worker | null>(null);
+  const meshSurfaceFeatureJobRef = useRef<string | null>(null);
+  const [meshDifferentialPhase, setMeshDifferentialPhase] =
+    useState<MeshAnalysisWorkerPhase | "ready" | "cancelled" | "error" | "idle">("idle");
+  const [meshDifferentialProgress, setMeshDifferentialProgress] = useState(0);
+  const [meshDifferentialError, setMeshDifferentialError] = useState<string | null>(null);
+  const [meshDifferentialComputeNonce, setMeshDifferentialComputeNonce] = useState(0);
+  const [meshSurfaceFeaturePhase, setMeshSurfaceFeaturePhase] =
+    useState<MeshAnalysisWorkerPhase | "ready" | "cancelled" | "error" | "idle">("idle");
   const [meshQualityHighAspectThreshold, setMeshQualityHighAspectThreshold] = useState(8);
   const [meshQualityMaxListedDefects, setMeshQualityMaxListedDefects] = useState(120);
   const [meshAnalyzeQualityMetric, setMeshAnalyzeQualityMetric] = useState<MeshQualityMetricKey>("aspectRatio");
@@ -36988,7 +37019,7 @@ const App: React.FC = () => {
         kind: "quality",
         variant: meshQualityResultVariant,
         mesh: activeMeshAnalysisIdentity,
-        state: "error",
+        state: "cancelled",
         progress: null,
         error: "Mesh quality computation canceled.",
       }));
@@ -37054,7 +37085,7 @@ const App: React.FC = () => {
         kind: "quality",
         variant: meshQualityResultVariant,
         mesh: analysisIdentity,
-        state: "running",
+        state: "queued",
         progress: 0,
         dependencies: [],
         error: null,
@@ -37062,7 +37093,7 @@ const App: React.FC = () => {
     }
     const onMessage = (event: MessageEvent<MeshQualityWorkerMessage>) => {
       const msg = event.data;
-      if (!msg || msg.jobId !== jobId) return;
+      if (!msg || msg.jobId !== jobId || meshQualityJobRef.current !== jobId) return;
       if (msg.type === "progress") {
         setMeshQualityPhase(msg.phase);
         const progress = Math.max(0, Math.min(1, Number(msg.progress ?? 0)));
@@ -38285,21 +38316,24 @@ const App: React.FC = () => {
   );
   const combinedOverlayMeshGroups = useMemo<OverlayMeshGroup[] | null>(() => {
     const groups: OverlayMeshGroup[] = [];
-    if (surfaceMeshTopologyHistoryComparisonMeshGroups?.length) {
-      groups.push(...surfaceMeshTopologyHistoryComparisonMeshGroups);
+    if (!hideMeshAnalyzeConstructionOverlays) {
+      if (surfaceMeshTopologyHistoryComparisonMeshGroups?.length) {
+        groups.push(...surfaceMeshTopologyHistoryComparisonMeshGroups);
+      }
+      if (surfaceMeshTopologyGhostMeshGroups?.length) groups.push(...surfaceMeshTopologyGhostMeshGroups);
+      if (surfaceMeshAccessibleCommandPreviewOverlays?.meshGroups?.length) {
+        groups.push(...surfaceMeshAccessibleCommandPreviewOverlays.meshGroups);
+      }
+      if (meshAppliedContextualViewportPreviewOverlays?.meshGroups?.length) {
+        groups.push(...meshAppliedContextualViewportPreviewOverlays.meshGroups);
+      }
+      if (surfaceMeshTopologySelectionFaceMeshGroups?.length) groups.push(...surfaceMeshTopologySelectionFaceMeshGroups);
+      if (surfaceMeshTopologyFeedbackMeshGroups?.length) groups.push(...surfaceMeshTopologyFeedbackMeshGroups);
     }
-    if (surfaceMeshTopologyGhostMeshGroups?.length) groups.push(...surfaceMeshTopologyGhostMeshGroups);
-    if (surfaceMeshAccessibleCommandPreviewOverlays?.meshGroups?.length) {
-      groups.push(...surfaceMeshAccessibleCommandPreviewOverlays.meshGroups);
-    }
-    if (meshAppliedContextualViewportPreviewOverlays?.meshGroups?.length) {
-      groups.push(...meshAppliedContextualViewportPreviewOverlays.meshGroups);
-    }
-    if (surfaceMeshTopologySelectionFaceMeshGroups?.length) groups.push(...surfaceMeshTopologySelectionFaceMeshGroups);
-    if (surfaceMeshTopologyFeedbackMeshGroups?.length) groups.push(...surfaceMeshTopologyFeedbackMeshGroups);
     return groups.length ? groups : null;
   }, [
     meshAppliedContextualViewportPreviewOverlays,
+    hideMeshAnalyzeConstructionOverlays,
     surfaceMeshAccessibleCommandPreviewOverlays,
     surfaceMeshTopologyFeedbackMeshGroups,
     surfaceMeshTopologyGhostMeshGroups,
@@ -38310,18 +38344,21 @@ const App: React.FC = () => {
     const sets: OverlayPointSet[] = [];
     if (complexMapOverlayPointsActive?.length) sets.push(...complexMapOverlayPointsActive);
     if (meshQualityOverlayPointSets?.length) sets.push(...meshQualityOverlayPointSets);
-    if (surfaceMeshTopologyOverlayPointSets?.length) sets.push(...surfaceMeshTopologyOverlayPointSets);
-    if (surfaceMeshTopologyGhostPointSets?.length) sets.push(...surfaceMeshTopologyGhostPointSets);
-    if (surfaceMeshAccessibleCommandPreviewOverlays?.pointSets?.length) {
-      sets.push(...surfaceMeshAccessibleCommandPreviewOverlays.pointSets);
+    if (!hideMeshAnalyzeConstructionOverlays) {
+      if (surfaceMeshTopologyOverlayPointSets?.length) sets.push(...surfaceMeshTopologyOverlayPointSets);
+      if (surfaceMeshTopologyGhostPointSets?.length) sets.push(...surfaceMeshTopologyGhostPointSets);
+      if (surfaceMeshAccessibleCommandPreviewOverlays?.pointSets?.length) {
+        sets.push(...surfaceMeshAccessibleCommandPreviewOverlays.pointSets);
+      }
+      if (meshAppliedContextualViewportPreviewOverlays?.pointSets?.length) {
+        sets.push(...meshAppliedContextualViewportPreviewOverlays.pointSets);
+      }
+      if (surfaceMeshTopologyFeedbackPointSets?.length) sets.push(...surfaceMeshTopologyFeedbackPointSets);
     }
-    if (meshAppliedContextualViewportPreviewOverlays?.pointSets?.length) {
-      sets.push(...meshAppliedContextualViewportPreviewOverlays.pointSets);
-    }
-    if (surfaceMeshTopologyFeedbackPointSets?.length) sets.push(...surfaceMeshTopologyFeedbackPointSets);
     return sets.length ? sets : null;
   }, [
     complexMapOverlayPointsActive,
+    hideMeshAnalyzeConstructionOverlays,
     meshAppliedContextualViewportPreviewOverlays,
     meshQualityOverlayPointSets,
     surfaceMeshAccessibleCommandPreviewOverlays,
@@ -38331,17 +38368,18 @@ const App: React.FC = () => {
   ]);
   const combinedOverlayLabelSets = useMemo<OverlayLabelSet[] | null>(() => {
     const labels: OverlayLabelSet[] = [];
-    if (surfaceMeshTopologySelectionLabelSets?.length) labels.push(...surfaceMeshTopologySelectionLabelSets);
+    if (!hideMeshAnalyzeConstructionOverlays && surfaceMeshTopologySelectionLabelSets?.length) labels.push(...surfaceMeshTopologySelectionLabelSets);
     if (meshBooleanReviewProblemOverlays.labelSets?.length) labels.push(...meshBooleanReviewProblemOverlays.labelSets);
-    if (surfaceMeshAccessibleCommandPreviewOverlays?.labelSets?.length) {
+    if (!hideMeshAnalyzeConstructionOverlays && surfaceMeshAccessibleCommandPreviewOverlays?.labelSets?.length) {
       labels.push(...surfaceMeshAccessibleCommandPreviewOverlays.labelSets);
     }
-    if (meshAppliedContextualViewportPreviewOverlays?.labelSets?.length) {
+    if (!hideMeshAnalyzeConstructionOverlays && meshAppliedContextualViewportPreviewOverlays?.labelSets?.length) {
       labels.push(...meshAppliedContextualViewportPreviewOverlays.labelSets);
     }
     return labels.length ? labels : null;
   }, [
     meshBooleanReviewProblemOverlays.labelSets,
+    hideMeshAnalyzeConstructionOverlays,
     meshAppliedContextualViewportPreviewOverlays,
     surfaceMeshAccessibleCommandPreviewOverlays,
     surfaceMeshTopologySelectionLabelSets,
@@ -41635,6 +41673,7 @@ const App: React.FC = () => {
           phases = appendMeshPipelineProfilePhase(phases, "viewer:sampleSet", trace.sampleSetMs ?? 0);
           phases = appendMeshPipelineProfilePhase(phases, "viewer:bounds", trace.boundsMs ?? 0);
           phases = appendMeshPipelineProfilePhase(phases, "viewer:render", trace.renderMs ?? 0);
+          phases = appendMeshPipelineProfilePhase(phases, "viewer:overlayBuild", trace.overlayBuildMs ?? 0);
         }
         const next: MeshPipelineProfileRun = {
           ...current,
@@ -46077,23 +46116,14 @@ case "mobius":
     [activeMeshAnalysisIdentity, meshAnalysisResultStore]
   );
   const surfaceMeshCurvatureComputation = useMemo(() => {
-    if (surfaceViewerKind !== "mesh" && surfaceViewerKind !== "complex") return null;
-    if (!surfaceMeshData?.positions?.length) return null;
-    if (surfaceMeshLargeAnalysisDeferred) return null;
-    if (cachedMeshCurvatureResult?.state === "ready" && cachedMeshCurvatureResult.payload) {
-      const durationMs = cachedMeshCurvatureResult.computeTimeMs;
-      return {
-        payload: cachedMeshCurvatureResult.payload,
-        durationMs: Number.isFinite(durationMs) ? durationMs : null,
-        cacheHit: true,
-      };
-    }
-    const startedAt = performance.now();
-    const payload = computeMeshDifferentialGeometry(surfaceMeshData);
-    return payload
-      ? { payload, durationMs: performance.now() - startedAt, cacheHit: false }
-      : null;
-  }, [cachedMeshCurvatureResult, surfaceMeshData, surfaceMeshLargeAnalysisDeferred, surfaceViewerKind]);
+    if (cachedMeshCurvatureResult?.state !== "ready" || !cachedMeshCurvatureResult.payload) return null;
+    const durationMs = cachedMeshCurvatureResult.computeTimeMs;
+    return {
+      payload: cachedMeshCurvatureResult.payload,
+      durationMs: Number.isFinite(durationMs) ? durationMs : null,
+      cacheHit: meshDifferentialComputeNonce === 0,
+    };
+  }, [cachedMeshCurvatureResult, meshDifferentialComputeNonce]);
   const surfaceMeshCurvatures = surfaceMeshCurvatureComputation?.payload ?? null;
   const surfaceMeshPrincipalField = useMemo(() => {
     if (!surfaceMeshCurvatures || !surfaceMeshData?.positions?.length) return null;
@@ -46109,72 +46139,189 @@ case "mobius":
       index: surfaceMeshData.indices,
     };
   }, [surfaceMeshCurvatures, surfaceMeshData]);
+  const terminateMeshDifferentialWorker = useCallback(() => {
+    meshDifferentialWorkerRef.current?.terminate();
+    meshDifferentialWorkerRef.current = null;
+  }, []);
+  const handleCancelMeshDifferentialCompute = useCallback(() => {
+    const jobId = meshDifferentialJobRef.current;
+    if (!jobId || !activeMeshAnalysisIdentity) return;
+    meshDifferentialJobRef.current = null;
+    terminateMeshDifferentialWorker();
+    setMeshDifferentialPhase("cancelled");
+    setMeshDifferentialProgress(0);
+    setMeshDifferentialError("Differential-geometry computation cancelled.");
+    setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+      kind: "curvature",
+      variant: "discrete-differential-geometry-v2",
+      mesh: activeMeshAnalysisIdentity,
+      parameters: MESH_DIFFERENTIAL_GEOMETRY_PARAMETERS,
+      state: "cancelled",
+      progress: null,
+      error: "Differential-geometry computation cancelled.",
+    }));
+    recordMeshDebugEvent({
+      kind: "phase",
+      label: "analysis:curvatureCancelled",
+      details: { jobId, meshRevision: activeMeshAnalysisIdentity.revision },
+    });
+  }, [activeMeshAnalysisIdentity, recordMeshDebugEvent, terminateMeshDifferentialWorker]);
+  useEffect(() => () => terminateMeshDifferentialWorker(), [terminateMeshDifferentialWorker]);
   useEffect(() => {
-    if (!activeMeshAnalysisIdentity || !surfaceMeshCurvatureComputation) return;
-    setMeshAnalysisResultStore((previous) => {
-      const existingCurvature = getMeshAnalysisResult<MeshCurvatureAnalysisPayload>(
-        previous,
-        activeMeshAnalysisIdentity,
-        "curvature",
-        "discrete-differential-geometry-v2"
-      );
-      const existingNormals = getMeshAnalysisResult(previous, activeMeshAnalysisIdentity, "normals", "area-weighted-v1");
-      const existingDirections = getMeshAnalysisResult(previous, activeMeshAnalysisIdentity, "principal-directions", "shape-operator-v2");
-      if (
-        existingCurvature?.payload === surfaceMeshCurvatureComputation.payload &&
-        (existingNormals?.payload as { values?: unknown } | null)?.values === surfaceMeshCurvatureComputation.payload.normals &&
-        (existingDirections?.payload as { d1?: unknown } | null)?.d1 === surfaceMeshCurvatureComputation.payload.d1
-      ) return previous;
-      let next = upsertMeshAnalysisResult(previous, {
-        kind: "normals",
-        variant: "area-weighted-v1",
-        mesh: activeMeshAnalysisIdentity,
-        parameters: { method: "area-weighted-input-winding" },
-        payload: {
-          values: surfaceMeshCurvatureComputation.payload.normals,
-          validMask: surfaceMeshCurvatureComputation.payload.validMask,
-        },
-      });
-      next = upsertMeshAnalysisResult(next, {
-        kind: "curvature",
-        variant: "discrete-differential-geometry-v2",
-        mesh: activeMeshAnalysisIdentity,
-        parameters: MESH_DIFFERENTIAL_GEOMETRY_PARAMETERS,
-        computeTimeMs: surfaceMeshCurvatureComputation.durationMs,
-        payload: surfaceMeshCurvatureComputation.payload,
-      });
-      const normalResult = getMeshAnalysisResult(next, activeMeshAnalysisIdentity, "normals", "area-weighted-v1");
-      const curvatureResult = getMeshAnalysisResult(next, activeMeshAnalysisIdentity, "curvature", "discrete-differential-geometry-v2");
-      return upsertMeshAnalysisResult(next, {
-        kind: "principal-directions",
-        variant: "shape-operator-v2",
-        mesh: activeMeshAnalysisIdentity,
-        parameters: { method: "weighted-normal-section-shape-operator", ordering: "k1>=k2" },
-        dependencies: [
-          {
+    if ((surfaceViewerKind !== "mesh" && surfaceViewerKind !== "complex") ||
+        !surfaceMeshData?.positions?.length || !activeMeshAnalysisIdentity) {
+      meshDifferentialJobRef.current = null;
+      terminateMeshDifferentialWorker();
+      setMeshDifferentialPhase("idle");
+      setMeshDifferentialProgress(0);
+      setMeshDifferentialError(null);
+      return;
+    }
+    if (cachedMeshCurvatureResult?.state === "ready" && cachedMeshCurvatureResult.payload && meshDifferentialComputeNonce === 0) {
+      setMeshDifferentialPhase("ready");
+      setMeshDifferentialProgress(1);
+      setMeshDifferentialError(null);
+      return;
+    }
+    terminateMeshDifferentialWorker();
+    const worker = new Worker(new URL("./workers/meshAnalysisWorker.ts", import.meta.url), { type: "module" });
+    const jobId = makeId();
+    const analysisIdentity = activeMeshAnalysisIdentity;
+    meshDifferentialWorkerRef.current = worker;
+    meshDifferentialJobRef.current = jobId;
+    setMeshDifferentialPhase("queued");
+    setMeshDifferentialProgress(0);
+    setMeshDifferentialError(null);
+    setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+      kind: "curvature",
+      variant: "discrete-differential-geometry-v2",
+      mesh: analysisIdentity,
+      parameters: MESH_DIFFERENTIAL_GEOMETRY_PARAMETERS,
+      state: "queued",
+      progress: 0,
+      dependencies: [],
+      error: null,
+    }));
+    const queuedAt = benchmarkNowMs();
+    recordMeshDebugEvent({
+      kind: "phase",
+      label: "analysis:curvatureQueued",
+      details: {
+        jobId,
+        meshRevision: analysisIdentity.revision,
+        vertices: analysisIdentity.vertexCount,
+        triangles: analysisIdentity.faceCount,
+      },
+    });
+    const onMessage = (event: MessageEvent<MeshAnalysisWorkerMessage>) => {
+      const message = event.data;
+      if (!message || message.jobId !== jobId || message.meshRevision !== analysisIdentity.revision ||
+          meshDifferentialJobRef.current !== jobId) return;
+      if (message.type === "progress") {
+        setMeshDifferentialPhase(message.phase);
+        setMeshDifferentialProgress(Math.max(0, Math.min(1, message.progress)));
+        setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+          kind: "curvature",
+          variant: "discrete-differential-geometry-v2",
+          mesh: analysisIdentity,
+          parameters: MESH_DIFFERENTIAL_GEOMETRY_PARAMETERS,
+          state: "running",
+          progress: message.progress,
+          dependencies: [],
+          error: null,
+        }));
+        return;
+      }
+      if (message.type === "differential-result" && message.ok) {
+        setMeshAnalysisResultStore((previous) => {
+          let next = upsertMeshAnalysisResult(previous, {
             kind: "normals",
             variant: "area-weighted-v1",
-            state: normalResult?.state ?? "stale",
-            key: meshAnalysisResultKey(activeMeshAnalysisIdentity, "normals", "area-weighted-v1"),
-            resultVersion: normalResult?.resultVersion,
-          },
-          {
+            mesh: analysisIdentity,
+            parameters: { method: "area-weighted-input-winding" },
+            payload: { values: message.result.normals, validMask: message.result.validMask },
+          });
+          next = upsertMeshAnalysisResult(next, {
             kind: "curvature",
             variant: "discrete-differential-geometry-v2",
-            state: curvatureResult?.state ?? "stale",
-            key: meshAnalysisResultKey(activeMeshAnalysisIdentity, "curvature", "discrete-differential-geometry-v2"),
-            resultVersion: curvatureResult?.resultVersion,
+            mesh: analysisIdentity,
+            parameters: MESH_DIFFERENTIAL_GEOMETRY_PARAMETERS,
+            state: "ready",
+            progress: 1,
+            computeTimeMs: message.computeTimeMs,
+            payload: message.result,
+            error: null,
+          });
+          const normalResult = getMeshAnalysisResult(next, analysisIdentity, "normals", "area-weighted-v1");
+          const curvatureResult = getMeshAnalysisResult(next, analysisIdentity, "curvature", "discrete-differential-geometry-v2");
+          return upsertMeshAnalysisResult(next, {
+            kind: "principal-directions",
+            variant: "shape-operator-v2",
+            mesh: analysisIdentity,
+            parameters: { method: "weighted-normal-section-shape-operator", ordering: "k1>=k2" },
+            dependencies: [
+              { kind: "normals", variant: "area-weighted-v1", state: normalResult?.state ?? "stale", key: meshAnalysisResultKey(analysisIdentity, "normals", "area-weighted-v1"), resultVersion: normalResult?.resultVersion },
+              { kind: "curvature", variant: "discrete-differential-geometry-v2", state: curvatureResult?.state ?? "stale", key: meshAnalysisResultKey(analysisIdentity, "curvature", "discrete-differential-geometry-v2"), resultVersion: curvatureResult?.resultVersion },
+            ],
+            payload: { d1: message.result.d1, d2: message.result.d2, validMask: message.result.directionValidMask, warningMask: message.result.warningMask },
+          });
+        });
+        setMeshDifferentialPhase("ready");
+        setMeshDifferentialProgress(1);
+        setMeshDifferentialError(null);
+        setMeshDifferentialComputeNonce(0);
+        recordMeshDebugEvent({
+          kind: "phase",
+          label: "analysis:curvatureWorker",
+          ms: message.computeTimeMs,
+          details: {
+            queueAndComputeMs: Math.max(0, benchmarkNowMs() - queuedAt),
+            meshRevision: analysisIdentity.revision,
+            vertices: analysisIdentity.vertexCount,
+            triangles: analysisIdentity.faceCount,
           },
-        ],
-        payload: {
-          d1: surfaceMeshCurvatureComputation.payload.d1,
-          d2: surfaceMeshCurvatureComputation.payload.d2,
-          validMask: surfaceMeshCurvatureComputation.payload.directionValidMask,
-          warningMask: surfaceMeshCurvatureComputation.payload.warningMask,
-        },
-      });
+        });
+      } else if (message.type === "error") {
+        setMeshDifferentialPhase("error");
+        setMeshDifferentialError(message.error);
+        setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+          kind: "curvature",
+          variant: "discrete-differential-geometry-v2",
+          mesh: analysisIdentity,
+          parameters: MESH_DIFFERENTIAL_GEOMETRY_PARAMETERS,
+          state: "error",
+          progress: null,
+          error: message.error,
+        }));
+      }
+      meshDifferentialJobRef.current = null;
+      if (meshDifferentialWorkerRef.current === worker) meshDifferentialWorkerRef.current = null;
+      worker.removeEventListener("message", onMessage);
+      worker.terminate();
+    };
+    worker.addEventListener("message", onMessage);
+    worker.postMessage({
+      type: "compute-differential",
+      jobId,
+      meshRevision: analysisIdentity.revision,
+      mesh: { positions: surfaceMeshData.positions, indices: surfaceMeshData.indices ?? null },
     });
-  }, [activeMeshAnalysisIdentity, surfaceMeshCurvatureComputation]);
+    return () => {
+      worker.removeEventListener("message", onMessage);
+      if (meshDifferentialWorkerRef.current === worker) {
+        worker.terminate();
+        meshDifferentialWorkerRef.current = null;
+      }
+    };
+  }, [
+    activeMeshAnalysisIdentity,
+    cachedMeshCurvatureResult,
+    meshDifferentialComputeNonce,
+    recordMeshDebugEvent,
+    surfaceMeshData,
+    surfaceViewerKind,
+    terminateMeshDifferentialWorker,
+  ]);
 
   const surfaceFeatureParameters = useMemo(() => ({
     version: 1,
@@ -46201,70 +46348,162 @@ case "mobius":
     [activeMeshAnalysisIdentity, meshAnalysisResultStore, surfaceFeatureParameters]
   );
   const surfaceFeatureComputation = useMemo(() => {
-    if (surfaceViewerKind !== "mesh" || !surfaceMeshData || !surfaceMeshCurvatures) return null;
-    if (surfaceMeshLargeAnalysisDeferred) return null;
-    if (cachedSurfaceFeatureResult?.payload) {
-      return {
-        payload: cachedSurfaceFeatureResult.payload,
-        computeTimeMs: cachedSurfaceFeatureResult.computeTimeMs,
-        cacheHit: true,
-      };
-    }
-    const startedAt = performance.now();
+    if (cachedSurfaceFeatureResult?.state !== "ready" || !cachedSurfaceFeatureResult.payload) return null;
     return {
-      payload: extractSurfaceFeatures(surfaceMeshData, surfaceMeshCurvatures, surfaceFeatureParameters),
-      computeTimeMs: performance.now() - startedAt,
-      cacheHit: false,
+      payload: cachedSurfaceFeatureResult.payload,
+      computeTimeMs: cachedSurfaceFeatureResult.computeTimeMs,
+      cacheHit: true,
+    };
+  }, [cachedSurfaceFeatureResult]);
+  const surfaceFeatureResult = surfaceFeatureComputation?.payload ?? null;
+  const terminateMeshSurfaceFeatureWorker = useCallback(() => {
+    meshSurfaceFeatureWorkerRef.current?.terminate();
+    meshSurfaceFeatureWorkerRef.current = null;
+  }, []);
+  const handleCancelMeshSurfaceFeatureCompute = useCallback(() => {
+    if (!meshSurfaceFeatureJobRef.current || !activeMeshAnalysisIdentity) return;
+    meshSurfaceFeatureJobRef.current = null;
+    terminateMeshSurfaceFeatureWorker();
+    setMeshSurfaceFeaturePhase("cancelled");
+    setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+      kind: "surface-features",
+      variant: "classification-v1",
+      mesh: activeMeshAnalysisIdentity,
+      parameters: surfaceFeatureParameters,
+      state: "cancelled",
+      progress: null,
+      error: "Surface-feature computation cancelled.",
+    }));
+  }, [activeMeshAnalysisIdentity, surfaceFeatureParameters, terminateMeshSurfaceFeatureWorker]);
+  useEffect(() => () => terminateMeshSurfaceFeatureWorker(), [terminateMeshSurfaceFeatureWorker]);
+  useEffect(() => {
+    if (surfaceViewerKind !== "mesh" || !surfaceMeshData?.positions?.length ||
+        !surfaceMeshCurvatures || !activeMeshAnalysisIdentity) {
+      meshSurfaceFeatureJobRef.current = null;
+      terminateMeshSurfaceFeatureWorker();
+      setMeshSurfaceFeaturePhase("idle");
+      return;
+    }
+    if (cachedSurfaceFeatureResult?.state === "ready" && cachedSurfaceFeatureResult.payload) {
+      setMeshSurfaceFeaturePhase("ready");
+      return;
+    }
+    const dependencySpecs = [
+      ["normals", "area-weighted-v1"],
+      ["curvature", "discrete-differential-geometry-v2"],
+      ["principal-directions", "shape-operator-v2"],
+    ] as const;
+    const dependencies = dependencySpecs.map(([kind, variant]) => {
+      const dependency = getMeshAnalysisResult(meshAnalysisResultStore, activeMeshAnalysisIdentity, kind, variant);
+      return {
+        kind,
+        variant,
+        state: dependency?.state ?? "stale" as MeshAnalysisResultState,
+        key: meshAnalysisResultKey(activeMeshAnalysisIdentity, kind, variant),
+        resultVersion: dependency?.resultVersion,
+      };
+    });
+    if (dependencies.some((dependency) => dependency.state !== "ready")) return;
+    terminateMeshSurfaceFeatureWorker();
+    const worker = new Worker(new URL("./workers/meshAnalysisWorker.ts", import.meta.url), { type: "module" });
+    const jobId = makeId();
+    const analysisIdentity = activeMeshAnalysisIdentity;
+    meshSurfaceFeatureWorkerRef.current = worker;
+    meshSurfaceFeatureJobRef.current = jobId;
+    setMeshSurfaceFeaturePhase("queued");
+    setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+      kind: "surface-features",
+      variant: "classification-v1",
+      mesh: analysisIdentity,
+      parameters: surfaceFeatureParameters,
+      dependencies,
+      state: "queued",
+      progress: 0,
+      error: null,
+    }));
+    const queuedAt = benchmarkNowMs();
+    const onMessage = (event: MessageEvent<MeshAnalysisWorkerMessage>) => {
+      const message = event.data;
+      if (!message || message.jobId !== jobId || message.meshRevision !== analysisIdentity.revision ||
+          meshSurfaceFeatureJobRef.current !== jobId) return;
+      if (message.type === "progress") {
+        setMeshSurfaceFeaturePhase(message.phase);
+        setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+          kind: "surface-features",
+          variant: "classification-v1",
+          mesh: analysisIdentity,
+          parameters: surfaceFeatureParameters,
+          dependencies,
+          state: "running",
+          progress: message.progress,
+          error: null,
+        }));
+        return;
+      }
+      if (message.type === "surface-features-result" && message.ok) {
+        setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+          kind: "surface-features",
+          variant: "classification-v1",
+          mesh: analysisIdentity,
+          parameters: surfaceFeatureParameters,
+          dependencies,
+          state: "ready",
+          progress: 1,
+          payload: message.result,
+          computeTimeMs: message.computeTimeMs,
+          error: null,
+        }));
+        setMeshSurfaceFeaturePhase("ready");
+        recordMeshDebugEvent({
+          kind: "phase",
+          label: "analysis:surfaceFeaturesWorker",
+          ms: message.computeTimeMs,
+          details: { queueAndComputeMs: Math.max(0, benchmarkNowMs() - queuedAt), meshRevision: analysisIdentity.revision },
+        });
+      } else if (message.type === "error") {
+        setMeshSurfaceFeaturePhase("error");
+        setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+          kind: "surface-features",
+          variant: "classification-v1",
+          mesh: analysisIdentity,
+          parameters: surfaceFeatureParameters,
+          dependencies,
+          state: "error",
+          progress: null,
+          error: message.error,
+        }));
+      }
+      meshSurfaceFeatureJobRef.current = null;
+      if (meshSurfaceFeatureWorkerRef.current === worker) meshSurfaceFeatureWorkerRef.current = null;
+      worker.removeEventListener("message", onMessage);
+      worker.terminate();
+    };
+    worker.addEventListener("message", onMessage);
+    worker.postMessage({
+      type: "compute-surface-features",
+      jobId,
+      meshRevision: analysisIdentity.revision,
+      mesh: { positions: surfaceMeshData.positions, indices: surfaceMeshData.indices ?? null },
+      differential: surfaceMeshCurvatures,
+      parameters: surfaceFeatureParameters,
+    });
+    return () => {
+      worker.removeEventListener("message", onMessage);
+      if (meshSurfaceFeatureWorkerRef.current === worker) {
+        worker.terminate();
+        meshSurfaceFeatureWorkerRef.current = null;
+      }
     };
   }, [
+    activeMeshAnalysisIdentity,
     cachedSurfaceFeatureResult,
+    recordMeshDebugEvent,
     surfaceFeatureParameters,
     surfaceMeshCurvatures,
     surfaceMeshData,
-    surfaceMeshLargeAnalysisDeferred,
     surfaceViewerKind,
+    terminateMeshSurfaceFeatureWorker,
   ]);
-  const surfaceFeatureResult = surfaceFeatureComputation?.payload ?? null;
-  useEffect(() => {
-    if (!activeMeshAnalysisIdentity || !surfaceFeatureComputation) return;
-    setMeshAnalysisResultStore((previous) => {
-      const existing = getMeshAnalysisResult<SurfaceFeatureExtractionResult>(
-        previous,
-        activeMeshAnalysisIdentity,
-        "surface-features",
-        "classification-v1"
-      );
-      if (
-        existing?.payload === surfaceFeatureComputation.payload &&
-        existing.parameterHash === JSON.stringify(surfaceFeatureParameters)
-      ) return previous;
-      const dependencySpecs = [
-        ["normals", "area-weighted-v1"],
-        ["curvature", "discrete-differential-geometry-v2"],
-        ["principal-directions", "shape-operator-v2"],
-      ] as const;
-      const dependencies = dependencySpecs.map(([kind, variant]) => {
-        const dependency = getMeshAnalysisResult(previous, activeMeshAnalysisIdentity, kind, variant);
-        return {
-          kind,
-          variant,
-          state: dependency?.state ?? "stale" as MeshAnalysisResultState,
-          key: meshAnalysisResultKey(activeMeshAnalysisIdentity, kind, variant),
-          resultVersion: dependency?.resultVersion,
-        };
-      });
-      if (dependencies.some((dependency) => dependency.state !== "ready")) return previous;
-      return upsertMeshAnalysisResult(previous, {
-        kind: "surface-features",
-        variant: "classification-v1",
-        mesh: activeMeshAnalysisIdentity,
-        parameters: surfaceFeatureParameters,
-        dependencies,
-        payload: surfaceFeatureComputation.payload,
-        computeTimeMs: surfaceFeatureComputation.computeTimeMs,
-      });
-    });
-  }, [activeMeshAnalysisIdentity, surfaceFeatureComputation, surfaceFeatureParameters]);
 
   const handleSelectSurfaceFeatureMembers = useCallback(() => {
     const mask = surfaceFeatureResult?.vertexMasks[surfaceFeatureClass];
@@ -51086,16 +51325,18 @@ case "mobius":
     if (complexMapOverlayPolylineGroups?.length) groups.push(...complexMapOverlayPolylineGroups);
     if (meshQualityOverlayPolylineGroups?.length) groups.push(...meshQualityOverlayPolylineGroups);
     if (surfaceMeshObjectSelectionPolylineGroups?.length) groups.push(...surfaceMeshObjectSelectionPolylineGroups);
-    if (surfaceMeshTopologyOverlayPolylineGroups?.length) groups.push(...surfaceMeshTopologyOverlayPolylineGroups);
-    if (surfaceMeshEdgeSelectionPolylineGroups?.length) groups.push(...surfaceMeshEdgeSelectionPolylineGroups);
-    if (surfaceMeshTopologyGhostPolylineGroups?.length) groups.push(...surfaceMeshTopologyGhostPolylineGroups);
-    if (surfaceMeshAccessibleCommandPreviewOverlays?.polylineGroups?.length) {
-      groups.push(...surfaceMeshAccessibleCommandPreviewOverlays.polylineGroups);
+    if (!hideMeshAnalyzeConstructionOverlays) {
+      if (surfaceMeshTopologyOverlayPolylineGroups?.length) groups.push(...surfaceMeshTopologyOverlayPolylineGroups);
+      if (surfaceMeshEdgeSelectionPolylineGroups?.length) groups.push(...surfaceMeshEdgeSelectionPolylineGroups);
+      if (surfaceMeshTopologyGhostPolylineGroups?.length) groups.push(...surfaceMeshTopologyGhostPolylineGroups);
+      if (surfaceMeshAccessibleCommandPreviewOverlays?.polylineGroups?.length) {
+        groups.push(...surfaceMeshAccessibleCommandPreviewOverlays.polylineGroups);
+      }
+      if (meshAppliedContextualViewportPreviewOverlays?.polylineGroups?.length) {
+        groups.push(...meshAppliedContextualViewportPreviewOverlays.polylineGroups);
+      }
+      if (surfaceMeshTopologyFeedbackPolylineGroups?.length) groups.push(...surfaceMeshTopologyFeedbackPolylineGroups);
     }
-    if (meshAppliedContextualViewportPreviewOverlays?.polylineGroups?.length) {
-      groups.push(...meshAppliedContextualViewportPreviewOverlays.polylineGroups);
-    }
-    if (surfaceMeshTopologyFeedbackPolylineGroups?.length) groups.push(...surfaceMeshTopologyFeedbackPolylineGroups);
     if (workbookCurveOverlayGhostGroups?.length) groups.push(...workbookCurveOverlayGhostGroups);
     if (workbookDirectionOverlayGhostGroups?.length) groups.push(...workbookDirectionOverlayGhostGroups);
     if (workbookVectorFieldOverlayGhostGroups?.length) groups.push(...workbookVectorFieldOverlayGhostGroups);
@@ -51108,6 +51349,7 @@ case "mobius":
   }, [
     calculusVectorOverlayGroups,
     complexMapOverlayPolylineGroups,
+    hideMeshAnalyzeConstructionOverlays,
     meshAppliedContextualViewportPreviewOverlays,
     surfaceMeshAccessibleCommandPreviewOverlays,
     surfaceMeshEdgeSelectionPolylineGroups,
@@ -52856,6 +53098,34 @@ case "mobius":
       recordMeshPipelineProfilePhase(meshPipelineProfileLatestIdRef.current, `interaction:${label}`, ms);
       return ms;
     };
+    const analysisProbeInteraction = async (meshId: string) => {
+      setProbeEnabled(true);
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+      const target = document.querySelector("canvas");
+      if (!target) throw new Error("Analysis probe canvas is unavailable.");
+      const bounds = target.getBoundingClientRect();
+      const eventInit = {
+        clientX: bounds.left + bounds.width * 0.5,
+        clientY: bounds.top + bounds.height * 0.5,
+        button: 0,
+        buttons: 1,
+        pointerId: 1,
+        bubbles: true,
+        cancelable: true,
+      };
+      const startedAt = benchmarkNowMs();
+      target.dispatchEvent(new PointerEvent("pointerdown", eventInit));
+      window.dispatchEvent(new PointerEvent("pointerup", { ...eventInit, buttons: 0 }));
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())));
+      const elapsedMs = Math.max(0, benchmarkNowMs() - startedAt);
+      recordMeshDebugEvent({
+        kind: "interaction",
+        label: `interaction:analysis-probe:${meshId}`,
+        ms: elapsedMs,
+        details: { meshId, interaction: "surface-raycast-probe" },
+      });
+      return elapsedMs;
+    };
     const finish = (packet: Record<string, unknown>) => {
       window.appRuntime?.finishMeshTrace?.({
         mode: autoRun,
@@ -52932,6 +53202,41 @@ case "mobius":
             }
           }
           finish({ ok: true, checks: checkedMeshes.map((meshId) => `deferred-analysis:${meshId}`) });
+          return;
+        }
+        if (autoRun === "analysis") {
+          const meshId = String(window.appRuntime?.meshTraceId ?? "stanford-bunny").trim() || "stanford-bunny";
+          const result = await api.loadBenchmarkModel(meshId);
+          if (!result.ok) throw new Error(result.error ?? `Failed to load ${meshId}`);
+          await waitForDebugEvent(
+            (event) => event.label === "analysis:curvatureWorker",
+            90_000,
+            `${meshId} curvature worker`
+          );
+          await waitForDebugEvent(
+            (event) => event.label === "analysis:surfaceFeaturesWorker",
+            90_000,
+            `${meshId} surface-feature worker`
+          );
+          setMode("surfaces");
+          setSurfaceViewerKind("mesh");
+          setSurfacesPanelState("work");
+          setSurfacesLeftTab("analysis");
+          setMeshWorkspaceLeftTab("analyze");
+          const overlayStartedAt = benchmarkNowMs();
+          setSurfaceFeatureOverlayVisible(true);
+          await new Promise<void>((resolve) => {
+            window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve()));
+          });
+          recordMeshDebugEvent({
+            kind: "phase",
+            label: "analysis:overlayReady",
+            ms: Math.max(0, benchmarkNowMs() - overlayStartedAt),
+            details: { meshId },
+          });
+          await analysisProbeInteraction(meshId);
+          await waitMs(500);
+          finish({ ok: true, checks: [`analysis-workers:${meshId}`, `analysis-overlay:${meshId}`, `analysis-probe:${meshId}`] });
           return;
         }
         if (autoRun === "cancellation") {
@@ -66497,7 +66802,8 @@ case "mobius":
       : "workspace:active");
   const meshWorkspaceViewerOverrides = useMemo(() => {
     const hasAdditionalMeshes = meshWorkspaceGeometryEntries.length > 0;
-    if (!hasAdditionalMeshes && meshWorkspaceActiveMeshVisible) return null;
+    const isAnalyzeTargetDisplay = surfaceViewerKind === "mesh" && surfacesLeftTab === "analysis";
+    if (!hasAdditionalMeshes && meshWorkspaceActiveMeshVisible && !isAnalyzeTargetDisplay) return null;
     const selectedIds = new Set(
       meshWorkspaceSelectedEntryIds.length
         ? meshWorkspaceSelectedEntryIds
@@ -66517,19 +66823,20 @@ case "mobius":
       metalness?: number;
       wireframe?: boolean;
     }> = [];
-    if (meshWorkspaceActiveMeshVisible && surfaceMeshTopologyViewerMesh?.positions?.length) {
+    if ((meshWorkspaceActiveMeshVisible || isAnalyzeTargetDisplay) && surfaceMeshTopologyViewerMesh?.positions?.length) {
       const selected = selectedIds.has("workspace:active");
       overrides.push({
         id: "workspace:active",
         positions: surfaceMeshTopologyViewerMesh.positions,
         indices: surfaceMeshTopologyViewerMesh.indices,
         normals: surfaceMeshTopologyViewerMesh.normals,
-        color: selected ? 0x2563eb : 0x94a3b8,
-        opacity: selected ? 1 : hasWorkspaceSelection ? 0.28 : 0.72,
+        color: isAnalyzeTargetDisplay || selected ? 0x2563eb : 0x94a3b8,
+        opacity: isAnalyzeTargetDisplay || selected ? 1 : hasWorkspaceSelection ? 0.28 : 0.72,
         roughness: selected ? 0.28 : 0.5,
         metalness: selected ? 0.12 : 0.03,
       });
     }
+    if (isAnalyzeTargetDisplay && meshAnalyzeTargetDisplay === "focus-target") return overrides;
     for (const entry of meshWorkspaceGeometryEntries) {
       if (!entry.visible || !entry.geometryObjectId || entry.geometryObjectId === meshGeometryRoundTripSource?.objectId) continue;
       const resolved = resolveGeometrySceneMeshById(entry.geometryObjectId);
@@ -66542,7 +66849,16 @@ case "mobius":
         indices: resolved.mesh.indices,
         normals: resolved.mesh.normals,
         color: selected ? 0x2563eb : material.color,
-        opacity: selected ? 0.96 : hasWorkspaceSelection ? 0.2 : Math.min(0.55, Math.max(0.24, (material.opacity ?? 1) * 0.72)),
+        opacity:
+          isAnalyzeTargetDisplay && meshAnalyzeTargetDisplay === "ghost-others"
+            ? 0.14
+            : isAnalyzeTargetDisplay && meshAnalyzeTargetDisplay === "show-scene"
+              ? Math.min(1, Math.max(0.08, material.opacity ?? 1))
+              : selected
+                ? 0.96
+                : hasWorkspaceSelection
+                  ? 0.2
+                  : Math.min(0.55, Math.max(0.24, (material.opacity ?? 1) * 0.72)),
         roughness: selected ? 0.28 : 0.48,
         metalness: selected ? 0.12 : 0.04,
         wireframe: meshWorkspaceEntryOverlayStates[entry.id]?.wireframe === true,
@@ -66551,13 +66867,16 @@ case "mobius":
     return overrides;
   }, [
     meshGeometryRoundTripSource?.objectId,
+    meshAnalyzeTargetDisplay,
     meshWorkspaceActiveMeshVisible,
     meshWorkspaceGeometryEntries,
     meshWorkspaceEntryOverlayStates,
     meshWorkspaceSelectedEntryIds,
     meshWorkspaceSelectedId,
     resolveGeometrySceneMeshById,
+    surfaceViewerKind,
     surfaceMeshTopologyViewerMesh,
+    surfacesLeftTab,
   ]);
   const meshWorkspaceEntryBoundsOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     const groups: OverlayPolylineGroup[] = [];
@@ -75463,6 +75782,47 @@ case "mobius":
                         </button>
                       </div>
                       <div data-testid="mesh-analyze-taxonomy" style={{ display: "grid", gap: 7 }}>
+                        <div data-testid="mesh-analyze-target-display" style={{ display: "grid", gap: 5 }}>
+                          <strong style={{ fontSize: 11, color: "#0f172a" }}>Target display</strong>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 4 }}>
+                            {([
+                              ["focus-target", "Focus target"],
+                              ["ghost-others", "Ghost others"],
+                              ["show-scene", "Show scene"],
+                            ] as const).map(([mode, label]) => {
+                              const active = meshAnalyzeTargetDisplay === mode;
+                              return (
+                                <button
+                                  key={mode}
+                                  type="button"
+                                  data-testid={`mesh-analyze-target-${mode}`}
+                                  aria-pressed={active}
+                                  onClick={() => setMeshAnalyzeTargetDisplay(mode)}
+                                  style={{
+                                    borderColor: active ? "#60a5fa" : "#dbe2ea",
+                                    background: active ? "#dbeafe" : "#ffffff",
+                                    color: active ? "#1d4ed8" : "#475467",
+                                    fontSize: 9.5,
+                                    fontWeight: 800,
+                                    padding: "5px 3px",
+                                  }}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6, color: "#475467", fontSize: 10 }}>
+                            <input
+                              type="checkbox"
+                              data-testid="mesh-analyze-construction-overlays"
+                              checked={meshAnalyzeConstructionOverlaysVisible}
+                              onChange={(event) => setMeshAnalyzeConstructionOverlaysVisible(event.target.checked)}
+                            />
+                            Show construction overlays
+                          </label>
+                        </div>
+                        <div style={{ borderTop: "1px solid #dbe2ea" }} />
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
                           <strong style={{ fontSize: 11, color: "#0f172a" }}>Analysis computations</strong>
                           <span style={{ color: "#64748b", fontSize: 10, fontWeight: 700 }}>
@@ -75473,10 +75833,10 @@ case "mobius":
                         </div>
                         <div style={{ display: "grid", gap: 3 }}>
                           {([
-                            ["differential-geometry", "Differential geometry", meshAnalyzeCanShowCurvature ? "ready" : "waiting"],
+                            ["differential-geometry", "Differential geometry", meshAnalyzeCanShowCurvature ? "ready" : meshDifferentialPhase],
                             ["vector-calculus", "Fields", surfaceScalarFields.size || surfaceVectorFields.size ? "ready" : "available"],
                             ["curvature-lines", "Surface features", showCurvatureLines || showPrincipalDirections ? "active" : "available"],
-                            ["surface-features", "Feature classification", surfaceFeatureResult ? (surfaceFeatureOverlayVisible ? "active" : "ready") : "waiting"],
+                            ["surface-features", "Feature classification", surfaceFeatureResult ? (surfaceFeatureOverlayVisible ? "active" : "ready") : meshSurfaceFeaturePhase],
                             ["ridges-valleys", "Ridges / valleys", showRidges || showValleys ? "active" : "available"],
                             ["chart-analysis", "Charts & statistics", showChartGrid ? "active" : "available"],
                             ["mesh-quality", "Mesh quality", meshQualityBusy ? `${Math.round(meshQualityProgress * 100)}%` : meshQualityReport ? "ready" : "waiting"],
@@ -75527,15 +75887,29 @@ case "mobius":
                               <div style={{ color: "#475467", fontSize: 10.5 }}>
                                 <strong>Method:</strong> angle defect / cotangent Laplacian / fitted shape operator
                               </div>
-                              <button
-                                type="button"
-                                data-testid="mesh-analyze-config-compute-k"
-                                onClick={() => handleSelectMeshAnalyzeCurvatureField("gaussian")}
-                                disabled={!meshAnalyzeCanShowCurvature}
-                                style={{ borderColor: "#60a5fa", background: "#dbeafe", color: "#1d4ed8", fontWeight: 800, fontSize: 10 }}
-                              >
-                                {meshAnalyzeCanShowCurvature ? "Show cached curvature" : "Curvature unavailable"}
-                              </button>
+                              <div data-testid="mesh-analyze-curvature-worker-status" style={{ color: meshDifferentialPhase === "error" ? "#b42318" : "#475467", fontSize: 10 }}>
+                                Worker: {meshDifferentialPhase}
+                                {meshDifferentialPhase === "running" || meshDifferentialPhase === "publishing"
+                                  ? ` · ${Math.round(meshDifferentialProgress * 100)}%`
+                                  : ""}
+                                {meshDifferentialError ? ` · ${meshDifferentialError}` : ""}
+                              </div>
+                              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  data-testid="mesh-analyze-config-compute-k"
+                                  onClick={() => handleSelectMeshAnalyzeCurvatureField("gaussian")}
+                                  disabled={!meshAnalyzeCanShowCurvature}
+                                  style={{ borderColor: "#60a5fa", background: "#dbeafe", color: "#1d4ed8", fontWeight: 800, fontSize: 10 }}
+                                >
+                                  {meshAnalyzeCanShowCurvature ? "Show cached curvature" : "Curvature unavailable"}
+                                </button>
+                                {(meshDifferentialPhase === "queued" || meshDifferentialPhase === "running" || meshDifferentialPhase === "publishing") ? (
+                                  <button type="button" data-testid="mesh-analyze-cancel-curvature" onClick={handleCancelMeshDifferentialCompute}>Cancel</button>
+                                ) : (
+                                  <button type="button" data-testid="mesh-analyze-recompute-curvature" onClick={() => setMeshDifferentialComputeNonce((value) => value + 1)}>Recompute</button>
+                                )}
+                              </div>
                             </div>
                           )}
                           {analysisFocusedSection === "vector-calculus" && (
@@ -75610,6 +75984,11 @@ case "mobius":
                                   ? `${surfaceFeatureComputation?.cacheHit ? "Cached" : "Current"} classification · ${surfaceFeatureResult.summary.validVertexCount.toLocaleString()} valid vertices`
                                   : "Waiting for normals, curvature, and principal directions"}
                               </div>
+                              {(meshSurfaceFeaturePhase === "queued" || meshSurfaceFeaturePhase === "running" || meshSurfaceFeaturePhase === "publishing") && (
+                                <button type="button" data-testid="mesh-analyze-cancel-surface-features" onClick={handleCancelMeshSurfaceFeatureCompute}>
+                                  Cancel feature computation
+                                </button>
+                              )}
                               <label style={{ display: "grid", gap: 3 }}>
                                 <span style={{ fontWeight: 800 }}>Candidate class</span>
                                 <select

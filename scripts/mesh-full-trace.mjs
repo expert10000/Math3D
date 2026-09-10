@@ -8,9 +8,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 const meshId = process.argv[2] || process.env.MATH3D_MESH_TRACE_ID || "3dbenchy";
+const traceMode = String(process.env.MATH3D_MESH_TRACE_MODE || "full").trim().toLowerCase();
 const safeMeshId = meshId.replace(/[^a-z0-9_-]+/gi, "-").toLowerCase();
 const outDir = path.join(repoRoot, "output");
-const outFile = path.join(outDir, `mesh-full-trace-${safeMeshId}.json`);
+const outFile = path.join(outDir, `mesh-${traceMode}-trace-${safeMeshId}.json`);
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -127,7 +128,7 @@ async function main() {
     MATH3D_RENDERER_MEMORY_AUTO_RELOAD: process.env.MATH3D_RENDERER_MEMORY_AUTO_RELOAD ?? "0",
     MATH3D_GPU_MODE: process.env.MATH3D_GPU_MODE ?? "software",
     MATH3D_E2E_USER_DATA_DIR: profile.userDataDir,
-    MATH3D_MESH_TRACE_AUTORUN: "full",
+    MATH3D_MESH_TRACE_AUTORUN: traceMode,
     MATH3D_MESH_TRACE_ID: meshId,
   };
   delete env.ELECTRON_RUN_AS_NODE;
@@ -137,6 +138,7 @@ async function main() {
   const artifact = {
     ok: finishPacket?.ok === true && (exit.code === 0 || exit.finishedSignal === true),
     meshId,
+    traceMode,
     startedAt: new Date(startedAt).toISOString(),
     finishedAt: new Date().toISOString(),
     elapsedMs: Date.now() - startedAt,

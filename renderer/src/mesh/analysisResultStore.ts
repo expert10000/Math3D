@@ -14,7 +14,14 @@ export type MeshAnalysisResultKind =
   | "ridges-valleys"
   | (string & {});
 
-export type MeshAnalysisResultState = "ready" | "running" | "deferred" | "stale" | "error";
+export type MeshAnalysisResultState =
+  | "queued"
+  | "running"
+  | "ready"
+  | "cancelled"
+  | "deferred"
+  | "stale"
+  | "error";
 
 export type MeshAnalysisParameterValue =
   | number

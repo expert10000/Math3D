@@ -161,6 +161,7 @@ export type SurfacePerformanceSnapshot = {
     sampleSetMs?: number;
     boundsMs?: number;
     renderMs?: number;
+    overlayBuildMs?: number;
     meshCount?: number;
     sampleCount?: number;
     meshDataCount?: number;
@@ -2316,6 +2317,13 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   onGaussPointsRef.current = onGaussPoints;
   const lastMeshBuildMsRef = useRef<number | null>(lastMeshBuildMs);
   const meshPerformanceTraceRef = useRef<NonNullable<SurfacePerformanceSnapshot["trace"]> | null>(null);
+  const recordOverlayBuildMs = useCallback((startedAt: number) => {
+    const elapsedMs = Math.max(0, performance.now() - startedAt);
+    meshPerformanceTraceRef.current = {
+      ...(meshPerformanceTraceRef.current ?? {}),
+      overlayBuildMs: (meshPerformanceTraceRef.current?.overlayBuildMs ?? 0) + elapsedMs,
+    };
+  }, []);
   const chunkedFullMeshUploadRunRef = useRef(0);
   const perfFrameRef = useRef<{ lastFrameAt: number; fps: number; frameTimeMs: number; lastEmitAt: number }>({
     lastFrameAt: 0,
@@ -8510,6 +8518,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     if (!effectiveOverlayMeshGroups?.length) return;
 
+    const overlayBuildStartedAt = performance.now();
     const group = new THREE.Group();
     for (const entry of effectiveOverlayMeshGroups) {
       if (!entry?.positions || entry.positions.length < 9) continue;
@@ -8541,7 +8550,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (!group.children.length) return;
     scene.add(group);
     overlayMeshGroupsRef.current = group;
-  }, [effectiveOverlayMeshGroups, sceneEpoch]);
+    recordOverlayBuildMs(overlayBuildStartedAt);
+  }, [effectiveOverlayMeshGroups, recordOverlayBuildMs, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -8555,6 +8565,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     if (!effectiveOverlayLabelSets?.length) return;
 
+    const overlayBuildStartedAt = performance.now();
     const group = new THREE.Group();
     const sizeHint = radiusRef.current || 3;
     const baseSize = Math.max(0.08, (sizeHint / 26) * 0.8);
@@ -8619,7 +8630,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (!group.children.length) return;
     scene.add(group);
     overlayLabelSetsRef.current = group;
-  }, [effectiveOverlayLabelSets, sceneEpoch]);
+    recordOverlayBuildMs(overlayBuildStartedAt);
+  }, [effectiveOverlayLabelSets, recordOverlayBuildMs, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -8633,6 +8645,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     if (!overlayPolylines?.length) return;
 
+    const overlayBuildStartedAt = performance.now();
     const group = new THREE.Group();
     const sizeHint = radiusRef.current || 3;
     const tubeRadius = Math.max(0.006, (sizeHint / 110) * 1.1);
@@ -8663,7 +8676,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (!group.children.length) return;
     scene.add(group);
     overlayPolylinesRef.current = group;
-  }, [overlayPolylines, overlayPolylinesColor, sceneEpoch]);
+    recordOverlayBuildMs(overlayBuildStartedAt);
+  }, [overlayPolylines, overlayPolylinesColor, recordOverlayBuildMs, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -8677,6 +8691,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     if (!effectiveOverlayPolylineGroups?.length) return;
 
+    const overlayBuildStartedAt = performance.now();
     const group = new THREE.Group();
     const sizeHint = radiusRef.current || 3;
     const baseRadius = Math.max(0.006, (sizeHint / 110) * 1.1);
@@ -8751,7 +8766,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (!group.children.length) return;
     scene.add(group);
     overlayPolylineGroupsRef.current = group;
-  }, [effectiveOverlayPolylineGroups, sceneEpoch]);
+    recordOverlayBuildMs(overlayBuildStartedAt);
+  }, [effectiveOverlayPolylineGroups, recordOverlayBuildMs, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -8765,6 +8781,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     if (!effectiveOverlayPointSets?.length) return;
 
+    const overlayBuildStartedAt = performance.now();
     const group = new THREE.Group();
     const sizeHint = radiusRef.current || 3;
     const defaultSize = Math.max(0.02, (sizeHint / 90) * 0.45);
@@ -8798,7 +8815,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (!group.children.length) return;
     scene.add(group);
     overlayPointSetsRef.current = group;
-  }, [effectiveOverlayPointSets, sceneEpoch]);
+    recordOverlayBuildMs(overlayBuildStartedAt);
+  }, [effectiveOverlayPointSets, recordOverlayBuildMs, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;
