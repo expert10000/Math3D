@@ -1,7 +1,7 @@
 # Mesh Analyze implementation roadmap
 
 Assessment date: 2026-09-10
-Reviewed checkout: `a4844ad` — mesh-analysis: add reusable surface-feature extraction
+Reviewed checkout: `0c0207b` — mesh-analysis: add principal-curvature ridge and valley extraction
 
 The numbered commits below are implementation plans, not claims that corresponding Git commits are complete. This document records the current implementation and the remaining work against the supplied plans.
 
@@ -16,7 +16,7 @@ The numbered commits below are implementation plans, not claims that correspondi
 | 5 — Surface field calculus | Complete | `ebe8115` | 371 renderer tests, TypeScript typecheck, production renderer build, and 3 Mesh Analyze E2E tests passed |
 | 6 — Geodesic methods | Complete | `2fad684` | 373 renderer tests, TypeScript typecheck, production renderer build, 3 Python protocol tests, CGAL dependency/mesh-generation/boolean smoke tests, and 6 native geodesic checks passed |
 | 7 — Cached surface-feature extraction | Complete | `a4844ad` | 380 renderer tests, TypeScript typecheck, production renderer build, cube/cylinder/torus/Fandisk/Bunny verification, and 3 Mesh Analyze E2E tests passed |
-| 8 — Ridges and valleys | Planned | — | Scientific readiness and quantitative acceptance remain open |
+| 8 — Ridges and valleys | Complete | `0c0207b` | 388 renderer tests, TypeScript typecheck, production core build, quantitative torus/saddle/sphere/Fandisk/Bunny verification, and 3 Mesh Analyze E2E tests passed |
 | 9 — Target isolation and large-mesh workers | Complete | `e151abf` | 381 renderer tests, TypeScript typecheck, production renderer build, 3 Mesh Analyze E2E tests, and current-build Bunny/Armadillo/Dragon profiling passed |
 | 10–12 | Planned | — | See the detailed sections below |
 
@@ -24,11 +24,13 @@ The implementation commits follow the numbered plan sections. Progress entries r
 
 ## Current assessment
 
-Commits 1–7 and 9 are implemented. The Mesh Analyze workbench now has canonical cached results, mesh-health and CGAL integrity checks, differential geometry, mesh-quality fields, surface field calculus, approximate edge-graph routes, accurate CGAL triangulated-surface shortest paths, an explicitly experimental heat-distance field, reusable cached surface-feature classifications, explicit target-isolation modes, and worker-backed curvature and feature extraction. Commit 8 and Commits 10–12 retain partially implemented foundations and remain the next work.
+Commits 1–9 are implemented. The Mesh Analyze workbench now has canonical cached results, mesh-health and CGAL integrity checks, differential geometry, mesh-quality fields, surface field calculus, approximate edge-graph routes, accurate CGAL triangulated-surface shortest paths, an explicitly experimental heat-distance field, reusable cached surface-feature classifications, validated and cached ridge/valley extraction, explicit target-isolation modes, and worker-backed curvature and feature extraction. Commits 10–12 retain partially implemented foundations and remain the next work.
 
 Commit 6 validation completed locally with CGAL 6.2.1 from vcpkg, the Python CGAL worker environment, the native shortest-path helper, dependency and mesh-generation smoke checks, all three CGAL boolean operations, and numerical geodesic checks on plane, cylinder, sphere, graph-versus-surface, disconnected, and 5,776-vertex large-mesh cases. The full renderer suite also passed: **373 tests across 69 files**, plus TypeScript typecheck and the production renderer build.
 
 Commit 7 validation covers cached dependency invalidation, cube crease edges, cylinder developable classification, torus elliptic/hyperbolic/parabolic regions, Fandisk, Stanford Bunny, scalar strengths, uncertainty, face regions, edge sets, polylines, viewport overlays, and shared Selection Inspector integration. The full renderer suite passed: **380 tests across 70 files**, plus TypeScript typecheck, the production renderer build, and all three Mesh Analyze E2E tests.
+
+Commit 8 validation covers principal-family selection, directional strength and contrast, neighborhood and smoothing controls, minimum line length and confidence, cached directional derivatives/candidates/traced curves with provenance, unstable-direction suppression, and computation-derived readiness independent of overlay visibility. Quantitative torus, saddle, smooth-sphere negative, Fandisk, and Stanford Bunny checks passed. The full renderer suite passed: **388 tests across 71 files**, plus TypeScript typecheck, the production core build, and all three Mesh Analyze E2E tests.
 
 Commit 9 validation covers Focus target, Ghost others, and Show scene display states; the default ghosted analysis context; construction-overlay suppression; worker-backed curvature and surface-feature extraction; queued/running/publishing/cancelled result states; revision/job guards; and current-build analysis profiling. The full renderer suite passed: **381 tests across 70 files**, plus TypeScript typecheck, the production renderer build, and all three Mesh Analyze E2E tests. The current-build profile passed on Stanford Bunny, Armadillo, and Dragon with curvature worker compute at 31–69 ms, surface-feature worker compute at 14–26 ms, overlay readiness at 164–234 ms, and probe latency at 109–208 ms; the generated report also records load time, analysis/load blocking, and analysis memory delta.
 
@@ -43,8 +45,7 @@ npm run benchmark:mesh:analysis-profile
 
 ## Next priorities
 
-1. Establish numerical readiness and acceptance criteria for ridge/valley extraction in Commit 8.
-2. Complete the Inspector, backend-infrastructure, and regression work tracked by Commits 10–12.
+1. Complete the Inspector, backend-infrastructure, and regression work tracked by Commits 10–12.
 
 ## Commit 1 — Canonical AnalysisResult registry and cache
 
@@ -210,7 +211,7 @@ Acceptance: feature extraction consumes cached analysis and uses the common resu
 
 Planned message: `mesh-analysis: add principal-curvature ridge and valley extraction`
 
-**Status: algorithms exist; scientific readiness is not established.**
+**Status: complete.**
 
 Already implemented:
 
@@ -218,14 +219,14 @@ Already implemented:
 - Thresholds, confidence values, and umbilic-suppression options.
 - Ridge/valley overlays.
 
-Remaining:
+Completed:
 
-- [ ] Depend on validated mesh k1/k2/d1/d2 results.
-- [ ] Complete principal-family, strength, minimum-line-length, and smoothing/neighborhood controls.
-- [ ] Cache directional derivatives, candidates, and traced results with provenance.
-- [ ] Suppress or mark uncertain output wherever directions are unstable.
-- [ ] Derive Ready state from valid computation, not overlay visibility.
-- [ ] Add quantitative Fandisk, torus, saddle, smooth-sphere negative, and Bunny tests.
+- [x] Made extraction depend on the validated cached mesh k1/k2/d1/d2 result and its validity/warning masks.
+- [x] Added principal-family, curvature-strength, directional-contrast, minimum-line-length, confidence, smoothing, neighborhood, sampling, decimation, and curve-limit controls.
+- [x] Cached directional derivatives, candidate masks/confidence, display segments, traced polylines, summaries, parameters, and dependency provenance in the shared analysis-result store.
+- [x] Suppressed invalid, non-manifold, degenerate, nearly-flat, umbilic, inconsistent-orientation, identity-failing, and underfit directions while reporting uncertainty counts.
+- [x] Derived Ready from a successfully published result with validated principal directions, independently of ridge/valley overlay visibility.
+- [x] Added quantitative torus, saddle, smooth-sphere negative, Fandisk, and Stanford Bunny tests plus result-readiness and Electron workflow regression coverage.
 
 Acceptance: mark ready only after quantitative tests pass.
 
