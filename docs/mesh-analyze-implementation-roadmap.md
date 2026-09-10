@@ -16,17 +16,21 @@ The numbered commits below are implementation plans, not claims that correspondi
 | 5 — Surface field calculus | Complete | `ebe8115` | 371 renderer tests, TypeScript typecheck, production renderer build, and 3 Mesh Analyze E2E tests passed |
 | 6 — Geodesic methods | Complete | `2fad684` | 373 renderer tests, TypeScript typecheck, production renderer build, 3 Python protocol tests, CGAL dependency/mesh-generation/boolean smoke tests, and 6 native geodesic checks passed |
 | 7 — Cached surface-feature extraction | Complete | `a4844ad` | 380 renderer tests, TypeScript typecheck, production renderer build, cube/cylinder/torus/Fandisk/Bunny verification, and 3 Mesh Analyze E2E tests passed |
-| 8–12 | Planned | — | See the detailed sections below |
+| 8 — Ridges and valleys | Planned | — | Scientific readiness and quantitative acceptance remain open |
+| 9 — Target isolation and large-mesh workers | Complete | `e151abf` | 381 renderer tests, TypeScript typecheck, production renderer build, 3 Mesh Analyze E2E tests, and current-build Bunny/Armadillo/Dragon profiling passed |
+| 10–12 | Planned | — | See the detailed sections below |
 
 The implementation commits follow the numbered plan sections. Progress entries record completed code only after its relevant tests and build checks pass.
 
 ## Current assessment
 
-Commits 1–7 are implemented. The Mesh Analyze workbench now has canonical cached results, mesh-health and CGAL integrity checks, differential geometry, mesh-quality fields, surface field calculus, approximate edge-graph routes, accurate CGAL triangulated-surface shortest paths, an explicitly experimental heat-distance field, and reusable cached surface-feature classifications. Commits 8–12 retain partially implemented foundations and remain the next work.
+Commits 1–7 and 9 are implemented. The Mesh Analyze workbench now has canonical cached results, mesh-health and CGAL integrity checks, differential geometry, mesh-quality fields, surface field calculus, approximate edge-graph routes, accurate CGAL triangulated-surface shortest paths, an explicitly experimental heat-distance field, reusable cached surface-feature classifications, explicit target-isolation modes, and worker-backed curvature and feature extraction. Commit 8 and Commits 10–12 retain partially implemented foundations and remain the next work.
 
 Commit 6 validation completed locally with CGAL 6.2.1 from vcpkg, the Python CGAL worker environment, the native shortest-path helper, dependency and mesh-generation smoke checks, all three CGAL boolean operations, and numerical geodesic checks on plane, cylinder, sphere, graph-versus-surface, disconnected, and 5,776-vertex large-mesh cases. The full renderer suite also passed: **373 tests across 69 files**, plus TypeScript typecheck and the production renderer build.
 
 Commit 7 validation covers cached dependency invalidation, cube crease edges, cylinder developable classification, torus elliptic/hyperbolic/parabolic regions, Fandisk, Stanford Bunny, scalar strengths, uncertainty, face regions, edge sets, polylines, viewport overlays, and shared Selection Inspector integration. The full renderer suite passed: **380 tests across 70 files**, plus TypeScript typecheck, the production renderer build, and all three Mesh Analyze E2E tests.
+
+Commit 9 validation covers Focus target, Ghost others, and Show scene display states; the default ghosted analysis context; construction-overlay suppression; worker-backed curvature and surface-feature extraction; queued/running/publishing/cancelled result states; revision/job guards; and current-build analysis profiling. The full renderer suite passed: **381 tests across 70 files**, plus TypeScript typecheck, the production renderer build, and all three Mesh Analyze E2E tests. The current-build profile passed on Stanford Bunny, Armadillo, and Dragon with curvature worker compute at 31–69 ms, surface-feature worker compute at 14–26 ms, overlay readiness at 164–234 ms, and probe latency at 109–208 ms; the generated report also records load time, analysis/load blocking, and analysis memory delta.
 
 ```powershell
 cd C:\Math3D
@@ -34,13 +38,13 @@ npm --prefix renderer test
 npm run typecheck:noemit
 npm run build:renderer
 npm run test:cgal-geodesic
+npm run benchmark:mesh:analysis-profile
 ```
 
 ## Next priorities
 
 1. Establish numerical readiness and acceptance criteria for ridge/valley extraction in Commit 8.
-2. Complete target isolation and worker-backed large-mesh execution in Commit 9.
-3. Complete the Inspector, backend-infrastructure, and regression work tracked by Commits 10–12.
+2. Complete the Inspector, backend-infrastructure, and regression work tracked by Commits 10–12.
 
 ## Commit 1 — Canonical AnalysisResult registry and cache
 
@@ -229,7 +233,7 @@ Acceptance: mark ready only after quantitative tests pass.
 
 Planned message: `mesh-analysis: add target focus and worker-backed large-mesh execution`
 
-**Status: substantial performance infrastructure exists; acceptance remains open.**
+**Status: implemented.**
 
 Already implemented:
 
@@ -237,16 +241,16 @@ Already implemented:
 - Large-mesh previews and deferred analysis.
 - Quality worker, cancellation mechanisms, benchmark assets, and profiling scripts.
 
-Remaining:
+Completed:
 
-- [ ] Add Analyze target-display states: Focus target, Ghost others, Show scene.
-- [ ] Default Analyze to Ghost others with construction overlays hidden unless requested.
-- [ ] Move curvature and remaining expensive analysis/statistical work off the UI thread.
-- [ ] Standardize queued/running/cancel/cancelled states and prevent stale or partial publication.
-- [ ] Benchmark load/compute time, UI blocking, memory delta, overlay cost, and probe latency.
-- [ ] Verify responsive Bunny, Armadillo, and Dragon analysis on the current implementation.
+- [x] Added Analyze target-display states: Focus target, Ghost others, Show scene.
+- [x] Defaulted Analyze to Ghost others with construction overlays hidden unless requested.
+- [x] Moved curvature and surface-feature extraction—including their validation summaries—off the UI thread; mesh quality remains worker-backed.
+- [x] Standardized queued/running/publishing/cancel/cancelled states and guarded publication by job ID and exact mesh revision.
+- [x] Added current-build profiling for load/compute time, UI blocking, memory delta, overlay cost, and probe latency.
+- [x] Verified responsive Stanford Bunny, Armadillo, and Dragon analysis on the current implementation.
 
-Existing profiling artifacts are historical measurements, not proof that current analysis meets this acceptance criterion.
+Acceptance: large-mesh analysis remains interactive while worker results publish atomically for the current mesh revision.
 
 ## Commit 10 — Scientific Inspector and computation history
 
@@ -320,14 +324,9 @@ Workflow constraints to preserve:
 
 ## Recommended implementation sequence
 
-1. Finish commit 3, including numerical tests, validated directions, and truthful readiness states.
-2. Bring forward the curvature-worker portion of commit 9 while extracting the computation.
-3. Complete commits 4 and 5, extending the result/cache foundation as needed.
-4. Complete geodesic method separation in commit 6.
-5. Build cached feature extraction in commit 7, then validate ridges/valleys in commit 8.
-6. Finish target isolation and remaining worker/performance work in commit 9.
-7. Complete Inspector/history and shared infrastructure in commits 10–11.
-8. Run the full acceptance suite and freeze v1 in commit 12.
+1. Establish quantitative ridge/valley readiness and complete Commit 8.
+2. Complete Inspector/history and shared infrastructure in Commits 10–11.
+3. Run the full acceptance suite and freeze v1 in Commit 12.
 
 ## Main implementation references
 
@@ -335,6 +334,7 @@ Workflow constraints to preserve:
 - `renderer/src/mesh/activeAnalysisResult.ts`: scientific summaries, statistics, method labels, readiness.
 - `renderer/src/mesh/meshQualityReport.ts`: quality summaries and defect lists.
 - `renderer/src/workers/meshQualityReportWorker.ts`: quality-report worker.
+- `renderer/src/workers/meshAnalysisWorker.ts`: differential-geometry and surface-feature worker.
 - `renderer/src/App.tsx`: current mesh curvature, calculus, probe, and Inspector integration.
 - `renderer/src/math/ridgeValley.ts` and `ridgeValleyStitch.ts`: ridge/valley detection and tracing.
 - `renderer/src/mesh/edgeSelection.ts`: sharp/feature-edge selection.
@@ -343,3 +343,4 @@ Workflow constraints to preserve:
 - `renderer/src/geometry/analysisBridge.ts`: Geometry/Mesh analysis bridge.
 - `tests/e2e/mesh-analyze-science.spec.ts`: current scientific UI regression scenarios.
 - `scripts/mesh-profile-suite.mjs`: large-mesh profiling.
+- `scripts/mesh-analysis-profile-suite.mjs`: current-build Bunny/Armadillo/Dragon analysis profiling.
