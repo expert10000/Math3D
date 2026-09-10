@@ -65,4 +65,50 @@ describe("scene script serializer", () => {
     expect(result.objects.map((object) => object.id)).toEqual(["axis", "ring"]);
     expect(result.objects.map((object) => object.type)).toEqual(["cylinder", "torus"]);
   });
+
+  it("preserves Construct taxonomy and source metadata", () => {
+    const loft = createGeometryObject("constructed", "loft-result");
+    loft.name = "Section loft";
+    loft.params.constructionKind = "surface-loft";
+    loft.params.constructionFamily = "surfaces";
+    loft.params.authoringSource = "professional-construct";
+    loft.params.sourceObjectIds = "section-a,section-b";
+    loft.params.height = 3.25;
+
+    const script = serializeSceneToScript([loft], { selectedObjectId: loft.id });
+    const result = executeSceneScript({ script, objects: [] });
+
+    expect(script).toContain("add constructed as loft-result");
+    expect(script).toContain("constructionKind=surface-loft");
+    expect(script).toContain("sourceObjectIds=section-a,section-b");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.objects[0].params).toMatchObject({
+      constructionKind: "surface-loft",
+      constructionFamily: "surfaces",
+      authoringSource: "professional-construct",
+      sourceObjectIds: "section-a,section-b",
+      height: 3.25,
+    });
+  });
+
+  it("round-trips a published Scratch construction payload", () => {
+    const scratch = createGeometryObject("constructed", "scratch-scene");
+    scratch.params.constructionKind = "scratch-scene";
+    scratch.params.constructionFamily = "reference";
+    scratch.params.authoringSource = "scratch";
+    scratch.params.sourceEntityIds = "A,B,AB";
+    scratch.params.sourcePayload = JSON.stringify({
+      points: [{ id: "A", x: 0, y: 0, z: 0 }],
+      segments: [{ a: { x: 0, y: 0, z: 0 }, b: { x: 1, y: 0, z: 0 } }],
+    });
+
+    const script = serializeSceneToScript([scratch]);
+    const result = executeSceneScript({ script, objects: [] });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.objects[0].params.sourceEntityIds).toBe("A,B,AB");
+    expect(result.objects[0].params.sourcePayload).toBe(scratch.params.sourcePayload);
+  });
 });

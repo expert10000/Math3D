@@ -36,6 +36,7 @@ import { WorkbookPanel } from "./components/WorkbookPanel";
 import { GeometryPickReadout } from "./components/GeometryPickReadout";
 import { UnifiedSelectionInspector } from "./components/UnifiedSelectionInspector";
 import { GeometrySemanticNavigatorPanel } from "./components/GeometrySemanticNavigatorPanel";
+import { GeometryConstructCatalogPanel } from "./components/GeometryConstructCatalogPanel";
 import {
   MeshOperationsPanel,
   MESH_OPERATION_LABELS,
@@ -260,6 +261,7 @@ import {
   type GeometryProfessionalActionId,
   type GeometryProfessionalDestination,
 } from "./geometry/professionalWorkflow";
+import type { GeometryConstructTool } from "./geometry/constructCatalog";
 import { bestFitPlane, evaluateConstraints, formatConstraintValue } from "./geometry/analysis";
 import {
   computeGeometryAnalysisBasicMetrics,
@@ -12455,6 +12457,7 @@ const App: React.FC = () => {
   const geometryDemoScene =
     geometryDemoFamily === "stereometry" ? geometryDemo.scene : geometryPlanimetryScene;
   const [geometryConstructionState, setGeometryConstructionState] = useState<ConstructionLabState | null>(null);
+  const geometryConstructionStateRef = useRef<ConstructionLabState | null>(null);
   const [geometryScratchSceneSeed, setGeometryScratchSceneSeed] = useState<ConstructionLabSeed | null>(null);
   const [geometryWorkbookSceneSeeds, setGeometryWorkbookSceneSeeds] = useState<Record<string, ConstructionLabSeed>>({});
   const [geometryEditorSeedToken, setGeometryEditorSeedToken] = useState(0);
@@ -12480,6 +12483,7 @@ const App: React.FC = () => {
     startPoint: { x: number; y: number; z: number };
   } | null>(null);
   const handleConstructionLabChange = useCallback((next: ConstructionLabState) => {
+    geometryConstructionStateRef.current = next;
     setGeometryConstructionState(next);
   }, []);
   const handleConstructionLabFocusObjectInScene = useCallback(
@@ -12968,6 +12972,7 @@ const App: React.FC = () => {
   );
   const [geometryGallerySelectedPresetId, setGeometryGallerySelectedPresetId] = useState<string | null>(null);
   const [geometryGalleryPreviewParams, setGeometryGalleryPreviewParams] = useState<Record<string, number | boolean | string>>({});
+  const [geometryConstructDraftRecipe, setGeometryConstructDraftRecipe] = useState<GeometryGalleryRecipe | null>(null);
   const [geometryGalleryRecentCardIds, setGeometryGalleryRecentCardIds] = useState<string[]>([]);
   const [galleryCardViewMode, setGalleryCardViewMode] = useState<GalleryCardViewMode>("rendered");
   const [geometryGalleryCardSizeMode, setGeometryGalleryCardSizeMode] = useState<"compact" | "large">("compact");
@@ -15171,6 +15176,69 @@ const App: React.FC = () => {
     geometryAddSelectNewObject,
     geometryNewObjectType,
   ]);
+  const geometryConstructCatalogReferences = useMemo(
+    () => [
+      ...geometryObjects.map((object) => ({ id: object.id, label: object.name })),
+      ...geometryDatasetMeshObjects.map((object) => ({ id: object.id, label: object.name })),
+    ],
+    [geometryDatasetMeshObjects, geometryObjects]
+  );
+  const handleOpenGeometryLegacyConstructCategory = useCallback(
+    (target: NonNullable<GeometryConstructTool["legacyTarget"]>) => {
+      setGeometryConstructCategoryExpanded(target, true);
+      if (target === "points" || target === "lines" || target === "planes") {
+        setGeometryConstructCreateFamily(target);
+      }
+      setGeometryCreateActionStatus(`Existing ${GEOMETRY_CONSTRUCT_CATEGORY_META[target].label} tools opened below.`);
+      window.requestAnimationFrame(() => {
+        document.querySelector(`[data-testid="geometry-construct-category-${target}"]`)?.scrollIntoView({
+          block: "nearest",
+          behavior: "smooth",
+        });
+      });
+    },
+    [setGeometryConstructCategoryExpanded]
+  );
+  const handleCommitGeometryConstructCatalogRecipe = useCallback(
+    (recipe: GeometryGalleryRecipe, tool: GeometryConstructTool, sourceObjectIds: readonly string[]) => {
+      const createdId = handleAddGeometryObject(recipe);
+      setGeometryConstructDraftRecipe(null);
+      setGeometryCreateActionStatus(
+        `Committed ${tool.label}${sourceObjectIds.length ? ` from ${sourceObjectIds.join(", ")}` : ""}. Preview removed from draft layer.`
+      );
+      setGeometrySelectedObjectId(createdId);
+    },
+    [handleAddGeometryObject]
+  );
+  const handlePublishConstructionLabToProceduralScene = useCallback(() => {
+    const constructionState = geometryConstructionState ?? geometryConstructionStateRef.current;
+    if (!constructionState) {
+      setGeometryWorkbookPackStatus("The Scratch or Workbook construction has no evaluated scene yet.");
+      return;
+    }
+    const authoringSource = geometryMode === "workbook" ? "workbook" : "scratch";
+    const sourceIds = constructionState.graphObjects
+      .filter((object) => object.valid && !object.hidden)
+      .map((object) => object.id);
+    const createdId = handleAddGeometryObject({
+      type: "constructed",
+      name: geometryMode === "workbook" ? "Workbook construction" : "Scratch construction",
+      params: {
+        constructionKind: "scratch-scene",
+        constructionFamily: "reference",
+        authoringSource,
+        sourceObjectIds: "",
+        sourceEntityIds: sourceIds.join(","),
+        sourcePayload: JSON.stringify(constructionState.scene),
+      },
+    });
+    setGeometryMode("procedural");
+    setGeometryProceduralPanelTab("scene");
+    setGeometrySelectedObjectId(createdId);
+    setGeometryCreateActionStatus(
+      `Published ${sourceIds.length} ${authoringSource} construction entities as an ordinary scene object with source metadata.`
+    );
+  }, [geometryConstructionState, geometryMode, handleAddGeometryObject]);
   const openGeometrySceneGalleryEntry = useCallback(
     (entry: GeometryGallerySceneEntry) => {
       setGeometrySceneGalleryReplayPlaying(false);
@@ -16647,6 +16715,43 @@ const App: React.FC = () => {
       });
     }
 
+    if (geometryConstructDraftRecipe) {
+      const previewObject = createGeometryObject(geometryConstructDraftRecipe.type, "__geometry-construct-draft__");
+      previewObject.name = `${geometryConstructDraftRecipe.name ?? "Construction"} preview`;
+      previewObject.params = { ...previewObject.params, ...(geometryConstructDraftRecipe.params ?? {}) };
+      const registry = GEOMETRY_OBJECT_REGISTRY[previewObject.type];
+      const geometry = registry?.build(previewObject.params) ?? null;
+      if (geometry) {
+        try {
+          const previewMesh = computeVertexNormals(
+            buildSurfaceMeshFromGeometry(
+              geometry,
+              previewObject.name,
+              { kind: "proceduralObjects" },
+              { mergeVertices: false }
+            )
+          );
+          if (previewMesh.positions.length) {
+            meshes.push({
+              ...previewMesh,
+              id: previewObject.id,
+              label: previewObject.name,
+              color: 0x0ea5e9,
+              opacity: 0.34,
+              roughness: 0.25,
+              metalness: 0,
+              flatShading: false,
+              pickPolicy: "never",
+              renderableMetadata: { objectId: previewObject.id, pickPolicy: "never" },
+              transform: previewObject.transform,
+            });
+          }
+        } finally {
+          geometry.dispose();
+        }
+      }
+    }
+
     for (const obj of geometryDatasetMeshObjects) {
       if (!obj.visible) continue;
       const material = normalizeGeometryMaterial((obj as { material?: unknown })?.material);
@@ -16682,7 +16787,7 @@ const App: React.FC = () => {
     }
 
     return { meshes, vertCount, triCount };
-  }, [geometryObjects, geometryDatasetMeshObjects]);
+  }, [geometryConstructDraftRecipe, geometryObjects, geometryDatasetMeshObjects]);
   const resolveGeometrySceneMeshById = useCallback(
     (id: string): { object: GeometryObject | GeometryDatasetMeshObject; mesh: SurfaceMeshData } | null => {
       const object = resolveGeometrySceneObjectById(id);
@@ -85172,19 +85277,20 @@ case "mobius":
                         clear | add box as b x=0 y=0 z=0 width=2 color=#8aa4ff | set b opacity=0.8 | delete b
                       </div>
                       <textarea
+                        data-testid="geometry-procedural-script-editor"
                         value={geometryProceduralScriptText}
                         onChange={(e) => setGeometryProceduralScriptText(e.target.value)}
                         rows={7}
                         style={{ width: "100%", fontFamily: "monospace", fontSize: 11 }}
                       />
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <button type="button" onClick={() => executeProceduralScript()}>
+                        <button type="button" data-testid="geometry-script-to-scene" onClick={() => executeProceduralScript()}>
                           Script -&gt; scene
                         </button>
-                        <button type="button" onClick={handleGenerateProceduralScriptFromScene}>
+                        <button type="button" data-testid="geometry-scene-to-script" onClick={handleGenerateProceduralScriptFromScene}>
                           Scene -&gt; script
                         </button>
-                        <button type="button" onClick={handleRoundTripProceduralScriptFromScene}>
+                        <button type="button" data-testid="geometry-scene-script-roundtrip" onClick={handleRoundTripProceduralScriptFromScene}>
                           Scene -&gt; script -&gt; render
                         </button>
                         <button
@@ -85599,6 +85705,13 @@ case "mobius":
                         )}
                         {geometryConstructPanelTab === "create" && (
                           <>
+                        <GeometryConstructCatalogPanel
+                          references={geometryConstructCatalogReferences}
+                          selectedReferenceIds={geometrySelectedObjectId ? [geometrySelectedObjectId] : []}
+                          onPreviewRecipeChange={setGeometryConstructDraftRecipe}
+                          onCommit={handleCommitGeometryConstructCatalogRecipe}
+                          onOpenLegacy={handleOpenGeometryLegacyConstructCategory}
+                        />
                         <div
                           style={{
                             border: "1px solid #dbe4f0",
@@ -94908,6 +95021,15 @@ case "mobius":
                         </strong>
                       </div>
                       <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          type="button"
+                          data-testid="geometry-publish-construction-scene"
+                          onClick={handlePublishConstructionLabToProceduralScene}
+                          disabled={!geometryConstructionState && !geometryConstructionStateRef.current}
+                          style={{ fontSize: 11 }}
+                        >
+                          Publish to scene
+                        </button>
                         <button
                           type="button"
                           onClick={() => {

@@ -79,4 +79,28 @@ describe("Geometry scene identity adapter", () => {
       dependencyIds: ["geometry:source-a"],
     });
   });
+
+  it("records Construct results as derived ordinary scene objects", () => {
+    const object = createGeometryObject("constructed", "loft-a");
+    object.params.constructionFamily = "surfaces";
+    object.params.constructionKind = "surface-loft";
+    object.params.authoringSource = "professional-construct";
+    object.params.sourceObjectIds = "section-a,section-b";
+
+    const [identity] = buildGeometrySceneIdentities({ objects: [object], datasetObjects: [] });
+
+    expect(identity).toMatchObject({
+      id: "geometry:loft-a",
+      parentId: "geometry:section-a",
+      sourceKind: "derived",
+      derivedFromIds: ["geometry:section-a", "geometry:section-b"],
+      dependencyIds: ["geometry:section-a", "geometry:section-b"],
+      metadata: {
+        representation: "sampled-construction",
+        constructionFamily: "surfaces",
+        constructionKind: "surface-loft",
+        authoringSource: "professional-construct",
+      },
+    });
+  });
 });

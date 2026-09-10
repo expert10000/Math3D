@@ -28,21 +28,33 @@ export const buildGeometrySceneIdentities = (input: {
   revisions?: Readonly<Record<string, number>>;
 }): SceneEntityIdentity[] => {
   const revisions = input.revisions ?? {};
-  const procedural = input.objects.map((object) =>
-    createSceneEntityIdentity({
+  const procedural = input.objects.map((object) => {
+    const sourceLocalIds = typeof object.params.sourceObjectIds === "string"
+      ? object.params.sourceObjectIds.split(",").map((id) => id.trim()).filter(Boolean)
+      : [];
+    const sourceIds = sourceLocalIds.map((id) => sceneEntityId("geometry", id));
+    return createSceneEntityIdentity({
       localId: object.id,
       revision: revisions[object.id] ?? 0,
       moduleKind: "geometry",
-      sourceKind: "procedural",
+      sourceKind: sourceIds.length ? "derived" : "procedural",
+      parentId: sourceIds[0] ?? null,
+      derivedFromIds: sourceIds,
+      dependencyIds: sourceIds,
       metadata: {
         name: object.name,
         objectType: object.type,
         group: object.group ?? null,
         visible: object.visible,
-        representation: "parametric-procedural",
+        representation: object.type === "constructed" ? "sampled-construction" : "parametric-procedural",
+        constructionFamily: object.params.constructionFamily ?? null,
+        constructionKind: object.params.constructionKind ?? null,
+        authoringSource: object.params.authoringSource ?? "procedural",
+        sourceObjectIds: sourceLocalIds.join(","),
+        sourceEntityIds: object.params.sourceEntityIds ?? "",
       },
-    })
-  );
+    });
+  });
   const datasets = input.datasetObjects.map((object) => {
     const sourceLocalId = object.promotion?.sourceGeometryId ?? null;
     const sourceId = sourceLocalId ? sceneEntityId("geometry", sourceLocalId) : null;

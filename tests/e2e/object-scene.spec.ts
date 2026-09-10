@@ -186,16 +186,38 @@ test("Geometry professional shell keeps current workspaces and tools reachable",
     await expect(page.getByTestId("geometry-analysis-result-semantic-source")).toContainText("geometry-semantic-v1");
     await page.getByTestId("geometry-professional-tool-construct").click();
     await expect(page.getByTestId("geometry-construct-panel-tab-create")).toBeVisible();
+    await expect(page.getByTestId("geometry-construct-taxonomy")).toBeVisible();
+    await page.getByTestId("geometry-construct-tool-reference-lines").click();
+    await expect(page.getByTestId("geometry-construct-existing-tools")).toContainText("Existing Lines tools");
+    await expect(page.getByTestId("geometry-construct-category-lines")).toHaveAttribute("open", "");
+    await page.getByTestId("geometry-construct-family-surfaces").locator("summary").click();
+    await page.getByTestId("geometry-construct-tool-surface-bezier").click();
+    await expect(page.getByTestId("geometry-construct-draft")).toContainText("Preview active · not in history");
+    await page.getByTestId("geometry-construct-param-size").fill("2.2");
+    await expect(page.getByTestId("geometry-construct-commit")).toBeEnabled();
+    await page.getByTestId("geometry-construct-commit").click();
+    await expect(page.getByText(/Committed Bézier/)).toBeVisible();
 
     await page.getByTestId("geometry-professional-action-new").click();
     await page.getByTestId("geometry-professional-expanded-new-scratch").click();
     await expect(page.getByTestId("geometry-mode-scratch")).toHaveAttribute("aria-pressed", "true");
-    await page.getByTestId("geometry-professional-expanded-new-workbook").click();
+    await expect(page.getByTestId("geometry-publish-construction-scene")).toBeEnabled();
+    await page.getByTestId("geometry-publish-construction-scene").click();
+    await expect(page.getByTestId("geometry-mode-procedural")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("unified-object-tree")).toContainText("Scratch construction");
+    const newWorkbookEntry = page.getByTestId("geometry-professional-expanded-new-workbook");
+    if (!(await newWorkbookEntry.isVisible())) await page.getByTestId("geometry-professional-action-new").click();
+    await newWorkbookEntry.click();
     await expect(page.getByTestId("geometry-mode-workbook")).toHaveAttribute("aria-pressed", "true");
 
     await page.getByTestId("geometry-professional-action-more").click();
     await expect(page.getByText("Procedural scripting", { exact: true })).toBeVisible();
     await expect(page.getByTestId("geometry-professional-expanded-script")).toBeVisible();
+    await page.getByTestId("geometry-scene-to-script").click();
+    await expect(page.getByTestId("geometry-procedural-script-editor")).toContainText("constructionKind=surface-bezier");
+    await expect(page.getByTestId("geometry-procedural-script-editor")).toContainText("authoringSource=professional-construct");
+    await page.getByTestId("geometry-scene-script-roundtrip").click();
+    await expect(page.getByText(/Scene -> script -> render matched/)).toBeVisible();
 
     await page.getByTestId("geometry-professional-action-demo").click();
     await expect(page.getByTestId("geometry-mode-demo")).toHaveAttribute("aria-pressed", "true");
