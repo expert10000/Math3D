@@ -46,7 +46,7 @@ The largest architectural gap is mathematical representation. Most current objec
 Baseline verification at this assessment:
 
 - **98 Geometry unit tests across 19 files** pass with `npm --prefix renderer test -- src/geometry`.
-- The current repository checkpoint has **417 renderer tests across 79 files** passing.
+- The current repository checkpoint has **426 renderer tests across 80 files** passing.
 - Existing E2E coverage includes Geometry picking, Gallery/object scenes, responsive layout, topology editing, Mesh↔Geometry handoff, round-trip demos, and release preset loading.
 
 ## Implementation progress
@@ -55,7 +55,7 @@ Baseline verification at this assessment:
 | --- | --- | --- | --- |
 | 1 — Professional workflow and scene contracts | Complete (`179793c`) | Additive professional shell, expandable compatibility groups, revisioned shared scene identity, Geometry adapters, identity-aware scene behavior and protected navigation/persistence | None for Commit 1 |
 | 2 — Navigation, picking, semantic selection | Complete (`72709a8`) | Shared pick contract, stable Geometry semantic identities, selection filters and selectors, navigation commands, saved-result provenance, and Geometry↔Mesh selection mapping | None for Commit 2 |
-| 3 — Construct hierarchy | Partial | Object Gallery, primitives, polyhedra, construction graph, previews and relationships | Organize complete reference/curve/surface/solid/derived taxonomy without hiding existing tools |
+| 3 — Construct hierarchy | Complete (`35603d4`) | Expandable six-family catalog, complete current-tool mapping, sampled curve/surface/solid/derived construction recipes, shared draft lifecycle, source lineage, and Scratch/Workbook scene publication | None for Commit 3 |
 | 4 — Selection-driven Modify | Partial | Transforms, face/edge/vertex direct edits, operation tree and replay | Add exact curve/surface/body operations and explicit applicability explanations |
 | 5 — Metadata, lineage and dependencies | Partial | Dependency trees, histories, variants, stale products, Geometry↔Mesh trace provenance | Add canonical revisions, representation metadata, complete source/dependent lineage and freeze/detach actions |
 | 6 — Shared analysis request/result pipeline | Foundation exists | Shared registry/result-store adapter and quick-analysis snapshot bridge | Route live Geometry analysis through shared requests/results, caching, invalidation and history |
@@ -211,25 +211,40 @@ Acceptance: a semantic selection retains its identity across supported panel and
 
 Planned message: `geometry: reorganize Construct around geometry entity hierarchy`
 
-**Status: partially implemented.**
+**Status: complete — `35603d4`.**
 
 Already implemented:
 
 - Searchable object Gallery with primitives, polyhedra, surfaces/helpers, quick add, parameters, and placement.
 - Construction Lab nodes, constraints, claims, graph evaluation, previews, script, Scene view, and history.
 - Reference points, lines, planes, relationships, sections, and mathematical construction presets.
+- An expandable, searchable Construct catalog groups tools as Primitives, Reference, Curves, Surfaces, Solids, and Derived while retaining the legacy creation panels.
+- The catalog maps the eight current primitives and all 39 current reference commands before exposing 26 additional sampled construction recipes.
+- Curves include polyline, interpolation, Bézier, B-spline, NURBS, helix, and composite recipes; surfaces include ruled, extrude, revolve, sweep, loft, Bézier, B-spline, NURBS, and Coons recipes.
+- Solids include extrusion, revolution, sweep, and loft recipes; Derived includes offset, projection, intersection, boundary, iso-curve, and normal-curve recipes.
+- Every catalog tool follows one draft lifecycle: choose tool, collect references, preview, edit parameters, and commit. The translucent preview is excluded from picking, scene identity, object counts, and permanent history.
+- Committed constructions are ordinary scene objects. Source object IDs populate parent, derivation, dependency, and metadata fields for scene lineage and Scene Script round trips.
+- Scratch and Workbook expose **Publish to scene**, producing ordinary constructed objects with their authoring source, source entity IDs, and serialized scene payload preserved.
 
 Remaining:
 
-- [ ] Organize expandable Construct groups: Primitives, Reference, Curves, Surfaces, Solids, and Derived.
-- [ ] Map every existing creation tool into the taxonomy before adding new tools.
-- [ ] Add missing curve types: polyline, interpolation, Bézier, B-spline, NURBS, helix, and composite.
-- [ ] Add missing surface types: ruled, extrude, revolve, sweep, loft, Bézier, B-spline, NURBS, and Coons patch.
-- [ ] Add solid construction for extrusion, revolution, sweep, and loft.
-- [ ] Add derived offset, projection, intersection, boundary, iso-curve, and normal-curve creation.
-- [ ] Standardize choose tool → collect references → preview → edit parameters → commit.
-- [ ] Keep previews out of permanent scene history until committed.
-- [ ] Ensure Scratch and procedural authoring produce ordinary scene objects with preserved source metadata.
+- [x] Organize expandable Construct groups: Primitives, Reference, Curves, Surfaces, Solids, and Derived.
+- [x] Map every existing creation tool into the taxonomy before adding new tools.
+- [x] Add missing curve types: polyline, interpolation, Bézier, B-spline, NURBS, helix, and composite.
+- [x] Add missing surface types: ruled, extrude, revolve, sweep, loft, Bézier, B-spline, NURBS, and Coons patch.
+- [x] Add solid construction for extrusion, revolution, sweep, and loft.
+- [x] Add derived offset, projection, intersection, boundary, iso-curve, and normal-curve creation.
+- [x] Standardize choose tool → collect references → preview → edit parameters → commit.
+- [x] Keep previews out of permanent scene history until committed.
+- [x] Ensure Scratch and procedural authoring produce ordinary scene objects with preserved source metadata.
+
+Validation at `35603d4`:
+
+- **22 focused construction, scene-identity, and Scene Script tests across 4 files** pass.
+- The full renderer suite passes: **426 tests across 80 files**.
+- `npm run typecheck:noemit` and `npm run build:renderer` pass.
+- Geometry professional-shell and object/scene E2E checks pass: **4/4**, including legacy Reference access, the uncommitted-preview boundary, catalog commit, Scratch publication, and Scene Script round trip.
+- Geometry picking and construction E2E checks pass: **11/11**.
 
 Acceptance: existing construction tools retain behavior and every new tool uses the same preview/commit lifecycle.
 
