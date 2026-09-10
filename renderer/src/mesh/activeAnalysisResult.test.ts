@@ -325,6 +325,20 @@ describe("selectMeshActiveAnalysisResult", () => {
         { label: "Revision", value: "v4:f2:test" },
       ],
       warnings: [],
+      field: {
+        id: "differential-geometry:overview",
+        label: "Overview",
+        domain: "vertex",
+        valueType: "scalar",
+        source: "Fixture",
+      },
+      display: {
+        palette: "blue-red",
+        inverted: false,
+        rangeMode: "automatic",
+        range: null,
+        percentileRange: [2, 98],
+      },
     });
   });
 

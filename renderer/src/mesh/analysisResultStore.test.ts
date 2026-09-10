@@ -272,7 +272,7 @@ describe("mesh analysis result store", () => {
       backend: "Fixture worker",
       durationMs: 12.5,
       timestamp: 22,
-      mesh: { revision: mesh.revision },
+      identity: { revision: mesh.revision },
       payloadSummary: { faceCount: 1, valid: true },
     });
   });

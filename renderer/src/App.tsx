@@ -59872,7 +59872,7 @@ case "mobius":
   const meshAnalysisComputationHistory = useMemo<MeshAnalysisComputationRecord[]>(() => {
     if (!activeMeshAnalysisIdentity) return [];
     return meshAnalysisResultStore.history
-      .filter((record) => record.mesh.meshId === activeMeshAnalysisIdentity.meshId)
+      .filter((record) => record.identity.meshId === activeMeshAnalysisIdentity.meshId)
       .sort((left, right) => right.timestamp - left.timestamp);
   }, [activeMeshAnalysisIdentity, meshAnalysisResultStore.history]);
 
@@ -121035,7 +121035,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                       <div><strong>Backend:</strong> {selectedAnalysisComputation.backend}</div>
                       <div><strong>Duration:</strong> {selectedAnalysisComputation.durationMs == null ? "n/a" : formatSummaryTime(selectedAnalysisComputation.durationMs)}</div>
                       <div><strong>Timestamp:</strong> {new Date(selectedAnalysisComputation.timestamp).toLocaleString()}</div>
-                      <div><strong>Revision:</strong> {selectedAnalysisComputation.mesh.revision}</div>
+                      <div><strong>Revision:</strong> {selectedAnalysisComputation.identity.revision}</div>
                       <div><strong>Parameters:</strong> {JSON.stringify(selectedAnalysisComputation.parameters)}</div>
                       <div><strong>Dependencies:</strong> {selectedAnalysisComputation.dependencies.length ? selectedAnalysisComputation.dependencies.map((dependency) => `${dependency.kind}:${dependency.state}`).join(", ") : "none"}</div>
                       <div><strong>Result summary:</strong> {Object.keys(selectedAnalysisComputation.payloadSummary).length ? JSON.stringify(selectedAnalysisComputation.payloadSummary) : "no scalar summary"}</div>

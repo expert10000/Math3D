@@ -1,4 +1,16 @@
 import type { MeshDiagnosticsAnalysisPayload } from "./analysisResultStore";
+import type {
+  AnalysisDomain,
+  AnalysisFieldMetadata,
+  AnalysisHistogramBin,
+  AnalysisPaletteRangeMetadata,
+  ScientificAnalysisResultSummary,
+} from "../analysis/contracts";
+import {
+  summarizeAnalysisScalarField,
+  type AnalysisScalarStatistics,
+  type AnalysisScalarSummary,
+} from "../analysis/statistics";
 import type { MeshFieldCalculusResult } from "./meshSurfaceFieldCalculus";
 import type { SurfaceFeatureClass, SurfaceFeatureExtractionResult } from "./surfaceFeatureExtraction";
 import type { RidgeValleyExtractionResult } from "./ridgeValleyExtraction";
@@ -36,125 +48,11 @@ export const MESH_QUALITY_METRIC_OPTIONS: ReadonlyArray<{
   { id: "dihedralAngleDeg", label: "Dihedral angle", shortLabel: "Dihedral" },
 ];
 
-export type MeshActiveAnalysisResultSummary = {
-  category: string | null;
-  result: string;
-  quantity: string;
-  state: "Ready" | "Running" | "Deferred" | "Unavailable";
-  method: string;
-  domain: string;
-  statistics: Array<{ label: string; value: string }>;
-  percentiles: Array<{ label: string; value: string }>;
-  extrema?: Array<{ label: string; value: string }>;
-  histogram?: MeshHistogramBin[];
-  metadata: Array<{ label: string; value: string }>;
-  provenance: Array<{ label: string; value: string }>;
-  warnings: string[];
-};
-
-export type MeshCurvatureStatistics = {
-  min: number;
-  max: number;
-  mean: number;
-  std: number;
-  count: number;
-};
-
-export type MeshHistogramBin = {
-  min: number;
-  max: number;
-  count: number;
-};
-
-export type MeshCurvatureDetailedStatistics = MeshCurvatureStatistics & {
-  median: number;
-  p05: number;
-  p25: number;
-  p75: number;
-  p95: number;
-  minIndex: number;
-  maxIndex: number;
-  histogram: MeshHistogramBin[];
-};
-
-export const summarizeMeshScalarField = (
-  values: ArrayLike<number> | null | undefined,
-  selected?: ArrayLike<number | boolean> | null,
-  requestedBinCount = 12
-): MeshCurvatureDetailedStatistics | null => {
-  if (!values?.length) return null;
-  const useSelection = !!selected && selected.length === values.length;
-  const samples: Array<{ value: number; index: number }> = [];
-  let min = Number.POSITIVE_INFINITY;
-  let max = Number.NEGATIVE_INFINITY;
-  let minIndex = -1;
-  let maxIndex = -1;
-  let sum = 0;
-  let sumSquares = 0;
-
-  for (let index = 0; index < values.length; index += 1) {
-    if (useSelection && !selected[index]) continue;
-    const value = Number(values[index]);
-    if (!Number.isFinite(value)) continue;
-    samples.push({ value, index });
-    sum += value;
-    sumSquares += value * value;
-    if (value < min) {
-      min = value;
-      minIndex = index;
-    }
-    if (value > max) {
-      max = value;
-      maxIndex = index;
-    }
-  }
-
-  if (!samples.length) return null;
-  const count = samples.length;
-  const mean = sum / count;
-  const std = Math.sqrt(Math.max(0, sumSquares / count - mean * mean));
-  const sorted = samples.map((sample) => sample.value).sort((a, b) => a - b);
-  const middle = Math.floor(count / 2);
-  const median = count % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
-  const quantile = (fraction: number) => {
-    const position = Math.max(0, Math.min(count - 1, fraction * (count - 1)));
-    const lower = Math.floor(position);
-    const upper = Math.ceil(position);
-    if (lower === upper) return sorted[lower];
-    return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
-  };
-  const binCount = Number.isFinite(requestedBinCount)
-    ? Math.max(1, Math.min(32, Math.round(requestedBinCount)))
-    : 12;
-  const span = max - min;
-  const histogram = Array.from({ length: binCount }, (_, index) => ({
-    min: span > 0 ? min + (span * index) / binCount : min,
-    max: span > 0 ? min + (span * (index + 1)) / binCount : max,
-    count: 0,
-  }));
-  for (const sample of samples) {
-    const binIndex = span > 0
-      ? Math.min(binCount - 1, Math.floor(((sample.value - min) / span) * binCount))
-      : 0;
-    histogram[binIndex].count += 1;
-  }
-
-  return {
-    min,
-    max,
-    mean,
-    median,
-    p05: quantile(0.05),
-    p25: quantile(0.25),
-    p75: quantile(0.75),
-    p95: quantile(0.95),
-    std,
-    count,
-    minIndex,
-    maxIndex,
-    histogram,
-  };
-};
+export type MeshActiveAnalysisResultSummary = ScientificAnalysisResultSummary;
+export type MeshCurvatureStatistics = AnalysisScalarStatistics;
+export type MeshHistogramBin = AnalysisHistogramBin;
+export type MeshCurvatureDetailedStatistics = AnalysisScalarSummary;
+export const summarizeMeshScalarField = summarizeAnalysisScalarField;
 
 export type MeshSphereSanitySummary = {
   ok: boolean;
@@ -691,6 +589,45 @@ const normalizeScientificResult = (
     warnings.add(`${formatCount(input.qualityReport.topology.degenerateFaceCount)} degenerate faces are excluded or flagged.`);
   }
 
+  const fieldDomain: AnalysisDomain = input.section === "mesh-quality"
+    ? qualityMetricDefinition[input.qualityMetric].sampleKind === "faces"
+      ? "face"
+      : qualityMetricDefinition[input.qualityMetric].sampleKind === "edges"
+        ? "edge"
+        : "vertex"
+    : input.section === "geodesics" || input.section === "curvature-lines" || input.section === "ridges-valleys"
+      ? "path"
+      : input.section === "diagnostics"
+        ? "mesh"
+        : input.section === "surface-features"
+          ? "mixed"
+          : "vertex";
+  const field: AnalysisFieldMetadata = {
+    id: `${input.section}:${base.result.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "overview"}`,
+    label: base.result,
+    domain: fieldDomain,
+    valueType: input.section === "surface-features" || input.section === "diagnostics"
+      ? "category"
+      : input.section === "geodesics" || input.section === "curvature-lines" || input.section === "ridges-valleys"
+        ? "geometry"
+        : input.section === "vector-calculus" && !input.calculusLastResult
+          ? "vector"
+          : "scalar",
+    source: input.meshLabel,
+  };
+  const statisticsRange = input.curvatureStats
+    ? { min: input.curvatureStats.min, max: input.curvatureStats.max }
+    : input.vectorMagnitudeRange;
+  const display: AnalysisPaletteRangeMetadata | undefined = field.valueType === "scalar"
+    ? {
+        palette: input.curvaturePalette,
+        inverted: input.curvaturePaletteInverted,
+        rangeMode: input.curvatureClampRange ? "manual" : "automatic",
+        range: input.curvatureClampRange ?? statisticsRange ?? null,
+        percentileRange: [2, 98],
+      }
+    : undefined;
+
   return {
     ...base,
     quantity: base.result,
@@ -701,6 +638,8 @@ const normalizeScientificResult = (
     percentiles: base.percentiles ?? [],
     provenance,
     warnings: [...warnings],
+    field,
+    display,
   };
 };
 

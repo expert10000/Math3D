@@ -1,3 +1,23 @@
+import type {
+  AnalysisComputationRecord,
+  AnalysisParameters,
+  AnalysisResult,
+  AnalysisResultDependency,
+  AnalysisResultState,
+  AnalysisResultStore,
+} from "../analysis/contracts";
+import {
+  analysisParameterHash,
+  analysisResultKey,
+  analysisResultKindsForIdentity,
+  cleanAnalysisKeyPart,
+  createAnalysisResultStore,
+  getAnalysisResult,
+  getAnalysisResultForParameters,
+  invalidateAnalysisResult,
+  isAnalysisResultCurrent,
+  upsertAnalysisResult,
+} from "../analysis/resultStore";
 import type { SurfaceMeshData, SurfaceMeshSource } from "./surfaceMesh";
 import { deriveMeshHealthState, type MeshHealthResult, type MeshHealthState } from "./meshHealth";
 import type { MeshDifferentialGeometryResult } from "./meshDifferentialGeometry";
@@ -14,37 +34,11 @@ export type MeshAnalysisResultKind =
   | "ridges-valleys"
   | (string & {});
 
-export type MeshAnalysisResultState =
-  | "queued"
-  | "running"
-  | "ready"
-  | "cancelled"
-  | "deferred"
-  | "stale"
-  | "error";
-
-export type MeshAnalysisParameterValue =
-  | number
-  | string
-  | boolean
-  | null
-  | readonly MeshAnalysisParameterValue[]
-  | { readonly [key: string]: MeshAnalysisParameterValue };
-
-export type MeshAnalysisParameters = Readonly<Record<string, MeshAnalysisParameterValue>>;
-
+export type MeshAnalysisResultState = AnalysisResultState;
+export type MeshAnalysisParameters = AnalysisParameters;
 export type MeshDiagnosticState = MeshHealthState;
-
-export type MeshAnalysisResultDependency = {
-  kind: MeshAnalysisResultKind;
-  variant?: string;
-  state: MeshAnalysisResultState;
-  key?: string;
-  resultVersion?: number;
-};
-
+export type MeshAnalysisResultDependency = AnalysisResultDependency<MeshAnalysisResultKind>;
 export type MeshCurvatureAnalysisPayload = MeshDifferentialGeometryResult;
-
 export type MeshDiagnosticsAnalysisPayload = MeshHealthResult;
 
 export const deriveMeshDiagnosticState = deriveMeshHealthState;
@@ -59,47 +53,12 @@ export type MeshAnalysisMeshIdentity = {
   faceCount: number;
 };
 
-export type MeshAnalysisResult<TPayload = unknown> = {
-  kind: MeshAnalysisResultKind;
-  variant: string;
-  state: MeshAnalysisResultState;
-  mesh: MeshAnalysisMeshIdentity;
-  createdAt: number;
-  updatedAt: number;
-  parameters: MeshAnalysisParameters;
-  payload: TPayload | null;
-  error: string | null;
-  progress: number | null;
-  dependencies: MeshAnalysisResultDependency[];
-  parameterHash: string;
-  resultVersion: number;
-  computeTimeMs: number | null;
-  backend: string;
-};
-
-export type MeshAnalysisComputationRecord = {
-  id: string;
-  resultKey: string;
-  kind: MeshAnalysisResultKind;
-  variant: string;
-  state: MeshAnalysisResultState;
-  mesh: MeshAnalysisMeshIdentity;
-  parameters: MeshAnalysisParameters;
-  parameterHash: string;
-  dependencies: MeshAnalysisResultDependency[];
-  backend: string;
-  durationMs: number | null;
-  timestamp: number;
-  resultVersion: number;
-  error: string | null;
-  payloadSummary: Record<string, string | number | boolean | null>;
-};
-
-export type MeshAnalysisResultStore = {
-  version: 2;
-  entries: Record<string, MeshAnalysisResult>;
-  history: MeshAnalysisComputationRecord[];
-};
+export type MeshAnalysisResult<TPayload = unknown> =
+  AnalysisResult<TPayload, MeshAnalysisResultKind, MeshAnalysisMeshIdentity>;
+export type MeshAnalysisComputationRecord =
+  AnalysisComputationRecord<MeshAnalysisResultKind, MeshAnalysisMeshIdentity>;
+export type MeshAnalysisResultStore =
+  AnalysisResultStore<MeshAnalysisResultKind, MeshAnalysisMeshIdentity>;
 
 type UpsertMeshAnalysisResultOptions<TPayload> = {
   kind: MeshAnalysisResultKind;
@@ -116,66 +75,29 @@ type UpsertMeshAnalysisResultOptions<TPayload> = {
   now?: number;
 };
 
-const MAX_STORED_RESULTS = 24;
-const MAX_COMPUTATION_HISTORY = 96;
-
-const cleanKeyPart = (value: unknown): string =>
-  String(value ?? "")
-    .trim()
-    .replace(/[^a-zA-Z0-9._:-]+/g, "_")
-    .slice(0, 96);
-
 const sourceIdentity = (source: SurfaceMeshSource): string => {
   switch (source.kind) {
-    case "import":
-      return `import:${cleanKeyPart(source.filename)}`;
+    case "import": return `import:${cleanAnalysisKeyPart(source.filename)}`;
     case "geometryObject":
-      return `geometry:${cleanKeyPart(
-        source.objectId ??
-          source.objectName ??
-          source.objects?.map((entry) => entry.objectId ?? entry.objectName).join(",")
-      )}`;
-    case "polyhedronPreset":
-      return `preset:${cleanKeyPart(source.id ?? source.label)}`;
-    case "detachedMesh":
-      return `detached:${cleanKeyPart(source.fromLabel ?? source.fromKind)}`;
-    default:
-      return source.kind;
+      return `geometry:${cleanAnalysisKeyPart(source.objectId ?? source.objectName ?? source.objects?.map((entry) => entry.objectId ?? entry.objectName).join(","))}`;
+    case "polyhedronPreset": return `preset:${cleanAnalysisKeyPart(source.id ?? source.label)}`;
+    case "detachedMesh": return `detached:${cleanAnalysisKeyPart(source.fromLabel ?? source.fromKind)}`;
+    default: return source.kind;
   }
 };
 
 const hashNumbers = (values: ArrayLike<number> | null | undefined): string => {
   if (!values?.length) return "0";
-  const length = values.length;
   const numberBits = new DataView(new ArrayBuffer(8));
   let hash = 2166136261;
-  for (let index = 0; index < length; index += 1) {
-    const value = Number(values[index] ?? 0);
-    numberBits.setFloat64(0, value, true);
+  for (let index = 0; index < values.length; index += 1) {
+    numberBits.setFloat64(0, Number(values[index] ?? 0), true);
     hash ^= numberBits.getUint32(0, true);
     hash = Math.imul(hash, 16777619);
     hash ^= numberBits.getUint32(4, true);
     hash = Math.imul(hash, 16777619);
   }
   return `full-${(hash >>> 0).toString(36)}`;
-};
-
-const stableParameterValue = (value: unknown): unknown => {
-  if (typeof value === "number") {
-    if (Number.isNaN(value)) return { $number: "NaN" };
-    if (value === Number.POSITIVE_INFINITY) return { $number: "+Infinity" };
-    if (value === Number.NEGATIVE_INFINITY) return { $number: "-Infinity" };
-    if (Object.is(value, -0)) return { $number: "-0" };
-  }
-  if (Array.isArray(value)) return value.map(stableParameterValue);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [key, stableParameterValue(entry)])
-    );
-  }
-  return value;
 };
 
 const inferAnalysisBackend = (
@@ -185,104 +107,54 @@ const inferAnalysisBackend = (
 ): string => {
   if (kind === "diagnostics" && payload && typeof payload === "object") {
     const backend = (payload as { backend?: unknown }).backend;
-    if (typeof backend === "string" && backend) return backend === "cgal" ? "CGAL" : backend === "hybrid" ? "Math3D + CGAL" : "Math3D";
+    if (typeof backend === "string" && backend) {
+      return backend === "cgal" ? "CGAL" : backend === "hybrid" ? "Math3D + CGAL" : "Math3D";
+    }
   }
   if (kind === "geodesic") {
-    const method = parameters.method;
-    if (method === "surface") return "CGAL";
-    if (method === "heat") return "Python heat worker";
+    if (parameters.method === "surface") return "CGAL";
+    if (parameters.method === "heat") return "Python heat worker";
     return "Renderer CPU";
   }
   if (kind === "quality") return "Math3D quality worker";
-  if (kind === "curvature" || kind === "normals" || kind === "principal-directions" || kind === "surface-features" || kind === "ridges-valleys") {
+  if (["curvature", "normals", "principal-directions", "surface-features", "ridges-valleys"].includes(kind)) {
     return "Mesh analysis worker";
   }
   return "Renderer CPU";
 };
 
-const summarizePayload = (payload: unknown): Record<string, string | number | boolean | null> => {
-  if (!payload || typeof payload !== "object") return {};
-  const output: Record<string, string | number | boolean | null> = {};
-  const addScalars = (value: unknown, prefix = "") => {
-    if (!value || typeof value !== "object") return;
-    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-      if (Object.keys(output).length >= 16) return;
-      if (typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean" || entry === null) {
-        output[`${prefix}${key}`] = entry;
-      }
-    }
-  };
-  addScalars((payload as { summary?: unknown }).summary, "summary.");
-  addScalars(payload);
-  return output;
-};
-
-const syncHistoryStates = (
-  history: MeshAnalysisComputationRecord[],
-  entries: Record<string, MeshAnalysisResult>
-): MeshAnalysisComputationRecord[] => history.map((record) => {
-  const current = entries[record.resultKey];
-  if (!current || current.resultVersion !== record.resultVersion || current.state === record.state) return record;
-  return { ...record, state: current.state, timestamp: current.updatedAt, error: current.error };
-});
-
-export const meshAnalysisParameterHash = (
-  parameters: MeshAnalysisParameters
-): string => JSON.stringify(stableParameterValue(parameters));
+export const meshAnalysisParameterHash = analysisParameterHash;
 
 export const createMeshAnalysisMeshIdentity = (mesh: SurfaceMeshData): MeshAnalysisMeshIdentity => {
   const vertexCount = Math.floor(mesh.positions.length / 3);
   const faceCount = mesh.indices ? Math.floor(mesh.indices.length / 3) : Math.floor(vertexCount / 3);
   const sourceLabel = sourceIdentity(mesh.source);
-  const meshId = `${sourceLabel}:${cleanKeyPart(mesh.label) || "mesh"}`;
-  const revision = [
-    `v${vertexCount}`,
-    `f${faceCount}`,
-    `p${hashNumbers(mesh.positions)}`,
-    `i${hashNumbers(mesh.indices)}`,
-  ].join(":");
-  return {
-    meshId,
-    revision,
-    key: `${meshId}@${revision}`,
-    label: mesh.label,
-    sourceLabel,
-    vertexCount,
-    faceCount,
-  };
+  const meshId = `${sourceLabel}:${cleanAnalysisKeyPart(mesh.label) || "mesh"}`;
+  const revision = `v${vertexCount}:f${faceCount}:p${hashNumbers(mesh.positions)}:i${hashNumbers(mesh.indices)}`;
+  return { meshId, revision, key: `${meshId}@${revision}`, label: mesh.label, sourceLabel, vertexCount, faceCount };
 };
 
-export const createMeshAnalysisResultStore = (): MeshAnalysisResultStore => ({ version: 2, entries: {}, history: [] });
+export const createMeshAnalysisResultStore = (): MeshAnalysisResultStore =>
+  createAnalysisResultStore<MeshAnalysisResultKind, MeshAnalysisMeshIdentity>();
 
 export const meshAnalysisResultKey = (
   mesh: MeshAnalysisMeshIdentity,
   kind: MeshAnalysisResultKind,
   variant = "default"
-): string => `${mesh.key}:${kind}:${cleanKeyPart(variant) || "default"}`;
+): string => analysisResultKey(mesh, kind, variant);
 
 export const getMeshAnalysisResult = <TPayload = unknown>(
   store: MeshAnalysisResultStore,
   mesh: MeshAnalysisMeshIdentity | null | undefined,
   kind: MeshAnalysisResultKind,
   variant = "default"
-): MeshAnalysisResult<TPayload> | null => {
-  if (!mesh) return null;
-  return (store.entries[meshAnalysisResultKey(mesh, kind, variant)] as MeshAnalysisResult<TPayload> | undefined) ?? null;
-};
+): MeshAnalysisResult<TPayload> | null =>
+  getAnalysisResult<TPayload, MeshAnalysisResultKind, MeshAnalysisMeshIdentity>(store, mesh, kind, variant);
 
 export const isMeshAnalysisResultCurrent = (
   store: MeshAnalysisResultStore,
   result: MeshAnalysisResult | null | undefined
-): boolean => {
-  if (!result || result.state !== "ready") return false;
-  return result.dependencies.every((dependency) => {
-    const key = dependency.key ?? dependencyKey(result.mesh, dependency);
-    const current = store.entries[key];
-    return !!current &&
-      current.state === "ready" &&
-      (dependency.resultVersion == null || current.resultVersion === dependency.resultVersion);
-  });
-};
+): boolean => isAnalysisResultCurrent(store, result);
 
 export const getMeshAnalysisResultForParameters = <TPayload = unknown>(
   store: MeshAnalysisResultStore,
@@ -290,59 +162,8 @@ export const getMeshAnalysisResultForParameters = <TPayload = unknown>(
   kind: MeshAnalysisResultKind,
   parameters: MeshAnalysisParameters,
   variant = "default"
-): MeshAnalysisResult<TPayload> | null => {
-  const result = getMeshAnalysisResult<TPayload>(store, mesh, kind, variant);
-  if (
-    !result ||
-    result.parameterHash !== meshAnalysisParameterHash(parameters) ||
-    !isMeshAnalysisResultCurrent(store, result)
-  ) return null;
-  return result;
-};
-
-const dependencyKey = (
-  mesh: MeshAnalysisMeshIdentity,
-  dependency: Pick<MeshAnalysisResultDependency, "kind" | "variant">
-): string => meshAnalysisResultKey(mesh, dependency.kind, dependency.variant ?? "default");
-
-const invalidateDependents = (
-  entries: Record<string, MeshAnalysisResult>,
-  changedKey: string,
-  now: number
-): void => {
-  const pending = [changedKey];
-  const visited = new Set<string>();
-  while (pending.length) {
-    const dependencyResultKey = pending.shift()!;
-    if (visited.has(dependencyResultKey)) continue;
-    visited.add(dependencyResultKey);
-    for (const [candidateKey, candidate] of Object.entries(entries)) {
-      if (candidateKey === changedKey) continue;
-      const dependsOnChangedResult = candidate.dependencies.some((dependency) =>
-        dependency.key
-          ? dependency.key === dependencyResultKey
-          : dependencyKey(candidate.mesh, dependency) === dependencyResultKey
-      );
-      if (!dependsOnChangedResult) continue;
-      if (candidate.state === "stale") {
-        pending.push(candidateKey);
-        continue;
-      }
-      entries[candidateKey] = {
-        ...candidate,
-        state: "stale",
-        updatedAt: now,
-        progress: null,
-        dependencies: candidate.dependencies.map((dependency) =>
-          (dependency.key ?? dependencyKey(candidate.mesh, dependency)) === dependencyResultKey
-            ? { ...dependency, state: "stale" }
-            : dependency
-        ),
-      };
-      pending.push(candidateKey);
-    }
-  }
-};
+): MeshAnalysisResult<TPayload> | null =>
+  getAnalysisResultForParameters<TPayload, MeshAnalysisResultKind, MeshAnalysisMeshIdentity>(store, mesh, kind, parameters, variant);
 
 export const invalidateMeshAnalysisResult = (
   store: MeshAnalysisResultStore,
@@ -350,120 +171,23 @@ export const invalidateMeshAnalysisResult = (
   kind: MeshAnalysisResultKind,
   variant = "default",
   now = Date.now()
-): MeshAnalysisResultStore => {
-  const key = meshAnalysisResultKey(mesh, kind, variant);
-  const current = store.entries[key];
-  if (!current) return store;
-  const entries = {
-    ...store.entries,
-    [key]: { ...current, state: "stale" as const, updatedAt: now, progress: null },
-  };
-  invalidateDependents(entries, key, now);
-  return { version: 2, entries, history: syncHistoryStates(store.history, entries) };
-};
+): MeshAnalysisResultStore => invalidateAnalysisResult(store, mesh, kind, variant, now);
 
 export const upsertMeshAnalysisResult = <TPayload>(
   store: MeshAnalysisResultStore,
   options: UpsertMeshAnalysisResultOptions<TPayload>
-): MeshAnalysisResultStore => {
-  const variant = options.variant ?? "default";
-  const key = meshAnalysisResultKey(options.mesh, options.kind, variant);
-  const previous = store.entries[key] as MeshAnalysisResult<TPayload> | undefined;
-  const now = options.now ?? Date.now();
-  const parameters = options.parameters ?? previous?.parameters ?? {};
-  const parameterHash = meshAnalysisParameterHash(parameters);
-  const resultVersion = (previous?.resultVersion ?? 0) + 1;
-  const dependencies = (options.dependencies ?? previous?.dependencies ?? []).map((dependency) => {
-    const key = dependency.key ?? dependencyKey(options.mesh, dependency);
-    const current = store.entries[key];
-    return {
-      ...dependency,
-      variant: dependency.variant ?? "default",
-      key,
-      state: current?.state ?? dependency.state,
-      resultVersion: current?.resultVersion ?? dependency.resultVersion,
-    };
-  });
-  const nextEntry: MeshAnalysisResult<TPayload> = {
-    kind: options.kind,
-    variant,
-    state: options.state ?? "ready",
-    mesh: options.mesh,
-    createdAt: previous?.createdAt ?? now,
-    updatedAt: now,
-    parameters,
-    payload: options.payload !== undefined ? options.payload : previous?.payload ?? null,
-    error: options.error !== undefined ? options.error : previous?.error ?? null,
-    progress:
-      options.progress !== undefined
-        ? options.progress == null
-          ? null
-          : Math.min(1, Math.max(0, options.progress))
-        : previous?.progress ?? (options.state === "ready" || options.state == null ? 1 : null),
-    dependencies,
-    parameterHash,
-    resultVersion,
-    computeTimeMs:
-      options.computeTimeMs !== undefined ? options.computeTimeMs : previous?.computeTimeMs ?? null,
-    backend: options.backend ?? previous?.backend ?? inferAnalysisBackend(options.kind, parameters, options.payload),
-  };
-  const entries = { ...store.entries, [key]: nextEntry };
-  for (const [entryKey, entry] of Object.entries(entries)) {
-    if (entryKey === key || entry.mesh.meshId !== options.mesh.meshId || entry.mesh.revision === options.mesh.revision) continue;
-    if (entry.state !== "stale") entries[entryKey] = { ...entry, state: "stale", updatedAt: now, progress: null };
-  }
-  invalidateDependents(entries, key, now);
-  entries[key] = nextEntry;
-  const orderedKeys = Object.entries(entries)
-    .sort(([, a], [, b]) => b.updatedAt - a.updatedAt)
-    .map(([entryKey]) => entryKey);
-  if (orderedKeys.length > MAX_STORED_RESULTS) {
-    for (const staleKey of orderedKeys.slice(MAX_STORED_RESULTS)) delete entries[staleKey];
-  }
-  let history = syncHistoryStates(store.history, entries);
-  const state = nextEntry.state;
-  const activeRecordIndex = history.findIndex((record) =>
-    record.resultKey === key &&
-    record.parameterHash === parameterHash &&
-    (record.state === "queued" || record.state === "running")
-  );
-  if (activeRecordIndex < 0 && (state === "queued" || state === "running")) {
-    history = history.map((record) =>
-      record.resultKey === key && record.state === "ready"
-        ? { ...record, state: "stale" as const }
-        : record
-    );
-  }
-  const record: MeshAnalysisComputationRecord = {
-    id: activeRecordIndex >= 0 ? history[activeRecordIndex].id : `${key}:run:${now}:${resultVersion}`,
-    resultKey: key,
-    kind: nextEntry.kind,
-    variant,
-    state,
-    mesh: nextEntry.mesh,
-    parameters,
-    parameterHash,
-    dependencies,
-    backend: nextEntry.backend,
-    durationMs: nextEntry.computeTimeMs,
-    timestamp: now,
-    resultVersion,
-    error: nextEntry.error,
-    payloadSummary: summarizePayload(nextEntry.payload),
-  };
-  if (activeRecordIndex >= 0) history[activeRecordIndex] = record;
-  else history.unshift(record);
-  return { version: 2, entries, history: history.slice(0, MAX_COMPUTATION_HISTORY) };
-};
+): MeshAnalysisResultStore => upsertAnalysisResult(store, {
+  ...options,
+  identity: options.mesh,
+  backend: options.backend ?? inferAnalysisBackend(options.kind, options.parameters ?? {}, options.payload),
+}, {
+  lineageKey: (identity) => identity.meshId,
+  defaultBackend: "Renderer CPU",
+  maxResults: 24,
+  maxHistory: 96,
+});
 
 export const meshAnalysisResultKindsForMesh = (
   store: MeshAnalysisResultStore,
   mesh: MeshAnalysisMeshIdentity | null | undefined
-): MeshAnalysisResultKind[] => {
-  if (!mesh) return [];
-  const kinds = new Set<MeshAnalysisResultKind>();
-  for (const entry of Object.values(store.entries)) {
-    if (entry.mesh.key === mesh.key && isMeshAnalysisResultCurrent(store, entry)) kinds.add(entry.kind);
-  }
-  return [...kinds].sort();
-};
+): MeshAnalysisResultKind[] => analysisResultKindsForIdentity(store, mesh);

@@ -1,4 +1,5 @@
 import type { SurfaceScalarField, SurfaceVectorField } from "../scene/datasets";
+import type { AnalysisDomain, AnalysisFieldMetadata, AnalysisProbe } from "../analysis/contracts";
 import {
   describeMeshCurvatureWarnings,
   type MeshDifferentialGeometryResult,
@@ -34,6 +35,7 @@ export type MeshEntityScientificFields = {
   featureMembership: SurfaceFeatureClass[];
   principalDirectionsValidated: boolean;
   warnings: string[];
+  probe: AnalysisProbe;
 };
 
 type MeshEntityScientificFieldsInput = {
@@ -190,5 +192,31 @@ export const inspectMeshEntityScientificFields = ({
     featureMembership: [...new Set(featureMembership)],
     principalDirectionsValidated,
     warnings: [...warnings],
+    probe: {
+      targetId: target.kind === "vertex"
+        ? `vertex:${target.vertexIndex}`
+        : target.kind === "face"
+          ? `face:${target.faceIndex}`
+          : `edge:${target.edge[0]}-${target.edge[1]}`,
+      domain: target.kind as AnalysisDomain,
+      values: [
+        ...scalars.map((entry) => ({
+          field: { id: entry.name, label: entry.name, domain: target.kind as AnalysisDomain, valueType: "scalar" as const, source: entry.domain } satisfies AnalysisFieldMetadata,
+          value: entry.value,
+          valid: Number.isFinite(entry.value),
+        })),
+        ...vectors.map((entry) => ({
+          field: { id: entry.name, label: entry.name, domain: target.kind as AnalysisDomain, valueType: "vector" as const, components: ["x", "y", "z"], source: entry.domain } satisfies AnalysisFieldMetadata,
+          value: entry.value,
+          valid: entry.value.every(Number.isFinite),
+        })),
+        ...qualityValues.map((entry) => ({
+          field: { id: entry.name, label: entry.name, domain: target.kind as AnalysisDomain, valueType: "scalar" as const, source: "mesh-quality" } satisfies AnalysisFieldMetadata,
+          value: entry.value,
+          valid: Number.isFinite(entry.value),
+        })),
+      ],
+      warnings: [...warnings],
+    },
   };
 };
