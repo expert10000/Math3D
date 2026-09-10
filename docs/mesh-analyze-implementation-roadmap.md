@@ -1,7 +1,7 @@
 # Mesh Analyze implementation roadmap
 
 Assessment date: 2026-09-10
-Reviewed checkout: `c27abfc` — analysis-core: complete Geometry dependency integration
+Reviewed checkout: `e2f2c42` — mesh-analysis: add end-to-end regression suite and freeze v1 workflow
 
 The numbered commits below are implementation plans, not claims that corresponding Git commits are complete. This document records the current implementation and the remaining work against the supplied plans.
 
@@ -20,7 +20,7 @@ The numbered commits below are implementation plans, not claims that correspondi
 | 9 — Target isolation and large-mesh workers | Complete | `e151abf` | 381 renderer tests, TypeScript typecheck, production renderer build, 3 Mesh Analyze E2E tests, and current-build Bunny/Armadillo/Dragon profiling passed |
 | 10 — Scientific Inspector and computation history | Complete | `6ac85fe` | 394 renderer tests, TypeScript typecheck, production core build, and 3 Mesh Analyze E2E tests passed |
 | 11 — Geometry ↔ Mesh analysis infrastructure | Complete | `c27abfc` | 397 renderer tests, full TypeScript typecheck, production core build, and 3 Mesh Analyze E2E tests passed |
-| 12 | Planned | — | See the detailed section below |
+| 12 — Regression suite and Mesh Analyze v1 freeze | Complete | `e2f2c42` | 54 focused unit tests, 397 renderer tests across 74 files, full TypeScript typecheck, production renderer build, 8 Mesh Analyze E2E scenarios, VTK/CGAL verification, and Bunny/Armadillo/Dragon profiling passed |
 
 The implementation commits follow the numbered plan sections. Progress entries record completed code only after its relevant tests and build checks pass.
 
@@ -28,7 +28,7 @@ UI walkthrough: [Mesh Analyze UI guide — Commits 5–9](mesh-analyze-ui-guide-
 
 ## Current assessment
 
-Commits 1–11 are implemented. Commit 12 remains planned.
+Commits 1–12 are implemented. The Mesh Analyze v1 workflow is frozen by the acceptance contract in [Mesh Analyze v1 workflow freeze](mesh-analyze-v1-freeze.md).
 
 Commit 6 validation completed locally with CGAL 6.2.1 from vcpkg, the Python CGAL worker environment, the native shortest-path helper, dependency and mesh-generation smoke checks, all three CGAL boolean operations, and numerical geodesic checks on plane, cylinder, sphere, graph-versus-surface, disconnected, and 5,776-vertex large-mesh cases. The full renderer suite also passed: **373 tests across 69 files**, plus TypeScript typecheck and the production renderer build.
 
@@ -42,18 +42,19 @@ Commit 10 validation covers the consistent quantity/method/domain/statistics/per
 
 Commit 11 validation covers the domain-neutral registry and result contracts, Geometry and Mesh adapters, domain-generic dependency resolution, exact dependency snapshots, and transitive invalidation across a custom three-level analytical quantity. The architecture audit confirmed that the shared core imports neither Geometry nor Mesh and that `App.tsx` does not import the generic analysis core directly. Geometry metrics and topology calculations remain in `geometry/analysisBridge.ts`; mesh topology and numerical algorithms remain Mesh-specific. The full renderer suite passed: **397 tests across 74 files**, plus full TypeScript typecheck, the production core build, and all three Mesh Analyze E2E tests.
 
+Commit 12 validation groups the health, curvature, calculus, quality, geodesic-label, dependency-invalidation, and graph-routing contracts into a 54-test focused gate. Five acceptance scenarios cover a clean sphere, Fandisk, worker-backed Stanford Bunny, an open-boundary problem mesh, and live graph-versus-CGAL surface routing. Independent VTK references verify unit-sphere curvature and equilateral-triangle quality; native CGAL verification covers analytic surfaces, disconnected inputs, a 5,776-vertex mesh, and real-mesh booleans. The current-build Bunny/Armadillo/Dragon profile passed, as did **397 renderer tests across 74 files**, full TypeScript typecheck, the production renderer build, and all **8 Mesh Analyze E2E scenarios**.
+
 ```powershell
 cd C:\Math3D
 npm --prefix renderer test
 npm run typecheck:noemit
 npm run build:renderer
-npm run test:cgal-geodesic
-npm run benchmark:mesh:analysis-profile
+npm run test:mesh-analyze:v1:acceptance
 ```
 
 ## Next priorities
 
-1. Complete the regression suite and freeze the v1 workflow in Commit 12.
+Mesh Analyze v1 has no remaining planned implementation commits. Future changes should preserve the frozen workflow and acceptance scenarios or begin a separately reviewed v2 roadmap.
 
 ## Commit 1 — Canonical AnalysisResult registry and cache
 
@@ -315,7 +316,7 @@ Acceptance: generic analysis infrastructure is not hard-coded into Mesh or the m
 
 Planned message: `mesh-analysis: add end-to-end regression suite and freeze v1 workflow`
 
-**Status: useful tests exist; full acceptance suite and freeze remain.**
+**Status: implemented.** The v1 workflow and its acceptance contract are documented in [Mesh Analyze v1 workflow freeze](mesh-analyze-v1-freeze.md).
 
 Already implemented:
 
@@ -323,13 +324,13 @@ Already implemented:
 - Scientific Mesh Analyze UI tests.
 - Benchmark assets and regression scripts.
 
-Remaining:
+Completed:
 
-- [ ] Complete unit coverage for health severity, curvature conventions, calculus, geodesic labels, and dependency invalidation.
-- [ ] Complete VTK and CGAL backend verification.
-- [ ] Add clean-sphere, Fandisk, worker-backed Bunny, problem-mesh, and graph-versus-surface end-to-end scenarios.
-- [ ] Run numerical, integration, and performance acceptance checks.
-- [ ] Freeze the v1 workflow only after those checks pass.
+- [x] Grouped unit coverage for health severity, curvature conventions, calculus, geodesic labels, quality, graph routing, and dependency invalidation into a focused 54-test gate.
+- [x] Added independent VTK curvature/triangle-quality verification and completed native CGAL geodesic/boolean backend checks.
+- [x] Added clean-sphere, Fandisk, worker-backed Bunny, problem-mesh, and graph-versus-surface end-to-end scenarios.
+- [x] Ran numerical, integration, and performance acceptance checks.
+- [x] Froze the v1 workflow after all acceptance checks passed.
 
 Workflow constraints to preserve:
 
@@ -339,10 +340,10 @@ Workflow constraints to preserve:
 - One shared document scene.
 - No engine-specific VTK/CGAL primary panels or restored equation-generation workflow in Mesh Analyze.
 
-## Recommended implementation sequence
+## Completed implementation sequence
 
-1. Extract the shared analysis infrastructure in Commit 11.
-2. Run the full acceptance suite and freeze v1 in Commit 12.
+1. Commit 11 extracted the shared analysis infrastructure.
+2. Commit 12 ran the full acceptance suite and froze v1.
 
 ## Main implementation references
 
