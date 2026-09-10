@@ -1,4 +1,5 @@
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
+import type { SharedPickTargetContract } from "./pickContract";
 import {
   makeGeometryEdgeKey,
   summarizeGeometryEdgeTopology,
@@ -61,6 +62,12 @@ export type SelectionResult = {
   readonly topologyVersion?: number | null;
   readonly stale: boolean;
   readonly label: string;
+  readonly sceneEntityId?: string | null;
+  readonly sourceSceneEntityId?: string | null;
+  readonly sourceRevision?: number | null;
+  readonly semanticEntityId?: string | null;
+  readonly semanticKind?: string | null;
+  readonly semanticAliasIds?: Readonly<Record<string, string>>;
 };
 
 export type UnifiedSelectionManagerState = {
@@ -144,10 +151,7 @@ export type UnifiedSelectionFilterResult = {
   readonly reasons: readonly string[];
 };
 
-export type MeshTopologyUnifiedSelectionInput = {
-  readonly objectId?: string | null;
-  readonly objectLabel?: string | null;
-  readonly objectType?: string | null;
+export type MeshTopologyUnifiedSelectionInput = Partial<SharedPickTargetContract> & {
   readonly meshKey?: string | null;
   readonly topologyVersion?: number | null;
   readonly mesh?: SurfaceMeshData | null;
@@ -169,6 +173,9 @@ export type GeometryObjectUnifiedSelectionInput = {
   readonly topologyVersion?: number | null;
   readonly worldPosition?: UnifiedSelectionVec3 | null;
   readonly normal?: UnifiedSelectionVec3 | null;
+  readonly sceneEntityId?: string | null;
+  readonly sourceSceneEntityId?: string | null;
+  readonly sourceRevision?: number | null;
 };
 
 const EMPTY_TOPOLOGY: UnifiedSelectionTopology = {
@@ -279,6 +286,9 @@ const buildSelectionResultFields = (input: {
   readonly worldPosition?: UnifiedSelectionVec3 | null;
   readonly normal?: UnifiedSelectionVec3 | null;
   readonly topology: UnifiedSelectionTopology;
+  readonly sceneEntityId?: string | null;
+  readonly sourceSceneEntityId?: string | null;
+  readonly sourceRevision?: number | null;
 }): SelectionResult => ({
   workspace: input.workspace,
   objectId: input.objectId,
@@ -314,6 +324,9 @@ const buildSelectionResultFields = (input: {
   topologyVersion: input.topologyVersion ?? null,
   stale: input.stale,
   label: input.label,
+  sceneEntityId: input.sceneEntityId ?? null,
+  sourceSceneEntityId: input.sourceSceneEntityId ?? null,
+  sourceRevision: input.sourceRevision ?? null,
 });
 
 const encodeKeyPart = (value: string | number | null | undefined): string =>
@@ -742,6 +755,9 @@ export function unifiedSelectionFromGeometryPick(
     worldPosition,
     normal,
     topology,
+    sceneEntityId: pick.sceneEntityId,
+    sourceSceneEntityId: pick.sourceSceneEntityId,
+    sourceRevision: pick.sourceRevision,
   });
 
   return {
@@ -784,6 +800,9 @@ export function unifiedSelectionFromGeometryObject(
     worldPosition,
     normal,
     topology: EMPTY_TOPOLOGY,
+    sceneEntityId: input.sceneEntityId,
+    sourceSceneEntityId: input.sourceSceneEntityId,
+    sourceRevision: input.sourceRevision ?? input.topologyVersion,
   });
   return {
     ...resultFields,
@@ -833,6 +852,9 @@ export function unifiedSelectionFromMeshTopology(
       worldPosition,
       normal,
       topology: EMPTY_TOPOLOGY,
+      sceneEntityId: input.sceneEntityId,
+      sourceSceneEntityId: input.sourceSceneEntityId,
+      sourceRevision: input.sourceRevision ?? input.topologyVersion,
     });
     return {
       ...resultFields,
@@ -923,6 +945,9 @@ export function unifiedSelectionFromMeshTopology(
     worldPosition: derivedWorldPosition,
     normal,
     topology,
+    sceneEntityId: input.sceneEntityId,
+    sourceSceneEntityId: input.sourceSceneEntityId,
+    sourceRevision: input.sourceRevision ?? input.topologyVersion,
   });
   return {
     ...resultFields,
@@ -963,6 +988,12 @@ export function selectionResultFromUnifiedSelection(
     topologyVersion: selection.topologyVersion ?? null,
     stale: selection.stale,
     label: selection.label,
+    sceneEntityId: selection.sceneEntityId ?? null,
+    sourceSceneEntityId: selection.sourceSceneEntityId ?? null,
+    sourceRevision: selection.sourceRevision ?? null,
+    semanticEntityId: selection.semanticEntityId ?? null,
+    semanticKind: selection.semanticKind ?? null,
+    semanticAliasIds: selection.semanticAliasIds,
   };
 }
 

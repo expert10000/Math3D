@@ -35,6 +35,7 @@ import { DiskStatsPanel } from "./components/DiskStatsPanel";
 import { WorkbookPanel } from "./components/WorkbookPanel";
 import { GeometryPickReadout } from "./components/GeometryPickReadout";
 import { UnifiedSelectionInspector } from "./components/UnifiedSelectionInspector";
+import { GeometrySemanticNavigatorPanel } from "./components/GeometrySemanticNavigatorPanel";
 import {
   MeshOperationsPanel,
   MESH_OPERATION_LABELS,
@@ -160,6 +161,7 @@ import {
   type UnifiedSelectionSet,
   type UnifiedSelectionSetEditMode,
 } from "./selection/unifiedSelection";
+import { sharedPickEntityId } from "./selection/pickContract";
 import {
   addSelectionHistoryEntry,
   bookmarkSelectionEntry,
@@ -236,6 +238,19 @@ import {
   type SceneEntityIdentity,
 } from "./scene/sceneIdentity";
 import { buildGeometrySceneIdentities } from "./geometry/sceneIdentity";
+import {
+  DEFAULT_GEOMETRY_SEMANTIC_FILTER,
+  attachGeometrySemanticSelection,
+  buildGeometrySemanticCandidate,
+  buildGeometrySemanticSelection,
+  evaluateGeometrySemanticFilter,
+  mapGeometrySemanticSelectionToMesh,
+  resolveGeometrySemanticNavigation,
+  selectGeometrySemanticCandidates,
+  type GeometrySemanticFilterKey,
+  type GeometrySemanticNavigationCommand,
+  type GeometrySemanticSelector,
+} from "./geometry/semanticSelection";
 import {
   GEOMETRY_PROFESSIONAL_ACTIONS,
   GEOMETRY_PROFESSIONAL_EXPANDED_GROUPS,
@@ -993,6 +1008,7 @@ type GeometryQuickAnalysisResultEntry = {
   sourceObjectName: string;
   snapshot: GeometryAnalysisSnapshot;
   createdAt: number;
+  selection: UnifiedSelection | null;
   basicMetrics?: GeometryAnalysisBasicMetrics;
   topologySummary?: GeometryAnalysisTopologySummary;
   sectionSummary?: GeometrySectionAnalysisSummary;
@@ -7662,6 +7678,7 @@ const buildRetainedTopologySelectionPick = (
 ): GeometryPickResult | null => {
   const fallbackNormal: [number, number, number] = [0, 1, 0];
   const basePick = {
+    workspace: "geometry" as const,
     objectId,
     objectLabel: objectName,
     objectType,
@@ -7687,6 +7704,7 @@ const buildRetainedTopologySelectionPick = (
     return {
       ...basePick,
       kind: "face",
+      pickEntityId: sharedPickEntityId({ workspace: "geometry", objectId, kind: "face", localId: target.faceIndex }),
       worldPoint: pointToTuple3(centroid),
       normal,
       faceNormal: normal,
@@ -7710,6 +7728,12 @@ const buildRetainedTopologySelectionPick = (
     return {
       ...basePick,
       kind: "edge",
+      pickEntityId: sharedPickEntityId({
+        workspace: "geometry",
+        objectId,
+        kind: "edge",
+        localId: makeEdgeKeyFromVertices(aIndex, bIndex),
+      }),
       worldPoint: pointToTuple3(midpoint),
       normal: fallbackNormal,
       tangent,
@@ -7724,6 +7748,7 @@ const buildRetainedTopologySelectionPick = (
   return {
     ...basePick,
     kind: "vertex",
+    pickEntityId: sharedPickEntityId({ workspace: "geometry", objectId, kind: "vertex", localId: target.vertexIndex }),
     worldPoint: pointToTuple3(point),
     normal: fallbackNormal,
     vertexNormal: fallbackNormal,
@@ -12204,6 +12229,12 @@ const App: React.FC = () => {
   });
   const [geometryProfessionalExpandedGroup, setGeometryProfessionalExpandedGroup] =
     useState<"gallery" | "new" | "existing" | null>(null);
+  const [geometrySemanticFilter, setGeometrySemanticFilter] = useState(DEFAULT_GEOMETRY_SEMANTIC_FILTER);
+  const [geometrySemanticStatus, setGeometrySemanticStatus] = useState<string | null>(null);
+  const [geometryMeshSemanticSelectionLink, setGeometryMeshSemanticSelectionLink] = useState<{
+    geometry: UnifiedSelection;
+    mesh: UnifiedSelection;
+  } | null>(null);
   const [geometryWorkbookUiMode, setGeometryWorkbookUiMode] = useState<GeometryWorkbookUiMode>("compact");
   const [geometryViewerControlsOpen, setGeometryViewerControlsOpen] = useState(() => {
     if (typeof window === "undefined" || IS_REPLAY_MODE) return true;
@@ -17285,6 +17316,7 @@ const App: React.FC = () => {
       const selectedMeshKey = geometrySelectedObjectId ?? null;
       const pickContextObjects: GeometryPickContext["objects"] = proceduralMeshSet.meshes.map((mesh) => {
         const sceneObject = resolveGeometrySceneObjectById(mesh.id);
+        const sceneIdentity = geometrySceneIdentityIndex.get(sceneEntityId("geometry", mesh.id)) ?? null;
         const transform = (mesh.transform as GeometryObjectTransform | undefined) ?? {
           position: { x: 0, y: 0, z: 0 },
           rotation: { x: 0, y: 0, z: 0 },
@@ -17294,6 +17326,9 @@ const App: React.FC = () => {
           objectId: mesh.id,
           objectLabel: sceneObject?.name ?? mesh.label ?? mesh.id,
           objectType: sceneObject && "type" in sceneObject ? sceneObject.type : "mesh",
+          sceneEntityId: sceneIdentity?.id ?? sceneEntityId("geometry", mesh.id),
+          sourceSceneEntityId: sceneIdentity?.derivedFromIds[0] ?? null,
+          sourceRevision: sceneIdentity?.revision ?? geometryObjectRevisionById[mesh.id] ?? 0,
           meshKey: mesh.id,
           topologyVersion: geometryObjectRevisionById[mesh.id] ?? 0,
           pickPolicy: mesh.pickPolicy ?? "topology",
@@ -17753,6 +17788,7 @@ const App: React.FC = () => {
       geometryObjectRevisionById,
       geometryPickThroughHelpersEnabled,
       geometryProbeSelectionMode,
+      geometrySceneIdentityIndex,
       geometrySelectedObjectId,
       proceduralMeshSet.meshes,
       resolveGeometrySceneObjectById,
@@ -17770,22 +17806,110 @@ const App: React.FC = () => {
     [geometryProceduralHoverPick, resolveGeometryProbeSelectionDetails]
   );
   const geometrySelectedPick = geometryProbeSelectionDetails?.pick ?? null;
+  const enrichGeometryUnifiedSelection = useCallback(
+    (selection: UnifiedSelection | null): UnifiedSelection | null => {
+      if (!selection) return null;
+      const object = resolveGeometrySceneObjectById(selection.objectId);
+      const identity = geometrySceneIdentityIndex.get(sceneEntityId("geometry", selection.objectId)) ?? null;
+      const group = object && "group" in object ? object.group ?? "" : "";
+      const constructionRole = /construction|reference|helper|claim/i.test(group) ? group : null;
+      const semantic = buildGeometrySemanticSelection({
+        selection,
+        sceneIdentity: identity,
+        visible: object?.visible,
+        objectType: object && "type" in object ? object.type : "mesh",
+        constructionRole,
+      });
+      if (semantic && !evaluateGeometrySemanticFilter(semantic, geometrySemanticFilter).accepted) return null;
+      return semantic ? attachGeometrySemanticSelection(selection, semantic) : selection;
+    },
+    [geometrySceneIdentityIndex, geometrySemanticFilter, resolveGeometrySceneObjectById]
+  );
   const geometryUnifiedSelection = useMemo(
-    () => unifiedSelectionFromGeometryPick(geometrySelectedPick),
-    [geometrySelectedPick]
+    () => enrichGeometryUnifiedSelection(unifiedSelectionFromGeometryPick(geometrySelectedPick)),
+    [enrichGeometryUnifiedSelection, geometrySelectedPick]
   );
   const geometryObjectUnifiedSelection = useMemo(() => {
     if (geometryProbeSelectionMode !== "object" || !geometrySelectedSceneObject) return null;
-    return unifiedSelectionFromGeometryObject({
+    const identity = geometrySceneIdentityIndex.get(sceneEntityId("geometry", geometrySelectedSceneObject.id)) ?? null;
+    return enrichGeometryUnifiedSelection(unifiedSelectionFromGeometryObject({
       objectId: geometrySelectedSceneObject.id,
       objectLabel: geometrySelectedSceneObject.name,
       objectType: "type" in geometrySelectedSceneObject ? geometrySelectedSceneObject.type : "mesh",
       meshKey: geometrySelectedSceneObject.id,
       topologyVersion: geometryObjectRevisionById[geometrySelectedSceneObject.id] ?? 0,
-    });
-  }, [geometryObjectRevisionById, geometryProbeSelectionMode, geometrySelectedSceneObject]);
+      sceneEntityId: identity?.id ?? null,
+      sourceSceneEntityId: identity?.derivedFromIds[0] ?? null,
+      sourceRevision: identity?.revision ?? 0,
+    }));
+  }, [
+    enrichGeometryUnifiedSelection,
+    geometryObjectRevisionById,
+    geometryProbeSelectionMode,
+    geometrySceneIdentityIndex,
+    geometrySelectedSceneObject,
+  ]);
   const geometryActiveUnifiedSelection =
     geometryProbeSelectionMode === "object" ? geometryObjectUnifiedSelection : geometryUnifiedSelection;
+  const geometrySemanticSelection = useMemo(() => {
+    if (!geometryActiveUnifiedSelection) return null;
+    const object = resolveGeometrySceneObjectById(geometryActiveUnifiedSelection.objectId);
+    const identity = geometrySceneIdentityIndex.get(
+      sceneEntityId("geometry", geometryActiveUnifiedSelection.objectId)
+    );
+    const group = object && "group" in object ? object.group ?? "" : "";
+    return buildGeometrySemanticSelection({
+      selection: geometryActiveUnifiedSelection,
+      sceneIdentity: identity,
+      visible: object?.visible,
+      objectType: object && "type" in object ? object.type : "mesh",
+      constructionRole: /construction|reference|helper|claim/i.test(group) ? group : null,
+    });
+  }, [
+    geometryActiveUnifiedSelection,
+    geometrySceneIdentityIndex,
+    resolveGeometrySceneObjectById,
+  ]);
+  const geometrySemanticCandidates = useMemo(() => {
+    const objects: Array<GeometryObject | GeometryDatasetMeshObject> = [
+      ...geometryObjects,
+      ...geometryDatasetMeshObjects,
+    ];
+    return objects.flatMap((object) => {
+      const identity = geometrySceneIdentityIndex.get(sceneEntityId("geometry", object.id));
+      if (!identity) return [];
+      const objectType = "type" in object ? object.type : "mesh";
+      const group = "group" in object ? object.group ?? "" : "";
+      const constructionRole = /construction|reference|helper|claim/i.test(group) ? group : null;
+      const base = unifiedSelectionFromGeometryObject({
+        objectId: object.id,
+        objectLabel: object.name,
+        objectType,
+        meshKey: object.id,
+        topologyVersion: identity.revision,
+        sceneEntityId: identity.id,
+        sourceSceneEntityId: identity.derivedFromIds[0] ?? null,
+        sourceRevision: identity.revision,
+      });
+      const semantic = buildGeometrySemanticSelection({
+        selection: base,
+        sceneIdentity: identity,
+        visible: object.visible,
+        objectType,
+        constructionRole,
+      });
+      if (!semantic) return [];
+      return [
+        buildGeometrySemanticCandidate({
+          selection: semantic,
+          identity,
+          objectType,
+          params: "params" in object ? object.params : {},
+          position: object.transform.position,
+        }),
+      ];
+    });
+  }, [geometryDatasetMeshObjects, geometryObjects, geometrySceneIdentityIndex]);
   const geometrySelectionSetAppliedKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!geometryUnifiedSelection) return;
@@ -33269,8 +33393,29 @@ const App: React.FC = () => {
     setGeometryMode("procedural");
     setGeometryProceduralPanelTab("object");
     setGeometrySelectedObjectId(source.id);
+    const linkedSelection = geometryMeshSemanticSelectionLink?.geometry ?? null;
+    if (linkedSelection && linkedSelection.objectId === source.id) {
+      setGeometryProbeSelectionMode(linkedSelection.selectionType);
+      setGeometryMultiSelectionSet(createUnifiedSelectionSet([linkedSelection]));
+      if (linkedSelection.selectionType === "object") {
+        setGeometryProceduralPick(null);
+      } else {
+        const point = linkedSelection.worldPosition ?? linkedSelection.point ?? [0, 0, 0];
+        const normal = linkedSelection.normal ?? [0, 1, 0];
+        setGeometryProceduralPick({
+          point: { x: point[0], y: point[1], z: point[2] },
+          normal: { x: normal[0], y: normal[1], z: normal[2] },
+          meshKey: linkedSelection.meshKey ?? linkedSelection.objectId,
+          faceIndex: linkedSelection.faceId ?? undefined,
+          vertexIndex: linkedSelection.vertexId ?? undefined,
+          topologyVersion: linkedSelection.topologyVersion ?? undefined,
+          topologyReference: linkedSelection.topologyReference ?? null,
+          distance: 0,
+        });
+      }
+    }
     setMeshPromotionStatus(`Opened source geometry object: ${source.name}.`);
-  }, [meshPromotionTrace, resolveGeometrySceneObjectById]);
+  }, [geometryMeshSemanticSelectionLink, meshPromotionTrace, resolveGeometrySceneObjectById]);
   const handleOpenPromotedMeshObject = useCallback(() => {
     if (!meshPromotionTrace) {
       setMeshPromotionStatus("No promoted mesh snapshot is active.");
@@ -34349,12 +34494,44 @@ const App: React.FC = () => {
       uvs: baseBaked.uvs ? Float32Array.from(baseBaked.uvs) : null,
       source,
     };
+    const semanticMeshSelection =
+      geometryActiveUnifiedSelection?.objectId === obj.id
+        ? mapGeometrySemanticSelectionToMesh({
+            selection: geometryActiveUnifiedSelection,
+            meshObjectId: `mesh:${snapshotLabel}`,
+            meshLabel: snapshotLabel,
+            mesh: baked,
+            meshSceneEntityId: `mesh:${snapshotLabel}`,
+            topologyVersion: geometryActiveUnifiedSelection.topologyVersion,
+          })
+        : null;
+    if (semanticMeshSelection && geometryActiveUnifiedSelection) {
+      setGeometryMeshSemanticSelectionLink({ geometry: geometryActiveUnifiedSelection, mesh: semanticMeshSelection });
+      setSurfaceMeshTopologyPickMode(semanticMeshSelection.selectionType);
+      setSurfaceMeshTopologySelectionCleared(false);
+      if (semanticMeshSelection.faceId != null) setSurfaceMeshTopologyFaceIndex(semanticMeshSelection.faceId);
+      if (semanticMeshSelection.edgeVertices) {
+        setSurfaceMeshTopologyEdgeA(semanticMeshSelection.edgeVertices[0]);
+        setSurfaceMeshTopologyEdgeB(semanticMeshSelection.edgeVertices[1]);
+      }
+      if (semanticMeshSelection.vertexId != null) setSurfaceMeshTopologyVertexIndex(semanticMeshSelection.vertexId);
+      setMeshMultiSelectionSet(createUnifiedSelectionSet([semanticMeshSelection]));
+    } else {
+      setGeometryMeshSemanticSelectionLink(null);
+    }
     setMeshDataset(applySurfaceMeshOps(baked));
     setDatasetKind("mesh");
     setSurfaceViewerKind("mesh");
     setMode("surfaces");
     return true;
-  }, [geometryObjects, geometryDatasetMeshObjects, proceduralMeshSet.meshes, setMeshDataset, beginMeshPromotionTrace]);
+  }, [
+    beginMeshPromotionTrace,
+    geometryActiveUnifiedSelection,
+    geometryDatasetMeshObjects,
+    geometryObjects,
+    proceduralMeshSet.meshes,
+    setMeshDataset,
+  ]);
 
   const handleBakeSelectedGeometryObject = useCallback(() => {
     if (!geometrySelectedObjectId) {
@@ -42137,7 +42314,7 @@ const App: React.FC = () => {
     setSurfacesPanelState("browse");
   }, []);
   const openGeometryAnalysisSnapshotInSurfaces = useCallback(
-    (snapshot: GeometryAnalysisSnapshot, enableGaussMap: boolean) => {
+    (snapshot: GeometryAnalysisSnapshot, enableGaussMap: boolean, sourceSelection: UnifiedSelection | null = null) => {
       skipSurfacesAutoBrowseOnModeChangeRef.current = true;
       const meshForTrace = cloneSurfaceMeshData(snapshot.mesh, `${snapshot.sourceObjectName} (${snapshot.id})`);
       const snapshotLabel = beginMeshPromotionTrace(
@@ -42146,6 +42323,26 @@ const App: React.FC = () => {
         meshForTrace.label,
         meshForTrace
       );
+      const mappedSelection = mapGeometrySemanticSelectionToMesh({
+        selection: sourceSelection,
+        meshObjectId: `mesh:${snapshotLabel}`,
+        meshLabel: snapshotLabel,
+        mesh: meshForTrace,
+        meshSceneEntityId: `mesh:${snapshotLabel}`,
+        topologyVersion: sourceSelection?.topologyVersion,
+      });
+      if (sourceSelection && mappedSelection) {
+        setGeometryMeshSemanticSelectionLink({ geometry: sourceSelection, mesh: mappedSelection });
+        setSurfaceMeshTopologyPickMode(mappedSelection.selectionType);
+        setSurfaceMeshTopologySelectionCleared(false);
+        if (mappedSelection.faceId != null) setSurfaceMeshTopologyFaceIndex(mappedSelection.faceId);
+        if (mappedSelection.edgeVertices) {
+          setSurfaceMeshTopologyEdgeA(mappedSelection.edgeVertices[0]);
+          setSurfaceMeshTopologyEdgeB(mappedSelection.edgeVertices[1]);
+        }
+        if (mappedSelection.vertexId != null) setSurfaceMeshTopologyVertexIndex(mappedSelection.vertexId);
+        setMeshMultiSelectionSet(createUnifiedSelectionSet([mappedSelection]));
+      }
       setMeshDataset(cloneSurfaceMeshData(meshForTrace, snapshotLabel));
       setMode("surfaces");
       setSurfaceViewerKind("mesh");
@@ -42198,12 +42395,16 @@ const App: React.FC = () => {
       sourceObjectName: prepared.snapshot.sourceObjectName,
       snapshot: prepared.snapshot,
       createdAt: Date.now(),
+      selection:
+        geometryActiveUnifiedSelection?.objectId === prepared.snapshot.sourceObjectId
+          ? geometryActiveUnifiedSelection
+          : null,
       basicMetrics,
       notes: prepared.snapshot.readiness.notes.slice(0, 4),
     };
     appendGeometryQuickAnalysisResult(entry);
     setGeometryCreateActionStatus(`Analysis ready: basic metrics (${prepared.snapshot.id}).`);
-  }, [appendGeometryQuickAnalysisResult, createSelectedGeometryAnalysisSnapshot]);
+  }, [appendGeometryQuickAnalysisResult, createSelectedGeometryAnalysisSnapshot, geometryActiveUnifiedSelection]);
   const handleRunGeometryQuickTopologySummary = useCallback(() => {
     const prepared = createSelectedGeometryAnalysisSnapshot();
     if (!prepared) return;
@@ -42222,12 +42423,16 @@ const App: React.FC = () => {
       sourceObjectName: prepared.snapshot.sourceObjectName,
       snapshot: prepared.snapshot,
       createdAt: Date.now(),
+      selection:
+        geometryActiveUnifiedSelection?.objectId === prepared.snapshot.sourceObjectId
+          ? geometryActiveUnifiedSelection
+          : null,
       topologySummary,
       notes: notes.slice(0, 4),
     };
     appendGeometryQuickAnalysisResult(entry);
     setGeometryCreateActionStatus(`Analysis ready: topology summary (${prepared.snapshot.id}).`);
-  }, [appendGeometryQuickAnalysisResult, createSelectedGeometryAnalysisSnapshot]);
+  }, [appendGeometryQuickAnalysisResult, createSelectedGeometryAnalysisSnapshot, geometryActiveUnifiedSelection]);
   const handleRunGeometryQuickSectionAnalysis = useCallback(() => {
     const prepared = createSelectedGeometryAnalysisSnapshot();
     if (!prepared) return;
@@ -42247,12 +42452,16 @@ const App: React.FC = () => {
       sourceObjectName: prepared.snapshot.sourceObjectName,
       snapshot: prepared.snapshot,
       createdAt: Date.now(),
+      selection:
+        geometryActiveUnifiedSelection?.objectId === prepared.snapshot.sourceObjectId
+          ? geometryActiveUnifiedSelection
+          : null,
       sectionSummary,
       notes: prepared.snapshot.readiness.notes.slice(0, 4),
     };
     appendGeometryQuickAnalysisResult(entry);
     setGeometryCreateActionStatus(`Analysis ready: section summary (${prepared.snapshot.id}).`);
-  }, [appendGeometryQuickAnalysisResult, createSelectedGeometryAnalysisSnapshot, geometrySectionPreview]);
+  }, [appendGeometryQuickAnalysisResult, createSelectedGeometryAnalysisSnapshot, geometryActiveUnifiedSelection, geometrySectionPreview]);
   const handleRunGeometryQuickDifferential = useCallback(
     (enableGaussMap: boolean) => {
       const prepared = createSelectedGeometryAnalysisSnapshot();
@@ -42265,13 +42474,28 @@ const App: React.FC = () => {
         sourceObjectName: prepared.snapshot.sourceObjectName,
         snapshot: prepared.snapshot,
         createdAt: Date.now(),
+        selection:
+          geometryActiveUnifiedSelection?.objectId === prepared.snapshot.sourceObjectId
+            ? geometryActiveUnifiedSelection
+            : null,
         notes: prepared.snapshot.readiness.notes.slice(0, 4),
       };
       appendGeometryQuickAnalysisResult(entry);
-      openGeometryAnalysisSnapshotInSurfaces(prepared.snapshot, enableGaussMap);
+      openGeometryAnalysisSnapshotInSurfaces(
+        prepared.snapshot,
+        enableGaussMap,
+        geometryActiveUnifiedSelection?.objectId === prepared.snapshot.sourceObjectId
+          ? geometryActiveUnifiedSelection
+          : null
+      );
       setGeometryCreateActionStatus(`Opened analysis-ready mesh (${prepared.snapshot.id}) in Mesh Analyze.`);
     },
-    [appendGeometryQuickAnalysisResult, createSelectedGeometryAnalysisSnapshot, openGeometryAnalysisSnapshotInSurfaces]
+    [
+      appendGeometryQuickAnalysisResult,
+      createSelectedGeometryAnalysisSnapshot,
+      geometryActiveUnifiedSelection,
+      openGeometryAnalysisSnapshotInSurfaces,
+    ]
   );
   const openSelectedGeometryMeshAnalysis = useCallback(
     (enableGaussMap: boolean) => {
@@ -42286,7 +42510,8 @@ const App: React.FC = () => {
     }
     openGeometryAnalysisSnapshotInSurfaces(
       geometrySelectedQuickAnalysisResult.snapshot,
-      geometrySelectedQuickAnalysisResult.kind === "differential-geometry"
+      geometrySelectedQuickAnalysisResult.kind === "differential-geometry",
+      geometrySelectedQuickAnalysisResult.selection
     );
     setGeometryCreateActionStatus(
       `Opened ${geometrySelectedQuickAnalysisResult.snapshot.id} in Mesh Analyze.`
@@ -42311,6 +42536,15 @@ const App: React.FC = () => {
       topologySummary: geometrySelectedQuickAnalysisResult.topologySummary ?? null,
       sectionSummary: geometrySelectedQuickAnalysisResult.sectionSummary ?? null,
       notes: geometrySelectedQuickAnalysisResult.notes ?? [],
+      selection: geometrySelectedQuickAnalysisResult.selection
+        ? {
+            sceneEntityId: geometrySelectedQuickAnalysisResult.selection.sceneEntityId ?? null,
+            sourceRevision: geometrySelectedQuickAnalysisResult.selection.sourceRevision ?? null,
+            semanticEntityId: geometrySelectedQuickAnalysisResult.selection.semanticEntityId ?? null,
+            semanticKind: geometrySelectedQuickAnalysisResult.selection.semanticKind ?? null,
+            entityId: geometrySelectedQuickAnalysisResult.selection.entityId,
+          }
+        : null,
     };
     const base = sanitizeFileBase(
       `${geometrySelectedQuickAnalysisResult.sourceObjectName}_${geometrySelectedQuickAnalysisResult.kind}`,
@@ -55039,9 +55273,8 @@ case "mobius":
     surfaceMeshTopologyFieldValidation.edgeFallbackActive ? " (from face)" : ""
   }`;
   const selectedSurfaceMeshTopologyVertexLabel = formatContextEntityLabel("vertex", selectedSurfaceMeshTopologyVertexId);
-  const meshUnifiedSelection = useMemo(
-    () =>
-      unifiedSelectionFromMeshTopology({
+  const meshUnifiedSelection = useMemo(() => {
+      const selection = unifiedSelectionFromMeshTopology({
         mode: surfaceMeshTopologyPickMode,
         objectId: `mesh:${surfaceMeshLabel}`,
         objectLabel: surfaceMeshLabel,
@@ -55062,8 +55295,31 @@ case "mobius":
                 ? surfaceMeshTopologyFieldValidation.edgeValid
                 : surfaceMeshTopologyFieldValidation.vertexValid,
         selectionCleared: surfaceMeshTopologySelectionCleared,
-      }),
+        sceneEntityId: `mesh:${surfaceMeshLabel}`,
+        sourceSceneEntityId: surfaceMeshData?.source.kind === "geometryObject" && surfaceMeshData.source.objectId
+          ? sceneEntityId("geometry", surfaceMeshData.source.objectId)
+          : null,
+      });
+      const linked = geometryMeshSemanticSelectionLink?.mesh ?? null;
+      if (!selection || !linked || selection.selectionType !== linked.selectionType) return selection;
+      const sameTopologyEntity =
+        selection.selectionType === "object" ||
+        (selection.selectionType === "face" && selection.faceId === linked.faceId) ||
+        (selection.selectionType === "edge" && selection.edgeId === linked.edgeId) ||
+        (selection.selectionType === "vertex" && selection.vertexId === linked.vertexId);
+      return sameTopologyEntity
+        ? {
+            ...selection,
+            sourceSceneEntityId: linked.sourceSceneEntityId,
+            sourceRevision: linked.sourceRevision,
+            semanticEntityId: linked.semanticEntityId,
+            semanticKind: linked.semanticKind,
+            semanticAliasIds: linked.semanticAliasIds,
+          }
+        : selection;
+    },
     [
+      geometryMeshSemanticSelectionLink,
       selectedSurfaceMeshTopologyFaceId,
       selectedSurfaceMeshTopologyVertexId,
       surfaceMeshData,
@@ -67745,6 +68001,154 @@ case "mobius":
       setGeometrySelectedObjectId(localId);
     }
   }, [unifiedObjectModel.nodeById]);
+  const handleToggleGeometrySemanticFilter = useCallback((key: GeometrySemanticFilterKey) => {
+    setGeometrySemanticFilter((current) => ({ ...current, [key]: !current[key] }));
+  }, []);
+  const applyGeometrySemanticCandidates = useCallback(
+    (candidates: readonly (typeof geometrySemanticCandidates)[number][], actionLabel: string) => {
+      const accepted = candidates.filter(
+        (candidate) => evaluateGeometrySemanticFilter(candidate, geometrySemanticFilter).accepted
+      );
+      if (!accepted.length) {
+        setGeometrySemanticStatus(`${actionLabel}: no matching entities under the current filters.`);
+        return;
+      }
+      const selections = accepted.flatMap((candidate) => {
+        if (
+          geometryActiveUnifiedSelection &&
+          geometrySemanticSelection &&
+          candidate.id === geometrySemanticSelection.id &&
+          candidate.objectId === geometryActiveUnifiedSelection.objectId
+        ) {
+          return [attachGeometrySemanticSelection(geometryActiveUnifiedSelection, candidate)];
+        }
+        const selection = unifiedSelectionFromGeometryObject({
+          objectId: candidate.objectId,
+          objectLabel: candidate.objectLabel,
+          objectType: candidate.objectType,
+          meshKey: candidate.objectId,
+          topologyVersion: candidate.sourceRevision,
+          sceneEntityId: candidate.sceneEntityId,
+          sourceSceneEntityId: candidate.sourceSceneEntityIds[0] ?? null,
+          sourceRevision: candidate.sourceRevision,
+        });
+        return selection ? [attachGeometrySemanticSelection(selection, candidate)] : [];
+      });
+      if (!selections.length) return;
+      setGeometryMode("procedural");
+      setGeometryProceduralPanelTab("scene");
+      setGeometryRightPanelTab("selection");
+      setGeometryProbeSelectionMode(selections[0].selectionType);
+      if (selections[0].selectionType === "object") setGeometryProceduralPick(null);
+      setGeometryProceduralHoverPick(null);
+      setGeometrySelectedObjectId(selections[0].objectId);
+      setUnifiedTreeSelectedId(`scene:${selections[0].objectId}`);
+      setGeometryMultiSelectionSet(createUnifiedSelectionSet(selections));
+      setGeometrySemanticStatus(
+        `${actionLabel}: selected ${selections.length} ${selections.length === 1 ? "entity" : "entities"}.`
+      );
+    },
+    [geometryActiveUnifiedSelection, geometrySemanticFilter, geometrySemanticSelection]
+  );
+  const geometrySemanticSeedCandidate = useMemo(() => {
+    if (!geometrySemanticSelection) return null;
+    const objectCandidate = geometrySemanticCandidates.find(
+      (candidate) => candidate.objectId === geometrySemanticSelection.objectId
+    );
+    return objectCandidate ? { ...objectCandidate, ...geometrySemanticSelection } : null;
+  }, [geometrySemanticCandidates, geometrySemanticSelection]);
+  const handleGeometrySemanticSelector = useCallback(
+    (selector: GeometrySemanticSelector) => {
+      if (!geometrySemanticSeedCandidate) {
+        setGeometrySemanticStatus("Select a Geometry entity before running a semantic selector.");
+        return;
+      }
+      const matches = selectGeometrySemanticCandidates({
+        seed: geometrySemanticSeedCandidate,
+        candidates: [geometrySemanticSeedCandidate, ...geometrySemanticCandidates.filter(
+          (candidate) => candidate.objectId !== geometrySemanticSeedCandidate.objectId
+        )],
+        selector,
+        filter: geometrySemanticFilter,
+      });
+      applyGeometrySemanticCandidates(matches, selector.replaceAll("-", " "));
+    },
+    [
+      applyGeometrySemanticCandidates,
+      geometrySemanticCandidates,
+      geometrySemanticFilter,
+      geometrySemanticSeedCandidate,
+    ]
+  );
+  const handleGeometrySemanticNavigation = useCallback(
+    (command: GeometrySemanticNavigationCommand) => {
+      if (!geometrySemanticSeedCandidate) {
+        setGeometrySemanticStatus("Select a Geometry entity before navigating.");
+        return;
+      }
+      if (command === "frame") {
+        setUnifiedTreeSelectedId(`scene:${geometrySemanticSeedCandidate.objectId}`);
+        setGeometrySelectedObjectId(geometrySemanticSeedCandidate.objectId);
+        if (geometrySelectedWorldBounds) {
+          const center = {
+            x: (geometrySelectedWorldBounds.min[0] + geometrySelectedWorldBounds.max[0]) * 0.5,
+            y: (geometrySelectedWorldBounds.min[1] + geometrySelectedWorldBounds.max[1]) * 0.5,
+            z: (geometrySelectedWorldBounds.min[2] + geometrySelectedWorldBounds.max[2]) * 0.5,
+          };
+          const radius = Math.max(
+            0.35,
+            0.5 * Math.hypot(
+              geometrySelectedWorldBounds.max[0] - geometrySelectedWorldBounds.min[0],
+              geometrySelectedWorldBounds.max[1] - geometrySelectedWorldBounds.min[1],
+              geometrySelectedWorldBounds.max[2] - geometrySelectedWorldBounds.min[2]
+            )
+          );
+          setGeometryCameraFitCommand((current) => ({
+            token: (current?.token ?? 0) + 1,
+            center,
+            radius,
+            padding: 1.12,
+          }));
+        } else {
+          handleGeometryFit("scene");
+        }
+        setGeometrySemanticStatus(`Framed ${geometrySemanticSeedCandidate.objectLabel}.`);
+        return;
+      }
+      if (command === "isolate" || command === "hide-others") {
+        const targetId = geometrySemanticSeedCandidate.objectId;
+        setGeometryObjects((current) => current.map((object) =>
+          geometryLockedObjectIds.has(object.id) ? object : { ...object, visible: object.id === targetId }
+        ));
+        setGeometryDatasetMeshObjects((current) =>
+          current.map((object) =>
+            geometryLockedObjectIds.has(object.id) ? object : { ...object, visible: object.id === targetId }
+          )
+        );
+        setGeometrySemanticStatus(`${command === "isolate" ? "Isolated" : "Hid others around"} ${geometrySemanticSeedCandidate.objectLabel}.`);
+        return;
+      }
+      const matches = resolveGeometrySemanticNavigation({
+        seed: geometrySemanticSeedCandidate,
+        candidates: [
+          geometrySemanticSeedCandidate,
+          ...geometrySemanticCandidates.filter(
+            (candidate) => candidate.objectId !== geometrySemanticSeedCandidate.objectId
+          ),
+        ],
+        command,
+      });
+      applyGeometrySemanticCandidates(matches, command.replaceAll("-", " "));
+    },
+    [
+      applyGeometrySemanticCandidates,
+      geometrySemanticCandidates,
+      geometrySemanticSeedCandidate,
+      geometryLockedObjectIds,
+      geometrySelectedWorldBounds,
+      handleGeometryFit,
+    ]
+  );
   const handleToggleUnifiedNodeVisibility = useCallback(
     (nodeId: string) => {
       const node = unifiedObjectModel.nodeById.get(nodeId);
@@ -84805,6 +85209,15 @@ case "mobius":
 
                     {geometryProceduralPanelTab === "scene" && (
                     <>
+                    <GeometrySemanticNavigatorPanel
+                      semantic={geometrySemanticSelection}
+                      filter={geometrySemanticFilter}
+                      selectionCount={geometryMultiSelectionSet.count || (geometrySemanticSelection ? 1 : 0)}
+                      status={geometrySemanticStatus}
+                      onToggleFilter={handleToggleGeometrySemanticFilter}
+                      onCommand={handleGeometrySemanticNavigation}
+                      onSelector={handleGeometrySemanticSelector}
+                    />
                     <UnifiedObjectTreePanel
                       title="Scene contents"
                       nodes={unifiedObjectNodes}
@@ -92208,6 +92621,13 @@ case "mobius":
                                   </div>
                                   <div style={{ fontSize: 10.5 }}>
                                     <strong>Snapshot:</strong> {geometrySelectedQuickAnalysisResult.snapshot.id}
+                                  </div>
+                                  <div data-testid="geometry-analysis-result-semantic-source" style={{ fontSize: 10.5 }}>
+                                    <strong>Semantic source:</strong>{" "}
+                                    {geometrySelectedQuickAnalysisResult.selection?.semanticEntityId ?? "whole object"}
+                                    {geometrySelectedQuickAnalysisResult.selection?.sourceRevision != null
+                                      ? ` @ r${geometrySelectedQuickAnalysisResult.selection.sourceRevision}`
+                                      : ""}
                                   </div>
                                   {geometrySelectedQuickAnalysisResult.kind === "topology-summary" &&
                                     geometrySelectedQuickAnalysisResult.topologySummary && (

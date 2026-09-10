@@ -135,6 +135,12 @@ export const UnifiedSelectionInspector = ({
           <span data-testid="unified-selection-multi-ids">{list(selectedEntityIds)}</span>
           <span style={labelStyle}>Active</span>
           <span data-testid="unified-selection-active">{activeSelection?.label ?? multiSelection.activeSelection?.label ?? "n/a"}</span>
+          <span style={labelStyle}>Semantic entity</span>
+          <span data-testid="unified-selection-semantic-entity">
+            {activeSelection?.semanticKind && activeSelection.semanticEntityId
+              ? `${activeSelection.semanticKind}: ${activeSelection.semanticEntityId}`
+              : "n/a"}
+          </span>
           <span style={labelStyle}>Point</span>
           <span>{fmtVec3(activeSelection?.point)}</span>
           <span style={labelStyle}>Normal</span>
@@ -162,6 +168,18 @@ export const UnifiedSelectionInspector = ({
         <span style={labelStyle}>Entity</span>
         <span data-testid="unified-selection-entity">
           {activeSelection.entityType} {activeSelection.entityId.replace(/^(object|face|edge|vertex):/, "") || "object"}
+        </span>
+        <span style={labelStyle}>Semantic entity</span>
+        <span data-testid="unified-selection-semantic-entity">
+          {activeSelection.semanticKind && activeSelection.semanticEntityId
+            ? `${activeSelection.semanticKind}: ${activeSelection.semanticEntityId}`
+            : "n/a"}
+        </span>
+        <span style={labelStyle}>Scene source</span>
+        <span data-testid="unified-selection-scene-source">
+          {activeSelection.sceneEntityId
+            ? `${activeSelection.sceneEntityId} @ r${activeSelection.sourceRevision ?? 0}`
+            : "n/a"}
         </span>
         <span style={labelStyle}>Point</span>
         <span>{fmtVec3(activeSelection.point)}</span>

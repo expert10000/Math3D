@@ -151,7 +151,7 @@ test("Geometry professional shell keeps current workspaces and tools reachable",
     app = launched.app;
     const page = launched.page;
     await resetStorage(page);
-    await clickFirstVisibleButton(page, "Geometry");
+    await openProceduralGeometry(page);
 
     await expect(page.getByTestId("geometry-professional-shell")).toBeVisible();
     for (const id of ["gallery", "new", "demo", "compare", "more"]) {
@@ -168,6 +168,22 @@ test("Geometry professional shell keeps current workspaces and tools reachable",
 
     await page.getByTestId("geometry-professional-tool-navigate").click();
     await expect(page.getByTestId("unified-object-tree")).toBeVisible();
+    await expect(page.getByTestId("geometry-semantic-navigator")).toBeVisible();
+    await expect(page.getByTestId("geometry-semantic-selection-readout")).toContainText("revision");
+    await expect(page.getByTestId("geometry-semantic-filter-trimBoundaries")).toBeVisible();
+    await page.getByTestId("geometry-semantic-filter-solids").click();
+    await expect(page.getByTestId("geometry-semantic-selection-readout")).toContainText("No semantic entity selected");
+    await page.getByTestId("geometry-semantic-filter-solids").click();
+    await expect(page.getByTestId("geometry-semantic-selection-readout")).toContainText("revision");
+    await page.getByTestId("geometry-semantic-filter-hidden").click();
+    await expect(page.getByTestId("geometry-semantic-filter-hidden")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("geometry-semantic-selector-same-surface-type").click();
+    await expect(page.getByTestId("geometry-semantic-status")).toContainText("selected");
+    await page.getByTestId("geometry-semantic-command-frame").click();
+    await expect(page.getByTestId("geometry-semantic-status")).toContainText("Framed");
+    await page.getByTestId("geometry-professional-tool-analyze").click();
+    await page.getByRole("button", { name: "volume / area / centroid / bounds", exact: true }).click();
+    await expect(page.getByTestId("geometry-analysis-result-semantic-source")).toContainText("geometry-semantic-v1");
     await page.getByTestId("geometry-professional-tool-construct").click();
     await expect(page.getByTestId("geometry-construct-panel-tab-create")).toBeVisible();
 

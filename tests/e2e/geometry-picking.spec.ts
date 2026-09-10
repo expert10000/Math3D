@@ -279,6 +279,8 @@ test("Geometry pick readout commits object, face, edge, and vertex modes", async
     await page.getByTestId("geometry-right-panel-tab-actions").click();
     await expect(page.getByTestId("geometry-context-actions-panel")).toBeVisible();
     await page.getByTestId("geometry-right-panel-tab-selection").click();
+    await expect(page.getByTestId("unified-selection-semantic-entity")).toContainText("body:");
+    await expect(page.getByTestId("unified-selection-scene-source")).toContainText("geometry:");
 
     await commitDeterministicGeometryPick(page, "face");
     await expect(page.getByTestId("geometry-pick-committed-entity")).toContainText("face");

@@ -1,5 +1,10 @@
 import * as THREE from "three";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
+import {
+  createSharedPickContract,
+  sharedPickEntityId,
+  type SharedPickContract,
+} from "../selection/pickContract";
 
 export type GeometryPickKind = "object" | "face" | "edge" | "vertex";
 export type GeometryPickTangentKind = "face-frame" | "edge-direction";
@@ -20,7 +25,7 @@ export interface GeometryTopologyReference {
   fallbackWorldPoint?: [number, number, number];
 }
 
-export interface GeometryPickResult {
+export interface GeometryPickResult extends SharedPickContract<GeometryPickKind> {
   kind: GeometryPickKind;
 
   objectId: string;
@@ -75,6 +80,9 @@ export type GeometryPickObjectContext = {
   objectId: string;
   objectLabel: string;
   objectType: string;
+  sceneEntityId?: string | null;
+  sourceSceneEntityId?: string | null;
+  sourceRevision?: number | null;
   meshKey?: string;
   topologyVersion?: number;
   pickPolicy?: GeometryPickPolicy;
@@ -465,17 +473,27 @@ const makeBasePick = (
   object: GeometryPickObjectContext,
   label: string
 ): GeometryPickResult => ({
-  kind,
-  objectId: object.objectId,
-  objectLabel: object.objectLabel,
+  ...createSharedPickContract({
+    workspace: "geometry",
+    kind,
+    objectId: object.objectId,
+    objectLabel: object.objectLabel,
+    objectType: object.objectType,
+    sceneEntityId: object.sceneEntityId,
+    sourceSceneEntityId: object.sourceSceneEntityId,
+    sourceRevision: object.sourceRevision ?? object.topologyVersion,
+    worldPoint: rawHit.point,
+    normal: normalizeTuple(rawHit.normal),
+    label,
+  }),
   objectType: object.objectType,
+  worldPoint: rawHit.point,
+  localPoint: undefined,
+  normal: normalizeTuple(rawHit.normal),
   meshKey: object.meshKey,
   topologyVersion: object.topologyVersion,
-  worldPoint: rawHit.point,
-  normal: normalizeTuple(rawHit.normal),
   surfaceNormal: normalizeTupleOptional(rawHit.normal),
   distanceFromRay: Number.isFinite(rawHit.distance) ? rawHit.distance : undefined,
-  label,
 });
 
 export function resolveGeometryPick(
@@ -503,6 +521,7 @@ export function resolveGeometryPick(
     const faceNormal = tupleFromVector(face.normal);
     const pick = {
       ...makeBasePick("face", rawHit, object, `${objectLabel} face #${face.faceIndex}`),
+      pickEntityId: sharedPickEntityId({ workspace: "geometry", objectId: object.objectId, kind: "face", localId: face.faceIndex }),
       faceIndex: face.faceIndex,
       sourceTriangle: face.vertexIndices,
       normal: faceNormal,
@@ -549,6 +568,7 @@ export function resolveGeometryPick(
     const normal = vertexNormal ?? faceNormal ?? normalizeTuple(rawHit.normal);
     const pick = {
       ...makeBasePick("vertex", rawHit, object, `${objectLabel} vertex #${vertexIndex}`),
+      pickEntityId: sharedPickEntityId({ workspace: "geometry", objectId: object.objectId, kind: "vertex", localId: vertexIndex }),
       worldPoint: tupleFromVector(vertexPoint),
       vertexIndex,
       faceIndex: face?.faceIndex,
@@ -586,6 +606,12 @@ export function resolveGeometryPick(
   if (bitangent.lengthSq() > 1e-12) bitangent.normalize();
   const pick = {
     ...makeBasePick("edge", rawHit, object, `${objectLabel} edge [${edge.edgeVertices[0]}, ${edge.edgeVertices[1]}]`),
+    pickEntityId: sharedPickEntityId({
+      workspace: "geometry",
+      objectId: object.objectId,
+      kind: "edge",
+      localId: makeGeometryEdgeKey(edge.edgeVertices[0], edge.edgeVertices[1]),
+    }),
     worldPoint: tupleFromVector(edge.point),
     faceIndex: face?.faceIndex,
     edgeVertices: edge.edgeVertices,
