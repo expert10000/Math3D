@@ -22,6 +22,8 @@ The numbered commits below are implementation plans, not claims that correspondi
 
 The implementation commits follow the numbered plan sections. Progress entries record completed code only after its relevant tests and build checks pass.
 
+UI walkthrough: [Mesh Analyze UI guide — Commits 5–9](mesh-analyze-ui-guide-commits-5-9.md).
+
 ## Current assessment
 
 Commits 1–9 are implemented. The Mesh Analyze workbench now has canonical cached results, mesh-health and CGAL integrity checks, differential geometry, mesh-quality fields, surface field calculus, approximate edge-graph routes, accurate CGAL triangulated-surface shortest paths, an explicitly experimental heat-distance field, reusable cached surface-feature classifications, validated and cached ridge/valley extraction, explicit target-isolation modes, and worker-backed curvature and feature extraction. Commits 10–12 retain partially implemented foundations and remain the next work.
