@@ -1,7 +1,7 @@
 # Mesh Analyze implementation roadmap
 
-Assessment date: 2026-09-09
-Reviewed checkout: `f15d89a` — Expand Mesh Analyze scientific results
+Assessment date: 2026-09-10
+Reviewed checkout: `2fad684` — mesh-analysis: add graph and surface geodesic analysis
 
 The numbered commits below are implementation plans, not claims that corresponding Git commits are complete. This document records the current implementation and the remaining work against the supplied plans.
 
@@ -14,27 +14,30 @@ The numbered commits below are implementation plans, not claims that correspondi
 | 3 — Differential geometry | Complete | `af13026` | 361 renderer tests, TypeScript typecheck, production renderer build, and 3 Mesh Analyze E2E tests passed |
 | 4 — Mesh-quality scalar fields | Complete | `d894dee` | 364 renderer tests, TypeScript typecheck, production renderer build, and 3 Mesh Analyze E2E tests passed |
 | 5 — Surface field calculus | Complete | `ebe8115` | 371 renderer tests, TypeScript typecheck, production renderer build, and 3 Mesh Analyze E2E tests passed |
-| 6–12 | Planned | — | See the detailed sections below |
+| 6 — Geodesic methods | Complete | `2fad684` | 373 renderer tests, TypeScript typecheck, production renderer build, 3 Python protocol tests, CGAL dependency/mesh-generation/boolean smoke tests, and 6 native geodesic checks passed |
+| 7–12 | Planned | — | See the detailed sections below |
 
 The implementation commits follow the numbered plan sections. Progress entries record completed code only after its relevant tests and build checks pass.
 
 ## Current assessment
 
-Math3D already has a substantial Mesh Analyze workbench. Most planned commits are partially implemented; the interface is further along than mathematical validation. Existing work should be extended rather than rebuilt.
+Commits 1–6 are implemented. The Mesh Analyze workbench now has canonical cached results, mesh-health and CGAL integrity checks, differential geometry, mesh-quality fields, surface field calculus, approximate edge-graph routes, accurate CGAL triangulated-surface shortest paths, and an explicitly experimental heat-distance field. Commits 7–12 retain partially implemented foundations and remain the next work.
 
-Validation during this review: **28 tests passed across six unit-test files** covering the result store, active-result summaries, quality reports, benchmark regression, Geometry analysis bridge, and graph geodesics. Full application/backend regression tests and new performance measurements were not run.
+Commit 6 validation completed locally with CGAL 6.2.1 from vcpkg, the Python CGAL worker environment, the native shortest-path helper, dependency and mesh-generation smoke checks, all three CGAL boolean operations, and numerical geodesic checks on plane, cylinder, sphere, graph-versus-surface, disconnected, and 5,776-vertex large-mesh cases. The full renderer suite also passed: **373 tests across 69 files**, plus TypeScript typecheck and the production renderer build.
 
 ```powershell
-cd C:\Math3D\renderer
-npm exec -- vitest run src/mesh/analysisResultStore.test.ts src/mesh/activeAnalysisResult.test.ts src/mesh/meshQualityReport.test.ts src/mesh/meshBenchmarkRegression.test.ts src/geometry/analysisBridge.test.ts src/math/selection/geodesicGraph.test.ts
+cd C:\Math3D
+npm --prefix renderer test
+npm run typecheck:noemit
+npm run build:renderer
+npm run test:cgal-geodesic
 ```
 
-## Priority findings
+## Next priorities
 
-1. **Principal directions are unfinished.** The probe displays a generic tangent basis. Its `direction-d1/d2` test IDs do not establish that those vectors are fitted principal directions.
-2. **Curvature conventions need correction and validation.** Mean-curvature sign currently depends on direction from the mesh centroid. Negative `H² − K` is clamped to zero without an uncertainty warning, so the planned identities are not guaranteed.
-3. **Curvature remains synchronous in React.** Deferring large-mesh analysis avoids initial work, but enabling it does not move computation to a worker.
-4. **Some readiness states follow visibility.** Ridge/valley readiness currently follows overlay toggles rather than successful validated computation.
+1. Extract reusable cached surface-feature results for Commit 7.
+2. Establish numerical readiness and acceptance criteria for spectral analysis in Commit 8.
+3. Complete the performance, UI, backend-infrastructure, and regression work tracked by Commits 9–12.
 
 ## Commit 1 — Canonical AnalysisResult registry and cache
 
@@ -162,7 +165,7 @@ Already implemented:
 - Heat-method implementation/backend access.
 - Endpoint/path workflow and path-length reporting.
 
-Remaining:
+Completed:
 
 - [x] Clearly labeled edge-graph routing as approximate graph routing.
 - [x] Integrated CGAL triangulated-surface shortest paths as the accurate method through the worker and packaged native helper.

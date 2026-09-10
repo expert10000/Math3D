@@ -55,13 +55,22 @@ function Resolve-BasePython {
   if (Test-Path $venvPython) {
     return $venvPython
   }
-  $pyLauncher = Get-Command py -ErrorAction SilentlyContinue
-  if ($pyLauncher) {
-    return "py"
-  }
   $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
   if ($pythonCommand) {
-    return $pythonCommand.Source
+    & $pythonCommand.Source -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)" 2>$null
+    if ($LASTEXITCODE -eq 0) {
+      return $pythonCommand.Source
+    }
+  }
+  $pyLauncher = Get-Command py -ErrorAction SilentlyContinue
+  if ($pyLauncher) {
+    foreach ($selector in @("-3.14", "-3.13", "-3.12", "-3.11")) {
+      & $pyLauncher.Source $selector -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)" 2>$null
+      if ($LASTEXITCODE -eq 0) {
+        $script:PyLauncherSelector = $selector
+        return "py"
+      }
+    }
   }
   throw "No Python found. Install Python 3.11+ or pass -Python C:\Path\python.exe."
 }
@@ -69,7 +78,7 @@ function Resolve-BasePython {
 function Invoke-Python {
   param([string[]]$Arguments)
   if ($script:BasePython -eq "py") {
-    Invoke-Checked -FilePath "py" -Arguments (@("-3.11") + $Arguments)
+    Invoke-Checked -FilePath "py" -Arguments (@($script:PyLauncherSelector) + $Arguments)
   } else {
     Invoke-Checked -FilePath $script:BasePython -Arguments $Arguments
   }
@@ -98,6 +107,26 @@ function Find-VcVars64 {
     }
   }
   throw "Visual Studio C++ tools not found. Install VS 2022 Build Tools with the C++ workload."
+}
+
+function Resolve-CMake {
+  $cmakeCommand = Get-Command cmake -ErrorAction SilentlyContinue
+  if ($cmakeCommand) {
+    return $cmakeCommand.Source
+  }
+
+  $vcpkgTools = Join-Path $VcpkgRoot "downloads\tools"
+  if (Test-Path -LiteralPath $vcpkgTools) {
+    $bundledCMake = Get-ChildItem -LiteralPath $vcpkgTools -Recurse -File -Filter "cmake.exe" -ErrorAction SilentlyContinue |
+      Sort-Object LastWriteTime -Descending |
+      Select-Object -First 1
+    if ($bundledCMake) {
+      Write-Step "using CMake downloaded by vcpkg: $($bundledCMake.FullName)"
+      return $bundledCMake.FullName
+    }
+  }
+
+  throw "CMake not found. Install CMake or run vcpkg installation first so it can provide a bundled copy."
 }
 
 function Replace-Text {
@@ -189,13 +218,14 @@ foreach ($requiredPath in @($vcpkgInclude, $eigenInclude, $vcpkgLib, $vcpkgBin))
 
 Write-Step "building CGAL triangulated-surface shortest-path helper"
 $toolchain = Join-Path $VcpkgRoot "scripts\buildsystems\vcpkg.cmake"
-Invoke-Checked -FilePath "cmake" -Arguments @(
+$cmakeExe = Resolve-CMake
+Invoke-Checked -FilePath $cmakeExe -Arguments @(
   "-S", $geodesicSource,
   "-B", $geodesicBuild,
   "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
   "-DVCPKG_TARGET_TRIPLET=$Triplet"
 )
-Invoke-Checked -FilePath "cmake" -Arguments @("--build", $geodesicBuild, "--config", "Release")
+Invoke-Checked -FilePath $cmakeExe -Arguments @("--build", $geodesicBuild, "--config", "Release")
 $builtGeodesic = @(
   (Join-Path $geodesicBuild "Release\cgal-geodesic.exe"),
   (Join-Path $geodesicBuild "cgal-geodesic.exe")
