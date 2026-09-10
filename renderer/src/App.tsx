@@ -228,6 +228,23 @@ import {
 } from "./geometry/demoScene";
 import { buildGeometryRenderData } from "./geometry/render";
 import type { GeometryScene, Point3, Polygon3, Segment3 } from "./geometry/types";
+import {
+  buildSceneIdentityIndex,
+  resolveSceneLocalId,
+  revisionsFromSceneIdentities,
+  sceneEntityId,
+  type SceneEntityIdentity,
+} from "./scene/sceneIdentity";
+import { buildGeometrySceneIdentities } from "./geometry/sceneIdentity";
+import {
+  GEOMETRY_PROFESSIONAL_ACTIONS,
+  GEOMETRY_PROFESSIONAL_EXPANDED_GROUPS,
+  GEOMETRY_PROFESSIONAL_PANELS,
+  GEOMETRY_PROFESSIONAL_TOOLS,
+  geometryProfessionalActiveIds,
+  type GeometryProfessionalActionId,
+  type GeometryProfessionalDestination,
+} from "./geometry/professionalWorkflow";
 import { bestFitPlane, evaluateConstraints, formatConstraintValue } from "./geometry/analysis";
 import {
   computeGeometryAnalysisBasicMetrics,
@@ -1065,6 +1082,7 @@ type WorkspaceLocationEntry = {
   workspaceMode?: string;
   panel?: string;
   selectedObjectId?: string | null;
+  selectedSceneEntityId?: string | null;
   activeStageId?: string | null;
   viewMode?: WorkspaceViewMode;
   cameraPreset?: WorkspaceCameraPreset | null;
@@ -1101,6 +1119,7 @@ const areWorkspaceLocationsEqual = (a: WorkspaceLocationEntry, b: WorkspaceLocat
   a.workspaceMode === b.workspaceMode &&
   a.panel === b.panel &&
   (a.selectedObjectId ?? null) === (b.selectedObjectId ?? null) &&
+  (a.selectedSceneEntityId ?? null) === (b.selectedSceneEntityId ?? null) &&
   (a.activeStageId ?? null) === (b.activeStageId ?? null) &&
   a.viewMode === b.viewMode &&
   (a.cameraPreset ?? null) === (b.cameraPreset ?? null) &&
@@ -1773,6 +1792,8 @@ type WorkbookWorkspaceState = {
   geometry: {
     mode: GeometryMode;
     objects: GeometryObject[];
+    sceneIdentities?: SceneEntityIdentity[];
+    selectedSceneEntityId?: string | null;
     datasetMeshObjects?: WorkbookGeometryDatasetMeshObject[];
     historyById?: StoredGeometryObjectHistoryById;
     variantSets?: WorkbookGeometryVariantSet[];
@@ -4983,8 +5004,10 @@ type GeometryObjectHistoryStep = {
   destructive: boolean;
   warning: string | null;
   objectId: string;
+  sceneEntityId: string;
   objectName: string;
   sourceObjectId?: string | null;
+  sourceSceneEntityId?: string | null;
   sourceObjectName?: string | null;
   beforeVertexCount: number | null;
   afterVertexCount: number | null;
@@ -5155,6 +5178,7 @@ type UnifiedObjectNode = {
   category: UnifiedObjectCategory;
   sceneRole?: UnifiedSceneRole;
   objectRefId?: string;
+  sceneIdentity?: SceneEntityIdentity;
   visible?: boolean | null;
   canToggleVisibility?: boolean;
   canDelete?: boolean;
@@ -7225,6 +7249,8 @@ const deserializeGeometryObjectHistoryStep = (
     return null;
   }
   const sourceSnapshot = deserializeTopologySurfaceMeshData(entry.topologyDefinitionSourceSnapshot);
+  const objectId = typeof entry.objectId === "string" ? entry.objectId : snapshot.id;
+  const sourceObjectId = typeof entry.sourceObjectId === "string" ? entry.sourceObjectId : null;
   return {
     id: entry.id,
     at: Number.isFinite(entry.at) ? entry.at : Date.now(),
@@ -7235,9 +7261,17 @@ const deserializeGeometryObjectHistoryStep = (
     operationParameters: typeof entry.operationParameters === "string" ? entry.operationParameters : null,
     destructive: Boolean(entry.destructive),
     warning: typeof entry.warning === "string" ? entry.warning : null,
-    objectId: typeof entry.objectId === "string" ? entry.objectId : snapshot.id,
+    objectId,
+    sceneEntityId:
+      typeof entry.sceneEntityId === "string" ? entry.sceneEntityId : sceneEntityId("geometry", objectId),
     objectName: typeof entry.objectName === "string" ? entry.objectName : snapshot.name,
-    sourceObjectId: typeof entry.sourceObjectId === "string" ? entry.sourceObjectId : null,
+    sourceObjectId,
+    sourceSceneEntityId:
+      typeof entry.sourceSceneEntityId === "string"
+        ? entry.sourceSceneEntityId
+        : sourceObjectId
+          ? sceneEntityId("geometry", sourceObjectId)
+          : null,
     sourceObjectName: typeof entry.sourceObjectName === "string" ? entry.sourceObjectName : null,
     beforeVertexCount: typeof entry.beforeVertexCount === "number" ? entry.beforeVertexCount : null,
     afterVertexCount: typeof entry.afterVertexCount === "number" ? entry.afterVertexCount : null,
@@ -7317,6 +7351,7 @@ const remapGeometryObjectHistoryForObject = (
       ...step,
       id: makeId(),
       objectId,
+      sceneEntityId: sceneEntityId("geometry", objectId),
       objectName,
       operationTarget: topologyDefinition?.target.label ?? step.operationTarget,
       operationParameters: topologyDefinition?.paramsLabel ?? step.operationParameters,
@@ -12167,6 +12202,8 @@ const App: React.FC = () => {
     const saved = window.localStorage.getItem(UI_GEOMETRY_MODE_KEY) ?? undefined;
     return isGeometryModeValue(saved) ? saved : "procedural";
   });
+  const [geometryProfessionalExpandedGroup, setGeometryProfessionalExpandedGroup] =
+    useState<"gallery" | "new" | "existing" | null>(null);
   const [geometryWorkbookUiMode, setGeometryWorkbookUiMode] = useState<GeometryWorkbookUiMode>("compact");
   const [geometryViewerControlsOpen, setGeometryViewerControlsOpen] = useState(() => {
     if (typeof window === "undefined" || IS_REPLAY_MODE) return true;
@@ -13305,6 +13342,22 @@ const App: React.FC = () => {
     for (const obj of geometryDatasetMeshObjects) ids.add(obj.id);
     return ids;
   }, [geometryDatasetMeshObjects, geometryObjects]);
+  const geometrySceneIdentities = useMemo(
+    () =>
+      buildGeometrySceneIdentities({
+        objects: geometryObjects,
+        datasetObjects: geometryDatasetMeshObjects,
+        revisions: geometryObjectRevisionById,
+      }),
+    [geometryDatasetMeshObjects, geometryObjectRevisionById, geometryObjects]
+  );
+  const geometrySceneIdentityIndex = useMemo(
+    () => buildSceneIdentityIndex(geometrySceneIdentities),
+    [geometrySceneIdentities]
+  );
+  const geometrySelectedSceneIdentity = geometrySelectedObjectId
+    ? geometrySceneIdentityIndex.get(sceneEntityId("geometry", geometrySelectedObjectId)) ?? null
+    : null;
   const applyVariantSnapshotToObject = useCallback(
     (objectId: string, snapshot: GeometryObject | GeometryDatasetMeshObject) => {
       if ("mesh" in snapshot) {
@@ -14079,8 +14132,12 @@ const App: React.FC = () => {
           destructive: !!intent.destructive,
           warning: intent.warning ?? null,
           objectId: obj.id,
+          sceneEntityId: sceneEntityId("geometry", obj.id),
           objectName: obj.name,
           sourceObjectId: intent.sourceObjectId ?? null,
+          sourceSceneEntityId: intent.sourceObjectId
+            ? sceneEntityId("geometry", intent.sourceObjectId)
+            : null,
           sourceObjectName: intent.sourceObjectName ?? null,
           beforeVertexCount: beforeTopology?.vertexCount ?? null,
           afterVertexCount: afterTopology?.vertexCount ?? null,
@@ -14484,8 +14541,10 @@ const App: React.FC = () => {
       destructive: false,
       warning: "Source object unchanged.",
       objectId: copyId,
+      sceneEntityId: sceneEntityId("geometry", copyId),
       objectName: copyForHistory.name,
       sourceObjectId: step.objectId,
+      sourceSceneEntityId: step.sceneEntityId,
       sourceObjectName: step.objectName,
       beforeVertexCount: null,
       afterVertexCount: afterTopology?.vertexCount ?? null,
@@ -14631,8 +14690,10 @@ const App: React.FC = () => {
           destructive: false,
           warning: null,
           objectId: id,
+          sceneEntityId: sceneEntityId("geometry", id),
           objectName: restoredObject.name,
           sourceObjectId: null,
+          sourceSceneEntityId: null,
           sourceObjectName: null,
           beforeVertexCount: null,
           afterVertexCount: topology?.vertexCount ?? null,
@@ -19104,6 +19165,7 @@ const App: React.FC = () => {
           destructive: !!resolvedIntent.destructive,
           warning: resolvedIntent.warning ?? null,
           objectId,
+          sceneEntityId: sceneEntityId("geometry", objectId),
           objectName: updatedTarget.name,
           beforeVertexCount: beforeCounts.vertexCount,
           afterVertexCount: afterCounts.vertexCount,
@@ -30563,8 +30625,10 @@ const App: React.FC = () => {
       destructive: false,
       warning: "Source object unchanged.",
       objectId: copyId,
+      sceneEntityId: sceneEntityId("geometry", copyId),
       objectName: copyForHistory.name,
       sourceObjectId: geometrySelectedSceneObject.id,
+      sourceSceneEntityId: sceneEntityId("geometry", geometrySelectedSceneObject.id),
       sourceObjectName: geometrySelectedSceneObject.name,
       beforeVertexCount: null,
       afterVertexCount: afterTopology?.vertexCount ?? null,
@@ -49860,6 +49924,13 @@ case "mobius":
       },
       geometry: {
         mode: geometryMode,
+        sceneIdentities: geometrySceneIdentities.map((identity) => ({
+          ...identity,
+          derivedFromIds: [...identity.derivedFromIds],
+          dependencyIds: [...identity.dependencyIds],
+          metadata: { ...identity.metadata },
+        })),
+        selectedSceneEntityId: geometrySelectedSceneIdentity?.id ?? null,
         objects: geometryObjects.map((obj) => ({
           id: obj.id,
           type: obj.type,
@@ -50033,6 +50104,8 @@ case "mobius":
       volumeDistanceSigned,
       workbooks,
       geometryMode,
+      geometrySceneIdentities,
+      geometrySelectedSceneIdentity,
       geometryObjects,
       geometryDatasetMeshObjects,
       geometryObjectHistoryById,
@@ -50307,6 +50380,10 @@ case "mobius":
       const normalizedDatasetMeshObjects = datasetMeshObjectsRaw
         .filter((entry) => entry && typeof entry.id === "string" && entry.mesh && typeof entry.mesh === "object")
         .map((entry) => deserializeGeometryDatasetMeshObject(entry));
+      const restoredSceneIdentities = Array.isArray((geometry as any).sceneIdentities)
+        ? ((geometry as any).sceneIdentities as SceneEntityIdentity[])
+        : [];
+      const restoredRevisions = revisionsFromSceneIdentities(restoredSceneIdentities, "geometry");
       const restoredHistoryById = deserializeGeometryObjectHistoryById((geometry as any).historyById);
       const restoredObjectIds = new Set([
         ...normalized.map((entry) => entry.id),
@@ -50314,10 +50391,25 @@ case "mobius":
       ]);
       const filteredHistoryById = filterGeometryRecordByObjectIds(restoredHistoryById, restoredObjectIds);
       setGeometryObjects(normalized);
+      setGeometryObjectRevisionById(restoredRevisions);
+      const selectedSceneEntityId =
+        typeof (geometry as any).selectedSceneEntityId === "string"
+          ? String((geometry as any).selectedSceneEntityId)
+          : null;
+      const selectedFromSceneIdentity = selectedSceneEntityId
+        ? restoredSceneIdentities.find(
+            (identity) => identity?.id === selectedSceneEntityId && identity.moduleKind === "geometry"
+          )?.localId ?? null
+        : null;
+      const savedSelectedObjectId = selectedFromSceneIdentity ?? geometry.selectedObjectId ?? null;
       if (normalized.length) {
-        setGeometrySelectedObjectId(geometry.selectedObjectId ?? normalized[0].id);
+        setGeometrySelectedObjectId(
+          savedSelectedObjectId && normalized.some((entry) => entry.id === savedSelectedObjectId)
+            ? savedSelectedObjectId
+            : normalized[0].id
+        );
       } else if (normalizedDatasetMeshObjects.length) {
-        const preferredId = typeof geometry.selectedObjectId === "string" ? geometry.selectedObjectId : null;
+        const preferredId = typeof savedSelectedObjectId === "string" ? savedSelectedObjectId : null;
         const fallbackId = normalizedDatasetMeshObjects[0]?.id ?? null;
         const resolvedId =
           preferredId && normalizedDatasetMeshObjects.some((entry) => entry.id === preferredId)
@@ -56075,8 +56167,10 @@ case "mobius":
       destructive: true,
       warning: null,
       objectId: target.id,
+      sceneEntityId: sceneEntityId("geometry", target.id),
       objectName: target.name,
       sourceObjectId: meshGeometryRoundTripSource.objectId,
+      sourceSceneEntityId: sceneEntityId("geometry", meshGeometryRoundTripSource.objectId),
       sourceObjectName: meshGeometryRoundTripSource.objectName,
       beforeVertexCount: beforeCounts.vertexCount,
       afterVertexCount: afterCounts.vertexCount,
@@ -66525,6 +66619,7 @@ case "mobius":
 
     for (const obj of geometryObjects) {
       const material = normalizeGeometryMaterial((obj as { material?: unknown })?.material);
+      const sceneIdentity = geometrySceneIdentityIndex.get(sceneEntityId("geometry", obj.id));
       addRaw({
         id: `scene:${obj.id}`,
         name: obj.name,
@@ -66535,6 +66630,9 @@ case "mobius":
         category: "sceneObject",
         sceneRole: "primaryObject",
         objectRefId: obj.id,
+        sceneIdentity,
+        sourceVersion: sceneIdentity?.revision,
+        provenanceSource: sceneIdentity?.sourceKind,
         visible: obj.visible,
         canToggleVisibility: true,
         canDelete: true,
@@ -66543,6 +66641,12 @@ case "mobius":
     }
     for (const obj of geometryDatasetMeshObjects) {
       const material = normalizeGeometryMaterial((obj as { material?: unknown })?.material);
+      const sceneIdentity = geometrySceneIdentityIndex.get(sceneEntityId("geometry", obj.id));
+      const identityParentLocalId = resolveSceneLocalId(
+        geometrySceneIdentityIndex,
+        sceneIdentity?.parentId,
+        "geometry"
+      );
       const meshStats = `${Math.floor(obj.mesh.positions.length / 3)} verts`;
       const meshSceneRole: UnifiedSceneRole =
         obj.mesh.source.kind === "import"
@@ -66556,10 +66660,17 @@ case "mobius":
         type: obj.mesh.source.kind === "detachedMesh" ? "scene/mesh-object" : "scene/dataset-mesh",
         sourceDefinition: `${formatSurfaceMeshSource(obj.mesh.source)} (${meshStats})`,
         displayState: `${obj.visible ? "visible" : "hidden"}, opacity ${fmt(material.opacity ?? 1)}`,
-        parentId: null,
+        parentId: identityParentLocalId ? `scene:${identityParentLocalId}` : null,
         category: "sceneObject",
         sceneRole: meshSceneRole,
         objectRefId: obj.id,
+        sceneIdentity,
+        sourceVersion: sceneIdentity?.revision,
+        provenanceSource: sceneIdentity?.sourceKind,
+        linkedObjectIds: sceneIdentity?.dependencyIds.flatMap((dependencyId) => {
+          const localId = resolveSceneLocalId(geometrySceneIdentityIndex, dependencyId, "geometry");
+          return localId ? [localId] : [];
+        }),
         visible: obj.visible,
         canToggleVisibility: true,
         canDelete: true,
@@ -67049,6 +67160,7 @@ case "mobius":
   }, [
     geometryObjects,
     geometryDatasetMeshObjects,
+    geometrySceneIdentityIndex,
     datasetKind,
     surfaceViewerKind,
     activeEqSurfaceId,
@@ -67442,7 +67554,7 @@ case "mobius":
     ? unifiedObjectModel.nodeById.get(unifiedTreeSelectedId) ?? null
     : null;
   const unifiedSelectedSceneVisible = useMemo(() => {
-    const refId = unifiedSelectedNode?.objectRefId;
+    const refId = unifiedSelectedNode?.sceneIdentity?.localId ?? unifiedSelectedNode?.objectRefId;
     if (!refId || unifiedSelectedNode?.category !== "sceneObject") return null;
     const procedural = geometryObjects.find((obj) => obj.id === refId);
     if (procedural) return !!procedural.visible;
@@ -67451,7 +67563,7 @@ case "mobius":
     return null;
   }, [geometryObjects, geometryDatasetMeshObjects, unifiedSelectedNode]);
   const unifiedSelectedSceneObject = useMemo<GeometryObject | GeometryDatasetMeshObject | null>(() => {
-    const refId = unifiedSelectedNode?.objectRefId;
+    const refId = unifiedSelectedNode?.sceneIdentity?.localId ?? unifiedSelectedNode?.objectRefId;
     if (!refId || unifiedSelectedNode?.category !== "sceneObject") return null;
     const procedural = geometryObjects.find((obj) => obj.id === refId);
     if (procedural) return procedural;
@@ -67471,35 +67583,36 @@ case "mobius":
     return { vertCount, triCount };
   }, [proceduralMeshSet.meshes, unifiedSelectedSceneObject]);
   const handleToggleUnifiedSelectedVisible = useCallback(() => {
-    const refId = unifiedSelectedNode?.objectRefId;
+    const refId = unifiedSelectedNode?.sceneIdentity?.localId ?? unifiedSelectedNode?.objectRefId;
     if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
     handleToggleGeometryObjectVisible(refId);
   }, [handleToggleGeometryObjectVisible, unifiedSelectedNode]);
   const handleToggleUnifiedSelectedLocked = useCallback(() => {
-    const refId = unifiedSelectedNode?.objectRefId;
+    const refId = unifiedSelectedNode?.sceneIdentity?.localId ?? unifiedSelectedNode?.objectRefId;
     if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
     handleToggleGeometryObjectLocked(refId);
   }, [handleToggleGeometryObjectLocked, unifiedSelectedNode]);
   const handleDuplicateUnifiedSelectedObject = useCallback(() => {
-    const refId = unifiedSelectedNode?.objectRefId;
+    const refId = unifiedSelectedNode?.sceneIdentity?.localId ?? unifiedSelectedNode?.objectRefId;
     if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
     handleDuplicateGeometryObject(refId);
   }, [handleDuplicateGeometryObject, unifiedSelectedNode]);
   const handleDeleteUnifiedSelectedObject = useCallback(() => {
-    const refId = unifiedSelectedNode?.objectRefId;
+    const refId = unifiedSelectedNode?.sceneIdentity?.localId ?? unifiedSelectedNode?.objectRefId;
     if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
     handleRemoveGeometryObject(refId);
   }, [handleRemoveGeometryObject, unifiedSelectedNode]);
   const handleRenameUnifiedSelectedObject = useCallback((name: string) => {
-    const refId = unifiedSelectedNode?.objectRefId;
+    const refId = unifiedSelectedNode?.sceneIdentity?.localId ?? unifiedSelectedNode?.objectRefId;
     if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
     handleRenameGeometryObject(refId, name);
   }, [handleRenameGeometryObject, unifiedSelectedNode]);
   const handleDuplicateUnifiedNode = useCallback(
     (nodeId: string) => {
       const node = unifiedObjectModel.nodeById.get(nodeId);
-      if (!node || node.category !== "sceneObject" || !node.objectRefId) return;
-      handleDuplicateGeometryObject(node.objectRefId);
+      const localId = node?.sceneIdentity?.localId ?? node?.objectRefId;
+      if (!node || node.category !== "sceneObject" || !localId) return;
+      handleDuplicateGeometryObject(localId);
     },
     [handleDuplicateGeometryObject, unifiedObjectModel.nodeById]
   );
@@ -67508,23 +67621,24 @@ case "mobius":
       const trimmed = name.trim();
       if (!trimmed) return;
       const node = unifiedObjectModel.nodeById.get(nodeId);
-      if (!node || node.category !== "sceneObject" || !node.objectRefId) return;
-      handleRenameGeometryObject(node.objectRefId, trimmed);
+      const localId = node?.sceneIdentity?.localId ?? node?.objectRefId;
+      if (!node || node.category !== "sceneObject" || !localId) return;
+      handleRenameGeometryObject(localId, trimmed);
     },
     [handleRenameGeometryObject, unifiedObjectModel.nodeById]
   );
   const handlePatchUnifiedSelectedTransform = useCallback((patch: GeometryTransformPatch) => {
-    const refId = unifiedSelectedNode?.objectRefId;
+    const refId = unifiedSelectedNode?.sceneIdentity?.localId ?? unifiedSelectedNode?.objectRefId;
     if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
     handleUpdateGeometryTransform(refId, patch);
   }, [handleUpdateGeometryTransform, unifiedSelectedNode]);
   const handlePatchUnifiedSelectedMaterial = useCallback((patch: Partial<GeometryObject["material"]>) => {
-    const refId = unifiedSelectedNode?.objectRefId;
+    const refId = unifiedSelectedNode?.sceneIdentity?.localId ?? unifiedSelectedNode?.objectRefId;
     if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
     handleUpdateGeometryMaterial(refId, patch);
   }, [handleUpdateGeometryMaterial, unifiedSelectedNode]);
   const handleIsolateUnifiedSelectedObject = useCallback(() => {
-    const refId = unifiedSelectedNode?.objectRefId;
+    const refId = unifiedSelectedNode?.sceneIdentity?.localId ?? unifiedSelectedNode?.objectRefId;
     if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
     setGeometryObjects((prev) =>
       prev.map((o) => {
@@ -67609,8 +67723,9 @@ case "mobius":
     (nodeId: string) => {
       setUnifiedTreeSelectedId(nodeId);
       const node = unifiedObjectModel.nodeById.get(nodeId);
-      if (node?.category === "sceneObject" && node.objectRefId) {
-        setGeometrySelectedObjectId(node.objectRefId);
+      const localId = node?.sceneIdentity?.localId ?? node?.objectRefId;
+      if (node?.category === "sceneObject" && localId) {
+        setGeometrySelectedObjectId(localId);
       }
       if (mode === "surfaces") {
         setSurfacesLeftTab("object");
@@ -67625,16 +67740,18 @@ case "mobius":
   const handleSelectUnifiedNode = useCallback((nodeId: string) => {
     setUnifiedTreeSelectedId(nodeId);
     const node = unifiedObjectModel.nodeById.get(nodeId);
-    if (node?.category === "sceneObject" && node.objectRefId) {
-      setGeometrySelectedObjectId(node.objectRefId);
+    const localId = node?.sceneIdentity?.localId ?? node?.objectRefId;
+    if (node?.category === "sceneObject" && localId) {
+      setGeometrySelectedObjectId(localId);
     }
   }, [unifiedObjectModel.nodeById]);
   const handleToggleUnifiedNodeVisibility = useCallback(
     (nodeId: string) => {
       const node = unifiedObjectModel.nodeById.get(nodeId);
       if (!node) return;
-      if (node.category === "sceneObject" && node.objectRefId) {
-        handleToggleGeometryObjectVisible(node.objectRefId);
+      const localId = node.sceneIdentity?.localId ?? node.objectRefId;
+      if (node.category === "sceneObject" && localId) {
+        handleToggleGeometryObjectVisible(localId);
         return;
       }
       if (nodeId.startsWith("derived:math:")) {
@@ -69085,6 +69202,40 @@ case "mobius":
     }
     if (geometryDemoInteractionActive) setGeometryDemoInteractionActive(false);
   }, [geometryDemoInteractionActive, geometryInteractionQualityMode, geometryVolumeRelationsDemoActive]);
+  const geometryProfessionalActive = useMemo(
+    () => geometryProfessionalActiveIds(geometryMode, geometryProceduralPanelTab),
+    [geometryMode, geometryProceduralPanelTab]
+  );
+  const openGeometryProfessionalDestination = useCallback(
+    (destination: GeometryProfessionalDestination) => {
+      if (destination.kind === "mode") {
+        if (destination.mode === "workbook") {
+          openGeometryWorkbookMode(geometryScratchSceneSeed);
+          setGeometryWorkbookUiMode("full");
+          return;
+        }
+        setGeometryMode(destination.mode);
+        return;
+      }
+      setGeometryMode("procedural");
+      setGeometryProceduralPanelTab(destination.panel);
+      if (destination.panel === "analysis") prepareGeometryCompareFromSelected();
+    },
+    [geometryScratchSceneSeed, openGeometryWorkbookMode, prepareGeometryCompareFromSelected]
+  );
+  const handleGeometryProfessionalAction = useCallback(
+    (actionId: GeometryProfessionalActionId, destination: GeometryProfessionalDestination) => {
+      if (actionId === "gallery" || actionId === "new") {
+        setGeometryProfessionalExpandedGroup((current) => current === actionId ? null : actionId);
+      } else if (actionId === "more") {
+        setGeometryProfessionalExpandedGroup((current) => current === "existing" ? null : "existing");
+      } else {
+        setGeometryProfessionalExpandedGroup(null);
+      }
+      openGeometryProfessionalDestination(destination);
+    },
+    [openGeometryProfessionalDestination]
+  );
   const geometryWorkflowActiveStepId = useMemo<GeometryWorkflowStepId>(() => {
     if (geometryMode === "workbook") return "export";
     if (geometryMode === "demo") return "analyze";
@@ -70683,6 +70834,7 @@ case "mobius":
     let workspaceMode: string | undefined;
     let panel: string | undefined;
     let selectedObjectId: string | null | undefined;
+    let selectedSceneEntityId: string | null | undefined;
     let activeStageRef: string | null | undefined;
     let viewMode: WorkspaceViewMode | undefined;
     let cameraPreset: WorkspaceCameraPreset | null | undefined;
@@ -70697,6 +70849,7 @@ case "mobius":
             ? geometryDemoTab
             : geometryWorkspaceTab;
       selectedObjectId = geometrySelectedObjectId;
+      selectedSceneEntityId = geometrySelectedSceneIdentity?.id ?? null;
       if (geometryMode === "demo" && geometryDemoFamily === "planimetry") {
         activeStageRef = `planimetry:${geometryPlanimetryPresetId}:${geometryPlanimetryStageIndex}`;
         sceneId = `demo:planimetry:${geometryPlanimetryPresetId}`;
@@ -70720,6 +70873,7 @@ case "mobius":
         unifiedSelectedNode?.category === "sceneObject"
           ? (unifiedSelectedNode.objectRefId ?? unifiedSelectedNode.id)
           : null;
+      selectedSceneEntityId = unifiedSelectedNode?.sceneIdentity?.id ?? null;
       if (surfaceViewerKind === "param") sceneId = String(paramSurfaceId);
       else if (surfaceViewerKind === "weierstrass") sceneId = activeWeierstrassPresetId ?? null;
       else if (surfaceViewerKind === "complex" || surfaceViewerKind === "mesh") sceneId = "surface_mesh";
@@ -70740,6 +70894,7 @@ case "mobius":
       workspaceMode,
       panel,
       selectedObjectId,
+      selectedSceneEntityId,
       activeStageId: activeStageRef,
       viewMode,
       cameraPreset,
@@ -70752,6 +70907,7 @@ case "mobius":
     geometryDemoTab,
     geometryWorkspaceTab,
     geometrySelectedObjectId,
+    geometrySelectedSceneIdentity,
     geometryDemoFamily,
     geometryPlanimetryPresetId,
     geometryPlanimetryStageIndex,
@@ -70872,8 +71028,13 @@ case "mobius":
         ) {
           setGeometryWorkspaceTab(entry.panel);
         }
-        if (entry.selectedObjectId !== undefined) {
-          setGeometrySelectedObjectId(entry.selectedObjectId ?? null);
+        if (entry.selectedSceneEntityId !== undefined || entry.selectedObjectId !== undefined) {
+          const sceneLocalId = resolveSceneLocalId(
+            geometrySceneIdentityIndex,
+            entry.selectedSceneEntityId,
+            "geometry"
+          );
+          setGeometrySelectedObjectId(sceneLocalId ?? entry.selectedObjectId ?? null);
         }
         if (entry.activeStageId?.startsWith("planimetry:")) {
           const [, presetId, rawIndex] = entry.activeStageId.split(":");
@@ -70918,6 +71079,7 @@ case "mobius":
     },
     [
       geometryMode,
+      geometrySceneIdentityIndex,
       handleChangeViewerKind,
       handleGeometryApplyViewPreset,
       handleGeometryFit,
@@ -72969,6 +73131,97 @@ case "mobius":
                   </div>
                 </div>
               )}
+              {mode === "geometry" && !isPhoneViewerPriorityLayout && (
+                <>
+                  <div style={topNavContextBarStyle} data-testid="geometry-professional-shell">
+                    <div style={surfacesModeStripWrapStyle}>
+                      <div style={surfacesModeGroupStyle("panel")}>
+                        <span style={surfacesModeLabelStyle("panel")}>Panel</span>
+                        {GEOMETRY_PROFESSIONAL_PANELS.map((entry) => (
+                          <button
+                            key={`geometry-professional-panel-${entry.id}`}
+                            type="button"
+                            data-testid={`geometry-professional-panel-${entry.id}`}
+                            onClick={() => {
+                              setGeometryProfessionalExpandedGroup(null);
+                              openGeometryProfessionalDestination(entry.destination);
+                            }}
+                            aria-pressed={geometryProfessionalActive.panel === entry.id}
+                            style={surfacesModeButtonStyle(geometryProfessionalActive.panel === entry.id, "panel")}
+                          >
+                            {entry.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={surfacesModeGroupStyle("actions")}>
+                        <span style={surfacesModeLabelStyle("actions")}>Actions</span>
+                        {GEOMETRY_PROFESSIONAL_ACTIONS.map((entry) => {
+                          const expanded =
+                            entry.id === "more"
+                              ? geometryProfessionalExpandedGroup === "existing"
+                              : geometryProfessionalExpandedGroup === entry.id;
+                          const active = geometryProfessionalActive.action === entry.id || expanded;
+                          return (
+                            <button
+                              key={`geometry-professional-action-${entry.id}`}
+                              type="button"
+                              data-testid={`geometry-professional-action-${entry.id}`}
+                              onClick={() => handleGeometryProfessionalAction(entry.id, entry.destination)}
+                              aria-pressed={active}
+                              aria-expanded={entry.id === "gallery" || entry.id === "new" || entry.id === "more" ? expanded : undefined}
+                              style={surfacesModeButtonStyle(active, "actions")}
+                            >
+                              {entry.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div style={surfacesModeGroupStyle("panel")}>
+                        <span style={surfacesModeLabelStyle("panel")}>Tools</span>
+                        {GEOMETRY_PROFESSIONAL_TOOLS.map((entry) => (
+                          <button
+                            key={`geometry-professional-tool-${entry.id}`}
+                            type="button"
+                            data-testid={`geometry-professional-tool-${entry.id}`}
+                            onClick={() => {
+                              setGeometryProfessionalExpandedGroup(null);
+                              openGeometryProfessionalDestination(entry.destination);
+                            }}
+                            aria-pressed={geometryProfessionalActive.tool === entry.id}
+                            style={surfacesModeButtonStyle(geometryProfessionalActive.tool === entry.id, "panel")}
+                          >
+                            {entry.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  {geometryProfessionalExpandedGroup && (
+                    <div style={topNavContextBarStyle} data-testid="geometry-professional-expanded-group">
+                      {GEOMETRY_PROFESSIONAL_EXPANDED_GROUPS.filter(
+                        (group) => group.id === geometryProfessionalExpandedGroup
+                      ).map((group) => (
+                        <div key={`geometry-professional-expanded-${group.id}`} style={surfacesModeStripWrapStyle}>
+                          <div style={surfacesModeGroupStyle("actions")}>
+                            <span style={surfacesModeLabelStyle("actions")}>{group.label}</span>
+                            {group.entries.map((entry) => (
+                              <button
+                                key={`geometry-professional-expanded-entry-${entry.id}`}
+                                type="button"
+                                data-testid={`geometry-professional-expanded-${entry.id}`}
+                                onClick={() => openGeometryProfessionalDestination(entry.destination)}
+                                style={surfacesModeButtonStyle(false, "actions")}
+                              >
+                                {entry.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
               <div style={{ ...topNavContextLabelStyle, display: isPhoneLandscapeLayout ? "none" : undefined }}>
                 {headerContextLabel}
               </div>
@@ -73483,6 +73736,7 @@ case "mobius":
                     <button
                       key={`geometry-mode-top-${entry.id}`}
                       type="button"
+                      data-testid={`geometry-mode-${entry.id}`}
                       onClick={entry.onClick}
                       aria-pressed={active}
                       style={{

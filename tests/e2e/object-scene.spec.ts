@@ -1,6 +1,6 @@
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import type { ElectronApplication } from "playwright";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
@@ -141,6 +141,56 @@ const openWorkspace = async (page: Page, filePath: string) => {
   await chooser.setFiles(filePath);
 };
 
+test("Geometry professional shell keeps current workspaces and tools reachable", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-geometry-shell-"));
+  const env = { APPDATA: profileDir, LOCALAPPDATA: profileDir };
+
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(env);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await clickFirstVisibleButton(page, "Geometry");
+
+    await expect(page.getByTestId("geometry-professional-shell")).toBeVisible();
+    for (const id of ["gallery", "new", "demo", "compare", "more"]) {
+      await expect(page.getByTestId(`geometry-professional-action-${id}`)).toBeVisible();
+    }
+    for (const id of ["construct", "modify", "analyze", "navigate"]) {
+      await expect(page.getByTestId(`geometry-professional-tool-${id}`)).toBeVisible();
+    }
+
+    await page.getByTestId("geometry-professional-action-gallery").click();
+    await expect(page.getByTestId("geometry-gallery-search")).toBeVisible();
+    await expect(page.getByTestId("geometry-professional-expanded-object-gallery")).toBeVisible();
+    await expect(page.getByTestId("geometry-professional-expanded-scene-gallery")).toBeVisible();
+
+    await page.getByTestId("geometry-professional-tool-navigate").click();
+    await expect(page.getByTestId("unified-object-tree")).toBeVisible();
+    await page.getByTestId("geometry-professional-tool-construct").click();
+    await expect(page.getByTestId("geometry-construct-panel-tab-create")).toBeVisible();
+
+    await page.getByTestId("geometry-professional-action-new").click();
+    await page.getByTestId("geometry-professional-expanded-new-scratch").click();
+    await expect(page.getByTestId("geometry-mode-scratch")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("geometry-professional-expanded-new-workbook").click();
+    await expect(page.getByTestId("geometry-mode-workbook")).toHaveAttribute("aria-pressed", "true");
+
+    await page.getByTestId("geometry-professional-action-more").click();
+    await expect(page.getByText("Procedural scripting", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("geometry-professional-expanded-script")).toBeVisible();
+
+    await page.getByTestId("geometry-professional-action-demo").click();
+    await expect(page.getByTestId("geometry-mode-demo")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("geometry-mode-procedural").click();
+    await expect(page.getByTestId("geometry-mode-procedural")).toHaveAttribute("aria-pressed", "true");
+  } finally {
+    if (app) await app.close();
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
 test("Object/scene behavior: create, toggle visibility, remove, overlay state remains consistent", async () => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-obj-"));
   const env = {
@@ -263,6 +313,10 @@ test("Persistence: save workspace and reopen restores scene", async ({}, testInf
     const savedStats = await readGeometryStats(firstPage);
 
     savedWorkspacePath = await saveWorkspace(firstPage, testInfo);
+    const savedWorkspaceText = readFileSync(savedWorkspacePath, "utf8");
+    expect(savedWorkspaceText).toContain('"sceneIdentities"');
+    expect(savedWorkspaceText).toContain('"selectedSceneEntityId"');
+    expect(savedWorkspaceText).toContain('"moduleKind": "geometry"');
     await expect.poll(async () => {
       return firstPage.evaluate(() => Number(localStorage.getItem("math3d.workbook.manualSaveAt.v1") ?? 0));
     }).toBeGreaterThan(0);
