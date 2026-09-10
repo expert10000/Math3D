@@ -3,6 +3,10 @@ import type {
   SurfaceFeatureExtractionParameters,
   SurfaceFeatureExtractionResult,
 } from "../mesh/surfaceFeatureExtraction";
+import type {
+  RidgeValleyExtractionParameters,
+  RidgeValleyExtractionResult,
+} from "../mesh/ridgeValleyExtraction";
 
 export type MeshAnalysisWorkerMesh = {
   positions: Float32Array;
@@ -23,6 +27,14 @@ export type MeshAnalysisWorkerRequest =
       mesh: MeshAnalysisWorkerMesh;
       differential: MeshDifferentialGeometryResult;
       parameters: SurfaceFeatureExtractionParameters;
+    }
+  | {
+      type: "compute-ridges-valleys";
+      jobId: string;
+      meshRevision: string;
+      mesh: MeshAnalysisWorkerMesh;
+      differential: MeshDifferentialGeometryResult;
+      parameters: RidgeValleyExtractionParameters;
     };
 
 export type MeshAnalysisWorkerPhase = "queued" | "running" | "publishing";
@@ -50,6 +62,14 @@ export type MeshAnalysisWorkerResultMessage =
       meshRevision: string;
       ok: true;
       result: SurfaceFeatureExtractionResult;
+      computeTimeMs: number;
+    }
+  | {
+      type: "ridges-valleys-result";
+      jobId: string;
+      meshRevision: string;
+      ok: true;
+      result: RidgeValleyExtractionResult;
       computeTimeMs: number;
     }
   | {

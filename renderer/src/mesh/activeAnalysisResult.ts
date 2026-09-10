@@ -1,6 +1,7 @@
 import type { MeshDiagnosticsAnalysisPayload } from "./analysisResultStore";
 import type { MeshFieldCalculusResult } from "./meshSurfaceFieldCalculus";
 import type { SurfaceFeatureClass, SurfaceFeatureExtractionResult } from "./surfaceFeatureExtraction";
+import type { RidgeValleyExtractionResult } from "./ridgeValleyExtraction";
 import {
   MESH_TRIANGLE_QUALITY_DEFINITIONS,
   meshTriangleQualityDefinition,
@@ -164,6 +165,9 @@ export type MeshActiveAnalysisResultInput = {
   calculusUpdatedAt: number | null;
   showRidges: boolean;
   showValleys: boolean;
+  ridgeValleyResult: RidgeValleyExtractionResult | null;
+  ridgeValleyCacheHit: boolean;
+  ridgeValleyUpdatedAt: number | null;
   showCurvatureLines: boolean;
   surfaceFeatures: SurfaceFeatureExtractionResult | null;
   surfaceFeatureClass: SurfaceFeatureClass;
@@ -441,22 +445,36 @@ export const selectMeshActiveAnalysisResult = (
 
   if (input.section === "curvature-lines" || input.section === "ridges-valleys") {
     const ridges = input.section === "ridges-valleys";
+    const ridgeValley = input.ridgeValleyResult;
     return {
       category: "Surface Features",
       result: ridges ? "Ridges & valleys" : "Curvature lines",
       state: ridges
-        ? input.showRidges || input.showValleys
+        ? ridgeValley?.summary.ready
           ? "Ready"
-          : "Unavailable"
+          : input.deferred ? "Deferred" : "Unavailable"
         : input.showCurvatureLines
           ? "Ready"
           : "Unavailable",
-      statistics: [],
+      statistics: ridges && ridgeValley ? [
+        { label: "Ridge candidates", value: formatCount(ridgeValley.summary.ridgeCandidateCount) },
+        { label: "Valley candidates", value: formatCount(ridgeValley.summary.valleyCandidateCount) },
+        { label: "Ridge lines", value: formatCount(ridgeValley.summary.ridgeLineCount) },
+        { label: "Valley lines", value: formatCount(ridgeValley.summary.valleyLineCount) },
+        { label: "Uncertain suppressed", value: formatCount(ridgeValley.summary.uncertainVertexCount) },
+      ] : [],
       metadata: ridges
-        ? [{
-            label: "Visible layers",
-            value: [input.showRidges ? "Ridges" : null, input.showValleys ? "Valleys" : null].filter(Boolean).join(", ") || "none",
-          }]
+        ? [
+            { label: "Method", value: ridgeValley?.provenance.method ?? "Waiting for validated principal directions" },
+            { label: "Dependencies", value: ridgeValley?.provenance.dependencies.join(" → ") ?? "normals → curvature → principal directions" },
+            { label: "Principal families", value: ridgeValley ? `ridge ${ridgeValley.parameters.ridgeFamily}; valley ${ridgeValley.parameters.valleyFamily}` : "n/a" },
+            { label: "Cache", value: input.ridgeValleyCacheHit ? "Cached result" : "Current result" },
+            { label: "Computed", value: timestamp(input.ridgeValleyUpdatedAt) },
+            {
+              label: "Visible layers",
+              value: [input.showRidges ? "Ridges" : null, input.showValleys ? "Valleys" : null].filter(Boolean).join(", ") || "none",
+            },
+          ]
         : [
             { label: "Direction field", value: input.curvatureLineField },
             { label: "Seed source", value: input.curvatureSeedSource },

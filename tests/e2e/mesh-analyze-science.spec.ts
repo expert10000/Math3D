@@ -244,6 +244,20 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-inspector-tab-selection")).toHaveAttribute("aria-pressed", "true");
     await page.getByTestId("mesh-inspector-tab-result").click();
 
+    await page.getByTestId("mesh-analysis-nav-ridges-valleys").click();
+    await expect(page.getByTestId("mesh-analyze-ridge-valley-config")).toBeVisible();
+    await expect(page.getByTestId("mesh-analyze-ridge-valley-status")).toContainText(/Ready/i, { timeout: 30_000 });
+    await expect(page.getByTestId("mesh-analyze-ridge-family")).toHaveValue("k1");
+    await expect(page.getByTestId("mesh-analyze-valley-family")).toHaveValue("k2");
+    await expect(page.getByTestId("mesh-analyze-ridge-valley-summary")).toContainText(/ridge.*valley.*uncertain suppressed/i);
+    await expect(page.getByTestId("mesh-analysis-active-result-state")).toHaveText("Ready");
+    await expect(page.getByTestId("mesh-analysis-result-metadata")).toContainText(/normals.*curvature.*principal-directions/i);
+    await page.getByTestId("mesh-analyze-show-ridges").click();
+    await expect(page.getByTestId("mesh-analyze-show-ridges")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("mesh-analysis-active-result-state")).toHaveText("Ready");
+    await page.getByTestId("mesh-analyze-show-ridges").click();
+    await expect(page.getByTestId("mesh-analysis-active-result-state")).toHaveText("Ready");
+
     const breadcrumb = page.getByTestId("mesh-analysis-context-breadcrumb");
     const resultStatistics = page.getByTestId("mesh-analysis-result-statistics");
     const viewer = page.getByTestId("surface-primary-viewer");

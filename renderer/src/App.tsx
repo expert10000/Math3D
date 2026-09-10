@@ -573,6 +573,11 @@ import {
   type SurfaceFeatureClass,
   type SurfaceFeatureExtractionResult,
 } from "./mesh/surfaceFeatureExtraction";
+import {
+  RIDGE_VALLEY_EXTRACTION_VERSION,
+  type RidgeValleyExtractionResult,
+  type RidgeValleyPrincipalFamily,
+} from "./mesh/ridgeValleyExtraction";
 import type {
   MeshAnalysisWorkerMessage,
   MeshAnalysisWorkerPhase,
@@ -36943,12 +36948,16 @@ const App: React.FC = () => {
   const meshDifferentialJobRef = useRef<string | null>(null);
   const meshSurfaceFeatureWorkerRef = useRef<Worker | null>(null);
   const meshSurfaceFeatureJobRef = useRef<string | null>(null);
+  const meshRidgeValleyWorkerRef = useRef<Worker | null>(null);
+  const meshRidgeValleyJobRef = useRef<string | null>(null);
   const [meshDifferentialPhase, setMeshDifferentialPhase] =
     useState<MeshAnalysisWorkerPhase | "ready" | "cancelled" | "error" | "idle">("idle");
   const [meshDifferentialProgress, setMeshDifferentialProgress] = useState(0);
   const [meshDifferentialError, setMeshDifferentialError] = useState<string | null>(null);
   const [meshDifferentialComputeNonce, setMeshDifferentialComputeNonce] = useState(0);
   const [meshSurfaceFeaturePhase, setMeshSurfaceFeaturePhase] =
+    useState<MeshAnalysisWorkerPhase | "ready" | "cancelled" | "error" | "idle">("idle");
+  const [meshRidgeValleyPhase, setMeshRidgeValleyPhase] =
     useState<MeshAnalysisWorkerPhase | "ready" | "cancelled" | "error" | "idle">("idle");
   const [meshQualityHighAspectThreshold, setMeshQualityHighAspectThreshold] = useState(8);
   const [meshQualityMaxListedDefects, setMeshQualityMaxListedDefects] = useState(120);
@@ -39588,6 +39597,11 @@ const App: React.FC = () => {
   const [ridgeValleyDecimate, setRidgeValleyDecimate] = useState(0.002);
   const [ridgeValleyMaxCurves, setRidgeValleyMaxCurves] = useState(200);
   const [ridgeValleyMinConf, setRidgeValleyMinConf] = useState(0);
+  const [ridgeFamily, setRidgeFamily] = useState<RidgeValleyPrincipalFamily>("k1");
+  const [valleyFamily, setValleyFamily] = useState<RidgeValleyPrincipalFamily>("k2");
+  const [ridgeValleyNeighborhoodRings, setRidgeValleyNeighborhoodRings] = useState(1);
+  const [ridgeValleySmoothingIterations, setRidgeValleySmoothingIterations] = useState(0);
+  const [ridgeValleyMinLineLength, setRidgeValleyMinLineLength] = useState(0);
   // domain pick tokens (right panel)
   const [paramProbeUV, setParamProbeUV] = useState<{ u: number; v: number } | null>(null);
   const [paramProbeToken, setParamProbeToken] = useState(0);
@@ -46503,6 +46517,194 @@ case "mobius":
     surfaceMeshData,
     surfaceViewerKind,
     terminateMeshSurfaceFeatureWorker,
+  ]);
+
+  const ridgeValleyParameters = useMemo(() => ({
+    version: RIDGE_VALLEY_EXTRACTION_VERSION,
+    ridgeFamily,
+    valleyFamily,
+    minAbsCurvature: Math.max(0, ridgeValleyMagMin),
+    minDirectionalContrast: Math.max(0, ridgeValleyContrast),
+    minDirectionCos: clampNumber(ridgeValleyMinCos, 0, 0.999),
+    neighborhoodRings: clampNumber(Math.round(ridgeValleyNeighborhoodRings), 1, 4),
+    smoothingIterations: clampNumber(Math.round(ridgeValleySmoothingIterations), 0, 8),
+    minLineLength: Math.max(0, ridgeValleyMinLineLength),
+    minConfidence: Math.max(0, ridgeValleyMinConf),
+    maxCurves: Math.max(0, Math.round(ridgeValleyMaxCurves)),
+    sampleStride: ridgeValleySampleMode === "high" ? 1 : ridgeValleySampleMode === "medium" ? 2 : 4,
+    decimateSpacing: Math.max(0, ridgeValleyDecimate),
+  }), [
+    ridgeFamily,
+    ridgeValleyContrast,
+    ridgeValleyDecimate,
+    ridgeValleyMagMin,
+    ridgeValleyMaxCurves,
+    ridgeValleyMinConf,
+    ridgeValleyMinCos,
+    ridgeValleyMinLineLength,
+    ridgeValleyNeighborhoodRings,
+    ridgeValleySampleMode,
+    ridgeValleySmoothingIterations,
+    valleyFamily,
+  ]);
+  const cachedRidgeValleyResult = useMemo(
+    () => getMeshAnalysisResultForParameters<RidgeValleyExtractionResult>(
+      meshAnalysisResultStore,
+      activeMeshAnalysisIdentity,
+      "ridges-valleys",
+      ridgeValleyParameters,
+      "principal-extrema-v1"
+    ),
+    [activeMeshAnalysisIdentity, meshAnalysisResultStore, ridgeValleyParameters]
+  );
+  const ridgeValleyResult =
+    cachedRidgeValleyResult?.state === "ready" ? cachedRidgeValleyResult.payload : null;
+  const terminateMeshRidgeValleyWorker = useCallback(() => {
+    meshRidgeValleyWorkerRef.current?.terminate();
+    meshRidgeValleyWorkerRef.current = null;
+  }, []);
+  const handleCancelMeshRidgeValleyCompute = useCallback(() => {
+    if (!meshRidgeValleyJobRef.current || !activeMeshAnalysisIdentity) return;
+    meshRidgeValleyJobRef.current = null;
+    terminateMeshRidgeValleyWorker();
+    setMeshRidgeValleyPhase("cancelled");
+    setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+      kind: "ridges-valleys",
+      variant: "principal-extrema-v1",
+      mesh: activeMeshAnalysisIdentity,
+      parameters: ridgeValleyParameters,
+      state: "cancelled",
+      progress: null,
+      error: "Ridge and valley computation cancelled.",
+    }));
+  }, [activeMeshAnalysisIdentity, ridgeValleyParameters, terminateMeshRidgeValleyWorker]);
+  useEffect(() => () => terminateMeshRidgeValleyWorker(), [terminateMeshRidgeValleyWorker]);
+  useEffect(() => {
+    if (surfaceViewerKind !== "mesh" || !surfaceMeshData?.positions?.length ||
+        !surfaceMeshCurvatures || !activeMeshAnalysisIdentity) {
+      meshRidgeValleyJobRef.current = null;
+      terminateMeshRidgeValleyWorker();
+      setMeshRidgeValleyPhase("idle");
+      return;
+    }
+    if (cachedRidgeValleyResult?.state === "ready" && cachedRidgeValleyResult.payload) {
+      setMeshRidgeValleyPhase("ready");
+      return;
+    }
+    const dependencySpecs = [
+      ["normals", "area-weighted-v1"],
+      ["curvature", "discrete-differential-geometry-v2"],
+      ["principal-directions", "shape-operator-v2"],
+    ] as const;
+    const dependencies = dependencySpecs.map(([kind, variant]) => {
+      const dependency = getMeshAnalysisResult(meshAnalysisResultStore, activeMeshAnalysisIdentity, kind, variant);
+      return {
+        kind,
+        variant,
+        state: dependency?.state ?? "stale" as MeshAnalysisResultState,
+        key: meshAnalysisResultKey(activeMeshAnalysisIdentity, kind, variant),
+        resultVersion: dependency?.resultVersion,
+      };
+    });
+    if (dependencies.some((dependency) => dependency.state !== "ready")) return;
+    terminateMeshRidgeValleyWorker();
+    const worker = new Worker(new URL("./workers/meshAnalysisWorker.ts", import.meta.url), { type: "module" });
+    const jobId = makeId();
+    const analysisIdentity = activeMeshAnalysisIdentity;
+    meshRidgeValleyWorkerRef.current = worker;
+    meshRidgeValleyJobRef.current = jobId;
+    setMeshRidgeValleyPhase("queued");
+    setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+      kind: "ridges-valleys",
+      variant: "principal-extrema-v1",
+      mesh: analysisIdentity,
+      parameters: ridgeValleyParameters,
+      dependencies,
+      state: "queued",
+      progress: 0,
+      error: null,
+    }));
+    const queuedAt = benchmarkNowMs();
+    const onMessage = (event: MessageEvent<MeshAnalysisWorkerMessage>) => {
+      const message = event.data;
+      if (!message || message.jobId !== jobId || message.meshRevision !== analysisIdentity.revision ||
+          meshRidgeValleyJobRef.current !== jobId) return;
+      if (message.type === "progress") {
+        setMeshRidgeValleyPhase(message.phase);
+        setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+          kind: "ridges-valleys",
+          variant: "principal-extrema-v1",
+          mesh: analysisIdentity,
+          parameters: ridgeValleyParameters,
+          dependencies,
+          state: "running",
+          progress: message.progress,
+          error: null,
+        }));
+        return;
+      }
+      if (message.type === "ridges-valleys-result" && message.ok) {
+        setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+          kind: "ridges-valleys",
+          variant: "principal-extrema-v1",
+          mesh: analysisIdentity,
+          parameters: ridgeValleyParameters,
+          dependencies,
+          state: "ready",
+          progress: 1,
+          payload: message.result,
+          computeTimeMs: message.computeTimeMs,
+          error: null,
+        }));
+        setMeshRidgeValleyPhase("ready");
+        recordMeshDebugEvent({
+          kind: "phase",
+          label: "analysis:ridgesValleysWorker",
+          ms: message.computeTimeMs,
+          details: { queueAndComputeMs: Math.max(0, benchmarkNowMs() - queuedAt), meshRevision: analysisIdentity.revision },
+        });
+      } else if (message.type === "error") {
+        setMeshRidgeValleyPhase("error");
+        setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+          kind: "ridges-valleys",
+          variant: "principal-extrema-v1",
+          mesh: analysisIdentity,
+          parameters: ridgeValleyParameters,
+          dependencies,
+          state: "error",
+          progress: null,
+          error: message.error,
+        }));
+      }
+      meshRidgeValleyJobRef.current = null;
+      if (meshRidgeValleyWorkerRef.current === worker) meshRidgeValleyWorkerRef.current = null;
+      worker.removeEventListener("message", onMessage);
+      worker.terminate();
+    };
+    worker.addEventListener("message", onMessage);
+    worker.postMessage({
+      type: "compute-ridges-valleys",
+      jobId,
+      meshRevision: analysisIdentity.revision,
+      mesh: { positions: surfaceMeshData.positions, indices: surfaceMeshData.indices ?? null },
+      differential: surfaceMeshCurvatures,
+      parameters: ridgeValleyParameters,
+    });
+    return () => {
+      worker.removeEventListener("message", onMessage);
+      if (meshRidgeValleyWorkerRef.current === worker) {
+        worker.terminate();
+        meshRidgeValleyWorkerRef.current = null;
+      }
+    };
+  }, [
+    activeMeshAnalysisIdentity,
+    recordMeshDebugEvent,
+    ridgeValleyParameters,
+    surfaceMeshCurvatures,
+    surfaceMeshData,
+    surfaceViewerKind,
+    terminateMeshRidgeValleyWorker,
   ]);
 
   const handleSelectSurfaceFeatureMembers = useCallback(() => {
@@ -54930,6 +55132,48 @@ case "mobius":
     }
     return groups.length ? groups : null;
   }, [surfaceFeatureClass, surfaceFeatureOverlayVisible, surfaceFeatureResult, surfaceFeatureShowEdges]);
+  const ridgeValleyOverlayPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (surfaceViewerKind !== "mesh" || !ridgeValleyResult) return null;
+    const fromSegments = (segments: Float32Array): PolylineSet => {
+      const lines: PolylineSet = [];
+      for (let offset = 0; offset + 5 < segments.length; offset += 6) {
+        lines.push([
+          { x: segments[offset], y: segments[offset + 1], z: segments[offset + 2] },
+          { x: segments[offset + 3], y: segments[offset + 4], z: segments[offset + 5] },
+        ]);
+      }
+      return lines;
+    };
+    const fromCurves = (curves: readonly Float32Array[]): PolylineSet => curves.map((curve) => {
+      const points: PolylineSet[number] = [];
+      for (let offset = 0; offset + 2 < curve.length; offset += 3) {
+        points.push({ x: curve[offset], y: curve[offset + 1], z: curve[offset + 2] });
+      }
+      return points;
+    });
+    const groups: OverlayPolylineGroup[] = [];
+    if (showRidges) {
+      groups.push({
+        lines: ridgeValleyStitch
+          ? fromCurves(ridgeValleyResult.polylines.ridge)
+          : fromSegments(ridgeValleyResult.segments.ridge),
+        color: 0x16a34a,
+        opacity: 0.96,
+        radiusScale: 1.45,
+      });
+    }
+    if (showValleys) {
+      groups.push({
+        lines: ridgeValleyStitch
+          ? fromCurves(ridgeValleyResult.polylines.valley)
+          : fromSegments(ridgeValleyResult.segments.valley),
+        color: 0xf97316,
+        opacity: 0.96,
+        radiusScale: 1.45,
+      });
+    }
+    return groups.some((group) => group.lines.length) ? groups : null;
+  }, [ridgeValleyResult, ridgeValleyStitch, showRidges, showValleys, surfaceViewerKind]);
   const meshViewerOverlayPointSets = useMemo<OverlayPointSet[] | null>(() => {
     const sets: OverlayPointSet[] = [];
     if (combinedOverlayPointSets?.length) sets.push(...combinedOverlayPointSets);
@@ -54942,10 +55186,11 @@ case "mobius":
     const groups: OverlayPolylineGroup[] = [];
     if (combinedOverlayPolylineGroups?.length) groups.push(...combinedOverlayPolylineGroups);
     if (surfaceFeatureOverlayPolylineGroups?.length) groups.push(...surfaceFeatureOverlayPolylineGroups);
+    if (ridgeValleyOverlayPolylineGroups?.length) groups.push(...ridgeValleyOverlayPolylineGroups);
     if (meshBooleanReviewProblemOverlays.polylineGroups?.length) groups.push(...meshBooleanReviewProblemOverlays.polylineGroups);
     if (meshSelectionHighlightOverlays.polylineGroups.length) groups.push(...meshSelectionHighlightOverlays.polylineGroups);
     return groups.length ? groups : null;
-  }, [combinedOverlayPolylineGroups, meshBooleanReviewProblemOverlays.polylineGroups, meshSelectionHighlightOverlays.polylineGroups, surfaceFeatureOverlayPolylineGroups]);
+  }, [combinedOverlayPolylineGroups, meshBooleanReviewProblemOverlays.polylineGroups, meshSelectionHighlightOverlays.polylineGroups, ridgeValleyOverlayPolylineGroups, surfaceFeatureOverlayPolylineGroups]);
   const meshUnifiedSelectionFilterStatus =
     meshUnifiedSelection && !meshUnifiedSelectionFilterResult.accepted
       ? meshUnifiedSelectionFilterResult.reasons[0] ?? "Selection filtered out"
@@ -68561,6 +68806,9 @@ case "mobius":
     calculusUpdatedAt: calculusLastResult?.updatedAt ?? null,
     showRidges,
     showValleys,
+    ridgeValleyResult,
+    ridgeValleyCacheHit: cachedRidgeValleyResult?.state === "ready",
+    ridgeValleyUpdatedAt: cachedRidgeValleyResult?.updatedAt ?? null,
     showCurvatureLines,
     surfaceFeatures: surfaceFeatureResult,
     surfaceFeatureClass,
@@ -75837,7 +76085,7 @@ case "mobius":
                             ["vector-calculus", "Fields", surfaceScalarFields.size || surfaceVectorFields.size ? "ready" : "available"],
                             ["curvature-lines", "Surface features", showCurvatureLines || showPrincipalDirections ? "active" : "available"],
                             ["surface-features", "Feature classification", surfaceFeatureResult ? (surfaceFeatureOverlayVisible ? "active" : "ready") : meshSurfaceFeaturePhase],
-                            ["ridges-valleys", "Ridges / valleys", showRidges || showValleys ? "active" : "available"],
+                            ["ridges-valleys", "Ridges / valleys", ridgeValleyResult?.summary.ready ? (showRidges || showValleys ? "active" : "ready") : meshRidgeValleyPhase],
                             ["chart-analysis", "Charts & statistics", showChartGrid ? "active" : "available"],
                             ["mesh-quality", "Mesh quality", meshQualityBusy ? `${Math.round(meshQualityProgress * 100)}%` : meshQualityReport ? "ready" : "waiting"],
                             ["geodesics", "Distances & geodesics", geodesicPathLength != null ? "ready" : geodesicPathEnabled ? "picking" : "available"],
@@ -76038,12 +76286,79 @@ case "mobius":
                             </div>
                           )}
                           {analysisFocusedSection === "ridges-valleys" && (
-                            <div style={{ display: "grid", gap: 6, fontSize: 10.5 }}>
-                              <div>Extract extrema from principal curvature and direction results.</div>
-                              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                                <button type="button" onClick={() => setShowRidges(true)}>Compute ridges</button>
-                                <button type="button" onClick={() => setShowValleys(true)}>Compute valleys</button>
+                            <div data-testid="mesh-analyze-ridge-valley-config" style={{ display: "grid", gap: 7, fontSize: 10.5 }}>
+                              <div
+                                data-testid="mesh-analyze-ridge-valley-status"
+                                style={{ color: ridgeValleyResult?.summary.ready ? "#166534" : "#64748b", fontWeight: 800 }}
+                              >
+                                {ridgeValleyResult?.summary.ready
+                                  ? `Ready · ${ridgeValleyResult.summary.validDirectionVertexCount.toLocaleString()} validated directions`
+                                  : `Worker: ${meshRidgeValleyPhase}`}
                               </div>
+                              {(meshRidgeValleyPhase === "queued" || meshRidgeValleyPhase === "running" || meshRidgeValleyPhase === "publishing") && (
+                                <button type="button" data-testid="mesh-analyze-cancel-ridges-valleys" onClick={handleCancelMeshRidgeValleyCompute}>
+                                  Cancel computation
+                                </button>
+                              )}
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                                <label style={{ display: "grid", gap: 3 }}>
+                                  <span style={{ fontWeight: 800 }}>Ridge family</span>
+                                  <select data-testid="mesh-analyze-ridge-family" value={ridgeFamily} onChange={(event) => setRidgeFamily(event.target.value as RidgeValleyPrincipalFamily)}>
+                                    <option value="k1">k1 maximum</option>
+                                    <option value="k2">k2 maximum</option>
+                                  </select>
+                                </label>
+                                <label style={{ display: "grid", gap: 3 }}>
+                                  <span style={{ fontWeight: 800 }}>Valley family</span>
+                                  <select data-testid="mesh-analyze-valley-family" value={valleyFamily} onChange={(event) => setValleyFamily(event.target.value as RidgeValleyPrincipalFamily)}>
+                                    <option value="k2">k2 minimum</option>
+                                    <option value="k1">k1 minimum</option>
+                                  </select>
+                                </label>
+                              </div>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                                <label style={{ display: "grid", gap: 3 }}>
+                                  <span>Strength ≥</span>
+                                  <input data-testid="mesh-analyze-ridge-strength" type="number" min={0} step={0.01} value={ridgeValleyMagMin} onChange={(event) => setRidgeValleyMagMin(Math.max(0, Number(event.target.value) || 0))} />
+                                </label>
+                                <label style={{ display: "grid", gap: 3 }}>
+                                  <span>Directional contrast ≥</span>
+                                  <input data-testid="mesh-analyze-ridge-contrast" type="number" min={0} step={0.005} value={ridgeValleyContrast} onChange={(event) => setRidgeValleyContrast(Math.max(0, Number(event.target.value) || 0))} />
+                                </label>
+                                <label style={{ display: "grid", gap: 3 }}>
+                                  <span>Neighborhood rings</span>
+                                  <input data-testid="mesh-analyze-ridge-neighborhood" type="number" min={1} max={4} step={1} value={ridgeValleyNeighborhoodRings} onChange={(event) => setRidgeValleyNeighborhoodRings(clampNumber(Math.round(Number(event.target.value) || 1), 1, 4))} />
+                                </label>
+                                <label style={{ display: "grid", gap: 3 }}>
+                                  <span>Smoothing passes</span>
+                                  <input data-testid="mesh-analyze-ridge-smoothing" type="number" min={0} max={8} step={1} value={ridgeValleySmoothingIterations} onChange={(event) => setRidgeValleySmoothingIterations(clampNumber(Math.round(Number(event.target.value) || 0), 0, 8))} />
+                                </label>
+                                <label style={{ display: "grid", gap: 3 }}>
+                                  <span>Minimum line length</span>
+                                  <input data-testid="mesh-analyze-ridge-min-length" type="number" min={0} step={0.01} value={ridgeValleyMinLineLength} onChange={(event) => setRidgeValleyMinLineLength(Math.max(0, Number(event.target.value) || 0))} />
+                                </label>
+                                <label style={{ display: "grid", gap: 3 }}>
+                                  <span>Minimum confidence</span>
+                                  <input data-testid="mesh-analyze-ridge-confidence" type="number" min={0} step={0.001} value={ridgeValleyMinConf} onChange={(event) => setRidgeValleyMinConf(Math.max(0, Number(event.target.value) || 0))} />
+                                </label>
+                              </div>
+                              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <input type="checkbox" data-testid="mesh-analyze-ridge-stitch" checked={ridgeValleyStitch} onChange={(event) => setRidgeValleyStitch(event.target.checked)} />
+                                Show traced curves (otherwise candidate segments)
+                              </label>
+                              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                <button type="button" data-testid="mesh-analyze-show-ridges" disabled={!ridgeValleyResult?.summary.ready} aria-pressed={showRidges} onClick={() => setShowRidges((visible) => !visible)}>
+                                  {showRidges ? "Hide ridges" : "Show ridges"}
+                                </button>
+                                <button type="button" data-testid="mesh-analyze-show-valleys" disabled={!ridgeValleyResult?.summary.ready} aria-pressed={showValleys} onClick={() => setShowValleys((visible) => !visible)}>
+                                  {showValleys ? "Hide valleys" : "Show valleys"}
+                                </button>
+                              </div>
+                              {ridgeValleyResult && (
+                                <div data-testid="mesh-analyze-ridge-valley-summary" style={{ color: "#475467" }}>
+                                  {ridgeValleyResult.summary.ridgeCandidateCount.toLocaleString()} ridge / {ridgeValleyResult.summary.valleyCandidateCount.toLocaleString()} valley candidates · {ridgeValleyResult.summary.ridgeLineCount.toLocaleString()} / {ridgeValleyResult.summary.valleyLineCount.toLocaleString()} traced lines · {ridgeValleyResult.summary.uncertainVertexCount.toLocaleString()} uncertain suppressed
+                                </div>
+                              )}
                             </div>
                           )}
                           {analysisFocusedSection === "chart-analysis" && (
@@ -79318,8 +79633,8 @@ case "mobius":
                             curvatureMaxSteps={curvatureMaxSteps}
                             curvatureMaxLines={curvatureMaxLines}
                             curvatureRebuildToken={curvatureRebuildToken}
-                            showRidges={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showRidges}
-                            showValleys={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showValleys}
+                            showRidges={surfaceViewerKind === "mesh" || cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showRidges}
+                            showValleys={surfaceViewerKind === "mesh" || cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : showValleys}
                             ridgeValleySelectionOnly={ridgeValleySelectionOnly}
                             ridgeValleyMagMin={ridgeValleyMagMin}
                             ridgeValleyContrast={ridgeValleyContrast}

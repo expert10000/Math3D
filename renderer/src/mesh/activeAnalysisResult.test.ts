@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MeshQualityReport } from "./meshQualityReport";
 import { MESH_FIELD_CALCULUS_CONVENTIONS, MESH_FIELD_CALCULUS_VERSION } from "./meshSurfaceFieldCalculus";
+import type { RidgeValleyExtractionResult } from "./ridgeValleyExtraction";
 import {
   MESH_QUALITY_METRIC_OPTIONS,
   selectMeshActiveAnalysisResult,
@@ -87,6 +88,9 @@ const baseInput = (overrides: Partial<MeshActiveAnalysisResultInput> = {}): Mesh
   calculusUpdatedAt: null,
   showRidges: false,
   showValleys: false,
+  ridgeValleyResult: null,
+  ridgeValleyCacheHit: false,
+  ridgeValleyUpdatedAt: null,
   showCurvatureLines: false,
   surfaceFeatures: null,
   surfaceFeatureClass: "elliptic",
@@ -206,6 +210,46 @@ describe("selectMeshActiveAnalysisResult", () => {
     });
     expect(result.metadata).toContainEqual({ label: "Cache", value: "Cached result" });
     expect(result.metadata).toContainEqual({ label: "Computed", value: "timestamp:7" });
+  });
+
+  it("derives ridge and valley readiness from the cached computation, not overlay visibility", () => {
+    const ridgeValleyResult = {
+      parameters: { version: 1, ridgeFamily: "k1", valleyFamily: "k2" },
+      summary: {
+        vertexCount: 100,
+        validDirectionVertexCount: 80,
+        uncertainVertexCount: 20,
+        ridgeCandidateCount: 12,
+        valleyCandidateCount: 9,
+        ridgeLineCount: 3,
+        valleyLineCount: 2,
+        ridgeTotalLength: 4,
+        valleyTotalLength: 3,
+        ready: true,
+      },
+      provenance: {
+        method: "principal-curvature directional extrema",
+        dependencies: ["normals", "curvature", "principal-directions"],
+      },
+    } as RidgeValleyExtractionResult;
+    const hidden = selectMeshActiveAnalysisResult(baseInput({
+      section: "ridges-valleys",
+      ridgeValleyResult,
+      ridgeValleyCacheHit: true,
+      ridgeValleyUpdatedAt: 21,
+      showRidges: false,
+      showValleys: false,
+    }));
+    const visibleWithoutResult = selectMeshActiveAnalysisResult(baseInput({
+      section: "ridges-valleys",
+      showRidges: true,
+    }));
+
+    expect(hidden.state).toBe("Ready");
+    expect(hidden.statistics).toContainEqual({ label: "Ridge candidates", value: "12" });
+    expect(hidden.metadata).toContainEqual({ label: "Visible layers", value: "none" });
+    expect(hidden.metadata).toContainEqual({ label: "Cache", value: "Cached result" });
+    expect(visibleWithoutResult.state).toBe("Unavailable");
   });
 
   it("keeps graph, CGAL surface, and heat geodesic semantics distinct", () => {

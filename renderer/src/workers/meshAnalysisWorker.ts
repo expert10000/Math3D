@@ -2,6 +2,7 @@
 
 import { computeMeshDifferentialGeometry } from "../mesh/meshDifferentialGeometry";
 import { extractSurfaceFeatures } from "../mesh/surfaceFeatureExtraction";
+import { extractRidgesAndValleys } from "../mesh/ridgeValleyExtraction";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 import type {
   MeshAnalysisWorkerMessage,
@@ -68,6 +69,19 @@ ctx.onmessage = (event: MessageEvent<MeshAnalysisWorkerRequest>) => {
       postProgress(request, "publishing", 0.95);
       ctx.postMessage({
         type: "surface-features-result",
+        jobId: request.jobId,
+        meshRevision: request.meshRevision,
+        ok: true,
+        result,
+        computeTimeMs: Math.max(0, now() - startedAt),
+      } satisfies MeshAnalysisWorkerMessage);
+      return;
+    }
+    if (request.type === "compute-ridges-valleys") {
+      const result = extractRidgesAndValleys(mesh, request.differential, request.parameters);
+      postProgress(request, "publishing", 0.95);
+      ctx.postMessage({
+        type: "ridges-valleys-result",
         jobId: request.jobId,
         meshRevision: request.meshRevision,
         ok: true,
