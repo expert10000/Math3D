@@ -53,7 +53,7 @@ Baseline verification at this assessment:
 
 | Plan | Status | Already implemented | Main work remaining |
 | --- | --- | --- | --- |
-| 1 — Professional workflow and scene contracts | Partial | Shared application scene behavior, Geometry modes, galleries, Scene panels, Scratch/Workbook | Add additive professional shell, revisioned scene identity, and protected navigation migration |
+| 1 — Professional workflow and scene contracts | Complete (`179793c`) | Additive professional shell, expandable compatibility groups, revisioned shared scene identity, Geometry adapters, identity-aware scene behavior and protected navigation/persistence | None for Commit 1 |
 | 2 — Navigation, picking, semantic selection | Partial | Object/face/edge/vertex picking, hover/commit, contextual parity with Mesh | Add body/shell/feature semantics, filters, advanced selectors, and shared selection mapping |
 | 3 — Construct hierarchy | Partial | Object Gallery, primitives, polyhedra, construction graph, previews and relationships | Organize complete reference/curve/surface/solid/derived taxonomy without hiding existing tools |
 | 4 — Selection-driven Modify | Partial | Transforms, face/edge/vertex direct edits, operation tree and replay | Add exact curve/surface/body operations and explicit applicability explanations |
@@ -132,7 +132,7 @@ The existing procedural scene serializer/executor and Construction Lab script wo
 
 Planned message: `geometry: establish professional module workflow and shared scene contracts`
 
-**Status: partially implemented.**
+**Status: complete — `179793c`.**
 
 Already implemented:
 
@@ -140,16 +140,30 @@ Already implemented:
 - Procedural, Demo preview, Scratch editor, and Workbook scene modes.
 - Object Gallery, scene Gallery, viewer, Scene panel, right Inspector, histories, and saved presets.
 - Geometry and Mesh coexist through shared application state and explicit handoffs.
+- The additive Geometry shell exposes Panel, Actions, and Tools rows while retaining the current mode and workflow strips.
+- Gallery, New, Demo, Compare, More, Construct, Modify, Analyze, and Navigate resolve to existing workspaces or expandable compatibility groups.
+- A domain-neutral scene identity contract records revision, module/source kind, parent, derivation, dependencies, and metadata.
+- Procedural and dataset-backed Geometry objects adapt to scene identities without changing their existing object payloads.
+- Selection, visibility, isolation, locking, object commands, history, save/load, and workspace navigation retain scene identity, including legacy-workspace fallback IDs.
 
 Remaining:
 
-- [ ] Introduce the professional Geometry shell additively: Gallery, New, Demo, Compare, and More actions plus Construct, Modify, Analyze, and Navigate tool groups.
-- [ ] Keep the current mode strip during migration and place existing panels into expandable groups.
-- [ ] Define a shared scene identity contract with object revision, module kind, source kind, parent, derived-from, dependencies, and metadata.
-- [ ] Adapt Geometry objects and dataset-backed objects without replacing their current payloads.
-- [ ] Ensure visibility, isolation, selection, history, save/load, and module switching use scene-level identity.
-- [ ] Preserve Scratch, Workbook, Procedural, Demo, Construction Lab, and Scene Script entry points.
-- [ ] Add navigation and persistence tests proving no existing workspace becomes unreachable.
+- [x] Introduce the professional Geometry shell additively: Gallery, New, Demo, Compare, and More actions plus Construct, Modify, Analyze, and Navigate tool groups.
+- [x] Keep the current mode strip during migration and place existing panels into expandable groups.
+- [x] Define a shared scene identity contract with object revision, module kind, source kind, parent, derived-from, dependencies, and metadata.
+- [x] Adapt Geometry objects and dataset-backed objects without replacing their current payloads.
+- [x] Ensure visibility, isolation, selection, history, save/load, and module switching use scene-level identity.
+- [x] Preserve Scratch, Workbook, Procedural, Demo, Construction Lab, and Scene Script entry points.
+- [x] Add navigation and persistence tests proving no existing workspace becomes unreachable.
+
+Validation at `179793c`:
+
+- **106 Geometry and scene-identity tests across 22 files** pass.
+- The full renderer suite passes: **405 tests across 77 files**.
+- `npm run typecheck:noemit` and `npm run build:renderer` pass.
+- Geometry professional-shell, object/scene, and persistence E2E checks pass: **4/4**.
+- Targeted Geometry picking and scene-Gallery checks pass: **2/2**.
+- Workspace back/forward navigation checks pass: **5/5**.
 
 Acceptance: the new shell can be used for normal Geometry work while every current Geometry mode and saved scene still opens.
 
