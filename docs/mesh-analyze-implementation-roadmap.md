@@ -1,7 +1,7 @@
 # Mesh Analyze implementation roadmap
 
 Assessment date: 2026-09-10
-Reviewed checkout: `2fad684` — mesh-analysis: add graph and surface geodesic analysis
+Reviewed checkout: `a4844ad` — mesh-analysis: add reusable surface-feature extraction
 
 The numbered commits below are implementation plans, not claims that corresponding Git commits are complete. This document records the current implementation and the remaining work against the supplied plans.
 
@@ -15,15 +15,18 @@ The numbered commits below are implementation plans, not claims that correspondi
 | 4 — Mesh-quality scalar fields | Complete | `d894dee` | 364 renderer tests, TypeScript typecheck, production renderer build, and 3 Mesh Analyze E2E tests passed |
 | 5 — Surface field calculus | Complete | `ebe8115` | 371 renderer tests, TypeScript typecheck, production renderer build, and 3 Mesh Analyze E2E tests passed |
 | 6 — Geodesic methods | Complete | `2fad684` | 373 renderer tests, TypeScript typecheck, production renderer build, 3 Python protocol tests, CGAL dependency/mesh-generation/boolean smoke tests, and 6 native geodesic checks passed |
-| 7–12 | Planned | — | See the detailed sections below |
+| 7 — Cached surface-feature extraction | Complete | `a4844ad` | 380 renderer tests, TypeScript typecheck, production renderer build, cube/cylinder/torus/Fandisk/Bunny verification, and 3 Mesh Analyze E2E tests passed |
+| 8–12 | Planned | — | See the detailed sections below |
 
 The implementation commits follow the numbered plan sections. Progress entries record completed code only after its relevant tests and build checks pass.
 
 ## Current assessment
 
-Commits 1–6 are implemented. The Mesh Analyze workbench now has canonical cached results, mesh-health and CGAL integrity checks, differential geometry, mesh-quality fields, surface field calculus, approximate edge-graph routes, accurate CGAL triangulated-surface shortest paths, and an explicitly experimental heat-distance field. Commits 7–12 retain partially implemented foundations and remain the next work.
+Commits 1–7 are implemented. The Mesh Analyze workbench now has canonical cached results, mesh-health and CGAL integrity checks, differential geometry, mesh-quality fields, surface field calculus, approximate edge-graph routes, accurate CGAL triangulated-surface shortest paths, an explicitly experimental heat-distance field, and reusable cached surface-feature classifications. Commits 8–12 retain partially implemented foundations and remain the next work.
 
 Commit 6 validation completed locally with CGAL 6.2.1 from vcpkg, the Python CGAL worker environment, the native shortest-path helper, dependency and mesh-generation smoke checks, all three CGAL boolean operations, and numerical geodesic checks on plane, cylinder, sphere, graph-versus-surface, disconnected, and 5,776-vertex large-mesh cases. The full renderer suite also passed: **373 tests across 69 files**, plus TypeScript typecheck and the production renderer build.
+
+Commit 7 validation covers cached dependency invalidation, cube crease edges, cylinder developable classification, torus elliptic/hyperbolic/parabolic regions, Fandisk, Stanford Bunny, scalar strengths, uncertainty, face regions, edge sets, polylines, viewport overlays, and shared Selection Inspector integration. The full renderer suite passed: **380 tests across 70 files**, plus TypeScript typecheck, the production renderer build, and all three Mesh Analyze E2E tests.
 
 ```powershell
 cd C:\Math3D
@@ -35,9 +38,9 @@ npm run test:cgal-geodesic
 
 ## Next priorities
 
-1. Extract reusable cached surface-feature results for Commit 7.
-2. Establish numerical readiness and acceptance criteria for spectral analysis in Commit 8.
-3. Complete the performance, UI, backend-infrastructure, and regression work tracked by Commits 9–12.
+1. Establish numerical readiness and acceptance criteria for ridge/valley extraction in Commit 8.
+2. Complete target isolation and worker-backed large-mesh execution in Commit 9.
+3. Complete the Inspector, backend-infrastructure, and regression work tracked by Commits 10–12.
 
 ## Commit 1 — Canonical AnalysisResult registry and cache
 
@@ -180,21 +183,22 @@ Acceptance: graph routing, surface shortest paths, and heat distance have distin
 
 Planned message: `mesh-analysis: add reusable surface-feature extraction`
 
-**Status: edge tools and overlays exist; reusable analysis pipeline incomplete.**
+**Status: implemented.**
 
 Already implemented:
 
 - Sharp/feature-edge selection with tests.
 - Curvature-line and feature overlays.
 
-Remaining:
+Completed:
 
-- [ ] Implement reusable dependencies from mesh → normals → curvature → directions → features.
-- [ ] Add curvature-threshold, elliptic, hyperbolic, parabolic/developable, and umbilic candidate classifications.
-- [ ] Expose classification tolerances and uncertainty.
-- [ ] Support cached edge sets, vertex sets, face regions, polylines, and scalar strengths as appropriate.
-- [ ] Integrate feature membership with shared selection and overlays.
-- [ ] Verify cube, cylinder, Fandisk, torus, and Bunny.
+- [x] Implemented the reusable mesh → normals → curvature → principal-directions → surface-features dependency chain with exact cache-version snapshots and stale-result propagation.
+- [x] Added curvature-threshold, elliptic, hyperbolic, parabolic/developable, and umbilic candidate classifications.
+- [x] Exposed Gaussian-zero, curvature, umbilic, uncertainty-band, and sharp-edge tolerances in Mesh Analyze.
+- [x] Added explicit per-vertex uncertainty flags and confidence strengths derived from differential warnings and distance from decision thresholds.
+- [x] Cached edge sets, vertex masks/index sets, majority-classified face regions, parabolic and feature polylines, and scalar-strength arrays in one canonical payload.
+- [x] Integrated class membership with viewport point/line overlays and the shared sampled-vertex Selection Inspector, including downsampled meshes through source vertex indices.
+- [x] Added cube, cylinder, torus, Fandisk, and Stanford Bunny verification plus dependency-invalidation and Electron workflow coverage.
 
 Acceptance: feature extraction consumes cached analysis and uses the common result/selection system.
 
