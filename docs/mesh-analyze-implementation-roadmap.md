@@ -1,7 +1,7 @@
 # Mesh Analyze implementation roadmap
 
 Assessment date: 2026-09-10
-Reviewed checkout: `6ac85fe` — mesh-analysis: complete scientific Inspector result views
+Reviewed checkout: `e83fdd2` — analysis-core: extract shared result semantics
 
 The numbered commits below are implementation plans, not claims that corresponding Git commits are complete. This document records the current implementation and the remaining work against the supplied plans.
 
@@ -19,7 +19,8 @@ The numbered commits below are implementation plans, not claims that correspondi
 | 8 — Ridges and valleys | Complete | `0c0207b` | 388 renderer tests, TypeScript typecheck, production core build, quantitative torus/saddle/sphere/Fandisk/Bunny verification, and 3 Mesh Analyze E2E tests passed |
 | 9 — Target isolation and large-mesh workers | Complete | `e151abf` | 381 renderer tests, TypeScript typecheck, production renderer build, 3 Mesh Analyze E2E tests, and current-build Bunny/Armadillo/Dragon profiling passed |
 | 10 — Scientific Inspector and computation history | Complete | `6ac85fe` | 394 renderer tests, TypeScript typecheck, production core build, and 3 Mesh Analyze E2E tests passed |
-| 11–12 | Planned | — | See the detailed sections below |
+| 11 — Geometry ↔ Mesh analysis infrastructure | In progress | `e83fdd2` checkpoint | 396 renderer tests and renderer TypeScript typecheck passed; final build/E2E gate pending |
+| 12 | Planned | — | See the detailed section below |
 
 The implementation commits follow the numbered plan sections. Progress entries record completed code only after its relevant tests and build checks pass.
 
@@ -27,7 +28,7 @@ UI walkthrough: [Mesh Analyze UI guide — Commits 5–9](mesh-analyze-ui-guide-
 
 ## Current assessment
 
-Commits 1–10 are implemented. The Mesh Analyze workbench now has canonical cached results, mesh-health and CGAL integrity checks, differential geometry, mesh-quality fields, surface field calculus, approximate edge-graph routes, accurate CGAL triangulated-surface shortest paths, an explicitly experimental heat-distance field, reusable cached surface-feature classifications, validated and cached ridge/valley extraction, explicit target-isolation modes, worker-backed curvature and feature extraction, and an authoritative scientific Inspector with computation history. Commits 11–12 retain partially implemented foundations and remain the next work.
+Commits 1–10 are implemented. Commit 11 now has a tested shared-analysis-core checkpoint, but its final dependency adapter audit and full build/E2E gate remain. Commit 12 remains planned.
 
 Commit 6 validation completed locally with CGAL 6.2.1 from vcpkg, the Python CGAL worker environment, the native shortest-path helper, dependency and mesh-generation smoke checks, all three CGAL boolean operations, and numerical geodesic checks on plane, cylinder, sphere, graph-versus-surface, disconnected, and 5,776-vertex large-mesh cases. The full renderer suite also passed: **373 tests across 69 files**, plus TypeScript typecheck and the production renderer build.
 
@@ -286,18 +287,37 @@ Acceptance: the right Inspector is authoritative for scientific interpretation.
 
 Planned message: `analysis-core: share result semantics across Geometry and Mesh`
 
-**Status: bridge exists; generic infrastructure extraction remains.**
+**Status: in progress at checkpoint `e83fdd2`.**
 
 Already implemented:
 
 - Geometry↔Mesh promotion/analysis bridge and tests.
 - Reusable mesh result helpers.
 
-Remaining:
+Completed in the checkpoint:
 
-- [ ] Share generic AnalysisResult, registry, cache/invalidation, statistics, field and palette/range metadata, probe schema, histogram data, and provenance.
-- [ ] Keep adapters, topology, quality, discrete curvature, geodesics, and feature edges Mesh-specific.
-- [ ] Define compatibility for future analytical Geometry quantities without rewriting Geometry.
+- [x] Extracted domain-neutral result, identity, state, parameter, dependency, history, histogram, field, palette/range, probe, provenance, and scientific-summary contracts under `renderer/src/analysis/`.
+- [x] Extracted the generic result cache, parameter hashing, exact dependency invalidation, revision-lineage staleness, computation history, and registry cycle validation.
+- [x] Routed Mesh through thin result-store and registry adapters while keeping mesh identity hashing, backend inference, topology, quality, discrete curvature, geodesics, and feature extraction Mesh-specific.
+- [x] Added a Geometry adapter and extensibility test showing that a future analytical quantity can use the shared registry/result store without rewriting Geometry.
+- [x] Routed Mesh scalar statistics and selected-entity probe metadata through the shared contracts.
+
+Remaining before Commit 11 is complete:
+
+- [ ] Add a Geometry dependency-resolution adapter and a direct shared-core regression test for transitive invalidation across a custom analytical quantity.
+- [ ] Audit remaining Geometry analysis call sites for an immediate shared-contract consumer; keep purely geometric calculations in `geometry/analysis.ts` and mesh-only algorithms out of the shared core.
+- [ ] Run `npm run typecheck:noemit`, `npm run build:core`, and all three `tests/e2e/mesh-analyze-science.spec.ts` scenarios.
+- [ ] Mark Commit 11 complete only after the final validation gate passes.
+
+### Commit 11 handoff to another desktop
+
+1. In the Math3D checkout, run `git pull --ff-only origin main`; the implementation checkpoint is `e83fdd2` and this roadmap handoff follows it.
+2. Start with `renderer/src/analysis/`, `renderer/src/mesh/analysisResultStore.ts`, `renderer/src/mesh/analysisRegistry.ts`, and `renderer/src/geometry/analysisInfrastructure.ts`.
+3. Implement the remaining dependency adapter/test above; avoid moving mesh topology or numerical mesh algorithms into the generic core.
+4. Run the focused tests first: `npm --prefix renderer test -- src/mesh/analysisResultStore.test.ts src/mesh/analysisRegistry.test.ts src/mesh/activeAnalysisResult.test.ts src/mesh/meshEntityScientificFields.test.ts src/geometry/analysisInfrastructure.test.ts`.
+5. Run the full validation commands listed above, update this section and the progress table with the final commit hash/counts, then push to `main`.
+
+Checkpoint verification: **396 tests across 73 renderer files** and `tsc -p renderer/tsconfig.app.json --noEmit` pass. The checkout is intended to be safe to continue from, but this checkpoint does not claim Commit 11 acceptance yet.
 
 Acceptance: generic analysis infrastructure is not hard-coded into Mesh or the main application component.
 
