@@ -153,6 +153,10 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analysis-result-statistics")).toBeVisible();
     await expect(page.getByTestId("mesh-analysis-result-definition")).toContainText(/Method\s*Angle defect/i);
     await expect(page.getByTestId("mesh-analysis-result-definition")).toContainText(/Domain\s*\d+ vertices/i);
+    await expect(page.getByTestId("mesh-analysis-result-definition")).toContainText(/Quantity\s*Gaussian curvature K/i);
+    await expect(page.getByTestId("mesh-analysis-result-percentiles")).toContainText(/P05.*P50.*P95/i);
+    await expect(page.getByTestId("mesh-analysis-result-provenance")).toContainText(/Backend.*Revision/i);
+    await expect(page.getByTestId("mesh-analysis-result-warnings")).toBeVisible();
     await expect(page.getByTestId("mesh-analysis-result-stat-median")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analysis-result-stat-sigma")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analysis-result-extrema")).toContainText(/Minimum\s*Vertex \d+/i);
@@ -323,6 +327,7 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-health-badge")).toContainText(/State check:\s*Warning/i);
     await expect(page.getByTestId("mesh-analyze-health-badge")).toContainText(/3 suspected intersections/i);
     await expect(page.getByTestId("mesh-inspector-diagnostics-card")).toContainText(/Warning/i);
+    await expect(page.getByTestId("mesh-inspector-canonical-health")).toContainText(/Canonical MeshHealthResult.*Backend.*Status/is);
     await expect(page.getByTestId("mesh-analyze-clean-counts")).toHaveCount(0);
     await expect(page.getByTestId("mesh-analyze-diagnostics-boundary-count")).toBeVisible();
     await expect(page.getByTestId("mesh-analyze-diagnostics-boundary-count")).toContainText(/Boundary:\s*0 clean/i);
@@ -355,6 +360,7 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-selection-local-normal")).toContainText(/\([^)]*,[^)]*,[^)]*\)/);
     await expect(page.getByTestId("mesh-selection-local-direction-d1")).toContainText(/\([^)]*,[^)]*,[^)]*\)/);
     await expect(page.getByTestId("mesh-selection-local-direction-d2")).toContainText(/\([^)]*,[^)]*,[^)]*\)/);
+    await expect(page.getByTestId("mesh-selection-scientific-fields")).toContainText(/Scientific entity values.*Scalar fields.*Vector fields.*Feature membership/is);
     await expect(page.getByTestId("mesh-active-selection-card-type")).toHaveText(ordinarySelectionType);
     await expect(page.getByTestId("mesh-active-selection-card-id")).toHaveText(ordinarySelectionId);
     await expect(page.getByTestId("mesh-analyze-probe-history")).toHaveCount(0);
@@ -366,6 +372,10 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-probe-label")).toContainText(/Probe: vertex \d+ at/i);
     await inspectorProbeHistory.getByRole("button", { name: "Clear", exact: true }).click();
     await expect(inspectorProbeHistory).toContainText(/No recorded probes/i);
+
+    await page.getByTestId("mesh-inspector-tab-history").click();
+    await expect(page.getByTestId("mesh-analysis-computation-history")).toContainText(/Analysis computations/i);
+    await expect(page.getByTestId("mesh-analysis-history-detail")).toContainText(/Status.*Backend.*Duration.*Timestamp.*Revision.*Parameters/is);
 
     await page.getByTestId("mesh-open-in-geometry").click();
     await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });

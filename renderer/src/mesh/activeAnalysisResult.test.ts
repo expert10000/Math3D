@@ -112,6 +112,7 @@ const baseInput = (overrides: Partial<MeshActiveAnalysisResultInput> = {}): Mesh
   sphereSanity: null,
   meshStats: { vertCount: 4, triCount: 2 },
   meshLabel: "Fixture",
+  meshRevision: "v4:f2:test",
   formatTimestamp: (value) => (value == null ? "Current session" : `timestamp:${value}`),
   ...overrides,
 });
@@ -309,12 +310,46 @@ describe("selectMeshActiveAnalysisResult", () => {
     expect(selectMeshActiveAnalysisResult(baseInput())).toEqual({
       category: null,
       result: "Overview",
+      quantity: "Overview",
       state: "Ready",
+      method: "Discrete differential geometry",
+      domain: "4 vertices / 2 faces",
       statistics: [
         { label: "Vertices", value: "4" },
         { label: "Faces", value: "2" },
       ],
+      percentiles: [],
       metadata: [{ label: "Mesh", value: "Fixture" }],
+      provenance: [
+        { label: "Backend", value: "Mesh analysis worker" },
+        { label: "Revision", value: "v4:f2:test" },
+      ],
+      warnings: [],
     });
+  });
+
+  it("exposes a complete scientific schema for every result family", () => {
+    const sections = [
+      "differential-geometry",
+      "vector-calculus",
+      "curvature-lines",
+      "surface-features",
+      "ridges-valleys",
+      "chart-analysis",
+      "mesh-quality",
+      "geodesics",
+      "diagnostics",
+    ] as const;
+
+    for (const section of sections) {
+      const result = selectMeshActiveAnalysisResult(baseInput({ section }));
+      expect(result.quantity, section).toBeTruthy();
+      expect(result.method, section).toBeTruthy();
+      expect(result.domain, section).toBeTruthy();
+      expect(Array.isArray(result.statistics), section).toBe(true);
+      expect(Array.isArray(result.percentiles), section).toBe(true);
+      expect(Array.isArray(result.provenance), section).toBe(true);
+      expect(Array.isArray(result.warnings), section).toBe(true);
+    }
   });
 });

@@ -74,11 +74,31 @@ export type MeshAnalysisResult<TPayload = unknown> = {
   parameterHash: string;
   resultVersion: number;
   computeTimeMs: number | null;
+  backend: string;
+};
+
+export type MeshAnalysisComputationRecord = {
+  id: string;
+  resultKey: string;
+  kind: MeshAnalysisResultKind;
+  variant: string;
+  state: MeshAnalysisResultState;
+  mesh: MeshAnalysisMeshIdentity;
+  parameters: MeshAnalysisParameters;
+  parameterHash: string;
+  dependencies: MeshAnalysisResultDependency[];
+  backend: string;
+  durationMs: number | null;
+  timestamp: number;
+  resultVersion: number;
+  error: string | null;
+  payloadSummary: Record<string, string | number | boolean | null>;
 };
 
 export type MeshAnalysisResultStore = {
   version: 2;
   entries: Record<string, MeshAnalysisResult>;
+  history: MeshAnalysisComputationRecord[];
 };
 
 type UpsertMeshAnalysisResultOptions<TPayload> = {
@@ -92,10 +112,12 @@ type UpsertMeshAnalysisResultOptions<TPayload> = {
   progress?: number | null;
   dependencies?: MeshAnalysisResultDependency[];
   computeTimeMs?: number | null;
+  backend?: string;
   now?: number;
 };
 
 const MAX_STORED_RESULTS = 24;
+const MAX_COMPUTATION_HISTORY = 96;
 
 const cleanKeyPart = (value: unknown): string =>
   String(value ?? "")
@@ -156,6 +178,54 @@ const stableParameterValue = (value: unknown): unknown => {
   return value;
 };
 
+const inferAnalysisBackend = (
+  kind: MeshAnalysisResultKind,
+  parameters: MeshAnalysisParameters,
+  payload: unknown
+): string => {
+  if (kind === "diagnostics" && payload && typeof payload === "object") {
+    const backend = (payload as { backend?: unknown }).backend;
+    if (typeof backend === "string" && backend) return backend === "cgal" ? "CGAL" : backend === "hybrid" ? "Math3D + CGAL" : "Math3D";
+  }
+  if (kind === "geodesic") {
+    const method = parameters.method;
+    if (method === "surface") return "CGAL";
+    if (method === "heat") return "Python heat worker";
+    return "Renderer CPU";
+  }
+  if (kind === "quality") return "Math3D quality worker";
+  if (kind === "curvature" || kind === "normals" || kind === "principal-directions" || kind === "surface-features" || kind === "ridges-valleys") {
+    return "Mesh analysis worker";
+  }
+  return "Renderer CPU";
+};
+
+const summarizePayload = (payload: unknown): Record<string, string | number | boolean | null> => {
+  if (!payload || typeof payload !== "object") return {};
+  const output: Record<string, string | number | boolean | null> = {};
+  const addScalars = (value: unknown, prefix = "") => {
+    if (!value || typeof value !== "object") return;
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      if (Object.keys(output).length >= 16) return;
+      if (typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean" || entry === null) {
+        output[`${prefix}${key}`] = entry;
+      }
+    }
+  };
+  addScalars((payload as { summary?: unknown }).summary, "summary.");
+  addScalars(payload);
+  return output;
+};
+
+const syncHistoryStates = (
+  history: MeshAnalysisComputationRecord[],
+  entries: Record<string, MeshAnalysisResult>
+): MeshAnalysisComputationRecord[] => history.map((record) => {
+  const current = entries[record.resultKey];
+  if (!current || current.resultVersion !== record.resultVersion || current.state === record.state) return record;
+  return { ...record, state: current.state, timestamp: current.updatedAt, error: current.error };
+});
+
 export const meshAnalysisParameterHash = (
   parameters: MeshAnalysisParameters
 ): string => JSON.stringify(stableParameterValue(parameters));
@@ -182,7 +252,7 @@ export const createMeshAnalysisMeshIdentity = (mesh: SurfaceMeshData): MeshAnaly
   };
 };
 
-export const createMeshAnalysisResultStore = (): MeshAnalysisResultStore => ({ version: 2, entries: {} });
+export const createMeshAnalysisResultStore = (): MeshAnalysisResultStore => ({ version: 2, entries: {}, history: [] });
 
 export const meshAnalysisResultKey = (
   mesh: MeshAnalysisMeshIdentity,
@@ -289,7 +359,7 @@ export const invalidateMeshAnalysisResult = (
     [key]: { ...current, state: "stale" as const, updatedAt: now, progress: null },
   };
   invalidateDependents(entries, key, now);
-  return { version: 2, entries };
+  return { version: 2, entries, history: syncHistoryStates(store.history, entries) };
 };
 
 export const upsertMeshAnalysisResult = <TPayload>(
@@ -335,6 +405,7 @@ export const upsertMeshAnalysisResult = <TPayload>(
     resultVersion,
     computeTimeMs:
       options.computeTimeMs !== undefined ? options.computeTimeMs : previous?.computeTimeMs ?? null,
+    backend: options.backend ?? previous?.backend ?? inferAnalysisBackend(options.kind, parameters, options.payload),
   };
   const entries = { ...store.entries, [key]: nextEntry };
   for (const [entryKey, entry] of Object.entries(entries)) {
@@ -349,7 +420,40 @@ export const upsertMeshAnalysisResult = <TPayload>(
   if (orderedKeys.length > MAX_STORED_RESULTS) {
     for (const staleKey of orderedKeys.slice(MAX_STORED_RESULTS)) delete entries[staleKey];
   }
-  return { version: 2, entries };
+  let history = syncHistoryStates(store.history, entries);
+  const state = nextEntry.state;
+  const activeRecordIndex = history.findIndex((record) =>
+    record.resultKey === key &&
+    record.parameterHash === parameterHash &&
+    (record.state === "queued" || record.state === "running")
+  );
+  if (activeRecordIndex < 0 && (state === "queued" || state === "running")) {
+    history = history.map((record) =>
+      record.resultKey === key && record.state === "ready"
+        ? { ...record, state: "stale" as const }
+        : record
+    );
+  }
+  const record: MeshAnalysisComputationRecord = {
+    id: activeRecordIndex >= 0 ? history[activeRecordIndex].id : `${key}:run:${now}:${resultVersion}`,
+    resultKey: key,
+    kind: nextEntry.kind,
+    variant,
+    state,
+    mesh: nextEntry.mesh,
+    parameters,
+    parameterHash,
+    dependencies,
+    backend: nextEntry.backend,
+    durationMs: nextEntry.computeTimeMs,
+    timestamp: now,
+    resultVersion,
+    error: nextEntry.error,
+    payloadSummary: summarizePayload(nextEntry.payload),
+  };
+  if (activeRecordIndex >= 0) history[activeRecordIndex] = record;
+  else history.unshift(record);
+  return { version: 2, entries, history: history.slice(0, MAX_COMPUTATION_HISTORY) };
 };
 
 export const meshAnalysisResultKindsForMesh = (

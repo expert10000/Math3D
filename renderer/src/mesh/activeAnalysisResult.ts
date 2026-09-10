@@ -39,13 +39,17 @@ export const MESH_QUALITY_METRIC_OPTIONS: ReadonlyArray<{
 export type MeshActiveAnalysisResultSummary = {
   category: string | null;
   result: string;
+  quantity: string;
   state: "Ready" | "Running" | "Deferred" | "Unavailable";
-  method?: string;
-  domain?: string;
+  method: string;
+  domain: string;
   statistics: Array<{ label: string; value: string }>;
+  percentiles: Array<{ label: string; value: string }>;
   extrema?: Array<{ label: string; value: string }>;
   histogram?: MeshHistogramBin[];
   metadata: Array<{ label: string; value: string }>;
+  provenance: Array<{ label: string; value: string }>;
+  warnings: string[];
 };
 
 export type MeshCurvatureStatistics = {
@@ -64,6 +68,10 @@ export type MeshHistogramBin = {
 
 export type MeshCurvatureDetailedStatistics = MeshCurvatureStatistics & {
   median: number;
+  p05: number;
+  p25: number;
+  p75: number;
+  p95: number;
   minIndex: number;
   maxIndex: number;
   histogram: MeshHistogramBin[];
@@ -108,6 +116,13 @@ export const summarizeMeshScalarField = (
   const sorted = samples.map((sample) => sample.value).sort((a, b) => a - b);
   const middle = Math.floor(count / 2);
   const median = count % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+  const quantile = (fraction: number) => {
+    const position = Math.max(0, Math.min(count - 1, fraction * (count - 1)));
+    const lower = Math.floor(position);
+    const upper = Math.ceil(position);
+    if (lower === upper) return sorted[lower];
+    return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
+  };
   const binCount = Number.isFinite(requestedBinCount)
     ? Math.max(1, Math.min(32, Math.round(requestedBinCount)))
     : 12;
@@ -124,7 +139,21 @@ export const summarizeMeshScalarField = (
     histogram[binIndex].count += 1;
   }
 
-  return { min, max, mean, median, std, count, minIndex, maxIndex, histogram };
+  return {
+    min,
+    max,
+    mean,
+    median,
+    p05: quantile(0.05),
+    p25: quantile(0.25),
+    p75: quantile(0.75),
+    p95: quantile(0.95),
+    std,
+    count,
+    minIndex,
+    maxIndex,
+    histogram,
+  };
 };
 
 export type MeshSphereSanitySummary = {
@@ -189,6 +218,7 @@ export type MeshActiveAnalysisResultInput = {
   sphereSanity: MeshSphereSanitySummary | null;
   meshStats: { vertCount: number; triCount: number } | null;
   meshLabel: string;
+  meshRevision: string | null;
   formatTimestamp?: (value: number | null) => string;
 };
 
@@ -264,9 +294,24 @@ const qualityMetricDefinition: Record<
   },
 };
 
-export const selectMeshActiveAnalysisResult = (
+type BaseMeshActiveAnalysisResultSummary = {
+  category: string | null;
+  result: string;
+  state: MeshActiveAnalysisResultSummary["state"];
+  method?: string;
+  domain?: string;
+  statistics: Array<{ label: string; value: string }>;
+  percentiles?: Array<{ label: string; value: string }>;
+  extrema?: Array<{ label: string; value: string }>;
+  histogram?: MeshHistogramBin[];
+  metadata: Array<{ label: string; value: string }>;
+  provenance?: Array<{ label: string; value: string }>;
+  warnings?: string[];
+};
+
+const selectMeshActiveAnalysisResultBase = (
   input: MeshActiveAnalysisResultInput
-): MeshActiveAnalysisResultSummary => {
+): BaseMeshActiveAnalysisResultSummary => {
   const timestamp =
     input.formatTimestamp ??
     ((value: number | null) => (value == null ? "Current session" : new Date(value).toLocaleString()));
@@ -316,6 +361,13 @@ export const selectMeshActiveAnalysisResult = (
       method: definition.method,
       domain: `${formatCount(sampleCount)} ${definition.sampleKind}`,
       statistics,
+      percentiles: detailed ? [
+        { label: "P05", value: formatNumber(detailed.p05) },
+        { label: "P25", value: formatNumber(detailed.p25) },
+        { label: "P50", value: formatNumber(detailed.median) },
+        { label: "P75", value: formatNumber(detailed.p75) },
+        { label: "P95", value: formatNumber(detailed.p95) },
+      ] : [],
       extrema: detailed ? [
         { label: "Minimum", value: `${definition.sampleKind === "faces" ? "Face" : definition.sampleKind === "edges" ? "Edge" : "Vertex"} ${detailed.minIndex}` },
         { label: "Maximum", value: `${definition.sampleKind === "faces" ? "Face" : definition.sampleKind === "edges" ? "Edge" : "Vertex"} ${detailed.maxIndex}` },
@@ -484,6 +536,7 @@ export const selectMeshActiveAnalysisResult = (
   }
 
   if (input.section === "chart-analysis") {
+    const detailedStats = input.curvatureStats as MeshCurvatureDetailedStatistics | null;
     return {
       category: "Charts & Statistics",
       result: input.curvatureFieldLabel ?? "Field statistics",
@@ -496,6 +549,13 @@ export const selectMeshActiveAnalysisResult = (
             { label: "Standard deviation", value: formatNumber(input.curvatureStats.std) },
           ]
         : [],
+      percentiles: detailedStats?.p05 != null ? [
+        { label: "P05", value: formatNumber(detailedStats.p05) },
+        { label: "P25", value: formatNumber(detailedStats.p25) },
+        { label: "P50", value: formatNumber(detailedStats.median) },
+        { label: "P75", value: formatNumber(detailedStats.p75) },
+        { label: "P95", value: formatNumber(detailedStats.p95) },
+      ] : [],
       metadata: [{ label: "Scope", value: input.curvatureRangeSource }],
     };
   }
@@ -522,6 +582,13 @@ export const selectMeshActiveAnalysisResult = (
             { label: "σ (sigma)", value: formatNumber(input.curvatureStats.std) },
           ]
         : [],
+      percentiles: detailedStats ? [
+        { label: "P05", value: formatNumber(detailedStats.p05) },
+        { label: "P25", value: formatNumber(detailedStats.p25) },
+        { label: "P50", value: formatNumber(detailedStats.median) },
+        { label: "P75", value: formatNumber(detailedStats.p75) },
+        { label: "P95", value: formatNumber(detailedStats.p95) },
+      ] : [],
       extrema: detailedStats
         ? [
             { label: "Minimum", value: `Vertex ${formatCount(detailedStats.minIndex)}` },
@@ -565,3 +632,78 @@ export const selectMeshActiveAnalysisResult = (
     metadata: [{ label: "Mesh", value: input.meshLabel }],
   };
 };
+
+const defaultScientificMethod = (input: MeshActiveAnalysisResultInput): string => {
+  switch (input.section) {
+    case "differential-geometry": return "Discrete differential geometry";
+    case "vector-calculus": return "Surface finite-element operator";
+    case "curvature-lines": return "Principal-direction streamline integration";
+    case "surface-features": return "Curvature classification and feature-edge extraction";
+    case "ridges-valleys": return "Principal-curvature directional extrema";
+    case "chart-analysis": return "Descriptive scalar statistics";
+    case "mesh-quality": return "VTK/Verdict-compatible mesh quality";
+    case "geodesics": return "Mesh path computation";
+    case "diagnostics": return "Canonical mesh health validation";
+  }
+};
+
+const backendForResult = (input: MeshActiveAnalysisResultInput): string => {
+  if (input.section === "diagnostics") {
+    if (input.diagnostics?.backend === "hybrid") return "Math3D + CGAL";
+    if (input.diagnostics?.backend === "cgal") return "CGAL";
+    return "Math3D";
+  }
+  if (input.section === "geodesics" && input.geodesicMethod === "surface") return "CGAL";
+  if (input.section === "mesh-quality") return "Math3D quality worker";
+  if (input.section === "vector-calculus" || input.section === "chart-analysis" || input.section === "curvature-lines") return "Renderer CPU";
+  return "Mesh analysis worker";
+};
+
+const normalizeScientificResult = (
+  base: BaseMeshActiveAnalysisResultSummary,
+  input: MeshActiveAnalysisResultInput
+): MeshActiveAnalysisResultSummary => {
+  const metadataMethod = base.metadata.find((entry) => entry.label === "Method")?.value;
+  const provenance = base.provenance?.slice() ?? [];
+  const addProvenance = (label: string, value: string | null | undefined) => {
+    if (!value || provenance.some((entry) => entry.label === label)) return;
+    provenance.push({ label, value });
+  };
+  addProvenance("Backend", base.metadata.find((entry) => entry.label === "Backend")?.value ?? backendForResult(input));
+  addProvenance("Revision", input.meshRevision ?? "current session");
+  for (const label of ["Cache", "Cached", "Computed", "Dependencies", "Source semantics", "Scope"]) {
+    addProvenance(label, base.metadata.find((entry) => entry.label === label)?.value);
+  }
+
+  const warnings = new Set(base.warnings ?? []);
+  if (base.state === "Unavailable") warnings.add("No valid current result is available for this quantity.");
+  if (input.section === "diagnostics") {
+    for (const warning of input.diagnostics?.warnings ?? []) warnings.add(warning);
+  }
+  if (input.section === "surface-features" && input.surfaceFeatures?.summary.uncertainVertexCount) {
+    warnings.add(`${formatCount(input.surfaceFeatures.summary.uncertainVertexCount)} uncertain vertices are flagged in this classification.`);
+  }
+  if (input.section === "ridges-valleys" && input.ridgeValleyResult?.summary.uncertainVertexCount) {
+    warnings.add(`${formatCount(input.ridgeValleyResult.summary.uncertainVertexCount)} vertices with unstable directions were suppressed.`);
+  }
+  if (input.sphereSanity && !input.sphereSanity.ok) warnings.add("Sphere-reference curvature is outside tolerance.");
+  if (input.qualityReport?.topology.degenerateFaceCount) {
+    warnings.add(`${formatCount(input.qualityReport.topology.degenerateFaceCount)} degenerate faces are excluded or flagged.`);
+  }
+
+  return {
+    ...base,
+    quantity: base.result,
+    method: base.method ?? metadataMethod ?? defaultScientificMethod(input),
+    domain: base.domain ?? (input.meshStats
+      ? `${formatCount(input.meshStats.vertCount)} vertices / ${formatCount(input.meshStats.triCount)} faces`
+      : "current mesh"),
+    percentiles: base.percentiles ?? [],
+    provenance,
+    warnings: [...warnings],
+  };
+};
+
+export const selectMeshActiveAnalysisResult = (
+  input: MeshActiveAnalysisResultInput
+): MeshActiveAnalysisResultSummary => normalizeScientificResult(selectMeshActiveAnalysisResultBase(input), input);

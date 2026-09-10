@@ -538,11 +538,16 @@ import {
   meshAnalysisResultKindsForMesh,
   upsertMeshAnalysisResult,
   type MeshAnalysisMeshIdentity,
+  type MeshAnalysisComputationRecord,
   type MeshAnalysisResultKind,
   type MeshAnalysisResultState,
   type MeshCurvatureAnalysisPayload,
   type MeshDiagnosticsAnalysisPayload,
 } from "./mesh/analysisResultStore";
+import {
+  inspectMeshEntityScientificFields,
+  type MeshEntityScientificFields,
+} from "./mesh/meshEntityScientificFields";
 import {
   MESH_FIELD_CALCULUS_VERSION,
   computeMeshFieldDivergence,
@@ -59169,28 +59174,73 @@ case "mobius":
   const computeGeodesicPath = useCallback(
     async (sources: GeodesicPathEndpoint[], end: GeodesicPathEndpoint) => {
       const requestId = ++geodesicPathRequestIdRef.current;
+      const startedAt = performance.now();
+      const parameters = {
+        method: geodesicPathMethod,
+        sourceMode: geodesicPathSourceMode,
+        sourceCount: sources.length,
+        constrained: geodesicPathConstrain,
+        smooth: geodesicPathSmooth,
+      } as const;
       setGeodesicPathBusy(true);
+      if (activeMeshAnalysisIdentity) {
+        setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+          kind: "geodesic",
+          mesh: activeMeshAnalysisIdentity,
+          state: "running",
+          parameters,
+          backend: geodesicPathMethod === "surface" ? "CGAL" : "Renderer CPU",
+        }));
+      }
       try {
         const result =
           geodesicPathMethod === "surface"
             ? await computeGeodesicSurfacePathResult(sources, end)
             : computeGeodesicPathResult(sources, end);
-        if (geodesicPathRequestIdRef.current === requestId) applyGeodesicPathResult(result);
+        if (geodesicPathRequestIdRef.current === requestId) {
+          applyGeodesicPathResult(result);
+          if (activeMeshAnalysisIdentity) {
+            setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+              kind: "geodesic",
+              mesh: activeMeshAnalysisIdentity,
+              state: "ready",
+              parameters,
+              payload: result,
+              computeTimeMs: performance.now() - startedAt,
+              backend: geodesicPathMethod === "surface" ? "CGAL" : "Renderer CPU",
+            }));
+          }
+        }
       } catch (error: any) {
         if (geodesicPathRequestIdRef.current !== requestId) return;
         setGeodesicPathIndices(null);
         setGeodesicPathPolylines(null);
         setGeodesicPathLength(null);
         setGeodesicPathMessage(error?.message ?? String(error));
+        if (activeMeshAnalysisIdentity) {
+          setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+            kind: "geodesic",
+            mesh: activeMeshAnalysisIdentity,
+            state: "error",
+            parameters,
+            error: error?.message ?? String(error),
+            computeTimeMs: performance.now() - startedAt,
+            backend: geodesicPathMethod === "surface" ? "CGAL" : "Renderer CPU",
+          }));
+        }
       } finally {
         if (geodesicPathRequestIdRef.current === requestId) setGeodesicPathBusy(false);
       }
     },
     [
+      activeMeshAnalysisIdentity,
       applyGeodesicPathResult,
       computeGeodesicPathResult,
       computeGeodesicSurfacePathResult,
+      geodesicPathConstrain,
       geodesicPathMethod,
+      geodesicPathSmooth,
+      geodesicPathSourceMode,
     ]
   );
 
@@ -59771,6 +59821,60 @@ case "mobius":
     read(selectionCurvatures.k2, "k2");
     return Object.keys(out).length ? out : null;
   }, [inspectIdx, selectionCurvatures, surfaceMeshCurvatures, surfaceViewerKind]);
+
+  const meshSelectedScientificFields = useMemo<MeshEntityScientificFields | null>(() => {
+    if (
+      surfaceViewerKind !== "mesh" ||
+      !surfaceMeshData ||
+      surfaceMeshTopologySelectionCleared ||
+      meshActiveSelectionCardEmptyState
+    ) return null;
+    const target = surfaceMeshTopologyPickMode === "vertex"
+      ? { kind: "vertex" as const, vertexIndex: Math.max(0, Math.round(surfaceMeshTopologyVertexIndex || 0)) }
+      : surfaceMeshTopologyPickMode === "edge"
+        ? {
+            kind: "edge" as const,
+            edge: [
+              Math.max(0, Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeA || 0)),
+              Math.max(0, Math.round(surfaceMeshTopologyFieldValidation.effectiveEdgeB || 0)),
+            ] as const,
+          }
+        : surfaceMeshTopologyPickMode === "face"
+          ? { kind: "face" as const, faceIndex: Math.max(0, Math.round(surfaceMeshTopologyFaceIndex || 0)) }
+          : null;
+    if (!target) return null;
+    return inspectMeshEntityScientificFields({
+      mesh: surfaceMeshData,
+      target,
+      scalarFields: surfaceScalarFields.values(),
+      vectorFields: surfaceVectorFields.values(),
+      differential: surfaceMeshCurvatures,
+      quality: meshQualityReport,
+      features: surfaceFeatureResult,
+    });
+  }, [
+    meshQualityReport,
+    meshActiveSelectionCardEmptyState,
+    surfaceFeatureResult,
+    surfaceMeshCurvatures,
+    surfaceMeshData,
+    surfaceMeshTopologyFaceIndex,
+    surfaceMeshTopologyFieldValidation.effectiveEdgeA,
+    surfaceMeshTopologyFieldValidation.effectiveEdgeB,
+    surfaceMeshTopologyPickMode,
+    surfaceMeshTopologySelectionCleared,
+    surfaceMeshTopologyVertexIndex,
+    surfaceScalarFields,
+    surfaceVectorFields,
+    surfaceViewerKind,
+  ]);
+
+  const meshAnalysisComputationHistory = useMemo<MeshAnalysisComputationRecord[]>(() => {
+    if (!activeMeshAnalysisIdentity) return [];
+    return meshAnalysisResultStore.history
+      .filter((record) => record.mesh.meshId === activeMeshAnalysisIdentity.meshId)
+      .sort((left, right) => right.timestamp - left.timestamp);
+  }, [activeMeshAnalysisIdentity, meshAnalysisResultStore.history]);
 
   const handleInspectPick = useCallback((info: GeometryProceduralPickInfo & {
     index: number;
@@ -68830,6 +68934,7 @@ case "mobius":
     sphereSanity: meshAnalyzeSphereSanity,
     meshStats: surfaceMeshStats,
     meshLabel: surfaceMeshLabel,
+    meshRevision: activeMeshAnalysisIdentity?.revision ?? null,
   });
   const meshAnalysisWorkflowValidationLabel = surfaceMeshAnalyzeDiagnostics
     ? surfaceMeshAnalyzeDiagnostics.state === "Healthy"
@@ -81447,6 +81552,8 @@ case "mobius":
                       paramId={paramSurfaceId}
                       surfaceMeshLabel={surfaceMeshLabel}
                       meshActiveAnalysisResult={meshActiveAnalysisResult}
+                      meshAnalysisComputationHistory={meshAnalysisComputationHistory}
+                      meshSelectedScientificFields={meshSelectedScientificFields}
                       meshWorkspaceSummary={meshWorkspaceInspectorSummary}
                       meshWorkspaceSelectedProvenanceEntry={meshWorkspaceSelectedProvenanceEntry}
                       requestedInspectorTab={meshWorkspaceRequestedInspectorTab}
@@ -117642,7 +117749,7 @@ onChangeImplicitExpr,
 
 /* ---------------- Right Panel (domain previews) ---------------- */
 
-type MeshAnalyzeDiagnosticsSummary = Omit<MeshDiagnosticsAnalysisPayload, "duplicateVertexGroups">;
+type MeshAnalyzeDiagnosticsSummary = MeshDiagnosticsAnalysisPayload;
 
 type SurfacesRightPanelProps = {
   viewerKind: SurfaceViewerKind;
@@ -117651,6 +117758,8 @@ type SurfacesRightPanelProps = {
   paramId: ParamSurfaceId;
   surfaceMeshLabel: string;
   meshActiveAnalysisResult: MeshActiveAnalysisResultSummary;
+  meshAnalysisComputationHistory: MeshAnalysisComputationRecord[];
+  meshSelectedScientificFields: MeshEntityScientificFields | null;
   meshWorkspaceSummary: MeshWorkspaceInspectorSummary;
   meshWorkspaceSelectedProvenanceEntry: MeshOperationHistoryEntry | null;
   requestedInspectorTab?: InspectorPanelTab | null;
@@ -117929,6 +118038,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   paramId,
   surfaceMeshLabel,
   meshActiveAnalysisResult,
+  meshAnalysisComputationHistory,
+  meshSelectedScientificFields,
   meshWorkspaceSummary,
   meshWorkspaceSelectedProvenanceEntry,
   requestedInspectorTab = null,
@@ -118213,6 +118324,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const [paramDomainLabel, setParamDomainLabel] = useState("");
   const [inspectorPanelTab, setInspectorPanelTab] = useState<InspectorPanelTab>("object");
   const [analysisResultsView, setAnalysisResultsView] = useState<AnalysisResultsView>("current-screen");
+  const [selectedAnalysisComputationId, setSelectedAnalysisComputationId] = useState<string | null>(null);
   useEffect(() => {
     if (inspectorPanelTab === "warnings") setInspectorPanelTab("diagnostics");
   }, [inspectorPanelTab]);
@@ -118233,6 +118345,10 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     if (inspectorPanelTab === "object" || inspectorPanelTab === "analysis") setInspectorPanelTab("result");
     else if (inspectorPanelTab === "probe" || inspectorPanelTab === "warnings") setInspectorPanelTab("selection");
   }, [inspectorPanelTab, meshAnalysisActive]);
+  const selectedAnalysisComputation =
+    meshAnalysisComputationHistory.find((record) => record.id === selectedAnalysisComputationId) ??
+    meshAnalysisComputationHistory[0] ??
+    null;
 
   const paramDefaults = isWeierstrass ? WEIERSTRASS_DEFAULTS.domain : getParamDomainPreviewBounds(paramId);
   const safeGraphDomain = normalizeGraphDomain(graphDomain, getDefaultGraphSpan(surfaceId));
@@ -120054,6 +120170,63 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               </div>
             </div>
             {meshAnalysisActive && (
+              <div data-testid="mesh-selection-scientific-fields" style={inspectorSectionCard}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 7 }}>
+                  <div style={inspectorSectionTitle}>Scientific entity values</div>
+                  <span style={{ color: meshSelectedScientificFields?.principalDirectionsValidated ? "#166534" : "#92400e", fontSize: 10, fontWeight: 850 }}>
+                    directions {meshSelectedScientificFields?.principalDirectionsValidated ? "validated" : "uncertain"}
+                  </span>
+                </div>
+                {meshSelectedScientificFields ? (
+                  <div style={{ display: "grid", gap: 9, fontSize: 10 }}>
+                    <div>
+                      <strong>{meshSelectedScientificFields.target.kind}</strong> · vertices {meshSelectedScientificFields.vertexIndices.join(", ") || "n/a"}
+                    </div>
+                    <details open>
+                      <summary style={{ cursor: "pointer", fontWeight: 850 }}>Scalar fields · {meshSelectedScientificFields.scalars.length}</summary>
+                      <div style={{ display: "grid", gap: 3, paddingTop: 5 }}>
+                        {meshSelectedScientificFields.scalars.length ? meshSelectedScientificFields.scalars.map((field) => (
+                          <div key={`selected-scalar-${field.name}`} style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                            <span>{field.name} <small style={{ color: "#64748b" }}>({field.domain})</small></span>
+                            <strong>{fmt(field.value)}</strong>
+                          </div>
+                        )) : <span style={{ color: "#64748b" }}>No scalar fields computed.</span>}
+                      </div>
+                    </details>
+                    <details open>
+                      <summary style={{ cursor: "pointer", fontWeight: 850 }}>Vector fields · {meshSelectedScientificFields.vectors.length}</summary>
+                      <div style={{ display: "grid", gap: 4, paddingTop: 5 }}>
+                        {meshSelectedScientificFields.vectors.length ? meshSelectedScientificFields.vectors.map((field) => (
+                          <div key={`selected-vector-${field.name}`}>
+                            <strong>{field.name}</strong> <small style={{ color: "#64748b" }}>({field.domain})</small>
+                            <div style={{ color: "#475569" }}>({field.value.map((value) => fmt(value)).join(", ")}) · |v| {fmt(field.magnitude)}</div>
+                          </div>
+                        )) : <span style={{ color: "#64748b" }}>No vector fields computed.</span>}
+                      </div>
+                    </details>
+                    <div>
+                      <strong>Face / edge quality</strong>
+                      <div style={{ display: "grid", gap: 3, paddingTop: 4 }}>
+                        {meshSelectedScientificFields.quality.length ? meshSelectedScientificFields.quality.map((field) => (
+                          <div key={`selected-quality-${field.name}`} style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                            <span>{field.name} <small style={{ color: "#64748b" }}>({field.domain})</small></span>
+                            <strong>{fmt(field.value)}</strong>
+                          </div>
+                        )) : <span style={{ color: "#64748b" }}>No native quality value for this entity.</span>}
+                      </div>
+                    </div>
+                    <div><strong>Feature membership:</strong> {meshSelectedScientificFields.featureMembership.join(", ") || "none"}</div>
+                    <div>
+                      <strong>Warnings:</strong>{" "}
+                      {meshSelectedScientificFields.warnings.length ? meshSelectedScientificFields.warnings.join("; ") : "none"}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ color: "#64748b", fontSize: 10 }}>Select a mesh vertex, edge, or face to inspect computed fields.</div>
+                )}
+              </div>
+            )}
+            {meshAnalysisActive && (
               <>
                 <SurfacesInspectPanel
                   viewerKind={viewerKind}
@@ -120174,25 +120347,21 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                     {meshActiveAnalysisResult.state}
                   </span>
                 </div>
-                {(meshActiveAnalysisResult.method || meshActiveAnalysisResult.domain) && (
-                  <div
-                    data-testid="mesh-analysis-result-definition"
-                    style={{ borderTop: "1px solid #e2e8f0", padding: "7px 0", display: "grid", gap: 4, fontSize: 10 }}
-                  >
-                    {meshActiveAnalysisResult.method && (
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                        <span style={{ color: "#64748b" }}>Method</span>
-                        <strong style={{ textAlign: "right", overflowWrap: "anywhere" }}>{meshActiveAnalysisResult.method}</strong>
-                      </div>
-                    )}
-                    {meshActiveAnalysisResult.domain && (
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                        <span style={{ color: "#64748b" }}>Domain</span>
-                        <strong style={{ textAlign: "right", overflowWrap: "anywhere" }}>{meshActiveAnalysisResult.domain}</strong>
-                      </div>
-                    )}
-                  </div>
-                )}
+                <div
+                  data-testid="mesh-analysis-result-definition"
+                  style={{ borderTop: "1px solid #e2e8f0", padding: "7px 0", display: "grid", gap: 4, fontSize: 10 }}
+                >
+                  {([
+                    ["Quantity", meshActiveAnalysisResult.quantity],
+                    ["Method", meshActiveAnalysisResult.method],
+                    ["Domain", meshActiveAnalysisResult.domain],
+                  ] as const).map(([label, value]) => (
+                    <div key={`mesh-analysis-definition-${label}`} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <span style={{ color: "#64748b" }}>{label}</span>
+                      <strong style={{ textAlign: "right", overflowWrap: "anywhere" }}>{value}</strong>
+                    </div>
+                  ))}
+                </div>
                 {meshActiveAnalysisResult.statistics.length > 0 ? (
                   <div style={{ marginBottom: 9 }}>
                     <div style={{ color: "#475569", fontSize: 10, fontWeight: 850, textTransform: "uppercase", marginBottom: 5 }}>Statistics</div>
@@ -120220,6 +120389,19 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 ) : (
                   <div style={{ color: "#64748b", fontSize: 11, marginBottom: 9 }}>No numerical result is available yet.</div>
                 )}
+                <div data-testid="mesh-analysis-result-percentiles" style={{ borderTop: "1px solid #e2e8f0", paddingTop: 7, marginBottom: 9 }}>
+                  <div style={{ color: "#475569", fontSize: 10, fontWeight: 850, textTransform: "uppercase", marginBottom: 5 }}>Percentiles</div>
+                  {meshActiveAnalysisResult.percentiles.length ? (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 4 }}>
+                      {meshActiveAnalysisResult.percentiles.map((entry) => (
+                        <div key={`active-result-percentile-${entry.label}`} style={{ minWidth: 0, textAlign: "center", background: "#f8fafc", borderRadius: 4, padding: "4px 2px" }}>
+                          <div style={{ color: "#64748b", fontSize: 8, fontWeight: 800 }}>{entry.label}</div>
+                          <strong style={{ fontSize: 9, overflowWrap: "anywhere" }}>{entry.value}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  ) : <div style={{ color: "#64748b", fontSize: 10 }}>Not applicable to this result.</div>}
+                </div>
                 {meshActiveAnalysisResult.extrema?.length ? (
                   <div data-testid="mesh-analysis-result-extrema" style={{ borderTop: "1px solid #e2e8f0", paddingTop: 7, marginBottom: 9, display: "grid", gap: 4, fontSize: 10 }}>
                     <div style={{ color: "#475569", fontWeight: 850, textTransform: "uppercase" }}>Extrema</div>
@@ -120266,6 +120448,21 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                       <strong style={{ textAlign: "right", overflowWrap: "anywhere" }}>{entry.value}</strong>
                     </div>
                   ))}
+                </div>
+                <div data-testid="mesh-analysis-result-provenance" style={{ borderTop: "1px solid #e2e8f0", marginTop: 7, paddingTop: 7, display: "grid", gap: 4, fontSize: 10 }}>
+                  <div style={{ color: "#475569", fontWeight: 850, textTransform: "uppercase" }}>Provenance</div>
+                  {meshActiveAnalysisResult.provenance.map((entry) => (
+                    <div key={`active-result-provenance-${entry.label}`} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <span style={{ color: "#64748b" }}>{entry.label}</span>
+                      <strong style={{ textAlign: "right", overflowWrap: "anywhere" }}>{entry.value}</strong>
+                    </div>
+                  ))}
+                </div>
+                <div data-testid="mesh-analysis-result-warnings" style={{ borderTop: "1px solid #e2e8f0", marginTop: 7, paddingTop: 7, display: "grid", gap: 4, fontSize: 10 }}>
+                  <div style={{ color: "#475569", fontWeight: 850, textTransform: "uppercase" }}>Warnings</div>
+                  {meshActiveAnalysisResult.warnings.length
+                    ? meshActiveAnalysisResult.warnings.map((warning) => <div key={warning} style={{ color: "#92400e" }}>! {warning}</div>)
+                    : <div style={{ color: "#166534" }}>None</div>}
                 </div>
               </div>
             )}
@@ -120451,6 +120648,12 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               >
                 {meshAnalyzeDiagnostics ? meshAnalyzeDiagnostics.state : "not ready"}
               </span>
+            </div>
+            <div data-testid="mesh-inspector-canonical-health" style={{ border: "1px solid #dbe4ee", borderRadius: 7, background: "#f8fafc", padding: "7px", marginBottom: 9, display: "grid", gap: 4, fontSize: 10 }}>
+              <strong>Canonical MeshHealthResult</strong>
+              <div><strong>Backend:</strong> {meshAnalyzeDiagnostics?.backend === "hybrid" ? "Math3D + CGAL" : meshAnalyzeDiagnostics?.backend === "cgal" ? "CGAL" : "Math3D"}</div>
+              <div><strong>Status:</strong> {meshAnalyzeDiagnostics?.state ?? "not ready"}</div>
+              <div><strong>Warnings:</strong> {meshAnalyzeDiagnostics?.warnings.length ? meshAnalyzeDiagnostics.warnings.join("; ") : "none"}</div>
             </div>
             {renderDiagnosticsSeveritySummary()}
             {meshAnalyzeDiagnostics?.cleanMesh && (
@@ -120795,9 +120998,53 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 7 }}>
               <div style={inspectorSectionTitle}>Mesh History</div>
               <span style={{ color: "#64748b", fontSize: 10 }}>
-                {(meshOperationHistory.length + surfaceMeshTopologyHistory.length).toLocaleString()} event{meshOperationHistory.length + surfaceMeshTopologyHistory.length === 1 ? "" : "s"}
+                {(meshAnalysisComputationHistory.length + meshOperationHistory.length + surfaceMeshTopologyHistory.length).toLocaleString()} event{meshAnalysisComputationHistory.length + meshOperationHistory.length + surfaceMeshTopologyHistory.length === 1 ? "" : "s"}
               </span>
             </div>
+            <details open data-testid="mesh-analysis-computation-history" style={{ marginBottom: 10 }}>
+              <summary style={{ cursor: "pointer", fontSize: 11, fontWeight: 850, color: "#0f172a" }}>
+                Analysis computations · {meshAnalysisComputationHistory.length}
+              </summary>
+              {meshAnalysisComputationHistory.length ? (
+                <div style={{ display: "grid", gap: 7, marginTop: 7 }}>
+                  <div style={{ display: "grid", gap: 4 }}>
+                    {meshAnalysisComputationHistory.slice(0, 16).map((record, index) => {
+                      const isStale = record.state === "stale";
+                      return (
+                        <button
+                          key={record.id}
+                          type="button"
+                          data-testid={`mesh-analysis-history-entry-${index}`}
+                          data-state={record.state}
+                          onClick={() => setSelectedAnalysisComputationId(record.id)}
+                          style={{ border: `1px solid ${isStale ? "#fcd34d" : "#bfdbfe"}`, borderRadius: 6, background: selectedAnalysisComputation?.id === record.id ? "#eff6ff" : "#fff", padding: "6px 7px", textAlign: "left", fontSize: 10 }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}>
+                            <strong>{record.kind}{record.variant === "default" ? "" : ` · ${record.variant}`}</strong>
+                            <span style={{ color: isStale ? "#92400e" : "#166534", fontWeight: 850 }}>{isStale ? "STALE" : record.state.toUpperCase()}</span>
+                          </div>
+                          <div style={{ color: "#64748b", marginTop: 2 }}>{record.backend} · {record.durationMs == null ? "duration n/a" : formatSummaryTime(record.durationMs)} · {new Date(record.timestamp).toLocaleString()}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {selectedAnalysisComputation && (
+                    <div data-testid="mesh-analysis-history-detail" style={{ border: `1px solid ${selectedAnalysisComputation.state === "stale" ? "#fcd34d" : "#cbd5e1"}`, borderRadius: 7, background: selectedAnalysisComputation.state === "stale" ? "#fffbeb" : "#f8fafc", padding: 7, display: "grid", gap: 4, fontSize: 10 }}>
+                      {selectedAnalysisComputation.state === "stale" && <strong style={{ color: "#92400e" }}>STALE SNAPSHOT — inspectable, but not used by the viewport</strong>}
+                      <div><strong>Status:</strong> {selectedAnalysisComputation.state}</div>
+                      <div><strong>Backend:</strong> {selectedAnalysisComputation.backend}</div>
+                      <div><strong>Duration:</strong> {selectedAnalysisComputation.durationMs == null ? "n/a" : formatSummaryTime(selectedAnalysisComputation.durationMs)}</div>
+                      <div><strong>Timestamp:</strong> {new Date(selectedAnalysisComputation.timestamp).toLocaleString()}</div>
+                      <div><strong>Revision:</strong> {selectedAnalysisComputation.mesh.revision}</div>
+                      <div><strong>Parameters:</strong> {JSON.stringify(selectedAnalysisComputation.parameters)}</div>
+                      <div><strong>Dependencies:</strong> {selectedAnalysisComputation.dependencies.length ? selectedAnalysisComputation.dependencies.map((dependency) => `${dependency.kind}:${dependency.state}`).join(", ") : "none"}</div>
+                      <div><strong>Result summary:</strong> {Object.keys(selectedAnalysisComputation.payloadSummary).length ? JSON.stringify(selectedAnalysisComputation.payloadSummary) : "no scalar summary"}</div>
+                      {selectedAnalysisComputation.error && <div style={{ color: "#b42318" }}><strong>Error:</strong> {selectedAnalysisComputation.error}</div>}
+                    </div>
+                  )}
+                </div>
+              ) : <div style={{ color: "#64748b", fontSize: 10, marginTop: 6 }}>No analysis computations recorded yet.</div>}
+            </details>
             {surfaceMeshTopologyHistory.length > 0 && (
               <details open data-testid="mesh-topology-provenance-timeline" style={{ marginBottom: 10 }}>
                 <summary style={{ cursor: "pointer", fontSize: 11, fontWeight: 850, color: "#0f172a" }}>

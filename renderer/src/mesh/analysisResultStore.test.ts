@@ -232,7 +232,83 @@ describe("mesh analysis result store", () => {
     const result = getMeshAnalysisResult<{ K: Float32Array }>(store, mesh, "curvature");
     expect(result?.state).toBe("stale");
     expect(result?.payload?.K[0]).toBe(7);
+    expect(store.history[0]).toMatchObject({ state: "stale", payloadSummary: {} });
     expect(meshAnalysisResultKindsForMesh(store, mesh)).toEqual([]);
+  });
+
+  it("records one complete computation record from queued through ready", () => {
+    const mesh = createMeshAnalysisMeshIdentity(makeMesh("Triangle"));
+    const parameters = { threshold: 8, includeBoundary: true };
+    let store = upsertMeshAnalysisResult(createMeshAnalysisResultStore(), {
+      kind: "quality",
+      mesh,
+      state: "queued",
+      parameters,
+      now: 10,
+    });
+    store = upsertMeshAnalysisResult(store, {
+      kind: "quality",
+      mesh,
+      state: "running",
+      parameters,
+      now: 11,
+    });
+    store = upsertMeshAnalysisResult(store, {
+      kind: "quality",
+      mesh,
+      state: "ready",
+      parameters,
+      computeTimeMs: 12.5,
+      backend: "Fixture worker",
+      payload: { faceCount: 1, valid: true },
+      now: 22,
+    });
+
+    expect(store.history).toHaveLength(1);
+    expect(store.history[0]).toMatchObject({
+      kind: "quality",
+      state: "ready",
+      parameters,
+      backend: "Fixture worker",
+      durationMs: 12.5,
+      timestamp: 22,
+      mesh: { revision: mesh.revision },
+      payloadSummary: { faceCount: 1, valid: true },
+    });
+  });
+
+  it("keeps an earlier parameter run as an inspectable stale snapshot", () => {
+    const mesh = createMeshAnalysisMeshIdentity(makeMesh("Triangle"));
+    let store = upsertMeshAnalysisResult(createMeshAnalysisResultStore(), {
+      kind: "quality",
+      mesh,
+      parameters: { threshold: 8 },
+      payload: { maximum: 9 },
+      now: 1,
+    });
+    store = upsertMeshAnalysisResult(store, {
+      kind: "quality",
+      mesh,
+      state: "running",
+      parameters: { threshold: 12 },
+      now: 2,
+    });
+    store = upsertMeshAnalysisResult(store, {
+      kind: "quality",
+      mesh,
+      state: "ready",
+      parameters: { threshold: 12 },
+      payload: { maximum: 13 },
+      now: 3,
+    });
+
+    expect(store.history).toHaveLength(2);
+    expect(store.history[0]).toMatchObject({ state: "ready", parameters: { threshold: 12 } });
+    expect(store.history[1]).toMatchObject({
+      state: "stale",
+      parameters: { threshold: 8 },
+      payloadSummary: { maximum: 9 },
+    });
   });
 
   it("caches field-calculus operators by source and invalidates their exact dependencies", () => {
