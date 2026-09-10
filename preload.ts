@@ -41,6 +41,18 @@ export type GeodesicHeatRequest = {
   };
 };
 
+export type GeodesicSurfacePathRequest = {
+  jobId: string;
+  mesh: { V: number[][]; F: number[][] };
+  sources: Array<{
+    face: number;
+    bary: [number, number, number];
+    vertex?: number;
+    sourceKind?: "selected-vertex" | "selected-point" | "selection-set";
+  }>;
+  target: { face: number; bary: [number, number, number]; vertex?: number };
+};
+
 export type MeshBenchmarkCategory = "basic" | "standard" | "mathematical" | "problematic" | "stress";
 export type MeshBenchmarkTestKind = "import" | "topology" | "boundary" | "selection" | "analysis" | "performance";
 
@@ -117,6 +129,8 @@ contextBridge.exposeInMainWorld("cgalMesh", {
     ipcRenderer.invoke("mesh:cgal", req),
   geodesicHeat: (req: GeodesicHeatRequest): Promise<any> =>
     ipcRenderer.invoke("mesh:geodesic:heat", req),
+  geodesicSurfacePath: (req: GeodesicSurfacePathRequest): Promise<any> =>
+    ipcRenderer.invoke("mesh:geodesic:surface-path", req),
 });
 
 contextBridge.exposeInMainWorld("appMenu", {

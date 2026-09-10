@@ -1148,6 +1148,32 @@ def handle_geodesic_heat(msg: Dict[str, Any]) -> None:
     send(res)
 
 
+def handle_geodesic_surface_path(msg: Dict[str, Any]) -> None:
+    job_id = msg.get("jobId", "")
+    mesh = msg.get("mesh") or {}
+    V = mesh.get("V")
+    F = mesh.get("F")
+    if V is None or F is None:
+        raise RuntimeError("Missing mesh V/F for CGAL surface shortest path")
+    sources = msg.get("sources")
+    target = msg.get("target")
+    if not isinstance(sources, list) or not sources or not target:
+        raise RuntimeError("Missing sources/target for CGAL surface shortest path")
+
+    import numpy as np
+    from geodesic.surface_path import cgal_surface_shortest_path
+
+    result = cgal_surface_shortest_path(
+        np.asarray(V, dtype=np.float64),
+        np.asarray(F, dtype=np.int64),
+        sources,
+        target,
+    )
+    result["type"] = "geodesic_surface_path_result"
+    result["jobId"] = job_id
+    send(result)
+
+
 def handle_vtk_preview(msg: Dict[str, Any]) -> None:
     job_id = msg.get("jobId", "")
     expr = msg.get("expr", "") or msg.get("f", "")
@@ -2364,6 +2390,7 @@ def main() -> None:
         "volume.distance": "volume_distance",
         "volume.streamlines": "volume_streamlines",
         "geodesic.heat": "geodesic_heat",
+        "geodesic.surface_path": "geodesic_surface_path",
     }
 
     supported = [
@@ -2383,6 +2410,7 @@ def main() -> None:
         "volume.distance",
         "volume.streamlines",
         "geodesic.heat",
+        "geodesic.surface_path",
     ]
 
     def run_handler(msg: Dict[str, Any], handler, payloads: Optional[Dict[str, bytes]] = None) -> None:
@@ -2458,6 +2486,8 @@ def main() -> None:
             handle_health(msg)
         elif msg_type == "geodesic_heat":
             run_handler(msg, handle_geodesic_heat)
+        elif msg_type == "geodesic_surface_path":
+            run_handler(msg, handle_geodesic_surface_path)
         else:
             send_error(
                 msg.get("jobId", ""),

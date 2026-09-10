@@ -70,6 +70,8 @@ const baseInput = (overrides: Partial<MeshActiveAnalysisResultInput> = {}): Mesh
   geodesicBusy: false,
   geodesicLength: null,
   geodesicUseContinuous: false,
+  geodesicMethod: "graph",
+  geodesicSourceMode: "selected-vertex",
   geodesicHasStart: false,
   geodesicHasEnd: false,
   diagnostics: null,
@@ -200,6 +202,40 @@ describe("selectMeshActiveAnalysisResult", () => {
     });
     expect(result.metadata).toContainEqual({ label: "Cache", value: "Cached result" });
     expect(result.metadata).toContainEqual({ label: "Computed", value: "timestamp:7" });
+  });
+
+  it("keeps graph, CGAL surface, and heat geodesic semantics distinct", () => {
+    const graph = selectMeshActiveAnalysisResult(baseInput({
+      section: "geodesics",
+      geodesicMethod: "graph",
+      geodesicSourceMode: "selection-set",
+      geodesicLength: 2,
+      geodesicHasStart: true,
+      geodesicHasEnd: true,
+    }));
+    expect(graph.metadata).toContainEqual({ label: "Method", value: "Approximate edge-graph routing" });
+    expect(graph.metadata).toContainEqual({ label: "Source semantics", value: "selection set" });
+
+    const surface = selectMeshActiveAnalysisResult(baseInput({
+      section: "geodesics",
+      geodesicMethod: "surface",
+      geodesicSourceMode: "selected-point",
+      geodesicLength: Math.PI,
+      geodesicHasStart: true,
+      geodesicHasEnd: true,
+    }));
+    expect(surface.metadata).toContainEqual({
+      label: "Method",
+      value: "CGAL triangulated-surface shortest path",
+    });
+    expect(surface.metadata).toContainEqual({ label: "Source semantics", value: "selected point" });
+
+    const heat = selectMeshActiveAnalysisResult(baseInput({
+      section: "geodesics",
+      geodesicMethod: "heat",
+      geodesicUseContinuous: false,
+    }));
+    expect(heat.metadata).toContainEqual({ label: "Method", value: "Heat distance (experimental)" });
   });
 
   it("summarizes a selected scalar domain with stable extrema indices and histogram counts", () => {

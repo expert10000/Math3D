@@ -373,6 +373,7 @@ import {
   type PythonWorkerDiagnosticsSnapshot,
 } from "./services/pythonWorkerDiagnosticsClient";
 import { runGeodesicHeat } from "./services/geodesicHeatClient";
+import { runGeodesicSurfacePath } from "./services/geodesicSurfacePathClient";
 import {
   runMeshOperation,
   type MeshOperationRequest,
@@ -1812,6 +1813,8 @@ type WorkbookWorkspaceState = {
     };
     overlays: {
       geodesicPathEnabled: boolean;
+      geodesicPathMethod: GeodesicPathMethod;
+      geodesicPathSourceMode: GeodesicPathSourceMode;
       geodesicPathConstrain: boolean;
       geodesicPathSmooth: boolean;
       geodesicHeatEnabled: boolean;
@@ -9929,7 +9932,12 @@ type ImplicitDomainPreset = {
 type GeodesicPathEndpoint = {
   meshKey: string;
   vertexIndex: number;
+  faceIndex?: number;
+  bary?: [number, number, number];
+  point?: { x: number; y: number; z: number };
 };
+type GeodesicPathMethod = "graph" | "surface";
+type GeodesicPathSourceMode = "selected-vertex" | "selected-point" | "selection-set";
 type GeodesicHeatEndpoint = {
   meshKey: string;
   faceIndex: number;
@@ -38951,10 +38959,15 @@ const App: React.FC = () => {
     vertexIndex: number;
   } | null>(null);
   const [geodesicPathEnabled, setGeodesicPathEnabled] = useState(false);
+  const [geodesicPathMethod, setGeodesicPathMethod] = useState<GeodesicPathMethod>("graph");
+  const [geodesicPathSourceMode, setGeodesicPathSourceMode] = useState<GeodesicPathSourceMode>("selected-vertex");
+  const [geodesicPathBusy, setGeodesicPathBusy] = useState(false);
+  const geodesicPathRequestIdRef = useRef(0);
   const [geodesicPathConstrain, setGeodesicPathConstrain] = useState(false);
   const [geodesicPathStart, setGeodesicPathStart] = useState<GeodesicPathEndpoint | null>(null);
   const [geodesicPathEnd, setGeodesicPathEnd] = useState<GeodesicPathEndpoint | null>(null);
   const [geodesicPathIndices, setGeodesicPathIndices] = useState<number[] | null>(null);
+  const [geodesicPathPolylines, setGeodesicPathPolylines] = useState<PolylineSet | null>(null);
   const [geodesicPathLength, setGeodesicPathLength] = useState<number | null>(null);
   const [geodesicPathMessage, setGeodesicPathMessage] = useState<string | null>(null);
   const [geodesicPathDebug, setGeodesicPathDebug] = useState(false);
@@ -46545,11 +46558,23 @@ case "mobius":
   );
 
   const buildPathEndpointFromPoint = useCallback(
-    (pointOut: { meshKey?: string; vertexIndex?: number }) => {
+    (pointOut: {
+      point: { x: number; y: number; z: number };
+      uv?: { u: number; v: number };
+      meshKey?: string;
+      vertexIndex?: number;
+    }) => {
       if (!pointOut.meshKey || pointOut.vertexIndex == null) return null;
-      return { meshKey: pointOut.meshKey, vertexIndex: pointOut.vertexIndex };
+      const surface = buildHeatEndpointFromPoint(pointOut);
+      return {
+        meshKey: pointOut.meshKey,
+        vertexIndex: pointOut.vertexIndex,
+        faceIndex: surface?.faceIndex,
+        bary: surface?.bary,
+        point: { ...pointOut.point },
+      };
     },
-    []
+    [buildHeatEndpointFromPoint]
   );
 
   const resolveLatestPointOutput = useCallback(
@@ -49363,6 +49388,8 @@ case "mobius":
         },
         overlays: {
           geodesicPathEnabled,
+          geodesicPathMethod,
+          geodesicPathSourceMode,
           geodesicPathConstrain,
           geodesicPathSmooth,
           geodesicHeatEnabled,
@@ -49459,6 +49486,8 @@ case "mobius":
       volumeStreamlineMaxLength,
       workbookVectorFields,
       geodesicPathEnabled,
+      geodesicPathMethod,
+      geodesicPathSourceMode,
       geodesicPathConstrain,
       geodesicPathSmooth,
       geodesicHeatEnabled,
@@ -50032,6 +50061,16 @@ case "mobius":
     const overlays = restoredWorkspace.analysis?.overlays;
     if (overlays) {
       setGeodesicPathEnabled(Boolean(overlays.geodesicPathEnabled));
+      if (overlays.geodesicPathMethod === "graph" || overlays.geodesicPathMethod === "surface") {
+        setGeodesicPathMethod(overlays.geodesicPathMethod);
+      }
+      if (
+        overlays.geodesicPathSourceMode === "selected-vertex" ||
+        overlays.geodesicPathSourceMode === "selected-point" ||
+        overlays.geodesicPathSourceMode === "selection-set"
+      ) {
+        setGeodesicPathSourceMode(overlays.geodesicPathSourceMode);
+      }
       setGeodesicPathConstrain(Boolean(overlays.geodesicPathConstrain));
       setGeodesicPathSmooth(Boolean(overlays.geodesicPathSmooth));
       setGeodesicHeatEnabled(Boolean(overlays.geodesicHeatEnabled));
@@ -57868,7 +57907,7 @@ case "mobius":
         return out;
       };
 
-      return { V, F, expandPhi };
+      return { V, F, expandPhi, vertexToMerged: useMerge ? vertexToMerged : undefined };
     },
     [geodesicAdjacency]
   );
@@ -58198,6 +58237,9 @@ case "mobius":
       return {
         indices,
         length,
+        method: "approximate-edge-graph",
+        sourceMode: geodesicPathSourceMode,
+        sourceCount: sourceIndices.length,
         message,
         debugInfo,
         start: startOut,
@@ -58217,6 +58259,7 @@ case "mobius":
       geodesicPathConstrain,
       geodesicPathDebug,
       geodesicPathSmooth,
+      geodesicPathSourceMode,
       paramSurfaceIdForView,
       activeEqSurfaceId,
       surfaceViewerKind,
@@ -58224,10 +58267,141 @@ case "mobius":
     ]
   );
 
+  const computeGeodesicSurfacePathResult = useCallback(
+    async (
+      sources: GeodesicPathEndpoint[],
+      end: GeodesicPathEndpoint
+    ): Promise<WorkbookComputeOutputs["geodesicPath"]> => {
+      const meshInfo = resolveGeodesicMesh(end.meshKey);
+      const endOut: WorkbookPathEndpoint = { ...end };
+      if (!meshInfo?.positions?.length) {
+        return { indices: null, polylines: null, length: null, message: "Mesh data missing.", end: endOut };
+      }
+      const heatMesh = buildHeatMesh({
+        positions: meshInfo.positions,
+        indices: meshInfo.indices ?? null,
+        meshKey: meshInfo.meshToken != null ? null : meshInfo.meshKey,
+      });
+      const rawIndices = meshInfo.indices ?? null;
+      const rawVertexCount = Math.floor(meshInfo.positions.length / 3);
+      const rawFaceCount = rawIndices ? Math.floor(rawIndices.length / 3) : Math.floor(rawVertexCount / 3);
+      const faceToCgal = new Int32Array(heatMesh.F.length);
+      faceToCgal.fill(-1);
+      const cgalFaces: number[][] = [];
+      for (let face = 0; face < heatMesh.F.length; face++) {
+        const triangle = heatMesh.F[face];
+        const [a, b, c] = triangle;
+        if (a === b || b === c || c === a) continue;
+        const pa = heatMesh.V[a];
+        const pb = heatMesh.V[b];
+        const pc = heatMesh.V[c];
+        const abx = pb[0] - pa[0];
+        const aby = pb[1] - pa[1];
+        const abz = pb[2] - pa[2];
+        const acx = pc[0] - pa[0];
+        const acy = pc[1] - pa[1];
+        const acz = pc[2] - pa[2];
+        const cx = aby * acz - abz * acy;
+        const cy = abz * acx - abx * acz;
+        const cz = abx * acy - aby * acx;
+        if (cx * cx + cy * cy + cz * cz <= 1e-24) continue;
+        faceToCgal[face] = cgalFaces.length;
+        cgalFaces.push(triangle);
+      }
+      const locationFor = (endpoint: GeodesicPathEndpoint, sourceKind?: GeodesicPathSourceMode) => {
+        if (
+          (sourceKind == null || sourceKind === "selected-point") &&
+          endpoint.faceIndex != null &&
+          endpoint.faceIndex >= 0 &&
+          endpoint.faceIndex < rawFaceCount &&
+          endpoint.bary?.length === 3
+        ) {
+          const mappedFace = faceToCgal[endpoint.faceIndex];
+          if (mappedFace >= 0) {
+            return {
+              face: mappedFace,
+              bary: endpoint.bary,
+              vertex: endpoint.vertexIndex,
+              sourceKind,
+            };
+          }
+        }
+        const vertex = endpoint.vertexIndex;
+        if (vertex < 0 || vertex >= rawVertexCount) return null;
+        const mappedVertex = heatMesh.vertexToMerged?.[vertex] ?? vertex;
+        for (let face = 0; face < cgalFaces.length; face++) {
+          const [a, b, c] = cgalFaces[face];
+          if (a === mappedVertex) return { face, bary: [1, 0, 0] as [number, number, number], vertex, sourceKind };
+          if (b === mappedVertex) return { face, bary: [0, 1, 0] as [number, number, number], vertex, sourceKind };
+          if (c === mappedVertex) return { face, bary: [0, 0, 1] as [number, number, number], vertex, sourceKind };
+        }
+        return null;
+      };
+      const validSurfaceSources = sources
+        .filter((source) => source.meshKey === end.meshKey)
+        .map((endpoint) => ({ endpoint, location: locationFor(endpoint, geodesicPathSourceMode) }))
+        .filter((entry): entry is { endpoint: GeodesicPathEndpoint; location: NonNullable<ReturnType<typeof locationFor>> } => !!entry.location)
+        .slice(0, 512);
+      const surfaceSources = validSurfaceSources.map((entry) => entry.location);
+      const target = locationFor(end);
+      if (!surfaceSources.length) {
+        return {
+          indices: null,
+          polylines: null,
+          length: null,
+          message: "No valid surface source on the target mesh.",
+          end: endOut,
+        };
+      }
+      if (!target) {
+        return { indices: null, polylines: null, length: null, message: "Target is outside the mesh.", end: endOut };
+      }
+
+      const response = await runGeodesicSurfacePath({
+        mesh: { V: heatMesh.V, F: cgalFaces },
+        sources: surfaceSources,
+        target,
+      });
+      if (!response.ok) {
+        return {
+          indices: null,
+          polylines: null,
+          length: null,
+          method: "cgal-surface-shortest-path",
+          sourceMode: geodesicPathSourceMode,
+          sourceCount: surfaceSources.length,
+          message: response.disconnected ? "Source and target are disconnected." : response.error,
+          end: endOut,
+        };
+      }
+      const points = response.polyline.map((point) => ({ x: point[0], y: point[1], z: point[2] }));
+      const chosen = validSurfaceSources[response.sourceIndex]?.endpoint ?? validSurfaceSources[0]?.endpoint;
+      return {
+        indices: null,
+        polylines: points.length >= 2 ? [points] : null,
+        length: Number.isFinite(response.length) ? response.length : null,
+        method: "cgal-surface-shortest-path",
+        sourceMode: geodesicPathSourceMode,
+        sourceCount: surfaceSources.length,
+        message: null,
+        start: chosen ? { ...chosen } : null,
+        end: endOut,
+        errorBounds: {
+          lowerBound: Number.isFinite(response.length) ? response.length : null,
+          upperBound: Number.isFinite(response.length) ? response.length : null,
+          absBound: 0,
+          relBound: 0,
+        },
+      };
+    },
+    [buildHeatMesh, geodesicPathSourceMode, resolveGeodesicMesh]
+  );
+
   const applyGeodesicPathResult = useCallback(
     (result?: WorkbookComputeOutputs["geodesicPath"]) => {
       if (!result) return;
       setGeodesicPathIndices(result.indices ?? null);
+      setGeodesicPathPolylines(result.polylines ?? null);
       setGeodesicPathLength(result.length ?? null);
       setGeodesicPathMessage(result.message ?? null);
       setGeodesicPathDebugInfo(result.debugInfo ?? null);
@@ -58245,14 +58419,49 @@ case "mobius":
   );
 
   const computeGeodesicPath = useCallback(
-    (start: GeodesicPathEndpoint, end: GeodesicPathEndpoint) => {
-      const result = computeGeodesicPathResult([start], end);
-      applyGeodesicPathResult(result);
+    async (sources: GeodesicPathEndpoint[], end: GeodesicPathEndpoint) => {
+      const requestId = ++geodesicPathRequestIdRef.current;
+      setGeodesicPathBusy(true);
+      try {
+        const result =
+          geodesicPathMethod === "surface"
+            ? await computeGeodesicSurfacePathResult(sources, end)
+            : computeGeodesicPathResult(sources, end);
+        if (geodesicPathRequestIdRef.current === requestId) applyGeodesicPathResult(result);
+      } catch (error: any) {
+        if (geodesicPathRequestIdRef.current !== requestId) return;
+        setGeodesicPathIndices(null);
+        setGeodesicPathPolylines(null);
+        setGeodesicPathLength(null);
+        setGeodesicPathMessage(error?.message ?? String(error));
+      } finally {
+        if (geodesicPathRequestIdRef.current === requestId) setGeodesicPathBusy(false);
+      }
     },
     [
       applyGeodesicPathResult,
       computeGeodesicPathResult,
+      computeGeodesicSurfacePathResult,
+      geodesicPathMethod,
     ]
+  );
+
+  const geodesicSelectionSetSources = useCallback(
+    (meshKey: string): GeodesicPathEndpoint[] => {
+      if (!selectionMask?.count || !surfaceSampleSet?.samples.length) return [];
+      const out: GeodesicPathEndpoint[] = [];
+      const seen = new Set<number>();
+      const limit = Math.min(selectionMask.selected.length, surfaceSampleSet.samples.length);
+      for (let index = 0; index < limit && out.length < 512; index++) {
+        if (!selectionMask.selected[index]) continue;
+        const sample = surfaceSampleSet.samples[index];
+        if (sample.meshKey !== meshKey || sample.vertexIndex == null || seen.has(sample.vertexIndex)) continue;
+        seen.add(sample.vertexIndex);
+        out.push({ meshKey, vertexIndex: sample.vertexIndex });
+      }
+      return out;
+    },
+    [selectionMask, surfaceSampleSet]
   );
 
   useEffect(() => {
@@ -58260,6 +58469,13 @@ case "mobius":
       setGeodesicPathConstrain(false);
     }
   }, [geodesicPathConstrain, selectionMask?.count]);
+
+  useEffect(() => {
+    if (geodesicPathSourceMode === "selection-set" && !selectionMask?.count) {
+      setGeodesicPathSourceMode("selected-vertex");
+      setGeodesicPathEnd(null);
+    }
+  }, [geodesicPathSourceMode, selectionMask?.count]);
 
   useEffect(() => {
     if (geodesicHeatEnabled) setGeodesicPathEnabled(false);
@@ -58270,18 +58486,28 @@ case "mobius":
   }, [geodesicPathEnabled]);
 
   useEffect(() => {
-    if (!geodesicPathStart || !geodesicPathEnd) {
+    if (!geodesicPathEnd || (geodesicPathSourceMode !== "selection-set" && !geodesicPathStart)) {
       setGeodesicPathIndices(null);
+      setGeodesicPathPolylines(null);
       setGeodesicPathLength(null);
       return;
     }
-    computeGeodesicPath(geodesicPathStart, geodesicPathEnd);
+    const sources =
+      geodesicPathSourceMode === "selection-set"
+        ? geodesicSelectionSetSources(geodesicPathEnd.meshKey)
+        : geodesicPathStart
+          ? [geodesicPathStart]
+          : [];
+    void computeGeodesicPath(sources, geodesicPathEnd);
   }, [
     computeGeodesicPath,
+    geodesicPathMethod,
     geodesicPathConstrain,
     geodesicPathEnd,
+    geodesicPathSourceMode,
     geodesicPathSmooth,
     geodesicPathStart,
+    geodesicSelectionSetSources,
     selectionMask,
     surfaceSampleSet,
   ]);
@@ -58332,22 +58558,38 @@ case "mobius":
       sampleIndex?: number;
       meshKey?: string;
       vertexIndex?: number;
+      faceIndex?: number;
+      bary?: [number, number, number];
     }) => {
       if (!geodesicPathEnabled) return;
       if (!payload.meshKey || payload.vertexIndex == null) {
-        setGeodesicPathMessage("No vertex picked.");
+        setGeodesicPathMessage("No mesh point picked.");
         return;
       }
 
       const picked: GeodesicPathEndpoint = {
         meshKey: payload.meshKey,
         vertexIndex: payload.vertexIndex,
+        faceIndex: payload.faceIndex,
+        bary: payload.bary,
+        point: payload.point,
       };
+
+      if (geodesicPathSourceMode === "selection-set") {
+        setGeodesicPathStart(null);
+        setGeodesicPathEnd(picked);
+        setGeodesicPathIndices(null);
+        setGeodesicPathPolylines(null);
+        setGeodesicPathLength(null);
+        setGeodesicPathMessage(null);
+        return;
+      }
 
       if (!geodesicPathStart) {
         setGeodesicPathStart(picked);
         setGeodesicPathEnd(null);
         setGeodesicPathIndices(null);
+        setGeodesicPathPolylines(null);
         setGeodesicPathLength(null);
         setGeodesicPathMessage(null);
         return;
@@ -58361,10 +58603,11 @@ case "mobius":
       setGeodesicPathStart(picked);
       setGeodesicPathEnd(null);
       setGeodesicPathIndices(null);
+      setGeodesicPathPolylines(null);
       setGeodesicPathLength(null);
       setGeodesicPathMessage(null);
     },
-    [geodesicPathEnabled, geodesicPathEnd, geodesicPathStart]
+    [geodesicPathEnabled, geodesicPathEnd, geodesicPathSourceMode, geodesicPathStart]
   );
 
   const handleGeodesicHeatPick = useCallback(
@@ -58467,9 +58710,12 @@ case "mobius":
   }, []);
 
   const handleClearGeodesicPath = useCallback(() => {
+    geodesicPathRequestIdRef.current += 1;
+    setGeodesicPathBusy(false);
     setGeodesicPathStart(null);
     setGeodesicPathEnd(null);
     setGeodesicPathIndices(null);
+    setGeodesicPathPolylines(null);
     setGeodesicPathLength(null);
     setGeodesicPathMessage(null);
     setGeodesicPathDebugInfo(null);
@@ -62388,8 +62634,11 @@ case "mobius":
         return { status: "stale", summary: "Pick all points on the same mesh." };
       }
 
-      const pathResult = computeGeodesicPathResult(resolvedSources, resolvedEnd);
-      if (pathResult?.start && Number.isFinite(pathResult.length)) {
+      const pathResult =
+        geodesicPathMethod === "surface"
+          ? await computeGeodesicSurfacePathResult(resolvedSources, resolvedEnd)
+          : computeGeodesicPathResult(resolvedSources, resolvedEnd);
+      if (geodesicPathMethod === "graph" && pathResult?.start && Number.isFinite(pathResult.length)) {
         const nearestSourceVertex = pathResult.start.vertexIndex ?? null;
         if (resolvedEndHeatEndpoint && nearestSourceVertex != null) {
           const nearestSourcePair = resolvedSourcePairs.find(
@@ -62477,13 +62726,13 @@ case "mobius":
           };
         }
       }
-      const ok = !!pathResult?.indices?.length;
+      const ok = !!pathResult?.indices?.length || !!pathResult?.polylines?.length;
       const summary = ok
         ? usingInteraction
           ? interactionSourceCount > 1
-            ? `Multi-source geodesic path from ${interactionSourceCount} PickPoint sources.`
-            : "Geodesic path from PickPoint outputs."
-          : "Geodesic path computed."
+            ? `Multi-source ${geodesicPathMethod === "surface" ? "CGAL surface" : "approximate graph"} path from ${interactionSourceCount} PickPoint sources.`
+            : `${geodesicPathMethod === "surface" ? "CGAL surface" : "Approximate graph"} path from PickPoint outputs.`
+          : `${geodesicPathMethod === "surface" ? "CGAL surface" : "Approximate graph"} path computed.`
         : pathResult?.message ?? "No path found.";
       return {
         status: ok ? "ok" : "stale",
@@ -62496,7 +62745,9 @@ case "mobius":
       buildPathEndpointFromPoint,
       computeGeodesicHeatResult,
       computeGeodesicPathResult,
+      computeGeodesicSurfacePathResult,
       geodesicPathEnd,
+      geodesicPathMethod,
       geodesicPathStart,
       resolveInteractionPathSources,
     ]
@@ -67768,11 +68019,18 @@ case "mobius":
     qualityCacheHit: meshQualityCacheHit,
     qualityUpdatedAt: cachedMeshQualityResult?.updatedAt ?? null,
     qualityEdgeCount: surfaceInspectorTopologyDetails?.edgeCount ?? null,
-    geodesicBusy: geodesicHeatBusy,
-    geodesicLength: geodesicHeatLength,
+    geodesicBusy: geodesicPathEnabled ? geodesicPathBusy : geodesicHeatBusy,
+    geodesicLength: geodesicPathEnabled ? geodesicPathLength : geodesicHeatLength,
     geodesicUseContinuous: geodesicHeatUseContinuous,
-    geodesicHasStart: !!geodesicHeatStart,
-    geodesicHasEnd: !!geodesicHeatEnd,
+    geodesicMethod: geodesicPathEnabled ? geodesicPathMethod : "heat",
+    geodesicSourceMode: geodesicPathSourceMode,
+    geodesicHasStart:
+      geodesicPathEnabled
+        ? geodesicPathSourceMode === "selection-set"
+          ? !!selectionMask?.count
+          : !!geodesicPathStart
+        : !!geodesicHeatStart,
+    geodesicHasEnd: geodesicPathEnabled ? !!geodesicPathEnd : !!geodesicHeatEnd,
     diagnostics: surfaceMeshAnalyzeDiagnostics,
     diagnosticsMode: meshAnalyzeDiagnosticOverlayMode,
     diagnosticsUpdatedAt: cachedMeshDiagnosticsResult?.updatedAt ?? null,
@@ -70813,6 +71071,24 @@ case "mobius":
                 onToggleSelectionSphereVisible={() => setSelectionSphereVisible((v) => !v)}
                 geodesicPathEnabled={geodesicPathEnabled}
                 onToggleGeodesicPathEnabled={() => setGeodesicPathEnabled((v) => !v)}
+                geodesicPathMethod={geodesicPathMethod}
+                onChangeGeodesicPathMethod={(method) => {
+                  setGeodesicPathMethod(method);
+                  if (method === "surface") setGeodesicPathConstrain(false);
+                  setGeodesicPathIndices(null);
+                  setGeodesicPathPolylines(null);
+                  setGeodesicPathMessage(null);
+                }}
+                geodesicPathSourceMode={geodesicPathSourceMode}
+                onChangeGeodesicPathSourceMode={(mode) => {
+                  setGeodesicPathSourceMode(mode);
+                  setGeodesicPathStart(null);
+                  setGeodesicPathEnd(null);
+                  setGeodesicPathIndices(null);
+                  setGeodesicPathPolylines(null);
+                  setGeodesicPathMessage(null);
+                }}
+                geodesicPathBusy={geodesicPathBusy}
                 onClearGeodesicPath={handleClearGeodesicPath}
                 geodesicPathStart={geodesicPathStart}
                 geodesicPathEnd={geodesicPathEnd}
@@ -78254,16 +78530,24 @@ case "mobius":
                             geodesicHeatEnabled={geodesicHeatEnabled && geodesicHeatAvailable}
                             onGeodesicHeatPick={handleGeodesicHeatPick}
                             geodesicHeatStart={
-                              geodesicHeatStart
+                              geodesicPathEnabled && geodesicPathMethod === "surface"
+                                ? null
+                                : geodesicHeatStart
                                 ? { point: geodesicHeatStart.point, meshKey: geodesicHeatStart.meshKey }
                                 : null
                             }
                             geodesicHeatEnd={
-                              geodesicHeatEnd
+                              geodesicPathEnabled && geodesicPathMethod === "surface"
+                                ? null
+                                : geodesicHeatEnd
                                 ? { point: geodesicHeatEnd.point, meshKey: geodesicHeatEnd.meshKey }
                                 : null
                             }
-                            geodesicHeatPolylines={geodesicHeatPolylines}
+                            geodesicHeatPolylines={
+                              geodesicPathEnabled && geodesicPathMethod === "surface"
+                                ? geodesicPathPolylines
+                                : geodesicHeatPolylines
+                            }
                             geodesicHeatmapValues={geodesicHeatHeatmapValues}
                             geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
                             overlayPolylineGroups={meshWorkspaceOverlayPolylineGroupsWithDiagnostics}
@@ -78440,9 +78724,25 @@ case "mobius":
                         geodesicPathIndices={geodesicPathIndices}
                         geodesicHeatEnabled={geodesicHeatEnabled && geodesicHeatAvailable}
                         onGeodesicHeatPick={handleGeodesicHeatPick}
-                        geodesicHeatStart={geodesicHeatStart ? { point: geodesicHeatStart.point, meshKey: geodesicHeatStart.meshKey } : null}
-                        geodesicHeatEnd={geodesicHeatEnd ? { point: geodesicHeatEnd.point, meshKey: geodesicHeatEnd.meshKey } : null}
-                        geodesicHeatPolylines={geodesicHeatPolylines}
+                        geodesicHeatStart={
+                          geodesicPathEnabled && geodesicPathMethod === "surface"
+                            ? null
+                            : geodesicHeatStart
+                              ? { point: geodesicHeatStart.point, meshKey: geodesicHeatStart.meshKey }
+                              : null
+                        }
+                        geodesicHeatEnd={
+                          geodesicPathEnabled && geodesicPathMethod === "surface"
+                            ? null
+                            : geodesicHeatEnd
+                              ? { point: geodesicHeatEnd.point, meshKey: geodesicHeatEnd.meshKey }
+                              : null
+                        }
+                        geodesicHeatPolylines={
+                          geodesicPathEnabled && geodesicPathMethod === "surface"
+                            ? geodesicPathPolylines
+                            : geodesicHeatPolylines
+                        }
                         geodesicHeatmapValues={geodesicHeatHeatmapValues}
                         geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
                         overlayHeatmapValues={overlayHeatmapValues}
@@ -107990,6 +108290,11 @@ type SurfacesLeftPanelProps = {
   geodesicPathEnabled: boolean;
   onToggleGeodesicPathEnabled: () => void;
   onClearGeodesicPath: () => void;
+  geodesicPathMethod: GeodesicPathMethod;
+  onChangeGeodesicPathMethod: (method: GeodesicPathMethod) => void;
+  geodesicPathSourceMode: GeodesicPathSourceMode;
+  onChangeGeodesicPathSourceMode: (mode: GeodesicPathSourceMode) => void;
+  geodesicPathBusy: boolean;
   geodesicPathStart: GeodesicPathEndpoint | null;
   geodesicPathEnd: GeodesicPathEndpoint | null;
   geodesicPathLength: number | null;
@@ -108711,6 +109016,11 @@ onChangeImplicitExpr,
   geodesicPathEnabled,
   onToggleGeodesicPathEnabled,
   onClearGeodesicPath,
+  geodesicPathMethod,
+  onChangeGeodesicPathMethod,
+  geodesicPathSourceMode,
+  onChangeGeodesicPathSourceMode,
+  geodesicPathBusy,
   geodesicPathStart,
   geodesicPathEnd,
   geodesicPathLength,
@@ -114439,7 +114749,7 @@ onChangeImplicitExpr,
             </div>
           </details>
           <details style={{ marginLeft: 20, marginTop: 10 }} open={geodesicPathEnabled}>
-            <summary style={{ fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Compute geodesic path</summary>
+            <summary style={{ fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Geodesic path methods</summary>
             <div style={{ marginTop: 6, fontSize: 11, display: "flex", flexDirection: "column", gap: 6 }}>
               <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <input
@@ -114450,33 +114760,91 @@ onChangeImplicitExpr,
                 />
                 Enable geodesic path tool
               </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span>Method</span>
+                <select
+                  value={geodesicPathMethod}
+                  onChange={(event) => onChangeGeodesicPathMethod(event.target.value as GeodesicPathMethod)}
+                  disabled={geodesicPathBusy}
+                  style={{ fontSize: 11, padding: "2px 6px" }}
+                >
+                  <option value="graph">Approximate edge-graph routing</option>
+                  <option value="surface">Accurate CGAL surface path</option>
+                </select>
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span>Source</span>
+                <select
+                  value={geodesicPathSourceMode}
+                  onChange={(event) => onChangeGeodesicPathSourceMode(event.target.value as GeodesicPathSourceMode)}
+                  disabled={geodesicPathBusy}
+                  style={{ fontSize: 11, padding: "2px 6px" }}
+                >
+                  <option value="selected-vertex">Selected vertex</option>
+                  <option value="selected-point">Selected surface point</option>
+                  <option value="selection-set" disabled={!selectionMaskCount}>
+                    Selection set (nearest source)
+                  </option>
+                </select>
+              </label>
+              <div style={{ color: "#596579" }}>
+                {geodesicPathMethod === "graph"
+                  ? "Approximation constrained to mesh edges; point picks snap to the nearest vertex."
+                  : "CGAL shortest path crosses triangle interiors and uses face/barycentric point locations."}
+                {geodesicPathSourceMode === "selection-set"
+                  ? " Click one target; selected vertices are the source set."
+                  : " Click a source, then a target."}
+              </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <button type="button" onClick={onClearGeodesicPath} style={{ padding: "3px 8px" }}>
                   Clear path
                 </button>
+                {geodesicPathBusy && <span style={{ fontWeight: 600 }}>Running…</span>}
                 {geodesicPathLength != null && Number.isFinite(geodesicPathLength) && (
                   <span style={{ fontWeight: 600 }}>Length: {geodesicPathLength.toFixed(3)}</span>
                 )}
               </div>
               <div style={{ display: "flex", gap: 12 }}>
-                <span>Start: {geodesicPathStart ? geodesicPathStart.vertexIndex : "-"}</span>
-                <span>End: {geodesicPathEnd ? geodesicPathEnd.vertexIndex : "-"}</span>
+                <span>
+                  Source:{" "}
+                  {geodesicPathSourceMode === "selection-set"
+                    ? `${selectionMaskCount} selected vertices`
+                    : geodesicPathStart
+                      ? geodesicPathMethod === "surface" && geodesicPathSourceMode === "selected-point"
+                        ? `face ${geodesicPathStart.faceIndex ?? "-"}`
+                        : `vertex ${geodesicPathStart.vertexIndex}`
+                      : "-"}
+                </span>
+                <span>
+                  Target:{" "}
+                  {geodesicPathEnd
+                    ? geodesicPathMethod === "surface"
+                      ? `face ${geodesicPathEnd.faceIndex ?? "-"}`
+                      : `vertex ${geodesicPathEnd.vertexIndex}`
+                    : "-"}
+                </span>
               </div>
               <label
                 style={{
                   display: "flex",
                   alignItems: "center",
                   gap: 6,
-                  cursor: selectionMaskCount ? "pointer" : "not-allowed",
-                  color: selectionMaskCount ? "#000" : "#999",
+                  cursor: selectionMaskCount && geodesicPathMethod === "graph" ? "pointer" : "not-allowed",
+                  color: selectionMaskCount && geodesicPathMethod === "graph" ? "#000" : "#999",
                 }}
-                title={selectionMaskCount ? "" : "No selection available"}
+                title={
+                  geodesicPathMethod !== "graph"
+                    ? "Selection constraints apply only to edge-graph routing"
+                    : selectionMaskCount
+                      ? ""
+                      : "No selection available"
+                }
               >
                 <input
                   type="checkbox"
                   checked={geodesicPathConstrain}
                   onChange={onToggleGeodesicPathConstrain}
-                  disabled={!selectionMaskCount}
+                  disabled={!selectionMaskCount || geodesicPathMethod !== "graph"}
                   style={{ marginRight: 6 }}
                 />
                 Constrain path to selection
@@ -114519,7 +114887,7 @@ onChangeImplicitExpr,
               )}
 
               <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px dashed #ddd" }}>
-                <div style={{ fontWeight: 700, fontSize: 11, marginBottom: 4 }}>Heat method (mesh)</div>
+                <div style={{ fontWeight: 700, fontSize: 11, marginBottom: 4 }}>Experimental heat distance (advanced)</div>
                 <label
                   style={{
                     display: "flex",
@@ -114537,7 +114905,7 @@ onChangeImplicitExpr,
                     disabled={!geodesicHeatAvailable}
                     style={{ marginRight: 6 }}
                   />
-                  Enable heat path tool
+                  Enable experimental heat-distance tool
                 </label>
                 <div style={{ display: "flex", gap: 12 }}>
                   <span>Start: {geodesicHeatStart ? geodesicHeatStart.faceIndex : "-"}</span>

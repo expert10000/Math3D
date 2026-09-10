@@ -28,6 +28,7 @@ def base_hidden_imports() -> List[str]:
         "geodesic",
         "geodesic.heat",
         "geodesic.mesh_ops",
+        "geodesic.surface_path",
         "numpy",
         "scipy",
         "scipy.sparse",
@@ -159,6 +160,16 @@ def main() -> int:
             print("[freeze] MATH3D_REQUIRE_CGAL is set, failing worker build.", file=sys.stderr)
             return 5
         print(message)
+
+    helper_name = "cgal-geodesic.exe" if sys.platform.startswith("win") else "cgal-geodesic"
+    helper_path = os.path.join(root, "build", "native", "cgal-geodesic", helper_name)
+    if os.path.isfile(helper_path):
+        cmd.extend(["--add-binary", f"{helper_path}{os.pathsep}."])
+    else:
+        print(
+            "[freeze] CGAL surface shortest-path helper not built; "
+            "the accurate geodesic method will report unavailable."
+        )
 
     print("[freeze] running:", " ".join(cmd))
     env = dict(os.environ)

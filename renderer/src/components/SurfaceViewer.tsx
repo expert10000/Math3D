@@ -1668,9 +1668,11 @@ type Props = {
     sampleIndex?: number;
     meshKey?: string;
     vertexIndex?: number;
+    faceIndex?: number;
+    bary?: [number, number, number];
   }) => void;
-  geodesicPathStart?: { meshKey: string; vertexIndex: number } | null;
-  geodesicPathEnd?: { meshKey: string; vertexIndex: number } | null;
+  geodesicPathStart?: { meshKey: string; vertexIndex: number; point?: { x: number; y: number; z: number } } | null;
+  geodesicPathEnd?: { meshKey: string; vertexIndex: number; point?: { x: number; y: number; z: number } } | null;
   geodesicPathIndices?: number[] | null;
   geodesicHeatEnabled?: boolean;
   onGeodesicHeatPick?: (info: {
@@ -5546,7 +5548,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
                 mesh.worldToLocal(localPoint);
                 const bary = new THREE.Vector3();
                 new THREE.Triangle(a, b, c).getBarycoord(localPoint, bary);
-                if (Number.isFinite(bary.x) && Number.isFinite(bary.y) && Number.isFinite(bary.z)) {
+                if (bary && Number.isFinite(bary.x) && Number.isFinite(bary.y) && Number.isFinite(bary.z)) {
                   diskCb({
                     point: { x: point.x, y: point.y, z: point.z },
                     normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
@@ -5612,13 +5614,39 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           const pathCb = onGeodesicPathPickRef.current;
           if (pathCb) {
             const nearest = findNearestSample(point);
+            const mesh = hit.object as THREE.Mesh;
+            const geometry = mesh.geometry as THREE.BufferGeometry;
+            const faceIndex = typeof (hit as any).faceIndex === "number" ? Number((hit as any).faceIndex) : undefined;
+            let baryOut: [number, number, number] | undefined;
+            if (faceIndex != null) {
+              const position = geometry.getAttribute("position") as THREE.BufferAttribute | null;
+              const index = geometry.getIndex();
+              if (position) {
+                const base = faceIndex * 3;
+                const i0 = index ? index.getX(base) : base;
+                const i1 = index ? index.getX(base + 1) : base + 1;
+                const i2 = index ? index.getX(base + 2) : base + 2;
+                const localPoint = point.clone();
+                mesh.worldToLocal(localPoint);
+                const bary = new THREE.Triangle(
+                  new THREE.Vector3(position.getX(i0), position.getY(i0), position.getZ(i0)),
+                  new THREE.Vector3(position.getX(i1), position.getY(i1), position.getZ(i1)),
+                  new THREE.Vector3(position.getX(i2), position.getY(i2), position.getZ(i2))
+                ).getBarycoord(localPoint, new THREE.Vector3());
+                if (bary && Number.isFinite(bary.x) && Number.isFinite(bary.y) && Number.isFinite(bary.z)) {
+                  baryOut = [bary.x, bary.y, bary.z];
+                }
+              }
+            }
             pathCb({
               point: { x: point.x, y: point.y, z: point.z },
               normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
               uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
               sampleIndex: nearest?.index,
-              meshKey: nearest?.sample.meshKey,
+              meshKey: mesh.uuid ?? nearest?.sample.meshKey,
               vertexIndex: nearest?.sample.vertexIndex,
+              faceIndex,
+              bary: baryOut,
             });
           }
           return;
@@ -7925,20 +7953,25 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       return found;
     };
 
-    const placeMarker = (endpoint: { meshKey: string; vertexIndex: number }, color: number) => {
+    const placeMarker = (
+      endpoint: { meshKey: string; vertexIndex: number; point?: { x: number; y: number; z: number } },
+      color: number
+    ) => {
       const mesh = findMeshByKey(endpoint.meshKey);
       if (!mesh) return null;
-      const geometry = mesh.geometry as THREE.BufferGeometry;
-      const posAttr = geometry.getAttribute("position") as THREE.BufferAttribute | null;
-      if (!posAttr) return null;
-      if (endpoint.vertexIndex < 0 || endpoint.vertexIndex >= posAttr.count) return null;
-
-      const pos = new THREE.Vector3(
-        posAttr.getX(endpoint.vertexIndex),
-        posAttr.getY(endpoint.vertexIndex),
-        posAttr.getZ(endpoint.vertexIndex)
-      );
-      pos.applyMatrix4(mesh.matrixWorld);
+      const pos = endpoint.point
+        ? new THREE.Vector3(endpoint.point.x, endpoint.point.y, endpoint.point.z)
+        : (() => {
+            const geometry = mesh.geometry as THREE.BufferGeometry;
+            const posAttr = geometry.getAttribute("position") as THREE.BufferAttribute | null;
+            if (!posAttr || endpoint.vertexIndex < 0 || endpoint.vertexIndex >= posAttr.count) return null;
+            return new THREE.Vector3(
+              posAttr.getX(endpoint.vertexIndex),
+              posAttr.getY(endpoint.vertexIndex),
+              posAttr.getZ(endpoint.vertexIndex)
+            ).applyMatrix4(mesh.matrixWorld);
+          })();
+      if (!pos) return null;
 
       const markerGeom = new THREE.SphereGeometry(0.035, 16, 12);
       const markerMat = new THREE.MeshBasicMaterial({ color });

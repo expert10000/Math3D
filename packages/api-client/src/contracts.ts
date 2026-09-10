@@ -18,6 +18,9 @@ export type {
   CgalVersionResponse,
   GeodesicHeatRequest,
   GeodesicHeatResponse,
+  GeodesicSurfaceLocation,
+  GeodesicSurfacePathRequest,
+  GeodesicSurfacePathResponse,
   MeshContract,
   MeshResult,
   SliceAxis,
@@ -44,6 +47,7 @@ export type MeshBackendCapabilities = {
   cgalRepairMesh: boolean;
   cgalRemeshMesh: boolean;
   cgalGeodesicHeat: boolean;
+  cgalGeodesicSurfacePath: boolean;
   vtkPreviewImplicit: boolean;
   vtkMeshCleanNormals: boolean;
   vtkMeshDecimate: boolean;

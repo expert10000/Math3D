@@ -145,6 +145,8 @@ export type MeshActiveAnalysisResultInput = {
   geodesicBusy: boolean;
   geodesicLength: number | null;
   geodesicUseContinuous: boolean;
+  geodesicMethod: "graph" | "surface" | "heat";
+  geodesicSourceMode: "selected-vertex" | "selected-point" | "selection-set";
   geodesicHasStart: boolean;
   geodesicHasEnd: boolean;
   diagnostics: MeshDiagnosticsAnalysisPayload | null;
@@ -329,7 +331,18 @@ export const selectMeshActiveAnalysisResult = (
       state: input.geodesicBusy ? "Running" : input.geodesicLength != null ? "Ready" : "Unavailable",
       statistics: [{ label: "Path length", value: formatNumber(input.geodesicLength) }],
       metadata: [
-        { label: "Method", value: input.geodesicUseContinuous ? "Continuous heat method" : "Mesh graph / heat method" },
+        {
+          label: "Method",
+          value:
+            input.geodesicMethod === "surface"
+              ? "CGAL triangulated-surface shortest path"
+              : input.geodesicMethod === "graph"
+                ? "Approximate edge-graph routing"
+                : input.geodesicUseContinuous
+                  ? "Continuous ODE (experimental)"
+                  : "Heat distance (experimental)",
+        },
+        { label: "Source semantics", value: input.geodesicSourceMode.replaceAll("-", " ") },
         { label: "Endpoint state", value: input.geodesicHasStart && input.geodesicHasEnd ? "Two endpoints" : "Awaiting endpoints" },
       ],
     };

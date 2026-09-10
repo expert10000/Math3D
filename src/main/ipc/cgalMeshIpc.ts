@@ -189,6 +189,32 @@ export type GeodesicHeatResponse =
   | { ok: true; polyline: number[][]; length: number; phi_vertex?: number[] }
   | { ok: false; error: string };
 
+export type GeodesicSurfaceLocation = {
+  face: number;
+  bary: [number, number, number];
+  vertex?: number;
+  sourceKind?: "selected-vertex" | "selected-point" | "selection-set";
+};
+
+export type GeodesicSurfacePathRequest = {
+  jobId: string;
+  mesh: { V: number[][]; F: number[][] };
+  sources: GeodesicSurfaceLocation[];
+  target: GeodesicSurfaceLocation;
+};
+
+export type GeodesicSurfacePathResponse =
+  | {
+      ok: true;
+      method: "cgal-surface-shortest-path";
+      polyline: number[][];
+      length: number;
+      sourceIndex: number;
+      source: GeodesicSurfaceLocation;
+      target: GeodesicSurfaceLocation;
+    }
+  | { ok: false; error: string; disconnected?: boolean };
+
 export type CgalHealthResponse = { ok: true } | { ok: false; error: string };
 export type PythonPingResponse = { ok: true; pong: boolean } | { ok: false; error: string };
 export type PythonVersionResponse =
@@ -315,6 +341,33 @@ export function registerCgalMeshIpc() {
       return { ok: false, error: diag.message };
     }
   });
+
+  ipcMain.handle(
+    "mesh:geodesic:surface-path",
+    async (_evt, req: GeodesicSurfacePathRequest): Promise<GeodesicSurfacePathResponse> => {
+      try {
+        const worker = await getPythonWorker();
+        const res = await worker.geodesicSurfacePath(req);
+        if (!res.ok) {
+          const diag = recordPythonWorkerFailure(
+            res.error,
+            "mesh:geodesic:surface-path",
+            "WORKER_OPERATION_FAILED"
+          );
+          return { ...res, error: diag.message };
+        }
+        recordPythonWorkerSuccess();
+        return res;
+      } catch (e: any) {
+        const diag = recordPythonWorkerFailure(
+          e,
+          "mesh:geodesic:surface-path",
+          "WORKER_OPERATION_FAILED"
+        );
+        return { ok: false, error: diag.message };
+      }
+    }
+  );
 
   ipcMain.handle("mesh:cgal:health", async (): Promise<CgalHealthResponse> => {
     try {

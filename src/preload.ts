@@ -111,6 +111,18 @@ export type GeodesicHeatRequest = {
   };
 };
 
+export type GeodesicSurfacePathRequest = {
+  jobId: string;
+  mesh: { V: number[][]; F: number[][] };
+  sources: Array<{
+    face: number;
+    bary: [number, number, number];
+    vertex?: number;
+    sourceKind?: "selected-vertex" | "selected-point" | "selection-set";
+  }>;
+  target: { face: number; bary: [number, number, number]; vertex?: number };
+};
+
 export type VtkMeshRequest = {
   jobId: string;
   positions: ArrayBuffer | ArrayBufferView;
@@ -424,6 +436,8 @@ contextBridge.exposeInMainWorld("cgalMesh", {
     ipcRenderer.invoke("mesh:cgal:boolean", req),
   geodesicHeat: (req: GeodesicHeatRequest): Promise<any> =>
     ipcRenderer.invoke("mesh:geodesic:heat", req),
+  geodesicSurfacePath: (req: GeodesicSurfacePathRequest): Promise<any> =>
+    ipcRenderer.invoke("mesh:geodesic:surface-path", req),
   stop: (): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke("mesh:cgal:stop"),
 });

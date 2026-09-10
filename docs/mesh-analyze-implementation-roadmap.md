@@ -154,7 +154,7 @@ Acceptance: a mathematically defined surface-calculus family with verified resul
 
 Planned message: `mesh-analysis: add graph and surface geodesic analysis`
 
-**Status: graph and heat foundations exist; method separation incomplete.**
+**Status: complete.**
 
 Already implemented:
 
@@ -164,12 +164,12 @@ Already implemented:
 
 Remaining:
 
-- [ ] Clearly label edge-graph routing as approximate graph routing.
-- [ ] Integrate CGAL triangulated-surface shortest paths as the accurate method.
-- [ ] Expose selected vertex, selected point, and selection-set source semantics.
-- [ ] Return path polyline, length, and source/target metadata consistently.
-- [ ] Keep heat distance explicitly experimental/advanced and integrate its scalar field.
-- [ ] Test plane, cylinder, sphere, graph-versus-surface differences, disconnected endpoints, and large meshes.
+- [x] Clearly labeled edge-graph routing as approximate graph routing.
+- [x] Integrated CGAL triangulated-surface shortest paths as the accurate method through the worker and packaged native helper.
+- [x] Exposed selected vertex, selected surface point, and selection-set multi-source semantics.
+- [x] Returned method-specific polylines, lengths, chosen-source data, and source/target metadata consistently.
+- [x] Kept heat distance explicitly experimental/advanced and preserved its scalar-field heatmap.
+- [x] Added protocol/unit coverage plus a native verification suite for plane, cylinder, sphere, graph-versus-surface differences, disconnected endpoints, and large meshes.
 
 Acceptance: graph routing, surface shortest paths, and heat distance have distinct, truthful semantics.
 

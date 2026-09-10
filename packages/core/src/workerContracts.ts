@@ -187,6 +187,32 @@ export type GeodesicHeatResponse =
   | { ok: true; polyline: number[][]; length: number; phi_vertex?: number[] }
   | { ok: false; error: string };
 
+export type GeodesicSurfaceLocation = {
+  face: number;
+  bary: [number, number, number];
+  vertex?: number;
+  sourceKind?: "selected-vertex" | "selected-point" | "selection-set";
+};
+
+export type GeodesicSurfacePathRequest = {
+  jobId: string;
+  mesh: { V: number[][]; F: number[][] };
+  sources: GeodesicSurfaceLocation[];
+  target: GeodesicSurfaceLocation;
+};
+
+export type GeodesicSurfacePathResponse =
+  | {
+      ok: true;
+      method: "cgal-surface-shortest-path";
+      polyline: number[][];
+      length: number;
+      sourceIndex: number;
+      source: GeodesicSurfaceLocation;
+      target: GeodesicSurfaceLocation;
+    }
+  | { ok: false; error: string; disconnected?: boolean };
+
 export type VtkMeshRequest = {
   jobId: string;
   positions: ArrayBuffer | ArrayBufferView;
@@ -344,6 +370,7 @@ export type WorkerRequest =
   | { kind: "cgal.remesh"; payload: Omit<CgalRemeshMeshRequest, "jobId"> }
   | { kind: "cgal.boolean"; payload: Omit<CgalBooleanMeshRequest, "jobId"> }
   | { kind: "cgal.geodesic-heat"; payload: Omit<GeodesicHeatRequest, "jobId"> }
+  | { kind: "cgal.geodesic-surface-path"; payload: Omit<GeodesicSurfacePathRequest, "jobId"> }
   | { kind: "vtk.preview-implicit"; payload: Omit<VtkPreviewRequest, "jobId"> }
   | { kind: "vtk.clean-normals"; payload: Omit<VtkMeshRequest, "jobId"> }
   | { kind: "vtk.decimate"; payload: Omit<VtkMeshRequest, "jobId"> }
@@ -361,6 +388,7 @@ export type WorkerResponse =
   | CgalRemeshMeshResponse
   | CgalBooleanMeshResponse
   | GeodesicHeatResponse
+  | GeodesicSurfacePathResponse
   | VtkMeshResponse
   | VtkVolumeSliceResponse
   | VtkVolumeIsosurfaceResponse

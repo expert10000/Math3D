@@ -16,6 +16,8 @@ import type {
   CgalValidateMeshResponse,
   GeodesicHeatRequest,
   GeodesicHeatResponse,
+  GeodesicSurfacePathRequest,
+  GeodesicSurfacePathResponse,
 } from "../ipc/cgalMeshIpc";
 
 export type PythonWorkerError = {
@@ -819,6 +821,47 @@ class PythonWorker {
       polyline: res.polyline,
       length: typeof res.length === "number" ? res.length : 0,
       phi_vertex: Array.isArray(res.phi_vertex) ? res.phi_vertex : undefined,
+    };
+  }
+
+  async geodesicSurfacePath(req: GeodesicSurfacePathRequest): Promise<GeodesicSurfacePathResponse> {
+    mainDebugLog("[CGAL worker] surface shortest-path request", {
+      jobId: req.jobId,
+      faces: req.mesh?.F?.length ?? 0,
+      vertices: req.mesh?.V?.length ?? 0,
+      sources: req.sources?.length ?? 0,
+    });
+
+    const res = await this.request(
+      {
+        type: "geodesic.surface_path",
+        jobId: req.jobId,
+        mesh: req.mesh,
+        sources: req.sources,
+        target: req.target,
+      },
+      180000
+    );
+
+    if (!res || res.ok === false) {
+      return {
+        ok: false,
+        error: workerErrorText(res, "Unknown CGAL surface shortest-path response"),
+        disconnected: res?.disconnected === true,
+      };
+    }
+    if (!Array.isArray(res.polyline) || res.polyline.length < 2) {
+      return { ok: false, error: "CGAL surface shortest path returned an empty polyline" };
+    }
+
+    return {
+      ok: true,
+      method: "cgal-surface-shortest-path",
+      polyline: res.polyline,
+      length: Number(res.length),
+      sourceIndex: Number(res.sourceIndex),
+      source: res.source,
+      target: res.target,
     };
   }
 

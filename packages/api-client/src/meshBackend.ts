@@ -16,6 +16,8 @@ import type {
   CgalVersionResponse,
   GeodesicHeatRequest,
   GeodesicHeatResponse,
+  GeodesicSurfacePathRequest,
+  GeodesicSurfacePathResponse,
   MeshBackendCapabilities,
   VtkBooleanRequest,
   VtkMeshRequest,
@@ -43,6 +45,7 @@ export interface MeshBackend {
   runCgalRemeshMesh(req: Omit<CgalRemeshMeshRequest, "jobId">): Promise<CgalRemeshMeshResponse>;
   runCgalBooleanMesh(req: Omit<CgalBooleanMeshRequest, "jobId">): Promise<CgalBooleanMeshResponse>;
   runGeodesicHeat(req: Omit<GeodesicHeatRequest, "jobId">): Promise<GeodesicHeatResponse>;
+  runGeodesicSurfacePath(req: Omit<GeodesicSurfacePathRequest, "jobId">): Promise<GeodesicSurfacePathResponse>;
   vtkPreviewImplicit(req: Omit<VtkPreviewRequest, "jobId">): Promise<VtkMeshResponse>;
   vtkCleanNormals(req: Omit<VtkMeshRequest, "jobId">): Promise<VtkMeshResponse>;
   vtkDecimate(req: Omit<VtkMeshRequest, "jobId">): Promise<VtkMeshResponse>;
@@ -121,6 +124,7 @@ const capabilitySnapshot = (win: any): MeshBackendCapabilities => ({
   cgalRepairMesh: typeof win?.cgalMesh?.repairMesh === "function",
   cgalRemeshMesh: typeof win?.cgalMesh?.remeshMesh === "function",
   cgalGeodesicHeat: typeof win?.cgalMesh?.geodesicHeat === "function",
+  cgalGeodesicSurfacePath: typeof win?.cgalMesh?.geodesicSurfacePath === "function",
   vtkPreviewImplicit: typeof win?.vtkMesh?.previewImplicit === "function",
   vtkMeshCleanNormals: typeof win?.vtkMesh?.cleanNormals === "function",
   vtkMeshDecimate: typeof win?.vtkMesh?.decimate === "function",
@@ -308,6 +312,11 @@ export function createElectronMeshBackend(): MeshBackend {
       if (!api?.geodesicHeat) return { ok: false, error: "Geodesic heat IPC unavailable" };
       return api.geodesicHeat({ ...req, jobId: makeJobId() });
     },
+    async runGeodesicSurfacePath(req) {
+      const api = (getWindowObject() as any)?.cgalMesh;
+      if (!api?.geodesicSurfacePath) return { ok: false, error: "CGAL surface-path IPC unavailable" };
+      return api.geodesicSurfacePath({ ...req, jobId: makeJobId() });
+    },
     async vtkPreviewImplicit(req) {
       const api = (getWindowObject() as any)?.vtkMesh;
       if (!api?.previewImplicit) return { ok: false, error: "VTK IPC unavailable" };
@@ -381,6 +390,7 @@ export function createHttpMeshBackend(baseUrl: string, options?: HttpMeshBackend
         cgalRepairMesh: false,
         cgalRemeshMesh: false,
         cgalGeodesicHeat: true,
+        cgalGeodesicSurfacePath: true,
         vtkPreviewImplicit: true,
         vtkMeshCleanNormals: true,
         vtkMeshDecimate: true,
@@ -447,6 +457,16 @@ export function createHttpMeshBackend(baseUrl: string, options?: HttpMeshBackend
         );
       } catch (error) {
         return { ok: false, error: asErrorMessage(error, "Geodesic heat request failed") };
+      }
+    },
+    async runGeodesicSurfacePath(req) {
+      try {
+        return await http.postJson<GeodesicSurfacePathResponse>(
+          "/cgal/geodesic-surface-path",
+          withJobId(req as unknown as JsonRecord)
+        );
+      } catch (error) {
+        return { ok: false, error: asErrorMessage(error, "CGAL surface-path request failed") };
       }
     },
     async vtkPreviewImplicit(req) {

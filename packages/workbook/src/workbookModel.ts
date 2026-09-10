@@ -155,6 +155,9 @@ export type WorkbookComputeInputRef = {
 export type WorkbookPathEndpoint = {
   meshKey?: string;
   vertexIndex?: number;
+  faceIndex?: number;
+  bary?: [number, number, number];
+  point?: { x: number; y: number; z: number };
 };
 export type WorkbookGeodesicParityReport = {
   status: "ok" | "skipped" | "failed";
@@ -183,7 +186,11 @@ export type WorkbookGeodesicErrorBounds = {
 };
 export type WorkbookGeodesicPathOutput = {
   indices: number[] | null;
+  polylines?: { x: number; y: number; z: number }[][] | null;
   length: number | null;
+  method?: "approximate-edge-graph" | "cgal-surface-shortest-path";
+  sourceMode?: "selected-vertex" | "selected-point" | "selection-set";
+  sourceCount?: number;
   message?: string | null;
   debugInfo?: string | null;
   start?: WorkbookPathEndpoint | null;

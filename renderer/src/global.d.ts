@@ -203,6 +203,18 @@ declare global {
     | { ok: true; polyline: number[][]; length: number; phi_vertex?: number[] }
     | { ok: false; error: string };
 
+  type GeodesicSurfacePathRequest = {
+    jobId: string;
+    mesh: { V: number[][]; F: number[][] };
+    sources: Array<{
+      face: number;
+      bary: [number, number, number];
+      vertex?: number;
+      sourceKind?: "selected-vertex" | "selected-point" | "selection-set";
+    }>;
+    target: { face: number; bary: [number, number, number]; vertex?: number };
+  };
+
   type VtkMeshRequest = {
     jobId: string;
     positions: ArrayBuffer | ArrayBufferView;
@@ -579,6 +591,7 @@ declare global {
       booleanMesh: (req: CgalBooleanMeshRequest) => Promise<CgalBooleanMeshResponse>;
       stop: () => Promise<{ ok: boolean; error?: string }>;
       geodesicHeat: (req: GeodesicHeatRequest) => Promise<GeodesicHeatResponse>;
+      geodesicSurfacePath: (req: GeodesicSurfacePathRequest) => Promise<any>;
     };
     vtkMesh?: {
       cleanNormals: (req: VtkMeshRequest) => Promise<VtkMeshResponse>;

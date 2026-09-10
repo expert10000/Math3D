@@ -15,6 +15,7 @@ The setup script:
 - creates/uses `.venv-worker`
 - creates/uses `.deps/vcpkg`
 - installs `cgal:x64-windows` and `eigen3:x64-windows` with vcpkg
+- builds the `cgal-geodesic` helper for CGAL triangulated-surface shortest paths
 - installs Python worker dependencies into `.venv-worker`
 - downloads `pygalmesh` source
 - applies the Math3D CGAL 6 / MSVC compatibility patch
@@ -22,6 +23,7 @@ The setup script:
 - runs `dependency_probe()`
 - runs a real `mesh.generate` CGAL sphere smoke test
 - runs native CGAL boolean `union`, `difference`, and `intersection` smoke tests through the worker implementation
+- runs the CGAL surface-geodesic numerical verification suite
 
 The first native `pygalmesh` build can take several minutes on Windows because MSVC is compiling CGAL-heavy C++ code.
 
@@ -75,6 +77,14 @@ npm run test:cgal-boolean:real-mesh
 ```
 
 That smoke blocks the open Stanford Bunny with a boundary-edge message, then runs native CGAL corefine on an Armadillo overlap pair and a 3DBenchy cutter-box difference.
+
+To verify the accurate surface-geodesic backend on a plane, cylinder, sphere, disconnected mesh, graph-versus-surface case, and a large grid, run:
+
+```powershell
+npm run test:cgal-geodesic
+```
+
+The helper is built at `build/native/cgal-geodesic/cgal-geodesic.exe`. Packaged worker builds include it automatically when it is present. To use a separately built helper, set `MATH3D_CGAL_GEODESIC_EXE` to its absolute path.
 
 Run a direct CGAL implicit mesh smoke:
 

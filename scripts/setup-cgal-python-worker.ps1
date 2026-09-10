@@ -25,6 +25,8 @@ $eigenInclude = Join-Path $vcpkgInclude "eigen3"
 $vcpkgLib = Join-Path $vcpkgInstalled "lib"
 $vcpkgBin = Join-Path $vcpkgInstalled "bin"
 $buildRoot = Join-Path $depsRoot "pygalmesh-build"
+$geodesicSource = Join-Path $repo "native\cgal-geodesic"
+$geodesicBuild = Join-Path $repo "build\native\cgal-geodesic"
 
 function Write-Step([string]$Message) {
   Write-Host "[setup-cgal] $Message"
@@ -185,6 +187,27 @@ foreach ($requiredPath in @($vcpkgInclude, $eigenInclude, $vcpkgLib, $vcpkgBin))
   }
 }
 
+Write-Step "building CGAL triangulated-surface shortest-path helper"
+$toolchain = Join-Path $VcpkgRoot "scripts\buildsystems\vcpkg.cmake"
+Invoke-Checked -FilePath "cmake" -Arguments @(
+  "-S", $geodesicSource,
+  "-B", $geodesicBuild,
+  "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
+  "-DVCPKG_TARGET_TRIPLET=$Triplet"
+)
+Invoke-Checked -FilePath "cmake" -Arguments @("--build", $geodesicBuild, "--config", "Release")
+$builtGeodesic = @(
+  (Join-Path $geodesicBuild "Release\cgal-geodesic.exe"),
+  (Join-Path $geodesicBuild "cgal-geodesic.exe")
+) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if (!$builtGeodesic) {
+  throw "CGAL surface shortest-path helper was not produced in $geodesicBuild"
+}
+$canonicalGeodesic = Join-Path $geodesicBuild "cgal-geodesic.exe"
+if ((Resolve-Path -LiteralPath $builtGeodesic).Path -ne [System.IO.Path]::GetFullPath($canonicalGeodesic)) {
+  Copy-Item -LiteralPath $builtGeodesic -Destination $canonicalGeodesic -Force
+}
+
 $script:BasePython = Resolve-BasePython
 if (!(Test-Path $venvPython)) {
   Write-Step "creating worker venv at $venvDir"
@@ -299,6 +322,14 @@ for op in ('union', 'difference', 'intersection'):
 print('native CGAL boolean smoke ok: ' + '; '.join(counts))
 '@
   Invoke-Checked -FilePath $venvPython -Arguments @("-c", $booleanSmoke)
+
+  $previousGeodesicHelper = $env:MATH3D_CGAL_GEODESIC_EXE
+  try {
+    $env:MATH3D_CGAL_GEODESIC_EXE = $canonicalGeodesic
+    Invoke-Checked -FilePath $venvPython -Arguments @("scripts/cgal-geodesic-verification.py")
+  } finally {
+    $env:MATH3D_CGAL_GEODESIC_EXE = $previousGeodesicHelper
+  }
 }
 
 Write-Step "complete"
