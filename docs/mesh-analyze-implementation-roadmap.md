@@ -1,7 +1,7 @@
 # Mesh Analyze implementation roadmap
 
 Assessment date: 2026-09-10
-Reviewed checkout: `0c0207b` — mesh-analysis: add principal-curvature ridge and valley extraction
+Reviewed checkout: `6ac85fe` — mesh-analysis: complete scientific Inspector result views
 
 The numbered commits below are implementation plans, not claims that corresponding Git commits are complete. This document records the current implementation and the remaining work against the supplied plans.
 
@@ -18,7 +18,8 @@ The numbered commits below are implementation plans, not claims that correspondi
 | 7 — Cached surface-feature extraction | Complete | `a4844ad` | 380 renderer tests, TypeScript typecheck, production renderer build, cube/cylinder/torus/Fandisk/Bunny verification, and 3 Mesh Analyze E2E tests passed |
 | 8 — Ridges and valleys | Complete | `0c0207b` | 388 renderer tests, TypeScript typecheck, production core build, quantitative torus/saddle/sphere/Fandisk/Bunny verification, and 3 Mesh Analyze E2E tests passed |
 | 9 — Target isolation and large-mesh workers | Complete | `e151abf` | 381 renderer tests, TypeScript typecheck, production renderer build, 3 Mesh Analyze E2E tests, and current-build Bunny/Armadillo/Dragon profiling passed |
-| 10–12 | Planned | — | See the detailed sections below |
+| 10 — Scientific Inspector and computation history | Complete | `6ac85fe` | 394 renderer tests, TypeScript typecheck, production core build, and 3 Mesh Analyze E2E tests passed |
+| 11–12 | Planned | — | See the detailed sections below |
 
 The implementation commits follow the numbered plan sections. Progress entries record completed code only after its relevant tests and build checks pass.
 
@@ -26,7 +27,7 @@ UI walkthrough: [Mesh Analyze UI guide — Commits 5–9](mesh-analyze-ui-guide-
 
 ## Current assessment
 
-Commits 1–9 are implemented. The Mesh Analyze workbench now has canonical cached results, mesh-health and CGAL integrity checks, differential geometry, mesh-quality fields, surface field calculus, approximate edge-graph routes, accurate CGAL triangulated-surface shortest paths, an explicitly experimental heat-distance field, reusable cached surface-feature classifications, validated and cached ridge/valley extraction, explicit target-isolation modes, and worker-backed curvature and feature extraction. Commits 10–12 retain partially implemented foundations and remain the next work.
+Commits 1–10 are implemented. The Mesh Analyze workbench now has canonical cached results, mesh-health and CGAL integrity checks, differential geometry, mesh-quality fields, surface field calculus, approximate edge-graph routes, accurate CGAL triangulated-surface shortest paths, an explicitly experimental heat-distance field, reusable cached surface-feature classifications, validated and cached ridge/valley extraction, explicit target-isolation modes, worker-backed curvature and feature extraction, and an authoritative scientific Inspector with computation history. Commits 11–12 retain partially implemented foundations and remain the next work.
 
 Commit 6 validation completed locally with CGAL 6.2.1 from vcpkg, the Python CGAL worker environment, the native shortest-path helper, dependency and mesh-generation smoke checks, all three CGAL boolean operations, and numerical geodesic checks on plane, cylinder, sphere, graph-versus-surface, disconnected, and 5,776-vertex large-mesh cases. The full renderer suite also passed: **373 tests across 69 files**, plus TypeScript typecheck and the production renderer build.
 
@@ -35,6 +36,8 @@ Commit 7 validation covers cached dependency invalidation, cube crease edges, cy
 Commit 8 validation covers principal-family selection, directional strength and contrast, neighborhood and smoothing controls, minimum line length and confidence, cached directional derivatives/candidates/traced curves with provenance, unstable-direction suppression, and computation-derived readiness independent of overlay visibility. Quantitative torus, saddle, smooth-sphere negative, Fandisk, and Stanford Bunny checks passed. The full renderer suite passed: **388 tests across 71 files**, plus TypeScript typecheck, the production core build, and all three Mesh Analyze E2E tests.
 
 Commit 9 validation covers Focus target, Ghost others, and Show scene display states; the default ghosted analysis context; construction-overlay suppression; worker-backed curvature and surface-feature extraction; queued/running/publishing/cancelled result states; revision/job guards; and current-build analysis profiling. The full renderer suite passed: **381 tests across 70 files**, plus TypeScript typecheck, the production renderer build, and all three Mesh Analyze E2E tests. The current-build profile passed on Stanford Bunny, Armadillo, and Dragon with curvature worker compute at 31–69 ms, surface-feature worker compute at 14–26 ms, overlay readiness at 164–234 ms, and probe latency at 109–208 ms; the generated report also records load time, analysis/load blocking, and analysis memory delta.
+
+Commit 10 validation covers the consistent quantity/method/domain/statistics/percentiles/provenance/warnings result schema; complete selected vertex scalar/vector fields; edge/face mapped fields and native quality values; feature membership; principal-direction validity; canonical `MeshHealthResult` diagnostics; queued-to-terminal computation records; parameter/backend/duration/status/timestamp/revision metadata; and inspectable stale snapshots. The full renderer suite passed: **394 tests across 72 files**, plus full TypeScript typecheck, the production core build, and all three Mesh Analyze E2E tests.
 
 ```powershell
 cd C:\Math3D
@@ -47,7 +50,8 @@ npm run benchmark:mesh:analysis-profile
 
 ## Next priorities
 
-1. Complete the Inspector, backend-infrastructure, and regression work tracked by Commits 10–12.
+1. Extract the shared Geometry ↔ Mesh analysis infrastructure tracked by Commit 11.
+2. Complete the regression suite and freeze the v1 workflow in Commit 12.
 
 ## Commit 1 — Canonical AnalysisResult registry and cache
 
@@ -259,7 +263,7 @@ Acceptance: large-mesh analysis remains interactive while worker results publish
 
 Planned message: `mesh-analysis: complete scientific Inspector result views`
 
-**Status: substantial UI implementation; scientific completeness remains open.**
+**Status: implemented.**
 
 Already implemented:
 
@@ -267,14 +271,14 @@ Already implemented:
 - Detailed curvature statistics, histogram, extrema, and computation metadata.
 - Local probe values, quality summaries, and operation/probe history.
 
-Remaining:
+Completed:
 
-- [ ] Provide consistent quantity/method/domain/statistics/percentiles/provenance/warnings across all result families.
-- [ ] Display validated principal directions and complete vertex scalar/vector/mapped-quality values.
-- [ ] Complete face and edge scientific fields, including feature membership.
-- [ ] Use canonical MeshHealthResult for Diagnostics.
-- [ ] Record analysis computations with parameters, backend, duration, status, timestamp, and revision.
-- [ ] Allow inspection of stale results while clearly distinguishing them from current output.
+- [x] Provided consistent quantity/method/domain/statistics/percentiles/provenance/warnings across all result families.
+- [x] Displayed validated principal directions and complete vertex scalar/vector/mapped-quality values.
+- [x] Completed face and edge scientific fields, including feature membership and native face/edge quality values.
+- [x] Used the canonical `MeshHealthResult` contract directly for Diagnostics.
+- [x] Recorded analysis computations with parameters, backend, duration, status, timestamp, revision, dependencies, and compact result summaries.
+- [x] Preserved stale computations for inspection and clearly distinguished them from current viewport output.
 
 Acceptance: the right Inspector is authoritative for scientific interpretation.
 
@@ -327,14 +331,14 @@ Workflow constraints to preserve:
 
 ## Recommended implementation sequence
 
-1. Establish quantitative ridge/valley readiness and complete Commit 8.
-2. Complete Inspector/history and shared infrastructure in Commits 10–11.
-3. Run the full acceptance suite and freeze v1 in Commit 12.
+1. Extract the shared analysis infrastructure in Commit 11.
+2. Run the full acceptance suite and freeze v1 in Commit 12.
 
 ## Main implementation references
 
 - `renderer/src/mesh/analysisResultStore.ts`: mesh identities, cached results, dependencies, diagnostic payloads.
 - `renderer/src/mesh/activeAnalysisResult.ts`: scientific summaries, statistics, method labels, readiness.
+- `renderer/src/mesh/meshEntityScientificFields.ts`: vertex, edge, and face scalar/vector/quality/feature inspection.
 - `renderer/src/mesh/meshQualityReport.ts`: quality summaries and defect lists.
 - `renderer/src/workers/meshQualityReportWorker.ts`: quality-report worker.
 - `renderer/src/workers/meshAnalysisWorker.ts`: differential-geometry and surface-feature worker.
