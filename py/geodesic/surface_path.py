@@ -39,6 +39,17 @@ def _helper_candidates() -> Iterable[str]:
     if configured:
         yield configured
 
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    for relative in (
+        ("cgal-geodesic.exe",),
+        ("cgal-geodesic",),
+        ("build", "native", "cgal-geodesic", "cgal-geodesic.exe"),
+        ("build", "native", "cgal-geodesic", "cgal-geodesic"),
+    ):
+        candidate = os.path.join(repo_root, *relative)
+        if os.path.isfile(candidate):
+            yield candidate
+
     try:
         from python.worker.runtime import resolve_worker_asset
 

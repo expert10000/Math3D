@@ -706,6 +706,19 @@ declare global {
         error?: string;
       }>;
     };
+    __MATH3D_E2E_MESH_ANALYSIS__?: {
+      compareGraphAndSurfacePath: (
+        sourceVertex?: number,
+        targetVertex?: number
+      ) => Promise<{
+        ok: boolean;
+        graphLength?: number;
+        surfaceLength?: number;
+        graphMethod?: string;
+        surfaceMethod?: string;
+        error?: string;
+      }>;
+    };
     __MATH3D_E2E_MESH_OPERATION__?: {
       run: (
         operation:

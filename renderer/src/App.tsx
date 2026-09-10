@@ -59244,6 +59244,80 @@ case "mobius":
     ]
   );
 
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.appRuntime?.e2e) return;
+    window.__MATH3D_E2E_MESH_ANALYSIS__ = {
+      compareGraphAndSurfacePath: async (sourceVertex?: number, targetVertex?: number) => {
+        try {
+          const mesh = surfaceSampleSet?.meshData?.[0];
+          if (!mesh?.positions?.length) return { ok: false, error: "Analysis mesh is unavailable." };
+          const vertexCount = Math.floor(mesh.positions.length / 3);
+          if (
+            (sourceVertex != null && (sourceVertex < 0 || sourceVertex >= vertexCount)) ||
+            (targetVertex != null && (targetVertex < 0 || targetVertex >= vertexCount))
+          ) {
+            return { ok: false, error: "Requested geodesic endpoint is outside the mesh." };
+          }
+          const endpoint = (vertexIndex: number): GeodesicPathEndpoint => ({
+            meshKey: mesh.key,
+            vertexIndex,
+            point: {
+              x: mesh.positions[vertexIndex * 3],
+              y: mesh.positions[vertexIndex * 3 + 1],
+              z: mesh.positions[vertexIndex * 3 + 2],
+            },
+          });
+          let source: GeodesicPathEndpoint | null = null;
+          let target: GeodesicPathEndpoint | null = null;
+          let graph: WorkbookComputeOutputs["geodesicPath"] | null = null;
+          if (sourceVertex != null && targetVertex != null) {
+            source = endpoint(sourceVertex);
+            target = endpoint(targetVertex);
+            graph = computeGeodesicPathResult([source], target);
+          } else {
+            let bestStretch = Number.NEGATIVE_INFINITY;
+            for (let start = 0; start < vertexCount; start += 1) {
+              for (let end = start + 1; end < vertexCount; end += 1) {
+                const candidateSource = endpoint(start);
+                const candidateTarget = endpoint(end);
+                const candidateGraph = computeGeodesicPathResult([candidateSource], candidateTarget);
+                const dx = candidateSource.point!.x - candidateTarget.point!.x;
+                const dy = candidateSource.point!.y - candidateTarget.point!.y;
+                const dz = candidateSource.point!.z - candidateTarget.point!.z;
+                const chord = Math.hypot(dx, dy, dz);
+                if (candidateGraph?.length == null || !Number.isFinite(candidateGraph.length) || chord <= 1e-9) continue;
+                const stretch = candidateGraph.length / chord;
+                if (stretch <= bestStretch) continue;
+                bestStretch = stretch;
+                source = candidateSource;
+                target = candidateTarget;
+                graph = candidateGraph;
+              }
+            }
+          }
+          if (!source || !target || !graph) return { ok: false, error: "No connected geodesic endpoint pair was found." };
+          const surface = await computeGeodesicSurfacePathResult([source], target);
+          if (!graph || !surface) return { ok: false, error: "A geodesic method returned no result." };
+          if (graph.length == null || surface.length == null || !Number.isFinite(graph.length) || !Number.isFinite(surface.length)) {
+            return { ok: false, error: graph.message ?? surface.message ?? "A geodesic method returned no length." };
+          }
+          return {
+            ok: true,
+            graphLength: graph.length,
+            surfaceLength: surface.length,
+            graphMethod: graph.method,
+            surfaceMethod: surface.method,
+          };
+        } catch (error) {
+          return { ok: false, error: String((error as Error)?.message ?? error) };
+        }
+      },
+    };
+    return () => {
+      delete window.__MATH3D_E2E_MESH_ANALYSIS__;
+    };
+  }, [computeGeodesicPathResult, computeGeodesicSurfacePathResult, surfaceSampleSet]);
+
   const geodesicSelectionSetSources = useCallback(
     (meshKey: string): GeodesicPathEndpoint[] => {
       if (!selectionMask?.count || !surfaceSampleSet?.samples.length) return [];
