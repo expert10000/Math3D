@@ -46,7 +46,7 @@ The largest architectural gap is mathematical representation. Most current objec
 Baseline verification at this assessment:
 
 - **98 Geometry unit tests across 19 files** pass with `npm --prefix renderer test -- src/geometry`.
-- The repository checkpoint has **397 renderer tests across 74 files** passing.
+- The current repository checkpoint has **417 renderer tests across 79 files** passing.
 - Existing E2E coverage includes Geometry picking, Gallery/object scenes, responsive layout, topology editing, Mesh↔Geometry handoff, round-trip demos, and release preset loading.
 
 ## Implementation progress
@@ -54,7 +54,7 @@ Baseline verification at this assessment:
 | Plan | Status | Already implemented | Main work remaining |
 | --- | --- | --- | --- |
 | 1 — Professional workflow and scene contracts | Complete (`179793c`) | Additive professional shell, expandable compatibility groups, revisioned shared scene identity, Geometry adapters, identity-aware scene behavior and protected navigation/persistence | None for Commit 1 |
-| 2 — Navigation, picking, semantic selection | Partial | Object/face/edge/vertex picking, hover/commit, contextual parity with Mesh | Add body/shell/feature semantics, filters, advanced selectors, and shared selection mapping |
+| 2 — Navigation, picking, semantic selection | Complete (`72709a8`) | Shared pick contract, stable Geometry semantic identities, selection filters and selectors, navigation commands, saved-result provenance, and Geometry↔Mesh selection mapping | None for Commit 2 |
 | 3 — Construct hierarchy | Partial | Object Gallery, primitives, polyhedra, construction graph, previews and relationships | Organize complete reference/curve/surface/solid/derived taxonomy without hiding existing tools |
 | 4 — Selection-driven Modify | Partial | Transforms, face/edge/vertex direct edits, operation tree and replay | Add exact curve/surface/body operations and explicit applicability explanations |
 | 5 — Metadata, lineage and dependencies | Partial | Dependency trees, histories, variants, stale products, Geometry↔Mesh trace provenance | Add canonical revisions, representation metadata, complete source/dependent lineage and freeze/detach actions |
@@ -171,7 +171,7 @@ Acceptance: the new shell can be used for normal Geometry work while every curre
 
 Planned message: `geometry: unify picking navigation and semantic selection with Mesh`
 
-**Status: partially implemented.**
+**Status: complete — `72709a8`.**
 
 Already implemented:
 
@@ -179,16 +179,31 @@ Already implemented:
 - Hover preview and committed selection.
 - World point, normal/tangent information, topology summaries, stale-reference detection, viewer highlights, breadcrumb, and Inspector readout.
 - Contextual object/face/edge commands and E2E parity checks with Mesh.
+- A domain-neutral base pick contract is shared by Geometry and Mesh selection adapters.
+- Stable semantic identities cover bodies, shells, surfaces, curves, points, features, trim loops, parameter locations, and construction roles while recording scene source and revision provenance.
+- The expandable Geometry Navigate panel supplies semantic filters, navigation commands, and relationship selectors without removing the existing Scene tools.
+- Viewport, Scene tree, Navigate panel, Inspector, saved quick-analysis results, and Geometry↔Mesh handoffs retain the same semantic source identity.
+- Geometry↔Mesh transitions preserve topology mode and indices when correspondence exists, and reverse navigation restores the original Geometry selection.
 
 Remaining:
 
-- [ ] Extract or adopt a shared base pick contract used by Geometry and Mesh adapters.
-- [ ] Add Geometry semantic IDs for body, shell, analytic face/surface, edge/curve, vertex/point, feature, trim, parameter location, and construction role.
-- [ ] Add selection-level controls and filters for curves, surfaces, solids, construction, hidden, derived, and trim boundaries.
-- [ ] Synchronize selection across viewport, Scene tree, Navigate panel, Inspector, saved results, and derived Mesh mappings.
-- [ ] Add frame, isolate, hide others, parent/child, connected, loop, chain, similar, source, and derivative commands.
-- [ ] Add Geometry selectors for tangent/G0/G1 connectivity, same radius, coplanar, coaxial, same surface type, and trim loops.
-- [ ] Preserve empty-click clearing and tool-owned selection capture semantics.
+- [x] Extract or adopt a shared base pick contract used by Geometry and Mesh adapters.
+- [x] Add Geometry semantic IDs for body, shell, analytic face/surface, edge/curve, vertex/point, feature, trim, parameter location, and construction role.
+- [x] Add selection-level controls and filters for curves, surfaces, solids, construction, hidden, derived, and trim boundaries.
+- [x] Synchronize selection across viewport, Scene tree, Navigate panel, Inspector, saved results, and derived Mesh mappings.
+- [x] Add frame, isolate, hide others, parent/child, connected, loop, chain, similar, source, and derivative commands.
+- [x] Add Geometry selectors for tangent/G0/G1 connectivity, same radius, coplanar, coaxial, same surface type, and trim loops.
+- [x] Preserve empty-click clearing and tool-owned selection capture semantics.
+
+Validation at `72709a8`:
+
+- **34 focused selection tests across 4 files** pass.
+- The full renderer suite passes: **417 tests across 79 files**.
+- `npm run typecheck:noemit` and `npm run build:renderer` pass.
+- Geometry professional-shell and object/scene E2E checks pass: **4/4**; the updated professional-shell scenario also verifies semantic filters, selection, navigation, and saved-result provenance.
+- Geometry picking E2E checks pass: **11/11**, including the shared semantic identity and scene revision readout.
+- Contextual-selection labels pass: **1/1**; workspace navigation passes: **5/5**.
+- The Geometry/Mesh release scenario passes: **1/1**, with **24 actions** and **0 white screens**.
 
 Acceptance: a semantic selection retains its identity across supported panel and Geometry↔Mesh transitions.
 
