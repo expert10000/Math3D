@@ -219,6 +219,20 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-calculus-status")).toContainText(/curl_n = div_S\(X × n\)/i);
     await expect(page.getByTestId("mesh-analysis-result-metadata")).toContainText(/curl_n\(X\) = div_S\(X cross n\)/i);
 
+    await page.getByTestId("mesh-analysis-nav-surface-features").click();
+    await expect(page.getByTestId("mesh-analyze-surface-feature-config")).toBeVisible();
+    await expect(page.getByTestId("mesh-analyze-surface-feature-summary")).toContainText(/uncertain.*feature edges/i);
+    await page.getByTestId("mesh-analyze-surface-feature-class").selectOption("elliptic");
+    await expect(page.getByTestId("mesh-analysis-context-category")).toHaveText("Surface Features");
+    await expect(page.getByTestId("mesh-analysis-context-result")).toContainText(/elliptic/i);
+    await expect(page.getByTestId("mesh-analysis-active-result-state")).toHaveText("Ready");
+    await expect(page.getByTestId("mesh-analysis-result-metadata")).toContainText(/normals.*curvature.*principal directions/i);
+    await page.getByTestId("mesh-analyze-surface-feature-overlay").click();
+    await expect(page.getByTestId("mesh-analyze-surface-feature-overlay")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("mesh-analyze-surface-feature-select").click();
+    await expect(page.getByTestId("mesh-inspector-tab-selection")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("mesh-inspector-tab-result").click();
+
     const breadcrumb = page.getByTestId("mesh-analysis-context-breadcrumb");
     const resultStatistics = page.getByTestId("mesh-analysis-result-statistics");
     const viewer = page.getByTestId("surface-primary-viewer");

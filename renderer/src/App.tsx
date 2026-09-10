@@ -568,6 +568,14 @@ import {
   type MeshDifferentialGeometrySummary,
 } from "./mesh/meshDifferentialGeometry";
 import {
+  DEFAULT_SURFACE_FEATURE_PARAMETERS,
+  SURFACE_FEATURE_CLASSES,
+  SURFACE_FEATURE_LABELS,
+  extractSurfaceFeatures,
+  type SurfaceFeatureClass,
+  type SurfaceFeatureExtractionResult,
+} from "./mesh/surfaceFeatureExtraction";
+import {
   MESH_QUALITY_METRIC_OPTIONS,
   selectMeshActiveAnalysisResult,
   summarizeMeshScalarField,
@@ -32073,6 +32081,24 @@ const App: React.FC = () => {
     (geometryRightPanelTab !== "selection" ||
       geometryProbeSelectionMode === "object");
   const [analysisFocusedSection, setAnalysisFocusedSection] = useState<AnalysisFocusedSection>("vector-calculus");
+  const [surfaceFeatureClass, setSurfaceFeatureClass] = useState<SurfaceFeatureClass>("high-curvature");
+  const [surfaceFeatureOverlayVisible, setSurfaceFeatureOverlayVisible] = useState(false);
+  const [surfaceFeatureShowEdges, setSurfaceFeatureShowEdges] = useState(true);
+  const [surfaceFeatureCurvatureThreshold, setSurfaceFeatureCurvatureThreshold] = useState(
+    DEFAULT_SURFACE_FEATURE_PARAMETERS.curvatureThreshold
+  );
+  const [surfaceFeatureGaussianTolerance, setSurfaceFeatureGaussianTolerance] = useState(
+    DEFAULT_SURFACE_FEATURE_PARAMETERS.gaussianZeroTolerance
+  );
+  const [surfaceFeatureUmbilicTolerance, setSurfaceFeatureUmbilicTolerance] = useState(
+    DEFAULT_SURFACE_FEATURE_PARAMETERS.umbilicTolerance
+  );
+  const [surfaceFeatureUncertaintyBand, setSurfaceFeatureUncertaintyBand] = useState(
+    DEFAULT_SURFACE_FEATURE_PARAMETERS.uncertaintyRelativeBand
+  );
+  const [surfaceFeatureSharpAngle, setSurfaceFeatureSharpAngle] = useState(
+    DEFAULT_SURFACE_FEATURE_PARAMETERS.sharpEdgeAngleDeg
+  );
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [displayMode, setDisplayMode] = useState<DisplayMode>(() => {
     if (IS_REPLAY_MODE) return "workspace";
@@ -46150,6 +46176,128 @@ case "mobius":
     });
   }, [activeMeshAnalysisIdentity, surfaceMeshCurvatureComputation]);
 
+  const surfaceFeatureParameters = useMemo(() => ({
+    version: 1,
+    curvatureThreshold: Math.max(0, surfaceFeatureCurvatureThreshold),
+    gaussianZeroTolerance: Math.max(0, surfaceFeatureGaussianTolerance),
+    umbilicTolerance: Math.max(0, surfaceFeatureUmbilicTolerance),
+    uncertaintyRelativeBand: clampNumber(surfaceFeatureUncertaintyBand, 0, 1),
+    sharpEdgeAngleDeg: clampNumber(surfaceFeatureSharpAngle, 0, 180),
+  }), [
+    surfaceFeatureCurvatureThreshold,
+    surfaceFeatureGaussianTolerance,
+    surfaceFeatureSharpAngle,
+    surfaceFeatureUmbilicTolerance,
+    surfaceFeatureUncertaintyBand,
+  ]);
+  const cachedSurfaceFeatureResult = useMemo(
+    () => getMeshAnalysisResultForParameters<SurfaceFeatureExtractionResult>(
+      meshAnalysisResultStore,
+      activeMeshAnalysisIdentity,
+      "surface-features",
+      surfaceFeatureParameters,
+      "classification-v1"
+    ),
+    [activeMeshAnalysisIdentity, meshAnalysisResultStore, surfaceFeatureParameters]
+  );
+  const surfaceFeatureComputation = useMemo(() => {
+    if (surfaceViewerKind !== "mesh" || !surfaceMeshData || !surfaceMeshCurvatures) return null;
+    if (surfaceMeshLargeAnalysisDeferred) return null;
+    if (cachedSurfaceFeatureResult?.payload) {
+      return {
+        payload: cachedSurfaceFeatureResult.payload,
+        computeTimeMs: cachedSurfaceFeatureResult.computeTimeMs,
+        cacheHit: true,
+      };
+    }
+    const startedAt = performance.now();
+    return {
+      payload: extractSurfaceFeatures(surfaceMeshData, surfaceMeshCurvatures, surfaceFeatureParameters),
+      computeTimeMs: performance.now() - startedAt,
+      cacheHit: false,
+    };
+  }, [
+    cachedSurfaceFeatureResult,
+    surfaceFeatureParameters,
+    surfaceMeshCurvatures,
+    surfaceMeshData,
+    surfaceMeshLargeAnalysisDeferred,
+    surfaceViewerKind,
+  ]);
+  const surfaceFeatureResult = surfaceFeatureComputation?.payload ?? null;
+  useEffect(() => {
+    if (!activeMeshAnalysisIdentity || !surfaceFeatureComputation) return;
+    setMeshAnalysisResultStore((previous) => {
+      const existing = getMeshAnalysisResult<SurfaceFeatureExtractionResult>(
+        previous,
+        activeMeshAnalysisIdentity,
+        "surface-features",
+        "classification-v1"
+      );
+      if (
+        existing?.payload === surfaceFeatureComputation.payload &&
+        existing.parameterHash === JSON.stringify(surfaceFeatureParameters)
+      ) return previous;
+      const dependencySpecs = [
+        ["normals", "area-weighted-v1"],
+        ["curvature", "discrete-differential-geometry-v2"],
+        ["principal-directions", "shape-operator-v2"],
+      ] as const;
+      const dependencies = dependencySpecs.map(([kind, variant]) => {
+        const dependency = getMeshAnalysisResult(previous, activeMeshAnalysisIdentity, kind, variant);
+        return {
+          kind,
+          variant,
+          state: dependency?.state ?? "stale" as MeshAnalysisResultState,
+          key: meshAnalysisResultKey(activeMeshAnalysisIdentity, kind, variant),
+          resultVersion: dependency?.resultVersion,
+        };
+      });
+      if (dependencies.some((dependency) => dependency.state !== "ready")) return previous;
+      return upsertMeshAnalysisResult(previous, {
+        kind: "surface-features",
+        variant: "classification-v1",
+        mesh: activeMeshAnalysisIdentity,
+        parameters: surfaceFeatureParameters,
+        dependencies,
+        payload: surfaceFeatureComputation.payload,
+        computeTimeMs: surfaceFeatureComputation.computeTimeMs,
+      });
+    });
+  }, [activeMeshAnalysisIdentity, surfaceFeatureComputation, surfaceFeatureParameters]);
+
+  const handleSelectSurfaceFeatureMembers = useCallback(() => {
+    const mask = surfaceFeatureResult?.vertexMasks[surfaceFeatureClass];
+    const samples = surfaceSampleSet?.samples;
+    if (!mask || !samples?.length) {
+      setSurfaceMeshTopologyStatus("Surface-feature selection is unavailable until mesh vertex samples are ready.");
+      return;
+    }
+    const selected = new Uint8Array(samples.length);
+    let count = 0;
+    for (let sampleIndex = 0; sampleIndex < samples.length; sampleIndex += 1) {
+      const vertex = samples[sampleIndex].vertexIndex ?? (samples.length === mask.length ? sampleIndex : -1);
+      if (vertex < 0 || vertex >= mask.length || !mask[vertex]) continue;
+      selected[sampleIndex] = 1;
+      count += 1;
+    }
+    if (!count) {
+      setSurfaceMeshTopologyStatus(`No sampled ${SURFACE_FEATURE_LABELS[surfaceFeatureClass].toLowerCase()} members are available.`);
+      return;
+    }
+    setSelection(null);
+    setSelectionSeed(null);
+    setSelectionMaskOverride({ selected, count });
+    setSelectionMask({ selected, count });
+    setSelectRegionEnabled(true);
+    setSelectionOverlayVisible(true);
+    setAnalysisFocusedSection("surface-features");
+    setRightPanelTab("inspector");
+    setMeshWorkspaceRequestedInspectorTab(null);
+    window.setTimeout(() => setMeshWorkspaceRequestedInspectorTab("selection"), 0);
+    setSurfaceMeshTopologyStatus(`${SURFACE_FEATURE_LABELS[surfaceFeatureClass]} selected ${count.toLocaleString()} mesh samples.`);
+  }, [surfaceFeatureClass, surfaceFeatureResult, surfaceSampleSet]);
+
   const meshFieldCalculusPrepared = useMemo(() => {
     if (surfaceViewerKind !== "mesh" || !surfaceMeshData?.positions?.length || surfaceMeshLargeAnalysisDeferred) return null;
     return prepareMeshFieldCalculus(surfaceMeshData);
@@ -54429,20 +54577,70 @@ case "mobius":
     meshQualityReport?.metrics.dihedralAngleDeg.avg != null && Number.isFinite(meshQualityReport.metrics.dihedralAngleDeg.avg)
       ? `dihedral avg ${meshQualityReport.metrics.dihedralAngleDeg.avg.toFixed(1)} deg`
       : null;
+  const surfaceFeatureOverlayPointSets = useMemo<OverlayPointSet[] | null>(() => {
+    if (!surfaceFeatureOverlayVisible || !surfaceFeatureResult || !surfaceMeshData) return null;
+    const indices = surfaceFeatureResult.vertexSets[surfaceFeatureClass];
+    if (!indices.length) return null;
+    const maxPoints = 5000;
+    const stride = Math.max(1, Math.ceil(indices.length / maxPoints));
+    const points: { x: number; y: number; z: number }[] = [];
+    for (let offset = 0; offset < indices.length; offset += stride) {
+      const vertex = indices[offset];
+      const base = vertex * 3;
+      points.push({
+        x: Number(surfaceMeshData.positions[base]),
+        y: Number(surfaceMeshData.positions[base + 1]),
+        z: Number(surfaceMeshData.positions[base + 2]),
+      });
+    }
+    const colors: Record<SurfaceFeatureClass, number> = {
+      "high-curvature": 0xef4444,
+      elliptic: 0x22c55e,
+      hyperbolic: 0x8b5cf6,
+      parabolic: 0xf59e0b,
+      umbilic: 0x06b6d4,
+    };
+    return [{ points, color: colors[surfaceFeatureClass], size: 0.095, opacity: 0.94 }];
+  }, [surfaceFeatureClass, surfaceFeatureOverlayVisible, surfaceFeatureResult, surfaceMeshData]);
+  const surfaceFeatureOverlayPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (!surfaceFeatureOverlayVisible || !surfaceFeatureResult) return null;
+    const groups: OverlayPolylineGroup[] = [];
+    const convert = (lines: SurfaceFeatureExtractionResult["polylines"]["feature"]): PolylineSet =>
+      lines.map((line) => line.map(([x, y, z]) => ({ x, y, z })));
+    if (surfaceFeatureShowEdges && surfaceFeatureResult.polylines.feature.length) {
+      groups.push({
+        lines: limitPolylineSet(convert(surfaceFeatureResult.polylines.feature), 6000),
+        color: 0xdc2626,
+        opacity: 0.92,
+        radiusScale: 1.35,
+      });
+    }
+    if (surfaceFeatureClass === "parabolic" && surfaceFeatureResult.polylines.parabolic.length) {
+      groups.push({
+        lines: limitPolylineSet(convert(surfaceFeatureResult.polylines.parabolic), 6000),
+        color: 0xf59e0b,
+        opacity: 0.98,
+        radiusScale: 1.55,
+      });
+    }
+    return groups.length ? groups : null;
+  }, [surfaceFeatureClass, surfaceFeatureOverlayVisible, surfaceFeatureResult, surfaceFeatureShowEdges]);
   const meshViewerOverlayPointSets = useMemo<OverlayPointSet[] | null>(() => {
     const sets: OverlayPointSet[] = [];
     if (combinedOverlayPointSets?.length) sets.push(...combinedOverlayPointSets);
+    if (surfaceFeatureOverlayPointSets?.length) sets.push(...surfaceFeatureOverlayPointSets);
     if (meshBooleanReviewProblemOverlays.pointSets?.length) sets.push(...meshBooleanReviewProblemOverlays.pointSets);
     if (meshSelectionHighlightOverlays.pointSets.length) sets.push(...meshSelectionHighlightOverlays.pointSets);
     return sets.length ? sets : null;
-  }, [combinedOverlayPointSets, meshBooleanReviewProblemOverlays.pointSets, meshSelectionHighlightOverlays.pointSets]);
+  }, [combinedOverlayPointSets, meshBooleanReviewProblemOverlays.pointSets, meshSelectionHighlightOverlays.pointSets, surfaceFeatureOverlayPointSets]);
   const meshViewerOverlayPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     const groups: OverlayPolylineGroup[] = [];
     if (combinedOverlayPolylineGroups?.length) groups.push(...combinedOverlayPolylineGroups);
+    if (surfaceFeatureOverlayPolylineGroups?.length) groups.push(...surfaceFeatureOverlayPolylineGroups);
     if (meshBooleanReviewProblemOverlays.polylineGroups?.length) groups.push(...meshBooleanReviewProblemOverlays.polylineGroups);
     if (meshSelectionHighlightOverlays.polylineGroups.length) groups.push(...meshSelectionHighlightOverlays.polylineGroups);
     return groups.length ? groups : null;
-  }, [combinedOverlayPolylineGroups, meshBooleanReviewProblemOverlays.polylineGroups, meshSelectionHighlightOverlays.polylineGroups]);
+  }, [combinedOverlayPolylineGroups, meshBooleanReviewProblemOverlays.polylineGroups, meshSelectionHighlightOverlays.polylineGroups, surfaceFeatureOverlayPolylineGroups]);
   const meshUnifiedSelectionFilterStatus =
     meshUnifiedSelection && !meshUnifiedSelectionFilterResult.accepted
       ? meshUnifiedSelectionFilterResult.reasons[0] ?? "Selection filtered out"
@@ -68045,6 +68243,10 @@ case "mobius":
     showRidges,
     showValleys,
     showCurvatureLines,
+    surfaceFeatures: surfaceFeatureResult,
+    surfaceFeatureClass,
+    surfaceFeatureCacheHit: surfaceFeatureComputation?.cacheHit ?? false,
+    surfaceFeatureUpdatedAt: cachedSurfaceFeatureResult?.updatedAt ?? null,
     curvatureLineField,
     curvatureSeedSource,
     curvatureMaxSteps,
@@ -70997,6 +71199,34 @@ case "mobius":
                 calculusError={calculusError}
                 showCurvatureLines={showCurvatureLines}
                 onToggleCurvatureLines={() => setShowCurvatureLines((v) => !v)}
+                surfaceFeatureResult={surfaceFeatureResult}
+                surfaceFeatureClass={surfaceFeatureClass}
+                onChangeSurfaceFeatureClass={(featureClass) => {
+                  setSurfaceFeatureClass(featureClass);
+                  setAnalysisFocusedSection("surface-features");
+                }}
+                surfaceFeatureOverlayVisible={surfaceFeatureOverlayVisible}
+                onToggleSurfaceFeatureOverlay={() => setSurfaceFeatureOverlayVisible((visible) => !visible)}
+                surfaceFeatureShowEdges={surfaceFeatureShowEdges}
+                onToggleSurfaceFeatureEdges={() => setSurfaceFeatureShowEdges((visible) => !visible)}
+                surfaceFeatureCurvatureThreshold={surfaceFeatureCurvatureThreshold}
+                onChangeSurfaceFeatureCurvatureThreshold={setSurfaceFeatureCurvatureThreshold}
+                surfaceFeatureGaussianTolerance={surfaceFeatureGaussianTolerance}
+                onChangeSurfaceFeatureGaussianTolerance={setSurfaceFeatureGaussianTolerance}
+                surfaceFeatureUmbilicTolerance={surfaceFeatureUmbilicTolerance}
+                onChangeSurfaceFeatureUmbilicTolerance={setSurfaceFeatureUmbilicTolerance}
+                surfaceFeatureUncertaintyBand={surfaceFeatureUncertaintyBand}
+                onChangeSurfaceFeatureUncertaintyBand={setSurfaceFeatureUncertaintyBand}
+                surfaceFeatureSharpAngle={surfaceFeatureSharpAngle}
+                onChangeSurfaceFeatureSharpAngle={setSurfaceFeatureSharpAngle}
+                surfaceFeatureCacheHit={surfaceFeatureComputation?.cacheHit ?? false}
+                surfaceFeatureComputeTimeMs={surfaceFeatureComputation?.computeTimeMs ?? null}
+                surfaceFeatureSelectionAvailable={
+                  !!surfaceFeatureResult && !!surfaceSampleSet?.samples.some((sample, index) =>
+                    (sample.vertexIndex ?? (surfaceSampleSet.samples.length === surfaceFeatureResult.summary.vertexCount ? index : -1)) >= 0
+                  )
+                }
+                onSelectSurfaceFeatureMembers={handleSelectSurfaceFeatureMembers}
                 curvatureLineField={curvatureLineField}
                 onChangeCurvatureLineField={setCurvatureLineField}
                 curvatureSeedSource={curvatureSeedSource}
@@ -75246,6 +75476,7 @@ case "mobius":
                             ["differential-geometry", "Differential geometry", meshAnalyzeCanShowCurvature ? "ready" : "waiting"],
                             ["vector-calculus", "Fields", surfaceScalarFields.size || surfaceVectorFields.size ? "ready" : "available"],
                             ["curvature-lines", "Surface features", showCurvatureLines || showPrincipalDirections ? "active" : "available"],
+                            ["surface-features", "Feature classification", surfaceFeatureResult ? (surfaceFeatureOverlayVisible ? "active" : "ready") : "waiting"],
                             ["ridges-valleys", "Ridges / valleys", showRidges || showValleys ? "active" : "available"],
                             ["chart-analysis", "Charts & statistics", showChartGrid ? "active" : "available"],
                             ["mesh-quality", "Mesh quality", meshQualityBusy ? `${Math.round(meshQualityProgress * 100)}%` : meshQualityReport ? "ready" : "waiting"],
@@ -75370,6 +75601,61 @@ case "mobius":
                                 <button type="button" onClick={() => { setShowPrincipalDirections(true); setMeshAnalyzeViewPreset("directions"); }}>Prepare directions</button>
                                 <button type="button" onClick={() => { setShowCurvatureLines(true); setCurvatureRebuildToken((value) => value + 1); }}>Trace curvature lines</button>
                               </div>
+                            </div>
+                          )}
+                          {analysisFocusedSection === "surface-features" && (
+                            <div data-testid="mesh-analyze-surface-feature-config" style={{ display: "grid", gap: 6, fontSize: 10.5 }}>
+                              <div style={{ color: surfaceFeatureResult ? "#166534" : "#64748b", fontWeight: 800 }}>
+                                {surfaceFeatureResult
+                                  ? `${surfaceFeatureComputation?.cacheHit ? "Cached" : "Current"} classification · ${surfaceFeatureResult.summary.validVertexCount.toLocaleString()} valid vertices`
+                                  : "Waiting for normals, curvature, and principal directions"}
+                              </div>
+                              <label style={{ display: "grid", gap: 3 }}>
+                                <span style={{ fontWeight: 800 }}>Candidate class</span>
+                                <select
+                                  data-testid="mesh-analyze-surface-feature-class"
+                                  value={surfaceFeatureClass}
+                                  onChange={(event) => setSurfaceFeatureClass(event.target.value as SurfaceFeatureClass)}
+                                  disabled={!surfaceFeatureResult}
+                                >
+                                  {SURFACE_FEATURE_CLASSES.map((featureClass) => (
+                                    <option key={featureClass} value={featureClass}>
+                                      {SURFACE_FEATURE_LABELS[featureClass]}
+                                      {surfaceFeatureResult ? ` (${surfaceFeatureResult.summary.classCounts[featureClass].toLocaleString()})` : ""}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  data-testid="mesh-analyze-surface-feature-overlay"
+                                  onClick={() => setSurfaceFeatureOverlayVisible((visible) => !visible)}
+                                  disabled={!surfaceFeatureResult}
+                                  aria-pressed={surfaceFeatureOverlayVisible}
+                                >
+                                  {surfaceFeatureOverlayVisible ? "Hide overlay" : "Show overlay"}
+                                </button>
+                                <button
+                                  type="button"
+                                  data-testid="mesh-analyze-surface-feature-select"
+                                  onClick={handleSelectSurfaceFeatureMembers}
+                                  disabled={
+                                    !surfaceFeatureResult ||
+                                    !surfaceSampleSet?.samples.some((sample, index) =>
+                                      (sample.vertexIndex ?? (surfaceSampleSet.samples.length === surfaceFeatureResult.summary.vertexCount ? index : -1)) >= 0
+                                    ) ||
+                                    !surfaceFeatureResult.summary.classCounts[surfaceFeatureClass]
+                                  }
+                                >
+                                  Select members
+                                </button>
+                              </div>
+                              {surfaceFeatureResult && (
+                                <div data-testid="mesh-analyze-surface-feature-summary" style={{ color: "#475467" }}>
+                                  {surfaceFeatureResult.summary.classCounts[surfaceFeatureClass].toLocaleString()} members · {surfaceFeatureResult.summary.uncertainVertexCount.toLocaleString()} uncertain · {surfaceFeatureResult.summary.featureEdgeCount.toLocaleString()} feature edges
+                                </div>
+                              )}
                             </div>
                           )}
                           {analysisFocusedSection === "ridges-valleys" && (
@@ -108213,6 +108499,27 @@ type SurfacesLeftPanelProps = {
   calculusError: string | null;
   showCurvatureLines: boolean;
   onToggleCurvatureLines: () => void;
+  surfaceFeatureResult: SurfaceFeatureExtractionResult | null;
+  surfaceFeatureClass: SurfaceFeatureClass;
+  onChangeSurfaceFeatureClass: (featureClass: SurfaceFeatureClass) => void;
+  surfaceFeatureOverlayVisible: boolean;
+  onToggleSurfaceFeatureOverlay: () => void;
+  surfaceFeatureShowEdges: boolean;
+  onToggleSurfaceFeatureEdges: () => void;
+  surfaceFeatureCurvatureThreshold: number;
+  onChangeSurfaceFeatureCurvatureThreshold: (value: number) => void;
+  surfaceFeatureGaussianTolerance: number;
+  onChangeSurfaceFeatureGaussianTolerance: (value: number) => void;
+  surfaceFeatureUmbilicTolerance: number;
+  onChangeSurfaceFeatureUmbilicTolerance: (value: number) => void;
+  surfaceFeatureUncertaintyBand: number;
+  onChangeSurfaceFeatureUncertaintyBand: (value: number) => void;
+  surfaceFeatureSharpAngle: number;
+  onChangeSurfaceFeatureSharpAngle: (value: number) => void;
+  surfaceFeatureCacheHit: boolean;
+  surfaceFeatureComputeTimeMs: number | null;
+  surfaceFeatureSelectionAvailable: boolean;
+  onSelectSurfaceFeatureMembers: () => void;
   curvatureLineField: "d1" | "d2";
   onChangeCurvatureLineField: (field: "d1" | "d2") => void;
   curvatureSeedSource: "global" | "selection";
@@ -108948,6 +109255,27 @@ onChangeImplicitExpr,
   calculusError,
   showCurvatureLines,
   onToggleCurvatureLines,
+  surfaceFeatureResult,
+  surfaceFeatureClass,
+  onChangeSurfaceFeatureClass,
+  surfaceFeatureOverlayVisible,
+  onToggleSurfaceFeatureOverlay,
+  surfaceFeatureShowEdges,
+  onToggleSurfaceFeatureEdges,
+  surfaceFeatureCurvatureThreshold,
+  onChangeSurfaceFeatureCurvatureThreshold,
+  surfaceFeatureGaussianTolerance,
+  onChangeSurfaceFeatureGaussianTolerance,
+  surfaceFeatureUmbilicTolerance,
+  onChangeSurfaceFeatureUmbilicTolerance,
+  surfaceFeatureUncertaintyBand,
+  onChangeSurfaceFeatureUncertaintyBand,
+  surfaceFeatureSharpAngle,
+  onChangeSurfaceFeatureSharpAngle,
+  surfaceFeatureCacheHit,
+  surfaceFeatureComputeTimeMs,
+  surfaceFeatureSelectionAvailable,
+  onSelectSurfaceFeatureMembers,
   curvatureLineField,
   onChangeCurvatureLineField,
   curvatureSeedSource,
@@ -109331,12 +109659,6 @@ onChangeImplicitExpr,
   const [differentialDirectionD1, setDifferentialDirectionD1] = useState(true);
   const [differentialDirectionD2, setDifferentialDirectionD2] = useState(true);
   const [differentialAsymptoticDirections, setDifferentialAsymptoticDirections] = useState(false);
-  const [differentialParabolicLines, setDifferentialParabolicLines] = useState(false);
-  const [differentialRidgesCrests, setDifferentialRidgesCrests] = useState(false);
-  const [differentialUmbilicPoints, setDifferentialUmbilicPoints] = useState(false);
-  const [differentialHighCurvatureZones, setDifferentialHighCurvatureZones] = useState(false);
-  const [differentialFlatZones, setDifferentialFlatZones] = useState(false);
-  const [differentialSaddleZones, setDifferentialSaddleZones] = useState(false);
   const [differentialSmoothing, setDifferentialSmoothing] = useState<DifferentialGeometrySmoothing>("none");
   const [differentialRemeshBeforeAnalysis, setDifferentialRemeshBeforeAnalysis] =
     useState<DifferentialGeometryBinaryToggle>("off");
@@ -113525,13 +113847,8 @@ onChangeImplicitExpr,
                   </div>
 
                   <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 6 }}>Feature detection</div>
-                  <div style={{ display: "grid", gap: 4, fontSize: 11, marginBottom: 10 }}>
-                    <label><input type="checkbox" checked={differentialParabolicLines} onChange={(e) => setDifferentialParabolicLines(e.target.checked)} style={{ marginRight: 6 }} />Parabolic lines K = 0</label>
-                    <label><input type="checkbox" checked={differentialRidgesCrests} onChange={(e) => setDifferentialRidgesCrests(e.target.checked)} style={{ marginRight: 6 }} />Ridges / crests</label>
-                    <label><input type="checkbox" checked={differentialUmbilicPoints} onChange={(e) => setDifferentialUmbilicPoints(e.target.checked)} style={{ marginRight: 6 }} />Umbilic points</label>
-                    <label><input type="checkbox" checked={differentialHighCurvatureZones} onChange={(e) => setDifferentialHighCurvatureZones(e.target.checked)} style={{ marginRight: 6 }} />High-curvature zones</label>
-                    <label><input type="checkbox" checked={differentialFlatZones} onChange={(e) => setDifferentialFlatZones(e.target.checked)} style={{ marginRight: 6 }} />Flat zones</label>
-                    <label><input type="checkbox" checked={differentialSaddleZones} onChange={(e) => setDifferentialSaddleZones(e.target.checked)} style={{ marginRight: 6 }} />Saddle zones</label>
+                  <div style={{ fontSize: 11, color: "#475467", marginBottom: 10 }}>
+                    Curvature topology, umbilics, high-curvature regions, uncertainty, and feature edges are produced by the cached Surface Features analysis below. Ridge and valley tracing remains a separate analysis.
                   </div>
                 </>
               )}
@@ -113996,6 +114313,117 @@ onChangeImplicitExpr,
                 Rebuild
               </button>
             </div>
+          </div>
+        </details>
+
+        <details
+          data-testid="mesh-surface-features"
+          style={analysisAccordionStyle}
+          onToggle={(event) => handleAnalysisSectionToggle("surface-features", event)}
+        >
+          <summary style={analysisAccordionSummaryStyle}>Extract surface features</summary>
+          <div style={{ marginTop: 8, marginBottom: 6, marginLeft: 4, display: "grid", gap: 9, fontSize: 11 }}>
+            {!surfaceFeatureResult ? (
+              <div style={{ color: "#667085" }}>
+                {viewerKind === "mesh"
+                  ? "Feature extraction is waiting for cached normals, curvature, and principal directions."
+                  : "Load a mesh to extract reusable surface features."}
+              </div>
+            ) : (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                  <strong style={{ color: "#166534" }}>Ready · {surfaceFeatureCacheHit ? "cached" : "computed"}</strong>
+                  <span style={{ color: "#64748b" }}>
+                    {surfaceFeatureComputeTimeMs == null ? "" : `${surfaceFeatureComputeTimeMs.toFixed(2)} ms`}
+                  </span>
+                </div>
+                <div style={{ color: "#475467" }}>
+                  mesh → normals → curvature → principal directions → classifications
+                </div>
+                <label style={{ display: "grid", gap: 3 }}>
+                  <span>Classification</span>
+                  <select
+                    data-testid="surface-feature-class"
+                    value={surfaceFeatureClass}
+                    onChange={(event) => onChangeSurfaceFeatureClass(event.target.value as SurfaceFeatureClass)}
+                    style={{ fontSize: 11, padding: "3px 5px" }}
+                  >
+                    {SURFACE_FEATURE_CLASSES.map((featureClass) => (
+                      <option key={featureClass} value={featureClass}>
+                        {SURFACE_FEATURE_LABELS[featureClass]} ({surfaceFeatureResult.summary.classCounts[featureClass].toLocaleString()})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                    <input
+                      data-testid="surface-feature-overlay"
+                      type="checkbox"
+                      checked={surfaceFeatureOverlayVisible}
+                      onChange={onToggleSurfaceFeatureOverlay}
+                    />
+                    Show overlay
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                    <input
+                      type="checkbox"
+                      checked={surfaceFeatureShowEdges}
+                      onChange={onToggleSurfaceFeatureEdges}
+                      disabled={!surfaceFeatureOverlayVisible}
+                    />
+                    Feature edges
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  data-testid="surface-feature-select-members"
+                  onClick={onSelectSurfaceFeatureMembers}
+                  disabled={!surfaceFeatureSelectionAvailable || surfaceFeatureResult.summary.classCounts[surfaceFeatureClass] === 0}
+                  style={{ width: "fit-content", padding: "4px 8px", fontWeight: 700 }}
+                >
+                  Select {SURFACE_FEATURE_LABELS[surfaceFeatureClass].toLowerCase()} members
+                </button>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "3px 10px", color: "#475467" }}>
+                  <span>Valid vertices</span><strong>{surfaceFeatureResult.summary.validVertexCount.toLocaleString()}</strong>
+                  <span>Uncertain vertices</span><strong>{surfaceFeatureResult.summary.uncertainVertexCount.toLocaleString()}</strong>
+                  <span>Sharp / feature edges</span><strong>{surfaceFeatureResult.summary.sharpEdgeCount.toLocaleString()} / {surfaceFeatureResult.summary.featureEdgeCount.toLocaleString()}</strong>
+                  <span>Parabolic segments</span><strong>{surfaceFeatureResult.summary.parabolicSegmentCount.toLocaleString()}</strong>
+                </div>
+              </>
+            )}
+
+            <details>
+              <summary style={{ cursor: "pointer", fontWeight: 700 }}>Tolerances and uncertainty</summary>
+              <div style={{ display: "grid", gap: 7, marginTop: 7 }}>
+                {([
+                  ["Curvature threshold", surfaceFeatureCurvatureThreshold, onChangeSurfaceFeatureCurvatureThreshold, 0.01],
+                  ["Gaussian zero tolerance", surfaceFeatureGaussianTolerance, onChangeSurfaceFeatureGaussianTolerance, 0.005],
+                  ["Umbilic tolerance |k1-k2|", surfaceFeatureUmbilicTolerance, onChangeSurfaceFeatureUmbilicTolerance, 0.005],
+                  ["Uncertainty relative band", surfaceFeatureUncertaintyBand, onChangeSurfaceFeatureUncertaintyBand, 0.01],
+                  ["Sharp edge angle (deg)", surfaceFeatureSharpAngle, onChangeSurfaceFeatureSharpAngle, 1],
+                ] as const).map(([label, value, onChange, step]) => (
+                  <label key={label} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 82px", gap: 8, alignItems: "center" }}>
+                    <span>{label}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={label === "Uncertainty relative band" ? 1 : label === "Sharp edge angle (deg)" ? 180 : undefined}
+                      step={step}
+                      value={value}
+                      onChange={(event) => {
+                        const next = Number(event.target.value);
+                        if (Number.isFinite(next)) onChange(next);
+                      }}
+                      style={{ width: 78, boxSizing: "border-box" }}
+                    />
+                  </label>
+                ))}
+                <div style={{ color: "#64748b" }}>
+                  Uncertainty combines differential-geometry warnings with configurable bands around every decision threshold.
+                </div>
+              </div>
+            </details>
           </div>
         </details>
 

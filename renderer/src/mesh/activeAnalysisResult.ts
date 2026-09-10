@@ -1,5 +1,6 @@
 import type { MeshDiagnosticsAnalysisPayload } from "./analysisResultStore";
 import type { MeshFieldCalculusResult } from "./meshSurfaceFieldCalculus";
+import type { SurfaceFeatureClass, SurfaceFeatureExtractionResult } from "./surfaceFeatureExtraction";
 import {
   MESH_TRIANGLE_QUALITY_DEFINITIONS,
   meshTriangleQualityDefinition,
@@ -11,6 +12,7 @@ export type MeshAnalysisFocusedSection =
   | "differential-geometry"
   | "vector-calculus"
   | "curvature-lines"
+  | "surface-features"
   | "ridges-valleys"
   | "chart-analysis"
   | "mesh-quality"
@@ -163,6 +165,10 @@ export type MeshActiveAnalysisResultInput = {
   showRidges: boolean;
   showValleys: boolean;
   showCurvatureLines: boolean;
+  surfaceFeatures: SurfaceFeatureExtractionResult | null;
+  surfaceFeatureClass: SurfaceFeatureClass;
+  surfaceFeatureCacheHit: boolean;
+  surfaceFeatureUpdatedAt: number | null;
   curvatureLineField: "d1" | "d2";
   curvatureSeedSource: "global" | "selection";
   curvatureMaxSteps: number;
@@ -407,6 +413,29 @@ export const selectMeshActiveAnalysisResult = (
           { label: "Computed", value: timestamp(input.calculusUpdatedAt) },
         ] : []),
       ],
+    };
+  }
+
+  if (input.section === "surface-features") {
+    const features = input.surfaceFeatures;
+    return {
+      category: "Surface Features",
+      result: features ? `Feature classification: ${input.surfaceFeatureClass}` : "Feature classification",
+      state: features ? "Ready" : input.deferred ? "Deferred" : "Unavailable",
+      domain: features ? `${formatCount(features.summary.vertexCount)} vertices / ${formatCount(features.summary.faceCount)} faces` : undefined,
+      statistics: features ? [
+        { label: "Class members", value: formatCount(features.summary.classCounts[input.surfaceFeatureClass]) },
+        { label: "Uncertain vertices", value: formatCount(features.summary.uncertainVertexCount) },
+        { label: "Feature edges", value: formatCount(features.summary.featureEdgeCount) },
+        { label: "Parabolic segments", value: formatCount(features.summary.parabolicSegmentCount) },
+      ] : [],
+      metadata: features ? [
+        { label: "Dependencies", value: "normals → curvature → principal directions" },
+        { label: "Cache", value: input.surfaceFeatureCacheHit ? "Cached result" : "Current result" },
+        { label: "Computed", value: timestamp(input.surfaceFeatureUpdatedAt) },
+        { label: "Gaussian zero tolerance", value: formatNumber(features.parameters.gaussianZeroTolerance) },
+        { label: "Umbilic tolerance", value: formatNumber(features.parameters.umbilicTolerance) },
+      ] : [],
     };
   }
 
