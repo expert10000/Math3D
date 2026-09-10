@@ -9,6 +9,7 @@ import {
   getGeometryAnalysisDefinition,
   getGeometryAnalysisResult,
   registerGeometryAnalysis,
+  resolveGeometryAnalysisDependencies,
   upsertGeometryAnalysisResult,
 } from "./analysisInfrastructure";
 
@@ -48,6 +49,14 @@ describe("Geometry shared analysis infrastructure", () => {
       computeTimeMs: 0.25,
       now: 11,
     });
+    expect(resolveGeometryAnalysisDependencies(registry, store, identity, "surface-area-density")).toEqual([
+      expect.objectContaining({
+        kind: "basic-metrics",
+        variant: "default",
+        state: "ready",
+        resultVersion: 1,
+      }),
+    ]);
     expect(getGeometryAnalysisResult<{ area: number }>(store, identity, "basic-metrics")?.payload?.area).toBe(0.5);
     expect(store.history[0]).toMatchObject({ backend: "Geometry analytical core", identity: { sourceObjectId: "object-7" } });
   });

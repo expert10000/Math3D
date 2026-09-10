@@ -57,7 +57,7 @@ export const resolveMeshAnalysisDependencies = (
   kind: MeshAnalysisResultKind,
   variant = "default"
 ): MeshAnalysisResultDependency[] => resolveAnalysisDependencies(
-  registry as AnalysisRegistry<MeshAnalysisResultKind, string>,
+  registry,
   store,
   mesh,
   kind,

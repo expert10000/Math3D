@@ -68,8 +68,12 @@ export const listAnalysisDefinitions = <TKind extends string, TDomain extends st
   registry: AnalysisRegistry<TKind, TDomain>
 ): AnalysisDefinition<TKind, TDomain>[] => [...registry.values()];
 
-export const resolveAnalysisDependencies = <TKind extends string, TIdentity extends AnalysisIdentity>(
-  registry: AnalysisRegistry<TKind, string>,
+export const resolveAnalysisDependencies = <
+  TKind extends string,
+  TIdentity extends AnalysisIdentity,
+  TDomain extends string = AnalysisDomain,
+>(
+  registry: AnalysisRegistry<TKind, TDomain>,
   store: AnalysisResultStore<TKind, TIdentity>,
   identity: TIdentity,
   kind: TKind,

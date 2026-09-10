@@ -1,8 +1,14 @@
-import type { AnalysisIdentity, AnalysisResult, AnalysisResultStore } from "../analysis/contracts";
+import type {
+  AnalysisIdentity,
+  AnalysisResult,
+  AnalysisResultDependency,
+  AnalysisResultStore,
+} from "../analysis/contracts";
 import {
   createAnalysisRegistry,
   getAnalysisDefinition,
   registerAnalysis,
+  resolveAnalysisDependencies,
   type AnalysisDefinition,
   type AnalysisRegistry,
 } from "../analysis/registry";
@@ -28,6 +34,7 @@ export type GeometryAnalysisIdentity = AnalysisIdentity & {
 export type GeometryAnalysisDefinition = AnalysisDefinition<GeometryAnalysisResultKind>;
 export type GeometryAnalysisRegistry = AnalysisRegistry<GeometryAnalysisResultKind>;
 export type GeometryAnalysisResult<TPayload = unknown> = AnalysisResult<TPayload, GeometryAnalysisResultKind, GeometryAnalysisIdentity>;
+export type GeometryAnalysisResultDependency = AnalysisResultDependency<GeometryAnalysisResultKind>;
 export type GeometryAnalysisResultStore = AnalysisResultStore<GeometryAnalysisResultKind, GeometryAnalysisIdentity>;
 
 export const DEFAULT_GEOMETRY_ANALYSIS_DEFINITIONS: readonly GeometryAnalysisDefinition[] = [
@@ -58,6 +65,20 @@ export const getGeometryAnalysisDefinition = (
   kind: GeometryAnalysisResultKind,
   variant = "default"
 ): GeometryAnalysisDefinition | null => getAnalysisDefinition(registry, kind, variant);
+
+export const resolveGeometryAnalysisDependencies = (
+  registry: GeometryAnalysisRegistry,
+  store: GeometryAnalysisResultStore,
+  identity: GeometryAnalysisIdentity,
+  kind: GeometryAnalysisResultKind,
+  variant = "default"
+): GeometryAnalysisResultDependency[] => resolveAnalysisDependencies(
+  registry,
+  store,
+  identity,
+  kind,
+  variant
+);
 
 export const createGeometryAnalysisResultStore = (): GeometryAnalysisResultStore =>
   createAnalysisResultStore<GeometryAnalysisResultKind, GeometryAnalysisIdentity>();
