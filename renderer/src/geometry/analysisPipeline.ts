@@ -16,6 +16,11 @@ import {
   type IntrinsicParameterPoint,
 } from "./intrinsicGeometry";
 import {
+  analyzeCharacteristicGeometry,
+  type CharacteristicGeometryResult,
+  type GeometryIntersectionProbe,
+} from "./characteristicGeometry";
+import {
   computeGeometryAnalysisBasicMetrics,
   computeGeometryAnalysisTopologySummary,
   type GeometryAnalysisBasicMetrics,
@@ -124,6 +129,7 @@ export type GeometryAnalysisPayload = {
   curveAnalysis?: ExactCurveAnalysisResult;
   surfaceAnalysis?: ExactSurfaceAnalysisResult;
   intrinsicGeometry?: IntrinsicGeometryResult;
+  characteristicGeometry?: CharacteristicGeometryResult;
 };
 
 export type GeometryAnalysisExecutionContext = {
@@ -151,6 +157,17 @@ export type GeometryAnalysisExecutionContext = {
     sampleCount: number;
     gridResolution: number;
     tolerance: number;
+    endpointSemantic?: "parameter" | "picked-surface-point";
+  };
+  characteristicGeometry?: {
+    definition: GeometryAnalyticSurfaceDefinition;
+    uCount: number;
+    vCount: number;
+    tolerance: number;
+    viewDirection?: readonly [number, number, number];
+    lightDirection?: readonly [number, number, number];
+    isophoteLevel?: number;
+    intersectionProbes?: GeometryIntersectionProbe[];
   };
 };
 
@@ -450,6 +467,23 @@ const builtinImplementationEntries: Array<[GeometryAnalysisResultKind, GeometryA
       intrinsicGeometry,
     };
   }],
+  ["feature-analysis", ({ context }) => {
+    if (!context.characteristicGeometry) throw new Error("Characteristic analysis requires an analytic surface definition.");
+    const characteristicGeometry = analyzeCharacteristicGeometry(context.characteristicGeometry);
+    const outputs: GeometryAnalysisOutput[] = characteristicGeometry.layers.map((entry) => entry.polylines.length
+      ? { id: entry.id, label: entry.label, kind: "curve" as const, points: entry.polylines.flat(), closed: false }
+      : { id: entry.id, label: entry.label, kind: "table" as const, columns: ["feature", "count", "confidence", "uncertainty"], rows: [[entry.feature, entry.points.length, entry.confidence, entry.uncertainty]] });
+    outputs.push({ id: "intersection-types", label: "Intersection classifications", kind: "table", columns: ["pair", "type", "confidence", "uncertainty"], rows: characteristicGeometry.intersections.map((entry) => [entry.pair, entry.type, entry.confidence, entry.uncertainty]) });
+    characteristicGeometry.warnings.forEach((warning, index) => outputs.push({ id: `warning-${index}`, label: "Characteristic diagnostic", kind: "warning", value: warning, severity: "warning" }));
+    return {
+      algorithm: "analytic-characteristic-geometry-v1",
+      backend: "Geometry characteristic analysis core",
+      outputs,
+      summary: { ...characteristicGeometry.counts, singularityCount: characteristicGeometry.singularities.length, intersectionCount: characteristicGeometry.intersections.length, displayOnly: true },
+      warnings: characteristicGeometry.warnings,
+      characteristicGeometry,
+    };
+  }],
   ["differential-geometry", ({ snapshot }) => ({
     algorithm: "mesh-analyze-handoff-v1",
     outputs: [{ id: "handoff", label: "Mesh Analyze handoff", kind: "summary", value: "Analysis-ready mesh snapshot" }],
@@ -524,6 +558,7 @@ export const executeGeometryAnalysisRequest = (args: {
       ...(computed.curveAnalysis ? { curveAnalysis: computed.curveAnalysis } : {}),
       ...(computed.surfaceAnalysis ? { surfaceAnalysis: computed.surfaceAnalysis } : {}),
       ...(computed.intrinsicGeometry ? { intrinsicGeometry: computed.intrinsicGeometry } : {}),
+      ...(computed.characteristicGeometry ? { characteristicGeometry: computed.characteristicGeometry } : {}),
       provenance: {
         backend,
         algorithm: computed.algorithm,

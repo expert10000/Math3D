@@ -60,6 +60,7 @@ export type IntrinsicGeometryResult = {
     algorithm: string;
     exact: boolean;
     reusedEngine: "parametric" | "heat" | "CGAL" | null;
+    candidates: Array<{ engine: "parametric" | "heat" | "CGAL"; available: boolean; reason: string }>;
   };
   overlays: {
     parameterGrid: ExactSurfaceVec3[][];
@@ -259,7 +260,17 @@ export const analyzeIntrinsicGeometry = (args: {
     const angle = Math.PI * 2 * index / 48;
     return add(metricPoint.position, add(scale(basis[0], 0.25 * Math.cos(angle) / Math.max(metricPoint.localScale[0], tolerance)), scale(basis[1], 0.25 * Math.sin(angle) / Math.max(metricPoint.localScale[1], tolerance))));
   }) : [];
-  const distanceContours = preferred ? [0.25, 0.5, 0.75].map((fraction) => ({ distance: preferred.length * fraction, points: [preferred.points[Math.round(fraction * (preferred.points.length - 1))]] })) : [];
+  const startMetric = evaluateIntrinsicMetric(args.definition, start.u, start.v, tolerance);
+  const distanceContours = preferred ? [0.25, 0.5, 0.75].map((fraction) => {
+    const radius = preferred.length * fraction;
+    const points = Array.from({ length: 33 }, (_, index) => {
+      const angle = Math.PI * 2 * index / 32;
+      const u = normalizeParameter(start.u + radius * Math.cos(angle) / Math.max(startMetric.localScale[0], tolerance), args.definition.domain.u);
+      const v = normalizeParameter(start.v + radius * Math.sin(angle) / Math.max(startMetric.localScale[1], tolerance), args.definition.domain.v);
+      return args.definition.evaluate(u, v);
+    });
+    return { distance: radius, points };
+  }) : [];
   const fan = basis ? Array.from({ length: 12 }, (_, index) => ({ origin: start.surfacePoint, vector: add(scale(basis[0], Math.cos(index * Math.PI / 6)), scale(basis[1], Math.sin(index * Math.PI / 6))) })) : [];
   const directionField = paths.flatMap((path) => path.points.slice(0, -1).filter((_, index) => index % Math.max(1, Math.floor(path.points.length / 12)) === 0).map((origin, index) => ({ origin, vector: normalize(sub(path.points[Math.min(path.points.length - 1, index * Math.max(1, Math.floor(path.points.length / 12)) + 1)], origin)) })));
   const normalSection = basis ? Array.from({ length: 25 }, (_, index) => add(metricPoint.position, scale(basis[0], (index - 12) / 20))) : [];
@@ -273,11 +284,19 @@ export const analyzeIntrinsicGeometry = (args: {
     curveArcLength: preferred?.length ?? null,
     surfaceArea: analyticArea(args.definition.id) ?? integrateSurfaceArea(args.definition, resolution, tolerance),
     enclosedVolume: analyticVolume(args.definition.id),
-    geodesicCurvature: preferred ? 0 : null,
+    geodesicCurvature: exact && preferred ? 0 : null,
     normalCurvature: metricPoint.normalCurvature,
     engine: exact
-      ? { backend: "Geometry analytic intrinsic adapter", algorithm: `${args.definition.id}-canonical-geodesic-v1`, exact: true, reusedEngine: "parametric" }
-      : { backend: "Geometry parametric geodesic adapter", algorithm: "parametric-shooting-seed-v1", exact: false, reusedEngine: "parametric" },
+      ? { backend: "Geometry analytic intrinsic adapter", algorithm: `${args.definition.id}-canonical-geodesic-v1`, exact: true, reusedEngine: "parametric", candidates: [
+          { engine: "parametric", available: true, reason: "Analytic surface parameterization is available." },
+          { engine: "heat", available: false, reason: "Heat geodesics require a tessellated mesh snapshot; use the Mesh adapter." },
+          { engine: "CGAL", available: false, reason: "CGAL surface paths require a promoted mesh and mesh token." },
+        ] }
+      : { backend: "Geometry parametric geodesic adapter", algorithm: "parametric-shooting-seed-v1", exact: false, reusedEngine: "parametric", candidates: [
+          { engine: "parametric", available: true, reason: "Analytic surface parameterization is available." },
+          { engine: "heat", available: false, reason: "Heat geodesics require a tessellated mesh snapshot; use the Mesh adapter." },
+          { engine: "CGAL", available: false, reason: "CGAL surface paths require a promoted mesh and mesh token." },
+        ] },
     overlays: { parameterGrid, metricEllipse: ellipse, distanceContours, paths: paths.map(({ id, points }) => ({ id, points })), fan, directionField, normalSection },
     endpointSemantics: `${start.semantic} start and destination on surface revision ${args.definition.revision}; periodic coordinates are canonicalized while winding is preserved per path.`,
     sourceRevision: args.definition.revision,

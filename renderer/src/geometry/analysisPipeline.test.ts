@@ -343,4 +343,19 @@ describe("Geometry AnalysisRequest pipeline", () => {
     expect(execution.result.payload?.outputs.some((output) => output.kind === "curve")).toBe(true);
     expect(execution.result.payload?.summary.pathCount).toBe(3);
   });
+
+  it("publishes reusable characteristic layers and typed contacts", () => {
+    const source = snapshot(10);
+    const definition = getGeometryExactSurfacePreset("torus");
+    const request = createGeometryAnalysisRequest({ id: "request-10", kind: "feature-analysis", snapshot: source, sourceRevision: 14, domain: "surface", requestedOutputs: ["curve", "point", "table", "summary", "warning"] });
+    const execution = executeGeometryAnalysisRequest({
+      store: createGeometryAnalysisResultStore(), registry: createGeometryAnalysisRegistry(), request, snapshot: source,
+      context: { characteristicGeometry: { definition, uCount: 25, vCount: 25, tolerance: 1e-6, intersectionProbes: [{ pair: "curve-curve", distance: 0, directionA: [1, 0, 0], directionB: [0, 1, 0] }] } }, now: 110,
+    });
+    expect(execution.result.backend).toBe("Geometry characteristic analysis core");
+    expect(execution.result.payload?.characteristicGeometry?.counts["elliptic-region"]).toBeGreaterThan(0);
+    expect(execution.result.payload?.characteristicGeometry?.counts["hyperbolic-region"]).toBeGreaterThan(0);
+    expect(execution.result.payload?.characteristicGeometry?.intersections[0].type).toBe("transverse");
+    expect(execution.result.payload?.characteristicGeometry?.layers.every((entry) => entry.displayOnly)).toBe(true);
+  });
 });

@@ -321,6 +321,7 @@ import {
   type GeometryExactSurfacePresetId,
 } from "./geometry/exactSurfaceAnalysis";
 import type { IntrinsicGeometryResult } from "./geometry/intrinsicGeometry";
+import { promoteCharacteristicLayer, type CharacteristicGeometryResult } from "./geometry/characteristicGeometry";
 import { evaluateGeometryMeshReadiness } from "./geometry/meshReadiness";
 import {
   GEOMETRY_TO_MESH_PROMOTION_MODES,
@@ -1051,6 +1052,7 @@ type GeometryQuickAnalysisResultKind =
   | "curve-analysis"
   | "surface-analysis"
   | "intrinsic-geometry"
+  | "feature-analysis"
   | "differential-geometry"
   | "section-analysis";
 type GeometryQuickAnalysisResultEntry = {
@@ -1069,6 +1071,7 @@ type GeometryQuickAnalysisResultEntry = {
   curveAnalysis?: ExactCurveAnalysisResult;
   surfaceAnalysis?: ExactSurfaceAnalysisResult;
   intrinsicGeometry?: IntrinsicGeometryResult;
+  characteristicGeometry?: CharacteristicGeometryResult;
   notes?: string[];
   state: GeometryAnalysisResultState;
   backend: string;
@@ -13344,6 +13347,8 @@ const App: React.FC = () => {
   const [geometryIntrinsicStartV, setGeometryIntrinsicStartV] = useState(0.35);
   const [geometryIntrinsicDestinationU, setGeometryIntrinsicDestinationU] = useState(0.72);
   const [geometryIntrinsicDestinationV, setGeometryIntrinsicDestinationV] = useState(0.65);
+  const [geometryCharacteristicIsophoteLevel, setGeometryCharacteristicIsophoteLevel] = useState(0.5);
+  const [geometryCharacteristicLayerId, setGeometryCharacteristicLayerId] = useState("parabolic");
   const geometryExactSurfaceDefinition = useMemo(
     () => getGeometryExactSurfacePreset(geometryExactSurfacePresetId),
     [geometryExactSurfacePresetId]
@@ -13474,7 +13479,7 @@ const App: React.FC = () => {
     Object.entries(geometryAnalysisResultStore.entries)
       .map(([resultKey, result]): GeometryQuickAnalysisResultEntry | null => {
         const payload = result.payload as GeometryAnalysisPayload | null;
-        if (!payload || !["basic-metrics", "topology-summary", "curve-analysis", "surface-analysis", "intrinsic-geometry", "differential-geometry", "section-analysis"].includes(result.kind)) return null;
+        if (!payload || !["basic-metrics", "topology-summary", "curve-analysis", "surface-analysis", "intrinsic-geometry", "feature-analysis", "differential-geometry", "section-analysis"].includes(result.kind)) return null;
         const title = result.kind === "basic-metrics"
           ? "Basic metrics"
           : result.kind === "topology-summary"
@@ -13485,6 +13490,8 @@ const App: React.FC = () => {
               ? "Exact surface differential analysis"
             : result.kind === "intrinsic-geometry"
               ? "Intrinsic metric and geodesics"
+            : result.kind === "feature-analysis"
+              ? "Characteristic curves and singularities"
             : result.kind === "section-analysis"
               ? "Section analysis"
               : "Differential geometry handoff";
@@ -13504,6 +13511,7 @@ const App: React.FC = () => {
           curveAnalysis: payload.curveAnalysis,
           surfaceAnalysis: payload.surfaceAnalysis,
           intrinsicGeometry: payload.intrinsicGeometry,
+          characteristicGeometry: payload.characteristicGeometry,
           notes: payload.warnings,
           state: result.state,
           backend: result.backend,
@@ -42841,6 +42849,17 @@ const App: React.FC = () => {
       sampleCount: number;
       gridResolution: number;
       tolerance: number;
+      endpointSemantic?: "parameter" | "picked-surface-point";
+    };
+    characteristicGeometry?: {
+      definition: GeometryAnalyticSurfaceDefinition;
+      uCount: number;
+      vCount: number;
+      tolerance: number;
+      viewDirection?: readonly [number, number, number];
+      lightDirection?: readonly [number, number, number];
+      isophoteLevel?: number;
+      intersectionProbes?: import("./geometry/characteristicGeometry").GeometryIntersectionProbe[];
     };
     sampling?: {
       strategy: "exact" | "mesh" | "adaptive" | "uniform";
@@ -42889,7 +42908,7 @@ const App: React.FC = () => {
       request,
       snapshot: args.prepared.snapshot,
       selectionSnapshot: selection,
-      context: { sectionSummary: args.sectionSummary, exactCurve: args.exactCurve, exactSurface: args.exactSurface, intrinsicGeometry: args.intrinsicGeometry },
+      context: { sectionSummary: args.sectionSummary, exactCurve: args.exactCurve, exactSurface: args.exactSurface, intrinsicGeometry: args.intrinsicGeometry, characteristicGeometry: args.characteristicGeometry },
     }).store);
     setGeometryQuickAnalysisSelectedResultId(resultKey);
     return { request, resultKey };
@@ -43023,12 +43042,48 @@ const App: React.FC = () => {
       domain: "intrinsic",
       parameters: { surfaceDefinitionId: geometryExactSurfaceDefinition.id, start: [start.u, start.v], destination: [destination.u, destination.v], endpointSemantic: "picked-surface-point" },
       requestedOutputs: ["scalar", "curve", "table", "summary", "warning"],
-      intrinsicGeometry: { definition: geometryExactSurfaceDefinition, start, destination, evaluation: { u: geometryExactSurfaceParameterU, v: geometryExactSurfaceParameterV }, sampleCount: 65, gridResolution: geometryExactSurfaceResolution, tolerance: 1e-9 },
+      intrinsicGeometry: { definition: geometryExactSurfaceDefinition, start, destination, evaluation: { u: geometryExactSurfaceParameterU, v: geometryExactSurfaceParameterV }, sampleCount: 65, gridResolution: geometryExactSurfaceResolution, tolerance: 1e-9, endpointSemantic: "picked-surface-point" },
       sampling: { strategy: ["plane", "cylinder", "sphere"].includes(geometryExactSurfaceDefinition.id) ? "exact" : "adaptive", sampleCount: 65, tolerance: 1e-9 },
       precision: { mode: "adaptive", digits: 12, tolerance: 1e-9 },
     });
     setGeometryCreateActionStatus(`Intrinsic geometry ready: ${geometryExactSurfaceDefinition.label}, start to destination.`);
   }, [createSelectedGeometryAnalysisSnapshot, geometryExactSurfaceDefinition, geometryExactSurfaceParameterU, geometryExactSurfaceParameterV, geometryExactSurfaceResolution, geometryIntrinsicDestinationU, geometryIntrinsicDestinationV, geometryIntrinsicStartU, geometryIntrinsicStartV, runGeometryQuickAnalysis]);
+  const handleRunGeometryCharacteristicAnalysis = useCallback(() => {
+    const prepared = createSelectedGeometryAnalysisSnapshot();
+    if (!prepared) return;
+    runGeometryQuickAnalysis({
+      prepared,
+      kind: "feature-analysis",
+      domain: "surface",
+      parameters: { surfaceDefinitionId: geometryExactSurfaceDefinition.id, gridResolution: geometryExactSurfaceResolution, isophoteLevel: geometryCharacteristicIsophoteLevel, layers: ["umbilic", "parabolic", "regions", "ridges", "valleys", "silhouette", "isophote", "extrema", "singularities"] },
+      requestedOutputs: ["curve", "point", "table", "summary", "warning"],
+      characteristicGeometry: {
+        definition: geometryExactSurfaceDefinition,
+        uCount: geometryExactSurfaceResolution,
+        vCount: geometryExactSurfaceResolution,
+        tolerance: 1e-6,
+        isophoteLevel: geometryCharacteristicIsophoteLevel,
+        intersectionProbes: [
+          { pair: "curve-curve", distance: 0, directionA: [1, 0, 0], directionB: [0, 1, 0] },
+          { pair: "curve-surface", distance: 0, directionA: [1, 0, 0], normalB: [0, 0, 1] },
+          { pair: "surface-surface", distance: 5e-6, normalA: [0, 0, 1], normalB: [0, 1, 0] },
+        ],
+      },
+      sampling: { strategy: "adaptive", sampleCount: geometryExactSurfaceResolution ** 2, tolerance: 1e-6 },
+      precision: { mode: "adaptive", digits: 10, tolerance: 1e-6 },
+    });
+    setGeometryCreateActionStatus(`Characteristic geometry ready: ${geometryExactSurfaceDefinition.label}.`);
+  }, [createSelectedGeometryAnalysisSnapshot, geometryCharacteristicIsophoteLevel, geometryExactSurfaceDefinition, geometryExactSurfaceResolution, runGeometryQuickAnalysis]);
+  const handlePromoteGeometryCharacteristicLayer = useCallback(() => {
+    const result = geometrySelectedQuickAnalysisResult?.characteristicGeometry;
+    if (!result) return;
+    try {
+      const promoted = promoteCharacteristicLayer(result, geometryCharacteristicLayerId, true);
+      setGeometryCreateActionStatus(`Explicitly promoted ${promoted.label} as editable Geometry data (${promoted.points.length} point(s), source r${promoted.sourceRevision}).`);
+    } catch (error) {
+      setGeometryCreateActionStatus(error instanceof Error ? error.message : "Characteristic layer promotion failed.");
+    }
+  }, [geometryCharacteristicLayerId, geometrySelectedQuickAnalysisResult]);
   const handleRunGeometryQuickSectionAnalysis = useCallback(() => {
     const prepared = createSelectedGeometryAnalysisSnapshot();
     if (!prepared) return;
@@ -43183,6 +43238,7 @@ const App: React.FC = () => {
       curveAnalysis: geometrySelectedQuickAnalysisResult.curveAnalysis ?? null,
       surfaceAnalysis: geometrySelectedQuickAnalysisResult.surfaceAnalysis ?? null,
       intrinsicGeometry: geometrySelectedQuickAnalysisResult.intrinsicGeometry ?? null,
+      characteristicGeometry: geometrySelectedQuickAnalysisResult.characteristicGeometry ?? null,
       notes: geometrySelectedQuickAnalysisResult.notes ?? [],
       lifecycle: {
         state: geometrySelectedQuickAnalysisResult.state,
@@ -93616,6 +93672,14 @@ case "mobius":
                                     ))}
                                     <button type="button" data-testid="geometry-run-intrinsic-analysis" onClick={handleRunGeometryIntrinsicAnalysis} style={{ fontSize: 11 }}>Analyze metric + geodesics</button>
                                   </div>
+                                  <div data-testid="geometry-characteristic-analysis-controls" style={{ display: "grid", gap: 5, borderTop: "1px solid #e2e8f0", paddingTop: 7 }}>
+                                    <div style={{ fontSize: 10.5, fontWeight: 700 }}>Characteristic curves and singularities</div>
+                                    <div style={{ fontSize: 9.5, color: "#667085" }}>Umbilics, parabolic/region structure, ridges, valleys, view/light isolines, extrema, singularities, and typed contacts.</div>
+                                    <label style={{ display: "grid", gap: 2, fontSize: 9.5 }}>Isophote n·light = {fmt(geometryCharacteristicIsophoteLevel)}
+                                      <input data-testid="geometry-characteristic-isophote" type="range" min={-1} max={1} step={0.01} value={geometryCharacteristicIsophoteLevel} onChange={(event) => setGeometryCharacteristicIsophoteLevel(Number(event.target.value))} />
+                                    </label>
+                                    <button type="button" data-testid="geometry-run-characteristic-analysis" onClick={handleRunGeometryCharacteristicAnalysis} style={{ fontSize: 11 }}>Analyze characteristic geometry</button>
+                                  </div>
                                   <div style={{ display: "grid", gap: 4 }}>
                                     <div style={{ fontSize: 10.5, fontWeight: 700 }}>Differential geometry</div>
                                     <div style={{ fontSize: 10, color: "#667085" }}>
@@ -93678,6 +93742,8 @@ case "mobius":
                                             ? "Surface differential"
                                           : geometrySelectedQuickAnalysisResult.kind === "intrinsic-geometry"
                                             ? "Intrinsic geometry"
+                                          : geometrySelectedQuickAnalysisResult.kind === "feature-analysis"
+                                            ? "Characteristic geometry"
                                             : "Geometry analysis"}
                                       </div>
                                       <div style={{ fontSize: 11.5, fontWeight: 800, overflowWrap: "anywhere" }}>
@@ -93708,6 +93774,8 @@ case "mobius":
                                           ? "Forms / shape operator / k1 / k2 / H / K"
                                         : geometrySelectedQuickAnalysisResult.kind === "intrinsic-geometry"
                                           ? "Metric / Christoffel / geodesics / distortion"
+                                        : geometrySelectedQuickAnalysisResult.kind === "feature-analysis"
+                                          ? "Features / singularities / typed intersections"
                                           : geometrySelectedQuickAnalysisResult.title],
                                       ["Method", geometrySelectedQuickAnalysisResult.provenanceAlgorithm],
                                       ["Domain", geometrySelectedQuickAnalysisResult.domain],
@@ -94004,7 +94072,27 @@ case "mobius":
                                       <div data-testid="geometry-intrinsic-overlays"><strong>Overlays:</strong> parameter grid {intrinsic.overlays.parameterGrid.length} rows · metric ellipse {intrinsic.overlays.metricEllipse.length} points · contours {intrinsic.overlays.distanceContours.length} · fan {intrinsic.overlays.fan.length} · field {intrinsic.overlays.directionField.length} · normal section {intrinsic.overlays.normalSection.length}</div>
                                       <div data-testid="geometry-intrinsic-endpoints"><strong>Endpoints:</strong> ({fmt(intrinsic.start.u)}, {fmt(intrinsic.start.v)}) → ({fmt(intrinsic.destination.u)}, {fmt(intrinsic.destination.v)}) · {intrinsic.endpointSemantics}</div>
                                       <div><strong>Engine:</strong> {intrinsic.engine.backend} · {intrinsic.engine.algorithm} · reused {intrinsic.engine.reusedEngine ?? "none"}</div>
+                                      <div><strong>Engine availability:</strong> {intrinsic.engine.candidates.map((entry) => `${entry.engine} ${entry.available ? "ready" : `unavailable (${entry.reason})`}`).join(" · ")}</div>
                                       <div><strong>Uncertainty:</strong> length ±{intrinsic.uncertainty.length.toExponential(2)} · area cell {intrinsic.uncertainty.area.toExponential(2)} · source r{intrinsic.sourceRevision}</div>
+                                    </div>;
+                                  })()}
+                                  {geometrySelectedQuickAnalysisResult.kind === "feature-analysis" && geometrySelectedQuickAnalysisResult.characteristicGeometry && (() => {
+                                    const features = geometrySelectedQuickAnalysisResult.characteristicGeometry;
+                                    return <div data-testid="geometry-characteristic-analysis-result" style={{ display: "grid", gap: 6, fontSize: 9.5 }}>
+                                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", border: "1px solid #e2e8f0" }}>
+                                        {Object.entries(features.counts).map(([label, count]) => <div key={label} style={{ padding: 5, borderRight: "1px solid #e2e8f0", borderBottom: "1px solid #e2e8f0" }}><div style={{ color: "#64748b", fontSize: 8, textTransform: "uppercase", fontWeight: 800 }}>{label}</div><strong>{count}</strong></div>)}
+                                      </div>
+                                      <div data-testid="geometry-characteristic-layers"><strong>Reusable display result layers:</strong> {features.layers.map((entry) => `${entry.label} (${entry.kind}, ${Math.round(entry.confidence * 100)}%)`).join(" · ")}</div>
+                                      <div data-testid="geometry-characteristic-singularities"><strong>Singularities:</strong> {features.singularities.length ? features.singularities.map((entry) => entry.kind).join(" · ") : "none"}</div>
+                                      <div data-testid="geometry-characteristic-intersections"><strong>Intersections:</strong> {features.intersections.length ? features.intersections.map((entry) => `${entry.pair}: ${entry.type} (${Math.round(entry.confidence * 100)}%)`).join(" · ") : "no probes"}</div>
+                                      <div><strong>Conventions:</strong> {features.conventions.curvature} · silhouette {features.conventions.silhouette} · isophote {features.conventions.isophote}</div>
+                                      <div><strong>Display contract:</strong> {features.conventions.promotion} · uncertainty ±{features.uncertainty.toExponential(2)}</div>
+                                      <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
+                                        <select data-testid="geometry-characteristic-layer-select" value={geometryCharacteristicLayerId} onChange={(event) => setGeometryCharacteristicLayerId(event.target.value)} style={{ fontSize: 10 }}>
+                                          {features.layers.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
+                                        </select>
+                                        <button type="button" data-testid="geometry-promote-characteristic-layer" onClick={handlePromoteGeometryCharacteristicLayer} style={{ fontSize: 10 }}>Promote overlay to editable Geometry</button>
+                                      </div>
                                     </div>;
                                   })()}
                                   {geometrySelectedQuickAnalysisResult.kind === "topology-summary" &&
