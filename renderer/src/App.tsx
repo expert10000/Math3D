@@ -72189,6 +72189,7 @@ case "mobius":
     bottom: 8,
     zIndex: 2400,
     width: "min(380px, calc(100vw - 24px))",
+    minWidth: 0,
     maxWidth: "calc(100vw - 24px)",
     maxHeight: "none",
     boxSizing: "border-box",

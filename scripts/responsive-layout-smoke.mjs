@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
+import path from "node:path";
 import process from "node:process";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const baseUrl = process.env.MATH3D_RESPONSIVE_SMOKE_URL || "http://127.0.0.1:5175";
 const timeoutMs = Number(process.env.MATH3D_RESPONSIVE_SMOKE_TIMEOUT_MS || 60000);
@@ -17,6 +20,38 @@ const selectedViewports = requestedViewportNames.size
   ? viewports.filter((viewport) => requestedViewportNames.has(viewport.name))
   : viewports;
 const logFile = process.env.MATH3D_RESPONSIVE_SMOKE_LOG || "";
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repositoryRoot = path.resolve(scriptDir, "..");
+
+async function isServerReady() {
+  try {
+    const response = await fetch(baseUrl, { signal: AbortSignal.timeout(1000) });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function ensurePreviewServer() {
+  if (await isServerReady()) return null;
+  if (process.env.MATH3D_RESPONSIVE_SMOKE_URL) {
+    throw new Error(`Responsive smoke server is unavailable: ${baseUrl}`);
+  }
+  const viteBin = path.join(repositoryRoot, "renderer", "node_modules", "vite", "bin", "vite.js");
+  const server = spawn(process.execPath, [viteBin, "preview", "--host", "127.0.0.1", "--port", "5175", "--strictPort"], {
+    cwd: path.join(repositoryRoot, "renderer"),
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (server.exitCode != null) throw new Error(`Responsive smoke preview exited with code ${server.exitCode}.`);
+    if (await isServerReady()) return server;
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  server.kill();
+  throw new Error(`Timed out starting responsive smoke preview at ${baseUrl}.`);
+}
 
 function writeLog(stream, message) {
   const line = message.endsWith("\n") ? message : `${message}\n`;
@@ -248,6 +283,8 @@ async function runViewport(browser, viewport) {
 }
 
 async function run() {
+  writeLog(process.stdout, "[responsive-smoke] ensuring preview server");
+  const previewServer = await ensurePreviewServer();
   writeLog(process.stdout, "[responsive-smoke] loading playwright");
   const { chromium } = await import("@playwright/test");
   writeLog(process.stdout, "[responsive-smoke] launching browser");
@@ -259,6 +296,7 @@ async function run() {
     }
   } finally {
     await boundedCleanup("browser", () => browser.close());
+    if (previewServer) await boundedCleanup("preview server", async () => { previewServer.kill(); });
   }
   writeLog(process.stdout, "[responsive-smoke] ok responsive layout + drawers + sheets + touch containment");
 }
