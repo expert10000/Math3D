@@ -277,13 +277,47 @@ export type SurfaceChartPayload = {
 
 export type SurfaceDerivedMeshPayload = {
   kind: "derived-mesh";
+  identity: DerivedSurfaceMeshIdentity;
   meshId: string;
   sourceSurfaceId: string;
   sourceRevision: number;
   live: boolean;
   vertexCount: number;
   faceCount: number;
-  correspondenceId?: string;
+  correspondenceId: string;
+  correspondence: DerivedSurfaceMeshCorrespondence;
+  warnings: readonly string[];
+};
+
+export type DerivedSurfaceMeshState = "live-current" | "frozen-snapshot" | "robust-variant" | "detached" | "stale";
+export type DerivedSurfaceMeshIdentity = {
+  version: 1;
+  meshId: string;
+  meshRevision: number;
+  source: SurfaceIdentity;
+  sourceRepresentation: SurfaceRepresentation;
+  tessellation: {
+    method: string;
+    settings: Readonly<Record<string, number | string | boolean | null>>;
+  };
+  backend: { id: string; version?: string };
+  createdAt: number;
+  state: DerivedSurfaceMeshState;
+  staleReason?: string;
+};
+export type DerivedSurfaceMeshCorrespondence = {
+  correspondenceId: string;
+  kind: "parameter" | "implicit-projection" | "nearest-surface" | "unavailable";
+  state: "complete" | "partial" | "unavailable";
+  sourceSampleIndices?: Uint32Array;
+  parameterCoordinates?: Float64Array;
+  residuals?: Float32Array;
+  sourceCells?: Int32Array;
+  confidence?: Float32Array;
+  mappedVertexCount: number;
+  vertexCount: number;
+  meanConfidence: number | null;
+  explanation: string;
 };
 
 export type SurfaceDifferentialFieldPayload = {

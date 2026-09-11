@@ -7,6 +7,7 @@ import {
   parseSurfaceAnalysisWorkspace,
   serializeSurfaceAnalysisWorkspace,
 } from "./persistence";
+import { compactDerivedSurfaceMesh, createDerivedSurfaceMeshPayload } from "./derivedSurfaceMesh";
 
 const definition = adaptSurfaceDefinition({
   id: "surface-a",
@@ -43,6 +44,18 @@ describe("Surface Analysis persistence", () => {
     expect(() => parseSurfaceAnalysisWorkspace('{"version":1,"definitions":[{}],"savedResults":[]}')).toThrow(/definition/i);
   });
 
+  it("persists compact derived-mesh provenance without geometry arrays", () => {
+    const payload = createDerivedSurfaceMeshPayload({ definition, label: "Paraboloid live", vertexCount: 4, faceCount: 2, method: "native-grid", settings: { resolution: 40 }, backend: { id: "threejs-native" }, createdAt: 10, correspondence: { parameterCoordinates: [0, 0, 1, 0, 0, 1, 1, 1], sourceSampleIndices: [0, 1, 2, 3] } });
+    const document = createSurfaceAnalysisWorkspaceDocument({ definitions: [definition], derivedMeshes: [compactDerivedSurfaceMesh(payload, "Paraboloid live")] });
+    const serialized = serializeSurfaceAnalysisWorkspace(document);
+    expect(parseSurfaceAnalysisWorkspace(serialized).derivedMeshes[0]).toMatchObject({ vertexCount: 4, identity: { source: { surfaceRevision: 4 } }, correspondence: { kind: "parameter" } });
+    expect(serialized).not.toContain("parameterCoordinates");
+  });
+
+  it("loads pre-derived-mesh version-1 documents with an empty metadata list", () => {
+    expect(parseSurfaceAnalysisWorkspace('{"version":1,"definitions":[],"savedResults":[]}').derivedMeshes).toEqual([]);
+  });
+
   it("keeps the shared analysis core independent of Surface and Mesh implementation modules", async () => {
     const analysisDirectory = fileURLToPath(new URL("../analysis/", import.meta.url));
     for (const file of ["contracts.ts", "registry.ts", "resultStore.ts", "statistics.ts"]) {
@@ -51,4 +64,3 @@ describe("Surface Analysis persistence", () => {
     }
   });
 });
-

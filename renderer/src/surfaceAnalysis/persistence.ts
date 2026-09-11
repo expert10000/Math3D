@@ -1,4 +1,5 @@
 import type { CanonicalSurfaceDefinition, SurfaceIdentity, SurfaceRepresentation, SurfaceResultKind } from "./contracts";
+import type { DerivedSurfaceMeshRecord } from "./derivedSurfaceMesh";
 
 export type SavedSurfaceResultReference = {
   id: string;
@@ -14,6 +15,7 @@ export type SurfaceAnalysisWorkspaceDocument = {
   version: 1;
   definitions: CanonicalSurfaceDefinition[];
   savedResults: SavedSurfaceResultReference[];
+  derivedMeshes: DerivedSurfaceMeshRecord[];
 };
 
 const REPRESENTATIONS: ReadonlySet<SurfaceRepresentation> = new Set([
@@ -24,6 +26,7 @@ export const createSurfaceAnalysisWorkspaceDocument = (input?: Partial<SurfaceAn
   version: 1,
   definitions: [...(input?.definitions ?? [])],
   savedResults: [...(input?.savedResults ?? [])],
+  derivedMeshes: [...(input?.derivedMeshes ?? [])],
 });
 
 export const serializeSurfaceAnalysisWorkspace = (document: SurfaceAnalysisWorkspaceDocument): string => JSON.stringify(document);
@@ -44,6 +47,11 @@ export const parseSurfaceAnalysisWorkspace = (serialized: string): SurfaceAnalys
   for (const reference of value.savedResults) {
     if (!reference?.id || !reference.resultKey || !reference.identity || !reference.kind || !reference.variant) {
       throw new Error("Invalid saved Surface result reference.");
+    }
+  }
+  for (const mesh of value.derivedMeshes ?? []) {
+    if (mesh?.version !== 1 || !mesh.identity?.meshId || mesh.identity.version !== 1 || !mesh.identity.source?.surfaceId || !Array.isArray(mesh.history)) {
+      throw new Error("Invalid derived SurfaceMesh metadata.");
     }
   }
   return createSurfaceAnalysisWorkspaceDocument(value);

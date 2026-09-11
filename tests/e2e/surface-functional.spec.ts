@@ -226,7 +226,42 @@ test.describe("Surface functional flow", () => {
     }
   });
 
-  test("Test 7 — invalid input failure", async () => {
+  test("Test 7 — provenance-linked derived SurfaceMesh lifecycle", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await openParametricSurface(ctx.page);
+      await ctx.page.getByTestId("surfaces-left-tab-analysis").click();
+      const bridge = ctx.page.getByTestId("surface-derived-mesh-bridge");
+      await expect(bridge).toBeVisible();
+      await expect(ctx.page.getByTestId("surface-derived-mesh-provenance")).toContainText("live-current");
+      await expect(ctx.page.getByTestId("surface-derived-mesh-provenance")).toContainText("source revision");
+      await ctx.page.getByTestId("surface-derived-mesh-regenerate").click();
+      await expect(ctx.page.getByTestId("surface-derived-mesh-provenance")).toContainText("mesh revision 2");
+      await bridge.getByRole("button", { name: "Freeze snapshot", exact: true }).click();
+      await expect(ctx.page.getByTestId("surface-derived-mesh-provenance")).toContainText("frozen-snapshot");
+      await bridge.getByRole("button", { name: "Detach", exact: true }).click();
+      await expect(ctx.page.getByTestId("surface-derived-mesh-provenance")).toContainText("detached");
+      await ctx.page.getByTestId("surface-derived-mesh-inspect").click();
+      await expect(ctx.page.getByTestId("surface-derived-mesh-inspector")).toBeVisible();
+      await expect(ctx.page.getByTestId("surface-derived-mesh-inspector")).toContainText("Tessellation:");
+      await expect(ctx.page.getByTestId("surface-derived-mesh-inspector")).toContainText("Regeneration history");
+      await expect.poll(async () => ctx!.page.evaluate(() => {
+        const raw = localStorage.getItem("math3d.surfaceAnalysis.workspace.v1");
+        return raw ? JSON.parse(raw).derivedMeshes?.length ?? 0 : 0;
+      })).toBeGreaterThanOrEqual(3);
+      await bridge.getByRole("button", { name: "Delete", exact: true }).click();
+      await expect.poll(async () => ctx!.page.evaluate(() => {
+        const raw = localStorage.getItem("math3d.surfaceAnalysis.workspace.v1");
+        return raw ? JSON.parse(raw).derivedMeshes?.length ?? 0 : 0;
+      })).toBeGreaterThanOrEqual(2);
+      await expect(ctx.page.getByTestId("error-banner")).toHaveCount(0);
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
+  test("Test 8 — invalid input failure", async () => {
     let ctx: LaunchedSurfaceApp | null = null;
     try {
       ctx = await launchSurfaceApp({

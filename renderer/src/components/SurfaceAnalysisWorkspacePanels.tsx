@@ -8,7 +8,9 @@ import type {
   SurfaceCurveLayersPayload,
   SurfaceFeatureLayersPayload,
   SurfaceChartPayload,
+  SurfaceDerivedMeshPayload,
 } from "../surfaceAnalysis/contracts";
+import type { DerivedSurfaceMeshRecord } from "../surfaceAnalysis/derivedSurfaceMesh";
 import type { SurfaceAnalysisResult } from "../surfaceAnalysis/infrastructure";
 import { SurfaceAnalysisContractCard } from "./SurfaceAnalysisContractCard";
 
@@ -40,6 +42,7 @@ export function SurfaceAnalysisComputationPanel({
   configurationOpen,
   onOpenConfiguration,
   derivedMesh,
+  derivedMeshLifecycle,
   onOpenDerivedMesh,
   curvatureState,
   onComputeCurvature,
@@ -58,6 +61,20 @@ export function SurfaceAnalysisComputationPanel({
   configurationOpen: boolean;
   onOpenConfiguration: () => void;
   derivedMesh: { available: boolean; label: string; vertexCount: number; faceCount: number };
+  derivedMeshLifecycle?: {
+    selected: { id: string; label: string; state: string; sourceRevision: number; meshRevision: number; method: string; backend: string; correspondence: string; mappedVertexCount: number; staleReason?: string; historyCount: number } | null;
+    records: ReadonlyArray<{ id: string; label: string; state: string }>;
+    status: string;
+    onSelect: (id: string) => void;
+    onRegenerate: () => void;
+    onFreeze: () => void;
+    onDetach: () => void;
+    onDelete: () => void;
+    onOpenSource: () => void;
+    onInspect: () => void;
+    onMapSourceToMesh: () => void;
+    onMapMeshToSource: () => void;
+  };
   onOpenDerivedMesh: () => void;
   curvatureState?: "unavailable" | "ready" | "computed";
   onComputeCurvature?: () => void;
@@ -164,6 +181,28 @@ export function SurfaceAnalysisComputationPanel({
         <div style={{ color: "#475467", fontSize: 9.5 }}>
           {derivedMesh.label} · {derivedMesh.vertexCount.toLocaleString()} V / {derivedMesh.faceCount.toLocaleString()} F
         </div>
+        {derivedMeshLifecycle?.records.length ? <label style={{ fontSize: 9.5 }}>Record <select data-testid="surface-derived-mesh-record" value={derivedMeshLifecycle.selected?.id ?? ""} onChange={(event) => derivedMeshLifecycle.onSelect(event.target.value)}>{derivedMeshLifecycle.records.map((record) => <option key={record.id} value={record.id}>{record.label} · {record.state}</option>)}</select></label> : null}
+        {derivedMeshLifecycle?.selected && <div data-testid="surface-derived-mesh-provenance" style={{ display: "grid", gap: 2, fontSize: 9.5, color: "#475467" }}>
+          <span><strong>{derivedMeshLifecycle.selected.state}</strong> · mesh revision {derivedMeshLifecycle.selected.meshRevision} · source revision {derivedMeshLifecycle.selected.sourceRevision}</span>
+          <span>{derivedMeshLifecycle.selected.method} · {derivedMeshLifecycle.selected.backend}</span>
+          <span>Mapping: {derivedMeshLifecycle.selected.correspondence} · {derivedMeshLifecycle.selected.mappedVertexCount.toLocaleString()} vertices · {derivedMeshLifecycle.selected.historyCount} history entries</span>
+          {derivedMeshLifecycle.selected.staleReason && <span style={{ color: "#9a3412" }}>{derivedMeshLifecycle.selected.staleReason}</span>}
+        </div>}
+        {derivedMeshLifecycle && <>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            <button type="button" data-testid="surface-derived-mesh-regenerate" disabled={!derivedMesh.available} onClick={derivedMeshLifecycle.onRegenerate}>{derivedMeshLifecycle.selected ? "Regenerate" : "Register live mesh"}</button>
+            <button type="button" disabled={!derivedMeshLifecycle.selected} onClick={derivedMeshLifecycle.onFreeze}>Freeze snapshot</button>
+            <button type="button" disabled={!derivedMeshLifecycle.selected} onClick={derivedMeshLifecycle.onDetach}>Detach</button>
+            <button type="button" disabled={!derivedMeshLifecycle.selected} onClick={derivedMeshLifecycle.onDelete}>Delete</button>
+          </div>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            <button type="button" disabled={!derivedMeshLifecycle.selected} onClick={derivedMeshLifecycle.onOpenSource}>Open Surface source</button>
+            <button type="button" data-testid="surface-derived-mesh-inspect" disabled={!derivedMeshLifecycle.selected} onClick={derivedMeshLifecycle.onInspect}>Inspect provenance</button>
+            <button type="button" disabled={!derivedMeshLifecycle.selected} onClick={derivedMeshLifecycle.onMapSourceToMesh}>Map source selection</button>
+            <button type="button" disabled={!derivedMeshLifecycle.selected} onClick={derivedMeshLifecycle.onMapMeshToSource}>Map mesh selection</button>
+          </div>
+          <div style={{ color: "#64748b", fontSize: 9.5 }}>{derivedMeshLifecycle.status}</div>
+        </>}
         <button type="button" onClick={onOpenDerivedMesh}>
           {derivedMesh.available ? "Open Mesh Analysis" : "Configure derived mesh"}
         </button>
@@ -231,6 +270,7 @@ export function SurfaceAnalysisInspectorPanel({
   probeActions,
   layerActions,
   chartActions,
+  derivedMeshInspection,
 }: {
   definition: CanonicalSurfaceDefinition;
   result: SurfaceAnalysisResult<SurfaceAnalysisPayload> | null;
@@ -277,6 +317,7 @@ export function SurfaceAnalysisInspectorPanel({
     onExport: () => void;
     onRecompute: () => void;
   };
+  derivedMeshInspection?: { record: DerivedSurfaceMeshRecord; payload: SurfaceDerivedMeshPayload | null };
 }) {
   const [tab, setTab] = useState<InspectorTab>("result");
   const payloadKind = result?.payload?.data.kind ?? "none";
@@ -354,6 +395,7 @@ export function SurfaceAnalysisInspectorPanel({
             )}
             {layerActions && <SurfaceResultLayersInspector {...layerActions} />}
             {chartActions && <SurfaceChartDiagnosticsInspector {...chartActions} />}
+            {derivedMeshInspection && <SurfaceDerivedMeshInspector {...derivedMeshInspection} />}
             {!!warnings.length && <div style={{ color: "#9a3412" }}>{warnings.join(" · ")}</div>}
           </div>
         )}
@@ -386,6 +428,24 @@ export function SurfaceAnalysisInspectorPanel({
       </div>
     </section>
   );
+}
+
+function SurfaceDerivedMeshInspector({ record, payload }: NonNullable<Parameters<typeof SurfaceAnalysisInspectorPanel>[0]["derivedMeshInspection"]>) {
+  const identity = record.identity;
+  return <section data-testid="surface-derived-mesh-inspector" style={{ display: "grid", gap: 5, marginTop: 6, paddingTop: 7, borderTop: "1px solid #e2e8f0" }}>
+    <strong>{record.label}</strong>
+    <div><strong>State:</strong> {identity.state} · mesh {identity.meshId}@{identity.meshRevision}</div>
+    <div><strong>Source:</strong> {identity.source.surfaceId}@{identity.source.surfaceRevision} · {identity.sourceRepresentation}</div>
+    <div><strong>Tessellation:</strong> {identity.tessellation.method} · {JSON.stringify(identity.tessellation.settings)}</div>
+    <div><strong>Backend:</strong> {identity.backend.id}{identity.backend.version ? ` ${identity.backend.version}` : ""}</div>
+    <div><strong>Created:</strong> {new Date(identity.createdAt).toISOString()}</div>
+    <div><strong>Geometry:</strong> {record.vertexCount.toLocaleString()} vertices · {record.faceCount.toLocaleString()} faces</div>
+    <div><strong>Correspondence:</strong> {record.correspondence.kind} · {record.correspondence.state} · {record.correspondence.mappedVertexCount.toLocaleString()}/{record.correspondence.vertexCount.toLocaleString()} mapped · confidence {record.correspondence.meanConfidence?.toPrecision(4) ?? "undefined"}</div>
+    <div style={{ color: "#64748b" }}>{record.correspondence.explanation}</div>
+    {identity.staleReason && <div style={{ color: "#9a3412" }}><strong>Stale:</strong> {identity.staleReason}</div>}
+    <details open><summary>Regeneration history ({record.history.length})</summary>{record.history.map((entry) => <div key={entry.id}>{entry.action} · mesh r{entry.meshRevision} · source r{entry.sourceRevision} · {entry.detail}</div>)}</details>
+    {payload && <div>Live payload correspondence: {payload.correspondence.kind} · {payload.correspondence.state} · {payload.correspondence.mappedVertexCount.toLocaleString()} mapped vertices.</div>}
+  </section>;
 }
 
 function SurfaceChartDiagnosticsInspector({ chart, focusedIndex, onSelectIndex, onSelectRegion, onToggleOverlay, onSave, onExport, onRecompute }: NonNullable<Parameters<typeof SurfaceAnalysisInspectorPanel>[0]["chartActions"]>) {

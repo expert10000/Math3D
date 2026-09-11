@@ -266,6 +266,7 @@ import type {
   SurfaceFeatureLayersPayload,
   SurfaceFeatureResultLayer,
   SurfaceChartPayload,
+  SurfaceDerivedMeshPayload,
 } from "./surfaceAnalysis/contracts";
 import {
   adaptSurfaceDefinition,
@@ -294,6 +295,17 @@ import {
   updateSurfaceResultLayer,
 } from "./surfaceAnalysis/surfaceResultLayers";
 import { createSurfaceChartDiagnostics, createSurfaceChartPayload, type SurfaceChartSample } from "./surfaceAnalysis/surfaceChartDiagnostics";
+import {
+  compactDerivedSurfaceMesh,
+  createDerivedSurfaceMeshAnalysisPayload,
+  createDerivedSurfaceMeshPayload,
+  mapDerivedMeshSelectionToSource,
+  mapSourceSelectionToDerivedMesh,
+  markDerivedSurfaceMeshRecordStale,
+  regenerateDerivedSurfaceMeshRecord,
+  transitionDerivedSurfaceMeshRecord,
+  type DerivedSurfaceMeshRecord,
+} from "./surfaceAnalysis/derivedSurfaceMesh";
 import {
   DEFAULT_GEOMETRY_SEMANTIC_FILTER,
   attachGeometrySemanticSelection,
@@ -41902,6 +41914,10 @@ const App: React.FC = () => {
     () => getSurfaceAnalysisResult<SurfaceAnalysisPayload>(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "chart-diagnostics"),
     [activeCanonicalSurfaceDefinition.identity, surfaceAnalysisResultStore]
   );
+  const activeDerivedSurfaceMeshResult = useMemo(
+    () => getSurfaceAnalysisResult<SurfaceAnalysisPayload>(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "derived-surface-mesh"),
+    [activeCanonicalSurfaceDefinition.identity, surfaceAnalysisResultStore]
+  );
   const activeSurfaceAnalysisResult = useMemo(
     () => activeSurfaceCurvatureResult ?? getSurfaceAnalysisResult(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "differential-geometry") ?? activeSurfaceDefinitionResult,
     [activeCanonicalSurfaceDefinition.identity, activeSurfaceCurvatureResult, activeSurfaceDefinitionResult, surfaceAnalysisResultStore]
@@ -43235,6 +43251,9 @@ const App: React.FC = () => {
   const [surfaceLayerCompareLabel, setSurfaceLayerCompareLabel] = useState("Choose a layer to set a comparison baseline.");
   const surfaceLayerCompareBaselineRef = useRef<SurfaceCurveResultLayer | SurfaceFeatureResultLayer | null>(null);
   const [surfaceChartOverlayVisibility, setSurfaceChartOverlayVisibility] = useState<Record<"boundary" | "seam" | "orientation-flip" | "degenerate", boolean>>({ boundary: true, seam: true, "orientation-flip": true, degenerate: true });
+  const [surfaceDerivedMeshSelectedId, setSurfaceDerivedMeshSelectedId] = useState<string | null>(null);
+  const [surfaceDerivedMeshStatus, setSurfaceDerivedMeshStatus] = useState("Live tessellation provenance is tracked with the Surface revision.");
+  const [surfaceInspectDerivedMesh, setSurfaceInspectDerivedMesh] = useState(false);
   const handleSelectSurfaceComputation = useCallback((computation: SurfaceComputationId) => {
     const section: AnalysisFocusedSection = computation === "surface-curves"
       ? "curvature-lines"
@@ -43244,6 +43263,7 @@ const App: React.FC = () => {
           ? "chart-analysis"
           : "differential-geometry";
     setActiveSurfaceComputation(computation);
+    setSurfaceInspectDerivedMesh(false);
     setAnalysisFocusedSection(section);
     if (computation === "surface-probe" && !probeEnabled) setProbeEnabled(true);
   }, [probeEnabled, setProbeEnabled]);
@@ -49189,6 +49209,147 @@ case "mobius":
     const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = `surface-chart-${activeCanonicalSurfaceDefinition.identity.surfaceRevision}.json`; anchor.click(); URL.revokeObjectURL(url);
   }, [activeCanonicalSurfaceDefinition.identity.surfaceRevision, activeSurfaceChartResult?.payload]);
+
+  const surfaceDerivedMeshCandidate = useMemo(() => {
+    const chunk = surfaceViewerKind === "mesh" && surfaceMeshData
+      ? { key: activeCanonicalSurfaceDefinition.identity.surfaceId, positions: surfaceMeshData.positions, indices: surfaceMeshData.indices }
+      : surfaceSampleSet?.meshData?.[0];
+    if (!chunk?.positions.length) return null;
+    const vertexCount = Math.floor(chunk.positions.length / 3);
+    const faceCount = chunk.indices ? Math.floor(chunk.indices.length / 3) : Math.floor(vertexCount / 3);
+    const settings = Object.fromEntries(Object.entries({
+      ...activeCanonicalSurfaceDefinition.sampling,
+      graphResolution: surfaceViewerKind === "graph" ? graphResolution : undefined,
+      paramResolution: surfaceViewerKind === "param" ? paramResolution : undefined,
+      implicitResolution: surfaceViewerKind === "implicit" ? implicitResolution : undefined,
+      weierstrassResolution: surfaceViewerKind === "weierstrass" ? weierstrassResolution : undefined,
+    }).filter(([, value]) => value !== undefined)) as Record<string, number | string | boolean | null>;
+    const method = surfaceViewerKind === "graph" ? "explicit-grid"
+      : surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? "parameter-grid"
+        : surfaceViewerKind === "implicit" ? "marching-cubes"
+          : "existing-mesh";
+    const sourceSampleIndices = new Uint32Array(vertexCount).fill(0xffffffff);
+    const parameterCoordinates = new Float64Array(vertexCount * 2).fill(NaN);
+    let mapped = 0;
+    (surfaceSampleSet?.samples ?? []).forEach((sample, sampleIndex) => {
+      if (sample.meshKey !== chunk.key || sample.vertexIndex == null || sample.vertexIndex < 0 || sample.vertexIndex >= vertexCount) return;
+      sourceSampleIndices[sample.vertexIndex] = sampleIndex;
+      if (sample.uv && activeCanonicalSurfaceDefinition.representation !== "implicit") {
+        let u = sample.uv.u; let v = sample.uv.v;
+        if (activeCanonicalSurfaceDefinition.domain.kind === "graph" && u >= -1e-7 && u <= 1 + 1e-7 && v >= -1e-7 && v <= 1 + 1e-7) {
+          u = activeCanonicalSurfaceDefinition.domain.x.min + u * (activeCanonicalSurfaceDefinition.domain.x.max - activeCanonicalSurfaceDefinition.domain.x.min);
+          v = activeCanonicalSurfaceDefinition.domain.y.min + v * (activeCanonicalSurfaceDefinition.domain.y.max - activeCanonicalSurfaceDefinition.domain.y.min);
+        }
+        parameterCoordinates[sample.vertexIndex * 2] = u; parameterCoordinates[sample.vertexIndex * 2 + 1] = v;
+      }
+      mapped += 1;
+    });
+    const confidence = mapped ? Float32Array.from(sourceSampleIndices, (value) => value === 0xffffffff ? 0 : 1) : undefined;
+    return { key: chunk.key, positions: chunk.positions, indices: chunk.indices, vertexCount, faceCount, settings, method, sourceSampleIndices: mapped ? sourceSampleIndices : undefined, parameterCoordinates: mapped ? parameterCoordinates : undefined, confidence };
+  }, [activeCanonicalSurfaceDefinition, graphResolution, implicitResolution, paramResolution, surfaceMeshData, surfaceSampleSet?.meshData, surfaceSampleSet?.samples, surfaceViewerKind, weierstrassResolution]);
+  const buildDerivedSurfaceMeshPayload = useCallback((options?: { state?: "live-current" | "frozen-snapshot" | "robust-variant" | "detached" | "stale"; meshRevision?: number; meshId?: string; createdAt?: number }): SurfaceDerivedMeshPayload | null => {
+    if (!surfaceDerivedMeshCandidate) return null;
+    return createDerivedSurfaceMeshPayload({
+      definition: activeCanonicalSurfaceDefinition,
+      label: `${activeCanonicalSurfaceDefinition.identity.label} derived mesh`,
+      vertexCount: surfaceDerivedMeshCandidate.vertexCount,
+      faceCount: surfaceDerivedMeshCandidate.faceCount,
+      method: surfaceDerivedMeshCandidate.method,
+      settings: surfaceDerivedMeshCandidate.settings,
+      backend: { id: "threejs-native" },
+      state: options?.state,
+      meshRevision: options?.meshRevision,
+      meshId: options?.meshId,
+      createdAt: options?.createdAt,
+      correspondence: {
+        sourceSampleIndices: surfaceDerivedMeshCandidate.sourceSampleIndices,
+        parameterCoordinates: surfaceDerivedMeshCandidate.parameterCoordinates,
+        confidence: surfaceDerivedMeshCandidate.confidence,
+      },
+    });
+  }, [activeCanonicalSurfaceDefinition, surfaceDerivedMeshCandidate]);
+  const publishDerivedSurfaceMeshPayload = useCallback((mesh: SurfaceDerivedMeshPayload) => {
+    const definition = activeCanonicalSurfaceDefinition;
+    const method: SurfaceAnalysisMethod = definition.representation === "mesh-backed" ? "mesh-approximation" : "surface-sampling";
+    const request = createSurfaceAnalysisRequest({
+      requestId: `derived-surface-mesh:${mesh.meshId}:${mesh.identity.meshRevision}`,
+      kind: "derived-surface-mesh", definition, domain: "derived-mesh", method,
+      parameters: { meshId: mesh.meshId, meshRevision: mesh.identity.meshRevision, state: mesh.identity.state, ...mesh.identity.tessellation.settings },
+      requestedOutputs: ["identity", "source revision", "tessellation settings", "backend", "state", "correspondence", "mapping confidence"],
+    });
+    const payload = createDerivedSurfaceMeshAnalysisPayload(definition, method, mesh);
+    setSurfaceAnalysisResultStore((store) => publishSurfaceAnalysisResult({ store, registry: surfaceAnalysisRegistryRef.current, request, payload, backend: mesh.identity.backend.id }));
+  }, [activeCanonicalSurfaceDefinition]);
+  const surfaceDerivedCandidateKey = surfaceDerivedMeshCandidate ? JSON.stringify({ source: activeCanonicalSurfaceDefinition.identity.key, method: surfaceDerivedMeshCandidate.method, settings: surfaceDerivedMeshCandidate.settings, vertices: surfaceDerivedMeshCandidate.vertexCount, faces: surfaceDerivedMeshCandidate.faceCount }) : null;
+  useEffect(() => {
+    if (!surfaceDerivedCandidateKey) return;
+    const payload = buildDerivedSurfaceMeshPayload();
+    if (!payload) return;
+    publishDerivedSurfaceMeshPayload(payload);
+    setSurfaceAnalysisWorkspaceDocument((document) => {
+      let changed = false;
+      let records = document.derivedMeshes.map((record) => {
+        if (record.identity.source.surfaceId !== activeCanonicalSurfaceDefinition.identity.surfaceId) return record;
+        const next = markDerivedSurfaceMeshRecordStale(record, activeCanonicalSurfaceDefinition, surfaceDerivedMeshCandidate!.settings);
+        if (next !== record) changed = true;
+        return next;
+      });
+      if (!records.some((record) => record.identity.meshId === payload.meshId && record.identity.state === "live-current")) {
+        records = [...records, compactDerivedSurfaceMesh(payload, `${activeCanonicalSurfaceDefinition.identity.label} live tessellation`)]; changed = true;
+      }
+      return changed ? { ...document, derivedMeshes: records.slice(-64) } : document;
+    });
+    setSurfaceDerivedMeshSelectedId(payload.meshId);
+  }, [activeCanonicalSurfaceDefinition, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDerivedCandidateKey, surfaceDerivedMeshCandidate]);
+  const activeDerivedSurfaceMeshPayload = activeDerivedSurfaceMeshResult?.state === "ready" && activeDerivedSurfaceMeshResult.payload?.data.kind === "derived-mesh"
+    ? activeDerivedSurfaceMeshResult.payload.data
+    : null;
+  const activeSurfaceDerivedMeshRecord = useMemo(() => {
+    const records = surfaceAnalysisWorkspaceDocument.derivedMeshes.filter((record) => record.identity.source.surfaceId === activeCanonicalSurfaceDefinition.identity.surfaceId);
+    return records.find((record) => record.identity.meshId === surfaceDerivedMeshSelectedId) ?? records.find((record) => record.identity.state === "live-current") ?? records.at(-1) ?? null;
+  }, [activeCanonicalSurfaceDefinition.identity.surfaceId, surfaceAnalysisWorkspaceDocument.derivedMeshes, surfaceDerivedMeshSelectedId]);
+  const activeSourceDerivedMeshRecords = useMemo(
+    () => surfaceAnalysisWorkspaceDocument.derivedMeshes.filter((record) => record.identity.source.surfaceId === activeCanonicalSurfaceDefinition.identity.surfaceId),
+    [activeCanonicalSurfaceDefinition.identity.surfaceId, surfaceAnalysisWorkspaceDocument.derivedMeshes]
+  );
+  const handleRegenerateDerivedSurfaceMesh = useCallback(() => {
+    const record = activeSurfaceDerivedMeshRecord; const payload = buildDerivedSurfaceMeshPayload({ meshId: record?.identity.meshId, meshRevision: (record?.identity.meshRevision ?? 0) + 1, createdAt: Date.now() });
+    if (!payload) return;
+    publishDerivedSurfaceMeshPayload(payload);
+    const next = record ? regenerateDerivedSurfaceMeshRecord(record, payload) : compactDerivedSurfaceMesh(payload, `${activeCanonicalSurfaceDefinition.identity.label} live tessellation`);
+    setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, derivedMeshes: [...document.derivedMeshes.filter((entry) => entry.identity.meshId !== next.identity.meshId), next].slice(-64) }));
+    setSurfaceDerivedMeshSelectedId(next.identity.meshId); setSurfaceDerivedMeshStatus(`Regenerated mesh revision ${next.identity.meshRevision} from Surface revision ${next.identity.source.surfaceRevision}.`);
+  }, [activeCanonicalSurfaceDefinition.identity.label, activeSurfaceDerivedMeshRecord, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload]);
+  const handleTransitionDerivedSurfaceMesh = useCallback((state: "frozen-snapshot" | "detached") => {
+    if (!activeSurfaceDerivedMeshRecord) return;
+    const next = transitionDerivedSurfaceMeshRecord(activeSurfaceDerivedMeshRecord, state);
+    setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, derivedMeshes: [...document.derivedMeshes, next].slice(-64) }));
+    setSurfaceDerivedMeshSelectedId(next.identity.meshId); setSurfaceDerivedMeshStatus(state === "frozen-snapshot" ? "Frozen snapshot created with immutable source provenance." : "Detached mesh record created; source provenance remains readable.");
+  }, [activeSurfaceDerivedMeshRecord]);
+  const handleDeleteDerivedSurfaceMesh = useCallback(() => {
+    if (!activeSurfaceDerivedMeshRecord) return;
+    const removed = activeSurfaceDerivedMeshRecord.identity.meshId;
+    setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, derivedMeshes: document.derivedMeshes.filter((entry) => entry.identity.meshId !== removed) }));
+    setSurfaceDerivedMeshSelectedId(null); setSurfaceDerivedMeshStatus("Derived mesh metadata removed.");
+  }, [activeSurfaceDerivedMeshRecord]);
+  const handleOpenDerivedSurfaceSource = useCallback(() => {
+    if (!activeSurfaceDerivedMeshRecord) return;
+    setSurfacesLeftTab("object"); setSurfaceInspectDerivedMesh(false);
+    setSurfaceDerivedMeshStatus(activeSurfaceDerivedMeshRecord.identity.source.surfaceId === activeCanonicalSurfaceDefinition.identity.surfaceId ? `Opened source ${activeSurfaceDerivedMeshRecord.identity.source.label} at current Surface revision.` : "The recorded source is not the active Surface; its provenance remains available in the Inspector.");
+  }, [activeCanonicalSurfaceDefinition.identity.surfaceId, activeSurfaceDerivedMeshRecord]);
+  const handleInspectDerivedSurfaceMesh = useCallback(() => { setSurfaceInspectDerivedMesh(true); setRightPanelTab("inspector"); }, []);
+  const handleMapSurfaceSelectionToDerivedMesh = useCallback(() => {
+    if (!activeDerivedSurfaceMeshPayload) return;
+    const indices = selectionMask?.selected ? Array.from(selectionMask.selected, (selected, index) => selected ? index : -1).filter((index) => index >= 0) : inspectIdx != null ? [inspectIdx] : [];
+    const mapping = mapSourceSelectionToDerivedMesh(activeDerivedSurfaceMeshPayload.correspondence, indices);
+    setSurfaceDerivedMeshStatus(`${mapping.state}: ${mapping.meshVertexIndices.length} mesh vertices mapped. ${mapping.explanation}`);
+  }, [activeDerivedSurfaceMeshPayload, inspectIdx, selectionMask?.selected]);
+  const handleMapDerivedSelectionToSurface = useCallback(() => {
+    if (!activeDerivedSurfaceMeshPayload || inspectIdx == null) return;
+    const mapping = mapDerivedMeshSelectionToSource(activeDerivedSurfaceMeshPayload.correspondence, [inspectIdx]);
+    if (mapping.sourceIndices.length) selectSurfaceChartIndices(mapping.sourceIndices);
+    setSurfaceDerivedMeshStatus(`${mapping.state}: ${mapping.sourceIndices.length} source samples mapped. ${mapping.explanation}`);
+  }, [activeDerivedSurfaceMeshPayload, inspectIdx, selectSurfaceChartIndices]);
 
   const calculusScalarOptions = useMemo(() => {
     const out: Array<{ value: string; label: string }> = [];
@@ -79257,15 +79418,53 @@ case "mobius":
                     chartState={!surfaceChartSamples.length ? "unavailable" : activeSurfaceChart ? "computed" : "ready"}
                     onComputeChart={publishSurfaceChart}
                     derivedMesh={{
-                      available: hasSurfaceMesh,
-                      label: surfaceMeshLabel,
-                      vertexCount: surfaceMeshStats?.vertCount ?? 0,
-                      faceCount: surfaceMeshStats?.triCount ?? 0,
+                      available: !!surfaceDerivedMeshCandidate,
+                      label: activeSurfaceDerivedMeshRecord?.label ?? `${activeCanonicalSurfaceDefinition.identity.label} live tessellation`,
+                      vertexCount: surfaceDerivedMeshCandidate?.vertexCount ?? 0,
+                      faceCount: surfaceDerivedMeshCandidate?.faceCount ?? 0,
+                    }}
+                    derivedMeshLifecycle={{
+                      selected: activeSurfaceDerivedMeshRecord ? {
+                        id: activeSurfaceDerivedMeshRecord.identity.meshId,
+                        label: activeSurfaceDerivedMeshRecord.label,
+                        state: activeSurfaceDerivedMeshRecord.identity.state,
+                        sourceRevision: activeSurfaceDerivedMeshRecord.identity.source.surfaceRevision,
+                        meshRevision: activeSurfaceDerivedMeshRecord.identity.meshRevision,
+                        method: activeSurfaceDerivedMeshRecord.identity.tessellation.method,
+                        backend: activeSurfaceDerivedMeshRecord.identity.backend.id,
+                        correspondence: `${activeSurfaceDerivedMeshRecord.correspondence.kind}/${activeSurfaceDerivedMeshRecord.correspondence.state}`,
+                        mappedVertexCount: activeSurfaceDerivedMeshRecord.correspondence.mappedVertexCount,
+                        staleReason: activeSurfaceDerivedMeshRecord.identity.staleReason,
+                        historyCount: activeSurfaceDerivedMeshRecord.history.length,
+                      } : null,
+                      records: activeSourceDerivedMeshRecords.map((record) => ({ id: record.identity.meshId, label: record.label, state: record.identity.state })),
+                      status: surfaceDerivedMeshStatus,
+                      onSelect: setSurfaceDerivedMeshSelectedId,
+                      onRegenerate: handleRegenerateDerivedSurfaceMesh,
+                      onFreeze: () => handleTransitionDerivedSurfaceMesh("frozen-snapshot"),
+                      onDetach: () => handleTransitionDerivedSurfaceMesh("detached"),
+                      onDelete: handleDeleteDerivedSurfaceMesh,
+                      onOpenSource: handleOpenDerivedSurfaceSource,
+                      onInspect: handleInspectDerivedSurfaceMesh,
+                      onMapSourceToMesh: handleMapSurfaceSelectionToDerivedMesh,
+                      onMapMeshToSource: handleMapDerivedSelectionToSurface,
                     }}
                     onOpenDerivedMesh={() => {
-                      if (!hasSurfaceMesh) {
+                      if (!surfaceDerivedMeshCandidate) {
                         setSurfacesLeftTab("object");
                         return;
+                      }
+                      if (!hasSurfaceMesh) {
+                        const source = activeCanonicalSurfaceDefinition.representation === "explicit" ? { kind: "bakedFromExplicit" as const }
+                          : activeCanonicalSurfaceDefinition.representation === "implicit" ? { kind: "bakedFromImplicit" as const }
+                            : activeCanonicalSurfaceDefinition.representation === "weierstrass" ? { kind: "bakedFromWeierstrass" as const }
+                              : { kind: "bakedFromParam" as const };
+                        setMeshDataset(applySurfaceMeshOps({
+                          label: `${activeCanonicalSurfaceDefinition.identity.label} live derived mesh`,
+                          positions: Float32Array.from(surfaceDerivedMeshCandidate.positions),
+                          indices: surfaceDerivedMeshCandidate.indices ? Uint32Array.from(surfaceDerivedMeshCandidate.indices) : null,
+                          source,
+                        }), "surface-analysis:open-derived-mesh");
                       }
                       handleChangeViewerKind("mesh");
                       setMeshWorkspaceLeftTab("analyze");
@@ -84803,7 +85002,9 @@ case "mobius":
                     <>
                     {surfacesLeftTab === "analysis" && <SurfaceAnalysisInspectorPanel
                       definition={activeCanonicalSurfaceDefinition}
-                      result={activeSurfaceComputation === "surface-probe"
+                      result={surfaceInspectDerivedMesh
+                        ? activeDerivedSurfaceMeshResult ?? activeSurfaceAnalysisResult
+                        : activeSurfaceComputation === "surface-probe"
                         ? activeSurfaceProbeResult ?? activeSurfaceAnalysisResult
                         : activeSurfaceComputation === "surface-curves"
                           ? activeSurfaceCurvesResult ?? activeSurfaceAnalysisResult
@@ -84859,6 +85060,10 @@ case "mobius":
                         onSave: handleSaveSurfaceChart,
                         onExport: handleExportSurfaceChart,
                         onRecompute: publishSurfaceChart,
+                      } : undefined}
+                      derivedMeshInspection={surfaceInspectDerivedMesh && activeSurfaceDerivedMeshRecord ? {
+                        record: activeSurfaceDerivedMeshRecord,
+                        payload: activeDerivedSurfaceMeshPayload,
                       } : undefined}
                     />}
                     <SurfacesRightPanel
