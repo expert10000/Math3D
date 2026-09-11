@@ -82,7 +82,46 @@ test.describe("Surface functional flow", () => {
     }
   });
 
-  test("Test 3 — invalid input failure", async () => {
+  test("Test 3 — canonical curvature result lifecycle", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await openSurfaceGenerator(ctx.page);
+      await waitForWorkerReady(ctx.page);
+      await ctx.page.getByTestId("surfaces-left-tab-analysis").click();
+      await ctx.page.getByTestId("surface-computation-curvature-field").click();
+      const compute = ctx.page.getByTestId("surface-curvature-compute-button");
+      await expect(compute).toBeEnabled({ timeout: 10_000 });
+      await compute.click();
+      await expect(ctx.page.getByTestId("surface-curvature-result")).toBeVisible();
+      await expect(ctx.page.getByTestId("surface-curvature-statistics")).toContainText("RMS");
+      await expect(ctx.page.getByTestId("surface-curvature-display-controls")).toBeVisible();
+
+      await ctx.page.getByLabel("Curvature scalar field").selectOption("shapeIndex");
+      await ctx.page.getByLabel("Curvature palette").selectOption("grayscale");
+      await ctx.page.getByLabel("Curvature range").selectOption("percentile");
+      await expect(ctx.page.getByTestId("surface-curvature-statistics")).toContainText("shapeIndex");
+
+      const resultPanel = ctx.page.getByTestId("surface-curvature-result");
+      await resultPanel.getByRole("button", { name: "Save", exact: true }).click();
+      await expect.poll(async () => ctx!.page.evaluate(() => {
+        const raw = localStorage.getItem("math3d.surfaceAnalysis.workspace.v1");
+        return raw ? JSON.parse(raw).savedResults?.filter((entry: { kind?: string }) => entry.kind === "curvature-field").length ?? 0 : 0;
+      })).toBe(1);
+      await resultPanel.getByRole("button", { name: "Compare", exact: true }).click();
+      await expect(resultPanel).toContainText("Baseline stored");
+      await resultPanel.getByRole("button", { name: "Hide", exact: true }).click();
+      await expect(resultPanel.getByRole("button", { name: "Show", exact: true })).toBeVisible();
+      await resultPanel.getByRole("button", { name: "Show", exact: true }).click();
+      await resultPanel.getByRole("button", { name: "Recompute", exact: true }).click();
+      await expect(ctx.page.getByTestId("surface-analysis-contract-state")).toHaveText("ready");
+      await expect(ctx.page.getByTestId("error-banner")).toHaveCount(0);
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
+  test("Test 4 — invalid input failure", async () => {
     let ctx: LaunchedSurfaceApp | null = null;
     try {
       ctx = await launchSurfaceApp({

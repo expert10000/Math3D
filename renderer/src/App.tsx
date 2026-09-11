@@ -42,8 +42,10 @@ import { GeometryConstructCatalogPanel } from "./components/GeometryConstructCat
 import { GeometryModifyPanel } from "./components/GeometryModifyPanel";
 import {
   SurfaceAnalysisComputationPanel,
+  SurfaceCurvatureDisplayControls,
   SurfaceAnalysisInspectorPanel,
   type SurfaceComputationId,
+  type SurfaceCurvatureScalar,
 } from "./components/SurfaceAnalysisWorkspacePanels";
 import {
   GeometryLineageInspectorPanel,
@@ -252,7 +254,13 @@ import {
   type SceneEntityIdentity,
 } from "./scene/sceneIdentity";
 import { buildGeometrySceneIdentities } from "./geometry/sceneIdentity";
-import type { SurfaceAdapterInput, SurfaceAnalysisMethod, SurfaceAnalysisPayload } from "./surfaceAnalysis/contracts";
+import type {
+  SurfaceAdapterInput,
+  SurfaceAnalysisMethod,
+  SurfaceAnalysisPayload,
+  SurfaceCurvatureClass,
+  SurfaceCurvatureFieldPayload,
+} from "./surfaceAnalysis/contracts";
 import {
   adaptSurfaceDefinition,
   createSurfaceAnalysisRegistry,
@@ -269,6 +277,7 @@ import {
   parseSurfaceAnalysisWorkspace,
   serializeSurfaceAnalysisWorkspace,
 } from "./surfaceAnalysis/persistence";
+import { createSurfaceCurvatureField, createSurfaceCurvaturePayload, surfaceCurvatureRegionIndices } from "./surfaceAnalysis/surfaceCurvature";
 import {
   DEFAULT_GEOMETRY_SEMANTIC_FILTER,
   attachGeometrySemanticSelection,
@@ -41856,9 +41865,13 @@ const App: React.FC = () => {
     () => getSurfaceAnalysisResult(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "surface-definition"),
     [activeCanonicalSurfaceDefinition.identity, surfaceAnalysisResultStore]
   );
+  const activeSurfaceCurvatureResult = useMemo(
+    () => getSurfaceAnalysisResult<SurfaceAnalysisPayload>(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "curvature-field"),
+    [activeCanonicalSurfaceDefinition.identity, surfaceAnalysisResultStore]
+  );
   const activeSurfaceAnalysisResult = useMemo(
-    () => getSurfaceAnalysisResult(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "differential-geometry") ?? activeSurfaceDefinitionResult,
-    [activeCanonicalSurfaceDefinition.identity, activeSurfaceDefinitionResult, surfaceAnalysisResultStore]
+    () => activeSurfaceCurvatureResult ?? getSurfaceAnalysisResult(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "differential-geometry") ?? activeSurfaceDefinitionResult,
+    [activeCanonicalSurfaceDefinition.identity, activeSurfaceCurvatureResult, activeSurfaceDefinitionResult, surfaceAnalysisResultStore]
   );
   const activeParamLikeDomain =
     surfaceViewerKind === "weierstrass" ? activeWeierstrassDomain : activeParamDomain;
@@ -43176,6 +43189,11 @@ const App: React.FC = () => {
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<SurfacesLeftTab>("scene");
   const [activeSurfaceComputation, setActiveSurfaceComputation] = useState<SurfaceComputationId>("differential-geometry");
   const [surfaceLegacyAnalysisOpen, setSurfaceLegacyAnalysisOpen] = useState(false);
+  const [surfaceCurvatureScalar, setSurfaceCurvatureScalar] = useState<SurfaceCurvatureScalar>("K");
+  const [surfaceCurvatureRangeMode, setSurfaceCurvatureRangeMode] = useState<"automatic" | "percentile" | "symmetric">("automatic");
+  const [surfaceCurvatureVisible, setSurfaceCurvatureVisible] = useState(true);
+  const [surfaceCurvatureCompareLabel, setSurfaceCurvatureCompareLabel] = useState("Set a baseline to compare revisions.");
+  const surfaceCurvatureCompareBaselineRef = useRef<SurfaceCurvatureFieldPayload | null>(null);
   const handleSelectSurfaceComputation = useCallback((computation: SurfaceComputationId) => {
     const section: AnalysisFocusedSection = computation === "surface-curves"
       ? "curvature-lines"
@@ -48517,6 +48535,204 @@ case "mobius":
     }
     return map;
   }, [calculusVectorFields, meshDataset?.fields?.vectors, meshFieldSourceRegistry, surfaceMeshCurvatures, workbookVectorFields]);
+
+  const surfaceCurvatureSource = useMemo(() => {
+    const curvatures = surfaceSampleSet?.curvatures ?? graphCurvatures ?? surfaceMeshCurvatures;
+    if (!curvatures?.K?.length || curvatures.H.length !== curvatures.K.length || curvatures.k1.length !== curvatures.K.length || curvatures.k2.length !== curvatures.K.length) return null;
+    const sampleCount = curvatures.K.length;
+    let positions: Float64Array | Float32Array | undefined;
+    if (surfaceMeshCurvatures === curvatures && surfaceMeshData?.positions.length === sampleCount * 3) {
+      positions = surfaceMeshData.positions;
+    } else if (surfaceSampleSet?.samples.length === sampleCount) {
+      positions = new Float64Array(sampleCount * 3);
+      surfaceSampleSet.samples.forEach((sample, index) => {
+        positions![index * 3] = sample.position.x;
+        positions![index * 3 + 1] = sample.position.y;
+        positions![index * 3 + 2] = sample.position.z;
+      });
+    }
+    const meshSource = surfaceMeshCurvatures === curvatures ? surfaceMeshCurvatures : null;
+    return {
+      sampleCount,
+      positions,
+      K: curvatures.K,
+      H: curvatures.H,
+      k1: curvatures.k1,
+      k2: curvatures.k2,
+      d1: meshSource?.d1,
+      d2: meshSource?.d2,
+      validityMask: meshSource?.validMask,
+      uncertaintyMask: meshSource ? Uint8Array.from(meshSource.warningMask, (flag) => Number(flag !== 0)) : undefined,
+      directionValidityMask: meshSource?.directionValidMask,
+    };
+  }, [graphCurvatures, surfaceMeshCurvatures, surfaceMeshData?.positions, surfaceSampleSet]);
+
+  const handleComputeSurfaceCurvature = useCallback(() => {
+    if (!surfaceCurvatureSource) return;
+    const started = performance.now();
+    const definition = activeCanonicalSurfaceDefinition;
+    const method: SurfaceAnalysisMethod = definition.representation === "mesh-backed" ? "mesh-approximation" : "surface-sampling";
+    const field = createSurfaceCurvatureField(surfaceCurvatureSource, {
+      histogramBins: 16,
+      palette: colorPalette,
+      rangeMode: surfaceCurvatureRangeMode,
+      percentileRange: [2, 98],
+    });
+    const dependencyRequest = createSurfaceAnalysisRequest({
+      requestId: `surface-differential:${definition.identity.key}`,
+      kind: "differential-geometry",
+      definition,
+      domain: "surface",
+      method,
+      requestedOutputs: ["normalized curvature source", "validity masks", "method provenance"],
+    });
+    const dependencyPayload: SurfaceAnalysisPayload = {
+      version: 1,
+      surfaceId: definition.identity.surfaceId,
+      surfaceRevision: definition.identity.surfaceRevision,
+      representation: definition.representation,
+      method,
+      units: definition.units,
+      orientation: definition.orientation,
+      warnings: definition.warnings,
+      data: { kind: "summary", values: { sampleCount: field.sampleCount, validDomainCount: field.validDomainCount, source: "represented Surface" } },
+    };
+    const request = createSurfaceAnalysisRequest({
+      requestId: `surface-curvature:${definition.identity.key}:${Date.now()}`,
+      kind: "curvature-field",
+      definition,
+      domain: "surface",
+      method,
+      parameters: { histogramBins: 16, classificationTolerance: "scale-aware", directionPolicy: "undefined-at-umbilic-or-uncertain" },
+      requestedOutputs: ["K", "H", "k1", "k2", "d1", "d2", "shapeIndex", "curvedness", "masks", "classifications", "statistics"],
+    });
+    const payload = createSurfaceCurvaturePayload({ definition, method, field });
+    setSurfaceAnalysisResultStore((store) => {
+      let next = store;
+      const existingDependency = getSurfaceAnalysisResult(next, definition.identity, "differential-geometry");
+      if (existingDependency?.state !== "ready") {
+        next = publishSurfaceAnalysisResult({ store: next, registry: surfaceAnalysisRegistryRef.current, request: dependencyRequest, payload: dependencyPayload, backend: "Represented Surface adapter" });
+      }
+      return publishSurfaceAnalysisResult({
+        store: next,
+        registry: surfaceAnalysisRegistryRef.current,
+        request,
+        payload,
+        computeTimeMs: performance.now() - started,
+        backend: method === "mesh-approximation" ? "Discrete Surface curvature" : "Surface sampler",
+      });
+    });
+    const selectedValues = surfaceCurvatureScalar === "K" ? field.gaussianCurvature
+      : surfaceCurvatureScalar === "H" ? field.meanCurvature
+        : surfaceCurvatureScalar === "k1" ? Float64Array.from({ length: field.sampleCount }, (_, index) => field.principalCurvatures[index * 2])
+          : surfaceCurvatureScalar === "k2" ? Float64Array.from({ length: field.sampleCount }, (_, index) => field.principalCurvatures[index * 2 + 1])
+            : field[surfaceCurvatureScalar];
+    setCalculusHeatmapValues(selectedValues);
+    setCalculusHeatmapEnabled(surfaceCurvatureVisible);
+    setActiveSurfaceComputation("curvature-field");
+    setAnalysisFocusedSection("differential-geometry");
+    setRightPanelTab("inspector");
+  }, [activeCanonicalSurfaceDefinition, colorPalette, surfaceCurvatureRangeMode, surfaceCurvatureScalar, surfaceCurvatureSource, surfaceCurvatureVisible]);
+
+  const activeSurfaceCurvatureField = activeSurfaceCurvatureResult?.state === "ready" && activeSurfaceCurvatureResult.payload?.data.kind === "curvature"
+    ? activeSurfaceCurvatureResult.payload.data
+    : null;
+  const surfaceCurvatureValues = useCallback((field: SurfaceCurvatureFieldPayload, scalar: SurfaceCurvatureScalar): ArrayLike<number> => {
+    if (scalar === "K") return field.gaussianCurvature;
+    if (scalar === "H") return field.meanCurvature;
+    if (scalar === "k1") return Float64Array.from({ length: field.sampleCount }, (_, index) => field.principalCurvatures[index * 2]);
+    if (scalar === "k2") return Float64Array.from({ length: field.sampleCount }, (_, index) => field.principalCurvatures[index * 2 + 1]);
+    return field[scalar];
+  }, []);
+  const handleSelectSurfaceCurvatureScalar = useCallback((scalar: SurfaceCurvatureScalar) => {
+    setSurfaceCurvatureScalar(scalar);
+    if (activeSurfaceCurvatureField) {
+      setCalculusHeatmapValues(surfaceCurvatureValues(activeSurfaceCurvatureField, scalar));
+      setCalculusHeatmapEnabled(surfaceCurvatureVisible);
+    }
+  }, [activeSurfaceCurvatureField, surfaceCurvatureValues, surfaceCurvatureVisible]);
+  const handleToggleSurfaceCurvatureVisible = useCallback(() => {
+    setSurfaceCurvatureVisible((current) => {
+      const next = !current;
+      setCalculusHeatmapEnabled(next && !!activeSurfaceCurvatureField);
+      setSurfaceAnalysisWorkspaceDocument((document) => ({
+        ...document,
+        savedResults: document.savedResults.map((entry) => entry.kind === "curvature-field" && entry.identity.key === activeCanonicalSurfaceDefinition.identity.key ? { ...entry, visible: next } : entry),
+      }));
+      return next;
+    });
+  }, [activeCanonicalSurfaceDefinition.identity.key, activeSurfaceCurvatureField]);
+  const handleSelectSurfaceCurvatureRegion = useCallback((classification: SurfaceCurvatureClass) => {
+    if (!activeSurfaceCurvatureField) return;
+    const indices = surfaceCurvatureRegionIndices(activeSurfaceCurvatureField, classification);
+    if (!indices.length) return;
+    setInspectIdx(indices[0]);
+    if (surfaceSampleSet?.samples.length === activeSurfaceCurvatureField.sampleCount) {
+      const selected = new Uint8Array(activeSurfaceCurvatureField.sampleCount);
+      indices.forEach((index) => { selected[index] = 1; });
+      setSelection(null);
+      setSelectionSeed(null);
+      setSelectionMaskOverride({ selected, count: indices.length });
+      setSelectionMask({ selected, count: indices.length });
+      setSelectRegionEnabled(true);
+      setSelectionOverlayVisible(true);
+    }
+    setCameraResetToken((token) => token + 1);
+    setSurfaceMeshTopologyStatus(`${classification} region selected: ${indices.length.toLocaleString()} samples; focused sample #${indices[0]}.`);
+  }, [activeSurfaceCurvatureField, surfaceSampleSet?.samples.length]);
+  const handleSaveSurfaceCurvature = useCallback(() => {
+    if (!activeSurfaceCurvatureResult) return;
+    const identity = activeCanonicalSurfaceDefinition.identity;
+    const id = `saved:${identity.key}:curvature-field`;
+    setSurfaceAnalysisWorkspaceDocument((document) => ({
+      ...document,
+      savedResults: [...document.savedResults.filter((entry) => entry.id !== id), {
+        id,
+        resultKey: `${identity.key}:curvature-field:default`,
+        kind: "curvature-field",
+        variant: "default",
+        identity,
+        label: `Curvature · ${identity.label} · revision ${identity.surfaceRevision}`,
+        visible: surfaceCurvatureVisible,
+      }],
+    }));
+  }, [activeCanonicalSurfaceDefinition.identity, activeSurfaceCurvatureResult, surfaceCurvatureVisible]);
+  const handleCompareSurfaceCurvature = useCallback(() => {
+    if (!activeSurfaceCurvatureField) return;
+    const baseline = surfaceCurvatureCompareBaselineRef.current;
+    if (!baseline) {
+      surfaceCurvatureCompareBaselineRef.current = activeSurfaceCurvatureField;
+      setSurfaceCurvatureCompareLabel(`Baseline stored (${activeSurfaceCurvatureField.sampleCount.toLocaleString()} samples). Recompute after editing to compare.`);
+      return;
+    }
+    const current = activeSurfaceCurvatureField.statistics[surfaceCurvatureScalar];
+    const previous = baseline.statistics[surfaceCurvatureScalar];
+    if (!current || !previous) {
+      setSurfaceCurvatureCompareLabel("Comparison unavailable: one result has no valid values.");
+      return;
+    }
+    setSurfaceCurvatureCompareLabel(`${surfaceCurvatureScalar} Δmean ${(current.mean - previous.mean).toPrecision(4)} · ΔRMS ${(current.rms - previous.rms).toPrecision(4)} · ${baseline.sampleCount.toLocaleString()}→${activeSurfaceCurvatureField.sampleCount.toLocaleString()} samples`);
+  }, [activeSurfaceCurvatureField, surfaceCurvatureScalar]);
+  const handleExportSurfaceCurvature = useCallback(() => {
+    if (!activeSurfaceCurvatureField) return;
+    const field = activeSurfaceCurvatureField;
+    const serializable = {
+      ...activeSurfaceCurvatureResult?.payload,
+      data: {
+        ...field,
+        parameters: Array.from(field.parameters), positions: Array.from(field.positions), gaussianCurvature: Array.from(field.gaussianCurvature), meanCurvature: Array.from(field.meanCurvature),
+        principalCurvatures: Array.from(field.principalCurvatures), principalDirections: Array.from(field.principalDirections), shapeIndex: Array.from(field.shapeIndex), curvedness: Array.from(field.curvedness),
+        classificationCodes: Array.from(field.classificationCodes), validityMask: Array.from(field.validityMask), uncertaintyMask: Array.from(field.uncertaintyMask), directionValidityMask: Array.from(field.directionValidityMask),
+        regions: field.regions.map((region) => ({ classification: region.classification, indices: Array.from(region.indices) })),
+      },
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(serializable, null, 2)], { type: "application/json" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `surface-curvature-${activeCanonicalSurfaceDefinition.identity.surfaceId.replace(/[^a-z0-9_-]+/gi, "-")}-r${activeCanonicalSurfaceDefinition.identity.surfaceRevision}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }, [activeCanonicalSurfaceDefinition.identity, activeSurfaceCurvatureField, activeSurfaceCurvatureResult?.payload]);
 
   const calculusScalarOptions = useMemo(() => {
     const out: Array<{ value: string; label: string }> = [];
@@ -63024,6 +63240,14 @@ case "mobius":
   ]);
   const overlayHeatmapValues = meshAnalyzeCurvatureHeatmapValues ?? baseOverlayHeatmapValues;
   const overlayHeatmapEnabled = !!overlayHeatmapValues?.length;
+  const surfaceCurvatureOverlayRange = useMemo(() => {
+    if (!activeSurfaceCurvatureField || !surfaceCurvatureVisible || activeSurfaceComputation !== "curvature-field" || surfaceCurvatureRangeMode === "automatic") return null;
+    const stats = activeSurfaceCurvatureField.statistics[surfaceCurvatureScalar];
+    if (!stats) return null;
+    if (surfaceCurvatureRangeMode === "percentile") return { min: stats.p05, max: stats.p95 };
+    const extent = Math.max(Math.abs(stats.min), Math.abs(stats.max));
+    return extent > 0 ? { min: -extent, max: extent } : null;
+  }, [activeSurfaceComputation, activeSurfaceCurvatureField, surfaceCurvatureRangeMode, surfaceCurvatureScalar, surfaceCurvatureVisible]);
   const meshAnalyzeSelectedRangeAvailable =
     meshAnalyzeQualityFaceField
       ? !!meshQualityFaceSelection?.count
@@ -78508,6 +78732,8 @@ case "mobius":
                     onSelect={handleSelectSurfaceComputation}
                     configurationOpen={surfaceLegacyAnalysisOpen}
                     onOpenConfiguration={() => setSurfaceLegacyAnalysisOpen(true)}
+                    curvatureState={!surfaceCurvatureSource ? "unavailable" : activeSurfaceCurvatureField ? "computed" : "ready"}
+                    onComputeCurvature={handleComputeSurfaceCurvature}
                     derivedMesh={{
                       available: hasSurfaceMesh,
                       label: surfaceMeshLabel,
@@ -81018,6 +81244,21 @@ case "mobius":
                         </ViewerControlGroup>
                       </ViewerControlsStrip>
                     )}
+                    {surfacesLeftTab === "analysis" && activeSurfaceComputation === "curvature-field" && activeSurfaceCurvatureField && !cleanScreenshotSurfaceActive && (
+                      <SurfaceCurvatureDisplayControls
+                        field={activeSurfaceCurvatureField}
+                        scalar={surfaceCurvatureScalar}
+                        palette={colorPalette}
+                        rangeMode={surfaceCurvatureRangeMode}
+                        visible={surfaceCurvatureVisible}
+                        directionsVisible={showPrincipalDirections}
+                        onSelectScalar={handleSelectSurfaceCurvatureScalar}
+                        onSelectPalette={(palette) => setColorPalette(palette as ColorPalette)}
+                        onSelectRangeMode={setSurfaceCurvatureRangeMode}
+                        onToggleVisible={handleToggleSurfaceCurvatureVisible}
+                        onToggleDirections={() => setShowPrincipalDirections((visible) => !visible)}
+                      />
+                    )}
                     {surfaceViewerKind === "mesh" && surfaceMeshStats && !cleanScreenshotSurfaceActive && (
                       <div
                         style={{
@@ -82324,6 +82565,7 @@ case "mobius":
                         geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
                         overlayHeatmapValues={overlayHeatmapValues}
                         overlayHeatmapEnabled={overlayHeatmapEnabled}
+                        overlayHeatmapRange={surfaceCurvatureOverlayRange}
                         overlayPolylines={complexMapOverlayPolylines}
                         overlayPolylinesColor={0xffd400}
                         topologyGizmo={surfaceViewerKind === "mesh" && !meshAnalyzeDiagnosticFocusActive ? surfaceMeshTopologyGizmoTarget : null}
@@ -84048,6 +84290,17 @@ case "mobius":
                         ...(probeInfo.uv ? [{ label: "Domain (u,v)", value: `(${fmt(probeInfo.uv.u)}, ${fmt(probeInfo.uv.v)})` }] : []),
                         ...(probeInfo.xy ? [{ label: "Domain (x,y)", value: `(${fmt(probeInfo.xy.x)}, ${fmt(probeInfo.xy.y)})` }] : []),
                       ] : []}
+                      curvatureActions={activeSurfaceCurvatureField ? {
+                        selectedField: surfaceCurvatureScalar,
+                        visible: surfaceCurvatureVisible,
+                        compareLabel: surfaceCurvatureCompareLabel,
+                        onSelectRegion: handleSelectSurfaceCurvatureRegion,
+                        onSave: handleSaveSurfaceCurvature,
+                        onCompare: handleCompareSurfaceCurvature,
+                        onExport: handleExportSurfaceCurvature,
+                        onToggleVisible: handleToggleSurfaceCurvatureVisible,
+                        onRecompute: handleComputeSurfaceCurvature,
+                      } : undefined}
                     />}
                     <SurfacesRightPanel
                       viewerKind={surfaceViewerKind}

@@ -1,4 +1,4 @@
-import type { AnalysisIdentity, AnalysisParameters, AnalysisResultState } from "../analysis/contracts";
+import type { AnalysisHistogramBin, AnalysisIdentity, AnalysisPaletteRangeMetadata, AnalysisParameters, AnalysisResultState } from "../analysis/contracts";
 
 export type SurfaceRepresentation =
   | "explicit"
@@ -176,6 +176,49 @@ export type SurfaceDifferentialFieldPayload = {
   umbilicMask: Uint8Array;
 };
 
+export type SurfaceCurvatureClass = "invalid" | "flat" | "elliptic" | "hyperbolic" | "parabolic" | "umbilic";
+
+export type SurfaceCurvatureStatistics = {
+  min: number;
+  max: number;
+  mean: number;
+  rms: number;
+  std: number;
+  median: number;
+  p05: number;
+  p25: number;
+  p75: number;
+  p95: number;
+  count: number;
+  minIndex: number;
+  maxIndex: number;
+  histogram: AnalysisHistogramBin[];
+};
+
+export type SurfaceCurvatureFieldPayload = {
+  kind: "curvature";
+  sampleCount: number;
+  parameters: Float64Array;
+  positions: Float64Array;
+  gaussianCurvature: Float64Array;
+  meanCurvature: Float64Array;
+  principalCurvatures: Float64Array;
+  principalDirections: Float64Array;
+  shapeIndex: Float64Array;
+  curvedness: Float64Array;
+  classificationCodes: Uint8Array;
+  classificationLabels: readonly SurfaceCurvatureClass[];
+  classificationCounts: Readonly<Record<SurfaceCurvatureClass, number>>;
+  regions: ReadonlyArray<{ classification: SurfaceCurvatureClass; indices: Uint32Array }>;
+  validityMask: Uint8Array;
+  uncertaintyMask: Uint8Array;
+  directionValidityMask: Uint8Array;
+  validDomainCount: number;
+  units: Readonly<Record<"K" | "H" | "k1" | "k2" | "shapeIndex" | "curvedness" | "d1" | "d2", string>>;
+  statistics: Readonly<Record<"K" | "H" | "k1" | "k2" | "shapeIndex" | "curvedness", SurfaceCurvatureStatistics | null>>;
+  display: AnalysisPaletteRangeMetadata;
+};
+
 export type SurfaceAnalysisPayload = {
   version: 1;
   surfaceId: string;
@@ -193,6 +236,7 @@ export type SurfaceAnalysisPayload = {
     | SurfaceChartPayload
     | SurfaceDerivedMeshPayload
     | SurfaceDifferentialFieldPayload
+    | SurfaceCurvatureFieldPayload
     | { kind: "summary"; values: Readonly<Record<string, number | string | boolean | null>> };
 };
 

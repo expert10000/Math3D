@@ -974,7 +974,8 @@ function applyVertexColors(
 function applyHeatmapColors(
   geometry: THREE.BufferGeometry,
   values: ArrayLike<number>,
-  palette: ColorPalette
+  palette: ColorPalette,
+  requestedRange?: { min: number; max: number } | null
 ) {
   const pos = geometry.attributes.position as THREE.BufferAttribute | undefined;
   if (!pos) return;
@@ -982,12 +983,16 @@ function applyHeatmapColors(
   if (!count) return;
   if (!values || values.length !== count) return;
 
-  let min = Infinity;
-  let max = -Infinity;
-  for (let i = 0; i < count; i++) {
-    const v = values[i];
-    if (v < min) min = v;
-    if (v > max) max = v;
+  let min = Number.isFinite(requestedRange?.min) ? requestedRange!.min : Infinity;
+  let max = Number.isFinite(requestedRange?.max) ? requestedRange!.max : -Infinity;
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+    min = Infinity;
+    max = -Infinity;
+    for (let i = 0; i < count; i++) {
+      const v = values[i];
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
   }
   let range = max - min;
   if (!Number.isFinite(range) || range === 0) range = 1;
@@ -1691,6 +1696,7 @@ type Props = {
   geodesicHeatmapEnabled?: boolean;
   overlayHeatmapValues?: ArrayLike<number> | null;
   overlayHeatmapEnabled?: boolean;
+  overlayHeatmapRange?: { min: number; max: number } | null;
   overlayPolylines?: PolylineSet | null;
   overlayPolylinesColor?: number;
   overlayPolylineGroups?: OverlayPolylineGroup[] | null;
@@ -1961,6 +1967,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     geodesicHeatmapEnabled = false,
     overlayHeatmapValues = null,
     overlayHeatmapEnabled = false,
+    overlayHeatmapRange = null,
     overlayPolylines = null,
     overlayPolylinesColor = 0x2a7bff,
     overlayPolylineGroups = null,
@@ -3170,6 +3177,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
         : geodesicHeatmapEnabled && geodesicHeatmapValues?.length
         ? geodesicHeatmapValues
         : null;
+    const activeHeatmapRange = overlayHeatmapEnabled && overlayHeatmapValues?.length ? overlayHeatmapRange : null;
 
     root.traverse((o) => {
       const anyO = o as any;
@@ -3204,7 +3212,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
         }
         if (anyO.geometry) {
           if (heatmapOk) {
-            applyHeatmapColors(anyO.geometry, activeHeatmapValues!, colorPalette);
+            applyHeatmapColors(anyO.geometry, activeHeatmapValues!, colorPalette, activeHeatmapRange);
           } else if (useImplicitCurv && implicitMeta?.f) {
             applyImplicitCurvatureColors(anyO.geometry, implicitMeta.f, colorPalette);
           } else if (useScalarColors) {
@@ -3237,7 +3245,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
         debugMesh("[recolorTraverse] BEFORE", mesh, { surfaceId, colorMode, colorPalette });
 
         if (heatmapOk) {
-          applyHeatmapColors(geom, activeHeatmapValues!, colorPalette);
+          applyHeatmapColors(geom, activeHeatmapValues!, colorPalette, activeHeatmapRange);
         } else if (colorMode === "solid") {
           geom.deleteAttribute("color");
         } else if (colorMode === "curvature" && f) {
@@ -3292,6 +3300,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     geodesicHeatmapValues,
     overlayHeatmapEnabled,
     overlayHeatmapValues,
+    overlayHeatmapRange,
     implicitMeshToken,
   ]);
 
@@ -3796,6 +3805,7 @@ useEffect(() => {
       : geodesicHeatmapEnabled && geodesicHeatmapValues?.length
       ? geodesicHeatmapValues
       : null;
+  const activeHeatmapRange = overlayHeatmapEnabled && overlayHeatmapValues?.length ? overlayHeatmapRange : null;
 
   // MarchingCubes: update material color only (no vertex colors)
   if (isImplicitMeshObj(obj)) {
@@ -3813,7 +3823,7 @@ useEffect(() => {
     const mat = (mesh as any).material as THREE.Material | undefined;
     if (geom) {
       if (heatmapOk) {
-        applyHeatmapColors(geom, activeHeatmapValues!, colorPalette);
+        applyHeatmapColors(geom, activeHeatmapValues!, colorPalette, activeHeatmapRange);
       } else if (useImplicitCurv && implicitMeta?.f) {
         applyImplicitCurvatureColors(geom, implicitMeta.f, colorPalette);
       } else if (useScalarColors) {
@@ -3860,7 +3870,7 @@ debugMesh("[recolorFirstMesh] BEFORE", mesh, { surfaceId, colorMode, colorPalett
 
   // repaint
   if (heatmapOk) {
-    applyHeatmapColors(geom, activeHeatmapValues!, colorPalette);
+    applyHeatmapColors(geom, activeHeatmapValues!, colorPalette, activeHeatmapRange);
   } else if (colorMode === "curvature") {
     const g = (obj as any).userData?.__graph;
     const f = g?.f as ((x: number, y: number) => number) | undefined;
@@ -3896,6 +3906,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
   geodesicHeatmapValues,
   overlayHeatmapEnabled,
   overlayHeatmapValues,
+  overlayHeatmapRange,
 ]);
 
   useEffect(() => {
