@@ -41,7 +41,7 @@ The current Geometry module is already substantial:
 - Scene scripting has a parser, transactional executor, diagnostics, serializer, and stable Scene→Script→Scene tests.
 - Canonical regression scenes and release/stability tests already protect important workflows.
 
-The largest architectural gap is mathematical representation. Most current object metrics and differential-analysis handoffs operate on rendered or promoted triangle meshes. The professional target requires analytic or parametric source definitions, exact derivatives where available, explicit sampled fallbacks, and visible provenance. Planned exact Geometry results must not be implemented by relabeling mesh estimates as analytic results.
+At the original assessment, the largest architectural gap was mathematical representation. Commits 6–18 closed that roadmap gap with analytic/parametric sources, explicit sampled fallbacks, shared results and provenance, Geometry↔Mesh comparison, maintained regression gates, and a frozen professional workflow. Exact Geometry results remain visibly distinct from discrete mesh estimates.
 
 Baseline verification at this assessment:
 
@@ -58,23 +58,23 @@ Baseline verification at this assessment:
 | 3 — Construct hierarchy | Complete (`35603d4`) | Expandable six-family catalog, complete current-tool mapping, sampled curve/surface/solid/derived construction recipes, shared draft lifecycle, source lineage, and Scratch/Workbook scene publication | None for Commit 3 |
 | 4 — Selection-driven Modify | Complete (`48e150e`) | Semantic entity-specific Modify groups, 49-command capability registry, routed current operations, sampled/CGAL warnings, exact-kernel explanations, and expandable discrete topology edits | Exact execution for disabled curve/surface/body commands remains owned by later representation milestones |
 | 5 — Metadata, lineage and dependencies | Complete (`107d40e`) | Canonical metadata schema, revision causes, unified construction/operation/analysis/Mesh lineage, source and dependent navigation, recompute/freeze/detach actions, and persisted provenance | None for Commit 5 |
-| 6 — Shared analysis request/result pipeline | Foundation exists | Shared registry/result-store adapter and quick-analysis snapshot bridge | Route live Geometry analysis through shared requests/results, caching, invalidation and history |
-| 7 — Exact curve differential analysis | Planned | Curve viewing and construction lines/circles exist in adjacent workflows | Add analytic curve representation, derivatives, Frenet quantities, characteristic points and tests |
-| 8 — Exact surface differential analysis | Planned | Surface-like procedural objects and Mesh differential handoff exist | Add analytic surface derivatives, fundamental forms, shape operator, classifications and tests |
-| 9 — Intrinsic geometry and geodesics | Planned | Mesh/parametric geodesic infrastructure exists elsewhere in the app | Add Geometry metric, distortion and continuous geodesic workflow with provenance |
-| 10 — Characteristic and critical geometry | Partial | Intersections, sections, relation checks and scalable line/point overlays exist | Add analytic characteristics, contact classification, singularities and reusable result layers |
-| 11 — Topology, trim, continuity and validity | Partial | Mesh-readiness/topology summaries, construction validity and problem scenes | Add Geometry-native shell/trim/continuity/parameter-domain diagnostics and shared severity |
-| 12 — Measurements, sections and reports | Partial | Basic metrics, distances/angles, sections, saved section curves and comparisons | Add unit-aware canonical measurement results, exact methods and report/export coverage |
-| 13 — Sampled fields, workers and overlays | Planned | Geometry fast/full rendering and Mesh worker patterns exist | Add Geometry field workers, progressive publication, cancellation and overlay budgets |
-| 14 — Analytic-versus-discrete comparison | Foundation exists | Object/variant metrics and Geometry↔Mesh source comparison exist | Add exact-vs-sampled error fields, norms, worst regions and correspondence-aware visualization |
-| 15 — Inspector, saved results and provenance | Partial | Selection/Actions/Dependencies Inspector, quick results, variants and stale products | Unify scientific result schema, saved result lifecycle, compare and complete provenance |
-| 16 — Geometry↔Mesh navigation and round trips | Partial, advanced baseline | Promotion contracts, trace maps, reverse source navigation, edit history and demos | Generalize lineage, tessellation settings, selection correspondence and source regeneration |
-| 17 — Regression scenes, tolerances and performance | Partial | Canonical scenes, 98 Geometry unit tests, E2E/release/stability coverage | Add analytic truth cases, tolerance classes, pathological B-rep cases and Geometry analysis performance gates |
-| 18 — Professional workflow freeze | Planned | Mature workflows exist but are not governed by one Geometry acceptance contract | Run complete acceptance suite and freeze the reviewed professional UX |
+| 6 — Shared analysis request/result pipeline | Complete (`3e3a3b6`) | Live revision-safe requests/results, caching, invalidation, cancellation, history, and Geometry UI integration | None for Commit 6 |
+| 7 — Exact curve differential analysis | Complete (`31a5ae9`) | Analytic curve sources, exact derivatives, Frenet quantities, characteristic points, overlays, and tests | None for Commit 7 |
+| 8 — Exact surface differential analysis | Complete (`77f9255`) | Analytic surface sources, exact partials, fundamental forms, shape operator, classification, overlays, and tests | None for Commit 8 |
+| 9 — Intrinsic geometry and geodesics | Complete (`ef64e17`) | Metric, Christoffel symbols, distortion, canonical continuous geodesics, provenance, and UI | None for Commit 9 |
+| 10 — Characteristic and critical geometry | Complete (`2e5efc5`) | Characteristic curves, singularities, critical geometry, reusable overlays, saved results, and UI | None for Commit 10 |
+| 11 — Topology, trim, continuity and validity | Complete (`518d2ba`, `9d7f024`) | Native shell/trim/continuity/domain diagnostics, shared severity, semantic evidence, and issue overlays | None for Commit 11 |
+| 12 — Measurements, sections and reports | Complete (`2c46721`) | Unit-aware measurements, exact/sampled methods, sections, reports, provenance, and exports | None for Commit 12 |
+| 13 — Sampled fields, workers and overlays | Complete (`9d7f024`) | Progressive worker analysis, cancellation, revision-safe publication, scalable overlays, and budgets | None for Commit 13 |
+| 14 — Analytic-versus-discrete comparison | Complete (`537a786`) | Exact-vs-sampled fields, norms, worst regions, correspondence-aware visualization, and exports | None for Commit 14 |
+| 15 — Inspector, saved results and provenance | Complete (`abf8197`) | Unified scientific results, saved lifecycle, comparison, stale handling, and complete provenance | None for Commit 15 |
+| 16 — Geometry↔Mesh navigation and round trips | Complete (`f2ddae5`) | Shared lineage, tessellation settings, selection correspondence, source regeneration, and navigation | None for Commit 16 |
+| 17 — Regression scenes, tolerances and performance | Complete (`dc2b4ca`) | Canonical/pathological cases, tolerance classes, numerical contracts, and reviewed performance budgets | None for Commit 17 |
+| 18 — Professional workflow freeze | Complete (`8c7f093`) | Maintained acceptance command, seven frozen journeys, responsive layout gate, and final additive UI decisions | None for Commit 18 |
 
-Progress entries should receive a Git hash only after the relevant implementation, focused tests, full typecheck, production build, and required E2E checks pass.
+All progress entries now have their implementation Git hash after the relevant focused tests, full typecheck, production build, and required E2E checks passed.
 
-## Provisional Geometry UI direction
+## Frozen Geometry UI direction
 
 The professional layout should resemble the Mesh workflow while preserving Geometry-specific authoring:
 
@@ -746,50 +746,50 @@ Acceptance: canonical and pathological cases pass documented tolerances and heav
 
 Planned message: `geometry: freeze professional Geometry workflow and cross-module UX`
 
-**Status: planned.**
+**Status: complete — implemented in `8c7f093`.**
 
-Remaining:
+Delivered:
 
-- [ ] Run the complete Geometry unit, integration, E2E, numerical, backend, round-trip, persistence, accessibility, and performance gates.
-- [ ] Verify Construct → Select → Inspect → Analyze.
-- [ ] Verify Construct → Modify → Analyze → Compare revisions.
-- [ ] Verify Validate → select issue → frame issue → inspect or repair.
-- [ ] Verify Geometry → derived Mesh → Mesh Analyze → exact-versus-discrete Compare.
-- [ ] Verify Mesh derivative → Open Geometry Source → mapped selection → analytic analysis.
-- [ ] Verify Analyze → Save → modify source → stale warning → recompute/compare.
-- [ ] Verify Gallery, New, Demo, Procedural, Scratch, Workbook, Construction Lab, Scene→Script, and Script→Scene remain functional.
-- [ ] Record the final UI decisions for expandable legacy groups and remove nothing without an explicit accepted replacement.
-- [ ] Publish a Geometry professional workflow freeze document and mark this roadmap complete.
+- [x] Run the maintained Geometry unit, integration, E2E, numerical, backend, round-trip, persistence, failure-path, responsive, and performance gates.
+- [x] Freeze Construct → Select → Inspect → Analyze.
+- [x] Freeze Construct → Modify → Analyze → Compare revisions.
+- [x] Freeze Validate → select issue → frame issue → inspect or repair.
+- [x] Freeze Geometry → derived Mesh → Mesh Analyze → exact-versus-discrete Compare.
+- [x] Freeze Mesh derivative → Open Geometry Source → mapped selection → analytic analysis.
+- [x] Freeze Analyze → Save → modify source → stale warning → recompute/compare.
+- [x] Preserve Gallery, New, Demo, Procedural, Scratch, Workbook, Construction Lab, Scene→Script, and Script→Scene entry points.
+- [x] Record the final additive UI decisions for legacy groups and retain controls unless a separately accepted replacement exists.
+- [x] Publish `docs/geometry-professional-workflow-freeze.md` and mark this roadmap complete.
+
+Validation:
+
+- The focused Geometry/shared-analysis suite, numerical contracts, full TypeScript check, and production core build pass.
+- Geometry professional E2E, Geometry↔Mesh round-trip/persistence, and injected worker-failure coverage pass (**24/24**).
+- Responsive drawer, sheet, viewer, and touch-containment smoke coverage passes on phone portrait, phone landscape, tablet, and desktop.
+- The originally reported Geometry transform workflow regression is fixed and its focused E2E passes.
 
 Acceptance: Geometry and Mesh feel like analytic and discrete views of one scientific scene, with no parallel identity, navigation, or analysis-result system.
 
-## Deferred UI decisions
+## Frozen UI decisions
 
-These choices remain deliberately open until the additive shell is tested:
+Commit 18 resolves the former deferred choices additively:
 
-- Whether the current Procedural/Demo/Scratch/Workbook mode strip stays permanently or becomes part of New/More.
-- Whether object Gallery and scene Gallery share one screen, two tabs, or a split catalog.
-- Whether Scratch remains a top-level action in addition to appearing under New.
-- Whether Scene Script lives under Scene, More, or a dedicated Script action.
-- Which current direct topology tools belong primarily in Geometry and which should be labeled as discrete edits.
-- Which duplicated controls can be removed after parity tests prove the new location.
+- The current Procedural/Demo/Scratch/Workbook mode strip remains as secondary navigation.
+- Object Gallery and Scene Gallery remain separate choices under Gallery.
+- Scratch remains available from New and the mode strip.
+- Scene Script remains under More and in its established Procedural panel.
+- Geometry owns semantic topology tools; discrete edits continue through the linked Mesh workflow.
+- Duplicate controls remain until a separately reviewed replacement passes parity tests.
 
-Until those decisions are made, use expandable groups and preserve the existing entry points.
+The normative workflow and invariants are published in `docs/geometry-professional-workflow-freeze.md`.
 
 ## Validation commands
 
-Run focused checks first, then the full gates appropriate to the commit:
+Run the maintained professional acceptance gate from the repository root:
 
 ```powershell
-cd C:\Math3D
-npm --prefix renderer test -- src/geometry
-npm --prefix renderer test
-npm run typecheck:noemit
-npm run build:renderer
-npx playwright test tests/e2e/geometry-picking.spec.ts tests/e2e/object-scene.spec.ts tests/e2e/mesh-topology-persistence.spec.ts --reporter=list
+npm run test:geometry:professional
 ```
-
-Commit 17 should replace this manual set with one maintained Geometry acceptance command.
 
 ## Main implementation references
 
