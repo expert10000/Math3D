@@ -326,6 +326,7 @@ import type { GeometryValidityResult } from "./geometry/geometryValidity";
 import type { GeometryMeasurementNotation, GeometryMeasurementReport } from "./geometry/canonicalMeasurements";
 import { GeometrySamplingWorkerClient } from "./geometry/geometrySamplingWorkerClient";
 import type { GeometrySampledFieldProgress, GeometrySampledFieldRequest } from "./geometry/sampledFieldAnalysis";
+import type { GeometryAnalyticDiscreteComparisonResult, GeometryDiscreteTargetKind } from "./geometry/analyticDiscreteComparison";
 import { evaluateGeometryMeshReadiness } from "./geometry/meshReadiness";
 import {
   GEOMETRY_TO_MESH_PROMOTION_MODES,
@@ -1060,6 +1061,7 @@ type GeometryQuickAnalysisResultKind =
   | "diagnostics"
   | "measurement"
   | "sampled-fields"
+  | "comparison"
   | "differential-geometry"
   | "section-analysis";
 type GeometryQuickAnalysisResultEntry = {
@@ -1082,6 +1084,7 @@ type GeometryQuickAnalysisResultEntry = {
   geometryValidity?: GeometryValidityResult;
   measurementReport?: GeometryMeasurementReport;
   sampledField?: GeometrySampledFieldProgress;
+  analyticDiscreteComparison?: GeometryAnalyticDiscreteComparisonResult;
   notes?: string[];
   state: GeometryAnalysisResultState;
   backend: string;
@@ -13371,6 +13374,9 @@ const App: React.FC = () => {
   const [geometrySampledFieldProgress, setGeometrySampledFieldProgress] = useState<GeometrySampledFieldProgress | null>(null);
   const [geometrySampledFieldBusy, setGeometrySampledFieldBusy] = useState(false);
   const geometrySamplingWorkerClientRef = useRef<GeometrySamplingWorkerClient | null>(null);
+  const [geometryDiscreteComparisonTargetKind, setGeometryDiscreteComparisonTargetKind] = useState<GeometryDiscreteTargetKind>("display-tessellation");
+  const [geometryDiscreteComparisonAbsoluteTolerance, setGeometryDiscreteComparisonAbsoluteTolerance] = useState(1e-6);
+  const [geometryDiscreteComparisonRelativeTolerance, setGeometryDiscreteComparisonRelativeTolerance] = useState(1e-4);
   const geometryExactSurfaceDefinition = useMemo(
     () => getGeometryExactSurfacePreset(geometryExactSurfacePresetId),
     [geometryExactSurfacePresetId]
@@ -13501,7 +13507,7 @@ const App: React.FC = () => {
     Object.entries(geometryAnalysisResultStore.entries)
       .map(([resultKey, result]): GeometryQuickAnalysisResultEntry | null => {
         const payload = result.payload as GeometryAnalysisPayload | null;
-        if (!payload || !["basic-metrics", "topology-summary", "curve-analysis", "surface-analysis", "intrinsic-geometry", "feature-analysis", "diagnostics", "measurement", "sampled-fields", "differential-geometry", "section-analysis"].includes(result.kind)) return null;
+        if (!payload || !["basic-metrics", "topology-summary", "curve-analysis", "surface-analysis", "intrinsic-geometry", "feature-analysis", "diagnostics", "measurement", "sampled-fields", "comparison", "differential-geometry", "section-analysis"].includes(result.kind)) return null;
         const title = result.kind === "basic-metrics"
           ? "Basic metrics"
           : result.kind === "topology-summary"
@@ -13520,6 +13526,8 @@ const App: React.FC = () => {
               ? "Measurements, sections and report"
             : result.kind === "sampled-fields"
               ? "Worker-backed sampled fields"
+            : result.kind === "comparison"
+              ? "Analytic versus discrete comparison"
             : result.kind === "section-analysis"
               ? "Section analysis"
               : "Differential geometry handoff";
@@ -13543,6 +13551,7 @@ const App: React.FC = () => {
           geometryValidity: payload.geometryValidity,
           measurementReport: payload.measurementReport,
           sampledField: payload.sampledField,
+          analyticDiscreteComparison: payload.analyticDiscreteComparison,
           notes: payload.warnings,
           state: result.state,
           backend: result.backend,
@@ -42911,6 +42920,17 @@ const App: React.FC = () => {
       timestamp?: string;
     };
     sampledField?: GeometrySampledFieldProgress;
+    analyticDiscreteComparison?: {
+      definition: GeometryAnalyticSurfaceDefinition;
+      targets: import("./geometry/analyticDiscreteComparison").GeometryDiscreteComparisonTarget[];
+      uCount?: number;
+      vCount?: number;
+      absoluteTolerance?: number;
+      relativeTolerance?: number;
+      analyticGeodesicLength?: number;
+      analyticFeatureCount?: number;
+      createdAt?: string;
+    };
     sampling?: {
       strategy: "exact" | "mesh" | "adaptive" | "uniform";
       sampleCount?: number;
@@ -42958,7 +42978,7 @@ const App: React.FC = () => {
       request,
       snapshot: args.prepared.snapshot,
       selectionSnapshot: selection,
-      context: { sectionSummary: args.sectionSummary, exactCurve: args.exactCurve, exactSurface: args.exactSurface, intrinsicGeometry: args.intrinsicGeometry, characteristicGeometry: args.characteristicGeometry, geometryValidity: args.geometryValidity, canonicalMeasurements: args.canonicalMeasurements, sampledField: args.sampledField },
+      context: { sectionSummary: args.sectionSummary, exactCurve: args.exactCurve, exactSurface: args.exactSurface, intrinsicGeometry: args.intrinsicGeometry, characteristicGeometry: args.characteristicGeometry, geometryValidity: args.geometryValidity, canonicalMeasurements: args.canonicalMeasurements, sampledField: args.sampledField, analyticDiscreteComparison: args.analyticDiscreteComparison },
     }).store);
     setGeometryQuickAnalysisSelectedResultId(resultKey);
     return { request, resultKey };
@@ -43165,6 +43185,29 @@ const App: React.FC = () => {
     }).catch((error) => { setGeometrySampledFieldBusy(false); setGeometryCreateActionStatus(error instanceof Error ? error.message : "Geometry sampling worker failed."); });
   }, [createSelectedGeometryAnalysisSnapshot, geometryExactSurfacePresetId, geometrySampledFieldCount, geometrySampledFieldQuantity, runGeometryQuickAnalysis]);
   const handleCancelGeometrySampledFields = useCallback(() => { geometrySamplingWorkerClientRef.current?.cancel(); setGeometryCreateActionStatus("Cancelling Geometry sampled-field worker…"); }, []);
+  const handleRunGeometryAnalyticDiscreteComparison = useCallback(() => {
+    const prepared = createSelectedGeometryAnalysisSnapshot();
+    if (!prepared) return;
+    const revision = geometryObjectRevisionByIdRef.current[prepared.snapshot.sourceObjectId] ?? 0;
+    runGeometryQuickAnalysis({
+      prepared,
+      kind: "comparison",
+      domain: "mixed",
+      parameters: { analyticSurfaceId: geometryExactSurfaceDefinition.id, targetKind: geometryDiscreteComparisonTargetKind, targetRevision: revision, gridResolution: geometryExactSurfaceResolution, absoluteTolerance: geometryDiscreteComparisonAbsoluteTolerance, relativeTolerance: geometryDiscreteComparisonRelativeTolerance },
+      requestedOutputs: ["table", "summary", "warning"],
+      analyticDiscreteComparison: {
+        definition: geometryExactSurfaceDefinition,
+        targets: [{ id: `${geometryDiscreteComparisonTargetKind}:${prepared.snapshot.sourceObjectId}`, label: `${prepared.snapshot.sourceObjectName} ${geometryDiscreteComparisonTargetKind}`, kind: geometryDiscreteComparisonTargetKind, mesh: prepared.snapshot.mesh, sourceRevision: revision, tessellation: { chordTolerance: 0.01, angularTolerance: Math.PI / 18, maximumEdgeLength: prepared.snapshot.mesh.meanEdgeLength || 1, parameterDensity: geometryExactSurfaceResolution }, engine: geometryDiscreteComparisonTargetKind === "display-tessellation" ? "Geometry display tessellator" : geometryDiscreteComparisonTargetKind === "derived-analysis-mesh" ? "Geometry-to-Mesh promotion" : "Saved Mesh analysis result" }],
+        uCount: geometryExactSurfaceResolution,
+        vCount: geometryExactSurfaceResolution,
+        absoluteTolerance: geometryDiscreteComparisonAbsoluteTolerance,
+        relativeTolerance: geometryDiscreteComparisonRelativeTolerance,
+      },
+      sampling: { strategy: "adaptive", sampleCount: geometryExactSurfaceResolution ** 2, tolerance: geometryDiscreteComparisonAbsoluteTolerance },
+      precision: { mode: "adaptive", digits: 10, tolerance: geometryDiscreteComparisonAbsoluteTolerance },
+    });
+    setGeometryCreateActionStatus(`Analytic versus ${geometryDiscreteComparisonTargetKind} comparison ready.`);
+  }, [createSelectedGeometryAnalysisSnapshot, geometryDiscreteComparisonAbsoluteTolerance, geometryDiscreteComparisonRelativeTolerance, geometryDiscreteComparisonTargetKind, geometryExactSurfaceDefinition, geometryExactSurfaceResolution, runGeometryQuickAnalysis]);
   const handleRunGeometryQuickSectionAnalysis = useCallback(() => {
     const prepared = createSelectedGeometryAnalysisSnapshot();
     if (!prepared) return;
@@ -43323,6 +43366,7 @@ const App: React.FC = () => {
       geometryValidity: geometrySelectedQuickAnalysisResult.geometryValidity ?? null,
       measurementReport: geometrySelectedQuickAnalysisResult.measurementReport ?? null,
       sampledField: geometrySelectedQuickAnalysisResult.sampledField ?? null,
+      analyticDiscreteComparison: geometrySelectedQuickAnalysisResult.analyticDiscreteComparison ?? null,
       notes: geometrySelectedQuickAnalysisResult.notes ?? [],
       lifecycle: {
         state: geometrySelectedQuickAnalysisResult.state,
@@ -93789,6 +93833,14 @@ case "mobius":
                                     <div style={{ display: "flex", gap: 5 }}><button type="button" data-testid="geometry-run-sampled-field" onClick={handleRunGeometrySampledFields} disabled={geometrySampledFieldBusy} style={{ fontSize: 11 }}>{geometrySampledFieldBusy ? "Sampling…" : "Run in worker"}</button><button type="button" data-testid="geometry-cancel-sampled-field" onClick={handleCancelGeometrySampledFields} disabled={!geometrySampledFieldBusy} style={{ fontSize: 11 }}>Cancel</button></div>
                                     {geometrySampledFieldProgress && <div data-testid="geometry-sampled-field-progress" style={{ fontSize: 9.5 }}><strong>{geometrySampledFieldProgress.stage}</strong> · {Math.round(geometrySampledFieldProgress.progress * 100)}% · {geometrySampledFieldProgress.sampleCount.toLocaleString()} samples · {geometrySampledFieldProgress.status}</div>}
                                   </div>
+                                  <div data-testid="geometry-analytic-discrete-comparison-controls" style={{ display: "grid", gap: 5, borderTop: "1px solid #e2e8f0", paddingTop: 7 }}>
+                                    <div style={{ fontSize: 10.5, fontWeight: 700 }}>Analytic versus discrete comparison</div>
+                                    <div style={{ fontSize: 9.5, color: "#667085" }}>Keep exact Geometry distinct from display, derived, or saved Mesh values and locate worst approximation regions.</div>
+                                    <label style={{ fontSize: 9.5 }}>Discrete target <select data-testid="geometry-comparison-target-kind" value={geometryDiscreteComparisonTargetKind} onChange={(event) => setGeometryDiscreteComparisonTargetKind(event.target.value as GeometryDiscreteTargetKind)}><option value="display-tessellation">Display tessellation</option><option value="derived-analysis-mesh">Derived analysis Mesh</option><option value="saved-mesh-result">Saved Mesh result</option></select></label>
+                                    <label style={{ fontSize: 9.5 }}>Absolute tolerance <input type="number" value={geometryDiscreteComparisonAbsoluteTolerance} onChange={(event) => setGeometryDiscreteComparisonAbsoluteTolerance(Math.max(1e-12, Number(event.target.value) || 1e-12))} style={{ width: 95 }} /></label>
+                                    <label style={{ fontSize: 9.5 }}>Relative tolerance <input type="number" value={geometryDiscreteComparisonRelativeTolerance} onChange={(event) => setGeometryDiscreteComparisonRelativeTolerance(Math.max(0, Number(event.target.value) || 0))} style={{ width: 95 }} /></label>
+                                    <button type="button" data-testid="geometry-run-analytic-discrete-comparison" onClick={handleRunGeometryAnalyticDiscreteComparison} style={{ fontSize: 11 }}>Compare exact ↔ discrete</button>
+                                  </div>
                                   <div style={{ display: "grid", gap: 4 }}>
                                     <div style={{ fontSize: 10.5, fontWeight: 700 }}>Differential geometry</div>
                                     <div style={{ fontSize: 10, color: "#667085" }}>
@@ -93859,6 +93911,8 @@ case "mobius":
                                             ? "Canonical measurement"
                                           : geometrySelectedQuickAnalysisResult.kind === "sampled-fields"
                                             ? "Worker sampled field"
+                                          : geometrySelectedQuickAnalysisResult.kind === "comparison"
+                                            ? "Exact ↔ discrete comparison"
                                             : "Geometry analysis"}
                                       </div>
                                       <div style={{ fontSize: 11.5, fontWeight: 800, overflowWrap: "anywhere" }}>
@@ -93897,6 +93951,8 @@ case "mobius":
                                           ? "Measurements / stable sections / quantitative report"
                                         : geometrySelectedQuickAnalysisResult.kind === "sampled-fields"
                                           ? "Progressive sampled scalar/vector overlays"
+                                        : geometrySelectedQuickAnalysisResult.kind === "comparison"
+                                          ? "Position / normal / curvature / integral / semantic errors"
                                           : geometrySelectedQuickAnalysisResult.title],
                                       ["Method", geometrySelectedQuickAnalysisResult.provenanceAlgorithm],
                                       ["Domain", geometrySelectedQuickAnalysisResult.domain],
@@ -94244,6 +94300,26 @@ case "mobius":
                                       <div data-testid="geometry-sampled-field-overlays"><strong>Shared overlays:</strong> {field.overlays.map((overlay) => `${overlay.kind} (${overlay.sampleCount}, opacity ${overlay.settings.opacity}, density ${overlay.settings.density}, scale ${overlay.settings.scale}, legend ${overlay.settings.legend ? "on" : "off"}, clamp ${overlay.settings.clamp ? "on" : "off"})`).join(" · ")}</div>
                                       <div><strong>Budgets:</strong> samples {field.budgets.maxSamples.toLocaleString()} · glyphs {field.budgets.maxGlyphs.toLocaleString()} · labels {field.budgets.maxLabels} · polylines {field.budgets.maxPolylines.toLocaleString()} · upload {(field.budgets.maxUploadBytes / 1048576).toFixed(0)} MB · frame {field.budgets.targetFrameMs} ms</div>
                                       <div><strong>Revision safety:</strong> accepted request {field.requestId}; stale and superseded responses cannot publish.</div>
+                                    </div>;
+                                  })()}
+                                  {geometrySelectedQuickAnalysisResult.kind === "comparison" && geometrySelectedQuickAnalysisResult.analyticDiscreteComparison && (() => {
+                                    const comparison = geometrySelectedQuickAnalysisResult.analyticDiscreteComparison;
+                                    return <div data-testid="geometry-analytic-discrete-comparison-result" style={{ display: "grid", gap: 7, fontSize: 9.5 }}>
+                                      <div data-testid="geometry-comparison-analytic-source"><strong>Exact Geometry:</strong> {comparison.analytic.label} r{comparison.analytic.revision} · {comparison.analytic.engine} · {comparison.analytic.sampleCount} analytic samples · values remain distinct</div>
+                                      {comparison.targets.map((target) => {
+                                        const positionError = target.quantities.find((entry) => entry.quantity === "position")?.statistics;
+                                        const maxError = Math.max(1e-15, ...target.heatmap.map((entry) => entry.absoluteError));
+                                        return <div key={target.target.id} data-testid="geometry-comparison-target" style={{ border: "1px solid #e2e8f0", borderRadius: 6, padding: 6, display: "grid", gap: 5 }}>
+                                          <div><strong>Discrete:</strong> {target.target.label} r{target.target.sourceRevision} · {target.target.vertexCount} V / {target.target.faceCount} F · mapping {target.mapping.confidence} ({target.mapping.matched}/{target.mapping.total}, {target.mapping.method})</div>
+                                          <div data-testid="geometry-comparison-statistics"><strong>Position errors:</strong> signed mean {positionError ? fmt(positionError.signedMean) : "unavailable"} · absolute mean {positionError ? fmt(positionError.absoluteMean) : "unavailable"} · relative {positionError?.relativeMean == null ? "unavailable" : fmt(positionError.relativeMean)} · RMS {positionError ? fmt(positionError.rms) : "unavailable"} · p50 {positionError ? fmt(positionError.p50) : "unavailable"} · p95 {positionError ? fmt(positionError.p95) : "unavailable"} · max {positionError ? fmt(positionError.maximum) : "unavailable"}</div>
+                                          <div data-testid="geometry-comparison-summary-table" style={{ display: "grid", gap: 2 }}>{target.quantities.map((quantity) => <div key={quantity.quantity} style={{ display: "grid", gridTemplateColumns: ".7fr 1fr 1fr .7fr", gap: 4 }}><strong>{quantity.quantity}</strong><span>analytic: {String(quantity.analyticValue ?? "unavailable")}</span><span>discrete: {String(quantity.discreteValue ?? "unavailable")}</span><span>{quantity.available ? `max ${fmt(quantity.statistics?.maximum ?? 0)}` : "unavailable"}</span></div>)}</div>
+                                          <div data-testid="geometry-comparison-heatmap" style={{ display: "grid", gridTemplateColumns: "repeat(24, minmax(2px, 1fr))", gap: 1, height: 38 }}>{target.heatmap.slice(0, 576).map((entry, index) => <span key={index} title={`signed ${entry.signedError}; absolute ${entry.absoluteError}`} style={{ background: `rgba(220,38,38,${Math.min(1, entry.absoluteError / maxError)})` }} />)}</div>
+                                          <div data-testid="geometry-comparison-overlays"><strong>Overlays:</strong> {target.correspondenceLines.length} correspondence lines · {target.worstMarkers.length} worst markers · worst sample selection [{positionError?.worstSampleIndices.join(", ") ?? "none"}]</div>
+                                          <div><strong>Tessellation:</strong> chord {target.target.tessellation.chordTolerance} · angle {target.target.tessellation.angularTolerance} · max edge {target.target.tessellation.maximumEdgeLength} · density {target.target.tessellation.parameterDensity} · engine {target.target.engine}</div>
+                                          {target.warnings.length > 0 && <div data-testid="geometry-comparison-unavailable" style={{ color: "#92400e" }}><strong>Unavailable:</strong> {target.warnings.join(" · ")}</div>}
+                                        </div>;
+                                      })}
+                                      <div data-testid="geometry-comparison-provenance"><strong>Comparison provenance:</strong> abs tol {comparison.tolerance.absolute.toExponential(2)} · rel tol {comparison.tolerance.relative.toExponential(2)} · {comparison.conventions.signedPosition} · {comparison.createdAt}</div>
                                     </div>;
                                   })()}
                                   {geometrySelectedQuickAnalysisResult.kind === "topology-summary" &&

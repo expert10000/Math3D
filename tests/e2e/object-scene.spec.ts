@@ -263,6 +263,15 @@ test("Geometry professional shell keeps current workspaces and tools reachable",
     await expect(page.getByTestId("geometry-sampled-field-result")).toContainText("full");
     await expect(page.getByTestId("geometry-sampled-field-result")).toContainText("samples");
     await expect(page.getByTestId("geometry-sampled-field-overlays")).toContainText("scalar-heatmap");
+    await expect(page.getByTestId("geometry-analytic-discrete-comparison-controls")).toBeVisible();
+    await page.getByTestId("geometry-run-analytic-discrete-comparison").click();
+    await expect(page.getByTestId("geometry-analytic-discrete-comparison-result")).toContainText("values remain distinct");
+    await expect(page.getByTestId("geometry-comparison-statistics")).toContainText("RMS");
+    await expect(page.getByTestId("geometry-comparison-summary-table")).toContainText("analytic:");
+    await expect(page.getByTestId("geometry-comparison-heatmap")).toBeVisible();
+    await expect(page.getByTestId("geometry-comparison-overlays")).toContainText("worst markers");
+    await expect(page.getByTestId("geometry-comparison-provenance")).toContainText("abs tol");
+    await expect(page.getByTestId("geometry-comparison-unavailable")).toContainText("curvature");
     await page.getByTestId("geometry-professional-tool-construct").click();
     await expect(page.getByTestId("geometry-construct-panel-tab-create")).toBeVisible();
     await expect(page.getByTestId("geometry-construct-taxonomy")).toBeVisible();

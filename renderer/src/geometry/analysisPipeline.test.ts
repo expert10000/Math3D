@@ -382,4 +382,12 @@ describe("Geometry AnalysisRequest pipeline", () => {
     const execution = executeGeometryAnalysisRequest({ store: createGeometryAnalysisResultStore(), registry: createGeometryAnalysisRegistry(), request, snapshot: source, context: { sampledField: completed }, now: 140 });
     expect(execution.result).toMatchObject({ state: "ready", backend: "Geometry analysis module worker", payload: { sampledField: { status: "complete", sampleCount: 100 } } });
   });
+
+  it("publishes analytic-discrete statistics and unavailable diagnostics", () => {
+    const source = snapshot(14); const definition = getGeometryExactSurfacePreset("plane");
+    const request = createGeometryAnalysisRequest({ id: "request-14", kind: "comparison", snapshot: source, sourceRevision: 18, domain: "mixed", requestedOutputs: ["table", "summary", "warning"] });
+    const execution = executeGeometryAnalysisRequest({ store: createGeometryAnalysisResultStore(), registry: createGeometryAnalysisRegistry(), request, snapshot: source, context: { analyticDiscreteComparison: { definition, targets: [{ id: "display", label: "Display", kind: "display-tessellation", mesh: source.mesh, sourceRevision: 18, tessellation: { chordTolerance: 0.01, angularTolerance: 0.1, maximumEdgeLength: 1, parameterDensity: 17 }, engine: "display tessellator" }], uCount: 5, vCount: 5 } }, now: 150 });
+    expect(execution.result).toMatchObject({ state: "ready", backend: "Geometry comparison core", payload: { analyticDiscreteComparison: { conventions: { exactDistinct: true }, targets: [{ mapping: { confidence: "heuristic" } }] } } });
+    expect(execution.result.payload?.analyticDiscreteComparison?.targets[0].warnings.join(" ")).toContain("curvature");
+  });
 });

@@ -23,6 +23,7 @@ import {
 import { analyzeGeometryValidity, type GeometryValidityResult } from "./geometryValidity";
 import { analyzeCanonicalMeasurements, type GeometryMeasurementNotation, type GeometryMeasurementReport } from "./canonicalMeasurements";
 import type { GeometrySampledFieldProgress } from "./sampledFieldAnalysis";
+import { compareAnalyticGeometryToDiscrete, type GeometryAnalyticDiscreteComparisonResult, type GeometryDiscreteComparisonTarget } from "./analyticDiscreteComparison";
 import {
   computeGeometryAnalysisBasicMetrics,
   computeGeometryAnalysisTopologySummary,
@@ -136,6 +137,7 @@ export type GeometryAnalysisPayload = {
   geometryValidity?: GeometryValidityResult;
   measurementReport?: GeometryMeasurementReport;
   sampledField?: GeometrySampledFieldProgress;
+  analyticDiscreteComparison?: GeometryAnalyticDiscreteComparisonResult;
 };
 
 export type GeometryAnalysisExecutionContext = {
@@ -194,6 +196,17 @@ export type GeometryAnalysisExecutionContext = {
     timestamp?: string;
   };
   sampledField?: GeometrySampledFieldProgress;
+  analyticDiscreteComparison?: {
+    definition: GeometryAnalyticSurfaceDefinition;
+    targets: GeometryDiscreteComparisonTarget[];
+    uCount?: number;
+    vCount?: number;
+    absoluteTolerance?: number;
+    relativeTolerance?: number;
+    analyticGeodesicLength?: number;
+    analyticFeatureCount?: number;
+    createdAt?: string;
+  };
 };
 
 export type GeometryAnalysisDomainImplementation = (args: {
@@ -536,6 +549,16 @@ const builtinImplementationEntries: Array<[GeometryAnalysisResultKind, GeometryA
     sampledField.warnings.forEach((warning, index) => outputs.push({ id: `warning-${index}`, label: "Worker diagnostic", kind: "warning", value: warning, severity: "warning" }));
     return { algorithm: "geometry-worker-sampled-fields-v1", backend: "Geometry analysis module worker", outputs, summary: { stage: sampledField.stage, sampleCount: sampledField.sampleCount, overlayCount: sampledField.overlays.length, durationMs: sampledField.durationMs, sourceRevision: sampledField.sourceRevision }, warnings: sampledField.warnings, sampledField };
   }],
+  ["comparison", ({ context }) => {
+    if (!context.analyticDiscreteComparison) throw new Error("Analytic-discrete comparison requires Geometry and at least one discrete target.");
+    const analyticDiscreteComparison = compareAnalyticGeometryToDiscrete(context.analyticDiscreteComparison);
+    const outputs: GeometryAnalysisOutput[] = [];
+    analyticDiscreteComparison.targets.forEach((target) => {
+      outputs.push({ id: `summary:${target.target.id}`, label: target.target.label, kind: "table", columns: ["quantity", "analytic", "discrete", "unit", "available", "RMS", "p95", "max"], rows: target.quantities.map((quantity) => [quantity.quantity, quantity.analyticValue, quantity.discreteValue, quantity.unit, quantity.available, quantity.statistics?.rms ?? null, quantity.statistics?.p95 ?? null, quantity.statistics?.maximum ?? null]) });
+      target.warnings.forEach((warning, index) => outputs.push({ id: `warning:${target.target.id}:${index}`, label: "Comparison unavailable", kind: "warning", value: warning, severity: "info" }));
+    });
+    return { algorithm: "analytic-discrete-comparison-v1", backend: "Geometry comparison core", outputs, summary: { targetCount: analyticDiscreteComparison.targets.length, sampleCount: analyticDiscreteComparison.analytic.sampleCount, worstPositionError: Math.max(0, ...analyticDiscreteComparison.targets.map((target) => target.quantities.find((quantity) => quantity.quantity === "position")?.statistics?.maximum ?? 0)) }, warnings: analyticDiscreteComparison.targets.flatMap((target) => target.warnings), analyticDiscreteComparison };
+  }],
   ["differential-geometry", ({ snapshot }) => ({
     algorithm: "mesh-analyze-handoff-v1",
     outputs: [{ id: "handoff", label: "Mesh Analyze handoff", kind: "summary", value: "Analysis-ready mesh snapshot" }],
@@ -614,6 +637,7 @@ export const executeGeometryAnalysisRequest = (args: {
       ...(computed.geometryValidity ? { geometryValidity: computed.geometryValidity } : {}),
       ...(computed.measurementReport ? { measurementReport: computed.measurementReport } : {}),
       ...(computed.sampledField ? { sampledField: computed.sampledField } : {}),
+      ...(computed.analyticDiscreteComparison ? { analyticDiscreteComparison: computed.analyticDiscreteComparison } : {}),
       provenance: {
         backend,
         algorithm: computed.algorithm,
