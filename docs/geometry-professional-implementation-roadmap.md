@@ -393,17 +393,34 @@ Acceptance: exact curve quantities agree with analytic truth and state their par
 
 Planned message: `geometry: add exact surface differential analysis`
 
-**Status: planned.**
+**Status: complete — `77f9255`.**
+
+Already implemented:
+
+- Versioned analytic surface definitions state valid `u/v` domains, periodic seams, singular boundaries, trims, units, revision, orientation, formulas, and exact/sampled derivative capabilities.
+- Exact plane, unit-sphere, unit-cylinder, torus, and hyperbolic-paraboloid definitions provide position plus first and second analytic partial derivatives.
+- Pointwise analysis computes `r_u`, `r_v`, `r_uu`, `r_uv`, `r_vv`, oriented normal, tangent basis/plane, Jacobian and area element, first/second fundamental forms, metric tensor, and shape operator.
+- Principal values and directions use the explicit Mesh-compatible convention `k1 >= k2`, `H=(k1+k2)/2`, `K=k1*k2`, and positive outward-convex curvature; normal curvature follows Euler's formula.
+- Exact classification distinguishes elliptic, hyperbolic, parabolic, planar, umbilic, and degenerate points, including singular sphere poles and declared trim/seam metadata.
+- Shared-pipeline payloads include pointwise tables/scalars/vectors, sampled grids, extrema, classification counts, backend/algorithm provenance, precision, and sampled-fallback warnings.
+- Geometry Analyze now provides surface/preset and `u/v/θ` controls plus tangent/normal/principal-direction glyphs, normal sections, curvature glyph readiness, scalar `K/H/k1/k2` heatmaps, conventions, and a Surfaces handoff while retaining exact Geometry history.
 
 Remaining:
 
-- [ ] Introduce analytic/parametric surface definitions with valid parameter domains, seams, trims, orientation, and derivative capability metadata.
-- [ ] Compute `r_u`, `r_v`, normal, tangent plane, Jacobian, first and second fundamental forms, metric tensor, area element, and shape operator.
-- [ ] Compute `k1`, `k2`, `H`, `K`, principal directions, normal curvature, and elliptic/hyperbolic/parabolic/planar/umbilic/degenerate classification.
-- [ ] Establish orientation and sign conventions shared by Inspector, overlays, export, and exact-versus-Mesh comparison.
-- [ ] Add tangent bases, normals, principal directions, normal sections, curvature glyphs, and scalar heatmaps.
-- [ ] Add exact plane, sphere, and cylinder tests, then torus and saddle tests.
-- [ ] Mark sampled fallback explicitly when an exact derivative is unavailable.
+- [x] Introduce analytic/parametric surface definitions with valid parameter domains, seams, trims, orientation, and derivative capability metadata.
+- [x] Compute `r_u`, `r_v`, normal, tangent plane, Jacobian, first and second fundamental forms, metric tensor, area element, and shape operator.
+- [x] Compute `k1`, `k2`, `H`, `K`, principal directions, normal curvature, and elliptic/hyperbolic/parabolic/planar/umbilic/degenerate classification.
+- [x] Establish orientation and sign conventions shared by Inspector, overlays, export, and exact-versus-Mesh comparison.
+- [x] Add tangent bases, normals, principal directions, normal sections, curvature glyphs, and scalar heatmaps.
+- [x] Add exact plane, sphere, and cylinder tests, then torus and saddle tests.
+- [x] Mark sampled fallback explicitly when an exact derivative is unavailable.
+
+Validation at `77f9255`:
+
+- **154 Geometry tests across 28 files** pass, including exact plane/sphere/cylinder truth, torus inner/outer signs, saddle forms/directions, Mesh-compatible curvature identities, singular poles, seams, trims, glyph/section/heatmap data, sampled fallback, and shared-pipeline publication.
+- The full renderer suite passes: **458 tests across 85 files**.
+- `npm run typecheck:noemit` and `npm run build:core` pass.
+- Geometry professional-shell and object/scene E2E checks pass: **4/4**, including exact surface controls, full forms, classifications, overlays, scalar heatmaps, conventions, provenance, warnings, and Surfaces handoff.
 
 Acceptance: plane, sphere, and cylinder quantities match analytic truth under documented conventions.
 
