@@ -21,6 +21,7 @@ import {
   type GeometryIntersectionProbe,
 } from "./characteristicGeometry";
 import { analyzeGeometryValidity, type GeometryValidityResult } from "./geometryValidity";
+import { analyzeCanonicalMeasurements, type GeometryMeasurementNotation, type GeometryMeasurementReport } from "./canonicalMeasurements";
 import {
   computeGeometryAnalysisBasicMetrics,
   computeGeometryAnalysisTopologySummary,
@@ -132,6 +133,7 @@ export type GeometryAnalysisPayload = {
   intrinsicGeometry?: IntrinsicGeometryResult;
   characteristicGeometry?: CharacteristicGeometryResult;
   geometryValidity?: GeometryValidityResult;
+  measurementReport?: GeometryMeasurementReport;
 };
 
 export type GeometryAnalysisExecutionContext = {
@@ -176,6 +178,18 @@ export type GeometryAnalysisExecutionContext = {
     continuityWith?: GeometryAnalyticSurfaceDefinition;
     meshHealthNotes?: string[];
     tolerance?: number;
+  };
+  canonicalMeasurements?: {
+    sourceId: string;
+    surface: GeometryAnalyticSurfaceDefinition;
+    curve?: GeometryAnalyticCurveDefinition;
+    sectionParameter?: number;
+    sceneUnit?: string;
+    digits?: number;
+    notation?: GeometryMeasurementNotation;
+    absoluteTolerance?: number;
+    relativeTolerance?: number;
+    timestamp?: string;
   };
 };
 
@@ -500,6 +514,16 @@ const builtinImplementationEntries: Array<[GeometryAnalysisResultKind, GeometryA
     outputs.push({ id: "mesh-separation", label: "Display mesh health", kind: "summary", value: geometryValidity.conventions.meshSeparation });
     return { algorithm: "geometry-semantic-validity-v1", backend: "Geometry exact validity core", outputs, summary: { valid: geometryValidity.exactGeometry.valid, issueCount: geometryValidity.exactGeometry.issues.length, ...geometryValidity.counts, continuity: geometryValidity.exactGeometry.continuity?.classification ?? null }, warnings: geometryValidity.exactGeometry.issues.filter((issue) => issue.severity !== "info").map((issue) => issue.message), geometryValidity };
   }],
+  ["measurement", ({ context }) => {
+    if (!context.canonicalMeasurements) throw new Error("Canonical measurements require a Geometry source definition.");
+    const measurementReport = analyzeCanonicalMeasurements(context.canonicalMeasurements);
+    const outputs: GeometryAnalysisOutput[] = measurementReport.measurements.map((entry) => typeof entry.value === "number"
+      ? { id: entry.id, label: entry.label, kind: "scalar" as const, value: entry.value, unit: entry.unit }
+      : { id: entry.id, label: entry.label, kind: "summary" as const, value: JSON.stringify(entry.value) });
+    outputs.push({ id: "report", label: "Quantitative report", kind: "table", columns: ["quantity", "value", "unit", "method"], rows: measurementReport.rows.map((row) => [row.quantity, row.value, row.unit, row.method]) });
+    measurementReport.sections.forEach((section) => outputs.push({ id: section.id, label: `${section.kind} section`, kind: "curve", points: section.points, closed: section.closed }));
+    return { algorithm: "canonical-geometry-measurements-v1", backend: measurementReport.engine, outputs, summary: { measurementCount: measurementReport.measurements.length, sectionCount: measurementReport.sections.length, exactCount: measurementReport.measurements.filter((entry) => entry.method === "exact-analytic").length }, warnings: [], measurementReport };
+  }],
   ["differential-geometry", ({ snapshot }) => ({
     algorithm: "mesh-analyze-handoff-v1",
     outputs: [{ id: "handoff", label: "Mesh Analyze handoff", kind: "summary", value: "Analysis-ready mesh snapshot" }],
@@ -576,6 +600,7 @@ export const executeGeometryAnalysisRequest = (args: {
       ...(computed.intrinsicGeometry ? { intrinsicGeometry: computed.intrinsicGeometry } : {}),
       ...(computed.characteristicGeometry ? { characteristicGeometry: computed.characteristicGeometry } : {}),
       ...(computed.geometryValidity ? { geometryValidity: computed.geometryValidity } : {}),
+      ...(computed.measurementReport ? { measurementReport: computed.measurementReport } : {}),
       provenance: {
         backend,
         algorithm: computed.algorithm,

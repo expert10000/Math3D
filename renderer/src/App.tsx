@@ -323,6 +323,7 @@ import {
 import type { IntrinsicGeometryResult } from "./geometry/intrinsicGeometry";
 import { promoteCharacteristicLayer, type CharacteristicGeometryResult } from "./geometry/characteristicGeometry";
 import type { GeometryValidityResult } from "./geometry/geometryValidity";
+import type { GeometryMeasurementNotation, GeometryMeasurementReport } from "./geometry/canonicalMeasurements";
 import { evaluateGeometryMeshReadiness } from "./geometry/meshReadiness";
 import {
   GEOMETRY_TO_MESH_PROMOTION_MODES,
@@ -1055,6 +1056,7 @@ type GeometryQuickAnalysisResultKind =
   | "intrinsic-geometry"
   | "feature-analysis"
   | "diagnostics"
+  | "measurement"
   | "differential-geometry"
   | "section-analysis";
 type GeometryQuickAnalysisResultEntry = {
@@ -1075,6 +1077,7 @@ type GeometryQuickAnalysisResultEntry = {
   intrinsicGeometry?: IntrinsicGeometryResult;
   characteristicGeometry?: CharacteristicGeometryResult;
   geometryValidity?: GeometryValidityResult;
+  measurementReport?: GeometryMeasurementReport;
   notes?: string[];
   state: GeometryAnalysisResultState;
   backend: string;
@@ -13352,6 +13355,11 @@ const App: React.FC = () => {
   const [geometryIntrinsicDestinationV, setGeometryIntrinsicDestinationV] = useState(0.65);
   const [geometryCharacteristicIsophoteLevel, setGeometryCharacteristicIsophoteLevel] = useState(0.5);
   const [geometryCharacteristicLayerId, setGeometryCharacteristicLayerId] = useState("parabolic");
+  const [geometryMeasurementDigits, setGeometryMeasurementDigits] = useState(6);
+  const [geometryMeasurementNotation, setGeometryMeasurementNotation] = useState<GeometryMeasurementNotation>("fixed");
+  const [geometryMeasurementAbsoluteTolerance, setGeometryMeasurementAbsoluteTolerance] = useState(1e-9);
+  const [geometryMeasurementRelativeTolerance, setGeometryMeasurementRelativeTolerance] = useState(1e-6);
+  const [geometryMeasurementSectionParameter, setGeometryMeasurementSectionParameter] = useState(0.5);
   const geometryExactSurfaceDefinition = useMemo(
     () => getGeometryExactSurfacePreset(geometryExactSurfacePresetId),
     [geometryExactSurfacePresetId]
@@ -13482,7 +13490,7 @@ const App: React.FC = () => {
     Object.entries(geometryAnalysisResultStore.entries)
       .map(([resultKey, result]): GeometryQuickAnalysisResultEntry | null => {
         const payload = result.payload as GeometryAnalysisPayload | null;
-        if (!payload || !["basic-metrics", "topology-summary", "curve-analysis", "surface-analysis", "intrinsic-geometry", "feature-analysis", "diagnostics", "differential-geometry", "section-analysis"].includes(result.kind)) return null;
+        if (!payload || !["basic-metrics", "topology-summary", "curve-analysis", "surface-analysis", "intrinsic-geometry", "feature-analysis", "diagnostics", "measurement", "differential-geometry", "section-analysis"].includes(result.kind)) return null;
         const title = result.kind === "basic-metrics"
           ? "Basic metrics"
           : result.kind === "topology-summary"
@@ -13497,6 +13505,8 @@ const App: React.FC = () => {
               ? "Characteristic curves and singularities"
             : result.kind === "diagnostics"
               ? "Topology, continuity and validity"
+            : result.kind === "measurement"
+              ? "Measurements, sections and report"
             : result.kind === "section-analysis"
               ? "Section analysis"
               : "Differential geometry handoff";
@@ -13518,6 +13528,7 @@ const App: React.FC = () => {
           intrinsicGeometry: payload.intrinsicGeometry,
           characteristicGeometry: payload.characteristicGeometry,
           geometryValidity: payload.geometryValidity,
+          measurementReport: payload.measurementReport,
           notes: payload.warnings,
           state: result.state,
           backend: result.backend,
@@ -42873,6 +42884,18 @@ const App: React.FC = () => {
       meshHealthNotes?: string[];
       tolerance?: number;
     };
+    canonicalMeasurements?: {
+      sourceId: string;
+      surface: GeometryAnalyticSurfaceDefinition;
+      curve?: GeometryAnalyticCurveDefinition;
+      sectionParameter?: number;
+      sceneUnit?: string;
+      digits?: number;
+      notation?: GeometryMeasurementNotation;
+      absoluteTolerance?: number;
+      relativeTolerance?: number;
+      timestamp?: string;
+    };
     sampling?: {
       strategy: "exact" | "mesh" | "adaptive" | "uniform";
       sampleCount?: number;
@@ -42920,7 +42943,7 @@ const App: React.FC = () => {
       request,
       snapshot: args.prepared.snapshot,
       selectionSnapshot: selection,
-      context: { sectionSummary: args.sectionSummary, exactCurve: args.exactCurve, exactSurface: args.exactSurface, intrinsicGeometry: args.intrinsicGeometry, characteristicGeometry: args.characteristicGeometry, geometryValidity: args.geometryValidity },
+      context: { sectionSummary: args.sectionSummary, exactCurve: args.exactCurve, exactSurface: args.exactSurface, intrinsicGeometry: args.intrinsicGeometry, characteristicGeometry: args.characteristicGeometry, geometryValidity: args.geometryValidity, canonicalMeasurements: args.canonicalMeasurements },
     }).store);
     setGeometryQuickAnalysisSelectedResultId(resultKey);
     return { request, resultKey };
@@ -43102,6 +43125,12 @@ const App: React.FC = () => {
     runGeometryQuickAnalysis({ prepared, kind: "diagnostics", domain: "object", parameters: { surfaceDefinitionId: geometryExactSurfaceDefinition.id, semanticTopology: true, meshHealthSeparate: true }, requestedOutputs: ["table", "summary", "warning"], geometryValidity: { definition: geometryExactSurfaceDefinition, meshHealthNotes: prepared.snapshot.readiness.notes, tolerance: 1e-6 }, sampling: { strategy: "exact", tolerance: 1e-6 }, precision: { mode: "adaptive", digits: 10, tolerance: 1e-6 } });
     setGeometryCreateActionStatus(`Exact Geometry validity ready: ${geometryExactSurfaceDefinition.label}.`);
   }, [createSelectedGeometryAnalysisSnapshot, geometryExactSurfaceDefinition, runGeometryQuickAnalysis]);
+  const handleRunGeometryCanonicalMeasurements = useCallback(() => {
+    const prepared = createSelectedGeometryAnalysisSnapshot();
+    if (!prepared) return;
+    runGeometryQuickAnalysis({ prepared, kind: "measurement", domain: "selection", parameters: { surfaceDefinitionId: geometryExactSurfaceDefinition.id, curveDefinitionId: geometryExactCurveDefinition.id, sectionParameter: geometryMeasurementSectionParameter, digits: geometryMeasurementDigits, notation: geometryMeasurementNotation, absoluteTolerance: geometryMeasurementAbsoluteTolerance, relativeTolerance: geometryMeasurementRelativeTolerance }, requestedOutputs: ["scalar", "curve", "table", "summary"], canonicalMeasurements: { sourceId: prepared.snapshot.sourceObjectId, surface: geometryExactSurfaceDefinition, curve: geometryExactCurveDefinition, sectionParameter: geometryMeasurementSectionParameter, sceneUnit: "scene-unit", digits: geometryMeasurementDigits, notation: geometryMeasurementNotation, absoluteTolerance: geometryMeasurementAbsoluteTolerance, relativeTolerance: geometryMeasurementRelativeTolerance }, sampling: { strategy: "adaptive", sampleCount: geometryExactSurfaceResolution ** 2, tolerance: geometryMeasurementAbsoluteTolerance }, precision: { mode: "adaptive", digits: geometryMeasurementDigits, tolerance: geometryMeasurementAbsoluteTolerance } });
+    setGeometryCreateActionStatus(`Canonical measurement report ready: ${geometryExactSurfaceDefinition.label}.`);
+  }, [createSelectedGeometryAnalysisSnapshot, geometryExactCurveDefinition, geometryExactSurfaceDefinition, geometryExactSurfaceResolution, geometryMeasurementAbsoluteTolerance, geometryMeasurementDigits, geometryMeasurementNotation, geometryMeasurementRelativeTolerance, geometryMeasurementSectionParameter, runGeometryQuickAnalysis]);
   const handleRunGeometryQuickSectionAnalysis = useCallback(() => {
     const prepared = createSelectedGeometryAnalysisSnapshot();
     if (!prepared) return;
@@ -43258,6 +43287,7 @@ const App: React.FC = () => {
       intrinsicGeometry: geometrySelectedQuickAnalysisResult.intrinsicGeometry ?? null,
       characteristicGeometry: geometrySelectedQuickAnalysisResult.characteristicGeometry ?? null,
       geometryValidity: geometrySelectedQuickAnalysisResult.geometryValidity ?? null,
+      measurementReport: geometrySelectedQuickAnalysisResult.measurementReport ?? null,
       notes: geometrySelectedQuickAnalysisResult.notes ?? [],
       lifecycle: {
         state: geometrySelectedQuickAnalysisResult.state,
@@ -93704,6 +93734,18 @@ case "mobius":
                                     <div style={{ fontSize: 9.5, color: "#667085" }}>Inspect semantic bodies through vertices, parameter/trim validity, and display-mesh health as separate evidence.</div>
                                     <button type="button" data-testid="geometry-run-validity-analysis" onClick={handleRunGeometryValidityAnalysis} style={{ fontSize: 11 }}>Run exact Geometry diagnostics</button>
                                   </div>
+                                  <details data-testid="geometry-measure-group" open style={{ borderTop: "1px solid #e2e8f0", paddingTop: 7 }}>
+                                    <summary style={{ fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>Measure — canonical results and sections</summary>
+                                    <div style={{ display: "grid", gap: 5, marginTop: 5 }}>
+                                      <div style={{ fontSize: 9.5, color: "#667085" }}>Existing shortcuts remain available below; this group adds traceable exact/fallback measurements and all section modes.</div>
+                                      <label style={{ fontSize: 9.5 }}>Notation <select data-testid="geometry-measure-notation" value={geometryMeasurementNotation} onChange={(event) => setGeometryMeasurementNotation(event.target.value as GeometryMeasurementNotation)}><option value="fixed">Fixed</option><option value="scientific">Scientific</option><option value="engineering">Engineering</option></select></label>
+                                      <label style={{ fontSize: 9.5 }}>Digits <input data-testid="geometry-measure-digits" type="number" min={1} max={15} value={geometryMeasurementDigits} onChange={(event) => setGeometryMeasurementDigits(Math.max(1, Math.min(15, Number(event.target.value) || 1)))} style={{ width: 55 }} /></label>
+                                      <label style={{ fontSize: 9.5 }}>Absolute tolerance <input type="number" value={geometryMeasurementAbsoluteTolerance} onChange={(event) => setGeometryMeasurementAbsoluteTolerance(Math.max(0, Number(event.target.value) || 0))} style={{ width: 95 }} /></label>
+                                      <label style={{ fontSize: 9.5 }}>Relative tolerance <input type="number" value={geometryMeasurementRelativeTolerance} onChange={(event) => setGeometryMeasurementRelativeTolerance(Math.max(0, Number(event.target.value) || 0))} style={{ width: 95 }} /></label>
+                                      <label style={{ display: "grid", gap: 2, fontSize: 9.5 }}>Section parameter = {fmt(geometryMeasurementSectionParameter)}<input data-testid="geometry-measure-section-parameter" type="range" min={0} max={1} step={0.001} value={geometryMeasurementSectionParameter} onChange={(event) => setGeometryMeasurementSectionParameter(Number(event.target.value))} /></label>
+                                      <button type="button" data-testid="geometry-run-canonical-measurements" onClick={handleRunGeometryCanonicalMeasurements} style={{ fontSize: 11 }}>Measure + build report</button>
+                                    </div>
+                                  </details>
                                   <div style={{ display: "grid", gap: 4 }}>
                                     <div style={{ fontSize: 10.5, fontWeight: 700 }}>Differential geometry</div>
                                     <div style={{ fontSize: 10, color: "#667085" }}>
@@ -93770,6 +93812,8 @@ case "mobius":
                                             ? "Characteristic geometry"
                                           : geometrySelectedQuickAnalysisResult.kind === "diagnostics"
                                             ? "Exact Geometry diagnostics"
+                                          : geometrySelectedQuickAnalysisResult.kind === "measurement"
+                                            ? "Canonical measurement"
                                             : "Geometry analysis"}
                                       </div>
                                       <div style={{ fontSize: 11.5, fontWeight: 800, overflowWrap: "anywhere" }}>
@@ -93804,6 +93848,8 @@ case "mobius":
                                           ? "Features / singularities / typed intersections"
                                         : geometrySelectedQuickAnalysisResult.kind === "diagnostics"
                                           ? "Semantic topology / trims / continuity / validity"
+                                        : geometrySelectedQuickAnalysisResult.kind === "measurement"
+                                          ? "Measurements / stable sections / quantitative report"
                                           : geometrySelectedQuickAnalysisResult.title],
                                       ["Method", geometrySelectedQuickAnalysisResult.provenanceAlgorithm],
                                       ["Domain", geometrySelectedQuickAnalysisResult.domain],
@@ -94132,6 +94178,16 @@ case "mobius":
                                       <div><strong>Continuity:</strong> {validity.exactGeometry.continuity ? `${validity.exactGeometry.continuity.classification} · gap ${fmt(validity.exactGeometry.continuity.positionGap)} · tangent ${validity.exactGeometry.continuity.tangentAngle == null ? "undefined" : fmt(validity.exactGeometry.continuity.tangentAngle)} · normal ${validity.exactGeometry.continuity.normalAngle == null ? "undefined" : fmt(validity.exactGeometry.continuity.normalAngle)} · curvature Δ ${validity.exactGeometry.continuity.curvatureMismatch == null ? "undefined" : fmt(validity.exactGeometry.continuity.curvatureMismatch)}` : "single patch; no join selected"}</div>
                                       <div data-testid="geometry-mesh-health-separation"><strong>{validity.displayMeshHealth.label}:</strong> {validity.displayMeshHealth.notes.join(" · ")} · exact B-rep validity: no</div>
                                       <div><strong>Contract:</strong> {validity.conventions.validity} {validity.conventions.meshSeparation}</div>
+                                    </div>;
+                                  })()}
+                                  {geometrySelectedQuickAnalysisResult.kind === "measurement" && geometrySelectedQuickAnalysisResult.measurementReport && (() => {
+                                    const report = geometrySelectedQuickAnalysisResult.measurementReport;
+                                    return <div data-testid="geometry-canonical-measurement-result" style={{ display: "grid", gap: 6, fontSize: 9.5 }}>
+                                      <div><strong>{report.title}</strong> · {report.measurements.length} measurements · {report.sections.length} sections</div>
+                                      <div data-testid="geometry-measurement-table" style={{ display: "grid", gap: 2 }}>{report.rows.map((row) => <div key={row.quantity} style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr .7fr 1fr", gap: 4 }}><span>{row.quantity}</span><strong>{row.value}</strong><span>{row.unit}</span><span>{row.method}</span></div>)}</div>
+                                      <div data-testid="geometry-measurement-sections"><strong>Stable sections:</strong> {report.sections.map((section) => `${section.kind} [${section.id}]`).join(" · ")}</div>
+                                      <div><strong>Precision:</strong> {report.precision.digits} digits · {report.precision.notation} · abs {report.precision.absoluteTolerance.toExponential(2)} · rel {report.precision.relativeTolerance.toExponential(2)}</div>
+                                      <div data-testid="geometry-measurement-provenance"><strong>Report provenance:</strong> source {report.source.id} r{report.source.revision} · {report.selection.semantic} · {report.units} · {report.engine} · {report.timestamp}</div>
                                     </div>;
                                   })()}
                                   {geometrySelectedQuickAnalysisResult.kind === "topology-summary" &&
