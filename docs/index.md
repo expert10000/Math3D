@@ -8,6 +8,7 @@ This site combines:
 - Runtime architecture overview: `runtime-architecture.md` (Electron main thread, React renderer, Python worker with CGAL/VTK).
 - Install and run modes guide: `install-and-run-modes.md` (desktop, browser, and Docker browser modes, including worker requirements).
 - CGAL Python worker setup: `cgal-python-worker-setup.md` (one-command vcpkg + patched pygalmesh setup).
+- Surface Analysis professional roadmap: `surface-analysis-professional-implementation-roadmap.md` (12-commit consolidation plan, Surface/Mesh ownership boundary, linked SurfaceMesh workflow, and v1 acceptance target).
 - Repository folder map: `repository-layout.md`.
 
 ## Public frontend
