@@ -1,6 +1,11 @@
 import type { AnalysisParameters, AnalysisParameterValue } from "../analysis/contracts";
 import type { UnifiedSelection } from "../selection/unifiedSelection";
 import {
+  analyzeExactCurve,
+  type ExactCurveAnalysisResult,
+  type GeometryAnalyticCurveDefinition,
+} from "./exactCurveAnalysis";
+import {
   computeGeometryAnalysisBasicMetrics,
   computeGeometryAnalysisTopologySummary,
   type GeometryAnalysisBasicMetrics,
@@ -106,10 +111,17 @@ export type GeometryAnalysisPayload = {
   basicMetrics?: GeometryAnalysisBasicMetrics;
   topologySummary?: GeometryAnalysisTopologySummary;
   sectionSummary?: GeometrySectionAnalysisSummary;
+  curveAnalysis?: ExactCurveAnalysisResult;
 };
 
 export type GeometryAnalysisExecutionContext = {
   sectionSummary?: GeometrySectionAnalysisSummary;
+  exactCurve?: {
+    definition: GeometryAnalyticCurveDefinition;
+    parameter: number;
+    sampleCount: number;
+    tolerance: number;
+  };
 };
 
 export type GeometryAnalysisDomainImplementation = (args: {
@@ -261,6 +273,66 @@ const builtinImplementationEntries: Array<[GeometryAnalysisResultKind, GeometryA
       sectionSummary,
     };
   }],
+  ["curve-analysis", ({ context }) => {
+    if (!context.exactCurve) throw new Error("Exact curve analysis requires an analytic curve definition.");
+    const curveAnalysis = analyzeExactCurve(context.exactCurve);
+    const point = curveAnalysis.point;
+    const outputs: GeometryAnalysisOutput[] = [
+      {
+        id: "curve",
+        label: curveAnalysis.definition.label,
+        kind: "curve",
+        points: curveAnalysis.visualization.curve,
+        closed: curveAnalysis.definition.domain.closed,
+        unit: curveAnalysis.definition.units.position,
+      },
+      { id: "speed", label: "Speed", kind: "scalar", value: point.speed, unit: `${curveAnalysis.definition.units.position}/${curveAnalysis.definition.units.parameter}` },
+      { id: "position", label: "Position", kind: "point", value: point.position, unit: curveAnalysis.definition.units.position },
+      {
+        id: "pointwise",
+        label: "Pointwise differential quantities",
+        kind: "table",
+        columns: ["quantity", "x/value", "y", "z"],
+        rows: [
+          ["r(t)", point.position[0], point.position[1], point.position[2]],
+          ["r'(t)", point.derivative1[0], point.derivative1[1], point.derivative1[2]],
+          ["r''(t)", point.derivative2[0], point.derivative2[1], point.derivative2[2]],
+          ["r'''(t)", point.derivative3[0], point.derivative3[1], point.derivative3[2]],
+          ["curvature", point.curvature, null, null],
+          ["radius", point.radiusOfCurvature, null, null],
+          ["torsion", point.torsion, null, null],
+        ],
+      },
+      { id: "arc-length", label: "Arc length", kind: "scalar", value: curveAnalysis.arcLength.value, unit: curveAnalysis.definition.units.position },
+    ];
+    if (point.tangent) outputs.push({ id: "tangent", label: "Unit tangent", kind: "vector", value: point.tangent });
+    if (point.normal) outputs.push({ id: "normal", label: "Unit normal", kind: "vector", value: point.normal });
+    if (point.binormal) outputs.push({ id: "binormal", label: "Unit binormal", kind: "vector", value: point.binormal });
+    curveAnalysis.warnings.forEach((warning, index) => outputs.push({
+      id: `warning-${index}`,
+      label: "Curve diagnostic",
+      kind: "warning",
+      value: warning,
+      severity: "warning",
+    }));
+    return {
+      algorithm: `analytic-curve-differential-v${curveAnalysis.definition.revision}`,
+      backend: "Geometry exact curve core",
+      outputs,
+      summary: {
+        parameter: point.t,
+        speed: point.speed,
+        curvature: point.curvature,
+        radiusOfCurvature: point.radiusOfCurvature,
+        torsion: point.torsion,
+        arcLength: curveAnalysis.arcLength.value,
+        stationary: point.stationary,
+        degenerate: point.degenerate,
+      },
+      warnings: curveAnalysis.warnings,
+      curveAnalysis,
+    };
+  }],
   ["differential-geometry", ({ snapshot }) => ({
     algorithm: "mesh-analyze-handoff-v1",
     outputs: [{ id: "handoff", label: "Mesh Analyze handoff", kind: "summary", value: "Analysis-ready mesh snapshot" }],
@@ -332,6 +404,7 @@ export const executeGeometryAnalysisRequest = (args: {
       ...(computed.basicMetrics ? { basicMetrics: computed.basicMetrics } : {}),
       ...(computed.topologySummary ? { topologySummary: computed.topologySummary } : {}),
       ...(computed.sectionSummary ? { sectionSummary: computed.sectionSummary } : {}),
+      ...(computed.curveAnalysis ? { curveAnalysis: computed.curveAnalysis } : {}),
       provenance: {
         backend,
         algorithm: computed.algorithm,

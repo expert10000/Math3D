@@ -15,6 +15,7 @@ import {
   geometryAnalysisRequestParameters,
   type GeometryAnalysisPayload,
 } from "./analysisPipeline";
+import { getGeometryExactCurvePreset } from "./exactCurveAnalysis";
 
 const triangle: SurfaceMeshData = {
   label: "triangle",
@@ -236,5 +237,42 @@ describe("Geometry AnalysisRequest pipeline", () => {
     });
     expect(execution.result.payload?.summary.speed).toBe(2);
     expect(execution.result.parameters).toMatchObject({ domain: "curve", parameter: 0.25 });
+  });
+
+  it("publishes exact pointwise and sampled curve results through the shared pipeline", () => {
+    const source = snapshot(7);
+    const definition = getGeometryExactCurvePreset("helix");
+    const request = createGeometryAnalysisRequest({
+      id: "request-7",
+      kind: "curve-analysis",
+      snapshot: source,
+      sourceRevision: 11,
+      domain: "curve",
+      sampling: { strategy: "exact", sampleCount: 65, tolerance: 1e-9 },
+      precision: { mode: "exact", digits: 12, tolerance: 1e-9 },
+      parameters: { curveDefinitionId: definition.id, parameter: Math.PI },
+      requestedOutputs: ["scalar", "vector", "curve", "point", "table", "summary", "warning"],
+    });
+    const execution = executeGeometryAnalysisRequest({
+      store: createGeometryAnalysisResultStore(),
+      registry: createGeometryAnalysisRegistry(),
+      request,
+      snapshot: source,
+      context: { exactCurve: { definition, parameter: Math.PI, sampleCount: 65, tolerance: 1e-9 } },
+      now: 80,
+    });
+    expect(execution.result).toMatchObject({
+      state: "ready",
+      backend: "Geometry exact curve core",
+      payload: {
+        provenance: { algorithm: "analytic-curve-differential-v1" },
+        curveAnalysis: {
+          definition: { id: "helix", capabilities: { third: "exact" } },
+          arcLength: { method: "closed-form" },
+        },
+      },
+    });
+    expect(execution.result.payload?.outputs.some((output) => output.kind === "curve")).toBe(true);
+    expect(execution.result.payload?.outputs.filter((output) => output.kind === "vector")).toHaveLength(3);
   });
 });

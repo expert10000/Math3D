@@ -208,6 +208,18 @@ test("Geometry professional shell keeps current workspaces and tools reachable",
     await expect(page.getByTestId("geometry-analysis-result-fingerprint")).toHaveAttribute("title", /sourceRevision/);
     await expect(page.getByTestId("geometry-analysis-result-computation-history")).toContainText("1 run");
     await expect(page.getByTestId("geometry-analysis-result-history")).toHaveValue(/geometry:/);
+    await expect(page.getByTestId("geometry-analysis-result-definition")).toContainText("Quantity");
+    await expect(page.getByTestId("geometry-exact-curve-analysis-controls")).toBeVisible();
+    await page.getByTestId("geometry-exact-curve-preset").selectOption("circle");
+    await page.getByTestId("geometry-run-exact-curve-analysis").click();
+    await expect(page.getByTestId("geometry-exact-curve-result")).toContainText("Curvature κ");
+    await expect(page.getByTestId("geometry-exact-curve-frame")).toContainText("r‴(t)");
+    await expect(page.getByTestId("geometry-exact-curve-diagnostics")).toContainText("first exact, second exact, third exact");
+    await expect(page.getByTestId("geometry-exact-curve-visualization")).toContainText("Osculating circle: ready");
+    await expect(page.getByTestId("geometry-exact-curve-plot")).toBeVisible();
+    await expect(page.getByTestId("geometry-analysis-result-provenance")).toContainText("Geometry exact curve core");
+    await expect(page.getByTestId("geometry-analysis-result-warnings")).toContainText("None");
+    await expect(page.getByTestId("geometry-exact-curve-open-curves")).toBeVisible();
     await page.getByTestId("geometry-professional-tool-construct").click();
     await expect(page.getByTestId("geometry-construct-panel-tab-create")).toBeVisible();
     await expect(page.getByTestId("geometry-construct-taxonomy")).toBeVisible();

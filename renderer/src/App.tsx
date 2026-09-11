@@ -306,6 +306,13 @@ import {
   type GeometryAnalysisPayload,
   type GeometryAnalysisSelectionMetadata,
 } from "./geometry/analysisPipeline";
+import {
+  GEOMETRY_EXACT_CURVE_PRESETS,
+  getGeometryExactCurvePreset,
+  type ExactCurveAnalysisResult,
+  type GeometryAnalyticCurveDefinition,
+  type GeometryExactCurvePresetId,
+} from "./geometry/exactCurveAnalysis";
 import { evaluateGeometryMeshReadiness } from "./geometry/meshReadiness";
 import {
   GEOMETRY_TO_MESH_PROMOTION_MODES,
@@ -1033,6 +1040,7 @@ type GeometrySavedSectionCurve = {
 type GeometryQuickAnalysisResultKind =
   | "basic-metrics"
   | "topology-summary"
+  | "curve-analysis"
   | "differential-geometry"
   | "section-analysis";
 type GeometryQuickAnalysisResultEntry = {
@@ -1048,6 +1056,7 @@ type GeometryQuickAnalysisResultEntry = {
   basicMetrics?: GeometryAnalysisBasicMetrics;
   topologySummary?: GeometryAnalysisTopologySummary;
   sectionSummary?: GeometrySectionAnalysisSummary;
+  curveAnalysis?: ExactCurveAnalysisResult;
   notes?: string[];
   state: GeometryAnalysisResultState;
   backend: string;
@@ -13299,6 +13308,18 @@ const App: React.FC = () => {
   const geometryAnalysisRegistry = useMemo(() => createGeometryAnalysisRegistry(), []);
   const [geometryAnalysisResultStore, setGeometryAnalysisResultStore] = useState(createGeometryAnalysisResultStore);
   const [geometryQuickAnalysisSelectedResultId, setGeometryQuickAnalysisSelectedResultId] = useState<string | null>(null);
+  const [geometryExactCurvePresetId, setGeometryExactCurvePresetId] = useState<GeometryExactCurvePresetId>("circle");
+  const [geometryExactCurveParameterU, setGeometryExactCurveParameterU] = useState(0.25);
+  const [geometryExactCurveSampleCount, setGeometryExactCurveSampleCount] = useState(96);
+  const [geometryExactCurveShowFrames, setGeometryExactCurveShowFrames] = useState(true);
+  const [geometryExactCurveShowComb, setGeometryExactCurveShowComb] = useState(true);
+  const [geometryExactCurvePlotQuantity, setGeometryExactCurvePlotQuantity] = useState<"speed" | "curvature" | "torsion">("curvature");
+  const geometryExactCurveDefinition = useMemo(
+    () => getGeometryExactCurvePreset(geometryExactCurvePresetId),
+    [geometryExactCurvePresetId]
+  );
+  const geometryExactCurveParameter = geometryExactCurveDefinition.domain.min +
+    geometryExactCurveParameterU * (geometryExactCurveDefinition.domain.max - geometryExactCurveDefinition.domain.min);
   const geometryObjectGeomCacheRef = useRef(
     new Map<string, { key: string; geom: THREE.BufferGeometry }>()
   );
@@ -13421,11 +13442,13 @@ const App: React.FC = () => {
     Object.entries(geometryAnalysisResultStore.entries)
       .map(([resultKey, result]): GeometryQuickAnalysisResultEntry | null => {
         const payload = result.payload as GeometryAnalysisPayload | null;
-        if (!payload || !["basic-metrics", "topology-summary", "differential-geometry", "section-analysis"].includes(result.kind)) return null;
+        if (!payload || !["basic-metrics", "topology-summary", "curve-analysis", "differential-geometry", "section-analysis"].includes(result.kind)) return null;
         const title = result.kind === "basic-metrics"
           ? "Basic metrics"
           : result.kind === "topology-summary"
             ? "Topology summary"
+            : result.kind === "curve-analysis"
+              ? "Exact curve differential analysis"
             : result.kind === "section-analysis"
               ? "Section analysis"
               : "Differential geometry handoff";
@@ -13442,6 +13465,7 @@ const App: React.FC = () => {
           basicMetrics: payload.basicMetrics,
           topologySummary: payload.topologySummary,
           sectionSummary: payload.sectionSummary,
+          curveAnalysis: payload.curveAnalysis,
           notes: payload.warnings,
           state: result.state,
           backend: result.backend,
@@ -42756,6 +42780,22 @@ const App: React.FC = () => {
     requestedOutputs: readonly GeometryAnalysisOutputKind[];
     parameters?: Record<string, number | string | boolean | null | readonly (number | string)[]>;
     sectionSummary?: GeometrySectionAnalysisSummary;
+    exactCurve?: {
+      definition: GeometryAnalyticCurveDefinition;
+      parameter: number;
+      sampleCount: number;
+      tolerance: number;
+    };
+    sampling?: {
+      strategy: "exact" | "mesh" | "adaptive" | "uniform";
+      sampleCount?: number;
+      tolerance?: number;
+    };
+    precision?: {
+      mode: "exact" | "double" | "adaptive";
+      digits?: number;
+      tolerance?: number;
+    };
   }) => {
     const selection = geometryActiveUnifiedSelection?.objectId === args.prepared.snapshot.sourceObjectId
       ? geometryActiveUnifiedSelection
@@ -42780,8 +42820,8 @@ const App: React.FC = () => {
       )?.id ?? null,
       selection: selectionMetadata,
       domain: args.domain,
-      sampling: { strategy: "mesh" },
-      precision: { mode: "double", digits: 12, tolerance: 1e-9 },
+      sampling: args.sampling ?? { strategy: "mesh" },
+      precision: args.precision ?? { mode: "double", digits: 12, tolerance: 1e-9 },
       parameters: args.parameters ?? {},
       requestedOutputs: args.requestedOutputs,
     });
@@ -42793,7 +42833,7 @@ const App: React.FC = () => {
       request,
       snapshot: args.prepared.snapshot,
       selectionSnapshot: selection,
-      context: { sectionSummary: args.sectionSummary },
+      context: { sectionSummary: args.sectionSummary, exactCurve: args.exactCurve },
     }).store);
     setGeometryQuickAnalysisSelectedResultId(resultKey);
     return { request, resultKey };
@@ -42827,6 +42867,44 @@ const App: React.FC = () => {
     });
     setGeometryCreateActionStatus(`Analysis ready: topology summary (${prepared.snapshot.id}).`);
   }, [createSelectedGeometryAnalysisSnapshot, runGeometryQuickAnalysis]);
+  const handleRunGeometryExactCurveAnalysis = useCallback(() => {
+    const prepared = createSelectedGeometryAnalysisSnapshot();
+    if (!prepared) return;
+    runGeometryQuickAnalysis({
+      prepared,
+      kind: "curve-analysis",
+      domain: "curve",
+      parameters: {
+        curveDefinitionId: geometryExactCurveDefinition.id,
+        curveDefinitionRevision: geometryExactCurveDefinition.revision,
+        parameter: geometryExactCurveParameter,
+        sampleCount: geometryExactCurveSampleCount,
+        tolerance: 1e-9,
+        derivativeMode: "exact",
+        orientation: geometryExactCurveDefinition.orientation,
+        positionUnit: geometryExactCurveDefinition.units.position,
+        parameterUnit: geometryExactCurveDefinition.units.parameter,
+      },
+      requestedOutputs: ["scalar", "vector", "curve", "point", "table", "summary", "warning"],
+      exactCurve: {
+        definition: geometryExactCurveDefinition,
+        parameter: geometryExactCurveParameter,
+        sampleCount: geometryExactCurveSampleCount,
+        tolerance: 1e-9,
+      },
+      sampling: { strategy: "exact", sampleCount: geometryExactCurveSampleCount, tolerance: 1e-9 },
+      precision: { mode: "exact", digits: 12, tolerance: 1e-9 },
+    });
+    setGeometryCreateActionStatus(
+      `Exact curve analysis ready: ${geometryExactCurveDefinition.label} at t=${fmt(geometryExactCurveParameter)}.`
+    );
+  }, [
+    createSelectedGeometryAnalysisSnapshot,
+    geometryExactCurveDefinition,
+    geometryExactCurveParameter,
+    geometryExactCurveSampleCount,
+    runGeometryQuickAnalysis,
+  ]);
   const handleRunGeometryQuickSectionAnalysis = useCallback(() => {
     const prepared = createSelectedGeometryAnalysisSnapshot();
     if (!prepared) return;
@@ -42909,6 +42987,42 @@ const App: React.FC = () => {
       `Opened ${geometrySelectedQuickAnalysisResult.snapshot.id} in Mesh Analyze.`
     );
   }, [geometrySelectedQuickAnalysisResult, openGeometryAnalysisSnapshotInSurfaces]);
+  const handleOpenSelectedGeometryCurveAnalysis = useCallback(() => {
+    const analysis = geometrySelectedQuickAnalysisResult?.curveAnalysis;
+    if (!analysis) {
+      setGeometryCreateActionStatus("No exact curve analysis result selected.");
+      return;
+    }
+    const definition = analysis.definition;
+    if (definition.id === "piecewise-v") {
+      setCurveImportedSection({
+        id: makeId(),
+        name: definition.label,
+        objectName: geometrySelectedQuickAnalysisResult?.sourceObjectName ?? definition.label,
+        points: analysis.visualization.curve.map((point) => ({ x: point[0], y: point[1], z: point[2] })),
+        closed: definition.domain.closed,
+        curveLength: analysis.arcLength.value,
+        area: 0,
+        segmentCount: Math.max(0, analysis.visualization.curve.length - 1),
+        createdAt: Date.now(),
+      });
+    } else {
+      setCurveImportedSection(null);
+      setCurvePresetId(definition.dimension === 3 ? "custom3d" : "custom2d");
+      setCurveCustomXExpr(definition.formula[0]);
+      setCurveCustomYExpr(definition.formula[1]);
+      setCurveCustomZExpr(definition.formula[2]);
+      setCurveCustomTMin(definition.domain.min);
+      setCurveCustomTMax(definition.domain.max);
+      setCurveCustomClosed(definition.domain.closed);
+    }
+    const span = Math.max(1e-12, definition.domain.max - definition.domain.min);
+    setCurveProbeU(clamp((analysis.point.t - definition.domain.min) / span, 0, 1));
+    setCurveSampleCount(analysis.samples.length);
+    setCurveViewerResetToken((token) => token + 1);
+    setMode("curves");
+    setGeometryCreateActionStatus(`Opened ${definition.label} in Curves; exact results remain in Geometry history.`);
+  }, [geometrySelectedQuickAnalysisResult]);
   const handleSaveSelectedGeometryQuickAnalysisResult = useCallback(() => {
     if (!geometrySelectedQuickAnalysisResult) {
       setGeometryCreateActionStatus("No analysis result selected.");
@@ -42927,6 +43041,7 @@ const App: React.FC = () => {
       basicMetrics: geometrySelectedQuickAnalysisResult.basicMetrics ?? null,
       topologySummary: geometrySelectedQuickAnalysisResult.topologySummary ?? null,
       sectionSummary: geometrySelectedQuickAnalysisResult.sectionSummary ?? null,
+      curveAnalysis: geometrySelectedQuickAnalysisResult.curveAnalysis ?? null,
       notes: geometrySelectedQuickAnalysisResult.notes ?? [],
       lifecycle: {
         state: geometrySelectedQuickAnalysisResult.state,
@@ -93249,6 +93364,61 @@ case "mobius":
                                       </button>
                                     </div>
                                   </div>
+                                  <div
+                                    data-testid="geometry-exact-curve-analysis-controls"
+                                    style={{ display: "grid", gap: 5, borderTop: "1px solid #e2e8f0", paddingTop: 7 }}
+                                  >
+                                    <div style={{ fontSize: 10.5, fontWeight: 700 }}>Exact curve differential analysis</div>
+                                    <select
+                                      data-testid="geometry-exact-curve-preset"
+                                      value={geometryExactCurvePresetId}
+                                      onChange={(event) => setGeometryExactCurvePresetId(event.target.value as GeometryExactCurvePresetId)}
+                                      style={{ fontSize: 10.5, minWidth: 0 }}
+                                    >
+                                      {GEOMETRY_EXACT_CURVE_PRESETS.map((definition) => (
+                                        <option key={definition.id} value={definition.id}>{definition.label}</option>
+                                      ))}
+                                    </select>
+                                    <div style={{ fontSize: 9.5, color: "#667085", fontFamily: "monospace" }}>
+                                      r(t) = ({geometryExactCurveDefinition.formula.join(", ")}) · t ∈ [{fmt(geometryExactCurveDefinition.domain.min)}, {fmt(geometryExactCurveDefinition.domain.max)}]
+                                    </div>
+                                    <label style={{ display: "grid", gap: 2, fontSize: 9.5 }}>
+                                      Parameter t = {fmt(geometryExactCurveParameter)} {geometryExactCurveDefinition.units.parameter}
+                                      <input
+                                        data-testid="geometry-exact-curve-parameter"
+                                        type="range"
+                                        min={0}
+                                        max={1}
+                                        step={0.001}
+                                        value={geometryExactCurveParameterU}
+                                        onChange={(event) => setGeometryExactCurveParameterU(Number(event.target.value))}
+                                      />
+                                    </label>
+                                    <label style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", fontSize: 9.5 }}>
+                                      Samples
+                                      <input
+                                        data-testid="geometry-exact-curve-samples"
+                                        type="number"
+                                        min={8}
+                                        max={2048}
+                                        step={8}
+                                        value={geometryExactCurveSampleCount}
+                                        onChange={(event) => setGeometryExactCurveSampleCount(Math.max(8, Math.min(2048, Number(event.target.value) || 8)))}
+                                        style={{ width: 74, fontSize: 10 }}
+                                      />
+                                    </label>
+                                    <div style={{ fontSize: 9.5, color: "#166534" }}>
+                                      Position + derivatives 1–3: exact · arc length: closed form
+                                    </div>
+                                    <button
+                                      type="button"
+                                      data-testid="geometry-run-exact-curve-analysis"
+                                      onClick={handleRunGeometryExactCurveAnalysis}
+                                      style={{ fontSize: 11 }}
+                                    >
+                                      Analyze curve
+                                    </button>
+                                  </div>
                                   <div style={{ display: "grid", gap: 4 }}>
                                     <div style={{ fontSize: 10.5, fontWeight: 700 }}>Differential geometry</div>
                                     <div style={{ fontSize: 10, color: "#667085" }}>
@@ -93301,15 +93471,43 @@ case "mobius":
                                 </label>
                               )}
                               {geometrySelectedQuickAnalysisResult && (
-                                <div style={{ marginTop: 6, border: "1px solid #dbe2ea", borderRadius: 6, padding: "6px 8px", background: "#fff", display: "grid", gap: 4 }}>
-                                  <div style={{ fontSize: 11, fontWeight: 700 }}>
-                                    Analysis Result: {geometrySelectedQuickAnalysisResult.title}
+                                <div data-testid="geometry-analysis-active-result" style={{ marginTop: 6, border: "1px solid #dbe2ea", borderRadius: 8, padding: "9px 10px", background: "#fff", display: "grid", gap: 7 }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                                    <div style={{ minWidth: 0 }}>
+                                      <div style={{ fontSize: 9, color: "#64748b", fontWeight: 800, textTransform: "uppercase" }}>
+                                        {geometrySelectedQuickAnalysisResult.kind === "curve-analysis" ? "Curve differential" : "Geometry analysis"}
+                                      </div>
+                                      <div style={{ fontSize: 11.5, fontWeight: 800, overflowWrap: "anywhere" }}>
+                                        {geometrySelectedQuickAnalysisResult.title}
+                                      </div>
+                                    </div>
+                                    <span
+                                      style={{
+                                        border: `1px solid ${geometrySelectedQuickAnalysisResult.state === "ready" ? "#abefc6" : geometrySelectedQuickAnalysisResult.state === "running" ? "#b2ddff" : geometrySelectedQuickAnalysisResult.state === "error" ? "#fecdca" : "#dbe4ee"}`,
+                                        borderRadius: 999,
+                                        background: geometrySelectedQuickAnalysisResult.state === "ready" ? "#ecfdf3" : geometrySelectedQuickAnalysisResult.state === "running" ? "#eff8ff" : geometrySelectedQuickAnalysisResult.state === "error" ? "#fef3f2" : "#f8fafc",
+                                        color: geometrySelectedQuickAnalysisResult.state === "ready" ? "#067647" : geometrySelectedQuickAnalysisResult.state === "running" ? "#175cd3" : geometrySelectedQuickAnalysisResult.state === "error" ? "#b42318" : "#475467",
+                                        padding: "2px 8px",
+                                        fontSize: 9.5,
+                                        fontWeight: 850,
+                                        whiteSpace: "nowrap",
+                                        textTransform: "capitalize",
+                                      }}
+                                    >
+                                      {geometrySelectedQuickAnalysisResult.state}
+                                    </span>
                                   </div>
-                                  <div style={{ fontSize: 10.5 }}>
-                                    <strong>Source:</strong> {geometrySelectedQuickAnalysisResult.sourceObjectName}
-                                  </div>
-                                  <div style={{ fontSize: 10.5 }}>
-                                    <strong>Snapshot:</strong> {geometrySelectedQuickAnalysisResult.snapshot.id}
+                                  <div data-testid="geometry-analysis-result-definition" style={{ borderTop: "1px solid #e2e8f0", borderBottom: "1px solid #e2e8f0", padding: "7px 0", display: "grid", gap: 4, fontSize: 9.5 }}>
+                                    {([
+                                      ["Quantity", geometrySelectedQuickAnalysisResult.kind === "curve-analysis" ? "Position / derivatives / κ / τ / arc length" : geometrySelectedQuickAnalysisResult.title],
+                                      ["Method", geometrySelectedQuickAnalysisResult.provenanceAlgorithm],
+                                      ["Domain", geometrySelectedQuickAnalysisResult.domain],
+                                    ] as const).map(([label, value]) => (
+                                      <div key={`geometry-analysis-definition-${label}`} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                                        <span style={{ color: "#64748b" }}>{label}</span>
+                                        <strong style={{ textAlign: "right", overflowWrap: "anywhere" }}>{value}</strong>
+                                      </div>
+                                    ))}
                                   </div>
                                   <div data-testid="geometry-analysis-result-lifecycle" style={{ fontSize: 10.5 }}>
                                     <strong>Lifecycle:</strong> {geometrySelectedQuickAnalysisResult.state} · result v{geometrySelectedQuickAnalysisResult.resultVersion} · source r{geometrySelectedQuickAnalysisResult.sourceRevision}
@@ -93345,6 +93543,123 @@ case "mobius":
                                       ? ` @ r${geometrySelectedQuickAnalysisResult.selection.sourceRevision}`
                                       : ""}
                                   </div>
+                                  {geometrySelectedQuickAnalysisResult.kind === "curve-analysis" &&
+                                    geometrySelectedQuickAnalysisResult.curveAnalysis && (() => {
+                                      const analysis = geometrySelectedQuickAnalysisResult.curveAnalysis;
+                                      const point = analysis.point;
+                                      const formatVector = (value: readonly [number, number, number] | null) =>
+                                        value ? `(${fmt(value[0])}, ${fmt(value[1])}, ${fmt(value[2])})` : "undefined";
+                                      const previewPoints = analysis.visualization.curve;
+                                      const xs = previewPoints.map((entry) => entry[0]);
+                                      const ys = previewPoints.map((entry) => entry[1]);
+                                      const minX = Math.min(...xs);
+                                      const maxX = Math.max(...xs);
+                                      const minY = Math.min(...ys);
+                                      const maxY = Math.max(...ys);
+                                      const spanX = Math.max(1e-9, maxX - minX);
+                                      const spanY = Math.max(1e-9, maxY - minY);
+                                      const project = (value: readonly [number, number, number]) => ({
+                                        x: 8 + ((value[0] - minX) / spanX) * 204,
+                                        y: 112 - ((value[1] - minY) / spanY) * 104,
+                                      });
+                                      const curvePath = previewPoints.map((entry, index) => {
+                                        const projected = project(entry);
+                                        return `${index ? "L" : "M"}${projected.x.toFixed(2)},${projected.y.toFixed(2)}`;
+                                      }).join(" ");
+                                      const plotValues = analysis.visualization.plot
+                                        .map((entry) => ({ t: entry.t, value: entry[geometryExactCurvePlotQuantity] }))
+                                        .filter((entry): entry is { t: number; value: number } => entry.value != null && Number.isFinite(entry.value));
+                                      const plotMin = plotValues.length ? Math.min(...plotValues.map((entry) => entry.value)) : 0;
+                                      const plotMax = plotValues.length ? Math.max(...plotValues.map((entry) => entry.value)) : 1;
+                                      const plotSpan = Math.max(1e-9, plotMax - plotMin);
+                                      const parameterSpan = Math.max(1e-9, analysis.definition.domain.max - analysis.definition.domain.min);
+                                      const plotPath = plotValues.map((entry, index) => {
+                                        const x = 8 + ((entry.t - analysis.definition.domain.min) / parameterSpan) * 204;
+                                        const y = 62 - ((entry.value - plotMin) / plotSpan) * 54;
+                                        return `${index ? "L" : "M"}${x.toFixed(2)},${y.toFixed(2)}`;
+                                      }).join(" ");
+                                      return (
+                                        <div data-testid="geometry-exact-curve-result" style={{ borderTop: "1px solid #e2e8f0", paddingTop: 7, display: "grid", gap: 8 }}>
+                                          <div>
+                                            <div style={{ color: "#475569", fontSize: 9.5, fontWeight: 850, textTransform: "uppercase", marginBottom: 5 }}>Pointwise statistics</div>
+                                            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", borderTop: "1px solid #e2e8f0", borderLeft: "1px solid #e2e8f0" }}>
+                                              {([
+                                                [analysis.definition.parameter, `${fmt(point.t)} ${analysis.definition.units.parameter}`],
+                                                ["Speed", fmt(point.speed)],
+                                                ["Curvature κ", point.curvature == null ? "undefined" : fmt(point.curvature)],
+                                                ["Radius 1/κ", point.radiusOfCurvature == null ? "undefined" : Number.isFinite(point.radiusOfCurvature) ? fmt(point.radiusOfCurvature) : "∞"],
+                                                ["Torsion τ", point.torsion == null ? "undefined" : fmt(point.torsion)],
+                                                ["Arc length", `${fmt(analysis.arcLength.value)} ${analysis.definition.units.position}`],
+                                              ] as const).map(([label, value]) => (
+                                                <div key={`geometry-curve-stat-${label}`} style={{ borderRight: "1px solid #e2e8f0", borderBottom: "1px solid #e2e8f0", padding: "5px 6px", minWidth: 0 }}>
+                                                  <div style={{ color: "#64748b", fontSize: 8, fontWeight: 800, textTransform: "uppercase" }}>{label}</div>
+                                                  <div style={{ color: "#0f172a", fontSize: 10.5, fontWeight: 850, overflowWrap: "anywhere" }}>{value}</div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                          <div data-testid="geometry-exact-curve-frame" style={{ display: "grid", gap: 3, fontSize: 9.5 }}>
+                                            <div style={{ color: "#475569", fontWeight: 850, textTransform: "uppercase" }}>Frenet frame and derivatives</div>
+                                            <div><strong>r(t)</strong> {formatVector(point.position)}</div>
+                                            <div><strong>r′(t)</strong> {formatVector(point.derivative1)}</div>
+                                            <div><strong>r″(t)</strong> {formatVector(point.derivative2)}</div>
+                                            <div><strong>r‴(t)</strong> {formatVector(point.derivative3)}</div>
+                                            <div><strong>T</strong> {formatVector(point.tangent)}</div>
+                                            <div><strong>N</strong> {formatVector(point.normal)}</div>
+                                            <div><strong>B</strong> {formatVector(point.binormal)}</div>
+                                          </div>
+                                          <div data-testid="geometry-exact-curve-visualization" style={{ display: "grid", gap: 5 }}>
+                                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 9 }}>
+                                              <label><input type="checkbox" checked={geometryExactCurveShowFrames} onChange={(event) => setGeometryExactCurveShowFrames(event.target.checked)} /> Frenet frames</label>
+                                              <label><input type="checkbox" checked={geometryExactCurveShowComb} onChange={(event) => setGeometryExactCurveShowComb(event.target.checked)} /> Curvature comb</label>
+                                              <span>Osculating circle: {analysis.visualization.osculatingCircle ? "ready" : "degenerate"}</span>
+                                              <span>Osculating plane: {analysis.visualization.osculatingPlane ? "ready" : "degenerate"}</span>
+                                            </div>
+                                            <svg viewBox="0 0 220 120" role="img" aria-label="Exact curve with differential overlays" style={{ width: "100%", height: 120, border: "1px solid #e2e8f0", borderRadius: 6, background: "#f8fafc" }}>
+                                              <path d={curvePath} fill="none" stroke="#2563eb" strokeWidth="2.4" />
+                                              {geometryExactCurveShowComb && analysis.visualization.curvatureComb.map((comb) => {
+                                                const start = project(comb.start);
+                                                const end = project(comb.end);
+                                                return <line key={`comb-${comb.t}`} x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke="#f59e0b" strokeWidth="0.8" opacity="0.75" />;
+                                              })}
+                                              {geometryExactCurveShowFrames && analysis.visualization.frenetFrames.map((frame) => {
+                                                if (!frame.tangent) return null;
+                                                const start = project(frame.position);
+                                                const end = project([
+                                                  frame.position[0] + frame.tangent[0] * spanX * 0.06,
+                                                  frame.position[1] + frame.tangent[1] * spanY * 0.06,
+                                                  frame.position[2] + frame.tangent[2] * 0.06,
+                                                ]);
+                                                return <line key={`frame-${frame.t}`} x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke="#16a34a" strokeWidth="1" />;
+                                              })}
+                                              {(() => {
+                                                const selected = project(point.position);
+                                                return <circle cx={selected.x} cy={selected.y} r="3.5" fill="#dc2626" stroke="#fff" strokeWidth="1" />;
+                                              })()}
+                                            </svg>
+                                          </div>
+                                          <div data-testid="geometry-exact-curve-plot" style={{ display: "grid", gap: 4 }}>
+                                            <div style={{ display: "flex", gap: 4 }}>
+                                              {(["speed", "curvature", "torsion"] as const).map((quantity) => (
+                                                <button key={quantity} type="button" onClick={() => setGeometryExactCurvePlotQuantity(quantity)} style={pill(geometryExactCurvePlotQuantity === quantity)}>{quantity}</button>
+                                              ))}
+                                            </div>
+                                            <svg viewBox="0 0 220 70" role="img" aria-label={`${geometryExactCurvePlotQuantity} versus parameter`} style={{ width: "100%", height: 70, border: "1px solid #e2e8f0", borderRadius: 6, background: "#fff" }}>
+                                              <line x1="8" y1="62" x2="212" y2="62" stroke="#cbd5e1" />
+                                              <path d={plotPath} fill="none" stroke="#7c3aed" strokeWidth="2" />
+                                            </svg>
+                                            <div style={{ display: "flex", justifyContent: "space-between", color: "#64748b", fontSize: 8.5 }}><span>{fmt(plotMin)}</span><span>{fmt(plotMax)}</span></div>
+                                          </div>
+                                          <div data-testid="geometry-exact-curve-diagnostics" style={{ borderTop: "1px solid #e2e8f0", paddingTop: 6, display: "grid", gap: 3, fontSize: 9.5 }}>
+                                            <div style={{ color: "#475569", fontWeight: 850, textTransform: "uppercase" }}>Computation</div>
+                                            <div><strong>Derivatives:</strong> first {analysis.definition.capabilities.first}, second {analysis.definition.capabilities.second}, third {analysis.definition.capabilities.third}</div>
+                                            <div><strong>Orientation:</strong> {analysis.definition.orientation}</div>
+                                            <div><strong>Precision:</strong> tolerance {analysis.tolerance.toExponential(2)} · uncertainty ≤ {analysis.uncertainty.toExponential(2)}</div>
+                                            <div><strong>Events:</strong> {analysis.events.length ? analysis.events.map((event) => `${event.kind} @ ${fmt(event.t)}`).slice(0, 6).join("; ") : "none detected"}</div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })()}
                                   {geometrySelectedQuickAnalysisResult.kind === "topology-summary" &&
                                     geometrySelectedQuickAnalysisResult.topologySummary && (
                                       <div style={{ marginTop: 2, fontSize: 10.5, display: "grid", gap: 2 }}>
@@ -93376,10 +93691,22 @@ case "mobius":
                                         <div><strong>Section enclosed area:</strong> {fmt(geometrySelectedQuickAnalysisResult.sectionSummary.sectionEnclosedArea)}</div>
                                       </div>
                                     )}
+                                  <div data-testid="geometry-analysis-result-warnings" style={{ borderTop: "1px solid #e2e8f0", paddingTop: 6, display: "grid", gap: 3, fontSize: 9.5 }}>
+                                    <div style={{ color: "#475569", fontWeight: 850, textTransform: "uppercase" }}>Warnings</div>
+                                    {geometrySelectedQuickAnalysisResult.notes?.length
+                                      ? geometrySelectedQuickAnalysisResult.notes.map((note) => <div key={note} style={{ color: "#92400e" }}>! {note}</div>)
+                                      : <div style={{ color: "#166534" }}>None</div>}
+                                  </div>
                                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-                                    <button type="button" onClick={handleOpenSelectedGeometryQuickAnalysisResult} style={{ fontSize: 11 }}>
-                                      Open in Mesh Analyze
-                                    </button>
+                                    {geometrySelectedQuickAnalysisResult.kind === "curve-analysis" ? (
+                                      <button type="button" data-testid="geometry-exact-curve-open-curves" onClick={handleOpenSelectedGeometryCurveAnalysis} style={{ fontSize: 11 }}>
+                                        Open in Curves
+                                      </button>
+                                    ) : (
+                                      <button type="button" onClick={handleOpenSelectedGeometryQuickAnalysisResult} style={{ fontSize: 11 }}>
+                                        Open in Mesh Analyze
+                                      </button>
+                                    )}
                                     <button type="button" onClick={handleSaveSelectedGeometryQuickAnalysisResult} style={{ fontSize: 11 }}>
                                       Save result
                                     </button>
