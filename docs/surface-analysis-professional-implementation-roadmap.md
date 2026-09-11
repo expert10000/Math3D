@@ -87,7 +87,7 @@ Baseline verification at this assessment:
 | 6 — Surface curves and features | Complete (`9e26ffc`) | Surface-owned curve/feature taxonomy, stable revision-aware result layers, method and seed provenance, statistics/policies, independent inspection and lifecycle actions | None for Commit 6 |
 | 7 — Charts and parameter diagnostics | Complete (`8b67733`) | Revision-bound Chart result with metric/Jacobian and distortion fields, masks, regions, linked parameter/3D selection, independent overlays and atlas v1 contract | None for Commit 7 |
 | 8 — Provenance-linked derived SurfaceMesh | Complete (`83d8f3c`) | Derived-mesh identity, correspondence, live/snapshot/stale/detached lifecycle, source/mesh mapping, provenance actions and compact persistence | None for Commit 8 |
-| 9 — Live mesh, bake, and Mesh Analysis handoff | Partial | Promote, Bake to Mesh, Geometry/Mesh navigation | Three unambiguous actions, direct Mesh Analyze opening, selection/camera transfer, reverse navigation |
+| 9 — Live mesh, bake, and Mesh Analysis handoff | Complete (`8562baf`) | Three explicit Mesh workflows, immutable baked geometry, revision-specific Mesh provenance, mapped selection/camera/context transfer and Open Surface Source return | None for Commit 9 |
 | 10 — VTK/CGAL derived-mesh bridge | Partial | Shared workers/clients and extensive Mesh VTK/CGAL workflow | Compact Surface bridge, backend variants/provenance, no duplicated advanced Mesh panels |
 | 11 — Workers, cache, and performance | Partial | Viewer memoization, mesh workers, cancellation patterns, preview/full LOD | Surface request scheduler, dependency cache, revision guards, progressive fields, budgets and profiling |
 | 12 — Regression matrix and workflow freeze | Partial | Focused math tests, Surface E2E, Gallery/release/responsive/memory checks | Canonical truth gallery, pathological cases, maintained acceptance command, full journeys and v1 freeze |
@@ -504,18 +504,29 @@ Acceptance: every derived tessellation can answer which Surface revision and set
 
 Planned message: `feat(surface-mesh): add explicit live-mesh, bake and open-in-mesh-analysis workflows`
 
-**Status: planned; overlapping promote/bake/handoff actions exist.**
+**Status: complete (`8562baf`).**
 
-Remaining:
+Implemented:
 
-- [ ] Define **Mesh** as the current live tessellation under the Surface; it does not create an independent object.
-- [ ] Define **Bake to Mesh** as an independently editable snapshot that retains immutable source provenance.
-- [ ] Define **Open in Mesh Analysis** as navigation to Mesh → Analysis with the live or selected derived mesh already active.
-- [ ] Replace ambiguous Promote/Bake labels only after migration and parity tests prove saved workspaces still load.
-- [ ] Transfer mapped selection, camera framing, source label, units, and comparison target into Mesh Analysis.
-- [ ] Add **Open Surface Source** and mapped return selection from Mesh.
-- [ ] Expose stale/live/snapshot/detached state and tessellation summary before navigation.
-- [ ] Verify edits to a baked mesh never mutate the source Surface and edits to a Surface never silently overwrite a snapshot.
+- [x] Define **Mesh** as the current live tessellation under the Surface; it does not create an independent scene object.
+- [x] Define **Bake to Mesh** as an independently editable snapshot with cloned geometry buffers and immutable source provenance.
+- [x] Define **Open in Mesh Analysis** as navigation to Mesh → Analysis with the live or selected derived mesh already active.
+- [x] Present the three unambiguous actions in the primary Surface Analysis bridge while preserving existing compatibility entry points and saved-workspace loading.
+- [x] Transfer mapped selection, camera framing, source label, units, and comparison target into Mesh Analysis.
+- [x] Add **Open Surface Source** and mapped return selection from Mesh.
+- [x] Expose stale/live/snapshot/detached state, revisions, mapping and tessellation summary before navigation.
+- [x] Verify baked buffers are independent, Surface revisions remain immutable in snapshot provenance, and later Surface changes do not silently overwrite snapshots.
+
+Mesh Analysis receives a `derivedSurface` source record containing the exact Surface and mesh revisions, role, method, backend, correspondence, units and creation time. Its analysis cache identity includes this provenance. A handoff session preserves the selected correspondence, camera and comparison target, shows a compact Surface source card in Mesh Analysis, and restores mapped source selection and view state on return. Live meshes and snapshots are opened from cached revision-specific payloads; compact records without geometry require explicit regeneration rather than substituting current geometry.
+
+Validation at `8562baf`:
+
+- **3 focused Surface↔Mesh handoff tests** pass, including cloned snapshot buffers and revision-specific Mesh analysis identity.
+- The full renderer suite passes: **560 tests across 105 files**.
+- `npm run typecheck:noemit` and `npm run build:core` pass.
+- The Surface functional flow passes **9/9**, including live Mesh display, baked snapshot, direct Mesh Analysis opening and mapped return.
+- Required Surface functional, Gallery, worker-failure and workspace-navigation checks pass: **18/18**.
+- `npm run test:app:responsive:smoke` passes for phone portrait, phone landscape, tablet and desktop layouts, including drawers, sheets and touch containment.
 
 Acceptance: users can predict whether an action shows a live representation, creates a snapshot, or changes modules, and can navigate both directions without losing provenance.
 
