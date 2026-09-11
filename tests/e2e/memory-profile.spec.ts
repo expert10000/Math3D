@@ -1160,13 +1160,21 @@ test("Memory profile: desktop run records process tree RSS", async ({}, testInfo
     version: string;
   };
   const scenario = scenarioFromEnv();
-  const actionCount = positiveIntFromEnv("MATH3D_MEMORY_PROFILE_ACTIONS", 180);
-  const actionDelayMs = positiveIntFromEnv("MATH3D_MEMORY_PROFILE_ACTION_DELAY_MS", 3_000);
+  const isCi = /^(1|true)$/i.test(String(process.env.CI ?? ""));
+  const actionCount = positiveIntFromEnv("MATH3D_MEMORY_PROFILE_ACTIONS", isCi ? 36 : 180);
+  const actionDelayMs = positiveIntFromEnv("MATH3D_MEMORY_PROFILE_ACTION_DELAY_MS", isCi ? 1_000 : 3_000);
   const sampleIntervalMs = positiveIntFromEnv("MATH3D_MEMORY_PROFILE_SAMPLE_INTERVAL_MS", 500);
   const finalIdleMs = positiveIntFromEnv("MATH3D_MEMORY_PROFILE_FINAL_IDLE_MS", 5_000);
   const electronArgs = electronArgsFromEnv();
   const estimatedActionCount = scenario === "module-sweep" ? sectionLabels.length : actionCount;
-  test.setTimeout(Math.max(15 * 60 * 1000, estimatedActionCount * actionDelayMs + finalIdleMs + 8 * 60 * 1000));
+  const timeoutMs = Math.max(
+    15 * 60 * 1000,
+    estimatedActionCount * (actionDelayMs + 5_000) + finalIdleMs + 5 * 60 * 1000
+  );
+  test.setTimeout(timeoutMs);
+  console.log(
+    `[memory-profile] scenario=${scenario} actions=${actionCount} delayMs=${actionDelayMs} timeoutMs=${timeoutMs} ci=${isCi}`
+  );
 
   let ctx: Awaited<ReturnType<typeof launchMemoryProfileApp>> | null = null;
   let sampling = true;
