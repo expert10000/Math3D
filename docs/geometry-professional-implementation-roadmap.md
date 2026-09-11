@@ -57,7 +57,7 @@ Baseline verification at this assessment:
 | 2 — Navigation, picking, semantic selection | Complete (`72709a8`) | Shared pick contract, stable Geometry semantic identities, selection filters and selectors, navigation commands, saved-result provenance, and Geometry↔Mesh selection mapping | None for Commit 2 |
 | 3 — Construct hierarchy | Complete (`35603d4`) | Expandable six-family catalog, complete current-tool mapping, sampled curve/surface/solid/derived construction recipes, shared draft lifecycle, source lineage, and Scratch/Workbook scene publication | None for Commit 3 |
 | 4 — Selection-driven Modify | Complete (`48e150e`) | Semantic entity-specific Modify groups, 49-command capability registry, routed current operations, sampled/CGAL warnings, exact-kernel explanations, and expandable discrete topology edits | Exact execution for disabled curve/surface/body commands remains owned by later representation milestones |
-| 5 — Metadata, lineage and dependencies | Partial | Dependency trees, histories, variants, stale products, Geometry↔Mesh trace provenance | Add canonical revisions, representation metadata, complete source/dependent lineage and freeze/detach actions |
+| 5 — Metadata, lineage and dependencies | Complete (`107d40e`) | Canonical metadata schema, revision causes, unified construction/operation/analysis/Mesh lineage, source and dependent navigation, recompute/freeze/detach actions, and persisted provenance | None for Commit 5 |
 | 6 — Shared analysis request/result pipeline | Foundation exists | Shared registry/result-store adapter and quick-analysis snapshot bridge | Route live Geometry analysis through shared requests/results, caching, invalidation and history |
 | 7 — Exact curve differential analysis | Planned | Curve viewing and construction lines/circles exist in adjacent workflows | Add analytic curve representation, derivatives, Frenet quantities, characteristic points and tests |
 | 8 — Exact surface differential analysis | Planned | Surface-like procedural objects and Mesh differential handoff exist | Add analytic surface derivatives, fundamental forms, shape operator, classifications and tests |
@@ -288,22 +288,34 @@ Acceptance: the selected entity determines applicable tools, and current edit/hi
 
 Planned message: `geometry: add Geometry object metadata lineage and dependency inspection`
 
-**Status: partially implemented.**
+**Status: complete — `107d40e`.**
 
 Already implemented:
 
 - Construction dependency tree, update chain, operation tree, histories, variants, derived products, stale states, and regeneration actions.
 - Geometry↔Mesh provenance and object/face/edge/vertex trace maps.
 - Source restoration before/after mesh edits and dependency overlays in the viewport.
+- Scene identities carry a versioned canonical Geometry metadata schema with target and source revisions, representation, source kind, producing operation, primitive/constructed kind, parameterization, degree, knots, control count, trim state, closed/periodic state, orientation, bounds, units, and precision.
+- The Dependencies Inspector presents canonical metadata together with typed construction, operation, analysis, dependency, and Geometry↔Mesh round-trip edges.
+- Object history records parameter, transform, topology, dependency, tessellation, or metadata revision causes; stale outputs report the exact cause and source revision transition.
+- Open parent/source, full dependency/dependent traces, recompute, freeze derivative, and lineage-safe detached-copy actions are available from one panel with explicit applicability.
+- Scene identities and revision causes persist through workspace save/load; object params retain reconstructable metadata through Gallery, Scratch/Workbook, and script flows.
 
 Remaining:
 
-- [ ] Add canonical object revision and representation/source metadata.
-- [ ] Record primitive type, parameterization, degree, knots, control count, trim state, closed/periodic state, orientation, bounds, units, and precision when applicable.
-- [ ] Unify construction, operation, analysis, and Geometry↔Mesh edges in an inspectable lineage model.
-- [ ] Add Open parent, Open source, Show dependencies, Show dependents, Recompute, Freeze derivative, and Detach copy.
-- [ ] Define revision propagation and stale reasons for parameter, transform, topology, dependency, and tessellation changes.
-- [ ] Persist lineage through scene save/load, Gallery presets, Scratch/Workbook handoff, and scripts where representable.
+- [x] Add canonical object revision and representation/source metadata.
+- [x] Record primitive type, parameterization, degree, knots, control count, trim state, closed/periodic state, orientation, bounds, units, and precision when applicable.
+- [x] Unify construction, operation, analysis, and Geometry↔Mesh edges in an inspectable lineage model.
+- [x] Add Open parent, Open source, Show dependencies, Show dependents, Recompute, Freeze derivative, and Detach copy.
+- [x] Define revision propagation and stale reasons for parameter, transform, topology, dependency, and tessellation changes.
+- [x] Persist lineage through scene save/load, Gallery presets, Scratch/Workbook handoff, and scripts where representable.
+
+Validation at `107d40e`:
+
+- **132 Geometry tests across 25 files** pass, including canonical metadata, revision-cause classification, stale explanations, identity lineage, and scene identity coverage.
+- The full renderer suite passes: **436 tests across 82 files**.
+- `npm run typecheck:noemit` and `npm run build:core` pass.
+- Geometry professional-shell and workspace-persistence E2E checks pass: **2/2**, including all lineage actions, saved metadata, reopen, and reconstruction.
 
 Acceptance: every derived object can explain its source, revision, operation, dependencies, and stale state.
 
