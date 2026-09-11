@@ -37,6 +37,7 @@ import { GeometryPickReadout } from "./components/GeometryPickReadout";
 import { UnifiedSelectionInspector } from "./components/UnifiedSelectionInspector";
 import { GeometrySemanticNavigatorPanel } from "./components/GeometrySemanticNavigatorPanel";
 import { GeometryConstructCatalogPanel } from "./components/GeometryConstructCatalogPanel";
+import { GeometryModifyPanel } from "./components/GeometryModifyPanel";
 import {
   MeshOperationsPanel,
   MESH_OPERATION_LABELS,
@@ -246,12 +247,18 @@ import {
   buildGeometrySemanticSelection,
   evaluateGeometrySemanticFilter,
   mapGeometrySemanticSelectionToMesh,
+  resolveGeometrySemanticObjectType,
   resolveGeometrySemanticNavigation,
   selectGeometrySemanticCandidates,
   type GeometrySemanticFilterKey,
   type GeometrySemanticNavigationCommand,
   type GeometrySemanticSelector,
 } from "./geometry/semanticSelection";
+import {
+  buildGeometryModifyGroups,
+  inferGeometryModifyRepresentation,
+  type GeometryModifyCommand,
+} from "./geometry/modifyOperations";
 import {
   GEOMETRY_PROFESSIONAL_ACTIONS,
   GEOMETRY_PROFESSIONAL_EXPANDED_GROUPS,
@@ -17918,11 +17925,14 @@ const App: React.FC = () => {
       const identity = geometrySceneIdentityIndex.get(sceneEntityId("geometry", selection.objectId)) ?? null;
       const group = object && "group" in object ? object.group ?? "" : "";
       const constructionRole = /construction|reference|helper|claim/i.test(group) ? group : null;
+      const objectType = object && "type" in object
+        ? resolveGeometrySemanticObjectType(object.type, object.params)
+        : "mesh";
       const semantic = buildGeometrySemanticSelection({
         selection,
         sceneIdentity: identity,
         visible: object?.visible,
-        objectType: object && "type" in object ? object.type : "mesh",
+        objectType,
         constructionRole,
       });
       if (semantic && !evaluateGeometrySemanticFilter(semantic, geometrySemanticFilter).accepted) return null;
@@ -17937,10 +17947,13 @@ const App: React.FC = () => {
   const geometryObjectUnifiedSelection = useMemo(() => {
     if (geometryProbeSelectionMode !== "object" || !geometrySelectedSceneObject) return null;
     const identity = geometrySceneIdentityIndex.get(sceneEntityId("geometry", geometrySelectedSceneObject.id)) ?? null;
+    const objectType = "type" in geometrySelectedSceneObject
+      ? resolveGeometrySemanticObjectType(geometrySelectedSceneObject.type, geometrySelectedSceneObject.params)
+      : "mesh";
     return enrichGeometryUnifiedSelection(unifiedSelectionFromGeometryObject({
       objectId: geometrySelectedSceneObject.id,
       objectLabel: geometrySelectedSceneObject.name,
-      objectType: "type" in geometrySelectedSceneObject ? geometrySelectedSceneObject.type : "mesh",
+      objectType,
       meshKey: geometrySelectedSceneObject.id,
       topologyVersion: geometryObjectRevisionById[geometrySelectedSceneObject.id] ?? 0,
       sceneEntityId: identity?.id ?? null,
@@ -17963,11 +17976,14 @@ const App: React.FC = () => {
       sceneEntityId("geometry", geometryActiveUnifiedSelection.objectId)
     );
     const group = object && "group" in object ? object.group ?? "" : "";
+    const objectType = object && "type" in object
+      ? resolveGeometrySemanticObjectType(object.type, object.params)
+      : "mesh";
     return buildGeometrySemanticSelection({
       selection: geometryActiveUnifiedSelection,
       sceneIdentity: identity,
       visible: object?.visible,
-      objectType: object && "type" in object ? object.type : "mesh",
+      objectType,
       constructionRole: /construction|reference|helper|claim/i.test(group) ? group : null,
     });
   }, [
@@ -17983,7 +17999,9 @@ const App: React.FC = () => {
     return objects.flatMap((object) => {
       const identity = geometrySceneIdentityIndex.get(sceneEntityId("geometry", object.id));
       if (!identity) return [];
-      const objectType = "type" in object ? object.type : "mesh";
+      const objectType = "type" in object
+        ? resolveGeometrySemanticObjectType(object.type, object.params)
+        : "mesh";
       const group = "group" in object ? object.group ?? "" : "";
       const constructionRole = /construction|reference|helper|claim/i.test(group) ? group : null;
       const base = unifiedSelectionFromGeometryObject({
@@ -71851,6 +71869,125 @@ case "mobius":
     : meshOperationServiceReady
       ? "available"
       : "blocked by worker";
+  const geometryModifyRepresentation = inferGeometryModifyRepresentation({
+    objectType: geometrySelectedSceneObject
+      ? "type" in geometrySelectedSceneObject
+        ? geometrySelectedSceneObject.type
+        : "mesh"
+      : null,
+    constructionKind:
+      geometrySelectedSceneObject && "type" in geometrySelectedSceneObject && geometrySelectedSceneObject.type === "constructed"
+        ? String(geometrySelectedSceneObject.params.constructionKind ?? geometrySelectedSceneObject.params.kind ?? "")
+        : null,
+    constructionRole: geometrySemanticSelection?.constructionRole ?? null,
+  });
+  const geometryModifySelectionCount = geometryMultiSelectionSet.count || (geometrySemanticSelection ? 1 : 0);
+  const geometryModifyGroups = buildGeometryModifyGroups({
+    semanticKind: geometrySemanticSelection?.kind ?? null,
+    selectionCount: geometryModifySelectionCount,
+    representation: geometryModifyRepresentation,
+    cgalReady: cgalServiceReady,
+    topologySelection:
+      geometryActiveUnifiedSelection?.selectionType === "face" ||
+      geometryActiveUnifiedSelection?.selectionType === "edge" ||
+      geometryActiveUnifiedSelection?.selectionType === "vertex"
+        ? geometryActiveUnifiedSelection.selectionType
+        : null,
+  });
+  const handleGeometryModifyCommand = (modifyCommand: GeometryModifyCommand) => {
+    if (modifyCommand.status === "unavailable") {
+      setGeometryCreateActionStatus(modifyCommand.explanation);
+      return;
+    }
+    switch (modifyCommand.id) {
+      case "translate":
+      case "reference-move":
+        handleToggleGeometryGizmoMode("translate");
+        return;
+      case "rotate":
+      case "reference-reorient":
+        handleToggleGeometryGizmoMode("rotate");
+        return;
+      case "scale":
+        handleToggleGeometryGizmoMode("scale");
+        return;
+      case "align":
+      case "reference-align":
+        handleAlignSelectedConstructionOperation();
+        return;
+      case "duplicate":
+        if (geometrySelectedSceneObject) handleDuplicateGeometryObject(geometrySelectedSceneObject.id);
+        return;
+      case "curve-trim":
+        handleTrimSelectedConstructionOperation();
+        return;
+      case "curve-extend":
+        handleExtendSelectedConstructionOperation();
+        return;
+      case "curve-offset":
+      case "surface-offset":
+        handleOffsetSelectedConstructionOperation();
+        return;
+      case "curve-split":
+      case "edge-split":
+        handleSplitSelectedProbeEdge();
+        return;
+      case "surface-project":
+      case "reference-project":
+        handleProjectSelectedConstructionOperation();
+        return;
+      case "surface-intersection":
+        setGeometryProceduralPanelTab("construct");
+        setGeometryConstructPanelTab("create");
+        setGeometryCreateActionStatus("Intersection is open in Construct / Derived; choose the second source to preview and commit.");
+        return;
+      case "body-boolean":
+        setGeometryBooleanOperation("union");
+        setGeometryCreateActionStatus("Boolean composer is ready below. Confirm operands and choose Preview or Apply.");
+        return;
+      case "body-split":
+        setGeometryBooleanOperation("split");
+        setGeometryCreateActionStatus("Split is ready in the Boolean composer below. Confirm the cutter and preview the result.");
+        return;
+      case "body-section":
+        setGeometryProceduralPanelTab("analysis");
+        setGeometryCreateActionStatus("Section controls are open for the selected body.");
+        return;
+      case "body-mirror":
+        handleMirrorSelectedConstructionOperation();
+        return;
+      case "reference-rebuild":
+        setGeometryProceduralPanelTab("object");
+        setGeometryCreateActionStatus("Object parameters are open; edit the definition and apply Rebuild.");
+        return;
+      case "face-extrude":
+        handleExtrudeSelectedFace();
+        return;
+      case "face-inset":
+        handleInsetSelectedFace();
+        return;
+      case "face-delete":
+        handleDeleteSelectedFace();
+        return;
+      case "face-subdivide":
+        handleSubdivideSelectedFace();
+        return;
+      case "edge-bevel":
+        handleBevelSelectedProbeEdge();
+        return;
+      case "edge-collapse":
+        handleCollapseSelectedProbeEdge();
+        return;
+      case "vertex-move":
+        handleMoveSelectedVertex();
+        return;
+      case "vertex-weld":
+        handleWeldVertices();
+        return;
+      default:
+        setGeometryCreateActionStatus(`${modifyCommand.label}: ${modifyCommand.explanation}`);
+    }
+  };
   const octaveServiceApi = window.octaveService;
   const octaveBridgeReady =
     !!octaveServiceApi && (typeof octaveServiceApi.getStatus === "function" || typeof octaveServiceApi.health === "function");
@@ -87948,23 +88085,13 @@ case "mobius":
 
                     {geometryProceduralPanelTab === "transform" && (
                     <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                      <div
-                        style={{
-                          border: "1px solid #dbe4f0",
-                          borderRadius: 8,
-                          padding: "8px 10px",
-                          background: "#f8fbff",
-                          display: "grid",
-                          gap: 4,
-                        }}
-                      >
-                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.05em", color: "#0f172a" }}>
-                          GEOMETRY TRANSFORM
-                        </div>
-                        <div style={{ fontSize: 11, color: "#475569" }}>
-                          Move, rotate, scale, align, and snap selected objects.
-                        </div>
-                      </div>
+                      <GeometryModifyPanel
+                        semantic={geometrySemanticSelection}
+                        selectionCount={geometryModifySelectionCount}
+                        representation={geometryModifyRepresentation}
+                        groups={geometryModifyGroups}
+                        onCommand={handleGeometryModifyCommand}
+                      />
 
                       <details
                         style={{

@@ -94,6 +94,15 @@ const SOLID_TYPES = new Set(["sphere", "box", "cylinder", "cone", "torus", "poly
 const SURFACE_TYPES = new Set(["plane", "polygon"]);
 const AXIAL_TYPES = new Set(["cylinder", "cone", "torus"]);
 
+export const resolveGeometrySemanticObjectType = (
+  objectType: string,
+  params?: Readonly<Record<string, unknown>>
+): string => {
+  if (objectType !== "constructed") return objectType;
+  const constructionKind = String(params?.constructionKind ?? params?.kind ?? "").trim();
+  return constructionKind || objectType;
+};
+
 const encode = (value: string | number): string => encodeURIComponent(String(value));
 
 export const geometrySemanticEntityId = (
@@ -119,7 +128,9 @@ const primaryKindFor = (
   if (selection.selectionType === "face") return "surface";
   if (selection.selectionType === "edge") return selection.topologyFlags.boundary ? "trim-loop" : "curve";
   if (selection.selectionType === "vertex") return "point";
-  return SOLID_TYPES.has(objectType) ? "body" : "surface";
+  if (SOLID_TYPES.has(objectType) || objectType.startsWith("solid-")) return "body";
+  if (objectType.startsWith("curve-")) return "curve";
+  return "surface";
 };
 
 const selectionLocalId = (selection: UnifiedSelection): string => {
@@ -149,7 +160,7 @@ export const buildGeometrySemanticSelection = (input: {
     [kind]: alias(kind),
     feature: alias("feature", `${selection.selectionType}-${localId}`),
   };
-  if (SOLID_TYPES.has(objectType)) {
+  if (SOLID_TYPES.has(objectType) || objectType.startsWith("solid-")) {
     aliases.body = alias("body", "body-0");
     aliases.shell = alias("shell", "shell-0");
   }

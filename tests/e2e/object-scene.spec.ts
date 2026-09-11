@@ -161,6 +161,14 @@ test("Geometry professional shell keeps current workspaces and tools reachable",
       await expect(page.getByTestId(`geometry-professional-tool-${id}`)).toBeVisible();
     }
 
+    await page.getByTestId("geometry-professional-tool-modify").click();
+    await expect(page.getByTestId("geometry-selection-driven-modify")).toBeVisible();
+    await expect(page.getByTestId("geometry-modify-group-body")).toBeVisible();
+    await expect(page.getByTestId("geometry-modify-group-curve")).toHaveCount(0);
+    await expect(page.getByTestId("geometry-modify-command-body-boolean")).toHaveAttribute("data-status", "warning");
+    await expect(page.getByTestId("geometry-modify-command-body-shell")).toHaveAttribute("data-status", "unavailable");
+    await expect(page.getByTestId("geometry-modify-command-body-shell")).toContainText("exact editing kernel");
+
     await page.getByTestId("geometry-professional-action-gallery").click();
     await expect(page.getByTestId("geometry-gallery-search")).toBeVisible();
     await expect(page.getByTestId("geometry-professional-expanded-object-gallery")).toBeVisible();

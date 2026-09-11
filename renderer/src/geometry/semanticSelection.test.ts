@@ -59,6 +59,18 @@ describe("Geometry semantic selection", () => {
     expect(semantic?.aliases["construction-role"]).toContain("reference-axis");
   });
 
+  it("classifies constructed curve, surface, and solid definitions by semantic entity", () => {
+    const kindFor = (objectType: string) => buildGeometrySemanticSelection({
+      selection: unifiedSelectionFromGeometryObject({ objectId: objectType, objectLabel: objectType, objectType }),
+      sceneIdentity: createSceneEntityIdentity({ localId: objectType, moduleKind: "geometry", sourceKind: "procedural" }),
+      objectType,
+    })?.kind;
+
+    expect(kindFor("curve-nurbs")).toBe("curve");
+    expect(kindFor("surface-bezier")).toBe("surface");
+    expect(kindFor("solid-loft")).toBe("body");
+  });
+
   it("represents boundary edges as trim loops with curve and parameter aliases", () => {
     const edge = unifiedSelectionFromMeshTopology({
       mode: "edge",
