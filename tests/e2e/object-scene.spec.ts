@@ -178,6 +178,16 @@ test("Geometry professional shell keeps current workspaces and tools reachable",
     await expect(page.getByTestId("unified-object-tree")).toBeVisible();
     await expect(page.getByTestId("geometry-semantic-navigator")).toBeVisible();
     await expect(page.getByTestId("geometry-semantic-selection-readout")).toContainText("revision");
+    await page.getByTestId("geometry-right-panel-tab-dependencies").click();
+    await expect(page.getByTestId("geometry-lineage-inspector")).toBeVisible();
+    await expect(page.getByTestId("geometry-canonical-metadata")).toContainText("geometry-object-metadata-v1");
+    await expect(page.getByTestId("geometry-canonical-metadata")).toContainText("parametric-procedural");
+    await expect(page.getByTestId("geometry-canonical-metadata")).toContainText("scene-unit");
+    for (const id of ["open-parent", "open-source", "show-dependencies", "show-dependents", "recompute", "freeze", "detach"]) {
+      await expect(page.getByTestId(`geometry-lineage-action-${id}`)).toBeVisible();
+    }
+    await expect(page.getByTestId("geometry-lineage-action-show-dependents")).toBeEnabled();
+    await page.getByTestId("geometry-lineage-action-show-dependents").click();
     await expect(page.getByTestId("geometry-semantic-filter-trimBoundaries")).toBeVisible();
     await page.getByTestId("geometry-semantic-filter-solids").click();
     await expect(page.getByTestId("geometry-semantic-selection-readout")).toContainText("No semantic entity selected");
@@ -363,6 +373,8 @@ test("Persistence: save workspace and reopen restores scene", async ({}, testInf
     expect(savedWorkspaceText).toContain('"sceneIdentities"');
     expect(savedWorkspaceText).toContain('"selectedSceneEntityId"');
     expect(savedWorkspaceText).toContain('"moduleKind": "geometry"');
+    expect(savedWorkspaceText).toContain('"metadataSchema": "geometry-object-metadata-v1"');
+    expect(savedWorkspaceText).toContain('"representation": "parametric-procedural"');
     await expect.poll(async () => {
       return firstPage.evaluate(() => Number(localStorage.getItem("math3d.workbook.manualSaveAt.v1") ?? 0));
     }).toBeGreaterThan(0);
@@ -380,6 +392,8 @@ test("Persistence: save workspace and reopen restores scene", async ({}, testInf
     const reopenedStats = await readGeometryStats(secondPage);
     expect(reopenedStats.objectCount).toBe(savedStats.objectCount);
     expect(reopenedStats.visibleCount).toBe(savedStats.visibleCount);
+    await secondPage.getByTestId("geometry-right-panel-tab-dependencies").click();
+    await expect(secondPage.getByTestId("geometry-canonical-metadata")).toContainText("geometry-object-metadata-v1");
     await expect(secondPage.getByTestId("app-status-bar")).toContainText("Geometry viewer (procedural)");
   } finally {
     if (firstApp) {

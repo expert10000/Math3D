@@ -39,6 +39,11 @@ import { GeometrySemanticNavigatorPanel } from "./components/GeometrySemanticNav
 import { GeometryConstructCatalogPanel } from "./components/GeometryConstructCatalogPanel";
 import { GeometryModifyPanel } from "./components/GeometryModifyPanel";
 import {
+  GeometryLineageInspectorPanel,
+  type GeometryLineageInspectorAction,
+  type GeometryLineageInspectorEdge,
+} from "./components/GeometryLineageInspectorPanel";
+import {
   MeshOperationsPanel,
   MESH_OPERATION_LABELS,
   summarizeMeshOperationResult,
@@ -259,6 +264,13 @@ import {
   inferGeometryModifyRepresentation,
   type GeometryModifyCommand,
 } from "./geometry/modifyOperations";
+import {
+  buildGeometryCanonicalMetadata,
+  classifyGeometryLineageRelation,
+  classifyGeometryRevisionCause,
+  formatGeometryStaleReason,
+  type GeometryRevisionCause,
+} from "./geometry/metadataLineage";
 import {
   GEOMETRY_PROFESSIONAL_ACTIONS,
   GEOMETRY_PROFESSIONAL_EXPANDED_GROUPS,
@@ -4079,7 +4091,8 @@ type GeometryDependencyNodeKind =
   | "derived-circle"
   | "measurement"
   | "section-result"
-  | "comparison";
+  | "comparison"
+  | "operation";
 type GeometryDependencyNode = {
   id: string;
   kind: GeometryDependencyNodeKind;
@@ -4101,7 +4114,10 @@ type GeometryDependencyEdge = {
     | "measured-from"
     | "section-of"
     | "compared-with"
-    | "aligned-to";
+    | "aligned-to"
+    | "operation-input"
+    | "modified-by"
+    | "mesh-round-trip";
 };
 type GeometryDerivedRelationType =
   | "center-on-derived-point"
@@ -5041,6 +5057,7 @@ type GeometryObjectHistoryStep = {
   beforeSummary: string | null;
   afterSummary: string;
   changeSummary: string;
+  revisionCause?: GeometryRevisionCause;
   topologySummary?: string | null;
   retainedSelection?: GeometryTopologyRetainedSelectionTarget | null;
   topologyDefinition?: GeometryTopologyEditDefinition | null;
@@ -7305,6 +7322,11 @@ const deserializeGeometryObjectHistoryStep = (
     beforeSummary: typeof entry.beforeSummary === "string" ? entry.beforeSummary : null,
     afterSummary: typeof entry.afterSummary === "string" ? entry.afterSummary : summarizeGeometryHistorySnapshot(snapshot),
     changeSummary: typeof entry.changeSummary === "string" ? entry.changeSummary : "Restored history step",
+    revisionCause: (["parameter", "transform", "topology", "dependency", "tessellation", "metadata"] as const).includes(
+      entry.revisionCause as GeometryRevisionCause
+    )
+      ? entry.revisionCause
+      : classifyGeometryRevisionCause(entry),
     topologySummary: typeof entry.topologySummary === "string" ? entry.topologySummary : null,
     retainedSelection: entry.retainedSelection ?? null,
     topologyDefinition: isStoredGeometryTopologyEditDefinition(entry.topologyDefinition) ? entry.topologyDefinition : null,
@@ -14189,6 +14211,11 @@ const App: React.FC = () => {
           beforeSummary: previousSnapshot ? summarizeGeometryHistorySnapshot(previousSnapshot) : null,
           afterSummary: summarizeGeometryHistorySnapshot(afterSnapshot),
           changeSummary: summarizeGeometryHistoryChange(previousSnapshot, afterSnapshot),
+          revisionCause: classifyGeometryRevisionCause({
+            operationType: intent.operationType,
+            changeSummary: summarizeGeometryHistoryChange(previousSnapshot, afterSnapshot),
+            label: intent.label,
+          }),
           snapshot: afterSnapshot,
         };
         next[obj.id] = [step, ...history].slice(0, 24);
@@ -27507,6 +27534,35 @@ const App: React.FC = () => {
         targetId: `object:${object.id}`,
         relation: "contains",
       });
+      const identity = geometrySceneIdentityIndex.get(sceneEntityId("geometry", object.id));
+      for (const sourceId of identity?.derivedFromIds ?? []) {
+        const sourceLocalId = resolveSceneLocalId(geometrySceneIdentityIndex, sourceId, "geometry");
+        if (!sourceLocalId || !geometryObjectIdSet.has(sourceLocalId)) continue;
+        addEdge({
+          sourceId: `object:${sourceLocalId}`,
+          targetId: `object:${object.id}`,
+          relation: identity?.metadata.representation === "triangle-mesh" ? "mesh-round-trip" : "derived-from",
+        });
+      }
+      for (const historyStep of (geometryObjectHistoryById[object.id] ?? []).slice(0, 8)) {
+        const operationId = `operation:${object.id}:${historyStep.id}`;
+        addNode({
+          id: operationId,
+          kind: "operation",
+          label: `${historyStep.label} · r${geometryObjectRevisionById[object.id] ?? 0}`,
+          objectId: object.id,
+          status: "valid",
+        });
+        addEdge({ sourceId: "scene", targetId: operationId, relation: "contains" });
+        if (historyStep.sourceObjectId && geometryObjectIdSet.has(historyStep.sourceObjectId)) {
+          addEdge({
+            sourceId: `object:${historyStep.sourceObjectId}`,
+            targetId: operationId,
+            relation: "operation-input",
+          });
+        }
+        addEdge({ sourceId: operationId, targetId: `object:${object.id}`, relation: "modified-by" });
+      }
     }
     for (const object of geometryObjects) {
       const registry = GEOMETRY_OBJECT_REGISTRY[object.type];
@@ -27877,11 +27933,14 @@ const App: React.FC = () => {
     geometryMathConstructionOverlays.byId,
     geometryMeasuredEdges,
     geometryObjectIdSet,
+    geometryObjectHistoryById,
+    geometryObjectRevisionById,
     geometryObjects,
     geometrySavedSectionCurves,
     geometrySectionPreview,
     geometrySectionSourceDerivedId,
     geometrySelectedSceneObject,
+    geometrySceneIdentityIndex,
     resolveGeometrySceneMeshById,
   ]);
   useEffect(() => {
@@ -27910,6 +27969,128 @@ const App: React.FC = () => {
     const outputs = geometryDependencyGraph.edges.filter((edge) => edge.sourceId === nodeId);
     return { node, inputs, outputs };
   }, [geometryDependencyGraph, geometryInspectorSelectedDependencyNodeId]);
+  const geometryLineageInspectorData = useMemo(() => {
+    const details = geometryInspectorDependencyDetails;
+    if (!details) return null;
+    const objectId = details.node.id.startsWith("object:")
+      ? details.node.id.slice("object:".length)
+      : null;
+    const object = objectId ? resolveGeometrySceneObjectById(objectId) : null;
+    const identity = objectId
+      ? geometrySceneIdentityIndex.get(sceneEntityId("geometry", objectId)) ?? null
+      : null;
+    const derived = details.node.derivedId
+      ? geometryDerivedConstructions.find((entry) => entry.id === details.node.derivedId) ?? null
+      : null;
+    const derivedEvaluation = derived
+      ? geometryDerivedConstructionOverlays.byId.get(derived.id) ?? null
+      : null;
+    const sourceObjectId = derived?.sourceObjectId ?? objectId;
+    const sourceRevision = sourceObjectId ? geometryObjectRevisionById[sourceObjectId] ?? 0 : 0;
+    const recordedRevision = derived?.sourceRevision ?? identity?.revision ?? sourceRevision;
+    const latestHistory = sourceObjectId ? geometryObjectHistoryById[sourceObjectId]?.[0] ?? null : null;
+    const revisionCause = latestHistory?.revisionCause
+      ?? (latestHistory ? classifyGeometryRevisionCause(latestHistory) : null);
+    const selectedBounds = objectId === geometrySelectedSceneObject?.id ? geometrySelectedSceneMeshInfo?.bounds ?? null : null;
+    const bounds = selectedBounds
+      ? {
+          min: [selectedBounds.min[0], selectedBounds.min[1], selectedBounds.min[2]] as [number, number, number],
+          max: [selectedBounds.max[0], selectedBounds.max[1], selectedBounds.max[2]] as [number, number, number],
+        }
+      : null;
+    const objectType = object
+      ? "type" in object
+        ? object.type
+        : "mesh"
+      : derived?.type ?? details.node.kind;
+    const params = object && "params" in object ? object.params : derived?.params ?? {};
+    const representation = derived
+      ? derived.frozenSnapshot
+        ? "frozen-derived-construction"
+        : "live-derived-construction"
+      : typeof identity?.metadata.representation === "string"
+        ? identity.metadata.representation
+        : object && "mesh" in object
+          ? "triangle-mesh"
+          : "parametric-procedural";
+    const metadata = buildGeometryCanonicalMetadata({
+      objectType,
+      params,
+      revision: recordedRevision,
+      sourceKind: identity?.sourceKind ?? (derived ? "derived" : "unknown"),
+      representation,
+      bounds,
+      vertexCount: objectId === geometrySelectedSceneObject?.id ? geometrySelectedSceneMeshInfo?.vertCount ?? null : null,
+      sourceRevision: derived?.sourceRevision
+        ?? (typeof identity?.metadata.sourceRevision === "number" ? identity.metadata.sourceRevision : null),
+      operation: derived?.type
+        ?? (typeof identity?.metadata.operation === "string" ? identity.metadata.operation : null),
+    });
+    const staleReason = details.node.status === "stale" || details.node.status === "updating"
+      ? recordedRevision < sourceRevision && revisionCause
+        ? formatGeometryStaleReason({
+            cause: revisionCause,
+            sourceRevision: recordedRevision,
+            currentRevision: sourceRevision,
+            detail: latestHistory?.changeSummary ?? derivedEvaluation?.statusMessage,
+          })
+        : derivedEvaluation?.statusMessage ?? "Dependency output is waiting for recomputation."
+      : details.node.status === "broken-source" || details.node.status === "ambiguous-target"
+        ? derivedEvaluation?.statusMessage ?? "The recorded source or topology target cannot be resolved."
+        : null;
+    const edge = (dependencyEdge: GeometryDependencyEdge, direction: "input" | "output"): GeometryLineageInspectorEdge => {
+      const relatedId = direction === "input" ? dependencyEdge.sourceId : dependencyEdge.targetId;
+      return {
+        id: relatedId,
+        label: geometryDependencyGraph.nodeById.get(relatedId)?.label ?? relatedId,
+        relation: dependencyEdge.relation,
+        kind: classifyGeometryLineageRelation(
+          dependencyEdge.relation,
+          direction === "output" && relatedId.startsWith("object:")
+            ? geometrySceneIdentityIndex.get(sceneEntityId("geometry", relatedId.slice("object:".length))) ?? null
+            : null
+        ),
+      };
+    };
+    const meaningfulInputs = details.inputs.filter((entry) => entry.relation !== "contains");
+    const meaningfulOutputs = details.outputs.filter((entry) => entry.relation !== "contains");
+    const recordedSourceInput = meaningfulInputs.find((entry) =>
+      entry.relation === "derived-from" ||
+      entry.relation === "depends-on" ||
+      entry.relation === "section-of" ||
+      entry.relation === "mesh-round-trip" ||
+      entry.relation === "operation-input"
+    ) ?? null;
+    const parentNodeId = identity?.parentId
+      ? `object:${resolveSceneLocalId(geometrySceneIdentityIndex, identity.parentId, "geometry") ?? ""}`
+      : recordedSourceInput?.sourceId ?? null;
+    const sourceNodeId = recordedSourceInput?.sourceId ?? parentNodeId;
+    return {
+      node: details.node,
+      metadata,
+      revisionCause,
+      staleReason,
+      parentNodeId: parentNodeId === "object:" ? null : parentNodeId,
+      sourceNodeId: sourceNodeId === "object:" ? null : sourceNodeId,
+      inputs: meaningfulInputs.map((entry) => edge(entry, "input")),
+      outputs: meaningfulOutputs.map((entry) => edge(entry, "output")),
+      derivedId: derived?.id ?? null,
+      objectId,
+      isFrozen: Boolean(derived?.frozenSnapshot),
+      canDetach: Boolean(objectId && identity?.sourceKind === "derived"),
+    };
+  }, [
+    geometryDependencyGraph,
+    geometryDerivedConstructionOverlays.byId,
+    geometryDerivedConstructions,
+    geometryInspectorDependencyDetails,
+    geometryObjectHistoryById,
+    geometryObjectRevisionById,
+    geometrySceneIdentityIndex,
+    geometrySelectedSceneMeshInfo,
+    geometrySelectedSceneObject?.id,
+    resolveGeometrySceneObjectById,
+  ]);
   const geometryDependencyOverlayModel = useMemo(() => {
     const selectedId = geometryInspectorSelectedDependencyNodeId;
     const selectedNode = selectedId ? geometryDependencyGraph.nodeById.get(selectedId) ?? null : null;
@@ -66940,6 +67121,9 @@ case "mobius":
               candidate.linkedObjectIds?.includes(source.id)
           ) ?? null
         : null;
+      const latestHistory = source ? geometryObjectHistoryById[source.id]?.[0] ?? null : null;
+      const currentRevision = source ? geometryObjectRevisionById[source.id] ?? 0 : 0;
+      const recordedRevision = entry?.sourceVersion ?? currentRevision;
       return {
         ...spec,
         entry,
@@ -66948,11 +67132,16 @@ case "mobius":
         sourceVersion: entry?.sourceVersion ?? null,
         staleReason:
           entry?.derivedStatus === "stale" && source
-            ? geometryObjectHistoryById[source.id]?.[0]?.changeSummary ?? "Source object changed."
+            ? formatGeometryStaleReason({
+                cause: latestHistory?.revisionCause ?? classifyGeometryRevisionCause(latestHistory ?? {}),
+                sourceRevision: recordedRevision,
+                currentRevision,
+                detail: latestHistory?.changeSummary ?? "Source object changed.",
+              })
             : null,
       };
     });
-  }, [geometryObjectHistoryById, geometrySelectedSceneObject, unifiedManualDerived]);
+  }, [geometryObjectHistoryById, geometryObjectRevisionById, geometrySelectedSceneObject, unifiedManualDerived]);
   const geometrySelectedConvexHullProduct = useMemo(
     () => geometrySelectedDerivedProducts.find((product) => product.operation === "convex-hull") ?? null,
     [geometrySelectedDerivedProducts]
@@ -71988,6 +72177,150 @@ case "mobius":
         setGeometryCreateActionStatus(`${modifyCommand.label}: ${modifyCommand.explanation}`);
     }
   };
+  const handleOpenGeometryLineageNode = (nodeId: string | null, label: string) => {
+    if (!nodeId) {
+      setGeometryCreateActionStatus(`${label} is unavailable for this lineage node.`);
+      return;
+    }
+    handleSelectGeometryDependencyNode(nodeId);
+    setGeometryCreateActionStatus(`${label} opened in Metadata & lineage.`);
+  };
+  const handleShowGeometryLineageDirection = (direction: "affected-by" | "affects") => {
+    setGeometryDependencyOverlayDirection(direction);
+    setGeometryDependencyOverlayChainMode("full");
+    setShowGeometryDependencyOverlay(true);
+    setGeometryCreateActionStatus(direction === "affected-by" ? "Full dependency lineage is visible." : "Full dependent lineage is visible.");
+  };
+  const handleRecomputeGeometryLineageNode = () => {
+    const data = geometryLineageInspectorData;
+    if (!data) return;
+    if (data.derivedId) {
+      if (data.isFrozen) {
+        setGeometryCreateActionStatus("Frozen derivatives do not recompute. Unfreeze the construction first.");
+        return;
+      }
+      const derived = geometryDerivedConstructions.find((entry) => entry.id === data.derivedId) ?? null;
+      if (!derived) return;
+      const sourceRevision = geometryObjectRevisionById[derived.sourceObjectId] ?? derived.sourceRevision ?? 0;
+      const resolved = resolveGeometrySceneMeshById(derived.sourceObjectId);
+      setGeometryDerivedConstructions((current) => current.map((entry) =>
+        entry.id === derived.id
+          ? {
+              ...entry,
+              sourceRevision,
+              sourceTopologySignature: resolved ? geometryMeshTopologySignature(resolved.mesh) : entry.sourceTopologySignature,
+            }
+          : entry
+      ));
+      setGeometryCreateActionStatus(`Recomputed ${geometryDerivedConstructionName(derived)} from source revision ${sourceRevision}.`);
+      return;
+    }
+    if (data.objectId) {
+      const derivedProduct = unifiedManualDerived.find((entry) => entry.resultObjectId === data.objectId) ?? null;
+      const sourceId = derivedProduct?.linkedObjectIds?.[0] ?? null;
+      const operation = derivedProduct?.operation ?? (derivedProduct ? geometryDerivedOperationFromType(derivedProduct.type) : null);
+      if (derivedProduct && sourceId && operation) {
+        generateGeometryDerivedProduct(operation, sourceId);
+        setGeometryCreateActionStatus(`Recomputing ${derivedProduct.name} from its recorded source.`);
+        return;
+      }
+      setGeometrySelectedObjectId(data.objectId);
+      setGeometryProceduralPanelTab("object");
+      setGeometryCreateActionStatus("Object definition is open for parameter review and rebuild.");
+    }
+  };
+  const handleDetachGeometryLineageCopy = () => {
+    const objectId = geometryLineageInspectorData?.objectId ?? null;
+    if (!objectId) return;
+    const object = resolveGeometrySceneObjectById(objectId);
+    if (!object) return;
+    const copyId = allocateUniqueGeometryObjectId();
+    if ("mesh" in object) {
+      const copy = cloneGeometryDatasetMeshObject(object);
+      copy.id = copyId;
+      copy.name = `${object.name} detached copy`;
+      copy.mesh = toDetachedMeshData(copy.mesh, copy.name);
+      copy.promotion = null;
+      copy.restoredGeometryPreset = null;
+      setGeometryDatasetMeshObjects((current) => [copy, ...current]);
+    } else {
+      const copy = cloneGeometryObject(object);
+      copy.id = copyId;
+      copy.name = `${object.name} detached copy`;
+      const params = { ...copy.params };
+      delete params.sourceObjectIds;
+      delete params.sourceEntityIds;
+      params.authoringSource = "detached-copy";
+      copy.params = params;
+      setGeometryObjects((current) => [copy, ...current]);
+    }
+    queueGeometryHistoryIntent(copyId, {
+      action: "Detach copy",
+      label: "Detach copy",
+      operationType: "dependency-detach",
+      sourceObjectId: object.id,
+      sourceObjectName: object.name,
+      parameters: "source links removed",
+    });
+    setGeometrySelectedObjectId(copyId);
+    setGeometryFocusedDependencyNodeId(`object:${copyId}`);
+    setGeometryCreateActionStatus(`Detached copy created from ${object.name}; the original lineage remains unchanged.`);
+  };
+  const geometryLineageInspectorActions: readonly GeometryLineageInspectorAction[] = geometryLineageInspectorData
+    ? [
+        {
+          id: "open-parent",
+          label: "Open parent",
+          enabled: Boolean(geometryLineageInspectorData.parentNodeId),
+          explanation: geometryLineageInspectorData.parentNodeId ? "Open the recorded parent node." : "No parent is recorded.",
+          onClick: () => handleOpenGeometryLineageNode(geometryLineageInspectorData.parentNodeId, "Parent"),
+        },
+        {
+          id: "open-source",
+          label: "Open source",
+          enabled: Boolean(geometryLineageInspectorData.sourceNodeId),
+          explanation: geometryLineageInspectorData.sourceNodeId ? "Open the primary source node." : "No source is recorded.",
+          onClick: () => handleOpenGeometryLineageNode(geometryLineageInspectorData.sourceNodeId, "Source"),
+        },
+        {
+          id: "show-dependencies",
+          label: "Show dependencies",
+          enabled: geometryLineageInspectorData.inputs.length > 0,
+          explanation: geometryLineageInspectorData.inputs.length ? "Show the complete input lineage." : "This node has no dependencies.",
+          onClick: () => handleShowGeometryLineageDirection("affected-by"),
+        },
+        {
+          id: "show-dependents",
+          label: "Show dependents",
+          enabled: geometryLineageInspectorData.outputs.length > 0,
+          explanation: geometryLineageInspectorData.outputs.length ? "Show every downstream dependent." : "This node has no dependents.",
+          onClick: () => handleShowGeometryLineageDirection("affects"),
+        },
+        {
+          id: "recompute",
+          label: "Recompute",
+          enabled: Boolean(geometryLineageInspectorData.derivedId || geometryLineageInspectorData.objectId),
+          explanation: geometryLineageInspectorData.isFrozen ? "Unfreeze before recomputing." : "Recompute from the recorded source revision.",
+          onClick: handleRecomputeGeometryLineageNode,
+        },
+        {
+          id: "freeze",
+          label: geometryLineageInspectorData.isFrozen ? "Derivative frozen" : "Freeze derivative",
+          enabled: Boolean(geometryLineageInspectorData.derivedId && !geometryLineageInspectorData.isFrozen),
+          explanation: geometryLineageInspectorData.derivedId ? "Store the current resolved derivative snapshot." : "Select a derived construction to freeze it.",
+          onClick: () => {
+            if (geometryLineageInspectorData.derivedId) handleFreezeDerivedConstruction(geometryLineageInspectorData.derivedId);
+          },
+        },
+        {
+          id: "detach",
+          label: "Detach copy",
+          enabled: geometryLineageInspectorData.canDetach,
+          explanation: geometryLineageInspectorData.canDetach ? "Create an independent copy without source links." : "Select a derived scene object to detach it.",
+          onClick: handleDetachGeometryLineageCopy,
+        },
+      ]
+    : [];
   const octaveServiceApi = window.octaveService;
   const octaveBridgeReady =
     !!octaveServiceApi && (typeof octaveServiceApi.getStatus === "function" || typeof octaveServiceApi.health === "function");
@@ -98903,6 +99236,19 @@ case "mobius":
                             }}
                           >
                             <div style={{ fontSize: 12, fontWeight: 700 }}>Dependency Graph</div>
+                            {geometryLineageInspectorData && (
+                              <GeometryLineageInspectorPanel
+                                label={geometryLineageInspectorData.node.label}
+                                nodeKind={geometryLineageInspectorData.node.kind}
+                                status={geometryLineageInspectorData.node.status}
+                                metadata={geometryLineageInspectorData.metadata}
+                                revisionCause={geometryLineageInspectorData.revisionCause}
+                                staleReason={geometryLineageInspectorData.staleReason}
+                                inputs={geometryLineageInspectorData.inputs}
+                                outputs={geometryLineageInspectorData.outputs}
+                                actions={geometryLineageInspectorActions}
+                              />
+                            )}
                             <ConstructionDependencyTreePanel
                               tree={geometryConstructionDependencyTree}
                               selectedId={geometryInspectorSelectedDependencyNodeId}

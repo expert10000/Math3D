@@ -29,6 +29,20 @@ describe("Geometry scene identity adapter", () => {
       ["geometry:box-a", "procedural", 4],
       ["geometry:import-a", "import", 2],
     ]);
+    expect(identities[0].metadata).toMatchObject({
+      metadataSchema: "geometry-object-metadata-v1",
+      primitiveType: "box",
+      parameterization: "box",
+      representation: "parametric-procedural",
+      closed: true,
+      orientation: "outward",
+      units: "scene-unit",
+    });
+    expect(identities[1].metadata).toMatchObject({
+      representation: "triangle-mesh",
+      bounds: "min(0, 0, 0) · max(1, 1, 0)",
+      precision: "float32 positions",
+    });
   });
 
   it("records a promoted mesh as a derived scene entity with its source dependency", () => {
