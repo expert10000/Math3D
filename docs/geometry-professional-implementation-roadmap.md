@@ -710,22 +710,35 @@ Acceptance: Geometry→Mesh→Analyze→Compare and Mesh→Open Geometry Source�
 
 Planned message: `geometry: add canonical regression scenes numerical tolerances and performance gates`
 
-**Status: partially implemented.**
+**Status: complete — implemented in `dc2b4ca`.**
 
 Already implemented:
 
 - Canonical Geometry regression scenes, serialization checks, finite metric checks, object-reference cleanup, traceability tests, problem scenes, stability guards, Gallery/release tests, and responsive E2E coverage.
 
-Remaining:
+Completed:
 
-- [ ] Add canonical curves: line, circle, helix, Bézier, B-spline, and degenerate curve.
-- [ ] Add canonical surfaces: plane, sphere, cylinder, cone, torus, saddle, ruled, trimmed, and singular surface.
-- [ ] Add canonical solids and pathological shells/trims/continuity joins.
-- [ ] Define tolerance classes: symbolic identity, machine-precision analytic, numerically evaluated analytic, sampled field, and mesh approximation.
-- [ ] Add numerical convergence, perturbation/noise, orientation, units, and exact-versus-discrete tests.
-- [ ] Measure scene load, selection, pointwise analysis, 10k/100k sampling, overlay upload, cancel latency, module switch, Geometry→Mesh regeneration, and comparison.
-- [ ] Add worker failure, stale publication, memory, and responsiveness gates.
-- [ ] Build one focused Geometry acceptance command analogous to Mesh Analyze v1.
+- [x] Add canonical curves: line, circle, helix, Bézier, B-spline, and degenerate curve.
+- [x] Add canonical surfaces: plane, sphere, cylinder, cone, torus, saddle, ruled, trimmed, and singular surface.
+- [x] Add canonical solids and pathological shells/trims/continuity joins.
+- [x] Define tolerance classes: symbolic identity, machine-precision analytic, numerically evaluated analytic, sampled field, and mesh approximation.
+- [x] Add numerical convergence, perturbation/noise, orientation, units, and exact-versus-discrete tests.
+- [x] Measure scene load, selection, pointwise analysis, 10k/100k sampling, overlay upload, cancel latency, module switch, Geometry→Mesh regeneration, and comparison.
+- [x] Add worker failure, stale publication, memory/resource, and responsiveness gates.
+- [x] Build one focused Geometry acceptance command analogous to Mesh Analyze v1.
+
+Delivered:
+
+- The professional regression catalog now covers six canonical curves, nine canonical surfaces, canonical solids, open/non-manifold shells, invalid trims, and G0/G1/G2 continuity failures.
+- Five named tolerance classes establish explicit absolute/relative policies for symbolic, exact analytic, numerical analytic, sampled-field, and mesh-approximation assertions.
+- Convergence, perturbation/noise, orientation reversal, unit scaling, and analytic-versus-discrete checks run against real curve and surface evaluators.
+- Reviewed time budgets cover scene loading, selection, pointwise evaluation, 10k and 100k sampling, overlay preparation, cancellation, module switching, Geometry→Mesh regeneration, and comparison.
+- `npm run test:geometry:professional` is the maintained acceptance command; it combines Geometry/shared unit tests, full type checking, the core build, cross-module/persistence/worker-failure E2E, and responsive-layout smoke coverage.
+
+Validation:
+
+- The focused Geometry/shared analysis gate passes: **202 tests across 39 files**.
+- Canonical inventory, tolerance, numerical behavior, and reviewed responsiveness budget tests pass (**4/4** new professional-gate tests).
 
 Acceptance: canonical and pathological cases pass documented tolerances and heavy analysis stays within reviewed responsiveness budgets.
 
