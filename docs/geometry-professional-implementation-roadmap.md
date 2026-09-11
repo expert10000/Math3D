@@ -596,20 +596,36 @@ Acceptance: heavy Geometry analysis runs outside the UI thread, can be cancelled
 
 Planned message: `geometry: add analytic-versus-discrete comparison`
 
-**Status: foundation exists.**
+**Status: complete — implemented in `537a786`.**
 
 Already implemented:
 
 - Object A/B comparison, variant comparison, Geometry source versus promoted-mesh topology summary, Geometry↔Mesh trace maps, and linked source history.
 
-Remaining:
+Completed:
 
-- [ ] Compare analytic Geometry with display tessellation, derived analysis Mesh, and saved Mesh results.
-- [ ] Add position, normal, curvature, area/volume, boundary, geodesic, and feature comparison metrics where correspondence supports them.
-- [ ] Compute signed/absolute error, relative error, RMS, percentile, maximum, and worst-region selection.
-- [ ] Show side-by-side values, difference heatmap, correspondence lines, worst markers, and summary tables.
-- [ ] Record both source revisions, tessellation parameters, mapping confidence, engines, units, and tolerances.
-- [ ] Explain unavailable comparisons when semantic correspondence is missing.
+- [x] Compare analytic Geometry with display tessellation, derived analysis Mesh, and saved Mesh results.
+- [x] Add position, normal, curvature, area/volume, boundary, geodesic, and feature comparison metrics where correspondence supports them.
+- [x] Compute signed/absolute error, relative error, RMS, percentile, maximum, and worst-region selection.
+- [x] Show side-by-side values, difference heatmap, correspondence lines, worst markers, and summary tables.
+- [x] Record both source revisions, tessellation parameters, mapping confidence, engines, units, and tolerances.
+- [x] Explain unavailable comparisons when semantic correspondence is missing.
+
+Delivered:
+
+- One comparison contract supports display tessellation, derived analysis Mesh, and saved Mesh-result targets while keeping analytic and discrete values visibly distinct.
+- Position uses signed analytic-normal and absolute Euclidean error; normal uses angular error; compatible saved fields enable curvature, geodesic, and feature comparisons; area, volume, and boundary metrics retain their mathematical units.
+- Every supported quantity reports signed mean, absolute mean, relative mean, RMS, median, p95, maximum, and worst sample indices.
+- Reusable visualization data includes difference heatmaps, correspondence lines, worst markers, and side-by-side summary tables.
+- Target role, analytic/discrete revisions, tessellation settings, mapping confidence/method, engines, units, tolerances, and timestamp remain in the saved result.
+- Missing normals, curvature fields, compatible endpoints, feature definitions, closed analytic volumes, or semantic correspondence produce explicit per-quantity explanations.
+- Geometry Analyze exposes target-role and tolerance controls plus a Mesh-style comparison result card.
+
+Validation:
+
+- Exact/discrete separation, signed offset, statistics, worst-region, all three target roles, saved-field comparisons, provenance, heuristic correspondence, and unavailable-field tests pass.
+- The full renderer suite passes: **492 tests across 92 files**.
+- Renderer type checking, `npm run build:core`, and Geometry professional-shell E2E pass (**4/4**), including the comparison heatmap, statistics, overlays, provenance, and unavailable explanations.
 
 Acceptance: exact and discrete values remain visibly distinct and the comparison can locate the largest approximation errors.
 
