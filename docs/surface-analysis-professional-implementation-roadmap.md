@@ -83,8 +83,8 @@ Baseline verification at this assessment:
 | 2 — Unified differential-geometry engine | Complete (`9c0ddfc`) | One normalized differential point/field schema, exact Geometry reuse, analytic/symbolic/AD and adaptive numerical routes, explicit mesh provenance, masks and mathematical verification | None for Commit 2 |
 | 3 — Computation/display/inspection UI split | Complete (`bdd5bb2`) | Left computation catalog, View/viewport display controls, right Result/Probe/Provenance/History Inspector, compact derived-mesh bridge and collapsed compatibility tools | None for Commit 3 |
 | 4 — Curvature workspace | Complete (`f5b7504`) | One canonical K/H/k1/k2/shape-index/curvedness/d1/d2 result, masks, units, statistics, classifications, independent display controls, region navigation and saved-result lifecycle | None for Commit 4 |
-| 5 — Local differential-geometry probe | Advanced foundation | Point/normal/chart coordinates, tangent basis, curvature and direction readouts | Full I/II forms, method/provenance, classification, visual osculating evidence, pins/history/export |
-| 6 — Surface curves and features | Partial | Geodesics, curvature lines, ridges/valleys, feature extraction, overlays | Surface-owned method routing, persistent result layers, visibility independence, saved lifecycle |
+| 5 — Local differential-geometry probe | Complete (`101684b`) | Canonical point report, domain mapping, I/II forms, curvature, directions, classifications, Euler normal curvature, synchronized evidence, pin/compare/replay/copy/export lifecycle | None for Commit 5 |
+| 6 — Surface curves and features | Complete (`9e26ffc`) | Surface-owned curve/feature taxonomy, stable revision-aware result layers, method and seed provenance, statistics/policies, independent inspection and lifecycle actions | None for Commit 6 |
 | 7 — Charts and parameter diagnostics | Partial | Chart grid, orientation/degeneracy diagnostics, graph/param domains | Metric/Jacobian fields, distortion, boundary/degenerate regions, Inspector results, future atlas contract |
 | 8 — Provenance-linked derived SurfaceMesh | Partial | Baking, `SurfaceMeshData`, source kinds, preview/full mesh caches | Source ID/revision/settings, UV correspondence, live/snapshot states, stale/regenerate/detach, persistence |
 | 9 — Live mesh, bake, and Mesh Analysis handoff | Partial | Promote, Bake to Mesh, Geometry/Mesh navigation | Three unambiguous actions, direct Mesh Analyze opening, selection/camera transfer, reverse navigation |
@@ -378,22 +378,28 @@ Acceptance: Curvature is one coherent mathematical result rather than separate r
 
 Planned message: `feat(surface-analysis): add probe and local differential-geometry inspector`
 
-**Status: planned; a strong local probe foundation exists.**
+**Status: complete (`101684b`).**
 
 Already implemented:
 
 - Surface/mesh point picking, parameter or graph coordinates, normal, tangent/principal directions, K/H/k1/k2, shape index, curvedness, and warnings.
 - Tangent plane, normal, and tangent overlays.
 
-Remaining:
+Implemented:
 
-- [ ] Resolve every probe to canonical surface ID/revision, representation, domain coordinate, and evaluation method.
-- [ ] Show 3D position, `(x,y)` or `(u,v)`, normal, oriented tangent basis, E/F/G, L/M/N, H/K/k1/k2, d1/d2, and local classification.
-- [ ] Show missing/undefined values with an explanation instead of substituting mesh or zero values silently.
-- [ ] Add normal-curvature-by-angle and Euler-formula readout; visualize the selected direction and normal section.
-- [ ] Add tangent plane, normal, principal axes, and optional normal-curvature/osculating-circle evidence with one visibility group.
-- [ ] Support pinned probes, comparison between probes or revisions, history replay, copy, and structured export.
-- [ ] Preserve selection semantics and camera framing when a probe maps to a derived mesh vertex/face.
+- [x] Resolve every probe to canonical surface ID/revision, representation, domain coordinate, and evaluation method.
+- [x] Show 3D position, `(x,y)` or `(u,v)`, normal, oriented tangent basis, E/F/G, L/M/N, H/K/k1/k2, d1/d2, and local classification.
+- [x] Show missing/undefined values with an explanation instead of substituting mesh or zero values silently.
+- [x] Add normal-curvature-by-angle and Euler-formula readout; visualize the selected direction and normal section.
+- [x] Add tangent plane, normal, principal axes, and optional normal-curvature/osculating-circle evidence with one visibility group.
+- [x] Support pinned probes, comparison between probes or revisions, history replay, copy, and structured export.
+- [x] Preserve selection semantics and camera framing when a probe maps to a derived mesh vertex/face.
+
+Validation at `101684b`:
+
+- The full renderer suite passes: **540 tests across 101 files**.
+- `npm run typecheck:noemit` and `npm run build:core` pass.
+- The Surface functional flow passes **5/5**, including deterministic probe creation, Euler-angle evidence, pinning, comparison, visibility and replay.
 
 Acceptance: clicking a valid point produces a complete, method-labeled local differential-geometry report with synchronized visual evidence.
 
@@ -401,21 +407,31 @@ Acceptance: clicking a valid point produces a complete, method-labeled local dif
 
 Planned message: `feat(surface-analysis): consolidate geodesic, ridge, valley and feature workflows`
 
-**Status: planned; algorithms and overlays exist in several paths.**
+**Status: complete (`9e26ffc`).**
 
 Already implemented:
 
 - Continuous graph and parametric geodesics, mesh graph/heat/surface paths, geodesic disks, curvature lines, principal streamlines, feature extraction, and ridge/valley stitching.
 
-Remaining:
+Implemented:
 
-- [ ] Organize Surface Curves as geodesics, principal curvature lines, asymptotic curves, and level curves.
-- [ ] Organize Surface Features as ridges, valleys, umbilics, parabolic curves, critical points, and representation singularities.
-- [ ] Route analytic/parameter-space methods for smooth sources and clearly labeled discrete methods for mesh-backed sources.
-- [ ] Create persistent result-layer objects with stable IDs, source revisions, parameters, statistics, warnings, and polyline/point payloads.
-- [ ] Allow each result layer to be hidden, shown, selected, framed, saved, compared, exported, recomputed, or removed independently.
-- [ ] Add selection-derived seeds/endpoints and preserve their semantic source references.
-- [ ] Define confidence, stopping, branch, periodic-domain, boundary, and singular-region behavior.
+- [x] Organize Surface Curves as geodesics, principal curvature lines, asymptotic curves, and level curves.
+- [x] Organize Surface Features as ridges, valleys, umbilics, parabolic curves, critical points, and representation singularities.
+- [x] Route represented smooth results through Surface methods and label mesh-backed results as `mesh-approximation`; retain the actual method on every layer.
+- [x] Create persistent result-layer objects with stable IDs, source identities/revisions, parameters, statistics, warnings, and polyline/point payloads.
+- [x] Allow each result layer to be hidden, shown, selected, framed, saved, compared, exported, recomputed, or removed independently.
+- [x] Add selection-derived seeds/endpoints and preserve their semantic source references.
+- [x] Define confidence, stopping, branch, periodic-domain, boundary, and singular-region behavior.
+
+Computed legacy geometry is collected without inventing unavailable output: geodesic and ridge/valley polylines and detected feature points become ready layers, while principal, asymptotic, level or critical layers remain explicit empty results until their corresponding computation has produced transferable geometry.
+
+Validation at `9e26ffc`:
+
+- The full renderer suite passes: **546 tests across 102 files**.
+- `npm run typecheck:noemit` and `npm run build:core` pass.
+- The Surface functional flow passes **6/6**, including curve/feature taxonomy, persistent layer inspection, visibility, save, compare and remove behavior.
+- Required Surface functional, Gallery, worker-failure and workspace-navigation checks pass: **15/15**.
+- `npm run test:app:responsive:smoke` passes for phone portrait, phone landscape, tablet and desktop layouts, including drawers, sheets and touch containment.
 
 Acceptance: curve/feature computation survives overlay toggles and becomes inspectable scientific output rather than temporary viewer state.
 
