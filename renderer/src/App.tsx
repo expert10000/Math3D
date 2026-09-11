@@ -40,6 +40,7 @@ import { UnifiedSelectionInspector } from "./components/UnifiedSelectionInspecto
 import { GeometrySemanticNavigatorPanel } from "./components/GeometrySemanticNavigatorPanel";
 import { GeometryConstructCatalogPanel } from "./components/GeometryConstructCatalogPanel";
 import { GeometryModifyPanel } from "./components/GeometryModifyPanel";
+import { SurfaceAnalysisContractCard } from "./components/SurfaceAnalysisContractCard";
 import {
   GeometryLineageInspectorPanel,
   type GeometryLineageInspectorAction,
@@ -247,6 +248,23 @@ import {
   type SceneEntityIdentity,
 } from "./scene/sceneIdentity";
 import { buildGeometrySceneIdentities } from "./geometry/sceneIdentity";
+import type { SurfaceAdapterInput, SurfaceAnalysisMethod, SurfaceAnalysisPayload } from "./surfaceAnalysis/contracts";
+import {
+  adaptSurfaceDefinition,
+  createSurfaceAnalysisRegistry,
+  createSurfaceAnalysisRequest,
+  createSurfaceAnalysisResultStore,
+  getSurfaceAnalysisResult,
+  publishSurfaceAnalysisResult,
+  resolveSurfaceRevision,
+  surfaceAdapterFingerprint,
+  type SurfaceRevisionTracker,
+} from "./surfaceAnalysis/infrastructure";
+import {
+  createSurfaceAnalysisWorkspaceDocument,
+  parseSurfaceAnalysisWorkspace,
+  serializeSurfaceAnalysisWorkspace,
+} from "./surfaceAnalysis/persistence";
 import {
   DEFAULT_GEOMETRY_SEMANTIC_FILTER,
   attachGeometrySemanticSelection,
@@ -1683,6 +1701,7 @@ const WORKBOOK_MANUAL_SAVE_NAME_KEY = "math3d.workbook.manualSaveName.v1";
 const SURFACE_MESH_TOPOLOGY_SESSION_KEY = "math3d.mesh.topologySession.v1";
 const SURFACE_MESH_TOPOLOGY_SESSION_SKIPPED_RESTORE_KEY = "math3d.mesh.topologySession.skippedRestore.v1";
 const SURFACE_MESH_TOPOLOGY_SAVED_PRESETS_KEY = "math3d.mesh.topologySavedPresets.v1";
+const SURFACE_ANALYSIS_WORKSPACE_KEY = "math3d.surfaceAnalysis.workspace.v1";
 const SURFACE_MESH_TOPOLOGY_SESSION_MAX_CHARS = 3_400_000;
 const SURFACE_MESH_TOPOLOGY_PERSIST_HISTORY_LIMIT = 4;
 const SURFACE_MESH_TOPOLOGY_SAVED_PRESET_LIMIT = 8;
@@ -41639,6 +41658,200 @@ const App: React.FC = () => {
       paramDomains[paramSurfaceId]?.vMax,
     ]
   );
+  const [surfaceAnalysisWorkspaceDocument, setSurfaceAnalysisWorkspaceDocument] = useState(() => {
+    try {
+      const serialized = localStorage.getItem(SURFACE_ANALYSIS_WORKSPACE_KEY);
+      return serialized ? parseSurfaceAnalysisWorkspace(serialized) : createSurfaceAnalysisWorkspaceDocument();
+    } catch {
+      return createSurfaceAnalysisWorkspaceDocument();
+    }
+  });
+  const surfaceRevisionTrackerRef = useRef<SurfaceRevisionTracker>(new Map(
+    surfaceAnalysisWorkspaceDocument.definitions.map((definition) => [
+      definition.identity.surfaceId,
+      { fingerprint: definition.fingerprint, revision: definition.identity.surfaceRevision },
+    ])
+  ));
+  const surfaceAnalysisRegistryRef = useRef(createSurfaceAnalysisRegistry());
+  const [surfaceAnalysisResultStore, setSurfaceAnalysisResultStore] = useState(createSurfaceAnalysisResultStore);
+  const activeCanonicalSurfaceDefinition = useMemo(() => {
+    let seed: SurfaceAdapterInput;
+    if (surfaceViewerKind === "graph") {
+      const label = SURFACES_EQ_META_BY_ID.get(graphSurfaceId)?.label ?? graphSurfaceId;
+      seed = {
+        id: `graph:${graphSurfaceId}`,
+        revision: 0,
+        label,
+        representation: "explicit",
+        formula: graphSurfaceId === "graph_custom" ? graphExpr : `preset:${graphSurfaceId}`,
+        domain: {
+          kind: "graph",
+          x: { min: -activeGraphDomain.xSpan / 2, max: activeGraphDomain.xSpan / 2, label: "x" },
+          y: { min: -activeGraphDomain.ySpan / 2, max: activeGraphDomain.ySpan / 2, label: "y" },
+        },
+        sampling: { uSegments: graphResolution, vSegments: graphResolution, maximumSamples: graphSampleMaxPoints },
+        orientation: { convention: "graph-up", sign: 1, description: "Upward graph normal" },
+      };
+    } else if (surfaceViewerKind === "implicit") {
+      const label = SURFACES_EQ_META_BY_ID.get(implicitSurfaceId)?.label ?? implicitSurfaceId;
+      seed = {
+        id: `implicit:${implicitSurfaceId}`,
+        revision: 0,
+        label,
+        representation: "implicit",
+        formula: activeImplicitExpr,
+        isoValue: 0,
+        domain: {
+          kind: "spatial-bounds",
+          min: [-safeImplicitBakeBounds.xSpan / 2, -safeImplicitBakeBounds.ySpan / 2, -safeImplicitBakeBounds.zSpan / 2],
+          max: [safeImplicitBakeBounds.xSpan / 2, safeImplicitBakeBounds.ySpan / 2, safeImplicitBakeBounds.zSpan / 2],
+        },
+        sampling: { resolution: implicitResolution },
+        orientation: { convention: "gradient", sign: 1, description: "Normalized implicit gradient" },
+      };
+    } else if (surfaceViewerKind === "param") {
+      const label = PARAM_SURFACES_META.find((entry) => entry.id === paramSurfaceId)?.label ?? paramSurfaceId;
+      const domain = {
+        kind: "parameter" as const,
+        u: { min: activeParamDomain.uMin, max: activeParamDomain.uMax, label: "u" },
+        v: { min: activeParamDomain.vMin, max: activeParamDomain.vMax, label: "v" },
+      };
+      const common = { id: `param:${paramSurfaceId}`, revision: 0, label, domain, sampling: { uSegments: paramResolution, vSegments: paramResolution } };
+      const sourceKind = paramSurfaceSourceKindFor(paramSurfaceId);
+      if (sourceKind === "spline") {
+        seed = { ...common, representation: "spline", familyId: paramSurfaceId, settings: { surfaceId: paramSurfaceId, splineSettings: JSON.stringify(splineSurfaceSettings) } };
+      } else if (sourceKind === "constructed") {
+        seed = { ...common, representation: "constructed", familyId: paramSurfaceId, sourceIds: [], settings: { surfaceId: paramSurfaceId } };
+      } else {
+        seed = {
+          ...common,
+          representation: "parametric",
+          familyId: paramSurfaceId,
+          expressions: paramSurfaceId === "custom"
+            ? { x: paramXExpr, y: paramYExpr, z: paramZExpr }
+            : { x: `preset:${paramSurfaceId}:x`, y: `preset:${paramSurfaceId}:y`, z: `preset:${paramSurfaceId}:z` },
+        };
+      }
+    } else if (surfaceViewerKind === "weierstrass") {
+      seed = {
+        id: `weierstrass:${activeWeierstrassPresetId ?? "custom"}`,
+        revision: 0,
+        label: WEIERSTRASS_PRESETS.find((preset) => preset.id === activeWeierstrassPresetId)?.label ?? "Weierstrass surface",
+        representation: "weierstrass",
+        gExpression: weierstrassGExpr,
+        phiExpression: weierstrassPhiExpr,
+        domain: {
+          kind: "parameter",
+          u: { min: activeWeierstrassDomain.uMin, max: activeWeierstrassDomain.uMax, label: "u" },
+          v: { min: activeWeierstrassDomain.vMin, max: activeWeierstrassDomain.vMax, label: "v" },
+        },
+        sampling: { resolution: weierstrassResolution },
+      };
+    } else {
+      const meshIdentity = activeMeshAnalysisIdentity;
+      seed = {
+        id: `mesh:${meshIdentity?.meshId ?? surfaceMeshLabel}`,
+        revision: 0,
+        label: surfaceMeshLabel,
+        representation: "mesh-backed",
+        meshId: meshIdentity?.meshId ?? surfaceMeshLabel,
+        sourceRevision: meshIdentity?.revision,
+        sourceLabel: meshIdentity?.sourceLabel,
+        domain: { kind: "mesh", vertexCount: surfaceMeshStats?.vertCount ?? 0, faceCount: surfaceMeshStats?.triCount ?? 0 },
+        sampling: {},
+        warnings: surfaceViewerKind === "complex" ? ["Complex-map display is adapted through its sampled mesh representation."] : [],
+      };
+    }
+    const fingerprint = surfaceAdapterFingerprint(seed);
+    const revision = resolveSurfaceRevision(surfaceRevisionTrackerRef.current, seed.id, fingerprint);
+    return adaptSurfaceDefinition({ ...seed, revision } as SurfaceAdapterInput);
+  }, [
+    activeGraphDomain.xSpan,
+    activeGraphDomain.ySpan,
+    activeImplicitExpr,
+    activeMeshAnalysisIdentity,
+    activeParamDomain.uMax,
+    activeParamDomain.uMin,
+    activeParamDomain.vMax,
+    activeParamDomain.vMin,
+    activeWeierstrassDomain.uMax,
+    activeWeierstrassDomain.uMin,
+    activeWeierstrassDomain.vMax,
+    activeWeierstrassDomain.vMin,
+    activeWeierstrassPresetId,
+    graphExpr,
+    graphResolution,
+    graphSampleMaxPoints,
+    graphSurfaceId,
+    implicitResolution,
+    implicitSurfaceId,
+    paramResolution,
+    paramSurfaceId,
+    paramXExpr,
+    paramYExpr,
+    paramZExpr,
+    safeImplicitBakeBounds.xSpan,
+    safeImplicitBakeBounds.ySpan,
+    safeImplicitBakeBounds.zSpan,
+    splineSurfaceSettings,
+    surfaceMeshLabel,
+    surfaceMeshStats?.triCount,
+    surfaceMeshStats?.vertCount,
+    surfaceViewerKind,
+    weierstrassGExpr,
+    weierstrassPhiExpr,
+    weierstrassResolution,
+  ]);
+  const activeSurfaceDefinitionMethod: SurfaceAnalysisMethod = activeCanonicalSurfaceDefinition.representation === "mesh-backed"
+    ? "mesh-approximation"
+    : activeCanonicalSurfaceDefinition.representation === "explicit" || activeCanonicalSurfaceDefinition.representation === "implicit"
+      ? "symbolic"
+      : "analytic";
+  useEffect(() => {
+    const definition = activeCanonicalSurfaceDefinition;
+    const request = createSurfaceAnalysisRequest({
+      requestId: `surface-definition:${definition.identity.key}`,
+      kind: "surface-definition",
+      definition,
+      domain: "surface",
+      method: activeSurfaceDefinitionMethod,
+      requestedOutputs: ["identity", "domain", "sampling", "provenance"],
+    });
+    const payload: SurfaceAnalysisPayload = {
+      version: 1,
+      surfaceId: definition.identity.surfaceId,
+      surfaceRevision: definition.identity.surfaceRevision,
+      representation: definition.representation,
+      method: activeSurfaceDefinitionMethod,
+      units: definition.units,
+      orientation: definition.orientation,
+      warnings: definition.warnings,
+      data: { kind: "summary", values: { family: definition.source.familyId, revision: definition.identity.surfaceRevision } },
+    };
+    setSurfaceAnalysisResultStore((store) => publishSurfaceAnalysisResult({
+      store,
+      registry: surfaceAnalysisRegistryRef.current,
+      request,
+      payload,
+      backend: "Surface definition adapter",
+    }));
+    setSurfaceAnalysisWorkspaceDocument((document) => {
+      const definitions = [...document.definitions.filter((entry) => entry.identity.key !== definition.identity.key), definition].slice(-64);
+      definitions.sort((left, right) => left.identity.surfaceId.localeCompare(right.identity.surfaceId) || left.identity.surfaceRevision - right.identity.surfaceRevision);
+      return { ...document, definitions };
+    });
+  }, [activeCanonicalSurfaceDefinition, activeSurfaceDefinitionMethod]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SURFACE_ANALYSIS_WORKSPACE_KEY, serializeSurfaceAnalysisWorkspace(surfaceAnalysisWorkspaceDocument));
+    } catch {
+      // Keep the live canonical contract even when persistence is unavailable.
+    }
+  }, [surfaceAnalysisWorkspaceDocument]);
+  const activeSurfaceDefinitionResult = useMemo(
+    () => getSurfaceAnalysisResult(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "surface-definition"),
+    [activeCanonicalSurfaceDefinition.identity, surfaceAnalysisResultStore]
+  );
   const activeParamLikeDomain =
     surfaceViewerKind === "weierstrass" ? activeWeierstrassDomain : activeParamDomain;
   const activeParamLikeResolution =
@@ -78268,6 +78481,11 @@ case "mobius":
               {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "analysis" && (
                 <div style={{ marginTop: 10 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Display & analysis</div>
+                  <SurfaceAnalysisContractCard
+                    definition={activeCanonicalSurfaceDefinition}
+                    result={activeSurfaceDefinitionResult}
+                    historyCount={surfaceAnalysisResultStore.history.length}
+                  />
                   {isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "mesh" && (
                     <>
                     <div

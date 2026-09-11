@@ -24,6 +24,15 @@ test.describe("Surface functional flow", () => {
       await expect.poll(async () => (await readWorkerStatusText(ctx.page)).toLowerCase()).not.toContain(
         "worker unavailable"
       );
+      await ctx.page.getByTestId("surfaces-left-tab-analysis").click();
+      await expect(ctx.page.getByTestId("surface-analysis-contract")).toBeVisible();
+      await expect(ctx.page.getByTestId("surface-analysis-contract-state")).toHaveText("ready");
+      await expect(ctx.page.getByTestId("surface-analysis-contract-identity")).toContainText("implicit");
+      await expect(ctx.page.getByTestId("surface-analysis-contract-identity")).toContainText("revision 1");
+      await expect.poll(async () => ctx!.page.evaluate(() => {
+        const raw = localStorage.getItem("math3d.surfaceAnalysis.workspace.v1");
+        return raw ? JSON.parse(raw).definitions?.length ?? 0 : 0;
+      })).toBeGreaterThan(0);
       await expect(ctx.page.getByTestId("error-banner")).toHaveCount(0);
     } finally {
       await closeSurfaceApp(ctx);
