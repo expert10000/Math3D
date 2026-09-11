@@ -1,0 +1,240 @@
+import { describe, expect, it } from "vitest";
+import type { SurfaceMeshData } from "../mesh/surfaceMesh";
+import { createGeometryAnalysisSnapshot } from "./analysisBridge";
+import {
+  createGeometryAnalysisRegistry,
+  createGeometryAnalysisResultStore,
+  getGeometryAnalysisResult,
+  registerGeometryAnalysis,
+  upsertGeometryAnalysisResult,
+} from "./analysisInfrastructure";
+import {
+  createGeometryAnalysisRequest,
+  executeGeometryAnalysisRequest,
+  geometryAnalysisIdentityForRequest,
+  geometryAnalysisRequestParameters,
+  type GeometryAnalysisPayload,
+} from "./analysisPipeline";
+
+const triangle: SurfaceMeshData = {
+  label: "triangle",
+  positions: Float32Array.from([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+  indices: Uint32Array.from([0, 1, 2]),
+  normals: null,
+  source: { kind: "detachedMesh" },
+};
+
+const snapshot = (sequence: number, createdAt = sequence) => createGeometryAnalysisSnapshot({
+  mesh: triangle,
+  sourceObjectId: "object-7",
+  sourceObjectName: "Triangle",
+  snapshotSequence: sequence,
+  createdAt,
+});
+
+describe("Geometry AnalysisRequest pipeline", () => {
+  it("captures canonical target, semantic selection, sampling, precision, and output metadata", () => {
+    const source = snapshot(1);
+    const request = createGeometryAnalysisRequest({
+      id: "request-1",
+      kind: "basic-metrics",
+      snapshot: source,
+      sourceRevision: 4,
+      sceneEntityId: "geometry:object-7",
+      selection: {
+        entityId: "face:2",
+        entityType: "face",
+        semanticEntityId: "geometry:object-7:face:2",
+        semanticKind: "surface-face",
+        sourceRevision: 4,
+      },
+      domain: "face",
+      sampling: { strategy: "mesh", sampleCount: 48 },
+      precision: { mode: "double", digits: 10, tolerance: 1e-8 },
+      parameters: { units: "scene" },
+      requestedOutputs: ["scalar", "point", "table"],
+      createdAt: 12,
+    });
+    expect(request).toMatchObject({
+      target: { objectId: "object-7", sourceRevision: 4, sceneEntityId: "geometry:object-7" },
+      selection: { semanticEntityId: "geometry:object-7:face:2" },
+      domain: "face",
+      sampling: { sampleCount: 48 },
+      precision: { digits: 10, tolerance: 1e-8 },
+      requestedOutputs: ["scalar", "point", "table"],
+    });
+    expect(geometryAnalysisIdentityForRequest(request, source).key).toBe("geometry:object-7@4");
+  });
+
+  it("executes live metrics through the shared result store and reuses an exact cached request", () => {
+    const source = snapshot(2);
+    const request = createGeometryAnalysisRequest({
+      id: "request-2",
+      kind: "basic-metrics",
+      snapshot: source,
+      sourceRevision: 8,
+      domain: "object",
+      requestedOutputs: ["scalar", "point", "table"],
+      createdAt: 20,
+    });
+    const first = executeGeometryAnalysisRequest({
+      store: createGeometryAnalysisResultStore(),
+      registry: createGeometryAnalysisRegistry(),
+      request,
+      snapshot: source,
+      now: 21,
+    });
+    expect(first.cacheHit).toBe(false);
+    expect(first.result).toMatchObject({
+      state: "ready",
+      backend: "Geometry analytical core",
+      identity: { revision: "8" },
+      payload: {
+        summary: { area: 0.5 },
+        provenance: { algorithm: "triangulated-object-metrics-v1", sourceRevision: 8 },
+      },
+    });
+    expect(first.result.payload?.outputs.map((output) => output.kind)).toEqual(["scalar", "scalar", "point", "table"]);
+    expect(first.store.history).toHaveLength(1);
+
+    const cached = executeGeometryAnalysisRequest({
+      store: first.store,
+      registry: createGeometryAnalysisRegistry(),
+      request,
+      snapshot: source,
+      now: 30,
+    });
+    expect(cached.cacheHit).toBe(true);
+    expect(cached.store).toBe(first.store);
+    expect(cached.result.resultVersion).toBe(first.result.resultVersion);
+  });
+
+  it("keeps stale payloads and computation history when a source revision changes", () => {
+    const firstSnapshot = snapshot(3);
+    const firstRequest = createGeometryAnalysisRequest({
+      id: "request-3",
+      kind: "basic-metrics",
+      snapshot: firstSnapshot,
+      sourceRevision: 1,
+      domain: "object",
+      requestedOutputs: ["summary"],
+    });
+    const first = executeGeometryAnalysisRequest({
+      store: createGeometryAnalysisResultStore(),
+      registry: createGeometryAnalysisRegistry(),
+      request: firstRequest,
+      snapshot: firstSnapshot,
+      now: 40,
+    });
+    const nextSnapshot = snapshot(4);
+    const nextRequest = createGeometryAnalysisRequest({
+      id: "request-4",
+      kind: "basic-metrics",
+      snapshot: nextSnapshot,
+      sourceRevision: 2,
+      domain: "object",
+      requestedOutputs: ["summary"],
+    });
+    const next = executeGeometryAnalysisRequest({
+      store: first.store,
+      registry: createGeometryAnalysisRegistry(),
+      request: nextRequest,
+      snapshot: nextSnapshot,
+      now: 50,
+    });
+    const oldIdentity = geometryAnalysisIdentityForRequest(firstRequest, firstSnapshot);
+    const stale = getGeometryAnalysisResult<GeometryAnalysisPayload>(next.store, oldIdentity, "basic-metrics");
+    expect(stale?.state).toBe("stale");
+    expect(stale?.payload?.summary.area).toBe(0.5);
+    expect(next.store.history.some((record) => record.identity.revision === "1" && record.state === "stale")).toBe(true);
+  });
+
+  it("resolves exact dependency keys and invalidates dependent reports", () => {
+    const source = snapshot(5);
+    const request = createGeometryAnalysisRequest({
+      id: "request-5",
+      kind: "basic-metrics",
+      snapshot: source,
+      sourceRevision: 5,
+      domain: "object",
+      requestedOutputs: ["summary"],
+    });
+    const registry = registerGeometryAnalysis(createGeometryAnalysisRegistry(), {
+      kind: "measurement-report",
+      label: "Measurement report",
+      family: "geometry-report",
+      domain: "object",
+      dependencies: [{ kind: "basic-metrics" }],
+    });
+    const measured = executeGeometryAnalysisRequest({
+      store: createGeometryAnalysisResultStore(),
+      registry,
+      request,
+      snapshot: source,
+      now: 60,
+    });
+    const identity = geometryAnalysisIdentityForRequest(request, source);
+    const dependency = measured.result;
+    let store = upsertGeometryAnalysisResult(measured.store, {
+      identity,
+      kind: "measurement-report",
+      payload: { outputs: [] },
+      dependencies: [{
+        kind: "basic-metrics",
+        variant: "default",
+        state: dependency.state,
+        key: `${identity.key}:basic-metrics:default`,
+        resultVersion: dependency.resultVersion,
+      }],
+      parameters: geometryAnalysisRequestParameters(request),
+      now: 62,
+    });
+    store = upsertGeometryAnalysisResult(store, {
+      identity,
+      kind: "basic-metrics",
+      payload: dependency.payload,
+      parameters: { ...geometryAnalysisRequestParameters(request), recompute: true },
+      now: 63,
+    });
+    expect(getGeometryAnalysisResult(store, identity, "measurement-report")?.state).toBe("stale");
+  });
+
+  it("adds a new family with a registry definition and Geometry implementation only", () => {
+    const source = snapshot(6);
+    const registry = registerGeometryAnalysis(createGeometryAnalysisRegistry(), {
+      kind: "curve-speed",
+      label: "Curve speed",
+      family: "geometry-curve",
+      domain: "curve",
+    });
+    const request = createGeometryAnalysisRequest({
+      id: "request-6",
+      kind: "curve-speed",
+      snapshot: source,
+      sourceRevision: 9,
+      domain: "curve",
+      parameters: { parameter: 0.25 },
+      sampling: { strategy: "exact" },
+      precision: { mode: "exact" },
+      requestedOutputs: ["scalar"],
+    });
+    const implementations = new Map([
+      ["curve-speed", () => ({
+        algorithm: "test-analytic-curve-v1",
+        outputs: [{ id: "speed", label: "Speed", kind: "scalar" as const, value: 2 }],
+        summary: { speed: 2 },
+        warnings: [],
+      })],
+    ]);
+    const execution = executeGeometryAnalysisRequest({
+      store: createGeometryAnalysisResultStore(),
+      registry,
+      request,
+      snapshot: source,
+      implementations,
+      now: 70,
+    });
+    expect(execution.result.payload?.summary.speed).toBe(2);
+    expect(execution.result.parameters).toMatchObject({ domain: "curve", parameter: 0.25 });
+  });
+});

@@ -202,6 +202,12 @@ test("Geometry professional shell keeps current workspaces and tools reachable",
     await page.getByTestId("geometry-professional-tool-analyze").click();
     await page.getByRole("button", { name: "volume / area / centroid / bounds", exact: true }).click();
     await expect(page.getByTestId("geometry-analysis-result-semantic-source")).toContainText("geometry-semantic-v1");
+    await expect(page.getByTestId("geometry-analysis-result-lifecycle")).toContainText("ready");
+    await expect(page.getByTestId("geometry-analysis-result-request")).toContainText("scalar / point / table / warning");
+    await expect(page.getByTestId("geometry-analysis-result-provenance")).toContainText("Geometry analytical core");
+    await expect(page.getByTestId("geometry-analysis-result-fingerprint")).toHaveAttribute("title", /sourceRevision/);
+    await expect(page.getByTestId("geometry-analysis-result-computation-history")).toContainText("1 run");
+    await expect(page.getByTestId("geometry-analysis-result-history")).toHaveValue(/geometry:/);
     await page.getByTestId("geometry-professional-tool-construct").click();
     await expect(page.getByTestId("geometry-construct-panel-tab-create")).toBeVisible();
     await expect(page.getByTestId("geometry-construct-taxonomy")).toBeVisible();
