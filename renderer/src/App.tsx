@@ -35,6 +35,7 @@ import { DiskStatsPanel } from "./components/DiskStatsPanel";
 import { WorkbookPanel } from "./components/WorkbookPanel";
 import { GeometryPickReadout } from "./components/GeometryPickReadout";
 import { GeometryAnalysisInspectorPanel } from "./components/GeometryAnalysisInspectorPanel";
+import { GeometryTessellationSettingsPanel } from "./components/GeometryTessellationSettingsPanel";
 import { UnifiedSelectionInspector } from "./components/UnifiedSelectionInspector";
 import { GeometrySemanticNavigatorPanel } from "./components/GeometrySemanticNavigatorPanel";
 import { GeometryConstructCatalogPanel } from "./components/GeometryConstructCatalogPanel";
@@ -351,6 +352,17 @@ import {
   mergeIntoGlobalGeometryMeshTraceMap,
   propagateTraceMapThroughMeshMutation,
 } from "./geometry/geometryMeshTraceMap";
+import {
+  DEFAULT_GEOMETRY_TESSELLATION_PRESET,
+  createGeometryMeshRelation,
+  findGeometryMeshRelations,
+  getGlobalGeometryMeshRelationStore,
+  markGeometryMeshRelationsStale,
+  regenerateGeometryMeshRelation,
+  registerGlobalGeometryMeshRelation,
+  type GeometryMeshRelation,
+  type GeometryTessellationPreset,
+} from "./geometry/geometryMeshRelations";
 import { computeMeshSection, sectionPlaneNormalFromPreset, type SectionPlanePreset } from "./geometry/meshSection";
 import {
   buildConstructionDependencyTree,
@@ -1120,6 +1132,7 @@ type MeshPromotionOperationEntry = {
   result?: MeshOperationResultSummary;
 };
 type MeshPromotionTraceState = {
+  relationId: string;
   sourceGeometryObjectId: string;
   sourceGeometryObjectName: string;
   snapshotIndex: number;
@@ -2785,6 +2798,14 @@ const cloneGeometryPromotionMetadata = (
   if (!promotion) return null;
   return {
     ...promotion,
+    sourceGeometryKind: promotion.sourceGeometryKind ?? "procedural-object",
+    sourceRevision: Number.isFinite(promotion.sourceRevision) ? promotion.sourceRevision : 0,
+    relationId: promotion.relationId ?? null,
+    relationRole: promotion.relationRole ?? "saved-derived-mesh",
+    tessellationPreset: {
+      ...DEFAULT_GEOMETRY_TESSELLATION_PRESET,
+      ...(promotion.tessellationPreset ?? {}),
+    },
     sourceOperationHistory: [...(promotion.sourceOperationHistory ?? [])],
     bounds: promotion.bounds
       ? { min: [...promotion.bounds.min] as [number, number, number], max: [...promotion.bounds.max] as [number, number, number] }
@@ -13070,6 +13091,9 @@ const App: React.FC = () => {
   const [geometrySelectedVariantCompareId, setGeometrySelectedVariantCompareId] = useState<string | null>(null);
   const [geometryShowAllVariantsGhosted, setGeometryShowAllVariantsGhosted] = useState(false);
   const [geometryPromotionMode, setGeometryPromotionMode] = useState<GeometryToMeshPromotionMode>("editable_mesh_object");
+  const [geometryTessellationPreset, setGeometryTessellationPreset] = useState<GeometryTessellationPreset>(() => ({
+    ...DEFAULT_GEOMETRY_TESSELLATION_PRESET,
+  }));
   const [geometryObjectLiveRebuild, setGeometryObjectLiveRebuild] = useState(true);
   const [geometryObjectParamDrafts, setGeometryObjectParamDrafts] = useState<
     Record<string, Record<string, number | boolean | string>>
@@ -19548,6 +19572,9 @@ const App: React.FC = () => {
         const promoted = promoteGeometryToMesh({
           mesh: bakedMesh,
           sourceGeometryId: sourceObject.id,
+          sourceRevision: geometryObjectRevisionById[sourceObject.id] ?? 0,
+          tessellationPreset: geometryTessellationPreset,
+          traceMeshId: sourceObject.id,
           sourceOperationHistory: ["Auto-promoted for direct geometry edit"],
           promotionMode: "editable_mesh_object",
           labelOverride: bakedMesh.label,
@@ -23459,6 +23486,10 @@ const App: React.FC = () => {
       const promoted = promoteGeometryToMesh({
         mesh: bakedMesh,
         sourceGeometryId: geometrySelectedSceneObject.promotion?.sourceGeometryId ?? geometrySelectedSceneObject.id,
+        sourceRevision: geometrySelectedSceneObject.promotion?.sourceRevision ?? geometryObjectRevisionById[geometrySelectedSceneObject.id] ?? 0,
+        tessellationPreset: geometrySelectedSceneObject.promotion?.tessellationPreset ?? geometryTessellationPreset,
+        relationId: geometrySelectedSceneObject.promotion?.relationId,
+        traceMeshId: geometrySelectedSceneObject.id,
         sourceOperationHistory: promotionHistory,
         promotionMode: geometrySelectedSceneObject.promotion?.promotionMode ?? geometryPromotionMode,
         createdAt: geometrySelectedSceneObject.promotion?.createdAt,
@@ -23498,6 +23529,9 @@ const App: React.FC = () => {
         `${geometrySelectedSceneObject.name} (baked mesh)`
       ),
       sourceGeometryId: geometrySelectedSceneObject.id,
+      sourceRevision: geometryObjectRevisionById[geometrySelectedSceneObject.id] ?? 0,
+      tessellationPreset: geometryTessellationPreset,
+      traceMeshId: geometrySelectedSceneObject.id,
       sourceOperationHistory: ["Pipeline: Bake transform into mesh"],
       promotionMode: geometryPromotionMode,
       labelOverride: `${geometrySelectedSceneObject.name} (baked mesh)`,
@@ -33877,13 +33911,41 @@ const App: React.FC = () => {
   const activeDataset = datasetKind === "volume" ? volumeDataset : null;
   const surfaceMeshData = meshDataset?.mesh ?? null;
   const beginMeshPromotionTrace = useCallback(
-    (sourceObjectId: string, sourceObjectName: string, meshLabel: string, mesh: SurfaceMeshData) => {
+    (sourceObjectId: string, sourceObjectName: string, meshLabel: string, mesh: SurfaceMeshData, sourceRevision = 0) => {
       const counters = meshPromotionSnapshotCounterRef.current;
       const nextIndex = (counters.get(sourceObjectId) ?? 0) + 1;
       counters.set(sourceObjectId, nextIndex);
       const snapshotLabel = `${sourceObjectName} / Mesh Snapshot ${nextIndex}`;
+      const relationId = `geometry-mesh:${sourceObjectId}:analysis`;
+      const traceMeshId = `mesh:${snapshotLabel}`;
+      const traceMap = buildTraceMapForPromotion({
+        sourceGeometryId: sourceObjectId,
+        meshId: traceMeshId,
+        sourceMesh: mesh,
+        promotedMesh: mesh,
+        promotionMode: "analysis_ready_mesh",
+      });
+      const previousRelation = getGlobalGeometryMeshRelationStore().relations[relationId] ?? null;
+      const relation = previousRelation
+        ? regenerateGeometryMeshRelation(previousRelation, {
+            nextMeshId: traceMeshId,
+            nextSourceRevision: sourceRevision,
+            traceMap: traceMap.toSnapshot(),
+            tessellationPreset: geometryTessellationPreset,
+          })
+        : createGeometryMeshRelation({
+            id: relationId,
+            sourceGeometryId: sourceObjectId,
+            meshId: traceMeshId,
+            role: "derived-analysis-mesh",
+            sourceRevision,
+            tessellationPreset: geometryTessellationPreset,
+            traceMap: traceMap.toSnapshot(),
+          });
+      registerGlobalGeometryMeshRelation(relation);
       setMeshPromotionStatus(null);
       setMeshPromotionTrace({
+        relationId,
         sourceGeometryObjectId: sourceObjectId,
         sourceGeometryObjectName: sourceObjectName,
         snapshotIndex: nextIndex,
@@ -33902,7 +33964,7 @@ const App: React.FC = () => {
       });
       return snapshotLabel;
     },
-    []
+    [geometryTessellationPreset]
   );
   const appendMeshPromotionOperation = useCallback((label: string, result?: MeshOperationResultSummary) => {
     if (!label.trim()) return;
@@ -33940,6 +34002,7 @@ const App: React.FC = () => {
       const nextIndex = Math.max(1, counters.get(sourceId) ?? 1);
       counters.set(sourceId, nextIndex);
       setMeshPromotionTrace({
+        relationId: `geometry-mesh:${sourceId}:analysis`,
         sourceGeometryObjectId: sourceId,
         sourceGeometryObjectName: sourceName,
         snapshotIndex: nextIndex,
@@ -34064,7 +34127,7 @@ const App: React.FC = () => {
     };
     const shouldForkSnapshot = trace.frozen || meshPromotionHasIndependentEdits;
     if (shouldForkSnapshot) {
-      const nextSnapshotLabel = beginMeshPromotionTrace(sourceObject.id, sourceObject.name, refreshedBase.label, refreshedBase);
+      const nextSnapshotLabel = beginMeshPromotionTrace(sourceObject.id, sourceObject.name, refreshedBase.label, refreshedBase, geometryObjectRevisionById[sourceObject.id] ?? 0);
       setMeshDataset(applySurfaceMeshOps(cloneSurfaceMeshData(refreshedBase, nextSnapshotLabel)));
       setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
@@ -35060,7 +35123,7 @@ const App: React.FC = () => {
       uvs: transformed.uvs ? Float32Array.from(transformed.uvs) : null,
       source,
     };
-    const snapshotLabel = beginMeshPromotionTrace(obj.id, obj.name, baseBaked.label, baseBaked);
+    const snapshotLabel = beginMeshPromotionTrace(obj.id, obj.name, baseBaked.label, baseBaked, geometryObjectRevisionById[obj.id] ?? 0);
     const baked: SurfaceMeshData = {
       label: snapshotLabel,
       positions: Float32Array.from(baseBaked.positions),
@@ -35212,6 +35275,7 @@ const App: React.FC = () => {
       return;
     }
     const created: GeometryDatasetMeshObject[] = visibleSceneMeshes.map((entry, idx) => {
+      const meshObjectId = makeId();
       const sourceMesh = computeVertexNormals(toDetachedMeshData(entry.mesh, `${entry.object.name} (mesh group)`));
       const sourceHistory =
         "mesh" in entry.object
@@ -35220,12 +35284,15 @@ const App: React.FC = () => {
       const promoted = promoteGeometryToMesh({
         mesh: sourceMesh,
         sourceGeometryId: entry.object.id,
+        sourceRevision: geometryObjectRevisionById[entry.object.id] ?? 0,
+        tessellationPreset: geometryTessellationPreset,
+        traceMeshId: meshObjectId,
         sourceOperationHistory: sourceHistory,
         promotionMode: geometryPromotionMode,
         labelOverride: `${entry.object.name} (mesh group)`,
       });
       return {
-        id: makeId(),
+        id: meshObjectId,
         name: `${entry.object.name} mesh ${idx + 1}`,
         mesh: toDetachedMeshData(promoted.mesh, `${entry.object.name} (mesh group)`),
         transform: {
@@ -35316,6 +35383,9 @@ const App: React.FC = () => {
     const promoted = promoteGeometryToMesh({
       mesh: toDetachedMeshData(resolved.mesh, `${resolved.object.name} editable mesh`),
       sourceGeometryId: resolved.object.id,
+      sourceRevision: geometryObjectRevisionById[resolved.object.id] ?? 0,
+      tessellationPreset: geometryTessellationPreset,
+      traceMeshId: duplicateId,
       sourceOperationHistory: buildPromotionOperationHistory(resolved.object.id, ["Duplicate as editable mesh"]),
       promotionMode: "editable_mesh_object",
       labelOverride: `${resolved.object.name} editable mesh`,
@@ -35456,15 +35526,20 @@ const App: React.FC = () => {
         `${geometrySelectedSceneObject.name} section curve`
       )
     );
+    const sectionObjectId = makeId();
     const promoted = promoteGeometryToMesh({
       mesh: sectionMesh,
       sourceGeometryId: geometrySelectedSceneObject.id,
+      sourceRevision: geometryObjectRevisionById[geometrySelectedSceneObject.id] ?? 0,
+      sourceGeometryKind: "analytic-curve",
+      tessellationPreset: geometryTessellationPreset,
+      traceMeshId: sectionObjectId,
       sourceOperationHistory: ["Pipeline: Promote section as mesh object"],
       promotionMode: geometryPromotionMode,
       labelOverride: `${geometrySelectedSceneObject.name} section curve`,
     });
     const sectionObject: GeometryDatasetMeshObject = {
-      id: makeId(),
+      id: sectionObjectId,
       name: `${geometrySelectedSceneObject.name} section curve`,
       mesh: toDetachedMeshData(promoted.mesh, `${geometrySelectedSceneObject.name} section curve`),
       transform: {
@@ -35565,6 +35640,9 @@ const App: React.FC = () => {
     const promoted = promoteGeometryToMesh({
       mesh: cloneSurfaceMeshData(sourceMesh, `${geometrySelectedSceneObject.name} (mesh)`),
       sourceGeometryId: geometrySelectedSceneObject.id,
+      sourceRevision: geometryObjectRevisionById[geometrySelectedSceneObject.id] ?? 0,
+      tessellationPreset: geometryTessellationPreset,
+      traceMeshId: geometrySelectedSceneObject.id,
       sourceOperationHistory: buildPromotionOperationHistory(geometrySelectedSceneObject.id, ["Bake to mesh object"]),
       promotionMode: geometryPromotionMode,
       labelOverride: `${geometrySelectedSceneObject.name} (mesh)`,
@@ -42896,7 +42974,8 @@ const App: React.FC = () => {
         snapshot.sourceObjectId,
         snapshot.sourceObjectName,
         meshForTrace.label,
-        meshForTrace
+        meshForTrace,
+        geometryObjectRevisionById[snapshot.sourceObjectId] ?? 0
       );
       const mappedSelection = mapGeometrySemanticSelectionToMesh({
         selection: sourceSelection,
@@ -57442,6 +57521,11 @@ case "mobius":
     const promoted = promoteGeometryToMesh({
       mesh: surfaceMeshData,
       sourceGeometryId: target.promotion?.sourceGeometryId ?? target.id,
+      sourceRevision: target.promotion?.sourceRevision ?? geometryObjectRevisionById[target.id] ?? 0,
+      sourceGeometryKind: target.promotion?.sourceGeometryKind ?? "dataset-object",
+      tessellationPreset: target.promotion?.tessellationPreset ?? geometryTessellationPreset,
+      relationId: target.promotion?.relationId,
+      traceMeshId: target.id,
       sourceOperationHistory,
       promotionMode: target.promotion?.promotionMode ?? geometryPromotionMode,
       createdAt: target.promotion?.createdAt,
@@ -67688,19 +67772,24 @@ case "mobius":
           buildSurfaceMeshFromGeometry(hullGeometry, `${source.name} convex hull`, { kind: "convexHull" }, { mergeVertices: true })
         );
         hullGeometry.dispose();
-        const promoted = promoteGeometryToMesh({
-          mesh: hullMesh,
-          sourceGeometryId: source.id,
-          sourceOperationHistory: ["Derived: Convex hull"],
-          promotionMode: geometryPromotionMode,
-          labelOverride: `${source.name} convex hull`,
-        });
         const existing = unifiedManualDerived.find(
           (entry) =>
             (entry.operation ?? geometryDerivedOperationFromType(entry.type)) === "convex-hull" &&
             entry.linkedObjectIds?.includes(source.id)
         );
         const resultObjectId = existing?.resultObjectId ?? makeId();
+        const promoted = promoteGeometryToMesh({
+          mesh: hullMesh,
+          sourceGeometryId: source.id,
+          sourceRevision: geometryObjectRevisionById[source.id] ?? 0,
+          sourceGeometryKind: "solid",
+          tessellationPreset: geometryTessellationPreset,
+          traceMeshId: resultObjectId,
+          relationId: existing?.resultObjectId ? `geometry-mesh:${source.id}:${existing.resultObjectId}` : null,
+          sourceOperationHistory: ["Derived: Convex hull"],
+          promotionMode: geometryPromotionMode,
+          labelOverride: `${source.name} convex hull`,
+        });
         const nextObject: GeometryDatasetMeshObject = {
           id: resultObjectId,
           name: `${source.name} convex hull`,
@@ -67919,6 +68008,89 @@ case "mobius":
       "unknown source";
     return { entry, sourceName };
   }, [geometryDatasetMeshObjects, geometryObjects, geometrySelectedSceneObject?.id, unifiedManualDerived]);
+  useEffect(() => {
+    const current = getGlobalGeometryMeshRelationStore();
+    for (const object of geometryDatasetMeshObjects) {
+      const promotion = object.promotion;
+      if (!promotion?.sourceGeometryId || !promotion.relationId || current.relations[promotion.relationId]) continue;
+      registerGlobalGeometryMeshRelation(createGeometryMeshRelation({
+        id: promotion.relationId,
+        sourceGeometryId: promotion.sourceGeometryId,
+        sourceKind: promotion.sourceGeometryKind,
+        meshId: object.id,
+        role: promotion.relationRole,
+        sourceRevision: promotion.sourceRevision,
+        tessellationPreset: promotion.tessellationPreset,
+        traceMap: promotion.traceMap,
+        now: promotion.createdAt,
+      }));
+    }
+  }, [geometryDatasetMeshObjects]);
+  const geometrySelectedMeshRelations = useMemo<GeometryMeshRelation[]>(() => {
+    const selectedId = geometrySelectedSceneObject?.id;
+    if (!selectedId) return [];
+    let marked = getGlobalGeometryMeshRelationStore();
+    for (const relation of Object.values(marked.relations)) {
+      marked = markGeometryMeshRelationsStale(
+        marked,
+        relation.sourceGeometryId,
+        geometryObjectRevisionById[relation.sourceGeometryId] ?? relation.sourceRevision
+      );
+    }
+    return Object.values(marked.relations)
+      .filter((relation) => relation.sourceGeometryId === selectedId || relation.meshId === selectedId)
+      .sort((left, right) => right.updatedAt - left.updatedAt);
+  }, [geometryDatasetMeshObjects, geometryObjectRevisionById, geometrySelectedSceneObject?.id]);
+  const handleRegenerateGeometryMeshRelation = useCallback((relation: GeometryMeshRelation) => {
+    const source = resolveGeometrySceneMeshById(relation.sourceGeometryId);
+    if (!source) {
+      setGeometryCreateActionStatus("Linked Geometry source is unavailable; the relation remains inspectable as broken provenance.");
+      return;
+    }
+    const sourceRevision = geometryObjectRevisionById[relation.sourceGeometryId] ?? relation.sourceRevision;
+    const promoted = promoteGeometryToMesh({
+      mesh: source.mesh,
+      sourceGeometryId: relation.sourceGeometryId,
+      sourceGeometryKind: relation.sourceKind,
+      sourceRevision,
+      sourceOperationHistory: ["Regenerated linked mesh after Geometry revision"],
+      promotionMode: "analysis_ready_mesh",
+      relationId: relation.id,
+      relationRole: relation.role,
+      tessellationPreset: relation.tessellationPreset,
+      traceMeshId: relation.meshId,
+      comparisonTargetIds: relation.comparisonTargetIds,
+    });
+    const regenerated = regenerateGeometryMeshRelation(relation, {
+      nextMeshId: relation.meshId,
+      nextSourceRevision: sourceRevision,
+      traceMap: promoted.metadata.traceMap,
+      tessellationPreset: relation.tessellationPreset,
+    });
+    registerGlobalGeometryMeshRelation(regenerated);
+    setGeometryDatasetMeshObjects((previous) => previous.map((entry) =>
+      entry.id === relation.meshId
+        ? { ...entry, mesh: toDetachedMeshData(promoted.mesh, entry.name), promotion: promoted.metadata }
+        : entry
+    ));
+    setGeometryCreateActionStatus(`Regenerated linked Mesh at Geometry revision ${sourceRevision}; history and comparison targets preserved.`);
+  }, [geometryObjectRevisionById, resolveGeometrySceneMeshById]);
+  const handleOpenGeometryMeshRelation = useCallback((relation: GeometryMeshRelation) => {
+    const linked = geometryDatasetMeshObjects.find((entry) => entry.id === relation.meshId) ?? null;
+    if (linked) {
+      setGeometrySelectedObjectId(linked.id);
+      setGeometryRightPanelTab("provenance");
+      accentGeometryMeshInfo(linked.id);
+      setGeometryCreateActionStatus(`Opened linked ${relation.role}: ${linked.name}.`);
+      return;
+    }
+    const source = resolveGeometrySceneMeshById(relation.sourceGeometryId);
+    if (!source) return;
+    setMeshDataset(source.mesh);
+    setMode("surfaces");
+    setDatasetKind("mesh");
+    setMeshPromotionStatus(`Opened first-class ${relation.role} relation with ${relation.sourceKind} source r${relation.sourceRevision}.`);
+  }, [geometryDatasetMeshObjects, resolveGeometrySceneMeshById, setMeshDataset]);
 
   const unifiedObjectModel = useMemo(() => {
     const raw: Array<Omit<UnifiedObjectNode, "derivedProductIds">> = [];
@@ -91593,6 +91765,10 @@ case "mobius":
                               ))}
                             </select>
                           </label>
+                          <GeometryTessellationSettingsPanel
+                            value={geometryTessellationPreset}
+                            onChange={setGeometryTessellationPreset}
+                          />
                         </div>
                         <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button type="button" onClick={() => runUnifiedPipelineAction("convertMesh")} style={{ fontSize: 11 }}>
@@ -92286,6 +92462,10 @@ case "mobius":
                               ))}
                             </select>
                           </label>
+                          <GeometryTessellationSettingsPanel
+                            value={geometryTessellationPreset}
+                            onChange={setGeometryTessellationPreset}
+                          />
                         </div>
                         <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button type="button" onClick={() => runUnifiedPipelineAction("convertMesh")} style={{ fontSize: 11 }}>
@@ -100625,6 +100805,22 @@ case "mobius":
                             }}
                           >
                             <div style={{ fontSize: 12, fontWeight: 700 }}>Dependency Graph</div>
+                            <div data-testid="geometry-mesh-relations" style={{ border: "1px solid #bfdbfe", borderRadius: 8, background: "#f8fbff", padding: 7, display: "grid", gap: 6 }}>
+                              <strong>Geometry ↔ Mesh relations</strong>
+                              {geometrySelectedMeshRelations.length ? geometrySelectedMeshRelations.map((relation) => (
+                                <div key={relation.id} style={{ border: "1px solid #dbeafe", borderRadius: 6, background: "#fff", padding: 6, display: "grid", gap: 4 }}>
+                                  <div><strong>{relation.role}</strong> · {relation.status} · {relation.ephemeral ? "ephemeral display" : "saved scene relation"}</div>
+                                  <div>Source {relation.sourceKind} · Geometry r{relation.sourceRevision} · Mesh {relation.meshId}</div>
+                                  <div>Preset {relation.tessellationPreset.label} · chord {relation.tessellationPreset.chordTolerance} · angle {relation.tessellationPreset.angularTolerance} · max edge {relation.tessellationPreset.maximumEdgeLength} · density {relation.tessellationPreset.parameterDensity}</div>
+                                  <div>Normals {relation.tessellationPreset.normalStrategy} · welding {relation.tessellationPreset.welding ? `on (${relation.tessellationPreset.weldTolerance})` : "off"} · boundaries {relation.tessellationPreset.preserveBoundaries ? "preserved" : "not preserved"}</div>
+                                  <div>Trace {relation.traceMap ? "available" : "unavailable"} · regenerations {relation.regenerationHistory.length} · comparison targets {relation.comparisonTargetIds.length}</div>
+                                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                    <button type="button" onClick={() => handleOpenGeometryMeshRelation(relation)}>Open linked Mesh</button>
+                                    <button type="button" onClick={() => handleRegenerateGeometryMeshRelation(relation)} disabled={relation.ephemeral}>Regenerate linked Mesh</button>
+                                  </div>
+                                </div>
+                              )) : <div style={{ color: "#64748b" }}>No saved Geometry↔Mesh relation for the current object. Display tessellation remains ephemeral until a Mesh is derived.</div>}
+                            </div>
                             {geometryLineageInspectorData && (
                               <GeometryLineageInspectorPanel
                                 label={geometryLineageInspectorData.node.label}

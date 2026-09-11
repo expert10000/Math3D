@@ -7,6 +7,14 @@ import {
   mergeIntoGlobalGeometryMeshTraceMap,
   type GeometryMeshTraceMapSnapshot,
 } from "./geometryMeshTraceMap";
+import {
+  createGeometryMeshRelation,
+  normalizeGeometryTessellationPreset,
+  registerGlobalGeometryMeshRelation,
+  type GeometryMeshRelationRole,
+  type GeometryRelationSourceKind,
+  type GeometryTessellationPreset,
+} from "./geometryMeshRelations";
 
 export type GeometryToMeshPromotionMode =
   | "raw_mesh"
@@ -32,8 +40,13 @@ export type GeometryPromotionBounds = {
 
 export type GeometryToMeshPromotionMetadata = {
   sourceGeometryId: string | null;
+  sourceGeometryKind: GeometryRelationSourceKind;
+  sourceRevision: number;
   sourceOperationHistory: string[];
   promotionMode: GeometryToMeshPromotionMode;
+  relationId: string | null;
+  relationRole: GeometryMeshRelationRole;
+  tessellationPreset: GeometryTessellationPreset;
   traceMap?: GeometryMeshTraceMapSnapshot | null;
   vertexCount: number;
   faceCount: number;
@@ -57,6 +70,13 @@ export type PromoteGeometryToMeshArgs = {
   labelOverride?: string;
   traceMeshId?: string | null;
   registerTraceInGlobalMap?: boolean;
+  registerSceneRelation?: boolean;
+  sourceGeometryKind?: GeometryRelationSourceKind;
+  sourceRevision?: number;
+  relationId?: string | null;
+  relationRole?: GeometryMeshRelationRole;
+  tessellationPreset?: Partial<GeometryTessellationPreset> | null;
+  comparisonTargetIds?: string[];
 };
 
 const cloneMesh = (mesh: SurfaceMeshData, labelOverride?: string): SurfaceMeshData => ({
@@ -137,6 +157,10 @@ export const promoteGeometryToMesh = (args: PromoteGeometryToMeshArgs): Geometry
   const sourceOperationHistory = args.sourceOperationHistory ?? [];
   const createdAt = Number.isFinite(args.createdAt) ? Number(args.createdAt) : Date.now();
   const mode = args.promotionMode;
+  const sourceRevision = Math.max(0, Math.floor(Number(args.sourceRevision ?? 0)));
+  const sourceGeometryKind = args.sourceGeometryKind ?? "procedural-object";
+  const relationRole = args.relationRole ?? (mode === "analysis_ready_mesh" ? "derived-analysis-mesh" : "saved-derived-mesh");
+  const tessellationPreset = normalizeGeometryTessellationPreset(args.tessellationPreset);
 
   let mesh = cloneMesh(args.mesh, args.labelOverride);
   mesh = ensureTriangulatedIndices(mesh);
@@ -181,10 +205,30 @@ export const promoteGeometryToMesh = (args: PromoteGeometryToMeshArgs): Geometry
   if (traceMap && args.registerTraceInGlobalMap !== false) {
     mergeIntoGlobalGeometryMeshTraceMap(traceMap);
   }
+  const relationId = sourceGeometryId ? (args.relationId?.trim() || `geometry-mesh:${sourceGeometryId}:${traceMeshId}`) : null;
+  if (sourceGeometryId && relationId && args.registerSceneRelation !== false) {
+    registerGlobalGeometryMeshRelation(createGeometryMeshRelation({
+      id: relationId,
+      sourceGeometryId,
+      sourceKind: sourceGeometryKind,
+      meshId: traceMeshId,
+      role: relationRole,
+      sourceRevision,
+      tessellationPreset,
+      traceMap: traceMap?.toSnapshot() ?? null,
+      comparisonTargetIds: args.comparisonTargetIds,
+      now: createdAt,
+    }));
+  }
   const metadata: GeometryToMeshPromotionMetadata = {
     sourceGeometryId,
+    sourceGeometryKind,
+    sourceRevision,
     sourceOperationHistory: [...sourceOperationHistory],
     promotionMode: mode,
+    relationId,
+    relationRole,
+    tessellationPreset,
     traceMap: traceMap?.toSnapshot() ?? null,
     vertexCount: Math.floor(mesh.positions.length / 3),
     faceCount: faceCountFromMesh(mesh),
