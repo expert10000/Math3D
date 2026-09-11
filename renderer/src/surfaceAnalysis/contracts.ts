@@ -153,6 +153,29 @@ export type SurfaceDerivedMeshPayload = {
   correspondenceId?: string;
 };
 
+export type SurfaceDifferentialFieldPayload = {
+  kind: "differential";
+  sampleCount: number;
+  parameters: Float64Array;
+  positions: Float64Array;
+  firstDerivatives: Float64Array;
+  secondDerivatives: Float64Array;
+  normals: Float64Array;
+  firstFundamentalForms: Float64Array;
+  secondFundamentalForms: Float64Array;
+  shapeOperators: Float64Array;
+  gaussianCurvature: Float64Array;
+  meanCurvature: Float64Array;
+  principalCurvatures: Float64Array;
+  principalDirections: Float64Array;
+  validityMask: Uint8Array;
+  uncertaintyMask: Uint8Array;
+  boundaryMask: Uint8Array;
+  degeneracyMask: Uint8Array;
+  singularityMask: Uint8Array;
+  umbilicMask: Uint8Array;
+};
+
 export type SurfaceAnalysisPayload = {
   version: 1;
   surfaceId: string;
@@ -169,6 +192,7 @@ export type SurfaceAnalysisPayload = {
     | SurfaceFeaturePayload
     | SurfaceChartPayload
     | SurfaceDerivedMeshPayload
+    | SurfaceDifferentialFieldPayload
     | { kind: "summary"; values: Readonly<Record<string, number | string | boolean | null>> };
 };
 
