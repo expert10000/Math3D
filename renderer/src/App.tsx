@@ -261,6 +261,10 @@ import type {
   SurfaceCurvatureClass,
   SurfaceCurvatureFieldPayload,
   SurfaceLocalProbePayload,
+  SurfaceCurveLayersPayload,
+  SurfaceCurveResultLayer,
+  SurfaceFeatureLayersPayload,
+  SurfaceFeatureResultLayer,
 } from "./surfaceAnalysis/contracts";
 import {
   adaptSurfaceDefinition,
@@ -280,6 +284,14 @@ import {
 } from "./surfaceAnalysis/persistence";
 import { createSurfaceCurvatureField, createSurfaceCurvaturePayload, surfaceCurvatureRegionIndices } from "./surfaceAnalysis/surfaceCurvature";
 import { compareSurfaceLocalProbes, createSurfaceLocalProbe, createSurfaceProbePayload } from "./surfaceAnalysis/surfaceProbe";
+import {
+  compareSurfaceResultLayers,
+  createSurfaceCurveLayer,
+  createSurfaceFeatureLayer,
+  createSurfaceLayersPayload,
+  removeSurfaceResultLayer,
+  updateSurfaceResultLayer,
+} from "./surfaceAnalysis/surfaceResultLayers";
 import {
   DEFAULT_GEOMETRY_SEMANTIC_FILTER,
   attachGeometrySemanticSelection,
@@ -41875,6 +41887,14 @@ const App: React.FC = () => {
     () => getSurfaceAnalysisResult<SurfaceAnalysisPayload>(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "surface-probe"),
     [activeCanonicalSurfaceDefinition.identity, surfaceAnalysisResultStore]
   );
+  const activeSurfaceCurvesResult = useMemo(
+    () => getSurfaceAnalysisResult<SurfaceAnalysisPayload>(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "surface-curves"),
+    [activeCanonicalSurfaceDefinition.identity, surfaceAnalysisResultStore]
+  );
+  const activeSurfaceFeaturesResult = useMemo(
+    () => getSurfaceAnalysisResult<SurfaceAnalysisPayload>(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "surface-features"),
+    [activeCanonicalSurfaceDefinition.identity, surfaceAnalysisResultStore]
+  );
   const activeSurfaceAnalysisResult = useMemo(
     () => activeSurfaceCurvatureResult ?? getSurfaceAnalysisResult(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "differential-geometry") ?? activeSurfaceDefinitionResult,
     [activeCanonicalSurfaceDefinition.identity, activeSurfaceCurvatureResult, activeSurfaceDefinitionResult, surfaceAnalysisResultStore]
@@ -43205,6 +43225,8 @@ const App: React.FC = () => {
   const [surfacePinnedProbes, setSurfacePinnedProbes] = useState<SurfaceLocalProbePayload[]>([]);
   const [surfaceProbeCompareLabel, setSurfaceProbeCompareLabel] = useState("Pin or compare two probes.");
   const surfaceProbeCompareBaselineRef = useRef<SurfaceLocalProbePayload | null>(null);
+  const [surfaceLayerCompareLabel, setSurfaceLayerCompareLabel] = useState("Choose a layer to set a comparison baseline.");
+  const surfaceLayerCompareBaselineRef = useRef<SurfaceCurveResultLayer | SurfaceFeatureResultLayer | null>(null);
   const handleSelectSurfaceComputation = useCallback((computation: SurfaceComputationId) => {
     const section: AnalysisFocusedSection = computation === "surface-curves"
       ? "curvature-lines"
@@ -48909,9 +48931,186 @@ case "mobius":
       xy: probe.domainCoordinate.kind === "xy" ? { x: probe.domainCoordinate.x, y: probe.domainCoordinate.y } : undefined,
     });
     setProbeStamp((stamp) => stamp + 1);
-    if (probe.mapping.sampleIndex != null) setInspectIdx(probe.mapping.sampleIndex);
+    if (probe.mapping.sampleIndex != null) {
+      setInspectIdx(probe.mapping.sampleIndex);
+      if (surfaceSampleSet?.samples.length && probe.mapping.sampleIndex < surfaceSampleSet.samples.length) {
+        const selected = new Uint8Array(surfaceSampleSet.samples.length);
+        selected[probe.mapping.sampleIndex] = 1;
+        setSelectionMaskOverride({ selected, count: 1 });
+        setSelectionMask({ selected, count: 1 });
+        setSelectRegionEnabled(true);
+        setSelectionOverlayVisible(true);
+      }
+    }
     setCameraResetToken((token) => token + 1);
-  }, []);
+  }, [surfaceSampleSet?.samples.length]);
+
+  const publishSurfaceLayerResult = useCallback((kind: "surface-curves" | "surface-features", data: SurfaceCurveLayersPayload | SurfaceFeatureLayersPayload) => {
+    const definition = activeCanonicalSurfaceDefinition;
+    const method: SurfaceAnalysisMethod = definition.representation === "mesh-backed" ? "mesh-approximation" : "surface-sampling";
+    const dependencyRequest = createSurfaceAnalysisRequest({
+      requestId: `surface-layer-dependency:${definition.identity.key}`,
+      kind: "differential-geometry",
+      definition,
+      domain: "surface",
+      method,
+      requestedOutputs: ["represented differential data", "validity masks", "method provenance"],
+    });
+    const dependencyPayload: SurfaceAnalysisPayload = {
+      version: 1,
+      surfaceId: definition.identity.surfaceId,
+      surfaceRevision: definition.identity.surfaceRevision,
+      representation: definition.representation,
+      method,
+      units: definition.units,
+      orientation: definition.orientation,
+      warnings: definition.warnings,
+      data: { kind: "summary", values: { source: "surface result-layer adapter", layerFamily: kind } },
+    };
+    const request = createSurfaceAnalysisRequest({
+      requestId: `${kind}:${definition.identity.key}:${Date.now()}`,
+      kind, definition, domain: kind === "surface-curves" ? "curve" : "feature", method,
+      parameters: { layerCount: data.layers.length, lifecycle: "persistent-v1" },
+      requestedOutputs: kind === "surface-curves" ? ["geodesics", "principal curvature lines", "asymptotic curves", "level curves"] : ["ridges", "valleys", "umbilics", "parabolic curves", "critical points", "representation singularities"],
+    });
+    const payload = createSurfaceLayersPayload({ definition, method, data });
+    setSurfaceAnalysisResultStore((store) => {
+      let next = store;
+      if (getSurfaceAnalysisResult(next, definition.identity, "differential-geometry")?.state !== "ready") {
+        next = publishSurfaceAnalysisResult({ store: next, registry: surfaceAnalysisRegistryRef.current, request: dependencyRequest, payload: dependencyPayload, backend: "Represented Surface adapter" });
+      }
+      return publishSurfaceAnalysisResult({ store: next, registry: surfaceAnalysisRegistryRef.current, request, payload, backend: "Surface result-layer adapter" });
+    });
+  }, [activeCanonicalSurfaceDefinition]);
+
+  const polylineTuples = useCallback((lines: PolylineSet | null | undefined): Array<Array<readonly [number, number, number]>> =>
+    (lines ?? []).map((line) => line.map((point) => [point.x, point.y, point.z] as const)), []);
+  const packedPolylineTuples = useCallback((lines: readonly Float32Array[] | undefined): Array<Array<readonly [number, number, number]>> =>
+    (lines ?? []).map((line) => {
+      const points: Array<readonly [number, number, number]> = [];
+      for (let offset = 0; offset + 2 < line.length; offset += 3) points.push([line[offset], line[offset + 1], line[offset + 2]]);
+      return points;
+    }), []);
+  const handleCollectSurfaceCurveLayers = useCallback(() => {
+    const definition = activeCanonicalSurfaceDefinition;
+    const geodesics = polylineTuples(geodesicPathPolylines?.length ? geodesicPathPolylines : geodesicHeatPolylines);
+    const endpointReference = (entry: GeodesicPathEndpoint) => [
+      `mesh:${entry.meshKey}`,
+      `vertex:${entry.vertexIndex}`,
+      entry.faceIndex == null ? null : `face:${entry.faceIndex}`,
+      entry.bary ? `bary:${entry.bary.map((value) => value.toPrecision(8)).join(",")}` : null,
+    ].filter(Boolean).join("/");
+    const seedReferences = [geodesicPathStart, geodesicPathEnd].filter((entry): entry is GeodesicPathEndpoint => !!entry).map(endpointReference);
+    if (geodesicPathSourceMode === "selection-set" && selectionMask?.selected) {
+      selectionMask.selected.forEach((selected, index) => { if (selected) seedReferences.push(`selection-sample:${index}`); });
+    }
+    const shared = { definition, method: "surface-sampling" as SurfaceAnalysisMethod, selectionSource: { kind: geodesicPathSourceMode as "selected-vertex" | "selected-point" | "selection-set", references: seedReferences } };
+    const layers: SurfaceCurveResultLayer[] = [
+      createSurfaceCurveLayer({ ...shared, layerKind: "geodesic", label: "Geodesics", polylines: geodesics, parameters: { solver: geodesicHeatUseContinuous ? "continuous heat" : geodesicPathMethod, constrained: geodesicPathConstrain, smoothing: geodesicPathSmooth }, visible: geodesicPathEnabled || geodesicHeatEnabled, warnings: geodesicPathMessage || geodesicHeatMessage ? [geodesicPathMessage ?? geodesicHeatMessage ?? ""] : [] }),
+      createSurfaceCurveLayer({ definition, layerKind: "principal-k1", label: "Principal curvature lines k1", parameters: { family: "k1" }, visible: showPrincipalLines, warnings: ["Collect after tracing the k1 family in the compatibility controls to attach computed polylines."] }),
+      createSurfaceCurveLayer({ definition, layerKind: "principal-k2", label: "Principal curvature lines k2", parameters: { family: "k2" }, visible: showPrincipalLines, warnings: ["Collect after tracing the k2 family in the compatibility controls to attach computed polylines."] }),
+      createSurfaceCurveLayer({ definition, layerKind: "asymptotic", label: "Asymptotic curves", parameters: { curvature: 0 }, warnings: ["Asymptotic integration has not been requested for this revision."] }),
+      createSurfaceCurveLayer({ definition, layerKind: "level", label: "Level curves", parameters: { source: surfaceCurvatureScalar }, visible: showContours, warnings: ["Enable and compute a scalar contour before recollecting this layer."] }),
+    ];
+    publishSurfaceLayerResult("surface-curves", { kind: "curve-layers", layers });
+    setRightPanelTab("inspector");
+  }, [activeCanonicalSurfaceDefinition, geodesicHeatEnabled, geodesicHeatMessage, geodesicHeatPolylines, geodesicHeatUseContinuous, geodesicPathConstrain, geodesicPathEnabled, geodesicPathEnd, geodesicPathMessage, geodesicPathMethod, geodesicPathPolylines, geodesicPathSmooth, geodesicPathSourceMode, geodesicPathStart, polylineTuples, publishSurfaceLayerResult, selectionMask?.selected, showContours, showPrincipalLines, surfaceCurvatureScalar]);
+
+  const handleCollectSurfaceFeatureLayers = useCallback(() => {
+    const definition = activeCanonicalSurfaceDefinition;
+    const meshPositions = surfaceMeshData?.positions;
+    const pointsForVertices = (indices: ArrayLike<number> | undefined): Array<readonly [number, number, number]> => {
+      if (!indices || !meshPositions) return [];
+      return Array.from(indices, (vertex) => [Number(meshPositions[vertex * 3]), Number(meshPositions[vertex * 3 + 1]), Number(meshPositions[vertex * 3 + 2])] as const);
+    };
+    const confidenceForVertices = (indices: ArrayLike<number> | undefined): Float32Array | undefined => indices && surfaceFeatureResult
+      ? Float32Array.from(indices, (vertex) => surfaceFeatureResult.scalars.confidence[vertex] ?? 0)
+      : undefined;
+    const pointsForCurvatureClass = (classification: SurfaceCurvatureClass): Array<readonly [number, number, number]> => {
+      if (!activeSurfaceCurvatureField) return [];
+      const region = surfaceCurvatureRegionIndices(activeSurfaceCurvatureField, classification);
+      return Array.from(region, (index) => [activeSurfaceCurvatureField.positions[index * 3], activeSurfaceCurvatureField.positions[index * 3 + 1], activeSurfaceCurvatureField.positions[index * 3 + 2]] as const).filter((point) => point.every(Number.isFinite));
+    };
+    const ridgeLines = packedPolylineTuples(ridgeValleyResult?.polylines.ridge);
+    const valleyLines = packedPolylineTuples(ridgeValleyResult?.polylines.valley);
+    const umbilicVertices = surfaceFeatureResult?.vertexSets.umbilic;
+    const parabolicVertices = surfaceFeatureResult?.vertexSets.parabolic;
+    const singularPoints = pointsForCurvatureClass("invalid");
+    const automatic = { kind: "automatic" as const, references: [definition.identity.key] };
+    const layers: SurfaceFeatureResultLayer[] = [
+      createSurfaceFeatureLayer({ definition, layerKind: "ridge", label: "Ridges", parameters: ridgeValleyParameters, selectionSource: automatic, polylines: ridgeLines, policy: { confidenceMinimum: ridgeValleyParameters.minConfidence }, visible: showRidges }),
+      createSurfaceFeatureLayer({ definition, layerKind: "valley", label: "Valleys", parameters: ridgeValleyParameters, selectionSource: automatic, polylines: valleyLines, policy: { confidenceMinimum: ridgeValleyParameters.minConfidence }, visible: showValleys }),
+      createSurfaceFeatureLayer({ definition, layerKind: "umbilic", label: "Umbilics", parameters: surfaceFeatureParameters, selectionSource: automatic, points: umbilicVertices ? pointsForVertices(umbilicVertices) : pointsForCurvatureClass("umbilic"), confidence: confidenceForVertices(umbilicVertices), visible: surfaceFeatureOverlayVisible && surfaceFeatureClass === "umbilic" }),
+      createSurfaceFeatureLayer({ definition, layerKind: "parabolic", label: "Parabolic curves", parameters: surfaceFeatureParameters, selectionSource: automatic, points: parabolicVertices ? pointsForVertices(parabolicVertices) : pointsForCurvatureClass("parabolic"), confidence: confidenceForVertices(parabolicVertices), polylines: surfaceFeatureResult?.polylines.parabolic ?? [], visible: surfaceFeatureOverlayVisible && surfaceFeatureClass === "parabolic" }),
+      createSurfaceFeatureLayer({ definition, layerKind: "critical-point", label: "Critical points", selectionSource: automatic, warnings: ["No scalar critical-point extraction has been requested for this revision."] }),
+      createSurfaceFeatureLayer({ definition, layerKind: "representation-singularity", label: "Representation singularities", selectionSource: automatic, points: singularPoints, warnings: singularPoints.length ? ["Invalid represented samples are retained as singularity candidates."] : [] }),
+    ];
+    publishSurfaceLayerResult("surface-features", { kind: "feature-layers", layers });
+    setRightPanelTab("inspector");
+  }, [activeCanonicalSurfaceDefinition, activeSurfaceCurvatureField, packedPolylineTuples, publishSurfaceLayerResult, ridgeValleyParameters, ridgeValleyResult, showRidges, showValleys, surfaceFeatureClass, surfaceFeatureOverlayVisible, surfaceFeatureParameters, surfaceFeatureResult, surfaceMeshData?.positions]);
+
+  const activeSurfaceLayerPayload = activeSurfaceComputation === "surface-curves" && activeSurfaceCurvesResult?.payload?.data.kind === "curve-layers"
+    ? activeSurfaceCurvesResult.payload.data
+    : activeSurfaceComputation === "surface-features" && activeSurfaceFeaturesResult?.payload?.data.kind === "feature-layers"
+      ? activeSurfaceFeaturesResult.payload.data
+      : null;
+  const handleSurfaceLayerAction = useCallback((layerId: string, action: "toggle" | "select" | "frame" | "save" | "compare" | "export" | "recompute" | "remove") => {
+    if (!activeSurfaceLayerPayload) return;
+    const layer = activeSurfaceLayerPayload.layers.find((entry) => entry.layerId === layerId);
+    if (!layer) return;
+    const resultKind = activeSurfaceLayerPayload.kind === "curve-layers" ? "surface-curves" : "surface-features";
+    if (action === "recompute") {
+      if (resultKind === "surface-curves") handleCollectSurfaceCurveLayers(); else handleCollectSurfaceFeatureLayers();
+      return;
+    }
+    if (action === "save") {
+      const identity = activeCanonicalSurfaceDefinition.identity;
+      setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, savedResults: [...document.savedResults.filter((entry) => entry.id !== `saved:${layer.layerId}`), { id: `saved:${layer.layerId}`, resultKey: `${identity.key}:${resultKind}:default`, kind: resultKind, variant: "default", identity, label: layer.label, visible: layer.visible }] }));
+      return;
+    }
+    if (action === "compare") {
+      const baseline = surfaceLayerCompareBaselineRef.current;
+      if (!baseline) { surfaceLayerCompareBaselineRef.current = layer; setSurfaceLayerCompareLabel(`Baseline ${layer.label} stored.`); }
+      else {
+        const comparison = compareSurfaceResultLayers(baseline, layer);
+        setSurfaceLayerCompareLabel(`${baseline.label} → ${layer.label}: geometry Δ${comparison.geometryCountDelta}, warnings Δ${comparison.warningCountDelta}${comparison.sameKind ? "" : ", different kinds"}`);
+      }
+      return;
+    }
+    if (action === "export") {
+      const serializable = { ...layer, confidence: "confidence" in layer ? Array.from(layer.confidence) : undefined };
+      const url = URL.createObjectURL(new Blob([JSON.stringify(serializable, null, 2)], { type: "application/json" }));
+      const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${layer.layerKind}-${activeCanonicalSurfaceDefinition.identity.surfaceRevision}.json`; anchor.click(); URL.revokeObjectURL(url);
+      return;
+    }
+    const firstPoint = "points" in layer ? layer.points[0] ?? layer.polylines[0]?.[0] : layer.polylines[0]?.[0];
+    if ((action === "select" || action === "frame") && firstPoint && surfaceSampleSet?.samples.length) {
+      let nearest = 0; let best = Infinity;
+      surfaceSampleSet.samples.forEach((sample, index) => { const distance = (sample.position.x - firstPoint[0]) ** 2 + (sample.position.y - firstPoint[1]) ** 2 + (sample.position.z - firstPoint[2]) ** 2; if (distance < best) { best = distance; nearest = index; } });
+      setInspectIdx(nearest);
+      if (action === "select") {
+        const selected = new Uint8Array(surfaceSampleSet.samples.length); selected[nearest] = 1;
+        setSelectionMaskOverride({ selected, count: 1 }); setSelectionMask({ selected, count: 1 }); setSelectRegionEnabled(true); setSelectionOverlayVisible(true);
+      }
+      setCameraResetToken((token) => token + 1);
+    }
+    const nextLayers = action === "remove"
+      ? removeSurfaceResultLayer(activeSurfaceLayerPayload.layers, layerId)
+      : action === "toggle"
+        ? updateSurfaceResultLayer(activeSurfaceLayerPayload.layers, layerId, { visible: !layer.visible })
+        : action === "select"
+          ? updateSurfaceResultLayer(activeSurfaceLayerPayload.layers, layerId, { selected: true })
+          : activeSurfaceLayerPayload.layers;
+    if (action === "toggle") {
+      const visible = !layer.visible;
+      if (layer.layerKind === "geodesic") { setGeodesicPathEnabled(visible); setGeodesicHeatEnabled(visible); }
+      if (layer.layerKind === "principal-k1" || layer.layerKind === "principal-k2") setShowPrincipalLines(visible);
+      if (layer.layerKind === "ridge") setShowRidges(visible);
+      if (layer.layerKind === "valley") setShowValleys(visible);
+      if (["umbilic", "parabolic", "critical-point", "representation-singularity"].includes(layer.layerKind)) setSurfaceFeatureOverlayVisible(visible);
+    }
+    publishSurfaceLayerResult(resultKind, { ...activeSurfaceLayerPayload, layers: nextLayers } as SurfaceCurveLayersPayload | SurfaceFeatureLayersPayload);
+  }, [activeCanonicalSurfaceDefinition.identity, activeSurfaceLayerPayload, handleCollectSurfaceCurveLayers, handleCollectSurfaceFeatureLayers, publishSurfaceLayerResult, surfaceSampleSet?.samples]);
 
   const calculusScalarOptions = useMemo(() => {
     const out: Array<{ value: string; label: string }> = [];
@@ -78947,6 +79146,10 @@ case "mobius":
                     onComputeCurvature={handleComputeSurfaceCurvature}
                     probeState={!surfaceCurvatureSource ? "unavailable" : canonicalSurfaceProbe ? "active" : "ready"}
                     onProbeCurrentSample={handleProbeCurrentSurfaceSample}
+                    curveLayerState={activeSurfaceCurvesResult?.state === "ready" ? "collected" : "ready"}
+                    featureLayerState={activeSurfaceFeaturesResult?.state === "ready" ? "collected" : "ready"}
+                    onCollectCurveLayers={handleCollectSurfaceCurveLayers}
+                    onCollectFeatureLayers={handleCollectSurfaceFeatureLayers}
                     derivedMesh={{
                       available: hasSurfaceMesh,
                       label: surfaceMeshLabel,
@@ -84494,7 +84697,13 @@ case "mobius":
                     <>
                     {surfacesLeftTab === "analysis" && <SurfaceAnalysisInspectorPanel
                       definition={activeCanonicalSurfaceDefinition}
-                      result={activeSurfaceComputation === "surface-probe" ? activeSurfaceProbeResult ?? activeSurfaceAnalysisResult : activeSurfaceAnalysisResult}
+                      result={activeSurfaceComputation === "surface-probe"
+                        ? activeSurfaceProbeResult ?? activeSurfaceAnalysisResult
+                        : activeSurfaceComputation === "surface-curves"
+                          ? activeSurfaceCurvesResult ?? activeSurfaceAnalysisResult
+                          : activeSurfaceComputation === "surface-features"
+                            ? activeSurfaceFeaturesResult ?? activeSurfaceAnalysisResult
+                            : activeSurfaceAnalysisResult}
                       historyCount={surfaceAnalysisResultStore.history.length}
                       savedResultCount={surfaceAnalysisWorkspaceDocument.savedResults.length}
                       probeRows={probeInfo ? [
@@ -84527,6 +84736,11 @@ case "mobius":
                         onCopy: handleCopySurfaceProbe,
                         onExport: handleExportSurfaceProbe,
                         onReplay: handleReplaySurfaceProbe,
+                      } : undefined}
+                      layerActions={activeSurfaceLayerPayload ? {
+                        payload: activeSurfaceLayerPayload,
+                        compareLabel: surfaceLayerCompareLabel,
+                        onAction: handleSurfaceLayerAction,
                       } : undefined}
                     />}
                     <SurfacesRightPanel

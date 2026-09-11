@@ -152,7 +152,54 @@ test.describe("Surface functional flow", () => {
     }
   });
 
-  test("Test 5 — invalid input failure", async () => {
+  test("Test 5 — persistent Surface curve and feature layers", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await openSurfaceGenerator(ctx.page);
+      await waitForWorkerReady(ctx.page);
+      await ctx.page.getByTestId("surfaces-left-tab-analysis").click();
+
+      await ctx.page.getByTestId("surface-computation-surface-curves").click();
+      await ctx.page.getByTestId("surface-collect-curve-layers").click();
+      const layers = ctx.page.getByTestId("surface-result-layers");
+      await expect(layers).toBeVisible();
+      for (const kind of ["geodesic", "principal-k1", "principal-k2", "asymptotic", "level"]) {
+        await expect(ctx.page.getByTestId(`surface-result-layer-${kind}`)).toBeVisible();
+      }
+      const geodesic = ctx.page.getByTestId("surface-result-layer-geodesic");
+      const visibility = geodesic.getByRole("button", { name: /^(Hide|Show)$/ });
+      const before = await visibility.textContent();
+      await visibility.click();
+      await expect(geodesic.getByRole("button", { name: before === "Hide" ? "Show" : "Hide", exact: true })).toBeVisible();
+      await geodesic.getByRole("button", { name: "Save", exact: true }).click();
+      await geodesic.getByRole("button", { name: "Compare", exact: true }).click();
+      await expect(layers).toContainText("Baseline Geodesics stored");
+      await ctx.page.getByTestId("surface-result-layer-principal-k2").getByRole("button", { name: "Remove", exact: true }).click();
+      await expect(ctx.page.getByTestId("surface-result-layer-principal-k2")).toHaveCount(0);
+
+      await ctx.page.getByTestId("surface-computation-surface-features").click();
+      await ctx.page.getByTestId("surface-collect-feature-layers").click();
+      for (const kind of ["ridge", "valley", "umbilic", "parabolic", "critical-point", "representation-singularity"]) {
+        await expect(ctx.page.getByTestId(`surface-result-layer-${kind}`)).toBeVisible();
+      }
+      const critical = ctx.page.getByTestId("surface-result-layer-critical-point");
+      await expect(critical).toContainText("empty");
+      await critical.getByRole("button", { name: "Save", exact: true }).click();
+      await critical.getByRole("button", { name: "Remove", exact: true }).click();
+      await expect(critical).toHaveCount(0);
+      await expect.poll(async () => ctx!.page.evaluate(() => {
+        const raw = localStorage.getItem("math3d.surfaceAnalysis.workspace.v1");
+        return raw ? JSON.parse(raw).savedResults?.filter((entry: { kind?: string }) => entry.kind === "surface-curves" || entry.kind === "surface-features").length ?? 0 : 0;
+      })).toBeGreaterThanOrEqual(2);
+      await expect(ctx.page.getByTestId("surface-analysis-contract-state")).toHaveText("ready");
+      await expect(ctx.page.getByTestId("error-banner")).toHaveCount(0);
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
+  test("Test 6 — invalid input failure", async () => {
     let ctx: LaunchedSurfaceApp | null = null;
     try {
       ctx = await launchSurfaceApp({

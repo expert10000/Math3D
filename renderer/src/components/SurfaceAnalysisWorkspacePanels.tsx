@@ -5,6 +5,8 @@ import type {
   SurfaceCurvatureClass,
   SurfaceCurvatureFieldPayload,
   SurfaceLocalProbePayload,
+  SurfaceCurveLayersPayload,
+  SurfaceFeatureLayersPayload,
 } from "../surfaceAnalysis/contracts";
 import type { SurfaceAnalysisResult } from "../surfaceAnalysis/infrastructure";
 import { SurfaceAnalysisContractCard } from "./SurfaceAnalysisContractCard";
@@ -42,6 +44,10 @@ export function SurfaceAnalysisComputationPanel({
   onComputeCurvature,
   probeState,
   onProbeCurrentSample,
+  curveLayerState,
+  featureLayerState,
+  onCollectCurveLayers,
+  onCollectFeatureLayers,
 }: {
   definition: CanonicalSurfaceDefinition;
   selected: SurfaceComputationId;
@@ -54,6 +60,10 @@ export function SurfaceAnalysisComputationPanel({
   onComputeCurvature?: () => void;
   probeState?: "unavailable" | "ready" | "active";
   onProbeCurrentSample?: () => void;
+  curveLayerState?: "ready" | "collected";
+  featureLayerState?: "ready" | "collected";
+  onCollectCurveLayers?: () => void;
+  onCollectFeatureLayers?: () => void;
 }) {
   return (
     <section data-testid="surface-analysis-computation-panel" style={{ display: "grid", gap: 9 }}>
@@ -78,6 +88,15 @@ export function SurfaceAnalysisComputationPanel({
           <span style={{ color: "#475467", fontSize: 9.5 }}>Click a valid Surface point, or start from the current represented sample.</span>
           <button type="button" data-testid="surface-probe-current-sample" disabled={probeState === "unavailable"} onClick={onProbeCurrentSample}>
             {probeState === "active" ? "Probe current sample again" : probeState === "unavailable" ? "Probe source unavailable" : "Probe current sample"}
+          </button>
+        </section>
+      )}
+      {(selected === "surface-curves" || selected === "surface-features") && (
+        <section data-testid="surface-result-layer-compute" style={{ border: "1px solid #bfdbfe", borderRadius: 8, background: "#eff6ff", padding: 8, display: "grid", gap: 6 }}>
+          <strong style={{ fontSize: 10.5 }}>{selected === "surface-curves" ? "Persistent Surface Curves" : "Persistent Surface Features"}</strong>
+          <span style={{ color: "#475467", fontSize: 9.5 }}>Collect current computed geometry into revision-safe result layers with independent visibility and lifecycle.</span>
+          <button type="button" data-testid={selected === "surface-curves" ? "surface-collect-curve-layers" : "surface-collect-feature-layers"} onClick={selected === "surface-curves" ? onCollectCurveLayers : onCollectFeatureLayers}>
+            {(selected === "surface-curves" ? curveLayerState : featureLayerState) === "collected" ? "Recompute current layers" : "Collect current layers"}
           </button>
         </section>
       )}
@@ -196,6 +215,7 @@ export function SurfaceAnalysisInspectorPanel({
   probeRows,
   curvatureActions,
   probeActions,
+  layerActions,
 }: {
   definition: CanonicalSurfaceDefinition;
   result: SurfaceAnalysisResult<SurfaceAnalysisPayload> | null;
@@ -226,6 +246,11 @@ export function SurfaceAnalysisInspectorPanel({
     onCopy: () => void;
     onExport: () => void;
     onReplay: (probe: SurfaceLocalProbePayload) => void;
+  };
+  layerActions?: {
+    payload: SurfaceCurveLayersPayload | SurfaceFeatureLayersPayload;
+    compareLabel: string;
+    onAction: (layerId: string, action: "toggle" | "select" | "frame" | "save" | "compare" | "export" | "recompute" | "remove") => void;
   };
 }) {
   const [tab, setTab] = useState<InspectorTab>("result");
@@ -302,6 +327,7 @@ export function SurfaceAnalysisInspectorPanel({
                 </div>}
               </section>
             )}
+            {layerActions && <SurfaceResultLayersInspector {...layerActions} />}
             {!!warnings.length && <div style={{ color: "#9a3412" }}>{warnings.join(" · ")}</div>}
           </div>
         )}
@@ -332,6 +358,37 @@ export function SurfaceAnalysisInspectorPanel({
           </div>
         )}
       </div>
+    </section>
+  );
+}
+
+function SurfaceResultLayersInspector({ payload, compareLabel, onAction }: NonNullable<Parameters<typeof SurfaceAnalysisInspectorPanel>[0]["layerActions"]>) {
+  return (
+    <section data-testid="surface-result-layers" style={{ display: "grid", gap: 6, marginTop: 6, paddingTop: 7, borderTop: "1px solid #e2e8f0" }}>
+      <strong>{payload.kind === "curve-layers" ? "Surface Curves" : "Surface Features"} · {payload.layers.length} layers</strong>
+      {payload.layers.map((layer) => {
+        const statistics = layer.statistics;
+        const statisticsLabel = "totalLength" in statistics
+          ? `${statistics.curveCount} curves · ${statistics.pointCount} points · length ${statistics.totalLength.toPrecision(4)}`
+          : `${statistics.pointCount} points · ${statistics.curveCount} curves · confidence ${statistics.meanConfidence?.toPrecision(3) ?? "undefined"}`;
+        return <article key={layer.layerId} data-testid={`surface-result-layer-${layer.layerKind}`} style={{ border: `1px solid ${layer.selected ? "#60a5fa" : "#dbe4f0"}`, borderRadius: 7, padding: 6, display: "grid", gap: 4 }}>
+          <div><strong>{layer.label}</strong> · {layer.state} · {layer.method} · revision {layer.identity.surfaceRevision}</div>
+          <div style={{ color: "#475467" }}>{statisticsLabel}</div>
+          <div style={{ color: "#64748b" }}>Seed: {layer.selectionSource.kind}{layer.selectionSource.references.length ? ` (${layer.selectionSource.references.join(", ")})` : ""} · boundary: {layer.policy.boundaryBehavior}</div>
+          {!!layer.warnings.length && <div style={{ color: "#9a3412" }}>{layer.warnings.join(" · ")}</div>}
+          <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+            <button type="button" onClick={() => onAction(layer.layerId, "toggle")}>{layer.visible ? "Hide" : "Show"}</button>
+            <button type="button" disabled={layer.state !== "ready"} onClick={() => onAction(layer.layerId, "select")}>Select</button>
+            <button type="button" disabled={layer.state !== "ready"} onClick={() => onAction(layer.layerId, "frame")}>Frame</button>
+            <button type="button" onClick={() => onAction(layer.layerId, "save")}>Save</button>
+            <button type="button" onClick={() => onAction(layer.layerId, "compare")}>Compare</button>
+            <button type="button" onClick={() => onAction(layer.layerId, "export")}>Export</button>
+            <button type="button" onClick={() => onAction(layer.layerId, "recompute")}>Recompute</button>
+            <button type="button" onClick={() => onAction(layer.layerId, "remove")}>Remove</button>
+          </div>
+        </article>;
+      })}
+      <div style={{ color: "#64748b" }}>{compareLabel}</div>
     </section>
   );
 }

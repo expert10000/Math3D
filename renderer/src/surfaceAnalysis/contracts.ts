@@ -169,6 +169,59 @@ export type SurfaceFeaturePayload = {
   confidence?: Float32Array;
 };
 
+export type SurfaceCurveLayerKind = "geodesic" | "principal-k1" | "principal-k2" | "asymptotic" | "level";
+export type SurfaceFeatureLayerKind = "ridge" | "valley" | "umbilic" | "parabolic" | "critical-point" | "representation-singularity";
+export type SurfaceLayerState = "ready" | "empty" | "unavailable";
+export type SurfaceLayerSelectionSource = {
+  kind: "picked-point" | "selected-vertex" | "selected-point" | "selection-set" | "parameters" | "automatic";
+  references: readonly string[];
+};
+export type SurfaceLayerPolicy = {
+  confidenceMinimum: number;
+  stopping: string;
+  branchPolicy: string;
+  periodicDomain: boolean;
+  boundaryBehavior: string;
+  singularBehavior: string;
+};
+export type SurfaceCurveResultLayer = {
+  layerId: string;
+  identity: SurfaceIdentity;
+  layerKind: SurfaceCurveLayerKind;
+  label: string;
+  state: SurfaceLayerState;
+  visible: boolean;
+  selected: boolean;
+  method: SurfaceAnalysisMethod;
+  parameters: AnalysisParameters;
+  selectionSource: SurfaceLayerSelectionSource;
+  policy: SurfaceLayerPolicy;
+  polylines: ReadonlyArray<ReadonlyArray<readonly [number, number, number]>>;
+  parameterPolylines?: ReadonlyArray<ReadonlyArray<readonly [number, number]>>;
+  statistics: { curveCount: number; pointCount: number; totalLength: number; minimumLength: number | null; maximumLength: number | null };
+  warnings: readonly string[];
+};
+export type SurfaceFeatureResultLayer = {
+  layerId: string;
+  identity: SurfaceIdentity;
+  layerKind: SurfaceFeatureLayerKind;
+  label: string;
+  state: SurfaceLayerState;
+  visible: boolean;
+  selected: boolean;
+  method: SurfaceAnalysisMethod;
+  parameters: AnalysisParameters;
+  selectionSource: SurfaceLayerSelectionSource;
+  policy: SurfaceLayerPolicy;
+  points: ReadonlyArray<readonly [number, number, number]>;
+  polylines: ReadonlyArray<ReadonlyArray<readonly [number, number, number]>>;
+  confidence: Float32Array;
+  statistics: { pointCount: number; curveCount: number; curvePointCount: number; meanConfidence: number | null };
+  warnings: readonly string[];
+};
+export type SurfaceCurveLayersPayload = { kind: "curve-layers"; layers: readonly SurfaceCurveResultLayer[] };
+export type SurfaceFeatureLayersPayload = { kind: "feature-layers"; layers: readonly SurfaceFeatureResultLayer[] };
+
 export type SurfaceChartPayload = {
   kind: "chart";
   quantity: string;
@@ -268,6 +321,8 @@ export type SurfaceAnalysisPayload = {
     | SurfaceFieldPayload
     | SurfaceCurvePayload
     | SurfaceFeaturePayload
+    | SurfaceCurveLayersPayload
+    | SurfaceFeatureLayersPayload
     | SurfaceChartPayload
     | SurfaceDerivedMeshPayload
     | SurfaceDifferentialFieldPayload
