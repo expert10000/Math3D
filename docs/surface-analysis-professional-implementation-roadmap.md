@@ -82,7 +82,7 @@ Baseline verification at this assessment:
 | 1 — Surface-first workspace and result contract | Complete (`bb0b24a`) | Canonical Surface identity/revision, all representation adapters, shared request/result publication, typed payloads, compact persistence, visible contract provenance | None for Commit 1 |
 | 2 — Unified differential-geometry engine | Complete (`9c0ddfc`) | One normalized differential point/field schema, exact Geometry reuse, analytic/symbolic/AD and adaptive numerical routes, explicit mesh provenance, masks and mathematical verification | None for Commit 2 |
 | 3 — Computation/display/inspection UI split | Complete (`bdd5bb2`) | Left computation catalog, View/viewport display controls, right Result/Probe/Provenance/History Inspector, compact derived-mesh bridge and collapsed compatibility tools | None for Commit 3 |
-| 4 — Curvature workspace | Advanced foundation | K/H/k1/k2 fields, directions, palettes, ranges, probes, classifications in adjacent code | Canonical saved result, statistics, classifications, direction validity, independent visualization |
+| 4 — Curvature workspace | Complete (`f5b7504`) | One canonical K/H/k1/k2/shape-index/curvedness/d1/d2 result, masks, units, statistics, classifications, independent display controls, region navigation and saved-result lifecycle | None for Commit 4 |
 | 5 — Local differential-geometry probe | Advanced foundation | Point/normal/chart coordinates, tangent basis, curvature and direction readouts | Full I/II forms, method/provenance, classification, visual osculating evidence, pins/history/export |
 | 6 — Surface curves and features | Partial | Geodesics, curvature lines, ridges/valleys, feature extraction, overlays | Surface-owned method routing, persistent result layers, visibility independence, saved lifecycle |
 | 7 — Charts and parameter diagnostics | Partial | Chart grid, orientation/degeneracy diagnostics, graph/param domains | Metric/Jacobian fields, distortion, boundary/degenerate regions, Inspector results, future atlas contract |
@@ -338,7 +338,7 @@ Acceptance: users can predict where to compute, where to display, and where to i
 
 Planned message: `feat(surface-analysis): consolidate curvature fields and principal-direction analysis`
 
-**Status: planned; field computation and display foundations exist.**
+**Status: complete — `f5b7504`.**
 
 Already implemented:
 
@@ -347,13 +347,30 @@ Already implemented:
 
 Remaining:
 
-- [ ] Publish one Curvature result with H, K, k1, k2, d1, d2, validity/uncertainty masks, and method provenance.
-- [ ] Add min, max, mean, RMS, percentiles, histogram, extrema, valid-domain count, and unit metadata.
-- [ ] Classify elliptic, hyperbolic, parabolic, planar/flat, and umbilic regions with scale-aware tolerances.
-- [ ] Treat principal directions as undefined at umbilics and unstable near degeneracy; never display arbitrary glyphs as valid directions.
-- [ ] Separate scalar field selection/range/palette and vector overlay visibility from computation.
-- [ ] Make classification regions selectable and navigable from the Inspector.
-- [ ] Save, compare, export, hide/show, recompute, and inspect curvature results independently.
+- [x] Publish one Curvature result with H, K, k1, k2, d1, d2, validity/uncertainty masks, and method provenance.
+- [x] Add min, max, mean, RMS, percentiles, histogram, extrema, valid-domain count, and unit metadata.
+- [x] Classify elliptic, hyperbolic, parabolic, planar/flat, and umbilic regions with scale-aware tolerances.
+- [x] Treat principal directions as undefined at umbilics and unstable near degeneracy; never display arbitrary glyphs as valid directions.
+- [x] Separate scalar field selection/range/palette and vector overlay visibility from computation.
+- [x] Make classification regions selectable and navigable from the Inspector.
+- [x] Save, compare, export, hide/show, recompute, and inspect curvature results independently.
+
+Implemented in `f5b7504`:
+
+- `SurfaceCurvatureFieldPayload` is the canonical representation-independent result. It carries aligned scalar arrays, principal-direction pairs, explicit validity/uncertainty/direction masks, scale-aware classification regions, units, statistics, histogram bins, extrema and display metadata.
+- Mesh-backed sources retain `mesh-approximation` provenance. Represented smooth sources use `surface-sampling`; the result never relabels sampled or discrete values analytic.
+- Flat classification takes precedence at zero curvature, nonzero equal principal curvatures are umbilic, and direction values remain undefined at umbilics, invalid points and uncertain samples.
+- The left Analysis catalog computes or recomputes one Curvature result. The viewport strip changes K/H/k1/k2/shape index/curvedness, palette, automatic/percentile/symmetric range, field visibility and direction visibility without recomputation.
+- The right Inspector reports units, min/max/mean/RMS/percentiles/histogram/extrema and region counts. Region actions select the matching samples and focus a representative point; result actions save, compare, export, hide/show and recompute.
+- Saved references retain Surface identity/revision and visibility. JSON exports include complete arrays, masks, regions, method, units and orientation.
+
+Validation at `f5b7504`:
+
+- The full renderer suite passes: **535 tests across 100 files**.
+- `npm run typecheck:noemit` and `npm run build:core` pass.
+- The Surface functional flow passes **4/4**, including the canonical Curvature compute/display/inspect/save/compare/hide/show/recompute lifecycle.
+- Required Surface functional, Gallery, worker-failure and workspace-navigation checks pass: **13/13**. The Gallery capture needed one focused rerun after a transient element-stability timeout.
+- `npm run test:app:responsive:smoke` passes for phone portrait, phone landscape, tablet and desktop layouts, including drawers, sheets and touch containment.
 
 Acceptance: Curvature is one coherent mathematical result rather than separate representation-specific buttons or transient color modes.
 
