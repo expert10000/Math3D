@@ -25,10 +25,26 @@ test.describe("Surface functional flow", () => {
         "worker unavailable"
       );
       await ctx.page.getByTestId("surfaces-left-tab-analysis").click();
+      await expect(ctx.page.getByTestId("surface-analysis-computation-panel")).toBeVisible();
+      await expect(ctx.page.getByTestId("surface-computation-differential-geometry")).toBeVisible();
+      await expect(ctx.page.getByTestId("surface-computation-chart-diagnostics")).toBeVisible();
+      await ctx.page.getByTestId("surface-computation-differential-geometry").focus();
+      await ctx.page.keyboard.press("Tab");
+      await expect(ctx.page.getByTestId("surface-computation-curvature-field")).toBeFocused();
+      await expect(ctx.page.getByTestId("surface-derived-mesh-bridge")).toBeVisible();
+      await expect(ctx.page.getByTestId("surface-analysis-legacy-tools")).not.toHaveAttribute("open", "");
+      await ctx.page.getByTestId("surface-analysis-open-configuration").click();
+      await expect(ctx.page.getByTestId("surface-analysis-open-configuration")).toHaveAttribute("aria-expanded", "true");
+      await expect(ctx.page.getByTestId("surface-analysis-legacy-tools")).toHaveAttribute("open", "");
+      await expect(ctx.page.getByTestId("surface-analysis-inspector")).toBeVisible();
       await expect(ctx.page.getByTestId("surface-analysis-contract")).toBeVisible();
       await expect(ctx.page.getByTestId("surface-analysis-contract-state")).toHaveText("ready");
       await expect(ctx.page.getByTestId("surface-analysis-contract-identity")).toContainText("implicit");
       await expect(ctx.page.getByTestId("surface-analysis-contract-identity")).toContainText("revision 1");
+      await ctx.page.getByTestId("surface-analysis-inspector-provenance").click();
+      await expect(ctx.page.getByRole("tabpanel")).toContainText("Representation:");
+      await ctx.page.getByTestId("surfaces-left-tab-view").click();
+      await expect(ctx.page.getByTestId("surface-analysis-display-controls")).toBeVisible();
       await expect.poll(async () => ctx!.page.evaluate(() => {
         const raw = localStorage.getItem("math3d.surfaceAnalysis.workspace.v1");
         return raw ? JSON.parse(raw).definitions?.length ?? 0 : 0;

@@ -40,7 +40,11 @@ import { UnifiedSelectionInspector } from "./components/UnifiedSelectionInspecto
 import { GeometrySemanticNavigatorPanel } from "./components/GeometrySemanticNavigatorPanel";
 import { GeometryConstructCatalogPanel } from "./components/GeometryConstructCatalogPanel";
 import { GeometryModifyPanel } from "./components/GeometryModifyPanel";
-import { SurfaceAnalysisContractCard } from "./components/SurfaceAnalysisContractCard";
+import {
+  SurfaceAnalysisComputationPanel,
+  SurfaceAnalysisInspectorPanel,
+  type SurfaceComputationId,
+} from "./components/SurfaceAnalysisWorkspacePanels";
 import {
   GeometryLineageInspectorPanel,
   type GeometryLineageInspectorAction,
@@ -41852,6 +41856,10 @@ const App: React.FC = () => {
     () => getSurfaceAnalysisResult(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "surface-definition"),
     [activeCanonicalSurfaceDefinition.identity, surfaceAnalysisResultStore]
   );
+  const activeSurfaceAnalysisResult = useMemo(
+    () => getSurfaceAnalysisResult(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "differential-geometry") ?? activeSurfaceDefinitionResult,
+    [activeCanonicalSurfaceDefinition.identity, activeSurfaceDefinitionResult, surfaceAnalysisResultStore]
+  );
   const activeParamLikeDomain =
     surfaceViewerKind === "weierstrass" ? activeWeierstrassDomain : activeParamDomain;
   const activeParamLikeResolution =
@@ -43166,6 +43174,20 @@ const App: React.FC = () => {
   const surfacePreviewFocusPrevRightPanelRef = useRef(true);
   const surfacePreviewFocusPrevLeftTabRef = useRef<SurfacesLeftTab>("scene");
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<SurfacesLeftTab>("scene");
+  const [activeSurfaceComputation, setActiveSurfaceComputation] = useState<SurfaceComputationId>("differential-geometry");
+  const [surfaceLegacyAnalysisOpen, setSurfaceLegacyAnalysisOpen] = useState(false);
+  const handleSelectSurfaceComputation = useCallback((computation: SurfaceComputationId) => {
+    const section: AnalysisFocusedSection = computation === "surface-curves"
+      ? "curvature-lines"
+      : computation === "surface-features"
+        ? "surface-features"
+        : computation === "chart-diagnostics"
+          ? "chart-analysis"
+          : "differential-geometry";
+    setActiveSurfaceComputation(computation);
+    setAnalysisFocusedSection(section);
+    if (computation === "surface-probe" && !probeEnabled) setProbeEnabled(true);
+  }, [probeEnabled, setProbeEnabled]);
   useEffect(() => {
     if (surfaceViewerKind !== "mesh" || surfacesLeftTab !== "analysis") return;
     if (meshWorkspaceLeftTab !== "analyze") setMeshWorkspaceLeftTab("analyze");
@@ -78480,12 +78502,39 @@ case "mobius":
               )}
               {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "analysis" && (
                 <div style={{ marginTop: 10 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Display & analysis</div>
-                  <SurfaceAnalysisContractCard
+                  <SurfaceAnalysisComputationPanel
                     definition={activeCanonicalSurfaceDefinition}
-                    result={activeSurfaceDefinitionResult}
-                    historyCount={surfaceAnalysisResultStore.history.length}
+                    selected={activeSurfaceComputation}
+                    onSelect={handleSelectSurfaceComputation}
+                    configurationOpen={surfaceLegacyAnalysisOpen}
+                    onOpenConfiguration={() => setSurfaceLegacyAnalysisOpen(true)}
+                    derivedMesh={{
+                      available: hasSurfaceMesh,
+                      label: surfaceMeshLabel,
+                      vertexCount: surfaceMeshStats?.vertCount ?? 0,
+                      faceCount: surfaceMeshStats?.triCount ?? 0,
+                    }}
+                    onOpenDerivedMesh={() => {
+                      if (!hasSurfaceMesh) {
+                        setSurfacesLeftTab("object");
+                        return;
+                      }
+                      handleChangeViewerKind("mesh");
+                      setMeshWorkspaceLeftTab("analyze");
+                      setAnalysisFocusedSection("differential-geometry");
+                    }}
                   />
+                  <details
+                    id="surface-analysis-legacy-tools"
+                    data-testid="surface-analysis-legacy-tools"
+                    open={surfaceLegacyAnalysisOpen}
+                    onToggle={(event) => setSurfaceLegacyAnalysisOpen(event.currentTarget.open)}
+                    style={{ marginTop: 10, border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", padding: "7px 8px" }}
+                  >
+                    <summary style={{ cursor: "pointer", fontSize: 10.5, fontWeight: 800, color: "#475467" }}>
+                      Legacy and advanced analysis controls
+                    </summary>
+                    <div style={{ marginTop: 8 }}>
                   {isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "mesh" && (
                     <>
                     <div
@@ -80136,6 +80185,8 @@ case "mobius":
                     <SageSymbolicPanel compact />
                   </div>
                   {renderSurfacesInspectorPanel("analysis")}
+                    </div>
+                  </details>
                 </div>
               )}
               {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "services" && (
@@ -80978,6 +81029,7 @@ case "mobius":
                         {surfacesLeftTab === "analysis" ? (
                           <div
                             data-testid="mesh-analysis-context-toolbar"
+                            data-surface-role="display"
                             style={{
                               display: "flex",
                               alignItems: "center",
@@ -83985,6 +84037,18 @@ case "mobius":
 
                   {rightPanelTab === "inspector" ? (
                     <>
+                    {surfacesLeftTab === "analysis" && <SurfaceAnalysisInspectorPanel
+                      definition={activeCanonicalSurfaceDefinition}
+                      result={activeSurfaceAnalysisResult}
+                      historyCount={surfaceAnalysisResultStore.history.length}
+                      savedResultCount={surfaceAnalysisWorkspaceDocument.savedResults.length}
+                      probeRows={probeInfo ? [
+                        { label: "Position", value: `(${fmt(probeInfo.point.x)}, ${fmt(probeInfo.point.y)}, ${fmt(probeInfo.point.z)})` },
+                        { label: "Normal", value: `(${fmt(probeInfo.normal.x)}, ${fmt(probeInfo.normal.y)}, ${fmt(probeInfo.normal.z)})` },
+                        ...(probeInfo.uv ? [{ label: "Domain (u,v)", value: `(${fmt(probeInfo.uv.u)}, ${fmt(probeInfo.uv.v)})` }] : []),
+                        ...(probeInfo.xy ? [{ label: "Domain (x,y)", value: `(${fmt(probeInfo.xy.x)}, ${fmt(probeInfo.xy.y)})` }] : []),
+                      ] : []}
+                    />}
                     <SurfacesRightPanel
                       viewerKind={surfaceViewerKind}
                       meshAnalysisActive={surfaceViewerKind === "mesh" && surfacesLeftTab === "analysis"}
@@ -111571,7 +111635,7 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
   principalGlyphMode,
   onChangePrincipalGlyphMode,
 }) => (
-  <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+  <div data-testid="surface-analysis-display-controls" style={{ marginTop: 10, display: "grid", gap: 10 }}>
     {false && (viewerKind === "param" ||
       viewerKind === "weierstrass" ||
       viewerKind === "graph" ||
@@ -113615,7 +113679,6 @@ onChangeImplicitExpr,
     useState<DifferentialGeometryBinaryToggle>("off");
   const [differentialNormalizeScale, setDifferentialNormalizeScale] = useState<DifferentialGeometryBinaryToggle>("off");
   const [differentialClampOutliers, setDifferentialClampOutliers] = useState<DifferentialGeometryBinaryToggle>("off");
-  const [differentialShowAsOverlay, setDifferentialShowAsOverlay] = useState(true);
   const [differentialSaveDerivedResult, setDifferentialSaveDerivedResult] = useState(false);
   const [differentialExportScalarFields, setDifferentialExportScalarFields] = useState(false);
   const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -117771,10 +117834,6 @@ onChangeImplicitExpr,
                   <div style={{ display: "grid", gap: 4, fontSize: 11, marginBottom: 10 }}>
                     <label><input type="checkbox" checked={differentialMeanCurvature} onChange={(e) => setDifferentialMeanCurvature(e.target.checked)} style={{ marginRight: 6 }} />Mean curvature H</label>
                     <label><input type="checkbox" checked={differentialGaussianCurvature} onChange={(e) => setDifferentialGaussianCurvature(e.target.checked)} style={{ marginRight: 6 }} />Gaussian curvature K</label>
-                    <label><input type="checkbox" checked={showPrincipalDirections} onChange={onTogglePrincipalDirections} style={{ marginRight: 6 }} />Show principal directions</label>
-                    <label><input type="checkbox" checked={showPrincipalLines} onChange={onTogglePrincipalLines} style={{ marginRight: 6 }} />Trace principal curvature lines</label>
-                    <label><input type="checkbox" checked={showPrincipalGlyphs} onChange={onTogglePrincipalGlyphs} style={{ marginRight: 6 }} />Show direction glyphs</label>
-                    <label><input type="checkbox" checked={differentialShowAsOverlay} onChange={(e) => setDifferentialShowAsOverlay(e.target.checked)} style={{ marginRight: 6 }} />Show as overlay</label>
                   </div>
                 </>
               ) : (
@@ -117802,86 +117861,6 @@ onChangeImplicitExpr,
                     Curvature topology, umbilics, high-curvature regions, uncertainty, and feature edges are produced by the cached Surface Features analysis below. Ridge and valley tracing remains a separate analysis.
                   </div>
                 </>
-              )}
-
-              <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 6 }}>Display after compute</div>
-              <label style={{ display: "block", cursor: "pointer", fontSize: 11 }}>
-                <input
-                  type="checkbox"
-                  checked={showPrincipalDirections}
-                  onChange={onTogglePrincipalDirections}
-                  style={{ marginRight: 6 }}
-                />
-                Show principal directions
-              </label>
-              {differentialUiMode === "advanced" && (
-                <label style={{ display: "block", cursor: "pointer", fontSize: 11 }}>
-                  <input
-                    type="checkbox"
-                    checked={showPrincipalNormalPlanes}
-                    onChange={onTogglePrincipalNormalPlanes}
-                    style={{ marginRight: 6 }}
-                  />
-                  Show principal normal planes
-                </label>
-              )}
-              <label style={{ display: "block", cursor: "pointer", fontSize: 11 }}>
-                <input
-                  type="checkbox"
-                  checked={showPrincipalLines}
-                  onChange={onTogglePrincipalLines}
-                  style={{ marginRight: 6 }}
-                />
-                Trace principal curvature lines
-              </label>
-              <label style={{ display: "block", cursor: "pointer", fontSize: 11 }}>
-                <input
-                  type="checkbox"
-                  checked={showPrincipalGlyphs}
-                  onChange={onTogglePrincipalGlyphs}
-                  style={{ marginRight: 6 }}
-                />
-                Show direction glyphs
-              </label>
-              {showPrincipalGlyphs && (
-                <div style={{ marginLeft: 20, marginTop: 6, display: "grid", gap: 8, fontSize: 11, marginBottom: 10 }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ minWidth: 52 }}>Density</span>
-                    <select
-                      value={principalGlyphDensity}
-                      onChange={(e) => onChangePrincipalGlyphDensity(Number(e.target.value))}
-                      style={{ fontSize: 11, padding: "2px 4px", minWidth: 100 }}
-                    >
-                      <option value={50}>1/50</option>
-                      <option value={100}>1/100</option>
-                      <option value={200}>1/200</option>
-                      <option value={400}>1/400</option>
-                    </select>
-                  </label>
-                  <div style={{ minWidth: 180 }}>
-                    <div style={{ fontSize: 10, color: "#555" }}>Length {principalGlyphLength.toFixed(2)}</div>
-                    <input
-                      type="range"
-                      min={0.05}
-                      max={1.2}
-                      step={0.05}
-                      value={principalGlyphLength}
-                      onChange={(e) => onChangePrincipalGlyphLength(Number(e.target.value))}
-                      style={{ width: 180 }}
-                    />
-                  </div>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ minWidth: 52 }}>Mode</span>
-                    <select
-                      value={principalGlyphMode}
-                      onChange={(e) => onChangePrincipalGlyphMode(e.target.value as "both" | "d1")}
-                      style={{ fontSize: 11, padding: "2px 4px", minWidth: 100 }}
-                    >
-                      <option value="both">d1 + d2</option>
-                      <option value="d1">d1 only</option>
-                    </select>
-                  </label>
-                </div>
               )}
 
               {differentialUiMode === "advanced" && (
@@ -117937,16 +117916,15 @@ onChangeImplicitExpr,
                 </>
               )}
 
-              <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 6 }}>Output</div>
-              <div style={{ display: "grid", gap: 4, fontSize: 11, marginBottom: 10 }}>
-                <label><input type="checkbox" checked={differentialShowAsOverlay} onChange={(e) => setDifferentialShowAsOverlay(e.target.checked)} style={{ marginRight: 6 }} />Show as overlay</label>
-                {differentialUiMode === "advanced" && (
-                  <>
+              {differentialUiMode === "advanced" && (
+                <>
+                  <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 6 }}>Saved output</div>
+                  <div style={{ display: "grid", gap: 4, fontSize: 11, marginBottom: 10 }}>
                     <label><input type="checkbox" checked={differentialSaveDerivedResult} onChange={(e) => setDifferentialSaveDerivedResult(e.target.checked)} style={{ marginRight: 6 }} />Save as derived result</label>
                     <label><input type="checkbox" checked={differentialExportScalarFields} onChange={(e) => setDifferentialExportScalarFields(e.target.checked)} style={{ marginRight: 6 }} />Export scalar fields</label>
-                  </>
-                )}
-              </div>
+                  </div>
+                </>
+              )}
 
               <button type="button" onClick={handleComputeDifferentialGeometry} style={{ padding: "4px 10px", fontSize: 11 }}>
                 Compute / Recompute
