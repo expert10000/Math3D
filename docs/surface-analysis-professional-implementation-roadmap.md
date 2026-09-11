@@ -71,7 +71,7 @@ The main gaps are architectural rather than a lack of controls:
 Baseline verification at this assessment:
 
 - **19 focused mathematical tests across 4 files** pass for exact surface analysis, spline surfaces, chart diagnostics, and geodesic graph behavior.
-- The current repository checkpoint has **519 renderer tests across 98 files** passing.
+- The current repository checkpoint has **530 renderer tests across 99 files** passing.
 - Existing Playwright coverage includes Surface functional workflows, Gallery visuals, responsive layouts, navigation, worker failures, persistence-related paths, release preset walks, and long-running memory checks.
 - The complete slow application suite passes after the current checkout's CI memory-profile stabilization.
 
@@ -80,7 +80,7 @@ Baseline verification at this assessment:
 | Plan | Status | Existing foundation | Main work remaining |
 | --- | --- | --- | --- |
 | 1 — Surface-first workspace and result contract | Complete (`bb0b24a`) | Canonical Surface identity/revision, all representation adapters, shared request/result publication, typed payloads, compact persistence, visible contract provenance | None for Commit 1 |
-| 2 — Unified differential-geometry engine | Advanced foundation | Graph invariants, parametric principal curvature, exact Geometry surfaces, sampled/mesh fields | One engine, conventions, analytic/numerical fallbacks, field results, singular masks, cross-representation verification |
+| 2 — Unified differential-geometry engine | Complete (`9c0ddfc`) | One normalized differential point/field schema, exact Geometry reuse, analytic/symbolic/AD and adaptive numerical routes, explicit mesh provenance, masks and mathematical verification | None for Commit 2 |
 | 3 — Computation/display/inspection UI split | Partial | Professional shell, left/viewer/right regions, Inspector tabs, responsive drawers | Remove responsibility overlap, extract Surface-specific panels/controllers, preserve parity and accessibility |
 | 4 — Curvature workspace | Advanced foundation | K/H/k1/k2 fields, directions, palettes, ranges, probes, classifications in adjacent code | Canonical saved result, statistics, classifications, direction validity, independent visualization |
 | 5 — Local differential-geometry probe | Advanced foundation | Point/normal/chart coordinates, tangent basis, curvature and direction readouts | Full I/II forms, method/provenance, classification, visual osculating evidence, pins/history/export |
@@ -181,14 +181,14 @@ For a regular parametric surface `r(u,v)`, the canonical engine computes
 ```text
 rᵤ, rᵥ, rᵤᵤ, rᵤᵥ, rᵥᵥ
 E = rᵤ·rᵤ       F = rᵤ·rᵥ       G = rᵥ·rᵥ
-L = rᵤᵤ·n       M = rᵤᵥ·n       N = rᵥᵥ·n
+L = -rᵤᵤ·n      M = -rᵤᵥ·n      N = -rᵥᵥ·n
 det(g) = EG - F²
 K = (LN - M²) / det(g)
 H = (EN - 2FM + GL) / (2 det(g))
 k₁,₂ = H ± sqrt(max(0, H² - K)), with k₁ ≥ k₂
 ```
 
-The result records the chosen unit normal and orientation convention because reversing `n` reverses H, k1, and k2 while preserving K. Principal directions are line fields, so their sign is not meaningful; continuity code may flip signs for display but must not present that choice as new mathematics.
+Math3D uses `IIᵢⱼ = -⟨rᵢⱼ,n⟩`, matching the existing exact Geometry evaluator and giving positive curvature to an outward-oriented sphere. The result records the chosen unit normal and orientation convention because reversing `n` reverses H, k1, and k2 while preserving K. Principal directions are line fields, so their sign is not meaningful; continuity code may flip signs for display but must not present that choice as new mathematics.
 
 Explicit graphs are normalized to a parametric adapter. Implicit surfaces are regular only where `∇F ≠ 0`; gradient/Hessian formulas may supply their local forms and curvatures, but critical points must be marked singular. Near-zero metric determinant, invalid derivatives, boundaries, periodic seams, and finite-difference truncation must produce explicit masks/warnings rather than fabricated finite values.
 
@@ -262,7 +262,7 @@ Acceptance: every Surface family can issue the same canonical analysis request a
 
 Planned message: `feat(surface-analysis): add unified differential-geometry computation pipeline`
 
-**Status: planned; advanced mathematical foundations exist.**
+**Status: complete — `9c0ddfc`.**
 
 Already implemented:
 
@@ -270,17 +270,29 @@ Already implemented:
 - Parametric principal-curvature and direction machinery in the Surface viewers.
 - Tested exact parametric surface analysis in Geometry.
 - Mesh differential geometry for explicitly discrete fallbacks.
+- A single representation-neutral dispatcher now produces the same differential point schema for exact, explicit graph, general parametric, implicit, spline/constructed/Weierstrass-compatible parameter evaluators, and mesh-backed inputs.
+- Exact Geometry definitions are reused directly; implicit sources prefer supplied analytic, symbolic, or automatic-differentiation gradient/Hessian data, then use adaptive finite differences when derivatives are unavailable.
+- Field publication aligns parameters, positions, first/second derivatives, normals, fundamental forms, shape operators, K/H/k1/k2, principal directions, and six validity masks in one typed payload.
+- Mesh-backed inputs and payloads are forced to `mesh-approximation` provenance and cannot be presented as analytic Surface mathematics.
 
 Remaining:
 
-- [ ] Normalize all representation adapters to position, first derivatives, second derivatives, normal, metric, shape operator, and validity metadata.
-- [ ] Reuse exact definitions from Geometry where the same analytic source exists.
-- [ ] Select exact/symbolic/automatic differentiation first, then documented adaptive numerical derivatives, then explicit sampled or mesh fallbacks.
-- [ ] Compute `E`, `F`, `G`, `L`, `M`, `N`, metric determinant, shape operator, `K`, `H`, ordered `k1 ≥ k2`, and valid principal directions.
-- [ ] Define the normal orientation and mean-curvature sign convention per representation and preserve it in result metadata.
-- [ ] Handle implicit surfaces through gradient/Hessian formulas away from critical points; mark zero-gradient points singular rather than silently sampling a normal.
-- [ ] Emit per-sample validity, uncertainty, boundary, degeneracy, singularity, and umbilic masks.
-- [ ] Verify identities `K = k1·k2` and `H = (k1+k2)/2`, refinement behavior, orientation reversal, units, and exact-versus-sampled error.
+- [x] Normalize all representation adapters to position, first derivatives, second derivatives, normal, metric, shape operator, and validity metadata.
+- [x] Reuse exact definitions from Geometry where the same analytic source exists.
+- [x] Select exact/symbolic/automatic differentiation first, then documented adaptive numerical derivatives, then explicit sampled or mesh fallbacks.
+- [x] Compute `E`, `F`, `G`, `L`, `M`, `N`, metric determinant, shape operator, `K`, `H`, ordered `k1 ≥ k2`, and valid principal directions.
+- [x] Define the normal orientation and mean-curvature sign convention per representation and preserve it in result metadata.
+- [x] Handle implicit surfaces through gradient/Hessian formulas away from critical points; mark zero-gradient points singular rather than silently sampling a normal.
+- [x] Emit per-sample validity, uncertainty, boundary, degeneracy, singularity, and umbilic masks.
+- [x] Verify identities `K = k1·k2` and `H = (k1+k2)/2`, refinement behavior, orientation reversal, units, and exact-versus-sampled error.
+
+Validation at `9c0ddfc`:
+
+- **21 focused Surface computation, contract, and persistence tests across 3 files** pass.
+- The full renderer suite passes: **530 tests across 99 files**.
+- `npm run typecheck:noemit` and `npm run build:core` pass.
+- Required Surface functional, Gallery, worker-failure, and workspace-navigation E2E checks pass: **12/12**.
+- `npm run test:app:responsive:smoke` passes for phone portrait, phone landscape, tablet, and desktop layouts.
 
 Acceptance: the same Surface result schema describes correct differential geometry for every representation, with visible fallbacks and no mesh estimate labeled analytic.
 
