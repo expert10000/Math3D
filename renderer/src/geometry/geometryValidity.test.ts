@@ -24,4 +24,8 @@ describe("Geometry semantic validity", () => {
     const kinds = analyzeGeometryValidity({ definition: invalid }).exactGeometry.issues.map((issue) => issue.kind);
     expect(kinds).toEqual(expect.arrayContaining(["collapsed-trim", "duplicate-boundary", "self-intersection", "trim-domain-pathology"]));
   });
+  it("detects semantic edge, join, orientation, and shell evidence", () => {
+    const issues = analyzeGeometryValidity({ definition: getGeometryExactSurfacePreset("torus"), semanticEvidence: { shellClosed: false, edges: [{ id: "edge:a", length: 0, boundarySignature: "same" }, { id: "edge:b", length: 1, boundarySignature: "same" }], joins: [{ id: "edge:c", incidentFaces: 3, orientationConsistent: false }] } }).exactGeometry.issues.map((issue) => issue.kind);
+    expect(issues).toEqual(expect.arrayContaining(["zero-length-edge", "duplicate-boundary", "non-manifold-join", "orientation", "open-shell"]));
+  });
 });

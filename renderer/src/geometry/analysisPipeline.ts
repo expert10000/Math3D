@@ -22,6 +22,7 @@ import {
 } from "./characteristicGeometry";
 import { analyzeGeometryValidity, type GeometryValidityResult } from "./geometryValidity";
 import { analyzeCanonicalMeasurements, type GeometryMeasurementNotation, type GeometryMeasurementReport } from "./canonicalMeasurements";
+import type { GeometrySampledFieldProgress } from "./sampledFieldAnalysis";
 import {
   computeGeometryAnalysisBasicMetrics,
   computeGeometryAnalysisTopologySummary,
@@ -134,6 +135,7 @@ export type GeometryAnalysisPayload = {
   characteristicGeometry?: CharacteristicGeometryResult;
   geometryValidity?: GeometryValidityResult;
   measurementReport?: GeometryMeasurementReport;
+  sampledField?: GeometrySampledFieldProgress;
 };
 
 export type GeometryAnalysisExecutionContext = {
@@ -191,6 +193,7 @@ export type GeometryAnalysisExecutionContext = {
     relativeTolerance?: number;
     timestamp?: string;
   };
+  sampledField?: GeometrySampledFieldProgress;
 };
 
 export type GeometryAnalysisDomainImplementation = (args: {
@@ -524,6 +527,15 @@ const builtinImplementationEntries: Array<[GeometryAnalysisResultKind, GeometryA
     measurementReport.sections.forEach((section) => outputs.push({ id: section.id, label: `${section.kind} section`, kind: "curve", points: section.points, closed: section.closed }));
     return { algorithm: "canonical-geometry-measurements-v1", backend: measurementReport.engine, outputs, summary: { measurementCount: measurementReport.measurements.length, sectionCount: measurementReport.sections.length, exactCount: measurementReport.measurements.filter((entry) => entry.method === "exact-analytic").length }, warnings: [], measurementReport };
   }],
+  ["sampled-fields", ({ context }) => {
+    if (!context.sampledField || context.sampledField.status !== "complete") throw new Error("Sampled-field publication requires a completed revision-safe worker result.");
+    const sampledField = context.sampledField;
+    const scalar = sampledField.overlays.find((overlay) => overlay.kind === "scalar-heatmap");
+    const outputs: GeometryAnalysisOutput[] = [{ id: "worker-summary", label: "Worker sampled field", kind: "summary", value: `${sampledField.stage}: ${sampledField.sampleCount} samples in ${sampledField.durationMs.toFixed(1)} ms` }];
+    if (scalar?.settings.range) outputs.push({ id: "range", label: "Scalar range", kind: "table", columns: ["min", "max"], rows: [[scalar.settings.range[0], scalar.settings.range[1]]] });
+    sampledField.warnings.forEach((warning, index) => outputs.push({ id: `warning-${index}`, label: "Worker diagnostic", kind: "warning", value: warning, severity: "warning" }));
+    return { algorithm: "geometry-worker-sampled-fields-v1", backend: "Geometry analysis module worker", outputs, summary: { stage: sampledField.stage, sampleCount: sampledField.sampleCount, overlayCount: sampledField.overlays.length, durationMs: sampledField.durationMs, sourceRevision: sampledField.sourceRevision }, warnings: sampledField.warnings, sampledField };
+  }],
   ["differential-geometry", ({ snapshot }) => ({
     algorithm: "mesh-analyze-handoff-v1",
     outputs: [{ id: "handoff", label: "Mesh Analyze handoff", kind: "summary", value: "Analysis-ready mesh snapshot" }],
@@ -601,6 +613,7 @@ export const executeGeometryAnalysisRequest = (args: {
       ...(computed.characteristicGeometry ? { characteristicGeometry: computed.characteristicGeometry } : {}),
       ...(computed.geometryValidity ? { geometryValidity: computed.geometryValidity } : {}),
       ...(computed.measurementReport ? { measurementReport: computed.measurementReport } : {}),
+      ...(computed.sampledField ? { sampledField: computed.sampledField } : {}),
       provenance: {
         backend,
         algorithm: computed.algorithm,

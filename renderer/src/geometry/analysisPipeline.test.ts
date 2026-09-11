@@ -17,6 +17,7 @@ import {
 } from "./analysisPipeline";
 import { getGeometryExactCurvePreset } from "./exactCurveAnalysis";
 import { getGeometryExactSurfacePreset } from "./exactSurfaceAnalysis";
+import { runGeometrySampledFieldRequest } from "./sampledFieldAnalysis";
 
 const triangle: SurfaceMeshData = {
   label: "triangle",
@@ -357,5 +358,28 @@ describe("Geometry AnalysisRequest pipeline", () => {
     expect(execution.result.payload?.characteristicGeometry?.counts["hyperbolic-region"]).toBeGreaterThan(0);
     expect(execution.result.payload?.characteristicGeometry?.intersections[0].type).toBe("transverse");
     expect(execution.result.payload?.characteristicGeometry?.layers.every((entry) => entry.displayOnly)).toBe(true);
+  });
+
+  it("publishes semantic validity without presenting mesh health as B-rep validity", () => {
+    const source = snapshot(11); const definition = getGeometryExactSurfacePreset("sphere");
+    const request = createGeometryAnalysisRequest({ id: "request-11", kind: "diagnostics", snapshot: source, sourceRevision: 15, domain: "object", requestedOutputs: ["table", "summary", "warning"] });
+    const execution = executeGeometryAnalysisRequest({ store: createGeometryAnalysisResultStore(), registry: createGeometryAnalysisRegistry(), request, snapshot: source, context: { geometryValidity: { definition, meshHealthNotes: ["display triangles healthy"] } }, now: 120 });
+    expect(execution.result.payload?.geometryValidity).toMatchObject({ topology: { renderTriangleIndependent: true }, displayMeshHealth: { exactBrepValidity: false } });
+  });
+
+  it("publishes canonical measurements and stable section curves", () => {
+    const source = snapshot(12); const definition = getGeometryExactSurfacePreset("sphere");
+    const request = createGeometryAnalysisRequest({ id: "request-12", kind: "measurement", snapshot: source, sourceRevision: 16, domain: "selection", requestedOutputs: ["scalar", "curve", "table"] });
+    const execution = executeGeometryAnalysisRequest({ store: createGeometryAnalysisResultStore(), registry: createGeometryAnalysisRegistry(), request, snapshot: source, context: { canonicalMeasurements: { sourceId: source.sourceObjectId, surface: definition, timestamp: "2026-01-01T00:00:00.000Z" } }, now: 130 });
+    expect(execution.result.payload?.measurementReport?.sections).toHaveLength(6);
+    expect(execution.result.payload?.measurementReport?.measurements.find((entry) => entry.quantity === "area")?.method).toBe("exact-analytic");
+  });
+
+  it("accepts only completed worker results into the shared store", async () => {
+    const source = snapshot(13);
+    const completed = await runGeometrySampledFieldRequest({ request: { requestId: "field", sourceObjectId: source.sourceObjectId, sourceRevision: 17, surfaceId: "sphere", requestedSamples: 100, quantity: "K", density: 1 }, publish: () => undefined });
+    const request = createGeometryAnalysisRequest({ id: "request-13", kind: "sampled-fields", snapshot: source, sourceRevision: 17, domain: "surface", requestedOutputs: ["table", "summary", "warning"] });
+    const execution = executeGeometryAnalysisRequest({ store: createGeometryAnalysisResultStore(), registry: createGeometryAnalysisRegistry(), request, snapshot: source, context: { sampledField: completed }, now: 140 });
+    expect(execution.result).toMatchObject({ state: "ready", backend: "Geometry analysis module worker", payload: { sampledField: { status: "complete", sampleCount: 100 } } });
   });
 });

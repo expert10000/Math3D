@@ -324,6 +324,8 @@ import type { IntrinsicGeometryResult } from "./geometry/intrinsicGeometry";
 import { promoteCharacteristicLayer, type CharacteristicGeometryResult } from "./geometry/characteristicGeometry";
 import type { GeometryValidityResult } from "./geometry/geometryValidity";
 import type { GeometryMeasurementNotation, GeometryMeasurementReport } from "./geometry/canonicalMeasurements";
+import { GeometrySamplingWorkerClient } from "./geometry/geometrySamplingWorkerClient";
+import type { GeometrySampledFieldProgress, GeometrySampledFieldRequest } from "./geometry/sampledFieldAnalysis";
 import { evaluateGeometryMeshReadiness } from "./geometry/meshReadiness";
 import {
   GEOMETRY_TO_MESH_PROMOTION_MODES,
@@ -1057,6 +1059,7 @@ type GeometryQuickAnalysisResultKind =
   | "feature-analysis"
   | "diagnostics"
   | "measurement"
+  | "sampled-fields"
   | "differential-geometry"
   | "section-analysis";
 type GeometryQuickAnalysisResultEntry = {
@@ -1078,6 +1081,7 @@ type GeometryQuickAnalysisResultEntry = {
   characteristicGeometry?: CharacteristicGeometryResult;
   geometryValidity?: GeometryValidityResult;
   measurementReport?: GeometryMeasurementReport;
+  sampledField?: GeometrySampledFieldProgress;
   notes?: string[];
   state: GeometryAnalysisResultState;
   backend: string;
@@ -12626,6 +12630,8 @@ const App: React.FC = () => {
       return isGeometryOperationInputSlotId(saved) ? saved : "primary-object";
     });
   const [geometryObjectRevisionById, setGeometryObjectRevisionById] = useState<Record<string, number>>({});
+  const geometryObjectRevisionByIdRef = useRef(geometryObjectRevisionById);
+  geometryObjectRevisionByIdRef.current = geometryObjectRevisionById;
   const geometryPrecisionPickActive =
     geometryMode === "procedural" && geometryProbeSelectionMode !== "object";
   const [geometryMeasuredEdges, setGeometryMeasuredEdges] = useState<GeometryMeasuredEdgeEntry[]>([]);
@@ -13360,6 +13366,11 @@ const App: React.FC = () => {
   const [geometryMeasurementAbsoluteTolerance, setGeometryMeasurementAbsoluteTolerance] = useState(1e-9);
   const [geometryMeasurementRelativeTolerance, setGeometryMeasurementRelativeTolerance] = useState(1e-6);
   const [geometryMeasurementSectionParameter, setGeometryMeasurementSectionParameter] = useState(0.5);
+  const [geometrySampledFieldQuantity, setGeometrySampledFieldQuantity] = useState<GeometrySampledFieldRequest["quantity"]>("K");
+  const [geometrySampledFieldCount, setGeometrySampledFieldCount] = useState(10_000);
+  const [geometrySampledFieldProgress, setGeometrySampledFieldProgress] = useState<GeometrySampledFieldProgress | null>(null);
+  const [geometrySampledFieldBusy, setGeometrySampledFieldBusy] = useState(false);
+  const geometrySamplingWorkerClientRef = useRef<GeometrySamplingWorkerClient | null>(null);
   const geometryExactSurfaceDefinition = useMemo(
     () => getGeometryExactSurfacePreset(geometryExactSurfacePresetId),
     [geometryExactSurfacePresetId]
@@ -13490,7 +13501,7 @@ const App: React.FC = () => {
     Object.entries(geometryAnalysisResultStore.entries)
       .map(([resultKey, result]): GeometryQuickAnalysisResultEntry | null => {
         const payload = result.payload as GeometryAnalysisPayload | null;
-        if (!payload || !["basic-metrics", "topology-summary", "curve-analysis", "surface-analysis", "intrinsic-geometry", "feature-analysis", "diagnostics", "measurement", "differential-geometry", "section-analysis"].includes(result.kind)) return null;
+        if (!payload || !["basic-metrics", "topology-summary", "curve-analysis", "surface-analysis", "intrinsic-geometry", "feature-analysis", "diagnostics", "measurement", "sampled-fields", "differential-geometry", "section-analysis"].includes(result.kind)) return null;
         const title = result.kind === "basic-metrics"
           ? "Basic metrics"
           : result.kind === "topology-summary"
@@ -13507,6 +13518,8 @@ const App: React.FC = () => {
               ? "Topology, continuity and validity"
             : result.kind === "measurement"
               ? "Measurements, sections and report"
+            : result.kind === "sampled-fields"
+              ? "Worker-backed sampled fields"
             : result.kind === "section-analysis"
               ? "Section analysis"
               : "Differential geometry handoff";
@@ -13529,6 +13542,7 @@ const App: React.FC = () => {
           characteristicGeometry: payload.characteristicGeometry,
           geometryValidity: payload.geometryValidity,
           measurementReport: payload.measurementReport,
+          sampledField: payload.sampledField,
           notes: payload.warnings,
           state: result.state,
           backend: result.backend,
@@ -42896,6 +42910,7 @@ const App: React.FC = () => {
       relativeTolerance?: number;
       timestamp?: string;
     };
+    sampledField?: GeometrySampledFieldProgress;
     sampling?: {
       strategy: "exact" | "mesh" | "adaptive" | "uniform";
       sampleCount?: number;
@@ -42943,7 +42958,7 @@ const App: React.FC = () => {
       request,
       snapshot: args.prepared.snapshot,
       selectionSnapshot: selection,
-      context: { sectionSummary: args.sectionSummary, exactCurve: args.exactCurve, exactSurface: args.exactSurface, intrinsicGeometry: args.intrinsicGeometry, characteristicGeometry: args.characteristicGeometry, geometryValidity: args.geometryValidity, canonicalMeasurements: args.canonicalMeasurements },
+      context: { sectionSummary: args.sectionSummary, exactCurve: args.exactCurve, exactSurface: args.exactSurface, intrinsicGeometry: args.intrinsicGeometry, characteristicGeometry: args.characteristicGeometry, geometryValidity: args.geometryValidity, canonicalMeasurements: args.canonicalMeasurements, sampledField: args.sampledField },
     }).store);
     setGeometryQuickAnalysisSelectedResultId(resultKey);
     return { request, resultKey };
@@ -43131,6 +43146,25 @@ const App: React.FC = () => {
     runGeometryQuickAnalysis({ prepared, kind: "measurement", domain: "selection", parameters: { surfaceDefinitionId: geometryExactSurfaceDefinition.id, curveDefinitionId: geometryExactCurveDefinition.id, sectionParameter: geometryMeasurementSectionParameter, digits: geometryMeasurementDigits, notation: geometryMeasurementNotation, absoluteTolerance: geometryMeasurementAbsoluteTolerance, relativeTolerance: geometryMeasurementRelativeTolerance }, requestedOutputs: ["scalar", "curve", "table", "summary"], canonicalMeasurements: { sourceId: prepared.snapshot.sourceObjectId, surface: geometryExactSurfaceDefinition, curve: geometryExactCurveDefinition, sectionParameter: geometryMeasurementSectionParameter, sceneUnit: "scene-unit", digits: geometryMeasurementDigits, notation: geometryMeasurementNotation, absoluteTolerance: geometryMeasurementAbsoluteTolerance, relativeTolerance: geometryMeasurementRelativeTolerance }, sampling: { strategy: "adaptive", sampleCount: geometryExactSurfaceResolution ** 2, tolerance: geometryMeasurementAbsoluteTolerance }, precision: { mode: "adaptive", digits: geometryMeasurementDigits, tolerance: geometryMeasurementAbsoluteTolerance } });
     setGeometryCreateActionStatus(`Canonical measurement report ready: ${geometryExactSurfaceDefinition.label}.`);
   }, [createSelectedGeometryAnalysisSnapshot, geometryExactCurveDefinition, geometryExactSurfaceDefinition, geometryExactSurfaceResolution, geometryMeasurementAbsoluteTolerance, geometryMeasurementDigits, geometryMeasurementNotation, geometryMeasurementRelativeTolerance, geometryMeasurementSectionParameter, runGeometryQuickAnalysis]);
+  const handleRunGeometrySampledFields = useCallback(() => {
+    const prepared = createSelectedGeometryAnalysisSnapshot();
+    if (!prepared) return;
+    const sourceObjectId = prepared.snapshot.sourceObjectId;
+    const sourceRevision = geometryObjectRevisionByIdRef.current[sourceObjectId] ?? 0;
+    geometrySamplingWorkerClientRef.current ??= new GeometrySamplingWorkerClient();
+    const request: GeometrySampledFieldRequest = { requestId: makeId(), sourceObjectId, sourceRevision, surfaceId: geometryExactSurfacePresetId, requestedSamples: geometrySampledFieldCount, quantity: geometrySampledFieldQuantity, density: 0.6 };
+    setGeometrySampledFieldBusy(true);
+    setGeometrySampledFieldProgress(null);
+    void geometrySamplingWorkerClientRef.current.run(request, (progress) => setGeometrySampledFieldProgress(progress), 30_000).then((result) => {
+      setGeometrySampledFieldBusy(false);
+      setGeometrySampledFieldProgress(result);
+      if (result.status !== "complete") { setGeometryCreateActionStatus(`Sampled field ${result.status}.`); return; }
+      if ((geometryObjectRevisionByIdRef.current[sourceObjectId] ?? 0) !== sourceRevision) { setGeometryCreateActionStatus("Sampled field rejected: Geometry source revision changed while the worker was running."); return; }
+      runGeometryQuickAnalysis({ prepared, kind: "sampled-fields", domain: "surface", parameters: { surfaceDefinitionId: geometryExactSurfacePresetId, quantity: geometrySampledFieldQuantity, requestedSamples: geometrySampledFieldCount, workerRequestId: request.requestId }, requestedOutputs: ["table", "summary", "warning"], sampledField: result, sampling: { strategy: "uniform", sampleCount: result.sampleCount, tolerance: 1e-9 }, precision: { mode: "double", digits: 10, tolerance: 1e-9 } });
+      setGeometryCreateActionStatus(`Worker sampled field complete: ${result.sampleCount.toLocaleString()} samples.`);
+    }).catch((error) => { setGeometrySampledFieldBusy(false); setGeometryCreateActionStatus(error instanceof Error ? error.message : "Geometry sampling worker failed."); });
+  }, [createSelectedGeometryAnalysisSnapshot, geometryExactSurfacePresetId, geometrySampledFieldCount, geometrySampledFieldQuantity, runGeometryQuickAnalysis]);
+  const handleCancelGeometrySampledFields = useCallback(() => { geometrySamplingWorkerClientRef.current?.cancel(); setGeometryCreateActionStatus("Cancelling Geometry sampled-field worker…"); }, []);
   const handleRunGeometryQuickSectionAnalysis = useCallback(() => {
     const prepared = createSelectedGeometryAnalysisSnapshot();
     if (!prepared) return;
@@ -43288,6 +43322,7 @@ const App: React.FC = () => {
       characteristicGeometry: geometrySelectedQuickAnalysisResult.characteristicGeometry ?? null,
       geometryValidity: geometrySelectedQuickAnalysisResult.geometryValidity ?? null,
       measurementReport: geometrySelectedQuickAnalysisResult.measurementReport ?? null,
+      sampledField: geometrySelectedQuickAnalysisResult.sampledField ?? null,
       notes: geometrySelectedQuickAnalysisResult.notes ?? [],
       lifecycle: {
         state: geometrySelectedQuickAnalysisResult.state,
@@ -93746,6 +93781,14 @@ case "mobius":
                                       <button type="button" data-testid="geometry-run-canonical-measurements" onClick={handleRunGeometryCanonicalMeasurements} style={{ fontSize: 11 }}>Measure + build report</button>
                                     </div>
                                   </details>
+                                  <div data-testid="geometry-sampled-field-controls" style={{ display: "grid", gap: 5, borderTop: "1px solid #e2e8f0", paddingTop: 7 }}>
+                                    <div style={{ fontSize: 10.5, fontWeight: 700 }}>Worker-backed sampled fields</div>
+                                    <div style={{ fontSize: 9.5, color: "#667085" }}>Progressive pointwise → coarse → refined → full publication with 100k sample and overlay budgets.</div>
+                                    <label style={{ fontSize: 9.5 }}>Quantity <select data-testid="geometry-sampled-field-quantity" value={geometrySampledFieldQuantity} onChange={(event) => setGeometrySampledFieldQuantity(event.target.value as GeometrySampledFieldRequest["quantity"])}>{(["K", "H", "k1", "k2", "jacobian"] as const).map((value) => <option key={value}>{value}</option>)}</select></label>
+                                    <label style={{ fontSize: 9.5 }}>Samples <select data-testid="geometry-sampled-field-count" value={geometrySampledFieldCount} onChange={(event) => setGeometrySampledFieldCount(Number(event.target.value))}><option value={10000}>10k</option><option value={100000}>100k</option></select></label>
+                                    <div style={{ display: "flex", gap: 5 }}><button type="button" data-testid="geometry-run-sampled-field" onClick={handleRunGeometrySampledFields} disabled={geometrySampledFieldBusy} style={{ fontSize: 11 }}>{geometrySampledFieldBusy ? "Sampling…" : "Run in worker"}</button><button type="button" data-testid="geometry-cancel-sampled-field" onClick={handleCancelGeometrySampledFields} disabled={!geometrySampledFieldBusy} style={{ fontSize: 11 }}>Cancel</button></div>
+                                    {geometrySampledFieldProgress && <div data-testid="geometry-sampled-field-progress" style={{ fontSize: 9.5 }}><strong>{geometrySampledFieldProgress.stage}</strong> · {Math.round(geometrySampledFieldProgress.progress * 100)}% · {geometrySampledFieldProgress.sampleCount.toLocaleString()} samples · {geometrySampledFieldProgress.status}</div>}
+                                  </div>
                                   <div style={{ display: "grid", gap: 4 }}>
                                     <div style={{ fontSize: 10.5, fontWeight: 700 }}>Differential geometry</div>
                                     <div style={{ fontSize: 10, color: "#667085" }}>
@@ -93814,6 +93857,8 @@ case "mobius":
                                             ? "Exact Geometry diagnostics"
                                           : geometrySelectedQuickAnalysisResult.kind === "measurement"
                                             ? "Canonical measurement"
+                                          : geometrySelectedQuickAnalysisResult.kind === "sampled-fields"
+                                            ? "Worker sampled field"
                                             : "Geometry analysis"}
                                       </div>
                                       <div style={{ fontSize: 11.5, fontWeight: 800, overflowWrap: "anywhere" }}>
@@ -93850,6 +93895,8 @@ case "mobius":
                                           ? "Semantic topology / trims / continuity / validity"
                                         : geometrySelectedQuickAnalysisResult.kind === "measurement"
                                           ? "Measurements / stable sections / quantitative report"
+                                        : geometrySelectedQuickAnalysisResult.kind === "sampled-fields"
+                                          ? "Progressive sampled scalar/vector overlays"
                                           : geometrySelectedQuickAnalysisResult.title],
                                       ["Method", geometrySelectedQuickAnalysisResult.provenanceAlgorithm],
                                       ["Domain", geometrySelectedQuickAnalysisResult.domain],
@@ -94188,6 +94235,15 @@ case "mobius":
                                       <div data-testid="geometry-measurement-sections"><strong>Stable sections:</strong> {report.sections.map((section) => `${section.kind} [${section.id}]`).join(" · ")}</div>
                                       <div><strong>Precision:</strong> {report.precision.digits} digits · {report.precision.notation} · abs {report.precision.absoluteTolerance.toExponential(2)} · rel {report.precision.relativeTolerance.toExponential(2)}</div>
                                       <div data-testid="geometry-measurement-provenance"><strong>Report provenance:</strong> source {report.source.id} r{report.source.revision} · {report.selection.semantic} · {report.units} · {report.engine} · {report.timestamp}</div>
+                                    </div>;
+                                  })()}
+                                  {geometrySelectedQuickAnalysisResult.kind === "sampled-fields" && geometrySelectedQuickAnalysisResult.sampledField && (() => {
+                                    const field = geometrySelectedQuickAnalysisResult.sampledField;
+                                    return <div data-testid="geometry-sampled-field-result" style={{ display: "grid", gap: 6, fontSize: 9.5 }}>
+                                      <div><strong>Worker result:</strong> {field.stage} · {field.sampleCount.toLocaleString()} samples · {fmt(field.durationMs)} ms · source r{field.sourceRevision}</div>
+                                      <div data-testid="geometry-sampled-field-overlays"><strong>Shared overlays:</strong> {field.overlays.map((overlay) => `${overlay.kind} (${overlay.sampleCount}, opacity ${overlay.settings.opacity}, density ${overlay.settings.density}, scale ${overlay.settings.scale}, legend ${overlay.settings.legend ? "on" : "off"}, clamp ${overlay.settings.clamp ? "on" : "off"})`).join(" · ")}</div>
+                                      <div><strong>Budgets:</strong> samples {field.budgets.maxSamples.toLocaleString()} · glyphs {field.budgets.maxGlyphs.toLocaleString()} · labels {field.budgets.maxLabels} · polylines {field.budgets.maxPolylines.toLocaleString()} · upload {(field.budgets.maxUploadBytes / 1048576).toFixed(0)} MB · frame {field.budgets.targetFrameMs} ms</div>
+                                      <div><strong>Revision safety:</strong> accepted request {field.requestId}; stale and superseded responses cannot publish.</div>
                                     </div>;
                                   })()}
                                   {geometrySelectedQuickAnalysisResult.kind === "topology-summary" &&

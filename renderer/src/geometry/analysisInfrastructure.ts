@@ -35,6 +35,7 @@ export type GeometryAnalysisResultKind =
   | "feature-analysis"
   | "diagnostics"
   | "measurement"
+  | "sampled-fields"
   | "comparison"
   | "report"
   | (string & {});
@@ -74,6 +75,7 @@ export const DEFAULT_GEOMETRY_ANALYSIS_DEFINITIONS: readonly GeometryAnalysisDef
   { kind: "feature-analysis", label: "Feature analysis", family: "geometry-features", domain: "selection" },
   { kind: "diagnostics", label: "Geometry diagnostics", family: "geometry-diagnostics", domain: "object" },
   { kind: "measurement", label: "Geometry measurement", family: "geometry-measurement", domain: "selection" },
+  { kind: "sampled-fields", label: "Sampled fields", family: "geometry-sampling", domain: "surface" },
   { kind: "comparison", label: "Geometry comparison", family: "geometry-comparison", domain: "mixed" },
   { kind: "report", label: "Geometry report", family: "geometry-report", domain: "object" },
 ];

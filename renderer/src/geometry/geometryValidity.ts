@@ -1,12 +1,13 @@
 import { analyzeIntrinsicGeometry } from "./intrinsicGeometry";
 import { analyzeExactSurface, evaluateExactSurfacePoint, type ExactSurfaceVec3, type GeometryAnalyticSurfaceDefinition } from "./exactSurfaceAnalysis";
+import { analyzeExactCurve, type GeometryAnalyticCurveDefinition } from "./exactCurveAnalysis";
 
 export type GeometryNativeEntityKind = "body" | "shell" | "face" | "loop" | "edge" | "vertex";
 export type GeometryNativeEntity = { id: string; kind: GeometryNativeEntityKind; label: string; parentId: string | null; childIds: string[]; sourceRevision: number };
 export type GeometryNativeTopology = { entities: GeometryNativeEntity[]; roots: string[]; representation: "analytic-semantic-topology"; renderTriangleIndependent: true };
 export type GeometryDiagnosticSeverity = "info" | "warning" | "error" | "unknown";
 export type GeometryDiagnosticAction = "Frame" | "Select" | "Isolate" | "Open source" | "Attempt repair";
-export type GeometryValidityIssueKind = "invalid-parameter-domain" | "degenerate-surface" | "invalid-trim" | "self-intersection" | "open-shell" | "non-manifold-join" | "orientation" | "zero-length-edge" | "collapsed-trim" | "duplicate-boundary" | "singularity" | "seam" | "pole" | "excessive-stretch" | "poor-metric-conditioning" | "trim-domain-pathology";
+export type GeometryValidityIssueKind = "invalid-parameter-domain" | "degenerate-curve" | "degenerate-surface" | "invalid-trim" | "self-intersection" | "open-shell" | "non-manifold-join" | "orientation" | "zero-length-edge" | "collapsed-trim" | "duplicate-boundary" | "singularity" | "seam" | "pole" | "excessive-stretch" | "poor-metric-conditioning" | "trim-domain-pathology";
 export type GeometryValidityIssue = { id: string; kind: GeometryValidityIssueKind; severity: GeometryDiagnosticSeverity; entityId: string; message: string; exact: boolean; actions: GeometryDiagnosticAction[]; value?: number; tolerance?: number };
 export type GeometryContinuityClass = "C0/G0" | "C1/G1" | "C2/G2" | "discontinuous" | "degenerate";
 export type GeometryContinuityResult = { classification: GeometryContinuityClass; positionGap: number; tangentAngle: number | null; normalAngle: number | null; curvatureMismatch: number | null; samples: number; tolerance: number };
@@ -72,7 +73,7 @@ export const evaluateSurfaceBoundaryContinuity = (args: { a: GeometryAnalyticSur
   return { classification, positionGap, tangentAngle: degenerate ? null : tangentAngle, normalAngle: degenerate ? null : normalAngle, curvatureMismatch: degenerate ? null : curvatureMismatch, samples, tolerance };
 };
 
-export const analyzeGeometryValidity = (args: { definition: GeometryAnalyticSurfaceDefinition; continuityWith?: GeometryAnalyticSurfaceDefinition; meshHealthNotes?: string[]; tolerance?: number }): GeometryValidityResult => {
+export const analyzeGeometryValidity = (args: { definition: GeometryAnalyticSurfaceDefinition; curve?: GeometryAnalyticCurveDefinition; continuityWith?: GeometryAnalyticSurfaceDefinition; meshHealthNotes?: string[]; semanticEvidence?: { shellClosed?: boolean; edges?: Array<{ id: string; length: number; boundarySignature?: string }>; joins?: Array<{ id: string; incidentFaces: number; orientationConsistent: boolean }> }; tolerance?: number }): GeometryValidityResult => {
   const tolerance = Math.max(1e-12, args.tolerance ?? 1e-6);
   const definition = args.definition;
   const topology = buildGeometryNativeTopology(definition);
@@ -92,6 +93,23 @@ export const analyzeGeometryValidity = (args: { definition: GeometryAnalyticSurf
     if (/self[- ]?intersect/i.test(trim.description)) push("self-intersection", "error", `loop:${trim.id}`, `Trim ${trim.id} self-intersects.`);
     trimIds.add(trim.id);
   });
+  if (args.curve) {
+    if (!Number.isFinite(args.curve.domain.min) || !Number.isFinite(args.curve.domain.max) || args.curve.domain.max <= args.curve.domain.min) push("invalid-parameter-domain", "error", `edge:${args.curve.id}`, "Curve parameter domain must be finite and increasing.");
+    else {
+      const curve = analyzeExactCurve({ definition: args.curve, parameter: (args.curve.domain.min + args.curve.domain.max) / 2, sampleCount: 33, tolerance });
+      if (curve.samples.some((sample) => sample.speed <= tolerance)) push("degenerate-curve", "error", `edge:${args.curve.id}`, "Curve contains a stationary or degenerate sampled span.");
+    }
+  }
+  const boundarySignatures = new Set<string>();
+  for (const edge of args.semanticEvidence?.edges ?? []) {
+    if (!Number.isFinite(edge.length) || edge.length <= tolerance) push("zero-length-edge", "error", edge.id, `Semantic edge length ${edge.length} is at or below tolerance.`, edge.length);
+    if (edge.boundarySignature && boundarySignatures.has(edge.boundarySignature)) push("duplicate-boundary", "error", edge.id, `Boundary signature ${edge.boundarySignature} is duplicated.`);
+    if (edge.boundarySignature) boundarySignatures.add(edge.boundarySignature);
+  }
+  for (const join of args.semanticEvidence?.joins ?? []) {
+    if (join.incidentFaces > 2) push("non-manifold-join", "error", join.id, `${join.incidentFaces} faces meet at a semantic edge.`);
+    if (!join.orientationConsistent) push("orientation", "error", join.id, "Adjacent semantic faces have inconsistent orientation.");
+  }
   const surface = analyzeExactSurface({ definition, u: (definition.domain.u.min + definition.domain.u.max) / 2, v: (definition.domain.v.min + definition.domain.v.max) / 2, uCount: 17, vCount: 17, tolerance });
   if (surface.classifications.degenerate) push("degenerate-surface", "error", `face:${definition.id}`, `${surface.classifications.degenerate} rank-deficient sample(s).`, surface.classifications.degenerate);
   const intrinsic = analyzeIntrinsicGeometry({ definition, start: { u: definition.domain.u.min, v: definition.domain.v.min }, destination: { u: definition.domain.u.max, v: definition.domain.v.max }, gridResolution: 16, tolerance });
@@ -99,7 +117,7 @@ export const analyzeGeometryValidity = (args: { definition: GeometryAnalyticSurf
   if ((intrinsic.metricPoint.parameterStretch ?? 0) > 1e3) push("excessive-stretch", "warning", `face:${definition.id}`, "Parameter stretch exceeds 1e3.", intrinsic.metricPoint.parameterStretch);
   if (definition.trims.length) push("trim-domain-pathology", "unknown", `face:${definition.id}`, "Trim-domain connectivity requires a boundary solver before shell closure can be certified.");
   const closed = definition.domain.u.periodic && definition.domain.v.periodic && !definition.trims.length;
-  if (!closed && definition.id !== "sphere") push("open-shell", "warning", `shell:${definition.id}`, "Semantic shell has one or more unpaired boundary loops.");
+  if (args.semanticEvidence?.shellClosed === false || (!closed && definition.id !== "sphere")) push("open-shell", "warning", `shell:${definition.id}`, "Semantic shell has one or more unpaired boundary loops.");
   const counts = ({ body: 0, shell: 0, face: 0, loop: 0, edge: 0, vertex: 0 } as Record<GeometryNativeEntityKind, number>);
   topology.entities.forEach((entity) => { counts[entity.kind] += 1; });
   return {
