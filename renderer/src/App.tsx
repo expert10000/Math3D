@@ -34,6 +34,7 @@ import { SelectionStatsPanel } from "./components/SelectionStatsPanel";
 import { DiskStatsPanel } from "./components/DiskStatsPanel";
 import { WorkbookPanel } from "./components/WorkbookPanel";
 import { GeometryPickReadout } from "./components/GeometryPickReadout";
+import { GeometryAnalysisInspectorPanel } from "./components/GeometryAnalysisInspectorPanel";
 import { UnifiedSelectionInspector } from "./components/UnifiedSelectionInspector";
 import { GeometrySemanticNavigatorPanel } from "./components/GeometrySemanticNavigatorPanel";
 import { GeometryConstructCatalogPanel } from "./components/GeometryConstructCatalogPanel";
@@ -327,6 +328,16 @@ import type { GeometryMeasurementNotation, GeometryMeasurementReport } from "./g
 import { GeometrySamplingWorkerClient } from "./geometry/geometrySamplingWorkerClient";
 import type { GeometrySampledFieldProgress, GeometrySampledFieldRequest } from "./geometry/sampledFieldAnalysis";
 import type { GeometryAnalyticDiscreteComparisonResult, GeometryDiscreteTargetKind } from "./geometry/analyticDiscreteComparison";
+import {
+  duplicateGeometryAnalysisSettings,
+  geometryInspectorLifecycleState,
+  markGeometryAnalysisRecordStale,
+  parseGeometryAnalysisRecords,
+  renameGeometryAnalysisRecord,
+  saveGeometryAnalysisRecord,
+  serializeGeometryAnalysisRecords,
+  type GeometryAnalysisInspectorRecord,
+} from "./geometry/analysisResultWorkflow";
 import { evaluateGeometryMeshReadiness } from "./geometry/meshReadiness";
 import {
   GEOMETRY_TO_MESH_PROMOTION_MODES,
@@ -1073,6 +1084,7 @@ type GeometryQuickAnalysisResultEntry = {
   sourceObjectName: string;
   snapshot: GeometryAnalysisSnapshot;
   createdAt: number;
+  updatedAt: number;
   selection: UnifiedSelection | null;
   basicMetrics?: GeometryAnalysisBasicMetrics;
   topologySummary?: GeometryAnalysisTopologySummary;
@@ -1095,6 +1107,11 @@ type GeometryQuickAnalysisResultEntry = {
   sourceRevision: number;
   domain: GeometryAnalysisDomain;
   provenanceAlgorithm: string;
+  parameters: import("./analysis/contracts").AnalysisParameters;
+  sampling: GeometryAnalysisPayload["request"]["sampling"];
+  precision: GeometryAnalysisPayload["request"]["precision"];
+  statistics: Readonly<Record<string, string | number | boolean | null>>;
+  payload: GeometryAnalysisPayload;
 };
 type MeshPromotionOperationEntry = {
   id: string;
@@ -1637,6 +1654,7 @@ const WORKBOOK_SNAPSHOT_KEY = "math3d.workbook.snapshot.v1";
 const WORKBOOK_SNAPSHOT_HISTORY_KEY = "math3d.workbook.snapshotHistory.v1";
 const GEOMETRY_OBJECT_PRESETS_KEY = "math3d.geometry.objectPresets.v1";
 const GEOMETRY_OPERATION_PRESETS_KEY = "math3d.geometry.operationPresets.v1";
+const GEOMETRY_SAVED_ANALYSIS_RESULTS_KEY = "math3d.geometry.savedAnalysisResults.v1";
 const GEOMETRY_DERIVED_CONSTRUCTIONS_STORAGE_KEY = "math3d.geometry.derivedConstructions.v1";
 const GEOMETRY_EDIT_SESSION_KEY = "math3d.geometry.editSession.v1";
 const UI_CONTEXTUAL_GEOMETRY_PICK_MODE_KEY = "math3d.ui.contextual.geometryPickMode.v1";
@@ -3407,7 +3425,7 @@ type GeometryRepeatAxis = "x" | "y" | "z" | "custom";
 type GeometryRepeatGridPlane = "xy" | "xz" | "yz";
 type GeometryRepeatMirrorPlane = "xy" | "xz" | "yz" | "selected-face";
 type GeometryRightPanelMode = "inspector" | "workbook";
-type GeometryRightPanelTab = "selection" | "properties" | "actions" | "dependencies";
+type GeometryRightPanelTab = "selection" | "geometry" | "analysis" | "diagnostics" | "provenance" | "history" | "actions";
 type GeometryInspectorPanelTab = "probe" | "dependencies";
 type GeometryConstructPanelTab = "create" | "edit" | "relations" | "measure" | "tree" | "inspect";
 type GeometryConstructCreateFamily = "points" | "lines" | "planes";
@@ -13338,6 +13356,15 @@ const App: React.FC = () => {
   const geometryAnalysisRegistry = useMemo(() => createGeometryAnalysisRegistry(), []);
   const [geometryAnalysisResultStore, setGeometryAnalysisResultStore] = useState(createGeometryAnalysisResultStore);
   const [geometryQuickAnalysisSelectedResultId, setGeometryQuickAnalysisSelectedResultId] = useState<string | null>(null);
+  const [geometrySavedAnalysisResults, setGeometrySavedAnalysisResults] = useState<GeometryAnalysisInspectorRecord[]>(() => {
+    try {
+      return parseGeometryAnalysisRecords(window.localStorage.getItem(GEOMETRY_SAVED_ANALYSIS_RESULTS_KEY));
+    } catch {
+      return [];
+    }
+  });
+  const [geometrySelectedSavedAnalysisResultId, setGeometrySelectedSavedAnalysisResultId] = useState<string | null>(null);
+  const [geometryCompareAnalysisResultId, setGeometryCompareAnalysisResultId] = useState<string | null>(null);
   const [geometryExactCurvePresetId, setGeometryExactCurvePresetId] = useState<GeometryExactCurvePresetId>("circle");
   const [geometryExactCurveParameterU, setGeometryExactCurveParameterU] = useState(0.25);
   const [geometryExactCurveSampleCount, setGeometryExactCurveSampleCount] = useState(96);
@@ -13540,6 +13567,7 @@ const App: React.FC = () => {
           sourceObjectName: payload.sourceSnapshot.sourceObjectName,
           snapshot: payload.sourceSnapshot,
           createdAt: result.createdAt,
+          updatedAt: result.updatedAt,
           selection: payload.selectionSnapshot ?? null,
           basicMetrics: payload.basicMetrics,
           topologySummary: payload.topologySummary,
@@ -13562,6 +13590,11 @@ const App: React.FC = () => {
           sourceRevision: payload.request.target.sourceRevision,
           domain: payload.request.domain,
           provenanceAlgorithm: payload.provenance.algorithm,
+          parameters: payload.request.parameters,
+          sampling: payload.request.sampling,
+          precision: payload.request.precision,
+          statistics: payload.summary,
+          payload,
         };
       })
       .filter((entry): entry is GeometryQuickAnalysisResultEntry => entry != null)
@@ -13577,6 +13610,68 @@ const App: React.FC = () => {
     }
     return geometryQuickAnalysisResults[0] ?? null;
   }, [geometryQuickAnalysisResults, geometryQuickAnalysisSelectedResultId]);
+  const geometryActiveAnalysisInspectorRecord = useMemo<GeometryAnalysisInspectorRecord | null>(() => {
+    if (geometrySelectedSavedAnalysisResultId) {
+      const saved = geometrySavedAnalysisResults.find((entry) => entry.id === geometrySelectedSavedAnalysisResultId) ?? null;
+      if (saved) {
+        const currentRevision = geometryObjectRevisionById[saved.sourceObjectId] ?? saved.sourceRevision;
+        return markGeometryAnalysisRecordStale(saved, currentRevision);
+      }
+    }
+    const result = geometrySelectedQuickAnalysisResult;
+    if (!result) return null;
+    const currentRevision = geometryObjectRevisionById[result.sourceObjectId] ?? result.sourceRevision;
+    const record: GeometryAnalysisInspectorRecord = {
+      id: result.id,
+      resultKey: result.resultKey,
+      name: result.title,
+      kind: result.kind,
+      sourceObjectId: result.sourceObjectId,
+      sourceObjectName: result.sourceObjectName,
+      sourceRevision: result.sourceRevision,
+      resultVersion: result.resultVersion,
+      lifecycle: geometryInspectorLifecycleState(result.state),
+      domain: result.domain,
+      quantity: result.title,
+      method: result.provenanceAlgorithm,
+      units: String(result.parameters.positionUnit ?? result.parameters.sceneUnit ?? result.parameters.units ?? "scene units"),
+      precision: `${result.precision.mode}${result.precision.digits == null ? "" : ` · ${result.precision.digits} digits`}${result.precision.tolerance == null ? "" : ` · tol ${result.precision.tolerance}`}`,
+      sampling: `${result.sampling.strategy}${result.sampling.sampleCount == null ? "" : ` · ${result.sampling.sampleCount.toLocaleString()} samples`}${result.sampling.tolerance == null ? "" : ` · tol ${result.sampling.tolerance}`}`,
+      parameters: result.parameters,
+      requestedOutputs: result.requestedOutputs,
+      statistics: result.statistics,
+      warnings: result.notes ?? [],
+      engine: result.backend,
+      computeTimeMs: result.computeTimeMs,
+      createdAt: result.createdAt,
+      updatedAt: result.updatedAt,
+      savedAt: null,
+      payload: result.payload,
+    };
+    return markGeometryAnalysisRecordStale(record, currentRevision);
+  }, [
+    geometryObjectRevisionById,
+    geometrySavedAnalysisResults,
+    geometrySelectedQuickAnalysisResult,
+    geometrySelectedSavedAnalysisResultId,
+  ]);
+  const geometryCompareAnalysisResult = useMemo(
+    () => geometrySavedAnalysisResults.find((entry) => entry.id === geometryCompareAnalysisResultId) ?? null,
+    [geometryCompareAnalysisResultId, geometrySavedAnalysisResults]
+  );
+  const geometryAnalysisInspectorSourceRevision = geometryActiveAnalysisInspectorRecord
+    ? geometryObjectRevisionById[geometryActiveAnalysisInspectorRecord.sourceObjectId] ?? geometryActiveAnalysisInspectorRecord.sourceRevision
+    : 0;
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        GEOMETRY_SAVED_ANALYSIS_RESULTS_KEY,
+        serializeGeometryAnalysisRecords(geometrySavedAnalysisResults.slice(0, 40))
+      );
+    } catch {
+      // Saved results remain available for this session if browser storage is full.
+    }
+  }, [geometrySavedAnalysisResults]);
   const geometryObjectIdSet = useMemo(() => {
     const ids = new Set<string>();
     for (const obj of geometryObjects) ids.add(obj.id);
@@ -28687,7 +28782,7 @@ const App: React.FC = () => {
       setGeometrySelectedMathConstructionId(null);
       setGeometrySelectedDerivedConstructionId(null);
     }
-    setGeometryRightPanelTab("dependencies");
+    setGeometryRightPanelTab("provenance");
     setGeometryInspectorPanelTab("dependencies");
   }, []);
   const handleUseDerivedPlaneForSectionSliceById = useCallback((derivedId: string) => {
@@ -30402,7 +30497,7 @@ const App: React.FC = () => {
     }
     if (geometrySelectedSceneObject) {
       setGeometryProceduralPanelTab("object");
-      setGeometryRightPanelTab("properties");
+      setGeometryRightPanelTab("geometry");
       setGeometryCreateActionStatus("Use the Object Details name field to rename this object.");
       return;
     }
@@ -31277,7 +31372,7 @@ const App: React.FC = () => {
     setGeometryMode("procedural");
     if (geometryLatestRecentAction?.kind === "construction") {
       setGeometryProceduralPanelTab("construct");
-      setGeometryRightPanelTab("dependencies");
+      setGeometryRightPanelTab("provenance");
       setGeometryConstructPanelTab("tree");
       if (geometryLatestRecentAction.step.resultId) {
         setGeometrySelectedDerivedConstructionId(geometryLatestRecentAction.step.resultId);
@@ -42981,12 +43076,17 @@ const App: React.FC = () => {
       context: { sectionSummary: args.sectionSummary, exactCurve: args.exactCurve, exactSurface: args.exactSurface, intrinsicGeometry: args.intrinsicGeometry, characteristicGeometry: args.characteristicGeometry, geometryValidity: args.geometryValidity, canonicalMeasurements: args.canonicalMeasurements, sampledField: args.sampledField, analyticDiscreteComparison: args.analyticDiscreteComparison },
     }).store);
     setGeometryQuickAnalysisSelectedResultId(resultKey);
+    setGeometrySelectedSavedAnalysisResultId(null);
+    setGeometryRightPanelMode("inspector");
+    setGeometryRightPanelTab("analysis");
+    if (!showRightPanel) setShowRightPanel(true);
     return { request, resultKey };
   }, [
     geometryActiveUnifiedSelection,
     geometryAnalysisRegistry,
     geometryObjectRevisionById,
     geometrySceneIdentityIndex,
+    showRightPanel,
   ]);
   const handleRunGeometryQuickBasicMetrics = useCallback(() => {
     const prepared = createSelectedGeometryAnalysisSnapshot();
@@ -43425,6 +43525,109 @@ const App: React.FC = () => {
         : `Variant compare prepared with ${variantA.name}; add another variant to complete comparison.`
     );
   }, [geometrySelectedQuickAnalysisResult, geometryVariantSets]);
+  const handleSaveGeometryAnalysisInspectorResult = useCallback(() => {
+    const active = geometryActiveAnalysisInspectorRecord;
+    if (!active) {
+      setGeometryCreateActionStatus("No analysis result selected.");
+      return;
+    }
+    const saved = saveGeometryAnalysisRecord({ ...active, id: active.savedAt == null ? makeId() : active.id });
+    setGeometrySavedAnalysisResults((previous) => [saved, ...previous.filter((entry) => entry.id !== saved.id)].slice(0, 40));
+    setGeometrySelectedSavedAnalysisResultId(saved.id);
+    setGeometryCreateActionStatus(`Saved analysis result: ${saved.name}.`);
+  }, [geometryActiveAnalysisInspectorRecord]);
+  const handleRenameGeometryAnalysisInspectorResult = useCallback(() => {
+    const active = geometryActiveAnalysisInspectorRecord;
+    if (!active) return;
+    const name = window.prompt("Analysis result name", active.name);
+    if (name == null) return;
+    const renamed = renameGeometryAnalysisRecord(
+      active.savedAt == null ? saveGeometryAnalysisRecord({ ...active, id: makeId() }) : active,
+      name
+    );
+    setGeometrySavedAnalysisResults((previous) => [renamed, ...previous.filter((entry) => entry.id !== renamed.id)].slice(0, 40));
+    setGeometrySelectedSavedAnalysisResultId(renamed.id);
+    setGeometryCreateActionStatus(`Renamed analysis result to ${renamed.name}.`);
+  }, [geometryActiveAnalysisInspectorRecord]);
+  const handleCompareGeometryAnalysisInspectorResult = useCallback(() => {
+    const active = geometryActiveAnalysisInspectorRecord;
+    if (!active) return;
+    const candidate = geometrySavedAnalysisResults.find((entry) => entry.id !== active.id) ?? null;
+    setGeometryCompareAnalysisResultId(candidate?.id ?? null);
+    setGeometryCreateActionStatus(candidate
+      ? `Comparing ${active.name} with ${candidate.name}.`
+      : "Save another analysis result to compare side-by-side.");
+  }, [geometryActiveAnalysisInspectorRecord, geometrySavedAnalysisResults]);
+  const handleDuplicateGeometryAnalysisSettings = useCallback(() => {
+    const active = geometryActiveAnalysisInspectorRecord;
+    if (!active) return;
+    const settings = duplicateGeometryAnalysisSettings(active);
+    const now = Date.now();
+    const duplicate: GeometryAnalysisInspectorRecord = {
+      ...active,
+      ...settings,
+      id: makeId(),
+      resultKey: `${active.resultKey}:settings-${now}`,
+      name: `${active.name} settings copy`,
+      lifecycle: "preview",
+      createdAt: now,
+      updatedAt: now,
+      savedAt: null,
+      payload: null,
+      statistics: {},
+      warnings: ["Settings duplicated; recompute to produce a current payload."],
+    };
+    setGeometrySavedAnalysisResults((previous) => [duplicate, ...previous].slice(0, 40));
+    setGeometrySelectedSavedAnalysisResultId(duplicate.id);
+    setGeometryCreateActionStatus(`Duplicated settings for ${active.name}.`);
+  }, [geometryActiveAnalysisInspectorRecord]);
+  const handleRecomputeGeometryAnalysisInspectorResult = useCallback(() => {
+    const kind = geometryActiveAnalysisInspectorRecord?.kind;
+    setGeometrySelectedSavedAnalysisResultId(null);
+    if (kind === "basic-metrics") handleRunGeometryQuickBasicMetrics();
+    else if (kind === "topology-summary") handleRunGeometryQuickTopologySummary();
+    else if (kind === "curve-analysis") handleRunGeometryExactCurveAnalysis();
+    else if (kind === "surface-analysis") handleRunGeometryExactSurfaceAnalysis();
+    else if (kind === "intrinsic-geometry") handleRunGeometryIntrinsicAnalysis();
+    else if (kind === "feature-analysis") handleRunGeometryCharacteristicAnalysis();
+    else if (kind === "diagnostics") handleRunGeometryValidityAnalysis();
+    else if (kind === "measurement") handleRunGeometryCanonicalMeasurements();
+    else if (kind === "sampled-fields") handleRunGeometrySampledFields();
+    else if (kind === "comparison") handleRunGeometryAnalyticDiscreteComparison();
+    else if (kind === "section-analysis") handleRunGeometryQuickSectionAnalysis();
+    else handleRunGeometryQuickDifferential(false);
+  }, [
+    geometryActiveAnalysisInspectorRecord?.kind,
+    handleRunGeometryAnalyticDiscreteComparison,
+    handleRunGeometryCanonicalMeasurements,
+    handleRunGeometryCharacteristicAnalysis,
+    handleRunGeometryExactCurveAnalysis,
+    handleRunGeometryExactSurfaceAnalysis,
+    handleRunGeometryIntrinsicAnalysis,
+    handleRunGeometryQuickBasicMetrics,
+    handleRunGeometryQuickDifferential,
+    handleRunGeometryQuickSectionAnalysis,
+    handleRunGeometryQuickTopologySummary,
+    handleRunGeometrySampledFields,
+    handleRunGeometryValidityAnalysis,
+  ]);
+  const handleOpenGeometryAnalysisInspectorSource = useCallback(() => {
+    const active = geometryActiveAnalysisInspectorRecord;
+    if (!active) return;
+    setGeometrySelectedObjectId(active.sourceObjectId);
+    setGeometryMode("procedural");
+    setGeometryProceduralPanelTab("object");
+    setGeometryRightPanelTab("geometry");
+    setGeometryCreateActionStatus(`Opened source: ${active.sourceObjectName} r${active.sourceRevision}.`);
+  }, [geometryActiveAnalysisInspectorRecord]);
+  const handlePromoteGeometryAnalysisInspectorOverlay = useCallback(() => {
+    if (geometryActiveAnalysisInspectorRecord?.kind === "feature-analysis") {
+      handlePromoteGeometryCharacteristicLayer();
+      return;
+    }
+    handleOpenSelectedGeometryQuickAnalysisResult();
+    setGeometryCreateActionStatus("Promoted the current result overlay to its derivative analysis workspace.");
+  }, [geometryActiveAnalysisInspectorRecord?.kind, handleOpenSelectedGeometryQuickAnalysisResult, handlePromoteGeometryCharacteristicLayer]);
   const enterSurfacePreviewFocus = useCallback(() => {
     if (surfacePreviewFocusMode) return;
     surfacePreviewFocusPrevRightPanelRef.current = showRightPanel;
@@ -98740,17 +98943,21 @@ case "mobius":
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         {([
                           ["selection", "Selection"],
-                          ["properties", "Properties"],
+                          ["geometry", "Geometry"],
+                          ["analysis", "Analysis"],
+                          ["diagnostics", "Diagnostics"],
+                          ["provenance", "Provenance"],
+                          ["history", "History"],
                           ["actions", "Actions"],
-                          ["dependencies", "Dependencies"],
                         ] as const).map(([tabId, label]) => (
                           <button
                             key={`geometry-right-panel-tab-${tabId}`}
                             type="button"
-                            data-testid={`geometry-right-panel-tab-${tabId}`}
+                            data-testid={`geometry-right-panel-tab-${tabId === "geometry" ? "properties" : tabId === "provenance" ? "dependencies" : tabId}`}
+                            data-inspector-section={tabId}
                             onClick={() => {
                               setGeometryRightPanelTab(tabId);
-                              setGeometryInspectorPanelTab(tabId === "dependencies" ? "dependencies" : "probe");
+                              setGeometryInspectorPanelTab(tabId === "provenance" ? "dependencies" : "probe");
                             }}
                             style={pill(geometryRightPanelTab === tabId)}
                             aria-pressed={geometryRightPanelTab === tabId}
@@ -99272,6 +99479,52 @@ case "mobius":
                               selectedEdgeMeaning={geometrySelectedEdgeMeaning}
                             />
                           </div>
+                    ) : geometryRightPanelTab === "analysis" ? (
+                      <GeometryAnalysisInspectorPanel
+                        result={geometryActiveAnalysisInspectorRecord}
+                        savedResults={geometrySavedAnalysisResults}
+                        compareResult={geometryCompareAnalysisResult}
+                        currentSourceRevision={geometryAnalysisInspectorSourceRevision}
+                        onSelectSaved={(id) => {
+                          setGeometrySelectedSavedAnalysisResultId(id);
+                          setGeometryCompareAnalysisResultId(null);
+                        }}
+                        onSave={handleSaveGeometryAnalysisInspectorResult}
+                        onRename={handleRenameGeometryAnalysisInspectorResult}
+                        onCompare={handleCompareGeometryAnalysisInspectorResult}
+                        onDuplicateSettings={handleDuplicateGeometryAnalysisSettings}
+                        onRecompute={handleRecomputeGeometryAnalysisInspectorResult}
+                        onOpenSource={handleOpenGeometryAnalysisInspectorSource}
+                        onOpenDerivative={handleOpenSelectedGeometryQuickAnalysisResult}
+                        onPromoteOverlay={handlePromoteGeometryAnalysisInspectorOverlay}
+                        onExport={handleSaveSelectedGeometryQuickAnalysisResult}
+                      />
+                    ) : geometryRightPanelTab === "diagnostics" ? (
+                      <div data-testid="geometry-diagnostics-inspector" style={{ border: "1px solid #dbe2ea", borderRadius: 8, padding: "8px 10px", background: "#fff", display: "grid", gap: 8, fontSize: 11 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Diagnostics</div>
+                        {geometryActiveAnalysisInspectorRecord ? (
+                          <>
+                            <div><strong>Result:</strong> {geometryActiveAnalysisInspectorRecord.name} · {geometryActiveAnalysisInspectorRecord.lifecycle}</div>
+                            <div><strong>Source revision:</strong> r{geometryActiveAnalysisInspectorRecord.sourceRevision} · current r{geometryAnalysisInspectorSourceRevision}</div>
+                            <div><strong>Warnings:</strong> {geometryActiveAnalysisInspectorRecord.warnings.length ? geometryActiveAnalysisInspectorRecord.warnings.join(" · ") : "None"}</div>
+                            {geometryActiveAnalysisInspectorRecord.lifecycle === "stale" && <div style={{ color: "#9a3412" }}>Payload preserved for inspection; viewport publication is blocked.</div>}
+                          </>
+                        ) : <div style={{ color: "#64748b" }}>No analysis diagnostics yet.</div>}
+                      </div>
+                    ) : geometryRightPanelTab === "history" ? (
+                      <div data-testid="geometry-analysis-history-inspector" style={{ border: "1px solid #dbe2ea", borderRadius: 8, padding: "8px 10px", background: "#fff", display: "grid", gap: 8, fontSize: 11 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Analysis History</div>
+                        {geometrySavedAnalysisResults.length > 0 && <div style={{ display: "grid", gap: 4 }}>
+                          <strong>Saved results</strong>
+                          {geometrySavedAnalysisResults.slice(0, 12).map((entry) => <button key={entry.id} type="button" onClick={() => { setGeometrySelectedSavedAnalysisResultId(entry.id); setGeometryRightPanelTab("analysis"); }} style={{ textAlign: "left" }}>{entry.name} · {entry.lifecycle} · {new Date(entry.updatedAt).toLocaleString()}</button>)}
+                        </div>}
+                        <div style={{ display: "grid", gap: 4 }}>
+                          <strong>Shared result lifecycle</strong>
+                          {geometryAnalysisResultStore.history.length
+                            ? geometryAnalysisResultStore.history.slice(0, 16).map((entry) => <button key={entry.id} type="button" onClick={() => { setGeometryQuickAnalysisSelectedResultId(entry.resultKey); setGeometrySelectedSavedAnalysisResultId(null); setGeometryRightPanelTab("analysis"); }} style={{ textAlign: "left" }}>{entry.kind} · {geometryInspectorLifecycleState(entry.state)} · r{entry.identity.revision} · {new Date(entry.timestamp).toLocaleString()}</button>)
+                            : <div style={{ color: "#64748b" }}>No analysis runs yet.</div>}
+                        </div>
+                      </div>
                     ) : geometryRightPanelTab === "actions" ? (
                           <div
                             style={{
@@ -100359,7 +100612,7 @@ case "mobius":
                               ))}
                             </div>
                           </div>
-                    ) : geometryRightPanelTab === "dependencies" ? (
+                    ) : geometryRightPanelTab === "provenance" ? (
                           <div
                             style={{
                               border: "1px solid #dbe2ea",
