@@ -358,17 +358,34 @@ Acceptance: adding a Geometry analysis family requires a registry definition and
 
 Planned message: `geometry: add exact curve differential analysis`
 
-**Status: planned.**
+**Status: complete — `31a5ae9`.**
+
+Already implemented:
+
+- Versioned analytic/parametric curve definitions state parameter domain, dimension, formulas, units, orientation, revision, breakpoints, derivative capabilities, and closed-form or quadrature arc-length capability.
+- Exact line, unit-circle, circular-helix, and declared piecewise-V definitions provide analytic first, second, and third derivatives; a compatibility adapter preserves the shared Curves-core model and frame conventions.
+- Pointwise results include position, derivatives 1–3, speed, tangent, normal, binormal, curvature, radius of curvature, torsion, and full-domain arc length with method, tolerance, and uncertainty.
+- Sampled analysis detects stationary/degenerate points, planar inflections, curvature/torsion extrema, and declared piecewise transitions; sampled derivative fallback is explicitly disclosed.
+- Shared-pipeline payloads publish scalar, vector, curve, point, table, summary, and warning outputs together with exact backend and algorithm provenance.
+- The Geometry Analyze result card now follows the Mesh scientific-result presentation: state badge, quantity/method/domain, pointwise statistics, computation metadata, provenance, and warnings.
+- Interactive Geometry controls select the analytic curve and parameter; result visuals include Frenet frames, curvature combs, osculating-circle/plane availability, and speed/curvature/torsion plots, plus an exact-result-preserving Curves handoff.
 
 Remaining:
 
-- [ ] Introduce analytic/parametric curve definitions with parameter domain, units, revision, and derivative capability metadata.
-- [ ] Compute position, first/second/third derivatives, speed, tangent, normal, binormal, curvature, radius of curvature, torsion, and arc length.
-- [ ] Detect stationary points, degenerate derivatives, inflections, and curvature/torsion extrema with uncertainty and tolerance metadata.
-- [ ] Add tangent/normal/binormal vectors, Frenet frames, curvature combs, osculating circles/planes, and plots.
-- [ ] Publish pointwise and sampled results through the shared pipeline.
-- [ ] Add exact line, circle, and helix tests plus degenerate and piecewise cases.
-- [ ] Reuse Curves-module mathematics when its contracts and conventions match, while keeping Geometry scene identity and results intact.
+- [x] Introduce analytic/parametric curve definitions with parameter domain, units, revision, and derivative capability metadata.
+- [x] Compute position, first/second/third derivatives, speed, tangent, normal, binormal, curvature, radius of curvature, torsion, and arc length.
+- [x] Detect stationary points, degenerate derivatives, inflections, and curvature/torsion extrema with uncertainty and tolerance metadata.
+- [x] Add tangent/normal/binormal vectors, Frenet frames, curvature combs, osculating circles/planes, and plots.
+- [x] Publish pointwise and sampled results through the shared pipeline.
+- [x] Add exact line, circle, and helix tests plus degenerate and piecewise cases.
+- [x] Reuse Curves-module mathematics when its contracts and conventions match, while keeping Geometry scene identity and results intact.
+
+Validation at `31a5ae9`:
+
+- **145 Geometry tests across 27 files** pass, including analytic line/circle/helix truth, stationary and degenerate derivatives, inflection and extrema detection, piecewise transitions, sampled-fallback disclosure, Curves-core compatibility, and shared-pipeline publication.
+- The full renderer suite passes: **449 tests across 84 files**.
+- `npm run typecheck:noemit` and `npm run build:core` pass.
+- Geometry professional-shell and object/scene E2E checks pass: **4/4**, including the Mesh-style result card, exact curve controls, pointwise derivatives, visual overlays, plots, provenance, warnings, and Curves handoff.
 
 Acceptance: exact curve quantities agree with analytic truth and state their parameter, orientation, units, and precision.
 
