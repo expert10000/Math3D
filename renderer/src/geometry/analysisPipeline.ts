@@ -20,6 +20,7 @@ import {
   type CharacteristicGeometryResult,
   type GeometryIntersectionProbe,
 } from "./characteristicGeometry";
+import { analyzeGeometryValidity, type GeometryValidityResult } from "./geometryValidity";
 import {
   computeGeometryAnalysisBasicMetrics,
   computeGeometryAnalysisTopologySummary,
@@ -130,6 +131,7 @@ export type GeometryAnalysisPayload = {
   surfaceAnalysis?: ExactSurfaceAnalysisResult;
   intrinsicGeometry?: IntrinsicGeometryResult;
   characteristicGeometry?: CharacteristicGeometryResult;
+  geometryValidity?: GeometryValidityResult;
 };
 
 export type GeometryAnalysisExecutionContext = {
@@ -168,6 +170,12 @@ export type GeometryAnalysisExecutionContext = {
     lightDirection?: readonly [number, number, number];
     isophoteLevel?: number;
     intersectionProbes?: GeometryIntersectionProbe[];
+  };
+  geometryValidity?: {
+    definition: GeometryAnalyticSurfaceDefinition;
+    continuityWith?: GeometryAnalyticSurfaceDefinition;
+    meshHealthNotes?: string[];
+    tolerance?: number;
   };
 };
 
@@ -484,6 +492,14 @@ const builtinImplementationEntries: Array<[GeometryAnalysisResultKind, GeometryA
       characteristicGeometry,
     };
   }],
+  ["diagnostics", ({ context }) => {
+    if (!context.geometryValidity) throw new Error("Geometry validity diagnostics require an analytic Geometry definition.");
+    const geometryValidity = analyzeGeometryValidity(context.geometryValidity);
+    const outputs: GeometryAnalysisOutput[] = [{ id: "semantic-topology", label: "Geometry-native topology", kind: "table", columns: ["entity", "count"], rows: Object.entries(geometryValidity.counts) }];
+    geometryValidity.exactGeometry.issues.forEach((issue) => outputs.push({ id: issue.id, label: issue.kind, kind: "warning", value: issue.message, severity: issue.severity === "error" ? "error" : issue.severity === "warning" ? "warning" : "info" }));
+    outputs.push({ id: "mesh-separation", label: "Display mesh health", kind: "summary", value: geometryValidity.conventions.meshSeparation });
+    return { algorithm: "geometry-semantic-validity-v1", backend: "Geometry exact validity core", outputs, summary: { valid: geometryValidity.exactGeometry.valid, issueCount: geometryValidity.exactGeometry.issues.length, ...geometryValidity.counts, continuity: geometryValidity.exactGeometry.continuity?.classification ?? null }, warnings: geometryValidity.exactGeometry.issues.filter((issue) => issue.severity !== "info").map((issue) => issue.message), geometryValidity };
+  }],
   ["differential-geometry", ({ snapshot }) => ({
     algorithm: "mesh-analyze-handoff-v1",
     outputs: [{ id: "handoff", label: "Mesh Analyze handoff", kind: "summary", value: "Analysis-ready mesh snapshot" }],
@@ -559,6 +575,7 @@ export const executeGeometryAnalysisRequest = (args: {
       ...(computed.surfaceAnalysis ? { surfaceAnalysis: computed.surfaceAnalysis } : {}),
       ...(computed.intrinsicGeometry ? { intrinsicGeometry: computed.intrinsicGeometry } : {}),
       ...(computed.characteristicGeometry ? { characteristicGeometry: computed.characteristicGeometry } : {}),
+      ...(computed.geometryValidity ? { geometryValidity: computed.geometryValidity } : {}),
       provenance: {
         backend,
         algorithm: computed.algorithm,

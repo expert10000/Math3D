@@ -322,6 +322,7 @@ import {
 } from "./geometry/exactSurfaceAnalysis";
 import type { IntrinsicGeometryResult } from "./geometry/intrinsicGeometry";
 import { promoteCharacteristicLayer, type CharacteristicGeometryResult } from "./geometry/characteristicGeometry";
+import type { GeometryValidityResult } from "./geometry/geometryValidity";
 import { evaluateGeometryMeshReadiness } from "./geometry/meshReadiness";
 import {
   GEOMETRY_TO_MESH_PROMOTION_MODES,
@@ -1053,6 +1054,7 @@ type GeometryQuickAnalysisResultKind =
   | "surface-analysis"
   | "intrinsic-geometry"
   | "feature-analysis"
+  | "diagnostics"
   | "differential-geometry"
   | "section-analysis";
 type GeometryQuickAnalysisResultEntry = {
@@ -1072,6 +1074,7 @@ type GeometryQuickAnalysisResultEntry = {
   surfaceAnalysis?: ExactSurfaceAnalysisResult;
   intrinsicGeometry?: IntrinsicGeometryResult;
   characteristicGeometry?: CharacteristicGeometryResult;
+  geometryValidity?: GeometryValidityResult;
   notes?: string[];
   state: GeometryAnalysisResultState;
   backend: string;
@@ -13479,7 +13482,7 @@ const App: React.FC = () => {
     Object.entries(geometryAnalysisResultStore.entries)
       .map(([resultKey, result]): GeometryQuickAnalysisResultEntry | null => {
         const payload = result.payload as GeometryAnalysisPayload | null;
-        if (!payload || !["basic-metrics", "topology-summary", "curve-analysis", "surface-analysis", "intrinsic-geometry", "feature-analysis", "differential-geometry", "section-analysis"].includes(result.kind)) return null;
+        if (!payload || !["basic-metrics", "topology-summary", "curve-analysis", "surface-analysis", "intrinsic-geometry", "feature-analysis", "diagnostics", "differential-geometry", "section-analysis"].includes(result.kind)) return null;
         const title = result.kind === "basic-metrics"
           ? "Basic metrics"
           : result.kind === "topology-summary"
@@ -13492,6 +13495,8 @@ const App: React.FC = () => {
               ? "Intrinsic metric and geodesics"
             : result.kind === "feature-analysis"
               ? "Characteristic curves and singularities"
+            : result.kind === "diagnostics"
+              ? "Topology, continuity and validity"
             : result.kind === "section-analysis"
               ? "Section analysis"
               : "Differential geometry handoff";
@@ -13512,6 +13517,7 @@ const App: React.FC = () => {
           surfaceAnalysis: payload.surfaceAnalysis,
           intrinsicGeometry: payload.intrinsicGeometry,
           characteristicGeometry: payload.characteristicGeometry,
+          geometryValidity: payload.geometryValidity,
           notes: payload.warnings,
           state: result.state,
           backend: result.backend,
@@ -42861,6 +42867,12 @@ const App: React.FC = () => {
       isophoteLevel?: number;
       intersectionProbes?: import("./geometry/characteristicGeometry").GeometryIntersectionProbe[];
     };
+    geometryValidity?: {
+      definition: GeometryAnalyticSurfaceDefinition;
+      continuityWith?: GeometryAnalyticSurfaceDefinition;
+      meshHealthNotes?: string[];
+      tolerance?: number;
+    };
     sampling?: {
       strategy: "exact" | "mesh" | "adaptive" | "uniform";
       sampleCount?: number;
@@ -42908,7 +42920,7 @@ const App: React.FC = () => {
       request,
       snapshot: args.prepared.snapshot,
       selectionSnapshot: selection,
-      context: { sectionSummary: args.sectionSummary, exactCurve: args.exactCurve, exactSurface: args.exactSurface, intrinsicGeometry: args.intrinsicGeometry, characteristicGeometry: args.characteristicGeometry },
+      context: { sectionSummary: args.sectionSummary, exactCurve: args.exactCurve, exactSurface: args.exactSurface, intrinsicGeometry: args.intrinsicGeometry, characteristicGeometry: args.characteristicGeometry, geometryValidity: args.geometryValidity },
     }).store);
     setGeometryQuickAnalysisSelectedResultId(resultKey);
     return { request, resultKey };
@@ -43084,6 +43096,12 @@ const App: React.FC = () => {
       setGeometryCreateActionStatus(error instanceof Error ? error.message : "Characteristic layer promotion failed.");
     }
   }, [geometryCharacteristicLayerId, geometrySelectedQuickAnalysisResult]);
+  const handleRunGeometryValidityAnalysis = useCallback(() => {
+    const prepared = createSelectedGeometryAnalysisSnapshot();
+    if (!prepared) return;
+    runGeometryQuickAnalysis({ prepared, kind: "diagnostics", domain: "object", parameters: { surfaceDefinitionId: geometryExactSurfaceDefinition.id, semanticTopology: true, meshHealthSeparate: true }, requestedOutputs: ["table", "summary", "warning"], geometryValidity: { definition: geometryExactSurfaceDefinition, meshHealthNotes: prepared.snapshot.readiness.notes, tolerance: 1e-6 }, sampling: { strategy: "exact", tolerance: 1e-6 }, precision: { mode: "adaptive", digits: 10, tolerance: 1e-6 } });
+    setGeometryCreateActionStatus(`Exact Geometry validity ready: ${geometryExactSurfaceDefinition.label}.`);
+  }, [createSelectedGeometryAnalysisSnapshot, geometryExactSurfaceDefinition, runGeometryQuickAnalysis]);
   const handleRunGeometryQuickSectionAnalysis = useCallback(() => {
     const prepared = createSelectedGeometryAnalysisSnapshot();
     if (!prepared) return;
@@ -43239,6 +43257,7 @@ const App: React.FC = () => {
       surfaceAnalysis: geometrySelectedQuickAnalysisResult.surfaceAnalysis ?? null,
       intrinsicGeometry: geometrySelectedQuickAnalysisResult.intrinsicGeometry ?? null,
       characteristicGeometry: geometrySelectedQuickAnalysisResult.characteristicGeometry ?? null,
+      geometryValidity: geometrySelectedQuickAnalysisResult.geometryValidity ?? null,
       notes: geometrySelectedQuickAnalysisResult.notes ?? [],
       lifecycle: {
         state: geometrySelectedQuickAnalysisResult.state,
@@ -93680,6 +93699,11 @@ case "mobius":
                                     </label>
                                     <button type="button" data-testid="geometry-run-characteristic-analysis" onClick={handleRunGeometryCharacteristicAnalysis} style={{ fontSize: 11 }}>Analyze characteristic geometry</button>
                                   </div>
+                                  <div data-testid="geometry-validity-analysis-controls" style={{ display: "grid", gap: 5, borderTop: "1px solid #e2e8f0", paddingTop: 7 }}>
+                                    <div style={{ fontSize: 10.5, fontWeight: 700 }}>Topology, continuity and validity</div>
+                                    <div style={{ fontSize: 9.5, color: "#667085" }}>Inspect semantic bodies through vertices, parameter/trim validity, and display-mesh health as separate evidence.</div>
+                                    <button type="button" data-testid="geometry-run-validity-analysis" onClick={handleRunGeometryValidityAnalysis} style={{ fontSize: 11 }}>Run exact Geometry diagnostics</button>
+                                  </div>
                                   <div style={{ display: "grid", gap: 4 }}>
                                     <div style={{ fontSize: 10.5, fontWeight: 700 }}>Differential geometry</div>
                                     <div style={{ fontSize: 10, color: "#667085" }}>
@@ -93744,6 +93768,8 @@ case "mobius":
                                             ? "Intrinsic geometry"
                                           : geometrySelectedQuickAnalysisResult.kind === "feature-analysis"
                                             ? "Characteristic geometry"
+                                          : geometrySelectedQuickAnalysisResult.kind === "diagnostics"
+                                            ? "Exact Geometry diagnostics"
                                             : "Geometry analysis"}
                                       </div>
                                       <div style={{ fontSize: 11.5, fontWeight: 800, overflowWrap: "anywhere" }}>
@@ -93776,6 +93802,8 @@ case "mobius":
                                           ? "Metric / Christoffel / geodesics / distortion"
                                         : geometrySelectedQuickAnalysisResult.kind === "feature-analysis"
                                           ? "Features / singularities / typed intersections"
+                                        : geometrySelectedQuickAnalysisResult.kind === "diagnostics"
+                                          ? "Semantic topology / trims / continuity / validity"
                                           : geometrySelectedQuickAnalysisResult.title],
                                       ["Method", geometrySelectedQuickAnalysisResult.provenanceAlgorithm],
                                       ["Domain", geometrySelectedQuickAnalysisResult.domain],
@@ -94093,6 +94121,17 @@ case "mobius":
                                         </select>
                                         <button type="button" data-testid="geometry-promote-characteristic-layer" onClick={handlePromoteGeometryCharacteristicLayer} style={{ fontSize: 10 }}>Promote overlay to editable Geometry</button>
                                       </div>
+                                    </div>;
+                                  })()}
+                                  {geometrySelectedQuickAnalysisResult.kind === "diagnostics" && geometrySelectedQuickAnalysisResult.geometryValidity && (() => {
+                                    const validity = geometrySelectedQuickAnalysisResult.geometryValidity;
+                                    return <div data-testid="geometry-validity-analysis-result" style={{ display: "grid", gap: 6, fontSize: 9.5 }}>
+                                      <div data-testid="geometry-native-topology"><strong>Semantic topology:</strong> {Object.entries(validity.counts).map(([kind, count]) => `${kind} ${count}`).join(" · ")} · triangle-independent {validity.topology.renderTriangleIndependent ? "yes" : "no"}</div>
+                                      <div><strong>Exact Geometry validity:</strong> {validity.exactGeometry.valid ? "valid" : "invalid"} · {validity.exactGeometry.issues.length} issue(s)</div>
+                                      <div data-testid="geometry-validity-issues">{validity.exactGeometry.issues.map((issue) => <div key={issue.id} style={{ color: issue.severity === "error" ? "#b42318" : issue.severity === "warning" ? "#92400e" : "#475569" }}><strong>{issue.severity} · {issue.kind}:</strong> {issue.message} <span style={{ color: "#64748b" }}>[{issue.actions.join(" / ")}]</span></div>)}</div>
+                                      <div><strong>Continuity:</strong> {validity.exactGeometry.continuity ? `${validity.exactGeometry.continuity.classification} · gap ${fmt(validity.exactGeometry.continuity.positionGap)} · tangent ${validity.exactGeometry.continuity.tangentAngle == null ? "undefined" : fmt(validity.exactGeometry.continuity.tangentAngle)} · normal ${validity.exactGeometry.continuity.normalAngle == null ? "undefined" : fmt(validity.exactGeometry.continuity.normalAngle)} · curvature Δ ${validity.exactGeometry.continuity.curvatureMismatch == null ? "undefined" : fmt(validity.exactGeometry.continuity.curvatureMismatch)}` : "single patch; no join selected"}</div>
+                                      <div data-testid="geometry-mesh-health-separation"><strong>{validity.displayMeshHealth.label}:</strong> {validity.displayMeshHealth.notes.join(" · ")} · exact B-rep validity: no</div>
+                                      <div><strong>Contract:</strong> {validity.conventions.validity} {validity.conventions.meshSeparation}</div>
                                     </div>;
                                   })()}
                                   {geometrySelectedQuickAnalysisResult.kind === "topology-summary" &&
