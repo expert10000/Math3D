@@ -71,6 +71,7 @@ The main gaps are architectural rather than a lack of controls:
 Baseline verification at this assessment:
 
 - **19 focused mathematical tests across 4 files** pass for exact surface analysis, spline surfaces, chart diagnostics, and geodesic graph behavior.
+- The current repository checkpoint has **519 renderer tests across 98 files** passing.
 - Existing Playwright coverage includes Surface functional workflows, Gallery visuals, responsive layouts, navigation, worker failures, persistence-related paths, release preset walks, and long-running memory checks.
 - The complete slow application suite passes after the current checkout's CI memory-profile stabilization.
 
@@ -78,7 +79,7 @@ Baseline verification at this assessment:
 
 | Plan | Status | Existing foundation | Main work remaining |
 | --- | --- | --- | --- |
-| 1 — Surface-first workspace and result contract | Foundation exists | Multiple surface families, shared generic analysis core, Geometry exact-surface results, Surface Inspector concepts | Canonical Surface identity/revision, representation adapters, shared request/result integration, serialization, provenance |
+| 1 — Surface-first workspace and result contract | Complete (`bb0b24a`) | Canonical Surface identity/revision, all representation adapters, shared request/result publication, typed payloads, compact persistence, visible contract provenance | None for Commit 1 |
 | 2 — Unified differential-geometry engine | Advanced foundation | Graph invariants, parametric principal curvature, exact Geometry surfaces, sampled/mesh fields | One engine, conventions, analytic/numerical fallbacks, field results, singular masks, cross-representation verification |
 | 3 — Computation/display/inspection UI split | Partial | Professional shell, left/viewer/right regions, Inspector tabs, responsive drawers | Remove responsibility overlap, extract Surface-specific panels/controllers, preserve parity and accessibility |
 | 4 — Curvature workspace | Advanced foundation | K/H/k1/k2 fields, directions, palettes, ranges, probes, classifications in adjacent code | Canonical saved result, statistics, classifications, direction validity, independent visualization |
@@ -222,7 +223,7 @@ The right Inspector explains Object, Result, Selection, Probe, Analysis, Diagnos
 
 Planned message: `refactor(surface-analysis): define surface-first analysis workspace and result contract`
 
-**Status: planned; substantial foundation exists.**
+**Status: complete — `bb0b24a`.**
 
 Already implemented:
 
@@ -230,17 +231,30 @@ Already implemented:
 - Domain-neutral shared analysis registry/result-store infrastructure from the Mesh and Geometry roadmaps.
 - Exact-surface results in the Geometry pipeline and extensive Surface Inspector concepts.
 - Persisted workspace and scene infrastructure.
+- Canonical contracts define Surface identity, revision, representation, domain, sampling, units, orientation, method provenance, requests, inspection, and domain-specific result payloads.
+- Explicit, implicit, parametric, spline/NURBS, constructed, Weierstrass, and mesh-backed adapters publish through the existing generic analysis registry and result store.
+- Definition fingerprints advance per-Surface revisions only when source, domain, sampling, or representation data changes; publishing a new revision marks older lineage results stale.
+- The Surfaces Analysis panel displays the active canonical ID, representation, revision, result state, method, units, orientation, dependency count, warnings, and shared computation-history count.
+- A versioned Surface Analysis workspace document persists canonical definitions and lightweight saved-result references without copying typed field arrays into scene or local-storage state.
 
 Remaining:
 
-- [ ] Define canonical `SurfaceIdentity`, `SurfaceRevision`, `SurfaceRepresentation`, domain, units, orientation, and sampling contracts.
-- [ ] Add adapters for explicit, implicit, parametric, spline/NURBS, constructed, Weierstrass, and mesh-backed surfaces.
-- [ ] Define Surface result kinds and dependencies in the shared analysis registry.
-- [ ] Publish Surface results through shared revision-safe requests/results, caching, stale-state, cancellation, and history semantics.
-- [ ] Define domain-specific payloads for pointwise values, scalar/vector fields, curves, features, charts, and derived meshes.
-- [ ] Record method provenance as analytic, symbolic, automatic differentiation, numerical derivatives, surface sampling, mesh approximation, VTK, or CGAL.
-- [ ] Version and persist Surface definitions, saved results, and result references without copying large typed arrays into unrelated scene state.
-- [ ] Add contract tests proving that the shared core imports neither Surface nor Mesh implementation code.
+- [x] Define canonical `SurfaceIdentity`, `SurfaceRevision`, `SurfaceRepresentation`, domain, units, orientation, and sampling contracts.
+- [x] Add adapters for explicit, implicit, parametric, spline/NURBS, constructed, Weierstrass, and mesh-backed surfaces.
+- [x] Define Surface result kinds and dependencies in the shared analysis registry.
+- [x] Publish Surface results through shared revision-safe requests/results, caching, stale-state, cancellation, and history semantics.
+- [x] Define domain-specific payloads for pointwise values, scalar/vector fields, curves, features, charts, and derived meshes.
+- [x] Record method provenance as analytic, symbolic, automatic differentiation, numerical derivatives, surface sampling, mesh approximation, VTK, or CGAL.
+- [x] Version and persist Surface definitions, saved results, and result references without copying large typed arrays into unrelated scene state.
+- [x] Add contract tests proving that the shared core imports neither Surface nor Mesh implementation code.
+
+Validation at `bb0b24a`:
+
+- **10 focused Surface contract and persistence tests across 2 files** pass.
+- The full renderer suite passes: **519 tests across 98 files**.
+- `npm run typecheck:noemit`, `npm run build:core`, and the final production renderer build pass.
+- Required Surface functional, Gallery, worker-failure, and workspace-navigation E2E checks pass: **12/12**; the final Surface startup smoke also verifies visible contract provenance and persisted canonical definitions.
+- `npm run test:app:responsive:smoke` passes for phone portrait, phone landscape, tablet, and desktop layouts.
 
 Acceptance: every Surface family can issue the same canonical analysis request and publish a revision-bound result whose representation, method, units, warnings, and dependencies are inspectable.
 
