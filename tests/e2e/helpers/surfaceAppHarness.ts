@@ -177,6 +177,16 @@ export async function openSurfaceGenerator(page: Page): Promise<void> {
   await expect(page.getByRole("button", { name: /^Preview$/i }).first()).toBeVisible();
 }
 
+export async function openParametricSurface(page: Page): Promise<void> {
+  await resetSurfaceAppState(page);
+  await clickFirstVisibleButton(page, "Surfaces");
+  await clickFirstVisibleByTestId(page, "surface-family-parametric");
+  await clickFirstVisibleButton(page, "Torus");
+  const showTabs = page.getByRole("button", { name: /^Show Scene\/Object tabs$/i }).first();
+  if ((await showTabs.count()) > 0 && (await showTabs.isVisible())) await showTabs.click();
+  await expect(page.getByTestId("surfaces-left-tab-analysis")).toBeVisible();
+}
+
 export async function waitForWorkerReady(page: Page): Promise<void> {
   await expect.poll(
     async () => (await readWorkerStatusText(page)).toLowerCase(),

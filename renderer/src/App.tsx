@@ -224,7 +224,7 @@ import SageSymbolicPanel from "./features/sageLab/SageSymbolicPanel";
 import ComputeEngineManagerPanel from "./features/computeEngines/ComputeEngineManagerPanel";
 import { useResponsiveLayout } from "./hooks/useResponsiveLayout";
 
-import { ParamSurfaceViewer, type ParamSurfaceId } from "./components/ParamSurfaceViewer";
+import { ParamSurfaceViewer, wrapFlagsFor, type ParamSurfaceId } from "./components/ParamSurfaceViewer";
 import { scalarToColor01, solidColorForPalette, type ColorPalette } from "./components/colorPalette";
 import {
   DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
@@ -265,6 +265,7 @@ import type {
   SurfaceCurveResultLayer,
   SurfaceFeatureLayersPayload,
   SurfaceFeatureResultLayer,
+  SurfaceChartPayload,
 } from "./surfaceAnalysis/contracts";
 import {
   adaptSurfaceDefinition,
@@ -292,6 +293,7 @@ import {
   removeSurfaceResultLayer,
   updateSurfaceResultLayer,
 } from "./surfaceAnalysis/surfaceResultLayers";
+import { createSurfaceChartDiagnostics, createSurfaceChartPayload, type SurfaceChartSample } from "./surfaceAnalysis/surfaceChartDiagnostics";
 import {
   DEFAULT_GEOMETRY_SEMANTIC_FILTER,
   attachGeometrySemanticSelection,
@@ -41738,10 +41740,11 @@ const App: React.FC = () => {
       };
     } else if (surfaceViewerKind === "param") {
       const label = PARAM_SURFACES_META.find((entry) => entry.id === paramSurfaceId)?.label ?? paramSurfaceId;
+      const wrap = wrapFlagsFor(paramSurfaceId);
       const domain = {
         kind: "parameter" as const,
-        u: { min: activeParamDomain.uMin, max: activeParamDomain.uMax, label: "u" },
-        v: { min: activeParamDomain.vMin, max: activeParamDomain.vMax, label: "v" },
+        u: { min: activeParamDomain.uMin, max: activeParamDomain.uMax, label: "u", periodic: wrap.wrapU },
+        v: { min: activeParamDomain.vMin, max: activeParamDomain.vMax, label: "v", periodic: wrap.wrapV },
       };
       const common = { id: `param:${paramSurfaceId}`, revision: 0, label, domain, sampling: { uSegments: paramResolution, vSegments: paramResolution } };
       const sourceKind = paramSurfaceSourceKindFor(paramSurfaceId);
@@ -41893,6 +41896,10 @@ const App: React.FC = () => {
   );
   const activeSurfaceFeaturesResult = useMemo(
     () => getSurfaceAnalysisResult<SurfaceAnalysisPayload>(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "surface-features"),
+    [activeCanonicalSurfaceDefinition.identity, surfaceAnalysisResultStore]
+  );
+  const activeSurfaceChartResult = useMemo(
+    () => getSurfaceAnalysisResult<SurfaceAnalysisPayload>(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "chart-diagnostics"),
     [activeCanonicalSurfaceDefinition.identity, surfaceAnalysisResultStore]
   );
   const activeSurfaceAnalysisResult = useMemo(
@@ -43227,6 +43234,7 @@ const App: React.FC = () => {
   const surfaceProbeCompareBaselineRef = useRef<SurfaceLocalProbePayload | null>(null);
   const [surfaceLayerCompareLabel, setSurfaceLayerCompareLabel] = useState("Choose a layer to set a comparison baseline.");
   const surfaceLayerCompareBaselineRef = useRef<SurfaceCurveResultLayer | SurfaceFeatureResultLayer | null>(null);
+  const [surfaceChartOverlayVisibility, setSurfaceChartOverlayVisibility] = useState<Record<"boundary" | "seam" | "orientation-flip" | "degenerate", boolean>>({ boundary: true, seam: true, "orientation-flip": true, degenerate: true });
   const handleSelectSurfaceComputation = useCallback((computation: SurfaceComputationId) => {
     const section: AnalysisFocusedSection = computation === "surface-curves"
       ? "curvature-lines"
@@ -49111,6 +49119,76 @@ case "mobius":
     }
     publishSurfaceLayerResult(resultKind, { ...activeSurfaceLayerPayload, layers: nextLayers } as SurfaceCurveLayersPayload | SurfaceFeatureLayersPayload);
   }, [activeCanonicalSurfaceDefinition.identity, activeSurfaceLayerPayload, handleCollectSurfaceCurveLayers, handleCollectSurfaceFeatureLayers, publishSurfaceLayerResult, surfaceSampleSet?.samples]);
+
+  const surfaceChartSamples = useMemo<SurfaceChartSample[]>(() => {
+    const definition = activeCanonicalSurfaceDefinition;
+    return (surfaceSampleSet?.samples ?? []).flatMap((sample) => {
+      if (!sample.uv) return [];
+      let u = sample.uv.u; let v = sample.uv.v;
+      if (definition.domain.kind === "graph" && u >= -1e-7 && u <= 1 + 1e-7 && v >= -1e-7 && v <= 1 + 1e-7) {
+        u = definition.domain.x.min + u * (definition.domain.x.max - definition.domain.x.min);
+        v = definition.domain.y.min + v * (definition.domain.y.max - definition.domain.y.min);
+      }
+      const chartSample: SurfaceChartSample = {
+        parameter: [u, v],
+        position: [sample.position.x, sample.position.y, sample.position.z],
+        normal: [sample.normal.x, sample.normal.y, sample.normal.z],
+      };
+      return [chartSample];
+    });
+  }, [activeCanonicalSurfaceDefinition, surfaceSampleSet?.samples]);
+  const publishSurfaceChart = useCallback((visibility = surfaceChartOverlayVisibility) => {
+    if (!surfaceChartSamples.length) return;
+    const started = performance.now();
+    const definition = activeCanonicalSurfaceDefinition;
+    const method: SurfaceAnalysisMethod = definition.representation === "mesh-backed" ? "mesh-approximation" : "numerical-derivatives";
+    const chart = createSurfaceChartDiagnostics({ definition, samples: surfaceChartSamples, overlayVisibility: visibility });
+    const request = createSurfaceAnalysisRequest({
+      requestId: `surface-chart:${definition.identity.key}:${Date.now()}`,
+      kind: "chart-diagnostics", definition, domain: "chart", method,
+      parameters: { sampleCount: chart.sampleCount, determinantThreshold: chart.thresholds.determinant, reference: "median-area-scale" },
+      requestedOutputs: ["domain", "periodic seams", "Jacobian rank", "orientation", "det(g)", "area scale", "area distortion", "angle distortion", "regions", "overlays", "atlas contract"],
+    });
+    const payload = createSurfaceChartPayload({ definition, method, chart });
+    setSurfaceAnalysisResultStore((store) => publishSurfaceAnalysisResult({ store, registry: surfaceAnalysisRegistryRef.current, request, payload, computeTimeMs: performance.now() - started, backend: "Surface parameter-domain diagnostics" }));
+    setRightPanelTab("inspector");
+  }, [activeCanonicalSurfaceDefinition, surfaceChartOverlayVisibility, surfaceChartSamples]);
+  const activeSurfaceChart = activeSurfaceChartResult?.state === "ready" && activeSurfaceChartResult.payload?.data.kind === "chart"
+    ? activeSurfaceChartResult.payload.data
+    : null;
+  const selectSurfaceChartIndices = useCallback((indices: ArrayLike<number>) => {
+    if (!surfaceSampleSet?.samples.length || !indices.length) return;
+    const selected = new Uint8Array(surfaceSampleSet.samples.length);
+    let count = 0; let first = -1;
+    for (let offset = 0; offset < indices.length; offset += 1) {
+      const index = Number(indices[offset]);
+      if (index < 0 || index >= selected.length || selected[index]) continue;
+      selected[index] = 1; count += 1; if (first < 0) first = index;
+    }
+    if (!count) return;
+    setInspectIdx(first); setSelectionMaskOverride({ selected, count }); setSelectionMask({ selected, count });
+    setSelectRegionEnabled(true); setSelectionOverlayVisible(true); setCameraResetToken((token) => token + 1);
+  }, [surfaceSampleSet?.samples.length]);
+  const handleSelectSurfaceChartRegion = useCallback((region: "degenerate" | "nearDegenerate" | "orientationFlip") => {
+    if (activeSurfaceChart) selectSurfaceChartIndices(activeSurfaceChart.regions[region]);
+  }, [activeSurfaceChart, selectSurfaceChartIndices]);
+  const handleToggleSurfaceChartOverlay = useCallback((kind: "boundary" | "seam" | "orientation-flip" | "degenerate") => {
+    const next = { ...surfaceChartOverlayVisibility, [kind]: !surfaceChartOverlayVisibility[kind] };
+    setSurfaceChartOverlayVisibility(next);
+    publishSurfaceChart(next);
+  }, [publishSurfaceChart, surfaceChartOverlayVisibility]);
+  const handleSaveSurfaceChart = useCallback(() => {
+    if (!activeSurfaceChartResult) return;
+    const identity = activeCanonicalSurfaceDefinition.identity;
+    const id = `saved:${identity.key}:chart-diagnostics`;
+    setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, savedResults: [...document.savedResults.filter((entry) => entry.id !== id), { id, resultKey: `${identity.key}:chart-diagnostics:default`, kind: "chart-diagnostics", variant: "default", identity, label: `Chart diagnostics · ${identity.label}`, visible: true }] }));
+  }, [activeCanonicalSurfaceDefinition.identity, activeSurfaceChartResult]);
+  const handleExportSurfaceChart = useCallback(() => {
+    if (!activeSurfaceChartResult?.payload) return;
+    const json = JSON.stringify(activeSurfaceChartResult.payload, (_key, value) => ArrayBuffer.isView(value) ? Array.from(value as unknown as ArrayLike<number>) : value, 2);
+    const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+    const anchor = document.createElement("a"); anchor.href = url; anchor.download = `surface-chart-${activeCanonicalSurfaceDefinition.identity.surfaceRevision}.json`; anchor.click(); URL.revokeObjectURL(url);
+  }, [activeCanonicalSurfaceDefinition.identity.surfaceRevision, activeSurfaceChartResult?.payload]);
 
   const calculusScalarOptions = useMemo(() => {
     const out: Array<{ value: string; label: string }> = [];
@@ -57512,24 +57590,50 @@ case "mobius":
     }
     return groups;
   }, [canonicalSurfaceProbe, surfaceProbeEvidenceVisible, surfaceSampleSet?.bbox]);
+  const surfaceChartOverlayPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (!activeSurfaceChart || activeSurfaceComputation !== "chart-diagnostics") return null;
+    const colors = { boundary: 0x2563eb, seam: 0x7c3aed, "orientation-flip": 0xf59e0b, degenerate: 0xdc2626 } as const;
+    const groups: OverlayPolylineGroup[] = [];
+    activeSurfaceChart.overlays.forEach((overlay) => {
+      if (!overlay.visible || (overlay.kind !== "boundary" && overlay.kind !== "seam") || !overlay.surfacePolylines.length) return;
+      groups.push({ lines: overlay.surfacePolylines.map((line) => line.map(([x, y, z]) => ({ x, y, z }))), color: colors[overlay.kind], opacity: 0.96, radiusScale: overlay.kind === "seam" ? 1.6 : 1.25 });
+    });
+    return groups.length ? groups : null;
+  }, [activeSurfaceChart, activeSurfaceComputation]);
+  const surfaceChartOverlayPointSets = useMemo<OverlayPointSet[] | null>(() => {
+    if (!activeSurfaceChart || activeSurfaceComputation !== "chart-diagnostics") return null;
+    const sets: OverlayPointSet[] = [];
+    activeSurfaceChart.overlays.forEach((overlay) => {
+      if (!overlay.visible || (overlay.kind !== "orientation-flip" && overlay.kind !== "degenerate") || !overlay.sampleIndices.length) return;
+      sets.push({
+        points: Array.from(overlay.sampleIndices, (index) => ({ x: activeSurfaceChart.positions[index * 3], y: activeSurfaceChart.positions[index * 3 + 1], z: activeSurfaceChart.positions[index * 3 + 2] })),
+        color: overlay.kind === "orientation-flip" ? 0xf59e0b : 0xdc2626,
+        size: 0.09,
+        opacity: 0.96,
+      });
+    });
+    return sets.length ? sets : null;
+  }, [activeSurfaceChart, activeSurfaceComputation]);
   const meshViewerOverlayPointSets = useMemo<OverlayPointSet[] | null>(() => {
     const sets: OverlayPointSet[] = [];
     if (combinedOverlayPointSets?.length) sets.push(...combinedOverlayPointSets);
     if (surfaceFeatureOverlayPointSets?.length) sets.push(...surfaceFeatureOverlayPointSets);
+    if (surfaceChartOverlayPointSets?.length) sets.push(...surfaceChartOverlayPointSets);
     if (meshBooleanReviewProblemOverlays.pointSets?.length) sets.push(...meshBooleanReviewProblemOverlays.pointSets);
     if (meshSelectionHighlightOverlays.pointSets.length) sets.push(...meshSelectionHighlightOverlays.pointSets);
     return sets.length ? sets : null;
-  }, [combinedOverlayPointSets, meshBooleanReviewProblemOverlays.pointSets, meshSelectionHighlightOverlays.pointSets, surfaceFeatureOverlayPointSets]);
+  }, [combinedOverlayPointSets, meshBooleanReviewProblemOverlays.pointSets, meshSelectionHighlightOverlays.pointSets, surfaceChartOverlayPointSets, surfaceFeatureOverlayPointSets]);
   const meshViewerOverlayPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     const groups: OverlayPolylineGroup[] = [];
     if (combinedOverlayPolylineGroups?.length) groups.push(...combinedOverlayPolylineGroups);
     if (surfaceFeatureOverlayPolylineGroups?.length) groups.push(...surfaceFeatureOverlayPolylineGroups);
     if (ridgeValleyOverlayPolylineGroups?.length) groups.push(...ridgeValleyOverlayPolylineGroups);
     if (surfaceProbeEvidencePolylineGroups?.length) groups.push(...surfaceProbeEvidencePolylineGroups);
+    if (surfaceChartOverlayPolylineGroups?.length) groups.push(...surfaceChartOverlayPolylineGroups);
     if (meshBooleanReviewProblemOverlays.polylineGroups?.length) groups.push(...meshBooleanReviewProblemOverlays.polylineGroups);
     if (meshSelectionHighlightOverlays.polylineGroups.length) groups.push(...meshSelectionHighlightOverlays.polylineGroups);
     return groups.length ? groups : null;
-  }, [combinedOverlayPolylineGroups, meshBooleanReviewProblemOverlays.polylineGroups, meshSelectionHighlightOverlays.polylineGroups, ridgeValleyOverlayPolylineGroups, surfaceFeatureOverlayPolylineGroups, surfaceProbeEvidencePolylineGroups]);
+  }, [combinedOverlayPolylineGroups, meshBooleanReviewProblemOverlays.polylineGroups, meshSelectionHighlightOverlays.polylineGroups, ridgeValleyOverlayPolylineGroups, surfaceChartOverlayPolylineGroups, surfaceFeatureOverlayPolylineGroups, surfaceProbeEvidencePolylineGroups]);
   const meshUnifiedSelectionFilterStatus =
     meshUnifiedSelection && !meshUnifiedSelectionFilterResult.accepted
       ? meshUnifiedSelectionFilterResult.reasons[0] ?? "Selection filtered out"
@@ -79150,6 +79254,8 @@ case "mobius":
                     featureLayerState={activeSurfaceFeaturesResult?.state === "ready" ? "collected" : "ready"}
                     onCollectCurveLayers={handleCollectSurfaceCurveLayers}
                     onCollectFeatureLayers={handleCollectSurfaceFeatureLayers}
+                    chartState={!surfaceChartSamples.length ? "unavailable" : activeSurfaceChart ? "computed" : "ready"}
+                    onComputeChart={publishSurfaceChart}
                     derivedMesh={{
                       available: hasSurfaceMesh,
                       label: surfaceMeshLabel,
@@ -84703,6 +84809,8 @@ case "mobius":
                           ? activeSurfaceCurvesResult ?? activeSurfaceAnalysisResult
                           : activeSurfaceComputation === "surface-features"
                             ? activeSurfaceFeaturesResult ?? activeSurfaceAnalysisResult
+                            : activeSurfaceComputation === "chart-diagnostics"
+                              ? activeSurfaceChartResult ?? activeSurfaceAnalysisResult
                             : activeSurfaceAnalysisResult}
                       historyCount={surfaceAnalysisResultStore.history.length}
                       savedResultCount={surfaceAnalysisWorkspaceDocument.savedResults.length}
@@ -84741,6 +84849,16 @@ case "mobius":
                         payload: activeSurfaceLayerPayload,
                         compareLabel: surfaceLayerCompareLabel,
                         onAction: handleSurfaceLayerAction,
+                      } : undefined}
+                      chartActions={activeSurfaceChart ? {
+                        chart: activeSurfaceChart,
+                        focusedIndex: inspectIdx,
+                        onSelectIndex: (index) => selectSurfaceChartIndices([index]),
+                        onSelectRegion: handleSelectSurfaceChartRegion,
+                        onToggleOverlay: handleToggleSurfaceChartOverlay,
+                        onSave: handleSaveSurfaceChart,
+                        onExport: handleExportSurfaceChart,
+                        onRecompute: publishSurfaceChart,
                       } : undefined}
                     />}
                     <SurfacesRightPanel

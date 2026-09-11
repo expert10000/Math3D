@@ -224,7 +224,53 @@ export type SurfaceFeatureLayersPayload = { kind: "feature-layers"; layers: read
 
 export type SurfaceChartPayload = {
   kind: "chart";
-  quantity: string;
+  chartId: string;
+  sampleCount: number;
+  parameterCoordinates: Float64Array;
+  positions: Float64Array;
+  domain: {
+    u: SurfaceAxisDomain;
+    v: SurfaceAxisDomain;
+    boundaryKinds: readonly ("domain" | "trim")[];
+    periodicSeams: readonly ("u" | "v")[];
+  };
+  jacobianRank: Uint8Array;
+  orientationSign: Int8Array;
+  metricDeterminant: Float64Array;
+  areaScale: Float64Array;
+  areaDistortion: Float64Array;
+  angleDistortion: Float64Array;
+  validityMask: Uint8Array;
+  degeneracyMask: Uint8Array;
+  nearDegeneracyMask: Uint8Array;
+  orientationFlipMask: Uint8Array;
+  thresholds: { determinant: number; nearDeterminant: number };
+  references: {
+    area: string;
+    angle: string;
+    areaScaleMedian: number | null;
+  };
+  statistics: Readonly<Record<"metricDeterminant" | "areaScale" | "areaDistortion" | "angleDistortion", { min: number; max: number; mean: number; count: number } | null>>;
+  regions: {
+    invalid: Uint32Array;
+    degenerate: Uint32Array;
+    nearDegenerate: Uint32Array;
+    orientationFlip: Uint32Array;
+  };
+  overlays: ReadonlyArray<{
+    kind: "boundary" | "seam" | "orientation-flip" | "degenerate";
+    label: string;
+    visible: boolean;
+    parameterPolylines: ReadonlyArray<ReadonlyArray<readonly [number, number]>>;
+    surfacePolylines: ReadonlyArray<ReadonlyArray<readonly [number, number, number]>>;
+    sampleIndices: Uint32Array;
+  }>;
+  atlas: {
+    version: 1;
+    charts: ReadonlyArray<{ chartId: string; domain: { u: SurfaceAxisDomain; v: SurfaceAxisDomain } }>;
+    overlaps: ReadonlyArray<{ fromChartId: string; toChartId: string; transition: string; validity: "defined" | "partial" | "unavailable" }>;
+  };
+  quantity?: string;
   values?: Float32Array | Float64Array;
   invalidRegions: ReadonlyArray<ReadonlyArray<readonly [number, number]>>;
 };

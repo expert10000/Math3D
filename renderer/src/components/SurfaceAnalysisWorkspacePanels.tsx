@@ -7,6 +7,7 @@ import type {
   SurfaceLocalProbePayload,
   SurfaceCurveLayersPayload,
   SurfaceFeatureLayersPayload,
+  SurfaceChartPayload,
 } from "../surfaceAnalysis/contracts";
 import type { SurfaceAnalysisResult } from "../surfaceAnalysis/infrastructure";
 import { SurfaceAnalysisContractCard } from "./SurfaceAnalysisContractCard";
@@ -48,6 +49,8 @@ export function SurfaceAnalysisComputationPanel({
   featureLayerState,
   onCollectCurveLayers,
   onCollectFeatureLayers,
+  chartState,
+  onComputeChart,
 }: {
   definition: CanonicalSurfaceDefinition;
   selected: SurfaceComputationId;
@@ -64,6 +67,8 @@ export function SurfaceAnalysisComputationPanel({
   featureLayerState?: "ready" | "collected";
   onCollectCurveLayers?: () => void;
   onCollectFeatureLayers?: () => void;
+  chartState?: "unavailable" | "ready" | "computed";
+  onComputeChart?: () => void;
 }) {
   return (
     <section data-testid="surface-analysis-computation-panel" style={{ display: "grid", gap: 9 }}>
@@ -97,6 +102,15 @@ export function SurfaceAnalysisComputationPanel({
           <span style={{ color: "#475467", fontSize: 9.5 }}>Collect current computed geometry into revision-safe result layers with independent visibility and lifecycle.</span>
           <button type="button" data-testid={selected === "surface-curves" ? "surface-collect-curve-layers" : "surface-collect-feature-layers"} onClick={selected === "surface-curves" ? onCollectCurveLayers : onCollectFeatureLayers}>
             {(selected === "surface-curves" ? curveLayerState : featureLayerState) === "collected" ? "Recompute current layers" : "Collect current layers"}
+          </button>
+        </section>
+      )}
+      {selected === "chart-diagnostics" && (
+        <section data-testid="surface-chart-compute" style={{ border: "1px solid #bfdbfe", borderRadius: 8, background: "#eff6ff", padding: 8, display: "grid", gap: 6 }}>
+          <strong style={{ fontSize: 10.5 }}>Canonical Chart diagnostics</strong>
+          <span style={{ color: "#475467", fontSize: 9.5 }}>Publishes domain bounds, seams, Jacobian rank, orientation, metric determinant, area/angle distortion and linked regions.</span>
+          <button type="button" data-testid="surface-chart-compute-button" disabled={chartState === "unavailable"} onClick={onComputeChart}>
+            {chartState === "computed" ? "Recompute Chart diagnostics" : chartState === "unavailable" ? "Global chart unavailable" : "Compute Chart diagnostics"}
           </button>
         </section>
       )}
@@ -216,6 +230,7 @@ export function SurfaceAnalysisInspectorPanel({
   curvatureActions,
   probeActions,
   layerActions,
+  chartActions,
 }: {
   definition: CanonicalSurfaceDefinition;
   result: SurfaceAnalysisResult<SurfaceAnalysisPayload> | null;
@@ -251,6 +266,16 @@ export function SurfaceAnalysisInspectorPanel({
     payload: SurfaceCurveLayersPayload | SurfaceFeatureLayersPayload;
     compareLabel: string;
     onAction: (layerId: string, action: "toggle" | "select" | "frame" | "save" | "compare" | "export" | "recompute" | "remove") => void;
+  };
+  chartActions?: {
+    chart: SurfaceChartPayload;
+    focusedIndex: number | null;
+    onSelectIndex: (index: number) => void;
+    onSelectRegion: (region: "degenerate" | "nearDegenerate" | "orientationFlip") => void;
+    onToggleOverlay: (kind: "boundary" | "seam" | "orientation-flip" | "degenerate") => void;
+    onSave: () => void;
+    onExport: () => void;
+    onRecompute: () => void;
   };
 }) {
   const [tab, setTab] = useState<InspectorTab>("result");
@@ -328,6 +353,7 @@ export function SurfaceAnalysisInspectorPanel({
               </section>
             )}
             {layerActions && <SurfaceResultLayersInspector {...layerActions} />}
+            {chartActions && <SurfaceChartDiagnosticsInspector {...chartActions} />}
             {!!warnings.length && <div style={{ color: "#9a3412" }}>{warnings.join(" · ")}</div>}
           </div>
         )}
@@ -358,6 +384,46 @@ export function SurfaceAnalysisInspectorPanel({
           </div>
         )}
       </div>
+    </section>
+  );
+}
+
+function SurfaceChartDiagnosticsInspector({ chart, focusedIndex, onSelectIndex, onSelectRegion, onToggleOverlay, onSave, onExport, onRecompute }: NonNullable<Parameters<typeof SurfaceAnalysisInspectorPanel>[0]["chartActions"]>) {
+  const width = 220; const height = 130;
+  const uSpan = Math.max(1e-12, chart.domain.u.max - chart.domain.u.min);
+  const vSpan = Math.max(1e-12, chart.domain.v.max - chart.domain.v.min);
+  const sampleStride = Math.max(1, Math.ceil(chart.sampleCount / 300));
+  const samples = Array.from({ length: chart.sampleCount }, (_, index) => index).filter((index) => index % sampleStride === 0);
+  const formatStats = (key: keyof SurfaceChartPayload["statistics"]) => {
+    const value = chart.statistics[key];
+    return value ? `${value.min.toPrecision(4)} … ${value.max.toPrecision(4)} · mean ${value.mean.toPrecision(4)}` : "undefined";
+  };
+  return (
+    <section data-testid="surface-chart-result" style={{ display: "grid", gap: 6, marginTop: 6, paddingTop: 7, borderTop: "1px solid #e2e8f0" }}>
+      <strong>Chart diagnostics · {chart.sampleCount.toLocaleString()} samples</strong>
+      <div>Domain: {chart.domain.u.label ?? "u"} [{chart.domain.u.min.toPrecision(4)}, {chart.domain.u.max.toPrecision(4)}] · {chart.domain.v.label ?? "v"} [{chart.domain.v.min.toPrecision(4)}, {chart.domain.v.max.toPrecision(4)}]</div>
+      <div>Periodic seams: {chart.domain.periodicSeams.length ? chart.domain.periodicSeams.join(", ") : "none"} · atlas contract v{chart.atlas.version}</div>
+      <div data-testid="surface-chart-metric-statistics"><strong>det(g):</strong> {formatStats("metricDeterminant")}<br/><strong>√det(g):</strong> {formatStats("areaScale")}<br/><strong>Area distortion:</strong> {formatStats("areaDistortion")}<br/><strong>Angle distortion:</strong> {formatStats("angleDistortion")}</div>
+      <div style={{ color: "#64748b" }}>Reference: {chart.references.area}; {chart.references.angle}.</div>
+      <svg data-testid="surface-chart-domain-view" role="img" aria-label="Parameter-domain diagnostic view" viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", maxWidth: width, border: "1px solid #dbe4f0", borderRadius: 6, background: "#f8fbff" }}>
+        <rect x="4" y="4" width={width - 8} height={height - 8} fill="none" stroke="#94a3b8" />
+        {samples.map((index) => {
+          const u = chart.parameterCoordinates[index * 2]; const v = chart.parameterCoordinates[index * 2 + 1];
+          const x = 4 + (width - 8) * (u - chart.domain.u.min) / uSpan;
+          const y = height - 4 - (height - 8) * (v - chart.domain.v.min) / vSpan;
+          const fill = chart.degeneracyMask[index] ? "#dc2626" : chart.orientationFlipMask[index] ? "#f59e0b" : chart.nearDegeneracyMask[index] ? "#a855f7" : "#2563eb";
+          return <circle key={index} data-sample-index={index} cx={x} cy={y} r={focusedIndex === index ? 3.4 : 1.8} fill={fill} onClick={() => onSelectIndex(index)} style={{ cursor: "pointer" }} />;
+        })}
+      </svg>
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+        <button type="button" disabled={!chart.regions.degenerate.length} onClick={() => onSelectRegion("degenerate")}>Degenerate {chart.regions.degenerate.length}</button>
+        <button type="button" disabled={!chart.regions.nearDegenerate.length} onClick={() => onSelectRegion("nearDegenerate")}>Near-degenerate {chart.regions.nearDegenerate.length}</button>
+        <button type="button" disabled={!chart.regions.orientationFlip.length} onClick={() => onSelectRegion("orientationFlip")}>Orientation flips {chart.regions.orientationFlip.length}</button>
+      </div>
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+        {chart.overlays.map((overlay) => <button key={overlay.kind} type="button" aria-pressed={overlay.visible} onClick={() => onToggleOverlay(overlay.kind)}>{overlay.visible ? "Hide" : "Show"} {overlay.label}</button>)}
+      </div>
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}><button type="button" onClick={onSave}>Save</button><button type="button" onClick={onExport}>Export JSON</button><button type="button" onClick={onRecompute}>Recompute</button></div>
     </section>
   );
 }

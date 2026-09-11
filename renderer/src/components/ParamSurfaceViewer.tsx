@@ -1376,7 +1376,7 @@ type ViewerState = {
   ) => void;
 };
 
-function wrapFlagsFor(surfaceId: ParamSurfaceId) {
+export function wrapFlagsFor(surfaceId: ParamSurfaceId) {
   // wrapping in (u,v) domain space
   // wrapU: parameter is periodic (angle)
   // wrapV: parameter is periodic (angle)

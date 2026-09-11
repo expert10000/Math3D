@@ -6,6 +6,7 @@ import {
   expectSurfaceExpressionValue,
   launchSurfaceApp,
   openSurfaceGenerator,
+  openParametricSurface,
   readWorkerStatusText,
   setSurfaceExpression,
   setSimpleSurfaceExpression,
@@ -199,7 +200,33 @@ test.describe("Surface functional flow", () => {
     }
   });
 
-  test("Test 6 — invalid input failure", async () => {
+  test("Test 6 — parameter-domain chart diagnostics", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await openParametricSurface(ctx.page);
+      await ctx.page.getByTestId("surfaces-left-tab-analysis").click();
+      await ctx.page.getByTestId("surface-computation-chart-diagnostics").click();
+      const compute = ctx.page.getByTestId("surface-chart-compute-button");
+      await expect(compute).toBeEnabled({ timeout: 10_000 });
+      await compute.click();
+      const chart = ctx.page.getByTestId("surface-chart-result");
+      await expect(chart).toBeVisible();
+      await expect(ctx.page.getByTestId("surface-chart-metric-statistics")).toContainText("det(g)");
+      await expect(ctx.page.getByTestId("surface-chart-domain-view")).toBeVisible();
+      const boundary = chart.getByRole("button", { name: "Hide Chart boundary", exact: true });
+      await boundary.click();
+      await expect(chart.getByRole("button", { name: "Show Chart boundary", exact: true })).toBeVisible();
+      await chart.getByRole("button", { name: "Save", exact: true }).click();
+      await chart.getByRole("button", { name: "Recompute", exact: true }).click();
+      await expect(ctx.page.getByTestId("surface-analysis-contract-state")).toHaveText("ready");
+      await expect(ctx.page.getByTestId("error-banner")).toHaveCount(0);
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
+  test("Test 7 — invalid input failure", async () => {
     let ctx: LaunchedSurfaceApp | null = null;
     try {
       ctx = await launchSurfaceApp({
