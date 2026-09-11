@@ -56,7 +56,7 @@ Baseline verification at this assessment:
 | 1 — Professional workflow and scene contracts | Complete (`179793c`) | Additive professional shell, expandable compatibility groups, revisioned shared scene identity, Geometry adapters, identity-aware scene behavior and protected navigation/persistence | None for Commit 1 |
 | 2 — Navigation, picking, semantic selection | Complete (`72709a8`) | Shared pick contract, stable Geometry semantic identities, selection filters and selectors, navigation commands, saved-result provenance, and Geometry↔Mesh selection mapping | None for Commit 2 |
 | 3 — Construct hierarchy | Complete (`35603d4`) | Expandable six-family catalog, complete current-tool mapping, sampled curve/surface/solid/derived construction recipes, shared draft lifecycle, source lineage, and Scratch/Workbook scene publication | None for Commit 3 |
-| 4 — Selection-driven Modify | Partial | Transforms, face/edge/vertex direct edits, operation tree and replay | Add exact curve/surface/body operations and explicit applicability explanations |
+| 4 — Selection-driven Modify | Complete (`48e150e`) | Semantic entity-specific Modify groups, 49-command capability registry, routed current operations, sampled/CGAL warnings, exact-kernel explanations, and expandable discrete topology edits | Exact execution for disabled curve/surface/body commands remains owned by later representation milestones |
 | 5 — Metadata, lineage and dependencies | Partial | Dependency trees, histories, variants, stale products, Geometry↔Mesh trace provenance | Add canonical revisions, representation metadata, complete source/dependent lineage and freeze/detach actions |
 | 6 — Shared analysis request/result pipeline | Foundation exists | Shared registry/result-store adapter and quick-analysis snapshot bridge | Route live Geometry analysis through shared requests/results, caching, invalidation and history |
 | 7 — Exact curve differential analysis | Planned | Curve viewing and construction lines/circles exist in adjacent workflows | Add analytic curve representation, derivatives, Frenet quantities, characteristic points and tests |
@@ -252,23 +252,35 @@ Acceptance: existing construction tools retain behavior and every new tool uses 
 
 Planned message: `geometry: consolidate selection-driven Modify and Operate tools`
 
-**Status: partially implemented.**
+**Status: complete — `48e150e`.**
 
 Already implemented:
 
 - Translate, rotate, scale, alignment, duplication, visibility, and variants.
 - Direct face extrude/inset/delete/subdivide; edge split/bevel/collapse; vertex move/weld.
 - Contextual previews, source slots, operation history, editable operation tree, undo/restore, and replay.
+- Modify now resolves the selected semantic body, surface, curve/trim, point, or construction role before presenting commands.
+- A 49-command registry covers transform, curve, surface, body, reference, and discrete-topology operations with backend and capability metadata.
+- Existing transform, construction-line, projection, Boolean, section, mirror, and face/edge/vertex implementations are routed from the semantic command surface.
+- Sampled and CGAL-backed workflows disclose their backend and warnings; operations that require a later exact representation are unavailable with a visible explanation instead of being relabeled as exact.
+- Constructed curve, surface, and solid objects retain their entity kind in semantic selection instead of collapsing to a generic constructed object.
 
 Remaining:
 
-- [ ] Make Modify respond to the selected semantic entity rather than expose a flat command inventory.
-- [ ] Add curve trim, split, join, extend, offset, reverse, reparameterize, approximate, smooth, degree, and knot operations.
-- [ ] Add surface trim/untrim, split/join/extend/offset/orientation, projection, intersection, degree, and knot operations.
-- [ ] Add body boolean, split, section, shell, thicken, offset, mirror, and pattern operations using the appropriate exact or sampled backend.
-- [ ] Add reference move/reorient/rebuild/align/project operations.
-- [ ] Represent every command as available, available with warning, or unavailable with an explanation.
-- [ ] Preserve current direct topology tools as an expandable discrete-edit group when they do not apply to exact Geometry.
+- [x] Make Modify respond to the selected semantic entity rather than expose a flat command inventory.
+- [x] Add curve trim, split, join, extend, offset, reverse, reparameterize, approximate, smooth, degree, and knot operations.
+- [x] Add surface trim/untrim, split/join/extend/offset/orientation, projection, intersection, degree, and knot operations.
+- [x] Add body boolean, split, section, shell, thicken, offset, mirror, and pattern operations using the appropriate exact or sampled backend.
+- [x] Add reference move/reorient/rebuild/align/project operations.
+- [x] Represent every command as available, available with warning, or unavailable with an explanation.
+- [x] Preserve current direct topology tools as an expandable discrete-edit group when they do not apply to exact Geometry.
+
+Validation at `48e150e`:
+
+- **129 Geometry tests across 24 files** pass, including semantic entity classification, complete operation registration, backend fallback, operand readiness, and discrete-edit grouping.
+- The full renderer suite passes: **433 tests across 81 files**.
+- `npm run typecheck:noemit` and `npm run build:core` pass.
+- The Geometry professional-shell E2E check passes: **1/1**, including selection-driven body tools and explicit warning/unavailable states.
 
 Acceptance: the selected entity determines applicable tools, and current edit/history workflows remain usable.
 
